@@ -115,6 +115,54 @@ def test_search_tool_returns_search_first_handoffs_without_meta(
     assert "total_tokens" not in result
 
 
+def test_search_tool_uses_cached_code_index_before_text_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    target = tmp_path / "src" / "commands.py"
+    target.parent.mkdir()
+    target.write_text("def configure_rate_limits() -> None:\n    pass\n", encoding="utf-8")
+    fake_engine = MagicMock()
+    fake_engine.tool_search.return_value = {
+        "items": [
+            {
+                "file_path": "src/commands.py",
+                "language": "python",
+                "start_line": 1,
+                "end_line": 2,
+                "snippet": "def configure_rate_limits() -> None:\n    pass",
+            }
+        ],
+        "total_tokens": 20,
+    }
+    monkeypatch.setattr(
+        "atelier.gateway.adapters.mcp_server._code_context_engine",
+        lambda _repo_root=".": fake_engine,
+    )
+
+    result = tool_smart_search(
+        {
+            "query": "configure command execution rate limits",
+            "path": "src",
+            "budget_tokens": 4000,
+            "include_meta": True,
+        }
+    )
+
+    assert result["backend"] == "code_index"
+    assert result["fallback"]["strategy"] == "indexed_hybrid"
+    fake_engine.tool_search.assert_called_once_with(
+        "configure command execution rate limits",
+        limit=40,
+        mode="hybrid",
+        intent="auto",
+        snippet="head",
+        snippet_lines=12,
+        file_glob="src/**",
+        budget_tokens=4000,
+    )
+
+
 def test_search_tool_schema_prefers_path_and_documents_ranked_contract() -> None:
     search_tool = TOOLS["search"]
     properties = search_tool["inputSchema"]["properties"]

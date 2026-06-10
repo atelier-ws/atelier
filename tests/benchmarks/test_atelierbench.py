@@ -50,6 +50,15 @@ RATE_LIMIT = _load("benchmarks.atelierbench.rate_limit")
 TASKS = _load("benchmarks.atelierbench.tasks")
 
 
+def test_atelier_claude_arm_uses_generated_code_agent() -> None:
+    assert ATELIERBENCH._atelier_claude_agent_args() == [
+        "--plugin-dir",
+        str(ROOT / "integrations" / "claude" / "plugin"),
+        "--agent",
+        "atelier:code",
+    ]
+
+
 def test_rate_limiter_does_not_block_proxy_event_loop(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIERBENCH_RATE_LIMIT_RPM", "1200")
     limiter = RATE_LIMIT.ModelRequestRateLimiter()

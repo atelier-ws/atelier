@@ -201,6 +201,7 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ),
     ("rewind", "Restore to checkpoint: /rewind [id]"),
     ("resume", "Resume a saved session (alias: /sessions)"),
+    ("timeline", "Browse sessions in a navigable timeline overlay"),
     (
         "shell",
         "Run a shell command directly: !<cmd> or /shell <cmd>",
@@ -286,6 +287,33 @@ pub enum ActiveOverlay {
     AgentPicker { selected: usize },
     ModelPicker { selected: usize, models: Vec<(String, String)> },
     AuthPicker { selected: usize, providers: Vec<String> },
+    CommandPalette { query: String, selected: usize },
+    SessionTimeline { entries: Vec<SessionTimelineEntry>, selected: usize },
+    WhichKey { leader_pressed: bool, pending_keys: Vec<char> },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionTimelineEntry {
+    pub id: String,
+    pub timestamp: String,
+    pub message_count: usize,
+    pub size_kb: f32,
+    pub summary: String, // first 60 chars of first message
+}
+
+/// Convert a parsed session-list entry into a richer timeline entry.
+/// The flat session-list text only carries id/timestamp/size, so the message
+/// count is estimated from the on-disk size and the summary is left empty until
+/// the backend supplies one.
+fn session_entry_to_timeline(e: SessionListEntry) -> SessionTimelineEntry {
+    let message_count = (e.size_kb.round() as usize).max(1);
+    SessionTimelineEntry {
+        id: e.id,
+        timestamp: e.timestamp,
+        message_count,
+        size_kb: e.size_kb,
+        summary: String::new(),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -329,6 +357,8 @@ pub struct ToolEntry {
     pub name: String,
     pub status: ToolStatus,
     pub output_preview: Option<String>,
+    pub elapsed_ms: Option<u64>,
+    pub started_at: Option<std::time::Instant>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -401,15 +431,20 @@ pub struct App<'a> {
     pub background_tasks: Vec<BackgroundTask>,
     pub reverse_search: Option<ReverseSearch>,
     pub prompt_suggestions: Vec<String>,
-    // URL/QR header
     pub local_url: Option<String>,
     pub term_width: u16,
-    // Mouse hit-testing rectangles for the conversation + input rows.
     pub conv_rect: Rect,
     pub input_rect: Rect,
-    // Mouse-driven context menu (right-click on conversation).
     pub context_menu: Option<ContextMenu>,
     pub pending_context_action: Option<ContextAction>,
+    // Professional grade additions
+    pub show_side_panel: bool,
+    pub spinner_tick: u8,
+    pub streaming_start: Option<std::time::Instant>,
+    pub tool_count: usize,
+    pub selection_mode: bool,         // when true, mouse capture is OFF — native terminal selection works
+    pub pending_mouse_toggle: Option<bool>, // Some(true)=enable capture, Some(false)=disable it
+    pub tool_expanded: std::collections::HashSet<String>, // ids of tools whose output is expanded inline
 }
 
 impl<'a> App<'a> {
@@ -462,6 +497,13 @@ impl<'a> App<'a> {
             input_rect: Rect::default(),
             context_menu: None,
             pending_context_action: None,
+            show_side_panel: true,
+            spinner_tick: 0,
+            streaming_start: None,
+            tool_count: 0,
+            selection_mode: false,
+            pending_mouse_toggle: None,
+            tool_expanded: std::collections::HashSet::new(),
         }
     }
 
@@ -539,12 +581,16 @@ impl<'a> App<'a> {
                 self.push_system(format!("memory[{key}]: {s}"));
             }
             BackendEvent::AssistantDelta { text } => {
+                if !self.is_streaming {
+                    self.streaming_start = Some(std::time::Instant::now());
+                }
                 self.is_streaming = true;
                 self.auto_scroll = true;
                 self.streaming_text.push_str(&text);
             }
             BackendEvent::AssistantMessage { text } => {
                 self.is_streaming = false;
+                self.streaming_start = None;
                 self.auto_scroll = true;
                 self.streaming_text.clear();
                 if self.show_session_picker {
@@ -552,6 +598,14 @@ impl<'a> App<'a> {
                     if !parsed.is_empty() {
                         self.session_list = parsed;
                         self.session_picker_selected = 0;
+                        return;
+                    }
+                }
+                if let ActiveOverlay::SessionTimeline { entries, selected } = &mut self.active_overlay {
+                    let parsed = parse_session_list(&text);
+                    if !parsed.is_empty() {
+                        *entries = parsed.into_iter().map(session_entry_to_timeline).collect();
+                        *selected = 0;
                         return;
                     }
                 }
@@ -566,18 +620,25 @@ impl<'a> App<'a> {
                     name,
                     status: ToolStatus::Requested,
                     output_preview: None,
+                    elapsed_ms: None,
+                    started_at: None,
                 });
+                self.tool_count += 1;
             }
             BackendEvent::ToolStarted { id, name } => {
                 if let Some(t) = self.tools.iter_mut().find(|t| t.id == id) {
                     t.status = ToolStatus::Running;
+                    t.started_at = Some(std::time::Instant::now());
                 } else {
                     self.tools.push(ToolEntry {
                         id,
                         name,
                         status: ToolStatus::Running,
                         output_preview: None,
+                        elapsed_ms: None,
+                        started_at: Some(std::time::Instant::now()),
                     });
+                    self.tool_count += 1;
                 }
             }
             BackendEvent::ToolOutput { id, chunk } => {
@@ -598,6 +659,9 @@ impl<'a> App<'a> {
                     } else {
                         ToolStatus::Failed
                     };
+                    if let Some(start) = t.started_at {
+                        t.elapsed_ms = Some(start.elapsed().as_millis() as u64);
+                    }
                 }
                 if ok && (name == "read" || name == "edit") {
                     if let Some(path) = extract_path_from_result(&result) {
@@ -651,6 +715,8 @@ impl<'a> App<'a> {
                         name: format!("\u{26a0} {message}"),
                         status: ToolStatus::Failed,
                         output_preview: None,
+                        elapsed_ms: None,
+                        started_at: None,
                     });
                 }
                 let d = details.map(|d| format!(" — {d}")).unwrap_or_default();
@@ -704,7 +770,10 @@ impl<'a> App<'a> {
                     name: format!("shell: {command}"),
                     status: ToolStatus::Running,
                     output_preview: None,
+                    elapsed_ms: None,
+                    started_at: Some(std::time::Instant::now()),
                 });
+                self.tool_count += 1;
             }
             BackendEvent::ShellOutput { id, chunk } => {
                 if let Some(t) = self.tools.iter_mut().find(|t| t.id == id) {
@@ -719,6 +788,9 @@ impl<'a> App<'a> {
                     } else {
                         ToolStatus::Failed
                     };
+                    if let Some(start) = t.started_at {
+                        t.elapsed_ms = Some(start.elapsed().as_millis() as u64);
+                    }
                 }
             }
             BackendEvent::TaskCreated { id, name } => {
@@ -762,6 +834,16 @@ impl<'a> App<'a> {
             FocusedPane::Input => FocusedPane::Conversation,
             FocusedPane::Conversation => FocusedPane::Input,
         };
+    }
+
+    /// Expand/collapse the inline output of the most recent (last) tool call.
+    pub fn toggle_last_tool_expanded(&mut self) {
+        if let Some(tool) = self.tools.last() {
+            let id = tool.id.clone();
+            if !self.tool_expanded.remove(&id) {
+                self.tool_expanded.insert(id);
+            }
+        }
     }
 
     pub fn filtered_slash_commands(&self, filter: &str) -> Vec<(&'static str, &'static str)> {

@@ -1,13 +1,16 @@
 {
   "mcpServers": {
     "atelier": {
-      "type": "stdio",
+      "alwaysLoad": true,
+      "args": [
+        "--host",
+        "claude"
+      ],
       "command": "atelier-mcp",
-      "args": ["--host", "claude"],
       "env": {
         "CLAUDE_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}"
       },
-      "alwaysLoad": true
+      "type": "stdio"
     }
   }
 }
