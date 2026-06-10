@@ -48,7 +48,7 @@ def build_terminalbench_evidence(
     }
 
 
-def build_vix_evidence(
+def build_atelierbench_evidence(
     *,
     run_dir: Path,
     manifest_path: Path,
@@ -67,7 +67,7 @@ def build_vix_evidence(
         }
     )
     return {
-        "suite": "vix",
+        "suite": "atelierbench",
         "captured_at": datetime.now(UTC).isoformat(),
         "commit_under_test": repo_state,
         "manifest_path": str(manifest_path),
@@ -83,7 +83,7 @@ def build_vix_evidence(
             "path": str(results_path),
             "fields": ["correct", "score", "judge_model", "judge_reason"],
         },
-        "summary": _summarize_vix_results(results),
+        "summary": _summarize_atelierbench_results(results),
     }
 
 
@@ -125,7 +125,7 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _summarize_vix_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+def _summarize_atelierbench_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     arms = sorted({str(result.get("arm") or "") for result in results if result.get("arm")})
     by_arm: dict[str, Any] = {}
     for arm in arms:
@@ -148,8 +148,8 @@ def _summarize_vix_results(results: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 __all__ = [
+    "build_atelierbench_evidence",
     "build_terminalbench_evidence",
-    "build_vix_evidence",
     "git_state",
     "write_benchmark_evidence",
 ]

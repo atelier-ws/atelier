@@ -3,8 +3,9 @@
 Usage: uv run --project benchmarks python scripts/extract_flow.py <path>
 
 Outputs <file>.flow_dump.txt alongside each .flow file.
-Only shows the text/tool content — skips all raw request/response payloads.
+Only shows the text/tool content - skips all raw request/response payloads.
 """
+
 import base64
 import json
 import os
@@ -23,7 +24,7 @@ def _iter_text_from_bedrock_stream(raw: bytes):
     for b64 in re.findall(rb'"bytes":"([A-Za-z0-9+/=]+)"', raw):
         try:
             chunk = json.loads(base64.b64decode(b64))
-        except Exception:
+        except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
             continue
         t = chunk.get("type", "")
         if t == "content_block_delta":
@@ -41,6 +42,7 @@ def _iter_text_from_bedrock_stream(raw: bytes):
 def extract(path: str, output_file: str) -> None:
     print(f"=== {path} ===")
     interactions = 0
+    last_req_hash = None
     with open(path, "rb") as f, open(output_file, "w") as out:
         reader = FlowReader(f)
         for flow in reader.stream():
@@ -51,40 +53,56 @@ def extract(path: str, output_file: str) -> None:
                 continue
 
             interactions += 1
-            out.write(f"\n=== Turn {interactions} ===\n")
+
+            # Detect repeated requests
+            import hashlib
+
+            req_hash = hashlib.md5(flow.request.content or b"").hexdigest()
+            repeat_suffix = " (REPEAT)" if req_hash == last_req_hash else ""
+            last_req_hash = req_hash
+
+            out.write(f"\n=== Turn {interactions}{repeat_suffix} ===\n")
 
             # Extract last user message from request
             try:
-                req = json.loads(flow.request.content.decode("utf-8", errors="ignore"))
-                msgs = req.get("messages", [])
-                if msgs:
-                    last = msgs[-1]
-                    role = last.get("role", "user")
-                    content = last.get("content", "")
-                    if isinstance(content, str):
-                        text = content
-                    elif isinstance(content, list):
-                        parts = []
-                        for b in content:
-                            if b.get("type") == "text":
-                                parts.append(b.get("text", ""))
-                            elif b.get("type") == "tool_result":
-                                inner = b.get("content", "")
-                                if isinstance(inner, str):
-                                    parts.append(f"[tool_result] {inner}")
-                                elif isinstance(inner, list):
-                                    parts.append("[tool_result] " + " ".join(
-                                        i.get("text", "") for i in inner if i.get("type") == "text"
-                                    ))
-                        text = "\n".join(parts)
-                    else:
-                        text = ""
-                    out.write(f"[{role}] {text[:300]}\n")
-            except Exception:
+                if flow.request.content is None:
+                    out.write("[user] (empty request)\n")
+                else:
+                    req = json.loads(flow.request.content.decode("utf-8", errors="ignore"))
+                    msgs = req.get("messages", [])
+                    if msgs:
+                        last = msgs[-1]
+                        role = last.get("role", "user")
+                        content = last.get("content", "")
+                        if isinstance(content, str):
+                            text = content
+                        elif isinstance(content, list):
+                            parts = []
+                            for b in content:
+                                if b.get("type") == "text":
+                                    parts.append(b.get("text", ""))
+                                elif b.get("type") == "tool_result":
+                                    inner = b.get("content", "")
+                                    if isinstance(inner, str):
+                                        parts.append(f"[tool_result] {inner}")
+                                    elif isinstance(inner, list):
+                                        parts.append(
+                                            "[tool_result] "
+                                            + " ".join(i.get("text", "") for i in inner if i.get("type") == "text")
+                                        )
+                            text = "\n".join(parts)
+                        else:
+                            text = ""
+                        out.write(f"[{role}] {text[:300]}\n")
+            except json.JSONDecodeError:
                 pass
 
             # Extract assistant response
             resp_raw = flow.response.content
+            if resp_raw is None:
+                out.write("[assistant] (no response captured)\n")
+                continue
+
             resp_text = ""
             try:
                 resp = json.loads(resp_raw.decode("utf-8", errors="ignore"))
@@ -98,6 +116,8 @@ def extract(path: str, output_file: str) -> None:
 
             if resp_text:
                 out.write(f"[assistant] {resp_text}\n")
+            else:
+                out.write(f"[assistant] (empty response, status={flow.response.status_code})\n")
 
     print(f"  {interactions} turns -> {output_file}")
 

@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from benchmarks.code_intel.bootstrap_prefetch_bench import run_bootstrap_prefetch_bench
 
 pytestmark = pytest.mark.slow

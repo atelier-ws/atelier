@@ -32,7 +32,8 @@ const config: Config = {
         blog: {
           showReadingTime: true,
           blogTitle: "Benchmarks",
-          blogDescription: "A/B benchmark reports comparing Atelier-on vs Atelier-off",
+          blogDescription:
+            "A/B benchmark reports comparing Atelier-on vs Atelier-off",
           postsPerPage: "ALL",
         },
         theme: {
@@ -79,8 +80,8 @@ const config: Config = {
           title: "Docs",
           items: [
             {
-              label: "Quickstart",
-              to: "/docs/quickstart",
+              label: "Installation",
+              to: "/docs/installation",
             },
           ],
         },

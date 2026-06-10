@@ -1,4 +1,4 @@
-"""Dev-mode / MCP-tool-only gating primitives for the Atelier CLI.
+"""MCP-tool-only gating primitives for the Atelier CLI.
 
 These symbols are moved verbatim from ``app.py`` so command modules can import
 them *downward* (``commands/* -> commands/_dev``) without depending on the
@@ -7,19 +7,15 @@ future ``app.py`` <-> ``commands/*`` circular-import risk (RESEARCH Pitfall 1).
 
 ``_dev_command`` / ``_dev_group`` themselves stay in ``app.py`` because they
 register on the global ``cli`` object; they import the sets, ``_DummyGroup``,
-and ``_check_dev_mode`` from this module.
+from this module.
 """
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable
-from functools import wraps
 from typing import Any
 
 import click
-
-from atelier.core.environment import cli_dev_disabled_message, is_dev_mode
 
 
 class _DummyGroup:
@@ -36,43 +32,23 @@ MCP_TOOL_ONLY_COMMANDS = frozenset({"context", "rescue", "verify", "read", "edit
 MCP_TOOL_ONLY_GROUPS = frozenset({"memory", "route"})
 
 
-def _check_dev_mode(command_name: str, status: int = 1) -> None:
-    if not is_dev_mode():
-        click.echo(cli_dev_disabled_message(command_name))
-        sys.exit(status)
-
-
 def dev_command(name: str | None = None, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Build a dev-gated Click command without depending on app.py's global cli."""
+    """Build a Click command, suppressing names reserved as MCP-only tools."""
     if name in MCP_TOOL_ONLY_COMMANDS:
         return lambda f: f
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        command_name = name or func.__name__.replace("_", "-")
-
-        @wraps(func)
-        def guarded(*args: Any, **inner_kwargs: Any) -> Any:
-            _check_dev_mode(command_name)
-            return func(*args, **inner_kwargs)
-
-        return click.command(name, **kwargs)(guarded)
+        return click.command(name, **kwargs)(func)  # type: ignore[no-untyped-call]
 
     return decorator
 
 
 def dev_group(name: str | None = None, **kwargs: Any) -> Callable[[Callable[..., Any]], Any]:
-    """Build a dev-gated Click group without depending on app.py's global cli."""
+    """Build a Click group, suppressing names reserved as MCP-only groups."""
     if name in MCP_TOOL_ONLY_GROUPS:
         return lambda f: _DummyGroup()
 
     def decorator(func: Callable[..., Any]) -> Any:
-        group_name = name or func.__name__.replace("_", "-")
-
-        @wraps(func)
-        def guarded(*args: Any, **inner_kwargs: Any) -> Any:
-            _check_dev_mode(group_name)
-            return func(*args, **inner_kwargs)
-
-        return click.group(name, **kwargs)(guarded)
+        return click.group(name, **kwargs)(func)  # type: ignore[no-untyped-call]
 
     return decorator

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 import uuid
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -17,6 +18,11 @@ from atelier.core.capabilities.default_definitions import (
     build_default_registry,
 )
 from atelier.core.capabilities.host_runners import resolve_swarm_runner_command
+from atelier.core.capabilities.model_settings import (
+    normalize_model_for_host,
+    resolve_host_model,
+    resolve_runtime_model,
+)
 from atelier.core.capabilities.owned_execution_cache_affinity import (
     cache_affinity_hint,
     latest_cache_affinity,
@@ -34,6 +40,12 @@ from atelier.core.capabilities.owned_execution_routing import (
 from atelier.core.capabilities.workflow_context import StepResult, WorkflowContextState
 from atelier.core.capabilities.workflow_runner import WorkflowRunner
 from atelier.core.capabilities.workflow_schema import WorkflowDefinition, WorkflowStepDefinition
+from atelier.core.capabilities.workflow_spawn import (
+    build_spawn_envelope,
+    compile_child_prompt,
+    compile_prompt_text,
+    format_transcript,
+)
 from atelier.core.foundation.paths import default_store_root
 
 
@@ -273,12 +285,15 @@ def run_benchmark_solver(
                 provider=provider,
                 model=model,
                 runner=runner,
+                workspace_root=Path.cwd().resolve() if repo_root is None else repo_root,
             )
         )
     except (RouteConfigError, NoFeasibleRouteError):
         if step_executor is None or route_mode != "auto" or provider or model or runner:
             raise
-        fallback_model = defaults.roles[profile.role_id].model_default
+        fallback_model = resolve_runtime_model(
+            profile.role_id, Path.cwd().resolve() if repo_root is None else repo_root
+        )
         fallback_runner = "claude"
         route_decision = None
         resolved_provider = _provider_for_model(fallback_model)
@@ -503,6 +518,7 @@ def _build_workflow_definition(
             WorkflowStepDefinition(
                 step_id=default_step.step_id,
                 kind="agent",
+                role_id=default_step.role_id,
                 fork_from=default_step.fork_from,
                 context_mode=default_step.context_mode,
                 requires_plan_review=default_step.requires_plan_review,
@@ -561,27 +577,15 @@ def _compose_agent_prompt(
     current_prompt: str,
     transcript: tuple[dict[str, str], ...],
 ) -> str:
-    parts = [stem_prompt.strip()]
-    if transcript:
-        parts.extend(["", "Forked conversation transcript:", _format_transcript(transcript)])
-    parts.extend(["", "Current phase prompt:", current_prompt.strip()])
-    return "\n".join(part for part in parts if part).strip()
+    return compile_child_prompt(
+        stem_prompt=stem_prompt,
+        current_prompt=current_prompt,
+        transcript=transcript,
+    ).prompt
 
 
 def _format_transcript(transcript: tuple[dict[str, str], ...]) -> str:
-    lines: list[str] = []
-    for turn in transcript:
-        lines.extend(
-            [
-                f"[{turn['step_id']}] {turn['phase_prompt_id']}",
-                "Prompt:",
-                turn["input_prompt"],
-                "Output:",
-                turn["output"],
-                "",
-            ]
-        )
-    return "\n".join(lines).strip()
+    return format_transcript(transcript)
 
 
 def _raw_output_text(raw_result: Any) -> str:
@@ -651,9 +655,22 @@ def _resolve_solver_execution_route(
     provider: str | None,
     model: str | None,
     runner: str | None,
+    workspace_root: Path | None,
 ) -> tuple[OwnedRouteDecision | None, str, str, str, str]:
-    legacy_model = model or defaults.roles[defaults.benchmark_profiles[profile_id].role_id].model_default
-    legacy_runner = runner or "claude"
+    profile = defaults.benchmark_profiles[profile_id]
+    role_id = profile.role_id
+    host_agent = _detect_solver_host_agent()
+    host_model = normalize_model_for_host(
+        host_agent,
+        resolve_host_model(
+            host_agent,
+            role_id,
+            workspace_root=workspace_root,
+            fallback=None,
+        ),
+    )
+    legacy_model = model if model is not None else (host_model or "")
+    legacy_runner = runner or host_agent
     if route_mode == "native":
         return None, _provider_for_model(legacy_model), legacy_runner, legacy_model, ""
     if route_mode == "explicit" or provider:
@@ -699,29 +716,45 @@ def _default_step_executor(
         context: WorkflowContextState,
         _attempt_number: int,
     ) -> dict[str, Any]:
+        compiled_prompt = compile_prompt_text(prompt)
+        spawn_plan = context.spawn_plan_for_step(step.step_id)
+        cache_policy: OwnedCachePolicy = (
+            "fresh"
+            if str(spawn_plan.get("cache_policy") or getattr(step, "context_mode", "inherit")) == "fresh"
+            else "inherit"
+        )
+        spawn_envelope = build_spawn_envelope(
+            step_id=step.step_id,
+            role_id=str(getattr(step, "role_id", "") or "general"),
+            compiled_prompt=compiled_prompt,
+            spawn_group_id=str(spawn_plan.get("spawn_group_id") or ""),
+            cache_scope_id=str(spawn_plan.get("cache_scope_id") or ""),
+            cache_policy=cache_policy,
+        )
         if route_decision is not None:
-            cache_policy: OwnedCachePolicy = (
-                "fresh" if getattr(step, "context_mode", "inherit") == "fresh" else "inherit"
-            )
             affinity_state = (
                 latest_cache_affinity(context.step_results, context.step_order) if cache_policy == "inherit" else {}
             )
             try:
                 execution = execute_owned_prompt(
-                    prompt,
+                    spawn_envelope.prompt,
                     root=default_store_root(),
                     tool_name="agent",
-                    task_text=prompt,
+                    task_text=spawn_envelope.prompt,
                     decision=route_decision,
                     host_agent=_detect_solver_host_agent(),
                     session_state={
                         "workflow_step": step.step_id,
-                        "expected_input_tokens": max(1000, len(prompt) // 4),
+                        "expected_input_tokens": max(1000, len(spawn_envelope.prompt) // 4),
                         "session_phase": step.step_id,
+                        "spawn_group_id": spawn_envelope.spawn_group_id,
+                        "cache_scope_id": spawn_envelope.cache_scope_id,
                         **cache_affinity_hint({"cache_affinity": affinity_state}),
                     },
                     allow_fallback=route_decision.mode == "auto",
                     cache_policy=cache_policy,
+                    compiled_prompt=compiled_prompt.to_dict(),
+                    spawn_metadata=spawn_envelope.to_dict(),
                 )
             except OwnedExecutionError as exc:
                 return {
@@ -741,13 +774,20 @@ def _default_step_executor(
                 "duration_seconds": execution.receipt.duration_seconds,
                 "cost_usd": execution.receipt.cost_usd,
             }
+        lane_key = ":".join(part for part in (spawn_envelope.spawn_group_id, spawn_envelope.role_id) if part)
+        observed_lane = context.observed_host_lane(lane_key) if lane_key else {}
+        selected_runner = str(observed_lane.get("runner") or runner)
+        selected_model = str(observed_lane.get("model") or model)
+        if lane_key and not observed_lane:
+            context.record_host_lane(lane_key, {"runner": selected_runner, "model": selected_model})
         command = resolve_swarm_runner_command(
-            runner=runner,
-            runner_model=model,
+            runner=selected_runner,
+            runner_model=selected_model,
             runner_args=(),
             child_command=(),
             prompt_template=prompt,
         )
+        started = time.perf_counter()
         completed = subprocess.run(
             command,
             cwd=repo_root,
@@ -755,6 +795,7 @@ def _default_step_executor(
             capture_output=True,
             check=False,
         )
+        duration_seconds = time.perf_counter() - started
         output = (completed.stdout or "").strip()
         if completed.returncode != 0:
             error = (completed.stderr or output or f"{runner} exited with {completed.returncode}").strip()
@@ -763,9 +804,16 @@ def _default_step_executor(
                 "output": output,
                 "output_json": {},
                 "execution_receipt": _native_solver_execution_receipt(
-                    runner=runner,
-                    model=model,
+                    runner=selected_runner,
+                    model=selected_model,
                     status="failed",
+                    duration_seconds=duration_seconds,
+                    observed_fields=_observed_host_fields(
+                        spawn_envelope=spawn_envelope.to_dict(),
+                        selected_runner=selected_runner,
+                        selected_model=selected_model,
+                    ),
+                    unverified_fields=_unverified_host_fields(selected_model=selected_model),
                     error=error,
                 ),
                 "error": error,
@@ -775,45 +823,111 @@ def _default_step_executor(
             "output": output,
             "output_json": _parse_json_block(output),
             "execution_receipt": _native_solver_execution_receipt(
-                runner=runner,
-                model=model,
+                runner=selected_runner,
+                model=selected_model,
+                role_id=step.role_id,
+                compiled_prompt=compiled_prompt,
+                spawn_envelope=spawn_envelope.to_dict(),
                 status="done",
+                duration_seconds=duration_seconds,
+                observed_fields=_observed_host_fields(
+                    spawn_envelope=spawn_envelope.to_dict(),
+                    selected_runner=selected_runner,
+                    selected_model=selected_model,
+                ),
+                unverified_fields=_unverified_host_fields(selected_model=selected_model),
             ),
         }
 
     return _execute
 
 
-def _native_solver_execution_receipt(*, runner: str, model: str, status: str, error: str = "") -> dict[str, Any]:
+def _native_solver_execution_receipt(
+    *,
+    runner: str,
+    model: str,
+    role_id: str = "",
+    compiled_prompt: Any | None = None,
+    spawn_envelope: dict[str, Any] | None = None,
+    status: str,
+    duration_seconds: float = 0.0,
+    observed_fields: tuple[str, ...] = (),
+    unverified_fields: tuple[str, ...] = (),
+    error: str = "",
+) -> dict[str, Any]:
     provider = _provider_for_model(model)
+    compiled = compiled_prompt if hasattr(compiled_prompt, "stable_prefix_hash") else None
+    envelope = dict(spawn_envelope or {})
+    requested_fields = tuple(str(field) for field in envelope.get("requested_fields", ()))
+    honored_fields = ("prompt",)
+    dropped_fields = tuple(field for field in requested_fields if field not in honored_fields)
     return {
         "status": status,
         "mode": "native",
+        "role_id": role_id,
         "selected_provider": provider,
         "selected_model": model,
         "selected_runner": runner,
         "selected_transport": "host-cli",
-        "executed_provider": provider if status == "done" else "",
-        "executed_model": model if status == "done" else "",
+        "executed_provider": "",
+        "executed_model": "",
         "executed_runner": runner if status == "done" else "",
         "executed_transport": "host-cli" if status == "done" else "",
         "request_id": "",
-        "duration_seconds": 0.0,
+        "duration_seconds": duration_seconds,
         "input_tokens": 0,
         "output_tokens": 0,
         "cache_read_input_tokens": 0,
         "cache_write_input_tokens": 0,
         "modeled_cache_read_input_tokens": 0,
-        "stable_prefix_hash": "",
-        "stable_prefix_tokens": 0,
-        "dynamic_tokens": 0,
-        "prefix_invalidated_reason": "",
-        "cache_evidence": "none",
+        "stable_prefix_hash": getattr(compiled, "stable_prefix_hash", ""),
+        "stable_prefix_tokens": getattr(compiled, "stable_prefix_tokens", 0),
+        "dynamic_tokens": getattr(compiled, "dynamic_tokens", 0),
+        "prefix_invalidated_reason": "cache_policy_fresh" if str(envelope.get("cache_policy") or "") == "fresh" else "",
+        "cache_evidence": "hint_only" if getattr(compiled, "stable_prefix_hash", "") else "none",
+        "cache_capability": "hint_only" if getattr(compiled, "stable_prefix_hash", "") else "none",
+        "spawn_group_id": str(envelope.get("spawn_group_id") or ""),
+        "cache_scope_id": str(envelope.get("cache_scope_id") or ""),
+        "cache_policy": str(envelope.get("cache_policy") or "inherit"),
+        "eligible_for_reuse": bool(
+            getattr(compiled, "stable_prefix_hash", "") and str(envelope.get("cache_policy") or "inherit") != "fresh"
+        ),
+        "reuse_observed": False,
+        "spawn_latency_ms": int(duration_seconds * 1000),
+        "requested_fields": list(requested_fields),
+        "honored_fields": list(observed_fields or honored_fields),
+        "dropped_fields": list(dropped_fields),
+        "observed_fields": list(observed_fields),
+        "unverified_fields": list(unverified_fields),
+        "observation_mode": "runtime-observed",
         "cost_usd": 0.0,
         "rerouted": False,
         "attempts": [],
         "error": error,
     }
+
+
+def _observed_host_fields(
+    *,
+    spawn_envelope: dict[str, Any],
+    selected_runner: str,
+    selected_model: str,
+) -> tuple[str, ...]:
+    observed = ["prompt", "cache_policy", "spawn_group_id", "cache_scope_id"]
+    if str(spawn_envelope.get("role_id") or "").strip():
+        observed.append("role_id")
+    if selected_runner:
+        observed.append("selected_runner")
+    if selected_model:
+        observed.append("selected_model")
+    return tuple(observed)
+
+
+def _unverified_host_fields(*, selected_model: str) -> tuple[str, ...]:
+    fields = ["executed_provider", "executed_transport", "reuse_observed"]
+    if selected_model:
+        fields.append("executed_model")
+    return tuple(fields)
 
 
 def _detect_solver_host_agent() -> str:

@@ -10,7 +10,7 @@
  * Dynamic workflows are in research preview and require Claude Code v2.1.154+.
  */
 
-const MODEL = "claude-opus-4-8"
+import { resolveClaudeRoleModel } from "./model-config.js"
 
 const REVIEW_LENSES = [
   {
@@ -104,11 +104,13 @@ function consolidatePrompt(task, lensReports) {
 
 export default async function codeAudit(runtime) {
   const task = resolveTask(runtime)
+  const reviewerModel = resolveClaudeRoleModel("review")
+  const consolidatorModel = resolveClaudeRoleModel("code")
   const lensReports = await Promise.all(
     REVIEW_LENSES.map((lens) =>
       invokeAgent(runtime, {
         name: `code-audit-${lens.name}`,
-        model: MODEL,
+        ...(reviewerModel ? { model: reviewerModel } : {}),
         prompt: lensPrompt(task, lens),
       }),
     ),
@@ -116,13 +118,14 @@ export default async function codeAudit(runtime) {
 
   const consolidated = await invokeAgent(runtime, {
     name: "code-audit-consolidator",
-    model: MODEL,
+    ...(consolidatorModel ? { model: consolidatorModel } : {}),
     prompt: consolidatePrompt(task, lensReports),
   })
 
   return {
     workflow: "code-audit",
-    model: MODEL,
+    reviewModel: reviewerModel || "auto",
+    consolidatorModel: consolidatorModel || "auto",
     task,
     lenses: REVIEW_LENSES.map((lens) => lens.name),
     reports: lensReports,

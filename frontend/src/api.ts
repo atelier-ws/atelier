@@ -298,6 +298,60 @@ export interface SwarmLaunchResponse {
   log_path: string;
 }
 
+export interface WorkflowStepResultView {
+  step_id: string;
+  kind: string;
+  status: string;
+  output?: string | null;
+  output_json?: Record<string, unknown>;
+  execution_receipt?: Record<string, unknown>;
+  duration_seconds?: number;
+  cost_usd?: number;
+  error?: string | null;
+}
+
+export interface WorkflowCurrentSummary {
+  run_id: string;
+  workflow_id: string;
+  status: string;
+  current_step?: string | null;
+  session_phase?: string | null;
+  step_count: number;
+  completed_steps: number;
+  paused_step_id?: string | null;
+  failed_step_id?: string | null;
+  pause_reason?: string | null;
+  stop_reason?: string | null;
+  review_decision?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface WorkflowCurrentDetail {
+  workspace_root?: string | null;
+  summary: WorkflowCurrentSummary;
+  workflow: Record<string, unknown>;
+  route: Record<string, unknown>;
+  current_task: Record<string, unknown>;
+  plan_review: Record<string, unknown>;
+  task_outputs: Record<string, WorkflowStepResultView>;
+  step_order: string[];
+  available_actions: {
+    can_pause: boolean;
+    can_resume: boolean;
+    can_stop: boolean;
+    resume_requires_host_call: boolean;
+    pause_is_snapshot_only: boolean;
+    stop_is_snapshot_only: boolean;
+  };
+  control_payloads: Record<string, unknown>;
+  notes: {
+    snapshot_kind: string;
+    live_control: boolean;
+    summary: string;
+  };
+}
+
 export interface PlanRecord {
   trace_id: string;
   domain: string;
@@ -439,6 +493,66 @@ export interface SessionArtifact {
   label?: string;
   source_path?: string | null;
   scope: string;
+}
+
+export interface ProjectionDescriptor {
+  view: string;
+  transformed: boolean;
+  body_complete: boolean;
+  untransformed_text: boolean;
+  notice?: string;
+}
+
+export interface ProjectionDelta {
+  path: string;
+  lang: string;
+  kind: string;
+  original_tokens: number;
+  projected_tokens: number;
+  saved_tokens: number;
+}
+
+export interface ProjectionSourceRange {
+  start_offset: number;
+  end_offset: number;
+  start_line: number;
+  end_line: number;
+}
+
+export interface ProjectionSegment {
+  segment_id: string;
+  kind: string;
+  source: ProjectionSourceRange;
+  projected_start: number;
+  projected_end: number;
+  exact: boolean;
+}
+
+export interface ProjectionMapping {
+  version: string;
+  projection_kind: string;
+  path: string;
+  lang: string;
+  source_length: number;
+  projected_length: number;
+  source_hash: string;
+  projected_hash: string;
+  source_line_offsets: number[];
+  segments: ProjectionSegment[];
+}
+
+export interface FileProjectionResponse {
+  mode: string;
+  path: string;
+  language?: string | null;
+  range?: string | null;
+  content?: string | null;
+  outline?: Record<string, unknown> | null;
+  cache_hit?: boolean;
+  tokens_saved?: number;
+  projection: ProjectionDescriptor;
+  projection_delta?: ProjectionDelta;
+  projection_mapping?: ProjectionMapping;
 }
 
 export interface NestedTrace {
@@ -1587,6 +1701,36 @@ export interface TraceListResponse {
   };
 }
 
+export interface TUISession {
+  session_id: string;
+  started_at: string;
+  ended_at: string | null;
+  model: string;
+  provider: string;
+  mode: string;
+  total_cost_usd: number;
+  total_savings_usd: number;
+  cache_efficiency_pct: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  turns: number;
+  tool_calls: number;
+}
+
+export interface TUIAnalytics {
+  sessions: TUISession[];
+  summary: {
+    total_sessions: number;
+    total_cost_usd: number;
+    total_savings_usd: number;
+    avg_cache_efficiency_pct: number;
+    total_turns: number;
+    total_tool_calls: number;
+  };
+}
+
 export const api = {
   overview: (days?: number) => {
     const params = new URLSearchParams();
@@ -1699,7 +1843,19 @@ export const api = {
     );
   },
   stopSwarmRun: (runId: string, cleanup = false) =>
-    post<SwarmRunStateView>(`/v1/swarm/runs/${runId}/stop?cleanup=${cleanup}`, {}),
+    post<SwarmRunStateView>(
+      `/v1/swarm/runs/${runId}/stop?cleanup=${cleanup}`,
+      {}
+    ),
+  workflowCurrent: () => get<WorkflowCurrentDetail>("/v1/workflow/current"),
+  pauseWorkflowCurrent: (reason?: string) =>
+    post<WorkflowCurrentDetail>("/v1/workflow/current/pause", {
+      reason: reason || null,
+    }),
+  stopWorkflowCurrent: (reason?: string) =>
+    post<WorkflowCurrentDetail>("/v1/workflow/current/stop", {
+      reason: reason || null,
+    }),
   calls: (limit = 200) => get<CallEntry[]>(`/calls?limit=${limit}`),
   rubrics: () => get<Rubric[]>("/v1/rubrics"),
   rubric: (id: string) => get<Rubric>(`/v1/rubrics/${id}`),
@@ -1766,12 +1922,60 @@ export const api = {
     getText(`/raw-artifacts/${artifactId}/content`),
   fileContentUrl: (path: string) =>
     `${BASE}/v1/files/content?path=${encodeURIComponent(path)}`,
+  fileProjectionUrl: (
+    path: string,
+    options?: {
+      view?: "compact" | "exact" | "summary" | "range";
+      range?: string;
+      maxLines?: number;
+    }
+  ) => {
+    const params = new URLSearchParams({ path });
+    if (options?.view) params.set("view", options.view);
+    if (options?.range) params.set("range", options.range);
+    if (options?.maxLines !== undefined)
+      params.set("max_lines", String(options.maxLines));
+    return `${BASE}/v1/files/projection?${params.toString()}`;
+  },
+  fileProjectionInspectUrl: (
+    path: string,
+    options?: {
+      view?: "compact" | "exact" | "summary" | "range";
+      range?: string;
+      maxLines?: number;
+    }
+  ) => {
+    const params = new URLSearchParams({ path });
+    if (options?.view) params.set("view", options.view);
+    if (options?.range) params.set("range", options.range);
+    if (options?.maxLines !== undefined)
+      params.set("max_lines", String(options.maxLines));
+    return `/projection?${params.toString()}`;
+  },
+  fileProjection: (
+    path: string,
+    options?: {
+      view?: "compact" | "exact" | "summary" | "range";
+      range?: string;
+      maxLines?: number;
+    }
+  ) => {
+    const params = new URLSearchParams({ path });
+    if (options?.view) params.set("view", options.view);
+    if (options?.range) params.set("range", options.range);
+    if (options?.maxLines !== undefined)
+      params.set("max_lines", String(options.maxLines));
+    return get<FileProjectionResponse>(
+      `/v1/files/projection?${params.toString()}`
+    );
+  },
   // -----------------------------------------------------------------------
   // Week-2 endpoints (Spec 06)
   // -----------------------------------------------------------------------
   sessions: (since = "7d", limit = 200) =>
     get<SessionSummary[]>(`/v1/sessions?since=${since}&limit=${limit}`),
   sessionReport: (id: string) => get<SessionReport>(`/v1/sessions/${id}`),
+  getTuiSessions: () => get<TUIAnalytics>("/analytics/tui-sessions"),
   memoryFacts: (vendor?: string) => {
     const suffix = vendor ? `?vendor=${encodeURIComponent(vendor)}` : "";
     return get<MemoryFact[]>(`/v1/memory/facts${suffix}`);

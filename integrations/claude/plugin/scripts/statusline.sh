@@ -123,10 +123,38 @@ IFS='|' read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_
 [ -z "${DISPLAY_IN_TOK:-}" ] && DISPLAY_IN_TOK="0"
 [ -z "${DISPLAY_CACHE_TOK:-}" ] && DISPLAY_CACHE_TOK="0"
 [ -z "${DISPLAY_OUT_TOK:-}" ] && DISPLAY_OUT_TOK="0"
+# Reset the displayed cost on /clear. SessionStart(clear) drops a marker; here
+# we snapshot the cumulative live cost at that moment and subtract it from then
+# on, so the row reflects only post-clear spend. (Claude's cost.total_cost_usd
+# is process-cumulative and does not reset on /clear; the transcript buckets do.)
+if [ -n "${SESSION_ID:-}" ]; then
+  _ATELIER_COST_RESET="${ATELIER_STATUS_ROOT}/statusline_cost_reset/${SESSION_ID}"
+  _ATELIER_COST_BASE="${ATELIER_STATUS_ROOT}/statusline_cost_baseline/${SESSION_ID}"
+  if [ -f "${_ATELIER_COST_RESET}" ]; then
+    mkdir -p "${ATELIER_STATUS_ROOT}/statusline_cost_baseline" 2>/dev/null
+    printf '%s' "${COST:-0}" >"${_ATELIER_COST_BASE}" 2>/dev/null
+    rm -f "${_ATELIER_COST_RESET}" 2>/dev/null
+  fi
+  if [ -f "${_ATELIER_COST_BASE}" ]; then
+    _ATELIER_COST_BASE_VAL=$(cat "${_ATELIER_COST_BASE}" 2>/dev/null)
+    COST=$(awk "BEGIN { d=${COST:-0}-${_ATELIER_COST_BASE_VAL:-0}; if (d<0) d=0; printf \"%.6f\", d }" 2>/dev/null || printf '%s' "${COST}")
+  fi
+fi
+
 # Cost = max(transcript-derived, live Claude cost). Both are cumulative; we
 # trust whichever is larger so the very first frame of a resumed session
 TOTAL_COST=$(awk "BEGIN { a=${SESSION_BASE_COST:-0}; b=${COST:-0}; printf \"%.3f\", (a>b?a:b) }" 2>/dev/null || echo "0")
 COST_FMT=$(printf '$%.3f' "$TOTAL_COST" 2>/dev/null || echo "\$0.000")
+
+# Savings as a percent of the would-be-naive baseline (actual cost + saved).
+# Both inputs are already in hand, so this needs no new savings-line field.
+SAVED_NUM=${SAVED_USD#\$}
+SAVE_PCT=$(awk "BEGIN { s=${SAVED_NUM:-0}+0; c=${TOTAL_COST:-0}+0; b=s+c; if (b>0) printf \"%.0f\", s*100/b; else printf \"0\" }" 2>/dev/null || echo "0")
+if [ "${SAVE_PCT:-0}" -gt 0 ] 2>/dev/null; then
+  SAVED_PCT_SEG=" · ${SAVE_PCT}%"
+else
+  SAVED_PCT_SEG=""
+fi
 
 if [ -n "${ATELIER_NO_COLOR:-}" ]; then
   C_BRAND=""; C_PIPE=""; C_DIM=""; C_GREEN=""; C_RESET=""
@@ -152,12 +180,30 @@ if [ "${DISPLAY_IN_TOK:-0}" -gt 0 ] 2>/dev/null || [ "${DISPLAY_CACHE_TOK:-0}" -
   TOK_IN_F=$(fmt_tok "${DISPLAY_IN_TOK:-0}")
   TOK_CACHE_F=$(fmt_tok "${DISPLAY_CACHE_TOK:-0}")
   TOK_OUT_F=$(fmt_tok "${DISPLAY_OUT_TOK:-0}")
-else
+  EFF_IN=${DISPLAY_IN_TOK:-0}
+  EFF_CACHE=${DISPLAY_CACHE_TOK:-0}
+  else
   TOK_IN_F=$(fmt_tok "${LIVE_DISPLAY_IN:-0}")
   TOK_CACHE_F=$(fmt_tok "${LIVE_DISPLAY_CACHE:-0}")
   TOK_OUT_F=$(fmt_tok "${LIVE_DISPLAY_OUT:-0}")
-fi
-TOK_DISPLAY="I: ${TOK_IN_F} C: ${TOK_CACHE_F} O: ${TOK_OUT_F}"
+  EFF_IN=${LIVE_DISPLAY_IN:-0}
+  EFF_CACHE=${LIVE_DISPLAY_CACHE:-0}
+  fi
+  # Cache efficiency = share of input tokens served from cache (read) vs paid as
+  # fresh input + cache writes. High = riding the prompt cache; low = re-paying.
+  CACHE_EFF_SEG=""
+  # EFF_TOTAL=$(( ${EFF_IN:-0} + ${EFF_CACHE:-0} ))
+  # if [ "${EFF_TOTAL}" -gt 0 ] 2>/dev/null; then
+  # EFF_PCT=$(( ${EFF_CACHE:-0} * 100 / EFF_TOTAL ))
+  # CACHE_EFF_SEG=" cache ${EFF_PCT}%"
+  # fi
+  TOK_DISPLAY="I: ${TOK_IN_F} C: ${TOK_CACHE_F} O: ${TOK_OUT_F}${CACHE_EFF_SEG}"
+# Live context occupancy = current-turn input + cache reads + cache writes.
+# This is what fills the window right now (and what `used_percentage` measures),
+# so it tracks the % gauge and DROPS after a /compact. Do NOT use the I/C/O
+# buckets here — those are cumulative and only ever grow.
+LIVE_CTX_TOK=$(( ${IN_TOK:-0} + ${CACHE_R:-0} + ${CACHE_W:-0} ))
+ACTUAL_CTX_F=$(fmt_tok "${LIVE_CTX_TOK}")
 # Calls-saved counter intentionally not shown in the statusline.
 SAVED_CALLS_SEG=""
 if [ -n "${STATUS_TEXT:-}" ]; then
@@ -172,10 +218,9 @@ else
   ROUTING_SEG=""
 fi
 
-printf '%s%s%s %s %s%s ctx %s%% %s %s(%s) ↓ %s%s(%s)%s%s %s %dm%02ds\n' \
+printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s) ↓ %s%s(%s%s)%s%s\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
-  "$PIPE" "$MODEL" "$STATUS_SEG" "$PCT_INT" \
+  "$PIPE" "$MODEL" "$STATUS_SEG" "$ACTUAL_CTX_F" "$PCT_INT" \
   "$PIPE" "$COST_FMT" "$TOK_DISPLAY" \
-  "$C_GREEN" "$SAVED_USD" "$SAVED_CTX" "$C_RESET" \
-  "$ROUTING_SEG" \
-  "$PIPE" "$MINS" "$SECS"
+  "$C_GREEN" "$SAVED_USD" "$SAVED_CTX" "$SAVED_PCT_SEG" "$C_RESET" \
+  "$ROUTING_SEG"

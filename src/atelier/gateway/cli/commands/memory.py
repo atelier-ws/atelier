@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import click
 
-from atelier.gateway.cli.commands._shared import _emit
+from atelier.gateway.cli.commands._shared import _emit, _redact_memory_input
 
 
 @click.group("memory")
 def memory_group_cli() -> None:
-    """Inspect native AI memory files from Claude, Codex, and Gemini."""
+    """Inspect and query Atelier's archival memory system."""
 
 
 def _make_memory_registry(cwd: Path | None = None) -> Any:
@@ -27,6 +28,82 @@ def _make_memory_registry(cwd: Path | None = None) -> Any:
             GeminiAdapter(cwd=cwd or Path.cwd()),
         ]
     )
+
+
+def _make_memory_service(root: Path) -> Any:
+    from atelier.core.capabilities.memory import MemoryService
+    from atelier.core.foundation.redaction import redact
+    from atelier.infra.embeddings.factory import make_embedder
+    from atelier.infra.storage.factory import make_memory_store
+
+    return MemoryService(store=make_memory_store(root), embedder=make_embedder(), redactor=redact)
+
+
+@memory_group_cli.command("remember")
+@click.argument("fact")
+@click.option("--subject", required=True, help="Short subject for the durable fact.")
+@click.option("--scope", type=click.Choice(["repository", "user"]), default="repository", show_default=True)
+@click.option("--agent-id", default=None, help="Memory namespace (defaults to shared).")
+@click.option("--citations", default="", help="Source citations for the fact.")
+@click.option("--reason", default="", help="Why this fact should be retained.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+@click.pass_context
+def memory_remember_cmd(
+    ctx: click.Context,
+    fact: str,
+    subject: str,
+    scope: str,
+    agent_id: str | None,
+    citations: str,
+    reason: str,
+    as_json: bool,
+) -> None:
+    """Store FACT as durable Atelier memory."""
+    result = _make_memory_service(ctx.obj["root"]).store_fact(
+        agent_id=agent_id,
+        subject=_redact_memory_input(subject, "subject"),
+        fact=_redact_memory_input(fact, "fact"),
+        citations=_redact_memory_input(citations, "citations"),
+        reason=_redact_memory_input(reason, "reason"),
+        scope=scope,
+    )
+    payload = result.model_dump(mode="json")
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(f"remembered {payload['id']}: {payload['fact']}")
+
+
+@memory_group_cli.command("vote")
+@click.argument("fact")
+@click.argument("direction", type=click.Choice(["upvote", "downvote"]))
+@click.option("--reason", required=True, help="Why this vote is warranted.")
+@click.option("--scope", type=click.Choice(["repository", "user"]), default=None)
+@click.option("--agent-id", default=None, help="Memory namespace (defaults to shared).")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+@click.pass_context
+def memory_vote_cmd(
+    ctx: click.Context,
+    fact: str,
+    direction: str,
+    reason: str,
+    scope: str | None,
+    agent_id: str | None,
+    as_json: bool,
+) -> None:
+    """Vote on an existing durable FACT."""
+    result = _make_memory_service(ctx.obj["root"]).vote_fact(
+        agent_id=agent_id,
+        fact=_redact_memory_input(fact, "fact"),
+        direction=direction,
+        reason=_redact_memory_input(reason, "reason"),
+        scope=scope,
+    )
+    payload = result.model_dump(mode="json")
+    if as_json:
+        _emit(payload, as_json=True)
+        return
+    click.echo(f"{payload['direction']} recorded for {payload['id']}")
 
 
 @memory_group_cli.command("list")
@@ -211,6 +288,91 @@ def memory_paths_cmd(as_json: bool) -> None:
         click.echo(f"{vendor}:")
         for p in paths:
             click.echo(f"  {p}")
+
+
+@memory_group_cli.command("recall")
+@click.argument("query")
+@click.option("--agent-id", default=None, help="Memory namespace (defaults to shared).")
+@click.option("--top-k", default=5, show_default=True, type=int, help="Max passages to return.")
+@click.option("--tags", multiple=True, default=None, help="Filter by tag (repeatable).")
+@click.option("--since", default=None, help="ISO datetime filter (e.g. 2025-01-01T00:00:00).")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
+@click.pass_context
+def memory_recall_cmd(
+    ctx: click.Context,
+    query: str,
+    agent_id: str | None,
+    top_k: int,
+    tags: tuple[str, ...] | None,
+    since: str | None,
+    as_json: bool,
+) -> None:
+    """Recall relevant archival memory passages by semantic search.
+
+    Searches Atelier's internal memory store (embedding + keyword ranking).
+
+    QUERY is the natural-language search string.
+    """
+    from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
+    from atelier.core.foundation.redaction import redact
+    from atelier.infra.embeddings.factory import make_embedder
+    from atelier.infra.storage.factory import make_memory_store
+
+    root = ctx.obj["root"]
+    store = make_memory_store(root)
+    embedder = make_embedder()
+    capability = ArchivalRecallCapability(store, embedder, redactor=redact)
+
+    since_dt: datetime | None = None
+    if since:
+        since_dt = datetime.fromisoformat(since)
+
+    passages, recall = capability.recall(
+        agent_id=agent_id,
+        query=query,
+        top_k=top_k,
+        tags=list(tags) if tags else None,
+        since=since_dt,
+    )
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "query": recall.query,
+                    "agent_id": recall.agent_id,
+                    "passages": [
+                        {
+                            "id": p.id,
+                            "text": p.text,
+                            "source_ref": p.source_ref,
+                            "tags": p.tags,
+                            "source": str(p.source) if p.source else None,
+                        }
+                        for p in passages
+                    ],
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if not passages:
+        click.echo("No matching passages found.")
+        return
+
+    click.echo(f"Query: {recall.query}")
+    click.echo(f"Agent: {recall.agent_id}")
+    click.echo(f"Results: {len(passages)} passage{'s' if len(passages) != 1 else ''}")
+    click.echo("")
+    for i, p in enumerate(passages, start=1):
+        click.echo(f"[{i}] (id={p.id})")
+        if p.tags:
+            click.echo(f"    tags: {', '.join(p.tags)}")
+        if p.source_ref:
+            click.echo(f"    source: {p.source_ref}")
+        click.echo(f"    {p.text[:200]}")
+        click.echo("")
 
 
 __all__ = ["_make_memory_registry", "memory_group_cli"]

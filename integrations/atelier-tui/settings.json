@@ -1,0 +1,9 @@
+{
+  "agent": "atelier:code",
+  "statusBar": {
+    "enabled": true,
+    "showModel": true,
+    "showCacheEfficiency": true,
+    "showCost": true
+  }
+}

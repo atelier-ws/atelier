@@ -41,7 +41,7 @@ Benchmark gate workflow:
 4. return exactly one verdict: `PASS`, `FAIL`, or `INSUFFICIENT_DATA`
 
 Today this workflow is intentionally built on the current repo reality:
-`benchmarks/vix_eval/run.py --report`, the real A/B calibration tests, and
+`benchmarks/atelierbench/run.py --report`, the real A/B calibration tests, and
 `uv run python -m benchmarks.wire_savings.report ...` are valid evidence
 surfaces, while deleted `benchmarks/ab/` infrastructure is not.
 

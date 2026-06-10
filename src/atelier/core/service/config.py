@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 
-from atelier.core.environment import bool_env, is_dev_mode
+from atelier.core.environment import bool_env
 from atelier.core.foundation.paths import default_store_root
 
 
@@ -56,20 +56,12 @@ class ServiceConfig:
         """Project-local lessons root (usually ./.lessons)."""
         return os.environ.get("ATELIER_LESSONS_ROOT")
 
-    @property
-    def dev_mode(self) -> bool:
-        """Whether the runtime is in developer mode. Gated features (Lint, Reasoning, Verify)
-        require this to be enabled. Tracking and analytics remain active in all modes.
-        """
-        return is_dev_mode()
-
     def as_dict(self) -> dict[str, object]:
         """Return config summary — never includes the api_key value."""
         return {
             "service_enabled": self.service_enabled,
             "require_auth": self.require_auth,
             "api_key_configured": bool(self.api_key),
-            "dev_mode": self.dev_mode,
             "host": self.host,
             "port": self.port,
             "storage_backend": self.storage_backend,

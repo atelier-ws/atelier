@@ -18,27 +18,28 @@ import click
 import yaml
 
 from atelier.core.capabilities.benchmark_evidence import (
+    build_atelierbench_evidence,
     build_terminalbench_evidence,
-    build_vix_evidence,
     git_state,
     write_benchmark_evidence,
 )
 from atelier.core.capabilities.benchmark_gate import (
+    evaluate_atelierbench_gate,
     evaluate_terminalbench_gate,
-    evaluate_vix_gate,
     load_benchmark_gate,
     require_benchmark_gate_pass,
     write_benchmark_gate,
 )
 from atelier.core.capabilities.benchmark_manifest import (
+    build_atelierbench_manifest,
     build_terminalbench_manifest,
-    build_vix_manifest,
     write_benchmark_manifest,
 )
 from atelier.core.capabilities.host_runners import (
     CLAUDE_PROVIDER_PRESETS,
     resolve_claude_provider_preset,
 )
+from atelier.core.domains.manager import DomainManager
 from atelier.gateway.cli.progress import ProgressReporter
 
 from .benchmark_solver import benchmark_solver_cmd
@@ -56,6 +57,35 @@ _PROVIDER_ALIASES: dict[str, str] = {
 @click.group("benchmark")
 def benchmark_group() -> None:
     """Run Atelier benchmark suites and reports."""
+
+
+@benchmark_group.command("packs")
+@click.option("--json", "as_json", is_flag=True, help="Emit the domain benchmark summary as JSON.")
+@click.pass_context
+def benchmark_packs_cmd(ctx: click.Context, as_json: bool) -> None:
+    """Summarize benchmarkable shipped domain bundles."""
+    manager = DomainManager(ctx.obj["root"])
+    refs = manager.list_bundles()
+    bundle_infos = [manager.info(ref.bundle_id) for ref in refs]
+    benchmarked = [
+        {
+            "bundle_id": str(info["bundle_id"]),
+            "domain": str(info["domain"]),
+            "benchmarks": list(info.get("benchmarks") or []),
+        }
+        for info in bundle_infos
+        if isinstance(info, dict) and info.get("benchmarks")
+    ]
+    payload = {
+        "suite": "domains",
+        "domains_total": len(refs),
+        "domains_benchmarked": len(benchmarked),
+        "domains": benchmarked,
+    }
+    if as_json:
+        click.echo(json.dumps(payload))
+        return
+    click.echo(f"benchmarkable domains: {payload['domains_benchmarked']}/{payload['domains_total']}")
 
 
 @benchmark_group.command("mcp")
@@ -483,14 +513,14 @@ def benchmark_swe_cmd(
     click.echo(f"Results: {run_dir}")
 
 
-@benchmark_group.command("vix")
+@benchmark_group.command("atelierbench")
 @click.option(
     "--task",
     "tasks",
     multiple=True,
     default=("all",),
     show_default=True,
-    help="VIX task id; repeat for multiple or use 'all'.",
+    help="AtelierBench task id; repeat for multiple or use 'all'.",
 )
 @click.option(
     "--arm",
@@ -502,7 +532,22 @@ def benchmark_swe_cmd(
 )
 @click.option("--reps", type=int, default=1, show_default=True)
 @click.option("--model", default="sonnet", show_default=True)
-@click.option("--timeout", type=int, default=900, show_default=True)
+@click.option("--timeout", type=int, default=1800, show_default=True)
+@click.option("--max-output-tokens", type=click.IntRange(min=1), default=8192, show_default=True)
+@click.option(
+    "--rate-limit-rpm",
+    type=click.FloatRange(min=0),
+    default=0,
+    show_default=True,
+    help="Maximum model inference requests per minute; 0 disables throttling.",
+)
+@click.option(
+    "--rate-limit-tpm",
+    type=click.IntRange(min=0),
+    default=0,
+    show_default=True,
+    help="Maximum reserved output tokens per rolling minute; 0 disables throttling.",
+)
 @click.option("--transport", type=click.Choice(["cli", "api"]), default="cli", show_default=True)
 @click.option(
     "--cli-driver",
@@ -607,8 +652,12 @@ def benchmark_swe_cmd(
 )
 @click.option("--bridge-command", default=None, help="Optional background bridge command to launch first.")
 @click.option("--bridge-wait", type=float, default=3.0, show_default=True)
-@click.option("--vix-eval-dir", type=click.Path(path_type=Path, file_okay=False), default=None)
-@click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
+@click.option(
+    "--task-source-dir",
+    "atelierbench_tasks_dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=None,
+)
 @click.option(
     "--require-pass/--allow-failed-gate",
     default=False,
@@ -625,12 +674,15 @@ def benchmark_swe_cmd(
         "Shorthand for --claude-provider-preset; explicit --agent-env takes precedence."
     ),
 )
-def benchmark_vix_cmd(
+def benchmark_atelierbench_cmd(
     tasks: tuple[str, ...],
     arms: tuple[str, ...],
     reps: int,
     model: str,
     timeout: int,
+    max_output_tokens: int,
+    rate_limit_rpm: float,
+    rate_limit_tpm: int,
     transport: str,
     cli_driver: str,
     jobs: int,
@@ -659,16 +711,15 @@ def benchmark_vix_cmd(
     clear_claude_api_key: bool,
     bridge_command: str | None,
     bridge_wait: float,
-    vix_eval_dir: Path | None,
-    out: Path | None,
+    atelierbench_tasks_dir: Path | None,
     require_pass: bool,
     provider: str | None,
 ) -> None:
-    """Run the VIX head-to-head benchmark and write a report."""
+    """Run AtelierBench and write a head-to-head report."""
     repo_root = Path.cwd().resolve()
-    run_dir = _run_dir("vix", out)
-    resolved_vix_eval_dir = _ensure_vix_eval_dir(repo_root, vix_eval_dir)
-    env = {"VIX_EVAL_DIR": str(resolved_vix_eval_dir)}
+    run_dir = _atelierbench_run_dir(repo_root)
+    resolved_atelierbench_tasks_dir = _ensure_atelierbench_tasks_dir(repo_root, atelierbench_tasks_dir)
+    env = {"ATELIERBENCH_TASKS_DIR": str(resolved_atelierbench_tasks_dir)}
     bridge_args = []
     if bridge_command:
         bridge_args = ["--bridge-command", bridge_command, "--bridge-wait", str(bridge_wait)]
@@ -737,12 +788,12 @@ def benchmark_vix_cmd(
         agent_env_args.extend(["--agent-env-from-host", item])
     baseline_arm = "baseline" if "baseline" in arms else arms[0]
     candidate_arm = next((arm for arm in arms if arm != baseline_arm), baseline_arm)
-    task_catalog = _load_vix_catalog(repo_root)
+    task_catalog = _load_atelierbench_catalog(repo_root)
     task_ids = [task["id"] for task in task_catalog] if tasks == ("all",) else list(tasks)
     task_payload = [task for task in task_catalog if task["id"] in task_ids]
     manifest_path = write_benchmark_manifest(
         run_dir,
-        build_vix_manifest(
+        build_atelierbench_manifest(
             tasks=task_payload,
             arms=list(arms),
             reps=reps,
@@ -753,19 +804,19 @@ def benchmark_vix_cmd(
             timeout=timeout,
             jobs=jobs,
             parallel_scope=parallel_scope,
-            vix_eval_dir=resolved_vix_eval_dir,
+            atelierbench_tasks_dir=resolved_atelierbench_tasks_dir,
             bridge_command=bridge_command,
         ),
     )
     repo_state = git_state(repo_root)
     forwarded_cli_extra_args = [f"--cli-extra-arg={arg}" for arg in cli_extra_args]
-    progress = ProgressReporter("vix", total=1)
+    progress = ProgressReporter("atelierbench", total=1)
     progress.start("starting benchmark", current=f"{len(tasks)} task selector(s) x {len(arms)} arm(s)")
     _run(
         [
             *_python_cmd(repo_root),
             "-m",
-            "benchmarks.vix_eval.run",
+            "benchmarks.atelierbench.run",
             "--tasks",
             *tasks,
             "--arms",
@@ -776,6 +827,12 @@ def benchmark_vix_cmd(
             model,
             "--timeout",
             str(timeout),
+            "--max-output-tokens",
+            str(max_output_tokens),
+            "--rate-limit-rpm",
+            str(rate_limit_rpm),
+            "--rate-limit-tpm",
+            str(rate_limit_tpm),
             "--cli-driver",
             cli_driver,
             "--jobs",
@@ -793,13 +850,13 @@ def benchmark_vix_cmd(
             str(run_dir),
         ],
         cwd=repo_root,
-        label="VIX benchmark",
+        label="AtelierBench",
         env=env,
     )
     progress.step("benchmark command complete", current=run_dir.name)
     write_benchmark_evidence(
         run_dir,
-        build_vix_evidence(
+        build_atelierbench_evidence(
             run_dir=run_dir,
             manifest_path=manifest_path,
             repo_state=repo_state,
@@ -807,7 +864,7 @@ def benchmark_vix_cmd(
     )
     write_benchmark_gate(
         run_dir,
-        evaluate_vix_gate(
+        evaluate_atelierbench_gate(
             run_dir,
             baseline_arm=baseline_arm,
             candidate_arm=candidate_arm,
@@ -820,6 +877,13 @@ def benchmark_vix_cmd(
             raise click.ClickException(str(exc)) from exc
     progress.finish("benchmark complete")
     click.echo(f"Results: {run_dir}")
+
+
+def _atelierbench_run_dir(repo_root: Path) -> Path:
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    path = repo_root.resolve() / "benchmarks" / "atelierbench" / "results" / timestamp
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def _run_dir(suite: str, out: Path | None, *, repo_root: Path | None = None) -> Path:
@@ -871,17 +935,17 @@ def _resolve_provider_jobs(requested_jobs: int, providers: list[str]) -> int:
     return _auto_jobs(len(providers), hard_cap=32)
 
 
-def _ensure_vix_eval_dir(repo_root: Path, configured_dir: Path | None) -> Path:
+def _ensure_atelierbench_tasks_dir(repo_root: Path, configured_dir: Path | None) -> Path:
     resolved = (
         configured_dir.resolve()
         if configured_dir is not None
-        else repo_root.parent / "benchmarks" / repo_root.name / "vix-eval"
+        else repo_root.parent / "benchmarks" / repo_root.name / "atelierbench-tasks"
     )
     tasks_dir = resolved / "tasks"
     if tasks_dir.is_dir():
         return resolved
     if resolved.exists() and not tasks_dir.is_dir():
-        raise click.ClickException(f"VIX benchmark tasks directory not found: {tasks_dir}")
+        raise click.ClickException(f"AtelierBench tasks directory not found: {tasks_dir}")
     resolved.parent.mkdir(parents=True, exist_ok=True)
     clone = subprocess.run(
         ["git", "clone", "--depth", "1", "https://github.com/kirby88/vix-eval", str(resolved)],
@@ -892,11 +956,11 @@ def _ensure_vix_eval_dir(repo_root: Path, configured_dir: Path | None) -> Path:
     )
     if clone.returncode != 0:
         raise click.ClickException(
-            "Failed to clone vix-eval benchmark data. "
-            f"Pass --vix-eval-dir explicitly or fix git/network access.\n{clone.stderr.strip()}"
+            "Failed to clone AtelierBench task data from kirby88/vix-eval. "
+            f"Pass --task-source-dir explicitly or fix git/network access.\n{clone.stderr.strip()}"
         )
     if not tasks_dir.is_dir():
-        raise click.ClickException(f"VIX benchmark tasks directory not found after clone: {tasks_dir}")
+        raise click.ClickException(f"AtelierBench tasks directory not found after clone: {tasks_dir}")
     return resolved
 
 
@@ -927,18 +991,18 @@ def _load_terminalbench_catalog(tasks_path: Path) -> tuple[list[str], dict[str, 
     return task_ids, {"name": name, "version": version}
 
 
-def _load_vix_catalog(repo_root: Path) -> list[dict[str, object]]:
-    tasks_path = repo_root / "benchmarks" / "vix_eval" / "tasks.py"
-    module_name = "_atelier_vix_tasks"
+def _load_atelierbench_catalog(repo_root: Path) -> list[dict[str, object]]:
+    tasks_path = repo_root / "benchmarks" / "atelierbench" / "tasks.py"
+    module_name = "_atelierbench_tasks"
     spec = importlib.util.spec_from_file_location(module_name, tasks_path)
     if spec is None or spec.loader is None:
-        raise click.ClickException(f"Unable to load VIX task catalog: {tasks_path}")
+        raise click.ClickException(f"Unable to load AtelierBench task catalog: {tasks_path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     tasks = getattr(module, "TASKS", None)
     if not isinstance(tasks, list):
-        raise click.ClickException(f"Invalid VIX task catalog: {tasks_path}")
+        raise click.ClickException(f"Invalid AtelierBench task catalog: {tasks_path}")
     catalog: list[dict[str, object]] = []
     for task in tasks:
         task_id = getattr(task, "id", None)
@@ -952,7 +1016,7 @@ def _load_vix_catalog(repo_root: Path) -> list[dict[str, object]]:
             or not isinstance(weight, int)
             or not isinstance(task_dir, str)
         ):
-            raise click.ClickException(f"Invalid VIX task metadata: {tasks_path}")
+            raise click.ClickException(f"Invalid AtelierBench task metadata: {tasks_path}")
         catalog.append(
             {
                 "id": task_id,

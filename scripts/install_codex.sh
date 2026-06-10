@@ -68,30 +68,16 @@ info()  { [[ "${ATELIER_VERBOSE:-0}" == "1" ]] && echo "[atelier:codex] $*" || t
 warn()  { echo "[atelier:codex] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
-# ---- resolve install profile ------------------------------------------------
-atelier_resolve_install_profile "atelier:codex"
-if [[ -n "${ATELIER_INSTALL_PROFILE_WARNING:-}" ]]; then
-    warn "$ATELIER_INSTALL_PROFILE_WARNING"
-fi
-STAGING_DIR="${HOME}/.atelier/codex-plugin-${INSTALL_PROFILE}"
+STAGING_DIR="${HOME}/.atelier/codex-plugin"
 run "mkdir -p '$STAGING_DIR/.codex-plugin'"
 run "cp '${PLUGIN_TEMPLATE}/.codex-plugin/plugin.json' '$STAGING_DIR/.codex-plugin/'"
 run "cp '${PLUGIN_TEMPLATE}/.mcp.json' '$STAGING_DIR/'"
 run "cp -R '${ATELIER_REPO}/integrations/codex/hooks' '$STAGING_DIR/'"
 run "mkdir -p '$STAGING_DIR/agents'"
 AGENT_SRC="${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md"
-if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    info "Install profile: dev; staging full agent instructions"
-    run "cp '${AGENT_SRC/.md/.dev.md}' '$STAGING_DIR/agents/atelier.md'"
-else
-    info "Install profile: stable; staging stable agent instructions"
-    run "cp '${AGENT_SRC}' '$STAGING_DIR/agents/atelier.md'"
-fi
-if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    run "bash '$SKILL_BUILDER' --host codex --dest '$STAGING_DIR/skills' --include-dev"
-else
-    run "bash '$SKILL_BUILDER' --host codex --dest '$STAGING_DIR/skills'"
-fi
+info "Staging Codex agent instructions"
+run "cp '${AGENT_SRC}' '$STAGING_DIR/agents/atelier.md'"
+run "bash '$SKILL_BUILDER' --host codex --dest '$STAGING_DIR/skills'"
 PLUGIN_TEMPLATE="$STAGING_DIR"
 backup_file() {
     local f="$1"
@@ -163,7 +149,7 @@ patch_plugin_mcp() {
         workspace_mode="1"
     fi
     if $DRY_RUN; then
-        echo "  [dry-run] patch $PLUGIN_MCP_JSON to use atelier-mcp with ATELIER_DEV_MODE=${ATELIER_DEV_MODE:-0}"
+        echo "  [dry-run] patch $PLUGIN_MCP_JSON to use atelier-mcp"
         return
     fi
 
@@ -177,7 +163,6 @@ server = data.setdefault("atelier", {})
 server["command"] = "atelier-mcp"
 server["args"] = ["--host", "codex"]
 env = dict(server.get("env") or {})
-env["ATELIER_DEV_MODE"] = "${ATELIER_DEV_MODE:-0}"
 if $workspace_mode:
     env["ATELIER_WORKSPACE_ROOT"] = "$WORKSPACE"
 else:
@@ -192,18 +177,18 @@ ensure_codex_mcp() {
     run "mkdir -p '$CODEX_HOME'"
     if $DRY_RUN; then
         if $WORKSPACE_SET; then
-            echo "  [dry-run] CODEX_HOME='$CODEX_HOME' codex mcp add atelier --env ATELIER_DEV_MODE=${ATELIER_DEV_MODE:-0} --env ATELIER_WORKSPACE_ROOT='$WORKSPACE' -- atelier-mcp --host codex"
+            echo "  [dry-run] CODEX_HOME='$CODEX_HOME' codex mcp add atelier --env ATELIER_WORKSPACE_ROOT='$WORKSPACE' -- atelier-mcp --host codex"
         else
-            echo "  [dry-run] codex mcp add atelier --env ATELIER_DEV_MODE=${ATELIER_DEV_MODE:-0} -- atelier-mcp --host codex"
+            echo "  [dry-run] codex mcp add atelier -- atelier-mcp --host codex"
         fi
         return
     fi
 
     codex_cmd mcp remove atelier >/dev/null 2>&1 || true
     if $WORKSPACE_SET; then
-        codex_cmd mcp add atelier --env "ATELIER_DEV_MODE=${ATELIER_DEV_MODE:-0}" --env "ATELIER_WORKSPACE_ROOT=$WORKSPACE" -- atelier-mcp --host codex >/dev/null 2>&1 || warn "codex mcp add failed (config may have other issues); MCP registration skipped"
+        codex_cmd mcp add atelier --env "ATELIER_WORKSPACE_ROOT=$WORKSPACE" -- atelier-mcp --host codex >/dev/null 2>&1 || warn "codex mcp add failed (config may have other issues); MCP registration skipped"
     else
-        codex_cmd mcp add atelier --env "ATELIER_DEV_MODE=${ATELIER_DEV_MODE:-0}" -- atelier-mcp --host codex >/dev/null 2>&1 || warn "codex mcp add failed (config may have other issues); MCP registration skipped"
+        codex_cmd mcp add atelier -- atelier-mcp --host codex >/dev/null 2>&1 || warn "codex mcp add failed (config may have other issues); MCP registration skipped"
     fi
     if grep -q '\[mcp_servers\.atelier\]' "$CODEX_HOME/config.toml" 2>/dev/null; then
         info "registered Codex MCP server 'atelier' in ${CODEX_HOME}/config.toml"
@@ -302,13 +287,13 @@ if $PRINT_ONLY; then
         echo "   mkdir -p '${PLUGIN_DIR}'"
         echo "   cp -R '${PLUGIN_TEMPLATE}/.' '${PLUGIN_DIR}/'"
         echo ""
-        echo "2. Patch ${PLUGIN_MCP_JSON} to use 'atelier-mcp --host codex' and set 'ATELIER_DEV_MODE=${ATELIER_DEV_MODE:-0}'."
+        echo "2. Patch ${PLUGIN_MCP_JSON} to use 'atelier-mcp --host codex'."
         echo ""
         echo "3. Register Atelier as a Codex MCP server:"
         if $WORKSPACE_SET; then
-            echo "   CODEX_HOME='${CODEX_HOME}' codex mcp add atelier --env ATELIER_DEV_MODE=${ATELIER_DEV_MODE:-0} --env ATELIER_WORKSPACE_ROOT='${WORKSPACE}' -- atelier-mcp --host codex"
+            echo "   CODEX_HOME='${CODEX_HOME}' codex mcp add atelier --env ATELIER_WORKSPACE_ROOT='${WORKSPACE}' -- atelier-mcp --host codex"
         else
-            echo "   codex mcp add atelier --env ATELIER_DEV_MODE=${ATELIER_DEV_MODE:-0} -- atelier-mcp --host codex"
+            echo "   codex mcp add atelier -- atelier-mcp --host codex"
         fi
         echo ""
         echo "4. Add atelier to Codex's openai-curated marketplace:"
@@ -390,6 +375,20 @@ elif $WORKSPACE_SET; then
     warn "task template directory missing: $TASKS_SRC_DIR"
 fi
 
+if $WORKSPACE_SET; then
+    if $DRY_RUN; then
+        echo "  [dry-run] project workspace-local Codex agents into '${WORKSPACE}/.codex/agents'"
+    else
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+from pathlib import Path
+from atelier.core.capabilities.workspace_host_overrides import write_workspace_codex_agents
+
+written = write_workspace_codex_agents(Path("${WORKSPACE}"), repo_root=Path("${ATELIER_REPO}"))
+print(f"[atelier:codex] projected {len(written)} workspace-local Codex agents into ${WORKSPACE}/.codex/agents")
+PYEOF
+    fi
+fi
+
 if $DRY_RUN; then
     info "Dry run complete; skipping post-install verification."
     exit 0
@@ -408,18 +407,10 @@ else
     vfail "Codex plugin manifest missing: ${PLUGIN_DIR}/.codex-plugin/plugin.json"
 fi
 
-if [[ "$INSTALL_PROFILE" == "dev" ]]; then
-    if [ -d "${PLUGIN_DIR}/skills" ] && [ -f "${PLUGIN_DIR}/skills/code/SKILL.md" ] && [ -f "${PLUGIN_DIR}/skills/explore/SKILL.md" ]; then
-        vpass "Codex skill bundle installed with generated mode skills: ${PLUGIN_DIR}/skills"
-    else
-        vfail "Codex skill bundle missing generated mode skills: ${PLUGIN_DIR}/skills"
-    fi
+if [ -f "${PLUGIN_DIR}/skills/code/SKILL.md" ] && [ -f "${PLUGIN_DIR}/skills/explore/SKILL.md" ]; then
+    vpass "Codex skill bundle installed with shared mode skills: ${PLUGIN_DIR}/skills"
 else
-    if [ -f "${PLUGIN_DIR}/skills/code/SKILL.md" ] && [ -f "${PLUGIN_DIR}/skills/explore/SKILL.md" ]; then
-        vpass "Codex stable skill bundle installed with shared mode skills: ${PLUGIN_DIR}/skills"
-    else
-        vfail "Codex stable skill bundle missing shared mode skills: ${PLUGIN_DIR}/skills"
-    fi
+    vfail "Codex skill bundle missing shared mode skills: ${PLUGIN_DIR}/skills"
 fi
 
 if [ -f "$PLUGIN_MCP_JSON" ]; then
@@ -429,20 +420,26 @@ from pathlib import Path
 data = json.loads(Path("$PLUGIN_MCP_JSON").read_text(encoding="utf-8"))
 server = data.get("atelier", {})
 print(server.get("command", ""))
-print((server.get("env") or {}).get("ATELIER_DEV_MODE", ""))
+print((server.get("env") or {}).get("ATELIER_WORKSPACE_ROOT", ""))
 PYEOF
 )
     MCP_COMMAND=$(printf '%s\n' "$MCP_STATUS" | sed -n '1p')
-    MCP_DEV_MODE=$(printf '%s\n' "$MCP_STATUS" | sed -n '2p')
+    MCP_WORKSPACE_ROOT=$(printf '%s\n' "$MCP_STATUS" | sed -n '2p')
     if [ "$MCP_COMMAND" = "atelier-mcp" ]; then
         vpass "plugin MCP config points at atelier-mcp"
     else
         vfail "plugin MCP config does not point at atelier-mcp (got: $MCP_COMMAND)"
     fi
-    if [ "$MCP_DEV_MODE" = "${ATELIER_DEV_MODE:-0}" ]; then
-        vpass "plugin MCP config sets ATELIER_DEV_MODE=${ATELIER_DEV_MODE:-0}"
+    if $WORKSPACE_SET; then
+        if [ "$MCP_WORKSPACE_ROOT" = "$WORKSPACE" ]; then
+            vpass "plugin MCP config preserves ATELIER_WORKSPACE_ROOT=$WORKSPACE"
+        else
+            vfail "plugin MCP config expected ATELIER_WORKSPACE_ROOT=$WORKSPACE (got: ${MCP_WORKSPACE_ROOT:-unset})"
+        fi
+    elif [ -z "$MCP_WORKSPACE_ROOT" ]; then
+        vpass "plugin MCP config does not force a workspace root in global mode"
     else
-        vfail "plugin MCP config expected ATELIER_DEV_MODE=${ATELIER_DEV_MODE:-0} (got: ${MCP_DEV_MODE:-unset})"
+        vfail "plugin MCP config unexpectedly set ATELIER_WORKSPACE_ROOT=${MCP_WORKSPACE_ROOT}"
     fi
 else
     vfail "plugin MCP config missing: $PLUGIN_MCP_JSON"

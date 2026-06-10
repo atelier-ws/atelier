@@ -2,13 +2,32 @@
 
 This page starts with the installed product flow. Source-checkout and contributor setup are lower down.
 
-## Recommended Install for End Users
+## Quick Install (Production)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | bash
+curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
 ```
 
-What the installer does:
+What the production installer does:
+
+- downloads a pre-compiled Atelier binary for your platform from the latest release
+- installs it to `~/.local/bin/`
+- adds the directory to `PATH` in your shell profile
+
+The binary is self-contained — no `git`, `uv`, `npm`, or `node` required at install time.
+
+## Full Developer Install
+
+For host integrations, SCIP indexers, background services, and the optional
+visualization stack, install from a repo checkout using the dev installer:
+
+```bash
+git clone https://github.com/atelier-runtime/atelier.git
+cd atelier
+bash scripts/dev.sh --local
+```
+
+The dev installer:
 
 - installs `atelier` and `atelier-mcp` as user-level console commands in `~/.local/bin`
 - clones or updates Atelier under `~/.local/share/atelier`
@@ -17,11 +36,11 @@ What the installer does:
 - attempts to start the optional visualization stack when npm is available
 - installs host integrations when compatible CLIs are found on `PATH`
 
-The installer uses uv at install time to create a managed tool environment.
+The dev installer uses uv at install time to create a managed tool environment.
 After install, `atelier` and `atelier-mcp` run directly from that environment;
 normal CLI usage does not shell through `uv run`.
 
-When npm is available, the installer also provisions Tier-1 SCIP indexers
+When npm is available, the dev installer also provisions Tier-1 SCIP indexers
 (`scip-python` and `scip-typescript`) into Atelier's managed Node prefix so
 Python, TypeScript, and JavaScript semantic indexing works without a
 system-global install. Heavier indexers are discovered from user toolchains or
@@ -52,31 +71,31 @@ atelier background status
 Skip host integrations:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/leanchain/atelier/main/scripts/install.sh | bash -s -- --no-hosts
+curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/dev.sh | bash -s -- --no-hosts
 ```
 
 Skip auto-starting background services:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | ATELIER_NO_SERVICECTL=1 bash
+curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/dev.sh | ATELIER_NO_SERVICECTL=1 bash
 ```
 
 Skip auto-starting the visualization stack:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/install.sh | ATELIER_NO_STACK=1 bash
+curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/dev.sh | ATELIER_NO_STACK=1 bash
 ```
 
 Install from a local checkout instead of GitHub:
 
 ```bash
-bash scripts/install.sh --local
+bash scripts/dev.sh --local
 ```
 
 Install host + universal MCP artifacts into the current project (instead of user-global host config):
 
 ```bash
-bash scripts/install.sh --local --workspace .
+bash scripts/dev.sh --local --workspace .
 ```
 
 ## Runtime Modes After Install

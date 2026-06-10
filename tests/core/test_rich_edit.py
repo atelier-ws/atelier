@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from atelier.core.capabilities.source_projection import build_compact_projection
 from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
 
 
@@ -136,3 +137,98 @@ def test_rich_edit_peer_level_def_not_indented(tmp_path: Path) -> None:
     assert "\ndef test_bar(mp) -> None:\n" in text
     # body lines must be indented
     assert "    mp.setenv" in text
+
+
+def test_rich_edit_projection_descriptor_applies_exact_span(tmp_path: Path) -> None:
+    path = tmp_path / "code.go"
+    source = 'package   main\n\nfunc   main()   {\n    println("hi")\n}\n'
+    path.write_text(source, encoding="utf-8")
+    projection = build_compact_projection(source, "go", path=str(path), include_mapping=True)
+
+    assert projection.mapping is not None
+    projected_start = projection.content.index("println")
+    projected_end = projected_start + len("println")
+
+    result = apply_rich_edits(
+        [
+            {
+                "kind": "projection",
+                "file_path": str(path),
+                "projection_kind": "compact",
+                "projection_mapping": projection.mapping.to_dict(),
+                "projected_start": projected_start,
+                "projected_end": projected_end,
+                "new_string": "fmt.Println",
+            }
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"] == []
+    assert "fmt.Println" in path.read_text(encoding="utf-8")
+
+
+def test_rich_edit_projection_descriptor_rejects_stale_mapping(tmp_path: Path) -> None:
+    path = tmp_path / "code.go"
+    source = 'package   main\n\nfunc   main()   {\n    println("hi")\n}\n'
+    path.write_text(source, encoding="utf-8")
+    projection = build_compact_projection(source, "go", path=str(path), include_mapping=True)
+    path.write_text(source.replace("println", "panic"), encoding="utf-8")
+
+    assert projection.mapping is not None
+    projected_start = projection.content.index("println")
+    projected_end = projected_start + len("println")
+
+    result = apply_rich_edits(
+        [
+            {
+                "kind": "projection",
+                "file_path": str(path),
+                "projection_kind": "compact",
+                "projection_mapping": projection.mapping.to_dict(),
+                "projected_start": projected_start,
+                "projected_end": projected_end,
+                "new_string": "fmt.Println",
+            }
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["rolled_back"] is True
+    assert result["failed"][0]["code"] == "stale_projection_mapping"
+    assert "re-read" in result["failed"][0]["hint"].lower()
+    assert "stale" in result["failed"][0]["error"]
+    assert result["failed"][0]["retry_with"] == {
+        "tool": "read",
+        "path": str(path),
+        "expand": True,
+        "include_meta": True,
+    }
+
+
+def test_rich_edit_projection_descriptor_supports_exact_cursor_insertion(tmp_path: Path) -> None:
+    path = tmp_path / "code.go"
+    source = 'package   main\n\nfunc   main()   {\n    println("hi")\n}\n'
+    path.write_text(source, encoding="utf-8")
+    projection = build_compact_projection(source, "go", path=str(path), include_mapping=True)
+
+    assert projection.mapping is not None
+    projected_start = projection.content.index("println")
+
+    result = apply_rich_edits(
+        [
+            {
+                "kind": "projection",
+                "file_path": str(path),
+                "projection_kind": "compact",
+                "projection_mapping": projection.mapping.to_dict(),
+                "projected_start": projected_start,
+                "projected_end": projected_start,
+                "new_string": "log.",
+            }
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"] == []
+    assert "log.println" in path.read_text(encoding="utf-8")

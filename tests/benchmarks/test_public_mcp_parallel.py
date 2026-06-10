@@ -12,12 +12,25 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def _ensure_benchmarks_package() -> None:
-    benchmarks_pkg = types.ModuleType("benchmarks")
-    benchmarks_pkg.__path__ = [str(ROOT / "benchmarks")]
-    mcp_pkg = types.ModuleType("benchmarks.mcp_tools")
-    mcp_pkg.__path__ = [str(ROOT / "benchmarks" / "mcp_tools")]
-    sys.modules["benchmarks"] = benchmarks_pkg
-    sys.modules["benchmarks.mcp_tools"] = mcp_pkg
+    import benchmarks
+
+    benchmark_paths = list(getattr(benchmarks, "__path__", []))
+    root_path = str(ROOT / "benchmarks")
+    src_path = str(ROOT / "src" / "benchmarks")
+    for path in (root_path, src_path):
+        if path not in benchmark_paths:
+            benchmark_paths.append(path)
+    benchmarks.__path__ = benchmark_paths
+
+    mcp_pkg = sys.modules.get("benchmarks.mcp_tools")
+    if mcp_pkg is None:
+        mcp_pkg = types.ModuleType("benchmarks.mcp_tools")
+        sys.modules["benchmarks.mcp_tools"] = mcp_pkg
+    mcp_paths = list(getattr(mcp_pkg, "__path__", []))
+    root_mcp_path = str(ROOT / "benchmarks" / "mcp_tools")
+    if root_mcp_path not in mcp_paths:
+        mcp_paths.append(root_mcp_path)
+    mcp_pkg.__path__ = mcp_paths
 
 
 def _load(module_name: str) -> ModuleType:
