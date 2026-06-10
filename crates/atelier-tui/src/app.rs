@@ -530,7 +530,7 @@ impl<'a> App<'a> {
             input_rect: Rect::default(),
             context_menu: None,
             pending_context_action: None,
-            show_side_panel: true,
+            show_side_panel: false,
             spinner_tick: 0,
             streaming_start: None,
             tool_count: 0,
@@ -567,19 +567,32 @@ impl<'a> App<'a> {
             } => {
                 self.session_id = session_id.clone();
                 if let Some(root) = project_root {
-                    self.project_root = root;
+                    self.project_root = root.clone();
+                    let project_name = root
+                        .trim_end_matches('/')
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or("project")
+                        .to_string();
+                    let branch_str = git_branch
+                        .as_deref()
+                        .filter(|b| !b.is_empty())
+                        .map(|b| format!("  [{b}]"))
+                        .unwrap_or_default();
+                    self.push_system(format!("\u{25c6} {project_name}{branch_str}"));
                 }
                 if let Some(m) = model {
-                    self.current_model = m;
+                    self.current_model = m.clone();
+                    let short = m.rsplit('/').next().unwrap_or(&m).to_string();
+                    self.push_system(format!("\u{25c6} model: {short}"));
                 }
                 if let Some(b) = git_branch {
                     self.git_branch = b;
                 }
                 self.needs_api_key = !has_api_key.unwrap_or(true);
-                self.push_system(format!("session started: {session_id}"));
                 if let Some(port) = self.web_port {
                     self.push_system(format!(
-                        "\u{25c6} Web interface: http://localhost:{port}  (use --tunnel for remote access)"
+                        "\u{25c6} http://localhost:{port}  (Ctrl+L side panel · ? help)"
                     ));
                 }
             }
