@@ -14,6 +14,7 @@
 # Environment variables:
 #   ATELIER_INSTALL_DIR   Target directory (default: ~/.local)
 #   ATELIER_BIN_DIR       Binary directory (default: ~/.local/bin)
+#   ATELIER_RELEASE_TAG   Release tag to install (default: latest)
 #   ATELIER_DRY_RUN       If set to 1, print planned actions and exit
 #   ATELIER_VERBOSE       If set to 1, show verbose output
 #   ATELIER_NON_INTERACTIVE If set to 1, skip all prompts
@@ -24,16 +25,28 @@ set -euo pipefail
 # ---- paths & detection ------------------------------------------------------
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
+case "$ARCH" in
+    amd64) ARCH="x86_64" ;;
+    arm64) ARCH="arm64" ;;
+    aarch64) ARCH="aarch64" ;;
+esac
 BINARY_SUFFIX="${OS}-${ARCH}"
 
 ATELIER_INSTALL_DIR="${ATELIER_INSTALL_DIR:-${HOME}/.local}"
 ATELIER_BIN_DIR="${ATELIER_BIN_DIR:-${ATELIER_INSTALL_DIR}/bin}"
+ATELIER_RELEASE_TAG="${ATELIER_RELEASE_TAG:-latest}"
 ATELIER_DRY_RUN="${ATELIER_DRY_RUN:-0}"
 ATELIER_VERBOSE="${ATELIER_VERBOSE:-0}"
 ATELIER_NON_INTERACTIVE="${ATELIER_NON_INTERACTIVE:-0}"
 ATELIER_NO_PATH="${ATELIER_NO_PATH:-0}"
 
-RELEASE_URL="https://github.com/atelier-runtime/atelier/releases/latest/download/atelier-binaries-${BINARY_SUFFIX}.tar.gz"
+if [[ "$ATELIER_RELEASE_TAG" == "latest" ]]; then
+    RELEASE_BASE_URL="https://github.com/atelier-runtime/atelier/releases/latest/download"
+else
+    RELEASE_BASE_URL="https://github.com/atelier-runtime/atelier/releases/download/${ATELIER_RELEASE_TAG}"
+fi
+ASSET_NAME="atelier-binaries-${BINARY_SUFFIX}.tar.gz"
+RELEASE_URL="${RELEASE_BASE_URL}/${ASSET_NAME}"
 
 # ---- helpers -----------------------------------------------------------------
 info()  { printf "  ◇  %s\n" "$*"; }
@@ -67,12 +80,13 @@ esac
 
 # ---- prerequisites (bash + curl/wget) ----------------------------------------
 need_cmd bash
+need_cmd tar
 
-DOWNLOAD_CMD=""
+DOWNLOAD_CMD=()
 if command -v curl >/dev/null 2>&1; then
-    DOWNLOAD_CMD="curl -fsSL"
+    DOWNLOAD_CMD=(curl -fL --retry 3 --retry-delay 2 --connect-timeout 15)
 elif command -v wget >/dev/null 2>&1; then
-    DOWNLOAD_CMD="wget -qO-"
+    DOWNLOAD_CMD=(wget -qO-)
 else
     fail "Either curl or wget is required to download the Atelier binary."
 fi
@@ -81,19 +95,31 @@ fi
 echo ""
 echo "  Atelier — Production Install"
 echo "  Platform: ${BINARY_SUFFIX}"
+echo "  Asset: ${ASSET_NAME}"
 echo ""
 
 if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-    echo "  [dry-run] $DOWNLOAD_CMD $RELEASE_URL | tar -xz -C $ATELIER_INSTALL_DIR"
+    echo "  [dry-run] ${DOWNLOAD_CMD[*]} $RELEASE_URL > /tmp/${ASSET_NAME}"
+    echo "  [dry-run] tar -xzf /tmp/${ASSET_NAME} -C $ATELIER_INSTALL_DIR"
     echo "  [dry-run] Binaries would be installed to: $ATELIER_BIN_DIR"
     echo ""
     exit 0
 fi
 
 mkdir -p "$ATELIER_BIN_DIR"
+TMP_ARCHIVE="$(mktemp -t atelier-binaries.XXXXXX.tar.gz)"
+trap 'rm -f "$TMP_ARCHIVE"' EXIT
 
 verbose "Downloading from: $RELEASE_URL"
-$DOWNLOAD_CMD "$RELEASE_URL" | tar -xz -C "$ATELIER_INSTALL_DIR"
+if ! "${DOWNLOAD_CMD[@]}" "$RELEASE_URL" > "$TMP_ARCHIVE"; then
+    fail "Could not download ${ASSET_NAME}. The release may not include this platform asset yet: ${RELEASE_URL}"
+fi
+
+if [[ ! -s "$TMP_ARCHIVE" ]]; then
+    fail "Downloaded archive is empty: ${RELEASE_URL}"
+fi
+
+tar -xzf "$TMP_ARCHIVE" -C "$ATELIER_INSTALL_DIR"
 
 if [[ ! -x "${ATELIER_BIN_DIR}/atelier" ]]; then
     fail "Binary extraction failed — ${ATELIER_BIN_DIR}/atelier not found. Try ATELIER_VERBOSE=1 for details."
