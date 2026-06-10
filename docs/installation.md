@@ -5,7 +5,7 @@ This page starts with the installed product flow. Source-checkout and contributo
 ## Quick Install (Production)
 
 ```bash
-curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
+curl -fsSL https://install.atelier.ws | bash
 ```
 
 What the production installer does:
