@@ -220,8 +220,10 @@ async fn run_app(
 
     terminal.draw(|f| ui::draw(f, &mut app))?;
 
+    let mut tick_counter: u32 = 0;
+
     loop {
-        if crossterm::event::poll(std::time::Duration::from_millis(16))? {
+        if crossterm::event::poll(std::time::Duration::from_millis(50))? {
             match crossterm::event::read()? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
                     handle_key(&mut app, key, &mut writer).await?;
@@ -235,6 +237,12 @@ async fn run_app(
                 }
                 _ => {}
             }
+        }
+
+        // Advance spinner every ~100ms (2 ticks × 50ms)
+        tick_counter = tick_counter.wrapping_add(1);
+        if tick_counter % 2 == 0 {
+            app.spinner_tick = app.spinner_tick.wrapping_add(1);
         }
 
         // Open a file in $EDITOR if requested by a /edit command.
@@ -488,6 +496,55 @@ async fn handle_key(
             match key.code {
                 KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => {
                     app.active_overlay = ActiveOverlay::None;
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+        ActiveOverlay::CommandPalette { query, selected } => {
+            let q = query.clone();
+            let sel = *selected;
+            let cmds: Vec<_> = app::SLASH_COMMANDS
+                .iter()
+                .filter(|(name, desc)| {
+                    let ql = q.to_lowercase();
+                    ql.is_empty() || name.contains(ql.as_str()) || desc.to_lowercase().contains(ql.as_str())
+                })
+                .collect();
+            match key.code {
+                KeyCode::Esc => {
+                    app.active_overlay = ActiveOverlay::None;
+                }
+                KeyCode::Up => {
+                    if let ActiveOverlay::CommandPalette { selected, .. } = &mut app.active_overlay {
+                        *selected = selected.saturating_sub(1);
+                    }
+                }
+                KeyCode::Down => {
+                    let max = cmds.len().saturating_sub(1);
+                    if let ActiveOverlay::CommandPalette { selected, .. } = &mut app.active_overlay {
+                        *selected = (*selected + 1).min(max);
+                    }
+                }
+                KeyCode::Enter => {
+                    if let Some((name, _)) = cmds.get(sel) {
+                        app.active_overlay = ActiveOverlay::None;
+                        set_input_text(&mut app.input, &format!("/{name} "));
+                    } else {
+                        app.active_overlay = ActiveOverlay::None;
+                    }
+                }
+                KeyCode::Backspace => {
+                    if let ActiveOverlay::CommandPalette { query, selected } = &mut app.active_overlay {
+                        query.pop();
+                        *selected = 0;
+                    }
+                }
+                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    if let ActiveOverlay::CommandPalette { query, selected } = &mut app.active_overlay {
+                        query.push(c);
+                        *selected = 0;
+                    }
                 }
                 _ => {}
             }
@@ -954,7 +1011,17 @@ async fn handle_key(
         KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.should_quit = true;
         }
-        // Ctrl+L removed — conversation is the persistent session history, clearing it would lose context
+        // Ctrl+K: open command palette
+        KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.active_overlay = ActiveOverlay::CommandPalette {
+                query: String::new(),
+                selected: 0,
+            };
+        }
+        // Ctrl+L: toggle side panel
+        KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.show_side_panel = !app.show_side_panel;
+        }
         KeyCode::Char('m') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.agent_mode = app.agent_mode.next();
             send_command(
