@@ -13,10 +13,12 @@ import {
   Flag,
   GitBranch,
   Hexagon,
+  Layers,
   LayoutGrid,
   Play,
   Settings,
   Sparkles,
+  Target,
   TrendingUp,
   Zap,
 } from "lucide-react";
@@ -39,19 +41,19 @@ import Optimizations from "./pages/Optimizations";
 import Swarm from "./pages/Swarm";
 import Workflow from "./pages/Workflow";
 import ProjectionInspector from "./pages/ProjectionInspector";
+import Outcomes from "./pages/Outcomes";
 import {
   acknowledgeTelemetry,
   getTelemetryConfig,
   type TelemetryConfig,
 } from "./lib/insightsApi";
-import { Button, Chip, Select, cx } from "./components/WorkbenchUI";
+import { Button, Select, cx } from "./components/WorkbenchUI";
 import { useTimeRange, TIME_RANGE_OPTIONS } from "./lib/TimeRangeContext";
 
 interface NavItem {
   to: string;
   label: string;
   icon: React.ElementType;
-  isDev?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -68,7 +70,6 @@ interface MenuSection {
   label: string;
   to: string;
   icon: React.ElementType;
-  isDev?: boolean;
 }
 
 const MENU_SECTIONS: MenuSection[] = [
@@ -78,9 +79,11 @@ const MENU_SECTIONS: MenuSection[] = [
   { to: "/system/mcp", label: "MCP", icon: Command },
   { to: "/reports", label: "Reports", icon: FileText },
   { to: "/telemetry", label: "Telemetry", icon: Activity },
-  { to: "/savings", label: "Savings", icon: TrendingUp, isDev: true },
-  { to: "/watchdogs", label: "Watchdogs", icon: Flag, isDev: true },
-  { to: "/knowledge/blocks", label: "Knowledge", icon: Brain, isDev: true },
+  { to: "/savings", label: "Savings", icon: TrendingUp },
+  { to: "/watchdogs", label: "Watchdogs", icon: Flag },
+  { to: "/knowledge/blocks", label: "Knowledge", icon: Brain },
+  { to: "/outcomes", label: "Outcomes", icon: Target },
+  { to: "/projection", label: "Projection", icon: Layers },
 ];
 
 function TelemetryDisclosure() {
@@ -119,7 +122,7 @@ function TelemetryDisclosure() {
   );
 }
 
-function GearMenu({ devMode }: { devMode?: boolean }) {
+function GearMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -133,7 +136,7 @@ function GearMenu({ devMode }: { devMode?: boolean }) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const visible = MENU_SECTIONS.filter((s) => !s.isDev || devMode);
+  const visible = MENU_SECTIONS;
 
   return (
     <div ref={ref} className="relative">
@@ -178,11 +181,6 @@ function GearMenu({ devMode }: { devMode?: boolean }) {
                   <section.icon size={14} />
                 </span>
                 <span>{section.label}</span>
-                {section.isDev && (
-                  <span className="ml-auto text-[8px] font-bold text-amber-500/60">
-                    DEV
-                  </span>
-                )}
               </NavLink>
             );
           })}
@@ -193,14 +191,7 @@ function GearMenu({ devMode }: { devMode?: boolean }) {
 }
 
 export default function App() {
-  const [config, setConfig] = useState<TelemetryConfig | null>(null);
   const { range, setRange } = useTimeRange();
-
-  useEffect(() => {
-    getTelemetryConfig()
-      .then(setConfig)
-      .catch(() => undefined);
-  }, []);
 
   return (
     <div className="min-h-full bg-gradient-to-b from-[#0a0a0a] to-[#0f0f0f] font-mono text-neutral-200">
@@ -210,7 +201,6 @@ export default function App() {
             <h1 className="text-lg font-bold tracking-wide text-brand">
               ❯ ATELIER - The Agents Runtime
             </h1>
-            {config?.dev_mode && <Chip tone="purple">DEV MODE</Chip>}
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 border border-neutral-800 bg-neutral-900/40 px-3 py-1.5">
@@ -235,7 +225,7 @@ export default function App() {
                 ))}
               </Select>
             </div>
-            <GearMenu devMode={config?.dev_mode} />
+            <GearMenu />
           </div>
         </div>
       </header>
@@ -244,7 +234,7 @@ export default function App() {
 
       <nav className="border-neutral-800 bg-neutral-950/70 px-6 py-3">
         <div className="flex flex-wrap gap-2">
-          {NAV_ITEMS.filter((item) => !item.isDev || config?.dev_mode).map(
+          {NAV_ITEMS.map(
             (item) => (
               <NavLink
                 key={item.to}
@@ -260,11 +250,6 @@ export default function App() {
               >
                 <item.icon size={14} />
                 <span>{item.label}</span>
-                {item.isDev && (
-                  <span className="ml-1 text-[8px] font-bold text-amber-500/60">
-                    DEV
-                  </span>
-                )}
               </NavLink>
             )
           )}
@@ -278,95 +263,36 @@ export default function App() {
             <Route path="/overview" element={<Overview />} />
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/sessions/:id" element={<Sessions />} />
-            <Route path="/runs" element={<Navigate to="/sessions" replace />} />
-            <Route
-              path="/trace"
-              element={<Navigate to="/sessions" replace />}
-            />
-            <Route
-              path="/traces"
-              element={<Navigate to="/sessions" replace />}
-            />
             <Route
               path="/knowledge"
               element={<Navigate to="/knowledge/blocks" replace />}
             />
-            <Route
-              path="/knowledge/:section"
-              element={
-                config?.dev_mode ? (
-                  <Learnings />
-                ) : (
-                  <Navigate to="/overview" replace />
-                )
-              }
-            />
-            <Route
-              path="/knowledge/:section/:rubricId"
-              element={
-                config?.dev_mode ? (
-                  <Learnings />
-                ) : (
-                  <Navigate to="/overview" replace />
-                )
-              }
-            />
+            <Route path="/knowledge/:section" element={<Learnings />} />
+          <Route
+            path="/knowledge/:section/:rubricId"
+            element={<Learnings />}
+          />
             <Route
               path="/learnings"
               element={<Navigate to="/knowledge/blocks" replace />}
             />
-            <Route
-              path="/learnings/:section"
-              element={
-                config?.dev_mode ? (
-                  <Learnings />
-                ) : (
-                  <Navigate to="/overview" replace />
-                )
-              }
-            />
-            <Route
-              path="/learnings/:section/:rubricId"
-              element={
-                config?.dev_mode ? (
-                  <Learnings />
-                ) : (
-                  <Navigate to="/overview" replace />
-                )
-              }
-            />
+            <Route path="/learnings/:section" element={<Learnings />} />
+          <Route
+            path="/learnings/:section/:rubricId"
+            element={<Learnings />}
+          />
             <Route path="/savings" element={<Savings />} />
-            <Route
-              path="/insights"
-              element={<Navigate to="/overview" replace />}
-            />
             <Route path="/telemetry" element={<Telemetry />} />
             <Route path="/memory" element={<Memory />} />
-            <Route
-              path="/outcomes"
-              element={<Navigate to="/overview" replace />}
-            />
+            <Route path="/outcomes" element={<Outcomes />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/system" element={<System />} />
             <Route path="/system/hosts" element={<SystemHosts />} />
             <Route path="/system/agents" element={<SystemAgents />} />
             <Route path="/system/skills" element={<SystemSkills />} />
             <Route path="/system/mcp" element={<SystemMcp />} />
-            <Route
-              path="/watchdogs"
-              element={
-                config?.dev_mode ? (
-                  <Watchdogs />
-                ) : (
-                  <Navigate to="/overview" replace />
-                )
-              }
-            />
+            <Route path="/watchdogs" element={<Watchdogs />} />
             <Route path="/analytics" element={<Analytics />} />
-            <Route
-              path="/external"
-              element={<Navigate to="/overview" replace />}
-            />
             <Route path="/optimizations" element={<Optimizations />} />
             <Route path="/workflow" element={<Workflow />} />
             <Route path="/projection" element={<ProjectionInspector />} />
