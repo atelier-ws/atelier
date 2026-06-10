@@ -103,29 +103,23 @@ async fn main() -> Result<()> {
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
 
-    // Enable the kitty keyboard protocol when the terminal is known to support it,
-    // so Shift+Enter is reported as a distinct key event (not collapsed to plain Enter).
-    let kitty_supported = std::env::var("TERM_PROGRAM")
-        .map(|v| v == "WezTerm" || v == "kitty" || v == "iTerm.app")
-        .unwrap_or(false)
-        || std::env::var("COLORTERM")
-            .map(|v| v == "truecolor")
-            .unwrap_or(false);
-    if kitty_supported {
-        let _ = execute!(
-            stdout,
-            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
-        );
-    }
+    // Always attempt the kitty keyboard protocol — terminals that don't support it
+    // silently ignore the escape sequence. This is required for Shift+Enter to work.
+    let _ = execute!(
+        stdout,
+        PushKeyboardEnhancementFlags(
+            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES,
+        )
+    );
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     let result = run_app(&mut terminal, child_stdin, child_stdout, web_port).await;
 
-    if kitty_supported {
-        let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
-    }
+    // Always pop — safe no-op on terminals that ignored the push.
+    let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -243,6 +237,15 @@ async fn run_app(
         tick_counter = tick_counter.wrapping_add(1);
         if tick_counter % 2 == 0 {
             app.spinner_tick = app.spinner_tick.wrapping_add(1);
+        }
+
+        // Apply pending mouse capture toggle (triggered from handle_key)
+        if let Some(enable) = app.pending_mouse_toggle.take() {
+            if enable {
+                let _ = execute!(terminal.backend_mut(), EnableMouseCapture);
+            } else {
+                let _ = execute!(terminal.backend_mut(), DisableMouseCapture);
+            }
         }
 
         // Open a file in $EDITOR if requested by a /edit command.
@@ -962,6 +965,30 @@ async fn handle_key(
     }
 
     match key.code {
+        // y — copy last assistant response via OSC-52 (works in most terminals, no clipboard lib needed)
+        // Also works when arboard is not available.
+        KeyCode::Char('y') if key.modifiers == KeyModifiers::NONE
+            && matches!(app.focused_pane, FocusedPane::Conversation) =>
+        {
+            let last_text = app
+                .conversation
+                .iter()
+                .rev()
+                .find(|e| matches!(e.role, Role::Assistant))
+                .map(|e| e.text.clone())
+                .unwrap_or_default();
+            if !last_text.is_empty() {
+                // OSC-52: write to system clipboard via terminal escape sequence
+                let encoded = base64_encode(last_text.as_bytes());
+                print!("\x1b]52;c;{encoded}\x07");
+                use std::io::Write;
+                let _ = std::io::stdout().flush();
+                app.conversation.push(ConversationEntry {
+                    role: Role::System,
+                    text: "✓ Copied last response (y=copy, Ctrl+\\ for selection mode)".to_string(),
+                });
+            }
+        }
         #[cfg(feature = "clipboard")]
         KeyCode::Char('c' | 'C')
             if key
@@ -1021,6 +1048,22 @@ async fn handle_key(
         // Ctrl+L: toggle side panel
         KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.show_side_panel = !app.show_side_panel;
+        }
+        // Ctrl+\  — toggle selection mode: disables mouse capture so the terminal can
+        // natively select / copy text with the mouse (click+drag). Press again to re-enable.
+        KeyCode::Char('\\') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.selection_mode = !app.selection_mode;
+            // Signal main loop to toggle mouse capture
+            app.pending_mouse_toggle = Some(!app.selection_mode);
+            let msg = if app.selection_mode {
+                "  SELECTION MODE — click+drag to select, Ctrl+\\ to exit"
+            } else {
+                "  Mouse mode restored"
+            };
+            app.conversation.push(ConversationEntry {
+                role: Role::System,
+                text: msg.to_string(),
+            });
         }
         KeyCode::Char('m') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.agent_mode = app.agent_mode.next();
@@ -1495,4 +1538,21 @@ fn collect_files_recursive(
             }
         }
     }
+}
+
+/// Minimal base64 encoder for OSC-52 clipboard without pulling in a dep.
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[((n >> 18) & 0x3F) as usize] as char);
+        out.push(TABLE[((n >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 { out.push(TABLE[((n >> 6) & 0x3F) as usize] as char); } else { out.push('='); }
+        if chunk.len() > 2 { out.push(TABLE[(n & 0x3F) as usize] as char); } else { out.push('='); }
+    }
+    out
 }
