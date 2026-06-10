@@ -1,6 +1,6 @@
 name = "atelier-docs"
 main = "build/index.html"
-compatibility_date = "2025-06-01"
+compatibility_date = "2026-06-01"
 
 # Cloudflare Pages config
 # Build from this subdirectory: docs-site/
