@@ -299,7 +299,7 @@ def register(cli: click.Group) -> None:
         import click as _click
 
         @_click.command("serve-openai")
-        @_click.option("--port", default=8787, show_default=True, help="Port to listen on")
+        @_click.option("--port", default=8790, show_default=True, help="Port to listen on (8787 is the Atelier service port)")
         @_click.option("--host", default="0.0.0.0", show_default=True, help="Bind address")
         @_click.option("--project-root", default=None, help="Project root directory")
         @_click.option("--no-yolo", is_flag=True, default=False, help="Require manual approval for tool calls (default: auto-approve)")
