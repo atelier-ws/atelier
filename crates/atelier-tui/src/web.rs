@@ -16,11 +16,13 @@ pub const DEFAULT_WEB_PORT: u16 = 7777;
 
 /// Start the SSE bridge server. `event_tx` carries serialized backend event
 /// lines (one JSON object per message); `cmd_tx` receives serialized frontend
-/// command lines from the browser.
+/// command lines from the browser. `current_session_id` is updated by the main
+/// loop whenever a session starts — the web terminal auto-resumes it.
 pub async fn start_web_server(
     port: u16,
     event_tx: broadcast::Sender<String>,
     cmd_tx: mpsc::Sender<String>,
+    current_session_id: std::sync::Arc<std::sync::Mutex<String>>,
 ) -> anyhow::Result<()> {
     // Bind to 0.0.0.0 (not just 127.0.0.1) so cloudflared and other
     // bridges (Docker, VMs) can connect to the origin server.
@@ -32,16 +34,14 @@ pub async fn start_web_server(
             Ok((stream, _addr)) => {
                 let event_tx = event_tx.clone();
                 let cmd_tx = cmd_tx.clone();
+                let session_id = current_session_id.clone();
                 tokio::spawn(async move {
-                    // Wrap in catch-all so a single bad connection can't crash
-                    // the accept loop — silently ignore per-connection errors.
-                    if let Err(e) = handle_connection(stream, port, event_tx, cmd_tx).await {
+                    if let Err(e) = handle_connection(stream, port, event_tx, cmd_tx, session_id).await {
                         let _ = e;
                     }
                 });
             }
             Err(_) => {
-                // Accept error — sleep briefly and retry rather than exiting.
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
         }
@@ -53,6 +53,7 @@ async fn handle_connection(
     port: u16,
     event_tx: broadcast::Sender<String>,
     cmd_tx: mpsc::Sender<String>,
+    current_session_id: std::sync::Arc<std::sync::Mutex<String>>,
 ) -> anyhow::Result<()> {
     // Read the request headers (and any already-buffered body bytes).
     let mut buf = vec![0u8; 8192];
@@ -81,6 +82,21 @@ async fn handle_connection(
     let path = parts.next().unwrap_or("");
 
     if method == "GET" && (path == "/" || path.starts_with("/?") || path.starts_with("/share/")) {
+        // Default: serve the xterm.js terminal auto-resumed to the current session.
+        let session_id = current_session_id.lock().ok().and_then(|g| {
+            let s = g.clone();
+            if s.is_empty() { None } else { Some(s) }
+        });
+        let html = xterm_html(port + 1, session_id);
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            html.len(),
+            html,
+        );
+        stream.write_all(response.as_bytes()).await?;
+        stream.flush().await?;
+    } else if method == "GET" && (path == "/chat" || path.starts_with("/chat?")) {
+        // Legacy chat web UI (SSE-based)
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             WEB_UI_HTML.len(),
