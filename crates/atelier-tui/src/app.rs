@@ -112,6 +112,32 @@ pub fn fuzzy_score(path: &str, query: &str) -> i32 {
     }
 }
 
+/// Provider prefix of a model id (`anthropic/claude-…` → `anthropic`).
+pub fn model_provider(model_id: &str) -> &str {
+    model_id.split('/').next().unwrap_or(model_id)
+}
+
+/// Filter *models* by a case-insensitive substring (matched against id + description)
+/// and return them ordered by provider so groups are contiguous. The returned flat
+/// list is the single source of truth for the picker's selection index — both the
+/// renderer and the key handler iterate it identically.
+pub fn filter_grouped_models(
+    models: &[(String, String)],
+    filter: &str,
+) -> Vec<(String, String)> {
+    let f = filter.to_lowercase();
+    let mut filtered: Vec<(String, String)> = models
+        .iter()
+        .filter(|(id, desc)| {
+            f.is_empty() || id.to_lowercase().contains(&f) || desc.to_lowercase().contains(&f)
+        })
+        .cloned()
+        .collect();
+    // Stable sort keeps original order within each provider group.
+    filtered.sort_by(|a, b| model_provider(&a.0).cmp(model_provider(&b.0)));
+    filtered
+}
+
 /// A right-click context menu anchored at a terminal cell.
 #[derive(Debug, Clone)]
 pub struct ContextMenu {
@@ -139,6 +165,7 @@ pub enum ContextAction {
 #[derive(Debug, Clone, PartialEq)]
 pub enum FocusedPane {
     Input,
+    #[allow(dead_code)]
     Conversation,
 }
 
@@ -165,6 +192,7 @@ pub const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("deny", "Deny pending permission request"),
     ("auth", "Configure provider authentication: /auth [provider]"),
     ("share", "Share read-only session link: /share"),
+    ("export", "Export conversation to Markdown file"),
     ("diff", "Show pending diff"),
     ("verify", "Run verification"),
     ("model", "Switch model: /model <provider/model-string>"),
@@ -262,6 +290,7 @@ impl AgentMode {
             Self::Plan => Color::Yellow,
         }
     }
+    #[allow(dead_code)]
     pub fn tools(&self) -> &'static [&'static str] {
         match self {
             Self::Code => &["read", "edit", "shell", "grep", "explore"],
@@ -285,7 +314,7 @@ pub enum ActiveOverlay {
     None,
     Help,
     AgentPicker { selected: usize },
-    ModelPicker { selected: usize, models: Vec<(String, String)> },
+    ModelPicker { selected: usize, models: Vec<(String, String)>, filter: String },
     AuthPicker { selected: usize, providers: Vec<String> },
     CommandPalette { query: String, selected: usize },
     SessionTimeline { entries: Vec<SessionTimelineEntry>, selected: usize },
@@ -443,8 +472,12 @@ pub struct App<'a> {
     pub streaming_start: Option<std::time::Instant>,
     pub tool_count: usize,
     pub selection_mode: bool,         // when true, mouse capture is OFF — native terminal selection works
-    pub pending_mouse_toggle: Option<bool>, // Some(true)=enable capture, Some(false)=disable it
+    pub pending_mouse_toggle: Option<bool>,
+    pub pending_esc: Option<std::time::Instant>, // for ESC+Enter → Alt+Enter detection // Some(true)=enable capture, Some(false)=disable it
     pub tool_expanded: std::collections::HashSet<String>, // ids of tools whose output is expanded inline
+    // Desktop-notification bookkeeping
+    pub last_activity_time: std::time::Instant, // updated on every keypress
+    pub notification_pending: Option<String>,   // set when agent finishes while user is idle
 }
 
 impl<'a> App<'a> {
@@ -503,7 +536,10 @@ impl<'a> App<'a> {
             tool_count: 0,
             selection_mode: false,
             pending_mouse_toggle: None,
+            pending_esc: None,
             tool_expanded: std::collections::HashSet::new(),
+            last_activity_time: std::time::Instant::now(),
+            notification_pending: None,
         }
     }
 
@@ -613,6 +649,13 @@ impl<'a> App<'a> {
                     role: Role::Assistant,
                     text,
                 });
+                // If the user has been idle for >3s the terminal is likely blurred —
+                // queue a desktop notification (sent from the main loop where async
+                // process spawning is available).
+                if self.last_activity_time.elapsed().as_secs() >= 3 {
+                    self.notification_pending =
+                        Some("Atelier: Agent response ready".to_string());
+                }
             }
             BackendEvent::ToolRequested { id, name, .. } => {
                 self.tools.push(ToolEntry {
@@ -829,6 +872,7 @@ impl<'a> App<'a> {
         self.scroll = self.scroll.saturating_add(3);
     }
 
+    #[allow(dead_code)]
     pub fn cycle_focus(&mut self) {
         self.focused_pane = match self.focused_pane {
             FocusedPane::Input => FocusedPane::Conversation,
