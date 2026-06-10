@@ -8,6 +8,7 @@ import argparse
 import difflib
 import json
 import os
+import signal
 import sys
 from pathlib import Path
 from typing import Any
@@ -83,12 +84,11 @@ HOST_DISPLAY = {
 
 SESSION_TEMPLATE = (
     "Atelier budget optimizer is active for {host}.\n"
-    "Use Atelier MCP tools first for file I/O, search, edits, and shell work.\n"
-    "Always prefer Atelier MCP tools for file I/O, search, edits, shell, and code-intel work.\n"
-    "Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable.\n"
+    "Always prefer Atelier MCP tools for file I/O, search, edits, shell, and code-intel work; "
+    "use native host tools only when Atelier returns `noop`, is hidden, or is unavailable.\n"
     "Before changing files, name the deliverable and summarize the smallest viable plan.\n"
-    "Keep context narrow: use only the current goal, relevant files, failing command/output, and known constraints.\n"
-    "Restate working context in under 10 bullets before editing or after compaction.\n"
+    "Keep context narrow: the current goal, relevant files, failing command/output, and known constraints; "
+    "restate it in under 10 bullets after compaction.\n"
     "If more than 10 minutes pass without an edit, name the expected deliverable or check with the user.\n"
     "If the same approach fails twice, change approach; do not retry a third time.\n"
 )
@@ -142,7 +142,7 @@ def fallback_section(host: str) -> str:
     )
 
 
-def validation_line(output_path: Path) -> str:
+def validation_line() -> str:
     return "See the validation matrix for the minimum checks by change surface."
 
 
@@ -168,28 +168,14 @@ def _tn(name: str, *, prefix: str = "") -> str:
     return f"{prefix}{name}"
 
 
-def tool_substitution_table(*, tool_prefix: str = "") -> str:
-    p = tool_prefix
-    return "\n".join(
-        [
-            "## Tool substitution — mandatory",
-            "",
-            f"- Shared docs use plain tool names like `{_tn('read', prefix=p)}`, `{_tn('search', prefix=p)}`, `{_tn('grep', prefix=p)}`, and `{_tn('edit', prefix=p)}`.",
-            "- Some hosts expose the same tools as handles like `mcp__atelier__context`; use the name shown by your host when invoking one explicitly.",
-            f"- `{_tn('read', prefix=p)}` for file reads; `{_tn('search', prefix=p)}` / `{_tn('grep', prefix=p)}` for discovery; `{_tn('edit', prefix=p)}` for file changes.",
-            f"- `{_tn('symbols', prefix=p)}` / `{_tn('node', prefix=p)}` / `{_tn('callers', prefix=p)}` / `{_tn('usages', prefix=p)}` / `{_tn('explore', prefix=p)}` for code intelligence.",
-            f"- `{_tn('shell', prefix=p)}` only for commands without a better Atelier equivalent.",
-        ]
-    )
-
-
-def mcp_priority_section(*, tool_prefix: str = "") -> str:
+def tool_policy_section(*, tool_prefix: str = "") -> str:
     p = tool_prefix
     lines = [
-        "## Always prefer Atelier MCP tools",
+        "## Tool policy — mandatory",
         "",
-        f"- Prefer Atelier tools (`{_tn('read', prefix=p)}`, `{_tn('edit', prefix=p)}`, `{_tn('shell', prefix=p)}`, etc.) for file I/O, search, edits, shell, and code intelligence.",
-        f"- Use `{_tn('symbols', prefix=p)}`/`{_tn('callers', prefix=p)}`/`{_tn('usages', prefix=p)}` before text search when you need code relationships.",
+        f"- Shared docs use plain tool names like `{_tn('read', prefix=p)}` and `{_tn('edit', prefix=p)}`; some hosts expose them as handles like `mcp__atelier__context` — use the name shown by your host when invoking one explicitly.",
+        f"- `{_tn('read', prefix=p)}` for file reads; `{_tn('search', prefix=p)}` / `{_tn('grep', prefix=p)}` for discovery; `{_tn('edit', prefix=p)}` for file changes; `{_tn('shell', prefix=p)}` only for commands without a better Atelier equivalent.",
+        f"- `{_tn('symbols', prefix=p)}` / `{_tn('node', prefix=p)}` / `{_tn('callers', prefix=p)}` / `{_tn('usages', prefix=p)}` / `{_tn('explore', prefix=p)}` for code intelligence; use them before text search for code relationships.",
         "- Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.",
     ]
     if tool_prefix:
@@ -204,11 +190,9 @@ def distribution_sections(host: str | None = None, *, tool_prefix: str = "") -> 
         "## Operating loop",
         "",
         "1. **Understand**: Read the relevant source of truth before changing anything; ground every change in real code.",
-        f"2. **Implement**: Use Atelier MCP tools (`{_tn('read', prefix=tool_prefix)}`, `{_tn('edit', prefix=tool_prefix)}`, `{_tn('shell', prefix=tool_prefix)}`, etc.) for file I/O, search, edits, and shell work. Use native host tools only when Atelier returns `noop`, is hidden, or is unavailable. If the same approach fails twice, change approach — do not retry a third time.",
+        f"2. **Implement**: Use Atelier MCP tools (`{_tn('read', prefix=tool_prefix)}`, `{_tn('edit', prefix=tool_prefix)}`, `{_tn('shell', prefix=tool_prefix)}`, etc.) for file I/O, search, edits, and shell work — see Tool policy.",
         "",
-        tool_substitution_table(tool_prefix=tool_prefix),
-        "",
-        mcp_priority_section(tool_prefix=tool_prefix),
+        tool_policy_section(tool_prefix=tool_prefix),
         "",
         budget_section(),
         "",
@@ -233,13 +217,9 @@ def render_project_entrypoint(output_path: Path, *, title: str, host: str | None
         "## Operating loop",
         "",
         "1. **Understand** — read the relevant source of truth before touching any file; ground every change in real code.",
-        "2. **Implement** — use Atelier tools for ALL file I/O and shell ops "
-        "(see Tool substitution). If the same approach fails twice, change "
-        "approach — do not retry a third time.",
+        "2. **Implement** — use Atelier tools for ALL file I/O and shell ops (see Tool policy).",
         "",
-        tool_substitution_table(),
-        "",
-        mcp_priority_section(),
+        tool_policy_section(),
         "",
         "## Project-specific invariants",
         "",
@@ -256,7 +236,7 @@ def render_project_entrypoint(output_path: Path, *, title: str, host: str | None
     ]
     if host:
         lines.extend(["", fallback_section(host)])
-    lines.extend(["", "## Validation", "", validation_line(output_path)])
+    lines.extend(["", "## Validation", "", validation_line()])
     body = "\n".join(lines).rstrip() + "\n"
     if output_path == ROOT / "AGENTS.md":
         return "\n".join(["<!-- ATELIER:CODE START -->", body.rstrip(), "<!-- ATELIER:CODE END -->"]) + "\n"
@@ -275,13 +255,9 @@ def render_copilot_body(output_path: Path) -> str:
                 "",
                 "Use the Atelier process for every task:",
                 "1. **Understand**: read the relevant source of truth first; ground every change in real code.",
-                "2. **Implement**: use Atelier MCP tools for file I/O, search, edits, and shell work "
-                "(see Tool substitution). Use native Copilot or VS Code tools only when Atelier returns `noop`, is hidden, or is unavailable. "
-                "If the same approach fails twice, change approach — do not retry a third time.",
+                "2. **Implement**: use Atelier MCP tools for file I/O, search, edits, and shell work (see Tool policy).",
                 "",
-                tool_substitution_table(),
-                "",
-                mcp_priority_section(),
+                tool_policy_section(),
                 "",
                 "Treat this file as a thin entrypoint. The live source of truth is:",
                 "",
@@ -295,7 +271,7 @@ def render_copilot_body(output_path: Path) -> str:
                 "",
                 "## Validation",
                 "",
-                f"{validation_line(output_path)} Use the VS Code tasks for repeatable preflight, worktree, and runtime evidence loops.",
+                f"{validation_line()} Use the VS Code tasks for repeatable preflight, worktree, and runtime evidence loops.",
             ]
         ).rstrip()
         + "\n"
@@ -566,6 +542,7 @@ def _opencode_tool_discipline_section(prefix: str) -> str:
             "  are disallowed by policy — always use the Atelier MCP counterparts.",
             "- If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use",
             "  OpenCode-native file reads, repository search, shell `rg`, or `grep`.",
+            "  Always return findings instead of waiting for tool availability to improve.",
         ]
     )
 
@@ -634,6 +611,7 @@ def render_opencode_agent(role: DefaultRole, mode_doc: ModeDoc, projection: Host
             "  are disallowed by policy — always use the Atelier MCP counterparts.",
             "- If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use",
             "  OpenCode-native file reads, repository search, shell `rg`, or `grep`.",
+            "  Always return findings instead of waiting for tool availability to improve.",
         ]
     )
     return (
@@ -802,6 +780,8 @@ def write_or_diff(path: Path, expected: str, *, check: bool) -> bool:
 
 
 def main() -> int:
+    # Die quietly instead of raising BrokenPipeError when piped to `head`.
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="fail if generated files differ from checked-in copies")
     args = parser.parse_args()

@@ -4,34 +4,24 @@ set -e
 PORT=${1:-3200}
 DOCS_SRC=${2:-/docs}
 
-echo "Syncing docs from $DOCS_SRC into Docusaurus content..."
+echo "Syncing public docs from $DOCS_SRC into Docusaurus content..."
 
-# Clear existing docs to remove default tutorials from create-docusaurus
+# Clear existing docs
 rm -rf /app/docs-site/docs/*
 
-# Sync all markdown files, preserving directory structure  
+# Sync all markdown files from the public docs directory
 if [ -d "$DOCS_SRC" ]; then
   rsync -av \
     --include='*/' \
     --include='*.md' \
     --exclude='*' \
     "$DOCS_SRC/" /app/docs-site/docs/
+  # Also sync image assets
+  rsync -av --include='*/' --include='*.png' --include='*.svg' --include='*.jpg' --exclude='*' \
+    "$DOCS_SRC/" /app/docs-site/docs/ 2>/dev/null || true
 else
   echo "Warning: $DOCS_SRC not found, skipping sync"
 fi
-
-# Ensure _category_.json exists for subdirectories that don't have one
-find /app/docs-site/docs -type d | while read dir; do
-  if [ ! -f "$dir/_category_.json" ]; then
-    name=$(basename "$dir")
-    cat > "$dir/_category_.json" <<EOF
-{
-  "label": "$name",
-  "position": 1
-}
-EOF
-  fi
-done
 
 echo "Docs synced. Starting Docusaurus on port $PORT..."
 

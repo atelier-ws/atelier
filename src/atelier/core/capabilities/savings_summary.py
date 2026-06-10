@@ -15,6 +15,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -142,6 +143,8 @@ class TranscriptStats:
     # Last model seen in transcript (most recent turn). Differs from `model`
     # (first seen) for resumed sessions where user switched models mid-session.
     last_model: str = ""
+    # ISO timestamps of assistant turns with usage — drives the carry credit.
+    turn_timestamps: list[str] = field(default_factory=list)
 
     @property
     def total_tokens(self) -> int:
@@ -194,6 +197,7 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
     model_id = ""
     last_model_id = ""  # tracks most recently seen model (for resumed sessions)
     per_model: dict[str, dict[str, int]] = {}
+    turn_timestamps: list[str] = []
     seen_usage_message_ids: set[str] = set()
     seen_tool_use_ids: set[str] = set()
 
@@ -242,6 +246,9 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
                 # A turn = one assistant message with non-zero usage.
                 # Dedup on msg_id (same dedup as token accumulation).
                 turns += 1
+                ts_raw = str(entry.get("timestamp") or "")
+                if ts_raw:
+                    turn_timestamps.append(ts_raw)
 
                 turn_model = str(msg.get("model") or entry.get("model") or "").strip()
                 if is_real_model(turn_model):
@@ -309,6 +316,7 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
         ),
         tools_used=tools_used,
         per_model={resolve_model_id(m): b for m, b in per_model.items()} if per_model else {},
+        turn_timestamps=turn_timestamps,
     )
 
 
@@ -322,6 +330,8 @@ class SavingsSummary:
     saved_usd: float = 0.0
     ctx_saved: int = 0
     smart_calls: int = 0
+    carry_tokens: int = 0  # saved tokens x later turns (context-carry volume)
+    carry_usd: float = 0.0  # carry volume priced at the per-row cache-read rate
     routing_saved_usd: float = 0.0
     est_cost_usd: float = 0.0  # baseline cost from terminated session transcript
     total_tokens: int = 0  # cumulative session tokens (in+out+cR+cW) from transcript
@@ -368,6 +378,11 @@ def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[i
             t = max(0, int(ev.get("tokens") or ev.get("tokens_saved") or 0))
             c = max(0, int(ev.get("calls") or ev.get("calls_saved") or 0))
             calls_total += c
+            # Avoided-call credit priced at write time (measured context size
+            # x cache-read rate); contributes USD without distorting tokens.
+            calls_usd = float(ev.get("calls_usd") or 0.0)
+            if calls_usd > 0:
+                usd_total += calls_usd
             if t <= 0:
                 continue
             # Sanity cap: a single tool call cannot save more than the full
@@ -418,6 +433,67 @@ def _resolve_workspace_session_id(workspace: str | None, root_path: Path) -> str
     except Exception:
         logging.exception("Recovered from broad exception handler")
         return ""
+
+
+def _carry_credit(session_id: str, atelier_root: Path, turn_timestamps: list[str]) -> tuple[int, float]:
+    """Context-carry credit for saved tokens.
+
+    A token kept out of context at turn N is also NOT re-read at the
+    cache-read rate on every later assistant turn. Fully measured: row
+    timestamps from the sidecar, turn timestamps from the transcript, rates
+    from the per-row model. Rows with unknown models contribute nothing.
+    Returned separately — never folded into the conservative saved_usd.
+    """
+    if not session_id or not turn_timestamps:
+        return 0, 0.0
+    path = atelier_root / "session_stats" / "claude" / f"{session_id}.jsonl"
+    if not path.exists():
+        return 0, 0.0
+    import bisect
+    from datetime import datetime
+
+    def _parse(ts: str) -> datetime | None:
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
+
+    turns = sorted(t for t in (_parse(x) for x in turn_timestamps) if t is not None)
+    if not turns:
+        return 0, 0.0
+    from atelier.core.capabilities.pricing import get_model_pricing
+
+    carry_tokens = 0
+    carry_usd = 0.0
+    try:
+        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                ev = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if str(ev.get("kind") or "") == "compaction":
+                continue  # dropped from context — nothing left to carry
+            t = max(0, int(ev.get("tokens") or ev.get("tokens_saved") or 0))
+            if t <= 0 or t > 2_000_000:
+                continue
+            row_dt = _parse(str(ev.get("ts") or ""))
+            if row_dt is None:
+                continue
+            n_after = len(turns) - bisect.bisect_right(turns, row_dt)
+            if n_after <= 0:
+                continue
+            pricing = get_model_pricing(resolve_model_id(str(ev.get("model") or "").strip()))
+            if pricing is None or not pricing.known or pricing.cache_read <= 0:
+                continue
+            carry_tokens += t * n_after
+            carry_usd += pricing.tokens_to_usd(t * n_after, "cache_read")
+    except OSError:
+        return 0, 0.0
+    return carry_tokens, round(carry_usd, 6)
 
 
 def compute_savings_summary(
@@ -506,6 +582,10 @@ def compute_savings_summary(
         result.display_input_tokens = stats.input_tokens + stats.cache_write_tokens
         result.display_cache_tokens = stats.cache_read_tokens
         result.display_output_tokens = stats.output_tokens
+    # --- context-carry credit (separate display line; never in saved_usd) ---
+    if stats is not None and stats.turn_timestamps:
+        result.carry_tokens, result.carry_usd = _carry_credit(session_id, root_path, stats.turn_timestamps)
+
     # --- price unpriced tokens at the session's weighted input rate ---
     # Per-row prices are exact (model captured at write time).  For rows that
     # arrived without a model (older format, or before the SessionStart bridge
@@ -667,7 +747,7 @@ def savings_line(
     """Return the pipe-delimited savings line consumed by statusline.sh.
 
     Format:
-    ``$<saved_usd>|<tokens_saved>|<calls_saved>|<status_text>|$<routing_saved_usd>|<est_cost_usd>|<total_tokens>|<display_input_tokens>|<display_cache_tokens>|<display_output_tokens>``
+    ``$<saved_usd>|<tokens_saved>|<calls_saved>|<status_text>|$<routing_saved_usd>|<est_cost_usd>|<total_tokens>|<display_input_tokens>|<display_cache_tokens>|<display_output_tokens>|$<carry_usd>``
     """
     summary = compute_savings_summary(session_id, atelier_root=atelier_root, workspace=workspace)
     summary.status_text = _resolve_status_text(atelier_root)
@@ -676,4 +756,5 @@ def savings_line(
         f"|{summary.status_text}|${summary.routing_saved_usd:.3f}"
         f"|{summary.est_cost_usd:.3f}|{summary.total_tokens}"
         f"|{summary.display_input_tokens}|{summary.display_cache_tokens}|{summary.display_output_tokens}"
+        f"|${summary.carry_usd:.3f}"
     )

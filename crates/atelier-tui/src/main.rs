@@ -103,29 +103,23 @@ async fn main() -> Result<()> {
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
 
-    // Enable the kitty keyboard protocol when the terminal is known to support it,
-    // so Shift+Enter is reported as a distinct key event (not collapsed to plain Enter).
-    let kitty_supported = std::env::var("TERM_PROGRAM")
-        .map(|v| v == "WezTerm" || v == "kitty" || v == "iTerm.app")
-        .unwrap_or(false)
-        || std::env::var("COLORTERM")
-            .map(|v| v == "truecolor")
-            .unwrap_or(false);
-    if kitty_supported {
-        let _ = execute!(
-            stdout,
-            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
-        );
-    }
+    // Always attempt the kitty keyboard protocol — terminals that don't support it
+    // silently ignore the escape sequence. This is required for Shift+Enter to work.
+    let _ = execute!(
+        stdout,
+        PushKeyboardEnhancementFlags(
+            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES,
+        )
+    );
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     let result = run_app(&mut terminal, child_stdin, child_stdout, web_port).await;
 
-    if kitty_supported {
-        let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
-    }
+    // Always pop — safe no-op on terminals that ignored the push.
+    let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -220,8 +214,10 @@ async fn run_app(
 
     terminal.draw(|f| ui::draw(f, &mut app))?;
 
+    let mut tick_counter: u32 = 0;
+
     loop {
-        if crossterm::event::poll(std::time::Duration::from_millis(16))? {
+        if crossterm::event::poll(std::time::Duration::from_millis(50))? {
             match crossterm::event::read()? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
                     handle_key(&mut app, key, &mut writer).await?;
@@ -234,6 +230,21 @@ async fn run_app(
                     }
                 }
                 _ => {}
+            }
+        }
+
+        // Advance spinner every ~100ms (2 ticks × 50ms)
+        tick_counter = tick_counter.wrapping_add(1);
+        if tick_counter % 2 == 0 {
+            app.spinner_tick = app.spinner_tick.wrapping_add(1);
+        }
+
+        // Apply pending mouse capture toggle (triggered from handle_key)
+        if let Some(enable) = app.pending_mouse_toggle.take() {
+            if enable {
+                let _ = execute!(terminal.backend_mut(), EnableMouseCapture);
+            } else {
+                let _ = execute!(terminal.backend_mut(), DisableMouseCapture);
             }
         }
 
@@ -488,6 +499,129 @@ async fn handle_key(
             match key.code {
                 KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => {
                     app.active_overlay = ActiveOverlay::None;
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+        ActiveOverlay::CommandPalette { query, selected } => {
+            let q = query.clone();
+            let sel = *selected;
+            let cmds: Vec<_> = app::SLASH_COMMANDS
+                .iter()
+                .filter(|(name, desc)| {
+                    let ql = q.to_lowercase();
+                    ql.is_empty() || name.contains(ql.as_str()) || desc.to_lowercase().contains(ql.as_str())
+                })
+                .collect();
+            match key.code {
+                KeyCode::Esc => {
+                    app.active_overlay = ActiveOverlay::None;
+                }
+                KeyCode::Up => {
+                    if let ActiveOverlay::CommandPalette { selected, .. } = &mut app.active_overlay {
+                        *selected = selected.saturating_sub(1);
+                    }
+                }
+                KeyCode::Down => {
+                    let max = cmds.len().saturating_sub(1);
+                    if let ActiveOverlay::CommandPalette { selected, .. } = &mut app.active_overlay {
+                        *selected = (*selected + 1).min(max);
+                    }
+                }
+                KeyCode::Enter => {
+                    if let Some((name, _)) = cmds.get(sel) {
+                        app.active_overlay = ActiveOverlay::None;
+                        set_input_text(&mut app.input, &format!("/{name} "));
+                    } else {
+                        app.active_overlay = ActiveOverlay::None;
+                    }
+                }
+                KeyCode::Backspace => {
+                    if let ActiveOverlay::CommandPalette { query, selected } = &mut app.active_overlay {
+                        query.pop();
+                        *selected = 0;
+                    }
+                }
+                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    if let ActiveOverlay::CommandPalette { query, selected } = &mut app.active_overlay {
+                        query.push(c);
+                        *selected = 0;
+                    }
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+        ActiveOverlay::SessionTimeline { .. } => {
+            match key.code {
+                KeyCode::Esc => {
+                    app.active_overlay = ActiveOverlay::None;
+                }
+                KeyCode::Up => {
+                    if let ActiveOverlay::SessionTimeline { selected, .. } =
+                        &mut app.active_overlay
+                    {
+                        *selected = selected.saturating_sub(1);
+                    }
+                }
+                KeyCode::Down => {
+                    if let ActiveOverlay::SessionTimeline { entries, selected } =
+                        &mut app.active_overlay
+                    {
+                        if *selected + 1 < entries.len() {
+                            *selected += 1;
+                        }
+                    }
+                }
+                KeyCode::Char('d') => {
+                    if let ActiveOverlay::SessionTimeline { entries, selected } =
+                        &mut app.active_overlay
+                    {
+                        if *selected < entries.len() {
+                            entries.remove(*selected);
+                            if *selected >= entries.len() {
+                                *selected = entries.len().saturating_sub(1);
+                            }
+                        }
+                    }
+                }
+                KeyCode::Enter => {
+                    let id = if let ActiveOverlay::SessionTimeline { entries, selected } =
+                        &app.active_overlay
+                    {
+                        entries.get(*selected).map(|e| e.id.clone())
+                    } else {
+                        None
+                    };
+                    if let Some(id) = id {
+                        app.active_overlay = ActiveOverlay::None;
+                        app.push_system_pub(format!("resuming session {id}"));
+                        send_command(
+                            writer,
+                            &FrontendCommand::UserMessage {
+                                text: format!("Resume session {id}"),
+                            },
+                        )
+                        .await?;
+                    }
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+        ActiveOverlay::WhichKey { .. } => {
+            match key.code {
+                KeyCode::Esc => {
+                    app.active_overlay = ActiveOverlay::None;
+                }
+                // Ctrl+<anything> (including pressing the Ctrl+X leader again) dismisses.
+                KeyCode::Char(_) if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.active_overlay = ActiveOverlay::None;
+                }
+                KeyCode::Char(c) => {
+                    app.active_overlay = ActiveOverlay::None;
+                    execute_leader_action(app, c, writer).await?;
                 }
                 _ => {}
             }
@@ -905,6 +1039,30 @@ async fn handle_key(
     }
 
     match key.code {
+        // y — copy last assistant response via OSC-52 (works in most terminals, no clipboard lib needed)
+        // Also works when arboard is not available.
+        KeyCode::Char('y') if key.modifiers == KeyModifiers::NONE
+            && matches!(app.focused_pane, FocusedPane::Conversation) =>
+        {
+            let last_text = app
+                .conversation
+                .iter()
+                .rev()
+                .find(|e| matches!(e.role, Role::Assistant))
+                .map(|e| e.text.clone())
+                .unwrap_or_default();
+            if !last_text.is_empty() {
+                // OSC-52: write to system clipboard via terminal escape sequence
+                let encoded = base64_encode(last_text.as_bytes());
+                print!("\x1b]52;c;{encoded}\x07");
+                use std::io::Write;
+                let _ = std::io::stdout().flush();
+                app.conversation.push(ConversationEntry {
+                    role: Role::System,
+                    text: "✓ Copied last response (y=copy, Ctrl+\\ for selection mode)".to_string(),
+                });
+            }
+        }
         #[cfg(feature = "clipboard")]
         KeyCode::Char('c' | 'C')
             if key
@@ -954,7 +1112,40 @@ async fn handle_key(
         KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.should_quit = true;
         }
-        // Ctrl+L removed — conversation is the persistent session history, clearing it would lose context
+        // Ctrl+K: open command palette
+        KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.active_overlay = ActiveOverlay::CommandPalette {
+                query: String::new(),
+                selected: 0,
+            };
+        }
+        // Ctrl+L: toggle side panel
+        KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.show_side_panel = !app.show_side_panel;
+        }
+        // Ctrl+X: which-key leader — show discoverable leader keybindings
+        KeyCode::Char('x') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.active_overlay = ActiveOverlay::WhichKey {
+                leader_pressed: true,
+                pending_keys: Vec::new(),
+            };
+        }
+        // Ctrl+\  — toggle selection mode: disables mouse capture so the terminal can
+        // natively select / copy text with the mouse (click+drag). Press again to re-enable.
+        KeyCode::Char('\\') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.selection_mode = !app.selection_mode;
+            // Signal main loop to toggle mouse capture
+            app.pending_mouse_toggle = Some(!app.selection_mode);
+            let msg = if app.selection_mode {
+                "  SELECTION MODE — click+drag to select, Ctrl+\\ to exit"
+            } else {
+                "  Mouse mode restored"
+            };
+            app.conversation.push(ConversationEntry {
+                role: Role::System,
+                text: msg.to_string(),
+            });
+        }
         KeyCode::Char('m') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.agent_mode = app.agent_mode.next();
             send_command(
@@ -1066,27 +1257,28 @@ async fn handle_key(
                     app.active_overlay = ActiveOverlay::AgentPicker { selected: 0 };
                     return Ok(());
                 }
+                if name == "timeline" {
+                    app.active_overlay = ActiveOverlay::SessionTimeline {
+                        entries: Vec::new(),
+                        selected: 0,
+                    };
+                    send_command(
+                        writer,
+                        &FrontendCommand::UserCommand {
+                            name: "sessions".to_string(),
+                            args: vec![],
+                        },
+                    )
+                    .await?;
+                    return Ok(());
+                }
                 if name == "model" {
-                    let models = vec![
-                        ("anthropic/claude-opus-4-8".to_string(), "Anthropic, frontier, $15/Mtok".to_string()),
-                        ("anthropic/claude-sonnet-4-5".to_string(), "Anthropic, balanced, $3/Mtok".to_string()),
-                        ("openai/gpt-4o".to_string(), "OpenAI, balanced, $2.5/Mtok".to_string()),
-                        ("openai/gpt-4o-mini".to_string(), "OpenAI, cheap, $0.15/Mtok".to_string()),
-                        ("groq/llama-3.3-70b-versatile".to_string(), "Groq, fast, $0.59/Mtok".to_string()),
-                        ("ollama/llama3.2".to_string(), "Local, free, needs Ollama".to_string()),
-                        ("openrouter/anthropic/claude-opus-4-8".to_string(), "OpenRouter \u{2192} Claude".to_string()),
-                        ("bedrock/anthropic.claude-sonnet-4-5-v1:0".to_string(), "AWS Bedrock Claude".to_string()),
-                    ];
+                    let models = default_model_list();
                     app.active_overlay = ActiveOverlay::ModelPicker { selected: 0, models };
                     return Ok(());
                 }
                 if name == "auth" {
-                    let providers = vec![
-                        "anthropic".to_string(), "openai".to_string(), "google".to_string(),
-                        "groq".to_string(), "mistral".to_string(), "openrouter".to_string(),
-                        "ollama".to_string(), "bedrock".to_string(), "azure".to_string(),
-                        "vertex".to_string(), "together".to_string(), "fireworks".to_string(),
-                    ];
+                    let providers = default_auth_providers();
                     app.active_overlay = ActiveOverlay::AuthPicker { selected: 0, providers };
                     return Ok(());
                 }
@@ -1228,6 +1420,16 @@ async fn handle_key(
             if app.focused_pane == FocusedPane::Input {
                 app.input.input(Event::Key(key));
             }
+        }
+        // Space / e in conversation focus expand/collapse the most recent tool's output.
+        KeyCode::Char(' ') if matches!(app.focused_pane, FocusedPane::Conversation) => {
+            app.toggle_last_tool_expanded();
+        }
+        KeyCode::Char('e')
+            if key.modifiers == KeyModifiers::NONE
+                && matches!(app.focused_pane, FocusedPane::Conversation) =>
+        {
+            app.toggle_last_tool_expanded();
         }
         _ => {
             if app.focused_pane == FocusedPane::Input {
@@ -1380,6 +1582,124 @@ async fn execute_context_action(
     Ok(())
 }
 
+/// Built-in model list shown by the `/model` picker and the which-key leader.
+fn default_model_list() -> Vec<(String, String)> {
+    vec![
+        ("anthropic/claude-opus-4-8".to_string(), "Anthropic, frontier, $15/Mtok".to_string()),
+        ("anthropic/claude-sonnet-4-5".to_string(), "Anthropic, balanced, $3/Mtok".to_string()),
+        ("openai/gpt-4o".to_string(), "OpenAI, balanced, $2.5/Mtok".to_string()),
+        ("openai/gpt-4o-mini".to_string(), "OpenAI, cheap, $0.15/Mtok".to_string()),
+        ("groq/llama-3.3-70b-versatile".to_string(), "Groq, fast, $0.59/Mtok".to_string()),
+        ("ollama/llama3.2".to_string(), "Local, free, needs Ollama".to_string()),
+        ("openrouter/anthropic/claude-opus-4-8".to_string(), "OpenRouter \u{2192} Claude".to_string()),
+        ("bedrock/anthropic.claude-sonnet-4-5-v1:0".to_string(), "AWS Bedrock Claude".to_string()),
+    ]
+}
+
+/// Built-in provider list shown by the `/auth` picker and the which-key leader.
+fn default_auth_providers() -> Vec<String> {
+    vec![
+        "anthropic".to_string(), "openai".to_string(), "google".to_string(),
+        "groq".to_string(), "mistral".to_string(), "openrouter".to_string(),
+        "ollama".to_string(), "bedrock".to_string(), "azure".to_string(),
+        "vertex".to_string(), "together".to_string(), "fireworks".to_string(),
+    ]
+}
+
+/// Execute a which-key leader action chosen from the Ctrl+X overlay.
+async fn execute_leader_action(
+    app: &mut App<'_>,
+    key: char,
+    writer: &mut BufWriter<ChildStdin>,
+) -> Result<()> {
+    match key {
+        // n — New session
+        'n' => {
+            send_command(
+                writer,
+                &FrontendCommand::UserCommand {
+                    name: "newtask".to_string(),
+                    args: vec![],
+                },
+            )
+            .await?;
+        }
+        // l — Session list
+        'l' => {
+            app.show_session_picker = true;
+            app.session_list.clear();
+            app.session_picker_selected = 0;
+            send_command(
+                writer,
+                &FrontendCommand::UserCommand {
+                    name: "sessions".to_string(),
+                    args: vec![],
+                },
+            )
+            .await?;
+        }
+        // g — Session timeline
+        'g' => {
+            app.active_overlay = ActiveOverlay::SessionTimeline {
+                entries: Vec::new(),
+                selected: 0,
+            };
+            send_command(
+                writer,
+                &FrontendCommand::UserCommand {
+                    name: "sessions".to_string(),
+                    args: vec![],
+                },
+            )
+            .await?;
+        }
+        // c — Compact / summarize
+        'c' => {
+            app.push_system_pub("/compact".to_string());
+            send_command(
+                writer,
+                &FrontendCommand::UserCommand {
+                    name: "compact".to_string(),
+                    args: vec![],
+                },
+            )
+            .await?;
+        }
+        // m — Model picker
+        'm' => {
+            app.active_overlay = ActiveOverlay::ModelPicker {
+                selected: 0,
+                models: default_model_list(),
+            };
+        }
+        // a — Auth / provider
+        'a' => {
+            app.active_overlay = ActiveOverlay::AuthPicker {
+                selected: 0,
+                providers: default_auth_providers(),
+            };
+        }
+        // b — Toggle side panel
+        'b' => {
+            app.show_side_panel = !app.show_side_panel;
+        }
+        // x — Export conversation
+        'x' => {
+            app.push_system_pub("/export".to_string());
+            send_command(
+                writer,
+                &FrontendCommand::UserCommand {
+                    name: "export".to_string(),
+                    args: vec![],
+                },
+            )
+            .await?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn collect_repo_files(root: &str) -> Vec<String> {
     let mut files = Vec::new();
     let base = std::path::Path::new(root);
@@ -1428,4 +1748,21 @@ fn collect_files_recursive(
             }
         }
     }
+}
+
+/// Minimal base64 encoder for OSC-52 clipboard without pulling in a dep.
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[((n >> 18) & 0x3F) as usize] as char);
+        out.push(TABLE[((n >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 { out.push(TABLE[((n >> 6) & 0x3F) as usize] as char); } else { out.push('='); }
+        if chunk.len() > 2 { out.push(TABLE[(n & 0x3F) as usize] as char); } else { out.push('='); }
+    }
+    out
 }

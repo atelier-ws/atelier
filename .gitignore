@@ -222,6 +222,7 @@ opencode.jsonc*
 docs-site/node_modules/
 docs-site/.docusaurus/
 docs-site/build/
+docs-site/docs/
 landing/
 
 # -----------------------

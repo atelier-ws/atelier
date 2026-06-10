@@ -1,5 +1,5 @@
 # Built-in pricing overrides for Atelier.
-# Updated May 2026.
+# Updated June 2026.
 #
 # DESIGN PHILOSOPHY:
 # 1. Models known to LiteLLM (like gpt-5.5) are automatically resolved via alias
@@ -27,6 +27,14 @@ overrides:
     cache_read: 0.20
     cache_write: 2.00
     thinking: 12.00
+
+  # Claude Fable 5 (Mythos-class — not yet in LiteLLM)
+  claude-fable-5:
+    input: 10.00
+    output: 50.00
+    cache_read: 1.00
+    cache_write: 12.50
+    thinking: 50.00
 
   # OpenCode (Subscription-covered routing)
   # Uses GPT-4o-mini as a proxy.
