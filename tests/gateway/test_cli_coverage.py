@@ -1,14 +1,14 @@
 """CLI coverage for commands not tested in test_cli.py or test_cli_v2.py.
 
 Covers:
-- add-block, list-blocks, search, deprecate, quarantine
+- search
 - ledger reset, ledger update
 - env validate
-- failure show, eval show/deprecate, eval-from-cluster
+- failure show, eval show/deprecate/from-cluster
 - search
-- savings-detail, savings-reset
+- savings detail/reset
 - benchmark hosts, benchmark full, benchmark packs
-- copilot/claude/codex/opencode import (with empty session dir)
+- unified host import (with empty session dir)
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from click.testing import CliRunner, Result
 
 from atelier.gateway.cli import cli
 from atelier.infra.runtime.run_ledger import RunLedger
+from tests.helpers import init_store_at
 
 
 def _invoke(root: Path, *args: str, input: str | None = None) -> Result:
@@ -37,57 +38,13 @@ def _seed_ledger(root: Path, session_id: str = "run1") -> Path:
 
 
 # --------------------------------------------------------------------------- #
-# add-block / list-blocks / search                                            #
+# search                                                                      #
 # --------------------------------------------------------------------------- #
-
-
-def test_add_block_upserts_and_list_blocks_shows_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ATELIER_DEV_MODE", "1")
-    root = tmp_path / ".atelier"
-    _invoke(root, "init")
-
-    block_yaml = tmp_path / "myblock.yaml"
-    block_yaml.write_text(
-        "title: My Custom Block\n"
-        "domain: coding.custom\n"
-        "situation: Use this when a custom situation arises\n"
-        "procedure:\n"
-        "  - Do the thing\n"
-        "dead_ends: []\n",
-        encoding="utf-8",
-    )
-    res = _invoke(root, "block", "add", str(block_yaml))
-    assert res.exit_code == 0, res.output
-    assert "upserted" in res.output
-
-    # list-blocks should include it
-    res2 = _invoke(root, "block", "list", "--json")
-    assert res2.exit_code == 0, res2.output
-    blocks = json.loads(res2.output)
-    assert any(b["domain"] == "coding.custom" for b in blocks)
-
-
-def test_list_blocks_table_format(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _invoke(root, "init")
-    res = _invoke(root, "list-blocks")
-    assert res.exit_code == 0
-    # Table header with counts
-    assert "blocks shown" in res.output
-
-
-def test_list_blocks_filter_by_domain(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _invoke(root, "init")
-    res = _invoke(root, "list-blocks", "--domain", "state.change", "--json")
-    assert res.exit_code == 0
-    blocks = json.loads(res.output)
-    assert all(b["domain"] == "state.change" for b in blocks)
 
 
 def test_search_returns_matches(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     target = tmp_path / "shopify.md"
     target.write_text("shopify checkout retry\n", encoding="utf-8")
     res = _invoke(
@@ -113,7 +70,7 @@ def test_search_returns_matches(tmp_path: Path) -> None:
 
 def test_search_table_format(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     target = tmp_path / "shopify.md"
     target.write_text("shopify checkout retry\n", encoding="utf-8")
     res = _invoke(
@@ -137,76 +94,13 @@ def test_search_table_format(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# deprecate / quarantine                                                      #
-# --------------------------------------------------------------------------- #
-
-
-def _seed_one_block(root: Path, block_id: str = "test-block") -> None:
-    """Seed a single block by upserting through the store directly."""
-    from atelier.core.foundation.models import ReasonBlock
-    from atelier.core.foundation.store import ContextStore
-
-    block = ReasonBlock(
-        id=block_id,
-        title="Test",
-        domain="testing",
-        situation="When running coverage tests for CLI commands",
-        triggers=["test"],
-        procedure=["step one"],
-        failure_signals=["signal"],
-    )
-    ContextStore(root).upsert_block(block, write_markdown=False)
-
-
-def test_deprecate_block(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _invoke(root, "init")
-    _seed_one_block(root, "deprecate-target")
-    blocks_res = _invoke(root, "list-blocks", "--json")
-    blocks = json.loads(blocks_res.output)
-    assert blocks, "need at least one block to deprecate"
-    block_id = blocks[0]["id"]
-
-    res = _invoke(root, "deprecate", block_id)
-    assert res.exit_code == 0
-    assert f"deprecated {block_id}" in res.output
-
-    # After deprecation, block should NOT appear in default (active-only) listing
-    listed_default = json.loads(_invoke(root, "list-blocks", "--json").output)
-    assert not any(b["id"] == block_id for b in listed_default)
-
-    # Block should appear when --include-deprecated is passed
-    listed_all = json.loads(_invoke(root, "list-blocks", "--include-deprecated", "--json").output)
-    assert any(b["id"] == block_id for b in listed_all)
-
-
-def test_deprecate_unknown_block_errors(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _invoke(root, "init")
-    res = _invoke(root, "deprecate", "nonexistent-block-id")
-    assert res.exit_code != 0
-
-
-def test_quarantine_block(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    _invoke(root, "init")
-    _seed_one_block(root, "quarantine-target")
-    blocks = json.loads(_invoke(root, "list-blocks", "--json").output)
-    block_id = blocks[0]["id"]
-
-    res = _invoke(root, "quarantine", block_id)
-    assert res.exit_code == 0
-    assert f"quarantined {block_id}" in res.output
-
-
-# --------------------------------------------------------------------------- #
 # ledger reset / update                                                       #
 # --------------------------------------------------------------------------- #
 
 
 def test_ledger_update_field(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_ledger(root)
 
     res = _invoke(root, "ledger", "update", "--field", "task", "--value", "updated task text")
@@ -219,7 +113,7 @@ def test_ledger_update_field(tmp_path: Path) -> None:
 
 def test_ledger_update_json_value(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_ledger(root)
 
     res = _invoke(
@@ -238,7 +132,7 @@ def test_ledger_update_json_value(tmp_path: Path) -> None:
 
 def test_ledger_reset_with_confirmation(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_ledger(root)
     ledger_path = root / "runs" / "run1.json"
     assert ledger_path.exists()
@@ -258,7 +152,7 @@ def test_ledger_reset_with_confirmation(tmp_path: Path) -> None:
 )
 def test_env_validate_known_env(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     res = _invoke(root, "env", "validate", "env_state_change_safety")
     assert res.exit_code == 0
     assert "ok" in res.output
@@ -266,7 +160,7 @@ def test_env_validate_known_env(tmp_path: Path) -> None:
 
 def test_env_validate_unknown_env(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     res = _invoke(root, "env", "validate", "env_does_not_exist")
     assert res.exit_code != 0
 
@@ -278,7 +172,7 @@ def test_env_validate_unknown_env(tmp_path: Path) -> None:
 
 def test_failure_show_after_accept(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_ledger(root)
     _seed_ledger(root, session_id="run2")
 
@@ -296,7 +190,7 @@ def test_failure_show_after_accept(tmp_path: Path) -> None:
 
 def test_failure_show_unknown_cluster(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     res = _invoke(root, "failure", "show", "nonexistent-cluster-id")
     assert res.exit_code != 0
 
@@ -323,7 +217,7 @@ def _make_eval_case(root: Path, case_id: str = "case1") -> None:
 
 def test_eval_show(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _make_eval_case(root)
 
     res = _invoke(root, "eval", "show", "case1")
@@ -334,7 +228,7 @@ def test_eval_show(tmp_path: Path) -> None:
 
 def test_eval_deprecate(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _make_eval_case(root)
 
     res = _invoke(root, "eval", "deprecate", "case1")
@@ -345,7 +239,7 @@ def test_eval_deprecate(tmp_path: Path) -> None:
 
 def test_eval_from_cluster(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_ledger(root)
     _seed_ledger(root, session_id="run2")
 
@@ -356,21 +250,21 @@ def test_eval_from_cluster(tmp_path: Path) -> None:
     # Must accept cluster before generating eval
     _invoke(root, "failure", "accept", cid)
 
-    res = _invoke(root, "eval-from-cluster", cid)
+    res = _invoke(root, "eval", "from-cluster", cid)
     assert res.exit_code == 0
     assert "saved draft eval" in res.output
 
 
 def test_eval_from_cluster_unaccepted_errors(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     _seed_ledger(root)
     _seed_ledger(root, session_id="run2")
 
     clusters = json.loads(_invoke(root, "failure", "list", "--json").output)
     cid = clusters[0]["id"]
 
-    res = _invoke(root, "eval-from-cluster", cid)
+    res = _invoke(root, "eval", "from-cluster", cid)
     assert res.exit_code != 0
 
 
@@ -381,7 +275,7 @@ def test_eval_from_cluster_unaccepted_errors(tmp_path: Path) -> None:
 
 def test_search_blocks_returns_matches(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     target = tmp_path / "shopify.md"
     target.write_text("shopify publish retry\n", encoding="utf-8")
     res = _invoke(
@@ -407,7 +301,7 @@ def test_search_blocks_returns_matches(tmp_path: Path) -> None:
 
 def test_search_empty_query_returns_empty(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     res = _invoke(
         root,
         "tools",
@@ -435,8 +329,8 @@ def test_search_empty_query_returns_empty(tmp_path: Path) -> None:
 
 def test_savings_detail_runs(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
-    res = _invoke(root, "savings-detail", "--json")
+    init_store_at(str(root))
+    res = _invoke(root, "savings", "detail", "--json")
     assert res.exit_code == 0
     payload = json.loads(res.output)
     assert "summary" in payload
@@ -445,8 +339,8 @@ def test_savings_detail_runs(tmp_path: Path) -> None:
 
 def test_savings_reset_clears_counters(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
-    res = _invoke(root, "savings-reset")
+    init_store_at(str(root))
+    res = _invoke(root, "savings", "reset")
     assert res.exit_code == 0
     assert "reset" in res.output
 
@@ -526,43 +420,43 @@ def test_benchmark_full_runs(tmp_path: Path) -> None:
 
 def test_copilot_import_empty_dir(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     sessions_dir = tmp_path / "copilot_sessions"
     sessions_dir.mkdir()
 
-    res = _invoke(root, "copilot", "import", "--path", str(sessions_dir))
+    res = _invoke(root, "import", "--host", "copilot", "--path", str(sessions_dir))
     assert res.exit_code == 0
     assert "imported" in res.output
 
 
 def test_claude_import_empty_dir(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     sessions_dir = tmp_path / "claude_projects"
     sessions_dir.mkdir()
 
-    res = _invoke(root, "claude", "import", "--path", str(sessions_dir))
+    res = _invoke(root, "import", "--host", "claude", "--path", str(sessions_dir))
     assert res.exit_code == 0
     assert "imported" in res.output
 
 
 def test_codex_import_empty_dir(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     sessions_dir = tmp_path / "codex_sessions"
     sessions_dir.mkdir()
 
-    res = _invoke(root, "codex", "import", "--path", str(sessions_dir))
+    res = _invoke(root, "import", "--host", "codex", "--path", str(sessions_dir))
     assert res.exit_code == 0
     assert "imported" in res.output
 
 
 def test_opencode_import_missing_db(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _invoke(root, "init")
+    init_store_at(str(root))
     nonexistent_db = tmp_path / "opencode.db"
 
-    res = _invoke(root, "opencode", "import", "--path", str(nonexistent_db))
+    res = _invoke(root, "import", "--host", "opencode", "--path", str(nonexistent_db))
     # Should either succeed with 0 imports or fail gracefully (no crash/traceback)
     assert "imported" in res.output or res.exit_code != 0
     assert "Traceback" not in res.output

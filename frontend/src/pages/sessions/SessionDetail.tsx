@@ -139,6 +139,9 @@ function SidebarList({
           const rawUrl = artId
             ? `/api/raw-artifacts/${artId}/content`
             : `/api/v1/files/content?path=${encodeURIComponent(p)}`;
+          const projectionUrl = isPath
+            ? api.fileProjectionInspectUrl(p, { view: "compact" })
+            : null;
           // Absolute filesystem path → let Chrome try to open it directly.
           // (Browsers may block file:// from http(s) origins; the user can
           // still drop the URL into the address bar from the copy button.)
@@ -185,6 +188,17 @@ function SidebarList({
                 >
                   {justCopied ? "Copied" : "Copy"}
                 </button>
+                {projectionUrl && (
+                  <a
+                    href={projectionUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[8px] text-neutral-400 hover:text-cyan-300 uppercase font-black"
+                    title="Inspect compact projection metadata"
+                  >
+                    Projection
+                  </a>
+                )}
                 {canOpenRaw && (
                   <a
                     href={rawUrl}

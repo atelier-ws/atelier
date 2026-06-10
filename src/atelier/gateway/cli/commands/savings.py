@@ -458,8 +458,8 @@ def optimize_run(
     click.echo(f"Repo root: {payload['repo_root']}")
     click.echo(f"Current preset: {current_policy.get('preset', '-')}")
     click.echo(
-        f"Projected weekly savings: ${float(advisor.get('weekly_savings_usd', 0.0) or 0.0):.2f}  "
-        f"confidence={float(advisor.get('confidence', 0.0) or 0.0):.2f}"
+        f"Estimated weekly savings: ${float(advisor.get('weekly_savings_usd', 0.0) or 0.0):.2f}  "
+        f"confidence={advisor.get('confidence', '-')}"
     )
     click.echo(f"Proposal action: {action}")
     artifact_path = payload.get("proposal", {}).get("artifact_path")
@@ -992,3 +992,11 @@ def savings_reset(ctx: click.Context) -> None:
 
     save_cost_history(ctx.obj["root"], {"operations": {}})
     click.echo("savings reset (cache + cost history)")
+
+
+external_group = click.Group("external", help="Run supported external analyzer reports.")
+external_group.add_command(external_status_cmd, name="status")
+external_group.add_command(external_report_cmd, name="report")
+savings_cmd.add_command(external_group)
+savings_cmd.add_command(savings_detail, name="detail")
+savings_cmd.add_command(savings_reset, name="reset")

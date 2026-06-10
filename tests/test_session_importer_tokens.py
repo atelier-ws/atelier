@@ -299,6 +299,7 @@ class TestCodexImporterTokens:
         # input_tokens excludes cached_input_tokens, which are stored separately.
         assert trace.input_tokens == 260
         assert trace.output_tokens == 90
+        assert trace.reasoning_output_tokens == 7
         assert trace.thinking_tokens == 0
         assert trace.cached_input_tokens == 40  # cached_input_tokens (subset of input)
         assert trace.cache_creation_input_tokens == 0  # hard-coded
@@ -360,6 +361,7 @@ class TestCodexImporterTokens:
         assert trace.model == "gpt-5-mini"
         assert trace.input_tokens == 100
         assert trace.output_tokens == 45
+        assert trace.reasoning_output_tokens == 7
         assert trace.thinking_tokens == 0
         assert trace.cached_input_tokens == 20
         assert trace.cache_creation_input_tokens == 0

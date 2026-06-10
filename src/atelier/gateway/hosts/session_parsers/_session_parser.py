@@ -290,6 +290,7 @@ def _normalize_turn_tokens(tokens: dict[str, Any] | None) -> dict[str, int]:
     normalized = {
         "in": int(payload.get("in", 0) or 0),
         "out": int(payload.get("out", 0) or 0),
+        "reasoning_output": int(payload.get("reasoning_output", 0) or 0),
         "thinking": int(payload.get("thinking", 0) or 0),
         "cache_read": int(payload.get("cache_read", 0) or 0),
         "cache_write": int(payload.get("cache_write", 0) or 0),
@@ -333,6 +334,7 @@ def _empty_usage_summary() -> dict[str, Any]:
         "total_turns": 0,
         "input_tokens": 0,
         "output_tokens": 0,
+        "reasoning_output_tokens": 0,
         "thinking_tokens": 0,
         "cached_input_tokens": 0,
         "cache_creation_input_tokens": 0,
@@ -346,6 +348,7 @@ def _record_usage_turn(
     model: str | None,
     input_tokens: int = 0,
     output_tokens: int = 0,
+    reasoning_output_tokens: int = 0,
     thinking_tokens: int = 0,
     cached_input_tokens: int = 0,
     cache_creation_input_tokens: int = 0,
@@ -357,6 +360,7 @@ def _record_usage_turn(
     token_values = (
         int(input_tokens or 0),
         int(output_tokens or 0),
+        min(int(reasoning_output_tokens or 0), int(output_tokens or 0)),
         int(thinking_tokens or 0),
         int(cached_input_tokens or 0),
         int(cache_creation_input_tokens or 0),
@@ -373,18 +377,20 @@ def _record_usage_turn(
     summary["total_turns"] += 1
     summary["input_tokens"] += token_values[0]
     summary["output_tokens"] += token_values[1]
-    summary["thinking_tokens"] += token_values[2]
-    summary["cached_input_tokens"] += token_values[3]
-    summary["cache_creation_input_tokens"] += token_values[4]
+    summary["reasoning_output_tokens"] += token_values[2]
+    summary["thinking_tokens"] += token_values[3]
+    summary["cached_input_tokens"] += token_values[4]
+    summary["cache_creation_input_tokens"] += token_values[5]
     summary["usage_entries"].append(
         {
             "kind": "llm",
             "model": model_id,
             "input_tokens": token_values[0],
             "output_tokens": token_values[1],
-            "thinking_tokens": token_values[2],
-            "cached_input_tokens": token_values[3],
-            "cache_creation_input_tokens": token_values[4],
+            "reasoning_output_tokens": token_values[2],
+            "thinking_tokens": token_values[3],
+            "cached_input_tokens": token_values[4],
+            "cache_creation_input_tokens": token_values[5],
         }
     )
 
@@ -396,6 +402,7 @@ def _merge_usage_summaries(target: dict[str, Any], source: dict[str, Any]) -> di
         "total_turns",
         "input_tokens",
         "output_tokens",
+        "reasoning_output_tokens",
         "thinking_tokens",
         "cached_input_tokens",
         "cache_creation_input_tokens",
@@ -407,9 +414,9 @@ def _merge_usage_summaries(target: dict[str, Any], source: dict[str, Any]) -> di
     return target
 
 
-def _extract_codex_usage(usage: Any) -> tuple[int, int, int, int, int]:
+def _extract_codex_usage(usage: Any) -> tuple[int, int, int, int, int, int]:
     if not isinstance(usage, dict):
-        return (0, 0, 0, 0, 0)
+        return (0, 0, 0, 0, 0, 0)
 
     def _int(value: Any) -> int:
         try:
@@ -426,6 +433,21 @@ def _extract_codex_usage(usage: Any) -> tuple[int, int, int, int, int]:
         or usage.get("completion_tokens")
         or usage.get("completionTokens")
     )
+    reasoning_output_tokens = _int(
+        usage.get("reasoning_output_tokens")
+        or usage.get("reasoningOutputTokens")
+        or usage.get("reasoning_tokens")
+        or usage.get("reasoningTokens")
+    )
+    output_details = usage.get("output_tokens_details") or usage.get("outputTokensDetails")
+    if reasoning_output_tokens == 0 and isinstance(output_details, dict):
+        reasoning_output_tokens = _int(
+            output_details.get("reasoning_tokens")
+            or output_details.get("reasoningTokens")
+            or output_details.get("reasoning_output_tokens")
+            or output_details.get("reasoningOutputTokens")
+        )
+    reasoning_output_tokens = min(reasoning_output_tokens, output_tokens)
     cached_tokens = _int(
         usage.get("cached_input_tokens")
         or usage.get("cachedInputTokens")
@@ -455,7 +477,14 @@ def _extract_codex_usage(usage: Any) -> tuple[int, int, int, int, int]:
             or input_details.get("cacheWriteTokens")
         )
 
-    return (input_tokens, output_tokens, 0, cached_tokens, cache_write_tokens)
+    return (
+        input_tokens,
+        output_tokens,
+        reasoning_output_tokens,
+        0,
+        cached_tokens,
+        cache_write_tokens,
+    )
 
 
 def _extract_model_id(value: Any, *, max_depth: int = 4) -> str | None:
@@ -678,6 +707,7 @@ def _usage_summary_from_turns(turns: list[dict[str, Any]]) -> dict[str, Any]:
                 model=model_id,
                 input_tokens=tokens.get("in", 0),
                 output_tokens=tokens.get("out", 0),
+                reasoning_output_tokens=tokens.get("reasoning_output", 0),
                 thinking_tokens=tokens.get("thinking", 0),
                 cached_input_tokens=tokens.get("cache_read", 0),
                 cache_creation_input_tokens=tokens.get("cache_write", 0),
@@ -750,7 +780,9 @@ def _summarize_codex_usage(content: str) -> dict[str, Any]:
             continue
         if et == "message" and str(ev.get("role") or "") == "assistant":
             model = str(ev.get("model") or current_model or "").strip()
-            in_t, out_t, think_t, cached_t, cache_write_t = _extract_codex_usage(ev.get("usage"))
+            in_t, out_t, reason_t, think_t, cached_t, cache_write_t = _extract_codex_usage(
+                ev.get("usage")
+            )
             if model or in_t or out_t or cached_t or cache_write_t:
                 saw_flat_usage = True
                 _record_usage_turn(
@@ -758,6 +790,7 @@ def _summarize_codex_usage(content: str) -> dict[str, Any]:
                     model=model,
                     input_tokens=max(in_t - cached_t, 0),
                     output_tokens=out_t,
+                    reasoning_output_tokens=reason_t,
                     thinking_tokens=think_t,
                     cached_input_tokens=cached_t,
                     cache_creation_input_tokens=cache_write_t,
@@ -772,12 +805,15 @@ def _summarize_codex_usage(content: str) -> dict[str, Any]:
         total_usage = info.get("total_token_usage") or {}
         model = current_model or str(payload.get("model") or "").strip()
         model_key = model or "_default"
-        total_in, total_out, total_think, cached_total, cache_write_total = _extract_codex_usage(total_usage)
+        total_in, total_out, total_reason, total_think, cached_total, cache_write_total = (
+            _extract_codex_usage(total_usage)
+        )
         if model_key not in legacy_totals:
             legacy_totals[model_key] = {
                 "model": model,
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "reasoning_output_tokens": 0,
                 "thinking_tokens": 0,
                 "cached_input_tokens": 0,
                 "cache_creation_input_tokens": 0,
@@ -787,6 +823,10 @@ def _summarize_codex_usage(content: str) -> dict[str, Any]:
         bucket["model"] = model
         bucket["input_tokens"] = max(int(bucket["input_tokens"]), max(total_in - cached_total, 0))
         bucket["output_tokens"] = max(int(bucket["output_tokens"]), total_out)
+        bucket["reasoning_output_tokens"] = max(
+            int(bucket["reasoning_output_tokens"]),
+            total_reason,
+        )
         bucket["thinking_tokens"] = max(int(bucket["thinking_tokens"]), total_think)
         bucket["cached_input_tokens"] = max(int(bucket["cached_input_tokens"]), cached_total)
         bucket["cache_creation_input_tokens"] = max(int(bucket["cache_creation_input_tokens"]), cache_write_total)
@@ -798,6 +838,7 @@ def _summarize_codex_usage(content: str) -> dict[str, Any]:
                 model=str(bucket["model"]),
                 input_tokens=int(bucket["input_tokens"]),
                 output_tokens=int(bucket["output_tokens"]),
+                reasoning_output_tokens=int(bucket["reasoning_output_tokens"]),
                 thinking_tokens=int(bucket["thinking_tokens"]),
                 cached_input_tokens=int(bucket["cached_input_tokens"]),
                 cache_creation_input_tokens=int(bucket["cache_creation_input_tokens"]),
@@ -1012,6 +1053,8 @@ def _parse_normalized_session(content: str) -> list[dict[str, Any]]:
         tokens = {
             "in": int(usage.get("input", 0) or 0),
             "out": int(usage.get("output", 0) or 0),
+            "reasoning_output": int(usage.get("reasoningOutput", 0) or 0),
+            "thinking": int(usage.get("thinking", 0) or 0),
             "cache_read": int(usage.get("cacheRead", 0) or 0),
             "cache_write": int(usage.get("cacheWrite", 0) or 0),
         }
@@ -1637,10 +1680,13 @@ def _parse_codex_format_b(content: str) -> list[dict[str, Any]]:
                 turns.append(_turn("thinking", t[:80], t, at=at, raw=ev))
         elif et == "message":
             role = ev.get("role", "")
-            in_t, out_t, think_t, cached_t, cache_write_t = _extract_codex_usage(ev.get("usage"))
+            in_t, out_t, reason_t, think_t, cached_t, cache_write_t = _extract_codex_usage(
+                ev.get("usage")
+            )
             tokens = {
                 "in": max(in_t - cached_t, 0),
                 "out": out_t,
+                "reasoning_output": reason_t,
                 "thinking": think_t,
                 "cache_read": cached_t,
                 "cache_write": cache_write_t,

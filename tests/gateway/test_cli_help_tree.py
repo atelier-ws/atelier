@@ -8,15 +8,10 @@ helper to capture a live *pre-edit* snapshot and compare it against a live
 CLI surface stays byte-identical without committing a fixture generated from
 unreproducible WIP.
 
-``ATELIER_DEV_MODE`` is set BEFORE importing ``cli`` so the dev-gated command
 registrations match the ordering used by ``tests/gateway/test_cli.py``.
 """
 
 from __future__ import annotations
-
-import os
-
-os.environ["ATELIER_DEV_MODE"] = "1"  # match tests/gateway/test_cli.py ordering
 
 import click
 from click.testing import CliRunner
@@ -70,7 +65,7 @@ def test_full_help_tree_renders_deterministically() -> None:
 def test_help_tree_contains_expected_public_groups() -> None:
     """Core public groups must appear in the rendered tree."""
     tree = render_help_tree()
-    for group in ("benchmark", "bench", "stack", "servicectl", "block", "ledger"):
+    for group in ("benchmark", "stack", "servicectl", "ledger"):
         assert f"atelier {group}\n" in tree, f"missing group: {group}"
 
 

@@ -1,119 +1,132 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-06-02
+**Analysis Date:** 2026-06-08
 
 ## Tech Debt
 
-**Very large multi-responsibility modules:**
-- Issue: several core files are thousands of lines long, combining orchestration, transport, and policy logic.
-- Files: `src/atelier/core/capabilities/code_context/engine.py` (~7.3k LOC), `src/atelier/core/service/api.py` (~6.5k LOC), `src/atelier/gateway/adapters/mcp_server.py` (~6.0k LOC).
-- Impact: higher review burden, fragile refactors, slower onboarding, and a large blast radius for small behavior changes.
-- Fix approach: extract narrower submodules by responsibility without breaking public surfaces.
+**Oversized God-files (low maintainability):**
+- Issue: Several modules far exceed any reasonable size threshold, mixing many responsibilities in one file. They are hard to navigate, review, and test in isolation.
+- Files:
+  - `src/atelier/core/capabilities/code_context/engine.py` (7,820 lines) — symbol index + retrieval + AST parsing + sqlite + subprocess + threading all in one module
+  - `src/atelier/gateway/adapters/mcp_server.py` (7,257 lines)
+  - `src/atelier/core/service/api.py` (6,660 lines) — entire FastAPI surface in one file
+  - `src/atelier/core/capabilities/swarm/capability.py` (2,731 lines)
+  - `src/atelier/gateway/hosts/session_parsers/_session_parser.py` (2,281 lines)
+  - `src/atelier/core/capabilities/plugin_runtime.py` (2,041 lines)
+  - `src/atelier/core/foundation/store.py` (1,943 lines)
+- Impact: High merge-conflict risk, slow comprehension, difficult unit testing of internal helpers, IDE/type-checker slowdown.
+- Fix approach: Split by responsibility — e.g. carve `engine.py` into indexer/parser/retrieval/storage submodules; split `api.py` into FastAPI routers per resource; extract the per-tool handlers in `mcp_server.py` into a registry of small modules.
 
-**Generated-surface governance is easy to bypass accidentally:**
-- Issue: host instruction/install artifacts in `integrations/` are generated from `docs/agent-os/`, but the repo also contains the generated files.
-- Files: `docs/agent-os/`, `integrations/`, `scripts/sync_agent_context.py`, `Makefile`.
-- Impact: direct edits to generated files can drift from source-of-truth content.
-- Fix approach: keep regeneration/check commands in the normal review loop and avoid manual edits to generated surfaces.
+**Pervasive broad exception handling that swallows errors:**
+- Issue: ~256 sites log `"Recovered from broad exception handler"` and continue; 320 `except Exception` sites overall, with ~37 `except ... : pass` blocks. Broad rescue obscures real failures and produces silent degradation.
+- Files: widespread; representative `src/atelier/core/service/ingest_session.py:60`, `src/atelier/gateway/cli/commands/__init__.py` (lazy command import swallows `ModuleNotFoundError`/`ImportError`), `src/atelier/gateway/cli/commands/admin.py:654`.
+- Impact: Failures masked as "success/recovered"; debugging requires log spelunking; partial state can propagate.
+- Fix approach: Narrow exception types where the failure mode is known; for genuine catch-alls, re-raise after logging or surface a typed error result rather than silently continuing.
 
-**Imported session traces are still partially TODO-backed:**
-- Issue: session ingest paths still note missing persistence of reconstructed ledger events as traces.
-- Files: `src/atelier/core/service/ingest_session.py`, `src/atelier/core/service/ingest_session_directory.py`.
-- Impact: imported sessions may not produce the same trace fidelity as native runtime execution.
-- Fix approach: implement the TODOs and cover them with importer regression tests.
+**Unfinished trace persistence (explicit TODOs):**
+- Issue: Reconstructed ledger events are not stored as traces.
+- Files: `src/atelier/core/service/ingest_session.py:66`, `src/atelier/core/service/ingest_session_directory.py:68`
+- Impact: Ingested sessions return `status: success` but the reconstructed ledger is dropped — data is not persisted to the store.
+- Fix approach: Implement the trace-write path into the foundation store before treating ingest as complete.
 
 ## Known Bugs
 
-**No explicit bug registry in-repo:**
-- Observation: the static scan did not find a dedicated bug backlog file or many `FIXME` markers; most operational knowledge appears to live in tests/reports instead.
-- Files checked: `src/`, `tests/`, `reports/`.
-- Impact: regressions may be harder to triage because bug history is dispersed across tests and artifacts.
-
-**Optional integration failures can be hidden behind fail-open behavior:**
-- Observation: observability/integration modules intentionally swallow exceptions to protect the core loop.
-- Files: `src/atelier/gateway/integrations/langfuse.py`, `src/atelier/gateway/integrations/openmemory.py`.
-- Impact: broken observability or sidecars may go unnoticed until a user checks diagnostics.
+**No specific runtime bugs documented in code or CHANGELOG.**
+- The `CHANGELOG.md` has an open `## Unreleased` section but no logged defects.
+- Closest signals are the broad-exception "Recovered" log sites (see Tech Debt), which can hide latent bugs rather than represent confirmed ones.
+- Recommendation: Treat the silent-recovery sites as the primary place where undetected bugs accumulate.
 
 ## Security Considerations
 
-**Service auth defaults to off for local runs:**
-- Risk: binding the service on a non-loopback interface without enabling auth would expose powerful runtime endpoints.
-- Files: `src/atelier/core/service/auth.py`, `src/atelier/core/service/api.py`, `docker-compose.yml`, `.env.production.example`.
-- Current mitigation: API code warns about non-loopback exposure and production env examples enable auth.
-- Recommendation: treat `ATELIER_REQUIRE_AUTH=true` + `ATELIER_API_KEY` as mandatory outside local-only usage.
+**`shell=True` subprocess execution (command-injection surface):**
+- Risk: Commands are passed to the shell as formatted strings; if any interpolated path/ref/command is attacker- or config-influenced, this is an injection vector.
+- Files:
+  - `src/atelier/core/capabilities/swarm/capability.py:2112`, `:2608`
+  - `src/atelier/gateway/cli/commands/swarm.py:380-381` (comment explicitly acknowledges `shell=True` for "formatted strings with paths and multiple refs")
+- Current mitigation: `src/atelier/core/foundation/redaction.py` provides defense-in-depth redaction noted as protecting against future `shell=True` changes.
+- Recommendations: Prefer `subprocess.run([...], shell=False)` with argument lists; if shell is unavoidable, validate/escape interpolated values with `shlex.quote` and constrain command templates to a vetted allowlist.
 
-**Secrets and tokens are heavily env-driven:**
-- Risk: OpenAI, Langfuse, Letta, OpenMemory, telemetry, and service credentials all arrive through environment variables.
-- Files: `.env.production.example`, `src/atelier/infra/internal_llm/openai_client.py`, `src/atelier/gateway/integrations/langfuse.py`, `src/atelier/infra/memory_bridges/letta_adapter.py`.
-- Recommendation: keep examples sanitized and avoid checking live env files or generated docs with real values.
+**Empty-string secret env injection in benchmark harness:**
+- Risk: `agent_env_args.extend(["--agent-env", "ANTHROPIC_API_KEY="])` injects a blank API key into the benchmark agent environment.
+- Files: `src/atelier/gateway/cli/commands/benchmark.py:768`
+- Current mitigation: Limited to benchmark tooling, not production runtime.
+- Recommendations: Confirm this is intentional credential-scrubbing (not accidental); document the intent inline.
+
+**Secrets handling (informational):**
+- `.env.production.example` present (template only). No hardcoded credentials found in `src/` (only env-var-driven lookups). Continue to keep secrets out of source.
 
 ## Performance Bottlenecks
 
-**Code-intel/indexing engine is a hotspot:**
-- Problem: `src/atelier/core/capabilities/code_context/engine.py` is both huge and central to search/symbol/route/impact behavior.
-- Likely impact: indexing/search performance and maintenance cost dominate a large slice of runtime complexity.
-- Improvement path: continue splitting providers/caches/output policy into smaller units while preserving the external API.
+**Synchronous subprocess + file I/O in capability hot paths:**
+- Problem: Swarm validation runs external commands sequentially via blocking `subprocess.run` while streaming to log files.
+- Files: `src/atelier/core/capabilities/swarm/capability.py:2104-2117`, `:2604-2616`
+- Cause: Blocking, serial execution of integration validations.
+- Improvement path: Parallelize independent validations (thread/process pool) and bound concurrency; collect results asynchronously.
 
-**Service and MCP transports are monoliths:**
-- Problem: `src/atelier/core/service/api.py` and `src/atelier/gateway/adapters/mcp_server.py` concentrate many unrelated routes/tools.
-- Likely impact: slower iteration, larger import/test surfaces, and harder hot-path tuning.
-- Improvement path: peel off feature-specific routers/tool handlers behind stable registries.
+**Monolithic indexing engine:**
+- Problem: `code_context/engine.py` combines sqlite access, AST parsing, multiprocessing, and threading in a single module.
+- Files: `src/atelier/core/capabilities/code_context/engine.py`
+- Cause: Tight coupling makes targeted profiling/caching hard.
+- Improvement path: Isolate the storage layer so query and index phases can be benchmarked and cached independently.
 
 ## Fragile Areas
 
-**Host plugin hooks and install flows:**
-- Why fragile: they modify user-host config, depend on external CLIs, and span multiple operating systems.
-- Files: `scripts/install.sh`, `scripts/install_claude.sh`, `integrations/claude/plugin/hooks/`, `integrations/codex/hooks/`, `integrations/copilot-cli/hooks/`.
-- Safe modification: verify with generated-surface tests and install/verify scripts before changing install logic.
+**Session parsers (host-format coupling):**
+- Files: `src/atelier/gateway/hosts/session_parsers/_session_parser.py` (2,281), `copilot.py` (1,420), `codex.py` (868), `_common.py` (896)
+- Why fragile: Parse loosely-typed external session payloads (`dict[str, Any]`) with many conditional branches and normalization helpers (`_normalize_todos`, `_extract_todos`). Upstream host format changes silently break extraction.
+- Safe modification: Add fixture-based regression tests for each host format before editing; change one parser at a time.
+- Test coverage: Parser tests exist under `tests/gateway/` but rely on captured fixtures; new host versions are uncovered until a fixture is added.
 
-**Swarm orchestration and worktree management:**
-- Why fragile: it coordinates subprocesses, git worktrees, artifacts, and state transitions.
-- Files: `src/atelier/core/capabilities/swarm/capability.py`, `src/atelier/infra/runtime/swarm_worktree.py`, `frontend/src/pages/Swarm.tsx`.
-- Safe modification: add/keep targeted swarm tests before changing runner, evaluator, or patch-application logic.
+**FastAPI service surface in one module:**
+- Files: `src/atelier/core/service/api.py`
+- Why fragile: All routes/handlers co-located; the module is explicitly excluded from some mypy strictness (`untyped-decorator` disabled).
+- Safe modification: Split into routers; add request/response models before refactoring.
 
 ## Scaling Limits
 
-**Local-first storage defaults:**
-- Current capacity: default runtime state is file-backed under `~/.atelier` with SQLite as the default backend.
-- Limit: single-node/local usage is the happy path; scaling requires switching to PostgreSQL and more deliberate deployment wiring.
-- Files: `src/atelier/core/foundation/paths.py`, `src/atelier/infra/storage/factory.py`, `.env.production.example`.
-
-**Single-service / optional-frontend deployment model:**
-- Current capacity: `docker-compose.yml` and `atelier stack` assume one service process plus one frontend process.
-- Limit: no out-of-the-box multi-node orchestration or queue-backed worker architecture is present in the repo.
+**SQLite-backed local index:**
+- Current capacity: `engine.py` uses `sqlite3` for the symbol index (single-writer, file-locked).
+- Limit: Concurrent writers and very large repos stress single-file SQLite; threading/multiprocessing in the same module increases lock contention risk.
+- Scaling path: A Postgres backend exists (`src/atelier/infra/storage/postgres_store.py`, 1,292 lines) — route heavy/shared workloads there; keep SQLite for single-user local mode.
 
 ## Dependencies at Risk
 
-**Many optional vendor integrations increase matrix complexity:**
-- Risk: OpenAI-compatible, Ollama, Letta, OpenMemory, Langfuse, Postgres/vector, and host-specific CLIs all expand the support matrix.
-- Files: `pyproject.toml`, `src/atelier/infra/internal_llm/`, `src/atelier/infra/memory_bridges/`, `src/atelier/gateway/hosts/configs/*.yaml`.
-- Impact: dependency/API drift can break low-frequency integration paths.
+**Heavy/wide optional-dependency matrix:**
+- Risk: Many optional extras (`mcp`, `memory`, `memory-server`, `smart`, `cloud`, `litellm`, `repo-map`, `api`, `postgres`, `vector`, `parsers`, `rename`, `telemetry`) plus pinned native libs (`pygit2==1.19.2`).
+- Impact: Optional imports are swallowed via broad `except (ModuleNotFoundError, ImportError)` in `src/atelier/gateway/cli/commands/__init__.py`, so a missing/incompatible extra degrades silently to a missing CLI command rather than a clear error.
+- Migration plan: Surface a one-line "command unavailable: install extra X" message instead of silent skip; pin and CI-test each extra combination.
+
+**`pygit2` hard pin:**
+- Risk: `pygit2==1.19.2` is exactly pinned and depends on a matching libgit2 ABI.
+- Impact: Environment/wheel mismatches break git operations at import time.
+- Migration plan: Track libgit2 compatibility; widen to a tested range when feasible.
 
 ## Missing Critical Features
 
-**Imported-session trace persistence is incomplete:**
-- Problem: imported session reconstruction still has TODOs instead of a finished trace-write path.
-- Files: `src/atelier/core/service/ingest_session.py`, `src/atelier/core/service/ingest_session_directory.py`.
-- Blocks: parity between imported-session analytics and native-session analytics.
-
-**No browser-level end-to-end UI suite is obvious in the current stack:**
-- Problem: frontend tests are page/component tests with mocked fetches, but no Playwright/Cypress-style browser runner is declared.
-- Files: `frontend/package.json`, `frontend/src/pages/*.test.tsx`, `.github/workflows/tests.yml`.
-- Blocks: full stack regressions between `frontend/` and `src/atelier/core/service/api.py` rely on manual smoke tests or narrower automation.
+**Trace persistence for ingested sessions:**
+- Problem: Ledger reconstruction completes but is not written to the store (see TODOs above).
+- Blocks: Historical analysis/replay of ingested sessions.
 
 ## Test Coverage Gaps
 
-**Cross-surface install/host reality checks still depend on external environments:**
-- What's not fully covered: every real host CLI + plugin environment combination.
-- Files: `scripts/install.sh`, `integrations/*/install.sh`, `tests/gateway/test_agent_cli_install_artifacts.py`.
-- Risk: generated artifacts can pass repository tests but still fail in a specific host/runtime environment.
+**Benchmark solver CLI untested:**
+- What's not tested: `@pytest.mark.skip(reason="benchmark solver CLI needs a deterministic offline harness")`
+- Files: `tests/gateway/test_cli_core_capabilities.py:19`
+- Risk: CLI regressions in the benchmark solver path go undetected.
+- Priority: Medium
 
-**Large monolith surfaces are difficult to exhaustively cover:**
-- What's not fully covered: every interaction path inside `engine.py`, `api.py`, and `mcp_server.py`.
-- Files: `src/atelier/core/capabilities/code_context/engine.py`, `src/atelier/core/service/api.py`, `src/atelier/gateway/adapters/mcp_server.py`.
-- Risk: localized edits can introduce regressions far from the edited branch.
+**API/integration tests skipped without optional extras:**
+- What's not tested: Many FastAPI and live-service tests are gated behind `pytest.importorskip("fastapi"/"uvicorn", ...)` — they silently skip when the `api` extra is absent.
+- Files: `tests/gateway/test_telemetry_api.py:8`, `tests/gateway/test_optimizations_api.py:9`, `tests/gateway/test_savings_api.py:9`, `tests/gateway/test_mcp_remote_mode.py:95-96`, `tests/gateway/test_generated_agent_contexts.py:110-111`
+- Risk: CI without the extras installed gives false-green; ~47 skip/xfail sites total.
+- Priority: Medium — ensure CI installs the relevant extras so these run.
+
+**Type-checking blind spots:**
+- What's not tested (statically): `pyproject.toml` sets `ignore_errors = true` for `atelier.gateway.cli.app`; disables `untyped-decorator` for `api.py` and `http_api.py`; relaxes strictness for `gateway.cli.commands.*`, `tests.*`, `scripts.*`, `benchmarks.*`.
+- Files: `pyproject.toml` (`[[tool.mypy.overrides]]` blocks), plus 68 inline `# type: ignore`/`# noqa` and ~315 `: Any` annotations across `src/`.
+- Risk: Type regressions in the CLI app and API decorators are not caught by `mypy --strict`.
+- Priority: Medium — re-enable strict checking incrementally, starting with `gateway.cli.app`.
 
 ---
 
-*Concern analysis: 2026-06-02*
-*Update after significant debt paydown, incident response, or architecture changes*
+*Concerns audit: 2026-06-08*

@@ -24,6 +24,8 @@ EXPECTED_TOOLS = {
     "shell",
     "pattern",
     "usages",
+    "web_fetch",
+    "workflow",
 }
 
 

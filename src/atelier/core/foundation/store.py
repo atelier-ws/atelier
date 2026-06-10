@@ -764,6 +764,7 @@ class ContextStore:
         results = {"blocks": 0, "rubrics": 0}
 
         if self.blocks_dir.exists():
+            from atelier.core.capabilities.starter_packs import load_template_block
             from atelier.core.foundation.parser import parse_block_markdown
 
             prev = self._load_sync_manifest("blocks")
@@ -777,8 +778,11 @@ class ContextStore:
                     continue  # unchanged — skip read/parse/upsert
 
                 try:
-                    content = path.read_text(encoding="utf-8")
-                    block = parse_block_markdown(content)
+                    if path.name.startswith("template_"):
+                        block = load_template_block(path)
+                    else:
+                        content = path.read_text(encoding="utf-8")
+                        block = parse_block_markdown(content)
                     self.upsert_block(block, write_markdown=False)
                     results["blocks"] += 1
                 except Exception as exc:
@@ -1096,20 +1100,21 @@ class ContextStore:
             base_sql += " AND created_at >= ?"
             params.append(since.isoformat())
 
-        with self._connect() as conn:
-            # 1. Total and status breakdown
-            status_sql = f"SELECT status, COUNT(*) {base_sql} GROUP BY status"
-            status_rows = conn.execute(status_sql, params).fetchall()
+        with closing(self._connect()) as conn:
+            with conn:
+                # 1. Total and status breakdown
+                status_sql = f"SELECT status, COUNT(*) {base_sql} GROUP BY status"
+                status_rows = conn.execute(status_sql, params).fetchall()
 
-            # 2. Distinct hosts, agents, and domains
-            host_sql = f"SELECT DISTINCT host {base_sql}"
-            host_rows = conn.execute(host_sql, params).fetchall()
+                # 2. Distinct hosts, agents, and domains
+                host_sql = f"SELECT DISTINCT host {base_sql}"
+                host_rows = conn.execute(host_sql, params).fetchall()
 
-            agent_sql = f"SELECT DISTINCT agent {base_sql}"
-            agent_rows = conn.execute(agent_sql, params).fetchall()
+                agent_sql = f"SELECT DISTINCT agent {base_sql}"
+                agent_rows = conn.execute(agent_sql, params).fetchall()
 
-            domain_sql = f"SELECT DISTINCT domain {base_sql}"
-            domain_rows = conn.execute(domain_sql, params).fetchall()
+                domain_sql = f"SELECT DISTINCT domain {base_sql}"
+                domain_rows = conn.execute(domain_sql, params).fetchall()
 
         stats = {"total": 0, "success": 0, "failed": 0, "partial": 0}
         for row in status_rows:

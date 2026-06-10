@@ -775,6 +775,12 @@ def search_workspace(
         return payload
 
     file_match_count = 0
+    # For file_paths_with_* modes: accumulate into one block instead of
+    # emitting individual {"type": "text", "text": "path\tN"} per file.
+    mc_hit_lines: list[str] = []   # rendered "path\tN" lines where N > 0
+    mc_hit_count: int = 0          # number of files with matches
+    mc_zero_count: int = 0         # number of files with 0 matches
+    fp_paths: list[str] = []       # accumulated paths for file_paths_only mode
     for candidate, spec in candidates:
         if len(blocks) >= limit:
             break
@@ -824,12 +830,49 @@ def search_workspace(
         naive_bytes += len(_file_rendered)
         rendered = _file_rendered
         file_match_count += 1
+        if output_mode == "file_paths_with_match_count":
+            if _count > 0:
+                mc_hit_lines.append(rendered)
+                mc_hit_count += 1
+            else:
+                mc_zero_count += 1
+            continue
+        if output_mode == "file_paths_only":
+            fp_paths.append(rendered)
+            continue
         remaining = effective_cap_chars - total_chars
         if remaining <= 0:
             blocks.append({"type": "text", "text": "[truncated: structured output cap reached]"})
             break
         text = rendered[:remaining]
         total_chars += len(text)
+        blocks.append({"type": "text", "text": text})
+
+    if output_mode == "file_paths_with_match_count":
+        # Aggregate into a single text block — one line per hit, suppress zeros.
+        agg_parts: list[str] = []
+        agg_parts.append(
+            f"# grep — output_mode=file_paths_with_match_count"
+            f" ({mc_hit_count} files with matches, {mc_zero_count} files with no matches)"
+        )
+        if mc_hit_lines:
+            agg_parts.append("")
+            agg_parts.extend(sorted(mc_hit_lines, key=lambda line: -int(line.rsplit("\t", 1)[-1])))
+        if mc_zero_count > 0:
+            agg_parts.append("")
+            agg_parts.append(f"... and {mc_zero_count} file(s) with no matches")
+        text = "\n".join(agg_parts)
+        total_chars = len(text)
+        blocks.append({"type": "text", "text": text})
+
+    if output_mode == "file_paths_only":
+        # Aggregate paths into a single text block — one path per line.
+        agg_parts = [f"# grep — output_mode=file_paths_only ({len(fp_paths)} files)"]
+        if fp_paths:
+            agg_parts.append("")
+            agg_parts.extend(fp_paths)
+        text = "\n".join(agg_parts)
+        total_chars = len(text)
         blocks.append({"type": "text", "text": text})
 
     response: dict[str, Any] = {

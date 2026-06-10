@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from benchmarks.code_intel.call_graph_bench import run_call_graph_bench
 
 pytestmark = pytest.mark.slow

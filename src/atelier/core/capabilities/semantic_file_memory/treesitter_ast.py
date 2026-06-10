@@ -23,17 +23,10 @@ Adding a new language is editing ``_LANG_CONFIG``:
 from __future__ import annotations
 
 import logging
-import threading
 from dataclasses import dataclass, field
 from typing import Any
 
 _logger = logging.getLogger(__name__)
-
-
-# Thread-local storage for tree-sitter parsers.
-# The Rust _native::Parser is !Send, so it must never be shared across threads.
-# Each thread gets its own parser instances via thread-local caching.
-_get_parser_local = threading.local()
 
 
 @dataclass(frozen=True)
@@ -395,13 +388,9 @@ def _get_parser(lang: str) -> Any:
 
         cfg = _LANG_CONFIG.get(lang)
         name = (cfg.parser_name if cfg else "") or lang
-        # Thread-local cache: the Rust Parser is !Send so it must never
-        # be shared across threads (would panic at runtime).
-        cache = _get_parser_local.__dict__
-        key = f"_parser_{name}"
-        if key not in cache:
-            cache[key] = get_parser(name)
-        return cache[key]
+        # Parser instances are Rust-backed and unsendable; create them per call
+        # instead of caching them across thread lifetimes.
+        return get_parser(name)
     except Exception as exc:
         logging.exception("Recovered from broad exception handler")
         _logger.warning("tree-sitter parser unavailable for %s: %s", lang, exc)

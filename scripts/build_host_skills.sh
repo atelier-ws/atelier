@@ -3,9 +3,8 @@
 #
 # Usage:
 #   bash scripts/build_host_skills.sh --host codex
-#   bash scripts/build_host_skills.sh --host claude --include-dev
 #   bash scripts/build_host_skills.sh --host codex --dest /tmp/codex-skills
-#   bash scripts/build_host_skills.sh --host all --include-dev
+#   bash scripts/build_host_skills.sh --host all
 
 set -euo pipefail
 
@@ -13,12 +12,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILLS_SRC="${ATELIER_REPO}/integrations/skills"
 RENDER_SCRIPT="${SCRIPT_DIR}/sync_agent_context.py"
-ALWAYS_EXCLUDED_SKILLS=("trace")
 
 HOST=""
 DEST=""
-INCLUDE_DEV=0
-
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --host)
@@ -36,9 +32,6 @@ while [[ $# -gt 0 ]]; do
             fi
             DEST="$2"
             shift
-            ;;
-        --include-dev)
-            INCLUDE_DEV=1
             ;;
         *)
             echo "Unknown option: $1" >&2
@@ -60,40 +53,28 @@ if [[ ! -d "$SKILLS_SRC" ]]; then
     exit 1
 fi
 
-DEV_ONLY_SKILLS=()
+HIDDEN_SKILLS=()
 while IFS= read -r skill_name; do
-    [[ -n "$skill_name" ]] && DEV_ONLY_SKILLS+=("$skill_name")
+    [[ -n "$skill_name" ]] && HIDDEN_SKILLS+=("$skill_name")
 done < <(
     PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" uv run python - <<'PY'
-from atelier.core.environment import DEV_ONLY_SKILLS
+from atelier.core.environment import HIDDEN_SKILLS
 
-for name in sorted(DEV_ONLY_SKILLS):
+for name in sorted(HIDDEN_SKILLS):
     print(name)
 PY
 )
 
-is_dev_only_skill() {
+is_hidden_skill() {
     local name="$1"
     local skill
-    for skill in "${DEV_ONLY_SKILLS[@]}"; do
+    for skill in "${HIDDEN_SKILLS[@]}"; do
         if [[ "$skill" == "$name" ]]; then
             return 0
         fi
     done
     return 1
 }
-
-is_always_excluded_skill() {
-    local name="$1"
-    local skill
-    for skill in "${ALWAYS_EXCLUDED_SKILLS[@]}"; do
-        if [[ "$skill" == "$name" ]]; then
-            return 0
-        fi
-    done
-    return 1
-}
-
 default_dest_for_host() {
     case "$1" in
         claude) printf "%s" "${ATELIER_REPO}/integrations/claude/plugin/skills" ;;
@@ -111,41 +92,23 @@ render_host_bundle() {
     local dest_dir="$2"
     local skill_dir
     local skill_name
-    local projected_skill
-    local projected_skills=()
 
     mkdir -p "$dest_dir"
-    find "$dest_dir" -mindepth 1 -maxdepth 1 \
-        ! -name ".gitignore" \
-        ! -name "README.md" \
-        -exec rm -rf {} +
 
-    while IFS= read -r projected_skill; do
-        [[ -n "$projected_skill" ]] && projected_skills+=("$projected_skill")
-    done < <(
-        PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" uv run python - <<'PY'
-from atelier.core.capabilities.default_definitions import build_default_registry
 
-for role_id in build_default_registry().surfaced_role_ids("shared_skill"):
-    print(role_id)
-PY
-    )
-
-    for skill_name in "${projected_skills[@]}"; do
-        skill_dir="${SKILLS_SRC}/${skill_name}"
-        if [[ ! -d "$skill_dir" || ! -f "$skill_dir/SKILL.md" ]]; then
+    while IFS= read -r skill_dir; do
+        [[ -n "$skill_dir" ]] || continue
+        skill_name="$(basename "$skill_dir")"
+        if [[ ! -f "$skill_dir/SKILL.md" ]]; then
             continue
         fi
-        if is_always_excluded_skill "$skill_name"; then
-            continue
-        fi
-        if [[ "$INCLUDE_DEV" != "1" ]] && is_dev_only_skill "$skill_name"; then
+        if is_hidden_skill "$skill_name"; then
             continue
         fi
 
         mkdir -p "$dest_dir/$skill_name"
         cp "$skill_dir/SKILL.md" "$dest_dir/$skill_name/SKILL.md"
-    done
+    done < <(find "$SKILLS_SRC" -mindepth 1 -maxdepth 1 -type d | sort)
 
     echo "[atelier:skills] generated ${host} bundle -> ${dest_dir}"
 }

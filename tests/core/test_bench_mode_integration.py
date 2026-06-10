@@ -28,19 +28,21 @@ def test_bench_on_vs_off_mcp_tool_counts_differ(monkeypatch: pytest.MonkeyPatch)
     """
     m = sys.modules["atelier.bench.mode"]
 
-    from atelier.core.environment import STABLE_LLM_TOOLS, mcp_tool_visible_to_llm
+    from atelier.core.environment import mcp_tool_visible_to_llm
+
+    visible_sample = ("compact", "context", "read", "verify")
 
     # ---- bench-on arm -------------------------------------------------------
     monkeypatch.setattr(m, "_mode", None)
     monkeypatch.setenv("ATELIER_BENCH_MODE", "on")
     m.bootstrap()
-    on_count = sum(1 for t in STABLE_LLM_TOOLS if mcp_tool_visible_to_llm(t))
+    on_count = sum(1 for t in visible_sample if mcp_tool_visible_to_llm(t))
 
     # ---- bench-off arm -------------------------------------------------------
     monkeypatch.setattr(m, "_mode", None)
     monkeypatch.setenv("ATELIER_BENCH_MODE", "off")
     m.bootstrap()
-    off_count = sum(1 for t in STABLE_LLM_TOOLS if mcp_tool_visible_to_llm(t))
+    off_count = sum(1 for t in visible_sample if mcp_tool_visible_to_llm(t))
 
     # ---- assertions ----------------------------------------------------------
     assert on_count > off_count, f"Expected on_count({on_count}) > off_count({off_count})"

@@ -53,7 +53,13 @@ from atelier.core.capabilities.swarm import (
     spawn_swarm_coordinator,
     stop_swarm_run,
 )
+from atelier.core.capabilities.workflow_runtime_state import (
+    pause_workflow_runtime,
+    stop_workflow_runtime,
+    workflow_runtime_detail,
+)
 from atelier.core.foundation.models import Trace, coerce_trace_json, to_jsonable
+from atelier.core.foundation.paths import resolve_session_state_path, resolve_workspace_root
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.auth import verify_api_key
 from atelier.core.service.config import cfg
@@ -142,6 +148,12 @@ class SwarmLaunchRequest(BaseModel):
     provider_env: dict[str, str] = Field(default_factory=dict)
 
 
+class WorkflowSnapshotActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = None
+
+
 class HostRouterEvaluateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -189,6 +201,29 @@ def _build_swarm_provider_env(payload: SwarmLaunchRequest) -> dict[str, str]:
         if payload.provider_base_url:
             env["ATELIER_OPENAI_BASE_URL"] = payload.provider_base_url
     return env
+
+
+def _workflow_session_state_path() -> Path:
+    return resolve_session_state_path(resolve_workspace_root())
+
+
+def _read_workflow_session_state() -> dict[str, Any]:
+    path = _workflow_session_state_path()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _write_workflow_session_state(state: dict[str, Any]) -> None:
+    path = _workflow_session_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(".tmp")
+    tmp_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    tmp_path.replace(path)
 
 
 def _default_swarm_spec_name(project_root: Path) -> str:
@@ -556,6 +591,7 @@ def _usage_total_tokens(usage: dict[str, Any]) -> int:
             "cache_creation_input_tokens",
             "output_tokens",
             "thinking_tokens",
+            # reasoning_output_tokens is a subset of output_tokens.
         )
     )
 
@@ -599,6 +635,10 @@ def _normalize_trace_usage_entry(raw_entry: Any, *, fallback_model: str = "") ->
         "model": model_id,
         "input_tokens": int(raw_entry.get("input_tokens") or 0),
         "output_tokens": int(raw_entry.get("output_tokens") or 0),
+        "reasoning_output_tokens": min(
+            int(raw_entry.get("reasoning_output_tokens") or 0),
+            int(raw_entry.get("output_tokens") or 0),
+        ),
         "thinking_tokens": int(raw_entry.get("thinking_tokens") or 0),
         "cached_input_tokens": int(raw_entry.get("cached_input_tokens") or 0),
         "cache_creation_input_tokens": int(raw_entry.get("cache_creation_input_tokens") or 0),
@@ -608,6 +648,7 @@ def _normalize_trace_usage_entry(raw_entry: Any, *, fallback_model: str = "") ->
     token_fields = (
         entry["input_tokens"],
         entry["output_tokens"],
+        entry["reasoning_output_tokens"],
         entry["thinking_tokens"],
         entry["cached_input_tokens"],
         entry["cache_creation_input_tokens"],
@@ -645,6 +686,7 @@ def _trace_usage_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
             "model": fallback_model,
             "input_tokens": payload.get("input_tokens") or 0,
             "output_tokens": payload.get("output_tokens") or 0,
+            "reasoning_output_tokens": payload.get("reasoning_output_tokens") or 0,
             "thinking_tokens": payload.get("thinking_tokens") or 0,
             "cached_input_tokens": payload.get("cached_input_tokens") or 0,
             "cache_creation_input_tokens": payload.get("cache_creation_input_tokens") or 0,
@@ -662,6 +704,7 @@ def _trace_model_usages(payload: dict[str, Any]) -> list[dict[str, Any]]:
         usage: dict[str, Any] = {
             "input_tokens": int(raw_entry.get("input_tokens") or 0),
             "output_tokens": int(raw_entry.get("output_tokens") or 0),
+            "reasoning_output_tokens": int(raw_entry.get("reasoning_output_tokens") or 0),
             "thinking_tokens": int(raw_entry.get("thinking_tokens") or 0),
             "cached_input_tokens": int(raw_entry.get("cached_input_tokens") or 0),
             "cache_creation_input_tokens": int(raw_entry.get("cache_creation_input_tokens") or 0),
@@ -2540,7 +2583,7 @@ def _optimization_runtime_coverage() -> list[dict[str, Any]]:
                 "Copilot preflight task",
                 "atelier CLI shell task",
                 "Copilot instructions",
-                "Atelier chatmode",
+                "Atelier agent",
             ],
             "notes": (
                 "Copilot now has a task-driven preflight that runs atelier CLI checks before chat work begins. "
@@ -3714,7 +3757,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         return {
             "remote_enabled": cfg_telemetry.remote_enabled,
             "lexical_frustration_enabled": cfg_telemetry.lexical_frustration_enabled,
-            "dev_mode": cfg.dev_mode,
         }
 
     @app.post("/telemetry/config", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
@@ -3728,7 +3770,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         return {
             "remote_enabled": cfg_telemetry.remote_enabled,
             "lexical_frustration_enabled": cfg_telemetry.lexical_frustration_enabled,
-            "dev_mode": cfg.dev_mode,
         }
 
     @app.post("/telemetry/ack", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
@@ -3741,7 +3782,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         return {
             "remote_enabled": cfg_telemetry.remote_enabled,
             "lexical_frustration_enabled": cfg_telemetry.lexical_frustration_enabled,
-            "dev_mode": cfg.dev_mode,
         }
 
     @app.get("/telemetry/local", tags=["telemetry"], dependencies=[Depends(verify_api_key)])
@@ -3817,6 +3857,39 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         filtered = _filter_analytics_rows(rows, agent=agent, model=model, category=category, search=search)
         return _build_analytics_summary(filtered, days=days)
 
+    @app.get("/analytics/tui-sessions", tags=["analytics"])
+    async def get_tui_sessions(limit: int = 50) -> dict[str, Any]:
+        """Return recent TUI coding sessions with cost/cache analytics."""
+        try:
+            from atelier.core.capabilities.analytics.store import AnalyticsStore
+
+            tui_store = AnalyticsStore()
+            sessions = [
+                {
+                    "session_id": s.session_id,
+                    "started_at": s.started_at,
+                    "ended_at": s.ended_at,
+                    "model": s.model,
+                    "provider": s.provider,
+                    "mode": s.mode,
+                    "total_cost_usd": s.total_cost_usd,
+                    "total_savings_usd": s.total_savings_usd,
+                    "cache_efficiency_pct": s.cache_efficiency_pct,
+                    "input_tokens": s.input_tokens,
+                    "output_tokens": s.output_tokens,
+                    "cache_read_tokens": s.cache_read_tokens,
+                    "cache_write_tokens": s.cache_write_tokens,
+                    "turns": s.turns,
+                    "tool_calls": s.tool_calls,
+                }
+                for s in tui_store.recent_sessions(limit)
+            ]
+            stats = tui_store.summary_stats()
+            tui_store.close()
+            return {"sessions": sessions, "summary": stats}
+        except Exception as exc:
+            return {"sessions": [], "summary": {}, "error": str(exc)}
+
     @app.get("/analytics/dashboard", tags=["analytics"], dependencies=[Depends(verify_api_key)])
     def analytics_dashboard(
         days: int = Query(30, ge=1, le=365),
@@ -3838,6 +3911,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 json_extract(payload, '$.model') AS model,
                 CAST(json_extract(payload, '$.input_tokens') AS INTEGER) AS input_tokens,
                 CAST(json_extract(payload, '$.output_tokens') AS INTEGER) AS output_tokens,
+                CAST(json_extract(payload, '$.reasoning_output_tokens') AS INTEGER) AS reasoning_output_tokens,
                 CAST(json_extract(payload, '$.thinking_tokens') AS INTEGER) AS thinking_tokens,
                 CAST(json_extract(payload, '$.cached_input_tokens') AS INTEGER) AS cached_tokens,
                 CAST(json_extract(payload, '$.cache_creation_input_tokens') AS INTEGER) AS cache_write_tokens,
@@ -3877,6 +3951,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     "model": d.get("model") or "",
                     "input_tokens": d.get("input_tokens") or 0,
                     "output_tokens": d.get("output_tokens") or 0,
+                    "reasoning_output_tokens": d.get("reasoning_output_tokens") or 0,
                     "thinking_tokens": d.get("thinking_tokens") or 0,
                     "cached_input_tokens": d.get("cached_tokens") or 0,
                     "cache_creation_input_tokens": d.get("cache_write_tokens") or 0,
@@ -3887,6 +3962,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
                 in_t = d.get("input_tokens") or 0
                 out_t = d.get("output_tokens") or 0
+                reasoning_out_t = min(d.get("reasoning_output_tokens") or 0, out_t)
                 think_t = d.get("thinking_tokens") or 0
                 cache_r = d.get("cached_tokens") or 0
                 cache_w = d.get("cache_write_tokens") or 0
@@ -3906,6 +3982,11 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                         "created_at": d.get("created_at") or "",
                         "input_tokens": in_t,
                         "output_tokens": out_t,
+                        "reasoning_output_tokens": reasoning_out_t,
+                        "visible_output_tokens": max(out_t - reasoning_out_t, 0),
+                        "reasoning_output_ratio": (
+                            round(reasoning_out_t / out_t, 4) if out_t else 0.0
+                        ),
                         "thinking_tokens": think_t,
                         "cached_tokens": cache_r,
                         "cache_write_tokens": cache_w,
@@ -4745,6 +4826,31 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         return FileResponse(file_path, media_type=media_type, filename=file_path.name)
 
+    @app.get("/v1/files/projection", tags=["files"], dependencies=[Depends(verify_api_key)])
+    def get_file_projection(
+        path: str,
+        view: str = "compact",
+        range: str | None = None,
+        max_lines: int = 200,
+    ) -> dict[str, Any]:
+        """Return structured projection metadata for a file read."""
+        from atelier.gateway.adapters.mcp_server import tool_smart_read
+
+        payload: dict[str, Any] = {"path": path, "include_meta": True}
+        if view == "compact":
+            pass
+        elif view == "exact":
+            payload["expand"] = True
+        elif view == "summary":
+            payload["max_lines"] = max_lines
+        elif view == "range":
+            if not range:
+                raise HTTPException(status_code=400, detail="range is required when view=range")
+            payload["range"] = range
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported projection view: {view}")
+        return cast(dict[str, Any], tool_smart_read(payload))
+
     @app.get("/ledgers/{session_id}", tags=["compat"], dependencies=[Depends(verify_api_key)])
     def compat_ledger(session_id: str) -> dict[str, Any]:
         """Compatibility: GET /ledgers/{session_id} -> returns run ledger data.
@@ -4940,6 +5046,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 "raw_artifact_ids": trace.raw_artifact_ids,
                 "input_tokens": trace.input_tokens,
                 "output_tokens": trace.output_tokens,
+                "reasoning_output_tokens": trace.reasoning_output_tokens,
                 "thinking_tokens": trace.thinking_tokens,
                 "cached_input_tokens": trace.cached_input_tokens,
                 "cache_creation_input_tokens": trace.cache_creation_input_tokens,
@@ -5054,7 +5161,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         from atelier.core.environment import skill_visible
 
         if not skill_visible(name):
-            raise HTTPException(status_code=404, detail=f"Skill not available outside dev mode: {name}")
+            raise HTTPException(status_code=404, detail=f"Skill is hidden from the public host surface: {name}")
         root = Path(__file__).parent.parent.parent.parent.parent
         md = root / "integrations" / "skills" / name / "SKILL.md"
         if not md.exists():
@@ -5428,6 +5535,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             "total_turns": 0,
             "input_tokens": 0,
             "output_tokens": 0,
+            "reasoning_output_tokens": 0,
             "thinking_tokens": 0,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
@@ -5456,6 +5564,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 "total_turns",
                 "input_tokens",
                 "output_tokens",
+                "reasoning_output_tokens",
                 "thinking_tokens",
                 "cached_input_tokens",
                 "cache_creation_input_tokens",
@@ -6226,6 +6335,28 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             raise HTTPException(status_code=500, detail="Failed to read report files") from exc
 
         return {"week": week, "markdown": markdown_content, "json": json_data}
+
+    @app.get("/v1/workflow/current", tags=["workflow"], dependencies=[Depends(verify_api_key)])
+    def get_workflow_current() -> dict[str, Any]:
+        detail = workflow_runtime_detail(_read_workflow_session_state())
+        detail["workspace_root"] = str(resolve_workspace_root())
+        return detail
+
+    @app.post("/v1/workflow/current/pause", tags=["workflow"], dependencies=[Depends(verify_api_key)])
+    def post_workflow_pause(payload: WorkflowSnapshotActionRequest) -> dict[str, Any]:
+        state = _read_workflow_session_state()
+        detail = pause_workflow_runtime(state, pause_reason=str(payload.reason or ""))
+        _write_workflow_session_state(state)
+        detail["workspace_root"] = str(resolve_workspace_root())
+        return detail
+
+    @app.post("/v1/workflow/current/stop", tags=["workflow"], dependencies=[Depends(verify_api_key)])
+    def post_workflow_stop(payload: WorkflowSnapshotActionRequest) -> dict[str, Any]:
+        state = _read_workflow_session_state()
+        detail = stop_workflow_runtime(state, stop_reason=str(payload.reason or ""))
+        _write_workflow_session_state(state)
+        detail["workspace_root"] = str(resolve_workspace_root())
+        return detail
 
     @app.get("/v1/swarm/launch/options", tags=["swarm"], dependencies=[Depends(verify_api_key)])
     def get_swarm_launch_options(

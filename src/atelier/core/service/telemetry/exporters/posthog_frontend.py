@@ -11,8 +11,6 @@ from atelier.core.service.telemetry.config import load_telemetry_config, posthog
 
 
 def frontend_telemetry_config() -> dict[str, Any]:
-    from atelier.core.service.config import cfg as service_cfg
-
     cfg = load_telemetry_config()
     return {
         "remote_enabled": cfg.remote_enabled,
@@ -22,7 +20,6 @@ def frontend_telemetry_config() -> dict[str, Any]:
         "anon_id": get_anon_id(),
         "acknowledged": is_acknowledged(),
         "service_version": _service_version(),
-        "dev_mode": service_cfg.dev_mode,
     }
 
 

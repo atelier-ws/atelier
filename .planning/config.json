@@ -17,7 +17,7 @@
     "quick_branch_template": null
   },
   "workflow": {
-    "research": true,
+    "research": false,
     "plan_check": false,
     "verifier": false,
     "nyquist_validation": false,
@@ -33,7 +33,7 @@
     "text_mode": false,
     "research_before_questions": false,
     "discuss_mode": "discuss",
-    "skip_discuss": true,
+    "skip_discuss": false,
     "max_discuss_passes": 3,
     "subagent_timeout": 300000,
     "context_coverage_gate": true,
@@ -59,6 +59,7 @@
   },
   "agent_skills": {},
   "features": {},
+  "resolve_model_ids": "omit",
   "model_overrides": {
     "gsd-phase-researcher": "claude-opus-4.8",
     "gsd-project-researcher": "claude-opus-4.8",
@@ -88,7 +89,6 @@
     "gsd-ui-auditor": "claude-opus-4.8",
     "gsd-user-profiler": "claude-opus-4.8"
   },
-  "resolve_model_ids": "omit",
   "mode": "yolo",
   "granularity": "coarse"
 }

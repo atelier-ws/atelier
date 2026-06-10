@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 
 from atelier.core.capabilities.benchmark_gate import (
+    evaluate_atelierbench_gate,
     evaluate_terminalbench_gate,
-    evaluate_vix_gate,
 )
 
 
@@ -27,8 +27,8 @@ def test_evaluate_terminalbench_gate_passes_with_noninferior_cheaper_candidate(t
     assert verdict["details"]["estimated_cost_savings_usd"] == 80.0
 
 
-def test_evaluate_vix_gate_requires_judged_results_and_cost_reduction(tmp_path: Path) -> None:
-    run_dir = tmp_path / "eval"
+def test_evaluate_atelierbench_gate_requires_judged_results_and_cost_reduction(tmp_path: Path) -> None:
+    run_dir = tmp_path / "atelierbench"
     run_dir.mkdir()
     rows = [
         {"arm": "baseline", "correct": True, "cost_usd": 2.0, "valid": True},
@@ -39,8 +39,8 @@ def test_evaluate_vix_gate_requires_judged_results_and_cost_reduction(tmp_path: 
         encoding="utf-8",
     )
 
-    verdict = evaluate_vix_gate(run_dir, baseline_arm="baseline", candidate_arm="atelier")
+    verdict = evaluate_atelierbench_gate(run_dir, baseline_arm="baseline", candidate_arm="atelier")
 
-    assert verdict["suite"] == "eval"
+    assert verdict["suite"] == "atelierbench"
     assert verdict["passed"] is False
     assert "quality gate requires judged results" in verdict["reasons"][0]
