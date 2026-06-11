@@ -939,6 +939,33 @@ class ContextReuseCapability:
             )
         return chains
 
+    def rescue_candidates(self, *, task: str, error: str, limit: int = 3) -> list[ScoredBlock]:
+        """Rank active blocks by raw BM25 evidence for an explicit rescue call.
+
+        Deliberately bypasses the RRF/ANN/MMR injection pipeline: rank-based
+        fusion is flat on a small block set and hash-vector cosine is noisy,
+        while raw bm25 cleanly separates true matches (13-22 on the seed
+        blocks) from unrelated errors (<=4.3). The caller applies the
+        evidence floor and falls back honestly below it.
+        """
+        blocks = self._all_active_blocks()
+        if not blocks:
+            return []
+        query_tokens = _tokenise(f"{task} {error}")
+        doc_tokens_map = {b.id: _tokenise(_bm25_document_text(b)) for b in blocks}
+        avg_len = sum(len(v) for v in doc_tokens_map.values()) / max(1, len(doc_tokens_map))
+        idf = _build_idf(list(doc_tokens_map.values()))
+        scored = [
+            ScoredBlock(
+                block=b,
+                score=_bm25(query_tokens, doc_tokens_map[b.id], idf, avg_len=avg_len),
+                breakdown={},
+            )
+            for b in blocks
+        ]
+        scored.sort(key=lambda s: s.score, reverse=True)
+        return scored[:limit]
+
     def savings_estimate(self) -> dict[str, int]:
         return {
             "avoided_failures": self._avoided_failures,

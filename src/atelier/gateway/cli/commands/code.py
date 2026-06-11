@@ -275,7 +275,7 @@ def _index_repo_with_progress(
         prefix_markup = f"[dim]{frame_prefix}[/dim]" if frame_prefix else ""
         console = Console(stderr=True)
         progress = Progress(
-            TextColumn(f"{prefix_markup}[bold magenta]{{task.description}}[/bold magenta]"),
+            TextColumn(f"{prefix_markup}{{task.description}}"),
             BarColumn(
                 bar_width=32,
                 style="bright_black",
@@ -289,7 +289,7 @@ def _index_repo_with_progress(
             transient=False,
         )
         with progress:
-            task_id = progress.add_task(description, total=None)
+            task_id = progress.add_task(f"[green]⟳[/green]  {description}", total=None)
 
             def _on_progress(current: int, total: int) -> None:
                 if total:
@@ -297,7 +297,7 @@ def _index_repo_with_progress(
                         task_id,
                         completed=current,
                         total=total,
-                        description=f"{description}  ({current}/{total})",
+                        description=f"[green]⟳[/green]  {description}  ({current}/{total})",
                     )
                 else:
                     progress.update(task_id, completed=current)
@@ -311,7 +311,7 @@ def _index_repo_with_progress(
                 task_id,
                 total=100,
                 completed=100,
-                description=f"✓ {success_description or description}",
+                description=f"[green]✓[/green]  {success_description or description}",
             )
             return payload
     except ImportError:
@@ -359,10 +359,11 @@ def code_index_cmd(
     )
 
     stats_line = (
-        f"indexed {payload['files_indexed']} files, {payload['symbols_indexed']} symbols "
-        f"({payload['imports_indexed']} imports)"
+        f"{click.style('✓', fg='green')}  Indexed {payload['files_indexed']} files, {payload['symbols_indexed']} "
+        f"symbols ({payload['imports_indexed']} imports)"
     )
-    click.echo(f"{frame_prefix}{stats_line}" if frame_prefix else stats_line)
+    prefix_markup = click.style(frame_prefix, dim=True) if frame_prefix else ""
+    click.echo(f"{prefix_markup}{stats_line}" if frame_prefix else stats_line)
 
 
 __all__ = ["_code_context_engine", "_index_repo_with_progress", "code_group", "zoekt_group"]
