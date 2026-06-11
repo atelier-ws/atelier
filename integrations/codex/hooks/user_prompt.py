@@ -20,15 +20,14 @@ def main() -> int:
 
         payload = json.loads(sys.stdin.read() or "{}")
         output = build_codex_user_prompt_output(_atelier_root(), payload)
-        message = output.get("message")
+        rendered: dict[str, object] = {}
+        message = output.get("uiMessage")
         if isinstance(message, str) and message.startswith("Atelier context guard: high context"):
-            display = message.replace("consider compacting", "run /compact before continuing")
-            sys.stdout.write(
-                json.dumps(
-                    {"systemMessage": ("Atelier display-only warning (not added to model context): " f"{display}")}
-                )
-                + "\n"
+            rendered["systemMessage"] = message.replace("Atelier context guard: high context", "Context high").replace(
+                "consider compacting", "run /compact"
             )
+        if rendered:
+            sys.stdout.write(json.dumps(rendered) + "\n")
     except (ImportError, json.JSONDecodeError, KeyError, TypeError, ValueError, OSError):
         pass
     return 0

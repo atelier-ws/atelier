@@ -235,7 +235,7 @@ def test_mcp_sql_surface(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     )
 
     assert result["isError"] is False
-    assert result["results"][0]["rows"] == [{"id": 1}]
+    assert result["results"][0]["rows"] == [[1]]
 
 
 def test_tool_code_search_returns_cache_hit_field(tmp_path: Path) -> None:

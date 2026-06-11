@@ -415,6 +415,11 @@ class ContextRuntime:
             fsm_skip_etraces=fsm_skip_etraces,
         )
 
+    # Minimum raw-bm25 evidence before rescue claims a procedure match.
+    # Calibrated on the seed ReasonBlocks: true matches score 13-22, unrelated
+    # errors top out at ~4.3. See rescue_failure below.
+    _RESCUE_MIN_BM25 = 8.0
+
     def rescue_failure(
         self,
         *,
@@ -424,13 +429,17 @@ class ContextRuntime:
         recent_actions: list[str] | None = None,
         domain: str | None = None,
     ) -> RescueResult:
-        scored = self.core_runtime.context_reuse.retrieve(
-            task=task,
-            domain=domain,
-            files=files,
-            errors=[error],
+        # Rescue is an explicit distress call: rank by raw bm25 evidence and
+        # require the floor before claiming a match; below it -> honest
+        # fallback. The unsolicited-injection pipeline (retrieve) is
+        # deliberately not used here: its keyword-trigger gate drops valid
+        # matches and its rank fusion is flat on a small block set.
+        scored = self.core_runtime.context_reuse.rescue_candidates(
+            task=f"{task} {domain or ''}".strip(),
+            error=" ".join([error, *(recent_actions or [])]),
             limit=3,
         )
+        scored = [s for s in scored if s.score >= self._RESCUE_MIN_BM25]
         if not scored:
             return RescueResult(
                 rescue=(

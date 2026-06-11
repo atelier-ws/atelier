@@ -19,6 +19,7 @@ from atelier.core.capabilities.source_projection import (
     apply_compact_projection_edits,
 )
 
+from . import command_discipline
 from .fuzzy_match import apply_fuzzy_replace, normalize_for_fuzzy
 from .path_safety import PROTECTED_PARTS
 from .symbol_edit import SymbolEditError, record_symbol_edit_memory, resolve_symbol_edit
@@ -72,6 +73,18 @@ def _resolve(root: Path, raw_path: str) -> Path:
 
 def _normalize_typography(text: str) -> str:
     return text.translate(_SMART_QUOTES)
+
+
+_ALL_WS = re.compile(r"\s+")
+_TRAILING_COMMA_BEFORE_CLOSER = re.compile(r",([)\]\}])")
+# Minimum stripped length before a contained new_string counts as "already
+# applied" — guards against trivially short coincidental matches.
+_REFORMAT_NOOP_MIN_CHARS = 24
+
+
+def _strip_formatting(text: str) -> str:
+    """Strip all whitespace and trailing commas so formatter rewraps compare equal."""
+    return _TRAILING_COMMA_BEFORE_CLOSER.sub(r"\1", _ALL_WS.sub("", text))
 
 
 def _placeholder_pattern(old_string: str) -> re.Pattern[str] | None:
@@ -175,6 +188,14 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
         line_start = content[:absolute].count("\n") + 1
         line_end = line_start + new_string.count("\n")
         return content, line_start, line_end, "noop"
+
+    # Formatter-tolerant variant: a post-edit formatter may have rewrapped the
+    # previously applied new_string, so compare with all whitespace stripped.
+    if old_string and new_string:
+        flat_new = _strip_formatting(new_string)
+        if len(flat_new) >= _REFORMAT_NOOP_MIN_CHARS and flat_new in _strip_formatting(scoped):
+            line = spec.start_line or 1
+            return content, line, line, "noop"
 
     if normalize_for_fuzzy(old_string):
         fuzzed, line_start, line_end = apply_fuzzy_replace(scoped, old_string, new_string)
@@ -304,6 +325,20 @@ def _build_retry_hint(
             disk_content = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             return None
+
+    # Already-applied detection against the whole file: a line-scoped edit may
+    # miss content that a formatter moved or rewrapped outside the scope.
+    new_string = str(edit.get("new_string") or "")
+    if new_string:
+        flat_new = _strip_formatting(new_string)
+        if len(flat_new) >= _REFORMAT_NOOP_MIN_CHARS and flat_new in _strip_formatting(disk_content):
+            return {
+                "already_applied": True,
+                "hint": (
+                    "edit appears already applied — the file already contains new_string "
+                    "(possibly reformatted); do not retry this edit"
+                ),
+            }
 
     old_lines = old_string.splitlines()
     first_anchor = next((line.strip() for line in old_lines if line.strip()), None)
@@ -470,6 +505,8 @@ def apply_rich_edits(
 
         for path, content in file_state.items():
             _atomic_write(path, content)
+        if file_state:
+            command_discipline.note_workspace_changed()
         if resolved_symbol_edits:
             from atelier.core.capabilities.code_context import CodeContextEngine
 
@@ -488,7 +525,10 @@ def apply_rich_edits(
             # disk region so the follow-up edit doesn't need a re-read turn.
             if "old_string not found" in str(exc) or "not found in file" in str(exc):
                 hint = _build_retry_hint(root, backups, _current_edit)
-                if hint:
+                if hint and hint.get("already_applied"):
+                    err["already_applied"] = True
+                    err["hint"] = hint["hint"]
+                elif hint:
                     err["retry_with"] = hint
             failed.append(err)
         if atomic:
@@ -499,7 +539,12 @@ def apply_rich_edits(
                 else:
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(payload)
-            return {"applied": [], "failed": failed, "rolled_back": True}
+            envelope: dict[str, Any] = {"applied": [], "failed": failed, "rolled_back": True}
+            already = [str(entry.get("path")) for entry in applied if entry.get("already_applied")]
+            if already:
+                envelope["already_applied"] = already
+                envelope["note"] = "already_applied edits were found on disk pre-rollback and remain in effect"
+            return envelope
         for path, content in file_state.items():
             with contextlib.suppress(Exception):
                 _atomic_write(path, content)

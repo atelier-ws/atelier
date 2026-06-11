@@ -28,6 +28,7 @@ COPILOT_HOOKS_DIR="${HOME}/.copilot/hooks"
 echo "[atelier:copilot-cli] Installing hook scripts → ${HOOKS_DEST}"
 run "mkdir -p '${HOOKS_DEST}'"
 run "cp '${SCRIPT_DIR}/hooks/session_start.py' '${HOOKS_DEST}/'"
+run "cp '${SCRIPT_DIR}/hooks/post_tool_use_failure.py' '${HOOKS_DEST}/'"
 run "cp '${SCRIPT_DIR}/hooks/stop.py' '${HOOKS_DEST}/'"
 
 echo "[atelier:copilot-cli] Writing hooks.json → ${COPILOT_HOOKS_DIR}/hooks.json"
