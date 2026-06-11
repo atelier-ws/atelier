@@ -8,7 +8,7 @@ Prompts and bundled workspaces are read from a local task-source checkout
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, TypeAlias
 
@@ -34,6 +34,9 @@ class Task:
     # rough budget ordering for cheap-first runs
     weight: int  # 1=cheap (no clone) .. 3=heavy (large repo clone+build)
     task_dir: str  # folder name under atelierbench-tasks/tasks/
+    # Shell commands run inside the prepared workspace before the agent starts.
+    # Each string is passed to subprocess shell=True with the workspace as cwd.
+    setup_cmds: tuple[str, ...] = field(default_factory=tuple)
 
     def prompt_path(self) -> Path:
         task_root = atelierbench_tasks_dir() / "tasks" / self.task_dir
@@ -64,13 +67,21 @@ class Task:
 
 
 TASKS: list[Task] = [
-    Task("task1", "swift", ("empty",), 1, "task1_LRUFileCacheSPec"),
+    Task(
+        "task1",
+        "swift",
+        ("empty",),
+        1,
+        "task1_LRUFileCacheSPec",
+        setup_cmds=("swift package --version",),
+    ),
     Task(
         "task2",
         "swift",
         ("repo", "https://github.com/maquannene/Track", None),
         2,
         "task2_AddLoggingToCache",
+        setup_cmds=("swift package resolve",),
     ),
     Task(
         "task3",
@@ -78,9 +89,24 @@ TASKS: list[Task] = [
         ("repo", "https://github.com/serde-rs/json", "4f6dbfac79647d032b0997b5ab73022340c6dab7"),
         2,
         "task3_FixJsonParsingBug",
+        setup_cmds=("cargo fetch --quiet",),
     ),
-    Task("task4", "python", ("workspace", "workspace"), 1, "task4_WriteTestsForExportFlows"),
-    Task("task5", "python", ("workspace", "workspace"), 1, "task5_RefactorBasedOnTests"),
+    Task(
+        "task4",
+        "python",
+        ("workspace", "workspace"),
+        1,
+        "task4_WriteTestsForExportFlows",
+        setup_cmds=("uv pip install --quiet mitmproxy pytest",),
+    ),
+    Task(
+        "task5",
+        "python",
+        ("workspace", "workspace"),
+        1,
+        "task5_RefactorBasedOnTests",
+        setup_cmds=("uv pip install --quiet mitmproxy pytest",),
+    ),
     Task(
         "task6",
         "typescript",
@@ -91,6 +117,7 @@ TASKS: list[Task] = [
         ),
         3,
         "task6_AddFrenchSupportToOpenClaw",
+        setup_cmds=("npm ci --prefer-offline --silent 2>/dev/null || npm install --silent",),
     ),
     Task(
         "task7",
@@ -98,6 +125,9 @@ TASKS: list[Task] = [
         ("repo", "https://github.com/kirby88/codex", "7a393668185da6710425698885731b9af28ca0e0"),
         3,
         "task7_FixCompileBugCodex",
+        # Pre-fetch deps but intentionally do NOT install libcap — its absence
+        # is the CI bug this task is designed to diagnose and fix.
+        setup_cmds=("cargo fetch --quiet 2>/dev/null || true",),
     ),
 ]
 
