@@ -202,6 +202,7 @@ _COMPACT_BANDS: tuple[tuple[int, int], ...] = ((400_000, 1), (150_000, 2), (50_0
 # Tracks Anthropic's published cache-read prices (~10% of input).
 _DEFAULT_CACHE_READ_USD_PER_MTOK = 0.30
 _MODEL_CACHE_READ_USD_PER_MTOK = {
+    "fable": 1.00,
     "opus": 1.50,
     "sonnet": 0.30,
     "haiku": 0.08,
@@ -260,8 +261,32 @@ def _context_window_tokens(model: str | None) -> int:
     return _DEFAULT_CONTEXT_WINDOW_TOKENS
 
 
-def _cache_read_price(model: str | None) -> float:
-    """Resolve cache-read $/1M-tokens for *model* (substring match, Sonnet default)."""
+def _model_pricing(model: str | None):  # type: ignore[no-untyped-def]
+    """Live rate card for *model*, or None when atelier/pricing is unavailable."""
+    try:
+        from atelier.core.capabilities.pricing import get_model_pricing
+
+        pricing = get_model_pricing(model or "")
+        if pricing.known and pricing.cache_read > 0:
+            return pricing
+    except Exception:  # noqa: BLE001 - hook must fail open without atelier installed
+        pass
+    return None
+
+
+def _cache_read_price(model: str | None, occupancy: int = 0) -> float:
+    """Resolve cache-read $/1M-tokens for *model*.
+
+    Premium-aware: above the model's long-context boundary (e.g. 200k) the
+    whole request bills at the premium cache-read rate. Falls back to the
+    static substring table when the live rate card is unavailable.
+    """
+    pricing = _model_pricing(model)
+    if pricing is not None:
+        threshold = pricing.long_context_threshold()
+        if occupancy and threshold and occupancy > threshold and pricing.cache_read_tiers:
+            return float(pricing.cache_read_tiers[0].rate)
+        return float(pricing.cache_read)
     lowered = (model or "").lower()
     for needle, price in _MODEL_CACHE_READ_USD_PER_MTOK.items():
         if needle in lowered:
@@ -366,7 +391,7 @@ def _compact_cooldown(occupancy: int) -> int:
 
 def _emit_compaction_advice(occupancy: int, pct: int, model: str | None, drifted: bool) -> None:
     """Inject a compaction nudge carrying the real per-turn cache-read cost."""
-    per_turn = occupancy / 1_000_000 * _cache_read_price(model)
+    per_turn = occupancy / 1_000_000 * _cache_read_price(model, occupancy)
     tok = _humanize_tokens(occupancy)
     if drifted:
         head = (
@@ -375,8 +400,18 @@ def _emit_compaction_advice(occupancy: int, pct: int, model: str | None, drifted
         )
     else:
         head = f"Context is ~{tok} tokens (~{pct}% of the window)"
+    boundary = ""
+    pricing = _model_pricing(model)
+    if pricing is not None:
+        threshold = pricing.long_context_threshold()
+        if threshold and occupancy > threshold:
+            boundary = (
+                f" The window is past the {threshold // 1000}k long-context boundary, so "
+                "input-side rates are doubled until it shrinks."
+            )
     msg = (
-        f"[Atelier] {head}. Carrying it re-bills ~${per_turn:.2f} per turn in cache reads. "
+        f"[Atelier] {head}. Carrying it re-bills ~${per_turn:.2f} per turn in cache reads."
+        f"{boundary} "
         "Call mcp__atelier__compact now, or tell the user to run /compact, to cut that."
     )
     sys.stdout.write(json.dumps({"type": "context", "content": msg}) + "\n")
@@ -431,7 +466,14 @@ def _credit_pending_compaction(state: dict[str, Any], occupancy: int, model: str
     delta = pre - occupancy
     if occupancy > 0 and 0 < delta <= pre:
         price_model = model or state.get("precompact_model") or ""
-        usd = delta / 1_000_000 * _cache_read_price(price_model)
+        # Premium-aware: when compaction drops the window below the
+        # long-context boundary, the saving is pre@premium - post@base,
+        # not just delta tokens at one flat rate.
+        usd = max(
+            0.0,
+            pre / 1_000_000 * _cache_read_price(price_model, pre)
+            - occupancy / 1_000_000 * _cache_read_price(price_model, occupancy),
+        )
         _append_compaction_savings_row(delta, usd, price_model)
         _clear_precompact(state)
     elif attempts >= 3:
