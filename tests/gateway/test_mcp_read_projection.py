@@ -275,3 +275,59 @@ def test_projection_edit_descriptor_returns_guidance_for_ambiguous_span(
     assert retry_with["selection_context"]["before"] == "package"
     assert retry_with["selection_context"]["after"] == "main"
     assert "range=L1-L1" in payload["failed"][0]["hint"]
+
+
+def test_read_batch_files_one_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    a = tmp_path / "a.txt"
+    b = tmp_path / "b.txt"
+    a.write_text("alpha\nbeta\n", encoding="utf-8")
+    b.write_text("one\ntwo\nthree\n", encoding="utf-8")
+
+    payload = tool_smart_read(
+        {
+            "files": [
+                {"path": str(a)},
+                {"path": str(b), "range": "1-2"},
+                {"path": str(tmp_path / "missing.txt")},
+                {},
+            ]
+        }
+    )
+
+    results = payload["files"]
+    assert len(results) == 4
+    assert "alpha" in results[0]["content"]
+    assert "two" in results[1]["content"] and "three" not in results[1]["content"]
+    assert "error" in results[2] and results[2]["path"].endswith("missing.txt")
+    assert "error" in results[3]
+
+
+def test_read_single_path_still_works_without_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    target = tmp_path / "solo.txt"
+    target.write_text("solo content\n", encoding="utf-8")
+
+    payload = tool_smart_read({"path": str(target)})
+
+    assert "files" not in payload
+    assert "solo content" in payload["content"]
+
+
+def test_edit_returns_inline_diff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    target = tmp_path / "mod.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+
+    payload = tool_smart_edit(
+        {
+            "edits": [{"file_path": str(target), "old_string": "value = 1", "new_string": "value = 2"}],
+            "post_edit_hooks": False,
+        }
+    )
+
+    assert payload["failed"] == []
+    diff = payload.get("diff")
+    assert diff, "edit result must carry the inline unified diff"
+    diff_text = "".join(diff.values())
+    assert "-value = 1" in diff_text and "+value = 2" in diff_text
