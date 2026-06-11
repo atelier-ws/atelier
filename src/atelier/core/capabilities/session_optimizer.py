@@ -332,13 +332,6 @@ def build_trace_optimization_report(
     }
 
 
-def session_stats_need_no_edit_notice(stats: dict[str, Any], *, now_ms: int, threshold_ms: int = 600_000) -> bool:
-    started_at = int(stats.get("started_at_ms") or stats.get("last_event_at_ms") or now_ms)
-    edit_calls = int(stats.get("edit_tool_calls", 0) or 0)
-    already_sent = bool((stats.get("optimizer_notices") or {}).get("no_edit_10m"))
-    return edit_calls == 0 and not already_sent and (now_ms - started_at) >= threshold_ms
-
-
 def mark_session_optimizer_notice(stats: dict[str, Any], notice_id: str) -> dict[str, Any]:
     updated = dict(stats)
     notices = dict(updated.get("optimizer_notices") or {})

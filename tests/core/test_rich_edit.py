@@ -290,6 +290,77 @@ def test_rich_edit_noop_when_edit_already_applied(tmp_path: Path) -> None:
     assert path.read_text(encoding="utf-8") == "x = 2\n"
 
 
+def test_rich_edit_noop_when_formatter_rewrapped_new_string(tmp_path: Path) -> None:
+    path = tmp_path / "mod.py"
+    formatted = "result = compute(\n    alpha_value,\n    beta_value,\n    gamma_value,\n    delta_value,\n)\n"
+    path.write_text(formatted, encoding="utf-8")
+
+    result = apply_rich_edits(
+        [
+            {
+                "file_path": "mod.py",
+                "old_string": "result = build(alpha_value, beta_value, gamma_value, delta_value)",
+                "new_string": "result = compute(alpha_value, beta_value, gamma_value, delta_value)",
+            }
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"] == []
+    assert result["applied"][0]["match_mode"] == "noop"
+    assert result["applied"][0]["already_applied"] is True
+    assert path.read_text(encoding="utf-8") == formatted
+
+
+def test_rich_edit_atomic_failure_reports_already_applied(tmp_path: Path) -> None:
+    path_a = tmp_path / "a.py"
+    path_a.write_text("x = 2\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def target():\n    return ACTUAL_DISK_VALUE\n", encoding="utf-8")
+
+    result = apply_rich_edits(
+        [
+            {"file_path": "a.py", "old_string": "x = 1", "new_string": "x = 2"},
+            {
+                "file_path": "b.py",
+                "old_string": "def missing():\n    return OLD\n",
+                "new_string": "def missing():\n    return NEW\n",
+            },
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["rolled_back"] is True
+    assert result["failed"]
+    assert result["already_applied"] == ["a.py"]
+    assert path_a.read_text(encoding="utf-8") == "x = 2\n"
+
+
+def test_rich_edit_scoped_not_found_reports_already_applied(tmp_path: Path) -> None:
+    path = tmp_path / "mod.py"
+    content = (
+        "import os\n\n\ndef helper():\n    return os.environ\n\n\n"
+        "result = compute(\n    alpha_value,\n    beta_value,\n    gamma_value,\n    delta_value,\n)\n"
+    )
+    path.write_text(content, encoding="utf-8")
+
+    result = apply_rich_edits(
+        [
+            {
+                "file_path": "mod.py#1-2",
+                "old_string": "result = build(alpha_value, beta_value, gamma_value, delta_value)",
+                "new_string": "result = compute(alpha_value, beta_value, gamma_value, delta_value)",
+            }
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"]
+    assert result["failed"][0]["already_applied"] is True
+    assert "do not retry" in result["failed"][0]["hint"]
+    assert "retry_with" not in result["failed"][0]
+    assert path.read_text(encoding="utf-8") == content
+
+
 def test_rich_edit_parse_gate_rolls_back_corrupt_python(tmp_path: Path) -> None:
     path = tmp_path / "mod.py"
     original = "value = 1\n"

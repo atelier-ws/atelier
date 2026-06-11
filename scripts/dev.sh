@@ -1914,7 +1914,7 @@ main() {
         spin "Initializing agent runtime" "$atelier_cli" init
         if [[ -n "$index_target" ]]; then
             info "Detected project root: $index_target"
-            if "$atelier_cli" code index --repo-root "$index_target" --frame-prefix "│    " 2>&7; then
+            if "$atelier_cli" code index --repo-root "$index_target" --frame-prefix "│  " 2>&7; then
                 printf "%b│%b  %b✓%b  Code index ready\n" "$C_FRAME" "$C_RESET" "$C_GREEN" "$C_RESET"
             else
                 degrade "Initial code indexing failed; Atelier will continue and autosync will retry."

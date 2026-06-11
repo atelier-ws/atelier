@@ -3940,49 +3940,10 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         "edits": {
             "type": "array",
             "minItems": 1,
-            "description": "Homogeneous edit descriptors. Do not mix legacy op/path descriptors with rich descriptors in one call.",
             "items": {
-                "oneOf": [
+                "anyOf": [
                     {
-                        "title": "Legacy replace",
-                        "type": "object",
-                        "required": ["path", "op", "old_string", "new_string"],
-                        "properties": {
-                            "path": {"type": "string"},
-                            "op": {"const": "replace"},
-                            "old_string": {"type": "string"},
-                            "new_string": {"type": "string"},
-                            "fuzzy": {"type": "boolean"},
-                        },
-                        "additionalProperties": True,
-                    },
-                    {
-                        "title": "Legacy insert_after",
-                        "type": "object",
-                        "required": ["path", "op", "anchor", "new_string"],
-                        "properties": {
-                            "path": {"type": "string"},
-                            "op": {"const": "insert_after"},
-                            "anchor": {"type": "string"},
-                            "new_string": {"type": "string"},
-                        },
-                        "additionalProperties": True,
-                    },
-                    {
-                        "title": "Legacy replace_range",
-                        "type": "object",
-                        "required": ["path", "op", "line_start", "line_end", "new_string"],
-                        "properties": {
-                            "path": {"type": "string"},
-                            "op": {"const": "replace_range"},
-                            "line_start": {"type": "integer", "minimum": 1},
-                            "line_end": {"type": "integer", "minimum": 1},
-                            "new_string": {"type": "string"},
-                        },
-                        "additionalProperties": True,
-                    },
-                    {
-                        "title": "Rich file edit",
+                        "title": "File edit",
                         "type": "object",
                         "required": ["file_path", "new_string"],
                         "properties": {
@@ -3994,7 +3955,6 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                             "new_string": {"type": "string"},
                             "overwrite": {"type": "boolean"},
                         },
-                        "additionalProperties": True,
                     },
                     {
                         "title": "Notebook cell edit",
@@ -4015,7 +3975,6 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                             "cell_move_target": {"type": "integer"},
                             "new_string": {"type": "string"},
                         },
-                        "additionalProperties": True,
                     },
                     {
                         "title": "Symbol edit",
@@ -4023,16 +3982,42 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                         "required": ["kind"],
                         "properties": {
                             "kind": {"const": "symbol"},
-                            "symbol_id": {"type": "string"},
                             "qualified_name": {"type": "string"},
-                            "symbol_name": {"type": "string"},
                             "name": {"type": "string"},
                             "file_path": {"type": "string"},
                             "mode": {"enum": ["replace", "prepend", "append"]},
                             "new_body": {"type": "string"},
                             "preserve_signature": {"type": "boolean"},
                         },
-                        "additionalProperties": True,
+                    },
+                    {
+                        "title": "Projection edit",
+                        "type": "object",
+                        "required": ["kind", "file_path", "projection_mapping"],
+                        "properties": {
+                            "kind": {"const": "projection"},
+                            "file_path": {"type": "string"},
+                            "projection_mapping": {
+                                "type": "object",
+                                "description": "Mapping returned by a compact read with include_meta=true.",
+                            },
+                            "projected_start": {"type": "integer"},
+                            "projected_end": {"type": "integer"},
+                            "new_string": {"type": "string"},
+                            "projected_ranges": {
+                                "type": "array",
+                                "description": "Multiple non-overlapping exact spans from the same mapping; each item replaces one span.",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["projected_start", "projected_end", "new_string"],
+                                    "properties": {
+                                        "projected_start": {"type": "integer"},
+                                        "projected_end": {"type": "integer"},
+                                        "new_string": {"type": "string"},
+                                    },
+                                },
+                            },
+                        },
                     },
                 ]
             },
@@ -4040,32 +4025,46 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         "atomic": {
             "type": "boolean",
             "default": True,
-            "description": "Roll back all edits if any one descriptor fails. Set false only when partial success is acceptable.",
+            "description": "Roll back all edits if any one fails.",
         },
         "post_edit_hooks": {
             "type": "boolean",
             "default": True,
-            "description": "Run post-edit hooks (formatter, linter, LSP diagnostics) on touched files. Diagnostics appear in the result.",
+            "description": "Run formatter/linter on touched files; error/warning diagnostics appear in the result.",
         },
-        "post_edit_timeout_ms": {
-            "type": "integer",
-            "default": 30000,
-            "minimum": 0,
-            "description": "Maximum total timeout for post-edit hooks in milliseconds.",
-        },
+        "post_edit_timeout_ms": {"type": "integer", "default": 30000, "minimum": 0},
         "allow_test_contract_change": {
             "type": "boolean",
             "default": False,
-            "description": "Explicitly allow edits to already-existing test files after reviewing the behavioral contract.",
+            "description": "Allow edits to existing test files.",
         },
         "contract_change_evidence": {
             "type": "string",
-            "description": "Required with allow_test_contract_change=true. Cite the user request or repository source of truth that independently requires changing the existing test contract.",
+            "description": "Required with allow_test_contract_change=true: cite the user request or source of truth requiring the contract change.",
         },
     },
     "required": ["edits"],
     "additionalProperties": False,
 }
+
+
+def _compact_applied_entries(entries: list[dict[str, Any]]) -> list[str | dict[str, Any]]:
+    """Group ordinary edit hunks by path while retaining special edit metadata."""
+    grouped: dict[str, list[str]] = {}
+    special: list[dict[str, Any]] = []
+    for entry in entries:
+        if set(entry) - {"path", "hunks"}:
+            special.append(entry)
+            continue
+        path = str(entry.get("path", ""))
+        spans = grouped.setdefault(path, [])
+        for hunk in entry.get("hunks") or []:
+            start = hunk.get("line_start")
+            end = hunk.get("line_end")
+            if isinstance(start, int) and isinstance(end, int):
+                spans.append(str(start) if start == end else f"{start}-{end}")
+    compact = [f"{path}:{','.join(spans)}" if spans else path for path, spans in grouped.items()]
+    return [*compact, *special]
 
 
 @mcp_tool(name="edit", input_schema=EDIT_TOOL_INPUT_SCHEMA)
@@ -4079,21 +4078,16 @@ def tool_smart_edit(
 ) -> dict[str, Any]:
     """Apply many mechanical edits across files in one deterministic call.
 
-    Choose the right descriptor family for each edit (all must be the same family):
-
-    Rich (preferred) — ``file_path`` required:
+    Descriptors:
       - Replace text:    {file_path, old_string, new_string}
       - Create/overwrite:{file_path, new_string, overwrite: true}
       - Line-scoped:     {file_path: "foo.py#10-20", old_string, new_string}
       - Notebook cell:   {file_path, cell_action: insert_after|delete|..., new_string}
-      - Symbol:          {kind: "symbol", symbol_id|qualified_name|name, mode, new_body}
+      - Symbol:          {kind: "symbol", qualified_name|name, mode, new_body}
+      - Projection:      {kind: "projection", file_path, projection_mapping, projected_start+projected_end+new_string or projected_ranges}
 
-    Legacy — ``path`` + ``op`` required:
-      - replace:       {path, op: "replace", old_string, new_string, fuzzy?}
-      - insert_after:  {path, op: "insert_after", anchor, new_string}
-      - replace_range: {path, op: "replace_range", line_start, line_end, new_string}
-
-    Returns: {applied, failed, rolled_back, writes?}
+    Returns ordinary successful hunks as {applied: ["path:line,start-end", ...]};
+    failures and edits carrying special metadata remain structured.
     """
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
     repo_root = Path(workspace)
@@ -4164,9 +4158,17 @@ def tool_smart_edit(
             except Exception as hook_exc:
                 logging.exception("Recovered from broad exception handler")
                 result["hooks"] = {"error": str(hook_exc)}
+        # Diffs are always recorded for telemetry, but echoed back only when
+        # the applied content may differ from what the caller sent (fuzzy or
+        # scoped matches) — an exact replace needs no echo.
         diffs = _compute_and_record_diffs(snapshots)
-        if diffs:
+        needs_diff_echo = any(entry.get("match_mode") not in (None, "exact") for entry in result.get("applied") or [])
+        if diffs and needs_diff_echo:
             result["diff"] = diffs
+        # match_mode is only informative when it is not the default exact match.
+        for entry in result.get("applied") or []:
+            if isinstance(entry, dict) and entry.get("match_mode") == "exact":
+                entry.pop("match_mode", None)
         if contract_paths:
             result["contract_review"] = {
                 "required": True,
@@ -4186,9 +4188,12 @@ def tool_smart_edit(
     # Batched edits collapse N would-be individual edit calls into 1.
     # Use successful applies as the count; the dispatcher reads this and
     # writes it into the response's content[].saved.calls field.
-    applied_count = len(result.get("applied") or [])
+    applied_entries = result.get("applied") or []
+    applied_count = len(applied_entries)
     if applied_count > 1:
         result.setdefault("calls_saved", applied_count - 1)
+    if applied_entries and not result.get("failed") and not result.get("rolled_back"):
+        result["applied"] = _compact_applied_entries(applied_entries)
     return result
 
 
@@ -4208,10 +4213,9 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                 "query",
             ],
             "description": (
-                "connect: discover DB + overview. tables: table names + count. schema: columns + foreign keys "
-                "per table. table: one table's columns + FKs (needs name). relationships: foreign-key graph. "
-                "search: keyword over table/column names -> matching tables with columns + FKs (needs name). "
-                "lint: validate SQL without running it (needs sql). query: execute SQL (needs sql or queries[])."
+                "connect: discover DB. tables: list tables. schema: all columns + FKs. table/search: one table "
+                "or keyword match (needs name). relationships: FK graph. lint: validate SQL (needs sql). "
+                "query: execute (needs sql or queries[])."
             ),
         },
         "name": {
@@ -4224,7 +4228,7 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         },
         "queries": {
             "type": "array",
-            "description": "Batch of named queries for action=query: [{name, sql}, ...]. Prefer over repeated query calls.",
+            "description": "Batch for action=query: [{name, sql}, ...]. Prefer over repeated calls.",
             "items": {
                 "type": "object",
                 "required": ["sql"],
@@ -4236,22 +4240,14 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         },
         "connection_string": {
             "type": "string",
-            "description": "Explicit DSN (sqlite:///path, postgresql://...). Auto-discovered from DATABASE_URL env or .env if omitted.",
+            "description": "DSN (sqlite:///path, postgresql://...). Auto-discovered from DATABASE_URL/.env if omitted.",
         },
-        "max_rows": {
-            "type": "integer",
-            "default": 500,
-            "description": "Row cap for query results.",
-        },
-        "allow_writes": {
-            "type": "boolean",
-            "default": True,
-            "description": "Set false to reject INSERT/UPDATE/DELETE/DROP.",
-        },
+        "max_rows": {"type": "integer", "default": 500},
+        "allow_writes": {"type": "boolean", "default": True},
         "auto_limit": {
             "type": "boolean",
             "default": True,
-            "description": "Automatically append LIMIT max_rows when missing.",
+            "description": "Append LIMIT max_rows when missing.",
         },
     },
     "required": ["action"],
@@ -5857,6 +5853,11 @@ def _render_shell_text(result: dict[str, Any]) -> str:
         if stdout or stderr:
             parts.append("")
         parts.append(f"[output truncated: {lines_omitted} lines omitted]")
+    discipline = str(result.get("discipline") or "")
+    if discipline:
+        if parts:
+            parts.append("")
+        parts.append(f"[discipline] {discipline}")
 
     rendered = "\n".join(parts).strip()
     if rendered:
@@ -7297,7 +7298,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # (which would otherwise re-carry the full bytes we just elided).
             if not dedup_stubbed and isinstance(result, dict):
                 saved_tokens = _extract_tokens_saved(result)
-                saved_calls = _coerce_saved_tokens(result.get("calls_saved"))
+                saved_calls = _coerce_saved_tokens(result.pop("calls_saved", None))
                 if saved_tokens > 0 or saved_calls > 0:
                     content_item["saved"] = {
                         "tokens": int(saved_tokens),

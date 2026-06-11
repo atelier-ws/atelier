@@ -1,12 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 
-from atelier.core.capabilities.plugin_runtime import (
-    build_session_progress_optimization_output,
-    update_session_stats,
-)
 from atelier.core.capabilities.session_optimizer import (
     SUPPORTED_OPTIMIZER_HOSTS,
     build_session_start_notice,
@@ -98,22 +93,3 @@ def test_trace_report_flags_outliers_context_and_low_delivery() -> None:
     assert "low-worth-expensive-sessions" in recommendation_ids
     assert report["estimated_tokens_saved"] > 0
     assert report["estimated_usd_saved"] > 0
-
-
-def test_progress_notice_fires_once_after_ten_minutes_without_edit(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    update_session_stats(root, {"hook_event_name": "SessionStart", "session_id": "s1", "now_ms": 1_000})
-    payload = {
-        "hook_event_name": "PostToolUse",
-        "session_id": "s1",
-        "tool_name": "Read",
-        "tool_input": {},
-        "now_ms": 601_001,
-    }
-    update_session_stats(root, payload)
-
-    first = build_session_progress_optimization_output(root, payload)
-    second = build_session_progress_optimization_output(root, payload)
-
-    assert "10 minutes" in first["additionalContext"]
-    assert second == {"no_output": True}

@@ -37,6 +37,10 @@ from atelier.core.capabilities.owned_execution_routing import (
     OwnedRouteRequest,
     select_owned_route,
 )
+from atelier.core.capabilities.tool_supervision.workspace_hygiene import (
+    scratch_leftovers,
+    snapshot_workspace,
+)
 from atelier.core.capabilities.workflow_context import StepResult, WorkflowContextState
 from atelier.core.capabilities.workflow_runner import WorkflowRunner
 from atelier.core.capabilities.workflow_schema import WorkflowDefinition, WorkflowStepDefinition
@@ -311,6 +315,8 @@ def run_benchmark_solver(
     retry_context = ""
     previous_attempt: BenchmarkAttempt | None = None
     final_status = "failed"
+    workspace_root = Path.cwd().resolve() if repo_root is None else repo_root
+    hygiene_baseline = snapshot_workspace(workspace_root)
 
     for attempt_number in range(1, limit + 1):
         events.append(SolverEvent(event="attempt", run_id=run_id, attempt_number=attempt_number, status="running"))
@@ -349,6 +355,21 @@ def run_benchmark_solver(
             final_status = "failed"
             break
         retry_context = build_retry_context(attempt, feedback, repo_root=repo_root, registry=defaults)
+        leftovers = scratch_leftovers(workspace_root, hygiene_baseline)
+        if leftovers:
+            events.append(
+                SolverEvent(
+                    event="hygiene",
+                    run_id=run_id,
+                    attempt_number=attempt_number,
+                    status="leftovers",
+                    payload={"leftovers": leftovers},
+                )
+            )
+            retry_context += (
+                "\n\nWorkspace hygiene: these scratch/build files appeared during solving and may fail "
+                "file-hygiene checks; remove any the task did not ask for: " + ", ".join(leftovers)
+            )
         events.append(
             SolverEvent(
                 event="retry",
@@ -360,6 +381,17 @@ def run_benchmark_solver(
         )
         previous_attempt = attempt
 
+    final_leftovers = scratch_leftovers(workspace_root, hygiene_baseline)
+    if final_leftovers:
+        events.append(
+            SolverEvent(
+                event="hygiene",
+                run_id=run_id,
+                attempt_number=len(attempts),
+                status="leftovers",
+                payload={"leftovers": final_leftovers},
+            )
+        )
     events.append(
         SolverEvent(
             event="complete",
