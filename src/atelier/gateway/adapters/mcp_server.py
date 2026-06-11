@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 from functools import wraps
 from hashlib import sha256
 from pathlib import Path
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, Union, cast
 
 from pydantic import Field, create_model
 
@@ -131,12 +131,28 @@ def _tool_mode(spec: dict[str, Any]) -> str:
     return mcp_tool_mode(str(spec.get("name", "") or ""))
 
 
-def _coerce_json_string_lists(args: dict[str, Any], sig: inspect.Signature) -> dict[str, Any]:
-    """Coerce JSON-encoded strings to lists for list-typed parameters.
+def _annotation_is_str(ann: Any) -> bool:
+    """Return True when annotation is str or Optional[str] / str | None."""
+    if ann is str:
+        return True
+    origin = getattr(ann, "__origin__", None)
+    if origin is Union:
+        args = getattr(ann, "__args__", ())
+        non_none = [a for a in args if a is not type(None)]
+        return len(non_none) == 1 and non_none[0] is str
+    return False
 
-    Models (especially via Bedrock Converse) occasionally serialize a list
-    parameter as a JSON string instead of an inline JSON array.  Silently
-    fixing this avoids a wasted model turn on every occurrence.
+
+def _coerce_json_strings(args: dict[str, Any], sig: inspect.Signature) -> dict[str, Any]:
+    """Self-heal JSON-string-encoded parameters before Pydantic validation.
+
+    Models occasionally send a structured parameter (list, dict, nested object)
+    as a serialised JSON string instead of an inline value.  Silently parsing
+    it here eliminates a wasted retry turn with zero quality loss.
+
+    Strategy: for every non-str-annotated parameter whose value is a string
+    that parses as a JSON list or dict, use the parsed value.  Pydantic still
+    validates the result, and scalar coercions (int, bool) are left to Pydantic.
     """
     coerced = args
     for param_name, param in sig.parameters.items():
@@ -146,17 +162,17 @@ def _coerce_json_string_lists(args: dict[str, Any], sig: inspect.Signature) -> d
         if not isinstance(val, str):
             continue
         ann = param.annotation
-        if ann is inspect.Parameter.empty:
+        if ann is inspect.Parameter.empty or _annotation_is_str(ann):
             continue
-        if getattr(ann, "__origin__", None) is list:
-            try:
-                parsed = json.loads(val)
-            except (json.JSONDecodeError, TypeError, ValueError):
-                continue
-            if isinstance(parsed, list):
-                if coerced is args:
-                    coerced = dict(args)
-                coerced[param_name] = parsed
+        try:
+            parsed = json.loads(val)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+        if not isinstance(parsed, (list, dict)):
+            continue
+        if coerced is args:
+            coerced = dict(args)
+        coerced[param_name] = parsed
     return coerced
 
 
@@ -203,7 +219,7 @@ def mcp_tool(
 
             @wraps(func)
             def handler_wrapper(args: dict[str, Any]) -> Any:
-                validated = ArgsModel.model_validate(_coerce_json_string_lists(args, sig))
+                validated = ArgsModel.model_validate(_coerce_json_strings(args, sig))
                 return func(**validated.model_dump())
 
         else:
