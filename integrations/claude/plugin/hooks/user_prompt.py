@@ -173,22 +173,15 @@ def _persist_last_user_prompt(prompt: str) -> None:
 # Context-window estimation
 # ---------------------------------------------------------------------------
 
-# Context-window capacity per model. The live window occupancy is read from the
-# transcript's real ``usage`` numbers (input + cache_read + cache_creation),
-# matching what Claude Code's own status-line gauge reports. Capacity is looked
-# up by substring match on the model id; ATELIER_CONTEXT_WINDOW_TOKENS overrides
-# everything when set. NEVER size against transcript *file bytes*: the JSONL is
-# cumulative (tool dumps, compacted-away turns, JSON overhead) and vastly
-# exceeds the live window, which is what produced bogus ~100% warnings.
-_DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
-_MODEL_WINDOW_TOKENS = {
-    "fable": 1_000_000,
-    "mythos": 1_000_000,
-    "opus-4": 1_000_000,
-    "sonnet-4": 1_000_000,
-    "haiku-4": 200_000,
-    "claude-3": 200_000,
-}
+# The live window occupancy is read from the transcript's real ``usage``
+# numbers (input + cache_read + cache_creation), matching what Claude Code's
+# own status-line gauge reports. Window capacity and all pricing come from the
+# live rate card (atelier pricing / LiteLLM) — no static tables here.
+# ATELIER_CONTEXT_WINDOW_TOKENS overrides the window when set. NEVER size
+# against transcript *file bytes*: the JSONL is cumulative (tool dumps,
+# compacted-away turns, JSON overhead) and vastly exceeds the live window,
+# which is what produced bogus ~100% warnings.
+#
 # Proactive compaction is token-based so it behaves the same in a 200k or a 1M
 # window: we nudge on absolute occupancy, not just a percentage. Each nudge
 # carries a real per-turn cache-read cost so the user sees what the stale
@@ -198,18 +191,6 @@ _DRIFT_MIN_TOKENS = 25_000  # a topic switch can nudge a bit earlier than size a
 # (occupancy_floor, prompts_between_nudges): the more is loaded, the more often
 # we re-nudge, because each turn re-bills the whole window as cache reads.
 _COMPACT_BANDS: tuple[tuple[int, int], ...] = ((400_000, 1), (150_000, 2), (50_000, 4))
-
-# Cache-read price ($/1M tokens) used to estimate the per-turn cost of carrying
-# the current context. Substring match on the model id; Sonnet rate as default.
-# Tracks Anthropic's published cache-read prices (~10% of input).
-_DEFAULT_CACHE_READ_USD_PER_MTOK = 0.30
-_MODEL_CACHE_READ_USD_PER_MTOK = {
-    "fable": 1.00,
-    "opus": 1.50,
-    "sonnet": 0.30,
-    "haiku": 0.08,
-    "claude-3": 0.30,
-}
 
 # Drift detection: TF-IDF cosine similarity between the new prompt and a
 # recency-weighted view of recent prompts. Low similarity ⇒ the loaded history
@@ -247,8 +228,9 @@ _GROUNDED_TERMS = (
 def _context_window_tokens(model: str | None) -> int:
     """Resolve the context-window capacity for *model*.
 
-    Precedence: ATELIER_CONTEXT_WINDOW_TOKENS env override > model substring
-    lookup > default. Fail-open to the default on any bad value.
+    Precedence: ATELIER_CONTEXT_WINDOW_TOKENS env override > live rate card
+    (LiteLLM ``max_input_tokens``). Returns 0 when unknown — callers omit the
+    percentage rather than guess against a wrong window.
     """
     override = os.environ.get("ATELIER_CONTEXT_WINDOW_TOKENS", "").strip()
     if override:
@@ -256,11 +238,10 @@ def _context_window_tokens(model: str | None) -> int:
             value = int(override)
             if value > 0:
                 return value
-    lowered = (model or "").lower()
-    for needle, capacity in _MODEL_WINDOW_TOKENS.items():
-        if needle in lowered:
-            return capacity
-    return _DEFAULT_CONTEXT_WINDOW_TOKENS
+    pricing = _model_pricing(model)
+    if pricing is not None:
+        return int(pricing.context_window or 0)
+    return 0
 
 
 def _model_pricing(model: str | None):  # type: ignore[no-untyped-def]
@@ -277,23 +258,19 @@ def _model_pricing(model: str | None):  # type: ignore[no-untyped-def]
 
 
 def _cache_read_price(model: str | None, occupancy: int = 0) -> float:
-    """Resolve cache-read $/1M-tokens for *model*.
+    """Resolve cache-read $/1M-tokens for *model* from the live rate card.
 
     Premium-aware: above the model's long-context boundary (e.g. 200k) the
-    whole request bills at the premium cache-read rate. Falls back to the
-    static substring table when the live rate card is unavailable.
+    whole request bills at the premium cache-read rate. Returns 0.0 when the
+    rate card is unavailable — callers omit the cost line rather than guess.
     """
     pricing = _model_pricing(model)
-    if pricing is not None:
-        threshold = pricing.long_context_threshold()
-        if occupancy and threshold and occupancy > threshold and pricing.cache_read_tiers:
-            return float(pricing.cache_read_tiers[0].rate)
-        return float(pricing.cache_read)
-    lowered = (model or "").lower()
-    for needle, price in _MODEL_CACHE_READ_USD_PER_MTOK.items():
-        if needle in lowered:
-            return price
-    return _DEFAULT_CACHE_READ_USD_PER_MTOK
+    if pricing is None:
+        return 0.0
+    threshold = pricing.long_context_threshold()
+    if occupancy and threshold and occupancy > threshold and pricing.cache_read_tiers:
+        return float(pricing.cache_read_tiers[0].rate)
+    return float(pricing.cache_read)
 
 
 def _context_occupancy(transcript_path: str) -> tuple[int, str | None]:
@@ -391,17 +368,19 @@ def _compact_cooldown(occupancy: int) -> int:
     return _COMPACT_BANDS[-1][1]
 
 
-def _emit_compaction_advice(occupancy: int, pct: int, model: str | None, drifted: bool) -> None:
-    """Inject a compaction nudge carrying the real per-turn cache-read cost."""
+def _compaction_advice_msg(occupancy: int, window: int, model: str | None, drifted: bool) -> str:
+    """Build the compaction nudge carrying the real per-turn cache-read cost."""
     per_turn = occupancy / 1_000_000 * _cache_read_price(model, occupancy)
     tok = _humanize_tokens(occupancy)
+    pct_part = f" (~{min(100, round(occupancy * 100 / window))}% of the window)" if window > 0 else ""
     if drifted:
         head = (
-            f"This prompt looks unrelated to the earlier conversation, yet ~{tok} tokens "
-            f"(~{pct}% of the window) of now-stale history are still loaded"
+            f"This prompt looks unrelated to the earlier conversation, yet ~{tok} tokens"
+            f"{pct_part} of now-stale history are still loaded"
         )
     else:
-        head = f"Context is ~{tok} tokens (~{pct}% of the window)"
+        head = f"Context is ~{tok} tokens{pct_part}"
+    cost = f" Carrying it re-bills ~${per_turn:.2f} per turn in cache reads." if per_turn > 0 else ""
     boundary = ""
     pricing = _model_pricing(model)
     if pricing is not None:
@@ -411,13 +390,7 @@ def _emit_compaction_advice(occupancy: int, pct: int, model: str | None, drifted
                 f" The window is past the {threshold // 1000}k long-context boundary, so "
                 "input-side rates are doubled until it shrinks."
             )
-    msg = (
-        f"[Atelier] {head}. Carrying it re-bills ~${per_turn:.2f} per turn in cache reads."
-        f"{boundary} "
-        "Call mcp__atelier__compact now, or tell the user to run /compact, to cut that."
-    )
-    sys.stdout.write(json.dumps({"type": "context", "content": msg}) + "\n")
-    sys.stdout.flush()
+    return f"[Atelier] {head}.{cost}{boundary} Call `compact` now, or tell the user to run /compact, to cut that."
 
 
 def _append_compaction_savings_row(tokens: int, usd: float, model: str | None) -> None:
@@ -483,13 +456,13 @@ def _credit_pending_compaction(state: dict[str, Any], occupancy: int, model: str
         _clear_precompact(state)  # post-compact size never resolved; stop trying
 
 
-def _maybe_emit_compaction_advice(prompt: str, transcript_path: str) -> bool:
-    """Decide whether to nudge for compaction and emit it. Fail-open.
+def _maybe_emit_compaction_advice(prompt: str, transcript_path: str) -> str | None:
+    """Decide whether to nudge for compaction. Fail-open.
 
-    Fires on absolute occupancy (>=50k tokens) so it works the same at 200k or
+    Fires on absolute occupancy (>=100k tokens) so it works the same at 200k or
     1M windows, earlier (>=25k) when the topic has drifted, and re-nudges more
     often as occupancy grows. Cooldown + rolling topic history live in session
-    state. Returns True when a nudge was emitted.
+    state. Returns the nudge text when one should be shown, else None.
     """
     try:
         occupancy, model = _context_occupancy(transcript_path) if transcript_path else (0, None)
@@ -505,22 +478,19 @@ def _maybe_emit_compaction_advice(prompt: str, transcript_path: str) -> bool:
         state["prompt_topic_history"] = history_raw[-_DRIFT_HISTORY_CAP:]
         state["prompt_count"] = count + 1
 
-        fired = False
+        msg: str | None = None
         if occupancy > 0:
-            window = _context_window_tokens(model)
-            pct = min(100, round(occupancy * 100 / window))
             floor = _DRIFT_MIN_TOKENS if drifted else _COMPACT_MIN_TOKENS
             if occupancy >= floor:
                 last_raw = state.get("last_compact_notice_count")
                 last = last_raw if isinstance(last_raw, int) else -(10**9)
                 if count - last >= _compact_cooldown(occupancy):
                     state["last_compact_notice_count"] = count
-                    _emit_compaction_advice(occupancy, pct, model, drifted)
-                    fired = True
+                    msg = _compaction_advice_msg(occupancy, _context_window_tokens(model), model, drifted)
         _write_session_state(state)
-        return fired
+        return msg
     except (OSError, ValueError, TypeError):
-        return False
+        return None
 
 
 def _looks_like_multi_file_edit_prompt(prompt: str) -> bool:
@@ -533,9 +503,34 @@ def _looks_like_multi_file_edit_prompt(prompt: str) -> bool:
     return file_mentions >= 2 or " files " in lowered
 
 
-def _emit_grounded_batching_nudge() -> None:
-    msg = "[Atelier] Ground multi-file changes with search or read first, then batch related edits in one edit call."
-    sys.stdout.write(json.dumps({"type": "context", "content": msg}) + "\n")
+_GROUNDED_BATCHING_NUDGE = (
+    "[Atelier] Ground multi-file changes with search or read first, then batch related edits in one edit call."
+)
+
+
+def _emit_hook_output(messages: list[str]) -> None:
+    """Emit hook output in Claude Code's UserPromptSubmit schema.
+
+    Claude Code parses JSON stdout as the structured hook-output schema:
+    ``hookSpecificOutput.additionalContext`` is injected for the model and
+    ``systemMessage`` is shown to the user. Unknown JSON shapes are silently
+    dropped — which is exactly how earlier nudges were lost.
+    """
+    if not messages:
+        return
+    joined = "\n".join(messages)
+    sys.stdout.write(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "UserPromptSubmit",
+                    "additionalContext": joined,
+                },
+                "systemMessage": joined,
+            }
+        )
+        + "\n"
+    )
     sys.stdout.flush()
 
 
@@ -558,9 +553,13 @@ def main() -> int:
     # Context-window check — inject a token-based compaction nudge (drift-aware,
     # with the real per-turn cache-read cost) when occupancy warrants it.
     transcript_path: str = payload.get("transcript_path", "") or ""
-    _maybe_emit_compaction_advice(prompt, transcript_path)
+    messages: list[str] = []
+    compact_msg = _maybe_emit_compaction_advice(prompt, transcript_path)
+    if compact_msg:
+        messages.append(compact_msg)
     if _looks_like_multi_file_edit_prompt(prompt):
-        _emit_grounded_batching_nudge()
+        messages.append(_GROUNDED_BATCHING_NUDGE)
+    _emit_hook_output(messages)
 
     # Autopilot (M5): inject scoped context for this prompt. Fail-open.
     try:
