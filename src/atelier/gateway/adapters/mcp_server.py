@@ -131,6 +131,35 @@ def _tool_mode(spec: dict[str, Any]) -> str:
     return mcp_tool_mode(str(spec.get("name", "") or ""))
 
 
+def _coerce_json_string_lists(args: dict[str, Any], sig: inspect.Signature) -> dict[str, Any]:
+    """Coerce JSON-encoded strings to lists for list-typed parameters.
+
+    Models (especially via Bedrock Converse) occasionally serialize a list
+    parameter as a JSON string instead of an inline JSON array.  Silently
+    fixing this avoids a wasted model turn on every occurrence.
+    """
+    coerced = args
+    for param_name, param in sig.parameters.items():
+        if param_name not in coerced:
+            continue
+        val = coerced[param_name]
+        if not isinstance(val, str):
+            continue
+        ann = param.annotation
+        if ann is inspect.Parameter.empty:
+            continue
+        if getattr(ann, "__origin__", None) is list:
+            try:
+                parsed = json.loads(val)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                continue
+            if isinstance(parsed, list):
+                if coerced is args:
+                    coerced = dict(args)
+                coerced[param_name] = parsed
+    return coerced
+
+
 def mcp_tool(
     name: str | None = None,
     description: str | None = None,
@@ -174,7 +203,7 @@ def mcp_tool(
 
             @wraps(func)
             def handler_wrapper(args: dict[str, Any]) -> Any:
-                validated = ArgsModel.model_validate(args)
+                validated = ArgsModel.model_validate(_coerce_json_string_lists(args, sig))
                 return func(**validated.model_dump())
 
         else:
@@ -1813,17 +1842,16 @@ def _current_context_state() -> tuple[int, str]:
         sid, _ = _read_workspace_session_bridge()
         if not sid:
             return 0, ""
+        from atelier.gateway.hosts.context_state import _tail_lines
+
         for cand in claude_transcript_candidates(sid):
             try:
-                with cand.open("rb") as fh:
-                    fh.seek(0, os.SEEK_END)
-                    fh.seek(max(0, fh.tell() - 65536))
-                    tail = fh.read().decode("utf-8", errors="replace")
+                tail_lines = _tail_lines(cand)
             except OSError:
                 continue
             best = 0
             best_model = ""
-            for line in tail.splitlines():
+            for line in tail_lines:
                 line = line.strip()
                 if not line:
                     continue
@@ -4643,7 +4671,7 @@ def _workspace_code_router(repo_root: str = ".") -> Any:
 
 
 # Fields that are purely internal Atelier bookkeeping — never useful to an LLM.
-# Keep: provenance (data quality/source), repo_name (multi-repo), origin (external vs internal scope).
+# Keep: repo_name (multi-repo).
 _CODE_OP_TOP_STRIP: frozenset[str] = frozenset(
     {
         "symbol_id",
@@ -4652,9 +4680,14 @@ _CODE_OP_TOP_STRIP: frozenset[str] = frozenset(
         "repo_id",
         "total_tokens",
         "tokens_saved",
+        "provenance",
         "provenance_breakdown",
         "mode",
         "view",
+        "has_more_context",
+        "suggested_next",
+        "explanation",
+        "text_search",
     }
 )
 
@@ -4698,14 +4731,22 @@ _CODE_OP_ITEM_LIST_FIELDS: tuple[str, ...] = (
 )
 
 
+def _strip_code_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Strip internal bookkeeping from a single result item."""
+    cleaned = {k: v for k, v in item.items() if k not in _CODE_OP_ITEM_STRIP}
+    if cleaned.get("origin") == "internal":
+        del cleaned["origin"]
+    if cleaned.get("qualified_name") and cleaned["qualified_name"] == (
+        cleaned.get("name") or cleaned.get("symbol_name")
+    ):
+        del cleaned["qualified_name"]
+    cleaned.pop("role", None)
+    return cleaned
+
+
 def _strip_code_op_response(op: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Remove internal/telemetry fields that waste LLM context."""
     drop = _CODE_OP_TOP_STRIP | _CODE_OP_EXTRA_STRIP.get(op, frozenset())
-    if op == "search":
-        keep = {"mode", "provenance", "view"}
-        if payload.get("provenance") != "graveyard":
-            keep.add("cache_hit")
-        drop = frozenset(key for key in drop if key not in keep)
     result: dict[str, Any] = {k: v for k, v in payload.items() if k not in drop}
 
     # Save real tokens_saved via thread-local so _record_context_budget_for_tool
@@ -4716,16 +4757,22 @@ def _strip_code_op_response(op: str, payload: dict[str, Any]) -> dict[str, Any]:
 
     # Strip internal keys from the target object
     if isinstance(result.get("target"), dict):
-        result["target"] = {k: v for k, v in result["target"].items() if k not in _CODE_OP_ITEM_STRIP}
+        result["target"] = _strip_code_item(result["target"])
 
-    # Strip internal keys from list fields
+    # Strip internal keys from list fields (or dicts of lists, e.g. references grouped by file)
     for field in _CODE_OP_ITEM_LIST_FIELDS:
-        lst = result.get(field)
-        if isinstance(lst, list):
-            result[field] = [
-                {k: v for k, v in item.items() if k not in _CODE_OP_ITEM_STRIP} if isinstance(item, dict) else item
-                for item in lst
-            ]
+        value = result.get(field)
+        if isinstance(value, list):
+            result[field] = [_strip_code_item(item) if isinstance(item, dict) else item for item in value]
+        elif isinstance(value, dict):
+            result[field] = {
+                key: (
+                    [_strip_code_item(item) if isinstance(item, dict) else item for item in group]
+                    if isinstance(group, list)
+                    else group
+                )
+                for key, group in value.items()
+            }
 
     return result
 
@@ -4758,12 +4805,6 @@ def _maybe_attach_code_rendered(op: str, payload: dict[str, Any], *, render_comp
     return result
 
 
-_CODE_SEARCH_SUGGESTED_NEXT = (
-    {"op": "usages", "query": "{query}"},
-    {"op": "context", "query": "{query}"},
-)
-
-
 def _code_search_target_item(item: dict[str, Any]) -> dict[str, Any]:
     result: dict[str, Any] = {
         "kind": item.get("kind"),
@@ -4776,8 +4817,6 @@ def _code_search_target_item(item: dict[str, Any]) -> dict[str, Any]:
         "end_line": item.get("end_line"),
         "signature": item.get("signature"),
         "snippet": item.get("snippet"),
-        "score": item.get("score"),
-        "role": item.get("role") or "definition",
         "deleted_at": item.get("deleted_at"),
         "deleted_at_sha": item.get("deleted_at_sha"),
         "rename_target": item.get("rename_target"),
@@ -4786,21 +4825,10 @@ def _code_search_target_item(item: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in result.items() if value is not None}
 
 
-def _code_search_suggested_next(query: str) -> list[dict[str, str]]:
-    return [
-        {key: value.format(query=query) for key, value in suggestion.items()}
-        for suggestion in _CODE_SEARCH_SUGGESTED_NEXT
-    ]
-
-
-def _code_search_target_view(payload: dict[str, Any], *, query: str) -> dict[str, Any]:
+def _code_search_target_view(payload: dict[str, Any]) -> dict[str, Any]:
     items = payload.get("items")
     if isinstance(items, list):
         payload["items"] = [_code_search_target_item(item) if isinstance(item, dict) else item for item in items]
-    if payload.get("items"):
-        payload["has_more_context"] = True
-        payload["suggested_next"] = _code_search_suggested_next(query)
-    payload["view"] = "target"
     return payload
 
 
@@ -4832,9 +4860,6 @@ def _code_search_graph_view(
         return {
             "target": None,
             "related": {"imports": [], "usages": [], "callers": [], "callees": []},
-            "view": view,
-            "mode": search_payload.get("mode"),
-            "provenance": search_payload.get("provenance"),
         }
 
     target = _code_search_target_item(primary)
@@ -4891,19 +4916,12 @@ def _code_search_graph_view(
             "callers": callers.get("related", []),
             "callees": callees.get("related", []),
         },
-        "view": view,
-        "mode": "lexical+graph" if view == "explain" else "graph",
-        "provenance": search_payload.get("provenance"),
     }
     if view == "explain":
         payload["items"] = [
             _code_search_target_item(item) if isinstance(item, dict) else item
             for item in cast(list[Any], search_payload.get("items", []))
         ]
-        payload["explanation"] = (
-            "items are primary search targets; related contains graph evidence from usages, callers, and callees."
-        )
-        payload["suggested_next"] = _code_search_suggested_next(query)
     return payload
 
 
@@ -4913,90 +4931,39 @@ SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "properties": {
         "query": {
             "type": "string",
-            "description": (
-                "Symbol name or natural-language description. "
-                "Use an identifier ('MyClass', 'module.MyClass.method') for lexical/hybrid lookup, "
-                "or a description ('function that handles HTTP errors') for semantic search."
-            ),
-        },
-        "symbol_name": {
-            "type": "string",
-            "description": "Short unqualified symbol name (internal, prefer query).",
-        },
-        "qualified_name": {
-            "type": "string",
-            "description": "Fully qualified dotted path (internal).",
-        },
-        "symbol_id": {
-            "type": "string",
-            "description": "Stable SCIP symbol ID from a prior result (internal).",
+            "description": "Identifier ('MyClass', 'module.Class.method') or natural-language description.",
         },
         "mode": {
             "type": "string",
             "enum": ["auto", "lexical", "semantic", "hybrid"],
             "default": "auto",
-            "description": "'auto': picks best mode. 'lexical': exact identifier match. 'semantic': description/intent match.",
         },
         "intent": {
             "type": "string",
             "enum": ["auto", "symbol", "text", "semantic"],
             "default": "auto",
-            "description": (
-                "Search intent. 'symbol' forces symbol-index search for functions/classes/variables; "
-                "'text' forces local text/substring search; 'semantic' forces semantic search; "
-                "'auto' uses query heuristics."
-            ),
+            "description": "'symbol': definitions; 'text': substring search; 'semantic': by meaning.",
         },
         "view": {
             "type": "string",
             "enum": ["target", "graph", "context", "explain"],
             "default": "target",
-            "description": (
-                "Response shape for op='search'. "
-                "'target' returns primary definition/file matches only. "
-                "'graph' returns relationships for the best target. "
-                "'context' returns a broader code context pack. "
-                "'explain' returns targets plus ranking/graph evidence."
-            ),
+            "description": "'target': matches only; 'graph': relationships of best match; 'context': context pack.",
         },
-        "kind": {
-            "type": "string",
-            "description": "Filter by symbol kind: 'function', 'method', 'class', 'variable', etc.",
-        },
-        "language": {
-            "type": "string",
-            "description": "Filter by language: 'python', 'typescript', etc.",
-        },
-        "limit": {"type": "integer", "default": 20, "description": "Maximum results to return."},
-        "snippet": {
-            "type": "string",
-            "enum": ["none", "head", "full"],
-            "default": "none",
-            "description": "Source snippet in results: 'none' (smallest), 'head' (first N lines), 'full'.",
-        },
-        "snippet_lines": {
-            "type": "integer",
-            "default": 8,
-            "description": "Lines when snippet='head'.",
-        },
-        "file_glob": {
-            "type": "string",
-            "description": "Restrict to a subtree, e.g. 'src/api/**/*.py'.",
-        },
-        "repo_root": {
-            "type": "string",
-            "description": "Optional absolute or workspace-relative repository root override for local code-intel operations.",
-        },
+        "kind": {"type": "string", "description": "Filter: 'function', 'method', 'class', ..."},
+        "language": {"type": "string"},
+        "limit": {"type": "integer", "default": 20},
+        "snippet": {"type": "string", "enum": ["none", "head", "full"], "default": "none"},
+        "snippet_lines": {"type": "integer", "default": 8},
+        "file_glob": {"type": "string", "description": "e.g. 'src/api/**/*.py'"},
+        "repo_root": {"type": "string"},
         "scope": {
             "type": "string",
             "enum": ["repo", "external", "deleted"],
             "default": "repo",
-            "description": "'repo': live symbols. 'external': dependencies. 'deleted': git graveyard.",
+            "description": "'external': dependencies; 'deleted': git graveyard.",
         },
-        "since": {
-            "type": "string",
-            "description": "ISO date or relative ('7d') to filter to recently changed.",
-        },
+        "since": {"type": "string", "description": "ISO date or relative ('7d')."},
     },
 }
 
@@ -5115,7 +5082,6 @@ def tool_symbols(
                 budget_tokens=budget_tokens,
                 max_symbols=max_symbols,
             )
-            context_payload["view"] = "context"
             return _maybe_attach_code_rendered(
                 "context",
                 cast(dict[str, Any], context_payload),
@@ -5146,9 +5112,7 @@ def tool_symbols(
                 dict[str, Any],
                 workspace_router.route("search", repo=repo, query=query, **search_kwargs),
             )
-            routed_payload = _code_search_target_view(routed_payload, query=query)
-            if view in {"graph", "explain"}:
-                routed_payload["view"] = view
+            routed_payload = _code_search_target_view(routed_payload)
             return _maybe_attach_code_rendered(
                 op,
                 routed_payload,
@@ -5156,7 +5120,7 @@ def tool_symbols(
             )
         search_payload = cast(dict[str, Any], engine.tool_search(query, **search_kwargs))
         if view == "target":
-            search_payload = _code_search_target_view(search_payload, query=query)
+            search_payload = _code_search_target_view(search_payload)
         elif view in {"graph", "explain"}:
             search_payload = _code_search_graph_view(
                 engine,
