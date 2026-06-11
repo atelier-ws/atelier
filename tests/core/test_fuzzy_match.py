@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 from atelier.core.capabilities.tool_supervision.fuzzy_match import (
+    FuzzyAmbiguousMatchError,
     apply_fuzzy_replace,
     normalize_for_fuzzy,
 )
@@ -50,15 +53,14 @@ def test_apply_fuzzy_replace_handles_blank_line_drift() -> None:
     assert line_end == 4
 
 
-def test_apply_fuzzy_replace_picks_first_match_on_duplicate_blocks() -> None:
-    """Duplicate blocks: DMP picks the best (first) match — no ambiguity error."""
+def test_apply_fuzzy_replace_raises_ambiguous_on_duplicate_blocks() -> None:
+    """Duplicate equally-good blocks: surface ambiguity instead of picking one arbitrarily."""
     content = "def hello():\n    return 1\n\ndef hello():\n    return 1\n"
     old = "def hello():\n\treturn 1\n"
     new = "def hello():\n    return 2\n"
 
-    updated, line_start, line_end = apply_fuzzy_replace(content, old, new)
+    with pytest.raises(FuzzyAmbiguousMatchError) as excinfo:
+        apply_fuzzy_replace(content, old, new)
 
-    assert "return 2" in updated
-    assert line_start == 1
-    # old_string is 2 lines → spans content lines 1-2 (first block)
-    assert line_end == 2
+    ranges = {(c.start_line, c.end_line) for c in excinfo.value.candidates}
+    assert (1, 2) in ranges and (4, 5) in ranges
