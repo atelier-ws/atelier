@@ -1427,7 +1427,7 @@ def test_code_context_search_surface_supports_snippet_scope_and_glob(store_root:
         }
     )
 
-    assert payload["provenance"] == "local"
+    assert "provenance" not in payload
     assert "provenance_breakdown" not in payload
     assert payload["items"][0]["path"] == "src/orders.py"
     assert (
@@ -1462,7 +1462,7 @@ def test_tool_code_search_dispatches_mode_without_gateway_ranking_logic(
         }
     )
 
-    assert payload["mode"] == "semantic"
+    assert "mode" not in payload
     fake_engine.tool_search.assert_called_once_with(
         "create login token for authenticated user",
         limit=20,
@@ -1506,7 +1506,7 @@ def test_tool_code_search_dispatches_grounded_seed_files_without_gateway_ranking
         }
     )
 
-    assert payload["mode"] == "lexical"
+    assert "mode" not in payload
     fake_engine.tool_search.assert_called_once_with(
         "OrderService",
         limit=20,
@@ -1559,7 +1559,7 @@ def test_tool_code_search_dispatches_deleted_scope_filters_without_gateway_histo
         }
     )
 
-    assert payload["provenance"] == "graveyard"
+    assert "provenance" not in payload
     assert payload["items"][0]["rename_target"] == "modern.py"
     fake_engine.tool_search.assert_called_once_with(
         "ModernCheckout",
@@ -1610,7 +1610,7 @@ def test_tool_code_blame_dispatches_additively_without_gateway_aggregation(
         }
     )
 
-    assert payload["provenance"] == "blame"
+    assert "provenance" not in payload
     assert payload["symbol_name"] == "risk_score"
     fake_engine.tool_blame.assert_called_once_with(
         query="risk_score",
@@ -1650,7 +1650,7 @@ def test_tool_code_include_churn_remains_additive_for_non_blame_ops(
         }
     )
 
-    assert payload["provenance"] == "local"
+    assert "provenance" not in payload
     fake_engine.tool_search.assert_called_once_with(
         "OrderService",
         limit=20,
@@ -1753,9 +1753,10 @@ def test_code_context_pattern_search_surface_is_cached(
         )
     )
 
-    assert first["provenance"] == "ast-grep"
+    assert "provenance" not in first
     assert first["matches"][0]["captures"] == {"URL": "url"}
-    assert cached["provenance"] == "cached"
+    # Cache state is internal bookkeeping; the cached response must be identical.
+    assert cached["matches"] == first["matches"]
 
 
 def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tmp_path: Path) -> None:

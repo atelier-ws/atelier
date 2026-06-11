@@ -3887,7 +3887,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             stats = tui_store.summary_stats()
             tui_store.close()
             return {"sessions": sessions, "summary": stats}
-        except Exception as exc:
+        except (OSError, sqlite3.DatabaseError) as exc:
             return {"sessions": [], "summary": {}, "error": str(exc)}
 
     @app.get("/analytics/dashboard", tags=["analytics"], dependencies=[Depends(verify_api_key)])
@@ -5647,9 +5647,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     or (
                         "assistant"
                         if turn.get("kind") == "agent_message"
-                        else "shell"
-                        if turn.get("kind") == "shell_command"
-                        else turn.get("kind") or "session"
+                        else "shell" if turn.get("kind") == "shell_command" else turn.get("kind") or "session"
                     )
                 )
                 bucket = tool_costs.setdefault(tool_name, {"calls": 0.0, "cost_usd": 0.0})
@@ -5793,9 +5791,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         total_turns = (
             authoritative_total_turns
             if authoritative_total_turns > 0
-            else trace_total_turns
-            if trace_total_turns > 0
-            else reconstructed_total_turns
+            else trace_total_turns if trace_total_turns > 0 else reconstructed_total_turns
         )
 
         input_token_cost_usd = (
@@ -6668,17 +6664,10 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     # OpenCode/Crush/Codex can use Atelier as their model provider without
     # running a separate server.
     import asyncio as _asyncio
-    import uuid as _gw_uuid
-
-    from fastapi.responses import JSONResponse as _JSONResponse
-    from fastapi.responses import StreamingResponse as _StreamingResponse
 
     from atelier.gateway.cli.runtime import InteractiveRuntime as _Runtime
     from atelier.gateway.openai_gateway.adapter import (
-        atelier_events_to_sse as _sse,
-    )
-    from atelier.gateway.openai_gateway.adapter import (
-        openai_messages_to_atelier as _msgs,
+        run_chat_completion as _run_chat_completion,
     )
     from atelier.gateway.openai_gateway.schemas import (
         ChatCompletionRequest as _CCReq,
@@ -6701,6 +6690,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         _gw_rl_init_done = True
         from atelier.core.capabilities.providers.config import load_providers_config
         from atelier.core.capabilities.providers.ratelimit import init_from_config
+
         cfg = load_providers_config(store_path)
         await init_from_config(cfg._raw)
 
@@ -6716,12 +6706,14 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     @app.get("/v1/models", tags=["openai-gateway"])
     async def gw_list_models() -> dict[str, Any]:
         from atelier.core.capabilities.providers.discovery import discover_models
+
         model_ids = await discover_models(store_path)
         return _ModResp(data=[_ModObj(id=m, created=0) for m in model_ids]).model_dump(mode="json")
 
     @app.get("/v1/models/refresh", tags=["openai-gateway"])
     async def gw_refresh_models() -> dict[str, Any]:
         from atelier.core.capabilities.providers.discovery import discover_models, invalidate_cache
+
         invalidate_cache()
         model_ids = await discover_models(store_path)
         return _ModResp(data=[_ModObj(id=m, created=0) for m in model_ids]).model_dump(mode="json")
@@ -6729,6 +6721,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     @app.get("/v1/rate-limits", tags=["openai-gateway"])
     async def gw_rate_limits() -> dict[str, Any]:
         from atelier.core.capabilities.providers.ratelimit import get_status
+
         return get_status()
 
     @app.post("/v1/chat/completions", tags=["openai-gateway"])
@@ -6737,74 +6730,21 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             req = _CCReq.model_validate(payload)
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=f"invalid chat-completions payload: {exc}") from exc
-        if not req.messages:
-            raise HTTPException(status_code=422, detail="messages must not be empty")
-
-        try:
-            last_text, prior = _msgs(req.messages)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         rt = await _get_runtime()
         model = req.model or ""
-        model_override = model if model else None
 
         # Apply rate limit before starting the request
         from atelier.core.capabilities.providers.ratelimit import acquire
+
         try:
             await _asyncio.wait_for(acquire(model), timeout=30.0)
         except TimeoutError:
-            raise HTTPException(status_code=429, detail=f"rate limit exceeded for model '{model}': timed out after 30s")
+            raise HTTPException(
+                status_code=429, detail=f"rate limit exceeded for model '{model}': timed out after 30s"
+            ) from None
 
-        session_id = str(_gw_uuid.uuid4())
-        rt._sessions[session_id] = prior
-        chunk_id = f"chatcmpl-{_gw_uuid.uuid4().hex[:12]}"
-
-        events_gen = rt.handle_user_message(
-            session_id, last_text,
-            model_override=model_override,
-        )
-        sse_gen = _sse(events_gen, model=model or "atelier", chunk_id=chunk_id)
-
-        if req.stream:
-            return _StreamingResponse(sse_gen, media_type="text/event-stream")
-
-        content_parts: list[str] = []
-        finish_reason = "stop"
-        async for line in sse_gen:
-            if not line.startswith("data: "):
-                continue
-            payload = line[6:].strip()
-            if payload == "[DONE]":
-                break
-            try:
-                obj = json.loads(payload)
-            except json.JSONDecodeError:
-                continue
-            choices = obj.get("choices", [])
-            if choices:
-                delta = choices[0].get("delta", {})
-                content_parts.append(delta.get("content") or "")
-                finish_reason = choices[0].get("finish_reason") or finish_reason
-            if "error" in obj:
-                raise HTTPException(status_code=500, detail=obj["error"].get("message"))
-
-        return _JSONResponse(
-            {
-                "id": chunk_id,
-                "object": "chat.completion",
-                "created": int(datetime.now(tz=UTC).timestamp()),
-                "model": model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": "".join(content_parts)},
-                        "finish_reason": finish_reason,
-                    }
-                ],
-                "usage": None,
-            }
-        )
+        return await _run_chat_completion(rt, req)
 
     return app
 
@@ -6865,6 +6805,7 @@ def main(
     _load_atelier_env_file()
     # Load ~/.atelier/providers.json and push keys to env so litellm can find them
     from atelier.core.capabilities.providers.config import load_providers_config
+
     load_providers_config().export_env()
     _host = host or cfg.host
     _port = port or cfg.port
@@ -6891,26 +6832,4 @@ def main(
         host=_host,
         port=_port,
         reload=reload,
-    )
-
-
-def atelierd_main() -> None:
-    """Entrypoint for the ``atelierd`` console script.
-
-    Starts the Atelier HTTP service. Reads configuration from environment
-    variables and ``~/.atelier/providers.json``.
-
-    Environment overrides::
-
-        ATELIER_HOST   — bind host  (default: 127.0.0.1)
-        ATELIER_PORT   — bind port  (default: 8787)
-        ATELIER_ROOT   — data root  (default: ~/.atelier)
-
-    Equivalent to ``atelier service start``.
-    """
-    import os
-
-    main(
-        host=os.environ.get("ATELIER_HOST"),
-        port=int(os.environ["ATELIER_PORT"]) if os.environ.get("ATELIER_PORT") else None,
     )

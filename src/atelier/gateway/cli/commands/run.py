@@ -8,34 +8,12 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
+from atelier.core.capabilities.providers.config import LITELLM_PREFIX
 from atelier.gateway.cli.commands._shared import _emit
 
 if TYPE_CHECKING:
     from atelier.core.capabilities.owned_agent_session import OwnedAgentSession
     from atelier.core.capabilities.owned_agent_session.receipt import SessionReceipt
-
-
-# litellm provider-prefix map; bare model names get auto-prefixed
-_PROVIDER_LITELLM_PREFIX: dict[str, str] = {
-    "anthropic": "anthropic/",
-    "openai": "openai/",
-    "google": "gemini/",
-    "gemini": "gemini/",
-    "azure": "azure/",
-    "bedrock": "bedrock/",
-    "cohere": "cohere/",
-    "mistral": "mistral/",
-    "ollama": "ollama/",
-    "together": "together_ai/",
-    "groq": "groq/",
-    "fireworks": "fireworks_ai/",
-    "vertex": "vertex_ai/",
-    "huggingface": "huggingface/",
-    "replicate": "replicate/",
-    "deepinfra": "deepinfra/",
-    "perplexity": "perplexity/",
-    "openrouter": "openrouter/",
-}
 
 
 def _resolve_litellm_model(provider: str, model: str) -> str:
@@ -52,7 +30,7 @@ def _resolve_litellm_model(provider: str, model: str) -> str:
         return model
     if "/" in model:
         return model  # already provider-prefixed
-    prefix = _PROVIDER_LITELLM_PREFIX.get(provider.lower(), "")
+    prefix = LITELLM_PREFIX.get(provider.lower(), "")
     return f"{prefix}{model}" if prefix else model
 
 
@@ -260,72 +238,68 @@ def _run_ci_session(
     root: Path,
 ) -> None:
     """Non-interactive CI session — outputs JSON."""
+    from atelier.core.capabilities.cross_vendor_routing.configuration import (
+        detect_api_key_vendors,
+    )
+    from atelier.core.capabilities.cross_vendor_routing.router import (
+        NoFeasibleRouteError,
+    )
+    from atelier.core.capabilities.owned_execution_routing import (
+        OwnedCachePolicy,
+        OwnedRouteBudget,
+        OwnedRouteRequest,
+        select_owned_route,
+    )
 
-    def _run() -> None:
-        from atelier.core.capabilities.cross_vendor_routing.configuration import (
-            detect_api_key_vendors,
+    vendors = detect_api_key_vendors()
+    if not vendors:
+        sys.stdout.write(json.dumps({"error": "no_api_key", "message": "No API key configured"}) + "\n")
+        raise SystemExit(1)
+
+    budget_cast: OwnedRouteBudget = (
+        budget if budget in ("cheap", "balanced", "best") else "balanced"  # type: ignore[assignment]
+    )
+    cache_policy_cast: OwnedCachePolicy = "fresh" if cache_policy == "fresh" else "inherit"
+
+    try:
+        decision = select_owned_route(
+            root,
+            OwnedRouteRequest(
+                tool_name="run",
+                task_text=task,
+                mode="explicit" if (provider or model) else "auto",
+                budget=budget_cast,
+                provider=provider,
+                model=model,
+                cache_policy=cache_policy_cast,
+            ),
         )
-        from atelier.core.capabilities.cross_vendor_routing.router import (
-            NoFeasibleRouteError,
-        )
-        from atelier.core.capabilities.owned_execution_routing import (
-            OwnedCachePolicy,
-            OwnedRouteBudget,
-            OwnedRouteRequest,
-            select_owned_route,
-        )
+    except NoFeasibleRouteError as exc:
+        sys.stdout.write(json.dumps({"error": "no_route", "message": str(exc)}) + "\n")
+        raise SystemExit(1) from exc
 
-        vendors = detect_api_key_vendors()
-        if not vendors:
-            sys.stdout.write(json.dumps({"error": "no_api_key", "message": "No API key configured"}) + "\n")
-            raise SystemExit(1)
+    litellm_model = _resolve_litellm_model(decision.provider, decision.model)
+    session, receipt, final_text = _execute_owned_tool_session(
+        task,
+        provider=decision.provider,
+        model=litellm_model,
+        yolo=True,
+        root=root,
+    )
+    session.cache_policy = cache_policy_cast
+    session_path = session.save()
 
-        budget_cast: OwnedRouteBudget = (
-            budget if budget in ("cheap", "balanced", "best") else "balanced"  # type: ignore[assignment]
-        )
-        cache_policy_cast: OwnedCachePolicy = "fresh" if cache_policy == "fresh" else "inherit"
-
-        try:
-            decision = select_owned_route(
-                root,
-                OwnedRouteRequest(
-                    tool_name="run",
-                    task_text=task,
-                    mode="explicit" if (provider or model) else "auto",
-                    budget=budget_cast,
-                    provider=provider,
-                    model=model,
-                    cache_policy=cache_policy_cast,
-                ),
-            )
-        except NoFeasibleRouteError as exc:
-            sys.stdout.write(json.dumps({"error": "no_route", "message": str(exc)}) + "\n")
-            raise SystemExit(1) from exc
-
-        litellm_model = _resolve_litellm_model(decision.provider, decision.model)
-        session, receipt, final_text = _execute_owned_tool_session(
-            task,
-            provider=decision.provider,
-            model=litellm_model,
-            yolo=True,
-            root=root,
-        )
-        session.cache_policy = cache_policy_cast
-        session_path = session.save()
-
-        output = {
-            "session_id": session.session_id,
-            "model": litellm_model,
-            "provider": decision.provider,
-            "phases": [p.phase for p in receipt.phases],
-            "receipt": receipt.to_dict(),
-            "session_path": str(session_path),
-            "result": final_text,
-            "exit_code": 0,
-        }
-        sys.stdout.write(json.dumps(output) + "\n")
-
-    _run()
+    output = {
+        "session_id": session.session_id,
+        "model": litellm_model,
+        "provider": decision.provider,
+        "phases": [p.phase for p in receipt.phases],
+        "receipt": receipt.to_dict(),
+        "session_path": str(session_path),
+        "result": final_text,
+        "exit_code": 0,
+    }
+    sys.stdout.write(json.dumps(output) + "\n")
 
 
 @click.group("run")

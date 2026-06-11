@@ -2008,6 +2008,7 @@ main() {
     printf "   Code:          %s\n\n" "$code_display"    
     printf "%b─────────────────────────────────────────────────────────%b\n\n" "$C_PURPLE" "$C_RESET"
     printf "%b🚀 Commands:%b\n\n" "$C_PURPLE" "$C_RESET"
+    printf "   %batelier%b init                Initialize Atelier for a new project\n" "$C_PURPLE" "$C_RESET"
     printf "   %batelier%b status              View active runs\n" "$C_PURPLE" "$C_RESET"
     printf "   %batelier%b import              Import past agent sessions\n" "$C_PURPLE" "$C_RESET"
     printf "   %batelier%b memory recall       Search memory\n" "$C_PURPLE" "$C_RESET"

@@ -23,17 +23,10 @@ def main() -> int:
         )
 
         payload = json.loads(sys.stdin.read() or "{}")
-        output = build_codex_post_tool_use_savings_output(_atelier_root(), payload)
-        if not output.get("no_output"):
-            rendered = {}
-            for field in ("systemMessage", "message", "additionalContext"):
-                value = output.get(field)
-                if isinstance(value, str) and value.strip():
-                    rendered[field] = value
-            if not rendered:
-                return 0
-            sys.stdout.write(json.dumps(rendered) + "\n")
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        build_codex_post_tool_use_savings_output(_atelier_root(), payload)
+        # PostToolUse records telemetry and savings state only. Prompt-time
+        # guidance is emitted by UserPromptSubmit so tool completion stays quiet.
+    except (ImportError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         pass
     return 0
 
