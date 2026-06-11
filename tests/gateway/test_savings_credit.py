@@ -123,6 +123,65 @@ def test_read_transcript_stats_collects_turn_timestamps(tmp_path: Path) -> None:
     assert stats.turn_timestamps == ["2026-01-01T12:00:00Z", "2026-01-01T12:01:00Z"]
 
 
+def test_read_transcript_stats_prices_1h_cache_writes_and_long_context(tmp_path: Path) -> None:
+    """1h-TTL cache writes bill at $20/M (not $12.50) and >200k-context
+    messages bill the whole request at the long-context premium."""
+    base_msg = {
+        "timestamp": "2026-01-01T12:00:00Z",
+        "message": {
+            "id": "small",
+            "model": "claude-fable-5",
+            "usage": {
+                "input_tokens": 1_000_000,
+                "output_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 1_000_000,
+                "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 1_000_000,
+                },
+            },
+        },
+    }
+    p = tmp_path / "sess.jsonl"
+    p.write_text(json.dumps(base_msg) + "\n", encoding="utf-8")
+    stats = read_transcript_stats(p)
+    assert stats is not None
+    # context = 2M > 200k threshold -> premium: in 1M*$20 + cW1h 1M*$20*(25/12.5)=$40
+    assert stats.est_cost_usd == pytest.approx(20.0 + 40.0)
+
+    # Same usage but under the threshold: in 1M*$10 + cW1h 1M*$20
+    small = json.loads(json.dumps(base_msg))
+    small["message"]["usage"]["input_tokens"] = 100_000
+    small["message"]["usage"]["cache_creation_input_tokens"] = 50_000
+    small["message"]["usage"]["cache_creation"]["ephemeral_1h_input_tokens"] = 50_000
+    p.write_text(json.dumps(small) + "\n", encoding="utf-8")
+    stats = read_transcript_stats(p)
+    assert stats is not None
+    assert stats.est_cost_usd == pytest.approx(0.1 * 10.0 + 0.05 * 20.0)
+
+
+def test_read_transcript_stats_includes_subagent_usage(tmp_path: Path) -> None:
+    """Subagent transcripts (<session>/subagents/*.jsonl) count toward tokens/cost,
+    but not toward turns or tool calls."""
+    p = tmp_path / "sess.jsonl"
+    p.write_text(json.dumps(_usage_line("m1", "2026-01-01T12:00:00Z")) + "\n", encoding="utf-8")
+    sub_dir = tmp_path / "sess" / "subagents"
+    sub_dir.mkdir(parents=True)
+    (sub_dir / "agent-a1.jsonl").write_text(
+        json.dumps(_usage_line("sub1", "2026-01-01T12:00:30Z")) + "\n", encoding="utf-8"
+    )
+
+    stats = read_transcript_stats(p)
+    assert stats is not None
+    # Usage buckets include both the main turn and the subagent turn.
+    assert stats.input_tokens == 20
+    assert stats.output_tokens == 10
+    # Turns/timestamps remain main-transcript-only.
+    assert stats.turns == 1
+    assert stats.turn_timestamps == ["2026-01-01T12:00:00Z"]
+
+
 def test_price_avoided_calls_usd_uses_cache_read_rate() -> None:
     from atelier.gateway.adapters.mcp_server import _price_avoided_calls_usd
 

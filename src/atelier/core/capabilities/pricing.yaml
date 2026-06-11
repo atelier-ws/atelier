@@ -28,13 +28,24 @@ overrides:
     cache_write: 2.00
     thinking: 12.00
 
-  # Claude Fable 5 (Mythos-class — not yet in LiteLLM)
+  # Claude Fable 5 (Mythos-class).
+  # LiteLLM now ships base + 1h cache-write rates for this model, but not the
+  # >200k long-context premium tier — this override carries the full card
+  # until LiteLLM adds it. Premium follows the published Anthropic scheme:
+  # 2x input-side, 1.5x output for requests whose context exceeds 200k.
   claude-fable-5:
     input: 10.00
     output: 50.00
     cache_read: 1.00
     cache_write: 12.50
+    cache_write_1h: 20.00
     thinking: 50.00
+    long_context:
+      threshold: 200000
+      input: 20.00
+      output: 75.00
+      cache_read: 2.00
+      cache_write: 25.00
 
   # OpenCode (Subscription-covered routing)
   # Uses GPT-4o-mini as a proxy.
