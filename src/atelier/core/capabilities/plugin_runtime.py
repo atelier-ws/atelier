@@ -1731,7 +1731,7 @@ def _maybe_emit_ctx_notice(stats: dict[str, Any], payload: dict[str, Any]) -> tu
         threshold = int(os.environ.get("ATELIER_CTX_NUDGE_TOKENS", "") or _CTX_NUDGE_DEFAULT_TOKENS)
     except ValueError:
         threshold = _CTX_NUDGE_DEFAULT_TOKENS
-    if ctx < threshold:
+    if threshold <= 0 or ctx < threshold:  # <=0 disables the nudge
         return stats, {"no_output": True}
 
     ctx_k = ctx // 1000
