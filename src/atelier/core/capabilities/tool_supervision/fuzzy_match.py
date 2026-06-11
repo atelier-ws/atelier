@@ -107,6 +107,20 @@ def _make_dmp(content_len: int) -> _DMP:
     return dmp
 
 
+def _preserve_window_newline(window: str, new_string: str) -> str:
+    """Keep the replaced window's trailing newline when new_string lacks one.
+
+    The fuzzy path replaces whole source lines, so the window always ends with
+    a newline (unless at EOF). Dropping it would glue the following line onto
+    the last line of new_string — e.g. a function body onto its signature —
+    which can still parse and therefore slip past the parse gate.
+    An empty new_string is a deletion and intentionally removes the newline.
+    """
+    if window.endswith("\n") and new_string and not new_string.endswith("\n"):
+        return new_string + "\n"
+    return new_string
+
+
 def _find_exact_normalized_candidates(content: str, old_string: str) -> list[FuzzyCandidate]:
     lines = content.splitlines(keepends=True)
     offsets: list[int] = [0]
@@ -202,7 +216,8 @@ def apply_fuzzy_replace(content: str, old_string: str, new_string: str) -> tuple
     exact_candidates = _find_exact_normalized_candidates(content, old_string)
     if len(exact_candidates) == 1:
         candidate = exact_candidates[0]
-        new_content = content[: candidate.start_offset] + new_string + content[candidate.end_offset :]
+        replacement = _preserve_window_newline(content[candidate.start_offset : candidate.end_offset], new_string)
+        new_content = content[: candidate.start_offset] + replacement + content[candidate.end_offset :]
         return new_content, candidate.start_line, candidate.end_line
     if len(exact_candidates) > 1:
         # Multiple equally good targets — surface the ambiguity instead of
@@ -243,7 +258,8 @@ def apply_fuzzy_replace(content: str, old_string: str, new_string: str) -> tuple
 
     region_start = offsets[start_line_idx]
     region_end = offsets[end_line_idx]
-    new_content = content[:region_start] + new_string + content[region_end:]
+    replacement = _preserve_window_newline(content[region_start:region_end], new_string)
+    new_content = content[:region_start] + replacement + content[region_end:]
     return new_content, start_line_idx + 1, end_line_idx
 
 
@@ -297,6 +313,7 @@ __all__ = [
     "_anchor_end_line_idx",
     "_count_end_line_idx",
     "_find_exact_normalized_candidates",
+    "_preserve_window_newline",
     "apply_fuzzy_replace",
     "bounded_levenshtein",
     "find_fuzzy_candidates",
