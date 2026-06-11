@@ -54,3 +54,90 @@ def test_analyzer_loads_from_runs_dir(tmp_path: Path) -> None:
     fa = FailureAnalyzer(runs)
     clusters = fa.analyze()
     assert clusters and clusters[0].fingerprint == "sig"
+
+
+def test_done_status_without_error_is_not_clustered() -> None:
+    snap = {
+        "session_id": "r1",
+        "environment_id": "env_debugging_loop",
+        "status": "done",
+        "events": [],
+    }
+    clusters = analyze_failures([snap])
+    assert clusters == []
+
+
+def test_errors_seen_can_form_fingerprint_without_event_error_signature() -> None:
+    snap = {
+        "session_id": "r1",
+        "environment_id": "env_debugging_loop",
+        "status": "done",
+        "events": [],
+        "errors_seen": ["Command failed: pytest -q exited with code 1"],
+    }
+    clusters = analyze_failures([snap])
+    assert len(clusters) == 1
+    assert "pytest -q" in clusters[0].fingerprint
+
+
+def test_nonzero_command_exit_produces_fingerprint_without_stderr() -> None:
+    snap = {
+        "session_id": "r1",
+        "environment_id": "env_debugging_loop",
+        "status": "done",
+        "events": [],
+        "commands_run": [{"command": "pytest -q", "exit_code": 1, "stderr": "", "stdout": ""}],
+    }
+    clusters = analyze_failures([snap])
+    assert len(clusters) == 1
+    assert clusters[0].fingerprint == "command_exit:pytest:exit_1"
+
+
+def test_nonzero_command_exit_ignores_leading_env_assignments() -> None:
+    snap = {
+        "session_id": "r1",
+        "environment_id": "env_debugging_loop",
+        "status": "done",
+        "events": [],
+        "commands_run": [{"command": "LOCAL=1 npm run build", "exit_code": 2, "stderr": "", "stdout": ""}],
+    }
+    clusters = analyze_failures([snap])
+    assert clusters == []
+
+
+def test_low_value_command_exit_is_ignored() -> None:
+    snap = {
+        "session_id": "r1",
+        "environment_id": "env_debugging_loop",
+        "status": "done",
+        "events": [],
+        "commands_run": [{"command": "npm run build", "exit_code": 2, "stderr": "", "stdout": ""}],
+    }
+    clusters = analyze_failures([snap])
+    assert clusters == []
+
+
+def test_tool_failure_result_summary_forms_fingerprint() -> None:
+    snap = {
+        "session_id": "r1",
+        "environment_id": "env_debugging_loop",
+        "status": "done",
+        "events": [],
+        "tools_called": [{"name": "search", "result_summary": "error: request timed out"}],
+    }
+    clusters = analyze_failures([snap])
+    assert len(clusters) == 1
+    assert clusters[0].fingerprint.startswith("tool_failure:search:")
+
+
+def test_validation_failure_forms_fingerprint() -> None:
+    snap = {
+        "session_id": "r1",
+        "environment_id": "env_debugging_loop",
+        "status": "done",
+        "events": [],
+        "validation_results": [{"name": "pytest", "passed": False, "detail": "2 tests failed"}],
+    }
+    clusters = analyze_failures([snap])
+    assert len(clusters) == 1
+    assert clusters[0].fingerprint.startswith("validation_failed:pytest:")

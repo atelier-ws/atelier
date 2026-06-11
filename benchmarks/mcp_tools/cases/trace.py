@@ -67,7 +67,7 @@ _TRACE_SPECS: list[dict[str, object]] = [
         "task": "capture provider comparison findings",
         "status": "success",
         "capture_sources": ["providers.csv", "summary.csv"],
-        "capture_files": ["reports/benchmark/providers/summary.csv"],
+        "capture_files": ["benchmark/providers/summary.csv"],
     },
     {
         "label": "trace/partial/monitoring",

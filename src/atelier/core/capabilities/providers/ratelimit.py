@@ -90,9 +90,21 @@ class _Window:
 _limiters: dict[str, _Window] = {}
 _init_lock = asyncio.Lock()
 
+# Bare model-name prefixes → provider, for models given without a litellm prefix.
+_BARE_MODEL_PROVIDERS: dict[str, str] = {
+    "claude": "anthropic",
+    "gpt": "openai",
+    "o1": "openai",
+    "o3": "openai",
+    "o4": "openai",
+    "gemini": "google",
+}
+
 
 def _limiter_key(model: str) -> str:
     """Return the best matching limiter key for a model ID."""
+    from .config import LITELLM_PREFIX
+
     # Exact model match first, then provider prefix
     if model in _limiters:
         return model
@@ -101,26 +113,12 @@ def _limiter_key(model: str) -> str:
         provider = model.split("/")[0]
         if provider in _limiters:
             return provider
-    # e.g. "claude-haiku-4-5" → check "anthropic" if mapped
-    # Map well-known model prefixes to provider names
-    prefix_map = {
-        "claude": "anthropic",
-        "gpt": "openai",
-        "o1": "openai",
-        "o3": "openai",
-        "o4": "openai",
-        "gemini": "google",
-        "groq/": "groq",
-        "ollama/": "ollama",
-        "mistral/": "mistral",
-        "openrouter/": "openrouter",
-        "bedrock/": "bedrock",
-        "vertex_ai/": "vertex",
-        "azure/": "azure",
-        "together_ai/": "together",
-        "fireworks_ai/": "fireworks",
-    }
-    for prefix, provider in prefix_map.items():
+    # litellm prefixes that differ from the provider name, e.g. "together_ai/x" → "together"
+    for provider, prefix in LITELLM_PREFIX.items():
+        if model.startswith(prefix) and provider in _limiters:
+            return provider
+    # e.g. "claude-haiku-4-5" → "anthropic"
+    for prefix, provider in _BARE_MODEL_PROVIDERS.items():
         if model.startswith(prefix) and provider in _limiters:
             return provider
     return ""

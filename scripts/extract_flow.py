@@ -8,11 +8,11 @@ Only shows the text/tool content - skips all raw request/response payloads.
 
 import base64
 import json
-import os
 import re
 import sys
 from pathlib import Path
 
+from mitmproxy.exceptions import FlowReadException
 from mitmproxy.io import FlowReader
 
 
@@ -45,7 +45,13 @@ def extract(path: str, output_file: str) -> None:
     last_req_hash = None
     with open(path, "rb") as f, open(output_file, "w") as out:
         reader = FlowReader(f)
-        for flow in reader.stream():
+        try:
+            flows = list(reader.stream())
+        except FlowReadException as e:
+            print(f"  SKIP (not a mitmproxy flow file): {path}")
+            print(f"    reason: {e}")
+            return
+        for flow in flows:
             if not flow.request or not flow.response:
                 continue
             url = flow.request.url
@@ -125,11 +131,9 @@ def extract(path: str, output_file: str) -> None:
 def process_path(target_path: str) -> None:
     path = Path(target_path)
     if path.is_dir():
-        for root, _, files in os.walk(path):
-            for file in sorted(files):
-                if file.endswith(".flow"):
-                    fp = Path(root) / file
-                    extract(str(fp), str(fp.with_suffix(".flow_dump.txt")))
+        for fp in sorted(path.iterdir()):
+            if fp.is_file() and fp.suffix == ".flow":
+                extract(str(fp), str(fp.with_suffix(".flow_dump.txt")))
     elif path.exists():
         extract(str(path), str(path.with_suffix(".flow_dump.txt")))
     else:

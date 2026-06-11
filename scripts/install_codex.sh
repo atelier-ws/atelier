@@ -143,6 +143,24 @@ codex_cmd() {
     fi
 }
 
+patch_plugin_hooks() {
+    if $DRY_RUN; then
+        echo "  [dry-run] patch ${PLUGIN_DIR}/hooks/hooks.json with absolute plugin path"
+        return
+    fi
+
+    local atelier_launcher atelier_python
+    atelier_launcher="$(command -v atelier)"
+    atelier_python="$(head -n 1 "$(readlink -f "$atelier_launcher")")"
+    atelier_python="${atelier_python#\#!}"
+    if [[ "$atelier_python" != /* ]] || [ ! -x "$atelier_python" ]; then
+        echo "[atelier:codex] ERROR: cannot resolve Atelier Python interpreter from $atelier_launcher" >&2
+        exit 1
+    fi
+
+    HOOKS_PATH="${PLUGIN_DIR}/hooks/hooks.json" ATELIER_PYTHON="$atelier_python" ATELIER_REPO_SRC="${ATELIER_REPO}/src" python3 -c 'import json, os; from pathlib import Path; path = Path(os.environ["HOOKS_PATH"]); data = json.loads(path.read_text(encoding="utf-8")); replacements = {"__ATELIER_PYTHON__": os.environ["ATELIER_PYTHON"], "__ATELIER_REPO_SRC__": os.environ["ATELIER_REPO_SRC"]}; [(hook.__setitem__("command", hook["command"].replace("__ATELIER_PYTHON__", replacements["__ATELIER_PYTHON__"]).replace("__ATELIER_REPO_SRC__", replacements["__ATELIER_REPO_SRC__"]))) for groups in data.get("hooks", {}).values() for group in groups for hook in group.get("hooks", []) if isinstance(hook.get("command"), str)]; path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")'
+    }
+
 patch_plugin_mcp() {
     local workspace_mode="0"
     if $WORKSPACE_SET; then
@@ -196,74 +214,31 @@ ensure_codex_mcp() {
 }
 
 install_codex_plugin() {
-    # Installs atelier as a plugin in Codex's built-in openai-curated
-    # marketplace (~/.codex/.tmp/plugins/). This is the only marketplace
-    # Codex v0.132+ exposes, so we add atelier as an entry within it.
-    if $DRY_RUN; then
-        echo "  [dry-run] install atelier into Codex's openai-curated marketplace"
-        echo "  [dry-run] codex plugin add atelier@openai-curated"
-        return
-    fi
-
-    local codex_plugins_repo="${CODEX_HOME}/.tmp/plugins"
-    if [ ! -d "$codex_plugins_repo/.git" ]; then
-        if $WORKSPACE_SET; then
-            info "Codex plugins repository not found at ${codex_plugins_repo}; skipping plugin auto-install for workspace scope."
-        else
-            warn "Codex plugins repository not found at ${codex_plugins_repo}; skipping plugin auto-install. MCP is still configured and AGENTS.md remains active."
-        fi
-        return
-    fi
-
-    local plugin_dest="$codex_plugins_repo/plugins/atelier"
-    local marketplace="$codex_plugins_repo/.agents/plugins/marketplace.json"
-
-    if [ ! -f "$marketplace" ]; then
-        if $WORKSPACE_SET; then
-            info "Codex marketplace file not found at ${marketplace}; skipping plugin auto-install for workspace scope."
-        else
-            warn "Codex marketplace file not found at ${marketplace}; skipping plugin auto-install."
-        fi
-        return
-    fi
-
-    # Copy plugin source into the Codex marketplace repo
-    mkdir -p "$plugin_dest/.codex-plugin"
-    cp "$PLUGIN_DIR/.codex-plugin/plugin.json" "$plugin_dest/.codex-plugin/"
-    cp "$PLUGIN_DIR/.mcp.json" "$plugin_dest/"
-
-    # Add atelier entry to the openai-curated marketplace
-    python3 -c "
-import json
-path = '$marketplace'
-data = json.loads(open(path).read())
-plugins = data.setdefault('plugins', [])
-if not any(p.get('name') == 'atelier' for p in plugins):
-    plugins.append({
-        'name': 'atelier',
-        'source': {'source': 'local', 'path': './plugins/atelier'},
-        'policy': {'installation': 'AVAILABLE', 'authentication': 'ON_INSTALL'},
-        'category': 'Coding'
-    })
-    open(path, 'w').write(json.dumps(data, indent=2) + '\n')
-" 2>/dev/null || {
-        warn "failed to update Codex marketplace; skipping plugin install"
-        return
-    }
-
-    # Commit so Codex picks up the change
-    if ! git -C "$codex_plugins_repo" add -A 2>/dev/null; then
-        warn "failed to stage atelier plugin in Codex marketplace; skipping"
-        return
-    fi
-    git -C "$codex_plugins_repo" commit -m "add atelier plugin" --allow-empty 2>/dev/null || true
-
-    if codex_cmd plugin add atelier@openai-curated >/dev/null 2>&1; then
-        info "installed Codex plugin atelier@openai-curated"
+    local marketplace_root marketplace source_path
+    if $WORKSPACE_SET; then
+        marketplace_root="$WORKSPACE"
     else
-        warn "Codex plugin auto-install failed; MCP is still configured and Codex will use Atelier through the registered MCP server."
+        marketplace_root="$HOME"
     fi
-}
+    source_path="./.codex/plugins/atelier"
+    marketplace="${marketplace_root}/.agents/plugins/marketplace.json"
+
+    if $DRY_RUN; then
+        echo "  [dry-run] register atelier in ${marketplace}"
+        echo "  [dry-run] codex plugin add atelier@atelier-local"
+        return
+    fi
+
+    mkdir -p "$(dirname "$marketplace")"
+    MARKETPLACE_PATH="$marketplace" PLUGIN_SOURCE_PATH="$source_path" python3 -c 'import json, os; from pathlib import Path; path = Path(os.environ["MARKETPLACE_PATH"]); data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"name": "atelier-local", "plugins": []}; data.setdefault("name", "atelier-local"); data.setdefault("interface", {"displayName": "Atelier local"}); entry = {"name": "atelier", "source": {"source": "local", "path": os.environ["PLUGIN_SOURCE_PATH"]}, "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"}, "category": "Coding"}; data["plugins"] = [plugin for plugin in data.get("plugins", []) if plugin.get("name") != "atelier"] + [entry]; path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")'
+
+    codex_cmd plugin remove atelier@openai-curated >/dev/null 2>&1 || true
+    if codex_cmd plugin add atelier@atelier-local >/dev/null 2>&1; then
+        info "installed Codex plugin atelier@atelier-local"
+    else
+        warn "Codex plugin auto-install failed; restart Codex and install atelier@atelier-local from /plugins."
+    fi
+    }
 
 # ---- check CLI --------------------------------------------------------------
 if ! command -v codex &>/dev/null; then
@@ -296,12 +271,15 @@ if $PRINT_ONLY; then
             echo "   codex mcp add atelier -- atelier-mcp --host codex"
         fi
         echo ""
-        echo "4. Add atelier to Codex's openai-curated marketplace:"
-        echo "   cp -R '${PLUGIN_DIR}/.' '${CODEX_HOME}/.tmp/plugins/plugins/atelier/'"
-        echo "   # Then edit ${CODEX_HOME}/.tmp/plugins/.agents/plugins/marketplace.json"
-        echo "   # to add atelier to the 'plugins' array, then git commit:"
-        echo "   cd '${CODEX_HOME}/.tmp/plugins' && git add -A && git commit -m 'add atelier plugin'"
-        echo "   codex plugin add atelier@openai-curated"
+        echo "4. Register the complete plugin bundle in the personal marketplace:"
+        if $WORKSPACE_SET; then
+            echo "   # Add atelier to '${WORKSPACE}/.agents/plugins/marketplace.json'"
+            echo "   # with source.path './.codex/plugins/atelier', then run:"
+        else
+            echo "   # Add atelier to '${HOME}/.agents/plugins/marketplace.json'"
+            echo "   # with source.path './.codex/plugins/atelier', then run:"
+        fi
+        echo "   codex plugin add atelier@atelier-local"
         echo ""
     if $WORKSPACE_SET; then
         echo "5. Install universal project agents (run once per project):"
@@ -320,6 +298,7 @@ fi
 # ---- install plugin bundle + marketplace ------------------------------------
 info "Installing Codex plugin source → $PLUGIN_DIR"
 install_plugin_bundle
+patch_plugin_hooks
 patch_plugin_mcp
 ensure_codex_mcp
 install_codex_plugin
@@ -463,46 +442,45 @@ else
     vfail "atelier-mcp NOT found on PATH"
 fi
 
-CODEX_MARKETPLACE="$CODEX_HOME/.tmp/plugins/.agents/plugins/marketplace.json"
+if $WORKSPACE_SET; then
+    CODEX_MARKETPLACE="$WORKSPACE/.agents/plugins/marketplace.json"
+else
+    CODEX_MARKETPLACE="$HOME/.agents/plugins/marketplace.json"
+fi
 if [ -f "$CODEX_MARKETPLACE" ]; then
-    MARKETPLACE_OK=$(python3 -c "
-import json
-data = json.loads(open('$CODEX_MARKETPLACE').read())
-print('yes' if any(p.get('name') == 'atelier' for p in data.get('plugins', [])) else 'no')
-")
+    MARKETPLACE_OK=$(MARKETPLACE_PATH="$CODEX_MARKETPLACE" python3 -c 'import json, os; data = json.loads(open(os.environ["MARKETPLACE_PATH"]).read()); print("yes" if any(p.get("name") == "atelier" and p.get("source", {}).get("path") == "./.codex/plugins/atelier" for p in data.get("plugins", [])) else "no")')
     if [ "$MARKETPLACE_OK" = "yes" ]; then
-        vpass "openai-curated marketplace contains atelier entry: $CODEX_MARKETPLACE"
+        vpass "personal marketplace contains atelier entry: $CODEX_MARKETPLACE"
     else
-        vfail "openai-curated marketplace missing atelier entry: $CODEX_MARKETPLACE"
+        vfail "personal marketplace has no valid atelier entry: $CODEX_MARKETPLACE"
     fi
 else
-    if $WORKSPACE_SET; then
-        vpass "workspace Codex marketplace cache not present; plugin install skipped"
-    else
-        vwarn "Codex marketplace file missing; plugin install skipped"
-    fi
+    vfail "personal marketplace file missing: $CODEX_MARKETPLACE"
 fi
 
-PLUGIN_CONFIG_KEY='[plugins."atelier@openai-curated"]'
+PLUGIN_CONFIG_KEY='[plugins."atelier@atelier-local"]'
 if [ -f "$CODEX_HOME/config.toml" ] && grep -qF "$PLUGIN_CONFIG_KEY" "$CODEX_HOME/config.toml" 2>/dev/null; then
-    vpass "Codex config enables plugin atelier@openai-curated"
+    vpass "Codex config enables plugin atelier@atelier-local"
 else
-    if $WORKSPACE_SET; then
-        vpass "workspace Codex config has no plugin entry for atelier@openai-curated; MCP registration remains active"
-    else
-        vwarn "Codex config missing plugin entry for atelier@openai-curated; MCP registration is the required surface, plugin install remains best-effort"
-    fi
+    vfail "Codex config missing plugin entry for atelier@atelier-local"
 fi
 
-if codex_cmd plugin list 2>/dev/null | grep -Eq '^atelier@openai-curated[[:space:]]+installed, enabled([[:space:]]|$)'; then
+PLUGIN_LIST=$(codex_cmd plugin list 2>/dev/null || true)
+    if grep -Eq '^atelier@atelier-local[[:space:]]+installed, enabled([[:space:]]|$)' <<<"$PLUGIN_LIST"; then
     vpass "codex plugin list shows atelier plugin installed"
-else
-    if $WORKSPACE_SET; then
-        vpass "workspace codex plugin list has no atelier marketplace plugin; MCP server remains active"
     else
-        vwarn "codex plugin list does not show atelier plugin installed; Codex will still use Atelier via the registered MCP server"
+    vfail "codex plugin list does not show atelier@atelier-local installed and enabled"
     fi
-fi
+
+if [ -f "${PLUGIN_DIR}/hooks/hooks.json" ]; then
+    if grep -qF '${PLUGIN_ROOT}/hooks/' "${PLUGIN_DIR}/hooks/hooks.json" && ! grep -qE '__ATELIER_(PYTHON|REPO_SRC)__' "${PLUGIN_DIR}/hooks/hooks.json"; then
+        vpass "Codex plugin lifecycle hooks installed with supported plugin-root paths: ${PLUGIN_DIR}/hooks/hooks.json"
+    else
+        vfail "Codex plugin lifecycle hooks do not resolve through PLUGIN_ROOT"
+    fi
+    else
+    vfail "Codex plugin lifecycle hooks missing: ${PLUGIN_DIR}/hooks/hooks.json"
+    fi
 
 if [ -f "$AGENTS_FILE" ] && grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; then
     vpass "AGENTS.md present with atelier:code persona: $AGENTS_FILE"

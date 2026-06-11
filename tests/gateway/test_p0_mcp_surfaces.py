@@ -249,8 +249,10 @@ def test_tool_code_search_returns_cache_hit_field(tmp_path: Path) -> None:
     first = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
     second = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
 
-    assert first["provenance"] == "local"
-    assert second["provenance"] == "cached"
+    assert "provenance" not in first
+    assert "cache_hit" not in first
+    # Cached response is byte-identical on the LLM surface.
+    assert second["items"] == first["items"]
     assert all("snippet" not in item for item in first["items"])
 
 
@@ -271,7 +273,7 @@ def test_tool_code_search_name_first_contract_stays_unchanged(tmp_path: Path, mo
 
     payload = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 220})
 
-    assert payload["provenance"] == "local"
+    assert "provenance" not in payload
     assert "backend" not in payload
     fake_engine.tool_search.assert_called_once_with(
         "OrderService",
@@ -350,10 +352,10 @@ def test_tool_code_search_invalidates_cache_after_reindex(tmp_path: Path) -> Non
     indexed = tool_code({"op": "index", "repo_root": str(tmp_path), "budget_tokens": 4000, "force": True})
     fresh = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
 
-    assert cached["provenance"] == "cached"
+    assert "provenance" not in cached
+    assert cached["items"] == fresh["items"]
     assert indexed["index_version"] >= 2
-    assert fresh["provenance"] == "local"
-    assert fresh["provenance"] == "local"
+    assert "provenance" not in fresh
 
 
 def test_tool_code_search_respects_budget_after_wrapper_metadata(tmp_path: Path) -> None:
@@ -392,7 +394,7 @@ def test_tool_code_search_accepts_hardened_params(tmp_path: Path) -> None:
         }
     )
 
-    assert payload["provenance"] == "local"
+    assert "provenance" not in payload
     assert "provenance_breakdown" not in payload
     assert payload["items"][0]["path"] == "src/orders.py"
     assert payload["items"][0]["signature"] == "class OrderService:"
@@ -443,13 +445,11 @@ def test_tool_code_search_accepts_semantic_modes_additively(tmp_path: Path) -> N
         }
     )
 
-    assert semantic["mode"] == "semantic"
+    assert "mode" not in semantic
     semantic_names = {item["name"] for item in semantic["items"]}
     assert "issue_access_token" in semantic_names
-    assert hybrid_auto["mode"] == "hybrid"
     hybrid_names = {item["name"] for item in hybrid_auto["items"]}
     assert "issue_access_token" in hybrid_names
-    assert exact_auto["mode"] == "lexical"
     exact_names = {item["name"] for item in exact_auto["items"]}
     assert "issue_access_token" in exact_names
 
@@ -509,10 +509,12 @@ def test_tool_code_usages_returns_grouped_references(tmp_path: Path) -> None:
 
     payload = tool_code({"op": "usages", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 4000})
 
-    assert payload["target"]["qualified_name"] == "OrderService"
+    target = payload["target"]
+    assert (target.get("name") or target.get("symbol_name")) == "OrderService"
+    assert "qualified_name" not in target  # identical to name — deduped
     assert payload["group_by"] == "file"
     assert "src/checkout.py" in payload["references"]
-    assert payload["references"]["src/checkout.py"][0]["provenance"] == "local_index"
+    assert "provenance" not in payload["references"]["src/checkout.py"][0]
 
 
 def test_tool_code_call_graph_dispatches_to_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -609,7 +611,7 @@ def test_tool_code_pattern_dispatches_to_engine(tmp_path: Path, monkeypatch: pyt
         }
     )
 
-    assert payload["provenance"] == "ast-grep"
+    assert "provenance" not in payload
     fake_engine.tool_pattern.assert_called_once_with(
         pattern="requests.get($URL)",
         rewrite=None,
@@ -936,7 +938,7 @@ def test_tool_code_usages_dispatches_to_engine(tmp_path: Path, monkeypatch: pyte
 
     payload = tool_code({"op": "usages", "repo_root": str(tmp_path), "query": "OrderService", "budget_tokens": 220})
 
-    assert payload["provenance"] == "scip"
+    assert "provenance" not in payload
     fake_engine.tool_usages.assert_called_once_with(
         query="OrderService",
         symbol_id=None,
@@ -1043,14 +1045,7 @@ def test_tool_code_deleted_search_stays_on_additive_code_surface(
         }
     )
 
-    assert sorted(payload.keys()) == [
-        "has_more_context",
-        "items",
-        "mode",
-        "provenance",
-        "suggested_next",
-        "view",
-    ]
+    assert sorted(payload.keys()) == ["items"]
     assert payload["items"][0]["deleted_at_sha"] == "abc123"
     assert payload["items"][0]["rename_target"] == "modern.py"
     fake_engine.tool_search.assert_called_once_with(
@@ -1120,12 +1115,11 @@ def test_tool_code_blame_is_an_additive_extension_to_code_surface(
         "last_author",
         "last_commit_sha",
         "local_edits",
-        "provenance",
         "qualified_name",
         "symbol_name",
     ]
-    assert blame["provenance"] == "blame"
-    assert search["provenance"] == "local"
+    assert "provenance" not in blame
+    assert "provenance" not in search
     fake_engine.tool_blame.assert_called_once_with(
         query="risk_score",
         symbol_id=None,
@@ -1198,8 +1192,8 @@ def test_tool_code_cache_diagnostics_hide_payloads_and_keep_other_ops_cached(
     assert "payload_json" not in json.dumps(status, sort_keys=True)
     assert "items" not in status
     assert invalidated["entries_by_tool"] == {"code.search": 1}
-    assert search_after["provenance"] == "local"
-    assert symbol_after["provenance"] == "cached"
+    assert "provenance" not in search_after
+    assert "provenance" not in symbol_after
 
 
 def test_read_budget_safe_mode_is_smaller_than_expand_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

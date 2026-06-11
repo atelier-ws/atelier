@@ -49,7 +49,14 @@ def benchmark_solver_cmd(
     model: str | None,
     runner: str | None,
 ) -> None:
-    """Run the owned benchmark solver headlessly."""
+    """Run the owned agent solver on a single task prompt.
+
+    \b
+    Examples:
+      atelier benchmark solver --task-prompt "Fix the failing test in tests/core/test_foo.py"
+      atelier benchmark solver --task-file task.txt --format stream-json
+      atelier benchmark solver --task-prompt "..." --provider anthropic --model claude-haiku-4-5
+    """
     prompt = _load_task_prompt(task_prompt=task_prompt, task_file=task_file)
     run = run_benchmark_solver(
         prompt,

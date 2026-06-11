@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -34,8 +35,7 @@ def host_context_state(host: str, session_id: str) -> tuple[int, str]:
         return 0, ""
     try:
         return probe(session_id)
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
+    except Exception:  # noqa: BLE001 - probes are best-effort
         logger.debug("context probe failed for host=%s", host, exc_info=True)
         return 0, ""
 
@@ -64,6 +64,45 @@ def _find_usage(obj: Any, depth: int = 0) -> dict[str, Any] | None:
         if found is not None:
             return found
     return None
+
+
+def _opencode_probe(session_id: str, db_path: Path | None = None) -> tuple[int, str]:
+    path = db_path or (Path.home() / ".local/share/opencode/opencode.db")
+    if not path.exists():
+        return 0, ""
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            row = conn.execute(
+                """
+                SELECT p.data, m.data
+                FROM part p
+                JOIN message m ON p.message_id = m.id
+                WHERE p.session_id = ?
+                  AND json_extract(p.data, '$.type') = 'step-finish'
+                ORDER BY p.time_created DESC
+                LIMIT 1
+                """,
+                (session_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return 0, ""
+    if row is None:
+        return 0, ""
+    try:
+        part = json.loads(row[0] or "{}")
+        message = json.loads(row[1] or "{}")
+        tokens = part.get("tokens") or {}
+        cache = tokens.get("cache") or {}
+        ctx = int(tokens.get("input", 0) or 0) + int(cache.get("read", 0) or 0) + int(cache.get("write", 0) or 0)
+        model_id = str(message.get("modelID") or message.get("model") or "")
+        provider_id = str(message.get("providerID") or "")
+        model = f"{provider_id}/{model_id}" if provider_id and model_id else model_id
+        return (ctx, model) if ctx > 0 else (0, "")
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return 0, ""
 
 
 def _codex_probe(session_id: str, root: Path | None = None) -> tuple[int, str]:
@@ -109,4 +148,5 @@ def _codex_probe(session_id: str, root: Path | None = None) -> tuple[int, str]:
 _PROBES: dict[str, Callable[[str], tuple[int, str]]] = {
     "claude": _claude_probe,
     "codex": _codex_probe,
+    "opencode": _opencode_probe,
 }

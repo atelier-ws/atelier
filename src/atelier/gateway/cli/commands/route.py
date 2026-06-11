@@ -145,13 +145,22 @@ def proof_run_cmd(
     root: Path = ctx.obj["root"]
 
     if context_reduction_pct is None:
-        try:
-            from benchmarks.swe.savings_bench import run_savings_bench
+        # Try to read from smart_state.json (written by telemetry/hooks)
+        import json as _json
 
-            savings = run_savings_bench(root / "proof" / "savings_bench_tmp")
-            context_reduction_pct = savings.reduction_pct
-        except Exception as exc:
-            raise click.ClickException(f"Could not run savings bench (pass --context-reduction-pct): {exc}") from exc
+        smart_state_path = Path.home() / ".atelier" / "smart_state.json"
+        if smart_state_path.exists():
+            try:
+                ss = _json.loads(smart_state_path.read_text(encoding="utf-8"))
+                context_reduction_pct = float(ss.get("context_reduction_pct", 0) or 0)
+            except (OSError, _json.JSONDecodeError):
+                pass
+        if context_reduction_pct is None:
+            raise click.ClickException(
+                "Could not auto-measure context reduction. "
+                "Pass --context-reduction-pct <value> explicitly.\n"
+                "Example: atelier proof run --session-id wp32-proof --context-reduction-pct 60"
+            )
 
     cases: list[BenchmarkCase] = _build_proof_cases(session_id)
 
@@ -280,6 +289,52 @@ def _build_proof_cases(session_id: str) -> list[Any]:
         },
     ]
     return [BenchmarkCase(**c) for c in _CASES]
+
+
+@proof_group.command("gate")
+@click.option(
+    "--run-dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    required=True,
+    help="Benchmark run directory containing benchmark-gate.json (from benchmark cost).",
+)
+@click.option("--json", "as_json", is_flag=True, help="Emit the loaded gate as JSON.")
+@click.option(
+    "--require-pass/--allow-failed-gate",
+    default=False,
+    show_default=True,
+    help="Exit non-zero when the loaded benchmark gate did not pass.",
+)
+def proof_gate_cmd(run_dir: Path, as_json: bool, require_pass: bool) -> None:
+    """Check a benchmark cost run gate artifact and optionally fail CI.
+
+    Run after ``atelier benchmark cost`` to verify the A/B results meet the gate.
+
+    \b
+    Example:
+      atelier benchmark cost --task all --arm baseline atelier
+      atelier proof gate --run-dir .atelier/benchmark/cost/2026-... --require-pass
+    """
+    import json as _json
+
+    from atelier.core.capabilities.benchmark_gate import (
+        load_benchmark_gate,
+        require_benchmark_gate_pass,
+    )
+
+    gate = load_benchmark_gate(run_dir.resolve())
+    if as_json:
+        click.echo(_json.dumps(gate))
+    else:
+        click.echo(f"suite: {gate.get('suite', '')}")
+        click.echo(f"passed: {bool(gate.get('passed'))}")
+        for reason in gate.get("reasons", []) or []:
+            click.echo(f"- {reason}")
+    if require_pass:
+        try:
+            require_benchmark_gate_pass(run_dir.resolve())
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
 
 
 __all__ = ["proof_group", "route_public_group"]

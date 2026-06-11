@@ -47,16 +47,9 @@ def main() -> int:
         if session_id:
             _write_session_state(session_id, cwd or None)
 
-        from atelier.core.capabilities.plugin_runtime import codex_update_notification
-
-        output = codex_update_notification(
-            _atelier_root(),
-            current_version=os.environ.get("ATELIER_VERSION", "0.0.0"),
-        )
-        stdout = output.get("stdout") if isinstance(output, dict) else None
-        if stdout:
-            sys.stdout.write(json.dumps(stdout) + "\n")
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError, OSError):
+        # SessionStart only bridges Codex session state. Prompt-time guidance
+        # is emitted by UserPromptSubmit so startup remains quiet.
+    except (ImportError, json.JSONDecodeError, KeyError, TypeError, ValueError, OSError):
         pass
     return 0
 
