@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import json
 import logging
@@ -119,7 +120,12 @@ def _adapt_indentation(old: str, new: str, matched: str) -> str:
     return "\n".join((prefix + line if line.strip() else line) for line in new_lines) + trailing_newline
 
 
-def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_string: str) -> tuple[str, int, int]:
+def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_string: str) -> tuple[str, int, int, str]:
+    """Replace old_string with new_string, returning (new_content, line_start, line_end, match_mode).
+
+    match_mode is one of: "noop", "exact", "normalized", "placeholder", "fuzzy".
+    Raises ValueError when the string cannot be located with sufficient confidence.
+    """
     lines = content.splitlines(keepends=True)
     start_offset = 0
     end_offset = len(content)
@@ -130,8 +136,18 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
         end_offset = sum(len(line) for line in lines[:end])
     scoped = content[start_offset:end_offset]
 
+    # Idempotency: if the edit has already been applied (old_string gone, new_string
+    # present), return success without touching the file.
+    if old_string and new_string and old_string not in scoped and new_string in scoped:
+        idx = scoped.find(new_string)
+        absolute = start_offset + idx
+        line_start = content[:absolute].count("\n") + 1
+        line_end = line_start + new_string.count("\n")
+        return content, line_start, line_end, "noop"
+
     index = scoped.find(old_string)
     matched = old_string
+    match_mode = "exact"
     if index == -1:
         normalized_content = _normalize_typography(scoped)
         normalized_old = _normalize_typography(old_string)
@@ -139,6 +155,7 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
         if normalized_index != -1:
             index = normalized_index
             matched = scoped[index : index + len(old_string)]
+            match_mode = "normalized"
     if index == -1:
         placeholder = _placeholder_pattern(old_string)
         if placeholder:
@@ -146,6 +163,7 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
             if match:
                 index = match.start()
                 matched = match.group(0)
+                match_mode = "placeholder"
     if index != -1:
         replacement = _adapt_indentation(old_string, new_string, matched)
         absolute = start_offset + index
@@ -155,6 +173,7 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
             content[:absolute] + replacement + content[absolute + len(matched) :],
             line_start,
             line_end,
+            match_mode,
         )
 
     if normalize_for_fuzzy(old_string):
@@ -163,6 +182,7 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
             content[:start_offset] + fuzzed + content[end_offset:],
             line_start + content[:start_offset].count("\n"),
             line_end + content[:start_offset].count("\n"),
+            "fuzzy",
         )
     raise ValueError("old_string not found in file")
 
@@ -250,6 +270,58 @@ def _atomic_write(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
+def _build_retry_hint(
+    file_state: dict[Path, str],
+    backups: dict[Path, bytes | None],
+    edit: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Build a retry_with hint so the caller can retry without a separate re-read turn.
+
+    When old_string is not found, we locate the nearest unique region in the
+    pre-edit (backup) content based on the first non-blank line of old_string,
+    and ship that exact disk text back so the model can correct old_string inline.
+    """
+    if not edit:
+        return None
+    old_string = str(edit.get("old_string") or "")
+    raw_path = str(edit.get("file_path") or edit.get("path") or "")
+    if not old_string or not raw_path:
+        return None
+
+    # Use backup (pre-edit) content as the source of truth for the hint.
+    for _path, backup_bytes in backups.items():
+        if backup_bytes is None:
+            continue
+        try:
+            disk_content = backup_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+
+        old_lines = old_string.splitlines()
+        first_anchor = next((line.strip() for line in old_lines if line.strip()), None)
+        if not first_anchor:
+            return None
+
+        disk_lines = disk_content.splitlines(keepends=True)
+        # Find lines containing the first non-blank anchor token
+        anchor_positions = [
+            i for i, line in enumerate(disk_lines) if first_anchor in line or first_anchor in line.strip()
+        ]
+        if len(anchor_positions) == 1:
+            # Unique anchor — extract a window the same size as old_string ± 2 lines
+            n_lines = max(len(old_lines), 1)
+            start = max(0, anchor_positions[0])
+            end = min(len(disk_lines), start + n_lines + 2)
+            excerpt = "".join(disk_lines[start:end])
+            clean_path = raw_path.split("#")[0]
+            return {
+                "path": f"{clean_path}#L{start + 1}-{end}",
+                "old_string": excerpt,
+                "hint": "exact disk content at nearest anchor — replace old_string with this",
+            }
+    return None
+
+
 def apply_rich_edits(
     edits: list[dict[str, Any]], *, repo_root: str | Path | None = None, atomic: bool = True
 ) -> dict[str, Any]:
@@ -260,9 +332,11 @@ def apply_rich_edits(
     applied: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
     resolved_symbol_edits = []
+    _current_edit: dict[str, Any] | None = None  # tracks the edit in-flight for error hints
 
     try:
         for edit in edits:
+            _current_edit = edit
             if str(edit.get("kind") or "") == "symbol":
                 resolved = resolve_symbol_edit(edit, repo_root=root)
                 resolved_symbol_edits.append(resolved)
@@ -360,18 +434,34 @@ def apply_rich_edits(
             old_string = str(edit.get("old_string", ""))
             if not old_string:
                 raise ValueError("old_string is required unless overwrite=true or creating a new file")
-            new_content, line_start, line_end = _replace_in_scope(
+            new_content, line_start, line_end, match_mode = _replace_in_scope(
                 content, spec, old_string, str(edit.get("new_string", ""))
             )
             file_state[path] = new_content
             applied_entry: dict[str, Any] = {
                 "path": raw_path,
                 "hunks": [{"line_start": line_start, "line_end": line_end}],
+                "match_mode": match_mode,
             }
+            if match_mode == "noop":
+                applied_entry["already_applied"] = True
             if resolved_symbol_edits and raw_path == resolved_symbol_edits[-1].scoped_file_path:
                 applied_entry["kind"] = "symbol"
                 applied_entry["symbol_id"] = resolved_symbol_edits[-1].symbol_id
             applied.append(applied_entry)
+
+        # Parse gate: verify every touched Python file compiles before writing.
+        # This catches structural corruption (e.g. a fuzzy match that ate a
+        # neighboring function) without requiring a separate lint turn.
+        for path, new_content in file_state.items():
+            if path.suffix == ".py":
+                try:
+                    ast.parse(new_content)
+                except SyntaxError as parse_err:
+                    raise ValueError(
+                        f"post-edit parse error in {path.name} at line {parse_err.lineno}: "
+                        f"{parse_err.msg} — edit rolled back; re-read and supply exact old_string"
+                    ) from parse_err
 
         for path, content in file_state.items():
             _atomic_write(path, content)
@@ -388,7 +478,14 @@ def apply_rich_edits(
         if isinstance(exc, SymbolEditError | ProjectionEditError):
             failed.append(exc.to_dict())
         else:
-            failed.append({"error": str(exc)})
+            err: dict[str, Any] = {"error": str(exc)}
+            # Rich retry hint: when old_string wasn't found, ship the nearest
+            # disk region so the follow-up edit doesn't need a re-read turn.
+            if "old_string not found" in str(exc) or "not found in file" in str(exc):
+                hint = _build_retry_hint(file_state, backups, _current_edit)
+                if hint:
+                    err["retry_with"] = hint
+            failed.append(err)
         if atomic:
             for path, payload in backups.items():
                 if payload is None:
