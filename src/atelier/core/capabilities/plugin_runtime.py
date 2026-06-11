@@ -1703,6 +1703,74 @@ def _maybe_emit_loop_notice(
     }
 
 
+_CTX_NUDGE_DEFAULT_TOKENS = 160_000
+
+
+def _maybe_emit_ctx_notice(stats: dict[str, Any], payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """One-shot compact nudge when live context crosses the cost-aware threshold.
+
+    Context size is per-turn ground truth from the transcript. The message is
+    priced with the live rate card: per-turn cache-read carry cost plus the
+    >200k long-context premium boundary (input-side rates double past it), so
+    the agent can weigh compaction against real dollars instead of a bare
+    percentage.
+    """
+    from atelier.core.capabilities import savings_summary as ss
+    from atelier.core.capabilities.session_optimizer import mark_session_optimizer_notice
+
+    if bool((stats.get("optimizer_notices") or {}).get("ctx_high")):
+        return stats, {"no_output": True}
+    try:
+        ctx, model = ss.transcript_context_state(str(payload.get("session_id") or ""))
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return stats, {"no_output": True}
+    if ctx <= 0:
+        return stats, {"no_output": True}
+    try:
+        threshold = int(os.environ.get("ATELIER_CTX_NUDGE_TOKENS", "") or _CTX_NUDGE_DEFAULT_TOKENS)
+    except ValueError:
+        threshold = _CTX_NUDGE_DEFAULT_TOKENS
+    if ctx < threshold:
+        return stats, {"no_output": True}
+
+    ctx_k = ctx // 1000
+    detail = [f"Atelier context guard: high context — ~{ctx_k}k tokens in the live window."]
+    try:
+        from atelier.core.capabilities.pricing import get_model_pricing
+
+        pricing = get_model_pricing(model) if model else None
+        if pricing is not None and pricing.known and pricing.cache_read > 0:
+            lc_threshold = pricing.long_context_threshold()
+            over_premium = bool(lc_threshold and ctx > lc_threshold)
+            rate_cr = (
+                pricing.cache_read_tiers[0].rate if over_premium and pricing.cache_read_tiers else pricing.cache_read
+            )
+            per_turn = ctx * rate_cr / 1_000_000
+            detail.append(f"Every further turn re-reads it (~${per_turn:.2f}/turn cache-read).")
+            if over_premium:
+                detail.append(
+                    f"The window is past the {lc_threshold // 1000}k long-context boundary, so "
+                    "input-side rates are doubled until it shrinks — compact now to drop back to base rates."
+                )
+            elif lc_threshold:
+                headroom = lc_threshold - ctx
+                detail.append(
+                    f"~{headroom // 1000}k tokens of headroom before the {lc_threshold // 1000}k "
+                    "long-context premium doubles input-side rates — compact at the next natural boundary."
+                )
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+    if len(detail) == 1:
+        detail.append("Compact at the next natural boundary to cut the per-turn re-read tax.")
+
+    updated = mark_session_optimizer_notice(stats, "ctx_high")
+    return updated, {
+        "message": f"Atelier context guard: high context (~{ctx_k}k) — consider compacting",
+        "additionalContext": " ".join(detail),
+    }
+
+
 def build_session_progress_optimization_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     """Return one-shot hook nudges for no-edit drift, quality drop, and live loop risk."""
     event = str(payload.get("hook_event_name") or payload.get("event") or "")
@@ -1741,6 +1809,9 @@ def build_session_progress_optimization_output(root: str | Path, payload: dict[s
 
     updated, loop_output = _maybe_emit_loop_notice(root, updated, now_ms=now_ms)
     outputs.append(loop_output)
+
+    updated, ctx_output = _maybe_emit_ctx_notice(updated, payload)
+    outputs.append(ctx_output)
     outputs.append(_workflow_progress_output(updated, payload))
 
     if updated != stats:
