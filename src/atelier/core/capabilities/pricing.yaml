@@ -40,6 +40,7 @@ overrides:
     cache_write: 12.50
     cache_write_1h: 20.00
     thinking: 50.00
+    context_window: 1000000
     long_context:
       threshold: 200000
       input: 20.00

@@ -88,6 +88,7 @@ def _load_overrides_from_file(path: Path) -> dict[str, dict[str, float | tuple[P
                 "cache_read": float(rates.get("cache_read", 0.0)),
                 "cache_write": float(rates.get("cache_write", 0.0)),
                 "cache_write_1h": float(rates.get("cache_write_1h", 0.0)),
+                "context_window": int(rates.get("context_window", 0) or 0),
                 "thinking": float(rates.get("thinking", output_usd)),
                 "input_tiers": _lc_tier("input"),
                 "output_tiers": _lc_tier("output"),
@@ -205,6 +206,7 @@ class ModelPricing:
     cache_write: float = 0.0
     cache_write_1h: float = 0.0
     thinking: float = 0.0
+    context_window: int = 0
     input_tiers: tuple[PricingTier, ...] = ()
     output_tiers: tuple[PricingTier, ...] = ()
     cache_read_tiers: tuple[PricingTier, ...] = ()
@@ -379,6 +381,16 @@ def _extract_tiers(entry: dict[str, object], prefix: str) -> tuple[PricingTier, 
     return tuple(sorted(tiers, key=lambda tier: tier.threshold_tokens))
 
 
+def _int_or_zero(value: object) -> int:
+    """Coerce a catalog value to int, tolerating junk (LiteLLM's sample_spec)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return 0
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _extract_pricing_entry(model_id: str, raw_entry: object) -> dict[str, float | tuple[PricingTier, ...]] | None:
     if not isinstance(raw_entry, dict):
         return None
@@ -398,6 +410,7 @@ def _extract_pricing_entry(model_id: str, raw_entry: object) -> dict[str, float 
         "cache_read": _rate("cache_read_input_token_cost"),
         "cache_write": _rate("cache_creation_input_token_cost"),
         "cache_write_1h": _rate("cache_creation_input_token_cost_above_1hr"),
+        "context_window": _int_or_zero(raw_entry.get("max_input_tokens")),
         "thinking": _rate("output_cost_per_reasoning_token") or _rate("output_cost_per_token"),
         "input_tiers": _extract_tiers(raw_entry, "input_cost_per_token"),
         "output_tiers": _extract_tiers(raw_entry, "output_cost_per_token"),
@@ -482,6 +495,7 @@ def _load_pricing_table() -> dict[str, dict[str, float | tuple[PricingTier, ...]
             "cache_read": 0.0,
             "cache_write": 0.0,
             "cache_write_1h": 0.0,
+            "context_window": 0,
             "thinking": 0.0,
             "input_tiers": (),
             "output_tiers": (),
