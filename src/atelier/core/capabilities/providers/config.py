@@ -9,6 +9,30 @@ from typing import Any, ClassVar
 
 from atelier.core.foundation.paths import default_store_root
 
+# litellm provider-prefix map; bare model names get auto-prefixed.
+# Single source of truth shared by route resolution (cli/commands/run.py),
+# model discovery, and rate limiting.
+LITELLM_PREFIX: dict[str, str] = {
+    "anthropic": "anthropic/",
+    "openai": "openai/",
+    "google": "gemini/",
+    "gemini": "gemini/",
+    "azure": "azure/",
+    "bedrock": "bedrock/",
+    "cohere": "cohere/",
+    "mistral": "mistral/",
+    "ollama": "ollama/",
+    "together": "together_ai/",
+    "groq": "groq/",
+    "fireworks": "fireworks_ai/",
+    "vertex": "vertex_ai/",
+    "huggingface": "huggingface/",
+    "replicate": "replicate/",
+    "deepinfra": "deepinfra/",
+    "perplexity": "perplexity/",
+    "openrouter": "openrouter/",
+}
+
 
 def providers_config_path(root: Path | str | None = None) -> Path:
     base = Path(root).expanduser().resolve() if root is not None else default_store_root()

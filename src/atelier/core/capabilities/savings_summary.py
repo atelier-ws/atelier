@@ -609,6 +609,7 @@ def _carry_credit(session_id: str, atelier_root: Path, turn_timestamps: list[str
     carry_tokens = 0
     carry_usd = 0.0
     try:
+        events: list[dict[str, Any]] = []
         for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
             raw = raw.strip()
             if not raw:
@@ -617,6 +618,16 @@ def _carry_credit(session_id: str, atelier_root: Path, turn_timestamps: list[str
                 ev = json.loads(raw)
             except json.JSONDecodeError:
                 continue
+            if isinstance(ev, dict):
+                events.append(ev)
+
+        compactions = sorted(
+            ts
+            for ev in events
+            if str(ev.get("kind") or "") == "compaction"
+            if (ts := _parse(str(ev.get("ts") or ""))) is not None
+        )
+        for ev in events:
             if str(ev.get("kind") or "") == "compaction":
                 continue  # dropped from context — nothing left to carry
             t = max(0, int(ev.get("tokens") or ev.get("tokens_saved") or 0))
@@ -625,7 +636,14 @@ def _carry_credit(session_id: str, atelier_root: Path, turn_timestamps: list[str
             row_dt = _parse(str(ev.get("ts") or ""))
             if row_dt is None:
                 continue
-            n_after = len(turns) - bisect.bisect_right(turns, row_dt)
+            first_turn = bisect.bisect_right(turns, row_dt)
+            next_compaction = bisect.bisect_right(compactions, row_dt)
+            last_turn = (
+                bisect.bisect_left(turns, compactions[next_compaction])
+                if next_compaction < len(compactions)
+                else len(turns)
+            )
+            n_after = max(0, last_turn - first_turn)
             if n_after <= 0:
                 continue
             pricing = get_model_pricing(resolve_model_id(str(ev.get("model") or "").strip()))

@@ -220,7 +220,7 @@ if [ "$ROUTING_USD" != "\$0.000" ]; then
   # Context-carry credit (cache re-reads avoided on later turns); shown only
   # when nonzero and kept out of the headline saved figure.
   if [ -n "${CARRY_USD:-}" ] && [ "$CARRY_USD" != "\$0.000" ]; then
-    CARRY_SEG=" ${SEP} ${C_BRAND}♻ ${CARRY_USD}(${CARRY_TOK})${C_RESET}"
+    CARRY_SEG=" ${C_BRAND}♻ ${CARRY_USD}(${CARRY_TOK})${C_RESET}"
   else
     CARRY_SEG=""
   fi

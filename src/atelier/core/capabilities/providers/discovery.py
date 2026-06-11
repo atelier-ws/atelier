@@ -7,9 +7,12 @@ Returns litellm-compatible model IDs.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Any, cast
+
+from .config import LITELLM_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -20,29 +23,14 @@ _cache_lock = asyncio.Lock()
 def _litellm_id(provider: str, model: str) -> str:
     """Return a litellm-compatible model ID for the given provider/model pair."""
     if provider in ("anthropic", "openai", "google"):
+        return model  # litellm resolves these from the bare model id
+    prefix = LITELLM_PREFIX.get(provider, "")
+    if not prefix or model.startswith(prefix):
         return model
-    if provider == "ollama":
-        return f"ollama/{model}"
-    if provider == "openrouter":
-        return f"openrouter/{model}"
-    if provider == "groq":
-        return f"groq/{model}"
-    if provider == "mistral":
-        return f"mistral/{model}"
-    if provider == "together":
-        return f"together_ai/{model}"
-    if provider == "fireworks":
-        return f"fireworks_ai/{model}"
-    if provider == "bedrock":
-        return f"bedrock/{model}" if not model.startswith("bedrock/") else model
-    if provider == "vertex":
-        return f"vertex_ai/{model}" if not model.startswith("vertex_ai/") else model
-    if provider == "azure":
-        return f"azure/{model}" if not model.startswith("azure/") else model
-    return model
+    return f"{prefix}{model}"
 
 
-async def _fetch_openai_compat(
+def _fetch_openai_compat(
     provider: str,
     base_url: str,
     api_key: str,
@@ -59,7 +47,7 @@ async def _fetch_openai_compat(
     )
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
-            data: dict[str, Any] = __import__("json").loads(resp.read())
+            data: dict[str, Any] = json.loads(resp.read())
         items = data.get("data") or []
         ids = []
         for item in items:
@@ -73,7 +61,7 @@ async def _fetch_openai_compat(
         return []
 
 
-async def _fetch_anthropic(cfg: Any) -> list[str]:
+def _fetch_anthropic(cfg: Any) -> list[str]:
     import urllib.request
 
     api_key = cfg.get("anthropic", "api_key")
@@ -91,7 +79,7 @@ async def _fetch_anthropic(cfg: Any) -> list[str]:
     )
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
-            data: dict[str, Any] = __import__("json").loads(resp.read())
+            data: dict[str, Any] = json.loads(resp.read())
         models = []
         for item in data.get("data") or []:
             mid = item.get("id") or ""
@@ -103,7 +91,7 @@ async def _fetch_anthropic(cfg: Any) -> list[str]:
         return []
 
 
-async def _fetch_google(cfg: Any) -> list[str]:
+def _fetch_google(cfg: Any) -> list[str]:
     import urllib.request
 
     api_key = cfg.get("google", "api_key")
@@ -112,7 +100,7 @@ async def _fetch_google(cfg: Any) -> list[str]:
     url = f"https://generativelanguage.googleapis.com/v1/models?key={api_key}"
     try:
         with urllib.request.urlopen(url, timeout=5) as resp:
-            data: dict[str, Any] = __import__("json").loads(resp.read())
+            data: dict[str, Any] = json.loads(resp.read())
         models = []
         for item in data.get("models") or []:
             name = item.get("name") or ""
@@ -126,14 +114,14 @@ async def _fetch_google(cfg: Any) -> list[str]:
         return []
 
 
-async def _fetch_ollama(cfg: Any) -> list[str]:
+def _fetch_ollama(cfg: Any) -> list[str]:
     import urllib.request
 
     base = cfg.get("ollama", "base_url") or "http://localhost:11434"
     url = f"{base.rstrip('/')}/api/tags"
     try:
         with urllib.request.urlopen(url, timeout=3) as resp:
-            data: dict[str, Any] = __import__("json").loads(resp.read())
+            data: dict[str, Any] = json.loads(resp.read())
         models = []
         for item in data.get("models") or []:
             name = item.get("name") or item.get("model") or ""
@@ -145,7 +133,7 @@ async def _fetch_ollama(cfg: Any) -> list[str]:
         return []
 
 
-async def _fetch_bedrock(cfg: Any) -> list[str]:
+def _fetch_bedrock(cfg: Any) -> list[str]:
     """List Bedrock foundation models via boto3."""
     try:
         import boto3  # type: ignore[import-untyped]
@@ -178,9 +166,8 @@ async def _fetch_bedrock(cfg: Any) -> list[str]:
         return []
 
 
-async def _fetch_vertex(cfg: Any) -> list[str]:
+def _fetch_vertex(cfg: Any) -> list[str]:
     """List Vertex AI publisher models via the REST discovery API."""
-    import json
     import urllib.error
     import urllib.request
 
@@ -191,6 +178,7 @@ async def _fetch_vertex(cfg: Any) -> list[str]:
     try:
         if sa_file:
             # Use service-account token exchange
+            import base64
             import time
 
             sa_data = json.loads(open(sa_file).read())
@@ -199,14 +187,10 @@ async def _fetch_vertex(cfg: Any) -> list[str]:
             scope = "https://www.googleapis.com/auth/cloud-platform"
             now = int(time.time())
             header_b64 = (
-                __import__("base64")
-                .urlsafe_b64encode(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
-                .rstrip(b"=")
-                .decode()
+                base64.urlsafe_b64encode(json.dumps({"alg": "RS256", "typ": "JWT"}).encode()).rstrip(b"=").decode()
             )
             payload_b64 = (
-                __import__("base64")
-                .urlsafe_b64encode(
+                base64.urlsafe_b64encode(
                     json.dumps(
                         {
                             "iss": email,
@@ -229,7 +213,7 @@ async def _fetch_vertex(cfg: Any) -> list[str]:
             sig = cast(RSAPrivateKey, priv).sign(
                 f"{header_b64}.{payload_b64}".encode(), padding.PKCS1v15(), hashes.SHA256()
             )
-            sig_b64 = __import__("base64").urlsafe_b64encode(sig).rstrip(b"=").decode()
+            sig_b64 = base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
             jwt = f"{header_b64}.{payload_b64}.{sig_b64}"
             tok_req = urllib.request.Request(
                 "https://oauth2.googleapis.com/token",
@@ -263,9 +247,8 @@ async def _fetch_vertex(cfg: Any) -> list[str]:
         return []
 
 
-async def _fetch_azure(cfg: Any) -> list[str]:
+def _fetch_azure(cfg: Any) -> list[str]:
     """List Azure OpenAI deployments via the management REST API."""
-    import json
     import urllib.request
 
     api_key = cfg.get("azure", "api_key")
@@ -290,50 +273,54 @@ async def _fetch_azure(cfg: Any) -> list[str]:
 
 
 async def _discover_all(cfg: Any) -> list[str]:
+    # The fetchers are synchronous (urllib/boto3); run each in a worker thread
+    # so the event loop stays free and providers are polled concurrently.
     tasks: list[Any] = []
     # Anthropic
     if cfg.is_configured("anthropic"):
-        tasks.append(_fetch_anthropic(cfg))
+        tasks.append(asyncio.to_thread(_fetch_anthropic, cfg))
     # OpenAI
     if cfg.is_configured("openai"):
         api_key = cfg.get("openai", "api_key") or ""
         base = cfg.get("openai", "base_url") or "https://api.openai.com/v1"
-        tasks.append(_fetch_openai_compat("openai", base, api_key))
+        tasks.append(asyncio.to_thread(_fetch_openai_compat, "openai", base, api_key))
     # Groq
     if cfg.is_configured("groq"):
         api_key = cfg.get("groq", "api_key") or ""
-        tasks.append(_fetch_openai_compat("groq", "https://api.groq.com/openai/v1", api_key))
+        tasks.append(asyncio.to_thread(_fetch_openai_compat, "groq", "https://api.groq.com/openai/v1", api_key))
     # Mistral
     if cfg.is_configured("mistral"):
         api_key = cfg.get("mistral", "api_key") or ""
-        tasks.append(_fetch_openai_compat("mistral", "https://api.mistral.ai/v1", api_key))
+        tasks.append(asyncio.to_thread(_fetch_openai_compat, "mistral", "https://api.mistral.ai/v1", api_key))
     # OpenRouter
     if cfg.is_configured("openrouter"):
         api_key = cfg.get("openrouter", "api_key") or ""
-        tasks.append(_fetch_openai_compat("openrouter", "https://openrouter.ai/api/v1", api_key))
+        tasks.append(asyncio.to_thread(_fetch_openai_compat, "openrouter", "https://openrouter.ai/api/v1", api_key))
     # Together
     if cfg.is_configured("together"):
         api_key = cfg.get("together", "api_key") or ""
-        tasks.append(_fetch_openai_compat("together", "https://api.together.xyz/v1", api_key))
+        tasks.append(asyncio.to_thread(_fetch_openai_compat, "together", "https://api.together.xyz/v1", api_key))
     # Fireworks
     if cfg.is_configured("fireworks"):
         api_key = cfg.get("fireworks", "api_key") or ""
-        tasks.append(_fetch_openai_compat("fireworks", "https://api.fireworks.ai/inference/v1", api_key))
+        tasks.append(
+            asyncio.to_thread(_fetch_openai_compat, "fireworks", "https://api.fireworks.ai/inference/v1", api_key)
+        )
     # Google Gemini
     if cfg.is_configured("google"):
-        tasks.append(_fetch_google(cfg))
+        tasks.append(asyncio.to_thread(_fetch_google, cfg))
     # Ollama
     if cfg.is_configured("ollama"):
-        tasks.append(_fetch_ollama(cfg))
+        tasks.append(asyncio.to_thread(_fetch_ollama, cfg))
     # Bedrock
     if cfg.is_configured("bedrock"):
-        tasks.append(_fetch_bedrock(cfg))
+        tasks.append(asyncio.to_thread(_fetch_bedrock, cfg))
     # Vertex AI
     if cfg.is_configured("vertex"):
-        tasks.append(_fetch_vertex(cfg))
+        tasks.append(asyncio.to_thread(_fetch_vertex, cfg))
     # Azure OpenAI
     if cfg.is_configured("azure"):
-        tasks.append(_fetch_azure(cfg))
+        tasks.append(asyncio.to_thread(_fetch_azure, cfg))
     results = await asyncio.gather(*tasks, return_exceptions=True)
     models: list[str] = []
     seen: set[str] = set()

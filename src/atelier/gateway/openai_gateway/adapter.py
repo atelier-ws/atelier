@@ -1,8 +1,10 @@
 """Adapter: convert between OpenAI chat messages and Atelier NDJSON events.
 
-Two directions:
+Three pieces:
 1. openai_messages_to_atelier(): extract the last user turn + prior history
 2. atelier_events_to_sse(): stream AtelierEvents as OpenAI SSE delta chunks
+3. run_chat_completion(): shared /v1/chat/completions handler used by both
+   the standalone gateway app and the integrated Atelier service
 """
 
 from __future__ import annotations
@@ -13,8 +15,12 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
+from fastapi import HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse
+
 from .schemas import (
     ChatCompletionChunk,
+    ChatCompletionRequest,
     ChatMessage,
     DeltaChoice,
     DeltaContent,
@@ -63,6 +69,13 @@ def openai_messages_to_atelier(
     return last_user_text, prior
 
 
+def _permission_note(event: Any) -> str:
+    """Render a permission.requested event as an inline assistant note."""
+    action: str = getattr(event, "action", "tool call")
+    risk: str = getattr(event, "risk", "medium") or "medium"
+    return f"\n\n[Atelier: executing {action} ({risk} risk) autonomously]\n\n"
+
+
 async def atelier_events_to_sse(
     events: AsyncIterator[AtelierEvent],
     model: str,
@@ -80,88 +93,45 @@ async def atelier_events_to_sse(
     created = int(time.time())
     tool_index = 0
 
+    def _chunk(delta: DeltaContent, finish_reason: str | None = None) -> str:
+        chunk = ChatCompletionChunk(
+            id=chunk_id,
+            created=created,
+            model=model,
+            choices=[DeltaChoice(index=0, delta=delta, finish_reason=finish_reason)],
+        )
+        return f"data: {chunk.model_dump_json()}\n\n"
+
     async for event in events:
         ev_type: str = getattr(event, "type", "")
 
         # ── streaming text token ─────────────────────────────────────────────
         if ev_type == "assistant.delta":
-            text: str = getattr(event, "text", "")
-            chunk = ChatCompletionChunk(
-                id=chunk_id,
-                created=created,
-                model=model,
-                choices=[
-                    DeltaChoice(
-                        index=0,
-                        delta=DeltaContent(content=text),
-                        finish_reason=None,
-                    )
-                ],
-            )
-            yield f"data: {chunk.model_dump_json()}\n\n"
+            yield _chunk(DeltaContent(content=getattr(event, "text", "")))
 
         # ── final message → close stream ─────────────────────────────────────
         elif ev_type == "assistant.message":
-            chunk = ChatCompletionChunk(
-                id=chunk_id,
-                created=created,
-                model=model,
-                choices=[
-                    DeltaChoice(
-                        index=0,
-                        delta=DeltaContent(content=""),
-                        finish_reason="stop",
-                    )
-                ],
-            )
-            yield f"data: {chunk.model_dump_json()}\n\n"
+            yield _chunk(DeltaContent(content=""), finish_reason="stop")
             yield "data: [DONE]\n\n"
             return
 
         # ── tool call requested → forward as function-call delta ─────────────
         elif ev_type == "tool.requested":
-            tool_id: str = getattr(event, "id", f"call_{uuid.uuid4().hex[:8]}")
-            name: str = getattr(event, "name", "unknown")
-            args: dict[str, Any] = getattr(event, "args", {}) or {}
             tool_call_delta = {
                 "index": tool_index,
-                "id": tool_id,
+                "id": getattr(event, "id", f"call_{uuid.uuid4().hex[:8]}"),
                 "type": "function",
-                "function": {"name": name, "arguments": json.dumps(args)},
+                "function": {
+                    "name": getattr(event, "name", "unknown"),
+                    "arguments": json.dumps(getattr(event, "args", {}) or {}),
+                },
             }
-            chunk = ChatCompletionChunk(
-                id=chunk_id,
-                created=created,
-                model=model,
-                choices=[
-                    DeltaChoice(
-                        index=0,
-                        delta=DeltaContent(tool_calls=[tool_call_delta]),
-                        finish_reason=None,
-                    )
-                ],
-            )
-            yield f"data: {chunk.model_dump_json()}\n\n"
+            yield _chunk(DeltaContent(tool_calls=[tool_call_delta]))
             tool_index += 1
 
         # ── permission / approval prompt → inject a system note as text ──────
         elif ev_type == "permission.requested":
-            action: str = getattr(event, "action", "tool call")
-            risk: str = getattr(event, "risk", "medium") or "medium"
-            note = f"\n\n[Atelier: executing {action} ({risk} risk) autonomously]\n\n"
-            chunk = ChatCompletionChunk(
-                id=chunk_id,
-                created=created,
-                model=model,
-                choices=[
-                    DeltaChoice(
-                        index=0,
-                        delta=DeltaContent(content=note),
-                        finish_reason=None,
-                    )
-                ],
-            )
-            yield f"data: {chunk.model_dump_json()}\n\n"
+            yield _chunk(DeltaContent(content=_permission_note(event)))
 
         # ── error → surface to caller then stop ──────────────────────────────
         elif ev_type == "error":
@@ -174,11 +144,79 @@ async def atelier_events_to_sse(
         # ── everything else is internal (routing, cache stats, etc.) → skip ──
 
     # Stream ended without an explicit AssistantMessage (e.g. interrupted)
-    chunk = ChatCompletionChunk(
-        id=chunk_id,
-        created=created,
-        model=model,
-        choices=[DeltaChoice(index=0, delta=DeltaContent(content=""), finish_reason="stop")],
-    )
-    yield f"data: {chunk.model_dump_json()}\n\n"
+    yield _chunk(DeltaContent(content=""), finish_reason="stop")
     yield "data: [DONE]\n\n"
+
+
+async def run_chat_completion(runtime: Any, req: ChatCompletionRequest) -> Any:
+    """Handle one /v1/chat/completions request against an InteractiveRuntime.
+
+    Shared by the standalone gateway app and the integrated Atelier service so
+    the wire protocol has exactly one implementation. The per-request session
+    is dropped once the response finishes — the OpenAI protocol is stateless.
+    """
+    if not req.messages:
+        raise HTTPException(status_code=422, detail="messages must not be empty")
+
+    try:
+        last_user_text, prior_history = openai_messages_to_atelier(req.messages)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    session_id = str(uuid.uuid4())
+    runtime._sessions[session_id] = prior_history
+
+    chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+    model = req.model or ""
+
+    events_gen = runtime.handle_user_message(
+        session_id,
+        last_user_text,
+        model_override=model or None,
+    )
+
+    if req.stream:
+        sse_gen = atelier_events_to_sse(events_gen, model=model or "atelier", chunk_id=chunk_id)
+
+        async def _stream() -> AsyncIterator[str]:
+            try:
+                async for line in sse_gen:
+                    yield line
+            finally:
+                runtime._sessions.pop(session_id, None)
+
+        return StreamingResponse(_stream(), media_type="text/event-stream")
+
+    # Buffered (non-streaming) — consume the runtime events directly
+    content_parts: list[str] = []
+    try:
+        async for event in events_gen:
+            ev_type = getattr(event, "type", "")
+            if ev_type == "assistant.delta":
+                content_parts.append(getattr(event, "text", ""))
+            elif ev_type == "permission.requested":
+                content_parts.append(_permission_note(event))
+            elif ev_type == "error":
+                raise HTTPException(status_code=500, detail=getattr(event, "message", "unknown error"))
+    finally:
+        runtime._sessions.pop(session_id, None)
+
+    return JSONResponse(
+        {
+            "id": chunk_id,
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "".join(content_parts),
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": None,
+        }
+    )
