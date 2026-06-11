@@ -3586,33 +3586,14 @@ def _render_search_md(result: dict[str, Any]) -> str | None:
     return "\n".join(lines)
 
 
-@mcp_tool(name="read")
-def tool_smart_read(
-    path: Annotated[
-        str,
-        Field(
-            description="Workspace-relative file path to read.",
-        ),
-    ],
+def _smart_read_single(
+    path: str,
     range: str | None = None,
     expand: bool = False,
     max_lines: int | None = None,
-    include_meta: Annotated[
-        bool,
-        Field(description="Include tool metadata fields (cache and token counters)."),
-    ] = False,
+    include_meta: bool = False,
 ) -> dict[str, Any]:
-    """Read a file with automatic source projection for large files.
-
-    Modes: outline (structure only — default for files >200 LOC), range
-    (range="42-118", "L42-L118", or open-ended "L42-" for an exact line slice),
-    full (small files, or any file with expand=true), and compact (safe
-    whitespace-only transformation of full reads — not byte-identical source).
-
-    Prefer over native `Read`/`cat` unless the file is known to be small;
-    outline mode typically saves 50-90% of tokens on large files. Re-read with
-    expand=true (or a range) before editing against an outline/compact view.
-    """
+    """Execute a single-file smart-read.  Called by both the decorated tool and the batch loop."""
     target_path = path
     if not target_path:
         raise ValueError("provide path")
@@ -3705,6 +3686,75 @@ def tool_smart_read(
     return response
 
 
+@mcp_tool(name="read")
+def tool_smart_read(
+    path: Annotated[
+        str,
+        Field(
+            description=(
+                "Workspace-relative file path to read. "
+                "For multiple independent files use `files` instead — one round trip for N reads."
+            ),
+        ),
+    ] = "",
+    range: str | None = None,
+    expand: bool = False,
+    max_lines: int | None = None,
+    include_meta: Annotated[
+        bool,
+        Field(description="Include tool metadata fields (cache and token counters)."),
+    ] = False,
+    files: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description=(
+                "Batch read: [{path, range?, expand?, max_lines?}, ...]. "
+                "Returns {files: [{path, ...single-read result...}, ...]}. "
+                "Use this whenever reading 2+ independent files — it costs one round trip "
+                "vs one per file, cutting cached-context re-read tax by (N-1) turns."
+            )
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Read a file (or batch of files) with automatic source projection.
+
+    Modes: outline (structure only — default for files >200 LOC), range
+    (range="42-118", "L42-L118", or open-ended "L42-" for an exact line slice),
+    full (small files, or any file with expand=true), and compact (safe
+    whitespace-only transformation of full reads — not byte-identical source).
+
+    Prefer over native `Read`/`cat` unless the file is known to be small;
+    outline mode typically saves 50-90% of tokens on large files. Re-read with
+    expand=true (or a range) before editing against an outline/compact view.
+
+    BATCH: when reading 2+ independent files, use files=[{path, range?}, ...]
+    in a single call rather than separate calls — each extra turn re-reads the
+    entire conversation history at ~$0.49/turn on large context windows.
+    """
+    # Batch mode: process each file spec and return aggregated results.
+    if files is not None:
+        results = []
+        for spec in files:
+            spec_path = str(spec.get("path") or "")
+            if not spec_path:
+                results.append({"error": "path is required in each files entry"})
+                continue
+            try:
+                single = _smart_read_single(
+                    path=spec_path,
+                    range=spec.get("range"),
+                    expand=bool(spec.get("expand", False)),
+                    max_lines=spec.get("max_lines"),
+                    include_meta=include_meta,
+                )
+                results.append(single)
+            except Exception as exc:  # noqa: BLE001
+                results.append({"path": spec_path, "error": str(exc)})
+        return {"files": results}
+
+    return _smart_read_single(path=path, range=range, expand=expand, max_lines=max_lines, include_meta=include_meta)
+
+
 def _snapshot_path(raw_path: str) -> str:
     if "#cell=" in raw_path:
         return raw_path.split("#cell=", 1)[0]
@@ -3782,11 +3832,18 @@ def _existing_test_contract_paths(
 
 def _compute_and_record_diffs(
     snapshots: dict[str, tuple[Path, str | None]],
-) -> None:
-    """Compute unified diffs from *snapshots* vs current file content and record them in the ledger."""
+) -> dict[str, str]:
+    """Compute unified diffs from *snapshots* vs current file content.
+
+    Records each diff in the ledger and returns {display_path: diff_text} for
+    callers that want to surface the diff inline (eliminating a read-after-edit turn).
+    Only the first 30 lines of each diff are included in the return value to
+    keep response size bounded.
+    """
     import difflib
 
     led = _get_ledger()
+    out: dict[str, str] = {}
     for path, (fp, old_content) in snapshots.items():
         try:
             new_content = fp.read_text(encoding="utf-8") if fp.exists() else None
@@ -3808,8 +3865,15 @@ def _compute_and_record_diffs(
         diff_text = "".join(diff_lines) if diff_lines else ""
         if diff_text:
             led.record_file_event(path=path, event="edit", diff=diff_text)
+            # Truncate for inline response: keep first 30 diff lines
+            truncated_lines = diff_lines[:30]
+            truncated = "".join(truncated_lines)
+            if len(diff_lines) > 30:
+                truncated += f"... ({len(diff_lines) - 30} more lines)\n"
+            out[path] = truncated
         else:
             led.record_file_event(path=path, event="edit")
+    return out
 
 
 def _edit_descriptor_family(edit: dict[str, Any]) -> str:
@@ -4056,7 +4120,9 @@ def tool_smart_edit(
             except Exception as hook_exc:
                 logging.exception("Recovered from broad exception handler")
                 result["hooks"] = {"error": str(hook_exc)}
-        _compute_and_record_diffs(snapshots)
+        diffs = _compute_and_record_diffs(snapshots)
+        if diffs:
+            result["diff"] = diffs
         if contract_paths:
             result["contract_review"] = {
                 "required": True,
@@ -4064,7 +4130,13 @@ def tool_smart_edit(
                 "evidence": evidence,
             }
 
-    result.pop("diagnostics", None)
+    # Include diagnostics inline: this IS the lint-after-edit turn.
+    # Filter to errors/warnings only — informational notes add noise.
+    if "diagnostics" in result:
+        result["diagnostics"] = [d for d in result["diagnostics"] if d.get("severity") in ("error", "warning")]
+        if not result["diagnostics"]:
+            result.pop("diagnostics")
+    # Strip verbose hooks metadata — callers don't need step details.
     result.pop("hooks", None)
 
     # Batched edits collapse N would-be individual edit calls into 1.
