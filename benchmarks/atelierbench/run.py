@@ -398,7 +398,72 @@ def prepare_workspace(task: Task, workspace: Path | None = None) -> Path:
             subprocess.run(["git", "-C", str(ws), "checkout", "--quiet", commit], check=True, timeout=120)
     else:
         raise ValueError(f"unknown source kind {kind}")
+
+    # Run per-task setup commands after the workspace is populated.
+    for cmd in task.setup_cmds:
+        print(f"  [setup:{task.id}] {cmd}", flush=True)
+        try:
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                cwd=str(ws),
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            if result.returncode != 0:
+                print(
+                    f"  [setup:{task.id}] WARNING: '{cmd}' exited {result.returncode}: "
+                    f"{(result.stderr or result.stdout or '').strip()[:200]}",
+                    flush=True,
+                )
+        except subprocess.TimeoutExpired:
+            print(f"  [setup:{task.id}] WARNING: '{cmd}' timed out after 300s", flush=True)
+
     return ws
+
+
+_LANGUAGE_PREREQS: dict[str, list[tuple[str, str]]] = {
+    # language → list of (binary, install_hint) pairs
+    "swift": [("swift", "Install Swift from https://swift.org/download")],
+    "rust": [("cargo", "Install Rust from https://rustup.rs")],
+    "typescript": [
+        ("node", "Install Node.js from https://nodejs.org"),
+        ("npm", "Install Node.js from https://nodejs.org"),
+    ],
+    "python": [("uv", "Install uv: curl -Ls https://astral.sh/uv/install.sh | sh")],
+}
+
+
+def check_prereqs(tasks: list[Task]) -> bool:
+    """Verify required binaries are available for the selected tasks.
+
+    Prints a summary and returns True if all prerequisites are satisfied.
+    Returns False if any required binary is missing (does not raise).
+    """
+    required: dict[str, str] = {}  # binary → install_hint
+    languages = {t.language for t in tasks}
+    for lang in languages:
+        for binary, hint in _LANGUAGE_PREREQS.get(lang, []):
+            required[binary] = hint
+
+    missing = []
+    for binary, hint in required.items():
+        if not shutil.which(binary):
+            missing.append((binary, hint))
+
+    if missing:
+        print("\n⚠  Missing prerequisites:", flush=True)
+        for binary, hint in missing:
+            print(f"   • {binary}: {hint}", flush=True)
+        print("", flush=True)
+        return False
+
+    print(
+        f"✓ Prerequisites satisfied: {', '.join(sorted(required))}",
+        flush=True,
+    )
+    return True
 
 
 @dataclass
@@ -1244,6 +1309,9 @@ def run_arm(
             raise RuntimeError("mitmdump did not start")
         env = dict(os.environ)
         env.update(agent_env or {})
+        # Always expose the workspace root so MCP tools and shell commands can
+        # resolve relative paths without guessing.
+        env.setdefault("CLAUDE_WORKSPACE_ROOT", str(ws))
         if proxy_supported:
             env["HTTPS_PROXY"] = f"http://127.0.0.1:{port}"
             env["HTTP_PROXY"] = f"http://127.0.0.1:{port}"
@@ -2258,6 +2326,13 @@ def main() -> int:
         p.error("--jobs must be >= 1")
     if args.retry_failed and not args.resume:
         p.error("--retry-failed requires --resume")
+
+    # Verify required binaries are present for the selected tasks before
+    # spending time on workspace setup or model API calls.
+    selected_tasks = [BY_ID[tid] for tid in task_ids if tid in BY_ID]
+    if not check_prereqs(selected_tasks):
+        print("Aborting: install the missing prerequisites and rerun.", flush=True)
+        return 1
     bridge_command = args.bridge_command
     if args.launch_ollama and bridge_command is None:
         bridge_command = "ollama serve"
