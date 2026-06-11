@@ -136,15 +136,6 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
         end_offset = sum(len(line) for line in lines[:end])
     scoped = content[start_offset:end_offset]
 
-    # Idempotency: if the edit has already been applied (old_string gone, new_string
-    # present), return success without touching the file.
-    if old_string and new_string and old_string not in scoped and new_string in scoped:
-        idx = scoped.find(new_string)
-        absolute = start_offset + idx
-        line_start = content[:absolute].count("\n") + 1
-        line_end = line_start + new_string.count("\n")
-        return content, line_start, line_end, "noop"
-
     index = scoped.find(old_string)
     matched = old_string
     match_mode = "exact"
@@ -175,6 +166,15 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
             line_end,
             match_mode,
         )
+
+    # Idempotency fallback: every locate rung missed old_string, but the edit
+    # may simply have been applied already (stale retry).
+    if old_string and new_string and new_string in scoped:
+        idx = scoped.find(new_string)
+        absolute = start_offset + idx
+        line_start = content[:absolute].count("\n") + 1
+        line_end = line_start + new_string.count("\n")
+        return content, line_start, line_end, "noop"
 
     if normalize_for_fuzzy(old_string):
         fuzzed, line_start, line_end = apply_fuzzy_replace(scoped, old_string, new_string)
@@ -271,15 +271,16 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def _build_retry_hint(
-    file_state: dict[Path, str],
+    root: Path,
     backups: dict[Path, bytes | None],
     edit: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     """Build a retry_with hint so the caller can retry without a separate re-read turn.
 
-    When old_string is not found, we locate the nearest unique region in the
-    pre-edit (backup) content based on the first non-blank line of old_string,
-    and ship that exact disk text back so the model can correct old_string inline.
+    Sources the failing edit's own file (pre-edit backup when available, disk
+    otherwise), locates the unique line containing the first non-blank line of
+    old_string, and ships that exact region back so the model can correct
+    old_string inline.
     """
     if not edit:
         return None
@@ -287,39 +288,43 @@ def _build_retry_hint(
     raw_path = str(edit.get("file_path") or edit.get("path") or "")
     if not old_string or not raw_path:
         return None
+    try:
+        path = _resolve(root, raw_path)
+    except Exception:  # noqa: BLE001 — hint is best-effort
+        return None
 
-    # Use backup (pre-edit) content as the source of truth for the hint.
-    for _path, backup_bytes in backups.items():
-        if backup_bytes is None:
-            continue
+    payload = backups.get(path)
+    if payload is not None:
         try:
-            disk_content = backup_bytes.decode("utf-8")
+            disk_content = payload.decode("utf-8")
         except UnicodeDecodeError:
-            continue
-
-        old_lines = old_string.splitlines()
-        first_anchor = next((line.strip() for line in old_lines if line.strip()), None)
-        if not first_anchor:
+            return None
+    else:
+        try:
+            disk_content = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
             return None
 
-        disk_lines = disk_content.splitlines(keepends=True)
-        # Find lines containing the first non-blank anchor token
-        anchor_positions = [
-            i for i, line in enumerate(disk_lines) if first_anchor in line or first_anchor in line.strip()
-        ]
-        if len(anchor_positions) == 1:
-            # Unique anchor — extract a window the same size as old_string ± 2 lines
-            n_lines = max(len(old_lines), 1)
-            start = max(0, anchor_positions[0])
-            end = min(len(disk_lines), start + n_lines + 2)
-            excerpt = "".join(disk_lines[start:end])
-            clean_path = raw_path.split("#")[0]
-            return {
-                "path": f"{clean_path}#L{start + 1}-{end}",
-                "old_string": excerpt,
-                "hint": "exact disk content at nearest anchor — replace old_string with this",
-            }
-    return None
+    old_lines = old_string.splitlines()
+    first_anchor = next((line.strip() for line in old_lines if line.strip()), None)
+    if not first_anchor:
+        return None
+
+    disk_lines = disk_content.splitlines(keepends=True)
+    anchor_positions = [i for i, line in enumerate(disk_lines) if first_anchor in line]
+    if len(anchor_positions) != 1:
+        return None
+    # Unique anchor — extract a window the same size as old_string ± 2 lines
+    n_lines = max(len(old_lines), 1)
+    start = anchor_positions[0]
+    end = min(len(disk_lines), start + n_lines + 2)
+    excerpt = "".join(disk_lines[start:end])
+    clean_path = raw_path.split("#")[0]
+    return {
+        "path": f"{clean_path}#L{start + 1}-{end}",
+        "old_string": excerpt,
+        "hint": "exact disk content at nearest anchor — replace old_string with this",
+    }
 
 
 def apply_rich_edits(
@@ -482,7 +487,7 @@ def apply_rich_edits(
             # Rich retry hint: when old_string wasn't found, ship the nearest
             # disk region so the follow-up edit doesn't need a re-read turn.
             if "old_string not found" in str(exc) or "not found in file" in str(exc):
-                hint = _build_retry_hint(file_state, backups, _current_edit)
+                hint = _build_retry_hint(root, backups, _current_edit)
                 if hint:
                     err["retry_with"] = hint
             failed.append(err)

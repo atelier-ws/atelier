@@ -251,3 +251,94 @@ def test_rich_edit_projection_descriptor_supports_exact_cursor_insertion(tmp_pat
 
     assert result["failed"] == []
     assert "log.println" in path.read_text(encoding="utf-8")
+
+
+def test_rich_edit_fuzzy_similarity_floor_rejects_bad_match(tmp_path: Path) -> None:
+    path = tmp_path / "mod.py"
+    original = "def target():\n    return ACTUAL_DISK_VALUE\n"
+    path.write_text(original, encoding="utf-8")
+
+    result = apply_rich_edits(
+        [
+            {
+                "file_path": "mod.py",
+                "old_string": "def target():\n    return OLD\n",
+                "new_string": "def target():\n    return NEW\n",
+            }
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"], "low-similarity fuzzy match must be rejected"
+    assert "not found" in result["failed"][0]["error"]
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_rich_edit_noop_when_edit_already_applied(tmp_path: Path) -> None:
+    path = tmp_path / "mod.py"
+    path.write_text("x = 1\n", encoding="utf-8")
+    edit = {"file_path": "mod.py", "old_string": "x = 1", "new_string": "x = 2"}
+
+    first = apply_rich_edits([dict(edit)], repo_root=tmp_path)
+    assert first["failed"] == []
+    assert first["applied"][0]["match_mode"] == "exact"
+
+    second = apply_rich_edits([dict(edit)], repo_root=tmp_path)
+    assert second["failed"] == []
+    assert second["applied"][0]["match_mode"] == "noop"
+    assert second["applied"][0]["already_applied"] is True
+    assert path.read_text(encoding="utf-8") == "x = 2\n"
+
+
+def test_rich_edit_parse_gate_rolls_back_corrupt_python(tmp_path: Path) -> None:
+    path = tmp_path / "mod.py"
+    original = "value = 1\n"
+    path.write_text(original, encoding="utf-8")
+
+    result = apply_rich_edits(
+        [{"file_path": "mod.py", "old_string": "value = 1", "new_string": "def broken(:"}],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"]
+    assert "parse error" in result["failed"][0]["error"]
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_rich_edit_retry_hint_targets_failing_file(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("alpha = 1\n", encoding="utf-8")
+    path_b = tmp_path / "b.py"
+    path_b.write_text("def target():\n    return ACTUAL_DISK_VALUE\n", encoding="utf-8")
+
+    result = apply_rich_edits(
+        [
+            {"file_path": "a.py", "old_string": "alpha = 1", "new_string": "alpha = 2"},
+            {
+                "file_path": "b.py",
+                "old_string": "def target():\n    return OLD\n",
+                "new_string": "def target():\n    return NEW\n",
+            },
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"]
+    hint = result["failed"][0].get("retry_with")
+    assert hint is not None, "not-found failure must ship a retry_with hint"
+    assert hint["path"].startswith("b.py#L1-")
+    assert "ACTUAL_DISK_VALUE" in hint["old_string"]
+
+
+def test_rich_edit_ambiguous_normalized_match_fails_with_candidates(tmp_path: Path) -> None:
+    path = tmp_path / "mod.py"
+    original = "def a():\n    x  = 1\n\ndef b():\n    x =  1\n"
+    path.write_text(original, encoding="utf-8")
+
+    result = apply_rich_edits(
+        [{"file_path": "mod.py", "old_string": "x   =   1", "new_string": "x = 2"}],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"]
+    assert "ambiguous" in result["failed"][0]["error"]
+    assert path.read_text(encoding="utf-8") == original
