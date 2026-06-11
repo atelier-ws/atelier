@@ -329,6 +329,63 @@ def test_rich_edit_retry_hint_targets_failing_file(tmp_path: Path) -> None:
     assert "ACTUAL_DISK_VALUE" in hint["old_string"]
 
 
+def test_rich_edit_fuzzy_line_snap_preserves_trailing_newline(tmp_path: Path) -> None:
+    """Session replay (daemon.py incident): fuzzy window ends at a def signature.
+
+    new_string has no trailing newline; the line-snapped replacement must not
+    glue the following body line onto the signature (which parses and would
+    slip past the parse gate).
+    """
+    path = tmp_path / "mod.py"
+    original = "# ---- helpers ----\ndef alpha():\n    return 1\n\ndef beta():\n    return 2\n"
+    path.write_text(original, encoding="utf-8")
+
+    result = apply_rich_edits(
+        [
+            {
+                "file_path": "mod.py",
+                # comment drift (dash count) forces the fuzzy rung
+                "old_string": "# --- helpers ---\ndef alpha():\n    return 1\n\ndef beta():",
+                "new_string": "# --- helpers ---\ndef alpha():\n    return 99\n\ndef beta():",
+            }
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"] == []
+    assert result["applied"][0]["match_mode"] == "fuzzy"
+    text = path.read_text(encoding="utf-8")
+    assert "return 99" in text
+    assert "def beta():\n    return 2\n" in text, "body must stay on its own line"
+    assert "def beta():    return 2" not in text
+
+
+def test_rich_edit_parse_gate_catches_misindented_insertion(tmp_path: Path) -> None:
+    """Session replay (runtime.py incident): constants landing inside a tuple.
+
+    A replacement whose new_string carries wrong indentation must be rolled
+    back by the parse gate instead of being written silently.
+    """
+    path = tmp_path / "mod.py"
+    original = 'NAMES = (\n    "read",\n    "search",\n)\n'
+    path.write_text(original, encoding="utf-8")
+
+    result = apply_rich_edits(
+        [
+            {
+                "file_path": "mod.py",
+                "old_string": '    "search",\n)',
+                "new_string": '    "search",\n)\n\n    SAFE = frozenset(NAMES) - {"edit"}',
+            }
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"]
+    assert "parse error" in result["failed"][0]["error"]
+    assert path.read_text(encoding="utf-8") == original
+
+
 def test_rich_edit_ambiguous_normalized_match_fails_with_candidates(tmp_path: Path) -> None:
     path = tmp_path / "mod.py"
     original = "def a():\n    x  = 1\n\ndef b():\n    x =  1\n"
