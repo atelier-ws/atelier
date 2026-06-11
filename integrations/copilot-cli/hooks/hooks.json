@@ -7,6 +7,12 @@
         "timeout": 10
       }
     ],
+    "postToolUseFailure": [
+      {
+        "bash": "python3 __HOOKS_DIR__/post_tool_use_failure.py",
+        "timeout": 10
+      }
+    ],
     "agentStop": [
       {
         "bash": "python3 __HOOKS_DIR__/stop.py",

@@ -13,7 +13,6 @@ from atelier.core.capabilities.plugin_runtime import (
     aggregate_session_stats,
     apply_session_start_files,
     build_savings_report,
-    build_session_progress_optimization_output,
     load_live_savings_summary,
     session_start_bootstrap,
     status_line_choose_message,
@@ -136,77 +135,6 @@ def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path)
     assert stats["subagents_completed"] == 1
     assert stats["pending_subagents"] == 0
     assert (root / "session_events" / "s1.jsonl").exists()
-
-
-def test_session_telemetry_tracks_workflow_and_task_progress(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-
-    update_session_stats(
-        root,
-        {
-            "hook_event_name": "PostToolUse",
-            "session_id": "s1",
-            "tool_name": "Agent",
-            "workflow_state": {"workflow_step": "review", "session_phase": "review"},
-            "plan_review": {"review_decision": "approve", "plan_id": "02-01"},
-            "task_progress": {
-                "task_id": "02-02/task-1",
-                "completed_tasks": 2,
-                "remaining_tasks": 1,
-            },
-            "spawn_summary": {
-                "step_count": 2,
-                "eligible_for_reuse": 2,
-                "reuse_observed": 1,
-                "spawn_latency_ms": 120,
-                "host_dropped_fields": {"cache_scope_id": 1},
-            },
-        },
-    )
-
-    stats = json.loads((root / "session_stats" / "s1.json").read_text(encoding="utf-8"))
-    assert stats["workflow_state"] == {"workflow_step": "review", "session_phase": "review"}
-    assert stats["plan_review"] == {"review_decision": "approve", "plan_id": "02-01"}
-    assert stats["task_progress"] == {
-        "task_id": "02-02/task-1",
-        "completed_tasks": 2,
-        "remaining_tasks": 1,
-    }
-    assert stats["spawn_summary"] == {
-        "step_count": 2,
-        "eligible_for_reuse": 2,
-        "reuse_observed": 1,
-        "spawn_latency_ms": 120,
-        "cache_capability_counts": {},
-        "host_dropped_fields": {"cache_scope_id": 1},
-    }
-
-    output = build_session_progress_optimization_output(
-        root,
-        {
-            "hook_event_name": "PostToolUse",
-            "session_id": "s1",
-            "workflow_state": {"workflow_step": "review", "session_phase": "review"},
-            "plan_review": {"review_decision": "approve", "plan_id": "02-01"},
-            "task_progress": {
-                "task_id": "02-02/task-1",
-                "completed_tasks": 2,
-                "remaining_tasks": 1,
-            },
-            "spawn_summary": {
-                "step_count": 2,
-                "eligible_for_reuse": 2,
-                "reuse_observed": 1,
-                "spawn_latency_ms": 120,
-                "host_dropped_fields": {"cache_scope_id": 1},
-            },
-        },
-    )
-    assert "workflow=review" in output["additionalContext"]
-    assert "review=approve" in output["additionalContext"]
-    assert "02-02/task-1 (2 done/1 remaining)" in output["additionalContext"]
-    assert "spawn=reuse 1/2" in output["additionalContext"]
-    assert "drop=cache_scope_id:1" in output["additionalContext"]
 
 
 def test_session_telemetry_tracks_spawn_cache_signals(tmp_path: Path) -> None:
@@ -379,29 +307,6 @@ def test_claude_session_start_hook_prints_optimizer_context(tmp_path: Path) -> N
     output = json.loads(result.stdout)
     assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
     assert "smallest viable plan" in output["additionalContext"]
-
-
-def test_claude_session_telemetry_emits_quality_guard_once(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    env = {"ATELIER_ROOT": str(root)}
-    payload = {
-        "hook_event_name": "PostToolUse",
-        "session_id": "s1",
-        "tool_name": "Search",
-        "tool_input": {},
-        "usage": {"input_tokens": 90_000, "output_tokens": 500},
-    }
-
-    for now_ms in (1_000, 1_001, 1_002):
-        _run_hook("session_telemetry.py", {**payload, "now_ms": now_ms}, env=env)
-
-    fourth = _run_hook("session_telemetry.py", {**payload, "now_ms": 1_003}, env=env)
-    fifth = _run_hook("session_telemetry.py", {**payload, "now_ms": 1_004}, env=env)
-
-    fourth_output = json.loads(fourth.stdout)
-    assert "quality guard" in fourth_output["message"].lower()
-    assert "session quality" in fourth_output["additionalContext"].lower()
-    assert fifth.stdout == ""
 
 
 def test_claude_stop_hook_shows_cache_and_estimated_session_savings(tmp_path: Path) -> None:

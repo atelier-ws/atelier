@@ -391,19 +391,23 @@ def test_tools_list_edit_schema_documents_descriptor_variants() -> None:
     edit_tool = TOOLS["edit"]
     schema = edit_tool["inputSchema"]
     edits_schema = schema["properties"]["edits"]
-    variants = edits_schema["items"]["oneOf"]
+    variants = edits_schema["items"]["anyOf"]
 
     assert schema["required"] == ["edits"]
-    assert len(variants) >= 6
-    assert {variant["title"] for variant in variants} >= {
-        "Legacy replace",
-        "Legacy insert_after",
-        "Legacy replace_range",
-        "Rich file edit",
+    assert len(variants) == 4
+    assert {variant["title"] for variant in variants} == {
+        "File edit",
         "Notebook cell edit",
         "Symbol edit",
+        "Projection edit",
     }
-    assert "Do not mix" in edits_schema["description"]
+    symbol_variant = next(v for v in variants if v["title"] == "Symbol edit")
+    assert "symbol_id" not in symbol_variant["properties"]
+    assert "symbol_name" not in symbol_variant["properties"]
+    projection_variant = next(v for v in variants if v["title"] == "Projection edit")
+    assert "projection_mapping" in projection_variant["properties"]
+    assert "projected_ranges" in projection_variant["properties"]
+    assert "description" not in edits_schema
 
 
 def test_tools_list_memory_schema_describes_ops_and_required_fields() -> None:
@@ -975,8 +979,34 @@ def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monk
             },
         )
     )
-    assert len(payload["applied"]) == 1
+    assert payload["applied"] == ["edit.txt:1"]
     assert target.read_text(encoding="utf-8") == "hello atelier"
+
+
+def test_smart_edit_compacts_hunks_by_path(store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    first = Path("first.txt")
+    second = Path("second.txt")
+    first.write_text("one\ntwo\nthree\n", encoding="utf-8")
+    second.write_text("alpha\nbeta\n", encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {"path": str(first), "op": "replace", "old_string": "one", "new_string": "ONE"},
+                    {"path": str(first), "op": "replace", "old_string": "three", "new_string": "THREE"},
+                    {"path": str(second), "op": "replace", "old_string": "alpha\nbeta", "new_string": "ALPHA\nBETA"},
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert payload["applied"] == ["first.txt:1,3", "second.txt:1-2"]
+    assert payload["calls_saved"] == 2
 
 
 def test_smart_edit_flags_existing_test_contract_changes(
@@ -1040,6 +1070,7 @@ def test_smart_edit_allows_reviewed_existing_test_contract_change(
     )
 
     assert payload["rolled_back"] is False
+    assert payload["applied"] == ["tests/test_parser.rs:1"]
     assert payload["contract_review"]["evidence"] == evidence
     assert 'assert_eq!(message, "new");' in target.read_text(encoding="utf-8")
 

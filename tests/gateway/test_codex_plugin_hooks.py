@@ -39,7 +39,7 @@ def _run_hook(
     )
 
 
-def test_codex_user_prompt_is_quiet_for_multi_file_prompt(tmp_path: Path) -> None:
+def test_codex_multi_file_prompt_emits_no_runtime_context(tmp_path: Path) -> None:
     result = _run_hook(
         "user_prompt.py",
         tmp_path / ".atelier",
@@ -68,8 +68,8 @@ def test_codex_user_prompt_emits_high_context_nudge_once(tmp_path: Path, monkeyp
     first = plugin_runtime.build_codex_user_prompt_output(root, payload)
     second = plugin_runtime.build_codex_user_prompt_output(root, payload)
 
-    assert "high context" in first["message"]
-    assert "additionalContext" in first
+    assert "high context" in first["uiMessage"]
+    assert "additionalContext" not in first
     assert second.get("no_output") is True
 
 
@@ -171,8 +171,8 @@ def test_codex_stop_hook_emits_session_summary(tmp_path: Path) -> None:
     result = _run_hook("stop.py", root, {"hook_event_name": "Stop", "session_id": "c1"})
 
     output = json.loads(result.stdout)
+    assert set(output) == {"systemMessage"}
     assert "Atelier session complete." in output["systemMessage"]
-    assert "calls avoided" in output["systemMessage"]
     assert "Atelier tool calls: 1" in output["systemMessage"]
 
 

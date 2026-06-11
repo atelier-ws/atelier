@@ -194,9 +194,11 @@ def _run_sqlite(conn: sqlite3.Connection, sql: str, max_rows: int) -> dict[str, 
     cursor = conn.execute(sql)
     rows = cursor.fetchmany(max_rows + 1)
     columns = [col[0] for col in cursor.description or []]
+    # Rows are positional arrays keyed by `columns` — repeating column names
+    # per row wastes tokens on every multi-row result.
     return {
         "columns": columns,
-        "rows": [dict(zip(columns, row, strict=False)) for row in rows[:max_rows]],
+        "rows": [list(row) for row in rows[:max_rows]],
         "row_count": min(len(rows), max_rows),
         "truncated": len(rows) > max_rows,
     }
