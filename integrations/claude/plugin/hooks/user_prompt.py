@@ -182,6 +182,8 @@ def _persist_last_user_prompt(prompt: str) -> None:
 # exceeds the live window, which is what produced bogus ~100% warnings.
 _DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
 _MODEL_WINDOW_TOKENS = {
+    "fable": 1_000_000,
+    "mythos": 1_000_000,
     "opus-4": 1_000_000,
     "sonnet-4": 1_000_000,
     "haiku-4": 200_000,
@@ -432,6 +434,7 @@ def _append_compaction_savings_row(tokens: int, usd: float, model: str | None) -
             "usd": round(float(usd), 6),
             "model": model or "",
             "calls": 0,
+            "ts": datetime.datetime.now(datetime.UTC).isoformat(),
         }
         with open(path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row) + "\n")
