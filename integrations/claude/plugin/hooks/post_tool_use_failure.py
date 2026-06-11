@@ -158,10 +158,8 @@ def main() -> int:
                 {
                     "decision": "ask",
                     "reason": (
-                        "Atelier: this command has now failed twice with the "
-                        "same error signature. Call `rescue` "
-                        "with the task, error, files, and recent_actions "
-                        "before running it again; do not retry the same fix a third time."
+                        "This command failed twice with the same error. "
+                        "Call `rescue` before any retry; do not repeat the same fix."
                     ),
                 }
             )

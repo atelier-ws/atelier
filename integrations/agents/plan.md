@@ -44,7 +44,5 @@ Reread once before finishing: every identifier real, ordering sound, no bundled 
 - Keep tool use targeted. Every read or search should answer a specific planning question.
 - For multi-threaded planning work, keep a short live todo list when the host exposes todo tools so the open questions and file checks stay explicit.
 - If ambiguity remains after cheap source reads, name it; ask the user when it is material, otherwise state the smallest safe interpretation. Ask only what the code cannot answer.
-- Include verification commands or checks that prove the plan worked.
-- Do not hand off open questions that can be answered with one more targeted read.
 
 {{CORE_DISCIPLINE}}

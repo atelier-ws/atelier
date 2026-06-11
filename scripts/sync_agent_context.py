@@ -160,6 +160,10 @@ def coding_guidelines_section() -> str:
     return "\n".join(["## Coding Guidelines", "", _markdown_body(CODING_GUIDELINES_PATH)])
 
 
+def core_discipline_section() -> str:
+    return "\n".join(["## Core discipline", "", _markdown_body(CORE_DISCIPLINE_PATH)])
+
+
 _OPENCODE_TOOL_PREFIX = "atelier_"
 
 
@@ -193,6 +197,8 @@ def distribution_sections(host: str | None = None, *, tool_prefix: str = "") -> 
         f"2. **Implement**: Use Atelier MCP tools (`{_tn('read', prefix=tool_prefix)}`, `{_tn('edit', prefix=tool_prefix)}`, `{_tn('shell', prefix=tool_prefix)}`, etc.) for file I/O, search, edits, and shell work — see Tool policy.",
         "",
         tool_policy_section(tool_prefix=tool_prefix),
+        "",
+        core_discipline_section(),
         "",
         budget_section(),
         "",

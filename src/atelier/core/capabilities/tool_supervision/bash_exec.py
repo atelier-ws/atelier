@@ -16,6 +16,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from atelier.core.capabilities.tool_supervision import command_discipline
+
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _SEARCH_REGEX_METACHARS = re.compile(r"[][{}()|^$*+?\\]")
 
@@ -70,6 +72,7 @@ class _ManagedCommand:
     timeout: int
     max_lines: int
     state: str = "running"
+    discipline_warning: str = ""
 
 
 _MANAGED_COMMANDS: dict[str, _ManagedCommand] = {}
@@ -285,6 +288,16 @@ def start_managed_command(
             "blocked_reason": policy.reason,
         }
 
+    gate = command_discipline.pre_run_gate(command)
+    if gate.action == "block":
+        return {
+            "status": "blocked",
+            "stderr": gate.reason,
+            "exit_code": -1,
+            "blocked": True,
+            "blocked_reason": gate.reason,
+        }
+
     stdout_file = tempfile.TemporaryFile(mode="w+", encoding="utf-8")
     stderr_file = tempfile.TemporaryFile(mode="w+", encoding="utf-8")
     try:
@@ -310,6 +323,7 @@ def start_managed_command(
         started=time.perf_counter(),
         timeout=timeout,
         max_lines=max_lines,
+        discipline_warning=gate.reason if gate.action == "warn" else "",
     )
     with _MANAGED_COMMANDS_LOCK:
         _MANAGED_COMMANDS[session_id] = managed
@@ -319,12 +333,15 @@ def start_managed_command(
         daemon=True,
         name=f"atelier-shell-{session_id[:8]}",
     ).start()
-    return {
+    started_payload = {
         "status": "running",
         "session_id": session_id,
         "pid": proc.pid,
         "timeout": timeout,
     }
+    if managed.discipline_warning:
+        started_payload["discipline"] = managed.discipline_warning
+    return started_payload
 
 
 def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, Any]:
@@ -368,6 +385,12 @@ def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, 
         raw_stderr = "Command cancelled"
     else:
         exit_code = managed.proc.returncode
+    if managed.state != "cancelled":
+        command_discipline.note_result(
+            managed.command,
+            exit_code=exit_code,
+            timed_out=managed.state == "timed_out",
+        )
     result = _compact_result(
         command=managed.command,
         raw_stdout=raw_stdout,
@@ -376,7 +399,7 @@ def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, 
         duration_ms=int((time.perf_counter() - managed.started) * 1000),
         max_lines=managed.max_lines,
     )
-    return {
+    payload = {
         "status": managed.state,
         "session_id": session_id,
         "stdout": result.stdout,
@@ -387,6 +410,9 @@ def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, 
         "lines_omitted": result.lines_omitted,
         "chars_omitted": result.chars_omitted,
     }
+    if managed.discipline_warning:
+        payload["discipline"] = managed.discipline_warning
+    return payload
 
 
 def run_command(

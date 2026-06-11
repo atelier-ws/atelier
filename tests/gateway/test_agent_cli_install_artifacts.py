@@ -313,6 +313,9 @@ def test_copilot_instructions_mention_atelier() -> None:
         pytest.skip("copilot/COPILOT_INSTRUCTIONS.atelier.md not found")
     content = instructions.read_text()
     assert "atelier" in content.lower() or "Atelier" in content, "Copilot instructions must reference Atelier"
+    assert "For multi-file edits, read all target files in one batched `read` call" in content
+    assert "## Edit and recovery nudges" not in content
+    assert "Call 'rescue' before any retry" not in content
 
 
 # ---------------------------------------------------------------------------

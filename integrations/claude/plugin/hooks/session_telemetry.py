@@ -16,15 +16,12 @@ def _atelier_root() -> Path:
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-        from atelier.core.capabilities.plugin_runtime import (
-            build_session_progress_optimization_output,
-            update_session_stats,
-        )
+        from atelier.core.capabilities.plugin_runtime import update_session_stats
 
+        # Pure state upkeep — this hook emits nothing. Model-facing nudges are
+        # limited to the user_prompt batching nudge and the failure-hook rescue
+        # nudge; everything heuristic was removed as unproven noise.
         update_session_stats(_atelier_root(), payload)
-        output = build_session_progress_optimization_output(_atelier_root(), payload)
-        if output and not output.get("no_output"):
-            print(json.dumps(output))
     except (json.JSONDecodeError, TypeError, ImportError, AttributeError, OSError):
         pass
     return 0

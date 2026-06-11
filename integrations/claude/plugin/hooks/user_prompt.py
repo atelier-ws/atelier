@@ -202,27 +202,6 @@ _DRIFT_STOPWORDS = frozenset(
     "the a an and or but to of in on for with at by from is are be this that it as we i you "
     "can could would should do does did please now then make add fix update change use let".split()
 )
-_EDIT_INTENT_TERMS = (
-    "change ",
-    "edit ",
-    "fix ",
-    "modify ",
-    "patch ",
-    "refactor ",
-    "rename ",
-    "rewrite ",
-    "update ",
-)
-_GROUNDED_TERMS = (
-    " search ",
-    " read ",
-    " context ",
-    " explore ",
-    " node ",
-    " callers ",
-    " callees ",
-    " usages ",
-)
 
 
 def _context_window_tokens(model: str | None) -> int:
@@ -380,17 +359,8 @@ def _compaction_advice_msg(occupancy: int, window: int, model: str | None, drift
         )
     else:
         head = f"Context is ~{tok} tokens{pct_part}"
-    cost = f" Carrying it re-bills ~${per_turn:.2f} per turn in cache reads." if per_turn > 0 else ""
-    boundary = ""
-    pricing = _model_pricing(model)
-    if pricing is not None:
-        threshold = pricing.long_context_threshold()
-        if threshold and occupancy > threshold:
-            boundary = (
-                f" The window is past the {threshold // 1000}k long-context boundary, so "
-                "input-side rates are doubled until it shrinks."
-            )
-    return f"[Atelier] {head}.{cost}{boundary} Call `compact` now, or tell the user to run /compact, to cut that."
+    cost = f" Carrying it costs ~${per_turn:.2f} per turn in cache reads." if per_turn > 0 else ""
+    return f"[Atelier] {head}.{cost} Run /compact to cut that."
 
 
 def _append_compaction_savings_row(tokens: int, usd: float, model: str | None) -> None:
@@ -493,44 +463,11 @@ def _maybe_emit_compaction_advice(prompt: str, transcript_path: str) -> str | No
         return None
 
 
-def _looks_like_multi_file_edit_prompt(prompt: str) -> bool:
-    lowered = f" {prompt.lower()} "
-    if not any(term in lowered for term in _EDIT_INTENT_TERMS):
-        return False
-    if any(term in lowered for term in _GROUNDED_TERMS):
-        return False
-    file_mentions = lowered.count(".py") + lowered.count(".ts") + lowered.count(".tsx") + lowered.count(".js")
-    return file_mentions >= 2 or " files " in lowered
-
-
-_GROUNDED_BATCHING_NUDGE = (
-    "[Atelier] Ground multi-file changes with search or read first, then batch related edits in one edit call."
-)
-
-
-def _emit_hook_output(messages: list[str]) -> None:
-    """Emit hook output in Claude Code's UserPromptSubmit schema.
-
-    Claude Code parses JSON stdout as the structured hook-output schema:
-    ``hookSpecificOutput.additionalContext`` is injected for the model and
-    ``systemMessage`` is shown to the user. Unknown JSON shapes are silently
-    dropped — which is exactly how earlier nudges were lost.
-    """
-    if not messages:
+def _emit_ui_messages(ui_messages: list[str]) -> None:
+    """Emit display-only UserPromptSubmit messages without model context."""
+    if not ui_messages:
         return
-    joined = "\n".join(messages)
-    sys.stdout.write(
-        json.dumps(
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": "UserPromptSubmit",
-                    "additionalContext": joined,
-                },
-                "systemMessage": joined,
-            }
-        )
-        + "\n"
-    )
+    sys.stdout.write(json.dumps({"systemMessage": "\n".join(ui_messages)}) + "\n")
     sys.stdout.flush()
 
 
@@ -550,16 +487,15 @@ def main() -> int:
         return 0
     stored_prompt = prompt[:_MAX_PROMPT_BYTES]
 
-    # Context-window check — inject a token-based compaction nudge (drift-aware,
-    # with the real per-turn cache-read cost) when occupancy warrants it.
+    # Context-window check — the compaction nudge is UI-only (systemMessage):
+    # it is advice for the USER to run /compact, and injecting it into the
+    # model context would itself waste the tokens it complains about.
     transcript_path: str = payload.get("transcript_path", "") or ""
-    messages: list[str] = []
+    ui_messages: list[str] = []
     compact_msg = _maybe_emit_compaction_advice(prompt, transcript_path)
     if compact_msg:
-        messages.append(compact_msg)
-    if _looks_like_multi_file_edit_prompt(prompt):
-        messages.append(_GROUNDED_BATCHING_NUDGE)
-    _emit_hook_output(messages)
+        ui_messages.append(compact_msg)
+    _emit_ui_messages(ui_messages)
 
     # Autopilot (M5): inject scoped context for this prompt. Fail-open.
     try:

@@ -634,7 +634,7 @@ def test_sql_actions_e2e(mcp_env: Path) -> None:
     )
     assert query["isError"] is False
     assert query["results"][0]["row_count"] == 2
-    assert query["results"][0]["rows"][0]["name"] == "Ada"
+    assert query["results"][0]["rows"][0] == [1, "Ada"]
 
 
 def test_context_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
