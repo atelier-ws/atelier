@@ -87,6 +87,40 @@ def test_carry_credit_counts_only_later_turns(tmp_path: Path) -> None:
     assert carry_usd > 0
 
 
+def test_carry_credit_stops_at_next_compaction(tmp_path: Path) -> None:
+    base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    _write_sidecar(
+        tmp_path,
+        "s1",
+        [
+            {
+                "tool": "read",
+                "tokens": 1000,
+                "calls": 0,
+                "model": MODEL,
+                "ts": (base + timedelta(minutes=1)).isoformat(),
+            },
+            {
+                "kind": "compaction",
+                "tokens": 50_000,
+                "usd": 0.01,
+                "model": MODEL,
+                "ts": (base + timedelta(minutes=3)).isoformat(),
+            },
+        ],
+    )
+    turn_ts = [
+        (base + timedelta(minutes=2)).isoformat(),
+        (base + timedelta(minutes=4)).isoformat(),
+        (base + timedelta(minutes=5)).isoformat(),
+    ]
+    carry_tokens, carry_usd = _carry_credit("s1", tmp_path, turn_ts)
+    pricing = get_model_pricing(MODEL)
+    assert pricing is not None
+    assert carry_tokens == 1000
+    assert carry_usd == pytest.approx(pricing.tokens_to_usd(1000, "cache_read"), abs=1e-9)
+
+
 def test_carry_credit_handles_naive_row_timestamps(tmp_path: Path) -> None:
     # mcp_server writes naive utcnow().isoformat() rows; transcripts use "Z".
     _write_sidecar(

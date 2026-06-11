@@ -157,16 +157,16 @@ def test_eval_lifecycle(tmp_path: Path) -> None:
     }
     (eval_dir / "case1.json").write_text(json.dumps(case), encoding="utf-8")
 
-    res = _invoke(root, "eval", "list", "--json")
+    res = _invoke(root, "eval", "cycle", "list", "--json")
     assert res.exit_code == 0
     assert json.loads(res.output)
 
-    res2 = _invoke(root, "eval", "run", "--case", "case1", "--json")
+    res2 = _invoke(root, "eval", "cycle", "run", "--case", "case1", "--json")
     assert res2.exit_code == 0
     results = json.loads(res2.output)
     assert results[0]["passed"] is True
 
-    res3 = _invoke(root, "eval", "promote", "case1")
+    res3 = _invoke(root, "eval", "cycle", "promote", "case1")
     assert res3.exit_code == 0
     promoted = json.loads((eval_dir / "case1.json").read_text(encoding="utf-8"))
     assert promoted["status"] == "active"

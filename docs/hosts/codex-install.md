@@ -23,7 +23,8 @@ bash scripts/install_codex.sh --workspace /path/to/workspace
 | Artifact                 | Global install                       | `--workspace DIR` install                      |
 | ------------------------ | ------------------------------------ | ---------------------------------------------- |
 | Codex plugin source      | `~/.codex/plugins/atelier/`          | `<workspace>/.codex/plugins/atelier/`          |
-| Marketplace file         | `~/.agents/plugins/marketplace.json` | `~/.agents/plugins/marketplace.json`            |
+| Lifecycle hooks          | `~/.codex/plugins/atelier/hooks/`    | `<workspace>/.codex/plugins/atelier/hooks/`    |
+| Marketplace file         | `~/.agents/plugins/marketplace.json` | `<workspace>/.agents/plugins/marketplace.json` |
 | AGENTS instruction block | `~/.codex/AGENTS.md`                 | `<workspace>/AGENTS.md`                        |
 | Codex MCP config         | `~/.codex/config.toml`               | `<workspace>/.codex/config.toml`               |
 | Wrapper script           | `~/.local/bin/atelier-codex`         | `<workspace>/bin/atelier-codex`                |
@@ -61,7 +62,9 @@ Or run the Atelier preflight wrapper:
 
 - Codex has a real MCP server entry for `atelier` in `config.toml`
 - The installed Atelier plugin MCP config sets `alwaysLoad: true` so Codex eagerly loads the Atelier MCP server
-- Codex loads the installed Atelier plugin and its bundled mode skills when the marketplace is visible to Codex
+- Codex loads `atelier@atelier-local` from the personal marketplace with its bundled mode skills and lifecycle hooks
+- On the first session after install or whenever hooks change, Codex asks you to review and trust the Atelier hooks; `/hooks` should show active `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` handlers
+- `UserPromptSubmit` emits a one-shot high-context compaction notice from Codex session telemetry and grounds uninspected multi-file edit prompts before tools run
 - The Codex MCP entry runs `atelier-mcp --host codex` and defaults to `ATELIER_DEV_MODE=0` (stable surface)
 - Atelier persists Codex session imports and savings data under `~/.atelier/`
 - The optional `atelier-codex` preflight wrapper records task context before handing off to Codex
@@ -72,7 +75,8 @@ Or run the Atelier preflight wrapper:
 | Plugin not visible   | Check `codex plugin list`, then verify `~/.agents/plugins/marketplace.json` points at the Atelier plugin source path; MCP registration still provides the core Atelier tool surface |
 | MCP tools missing    | Verify `codex mcp list` shows `atelier`, then inspect `~/.codex/config.toml` or `<workspace>/.codex/config.toml` for `[mcp_servers.atelier]` and the installed plugin `.mcp.json` for `alwaysLoad: true` |
 | Wrapper missing      | Re-run install and verify global `atelier-codex` or workspace `bin/atelier-codex` exists                       |
-| Skills look outdated | Re-run `bash scripts/install_codex.sh` to refresh the copied plugin source and reinstall `atelier@atelier`     |
+| Skills look outdated | Re-run `bash scripts/install_codex.sh` to refresh the copied plugin source and reinstall `atelier@atelier-local` |
+| `/hooks` shows zero  | Re-run the installer, restart Codex, confirm `codex plugin list` shows `atelier@atelier-local`, then review and trust the hooks in `/hooks` |
 
 ## V2 Tools — Memory, Context Savings, and Lesson Pipeline
 

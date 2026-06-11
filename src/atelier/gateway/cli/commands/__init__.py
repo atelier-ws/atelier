@@ -116,7 +116,6 @@ def register(cli: click.Group) -> None:
     try:
         from .benchmark import benchmark_group
 
-        _h(benchmark_group)
         cli.add_command(benchmark_group)
     except (ModuleNotFoundError, ImportError):
         pass
@@ -137,9 +136,10 @@ def register(cli: click.Group) -> None:
         pass
 
     try:
-        from .route import route_public_group
+        from .route import proof_group, route_public_group
 
         cli.add_command(route_public_group)
+        cli.add_command(proof_group)
     except (ModuleNotFoundError, ImportError):
         pass
 
@@ -247,7 +247,6 @@ def register(cli: click.Group) -> None:
         cli.add_command(admin_commands.status_cmd)
     except (ModuleNotFoundError, ImportError):
         pass
-        pass
 
     try:
         import click as _click
@@ -292,6 +291,9 @@ def register(cli: click.Group) -> None:
     except (ModuleNotFoundError, ImportError):
         pass
 
+    try:
+        import click as _click
+
         @_click.command("completions")
         @_click.argument("shell", type=_click.Choice(["zsh", "bash", "fish"]))
         def completions_cmd(shell: str) -> None:
@@ -310,7 +312,7 @@ def register(cli: click.Group) -> None:
             _click.echo(scripts[shell])
 
         cli.add_command(completions_cmd)
-    except ImportError:  # noqa: B025
+    except ImportError:
         pass
 
 

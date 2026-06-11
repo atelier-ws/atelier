@@ -196,7 +196,7 @@ def test_failure_show_unknown_cluster(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# eval show / deprecate / eval-from-cluster                                  #
+# eval cycle show / deprecate / from-cluster / run                           #
 # --------------------------------------------------------------------------- #
 
 
@@ -220,7 +220,7 @@ def test_eval_show(tmp_path: Path) -> None:
     init_store_at(str(root))
     _make_eval_case(root)
 
-    res = _invoke(root, "eval", "show", "case1")
+    res = _invoke(root, "eval", "cycle", "show", "case1")
     assert res.exit_code == 0
     payload = json.loads(res.output)
     assert payload["id"] == "case1"
@@ -231,7 +231,7 @@ def test_eval_deprecate(tmp_path: Path) -> None:
     init_store_at(str(root))
     _make_eval_case(root)
 
-    res = _invoke(root, "eval", "deprecate", "case1")
+    res = _invoke(root, "eval", "cycle", "deprecate", "case1")
     assert res.exit_code == 0
     case = json.loads((root / "evals" / "case1.json").read_text(encoding="utf-8"))
     assert case["status"] == "deprecated"
@@ -250,7 +250,7 @@ def test_eval_from_cluster(tmp_path: Path) -> None:
     # Must accept cluster before generating eval
     _invoke(root, "failure", "accept", cid)
 
-    res = _invoke(root, "eval", "from-cluster", cid)
+    res = _invoke(root, "eval", "cycle", "from-cluster", cid)
     assert res.exit_code == 0
     assert "saved draft eval" in res.output
 
@@ -264,8 +264,48 @@ def test_eval_from_cluster_unaccepted_errors(tmp_path: Path) -> None:
     clusters = json.loads(_invoke(root, "failure", "list", "--json").output)
     cid = clusters[0]["id"]
 
-    res = _invoke(root, "eval", "from-cluster", cid)
+    res = _invoke(root, "eval", "cycle", "from-cluster", cid)
     assert res.exit_code != 0
+
+
+def test_eval_cycle_from_cluster(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    init_store_at(str(root))
+    _seed_ledger(root)
+    _seed_ledger(root, session_id="run2")
+
+    clusters = json.loads(_invoke(root, "failure", "list", "--json").output)
+    assert clusters
+    cid = clusters[0]["id"]
+    _invoke(root, "failure", "accept", cid)
+
+    res = _invoke(root, "eval", "cycle", "from-cluster", cid)
+    assert res.exit_code == 0
+    assert "saved draft eval" in res.output
+
+
+def test_eval_cycle_run_writes_actions_per_cluster(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    init_store_at(str(root))
+    _seed_ledger(root)
+    _seed_ledger(root, session_id="run2")
+
+    res = _invoke(root, "eval", "cycle", "run", "--json")
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["sessions_read"] >= 2
+    assert payload["eval_dir"].endswith("/evals")
+    assert payload["failure_state_path"].endswith("/failure_clusters.json")
+    assert payload["clustered_sessions"] >= 2
+    assert payload["unclustered_sessions"] >= 0
+    assert Path(payload["provenance_path"]).exists()
+    assert Path(payload["explain_path"]).exists()
+    assert payload["clusters_total"] >= 1
+    assert payload["actions_written"] == payload["clusters_selected"]
+    assert Path(payload["actions_path"]).exists()
+    assert payload["cases_written"] == 0
+    assert payload["selected_clusters"]
+    assert payload["case_ids"] == []
 
 
 # --------------------------------------------------------------------------- #

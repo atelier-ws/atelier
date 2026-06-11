@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -78,3 +79,35 @@ def test_codex_probe_split_cache_usage(tmp_path: Path) -> None:
 
 def test_codex_probe_missing_session(tmp_path: Path) -> None:
     assert cs._codex_probe("nope", root=tmp_path) == (0, "")
+
+
+def test_opencode_probe_reads_latest_step_usage(tmp_path: Path) -> None:
+    db_path = tmp_path / "opencode.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);
+        CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, data TEXT);
+        """)
+    conn.execute(
+        "INSERT INTO message VALUES (?, ?, ?, ?)",
+        ("m1", "s1", 1, json.dumps({"role": "assistant", "providerID": "openai", "modelID": "gpt-5.5"})),
+    )
+    conn.execute(
+        "INSERT INTO part VALUES (?, ?, ?, ?, ?)",
+        (
+            "p1",
+            "m1",
+            "s1",
+            2,
+            json.dumps(
+                {
+                    "type": "step-finish",
+                    "tokens": {"input": 10_000, "cache": {"read": 140_000, "write": 2_000}},
+                }
+            ),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    assert cs._opencode_probe("s1", db_path=db_path) == (152_000, "openai/gpt-5.5")
