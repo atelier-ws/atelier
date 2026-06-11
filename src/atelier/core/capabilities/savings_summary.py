@@ -131,6 +131,54 @@ def claude_transcript_candidates(session_id: str) -> list[Path]:
     return sorted((p for p in paths if p.is_file()), key=lambda p: p.stat().st_mtime, reverse=True)
 
 
+_CTX_TAIL_BYTES = 65536
+
+
+def transcript_context_state(session_id: str) -> tuple[int, str]:
+    """Return (live context tokens, model) for a Claude session.
+
+    Context = the most recent assistant turn's input + cache reads + cache
+    writes — i.e. what the next turn will re-read. Tail-reads the newest
+    transcript so it is cheap enough to call from per-tool-call hooks.
+    Returns ``(0, "")`` when the session or usage cannot be located.
+    """
+    candidates = claude_transcript_candidates(session_id)
+    if not candidates:
+        return 0, ""
+    newest = candidates[0]
+    try:
+        with newest.open("rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, fh.tell() - _CTX_TAIL_BYTES))
+            lines = fh.read().decode("utf-8", errors="replace").splitlines()
+    except OSError:
+        return 0, ""
+    for raw in reversed(lines):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            entry = json.loads(raw)
+        except json.JSONDecodeError:
+            continue  # first tail line may be partial
+        if entry.get("type") != "assistant":
+            continue
+        msg = entry.get("message") or {}
+        usage = msg.get("usage") if isinstance(msg, dict) else None
+        if not isinstance(usage, dict):
+            continue
+        ctx = (
+            int(usage.get("input_tokens", 0) or 0)
+            + int(usage.get("cache_read_input_tokens", 0) or 0)
+            + int(usage.get("cache_creation_input_tokens", 0) or 0)
+        )
+        if ctx <= 0:
+            continue
+        model = str(msg.get("model") or "").strip()
+        return ctx, model
+    return 0, ""
+
+
 @dataclass
 class TranscriptStats:
     """Parsed statistics from a Claude transcript JSONL file."""
