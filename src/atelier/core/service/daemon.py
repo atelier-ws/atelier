@@ -21,18 +21,19 @@ from pathlib import Path
 
 import click
 
-# ── helpers ──────────────────────────────────────────────────────────────────
+from atelier.core.foundation.paths import default_store_root
+from atelier.infra.runtime.daemon_units import (
+    DEFAULT_STACK_FRONTEND_PORT,
+    DEFAULT_STACK_SERVICE_PORT,
+    STACK_UNIT,
+    SYSTEMD_USER_DIR,
+)
+
+# ── helpers ────────────────────────────────────────────────────────────────────
 
 
 def _service_unit() -> str:
-    return os.environ.get("ATELIERD_UNIT", "atelier-stack.service")
-
-
-def _atelier_root() -> Path:
-    root = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT")
-    if root:
-        return Path(root)
-    return Path.home() / ".atelier"
+    return os.environ.get("ATELIERD_UNIT", STACK_UNIT)
 
 
 def _systemctl_available() -> bool:
@@ -87,18 +88,15 @@ def stop() -> None:
     import signal
 
     killed = 0
-    for pid_file in [
-        _atelier_root() / "service.pid",
-        Path("/tmp/atelierd.pid"),
-    ]:
-        if pid_file.exists():
-            try:
-                pid = int(pid_file.read_text().strip())
-                os.kill(pid, signal.SIGTERM)
-                killed += 1
-                click.echo(f"Sent SIGTERM to PID {pid}")
-            except (ValueError, ProcessLookupError, OSError):
-                pass
+    pid_file = default_store_root() / "stack" / "service.pid"
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+            killed += 1
+            click.echo(f"Sent SIGTERM to PID {pid}")
+        except (ValueError, ProcessLookupError, OSError):
+            pass
     if not killed:
         click.echo("No running atelierd process found (try: systemctl --user stop atelier-stack)", err=True)
         sys.exit(1)
@@ -119,7 +117,7 @@ def status() -> None:
     """Show running status of the Atelier HTTP service."""
     import urllib.request
 
-    root_url = f"http://127.0.0.1:{os.environ.get('ATELIER_PORT', '8787')}"
+    root_url = f"http://127.0.0.1:{os.environ.get('ATELIER_PORT', str(DEFAULT_STACK_SERVICE_PORT))}"
     try:
         with urllib.request.urlopen(f"{root_url}/health", timeout=2) as resp:
             data = resp.read().decode()
@@ -143,7 +141,7 @@ def logs(follow: bool, lines: int) -> None:
             args.append("-f")
         os.execlp("journalctl", *args)
     # Fallback: try the log file
-    log_path = _atelier_root() / "service.log"
+    log_path = default_store_root() / "service.log"
     if log_path.exists():
         if follow:
             os.execlp("tail", "tail", "-f", "-n", str(lines), str(log_path))
@@ -155,15 +153,9 @@ def logs(follow: bool, lines: int) -> None:
 
 @cli.command()
 @click.option(
-    "--with-stack/--no-stack",
-    default=True,
-    show_default=True,
-    help="Install the HTTP service unit (atelier-stack.service)",
-)
-@click.option(
     "--enable/--no-enable", default=True, show_default=True, help="Enable and start the unit immediately after install"
 )
-def install(with_stack: bool, enable: bool) -> None:
+def install(enable: bool) -> None:
     """Install systemd unit for the Atelier HTTP service."""
     if not _systemctl_available():
         click.echo("systemctl not available. On macOS use 'atelierd install --launchd'.", err=True)
@@ -171,8 +163,8 @@ def install(with_stack: bool, enable: bool) -> None:
 
     atelierd_bin = shutil.which("atelierd") or str(Path(sys.executable).parent / "atelierd")
     project_root = os.getcwd()
-    root = _atelier_root()
-    unit_dir = Path.home() / ".config" / "systemd" / "user"
+    root = default_store_root()
+    unit_dir = SYSTEMD_USER_DIR
     unit_dir.mkdir(parents=True, exist_ok=True)
 
     unit_content = f"""[Unit]
@@ -211,7 +203,7 @@ def uninstall(stop: bool) -> None:
     if stop:
         _run_systemctl("stop", _service_unit())
     _run_systemctl("disable", _service_unit())
-    unit_path = Path.home() / ".config" / "systemd" / "user" / _service_unit()
+    unit_path = SYSTEMD_USER_DIR / _service_unit()
     if unit_path.exists():
         unit_path.unlink()
         click.echo(f"Removed {unit_path}")
@@ -248,7 +240,7 @@ def _frontend_dir() -> Path:
 
 @cli.command("frontend-start")
 @click.option("--host", default="localhost", show_default=True)
-@click.option("--port", default=3125, show_default=True, type=int)
+@click.option("--port", default=DEFAULT_STACK_FRONTEND_PORT, show_default=True, type=int)
 @click.option("--api-url", default=None, help="Atelier service URL for VITE_API_URL (default: http://localhost:8787)")
 def frontend_start(host: str, port: int, api_url: str | None) -> None:
     """Start the Atelier visualization frontend (Vite dev server)."""
@@ -278,11 +270,11 @@ def frontend_install(enable: bool) -> None:
         click.echo(f"Frontend directory not found: {fdir}", err=True)
         sys.exit(1)
     atelierd_bin = shutil.which("atelierd") or str(Path(sys.executable).parent / "atelierd")
-    unit_dir = Path.home() / ".config" / "systemd" / "user"
+    unit_dir = SYSTEMD_USER_DIR
     unit_dir.mkdir(parents=True, exist_ok=True)
     unit_content = f"""[Unit]
-Description=Atelier Visualization Frontend
-After=atelier-stack.service
+    Description=Atelier Visualization Frontend
+    After={STACK_UNIT}
 
 [Service]
 Type=simple
@@ -290,7 +282,7 @@ WorkingDirectory={fdir}
 ExecStart={atelierd_bin} frontend-start
 Restart=on-failure
 RestartSec=5
-Environment=ATELIER_ROOT={_atelier_root()}
+Environment=ATELIER_ROOT={default_store_root()}
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

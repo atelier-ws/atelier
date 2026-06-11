@@ -14,6 +14,8 @@ Cluster key: (environment_id, fingerprint).
 from __future__ import annotations
 
 import json
+import re
+import shlex
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Literal
@@ -21,6 +23,114 @@ from typing import Any, Literal
 from atelier.core.capabilities.lesson_promotion import LessonPromoterCapability
 from atelier.core.foundation.models import FailureCluster
 from atelier.core.foundation.store import ContextStore
+
+
+def _normalize_signal(text: str) -> str | None:
+    line = str(text or "").strip().splitlines()[0].strip() if text else ""
+    if not line:
+        return None
+    return line[:200]
+
+
+_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
+_FAILURE_HINT_RE = re.compile(
+    r"\b(error|failed|failure|exception|timeout|forbidden|denied|unauthorized)\b", re.IGNORECASE
+)
+_LOW_VALUE_COMMANDS = {
+    "[",
+    "awk",
+    "bun",
+    "cat",
+    "cd",
+    "echo",
+    "find",
+    "grep",
+    "head",
+    "ls",
+    "nl",
+    "node",
+    "npm",
+    "pip",
+    "pip3",
+    "pnpm",
+    "printf",
+    "pwd",
+    "python",
+    "python3",
+    "rg",
+    "sed",
+    "tail",
+    "test",
+    "true",
+    "false",
+    "uv",
+    "wc",
+    "xargs",
+    "yarn",
+}
+
+
+def _normalize_command_name(command_text: str) -> str:
+    text = str(command_text or "").strip()
+    if not text:
+        return "unknown_command"
+    try:
+        tokens = shlex.split(text)
+    except ValueError:
+        tokens = text.split()
+    if not tokens:
+        return "unknown_command"
+
+    filtered: list[str] = []
+    for token in tokens:
+        tok = token.strip()
+        if not tok:
+            continue
+        if _ASSIGNMENT_RE.match(tok):
+            continue
+        filtered.append(tok)
+
+    if not filtered:
+        return "unknown_command"
+
+    command = filtered[0]
+    if command in {"env", "sudo"} and len(filtered) > 1:
+        command = filtered[1]
+    if command in {"bash", "sh", "zsh"} and len(filtered) > 1:
+        idx = 1
+        while idx < len(filtered) and str(filtered[idx]).startswith("-"):
+            idx += 1
+        if idx < len(filtered):
+            inner = str(filtered[idx]).strip()
+            if inner:
+                command = inner.split()[0]
+
+    command = command.split("/")[-1]
+    command = command.lstrip("./")
+    return command or "unknown_command"
+
+
+def _tool_failure_fingerprint(snapshot: dict[str, Any]) -> str | None:
+    for tool in reversed(snapshot.get("tools_called", []) or []):
+        if not isinstance(tool, dict):
+            continue
+        name = str(tool.get("name", "")).strip() or "unknown_tool"
+        summary = _normalize_signal(str(tool.get("result_summary", "")).strip())
+        if summary and _FAILURE_HINT_RE.search(summary):
+            return f"tool_failure:{name}:{summary[:120]}"
+    return None
+
+
+def _validation_failure_fingerprint(snapshot: dict[str, Any]) -> str | None:
+    for vr in reversed(snapshot.get("validation_results", []) or []):
+        if not isinstance(vr, dict):
+            continue
+        passed = vr.get("passed")
+        if passed is False:
+            name = str(vr.get("name", "")).strip() or "unknown_validation"
+            detail = _normalize_signal(str(vr.get("detail", "")).strip() or "failed") or ""
+            return f"validation_failed:{name}:{detail[:120]}"
+    return None
 
 
 def _fingerprint(snapshot: dict[str, Any]) -> str | None:
@@ -40,8 +150,44 @@ def _fingerprint(snapshot: dict[str, Any]) -> str | None:
         return last_error
     if last_high_alert:
         return last_high_alert
-    if snapshot.get("status") and snapshot["status"] != "complete":
-        return f"run_status:{snapshot['status']}"
+
+    repeated = snapshot.get("repeated_failures", []) or []
+    for item in reversed(repeated):
+        sig = _normalize_signal((item or {}).get("signature", "")) or ""
+        if sig:
+            return sig
+
+    for err in reversed(snapshot.get("errors_seen", []) or []):
+        sig = _normalize_signal(err) or ""
+        if sig:
+            return sig
+
+    for cmd in reversed(snapshot.get("commands_run", []) or []):
+        if isinstance(cmd, dict):
+            exit_code = cmd.get("exit_code")
+            command_name = _normalize_command_name(str(cmd.get("command", "")))
+            stderr = _normalize_signal(cmd.get("stderr", ""))
+            stdout = _normalize_signal(cmd.get("stdout", ""))
+            if exit_code not in (None, 0) and (stderr or stdout):
+                if command_name in _LOW_VALUE_COMMANDS:
+                    continue
+                return stderr or stdout
+            if exit_code not in (None, 0):
+                if command_name in _LOW_VALUE_COMMANDS:
+                    continue
+                return f"command_exit:{command_name}:exit_{exit_code}"
+
+    tool_fp = _tool_failure_fingerprint(snapshot)
+    if tool_fp:
+        return tool_fp
+
+    validation_fp = _validation_failure_fingerprint(snapshot)
+    if validation_fp:
+        return validation_fp
+
+    status = str(snapshot.get("status", "")).strip().lower()
+    if status in {"failed", "error", "blocked", "cancelled", "timeout", "partial"}:
+        return f"run_status:{status}"
     return None
 
 

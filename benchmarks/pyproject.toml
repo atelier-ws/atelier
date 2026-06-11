@@ -17,6 +17,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+harbor = [
+    "harbor>=0.13",
+]
 
 [build-system]
 requires = ["hatchling"]

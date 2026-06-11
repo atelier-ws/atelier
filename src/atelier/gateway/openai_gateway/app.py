@@ -13,20 +13,16 @@ Usage::
 
 from __future__ import annotations
 
-import json
-import time
-import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
 
 from atelier.gateway.cli.runtime import InteractiveRuntime
 
-from .adapter import atelier_events_to_sse, openai_messages_to_atelier
+from .adapter import run_chat_completion
 from .schemas import ChatCompletionRequest, ModelListResponse, ModelObject
 
 
@@ -69,13 +65,6 @@ def create_app(
         allow_headers=["*"],
     )
 
-    # Routing tier → budget. Anything not in this dict is a direct model ID.
-    _TIER_BUDGET: dict[str, str] = {
-        "atelier": "balanced",
-        "atelier-cheap": "cheap",
-        "atelier-best": "best",
-    }
-
     # ── /health ──────────────────────────────────────────────────────────────
 
     @app.get("/health")
@@ -103,72 +92,6 @@ def create_app(
 
     @app.post("/v1/chat/completions")
     async def chat_completions(req: ChatCompletionRequest) -> Any:
-        if not req.messages:
-            raise HTTPException(status_code=422, detail="messages must not be empty")
-
-        try:
-            last_user_text, prior_history = openai_messages_to_atelier(req.messages)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-        session_id = str(uuid.uuid4())
-        runtime._sessions[session_id] = prior_history
-
-        chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
-        model = req.model or ""
-        model_override = model if model else None
-
-        events_gen = runtime.handle_user_message(
-            session_id,
-            last_user_text,
-            model_override=model_override,
-        )
-        sse_gen = atelier_events_to_sse(events_gen, model=model or "atelier", chunk_id=chunk_id)
-
-        if req.stream:
-            return StreamingResponse(sse_gen, media_type="text/event-stream")
-
-        # Buffered (non-streaming) — accumulate all tokens
-        content_parts: list[str] = []
-        finish_reason = "stop"
-        async for line in sse_gen:
-            if not line.startswith("data: "):
-                continue
-            payload = line[6:].strip()
-            if payload == "[DONE]":
-                break
-            try:
-                obj = json.loads(payload)
-                choices = obj.get("choices", [])
-                if choices:
-                    delta = choices[0].get("delta", {})
-                    token = delta.get("content") or ""
-                    content_parts.append(token)
-                    if choices[0].get("finish_reason"):
-                        finish_reason = choices[0]["finish_reason"]
-                if "error" in obj:
-                    raise HTTPException(status_code=500, detail=obj["error"].get("message"))
-            except (json.JSONDecodeError, KeyError):
-                pass
-
-        return JSONResponse(
-            {
-                "id": chunk_id,
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": "".join(content_parts),
-                        },
-                        "finish_reason": finish_reason,
-                    }
-                ],
-                "usage": None,
-            }
-        )
+        return await run_chat_completion(runtime, req)
 
     return app

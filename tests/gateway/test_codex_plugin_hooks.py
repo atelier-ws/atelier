@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from atelier.core.capabilities import plugin_runtime
 from atelier.infra.runtime.run_ledger import RunLedger
 
 pytestmark = pytest.mark.slow  # Each test spawns a real Python subprocess (~2s each)
@@ -21,7 +22,13 @@ def _run_hook(
     script: str, root: Path, payload: dict[str, Any], version: str = "1.0.0"
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
-    env.update({"ATELIER_ROOT": str(root), "ATELIER_VERSION": version})
+    env.update(
+        {
+            "ATELIER_ROOT": str(root),
+            "ATELIER_VERSION": version,
+            "ATELIER_CTX_NUDGE_TOKENS": "999999999",
+        }
+    )
     return subprocess.run(
         [sys.executable, str(HOOKS / script)],
         input=json.dumps(payload),
@@ -30,6 +37,40 @@ def _run_hook(
         check=True,
         env=env,
     )
+
+
+def test_codex_user_prompt_is_quiet_for_multi_file_prompt(tmp_path: Path) -> None:
+    result = _run_hook(
+        "user_prompt.py",
+        tmp_path / ".atelier",
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "c1",
+            "prompt": "Update auth.py and billing.py to share token parsing",
+        },
+    )
+
+    assert result.stdout == ""
+
+
+def test_codex_user_prompt_emits_high_context_nudge_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / ".atelier"
+    monkeypatch.setattr(
+        "atelier.gateway.hosts.context_state.host_context_state",
+        lambda host, session_id: (200_000, "gpt-5.5"),
+    )
+    payload = {
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "c1",
+        "prompt": "Continue the implementation",
+    }
+
+    first = plugin_runtime.build_codex_user_prompt_output(root, payload)
+    second = plugin_runtime.build_codex_user_prompt_output(root, payload)
+
+    assert "high context" in first["message"]
+    assert "additionalContext" in first
+    assert second.get("no_output") is True
 
 
 def test_codex_savings_reporter_updates_session_stats(tmp_path: Path) -> None:
@@ -51,51 +92,24 @@ def test_codex_savings_reporter_updates_session_stats(tmp_path: Path) -> None:
     assert stats["savings"]["calls_saved"] > 0
 
 
-def test_codex_savings_reporter_emits_no_edit_progress_nudge_once(tmp_path: Path) -> None:
+def test_codex_savings_reporter_is_quiet_after_repeated_searches(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    _run_hook(
-        "savings_reporter.py",
-        root,
-        {
-            "hook_event_name": "PostToolUse",
-            "session_id": "c1",
-            "tool_name": "mcp__plugin_atelier_atelier__Search",
-            "tool_input": {},
-            "now_ms": 1_000,
-        },
-    )
-
-    first = _run_hook(
-        "savings_reporter.py",
-        root,
-        {
-            "hook_event_name": "PostToolUse",
-            "session_id": "c1",
-            "tool_name": "mcp__plugin_atelier_atelier__Search",
-            "tool_input": {},
-            "now_ms": 601_001,
-        },
-    )
-    second = _run_hook(
-        "savings_reporter.py",
-        root,
-        {
-            "hook_event_name": "PostToolUse",
-            "session_id": "c1",
-            "tool_name": "mcp__plugin_atelier_atelier__Search",
-            "tool_input": {},
-            "now_ms": 601_002,
-        },
-    )
-
-    first_output = json.loads(first.stdout)
-    second_output = json.loads(second.stdout)
-
-    assert "10 minutes" in first_output["additionalContext"]
-    assert "additionalContext" not in second_output
+    for now_ms in (1_000, 601_001, 601_002):
+        result = _run_hook(
+            "savings_reporter.py",
+            root,
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "c1",
+                "tool_name": "mcp__plugin_atelier_atelier__Search",
+                "tool_input": {},
+                "now_ms": now_ms,
+            },
+        )
+        assert result.stdout == ""
 
 
-def test_codex_savings_reporter_emits_loop_rescue_nudge(tmp_path: Path) -> None:
+def test_codex_savings_reporter_records_loop_state_without_output(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     root.mkdir()
     session_id = "loop-run"
@@ -121,9 +135,9 @@ def test_codex_savings_reporter_emits_loop_rescue_nudge(tmp_path: Path) -> None:
         },
     )
 
-    output = json.loads(result.stdout)
-    assert "loop detector" in output["additionalContext"].lower()
-    assert "change approach" in output["message"].lower()
+    assert result.stdout == ""
+    stats = json.loads((root / "session_stats" / "c1.json").read_text(encoding="utf-8"))
+    assert stats["total_tool_calls"] == 1
 
 
 def test_codex_savings_reporter_ignores_non_atelier_tools(tmp_path: Path) -> None:
@@ -168,36 +182,35 @@ def test_codex_stop_hook_is_quiet_without_session_activity(tmp_path: Path) -> No
     assert result.stdout == ""
 
 
-def test_codex_update_notification_outputs_sessionstart_message(tmp_path: Path) -> None:
+def test_codex_session_start_is_quiet_and_records_session(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    root.mkdir()
-    (root / "update.json").write_text(
-        json.dumps({"fromVersion": "1.0.0", "toVersion": "1.1.0"}),
-        encoding="utf-8",
+    cwd = tmp_path / "workspace"
+    cwd.mkdir()
+
+    result = _run_hook(
+        "update_notification.py",
+        root,
+        {"hook_event_name": "SessionStart", "session_id": "c1", "cwd": str(cwd)},
     )
 
-    result = _run_hook("update_notification.py", root, {"hook_event_name": "SessionStart"}, version="1.0.0")
-
-    output = json.loads(result.stdout)
-    assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
-    assert "Atelier v1.1.0" in output["message"]
-    assert "Atelier budget optimizer" in output["additionalContext"]
-
-
-def test_codex_update_notification_outputs_optimizer_without_update(tmp_path: Path) -> None:
-    result = _run_hook("update_notification.py", tmp_path / ".atelier", {"hook_event_name": "SessionStart"})
-
-    output = json.loads(result.stdout)
-    assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
-    assert "smallest viable plan" in output["additionalContext"]
+    assert result.stdout == ""
+    state_files = list((root / "workspaces").glob("*/session_state.json"))
+    assert len(state_files) == 1
+    assert json.loads(state_files[0].read_text(encoding="utf-8"))["session_id"] == "c1"
 
 
 def test_codex_hooks_manifest_wires_reporter_and_update() -> None:
     data = json.loads((HOOKS / "hooks.json").read_text(encoding="utf-8"))
     assert "SessionStart" in data["hooks"]
+    assert "UserPromptSubmit" in data["hooks"]
     assert "PostToolUse" in data["hooks"]
     assert "Stop" in data["hooks"]
     rendered = json.dumps(data)
     assert "update_notification.py" in rendered
+    assert "user_prompt.py" in rendered
     assert "savings_reporter.py" in rendered
     assert "stop.py" in rendered
+    assert "${PLUGIN_ROOT}/hooks/" in rendered
+    assert "__ATELIER_PYTHON__" in rendered
+    assert "__ATELIER_REPO_SRC__" in rendered
+    assert "ATELIER_CODEX_PLUGIN_ROOT" not in rendered

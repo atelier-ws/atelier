@@ -360,6 +360,11 @@ def test_install_scripts_document_global_and_workspace_paths() -> None:
     assert 'PLUGIN_DIR="${CODEX_HOME}/plugins/atelier"' in codex
     assert 'PLUGIN_DIR="${WORKSPACE}/.codex/plugins/atelier"' in codex
     assert ".agents/plugins/marketplace.json" in codex
+    assert "atelier@atelier-local" in codex
+    assert "plugin add atelier@openai-curated" not in codex
+    assert "patch_plugin_hooks" in codex
+    assert "__ATELIER_PYTHON__" in codex
+    assert "__ATELIER_REPO_SRC__" in codex
 
     copilot = (SCRIPTS / "install_copilot.sh").read_text()
     assert "Code/User" in copilot
@@ -370,6 +375,9 @@ def test_install_scripts_document_global_and_workspace_paths() -> None:
     opencode = (SCRIPTS / "install_opencode.sh").read_text()
     assert ".config}/opencode" in opencode
     assert 'OC_FILE="${WORKSPACE}/opencode.json"' in opencode
+    assert 'PLUGIN_DEST_DIR="${WORKSPACE}/.opencode/plugins"' in opencode
+    assert 'PLUGIN_DEST_DIR="${OPENCODE_CONFIG_HOME}/plugins"' in opencode
+    assert "atelier-nudge.js" in opencode
     assert "${HOME}/opencode.jsonc" not in opencode
     assert "${HOME}/.opencode" not in opencode
 

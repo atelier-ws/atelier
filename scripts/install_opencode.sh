@@ -54,11 +54,13 @@ if $WORKSPACE_SET; then
     INSTALL_SCOPE="workspace"
     OC_FILE="${WORKSPACE}/opencode.json"
     AGENT_DEST_DIR="${WORKSPACE}/.opencode/agents"
-else
+    PLUGIN_DEST_DIR="${WORKSPACE}/.opencode/plugins"
+    else
     INSTALL_SCOPE="global"
     OC_FILE="${OPENCODE_CONFIG_HOME}/opencode.json"
     AGENT_DEST_DIR="${OPENCODE_CONFIG_HOME}/agents"
-fi
+    PLUGIN_DEST_DIR="${OPENCODE_CONFIG_HOME}/plugins"
+    fi
 
 ATELIER_SERVICE_BASE="${ATELIER_SERVICE_URL:-http://127.0.0.1:8787}"
 ATELIER_SERVICE_BASE="${ATELIER_SERVICE_BASE%/}"
@@ -254,6 +256,17 @@ else
     done
 fi
 
+# ---- install prompt-time nudge plugin ---------------------------------------
+PLUGIN_SRC_DIR="${ATELIER_REPO}/integrations/opencode/plugins"
+if $DRY_RUN; then
+    echo "  [dry-run] copy Atelier nudge plugin to '$PLUGIN_DEST_DIR'"
+else
+    run "mkdir -p '$PLUGIN_DEST_DIR'"
+    run "cp -f '$PLUGIN_SRC_DIR/atelier-nudge.js' '$PLUGIN_DEST_DIR/atelier-nudge.js'"
+    run "cp -f '$PLUGIN_SRC_DIR/atelier_nudge.py' '$PLUGIN_DEST_DIR/atelier_nudge.py'"
+    info "Atelier nudge plugin installed -> $PLUGIN_DEST_DIR/atelier-nudge.js"
+fi
+
 if $DRY_RUN; then
     info "Dry run complete; skipped post-install verification because no files were written."
     exit 0
@@ -333,6 +346,14 @@ PYEOF
     fi
 else
     vfail "opencode config not found: $OC_FILE"
+fi
+
+PLUGIN_FILE="${PLUGIN_DEST_DIR}/atelier-nudge.js"
+PLUGIN_HELPER="${PLUGIN_DEST_DIR}/atelier_nudge.py"
+if [ -f "$PLUGIN_FILE" ] && [ -f "$PLUGIN_HELPER" ]; then
+    vpass "opencode Atelier prompt nudge plugin installed: $PLUGIN_FILE"
+else
+    vfail "opencode Atelier prompt nudge plugin missing from $PLUGIN_DEST_DIR"
 fi
 
 AGENT_FILE="${AGENT_DEST_DIR}/atelier.md"

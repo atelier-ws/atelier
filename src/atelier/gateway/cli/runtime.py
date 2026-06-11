@@ -159,10 +159,10 @@ class InteractiveRuntime:
             except Exception as exc:
                 lowered = str(exc).lower()
                 retryable = (
-                    "ratelimit" in lowered
+                    getattr(exc, "status_code", None) == 429  # litellm RateLimitError et al.
+                    or "ratelimit" in lowered
                     or "rate limit" in lowered
                     or "too many requests" in lowered
-                    or "429" in lowered
                 )
                 if not retryable or attempt >= max_retries:
                     raise
@@ -347,7 +347,7 @@ class InteractiveRuntime:
                     yield RuntimeErrorEvent(type="error", message=f"LLM call failed: {exc}")
                 return
 
-            for chunk in stream:
+            async for chunk in _aiter_sync_stream(stream):
                 usage = getattr(chunk, "usage", None)
                 if usage is not None:
                     total_input += int(getattr(usage, "prompt_tokens", 0) or 0)
@@ -467,16 +467,7 @@ class InteractiveRuntime:
                         continue
                 prepared_calls.append((tool_id, tool_name, tool_args))
 
-            parallel_tools = {
-                "read",
-                "search",
-                "grep",
-                "symbols",
-                "node",
-                "callers",
-                "usages",
-                "explore",
-            }
+            parallel_tools = _PARALLEL_SAFE_TOOLS
             index = 0
             while index < len(prepared_calls):
                 tool_id, tool_name, tool_args = prepared_calls[index]
@@ -511,11 +502,20 @@ class InteractiveRuntime:
 
                     if batch_name == "edit" and ok:
                         try:
-                            diff = subprocess.check_output(
-                                ["git", "diff", "--no-color"],
+                            edited_paths = [
+                                str(e.get("file_path") or e.get("path") or "").split("#")[0]
+                                for e in batch_args.get("edits", [])
+                            ]
+                            diff_cmd = ["git", "diff", "--no-color"]
+                            if edited_paths and all(edited_paths):
+                                diff_cmd += ["--", *edited_paths]
+                            raw_diff = await asyncio.to_thread(
+                                subprocess.check_output,
+                                diff_cmd,
                                 cwd=os.getcwd(),
                                 stderr=subprocess.DEVNULL,
-                            ).decode(errors="replace")[:5000]
+                            )
+                            diff = raw_diff.decode(errors="replace")[:5000]
                             if diff.strip():
                                 from atelier.gateway.cli.events import PatchProposed
 
@@ -528,8 +528,6 @@ class InteractiveRuntime:
                         except Exception:  # noqa: BLE001 - diff is best-effort
                             pass
                 index = end
-
-        total_input = max(0, total_input)
 
         total_input = max(0, total_input)
         denom = total_cache_read + total_cache_write + total_input
@@ -1316,6 +1314,21 @@ _OWNED_TOOL_NAMES = (
     "edit",
     "shell",
 )
+
+# Owned tools that are safe to execute concurrently (everything read-only).
+_PARALLEL_SAFE_TOOLS = frozenset(_OWNED_TOOL_NAMES) - {"edit", "shell"}
+
+
+async def _aiter_sync_stream(stream: Any) -> AsyncIterator[Any]:
+    """Iterate a synchronous litellm stream without blocking the event loop."""
+    sentinel = object()
+    iterator = iter(stream)
+    while True:
+        chunk = await asyncio.to_thread(next, iterator, sentinel)
+        if chunk is sentinel:
+            return
+        yield chunk
+
 
 # Params the owned runtime neither publishes to nor accepts from its inner model.
 # The MCP host surface still exposes these (user-authorized overrides); hiding

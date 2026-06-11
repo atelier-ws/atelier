@@ -24,7 +24,7 @@ def main() -> int:
         output = build_codex_stop_output(_atelier_root(), payload)
         if not output.get("no_output"):
             sys.stdout.write(json.dumps({"systemMessage": output["systemMessage"]}) + "\n")
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+    except (ImportError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         pass
     return 0
 

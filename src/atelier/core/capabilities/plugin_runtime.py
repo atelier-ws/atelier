@@ -959,6 +959,60 @@ def _codex_native_tool_nudge(root: str | Path, payload: dict[str, Any]) -> dict[
     }
 
 
+_CODEX_GROUNDED_BATCHING_NUDGE = (
+    "Atelier: ground multi-file changes with search or read first, then batch related edits in one edit call."
+)
+
+
+def _looks_like_multi_file_edit_prompt(prompt: str) -> bool:
+    lowered = f" {prompt.lower()} "
+    if not any(term in lowered for term in (" edit ", " update ", " change ", " modify ", " refactor ", " fix ")):
+        return False
+    if any(term in lowered for term in (" searched ", " inspected ", " read ", " grounded ")):
+        return False
+    file_mentions = sum(lowered.count(suffix) for suffix in (".py", ".ts", ".tsx", ".js", ".go", ".rs"))
+    return file_mentions >= 2 or " files " in lowered
+
+
+def build_codex_user_prompt_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the one-shot Codex high-context compaction notice."""
+    if payload.get("hook_event_name") != "UserPromptSubmit":
+        return {"no_output": True}
+    session_id = str(payload.get("session_id") or "default")
+    path = session_stats_path(root, session_id)
+    try:
+        stats = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (json.JSONDecodeError, OSError, TypeError):
+        stats = {}
+
+    updated, ctx_output = _maybe_emit_ctx_notice(stats, payload, host="codex")
+    if updated != stats:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(updated, indent=2), encoding="utf-8")
+    return ctx_output
+
+
+def build_opencode_user_prompt_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """Return prompt-time OpenCode context and edit-discipline nudges."""
+    normalized = dict(payload)
+    normalized["hook_event_name"] = "UserPromptSubmit"
+    session_id = str(normalized.get("session_id") or "default")
+    path = session_stats_path(root, session_id)
+    try:
+        stats = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (json.JSONDecodeError, OSError, TypeError):
+        stats = {}
+
+    updated, ctx_output = _maybe_emit_ctx_notice(stats, normalized, host="opencode")
+    outputs = [ctx_output]
+    if _looks_like_multi_file_edit_prompt(str(normalized.get("prompt") or "")):
+        outputs.append({"additionalContext": _CODEX_GROUNDED_BATCHING_NUDGE})
+    if updated != stats:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(updated, indent=2), encoding="utf-8")
+    return _merge_progress_outputs(*outputs)
+
+
 def build_codex_post_tool_use_savings_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     if payload.get("hook_event_name") != "PostToolUse":
         return {"no_output": True}
@@ -1706,7 +1760,9 @@ def _maybe_emit_loop_notice(
 _CTX_NUDGE_DEFAULT_TOKENS = 160_000
 
 
-def _maybe_emit_ctx_notice(stats: dict[str, Any], payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def _maybe_emit_ctx_notice(
+    stats: dict[str, Any], payload: dict[str, Any], *, host: str = "claude"
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """One-shot compact nudge when live context crosses the cost-aware threshold.
 
     Context size is per-turn ground truth from the transcript. The message is
@@ -1715,13 +1771,20 @@ def _maybe_emit_ctx_notice(stats: dict[str, Any], payload: dict[str, Any]) -> tu
     the agent can weigh compaction against real dollars instead of a bare
     percentage.
     """
-    from atelier.core.capabilities import savings_summary as ss
     from atelier.core.capabilities.session_optimizer import mark_session_optimizer_notice
 
     if bool((stats.get("optimizer_notices") or {}).get("ctx_high")):
         return stats, {"no_output": True}
     try:
-        ctx, model = ss.transcript_context_state(str(payload.get("session_id") or ""))
+        session_id = str(payload.get("session_id") or "")
+        if host == "claude":
+            from atelier.core.capabilities import savings_summary as ss
+
+            ctx, model = ss.transcript_context_state(session_id)
+        else:
+            from atelier.gateway.hosts.context_state import host_context_state
+
+            ctx, model = host_context_state(host, session_id)
     except Exception:
         logging.exception("Recovered from broad exception handler")
         return stats, {"no_output": True}

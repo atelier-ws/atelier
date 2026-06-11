@@ -139,7 +139,7 @@ verify: | _ensure_hooks lint format-check typecheck docs-check test ## Verify co
 
 proof-cost-quality: ## Run cost-quality proof gate tests and write proof-report.json
 	LOCAL=1 uv run pytest tests/core/test_cost_quality_proof_gate.py tests/gateway/test_cli_proof_gate.py -v
-	LOCAL=1 atelier proof run --session-id wp32-proof --json
+	LOCAL=1 uv run atelier proof run --session-id wp32-proof --context-reduction-pct 60 --json
 	@test -s $(ATELIER_STORE)/proof/proof-report.json
 
 # --------------------------------------------------------------------------- #
