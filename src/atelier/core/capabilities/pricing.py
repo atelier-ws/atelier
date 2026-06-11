@@ -64,16 +64,35 @@ def _load_overrides_from_file(path: Path) -> dict[str, dict[str, float | tuple[P
                 continue
             input_usd = float(rates.get("input", 0.0))
             output_usd = float(rates.get("output", 0.0))
+
+            # Optional per-request long-context premium tier:
+            #   long_context: {threshold, input, output, cache_read, cache_write}
+            lc = rates.get("long_context")
+            lc_threshold = int(lc.get("threshold", 200_000)) if isinstance(lc, dict) else 0
+
+            def _lc_tier(
+                name: str,
+                lc: object = lc,
+                lc_threshold: int = lc_threshold,
+            ) -> tuple[PricingTier, ...]:
+                if not isinstance(lc, dict):
+                    return ()
+                value = lc.get(name)
+                if value is None:
+                    return ()
+                return (PricingTier(threshold_tokens=lc_threshold, rate=float(value)),)
+
             overrides[str(model_id)] = {
                 "input": input_usd,
                 "output": output_usd,
                 "cache_read": float(rates.get("cache_read", 0.0)),
                 "cache_write": float(rates.get("cache_write", 0.0)),
+                "cache_write_1h": float(rates.get("cache_write_1h", 0.0)),
                 "thinking": float(rates.get("thinking", output_usd)),
-                "input_tiers": (),
-                "output_tiers": (),
-                "cache_read_tiers": (),
-                "cache_write_tiers": (),
+                "input_tiers": _lc_tier("input"),
+                "output_tiers": _lc_tier("output"),
+                "cache_read_tiers": _lc_tier("cache_read"),
+                "cache_write_tiers": _lc_tier("cache_write"),
                 "thinking_tiers": (),
             }
     except Exception as e:
@@ -171,6 +190,8 @@ class ModelPricing:
         output:      Cost per 1M output (completion) tokens in USD.
         cache_read:  Cost per 1M cache-read tokens in USD (0 if not applicable).
         cache_write: Cost per 1M cache-write tokens in USD (0 if not applicable).
+        cache_write_1h: Cost per 1M 1h-TTL cache-write tokens in USD
+                     (0 falls back to ``cache_write``).
         thinking:    Cost per 1M reasoning/thinking tokens in USD.
         known:       ``True`` when pricing was explicitly configured for this
                      model; ``False`` when the model id was not found and the
@@ -182,6 +203,7 @@ class ModelPricing:
     output: float
     cache_read: float = 0.0
     cache_write: float = 0.0
+    cache_write_1h: float = 0.0
     thinking: float = 0.0
     input_tiers: tuple[PricingTier, ...] = ()
     output_tiers: tuple[PricingTier, ...] = ()
@@ -244,6 +266,61 @@ class ModelPricing:
             + self._cost_for_tokens(cache_read_tokens, self.cache_read, self.cache_read_tiers)
             + self._cost_for_tokens(cache_write_tokens, self.cache_write, self.cache_write_tiers)
             + self._cost_for_tokens(thinking_tokens, self.thinking or self.output, self.thinking_tiers),
+            8,
+        )
+
+    def long_context_threshold(self) -> int:
+        """Per-request long-context threshold in tokens (0 = no premium tier).
+
+        Derived from the first tier of any token category (LiteLLM encodes the
+        premium as ``*_above_200k_tokens``; YAML overrides as ``long_context``).
+        """
+        thresholds = [
+            tiers[0].threshold_tokens
+            for tiers in (self.input_tiers, self.output_tiers, self.cache_read_tiers, self.cache_write_tiers)
+            if tiers
+        ]
+        return min(thresholds) if thresholds else 0
+
+    def request_cost_usd(
+        self,
+        *,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cache_read_tokens: int = 0,
+        cache_write_tokens: int = 0,
+        cache_write_1h_tokens: int = 0,
+        long_context: bool = False,
+    ) -> float:
+        """Per-request cost with flat rates (Anthropic billing semantics).
+
+        Unlike :meth:`cost_usd` (progressive tiers over aggregate counts),
+        Anthropic bills the *whole request* at premium rates once its context
+        exceeds the long-context threshold. Callers bucket usage per request
+        and pass ``long_context=True`` for the premium bucket.
+        ``cache_write_tokens`` is the 5m-TTL portion; 1h-TTL writes go in
+        ``cache_write_1h_tokens``.
+        """
+
+        def _premium(base: float, tiers: tuple[PricingTier, ...]) -> float:
+            return tiers[0].rate if (long_context and tiers) else base
+
+        rate_in = _premium(self.input, self.input_tiers)
+        rate_out = _premium(self.output, self.output_tiers)
+        rate_cr = _premium(self.cache_read, self.cache_read_tiers)
+        rate_cw = _premium(self.cache_write, self.cache_write_tiers)
+        base_1h = self.cache_write_1h or self.cache_write
+        # Premium 1h rate scales with the same multiplier as 5m writes.
+        rate_cw1 = base_1h * (rate_cw / self.cache_write) if self.cache_write > 0 else base_1h
+        return round(
+            (
+                input_tokens * rate_in
+                + output_tokens * rate_out
+                + cache_read_tokens * rate_cr
+                + cache_write_tokens * rate_cw
+                + cache_write_1h_tokens * rate_cw1
+            )
+            / _TOKENS_PER_MILLION,
             8,
         )
 
@@ -320,6 +397,7 @@ def _extract_pricing_entry(model_id: str, raw_entry: object) -> dict[str, float 
         "output": _rate("output_cost_per_token"),
         "cache_read": _rate("cache_read_input_token_cost"),
         "cache_write": _rate("cache_creation_input_token_cost"),
+        "cache_write_1h": _rate("cache_creation_input_token_cost_above_1hr"),
         "thinking": _rate("output_cost_per_reasoning_token") or _rate("output_cost_per_token"),
         "input_tiers": _extract_tiers(raw_entry, "input_cost_per_token"),
         "output_tiers": _extract_tiers(raw_entry, "output_cost_per_token"),
@@ -403,6 +481,7 @@ def _load_pricing_table() -> dict[str, dict[str, float | tuple[PricingTier, ...]
             "output": 0.0,
             "cache_read": 0.0,
             "cache_write": 0.0,
+            "cache_write_1h": 0.0,
             "thinking": 0.0,
             "input_tiers": (),
             "output_tiers": (),

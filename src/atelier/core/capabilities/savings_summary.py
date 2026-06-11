@@ -70,8 +70,14 @@ def estimate_cost_usd(
     output_tokens: int,
     cache_read_tokens: int,
     cache_write_tokens: int,
+    cache_write_1h_tokens: int = 0,
+    long_context: bool = False,
 ) -> float:
-    """Estimate cost using the per-model 4-category rate card.
+    """Estimate cost using the per-model rate card.
+
+    ``cache_write_tokens`` is the 5m-TTL portion when ``cache_write_1h_tokens``
+    is supplied (1h writes bill at a higher rate). ``long_context=True`` prices
+    the bucket at the model's >200k per-request premium rates.
 
     Falls back to Sonnet 4.5 rates when the model is unknown so we never
     silently show $0 for an active session.
@@ -82,11 +88,13 @@ def estimate_cost_usd(
         pricing = get_model_pricing(model_id) if model_id else None
         if pricing is None or not pricing.known or pricing.input <= 0:
             pricing = get_model_pricing("claude-sonnet-4-5")
-        return pricing.cost_usd(
+        return pricing.request_cost_usd(
             input_tokens=int(input_tokens or 0),
             output_tokens=int(output_tokens or 0),
             cache_read_tokens=int(cache_read_tokens or 0),
             cache_write_tokens=int(cache_write_tokens or 0),
+            cache_write_1h_tokens=int(cache_write_1h_tokens or 0),
+            long_context=long_context,
         )
     except Exception:
         logging.exception("Recovered from broad exception handler")
@@ -176,12 +184,75 @@ class TranscriptStats:
         return weighted / total_input if weighted > 0 else None
 
 
+def _subagent_transcripts(transcript_path: Path) -> list[Path]:
+    """Return subagent (sidechain) transcripts recorded for a session.
+
+    Claude Code stores Agent-tool transcripts under
+    ``<project>/<session-id>/subagents/*.jsonl`` next to the main
+    ``<session-id>.jsonl``. Their usage is billed to the session (and is
+    included in Claude's own ``cost.total_cost_usd``), so pricing must
+    include them.
+    """
+    subagent_dir = transcript_path.parent / transcript_path.stem / "subagents"
+    if not subagent_dir.is_dir():
+        return []
+    return sorted(subagent_dir.glob("*.jsonl"))
+
+
+def _long_context_threshold(model: str, cache: dict[str, int]) -> int:
+    """Per-request long-context threshold for *model* (0 = no premium), cached."""
+    if model not in cache:
+        try:
+            from atelier.core.capabilities.pricing import get_model_pricing
+
+            cache[model] = get_model_pricing(resolve_model_id(model)).long_context_threshold()
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            cache[model] = 0
+    return cache[model]
+
+
+def _bucket_cost_usd(model_id: str, b: dict[str, int]) -> float:
+    """Price one per-model bucket: base portion + >200k premium portion.
+
+    ``in``/``out``/``cR``/``cW`` are totals; ``*_lc`` keys hold the subset from
+    messages over the long-context threshold; ``cW1`` is the 1h-TTL cache-write
+    subset of ``cW``.
+    """
+    lc = {k: b.get(f"{k}_lc", 0) for k in ("in", "out", "cR", "cW", "cW1")}
+    cw1 = b.get("cW1", 0)
+    cost = estimate_cost_usd(
+        model_id=model_id,
+        input_tokens=b["in"] - lc["in"],
+        output_tokens=b["out"] - lc["out"],
+        cache_read_tokens=b["cR"] - lc["cR"],
+        cache_write_tokens=(b["cW"] - cw1) - (lc["cW"] - lc["cW1"]),
+        cache_write_1h_tokens=cw1 - lc["cW1"],
+    )
+    if any(lc.values()):
+        cost += estimate_cost_usd(
+            model_id=model_id,
+            input_tokens=lc["in"],
+            output_tokens=lc["out"],
+            cache_read_tokens=lc["cR"],
+            cache_write_tokens=lc["cW"] - lc["cW1"],
+            cache_write_1h_tokens=lc["cW1"],
+            long_context=True,
+        )
+    return cost
+
+
 def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None:
     """Parse a Claude transcript JSONL and return session stats.
 
     Cost is computed per model per turn because users can switch models
     mid-conversation (e.g. Opus → Sonnet).  Each token bucket is priced with
     its own rate card and summed.
+
+    Token buckets and cost also include the session's subagent transcripts
+    (``<session-id>/subagents/*.jsonl``) — their usage is billed to the
+    session. Turn count, tool counts, and the session model fields remain
+    main-transcript-only.
     """
     p = Path(transcript_path)
     if not p.exists():
@@ -200,78 +271,108 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
     turn_timestamps: list[str] = []
     seen_usage_message_ids: set[str] = set()
     seen_tool_use_ids: set[str] = set()
+    lc_thresholds: dict[str, int] = {}
+
+    sources: list[tuple[Path, bool]] = [(p, True)]
+    sources.extend((sub, False) for sub in _subagent_transcripts(p))
 
     try:
-        for raw in p.read_text(encoding="utf-8", errors="replace").splitlines():
-            raw = raw.strip()
-            if not raw:
-                continue
-            try:
-                entry = json.loads(raw)
-            except Exception:
-                logging.exception("Recovered from broad exception handler")
-                continue
-
-            msg = entry.get("message") or {}
-            if not isinstance(msg, dict):
-                continue
-            msg_id = str(msg.get("id") or "").strip()
-
-            candidate = msg.get("model") or entry.get("model") or ""
-            if is_real_model(candidate):
-                candidate_str = str(candidate).strip()
-                if not model_id:
-                    model_id = candidate_str
-                last_model_id = candidate_str
-
-            usage = msg.get("usage") or {}
-            if not isinstance(usage, dict):
-                continue
-            in_t = int(usage.get("input_tokens", 0) or 0)
-            out_t = int(usage.get("output_tokens", 0) or 0)
-            cr_t = int(usage.get("cache_read_input_tokens", 0) or 0)
-            cw_t = int(usage.get("cache_creation_input_tokens", 0) or 0)
-            has_usage = bool(in_t or out_t or cr_t or cw_t)
-            count_usage = has_usage
-            if has_usage and msg_id:
-                if msg_id in seen_usage_message_ids:
-                    count_usage = False
-                else:
-                    seen_usage_message_ids.add(msg_id)
-            if count_usage:
-                input_tokens += in_t
-                output_tokens += out_t
-                cache_read_tokens += cr_t
-                cache_write_tokens += cw_t
-                # A turn = one assistant message with non-zero usage.
-                # Dedup on msg_id (same dedup as token accumulation).
-                turns += 1
-                ts_raw = str(entry.get("timestamp") or "")
-                if ts_raw:
-                    turn_timestamps.append(ts_raw)
-
-                turn_model = str(msg.get("model") or entry.get("model") or "").strip()
-                if is_real_model(turn_model):
-                    bucket = per_model.setdefault(turn_model, {"in": 0, "out": 0, "cR": 0, "cW": 0})
-                    bucket["in"] += in_t
-                    bucket["out"] += out_t
-                    bucket["cR"] += cr_t
-                    bucket["cW"] += cw_t
-
-            for index, block in enumerate(msg.get("content") or []):
-                if not isinstance(block, dict):
+        for source, is_main in sources:
+            for raw in source.read_text(encoding="utf-8", errors="replace").splitlines():
+                raw = raw.strip()
+                if not raw:
                     continue
-                if block.get("type") != "tool_use":
+                try:
+                    entry = json.loads(raw)
+                except Exception:
+                    logging.exception("Recovered from broad exception handler")
                     continue
-                name = block.get("name") or "unknown"
-                tool_use_id = str(block.get("id") or "").strip()
-                tool_key = tool_use_id or (f"{msg_id}:{index}:{name}" if msg_id else "")
-                if tool_key:
-                    if tool_key in seen_tool_use_ids:
+
+                msg = entry.get("message") or {}
+                if not isinstance(msg, dict):
+                    continue
+                msg_id = str(msg.get("id") or "").strip()
+
+                candidate = msg.get("model") or entry.get("model") or ""
+                if is_main and is_real_model(candidate):
+                    candidate_str = str(candidate).strip()
+                    if not model_id:
+                        model_id = candidate_str
+                    last_model_id = candidate_str
+
+                usage = msg.get("usage") or {}
+                if not isinstance(usage, dict):
+                    continue
+                in_t = int(usage.get("input_tokens", 0) or 0)
+                out_t = int(usage.get("output_tokens", 0) or 0)
+                cr_t = int(usage.get("cache_read_input_tokens", 0) or 0)
+                cw_t = int(usage.get("cache_creation_input_tokens", 0) or 0)
+                cache_creation = usage.get("cache_creation") or {}
+                cw1_t = (
+                    int(cache_creation.get("ephemeral_1h_input_tokens", 0) or 0)
+                    if isinstance(cache_creation, dict)
+                    else 0
+                )
+                cw1_t = min(cw1_t, cw_t)
+                has_usage = bool(in_t or out_t or cr_t or cw_t)
+                count_usage = has_usage
+                if has_usage and msg_id:
+                    if msg_id in seen_usage_message_ids:
+                        count_usage = False
+                    else:
+                        seen_usage_message_ids.add(msg_id)
+                if count_usage:
+                    input_tokens += in_t
+                    output_tokens += out_t
+                    cache_read_tokens += cr_t
+                    cache_write_tokens += cw_t
+                    if is_main:
+                        # A turn = one assistant message with non-zero usage.
+                        # Dedup on msg_id (same dedup as token accumulation).
+                        turns += 1
+                        ts_raw = str(entry.get("timestamp") or "")
+                        if ts_raw:
+                            turn_timestamps.append(ts_raw)
+
+                    turn_model = str(msg.get("model") or entry.get("model") or "").strip()
+                    if is_real_model(turn_model):
+                        bucket = per_model.setdefault(
+                            turn_model,
+                            {"in": 0, "out": 0, "cR": 0, "cW": 0, "cW1": 0}
+                            | {f"{k}_lc": 0 for k in ("in", "out", "cR", "cW", "cW1")},
+                        )
+                        bucket["in"] += in_t
+                        bucket["out"] += out_t
+                        bucket["cR"] += cr_t
+                        bucket["cW"] += cw_t
+                        bucket["cW1"] += cw1_t
+                        # Per-request long-context premium: the whole message
+                        # bills at premium rates once its context crosses the
+                        # model's threshold (e.g. 200k).
+                        threshold = _long_context_threshold(turn_model, lc_thresholds)
+                        if threshold and (in_t + cr_t + cw_t) > threshold:
+                            bucket["in_lc"] += in_t
+                            bucket["out_lc"] += out_t
+                            bucket["cR_lc"] += cr_t
+                            bucket["cW_lc"] += cw_t
+                            bucket["cW1_lc"] += cw1_t
+
+                if not is_main:
+                    continue
+                for index, block in enumerate(msg.get("content") or []):
+                    if not isinstance(block, dict):
                         continue
-                    seen_tool_use_ids.add(tool_key)
-                tools_used[name] = tools_used.get(name, 0) + 1
-                tool_calls += 1
+                    if block.get("type") != "tool_use":
+                        continue
+                    name = block.get("name") or "unknown"
+                    tool_use_id = str(block.get("id") or "").strip()
+                    tool_key = tool_use_id or (f"{msg_id}:{index}:{name}" if msg_id else "")
+                    if tool_key:
+                        if tool_key in seen_tool_use_ids:
+                            continue
+                        seen_tool_use_ids.add(tool_key)
+                    tools_used[name] = tools_used.get(name, 0) + 1
+                    tool_calls += 1
     except Exception:
         logging.exception("Recovered from broad exception handler")
         return None
@@ -280,16 +381,7 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
     resolved_last_model = resolve_model_id(last_model_id) if last_model_id else resolved_model
 
     if per_model:
-        est_cost_usd = sum(
-            estimate_cost_usd(
-                model_id=resolve_model_id(m),
-                input_tokens=b["in"],
-                output_tokens=b["out"],
-                cache_read_tokens=b["cR"],
-                cache_write_tokens=b["cW"],
-            )
-            for m, b in per_model.items()
-        )
+        est_cost_usd = sum(_bucket_cost_usd(resolve_model_id(m), b) for m, b in per_model.items())
     else:
         est_cost_usd = estimate_cost_usd(
             model_id=resolved_model,
