@@ -1312,6 +1312,13 @@ def run_arm(
         # Always expose the workspace root so MCP tools and shell commands can
         # resolve relative paths without guessing.
         env.setdefault("CLAUDE_WORKSPACE_ROOT", str(ws))
+        # For Python workspaces: if a .venv was created by setup_cmds, activate
+        # it so all python/pytest commands in the workspace use the right env.
+        ws_venv = ws / ".venv"
+        if ws_venv.is_dir() and task.language == "python":
+            venv_bin = str(ws_venv / "bin")
+            env["VIRTUAL_ENV"] = str(ws_venv)
+            env["PATH"] = venv_bin + os.pathsep + env.get("PATH", os.environ.get("PATH", ""))
         if proxy_supported:
             env["HTTPS_PROXY"] = f"http://127.0.0.1:{port}"
             env["HTTP_PROXY"] = f"http://127.0.0.1:{port}"

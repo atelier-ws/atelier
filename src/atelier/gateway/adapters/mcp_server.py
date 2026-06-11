@@ -7232,6 +7232,17 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         writer=_make_outcome_writer(led),
                     )
 
+                with contextlib.suppress(Exception):
+                    _append_live_savings_event(
+                        {
+                            "kind": "tool_call",
+                            "tool": name,
+                            "status": "ok",
+                            "session_id": getattr(_get_ledger(), "session_id", "") or "",
+                            "ts": time.time(),
+                        }
+                    )
+
             response_text: str
             if rendered_text:
                 response_text = rendered_text
@@ -7311,6 +7322,17 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         is_error=True,
                         is_env_error=isinstance(exc, (OSError, IOError)),
                         writer=_make_outcome_writer(led),
+                    )
+                with contextlib.suppress(Exception):
+                    _append_live_savings_event(
+                        {
+                            "kind": "tool_call",
+                            "tool": name,
+                            "status": "error",
+                            "error": type(exc).__name__,
+                            "session_id": getattr(_get_ledger(), "session_id", "") or "",
+                            "ts": time.time(),
+                        }
                     )
             return _err(rid, _tool_error_code(exc), str(exc))
 

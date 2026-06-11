@@ -97,7 +97,12 @@ TASKS: list[Task] = [
         ("workspace", "workspace"),
         1,
         "task4_WriteTestsForExportFlows",
-        setup_cmds=("uv pip install --quiet mitmproxy pytest",),
+        # Create an isolated venv so `python` inside the workspace reliably has
+        # mitmproxy and pytest — system python3 (3.14) does not have them.
+        setup_cmds=(
+            "uv venv .venv --python 3.13 --quiet",
+            "uv pip install --quiet mitmproxy pytest --python .venv/bin/python",
+        ),
     ),
     Task(
         "task5",
@@ -105,7 +110,10 @@ TASKS: list[Task] = [
         ("workspace", "workspace"),
         1,
         "task5_RefactorBasedOnTests",
-        setup_cmds=("uv pip install --quiet mitmproxy pytest",),
+        setup_cmds=(
+            "uv venv .venv --python 3.13 --quiet",
+            "uv pip install --quiet mitmproxy pytest --python .venv/bin/python",
+        ),
     ),
     Task(
         "task6",
