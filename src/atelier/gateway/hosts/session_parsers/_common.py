@@ -836,7 +836,9 @@ def snapshot_edited_files(
             source_session_id=session_id,
             kind="file.snapshot",
             relative_path=fpath,
-            content_path=fpath,
+            content_path=(
+                f"raw/{sanitize_id(source)}/snapshots/{sanitize_id(session_id)}/" f"{sha256_text(fpath)}.txt"
+            ),
             sha256_original=sha256_text(file_content),
             sha256_redacted=sha256_text(file_content),
             byte_count_original=len(raw_bytes),

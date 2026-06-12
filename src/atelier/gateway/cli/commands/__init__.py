@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 
 def _h(cmd: object) -> object:
     """Mark a click command/group hidden (used for internal commands)."""
-    if cmd is not None and hasattr(cmd, "hidden"):
-        cmd.hidden = True  # type: ignore[union-attr]
+    # if cmd is not None and hasattr(cmd, "hidden"):
+    # cmd.hidden = True  # type: ignore[union-attr]
     return cmd
 
 
@@ -86,17 +86,14 @@ def register(cli: click.Group) -> None:
 
         tools_group.add_command(tool_mode, name="mode")
         tools_group.add_command(admin_commands.tool_report_cmd, name="report")
-        # Hide the 'tools' name; expose only the canonical 'mcp' alias
-        _h(tools_group)
         cli.add_command(tools_group)
-        # Add 'mcp' as the canonical alias (Claude Code uses 'claude mcp')
-        try:
-            import click as _c
 
-            mcp_alias = _c.CommandCollection(name="mcp", sources=[tools_group])
-            mcp_alias.help = "Configure and inspect Atelier MCP tools."
-            cli.add_command(mcp_alias)
-        except Exception:  # noqa: BLE001
+        # 'atelier mcp' starts the stdio MCP server (replaces the legacy standalone binary)
+        try:
+            from .mcp import mcp_cmd
+
+            cli.add_command(mcp_cmd)
+        except (ModuleNotFoundError, ImportError):
             pass
     except (ModuleNotFoundError, ImportError):
         pass

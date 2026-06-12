@@ -17,6 +17,7 @@ from pathlib import Path
 
 import click
 
+from atelier.core.service.daemon import cli as _daemon_cli
 from atelier.gateway.integrations.openmemory_lifecycle import (
     ensure_service_env as _ensure_openmemory_service_env,
 )
@@ -55,6 +56,10 @@ def background_group() -> None:
     """Manage Atelier background services (systemd on Linux, launchd on macOS)."""
 
 
+# Add the daemon service commands (start/stop/status/logs) as 'atelier background service'
+background_group.add_command(_daemon_cli, name="service")
+
+
 @background_group.command("install")
 @click.option("--with-stack", is_flag=True, help="Also install the visualization stack service.")
 @click.option(
@@ -76,7 +81,8 @@ def background_install(
     root = ctx.obj["root"]
     project_root = _project_root()
     atelier_bin = shutil.which("atelier") or str(Path(sys.argv[0]).resolve())
-    atelierd_bin = shutil.which("atelierd") or str(Path(atelier_bin).parent / "atelierd")
+    # We no longer need a separate atelierd binary; we use 'atelier background service'
+    service_start_cmd = f"{atelier_bin} background service start"
 
     if with_letta and not shutil.which("docker"):
         click.echo(
@@ -137,7 +143,7 @@ After={CONTROLLER_UNIT}
 [Service]
 Type=simple
 WorkingDirectory={project_root}
-ExecStart={atelierd_bin} start
+ExecStart={service_start_cmd}
 Restart=on-failure
 RestartSec=5
 Environment=ATELIER_ROOT={root}

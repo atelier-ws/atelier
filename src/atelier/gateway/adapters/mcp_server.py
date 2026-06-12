@@ -316,7 +316,7 @@ def _advance_monitors(session_id: str, task: str, original_task: str) -> tuple[f
 # Atelier-internal MCP process identity — generated once at import, never changes.
 # SessionStart hook finds this file and writes the Claude session UUID + model into it.
 # _get_claude_session_id() reads it once then caches in _cached_claude_session_id.
-_MCP_ID: str = f"atelier-mcp-{_uuid_mod.uuid4().hex[:16]}"
+_MCP_ID: str = f"atelier-{_uuid_mod.uuid4().hex[:16]}"
 _cached_claude_session_id: str = ""
 _cached_mcp_model: str = ""
 _STDOUT_LOCK = threading.Lock()
@@ -7416,7 +7416,7 @@ def _handle_and_write(request: dict[str, Any]) -> None:
 def serve() -> None:
     executor = ThreadPoolExecutor(
         max_workers=_mcp_max_workers(),
-        thread_name_prefix="atelier-mcp",
+        thread_name_prefix="atelier",
     )
     try:
         for line in sys.stdin:
@@ -7466,7 +7466,7 @@ def _setup_file_logging(root: str | Path) -> None:
 
 
 def main() -> None:
-    # Phase 1: Absorb wrapper logic into atelier-mcp (zero-config)
+    # Phase 1: Absorb wrapper logic into `atelier mcp` (zero-config)
     os.environ.setdefault("ATELIER_SERVICE_URL", "http://127.0.0.1:8787")
     # If no host has injected a workspace env var, detect the git repo root so
     # global-mode installs on any host always point at the project root.
@@ -7490,7 +7490,7 @@ def main() -> None:
 
     argv = sys.argv[1:]
     if "--version" in argv or "-V" in argv:
-        sys.stdout.write(f"atelier-mcp {SERVER_VERSION}\n")
+        sys.stdout.write(f"atelier mcp {SERVER_VERSION}\n")
         return
     if "--root" in argv:
         i = argv.index("--root")

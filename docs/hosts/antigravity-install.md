@@ -36,7 +36,7 @@ The MCP config registers Atelier as a stdio server:
   "servers": {
     "atelier": {
       "type": "stdio",
-      "command": "atelier-mcp",
+      "command": "atelier mcp",
       "args": ["--host", "antigravity"]
     }
   }
@@ -46,7 +46,7 @@ The MCP config registers Atelier as a stdio server:
 Global installs also try:
 
 ```bash
-antigravity --add-mcp '{"name":"atelier","command":"atelier-mcp","args":["--host","antigravity"]}'
+antigravity --add-mcp '{"name":"atelier","command":"atelier mcp","args":["--host","antigravity"]}'
 ```
 
 ## Verify
@@ -68,11 +68,11 @@ Open the workspace in Antigravity or start `agy` in the repo and ask it to use A
 
 ## Troubleshooting
 
-| Problem                  | Fix                                                                     |
-| ------------------------ | ----------------------------------------------------------------------- |
-| MCP tools not loading    | Reload Antigravity; check user `mcp.json` or workspace `.vscode/mcp.json` |
-| `antigravity` not found  | Install the Antigravity app or ensure it is on `PATH`                   |
-| `agy` not found          | Install/configure the companion CLI if you want terminal-first usage     |
+| Problem                 | Fix                                                                       |
+| ----------------------- | ------------------------------------------------------------------------- |
+| MCP tools not loading   | Reload Antigravity; check user `mcp.json` or workspace `.vscode/mcp.json` |
+| `antigravity` not found | Install the Antigravity app or ensure it is on `PATH`                     |
+| `agy` not found         | Install/configure the companion CLI if you want terminal-first usage      |
 
 ## Uninstall
 

@@ -290,7 +290,7 @@ fi
 
 # ---- remove main bin commands ------------------------------------------------
 info "Removing Atelier bin commands from ${ATELIER_BIN_DIR}..."
-for cmd in atelier atelier-mcp; do
+for cmd in atelier; do
     target="${ATELIER_BIN_DIR}/${cmd}"
     if [ -f "$target" ] || [ -L "$target" ]; then
         run "rm -f '$target'"

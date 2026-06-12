@@ -110,5 +110,5 @@ uv run python scripts/sync_agent_context.py
 ## Project Architecture Notes
 
 - **PYTHONPATH**: The project uses `PYTHONPATH=/app/src:$PYTHONPATH` — imports use `from atelier.xxx import yyy`
-- **Entry points**: `atelier` CLI and `atelier-mcp` MCP server are defined in `pyproject.toml`
+- **Entry points**: `atelier` CLI and `atelier mcp` MCP server are defined in `pyproject.toml`
 - **LOCAL=1**: For running Python scripts outside Docker: `cd atelier && LOCAL=1 uv run python scripts/my_script.py`

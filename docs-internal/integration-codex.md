@@ -14,5 +14,5 @@ This page predates the packaged Codex plugin and wrapper workflow. Use
   not match the current public CLI.
 
 If you need raw MCP wiring instead of the packaged installer, use the current
-`atelier-mcp` entrypoint and the wrapper notes from
+`atelier mcp` entrypoint and the wrapper notes from
 [hosts/codex-install.md](hosts/codex-install.md).

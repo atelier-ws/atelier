@@ -233,7 +233,7 @@ describe("Savings page", () => {
     expect(
       await screen.findByText("No savings telemetry yet")
     ).toBeInTheDocument();
-    expect(await screen.findByText("atelier-mcp")).toBeInTheDocument();
+    expect(await screen.findByText("atelier mcp")).toBeInTheDocument();
   });
 
   it("renders an explicit capture-gap message instead of three empty proof columns", async () => {

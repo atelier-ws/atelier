@@ -3,7 +3,7 @@ workspace = { members = ["benchmarks", "integrations"] }
 
 [project]
 name = "atelier"
-version = "0.3.1"
+version = "0.3.2"
 description = "Agent Reasoning Runtime — reusable procedures, failure rescue, and rubric verification for coding and product agents."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -93,9 +93,7 @@ dev = [
 
 [project.scripts]
 atelier = "atelier.gateway.cli:main"
-atl = "atelier.gateway.cli:main"
 atelierd = "atelier.core.service.daemon:main"
-atelier-mcp = "atelier.gateway.adapters.mcp_server:main"
 
 [build-system]
 requires = ["hatchling"]

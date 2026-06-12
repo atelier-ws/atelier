@@ -100,8 +100,8 @@ if $WORKSPACE_SET; then
   "servers": {
     "atelier": {
       "type": "stdio",
-      "command": "atelier-mcp",
-      "args": ["--host", "antigravity"],
+      "command": "atelier",
+      "args": ["mcp", "--host", "antigravity"],
       "env": {
         "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}"
       }
@@ -116,8 +116,8 @@ else
   "servers": {
     "atelier": {
       "type": "stdio",
-      "command": "atelier-mcp",
-      "args": ["--host", "antigravity"]
+      "command": "atelier",
+      "args": ["mcp", "--host", "antigravity"]
     }
   }
 }
@@ -126,7 +126,7 @@ JSON
 fi
 
 ADD_MCP_JSON=$(cat <<'JSON'
-{"name":"atelier","command":"atelier-mcp","args":["--host","antigravity"]}
+{"name":"atelier","command":"atelier","args":["mcp","--host","antigravity"]}
 JSON
 )
 
@@ -194,7 +194,7 @@ VFAIL=0
 vpass() { info "PASS: $*"; }
 vfail() { echo "[atelier:antigravity] FAIL: $*" >&2; VFAIL=1; }
 
-if [ -f "$MCP_JSON" ] && grep -q "atelier-mcp" "$MCP_JSON" 2>/dev/null; then
+if [ -f "$MCP_JSON" ] && grep -q '"atelier"' "$MCP_JSON" 2>/dev/null; then
     vpass "MCP config present: $MCP_JSON"
 else
     vfail "missing Atelier MCP config: $MCP_JSON"
@@ -232,10 +232,10 @@ if ! $WORKSPACE_SET; then
     fi
 fi
 
-if command -v atelier-mcp &>/dev/null; then
-    vpass "atelier-mcp is available on PATH"
+if command -v atelier &>/dev/null; then
+    vpass "atelier is available on PATH"
 else
-    vfail "atelier-mcp NOT found on PATH"
+    vfail "atelier NOT found on PATH"
 fi
 
 if [[ -n "$ANTIGRAVITY_BIN" || -n "$AGY_BIN" ]]; then

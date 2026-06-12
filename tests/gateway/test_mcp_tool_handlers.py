@@ -876,7 +876,7 @@ def test_model_recommendation_fallback_records_route_decision(
         raise RouteConfigError("disabled")
 
     monkeypatch.setattr(
-        "atelier.core.capabilities.cross_vendor_routing.advisor.CrossVendorRouteAdvisor.recommend",
+        "atelier.core.capabilities.cross_vendor_routing.router.CrossVendorRouter.recommend",
         fail_recommend,
     )
     ledger = RunLedger(session_id="route-fallback", root=store_root)

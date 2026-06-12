@@ -14,6 +14,7 @@ Previously this logic was spread across:
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import UTC
 from pathlib import Path
@@ -230,6 +231,98 @@ class TranscriptStats:
             if p and p.known and p.input > 0:
                 weighted += p.input / 1_000_000 * b.get("in", 0)
         return weighted / total_input if weighted > 0 else None
+
+
+# --- stop-hook savings block embedded in the transcript -------------------
+# The stop hook writes its session summary into the conversation, so the
+# numbers persist inside the session file itself. The middle dot appears
+# either raw (·) or JSON-escaped (·) depending on nesting depth.
+_STOP_SEP = r"(?:\\u00b7|·)"
+_STOP_EST_COST_RE = re.compile(r"est\. cost: ~\$([0-9][0-9.,]*)")
+_STOP_SAVINGS_RE = re.compile(
+    rf"savings: \$([0-9][0-9.,]*) {_STOP_SEP} ([0-9,]+) tokens saved {_STOP_SEP} ([0-9,]+) calls avoided"
+)
+_STOP_CARRY_RE = re.compile(rf"context carry: \$([0-9][0-9.,]*) {_STOP_SEP} ([0-9,]+) tokens")
+_STOP_CALLS_RE = re.compile(rf"([0-9,]+) turns {_STOP_SEP} ([0-9,]+) tool calls")
+
+
+@dataclass
+class TranscriptSavingsBlock:
+    """Savings summary recovered from a stop-hook block inside a transcript."""
+
+    est_cost_usd: float = 0.0
+    saved_usd: float = 0.0
+    saved_tokens: int = 0
+    calls_avoided: int = 0
+    carry_usd: float = 0.0
+    carry_tokens: int = 0
+    # Main-transcript counters from the same block; consumers can cross-check
+    # these against trace-derived numbers to catch import regressions.
+    turns: int = 0
+    tool_calls: int = 0
+
+
+def read_transcript_savings_block(transcript_path: str | Path) -> TranscriptSavingsBlock | None:
+    """Parse the LAST stop-hook savings block embedded in a transcript JSONL.
+
+    Only hook attachment entries (``type: "attachment"`` with attachment type
+    ``hook_system_message`` / ``hook_success``) are considered — never free
+    conversation text, which may quote savings blocks from other sessions.
+    This recovers savings, context carry, and the estimated cost from the
+    session file alone — no Atelier-local sidecars or run ledger required —
+    so it also works on session files copied from another machine.
+    Returns ``None`` when no block is present (session never displayed one).
+    """
+    p = Path(transcript_path)
+    last_text = ""
+    try:
+        with p.open(encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                if "savings:" not in raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(entry, dict) or entry.get("type") != "attachment":
+                    continue
+                attachment = entry.get("attachment") or {}
+                if not isinstance(attachment, dict):
+                    continue
+                if attachment.get("type") not in {"hook_system_message", "hook_success"}:
+                    continue
+                text = attachment.get("content") or attachment.get("stdout") or ""
+                if isinstance(text, str) and _STOP_SAVINGS_RE.search(text):
+                    last_text = text
+    except OSError:
+        return None
+    if not last_text:
+        return None
+
+    def _usd(raw: str) -> float:
+        return float(raw.replace(",", ""))
+
+    def _num(raw: str) -> int:
+        return int(raw.replace(",", ""))
+
+    block = TranscriptSavingsBlock()
+    savings = _STOP_SAVINGS_RE.search(last_text)
+    if savings:
+        block.saved_usd = _usd(savings.group(1))
+        block.saved_tokens = _num(savings.group(2))
+        block.calls_avoided = _num(savings.group(3))
+    carry = _STOP_CARRY_RE.search(last_text)
+    if carry:
+        block.carry_usd = _usd(carry.group(1))
+        block.carry_tokens = _num(carry.group(2))
+    cost = _STOP_EST_COST_RE.search(last_text)
+    if cost:
+        block.est_cost_usd = _usd(cost.group(1))
+    calls = _STOP_CALLS_RE.search(last_text)
+    if calls:
+        block.turns = _num(calls.group(1))
+        block.tool_calls = _num(calls.group(2))
+    return block
 
 
 def _subagent_transcripts(transcript_path: Path) -> list[Path]:

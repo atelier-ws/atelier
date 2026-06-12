@@ -18,15 +18,15 @@ bash scripts/install_agent_clis.sh --workspace /path/to/workspace
 
 ## Supported Hosts
 
-| Host        | Support Level                              | Advanced installer            |
-| ----------- | ------------------------------------------ | ----------------------------- |
-| Claude Code | Full plugin (skills, commands, hooks, MCP) | `scripts/install_claude.sh`   |
-| Codex CLI   | Native MCP registration + AGENTS + plugin bundle | `scripts/install_codex.sh`    |
-| Cursor      | MCP server config + rules                  | `scripts/install_cursor.sh`   |
-| opencode    | MCP + workspace agent profile              | `scripts/install_opencode.sh` |
-| Copilot     | MCP + instructions + agent + tasks     | `scripts/install_copilot.sh`  |
-| Hermes Agent| MCP server config + toolset                | `scripts/install_hermes.sh`   |
-| Antigravity | MCP + generated AGENTS surface             | `scripts/install_antigravity.sh` |
+| Host         | Support Level                                    | Advanced installer               |
+| ------------ | ------------------------------------------------ | -------------------------------- |
+| Claude Code  | Full plugin (skills, commands, hooks, MCP)       | `scripts/install_claude.sh`      |
+| Codex CLI    | Native MCP registration + AGENTS + plugin bundle | `scripts/install_codex.sh`       |
+| Cursor       | MCP server config + rules                        | `scripts/install_cursor.sh`      |
+| opencode     | MCP + workspace agent profile                    | `scripts/install_opencode.sh`    |
+| Copilot      | MCP + instructions + agent + tasks               | `scripts/install_copilot.sh`     |
+| Hermes Agent | MCP server config + toolset                      | `scripts/install_hermes.sh`      |
+| Antigravity  | MCP + generated AGENTS surface                   | `scripts/install_antigravity.sh` |
 
 ---
 
@@ -100,7 +100,7 @@ Host install entrypoints are under `scripts/install_<host>.sh`.
 All hosts ultimately invoke the same Atelier MCP server, but packaged hosts now carry their own host-specific wrapper surfaces:
 
 ```text
-atelier-mcp
+atelier mcp
 ```
 
 That repo wrapper remains the canonical MCP entrypoint for direct MCP-only installs. Codex packages that same runtime behavior behind a plugin-local wrapper, while Antigravity uses workspace or user MCP configuration plus a generated host surface.

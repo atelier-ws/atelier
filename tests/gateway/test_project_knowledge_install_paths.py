@@ -19,5 +19,5 @@ def test_codex_installer_defaults_to_service_backed_mcp_and_project_lessons() ->
 
     assert "ATELIER_MCP_MODE" not in content
     assert 'export ATELIER_ROOT="\\${HOME}/.atelier"' not in content
-    # Codex installer now relies on atelier-mcp defaults for service URL and lessons root
+    # Codex installer now relies on atelier mcp defaults for service URL and lessons root
     assert 'ATELIER_SERVICE_URL="http://127.0.0.1:8787"' not in content

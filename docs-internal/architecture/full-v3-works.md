@@ -230,7 +230,7 @@ a wholesale verdict.
                     └───────────────┬─────────────────────────────────────┘
                                     │ MCP stdio  (tool calls + responses)
                     ┌───────────────▼─────────────────────────────────────┐
-                    │                  atelier-mcp gateway                │
+                    │                  atelier mcp gateway                │
                     │           (tool surface, identical to V2)           │
                     └──┬──────────────────┬─────────────────────┬─────────┘
                        │                  │                     │
@@ -656,7 +656,7 @@ integration packets cannot honestly measure improvement against a baseline that 
 
 4. **Delete `stub_embedding`** only after the inventory is empty. Run the grep gate test
    locally first.
-5. **Smoke test:** confirm `atelier-mcp` starts, `LessonPromoter.ingest_trace()` runs without
+5. **Smoke test:** confirm `atelier mcp` starts, `LessonPromoter.ingest_trace()` runs without
    `stub_embedding`, and archival recall returns rows (even if some are `legacy_stub`).
 6. **Document the deferred re-embed** in the WP-47 packet (referenced from the data-model doc).
    This packet does not back-fill old rows — that is WP-47's job.

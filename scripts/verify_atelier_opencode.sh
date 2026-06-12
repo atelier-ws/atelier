@@ -27,16 +27,16 @@ if "atelier" not in mcps:
     sys.exit(1)
 entry = mcps["atelier"]
 cmd = entry.get("command", "")
-if "atelier-mcp" not in str(cmd) and "atelier" not in str(cmd):
+if "atelier" not in str(cmd) and "mcp" not in str(entry.get("args", [])):
     print(f"FAIL: unexpected command: {cmd}")
     sys.exit(1)
 print(f"atelier MCP entry: {entry}")
 EOF
 
-echo "--- checking opencode can list tools (via atelier-mcp stdio) ---"
+echo "--- checking opencode can list tools (via atelier mcp stdio) ---"
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","clientInfo":{"name":"verify","version":"1"},"capabilities":{}}}
 {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-    | atelier-mcp 2>/dev/null \
+    | atelier mcp 2>/dev/null \
     | python3 - <<'EOF'
 import sys, json
 lines = sys.stdin.read().strip().split("\n")

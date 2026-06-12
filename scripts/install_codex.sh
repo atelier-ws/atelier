@@ -167,7 +167,7 @@ patch_plugin_mcp() {
         workspace_mode="1"
     fi
     if $DRY_RUN; then
-        echo "  [dry-run] patch $PLUGIN_MCP_JSON to use atelier-mcp"
+        echo "  [dry-run] patch $PLUGIN_MCP_JSON to use atelier"
         return
     fi
 
@@ -178,8 +178,8 @@ from pathlib import Path
 path = Path("$PLUGIN_MCP_JSON")
 data = json.loads(path.read_text(encoding="utf-8"))
 server = data.setdefault("atelier", {})
-server["command"] = "atelier-mcp"
-server["args"] = ["--host", "codex"]
+server["command"] = "atelier"
+server["args"] = ["mcp", "--host", "codex"]
 env = dict(server.get("env") or {})
 if $workspace_mode:
     env["ATELIER_WORKSPACE_ROOT"] = "$WORKSPACE"
@@ -195,18 +195,18 @@ ensure_codex_mcp() {
     run "mkdir -p '$CODEX_HOME'"
     if $DRY_RUN; then
         if $WORKSPACE_SET; then
-            echo "  [dry-run] CODEX_HOME='$CODEX_HOME' codex mcp add atelier --env ATELIER_WORKSPACE_ROOT='$WORKSPACE' -- atelier-mcp --host codex"
+            echo "  [dry-run] CODEX_HOME='$CODEX_HOME' codex mcp add atelier --env ATELIER_WORKSPACE_ROOT='$WORKSPACE' -- atelier mcp --host codex"
         else
-            echo "  [dry-run] codex mcp add atelier -- atelier-mcp --host codex"
+            echo "  [dry-run] codex mcp add atelier -- atelier mcp --host codex"
         fi
         return
     fi
 
     codex_cmd mcp remove atelier >/dev/null 2>&1 || true
     if $WORKSPACE_SET; then
-        codex_cmd mcp add atelier --env "ATELIER_WORKSPACE_ROOT=$WORKSPACE" -- atelier-mcp --host codex >/dev/null 2>&1 || warn "codex mcp add failed (config may have other issues); MCP registration skipped"
+        codex_cmd mcp add atelier --env "ATELIER_WORKSPACE_ROOT=$WORKSPACE" -- atelier mcp --host codex >/dev/null 2>&1 || warn "codex mcp add failed (config may have other issues); MCP registration skipped"
     else
-        codex_cmd mcp add atelier -- atelier-mcp --host codex >/dev/null 2>&1 || warn "codex mcp add failed (config may have other issues); MCP registration skipped"
+        codex_cmd mcp add atelier -- atelier mcp --host codex >/dev/null 2>&1 || warn "codex mcp add failed (config may have other issues); MCP registration skipped"
     fi
     if grep -q '\[mcp_servers\.atelier\]' "$CODEX_HOME/config.toml" 2>/dev/null; then
         info "registered Codex MCP server 'atelier' in ${CODEX_HOME}/config.toml"
@@ -262,13 +262,13 @@ if $PRINT_ONLY; then
         echo "   mkdir -p '${PLUGIN_DIR}'"
         echo "   cp -R '${PLUGIN_TEMPLATE}/.' '${PLUGIN_DIR}/'"
         echo ""
-        echo "2. Patch ${PLUGIN_MCP_JSON} to use 'atelier-mcp --host codex'."
+        echo "2. Patch ${PLUGIN_MCP_JSON} to use 'atelier mcp --host codex'."
         echo ""
         echo "3. Register Atelier as a Codex MCP server:"
         if $WORKSPACE_SET; then
-            echo "   CODEX_HOME='${CODEX_HOME}' codex mcp add atelier --env ATELIER_WORKSPACE_ROOT='${WORKSPACE}' -- atelier-mcp --host codex"
+            echo "   CODEX_HOME='${CODEX_HOME}' codex mcp add atelier --env ATELIER_WORKSPACE_ROOT='${WORKSPACE}' -- atelier mcp --host codex"
         else
-            echo "   codex mcp add atelier -- atelier-mcp --host codex"
+            echo "   codex mcp add atelier -- atelier mcp --host codex"
         fi
         echo ""
         echo "4. Register the complete plugin bundle in the personal marketplace:"
@@ -404,10 +404,10 @@ PYEOF
 )
     MCP_COMMAND=$(printf '%s\n' "$MCP_STATUS" | sed -n '1p')
     MCP_WORKSPACE_ROOT=$(printf '%s\n' "$MCP_STATUS" | sed -n '2p')
-    if [ "$MCP_COMMAND" = "atelier-mcp" ]; then
-        vpass "plugin MCP config points at atelier-mcp"
+    if [ "$MCP_COMMAND" = "atelier" ]; then
+        vpass "plugin MCP config points at atelier"
     else
-        vfail "plugin MCP config does not point at atelier-mcp (got: $MCP_COMMAND)"
+        vfail "plugin MCP config does not point at atelier (got: $MCP_COMMAND)"
     fi
     if $WORKSPACE_SET; then
         if [ "$MCP_WORKSPACE_ROOT" = "$WORKSPACE" ]; then
@@ -436,10 +436,10 @@ else
     vwarn "codex mcp list does not expose atelier server; plugin .mcp.json still active"
 fi
 
-if command -v atelier-mcp &>/dev/null; then
-    vpass "atelier-mcp is available on PATH"
+if command -v atelier &>/dev/null; then
+    vpass "atelier is available on PATH"
 else
-    vfail "atelier-mcp NOT found on PATH"
+    vfail "atelier NOT found on PATH"
 fi
 
 if $WORKSPACE_SET; then

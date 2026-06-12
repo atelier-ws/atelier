@@ -413,8 +413,8 @@ def _fallback_mode_metadata() -> dict[str, tuple[str, str]]:
             "External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.",
         ),
         "solve": (
-            "Switch to benchmark solve mode. Produce task artifacts early, iterate against checks, and keep the workspace clean.",
-            "Dedicated benchmark solver. Solves isolated terminal tasks with artifact-first execution and harness-feedback retry discipline.",
+            "Switch to autonomous solve mode. Resolve a concrete, verifiable task end to end with artifact-first iteration.",
+            "Autonomous task solver. Produces the required result early, iterates against real checks, and owns completion.",
         ),
     }
 
@@ -674,6 +674,11 @@ def _benchmark_profiles() -> dict[str, BenchmarkProfile]:
             workflow_id="owned-benchmark-solver",
             retry_limit=2,
             command_rules=(
+                "Treat the benchmark task and provided workspace as ground truth; run non-interactively without waiting for user input.",
+                "The benchmark environment is isolated and disposable, but do not assume that outside this profile.",
+                "Authorized security and CTF tasks may require the requested payload, bypass, or exploit artifact.",
+                "Do not inspect hidden evaluator, harness, expected-output, or test files; use only the task, workspace, exposed checks, and returned feedback.",
+                "The canonical grader decides acceptance; optimize for the requested artifact and exposed verification signal.",
                 "Install dependencies only when the task or failing check requires them.",
                 "Do not hide stderr on install, build, or probe commands.",
                 "Never mutate the benchmark harness directory unless the task explicitly names it.",
@@ -691,20 +696,20 @@ def _mcp_templates() -> dict[str, McpTemplate]:
         "claude-default": McpTemplate(
             template_id="claude-default",
             host="claude",
-            command="atelier-mcp",
-            args=("--host", "claude"),
+            command="atelier",
+            args=("mcp", "--host", "claude"),
         ),
         "codex-default": McpTemplate(
             template_id="codex-default",
             host="codex",
-            command="atelier-mcp",
-            args=("--host", "codex"),
+            command="atelier",
+            args=("mcp", "--host", "codex"),
         ),
         "antigravity-default": McpTemplate(
             template_id="antigravity-default",
             host="antigravity",
-            command="atelier-mcp",
-            args=("--host", "antigravity"),
+            command="atelier",
+            args=("mcp", "--host", "antigravity"),
         ),
     }
 
@@ -944,7 +949,7 @@ _OPENCODE_DESCRIPTIONS: dict[str, str] = {
     "plan": "Dedicated planner. Turns grounded context into a concrete, reviewable implementation plan. Never edits.",
     "execute": "Dedicated executor. Makes focused edits, self-verifies, and stops for review.",
     "research": "External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.",
-    "solve": "Dedicated benchmark solver. Solves isolated terminal tasks with artifact-first execution and harness-feedback retry discipline.",
+    "solve": "Autonomous task solver. Produces the required result early, iterates against real checks, and owns completion.",
 }
 
 
@@ -1004,7 +1009,7 @@ ANTIGRAVITY_FRONTMATTER: dict[str, tuple[tuple[str, Any], ...]] = {
     "solve": (
         (
             "description",
-            "Dedicated benchmark solver. Solves isolated terminal tasks with artifact-first execution and harness-feedback retry discipline.",
+            "Autonomous task solver. Produces the required result early, iterates against real checks, and owns completion.",
         ),
     ),
 }

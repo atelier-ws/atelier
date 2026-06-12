@@ -5,7 +5,7 @@
 #   Global mode: installs opencode user config and user agent under ~/.config/opencode.
 #   Workspace mode (--workspace DIR): installs project-local opencode artifacts under DIR.
 #   Config merge includes both:
-#     - MCP server entry (atelier-mcp)
+#     - MCP server entry (atelier mcp)
 #     - OpenAI-compatible provider entry (Atelier service /v1 endpoint)
 #
 # Options:
@@ -110,7 +110,7 @@ if $WORKSPACE_SET; then
   "mcp": {
       "atelier": {
         "type": "local",
-        "command": ["atelier-mcp", "--host", "opencode"],
+        "command": ["atelier", "mcp", "--host", "opencode"],
         "environment": {
           "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}"
         }
@@ -139,7 +139,7 @@ else
   "mcp": {
     "atelier": {
       "type": "local",
-      "command": ["atelier-mcp", "--host", "opencode"]
+      "command": ["atelier", "mcp", "--host", "opencode"]
     }
   }
 }
@@ -363,10 +363,10 @@ else
     vfail "opencode atelier agent missing: $AGENT_FILE"
 fi
 
-if command -v atelier-mcp &>/dev/null; then
-    vpass "atelier-mcp is available on PATH"
+if command -v atelier &>/dev/null; then
+    vpass "atelier is available on PATH"
 else
-    vfail "atelier-mcp NOT found on PATH"
+    vfail "atelier NOT found on PATH"
 fi
 
 if command -v atelier >/dev/null 2>&1 && atelier status --help >/dev/null 2>&1; then

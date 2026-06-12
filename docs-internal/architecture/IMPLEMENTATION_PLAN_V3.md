@@ -84,13 +84,13 @@ rejected.
 
 The 2026-05-04 internal audit ([summary in this commit's PR description]) found:
 
-| Finding | Affected modules | V3 packet |
-|---|---|---|
-| `stub_embedding` (SHA-256 feature hash) is wired into `LessonPromoter`, archival "hybrid" ranking, and at least 6 other call sites. Any "semantic" claim downstream is broken. | `infra/storage/vector.py`, `core/capabilities/lesson_promotion/`, `core/capabilities/archival_recall/` | **WP-33** |
-| The "81 % savings" headline is computed from hand-written YAML constants; nothing is measured. | `benchmarks/swe/savings_bench.py`, `benchmarks/swe/prompts_11.yaml`, `README.md`, `docs/benchmarks/v2-context-savings.md` | **WP-34** (retract) + **WP-50** (replace with real measurement) |
-| `LettaMemoryStore` dual-writes to Letta and SQLite; reads prefer Letta with SQLite fallback; `insert_passage` and `record_recall` go to SQLite only. The store is not actually Letta-backed. | `infra/memory_bridges/letta_adapter.py` | **WP-35** (decide single primary) + **WP-39** (real Letta-primary path) |
-| Sleeptime "summarizer" is template `groupby` + truncation; counts as a savings lever in V2 docs but compresses no meaning. | `core/capabilities/context_compression/sleeptime.py` | **WP-36** |
-| `LessonPromoter` clusters via SHA-hash fingerprint; precision target `≥ 0.7` was filed but never met. | `core/capabilities/lesson_promotion/capability.py` | **WP-47** |
+| Finding                                                                                                                                                                                      | Affected modules                                                                                                          | V3 packet                                                               |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `stub_embedding` (SHA-256 feature hash) is wired into `LessonPromoter`, archival "hybrid" ranking, and at least 6 other call sites. Any "semantic" claim downstream is broken.               | `infra/storage/vector.py`, `core/capabilities/lesson_promotion/`, `core/capabilities/archival_recall/`                    | **WP-33**                                                               |
+| The "81 % savings" headline is computed from hand-written YAML constants; nothing is measured.                                                                                               | `benchmarks/swe/savings_bench.py`, `benchmarks/swe/prompts_11.yaml`, `README.md`, `docs/benchmarks/v2-context-savings.md` | **WP-34** (retract) + **WP-50** (replace with real measurement)         |
+| `LettaMemoryStore` dual-writes to Letta and SQLite; reads prefer Letta with SQLite fallback; `insert_passage` and `record_recall` go to SQLite only. The store is not actually Letta-backed. | `infra/memory_bridges/letta_adapter.py`                                                                                   | **WP-35** (decide single primary) + **WP-39** (real Letta-primary path) |
+| Sleeptime "summarizer" is template `groupby` + truncation; counts as a savings lever in V2 docs but compresses no meaning.                                                                   | `core/capabilities/context_compression/sleeptime.py`                                                                      | **WP-36**                                                               |
+| `LessonPromoter` clusters via SHA-hash fingerprint; precision target `≥ 0.7` was filed but never met.                                                                                        | `core/capabilities/lesson_promotion/capability.py`                                                                        | **WP-47**                                                               |
 
 Everything else V2 shipped — ReasonBlocks, rubric gates, plan-check, rescue, trace recording,
 `search_read`, `batch_edit`, `sql_inspect`, AST outline, MCP gateway, frontend pages — is real,
@@ -113,7 +113,7 @@ a wholesale verdict.
                     └───────────────┬─────────────────────────────────────┘
                                     │ MCP stdio  (tool calls + responses)
                     ┌───────────────▼─────────────────────────────────────┐
-                    │                  atelier-mcp gateway                │
+                    │                  atelier mcp gateway                │
                     │           (tool surface, identical to V2)           │
                     └──┬──────────────────┬─────────────────────┬─────────┘
                        │                  │                     │
@@ -139,7 +139,7 @@ a wholesale verdict.
 ```
 
 **No box says "executor". No arrow goes from Atelier to an LLM API.** This is the same
-architecture as V2; what V3 fixes is what's *inside* the boxes.
+architecture as V2; what V3 fixes is what's _inside_ the boxes.
 
 ### 3.1 Backend choice
 
@@ -170,7 +170,7 @@ Optional backends:
 
 ### 3.3 Routing — V2 advisory, kept as-is
 
-Atelier's V2 routing capability (`quality_router/policy.py`, WP-25..28) is an *advisory* MCP
+Atelier's V2 routing capability (`quality_router/policy.py`, WP-25..28) is an _advisory_ MCP
 response inside `lint`. The host reads `routing_advice` and decides what to do —
 or ignores it if the host has no per-step model switching. V3 does not change this surface.
 
@@ -218,15 +218,15 @@ Two packets, both honesty-driven:
 V3's metrics are deliberately fewer than V2's because the runtime is unchanged. We assert only
 the things V3 actually fixes.
 
-| Metric | V2 baseline | V3 target | Test |
-|---|---:|---:|---|
-| `stub_embedding` references in `src/atelier/` | 8+ | **0** | grep gate (`tests/infra/test_no_stub_embedding.py`) |
-| Bare unmeasured percentages in README and benchmark docs | several | **0** | doc gate (`tests/docs/test_readme_no_unmeasured_claims.py`) |
-| Letta dual-write code paths | present | **0** | grep gate + behavioral test |
-| Sleeptime "savings" recorded in telemetry without measurement | present | **0** | grep / behavioral gate (per WP-36 path chosen) |
-| `LessonPromoter` precision on 200-trace fixture | unmeasured | **≥ 0.7** | `tests/infra/test_lesson_promotion_precision.py` |
-| Atelier modules importing `anthropic` / `openai` / `litellm` / model clients (excluding the embeddings module) | n/a (V2 didn't have such imports either) | **0** | CI grep gate (new in V3 — defends the boundary) |
-| Honest savings benchmark published with real numbers | no | yes | `make bench-savings-honest` produces a `BenchmarkRun` row; doc lists it |
+| Metric                                                                                                         |                              V2 baseline | V3 target | Test                                                                    |
+| -------------------------------------------------------------------------------------------------------------- | ---------------------------------------: | --------: | ----------------------------------------------------------------------- |
+| `stub_embedding` references in `src/atelier/`                                                                  |                                       8+ |     **0** | grep gate (`tests/infra/test_no_stub_embedding.py`)                     |
+| Bare unmeasured percentages in README and benchmark docs                                                       |                                  several |     **0** | doc gate (`tests/docs/test_readme_no_unmeasured_claims.py`)             |
+| Letta dual-write code paths                                                                                    |                                  present |     **0** | grep gate + behavioral test                                             |
+| Sleeptime "savings" recorded in telemetry without measurement                                                  |                                  present |     **0** | grep / behavioral gate (per WP-36 path chosen)                          |
+| `LessonPromoter` precision on 200-trace fixture                                                                |                               unmeasured | **≥ 0.7** | `tests/infra/test_lesson_promotion_precision.py`                        |
+| Atelier modules importing `anthropic` / `openai` / `litellm` / model clients (excluding the embeddings module) | n/a (V2 didn't have such imports either) |     **0** | CI grep gate (new in V3 — defends the boundary)                         |
+| Honest savings benchmark published with real numbers                                                           |                                       no |       yes | `make bench-savings-honest` produces a `BenchmarkRun` row; doc lists it |
 
 The single hard release gate for V3 is: **every percentage in the README and docs links to a
 measurement, and no module under `src/atelier/` (outside the embeddings package) imports a
@@ -254,12 +254,12 @@ Most users do nothing. V3 keeps every V2 MCP tool name, signature, and return sh
 
 What changes:
 
-| Concern | V2 default | V3 default | Action required |
-|---|---|---|---|
-| Memory backend | implicit dual-write to Letta+SQLite when `ATELIER_LETTA_URL` set | explicit single-primary; `[memory].backend = "sqlite"` if not set | nothing for SQLite users; Letta users add one config line |
-| `stub_embedding` | silently used in lesson promoter and ranking | deleted; legacy rows flagged `legacy_stub`; back-fill via `atelier reembed` (WP-47) | run `atelier reembed` once after upgrade |
-| Sleeptime lever | counted toward "savings" via templates | either real (WP-36 path A) or removed (path B) | none; reflected in telemetry only |
-| 81 % savings claim | in README | retracted, footnoted as "design target" until WP-50 | none |
+| Concern            | V2 default                                                       | V3 default                                                                          | Action required                                           |
+| ------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Memory backend     | implicit dual-write to Letta+SQLite when `ATELIER_LETTA_URL` set | explicit single-primary; `[memory].backend = "sqlite"` if not set                   | nothing for SQLite users; Letta users add one config line |
+| `stub_embedding`   | silently used in lesson promoter and ranking                     | deleted; legacy rows flagged `legacy_stub`; back-fill via `atelier reembed` (WP-47) | run `atelier reembed` once after upgrade                  |
+| Sleeptime lever    | counted toward "savings" via templates                           | either real (WP-36 path A) or removed (path B)                                      | none; reflected in telemetry only                         |
+| 81 % savings claim | in README                                                        | retracted, footnoted as "design target" until WP-50                                 | none                                                      |
 
 ### Trace continuity
 

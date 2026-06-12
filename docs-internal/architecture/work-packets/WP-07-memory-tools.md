@@ -11,6 +11,7 @@ status: done
 # WP-07 — Memory MCP tools
 
 ## Why
+
 Surfaces the memory store to agents through the existing MCP gateway, matching the data-model
 spec at [§ 8](../IMPLEMENTATION_PLAN_V2_DATA_MODEL.md#8-new-mcp-tools).
 
@@ -67,7 +68,8 @@ make verify
 ```
 
 ## Definition of done
-- [ ] Two MCP tools registered, both reachable via `atelier-mcp` (verify with the existing
+
+- [ ] Two MCP tools registered, both reachable via `atelier mcp` (verify with the existing
       MCP test harness)
 - [ ] CLI mirrors work
 - [ ] Redaction filter applied

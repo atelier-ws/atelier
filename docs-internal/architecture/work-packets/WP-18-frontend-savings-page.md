@@ -53,10 +53,10 @@ in any one lever.
      pure CSS bars to keep bundle small)
    - 14-day stacked area chart (`SavingsTimeChart`) — use existing chart lib if one is already in
      `package.json`; otherwise SVG hand-rolled
-    - "Why this matters" callout linking to the V2 plan
+   - "Why this matters" callout linking to the V2 plan
 
 3. Empty state: when no savings data has been recorded yet, render a coaching message:
-   "Run any task with `atelier-mcp` enabled to start collecting savings telemetry."
+   "Run any task with `atelier mcp` enabled to start collecting savings telemetry."
 
 ## Acceptance tests
 

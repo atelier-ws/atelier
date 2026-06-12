@@ -449,6 +449,7 @@ def _run_attempt(
     definition, default_steps = _build_workflow_definition(
         workflow,
         defaults=defaults,
+        profile_id=profile_id,
         task_prompt=task_prompt,
         retry_context=retry_context,
     )
@@ -531,11 +532,13 @@ def _build_workflow_definition(
     workflow: DefaultWorkflow,
     *,
     defaults: DefaultRegistry,
+    profile_id: str,
     task_prompt: str,
     retry_context: str,
 ) -> tuple[WorkflowDefinition, dict[str, DefaultWorkflowStep]]:
     steps: list[WorkflowStepDefinition] = []
     by_id: dict[str, DefaultWorkflowStep] = {}
+    profile = defaults.benchmark_profiles[profile_id]
     for default_step in workflow.steps:
         by_id[default_step.step_id] = default_step
         prompt_parts = [
@@ -546,6 +549,8 @@ def _build_workflow_definition(
         ]
         if retry_context:
             prompt_parts.extend(["", "Retry context:", retry_context])
+        else:
+            prompt_parts.extend(["", "Execution profile:", *[f"- {rule}" for rule in profile.command_rules]])
         steps.append(
             WorkflowStepDefinition(
                 step_id=default_step.step_id,
