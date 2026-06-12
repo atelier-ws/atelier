@@ -5,11 +5,11 @@
 # latest GitHub release and installs it to ~/.local/bin/.
 #
 # Usage:
-#   curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
+#   curl -fsSL https://github.com/atelier-ws/atelier/releases/latest/download/install.sh | bash
 #
 # For a comprehensive developer install (with uv, git, node, host
 # integrations, etc.) use scripts/local.sh from the repo checkout or:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/local.sh) --local
+#   bash <(curl -fsSL https://raw.githubusercontent.com/atelier-ws/atelier/main/scripts/local.sh) --local
 #
 # Environment variables:
 #   ATELIER_INSTALL_DIR   Target directory (default: ~/.local)
@@ -41,9 +41,9 @@ ATELIER_NON_INTERACTIVE="${ATELIER_NON_INTERACTIVE:-0}"
 ATELIER_NO_PATH="${ATELIER_NO_PATH:-0}"
 
 if [[ "$ATELIER_RELEASE_TAG" == "latest" ]]; then
-    RELEASE_BASE_URL="https://github.com/atelier-runtime/atelier/releases/latest/download"
+    RELEASE_BASE_URL="https://github.com/atelier-ws/atelier/releases/latest/download"
 else
-    RELEASE_BASE_URL="https://github.com/atelier-runtime/atelier/releases/download/${ATELIER_RELEASE_TAG}"
+    RELEASE_BASE_URL="https://github.com/atelier-ws/atelier/releases/download/${ATELIER_RELEASE_TAG}"
 fi
 ASSET_NAME="atelier-binaries-${BINARY_SUFFIX}.tar.gz"
 RELEASE_URL="${RELEASE_BASE_URL}/${ASSET_NAME}"
@@ -159,7 +159,7 @@ if command -v atelier >/dev/null 2>&1; then
     echo ""
     echo "  Quick start:  atelier --help"
     echo "  Init runtime: atelier init"
-    echo "  Docs:         https://github.com/atelier-runtime/atelier"
+    echo "  Docs:         https://github.com/atelier-ws/atelier"
 else
     info "Atelier installed to ${ATELIER_BIN_DIR}"
     echo ""

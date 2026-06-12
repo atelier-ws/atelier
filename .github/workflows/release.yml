@@ -82,7 +82,7 @@ jobs:
           ### Installation
 
           \`\`\`bash
-          curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
+          curl -fsSL https://github.com/atelier-ws/atelier/releases/latest/download/install.sh | bash
           \`\`\`
 
           ### Assets
@@ -98,7 +98,7 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
 
           if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "::error::RELEASE_PAT is required to create releases in atelier-runtime/atelier. Use a fine-grained PAT with Contents: read/write on atelier-runtime/atelier."
+            echo "::error::RELEASE_PAT is required to create releases in atelier-ws/atelier. Use a fine-grained PAT with Contents: read/write on atelier-ws/atelier."
             exit 1
           fi
 
@@ -111,7 +111,7 @@ jobs:
           fi
 
           gh release create "${TAG}" \
-            --repo atelier-runtime/atelier \
+            --repo atelier-ws/atelier \
             --target main \
             --title "Atelier ${TAG}" \
             --notes-file RELEASE_NOTES.md \

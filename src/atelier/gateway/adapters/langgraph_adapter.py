@@ -150,7 +150,7 @@ class LangGraphAdapter(AgentAdapter):
         """Return installation instructions for LangGraph integration."""
         return (
             "# LangGraph ← Atelier integration\n"
-            "1. pip install atelier-runtime\n"
+            "1. pip install atelier-ws\n"
             "2. atelier init\n"
             "3. Instantiate LangGraphAdapter in your graph builder:\n"
             "    atelier = LangGraphAdapter(client=AtelierClient.local(), mode='suggest')\n"

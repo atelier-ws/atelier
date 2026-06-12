@@ -35,7 +35,7 @@ TRANSFORM_CACHE_MAX_ITEMS = 128
 DNS_TIMEOUT_S = 10.0
 _DNS_MAX_WORKERS = 4
 
-DEFAULT_USER_AGENT = "Atelier web_fetch/0.2 (+https://github.com/atelier-runtime/atelier)"
+DEFAULT_USER_AGENT = "Atelier web_fetch/0.2 (+https://github.com/atelier-ws/atelier)"
 
 _MARKDOWN_TYPES = {"text/markdown", "text/x-markdown", "text/vnd.daringfireball.markdown"}
 _HTML_TYPES = {"text/html", "application/xhtml+xml"}

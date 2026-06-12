@@ -90,7 +90,7 @@ atelier mcp --host cursor --version
 
 | Problem                           | Fix                                                                                |
 | --------------------------------- | ---------------------------------------------------------------------------------- |
-| "atelier mcp: command not found"  | Run `pip install atelier-runtime` or reinstall via `make install`                  |
+| "atelier mcp: command not found"  | Run `pip install atelier-ws` or reinstall via `make install`                       |
 | MCP tools not showing up          | Restart Cursor completely (Cmd+Shift+P → "Developer: Reload Window")               |
 | Tools fail with "host not cursor" | Check `~/.cursor/mcp.json` has `--host cursor` in args                             |
 | Cursor workspace not detected     | For global installs, ensure you open a folder/workspace in Cursor before using MCP |

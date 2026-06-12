@@ -135,7 +135,7 @@ class SWEAgentAdapter(AgentAdapter):
         """Return installation instructions for SWE-agent integration."""
         return (
             "# SWE-agent ← Atelier integration\n"
-            "1. pip install atelier-runtime\n"
+            "1. pip install atelier-ws\n"
             "2. atelier init\n"
             "3. In your SWE-agent run_agent hook:\n"
             "   adapter = SWEAgentAdapter(client=AtelierClient.local(), mode='suggest')\n"
