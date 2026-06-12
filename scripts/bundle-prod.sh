@@ -20,9 +20,10 @@ BUILD_VENV=".venv-build"
 if [ ! -d "$BUILD_VENV" ]; then
     echo "◆ Creating $BUILD_VENV..."
     uv venv "$BUILD_VENV"
-    uv pip install --python "$BUILD_VENV/bin/python" -e . pyinstaller
 fi
 PYTHON="$BUILD_VENV/bin/python"
+echo "◆ Syncing build venv with project dependencies..."
+uv pip install --python "$PYTHON" .
 
 # Remove scipy (119 MB native libs, not needed at runtime; gracefully handled)
 echo "◆ Removing scipy from build venv..."
@@ -79,8 +80,17 @@ fi
 echo "◆ Compiling Backend Binaries..."
 rm -rf bundle/bin/*
 
-# PyInstaller uses the build/ directory to cache dependency analysis.
-# We do NOT remove it.
+# Automatically collect all session parser modules and core capabilities
+PARSERS=$(find src/atelier/gateway/hosts/session_parsers -name "*.py" -not -name "__init__.py" -not -name "_*" | \
+  sed 's|src/||; s|/|.|g; s|.py||')
+CAPS=$(find src/atelier/core/capabilities -name "*.py" -not -name "__init__.py" | \
+  sed 's|src/||; s|/|.|g; s|.py||')
+
+# Generate hidden import flags
+HIDDEN_IMPORTS=()
+for mod in $PARSERS $CAPS; do
+    HIDDEN_IMPORTS+=(--hidden-import "$mod")
+done
 
 PFLAGS=(
     --noconfirm
@@ -88,14 +98,8 @@ PFLAGS=(
     --add-data "src/atelier/infra/storage/migrations/*.sql:atelier/infra/storage/migrations/"
     --exclude-module benchmarks
     --hidden-import tiktoken_ext.openai_public
-    --hidden-import atelier.core.capabilities.failure_analysis
-    --hidden-import atelier.core.capabilities.loop_detection
-    --hidden-import atelier.core.capabilities.context_compression
-    --hidden-import atelier.core.capabilities.context_reuse
-    --hidden-import atelier.core.capabilities.proof_gate.capability
-    --hidden-import atelier.core.capabilities.quality_router.capability
-    --hidden-import atelier.core.capabilities.semantic_file_memory
-    --hidden-import atelier.core.capabilities.tool_supervision
+    --hidden-import ortools
+    "${HIDDEN_IMPORTS[@]}"
 )
 
 "$PYTHON" -m PyInstaller "${PFLAGS[@]}" --name atelier \
