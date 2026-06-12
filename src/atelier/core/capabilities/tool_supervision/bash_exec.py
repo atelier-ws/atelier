@@ -20,8 +20,8 @@ from atelier.core.capabilities.tool_supervision import command_discipline
 
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _SEARCH_REGEX_METACHARS = re.compile(r"[][{}()|^$*+?\\]")
-# Shell file-write patterns: cat > file, cat >> file, or any heredoc (<<)
-_SHELL_FILE_WRITE_RE = re.compile(r"\bcat\s+>>?|<<\s*['\"]?\w+['\"]?", re.IGNORECASE)
+# Shell file-write patterns: cat > file or cat >> file (write redirect)
+_SHELL_FILE_WRITE_RE = re.compile(r"\bcat\s+>>?", re.IGNORECASE)
 
 
 def _strip_ansi(text: str) -> str:
