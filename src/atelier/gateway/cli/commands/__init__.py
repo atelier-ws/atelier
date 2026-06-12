@@ -17,6 +17,8 @@ def _h(cmd: object) -> object:
 
 def register(cli: click.Group) -> None:
     """Register relocated command modules onto the root ``cli`` group."""
+    from atelier.gateway.cli.commands._shared import _IMPORT_FAILED
+
     try:
         from . import admin as admin_commands
 
@@ -43,7 +45,7 @@ def register(cli: click.Group) -> None:
         _h(admin_commands.insights_cmd)
         cli.add_command(admin_commands.insights_cmd)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .blocks import domain_group, report_cmd
@@ -53,14 +55,14 @@ def register(cli: click.Group) -> None:
         _h(report_cmd)
         cli.add_command(report_cmd)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .telemetry import telemetry_group
 
         cli.add_command(telemetry_group)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .servicectl import servicectl_group, worker_group
@@ -70,7 +72,7 @@ def register(cli: click.Group) -> None:
         _h(servicectl_group)
         cli.add_command(servicectl_group)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     # ── hidden internal commands (used by dev.sh, not user-facing) ───────────
     try:
@@ -78,7 +80,7 @@ def register(cli: click.Group) -> None:
 
         cli.add_command(background_group, name="background")
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from . import admin as admin_commands
@@ -94,9 +96,9 @@ def register(cli: click.Group) -> None:
 
             cli.add_command(mcp_cmd)
         except (ModuleNotFoundError, ImportError):
-            pass
+            _IMPORT_FAILED = True
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .savings import (
@@ -108,14 +110,14 @@ def register(cli: click.Group) -> None:
         cli.add_command(savings_cmd)
         cli.add_command(optimize_group)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .benchmark import benchmark_group
 
         cli.add_command(benchmark_group)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .defaults import defaults_group
@@ -123,14 +125,14 @@ def register(cli: click.Group) -> None:
         _h(defaults_group)
         cli.add_command(defaults_group)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .code import code_group
 
         cli.add_command(code_group)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .route import proof_group, route_public_group
@@ -138,14 +140,14 @@ def register(cli: click.Group) -> None:
         cli.add_command(route_public_group)
         cli.add_command(proof_group)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .hosts import global_import
 
         cli.add_command(global_import)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .lessons import (
@@ -165,7 +167,7 @@ def register(cli: click.Group) -> None:
         cli.add_command(lesson)
         cli.add_command(eval_)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .sessions import runs_group, session_group
@@ -174,28 +176,28 @@ def register(cli: click.Group) -> None:
         _h(session_group)
         cli.add_command(session_group)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .swarm import swarm_group
 
         cli.add_command(swarm_group)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .run import run_group
 
         cli.add_command(run_group)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         from .memory import memory_group_cli
 
         cli.add_command(memory_group_cli)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         import click as _click
@@ -243,7 +245,7 @@ def register(cli: click.Group) -> None:
         _h(admin_commands.status_cmd)
         cli.add_command(admin_commands.status_cmd)
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         import click as _click
@@ -286,7 +288,7 @@ def register(cli: click.Group) -> None:
         serve_openai_cmd.hidden = True  # internal: integrated into atelier service
         cli.add_command(serve_openai_cmd, name="serve-openai")
     except (ModuleNotFoundError, ImportError):
-        pass
+        _IMPORT_FAILED = True
 
     try:
         import click as _click
@@ -310,7 +312,7 @@ def register(cli: click.Group) -> None:
 
         cli.add_command(completions_cmd)
     except ImportError:
-        pass
+        _IMPORT_FAILED = True
 
 
 _ZSH_COMPLETION = """
