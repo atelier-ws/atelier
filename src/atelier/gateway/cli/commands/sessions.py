@@ -614,6 +614,207 @@ def _trace_model(trace: Trace) -> str:
     return "-"
 
 
+def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dict[str, Any]:
+    """Build a display row dict from a single imported trace."""
+    sid = (trace.session_id or trace.id or "").strip()
+    input_tokens = int(trace.input_tokens or 0)
+    cache_read_tokens = int(trace.cached_input_tokens or 0)
+    cache_write_tokens = int(trace.cache_creation_input_tokens or 0)
+    output_tokens = int(trace.output_tokens or 0)
+    total_cost_usd, reported_cost_usd, estimated_cost_usd = _best_trace_cost(trace)
+    model = _trace_model(trace)
+    breakdown = _estimated_trace_cost_breakdown(trace)
+    subagents = _host_subagent_count(store, host_name, sid, trace)
+    subagent_cost_usd = _host_subagent_cost_usd(host_name, sid, trace)
+    potential = _builtin_potential(
+        trace,
+        input_tokens=input_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_write_tokens=cache_write_tokens,
+        context_cap=_context_window_cap(model),
+    )
+    saved_usd = 0.0
+    carry_usd = 0.0
+    carry_tokens = 0
+    saved_tokens = 0
+    calls_avoided = 0
+    block_tool_calls = 0
+    if host_name == "claude":
+        block = _claude_transcript_block(sid)
+        if block is not None:
+            saved_usd = float(block.saved_usd)
+            saved_tokens = int(block.saved_tokens)
+            calls_avoided = int(block.calls_avoided)
+            carry_usd = float(block.carry_usd)
+            carry_tokens = int(block.carry_tokens)
+            block_tool_calls = int(block.tool_calls)
+            if block.est_cost_usd > 0:
+                total_cost_usd = block.est_cost_usd
+                estimated_cost_usd = block.est_cost_usd
+                bucket_sum = sum(breakdown.values())
+                if bucket_sum > 0:
+                    ratio = block.est_cost_usd / bucket_sum
+                    breakdown = {k: v * ratio for k, v in breakdown.items()}
+    cr_rate = _cache_read_rate(model, breakdown, cache_read_tokens)
+    potential_saved_usd = float(potential["tokens_saved"]) * cr_rate
+    potential_carry_usd = float(potential["carry_tokens"]) * cr_rate
+    potential_tokens_saved = int(potential["tokens_saved"])
+    potential_carry_tokens = int(potential["carry_tokens"])
+    total_calls = int(potential["builtin_calls"]) + int(potential["atelier_calls"])
+    builtin_share = int(potential["builtin_calls"]) / max(1, total_calls)
+    potential_cap_usd = (breakdown["cache_read"] + breakdown["cache_write"]) * builtin_share
+    potential_total_usd = potential_saved_usd + potential_carry_usd
+    if potential_total_usd > potential_cap_usd:
+        scale = (potential_cap_usd / potential_total_usd) if potential_total_usd > 0 else 0.0
+        potential_saved_usd *= scale
+        potential_carry_usd *= scale
+        potential_tokens_saved = int(potential_tokens_saved * scale)
+        potential_carry_tokens = int(potential_carry_tokens * scale)
+    return {
+        "host": host_name,
+        "session_id": sid,
+        "trace_id": trace.id,
+        "created_at": trace.created_at.isoformat() if trace.created_at else "",
+        "task": trace.task,
+        "model": model,
+        "input_tokens": input_tokens,
+        "cache_read_tokens": cache_read_tokens,
+        "cache_write_tokens": cache_write_tokens,
+        "output_tokens": output_tokens,
+        "cost_usd": round(total_cost_usd, 6),
+        "reported_cost_usd": round(reported_cost_usd, 6),
+        "estimated_cost_usd": round(estimated_cost_usd, 6),
+        "cost_input_usd": round(breakdown["input"], 6),
+        "cost_cache_read_usd": round(breakdown["cache_read"], 6),
+        "cost_cache_write_usd": round(breakdown["cache_write"], 6),
+        "cost_output_usd": round(breakdown["output"], 6),
+        "saved_usd": round(saved_usd, 6),
+        "saved_tokens": int(saved_tokens),
+        "calls_avoided": int(calls_avoided),
+        "carry_usd": round(carry_usd, 6),
+        "carry_tokens": int(carry_tokens),
+        "tool_calls": _tool_call_total(trace),
+        "subagents": subagents,
+        "subagent_cost_usd": round(subagent_cost_usd, 6),
+        "builtin_calls": int(potential["builtin_calls"]),
+        "atelier_calls": int(potential["atelier_calls"]),
+        "potential_calls_saved": int(potential["calls_saved"]),
+        "potential_tokens_saved": potential_tokens_saved,
+        "potential_saved_usd": round(potential_saved_usd, 6),
+        "potential_carry_tokens": potential_carry_tokens,
+        "potential_carry_usd": round(potential_carry_usd, 6),
+        "block_tool_calls": block_tool_calls,
+        "first_user": str(trace.task or "").strip(),
+        "commands": [
+            c if isinstance(c, str) else str(c.command)
+            for c in trace.commands_run
+            if isinstance(c, str) or hasattr(c, "command")
+        ],
+        "tools": [{"name": t.name, "count": int(t.count or 0)} for t in trace.tools_called],
+        "source": "host_sessions",
+    }
+
+
+def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
+    """Print a single session row in the standard display format."""
+    created = str(row["created_at"])[:19].replace("T", " ") if row["created_at"] else "-"
+    sid = str(row["session_id"]) if row["session_id"] else "-"
+    model = str(row["model"] or "-")[:32]
+    click.echo("")
+    click.secho(f"  {created}  {sid}  {model}", bold=True)
+    _emit_kv(
+        "tokens",
+        f"in={_fmt_tok_compact(int(row['input_tokens']))}"
+        f"  cacheR={_fmt_tok_compact(int(row['cache_read_tokens']))}"
+        f"  cacheW={_fmt_tok_compact(int(row['cache_write_tokens']))}"
+        f"  out={_fmt_tok_compact(int(row['output_tokens']))}",
+    )
+    _emit_kv(
+        "cost",
+        f"${float(row['cost_usd']):.4f}  "
+        + click.style(
+            f"(in ${float(row['cost_input_usd']):.4f} · cacheR ${float(row['cost_cache_read_usd']):.4f}"
+            f" · cacheW ${float(row['cost_cache_write_usd']):.4f} · out ${float(row['cost_output_usd']):.4f})",
+            dim=True,
+        ),
+    )
+    if row.get("source") == "trace_fallback":
+        est = float(row["estimated_cost_usd"])
+        rep = float(row["reported_cost_usd"])
+        if est > 0 and rep > 0 and abs(est - rep) / max(est, rep) > 0.25:
+            _emit_kv("cost-check", click.style(f"estimated ${est:.4f} vs host-reported ${rep:.4f}", fg="yellow"))
+    if int(row["subagents"]) > 0:
+        sub_cost = float(row["subagent_cost_usd"])
+        detail = f" · ≈${sub_cost:.4f} (included in cost)" if sub_cost > 0 else ""
+        _emit_kv("subagents", f"{int(row['subagents'])}{detail}")
+    saved = float(row["saved_usd"])
+    if saved > 0 or int(row["saved_tokens"]) > 0 or int(row["calls_avoided"]) > 0:
+        saved_parts = [f"${saved:.4f}"]
+        if int(row["saved_tokens"]) > 0:
+            saved_parts.append(f"{int(row['saved_tokens']):,} tokens saved")
+        if int(row["calls_avoided"]) > 0:
+            saved_parts.append(f"{int(row['calls_avoided'])} calls avoided")
+        _emit_kv("saved", click.style(" · ".join(saved_parts), fg="green"))
+    carry = float(row["carry_usd"])
+    if carry > 0:
+        _emit_kv(
+            "carry",
+            click.style(
+                f"${carry:.4f} · {int(row['carry_tokens']):,} tokens (cache re-reads avoided on later turns)",
+                fg="magenta",
+            ),
+        )
+    row_cost = float(row["cost_usd"])
+    if row_cost > 0 and (saved + carry) > 0:
+        baseline = row_cost + saved + carry
+        _emit_kv(
+            "baseline",
+            click.style(
+                f"≈${baseline:.4f} without Atelier · paid {100 * (saved + carry) / baseline:.1f}% less",
+                dim=True,
+            ),
+        )
+    _emit_kv(
+        "calls",
+        f"{int(row['tool_calls'])} total · {int(row['atelier_calls'])} atelier"
+        f" · {int(row['builtin_calls'])} builtin",
+    )
+    trace_calls = int(row["tool_calls"])
+    block_calls = int(row.get("block_tool_calls") or 0)
+    if block_calls > 0 and trace_calls > 0 and not (0.5 <= trace_calls / block_calls <= 2.0):
+        _emit_kv(
+            "calls-check",
+            click.style(
+                f"trace import counted {trace_calls} tool calls but the session file"
+                f" recorded {block_calls} — trace-derived numbers may be unreliable",
+                fg="red",
+            ),
+        )
+    if int(row["potential_calls_saved"]) > 0:
+        pot = f"≈{int(row['potential_calls_saved'])} builtin calls avoidable · " + click.style(
+            f"saved ${float(row['potential_saved_usd']):.4f} ({int(row['potential_tokens_saved']):,} tokens)",
+            fg="yellow",
+        )
+        if float(row["potential_carry_usd"]) > 0:
+            pot += " + " + click.style(
+                f"carry ${float(row['potential_carry_usd']):.4f}" f" ({int(row['potential_carry_tokens']):,} tokens)",
+                fg="magenta",
+            )
+        _emit_kv("potential", pot + click.style(" if routed via Atelier", dim=True))
+    tool_items = [f"{t['name']}x{t['count']}" for t in (row["tools"] or [])]
+    wrapped_tools = _wrap_csv_items(tool_items, width=110)
+    _emit_kv("tools", wrapped_tools[0])
+    for extra_line in wrapped_tools[1:]:
+        click.echo(" " * 15 + extra_line)
+    first_user = str(row["first_user"] or "").replace("\n", " ").strip()
+    if len(first_user) > 120:
+        first_user = first_user[:117] + "..."
+    _emit_kv("prompt", first_user or "(none)")
+    if verbose:
+        for cmd in (row["commands"] or [])[:8]:
+            _emit_kv("cmd", cmd)
+
+
 def _sync_hosts_from_source(
     *,
     store_root: Path,
@@ -771,16 +972,158 @@ def _scan_hosts_live(
                 continue
 
             generic_importer: Any = importer_cls(store)
-            ids = (
-                generic_importer.import_all(path, force=force)
+            imported_ids = list(
+                generic_importer.import_all(path, force=force, limit=limit)
                 if path is not None
-                else generic_importer.import_all(force=force)
+                else generic_importer.import_all(force=force, limit=limit)
             )
-            counts[host_name] = len(ids)
+            counts[host_name] = len(imported_ids)
         except Exception:
             logging.exception("session hosts live scan failed for host=%s", host_name)
             counts[host_name] = 0
     return counts, store, tmp
+
+
+def _stream_hosts_live(
+    *,
+    selected_hosts: list[str],
+    force: bool,
+    path: Path | None,
+    max_per_host: int,
+    limit: int,
+    session_filter: str = "",
+    cutoff: datetime | None = None,
+    verbose: bool = False,
+) -> None:
+    """Scan host session files and stream-display each session as it's imported.
+
+    For claude/codex/gemini: per-session streaming (header + count printed once,
+    then each session appears immediately after it's parsed).
+    For generic importers: per-host streaming (sessions appear together after
+    import_all completes for that host).
+    """
+    from atelier.gateway.hosts.session_parsers.claude import ClaudeImporter, find_claude_sessions
+    from atelier.gateway.hosts.session_parsers.codex import CodexImporter, find_codex_sessions
+    from atelier.gateway.hosts.session_parsers.gemini import GeminiImporter, find_gemini_sessions
+    from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
+
+    tmp = tempfile.TemporaryDirectory(prefix="atelier-session-hosts-")
+    tmp_root = Path(tmp.name)
+    store = ContextStore(tmp_root)
+    store.init()
+
+    host_set = set(selected_hosts)
+    any_found = False
+
+    for host_name, importer_cls in iter_importer_classes():
+        if host_set and host_name not in host_set:
+            continue
+        try:
+            if host_name == "codex":
+                importer_c = CodexImporter(store)
+                picked = _pick_live_sessions(
+                    list(find_codex_sessions(path)),
+                    path_of=lambda p: p,
+                    limit=limit,
+                    scan=max_per_host,
+                    session_filter=session_filter,
+                    cutoff=cutoff,
+                )
+                if not picked:
+                    continue
+                any_found = True
+                click.echo("")
+                click.secho(host_name, fg="magenta", bold=True)
+                click.echo(f"  scanned this run: {len(picked)}")
+                for session_path in picked:
+                    tid = importer_c.import_session(session_path, force=force)
+                    if tid:
+                        trace = store.get_trace(tid)
+                        if trace:
+                            _print_session_row(_build_session_row(trace, store, host_name), verbose)
+                continue
+
+            if host_name == "gemini":
+                importer_g = GeminiImporter(store)
+                picked_g = _pick_live_sessions(
+                    list(find_gemini_sessions(path)),
+                    path_of=lambda p: p,
+                    limit=limit,
+                    scan=max_per_host,
+                    session_filter=session_filter,
+                    cutoff=cutoff,
+                )
+                if not picked_g:
+                    continue
+                any_found = True
+                click.echo("")
+                click.secho(host_name, fg="magenta", bold=True)
+                click.echo(f"  scanned this run: {len(picked_g)}")
+                for session_path in picked_g:
+                    tid = importer_g.import_session(session_path, force=force)
+                    if tid:
+                        trace = store.get_trace(tid)
+                        if trace:
+                            _print_session_row(_build_session_row(trace, store, host_name), verbose)
+                continue
+
+            if host_name == "claude":
+                claude_imp = ClaudeImporter(store)
+                claude_root = path if path is not None else None
+                picked_cl = _pick_live_sessions(
+                    list(find_claude_sessions(claude_root)),
+                    path_of=lambda item: item[1],
+                    limit=limit,
+                    scan=max_per_host,
+                    session_filter=session_filter,
+                    cutoff=cutoff,
+                )
+                if not picked_cl:
+                    continue
+                any_found = True
+                click.echo("")
+                click.secho(host_name, fg="magenta", bold=True)
+                click.echo(f"  scanned this run: {len(picked_cl)}")
+                for workspace_slug, session_path in picked_cl:
+                    tid = claude_imp.import_session(workspace_slug, session_path, force=force)
+                    if tid:
+                        trace = store.get_trace(tid)
+                        if trace:
+                            _print_session_row(_build_session_row(trace, store, host_name), verbose)
+                continue
+
+            # Generic importer: batch import_all then stream display
+            generic_importer: Any = importer_cls(store)
+            imported_ids = list(
+                generic_importer.import_all(path, force=force, limit=limit)
+                if path is not None
+                else generic_importer.import_all(force=force, limit=limit)
+            )
+            if not imported_ids:
+                continue
+            any_found = True
+            click.echo("")
+            click.secho(host_name, fg="magenta", bold=True)
+            click.echo(f"  scanned this run: {len(imported_ids)}")
+            displayed = 0
+            for sid in imported_ids:
+                trace = store.get_trace(sid)
+                if trace is None:
+                    continue
+                row = _build_session_row(trace, store, host_name)
+                if session_filter and session_filter not in (row.get("session_id") or "").lower():
+                    continue
+                _print_session_row(row, verbose)
+                displayed += 1
+                if displayed >= limit:
+                    break
+        except Exception:
+            logging.exception("session hosts live scan failed for host=%s", host_name)
+
+    tmp.cleanup()
+
+    if not any_found:
+        click.echo("No host sessions found for the selected filters.")
 
 
 @session_group.command("hosts")
@@ -842,285 +1185,84 @@ def session_hosts_cmd(
     cutoff = datetime.now(UTC) - _parse_duration(since) if since else None
     session_filter = (session_id_filter or "").strip().lower()
 
-    sync_counts: dict[str, int] = {}
-    temp_handle: tempfile.TemporaryDirectory[str] | None = None
-    if source_mode == "live":
-        # Lazy live scan: only the newest --limit sessions that pass the
-        # cheap pre-import filters are parsed; --scan bounds how far back
-        # the candidate search may look.
-        sync_counts, store, temp_handle = _scan_hosts_live(
-            selected_hosts=selected_hosts,
-            force=force,
-            path=path,
-            max_per_host=scan,
-            limit=limit,
-            session_filter=session_filter,
-            cutoff=cutoff,
-        )
-    else:
-        store = _load_store(root)
-
-    grouped: dict[str, list[dict[str, Any]]] = {}
-
-    for host_name in selected_hosts:
-        traces = store.list_traces(host=host_name, since=cutoff, limit=scan)
-        rows: list[dict[str, Any]] = []
-        for trace in traces:
-            sid = (trace.session_id or trace.id or "").strip()
-            if session_filter and session_filter not in sid.lower():
-                continue
-
-            # Every number on a row derives from host session files only
-            # (the imported trace + the transcript itself) — never from
-            # Atelier-local sidecars or the run ledger, which don't exist
-            # for session files coming from another machine.
-            input_tokens = int(trace.input_tokens or 0)
-            cache_read_tokens = int(trace.cached_input_tokens or 0)
-            cache_write_tokens = int(trace.cache_creation_input_tokens or 0)
-            output_tokens = int(trace.output_tokens or 0)
-            total_cost_usd, reported_cost_usd, estimated_cost_usd = _best_trace_cost(trace)
-            saved_usd = 0.0
-            model = _trace_model(trace)
-
-            breakdown = _estimated_trace_cost_breakdown(trace)
-            subagents = _host_subagent_count(store, host_name, sid, trace)
-            subagent_cost_usd = _host_subagent_cost_usd(host_name, sid, trace)
-            potential = _builtin_potential(
-                trace,
-                input_tokens=input_tokens,
-                cache_read_tokens=cache_read_tokens,
-                cache_write_tokens=cache_write_tokens,
-                context_cap=_context_window_cap(model),
-            )
-            carry_usd = 0.0
-            carry_tokens = 0
-            saved_tokens = 0
-            calls_avoided = 0
-            block_tool_calls = 0
-            if host_name == "claude":
-                block = _claude_transcript_block(sid)
-                if block is not None:
-                    saved_usd = float(block.saved_usd)
-                    saved_tokens = int(block.saved_tokens)
-                    calls_avoided = int(block.calls_avoided)
-                    carry_usd = float(block.carry_usd)
-                    carry_tokens = int(block.carry_tokens)
-                    block_tool_calls = int(block.tool_calls)
-                    if block.est_cost_usd > 0:
-                        # The stop hook's own estimate, recovered from the
-                        # session file — keep the displayed total identical to
-                        # what the user saw at session end. Rescale the bucket
-                        # breakdown so components still sum to the total.
-                        total_cost_usd = block.est_cost_usd
-                        estimated_cost_usd = block.est_cost_usd
-                        bucket_sum = sum(breakdown.values())
-                        if bucket_sum > 0:
-                            ratio = block.est_cost_usd / bucket_sum
-                            breakdown = {k: v * ratio for k, v in breakdown.items()}
-
-            # Price potential with the exact credit model real Atelier savings
-            # use: avoided context re-reads and carried tokens both bill at
-            # the cache-read rate (same as session_stats calls_usd / carry).
-            cr_rate = _cache_read_rate(model, breakdown, cache_read_tokens)
-            potential_saved_usd = float(potential["tokens_saved"]) * cr_rate
-            potential_carry_usd = float(potential["carry_tokens"]) * cr_rate
-            potential_tokens_saved = int(potential["tokens_saved"])
-            potential_carry_tokens = int(potential["carry_tokens"])
-            # Hard bound: forgone re-reads can never exceed what the session
-            # actually spent on cache traffic, prorated to the builtin share
-            # of calls. Scale USD and token figures together.
-            total_calls = int(potential["builtin_calls"]) + int(potential["atelier_calls"])
-            builtin_share = int(potential["builtin_calls"]) / max(1, total_calls)
-            potential_cap_usd = (breakdown["cache_read"] + breakdown["cache_write"]) * builtin_share
-            potential_total_usd = potential_saved_usd + potential_carry_usd
-            if potential_total_usd > potential_cap_usd:
-                scale = (potential_cap_usd / potential_total_usd) if potential_total_usd > 0 else 0.0
-                potential_saved_usd *= scale
-                potential_carry_usd *= scale
-                potential_tokens_saved = int(potential_tokens_saved * scale)
-                potential_carry_tokens = int(potential_carry_tokens * scale)
-            potential_saved_usd = round(potential_saved_usd, 6)
-            potential_carry_usd = round(potential_carry_usd, 6)
-
-            rows.append(
-                {
-                    "host": host_name,
-                    "session_id": sid,
-                    "trace_id": trace.id,
-                    "created_at": trace.created_at.isoformat() if trace.created_at else "",
-                    "task": trace.task,
-                    "model": model,
-                    "input_tokens": input_tokens,
-                    "cache_read_tokens": cache_read_tokens,
-                    "cache_write_tokens": cache_write_tokens,
-                    "output_tokens": output_tokens,
-                    "cost_usd": round(total_cost_usd, 6),
-                    "reported_cost_usd": round(reported_cost_usd, 6),
-                    "estimated_cost_usd": round(estimated_cost_usd, 6),
-                    "cost_input_usd": round(breakdown["input"], 6),
-                    "cost_cache_read_usd": round(breakdown["cache_read"], 6),
-                    "cost_cache_write_usd": round(breakdown["cache_write"], 6),
-                    "cost_output_usd": round(breakdown["output"], 6),
-                    "saved_usd": round(saved_usd, 6),
-                    "saved_tokens": int(saved_tokens),
-                    "calls_avoided": int(calls_avoided),
-                    "carry_usd": round(carry_usd, 6),
-                    "carry_tokens": int(carry_tokens),
-                    "tool_calls": _tool_call_total(trace),
-                    "subagents": subagents,
-                    "subagent_cost_usd": round(subagent_cost_usd, 6),
-                    "builtin_calls": int(potential["builtin_calls"]),
-                    "atelier_calls": int(potential["atelier_calls"]),
-                    "potential_calls_saved": int(potential["calls_saved"]),
-                    "potential_tokens_saved": potential_tokens_saved,
-                    "potential_saved_usd": potential_saved_usd,
-                    "potential_carry_tokens": potential_carry_tokens,
-                    "potential_carry_usd": potential_carry_usd,
-                    "block_tool_calls": block_tool_calls,
-                    "first_user": str(trace.task or "").strip(),
-                    "commands": [
-                        c if isinstance(c, str) else str(c.command)
-                        for c in trace.commands_run
-                        if isinstance(c, str) or hasattr(c, "command")
-                    ],
-                    "tools": [{"name": t.name, "count": int(t.count or 0)} for t in trace.tools_called],
-                    "source": "host_sessions",
-                }
-            )
-            if len(rows) >= limit:
-                break
-        if rows:
-            grouped[host_name] = rows
-
-    if temp_handle is not None:
-        temp_handle.cleanup()
-
-    payload = {
-        "source": source_mode,
-        "scan_counts": sync_counts,
-        "hosts": grouped,
-    }
-
     if as_json:
-        click.echo(json.dumps(payload, indent=2, default=str))
+        # Batch mode for JSON output: scan all hosts, collect rows, then dump.
+        sync_counts: dict[str, int] = {}
+        temp_handle: tempfile.TemporaryDirectory[str] | None = None
+        if source_mode == "live":
+            sync_counts, store, temp_handle = _scan_hosts_live(
+                selected_hosts=selected_hosts,
+                force=force,
+                path=path,
+                max_per_host=scan,
+                limit=limit,
+                session_filter=session_filter,
+                cutoff=cutoff,
+            )
+        else:
+            store = _load_store(root)
+
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for host_name in selected_hosts:
+            traces = store.list_traces(host=host_name, since=cutoff, limit=scan)
+            rows: list[dict[str, Any]] = []
+            for trace in traces:
+                sid = (trace.session_id or trace.id or "").strip()
+                if session_filter and session_filter not in sid.lower():
+                    continue
+                rows.append(_build_session_row(trace, store, host_name))
+                if len(rows) >= limit:
+                    break
+            if rows:
+                grouped[host_name] = rows
+
+        if temp_handle is not None:
+            temp_handle.cleanup()
+
+        click.echo(
+            json.dumps(
+                {"source": source_mode, "scan_counts": sync_counts, "hosts": grouped},
+                indent=2,
+                default=str,
+            )
+        )
         return
 
-    if source_mode == "live":
-        scanned_total = sum(sync_counts.values())
-        click.secho(f"scanned {scanned_total} sessions from host sources (temporary, non-persistent)", fg="cyan")
-
-    if not grouped:
-        click.echo("No host sessions found for the selected filters.")
+    # Text display: stream per-host so each host's sessions appear immediately.
+    if source_mode == "store":
+        store = _load_store(root)
+        any_found = False
+        for host_name in sorted(selected_hosts):
+            traces = store.list_traces(host=host_name, since=cutoff, limit=scan)
+            rows_store: list[dict[str, Any]] = []
+            for trace in traces:
+                sid = (trace.session_id or trace.id or "").strip()
+                if session_filter and session_filter not in sid.lower():
+                    continue
+                rows_store.append(_build_session_row(trace, store, host_name))
+                if len(rows_store) >= limit:
+                    break
+            if rows_store:
+                any_found = True
+                click.echo("")
+                click.secho(host_name, fg="magenta", bold=True)
+                for row in rows_store:
+                    _print_session_row(row, verbose)
+        if not any_found:
+            click.echo("No host sessions found for the selected filters.")
         return
 
-    for host_name in sorted(grouped):
-        rows = grouped[host_name]
-        click.echo("")
-        click.secho(f"{host_name}", fg="magenta", bold=True)
-        if source_mode == "live" and host_name in sync_counts:
-            click.echo(f"  scanned this run: {sync_counts[host_name]}")
-        for row in rows:
-            created = str(row["created_at"])[:19].replace("T", " ") if row["created_at"] else "-"
-            sid = str(row["session_id"]) if row["session_id"] else "-"
-            model = str(row["model"] or "-")[:32]
-            click.echo("")
-            click.secho(f"  {created}  {sid}  {model}", bold=True)
-            _emit_kv(
-                "tokens",
-                f"in={_fmt_tok_compact(int(row['input_tokens']))}"
-                f"  cacheR={_fmt_tok_compact(int(row['cache_read_tokens']))}"
-                f"  cacheW={_fmt_tok_compact(int(row['cache_write_tokens']))}"
-                f"  out={_fmt_tok_compact(int(row['output_tokens']))}",
-            )
-            _emit_kv(
-                "cost",
-                f"${float(row['cost_usd']):.4f}  "
-                + click.style(
-                    f"(in ${float(row['cost_input_usd']):.4f} · cacheR ${float(row['cost_cache_read_usd']):.4f}"
-                    f" · cacheW ${float(row['cost_cache_write_usd']):.4f} · out ${float(row['cost_output_usd']):.4f})",
-                    dim=True,
-                ),
-            )
-            if row["source"] == "trace_fallback":
-                est = float(row["estimated_cost_usd"])
-                rep = float(row["reported_cost_usd"])
-                if est > 0 and rep > 0 and abs(est - rep) / max(est, rep) > 0.25:
-                    _emit_kv(
-                        "cost-check", click.style(f"estimated ${est:.4f} vs host-reported ${rep:.4f}", fg="yellow")
-                    )
-            if int(row["subagents"]) > 0:
-                sub_cost = float(row["subagent_cost_usd"])
-                detail = f" · ≈${sub_cost:.4f} (included in cost)" if sub_cost > 0 else ""
-                _emit_kv("subagents", f"{int(row['subagents'])}{detail}")
-            saved = float(row["saved_usd"])
-            if saved > 0 or int(row["saved_tokens"]) > 0 or int(row["calls_avoided"]) > 0:
-                saved_parts = [f"${saved:.4f}"]
-                if int(row["saved_tokens"]) > 0:
-                    saved_parts.append(f"{int(row['saved_tokens']):,} tokens saved")
-                if int(row["calls_avoided"]) > 0:
-                    saved_parts.append(f"{int(row['calls_avoided'])} calls avoided")
-                _emit_kv("saved", click.style(" · ".join(saved_parts), fg="green"))
-            carry = float(row["carry_usd"])
-            if carry > 0:
-                _emit_kv(
-                    "carry",
-                    click.style(
-                        f"${carry:.4f} · {int(row['carry_tokens']):,} tokens (cache re-reads avoided on later turns)",
-                        fg="magenta",
-                    ),
-                )
-            # Baseline: what the session would have cost without the measured
-            # savings — puts saved+carry in proportion to actual spend.
-            row_cost = float(row["cost_usd"])
-            if row_cost > 0 and (saved + carry) > 0:
-                baseline = row_cost + saved + carry
-                _emit_kv(
-                    "baseline",
-                    click.style(
-                        f"≈${baseline:.4f} without Atelier · paid {100 * (saved + carry) / baseline:.1f}% less",
-                        dim=True,
-                    ),
-                )
-            _emit_kv(
-                "calls",
-                f"{int(row['tool_calls'])} total · {int(row['atelier_calls'])} atelier"
-                f" · {int(row['builtin_calls'])} builtin",
-            )
-            trace_calls = int(row["tool_calls"])
-            block_calls = int(row.get("block_tool_calls") or 0)
-            if block_calls > 0 and trace_calls > 0 and not (0.5 <= trace_calls / block_calls <= 2.0):
-                _emit_kv(
-                    "calls-check",
-                    click.style(
-                        f"trace import counted {trace_calls} tool calls but the session file"
-                        f" recorded {block_calls} — trace-derived numbers may be unreliable",
-                        fg="red",
-                    ),
-                )
-            if int(row["potential_calls_saved"]) > 0:
-                pot = f"≈{int(row['potential_calls_saved'])} builtin calls avoidable · " + click.style(
-                    f"saved ${float(row['potential_saved_usd']):.4f} ({int(row['potential_tokens_saved']):,} tokens)",
-                    fg="yellow",
-                )
-                if float(row["potential_carry_usd"]) > 0:
-                    pot += " + " + click.style(
-                        f"carry ${float(row['potential_carry_usd']):.4f}"
-                        f" ({int(row['potential_carry_tokens']):,} tokens)",
-                        fg="magenta",
-                    )
-                _emit_kv("potential", pot + click.style(" if routed via Atelier", dim=True))
-            tool_items = [f"{t['name']}x{t['count']}" for t in (row["tools"] or [])]
-            wrapped_tools = _wrap_csv_items(tool_items, width=110)
-            _emit_kv("tools", wrapped_tools[0])
-            for extra_line in wrapped_tools[1:]:
-                click.echo(" " * 15 + extra_line)
-            first_user = str(row["first_user"] or "").replace("\n", " ").strip()
-            if len(first_user) > 120:
-                first_user = first_user[:117] + "..."
-            _emit_kv("prompt", first_user or "(none)")
-            if verbose:
-                for cmd in (row["commands"] or [])[:8]:
-                    _emit_kv("cmd", cmd)
+    # live mode + text: stream each host as it's scanned
+    _stream_hosts_live(
+        selected_hosts=selected_hosts,
+        force=force,
+        path=path,
+        max_per_host=scan,
+        limit=limit,
+        session_filter=session_filter,
+        cutoff=cutoff,
+        verbose=verbose,
+    )
 
 
 __all__ = ["outcomes_group", "runs_group", "session_group"]
