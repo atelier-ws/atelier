@@ -94,22 +94,45 @@ done
 
 PFLAGS=(
     --noconfirm
-    --onefile
+    --onedir
     --add-data "src/atelier/infra/storage/migrations/*.sql:atelier/infra/storage/migrations/"
-    --add-data ".venv-build/lib/python3.13/site-packages/litellm/*.json:litellm/"
+    --add-data ".venv-build/lib/python3.13/site-packages/litellm:litellm"
     --exclude-module benchmarks
+    # Dev-only — not needed at runtime; mypy pulls in ast_serialize (.so)
+    # which causes PyInstaller decompression errors in --onefile mode.
+    --exclude-module mypy
+    --exclude-module ast_serialize
+    --exclude-module pytest
+    --exclude-module ruff
+    --exclude-module black
     --hidden-import tiktoken_ext.openai_public
     --hidden-import ortools
+    --hidden-import litellm.litellm_core_utils.tokenizers
+    --hidden-import litellm.litellm_core_utils.get_model_cost_map
     "${HIDDEN_IMPORTS[@]}"
 )
 
 "$PYTHON" -m PyInstaller "${PFLAGS[@]}" --name atelier \
   --distpath ./build_dist \
   src/atelier/gateway/cli/__main__.py
-mv -f ./build_dist/atelier bundle/bin/
+
+# --onedir produces build_dist/atelier/{atelier,_internal/,...}
+# Place it under bundle/bin/_runtime/ and expose a thin wrapper as bundle/bin/atelier.
+# This avoids the zlib decompression failures that --onefile causes with certain
+# native extensions (blake3, etc.) while keeping the same distribution layout.
+rm -rf bundle/bin/_runtime
+cp -r ./build_dist/atelier bundle/bin/_runtime
+
+cat > bundle/bin/atelier <<'WRAPPER'
+#!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "${SCRIPT_DIR}/_runtime/atelier" "$@"
+WRAPPER
+chmod +x bundle/bin/atelier
+
 ln -sf atelier bundle/bin/atelierd
 ln -sf atelier bundle/bin/atelier-mcp
-echo "  $(du -sh bundle/bin/atelier | awk '{print $1}')"
+echo "  $(du -sh bundle/bin/_runtime | awk '{print $1}')"
 
 # 5. Include distribution scripts
 echo "◆ Including distribution scripts..."
