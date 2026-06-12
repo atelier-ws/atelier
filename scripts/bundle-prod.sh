@@ -97,6 +97,12 @@ PFLAGS=(
     --noconfirm
     --onedir
     --add-data "src/atelier/infra/storage/migrations/*.sql:atelier/infra/storage/migrations/"
+    --add-data "src/atelier/infra/seed_blocks:atelier/infra/seed_blocks"
+    --add-data "src/atelier/infra/code_intel/zoekt/VERSIONS.toml:atelier/infra/code_intel/zoekt/"
+    --add-data "src/atelier/core/capabilities/pricing.yaml:atelier/core/capabilities/"
+    --add-data "src/atelier/core/service/telemetry/frustration_lexicon.yaml:atelier/core/service/telemetry/"
+    --add-data "src/atelier/core/domains/builtin:atelier/core/domains/builtin"
+    --add-data "src/atelier/gateway/hosts/configs:atelier/gateway/hosts/configs"
     --add-data ".venv-build/lib/python3.13/site-packages/litellm:litellm"
     --exclude-module benchmarks
     # ── Dev-only tools ────────────────────────────────────────────────────────
@@ -110,13 +116,14 @@ PFLAGS=(
     # scipy: lazily imported by datasketch (patched) and river (try/except);
     #        the uninstall above removes it from the venv before this runs.
     --exclude-module scipy
-    # pandas: only needed by ortools (excluded above). Saves ~18 MB.
+    # ortools: CP-SAT solver for exact context packing; degrades to greedy.
+    #          ortools has a hard pandas import so both must be excluded together.
+    --exclude-module ortools
     --exclude-module pandas
     # hf_xet: optional HuggingFace Xet download accelerator, not used by
     #         Atelier at runtime. Saves ~12 MB.
     --exclude-module hf_xet
     --hidden-import tiktoken_ext.openai_public
-    --hidden-import ortools
     --hidden-import litellm.litellm_core_utils.tokenizers
     --hidden-import litellm.litellm_core_utils.get_model_cost_map
     "${HIDDEN_IMPORTS[@]}"
