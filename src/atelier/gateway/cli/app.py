@@ -6,7 +6,10 @@ return data accept ``--json`` to emit machine-parseable output.
 
 from __future__ import annotations
 
+import os
+import shutil
 import signal
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -154,6 +157,14 @@ def _dev_group(name: str | None = None, **kwargs: Any) -> Callable[[Callable[...
     return _module_dev_group(name, **kwargs)
 
 
+# ── Auto-install fallback ─────────────────────────────────────────────────
+# When a command module import fails during registration (ImportError), the
+# CLI checks _IMPORT_FAILED at startup and runs ``uv sync`` to install deps
+# before dispatching the user's command.
+
+_AUTO_INSTALL_SENTINEL = "_ATELIER_UV_SYNC_RETRY"
+
+
 @click.group(
     context_settings={"help_option_names": ["-h", "--help"]},
     invoke_without_command=True,
@@ -214,6 +225,28 @@ def main() -> None:
         argv = ["background", "service", *argv]
     elif prog_name == "atelier-mcp":
         argv = ["mcp", *argv]
+
+    # ── Auto-install: if a command module failed to import, run uv sync ────────
+    if not os.environ.get(_AUTO_INSTALL_SENTINEL) and not getattr(sys, "frozen", False):
+        from atelier.gateway.cli.commands._shared import _IMPORT_FAILED
+
+        if _IMPORT_FAILED:
+            os.environ[_AUTO_INSTALL_SENTINEL] = "1"
+            project_root = Path.cwd().resolve()
+            # Walk up for pyproject.toml
+            for parent in [project_root, *list(project_root.parents)]:
+                if (parent / "pyproject.toml").is_file():
+                    project_root = parent
+                    break
+            else:
+                project_root = None
+            if project_root and shutil.which("uv"):
+                click.echo("Missing dependencies detected. Running `uv sync` to install them…", err=True)
+                subprocess.run(["uv", "sync"], cwd=str(project_root), check=False)
+                os.execv(
+                    sys.executable,
+                    [sys.executable, "-m", "atelier.gateway.cli", *sys.argv[1:]],
+                )
 
     command_name = _cli_command_name(argv)
     session_id, started_at = _begin_cli_telemetry(command_name)
