@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-
 from atelier.core.capabilities.pricing import is_placeholder_model, usage_cost_usd
 from atelier.core.foundation.models import (
     CommandRecord,
@@ -66,6 +65,7 @@ def sanitize_id(value: str) -> str:
 
 def get_newest(items: list[Any], n: int | None) -> list[Any]:
     """Sort items by mtime (extracting Path from nested structure) descending and take top N."""
+
     def get_path(item: Any) -> Path:
         # Recursively find the first Path object in the item
         if isinstance(item, Path):
@@ -77,7 +77,6 @@ def get_newest(items: list[Any], n: int | None) -> list[Any]:
 
     sorted_items = sorted(items, key=lambda item: get_path(item).stat().st_mtime, reverse=True)
     return sorted_items[:n] if n is not None else sorted_items
-
 
 
 def parse_datetime(value: Any, *, default: datetime | None = None) -> datetime:

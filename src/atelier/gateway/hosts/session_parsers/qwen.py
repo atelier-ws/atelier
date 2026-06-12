@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
-import logging
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
-    get_newest,
     build_normalized_jsonl,
     make_assistant_message,
     make_session_line,
@@ -20,6 +17,8 @@ from atelier.gateway.hosts.session_parsers._common import (
     make_user_message,
     record_normalized_session,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _projects_root(root: Path | None = None) -> Path:
