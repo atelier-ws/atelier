@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 import json
 import logging
 import shutil
@@ -201,67 +200,6 @@ def session_report_cmd(
         click.echo(render_text(report, no_color=no_color))
 
 
-@session_group.command("list")
-@click.option("--since", default=None, help="Look-back window, e.g. 7d, 24h.")
-@click.option("--json", "as_json", is_flag=True, default=False, help="Output JSON.")
-@click.pass_context
-def session_list_cmd(ctx: click.Context, since: str | None, as_json: bool) -> None:
-    """List recent sessions with costs and durations (newest first, max 20)."""
-    from atelier.infra.runtime.session_report import (
-        build_report,
-        list_run_files,
-    )
-
-    root: Path = ctx.obj["root"]
-    cutoff = datetime.now(UTC) - _parse_duration(since) if since else None
-    files = list_run_files(root, since=cutoff)[:20]
-
-    if not files:
-        msg = "No sessions found"
-        if since:
-            msg += f" in the last {since}"
-        click.echo(msg + ".", err=True)
-        return
-
-    rows = []
-    for f in files:
-        try:
-            snapshot = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        try:
-            report = build_report(snapshot, root)
-        except Exception:
-            logging.exception("session report build failed for %s", f)
-            continue
-        rows.append(report)
-
-    if as_json:
-        click.echo(
-            json.dumps(
-                [dataclasses.asdict(r) for r in rows],
-                default=str,
-                indent=2,
-            )
-        )
-        return
-
-    hdr = f"  {'Session':<10} {'Started':<22} {'Duration':<14} {'Turns':>6} {'Cost':>9} {'Saved':>9}"
-    click.echo(hdr)
-    click.echo("  " + "─" * (len(hdr) - 2))
-    for r in rows:
-        sid = r.session_id[:10]
-        started = r.started_at.strftime("%Y-%m-%d %H:%M")
-        from atelier.infra.runtime.session_report import (
-            _fmt_cost,
-            _fmt_duration,
-        )
-
-        dur = _fmt_duration(r.duration_seconds, r.is_running)
-        click.echo(
-            f"  {sid:<10} {started:<22} {dur:<14} {r.total_turns:>6}"
-            f" {_fmt_cost(r.total_cost_usd):>9} {_fmt_cost(r.total_atelier_savings_usd):>9}"
-        )
 
 
 # Claude Code launches subagents via "Agent" (formerly "Task").
@@ -1610,7 +1548,7 @@ def _stream_hosts_live(
     return collected_rows
 
 
-@session_group.command("hosts")
+@session_group.command("list")
 @click.option(
     "--host",
     "hosts",
@@ -1646,7 +1584,7 @@ def _stream_hosts_live(
     help="Override source path for the selected host (requires exactly one --host).",
 )
 @click.pass_context
-def session_hosts_cmd(
+def session_list_cmd(
     ctx: click.Context,
     hosts: tuple[str, ...],
     limit: int,
