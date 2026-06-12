@@ -17,6 +17,11 @@ from typing import Any
 
 import click
 
+# ── Auto-install flag ─────────────────────────────────────────────────────
+# Set True by commands/__init__.py when any command module import fails.
+# app.py checks this at startup and runs ``uv sync`` to install deps.
+_IMPORT_FAILED: bool = False
+
 _REDACTION_PLACEHOLDER_RE = re.compile(r"<redacted[^>]*>")
 
 
