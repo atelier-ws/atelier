@@ -101,7 +101,7 @@ class AtelierHarborAgent(BaseInstalledAgent):
         if _ATELIER_VERSION == "latest":
             await self.exec_as_agent(
                 environment,
-                command="pip install --quiet atelier || pip install --quiet atelier-runtime",
+                command="pip install --quiet atelier || pip install --quiet atelier-ws",
             )
         else:
             await self.exec_as_agent(

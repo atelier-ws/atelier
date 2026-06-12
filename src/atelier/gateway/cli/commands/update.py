@@ -93,7 +93,7 @@ def _github_latest_version() -> str | None:
 
     try:
         req = urllib.request.Request(
-            "https://api.github.com/repos/atelier-runtime/atelier/releases/latest",
+            "https://api.github.com/repos/atelier-ws/atelier/releases/latest",
             headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "atelier-update/1.0"},
         )
         resp = urllib.request.urlopen(req, timeout=10)
@@ -270,7 +270,7 @@ def _update_binary() -> bool:
 
     suffix = f"{platform}-{arch_part}"
     asset = f"atelier-binaries-{suffix}.tar.gz"
-    url = f"https://github.com/atelier-runtime/atelier/releases/latest/download/{asset}"
+    url = f"https://github.com/atelier-ws/atelier/releases/latest/download/{asset}"
 
     current_binary = Path(sys.executable if _is_frozen() else (shutil.which("atelier") or ""))
     if not current_binary.exists():

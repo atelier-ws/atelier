@@ -22,7 +22,7 @@ For host integrations, SCIP indexers, background services, and the optional
 visualization stack, install from a repo checkout using the dev installer:
 
 ```bash
-git clone https://github.com/atelier-runtime/atelier.git
+git clone https://github.com/atelier-ws/atelier.git
 cd atelier
 bash scripts/local.sh --local
 ```
@@ -71,19 +71,19 @@ atelier background status
 Skip host integrations:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/local.sh | bash -s -- --no-hosts
+curl -fsSL https://raw.githubusercontent.com/atelier-ws/atelier/main/scripts/local.sh | bash -s -- --no-hosts
 ```
 
 Skip auto-starting background services:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/local.sh | ATELIER_NO_SERVICECTL=1 bash
+curl -fsSL https://raw.githubusercontent.com/atelier-ws/atelier/main/scripts/local.sh | ATELIER_NO_SERVICECTL=1 bash
 ```
 
 Skip auto-starting the visualization stack:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/local.sh | ATELIER_NO_STACK=1 bash
+curl -fsSL https://raw.githubusercontent.com/atelier-ws/atelier/main/scripts/local.sh | ATELIER_NO_STACK=1 bash
 ```
 
 Install from a local checkout instead of GitHub:

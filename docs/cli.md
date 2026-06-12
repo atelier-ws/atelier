@@ -26,15 +26,15 @@ atelier help background
 These commands cover installation state, local runtime initialization, and the
 optional visualization stack.
 
-| Command                  | Purpose                                                 |
-| ------------------------ | ------------------------------------------------------- |
-| `atelier init`           | Initialize the runtime store under `--root`.            |
-| `atelier uninstall`      | Remove Atelier-managed host integrations and wrappers.  |
-| `atelier status`         | Show local plugin, auth, and subscription status.       |
+| Command                  | Purpose                                                        |
+| ------------------------ | -------------------------------------------------------------- |
+| `atelier init`           | Initialize the runtime store under `--root`.                   |
+| `atelier uninstall`      | Remove Atelier-managed host integrations and wrappers.         |
+| `atelier status`         | Show local plugin, auth, and subscription status.              |
 | `atelier stack ...`      | Start, stop, inspect, or log the optional native UI/API stack. |
-| `atelier service ...`    | Manage the HTTP/API service surface.                    |
-| `atelier background ...` | Manage OS-level background services and auto-updates.   |
-| `atelier worker ...`     | Inspect, enqueue, and run worker jobs.                  |
+| `atelier service ...`    | Manage the HTTP/API service surface.                           |
+| `atelier background ...` | Manage OS-level background services and auto-updates.          |
+| `atelier worker ...`     | Inspect, enqueue, and run worker jobs.                         |
 
 Common examples:
 
@@ -69,15 +69,16 @@ To configure the loop manually (not recommended for general use):
 # Start the internal loop with custom auto-update settings
 atelier servicectl run --auto-update --auto-update-interval-seconds 3600
 ```
+
 ## Traces, Ledgers, and Operational State
 
 Atelier persists observable execution state rather than hidden reasoning.
 
-| Command                    | Purpose                                               |
-| -------------------------- | ----------------------------------------------------- |
-| `atelier runs ...`         | Record, list, and inspect run data.                   |
-| `atelier ledger ...`       | Manage run ledgers and session state.                 |
-| `atelier swarm ...`        | Fan out isolated child attempts into git worktrees.   |
+| Command              | Purpose                                             |
+| -------------------- | --------------------------------------------------- |
+| `atelier runs ...`   | Record, list, and inspect run data.                 |
+| `atelier ledger ...` | Manage run ledgers and session state.               |
+| `atelier swarm ...`  | Fan out isolated child attempts into git worktrees. |
 
 Examples:
 
@@ -113,12 +114,12 @@ What the harness guarantees today:
 
 Useful child environment variables:
 
-| Variable | Meaning |
-| --- | --- |
-| `ATELIER_SWARM_SPEC_PATH` | Copied spec path inside the child worktree |
-| `ATELIER_SWARM_RESULT_PATH` | Final structured result artifact written by the wrapper |
-| `ATELIER_SWARM_METADATA_PATH` | Optional child-authored JSON metadata (`summary`, `token_count`, `cost_usd`, `validation_results`) |
-| `ATELIER_SWARM_RUN_ID` / `ATELIER_SWARM_CHILD_ID` | Stable coordinator and child identifiers |
+| Variable                                          | Meaning                                                                                            |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `ATELIER_SWARM_SPEC_PATH`                         | Copied spec path inside the child worktree                                                         |
+| `ATELIER_SWARM_RESULT_PATH`                       | Final structured result artifact written by the wrapper                                            |
+| `ATELIER_SWARM_METADATA_PATH`                     | Optional child-authored JSON metadata (`summary`, `token_count`, `cost_usd`, `validation_results`) |
+| `ATELIER_SWARM_RUN_ID` / `ATELIER_SWARM_CHILD_ID` | Stable coordinator and child identifiers                                                           |
 
 Inspection commands:
 
@@ -135,12 +136,12 @@ supplied spec path escapes the project root.
 
 Built-in runner profiles:
 
-| Runner | Command shape |
-| --- | --- |
-| `claude` | `claude --model <model> -p "<prompt>"` |
-| `codex` | `codex exec -m <model> "<prompt>"` |
-| `copilot` | `copilot --model <model> -p "<prompt>" --allow-all` |
-| `opencode` | `opencode run -m <provider/model> "<prompt>"` |
+| Runner          | Command shape                                           |
+| --------------- | ------------------------------------------------------- |
+| `claude`        | `claude --model <model> -p "<prompt>"`                  |
+| `codex`         | `codex exec -m <model> "<prompt>"`                      |
+| `copilot`       | `copilot --model <model> -p "<prompt>" --allow-all`     |
+| `opencode`      | `opencode run -m <provider/model> "<prompt>"`           |
 | `ollama-claude` | `ollama launch claude --model <model> -- -p "<prompt>"` |
 
 You can still bypass profiles entirely and pass any raw child command after `--`
@@ -167,12 +168,12 @@ Atelier **MCP tools** (`read`, `grep`, `search`, `symbols`, `node`, `callers`,
 `callees`, `usages`, `impact`, `explore`, `pattern`) rather than standalone CLI
 commands. Invoke them through your agent host or via `atelier tools call <name>`.
 
-| Command                  | Purpose                                                 |
-| ------------------------ | ------------------------------------------------------- |
-| `atelier code index`     | Build or refresh the SCIP code index for a repository.  |
-| `atelier tool-mode ...`  | Configure smart tool replacement/shadow/suggest modes.  |
-| `atelier tool-report`    | Report tool usage, savings, and redundancy patterns.    |
-| `atelier optimize`       | Show session cost optimization recommendations.         |
+| Command                 | Purpose                                                |
+| ----------------------- | ------------------------------------------------------ |
+| `atelier code index`    | Build or refresh the SCIP code index for a repository. |
+| `atelier tool-mode ...` | Configure smart tool replacement/shadow/suggest modes. |
+| `atelier tool-report`   | Report tool usage, savings, and redundancy patterns.   |
+| `atelier optimize`      | Show session cost optimization recommendations.        |
 
 Examples:
 
@@ -259,6 +260,6 @@ is command-specific rather than universal.
 
 ## Related References
 
-- [README.md](https://github.com/atelier-runtime/atelier#readme)
+- [README.md](https://github.com/atelier-ws/atelier#readme)
 - [docs/installation.md](installation.md)
 - [docs/sdk/mcp.md](sdk/mcp.md)

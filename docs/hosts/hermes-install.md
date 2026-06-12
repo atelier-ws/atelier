@@ -92,7 +92,7 @@ cat ~/.hermes/config.yaml
 
 | Problem                          | Fix                                                                             |
 | -------------------------------- | ------------------------------------------------------------------------------- |
-| "atelier mcp: command not found" | Run `pip install atelier-runtime` or reinstall via `make install`               |
+| "atelier mcp: command not found" | Run `pip install atelier-ws` or reinstall via `make install`                    |
 | Tools not showing up in Hermes   | Verify `mcp-atelier` is in `platform_toolsets.cli` — start a new Hermes session |
 | `$HERMES_HOME` not set           | Installer defaults to `~/.hermes/config.yaml`. Set `HERMES_HOME` to customize.  |
 | Tools fail with "hermes" label   | Check `config.yaml` has `--host hermes` in the atelier args                     |

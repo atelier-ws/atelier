@@ -45,6 +45,7 @@ done
 echo "📄 Checking for unauthorized .md files..."
 md_files=$(git ls-files "*.md" \
     | grep -v "^docs/" \
+    | grep -v "^docs-internal/" \
     | grep -v "^docs-archive/" \
     | grep -v "^reports/" \
     | grep -v "^.planning/" \

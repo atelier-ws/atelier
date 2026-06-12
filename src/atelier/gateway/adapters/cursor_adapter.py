@@ -134,7 +134,7 @@ class CursorAdapter(AgentAdapter):
         """Return installation instructions for Cursor IDE integration."""
         return (
             "# Cursor IDE ← Atelier integration\n"
-            "1. pip install atelier-runtime\n"
+            "1. pip install atelier-ws\n"
             "2. atelier init && atelier mcp    # verify MCP server starts\n"
             "3. Add to ~/.cursor/mcp.json:\n"
             '   { "mcpServers": {\n'

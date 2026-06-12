@@ -2,7 +2,7 @@
 # dev.sh — Comprehensive Atelier developer installer (uv, git, npm, host integrations).
 #
 # For a minimal production bootstrap (bash + curl only) use scripts/install.sh:
-#   curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
+#   curl -fsSL https://github.com/atelier-ws/atelier/releases/latest/download/install.sh | bash
 #
 # Usage (dev install from repo checkout):
 #   bash scripts/dev.sh --local
@@ -11,7 +11,7 @@
 # Pass --advanced --memory letta|openmemory to install one Docker sidecar.
 #
 # Optional environment variables:
-#   ATELIER_REPO_URL   Git URL (default: https://github.com/atelier-runtime/atelier.git)
+#   ATELIER_REPO_URL   Git URL (default: https://github.com/atelier-ws/atelier.git)
 #   ATELIER_REF        Git ref to install (default: main)
 #   ATELIER_INSTALL_DIR Install location (default: ~/.local/share/atelier)
 #   ATELIER_BIN_DIR    Global bin dir for console scripts (default: ~/.local/bin)
