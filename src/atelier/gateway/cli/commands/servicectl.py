@@ -298,6 +298,7 @@ def servicectl_start(
         str(session_import_interval_seconds),
         "--external-analytics-interval-seconds",
         str(external_analytics_interval_seconds),
+        "--auto-update",
     ]
     for period in _normalize_external_analytics_periods(external_analytics_periods):
         command.extend(["--external-analytics-period", period])
