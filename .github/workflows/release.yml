@@ -87,6 +87,7 @@ jobs:
 
           ### Assets
           - \`install.sh\` — public installer script
+          - \`sessions.sh\` — session management utility
           - \`atelier-binaries-*.tar.gz\` — bundled production binaries for supported platforms
           EOF
 
@@ -102,7 +103,7 @@ jobs:
           fi
 
           shopt -s nullglob
-          assets=(binaries/* scripts/install.sh)
+          assets=(binaries/* scripts/install.sh scripts/sessions.sh)
 
           if (( ${#assets[@]} == 0 )); then
             echo "::error::No release assets were found."
