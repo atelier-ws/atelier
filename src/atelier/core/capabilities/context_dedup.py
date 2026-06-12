@@ -85,6 +85,17 @@ class ContextDedup:
         stub = f"[atelier dedup] read #{seen_ordinal} — {len(content)} chars omitted. force=true re-emits."
         return stub, len(content) - len(stub)
 
+    def forget(self, *, session_id: str, content: str, epoch: int) -> None:
+        """Drop a recorded content hash (e.g. its original was compressed away).
+
+        After forgetting, the next identical result re-emits in full instead of
+        stubbing to content that no longer exists verbatim in the transcript.
+        """
+        st = self._sessions.get(session_id)
+        if st is None or st.epoch != epoch:
+            return
+        st.seen.pop(_hash(content), None)
+
 
 _REGISTRY = ContextDedup()
 
