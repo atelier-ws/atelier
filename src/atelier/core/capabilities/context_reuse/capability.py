@@ -34,20 +34,17 @@ from .dead_ends import DeadEndTracker
 
 try:
     import networkx as nx
-except Exception:  # pragma: no cover - optional dependency fallback
-    logging.exception("Recovered from broad exception handler")
+except ImportError:  # pragma: no cover - optional dependency fallback
     nx: Any = None  # type: ignore[no-redef]
 
 try:
     from river import stats
-except Exception:  # pragma: no cover - optional dependency fallback
-    logging.exception("Recovered from broad exception handler")
+except ImportError:  # pragma: no cover - optional dependency fallback
     stats: Any = None  # type: ignore[no-redef]
 
 try:
-    from datasketch import HNSW
-except Exception:  # pragma: no cover - optional dependency fallback
-    logging.exception("Recovered from broad exception handler")
+    from datasketch.hnsw import HNSW
+except ImportError:  # pragma: no cover - optional dependency fallback
     HNSW: Any = None  # type: ignore[no-redef]
 
 # ---------------------------------------------------------------------------
