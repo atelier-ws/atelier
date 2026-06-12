@@ -444,6 +444,7 @@ class CodexImporter:
 
     def _parse_event_msg(self, session_id: str, raw_content: str, artifact_id: str) -> Trace:
         tools_called: dict[str, int] = {}
+        mcp_atelier_calls: dict[str, int] = {}  # atelier MCP calls keyed as "atelier_<tool>"
         tool_args: dict[str, dict[str, Any] | None] = {}
         tool_in_tokens: dict[str, int] = {}
         tool_out_tokens: dict[str, int] = {}
@@ -597,7 +598,11 @@ class CodexImporter:
                 elif ptype == "mcp_tool_call_end":
                     invocation = payload.get("invocation") or {}
                     tool_name = invocation.get("tool", "mcp")
-                    tools_called[tool_name] = tools_called.get(tool_name, 0) + 1
+                    if invocation.get("server") == "atelier":
+                        key = f"atelier_{tool_name}"
+                        mcp_atelier_calls[key] = mcp_atelier_calls.get(key, 0) + 1
+                    else:
+                        tools_called[tool_name] = tools_called.get(tool_name, 0) + 1
 
             elif ev_type == "response_item":
                 # Newer CLI still wraps in event_msg but also emits response_item
@@ -678,6 +683,17 @@ class CodexImporter:
                 usage_entries.append(fallback_usage)
 
         usage_summary = summarize_usage_entries(usage_entries, fallback_model=model_seen)
+
+        # Reconcile Atelier MCP calls: remove their duplicate function_call counts,
+        # then merge with atelier_<tool> prefix so downstream can classify correctly.
+        for atelier_key, mcp_count in mcp_atelier_calls.items():
+            native_key = atelier_key[len("atelier_"):]  # strip prefix to get base name
+            native_remaining = tools_called.get(native_key, 0) - mcp_count
+            if native_remaining <= 0:
+                tools_called.pop(native_key, None)
+            else:
+                tools_called[native_key] = native_remaining
+        tools_called.update(mcp_atelier_calls)
 
         # ── Build Trace with reasoning ───────────────────────────────────────────────
         return Trace(
