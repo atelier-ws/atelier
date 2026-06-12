@@ -7,10 +7,10 @@ import re
 from typing import Any
 
 import tiktoken
-from datasketch import MinHash
+from datasketch.minhash import MinHash
 
 try:
-    from datasketch import MinHashLSH
+    from datasketch.lsh import MinHashLSH
 except ImportError:
     MinHashLSH = None
 

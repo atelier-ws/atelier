@@ -27,54 +27,17 @@ uv pip install --python "$PYTHON" .[dev]
 
 # Remove scipy (119 MB native libs, not needed at runtime; gracefully handled)
 echo "◆ Removing scipy from build venv..."
-# uv pip uninstall does not accept -y; it is non-interactive by default.
 uv pip uninstall --python "$PYTHON" scipy 2>/dev/null || true
 
-# Patch datasketch __init__.py to make scipy-dependent submodules lazy
-DATASKETCH_INIT="$BUILD_VENV/lib/python3.13/site-packages/datasketch/__init__.py"
-if [ -f "$DATASKETCH_INIT" ] && ! grep -q "Lazy-load scipy-dependent" "$DATASKETCH_INIT" 2>/dev/null; then
-    echo "◆ Patching datasketch for optional scipy..."
-    python3 -c "
-import re
-
-path = '$DATASKETCH_INIT'
-with open(path) as f:
-    content = f.read()
-
-# Wrap scipy-dependent imports in try/except ImportError blocks
-# These submodules transitively import scipy which was removed from the build venv
-LAZY_IMPORTS = {
-    'datasketch.aio': ['AsyncMinHashLSH'],
-    'datasketch.lsh': ['MinHashLSH'],
-    'datasketch.lsh_bloom': ['MinHashLSHBloom'],
-    'datasketch.lshensemble': ['MinHashLSHEnsemble'],
-    'datasketch.weighted_minhash': ['WeightedMinHash', 'WeightedMinHashGenerator'],
-}
-
-patched = False
-for mod, names in LAZY_IMPORTS.items():
-    pattern = r'^from ' + re.escape(mod) + r' import (.+)$'
-    match = re.search(pattern, content, re.MULTILINE)
-    if match:
-        existing = match.group(0)
-        indent = '    '
-        name_list = ', '.join(names)
-        none_assignments = ', '.join(['None'] * len(names))
-        header = '# Lazy-load scipy-dependent modules (scipy may not be installed)\n' if not patched else ''
-        replacement = (
-            f'{header}try:\n'
-            f'{indent}from {mod} import {name_list}\n'
-            f'except ImportError:\n'
-            f'{indent}{name_list} = {none_assignments}'
-        )
-        content = content.replace(existing, replacement, 1)
-        patched = True
-
-with open(path, 'w') as f:
-    f.write(content)
-
-print('Datasketch patched successfully.')
-"
+# Replace babel with our minimal stub (saves ~32 MB of locale data).
+# courlan (trafilatura dep) imports babel only for Locale.parse + UnknownLocaleError.
+# The stub at src/atelier/_vendor/babel/ implements exactly that interface.
+BABEL_SITE="$BUILD_VENV/lib/python3.13/site-packages/babel"
+if [ -d "$BABEL_SITE" ]; then
+    echo "◆ Replacing babel with minimal stub (saves ~32 MB)..."
+    rm -rf "$BABEL_SITE"
+    mkdir -p "$BABEL_SITE"
+    cp src/atelier/_vendor/babel/__init__.py "$BABEL_SITE/__init__.py"
 fi
 
 # 4. Compile Python Binaries
@@ -117,12 +80,14 @@ PFLAGS=(
     --exclude-module ruff
     --exclude-module black
     # ── Large runtime-optional packages ──────────────────────────────────────
-    # scipy: lazily imported by datasketch (patched) and river (try/except);
-    #        the uninstall above removes it from the venv before this runs.
+    # scipy: removed from venv before PyInstaller runs (see above).
+    #        datasketch imports now use direct submodules (minhash.py, hnsw.py)
+    #        so datasketch.__init__ never runs, avoiding the scipy-dependent LSH imports.
     --exclude-module scipy
-    # hf_xet: optional HuggingFace Xet download accelerator, not used by
-    #         Atelier at runtime. Saves ~12 MB.
+    # hf_xet: optional HuggingFace Xet download accelerator, not used at runtime.
     --exclude-module hf_xet
+    # babel: replaced with our minimal stub above — stub is bundled as `babel`.
+    #        No --exclude-module needed; PyInstaller picks up the stub automatically.
     --hidden-import ortools
     --hidden-import ortools.sat.python.cp_model
     --hidden-import tiktoken_ext.openai_public
