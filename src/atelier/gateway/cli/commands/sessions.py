@@ -482,6 +482,22 @@ def _cache_read_rate(model: str, breakdown: dict[str, float], cache_read_tokens:
     return 0.0
 
 
+def _input_rate(model: str, breakdown: dict[str, float], input_tokens: int) -> float:
+    """Per-token input USD rate: model rate card first, observed fallback."""
+    try:
+        from atelier.core.capabilities.pricing import get_model_pricing
+        from atelier.core.capabilities.savings_summary import resolve_model_id
+
+        pricing = get_model_pricing(resolve_model_id(model))
+        if pricing is not None and pricing.known and pricing.input > 0:
+            return float(pricing.input) / 1_000_000
+    except Exception:
+        logging.exception("failed to resolve input rate for model=%s", model)
+    if input_tokens > 0 and breakdown["input"] > 0:
+        return breakdown["input"] / input_tokens
+    return 0.0
+
+
 def _term_width() -> int:
     return shutil.get_terminal_size(fallback=(120, 24)).columns
 
@@ -542,87 +558,72 @@ def _is_atelier_tool_name(name: str) -> bool:
     )
 
 
-# Read-like tools that Atelier deduplicates: re-reading the same file/pattern
-# across a session is the primary source of dedup savings.  Bash/edit/shell
-# are sequential unique work — each call is different, so they have no
-# meaningful dedup potential.
-# Host-specific aliases: 'view'/'rg' = Copilot; 'symbolsx'/'explore' = various.
-_POTENTIAL_DEDUP = frozenset((
-    "read", "view", "grep", "rg", "glob", "search", "explore",
+# Builtin tools with a direct Atelier equivalent (read/search, shell, edit
+# families).  Only these count toward routable volume; bookkeeping tools
+# (todo lists, plan updates, ask-user, task spawns) are never routed.
+_ROUTABLE_BUILTIN = frozenset((
+    # read/search family
+    "read", "view", "grep", "rg", "glob", "search", "explore", "symbols",
+    "read_file", "readfile", "grep_search", "list_directory", "list_dir",
+    "codebase_search",
+    # shell family
+    "bash", "shell", "exec", "exec_command", "run_shell_command",
+    "run_terminal_cmd",
+    # edit family
+    "edit", "apply_patch", "applypatch", "patch", "replace", "write",
+    "write_file", "str_replace",
 ))
 
-# Conservative re-read fraction: empirically ~1 in 4 read/grep calls revisits
-# a resource already seen earlier in the same session.
-_REREAD_RATE = 4  # 1 in _REREAD_RATE calls is an estimated re-read
+# Fleet-measured Atelier savings rate, shipped with the binary so estimates
+# work on machines with no local Atelier history.  Measured 2026-06 across
+# 20 Claude sessions / 1,554 routed calls (stop-hook ground truth): weighted
+# average 3,265 output tokens saved per routed call (focused reads + store
+# dedup vs raw builtin output), stable across fable-5 / sonnet-4-6 / opus-4-8.
+_FLEET_SAVED_TOKENS_PER_CALL = 3265
 
-# Fallback output-token estimate per read-like call when the host doesn't
-# record per-tool output tokens (e.g. codex distributes turn tokens evenly).
-# Based on typical Claude atelier read/grep output sizes.
-_DEFAULT_READ_OUTPUT_TOKENS = 3000
+
+def _base_tool_name(name: str) -> str:
+    """Normalize a host tool name to its base form (cursor:rg -> rg,
+    mcp__atelier__read -> read, atelier_grep -> grep)."""
+    base = (name or "").strip().lower()
+    base = base.split(":")[-1]
+    for prefix in ("mcp__atelier__", "mcp__plugin_atelier_atelier__", "atelier_"):
+        if base.startswith(prefix):
+            return base[len(prefix):]
+    if "__" in base:
+        base = base.split("__")[-1]
+    return base
 
 
 def _builtin_potential(
     trace: Trace,
 ) -> dict[str, Any]:
-    """Estimate what Atelier would have saved on a session that used only builtins.
+    """Classify a session's tool calls for savings estimation.
 
-    Only read-like tools (read, grep, glob, search) are considered: these are
-    the calls where Atelier's dedup cache provides real savings.  Bash/edit/shell
-    are sequential, unique work — dedup does not apply to them.
-
-    saved  = estimated re-reads that Atelier would have deduplicated.
-             We use a conservative 1-in-4 rate because we cannot see whether
-             two Read calls hit the same file without the full call sequence.
-    carry  = re-read outputs kept out of persistent context across later turns.
-
-    Token estimates are raw; the caller bounds the total by the session's actual
-    cache spend.
+    Returns builtin/atelier call counts plus ``routable_builtin``: the
+    builtin calls with a direct Atelier equivalent (read/search, shell,
+    edit).  These are the calls the potential-savings estimate applies to;
+    bookkeeping tools (todos, plan updates, ask-user) are excluded.
     """
-    by_tool: dict[str, int] = {}
-    out_by_tool: dict[str, int] = {}
     atelier_calls = 0
     builtin_calls = 0
+    routable_builtin = 0
     for tool in trace.tools_called:
         name = str(tool.name or "").strip()
         count = int(tool.count or 0)
         if count <= 0:
             continue
-        key = name.lower()
-        by_tool[key] = by_tool.get(key, 0) + count
-        out_by_tool[key] = out_by_tool.get(key, 0) + int(tool.output_tokens or 0)
         if _is_atelier_tool_name(name):
             atelier_calls += count
         else:
             builtin_calls += count
-
-    # Dedup potential: read-like tools only, conservative re-read fraction.
-    dedup_calls_est = 0
-    dedup_output_tokens = 0
-    for key in _POTENTIAL_DEDUP:
-        count = by_tool.get(key, 0)
-        if count < _REREAD_RATE:
-            continue
-        estimated_reruns = count // _REREAD_RATE
-        dedup_calls_est += estimated_reruns
-        total_out = out_by_tool.get(key, 0)
-        if total_out > 0:
-            dedup_output_tokens += total_out * estimated_reruns // count
-        else:
-            # Host doesn't record per-tool output tokens (e.g. codex): use a
-            # conservative per-call default based on typical read output sizes.
-            dedup_output_tokens += estimated_reruns * _DEFAULT_READ_OUTPUT_TOKENS
-
-    turns = len(trace.usage_entries)
-    potential_tokens_saved = dedup_output_tokens
-    potential_carry_tokens = dedup_output_tokens * max(1, turns // 2)
+            if _base_tool_name(name) in _ROUTABLE_BUILTIN:
+                routable_builtin += count
 
     return {
         "builtin_calls": builtin_calls,
         "atelier_calls": atelier_calls,
-        "calls_saved": dedup_calls_est,
-        "calls_batchable": dedup_calls_est,
-        "tokens_saved": potential_tokens_saved,
-        "carry_tokens": potential_carry_tokens,
+        "routable_builtin": routable_builtin,
     }
 
 
@@ -673,93 +674,81 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
                     ratio = block.est_cost_usd / bucket_sum
                     breakdown = {k: v * ratio for k, v in breakdown.items()}
     elif int(potential["atelier_calls"]) > 0:
-        # Estimate savings for non-Claude hosts from actual Atelier tool usage.
-        # Only read-like Atelier tools contribute to dedup savings; write/edit/shell
-        # are sequential unique work and don't re-read the same resource.
-        # Use the same conservative re-read fraction as _builtin_potential.
-        dedup_out_tokens = 0
-        for tool in trace.tools_called:
-            name = str(tool.name or "").lower()
-            if not _is_atelier_tool_name(name):
-                continue
-            # Extract the base tool name (e.g. mcp__atelier__read -> read)
-            base = name
-            for prefix in ("mcp__atelier__", "mcp__plugin_atelier_atelier__", "atelier_"):
-                if base.startswith(prefix):
-                    base = base[len(prefix):]
-                    break
-            if base not in _POTENTIAL_DEDUP:
-                continue
-            count = int(tool.count or 0)
-            if count < _REREAD_RATE:
-                continue
-            total_out = int(tool.output_tokens or 0)
-            estimated_reruns = count // _REREAD_RATE
-            dedup_out_tokens += total_out * estimated_reruns // count
-        turns = len(trace.usage_entries)
-        saved_tokens = dedup_out_tokens
-        carry_tokens = dedup_out_tokens * max(1, turns // 2)
+        # Estimate actual savings for non-Claude hosts that routed work through
+        # Atelier: fleet rate (tokens saved per routed call) x routed calls.
+        # API turns ~= tool calls (each call is one round trip); usage_entries
+        # is the fallback for hosts that record one entry per assistant turn.
+        turns = max(len(trace.usage_entries), _tool_call_total(trace))
+        saved_tokens = int(potential["atelier_calls"]) * _FLEET_SAVED_TOKENS_PER_CALL
+        # Carry: every saved token also avoids one cache re-read per later
+        # turn; a call made mid-session has ~turns/2 turns after it.
+        carry_tokens = saved_tokens * max(0, turns // 2)
     cr_rate = _cache_read_rate(pricing_model, breakdown, cache_read_tokens)
+    in_rate = _input_rate(pricing_model, breakdown, input_tokens)
+    atelier_calls = int(potential["atelier_calls"])
+    builtin_calls = int(potential["builtin_calls"])
+    total_calls = atelier_calls + builtin_calls
+    atelier_share = atelier_calls / max(1, total_calls)
+    builtin_share = builtin_calls / max(1, total_calls)
+    # Channel cap bases: saved tokens would have been fed once (input/cache-
+    # write spend); carry tokens are re-reads (cache-read spend).
+    feed_cost = breakdown["input"] + breakdown["cache_write"]
+    reread_cost = breakdown["cache_read"]
     if host_name != "claude" and saved_tokens > 0:
-        saved_usd = saved_tokens * cr_rate
+        saved_usd = saved_tokens * in_rate
         carry_usd = carry_tokens * cr_rate
-        # Cap: Atelier tools are atelier_share of all calls; they can't save more
-        # than that fraction of the session's total cache cost.
-        _atelier_call_cnt = int(potential["atelier_calls"])
-        _total_call_cnt = _atelier_call_cnt + int(potential["builtin_calls"])
-        _atelier_share = _atelier_call_cnt / max(1, _total_call_cnt)
-        _cache_cost_cap = (breakdown["cache_read"] + breakdown["cache_write"]) * _atelier_share
-        _savings_total = saved_usd + carry_usd
-        if _savings_total > _cache_cost_cap > 0:
-            _scale = _cache_cost_cap / _savings_total
-            saved_usd *= _scale
-            carry_usd *= _scale
-            saved_tokens = int(saved_tokens * _scale)
-            carry_tokens = int(carry_tokens * _scale)
+        # Channel caps on the atelier share of observed spend.  Carry allows
+        # 2x the call share: measured Claude sessions show avoided carry can
+        # match the full cache-read spend at ~50% routing.
+        saved_cap = feed_cost * atelier_share
+        carry_cap = reread_cost * min(1.0, atelier_share * 2)
+        if saved_usd > saved_cap:
+            scale = saved_cap / saved_usd if saved_usd > 0 else 0.0
+            saved_usd = saved_cap
+            saved_tokens = int(saved_tokens * scale)
+        if carry_usd > carry_cap:
+            scale = carry_cap / carry_usd if carry_usd > 0 else 0.0
+            carry_usd = carry_cap
+            carry_tokens = int(carry_tokens * scale)
 
-    # --- potential ---
-    # calls_batchable = all batchable builtin calls that could route through Atelier
-    # (carry applies to all; saved/dedup applies to repeated identical calls only)
-    batchable_calls = int(potential["calls_batchable"])
-    if (
-        host_name == "claude"
-        and (saved_usd + carry_usd) > 0
-        and int(potential["atelier_calls"]) > 0
-        and batchable_calls > 0
-    ):
-        # For Claude where Atelier stop-hook data is available, use the
-        # observed savings rate per atelier call instead of output-token
-        # extrapolation.  The rate accounts for all Atelier value (dedup,
-        # carry, routing) not just batchable context size.
-        actual_total = saved_usd + carry_usd
-        rate = actual_total / int(potential["atelier_calls"])
-        pot_total = rate * batchable_calls
-        saved_frac = saved_usd / actual_total
-        potential_saved_usd = pot_total * saved_frac
-        potential_carry_usd = pot_total * (1.0 - saved_frac)
-        # Derive token counts from USD for display (cr_rate already computed)
-        potential_tokens_saved = int(potential_saved_usd / cr_rate) if cr_rate > 0 else 0
-        potential_carry_tokens = int(potential_carry_usd / cr_rate) if cr_rate > 0 else 0
-    else:
-        # Non-Claude or Claude without savings data: use output-token approach
-        potential_saved_usd = float(potential["tokens_saved"]) * cr_rate
-        potential_carry_usd = float(potential["carry_tokens"]) * cr_rate
-        potential_tokens_saved = int(potential["tokens_saved"])
-        potential_carry_tokens = int(potential["carry_tokens"])
-    total_calls = int(potential["builtin_calls"]) + int(potential["atelier_calls"])
-    builtin_share = int(potential["builtin_calls"]) / max(1, total_calls)
-    cache_cost = breakdown["cache_read"] + breakdown["cache_write"]
-    # For non-caching models (e.g. codex/GPT where cacheR=cacheW=0), fall
-    # back to input cost as the cap: Atelier avoids re-feeding context tokens.
-    cap_base = cache_cost if cache_cost > 0 else breakdown["input"]
-    potential_cap_usd = cap_base * builtin_share
-    potential_total_usd = potential_saved_usd + potential_carry_usd
-    if potential_total_usd > potential_cap_usd:
-        scale = (potential_cap_usd / potential_total_usd) if potential_total_usd > 0 else 0.0
-        potential_saved_usd *= scale
-        potential_carry_usd *= scale
-        potential_tokens_saved = int(potential_tokens_saved * scale)
-        potential_carry_tokens = int(potential_carry_tokens * scale)
+    # --- potential (builtin calls that could have routed through Atelier) ---
+    routable_builtin = int(potential["routable_builtin"])
+    potential_saved_usd = 0.0
+    potential_carry_usd = 0.0
+    potential_tokens_saved = 0
+    potential_carry_tokens = 0
+    if routable_builtin > 0:
+        if host_name == "claude" and (saved_usd + carry_usd) > 0 and atelier_calls > 0:
+            # Session's own measured rate per routed call (stop-hook ground
+            # truth) already blends compression, dedup, and carry; apply it
+            # to every builtin call with an Atelier equivalent.
+            actual_total = saved_usd + carry_usd
+            rate = actual_total / atelier_calls
+            pot_total = rate * routable_builtin
+            saved_frac = saved_usd / actual_total
+            potential_saved_usd = pot_total * saved_frac
+            potential_carry_usd = pot_total * (1.0 - saved_frac)
+            potential_tokens_saved = int(potential_saved_usd / in_rate) if in_rate > 0 else 0
+            potential_carry_tokens = int(potential_carry_usd / cr_rate) if cr_rate > 0 else 0
+        else:
+            # No local ground truth: use the fleet rate shipped with the
+            # binary, priced at this session's model rates.
+            turns = max(len(trace.usage_entries), _tool_call_total(trace))
+            potential_tokens_saved = routable_builtin * _FLEET_SAVED_TOKENS_PER_CALL
+            potential_carry_tokens = potential_tokens_saved * max(0, turns // 2)
+            potential_saved_usd = potential_tokens_saved * in_rate
+            potential_carry_usd = potential_carry_tokens * cr_rate
+        # Same channel caps as actual savings, on the builtin share.
+        saved_cap = feed_cost * builtin_share
+        carry_cap = reread_cost * min(1.0, builtin_share * 2)
+        if potential_saved_usd > saved_cap:
+            scale = saved_cap / potential_saved_usd if potential_saved_usd > 0 else 0.0
+            potential_saved_usd = saved_cap
+            potential_tokens_saved = int(potential_tokens_saved * scale)
+        if potential_carry_usd > carry_cap:
+            scale = carry_cap / potential_carry_usd if potential_carry_usd > 0 else 0.0
+            potential_carry_usd = carry_cap
+            potential_carry_tokens = int(potential_carry_tokens * scale)
     return {
         "host": host_name,
         "session_id": sid,
@@ -788,7 +777,7 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
         "subagent_cost_usd": round(subagent_cost_usd, 6),
         "builtin_calls": int(potential["builtin_calls"]),
         "atelier_calls": int(potential["atelier_calls"]),
-        "potential_calls_saved": int(potential["calls_saved"]),
+        "potential_calls_saved": routable_builtin,
         "potential_tokens_saved": potential_tokens_saved,
         "potential_saved_usd": round(potential_saved_usd, 6),
         "potential_carry_tokens": potential_carry_tokens,
