@@ -21,8 +21,8 @@ Or manually — add to ``~/.cursor/mcp.json``::
       "mcpServers": {
         "atelier": {
           "type": "stdio",
-          "command": "atelier-mcp",
-          "args": []
+          "command": "atelier",
+          "args": ["mcp"]
         }
       }
     }
@@ -135,12 +135,12 @@ class CursorAdapter(AgentAdapter):
         return (
             "# Cursor IDE ← Atelier integration\n"
             "1. pip install atelier-runtime\n"
-            "2. atelier init && atelier-mcp    # verify MCP server starts\n"
+            "2. atelier init && atelier mcp    # verify MCP server starts\n"
             "3. Add to ~/.cursor/mcp.json:\n"
             '   { "mcpServers": {\n'
             '       "atelier": {\n'
             '           "type": "stdio",\n'
-            '           "command": "atelier-mcp",\n'
+            '           "command": "atelier",\n'
             '           "args": []\n'
             "       }\n"
             "   }}\n"

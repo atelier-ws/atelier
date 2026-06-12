@@ -395,6 +395,24 @@ def render_cursor_role_rule(role: DefaultRole, mode_doc: ModeDoc) -> str:
     )
 
 
+def render_shared_skill(role: DefaultRole, mode_doc: ModeDoc) -> str:
+    return (
+        "\n".join(
+            [
+                "---",
+                f"name: {role.role_id}",
+                f"description: {role.skill_description}",
+                "---",
+                "",
+                distribution_notice(),
+                "",
+                render_mode_body(mode_doc),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+
+
 def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
     tool_prefix = _OPENCODE_TOOL_PREFIX if host == "opencode" else ""
     lines = [
@@ -692,6 +710,10 @@ def build_mode_outputs(root: Path | None = None) -> dict[Path, str]:
 
         cursor_path = repo_root / "integrations" / "cursor" / "rules" / f"atelier.{role_id}.mdc"
         outputs[cursor_path] = render_cursor_role_rule(role, mode_doc)
+
+        shared_skill = render_shared_skill(role, mode_doc)
+        for host_dir in HOST_SKILL_DIRS.values():
+            outputs[host_dir / role_id / "SKILL.md"] = shared_skill
 
     for skill_name, skill_path in _extra_shared_skill_paths(repo_root, generated_role_ids).items():
         content = skill_path.read_text(encoding="utf-8")

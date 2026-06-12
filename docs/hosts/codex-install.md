@@ -31,11 +31,12 @@ bash scripts/install_codex.sh --workspace /path/to/workspace
 | Task templates           | not installed globally               | `<workspace>/.codex/tasks/*.md`                |
 
 The installer copies the plugin source, patches the plugin `.mcp.json` to use
-`atelier-mcp --host codex` with `alwaysLoad: true`, registers Atelier in
+`atelier mcp --host codex` with `alwaysLoad: true`, registers Atelier in
 Codex's real MCP registry via `codex mcp add`, attempts to install the Atelier
 plugin via `codex plugin add` when Codex exposes the marketplace, and merges
 the Atelier Codex instructions into an existing `AGENTS.md` instead of failing
 when one is already present.
+
 ## Verify
 
 ```bash
@@ -65,18 +66,19 @@ Or run the Atelier preflight wrapper:
 - Codex loads `atelier@atelier-local` from the personal marketplace with its bundled mode skills and lifecycle hooks
 - On the first session after install or whenever hooks change, Codex asks you to review and trust the Atelier hooks; `/hooks` should show active `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` handlers
 - `UserPromptSubmit` emits a one-shot high-context compaction notice from Codex session telemetry and grounds uninspected multi-file edit prompts before tools run
-- The Codex MCP entry runs `atelier-mcp --host codex` and defaults to `ATELIER_DEV_MODE=0` (stable surface)
+- The Codex MCP entry runs `atelier mcp --host codex` and defaults to `ATELIER_DEV_MODE=0` (stable surface)
 - Atelier persists Codex session imports and savings data under `~/.atelier/`
 - The optional `atelier-codex` preflight wrapper records task context before handing off to Codex
 
 ## Troubleshooting
-| Problem              | Fix                                                                                                            |
-| -------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Plugin not visible   | Check `codex plugin list`, then verify `~/.agents/plugins/marketplace.json` points at the Atelier plugin source path; MCP registration still provides the core Atelier tool surface |
+
+| Problem              | Fix                                                                                                                                                                                                      |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Plugin not visible   | Check `codex plugin list`, then verify `~/.agents/plugins/marketplace.json` points at the Atelier plugin source path; MCP registration still provides the core Atelier tool surface                      |
 | MCP tools missing    | Verify `codex mcp list` shows `atelier`, then inspect `~/.codex/config.toml` or `<workspace>/.codex/config.toml` for `[mcp_servers.atelier]` and the installed plugin `.mcp.json` for `alwaysLoad: true` |
-| Wrapper missing      | Re-run install and verify global `atelier-codex` or workspace `bin/atelier-codex` exists                       |
-| Skills look outdated | Re-run `bash scripts/install_codex.sh` to refresh the copied plugin source and reinstall `atelier@atelier-local` |
-| `/hooks` shows zero  | Re-run the installer, restart Codex, confirm `codex plugin list` shows `atelier@atelier-local`, then review and trust the hooks in `/hooks` |
+| Wrapper missing      | Re-run install and verify global `atelier-codex` or workspace `bin/atelier-codex` exists                                                                                                                 |
+| Skills look outdated | Re-run `bash scripts/install_codex.sh` to refresh the copied plugin source and reinstall `atelier@atelier-local`                                                                                         |
+| `/hooks` shows zero  | Re-run the installer, restart Codex, confirm `codex plugin list` shows `atelier@atelier-local`, then review and trust the hooks in `/hooks`                                                              |
 
 ## V2 Tools — Memory, Context Savings, and Lesson Pipeline
 

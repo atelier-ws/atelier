@@ -210,7 +210,7 @@ if $PRINT_ONLY; then
         echo "Step 4 - Project local Claude agents are projected into ${WORKSPACE}/.claude/agents"
     else
         echo "Step 3 - Register MCP in Claude user scope:"
-        echo "  claude mcp add --scope user atelier -- atelier-mcp --host claude"
+        echo "  claude mcp add --scope user atelier -- atelier mcp --host claude"
     fi
     echo ""
     echo "After install, in Claude Code: /atelier:explore"
@@ -305,50 +305,30 @@ if [ "$STRUCT_FAIL" -ne 0 ]; then
 fi
 info "Structural validation passed"
 
-# ---- refresh atelier-mcp from local source ---------------------------------
-# The MCP server runs from `uv tool install`'s isolated site-packages, NOT
+# ---- refresh atelier from local source ---------------------------------
+# The CLI + MCP server runs from `uv tool install`'s isolated site-packages, NOT
 # from a live source link. Without this step, any change you make under src/
 # (e.g. capability fixes that affect savings emission) won't reach Claude
 # until you re-run install.sh. Reinstall here so install_claude.sh is the
 # single command that keeps plugin assets AND the MCP runtime in sync.
 refresh_atelier_tool() {
     if ! command -v uv >/dev/null 2>&1; then
-        warn "uv not on PATH — skipping atelier-mcp refresh"
+        warn "uv not on PATH — skipping atelier refresh"
         return 0
     fi
     local extras="mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,rename,telemetry"
     local pkg_spec="${ATELIER_REPO}[${extras}]"
-    local bin_dir="${ATELIER_BIN_DIR:-${HOME}/.local/bin}"
-    local tool_dir="${ATELIER_TOOL_DIR:-${HOME}/.local/share/uv/tools}"
 
     if $DRY_RUN; then
         echo "  [dry-run] uv tool install --reinstall ${pkg_spec}"
-        echo "  [dry-run] rebuild ${bin_dir}/atelier-mcp wrapper"
         return 0
     fi
 
-    info "Refreshing atelier-mcp from ${ATELIER_REPO}"
-    UV_TOOL_BIN_DIR="$bin_dir" UV_TOOL_DIR="$tool_dir" \
-        uv tool install --reinstall "$pkg_spec" >/dev/null 2>&1 || {
-            warn "uv tool install --reinstall failed; MCP may run stale code"
-            return 0
-        }
-
-    # uv replaces atelier-mcp with the raw Python entry point. Restore the
-    # bash wrapper so local installs keep a stable entrypoint path.
-    local mcp_path="${bin_dir}/atelier-mcp"
-    local wrapped_path="${bin_dir}/atelier-mcp.real"
-    local real_target="${tool_dir}/atelier/bin/atelier-mcp"
-    if [[ -e "$mcp_path" || -L "$mcp_path" ]]; then
-        rm -f "$wrapped_path" "$mcp_path"
-        ln -s "$real_target" "$wrapped_path"
-        cat > "$mcp_path" <<EOF
-#!/usr/bin/env bash
-exec "$wrapped_path" "\$@"
-EOF
-        chmod +x "$mcp_path"
-        info "atelier-mcp wrapper restored"
-    fi
+    info "Refreshing atelier from ${ATELIER_REPO}"
+    uv tool install --reinstall "$pkg_spec" >/dev/null 2>&1 || {
+        warn "uv tool install --reinstall failed; atelier may run stale code"
+        return 0
+    }
 }
 
 refresh_atelier_tool
@@ -395,11 +375,11 @@ if $WORKSPACE_SET; then
     info "Project-level .mcp.json is not needed with the Claude plugin — skipping"
 else
     if $DRY_RUN; then
-        echo "  [dry-run] claude mcp add --scope user atelier -- atelier-mcp --host claude"
+        echo "  [dry-run] claude mcp add --scope user atelier -- atelier mcp --host claude"
     else
         info "Registering atelier MCP server in Claude user scope"
         claude mcp remove --scope user atelier 2>/dev/null || true
-        claude mcp add --scope user atelier -- atelier-mcp --host claude
+        claude mcp add --scope user atelier -- atelier mcp --host claude
     fi
 fi
 
@@ -490,7 +470,13 @@ fi
 apply_enforcement_to_settings "${CLAUDE_SETTINGS}"
 
 # ---- statusLine setting in ~/.claude/settings.json -------------------------
+# ATELIER_STATUSLINE_COMPACT=1 installs the compact layout (model · ctx % ·
+# cost · savings · background tasks) instead of the full token breakdown.
 STATUSLINE_SCRIPT="${INSTALL_SOURCE_DIR}/scripts/statusline.sh"
+STATUSLINE_CMD="${STATUSLINE_SCRIPT}"
+if [[ -n "${ATELIER_STATUSLINE_COMPACT:-}" ]]; then
+    STATUSLINE_CMD="ATELIER_STATUS_COMPACT=1 ${STATUSLINE_SCRIPT}"
+fi
 if $DRY_RUN; then
     echo "  [dry-run] set statusLine in ${CLAUDE_SETTINGS} → ${STATUSLINE_SCRIPT}"
 elif [ -f "${STATUSLINE_SCRIPT}" ]; then
@@ -501,7 +487,7 @@ path = Path("${CLAUDE_SETTINGS}")
 if not path.exists():
     path.write_text("{}\n")
 data = json.loads(path.read_text(encoding="utf-8") or "{}")
-data["statusLine"] = {"type": "command", "command": "${STATUSLINE_SCRIPT}", "padding": 1}
+data["statusLine"] = {"type": "command", "command": "${STATUSLINE_CMD}", "padding": 1}
 data["subagentStatusLine"] = {"type": "command", "command": "${STATUSLINE_SCRIPT}", "padding": 1}
 data["agent"] = "atelier:code"
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

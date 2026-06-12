@@ -428,3 +428,106 @@ def test_external_report_cli_streams_tool_progress(tmp_path: Path, monkeypatch: 
     assert "[external-report] done tokscale status=ok" in res.output
     assert "[external-report] running codeburn period=today..." in res.output
     assert "[external-report] done codeburn:optimize status=ok" in res.output
+
+
+def test_session_hosts_lists_host_rows_without_sync(tmp_path: Path) -> None:
+    root = tmp_path / "a"
+    init_store_at(str(root))
+    store = ContextStore(root)
+    store.init()
+    now = datetime.now(UTC)
+    store.record_trace(
+        Trace(
+            id="codex-1",
+            session_id="sid-codex-1",
+            agent="atelier:code",
+            host="codex",
+            domain="coding",
+            task="Fix parser",
+            status="success",
+            input_tokens=1200,
+            cached_input_tokens=3400,
+            output_tokens=220,
+            model="gpt-5.5",
+            usage_entries=[UsageEntry(model="gpt-5.5", input_tokens=1200, output_tokens=220, cost_usd=0.1234)],
+            created_at=now,
+        )
+    )
+    store.record_trace(
+        Trace(
+            id="copilot-1",
+            session_id="sid-copilot-1",
+            agent="atelier:code",
+            host="copilot",
+            domain="coding",
+            task="Refactor helper",
+            status="success",
+            input_tokens=800,
+            cached_input_tokens=500,
+            output_tokens=100,
+            model="gpt-5.3-codex",
+            usage_entries=[UsageEntry(model="gpt-5.3-codex", input_tokens=800, output_tokens=100, cost_usd=0.05)],
+            created_at=now,
+        )
+    )
+
+    res = _invoke(root, "session", "hosts", "--host", "codex", "--limit", "5", "--source", "store", "--json")
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["hosts"]["codex"][0]["session_id"] == "sid-codex-1"
+    assert payload["hosts"]["codex"][0]["source"] == "host_sessions"
+    assert payload["hosts"]["codex"][0]["cost_usd"] > 0
+
+
+def test_session_hosts_filters_by_session_id(tmp_path: Path) -> None:
+    root = tmp_path / "a"
+    init_store_at(str(root))
+    store = ContextStore(root)
+    store.init()
+    now = datetime.now(UTC)
+    store.record_trace(
+        Trace(
+            id="gemini-1",
+            session_id="gemini-target-xyz",
+            agent="atelier:code",
+            host="gemini",
+            domain="coding",
+            task="A",
+            status="success",
+            model="gemini-3.1-flash-lite-preview",
+            usage_entries=[UsageEntry(model="gemini-3.1-flash-lite-preview", cost_usd=0.01)],
+            created_at=now,
+        )
+    )
+    store.record_trace(
+        Trace(
+            id="gemini-2",
+            session_id="gemini-other-abc",
+            agent="atelier:code",
+            host="gemini",
+            domain="coding",
+            task="B",
+            status="success",
+            model="gemini-3.1-flash-lite-preview",
+            usage_entries=[UsageEntry(model="gemini-3.1-flash-lite-preview", cost_usd=0.02)],
+            created_at=now,
+        )
+    )
+
+    res = _invoke(
+        root,
+        "session",
+        "hosts",
+        "--host",
+        "gemini",
+        "--id",
+        "target",
+        "--source",
+        "store",
+        "--json",
+    )
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    rows = payload["hosts"]["gemini"]
+    assert len(rows) == 1
+    assert rows[0]["session_id"] == "gemini-target-xyz"

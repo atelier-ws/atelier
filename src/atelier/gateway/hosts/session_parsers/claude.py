@@ -280,6 +280,14 @@ class ClaudeImporter:
         pending_tool_uses: dict[str, dict[str, Any]] = {}
         file_index_by_tool_use_id: dict[str, int] = {}
         command_index_by_tool_use_id: dict[str, int] = {}
+        # Tool tallies must accumulate across ALL session files (main
+        # transcript + subagents); per-file declarations would leave only the
+        # last subagent's tools on the final trace.
+        tool_args: dict[str, dict[str, Any] | None] = {}
+        tool_results: dict[str, str] = {}
+        tools_called: dict[str, int] = {}
+        tool_in_tokens: dict[str, int] = {}
+        tool_out_tokens: dict[str, int] = {}
         files_touched: list[str | FileEditRecord] = []
         errors_seen: set[str] = set()
         commands_run: list[str | CommandRecord] = []
@@ -319,12 +327,6 @@ class ClaudeImporter:
             )
             self.store.record_raw_artifact(art, redacted)
             artifact_ids.append(art.id)
-
-            tool_args: dict[str, dict[str, Any] | None] = {}
-            tool_results: dict[str, str] = {}
-            tools_called: dict[str, int] = {}
-            tool_in_tokens: dict[str, int] = {}
-            tool_out_tokens: dict[str, int] = {}
 
             for line in redacted.splitlines():
                 line = line.strip()

@@ -79,8 +79,8 @@ MCP_ENTRY=$(cat <<JSON
   "mcpServers": {
     "atelier": {
       "type": "stdio",
-      "command": "atelier-mcp",
-      "args": ["--host", "cursor"],
+      "command": "atelier",
+      "args": ["mcp", "--host", "cursor"],
       "alwaysAllow": ["code","compact","context","edit","grep","memory","read","rescue","route","search","shell","sql","trace","verify"]
     }
   }
@@ -140,7 +140,7 @@ else:
 existing.setdefault('mcpServers', {}).update({
     'atelier': {
         'type': 'stdio',
-        'command': 'atelier-mcp',
+        'command': 'atelier',
         'args': ['--host', 'cursor'],
         'alwaysAllow': ['code','compact','context','edit','grep','memory','read','rescue','route','search','shell','sql','trace','verify'],
     }
@@ -217,10 +217,10 @@ if $WORKSPACE_SET; then
     fi
 fi
 
-if command -v atelier-mcp &>/dev/null; then
-    vpass "atelier-mcp is available on PATH"
+if command -v atelier &>/dev/null; then
+    vpass "atelier is available on PATH"
 else
-    vfail "atelier-mcp NOT found on PATH"
+    vfail "atelier NOT found on PATH"
 fi
 
 if [ "$VFAIL" -ne 0 ]; then

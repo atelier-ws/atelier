@@ -48,14 +48,14 @@ def test_install_script_exists(host: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2. atelier-mcp on PATH
+# 2. atelier mcp on PATH
 # ---------------------------------------------------------------------------
 
 
 def test_mcp_binary_on_path() -> None:
     # Just verify the command is documented as available
     content = (ATELIER_ROOT / "README.md").read_text()
-    assert "atelier-mcp" in content
+    assert "atelier mcp" in content
 
 
 # atelier-status was folded into `atelier status` — its test moved to the CLI test suite.
@@ -85,8 +85,8 @@ def test_build_host_skills_generates_stable_bundle_by_default(tmp_path: Path) ->
         check=True,
     )
     generated = {path.name for path in dest.iterdir() if path.is_dir()}
-    expected = expected_visible_skill_names()
     registry = build_default_registry(ATELIER_ROOT)
+    expected = expected_visible_skill_names() | set(registry.surfaced_role_ids("shared_skill"))
     assert generated == expected
     assert set(registry.surfaced_role_ids("shared_skill")) <= generated
 
@@ -106,8 +106,8 @@ def test_build_host_skills_ignores_removed_dev_bundle_flag(tmp_path: Path) -> No
         check=True,
     )
     generated = {path.name for path in dest.iterdir() if path.is_dir()}
-    expected = expected_visible_skill_names()
     registry = build_default_registry(ATELIER_ROOT)
+    expected = expected_visible_skill_names() | set(registry.surfaced_role_ids("shared_skill"))
     assert generated == expected
     assert set(registry.surfaced_role_ids("shared_skill")) <= generated
 
@@ -170,7 +170,7 @@ def test_verify_agent_clis_references_all_hosts() -> None:
 def test_makefile_has_single_dev_target() -> None:
     content = MAKEFILE.read_text()
     assert "dev:" in content
-    assert "scripts/dev.sh" in content
+    assert "scripts/local.sh" in content
 
 
 def test_makefile_has_single_verify_target() -> None:
@@ -239,8 +239,8 @@ def test_antigravity_mcp_template_exists() -> None:
     assert template.exists(), "integrations/antigravity/mcp.atelier.template.json must exist"
     data = json.loads(template.read_text())
     assert "atelier" in data.get("servers", {}), "Antigravity template must have 'servers.atelier'"
-    assert data["servers"]["atelier"]["command"] == "atelier-mcp"
-    assert data["servers"]["atelier"]["args"] == ["--host", "antigravity"]
+    assert data["servers"]["atelier"]["command"] == "atelier"
+    assert data["servers"]["atelier"]["args"] == ["mcp", "--host", "antigravity"]
 
 
 def test_antigravity_agents_surface_exists() -> None:
@@ -279,7 +279,7 @@ def test_codex_plugin_mcp_template_exists() -> None:
     assert mcp_json.exists(), "integrations/codex/plugin/.mcp.json must exist"
     data = json.loads(mcp_json.read_text())
     atelier = data.get("atelier", {})
-    assert atelier.get("command") == "atelier-mcp", "Codex plugin template must call atelier-mcp directly"
+    assert atelier.get("command") == "atelier", "Codex plugin template must call atelier directly"
 
 
 def test_codex_hooks_bundle_exists() -> None:
@@ -387,12 +387,12 @@ def test_install_scripts_document_global_and_workspace_paths() -> None:
     claude = (SCRIPTS / "install_claude.sh").read_text()
     assert "claude mcp add --scope user atelier" in claude
     assert '.mcp.json"' in claude
-    assert "atelier-mcp" in claude
+    assert '"atelier mcp"' in claude or '"atelier"' in claude
 
     antigravity = (SCRIPTS / "install_antigravity.sh").read_text()
     assert "antigravity --add-mcp" in antigravity
     assert "mcp.json" in antigravity
-    assert "atelier-mcp" in antigravity
+    assert "atelier" in antigravity
 
 
 def test_install_codex_merges_existing_agents_file() -> None:
@@ -450,7 +450,7 @@ def test_dev_sh_installs_tool_scripts_not_uv_runtime_wrappers() -> None:
 def test_dev_sh_has_only_local_and_remote_source_modes() -> None:
     content = (SCRIPTS / "dev.sh").read_text()
     assert "ATELIER_USE_CURRENT_REPO" not in content
-    assert 'elif [[ -f "uv.lock" && -d "src/atelier" && -f "scripts/dev.sh" ]]' not in content
+    assert 'elif [[ -f "uv.lock" && -d "src/atelier" && -f "scripts/local.sh" ]]' not in content
     assert "--local) ATELIER_LOCAL=1" in content
     assert "--remote|--no-local) ATELIER_LOCAL=0" in content
     assert 'if [[ "$ATELIER_LOCAL" == "1" ]]; then' in content
@@ -617,7 +617,7 @@ def test_new_claude_plugin_mcp_is_valid() -> None:
     data = json.loads(mcp_json.read_text())
     assert "mcpServers" in data
     assert "atelier" in data["mcpServers"]
-    assert data["mcpServers"]["atelier"]["command"] == "atelier-mcp"
+    assert data["mcpServers"]["atelier"]["command"] == "atelier"
 
 
 def test_new_claude_plugin_hooks_enabled() -> None:

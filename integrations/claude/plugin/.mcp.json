@@ -3,10 +3,11 @@
     "atelier": {
       "alwaysLoad": true,
       "args": [
+        "mcp",
         "--host",
         "claude"
       ],
-      "command": "atelier-mcp",
+      "command": "atelier",
       "env": {
         "CLAUDE_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}"
       },
