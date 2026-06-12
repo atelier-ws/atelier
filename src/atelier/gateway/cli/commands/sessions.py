@@ -542,33 +542,36 @@ def _is_atelier_tool_name(name: str) -> bool:
     )
 
 
-# Builtin tools that Atelier can manage: results are kept out of persistent
-# context (carry credit) and repeated identical calls are deduplicated (saved).
-# Includes shell/bash (Atelier compresses large outputs) and edit (results
-# stay in the Atelier store, not in the conversation context).
-# Host-specific aliases: 'view'/'rg' = Copilot; 'exec_command' = Codex shell;
-# 'apply_patch'/'patch' = Codex edit; 'run_shell_command' = Gemini shell.
-_POTENTIAL_BATCHABLE = (
-    "read", "view", "grep", "glob", "search", "rg",
-    "bash", "shell", "exec_command", "run_shell_command",
-    "edit", "apply_patch", "patch",
-)
+# Read-like tools that Atelier deduplicates: re-reading the same file/pattern
+# across a session is the primary source of dedup savings.  Bash/edit/shell
+# are sequential unique work — each call is different, so they have no
+# meaningful dedup potential.
+# Host-specific aliases: 'view'/'rg' = Copilot; 'symbolsx'/'explore' = various.
+_POTENTIAL_DEDUP = frozenset((
+    "read", "view", "grep", "rg", "glob", "search", "explore",
+))
+
+# Conservative re-read fraction: empirically ~1 in 4 read/grep calls revisits
+# a resource already seen earlier in the same session.
+_REREAD_RATE = 4  # 1 in _REREAD_RATE calls is an estimated re-read
 
 
 def _builtin_potential(
     trace: Trace,
 ) -> dict[str, Any]:
-    """Estimate what Atelier would have saved if builtin calls had been Atelier calls.
+    """Estimate what Atelier would have saved on a session that used only builtins.
 
-    Two credit types mirror the real savings model:
-    - saved: duplicate calls that Atelier deduplicates; output tokens of the
-      redundant calls would never have entered context at all.
-    - carry: ALL batchable calls keep their results out of the persistent context.
-      Each result avoids re-entering context on every subsequent turn.  Even a
-      single non-repeated call earns carry; only duplicates earn 'saved'.
+    Only read-like tools (read, grep, glob, search) are considered: these are
+    the calls where Atelier's dedup cache provides real savings.  Bash/edit/shell
+    are sequential, unique work — dedup does not apply to them.
+
+    saved  = estimated re-reads that Atelier would have deduplicated.
+             We use a conservative 1-in-4 rate because we cannot see whether
+             two Read calls hit the same file without the full call sequence.
+    carry  = re-read outputs kept out of persistent context across later turns.
 
     Token estimates are raw; the caller bounds the total by the session's actual
-    cache spend — you cannot save more than was spent on caching.
+    cache spend.
     """
     by_tool: dict[str, int] = {}
     out_by_tool: dict[str, int] = {}
@@ -587,33 +590,27 @@ def _builtin_potential(
         else:
             builtin_calls += count
 
-    potential_calls_saved = 0
-    dup_output_tokens = 0    # output of deduplicated (redundant) calls
-    all_batchable_output_tokens = 0  # output of ALL batchable calls
-    for key in _POTENTIAL_BATCHABLE:
+    # Dedup potential: read-like tools only, conservative re-read fraction.
+    dedup_calls_est = 0
+    dedup_output_tokens = 0
+    for key in _POTENTIAL_DEDUP:
         count = by_tool.get(key, 0)
-        if count == 0:
+        if count < _REREAD_RATE:
             continue
+        estimated_reruns = count // _REREAD_RATE
+        dedup_calls_est += estimated_reruns
         total_out = out_by_tool.get(key, 0)
-        all_batchable_output_tokens += total_out
-        if count > 1:
-            potential_calls_saved += count - 1
-            # Proportional output of the duplicate (beyond-first) calls.
-            dup_output_tokens += total_out * (count - 1) // count
+        dedup_output_tokens += total_out * estimated_reruns // count
 
-    # Saved: output tokens of deduplicated calls that would have entered context.
-    potential_tokens_saved = dup_output_tokens
-
-    # Carry: ALL batchable call outputs kept out of context across remaining turns.
-    # Atelier never keeps tool results in persistent context — even a single call
-    # earns carry. Average position ≈ half the session's turns remain after each call.
     turns = len(trace.usage_entries)
-    potential_carry_tokens = int(max(0, all_batchable_output_tokens) * (turns // 2))
+    potential_tokens_saved = dedup_output_tokens
+    potential_carry_tokens = dedup_output_tokens * max(1, turns // 2)
 
     return {
         "builtin_calls": builtin_calls,
         "atelier_calls": atelier_calls,
-        "calls_saved": int(max(0, potential_calls_saved)),
+        "calls_saved": dedup_calls_est,
+        "calls_batchable": dedup_calls_est,
         "tokens_saved": potential_tokens_saved,
         "carry_tokens": potential_carry_tokens,
     }
@@ -667,34 +664,31 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
                     breakdown = {k: v * ratio for k, v in breakdown.items()}
     elif int(potential["atelier_calls"]) > 0:
         # Estimate savings for non-Claude hosts from actual Atelier tool usage.
-        # saved = output of duplicated atelier calls (dedup savings).
-        # carry = ALL atelier batchable output x remaining turns (every Atelier
-        #         call keeps its result out of persistent context).
-        saved_out_tokens_est = 0
-        all_atelier_out_tokens = 0
+        # Only read-like Atelier tools contribute to dedup savings; write/edit/shell
+        # are sequential unique work and don't re-read the same resource.
+        # Use the same conservative re-read fraction as _builtin_potential.
+        dedup_out_tokens = 0
         for tool in trace.tools_called:
             name = str(tool.name or "").lower()
             if not _is_atelier_tool_name(name):
                 continue
-            base = name.split("_", 1)[-1] if "_" in name else name.replace("mcp__atelier__", "")
-            if base not in _POTENTIAL_BATCHABLE:
+            # Extract the base tool name (e.g. mcp__atelier__read -> read)
+            base = name
+            for prefix in ("mcp__atelier__", "mcp__plugin_atelier_atelier__", "atelier_"):
+                if base.startswith(prefix):
+                    base = base[len(prefix):]
+                    break
+            if base not in _POTENTIAL_DEDUP:
                 continue
             count = int(tool.count or 0)
-            if count == 0:
+            if count < _REREAD_RATE:
                 continue
             total_out = int(tool.output_tokens or 0)
-            all_atelier_out_tokens += total_out
-            if count > 1:
-                saved_out_tokens_est += total_out * (count - 1) // count
+            estimated_reruns = count // _REREAD_RATE
+            dedup_out_tokens += total_out * estimated_reruns // count
         turns = len(trace.usage_entries)
-        # If per-tool output tokens aren't recorded (e.g. codex), fall back to
-        # estimating from total output tokens proportional to atelier calls.
-        if all_atelier_out_tokens == 0 and output_tokens > 0:
-            atelier_call_total = int(potential["atelier_calls"])
-            all_atelier_out_tokens = output_tokens * atelier_call_total // max(1, atelier_call_total + int(potential["builtin_calls"]))
-            saved_out_tokens_est = all_atelier_out_tokens // max(1, atelier_call_total)
-        saved_tokens = saved_out_tokens_est
-        carry_tokens = all_atelier_out_tokens * max(1, turns // 2)
+        saved_tokens = dedup_out_tokens
+        carry_tokens = dedup_out_tokens * max(1, turns // 2)
     cr_rate = _cache_read_rate(pricing_model, breakdown, cache_read_tokens)
     if host_name != "claude" and saved_tokens > 0:
         saved_usd = saved_tokens * cr_rate
@@ -714,12 +708,14 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
             carry_tokens = int(carry_tokens * _scale)
 
     # --- potential ---
-    avoidable_calls = int(potential["calls_saved"])
+    # calls_batchable = all batchable builtin calls that could route through Atelier
+    # (carry applies to all; saved/dedup applies to repeated identical calls only)
+    batchable_calls = int(potential["calls_batchable"])
     if (
         host_name == "claude"
         and (saved_usd + carry_usd) > 0
         and int(potential["atelier_calls"]) > 0
-        and avoidable_calls > 0
+        and batchable_calls > 0
     ):
         # For Claude where Atelier stop-hook data is available, use the
         # observed savings rate per atelier call instead of output-token
@@ -727,7 +723,7 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
         # carry, routing) not just batchable context size.
         actual_total = saved_usd + carry_usd
         rate = actual_total / int(potential["atelier_calls"])
-        pot_total = rate * avoidable_calls
+        pot_total = rate * batchable_calls
         saved_frac = saved_usd / actual_total
         potential_saved_usd = pot_total * saved_frac
         potential_carry_usd = pot_total * (1.0 - saved_frac)
@@ -899,9 +895,9 @@ def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
             ),
         ))
 
-    # potential
-    if int(row["potential_calls_saved"]) > 0:
-        pot = f"≈{int(row['potential_calls_saved'])} avoidable · " + click.style(
+    # potential (show if non-zero savings estimated; no call count — unreliable from counts alone)
+    if float(row["potential_saved_usd"]) > 0 or float(row["potential_carry_usd"]) > 0:
+        pot = click.style(
             f"saved ${float(row['potential_saved_usd']):.4f} ({_fmt_tok_compact(int(row['potential_tokens_saved']))} tok)",
             fg="yellow",
         )
@@ -1446,7 +1442,6 @@ def _print_stats(
     total_builtin = sum(int(r["builtin_calls"]) for r in rows)
     total_subagents = sum(int(r["subagents"]) for r in rows)
     total_sub_cost = sum(float(r["subagent_cost_usd"]) for r in rows)
-    total_pot_calls = sum(int(r["potential_calls_saved"]) for r in rows)
     total_pot_usd = sum(float(r["potential_saved_usd"]) for r in rows)
     total_pot_carry = sum(float(r["potential_carry_usd"]) for r in rows)
 
@@ -1518,10 +1513,8 @@ def _print_stats(
         sub_pct = 100 * total_sub_cost / total_cost if total_cost > 0 else 0.0
         total_rows.append(("subagents", f"{total_subagents} total · ≈${total_sub_cost:.4f} ({sub_pct:.1f}% of cost)"))
 
-    if total_pot_calls > 0:
-        pot_str = click.style(f"≈{total_pot_calls} avoidable", fg="yellow")
-        if total_pot_usd > 0:
-            pot_str += click.style(f" · ≈${total_pot_usd:.4f} saved", fg="yellow")
+    if total_pot_usd > 0 or total_pot_carry > 0:
+        pot_str = click.style(f"≈${total_pot_usd:.4f} saved", fg="yellow")
         if total_pot_carry > 0:
             pot_str += click.style(f" + ≈${total_pot_carry:.4f} carry", fg="yellow")
         pot_str += click.style(" via Atelier", fg="yellow")
