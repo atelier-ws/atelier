@@ -362,6 +362,41 @@ def _build_retry_hint(
     }
 
 
+def _parse_gate_message(
+    path: Path,
+    new_content: str,
+    parse_err: SyntaxError,
+    applied: list[dict[str, Any]],
+) -> str:
+    """Build an actionable parse-gate error with the broken region inline.
+
+    Without the snippet agents retry the identical edit (the failure is in the
+    would-be content they never see), then defect to shell-based writes.
+    """
+    lineno = parse_err.lineno or 1
+    lines = new_content.splitlines()
+    lo = max(0, lineno - 6)
+    hi = min(len(lines), lineno + 5)
+    snippet = "\n".join(f"{i + 1}: {lines[i]}" for i in range(lo, hi))
+    fuzzy_note = ""
+    for entry in applied:
+        entry_path = str(entry.get("path", "")).split("#")[0]
+        mode = entry.get("match_mode")
+        if entry_path.endswith(path.name) and mode in ("normalized", "placeholder", "fuzzy"):
+            fuzzy_note = (
+                f" (old_string matched via {mode} mode — it may have anchored at the"
+                " wrong spot or covered less text than intended)"
+            )
+            break
+    return (
+        f"post-edit parse error in {path.name} at line {lineno}: {parse_err.msg}"
+        f" — edit rolled back{fuzzy_note}. Would-be content around the error:\n{snippet}\n"
+        "Do NOT resend the same edit. Extend old_string to cover the full region you are"
+        " replacing (e.g. the entire block through its closing brace); scope with"
+        ' "file.py#start-end" to disambiguate, or rewrite the whole file with overwrite=true.'
+    )
+
+
 def apply_rich_edits(
     edits: list[dict[str, Any]], *, repo_root: str | Path | None = None, atomic: bool = True
 ) -> dict[str, Any]:
@@ -498,10 +533,7 @@ def apply_rich_edits(
                 try:
                     ast.parse(new_content)
                 except SyntaxError as parse_err:
-                    raise ValueError(
-                        f"post-edit parse error in {path.name} at line {parse_err.lineno}: "
-                        f"{parse_err.msg} — edit rolled back; re-read and supply exact old_string"
-                    ) from parse_err
+                    raise ValueError(_parse_gate_message(path, new_content, parse_err, applied)) from parse_err
 
         for path, content in file_state.items():
             _atomic_write(path, content)
