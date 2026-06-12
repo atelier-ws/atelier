@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any
 import click
 
 if TYPE_CHECKING:
+    from rich.console import Console as RichConsole
+
     from atelier.core.capabilities.savings_summary import TranscriptSavingsBlock
 
 from atelier.core.foundation.models import Trace, to_jsonable
@@ -549,6 +551,347 @@ def _emit_tree_rows(rows: list[tuple[str, str]]) -> None:
             click.echo(f"{prefix}  {' ' * 10} {value}")
 
 
+def _emit_tree_rows_rich(rows: list[tuple[str, str]], console: RichConsole) -> None:
+    """Emit (label, value) pairs with ├─/└─ connectors via Rich console."""
+    for i, (label, value) in enumerate(rows):
+        last = i == len(rows) - 1
+        connector = "└─" if last else "├─"
+        if label:
+            console.print(f"  [cyan]{connector} {label:<10}[/] {value}")
+        else:
+            prefix = "   " if last else "  │"
+            console.print(f"{prefix}  {' ' * 10} {value}")
+
+
+def _render_host_header_rich(host_name: str, scan_count: int) -> None:
+    """Rich-styled host section header for session hosts."""
+    from rich.console import Console
+
+    console = Console(highlight=False)
+    console.print()
+    if scan_count > 0:
+        console.rule(
+            f"[bold bright_magenta]{host_name}[/]  [dim]scanned this run: {scan_count}[/]",
+            style="dim",
+        )
+    else:
+        console.rule(f"[bold bright_magenta]{host_name}[/]", style="dim")
+
+
+def _render_hosts_footer_rich(rows: list[dict[str, Any]], since_label: str) -> None:
+    """Rich summary panels footer for session hosts."""
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+
+    if not rows:
+        return
+
+    console = Console(highlight=False)
+
+    n = len(rows)
+    n_atelier = sum(1 for r in rows if int(r["atelier_calls"]) > 0)
+    total_cost = sum(float(r["cost_usd"]) for r in rows)
+    total_saved = sum(float(r["saved_usd"]) for r in rows)
+    total_carry = sum(float(r["carry_usd"]) for r in rows)
+    total_in = sum(int(r["input_tokens"]) for r in rows)
+    total_cr = sum(int(r["cache_read_tokens"]) for r in rows)
+    total_cw = sum(int(r["cache_write_tokens"]) for r in rows)
+    total_out = sum(int(r["output_tokens"]) for r in rows)
+    total_calls = sum(int(r["tool_calls"]) for r in rows)
+    total_atelier = sum(int(r["atelier_calls"]) for r in rows)
+    total_subagents = sum(int(r["subagents"]) for r in rows)
+    total_sub_cost = sum(float(r["subagent_cost_usd"]) for r in rows)
+    total_saved_tokens = sum(int(r["saved_tokens"]) for r in rows)
+    total_calls_avoided = sum(int(r["calls_avoided"]) for r in rows)
+    total_pot_usd = sum(float(r["potential_saved_usd"]) for r in rows)
+    total_pot_carry = sum(float(r["potential_carry_usd"]) for r in rows)
+
+    console.print()
+    console.rule("[dim]Summary[/]")
+    console.print()
+
+    atelier_p = 100 * total_atelier // total_calls if total_calls > 0 else 0
+    baseline = total_cost + total_saved + total_carry
+
+    usage_lines = [
+        f"  [dim]Cost          [/]  [bright_red]${total_cost:,.4f}[/]",
+        f"  [dim]Sessions      [/]  [bright_white]{n}[/]  [dim]({n_atelier} w/ Atelier)[/]",
+        f"  [dim]Calls         [/]  [bright_yellow]{total_calls:,}[/]  [dim]({atelier_p}% atelier)[/]",
+        f"  [dim]Tokens in     [/]  [white]{_fmt_tok_compact(total_in)}[/]",
+        f"  [dim]Cache read    [/]  [bright_cyan]{_fmt_tok_compact(total_cr)}[/]",
+        f"  [dim]Cache write   [/]  [bright_blue]{_fmt_tok_compact(total_cw)}[/]",
+        f"  [dim]Output        [/]  [white]{_fmt_tok_compact(total_out)}[/]",
+    ]
+    if total_subagents > 0:
+        sub_pct = 100 * total_sub_cost / total_cost if total_cost > 0 else 0.0
+        usage_lines.append(
+            f"  [dim]Subagents     [/]  [white]{total_subagents}[/]"
+            f"  [dim]≈${total_sub_cost:,.4f}  ({sub_pct:.1f}%)[/]"
+        )
+
+    savings_lines = [
+        f"  [dim]Saved         [/]  [bright_green]${total_saved:,.4f}[/]",
+        f"  [dim]Carry         [/]  [magenta]${total_carry:,.4f}[/]",
+    ]
+    if total_saved_tokens > 0:
+        savings_lines.append(f"  [dim]Tok saved     [/]  [bright_green]{_fmt_tok_compact(total_saved_tokens)}[/]")
+    if total_calls_avoided > 0:
+        savings_lines.append(f"  [dim]Calls avoided [/]  [bright_green]{total_calls_avoided}[/]")
+    if total_saved + total_carry > 0:
+        pct = 100 * (total_saved + total_carry) / baseline
+        savings_lines.append(f"  [dim]Reduction     [/]  [bright_green]-{pct:.1f}%[/]")
+        savings_lines.append(f"  [dim]Baseline      [/]  [dim]≈${baseline:,.4f}[/]")
+    if total_pot_usd > 0 or total_pot_carry > 0:
+        savings_lines.append("")
+        savings_lines.append(f"  [dim]Potential     [/]  [yellow]≈${total_pot_usd:,.4f}[/]")
+        savings_lines.append(f"  [dim]Carry avail.  [/]  [yellow]≈${total_pot_carry:,.4f}[/]")
+
+    grid = Table.grid(expand=True, padding=(0, 1))
+    grid.add_column(ratio=1)
+    grid.add_column(ratio=1)
+    grid.add_row(
+        Panel("\n".join(usage_lines), title="[bold]Usage[/]", border_style="dim", padding=(1, 2)),
+        Panel(
+            "\n".join(savings_lines),
+            title="[bold bright_green]Atelier Savings[/]",
+            border_style="bright_green dim",
+            padding=(1, 2),
+        ),
+    )
+    console.print(grid)
+    console.print()
+
+
+def _render_stats_rich(
+    rows: list[dict[str, Any]],
+    since_label: str,
+    top: int,
+    show_header: bool = True,
+) -> None:
+    """Full Rich redesign for session stats display."""
+    from rich import box as rbox
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+
+    console = Console(highlight=False)
+
+    if not rows:
+        console.print("[dim]No sessions found.[/]")
+        return
+
+    n = len(rows)
+    n_atelier = sum(1 for r in rows if int(r["atelier_calls"]) > 0)
+    total_cost = sum(float(r["cost_usd"]) for r in rows)
+    total_saved = sum(float(r["saved_usd"]) for r in rows)
+    total_carry = sum(float(r["carry_usd"]) for r in rows)
+    total_in = sum(int(r["input_tokens"]) for r in rows)
+    total_cr = sum(int(r["cache_read_tokens"]) for r in rows)
+    total_cw = sum(int(r["cache_write_tokens"]) for r in rows)
+    total_out = sum(int(r["output_tokens"]) for r in rows)
+    total_calls = sum(int(r["tool_calls"]) for r in rows)
+    total_atelier = sum(int(r["atelier_calls"]) for r in rows)
+    total_subagents = sum(int(r["subagents"]) for r in rows)
+    total_sub_cost = sum(float(r["subagent_cost_usd"]) for r in rows)
+    total_pot_usd = sum(float(r["potential_saved_usd"]) for r in rows)
+    total_pot_carry = sum(float(r["potential_carry_usd"]) for r in rows)
+
+    host_agg: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        hn = str(r.get("host") or r.get("source") or "unknown")
+        if hn not in host_agg:
+            host_agg[hn] = {
+                "sessions": 0,
+                "cost": 0.0,
+                "saved": 0.0,
+                "carry": 0.0,
+                "calls": 0,
+                "atelier": 0,
+                "pot_saved": 0.0,
+                "pot_carry": 0.0,
+            }
+        ha = host_agg[hn]
+        ha["sessions"] += 1
+        ha["cost"] += float(r["cost_usd"])
+        ha["saved"] += float(r["saved_usd"])
+        ha["carry"] += float(r["carry_usd"])
+        ha["calls"] += int(r["tool_calls"])
+        ha["atelier"] += int(r["atelier_calls"])
+        ha["pot_saved"] += float(r["potential_saved_usd"])
+        ha["pot_carry"] += float(r["potential_carry_usd"])
+
+    hosts_sorted = sorted(host_agg.items(), key=lambda x: -x[1]["cost"])
+
+    # ── Header ──
+    if show_header:
+        hosts_label = ", ".join(h for h, _ in hosts_sorted)
+        console.print()
+        console.rule(f"[bold bright_white]Last {since_label}[/]  [dim]·  {n} sessions  ·  {hosts_label}[/]")
+        if n_atelier > 0:
+            console.print(f"  [dim]{n_atelier} of {n} sessions used Atelier tools[/]")
+        console.print()
+
+    # ── Hero chips ──
+    def _chip(label: str, value: str, color: str) -> Panel:
+        return Panel(
+            f"[bold {color}]{value}[/]\n[dim]{label}[/]",
+            border_style="dim",
+            padding=(0, 2),
+        )
+
+    hero = Table.grid(expand=True)
+    for _ in range(5):
+        hero.add_column(justify="center")
+
+    atelier_pct_t = 100 * total_atelier // total_calls if total_calls > 0 else 0
+    hero = Table.grid(expand=True)
+    for _ in range(4):
+        hero.add_column(justify="center")
+
+    savings_total = total_saved + total_carry
+    hero.add_row(
+        _chip("Cost", f"${total_cost:,.0f}", "bright_red"),
+        _chip("Sessions", f"{n}", "bright_white"),
+        _chip("Calls", f"{total_calls:,}", "bright_yellow"),
+        _chip("Savings", f"${savings_total:,.0f}", "bright_green"),
+    )
+    console.print(hero)
+    console.print()
+
+    # ── Token usage ──
+    console.print("[bold bright_white]  Tokens[/]  [dim]across all sessions[/]")
+    console.print()
+    tok_table = Table(box=rbox.SIMPLE, show_header=True, header_style="dim", padding=(0, 2))
+    tok_table.add_column("Input", justify="right")
+    tok_table.add_column("Cache Read", justify="right")
+    tok_table.add_column("Cache Write", justify="right")
+    tok_table.add_column("Output", justify="right")
+    tok_table.add_row(
+        f"[bright_white]{_fmt_tok_compact(total_in)}[/]",
+        f"[bright_cyan]{_fmt_tok_compact(total_cr)}[/]",
+        f"[bright_blue]{_fmt_tok_compact(total_cw)}[/]",
+        f"[white]{_fmt_tok_compact(total_out)}[/]",
+    )
+    console.print(tok_table)
+
+    # ── By host ──
+    if len(host_agg) > 1:
+        console.print("[bold bright_white]  By Host[/]")
+        console.print()
+        host_table = Table(box=rbox.SIMPLE, show_header=True, header_style="dim", padding=(0, 1))
+        host_table.add_column("Host", style="bold bright_magenta", min_width=10)
+        host_table.add_column("Cost", justify="right", min_width=10)
+        host_table.add_column("N", justify="right", style="dim", min_width=3)
+        host_table.add_column("Calls", justify="right", min_width=6)
+        host_table.add_column("Atel%", justify="right", min_width=5)
+        host_table.add_column("Savings", justify="right", min_width=12)
+        host_table.add_column("Potential", justify="right", min_width=10)
+        for hn, ha in hosts_sorted:
+            if ha["sessions"] == 0:
+                continue
+            a_pct = 100 * ha["atelier"] // ha["calls"] if ha["calls"] > 0 else 0
+            savings_total = ha["saved"] + ha["carry"]
+            savings_s = f"[bright_green]${savings_total:,.2f}[/]" if savings_total > 0 else "[dim]—[/]"
+            pot_t = ha["pot_saved"] + ha["pot_carry"]
+            pot_s = f"[yellow]${pot_t:,.2f}[/]" if pot_t > 0 else "[dim]—[/]"
+            host_table.add_row(
+                hn,
+                f"[bright_red]${ha['cost']:,.2f}[/]",
+                str(ha["sessions"]),
+                f"{ha['calls']:,}",
+                f"[cyan]{a_pct}%[/]",
+                savings_s,
+                pot_s,
+            )
+        console.print(host_table)
+
+    # ── Top sessions ──
+    if top > 0:
+        sorted_rows = sorted(rows, key=lambda r: -float(r["cost_usd"]))
+        top_rows = [r for r in sorted_rows if float(r["cost_usd"]) > 0][:top]
+        if top_rows:
+            console.print(f"[bold bright_white]  Top {len(top_rows)} Sessions[/]  [dim]by cost[/]")
+            console.print()
+            sess_table = Table(box=rbox.SIMPLE, show_header=True, header_style="dim", padding=(0, 1))
+            sess_table.add_column("Date", style="dim", min_width=10, no_wrap=True)
+            sess_table.add_column("Host", min_width=9, no_wrap=True)
+            sess_table.add_column("Model", min_width=14, style="dim", no_wrap=True)
+            sess_table.add_column("Cost", justify="right", min_width=10, no_wrap=True)
+            sess_table.add_column("Prompt", no_wrap=True)
+            for r in top_rows:
+                date = str(r["created_at"])[:10] if r["created_at"] else "-"
+                model_short = str(r["model"] or "-")[:16]
+                hn_r = str(r.get("host") or "")
+                prompt = str(r["first_user"] or "").replace("\n", " ").strip()[:55]
+                cost_f = float(r["cost_usd"])
+                sess_table.add_row(
+                    date,
+                    f"[bright_magenta]{hn_r}[/]",
+                    model_short,
+                    f"[bright_red]${cost_f:,.2f}[/]",
+                    f"[dim]{prompt}[/]",
+                )
+            console.print(sess_table)
+
+    # ── Bottom panels ──
+    console.print()
+    bottom = Table.grid(expand=True, padding=(0, 1))
+    bottom.add_column(ratio=1)
+    bottom.add_column(ratio=1)
+
+    if total_saved + total_carry > 0:
+        baseline = total_cost + total_saved + total_carry
+        pct = 100 * (total_saved + total_carry) / baseline
+        cost_lines = [
+            f"  [dim]Total cost    [/]  [bright_red]${total_cost:,.2f}[/]",
+            f"  [dim]Saved         [/]  [bright_green]${total_saved:,.2f}[/]",
+            f"  [dim]Carry         [/]  [magenta]${total_carry:,.2f}[/]",
+            f"  [dim]Baseline      [/]  [dim]≈${baseline:,.2f}[/]",
+            f"  [dim]Reduction     [/]  [bright_green]-{pct:.1f}%[/]",
+        ]
+    else:
+        cost_lines = [f"  [dim]Total cost    [/]  [bright_red]${total_cost:,.2f}[/]"]
+
+    if total_subagents > 0:
+        sub_pct = 100 * total_sub_cost / total_cost if total_cost > 0 else 0.0
+        cost_lines.append(f"  [dim]Subagents     [/]  [white]{total_subagents}[/]")
+        cost_lines.append(f"  [dim]  ≈cost        [/]  [dim]${total_sub_cost:,.2f}  ({sub_pct:.1f}%)[/]")
+
+    if total_pot_usd > 0 or total_pot_carry > 0:
+        atelier_lines = [
+            f"  [dim]Potential     [/]  [yellow]≈${total_pot_usd:,.2f}[/]",
+            f"  [dim]Carry avail.  [/]  [yellow]≈${total_pot_carry:,.2f}[/]",
+            f"  [dim]Opportunity   [/]  [bright_yellow]≈${total_pot_usd + total_pot_carry:,.2f}[/]",
+            "",
+            f"  [dim]Atelier calls [/]  [cyan]{total_atelier:,}[/]",
+            f"  [dim]  of total     [/]  [dim]{total_calls:,}  ({atelier_pct_t}%)[/]",
+        ]
+        atelier_title = "[bold yellow]Atelier Potential[/]"
+        atelier_border = "yellow dim"
+    else:
+        atelier_lines = [
+            f"  [dim]Saved         [/]  [bright_green]${total_saved:,.2f}[/]",
+            f"  [dim]Carry         [/]  [magenta]${total_carry:,.2f}[/]",
+            f"  [dim]Atelier calls [/]  [cyan]{total_atelier:,}[/]  [dim]({atelier_pct_t}%)[/]",
+            f"  [dim]Atelier sess. [/]  [bright_cyan]{n_atelier}[/]  [dim]of {n}[/]",
+        ]
+        atelier_title = "[bold bright_green]Atelier Savings[/]"
+        atelier_border = "bright_green dim"
+
+    bottom.add_row(
+        Panel("\n".join(cost_lines), title="[bold]Cost Breakdown[/]", border_style="dim", padding=(1, 2)),
+        Panel(
+            "\n".join(atelier_lines),
+            title=atelier_title,
+            border_style=atelier_border,
+            padding=(1, 2),
+        ),
+    )
+    console.print(bottom)
+    console.print()
+
+
 def _is_atelier_tool_name(name: str) -> bool:
     lowered = (name or "").strip().lower()
     return (
@@ -561,18 +904,41 @@ def _is_atelier_tool_name(name: str) -> bool:
 # Builtin tools with a direct Atelier equivalent (read/search, shell, edit
 # families).  Only these count toward routable volume; bookkeeping tools
 # (todo lists, plan updates, ask-user, task spawns) are never routed.
-_ROUTABLE_BUILTIN = frozenset((
-    # read/search family
-    "read", "view", "grep", "rg", "glob", "search", "explore", "symbols",
-    "read_file", "readfile", "grep_search", "list_directory", "list_dir",
-    "codebase_search",
-    # shell family
-    "bash", "shell", "exec", "exec_command", "run_shell_command",
-    "run_terminal_cmd",
-    # edit family
-    "edit", "apply_patch", "applypatch", "patch", "replace", "write",
-    "write_file", "str_replace",
-))
+_ROUTABLE_BUILTIN = frozenset(
+    (
+        # read/search family
+        "read",
+        "view",
+        "grep",
+        "rg",
+        "glob",
+        "search",
+        "explore",
+        "symbols",
+        "read_file",
+        "readfile",
+        "grep_search",
+        "list_directory",
+        "list_dir",
+        "codebase_search",
+        # shell family
+        "bash",
+        "shell",
+        "exec",
+        "exec_command",
+        "run_shell_command",
+        "run_terminal_cmd",
+        # edit family
+        "edit",
+        "apply_patch",
+        "applypatch",
+        "patch",
+        "replace",
+        "write",
+        "write_file",
+        "str_replace",
+    )
+)
 
 # Fleet-measured Atelier savings rate, shipped with the binary so estimates
 # work on machines with no local Atelier history.  Measured 2026-06 across
@@ -589,7 +955,7 @@ def _base_tool_name(name: str) -> str:
     base = base.split(":")[-1]
     for prefix in ("mcp__atelier__", "mcp__plugin_atelier_atelier__", "atelier_"):
         if base.startswith(prefix):
-            return base[len(prefix):]
+            return base[len(prefix) :]
     if "__" in base:
         base = base.split("__")[-1]
     return base
@@ -796,137 +1162,131 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
 
 
 def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
-    """Print a single session row using tree-style connectors."""
+    """Print a single session row using Rich markup and tree-style connectors."""
+    from rich.console import Console
+    from rich.markup import escape as _re
+
+    console = Console(highlight=False)
     created = str(row["created_at"])[:19].replace("T", " ") if row["created_at"] else "-"
     sid = str(row["session_id"]) if row["session_id"] else "-"
     model = str(row["model"] or "-")[:32]
-    click.echo("")
-    click.secho(f"  {created}  {sid}  {model}", bold=True)
+    console.print(f"\n  [bold bright_white]{created}[/]  [dim]{sid}[/]  [bold bright_yellow]{model}[/]")
 
     detail: list[tuple[str, str]] = []
 
     # tokens
-    detail.append((
-        "tokens",
-        f"in={_fmt_tok_compact(int(row['input_tokens']))}"
-        f"  cR={_fmt_tok_compact(int(row['cache_read_tokens']))}"
-        f"  cW={_fmt_tok_compact(int(row['cache_write_tokens']))}"
-        f"  out={_fmt_tok_compact(int(row['output_tokens']))}",
-    ))
+    detail.append(
+        (
+            "tokens",
+            f"[white]in={_fmt_tok_compact(int(row['input_tokens']))}[/]"
+            f"  [bright_cyan]cR={_fmt_tok_compact(int(row['cache_read_tokens']))}[/]"
+            f"  [bright_blue]cW={_fmt_tok_compact(int(row['cache_write_tokens']))}[/]"
+            f"  [white]out={_fmt_tok_compact(int(row['output_tokens']))}[/]",
+        )
+    )
 
     # cost
-    detail.append((
-        "cost",
-        f"${float(row['cost_usd']):.4f}  "
-        + click.style(
-            f"(in ${float(row['cost_input_usd']):.4f} · cR ${float(row['cost_cache_read_usd']):.4f}"
-            f" · cW ${float(row['cost_cache_write_usd']):.4f} · out ${float(row['cost_output_usd']):.4f})",
-            dim=True,
-        ),
-    ))
+    detail.append(
+        (
+            "cost",
+            f"[bright_red]${float(row['cost_usd']):.4f}[/]  "
+            f"[dim](in ${float(row['cost_input_usd']):.4f} · cR ${float(row['cost_cache_read_usd']):.4f}"
+            f" · cW ${float(row['cost_cache_write_usd']):.4f} · out ${float(row['cost_output_usd']):.4f})[/]",
+        )
+    )
 
     if row.get("source") == "trace_fallback":
         est = float(row["estimated_cost_usd"])
         rep = float(row["reported_cost_usd"])
         if est > 0 and rep > 0 and abs(est - rep) / max(est, rep) > 0.25:
-            detail.append(("cost-check", click.style(f"estimated ${est:.4f} vs host-reported ${rep:.4f}", fg="yellow")))
+            detail.append(("cost-check", f"[yellow]estimated ${est:.4f} vs host-reported ${rep:.4f}[/]"))
 
     # subagents
     if int(row["subagents"]) > 0:
         sub_cost = float(row["subagent_cost_usd"])
-        cost_detail = f" · ≈${sub_cost:.4f} (included in cost)" if sub_cost > 0 else ""
+        cost_detail = f" · [dim]≈${sub_cost:.4f} (included in cost)[/]" if sub_cost > 0 else ""
         subagent_names: dict[str, int] = row.get("subagent_names") or {}
         if subagent_names:
             name_parts = [f"{n}x{c}" for n, c in sorted(subagent_names.items(), key=lambda x: -x[1])]
             wrapped_sub = _wrap_csv_items(name_parts)
-            detail.append(("subagents", wrapped_sub[0] + cost_detail))
+            detail.append(("subagents", f"[dim]{_re(wrapped_sub[0])}[/]{cost_detail}"))
             for extra_line in wrapped_sub[1:]:
-                detail.append(("", extra_line))
+                detail.append(("", f"[dim]{_re(extra_line)}[/]"))
         else:
-            detail.append(("subagents", f"{int(row['subagents'])}{cost_detail}"))
+            detail.append(("subagents", f"[dim]{int(row['subagents'])}[/]{cost_detail}"))
 
-    # savings: merge saved + carry + baseline into one row
+    # savings
     saved = float(row["saved_usd"])
     carry = float(row["carry_usd"])
     row_cost = float(row["cost_usd"])
     savings_parts: list[str] = []
     if saved > 0 or int(row["saved_tokens"]) > 0 or int(row["calls_avoided"]) > 0:
-        sp = [click.style(f"${saved:.4f}", fg="green")]
+        sp = [f"[bright_green]${saved:.4f}[/]"]
         if int(row["saved_tokens"]) > 0:
-            sp.append(click.style(f"{_fmt_tok_compact(int(row['saved_tokens']))} tok saved", fg="green"))
+            sp.append(f"[bright_green]{_fmt_tok_compact(int(row['saved_tokens']))} tok saved[/]")
         if int(row["calls_avoided"]) > 0:
-            sp.append(click.style(f"{int(row['calls_avoided'])} calls avoided", fg="green"))
+            sp.append(f"[bright_green]{int(row['calls_avoided'])} calls avoided[/]")
         savings_parts.append(" · ".join(sp))
     if carry > 0:
-        savings_parts.append(
-            click.style(
-                f"carry ${carry:.4f} · {_fmt_tok_compact(int(row['carry_tokens']))} tok",
-                fg="magenta",
-            )
-        )
+        savings_parts.append(f"[magenta]carry ${carry:.4f} · {_fmt_tok_compact(int(row['carry_tokens']))} tok[/]")
     if row_cost > 0 and (saved + carry) > 0:
         baseline = row_cost + saved + carry
-        savings_parts.append(
-            click.style(
-                f"baseline ≈${baseline:.4f} (-{100 * (saved + carry) / baseline:.1f}%)",
-                dim=True,
-            )
-        )
+        savings_parts.append(f"[dim]baseline ≈${baseline:.4f} (-{100 * (saved + carry) / baseline:.1f}%)[/]")
     if savings_parts:
         detail.append(("savings", "  ·  ".join(savings_parts)))
 
     # calls
-    detail.append((
-        "calls",
-        f"{int(row['tool_calls'])} total · {int(row['atelier_calls'])} atelier"
-        f" · {int(row['builtin_calls'])} builtin",
-    ))
+    detail.append(
+        (
+            "calls",
+            f"[white]{int(row['tool_calls'])} total[/] · [cyan]{int(row['atelier_calls'])} atelier[/]"
+            f" · [dim]{int(row['builtin_calls'])} builtin[/]",
+        )
+    )
 
     trace_calls = int(row["tool_calls"])
     block_calls = int(row.get("block_tool_calls") or 0)
     if block_calls > 0 and trace_calls > 0 and trace_calls / block_calls < 0.5:
-        detail.append((
-            "calls-check",
-            click.style(
-                f"trace import counted {trace_calls} but session file recorded {block_calls}"
-                f" — trace parser may have missed some calls",
-                fg="red",
-            ),
-        ))
+        detail.append(
+            (
+                "calls-check",
+                f"[red]trace import counted {trace_calls} but session file recorded {block_calls}"
+                f" — trace parser may have missed some calls[/]",
+            )
+        )
 
-    # potential (show if non-zero savings estimated; no call count — unreliable from counts alone)
+    # potential
     if float(row["potential_saved_usd"]) > 0 or float(row["potential_carry_usd"]) > 0:
-        pot = click.style(
-            f"saved ${float(row['potential_saved_usd']):.4f} ({_fmt_tok_compact(int(row['potential_tokens_saved']))} tok)",
-            fg="yellow",
+        pot = (
+            f"[yellow]saved ${float(row['potential_saved_usd']):.4f}"
+            f" ({_fmt_tok_compact(int(row['potential_tokens_saved']))} tok)[/]"
         )
         if float(row["potential_carry_usd"]) > 0:
-            pot += " + " + click.style(
-                f"carry ${float(row['potential_carry_usd']):.4f}"
-                f" ({_fmt_tok_compact(int(row['potential_carry_tokens']))} tok)",
-                fg="magenta",
+            pot += (
+                f" + [magenta]carry ${float(row['potential_carry_usd']):.4f}"
+                f" ({_fmt_tok_compact(int(row['potential_carry_tokens']))} tok)[/]"
             )
-        detail.append(("potential", pot + click.style("  via Atelier", dim=True)))
+        detail.append(("potential", pot + "[dim]  via Atelier[/]"))
 
     # tools (may wrap)
     tool_items = [f"{t['name']}x{t['count']}" for t in (row["tools"] or [])]
     wrapped_tools = _wrap_csv_items(tool_items)
-    detail.append(("tools", wrapped_tools[0]))
+    detail.append(("tools", f"[dim]{_re(wrapped_tools[0])}[/]"))
     for extra_line in wrapped_tools[1:]:
-        detail.append(("", extra_line))
+        detail.append(("", f"[dim]{_re(extra_line)}[/]"))
 
     # prompt
     first_user = str(row["first_user"] or "").replace("\n", " ").strip()
     max_prompt = max(40, _term_width() - 16)
     if len(first_user) > max_prompt:
         first_user = first_user[: max_prompt - 3] + "..."
-    detail.append(("prompt", first_user or "(none)"))
+    detail.append(("prompt", f"[dim]{_re(first_user) or '(none)'}[/]"))
 
     if verbose:
         for cmd in (row["commands"] or [])[:8]:
-            detail.append(("cmd", cmd))
+            detail.append(("cmd", f"[dim]{_re(str(cmd))}[/]"))
 
-    _emit_tree_rows(detail)
+    _emit_tree_rows_rich(detail, console)
 
 
 def _sync_hosts_from_source(
@@ -1134,9 +1494,7 @@ def _stream_hosts_live(
                 if not picked:
                     continue
                 any_found = True
-                click.echo("")
-                click.secho(host_name, fg="magenta", bold=True)
-                click.echo(f"  scanned this run: {len(picked)}")
+                _render_host_header_rich(host_name, len(picked))
                 for session_path in picked:
                     tid = importer_c.import_session(session_path, force=force)
                     if tid:
@@ -1161,9 +1519,7 @@ def _stream_hosts_live(
                 if not picked_cl:
                     continue
                 any_found = True
-                click.echo("")
-                click.secho(host_name, fg="magenta", bold=True)
-                click.echo(f"  scanned this run: {len(picked_cl)}")
+                _render_host_header_rich(host_name, len(picked_cl))
                 for workspace_slug, session_path in picked_cl:
                     tid = claude_imp.import_session(workspace_slug, session_path, force=force)
                     if tid:
@@ -1187,9 +1543,7 @@ def _stream_hosts_live(
                 if not picked_cop:
                     continue
                 any_found = True
-                click.echo("")
-                click.secho(host_name, fg="magenta", bold=True)
-                click.echo(f"  scanned this run: {len(picked_cop)}")
+                _render_host_header_rich(host_name, len(picked_cop))
                 for session_dir in picked_cop:
                     tid = importer_cop.import_session(session_dir, force=force)
                     if tid:
@@ -1210,9 +1564,7 @@ def _stream_hosts_live(
                     picked_oc = all_oc[:limit]
                     if picked_oc:
                         any_found = True
-                        click.echo("")
-                        click.secho(host_name, fg="magenta", bold=True)
-                        click.echo(f"  scanned this run: {len(picked_oc)}")
+                        _render_host_header_rich(host_name, len(picked_oc))
                         for session_row in picked_oc:
                             tid = importer_oc.import_session(session_row, oc_db, force=force)
                             if tid:
@@ -1233,9 +1585,7 @@ def _stream_hosts_live(
             if not imported_ids:
                 continue
             any_found = True
-            click.echo("")
-            click.secho(host_name, fg="magenta", bold=True)
-            click.echo(f"  scanned this run: {len(imported_ids)}")
+            _render_host_header_rich(host_name, len(imported_ids))
             displayed = 0
             for sid in imported_ids:
                 trace = store.get_trace(sid)
@@ -1379,17 +1729,14 @@ def session_hosts_cmd(
                     break
             if rows_store:
                 any_found = True
-                click.echo("")
-                click.secho(host_name, fg="magenta", bold=True)
+                _render_host_header_rich(host_name, 0)
                 for row in rows_store:
                     _print_session_row(row, verbose)
                 all_store_rows.extend(rows_store)
         if not any_found:
             click.echo("No host sessions found for the selected filters.")
         elif all_store_rows:
-            click.echo("")
-            click.secho("─" * min(60, _term_width()), dim=True)
-            _print_stats(all_store_rows, since or f"{limit} sessions", top=0, show_header=False)
+            _render_hosts_footer_rich(all_store_rows, since or f"{limit} sessions")
         return
 
     # live mode + text: stream each host as it's scanned
@@ -1405,15 +1752,13 @@ def session_hosts_cmd(
     )
     active_rows = [r for r in displayed_rows if int(r["tool_calls"]) > 0 or int(r["input_tokens"]) > 0]
     if active_rows:
-        click.echo("")
-        click.secho("─" * min(60, _term_width()), dim=True)
-        _print_stats(active_rows, since or f"{limit} sessions", top=0, show_header=False)
-
+        _render_hosts_footer_rich(active_rows, since or f"{limit} sessions")
 
 
 # ---------------------------------------------------------------------------
 # session stats
 # ---------------------------------------------------------------------------
+
 
 def _print_stats(
     rows: list[dict[str, Any]],
@@ -1450,8 +1795,15 @@ def _print_stats(
         hn = str(r.get("host") or r.get("source") or "unknown")
         if hn not in host_agg:
             host_agg[hn] = {
-                "sessions": 0, "cost": 0.0, "saved": 0.0, "carry": 0.0, "calls": 0,
-                "atelier": 0, "builtin": 0, "pot_saved": 0.0, "pot_carry": 0.0,
+                "sessions": 0,
+                "cost": 0.0,
+                "saved": 0.0,
+                "carry": 0.0,
+                "calls": 0,
+                "atelier": 0,
+                "builtin": 0,
+                "pot_saved": 0.0,
+                "pot_carry": 0.0,
             }
         ha = host_agg[hn]
         ha["sessions"] += 1
@@ -1491,13 +1843,15 @@ def _print_stats(
     else:
         total_rows.append(("cost", cost_str))
 
-    total_rows.append((
-        "tokens",
-        f"in={_fmt_tok_compact(total_in)}"
-        f"  cR={_fmt_tok_compact(total_cr)}"
-        f"  cW={_fmt_tok_compact(total_cw)}"
-        f"  out={_fmt_tok_compact(total_out)}",
-    ))
+    total_rows.append(
+        (
+            "tokens",
+            f"in={_fmt_tok_compact(total_in)}"
+            f"  cR={_fmt_tok_compact(total_cr)}"
+            f"  cW={_fmt_tok_compact(total_cw)}"
+            f"  out={_fmt_tok_compact(total_out)}",
+        )
+    )
 
     if total_calls > 0:
         atelier_pct = 100 * total_atelier / total_calls
@@ -1570,10 +1924,12 @@ def _print_stats(
                 host_name_r = str(r.get("host") or "")
                 prompt = str(r["first_user"] or "").replace("\n", " ").strip()[:60]
                 cost = click.style(f"${float(r['cost_usd']):.4f}", bold=True)
-                session_rows.append((
-                    f"{date}  {sid_short}",
-                    f"{cost}  {host_name_r:<8}  {model_short:<14}  {prompt}",
-                ))
+                session_rows.append(
+                    (
+                        f"{date}  {sid_short}",
+                        f"{cost}  {host_name_r:<8}  {model_short:<14}  {prompt}",
+                    )
+                )
             _emit_tree_rows(session_rows)
 
 
@@ -1641,7 +1997,7 @@ def session_stats_cmd(
         click.echo(f"No sessions found in the last {label}.")
         return
 
-    _print_stats(all_rows, label, top)
+    _render_stats_rich(all_rows, label, top)
 
 
 __all__ = ["outcomes_group", "runs_group", "session_group"]
