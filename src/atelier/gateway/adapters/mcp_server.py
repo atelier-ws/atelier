@@ -5931,7 +5931,8 @@ def _render_shell_text(result: dict[str, Any]) -> str:
         if stdout or stderr:
             parts.append("")
         parts.append(f"[output truncated: {lines_omitted} lines omitted]")
-    if exit_code not in (None, 0) and ("No module named pip" in stdout or "No module named pip" in stderr):
+    # No exit-code guard: pipelines (e.g. `... 2>&1 | tail`) mask failures.
+    if "No module named pip" in stdout or "No module named pip" in stderr:
         parts.append(
             "[hint] This venv has no pip (uv-managed). Install with: "
             "uv pip install --python <venv>/bin/python <pkg>  (or python -m ensurepip first)"
