@@ -151,8 +151,16 @@ patch_plugin_hooks() {
 
     local atelier_launcher atelier_python
     atelier_launcher="$(command -v atelier)"
-    atelier_python="$(head -n 1 "$(readlink -f "$atelier_launcher")")"
-    atelier_python="${atelier_python#\#!}"
+
+    # Binary bundle: the wrapper is a bash script, not a Python shebang.
+    # hooks.json __ATELIER_PYTHON__ tokens are replaced with the binary path directly.
+    if [[ "${ATELIER_BINARY_MODE:-0}" == "1" ]]; then
+        atelier_python="$(readlink -f "$atelier_launcher")"
+    else
+        atelier_python="$(head -n 1 "$(readlink -f "$atelier_launcher")")"
+        atelier_python="${atelier_python#\#!}"
+    fi
+
     if [[ "$atelier_python" != /* ]] || [ ! -x "$atelier_python" ]; then
         echo "[atelier:codex] ERROR: cannot resolve Atelier Python interpreter from $atelier_launcher" >&2
         exit 1
