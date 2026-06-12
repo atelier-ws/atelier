@@ -997,14 +997,22 @@ def _stream_hosts_live(
 ) -> None:
     """Scan host session files and stream-display each session as it's imported.
 
-    For claude/codex/gemini: per-session streaming (header + count printed once,
-    then each session appears immediately after it's parsed).
-    For generic importers: per-host streaming (sessions appear together after
+    For claude/codex/gemini/copilot/opencode: per-session streaming (each session
+    appears immediately after it's parsed).
+    For other generic importers: per-host streaming (sessions appear together after
     import_all completes for that host).
     """
     from atelier.gateway.hosts.session_parsers.claude import ClaudeImporter, find_claude_sessions
     from atelier.gateway.hosts.session_parsers.codex import CodexImporter, find_codex_sessions
+    from atelier.gateway.hosts.session_parsers.copilot import CopilotImporter, find_copilot_sessions
     from atelier.gateway.hosts.session_parsers.gemini import GeminiImporter, find_gemini_sessions
+    from atelier.gateway.hosts.session_parsers.opencode import (  # type: ignore[attr-defined]
+        OpenCodeImporter,
+        find_opencode_sessions,
+    )
+    from atelier.gateway.hosts.session_parsers.opencode import (
+        _ms_to_dt as _oc_ms_to_dt,
+    )
     from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
 
     tmp = tempfile.TemporaryDirectory(prefix="atelier-session-hosts-")
@@ -1090,6 +1098,51 @@ def _stream_hosts_live(
                         trace = store.get_trace(tid)
                         if trace:
                             _print_session_row(_build_session_row(trace, store, host_name), verbose)
+                continue
+
+            if host_name == "copilot":
+                importer_cop = CopilotImporter(store)
+                picked_cop = _pick_live_sessions(
+                    list(find_copilot_sessions(path)),
+                    path_of=lambda p: p,
+                    limit=limit,
+                    scan=max_per_host,
+                    session_filter=session_filter,
+                    cutoff=cutoff,
+                )
+                if not picked_cop:
+                    continue
+                any_found = True
+                click.echo("")
+                click.secho(host_name, fg="magenta", bold=True)
+                click.echo(f"  scanned this run: {len(picked_cop)}")
+                for session_dir in picked_cop:
+                    tid = importer_cop.import_session(session_dir, force=force)
+                    if tid:
+                        trace = store.get_trace(tid)
+                        if trace:
+                            _print_session_row(_build_session_row(trace, store, host_name), verbose)
+                continue
+
+            if host_name == "opencode":
+                importer_oc = OpenCodeImporter(store)
+                oc_db = path or (Path.home() / ".local/share/opencode/opencode.db")
+                if oc_db.exists():
+                    all_oc = find_opencode_sessions(oc_db)
+                    if cutoff is not None:
+                        all_oc = [r for r in all_oc if _oc_ms_to_dt(r.get("time_created")) >= cutoff]
+                    picked_oc = all_oc[:limit]
+                    if picked_oc:
+                        any_found = True
+                        click.echo("")
+                        click.secho(host_name, fg="magenta", bold=True)
+                        click.echo(f"  scanned this run: {len(picked_oc)}")
+                        for session_row in picked_oc:
+                            tid = importer_oc.import_session(session_row, oc_db, force=force)
+                            if tid:
+                                trace = store.get_trace(tid)
+                                if trace:
+                                    _print_session_row(_build_session_row(trace, store, host_name), verbose)
                 continue
 
             # Generic importer: batch import_all then stream display
