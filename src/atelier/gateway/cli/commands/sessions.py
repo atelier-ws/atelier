@@ -684,7 +684,32 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
                 if bucket_sum > 0:
                     ratio = block.est_cost_usd / bucket_sum
                     breakdown = {k: v * ratio for k, v in breakdown.items()}
+    elif int(potential["atelier_calls"]) > 0:
+        # Estimate savings for non-Claude hosts from actual Atelier tool usage.
+        # Each repeated atelier read/grep/search deduped a context re-read.
+        total_ctx = max(0, input_tokens + cache_read_tokens + cache_write_tokens)
+        avg_per_call = total_ctx // max(1, _tool_call_total(trace))
+        avg_per_call = min(avg_per_call, max(1, int(_context_window_cap(pricing_model))))
+        saved_calls_est = 0
+        saved_out_tokens_est = 0
+        for tool in trace.tools_called:
+            name = str(tool.name or "").lower()
+            if not _is_atelier_tool_name(name):
+                continue
+            base = name.split("_", 1)[-1] if "_" in name else name.replace("mcp__atelier__", "")
+            if base not in _POTENTIAL_BATCHABLE:
+                continue
+            count = int(tool.count or 0)
+            if count > 1:
+                saved_calls_est += count - 1
+                saved_out_tokens_est += int(tool.output_tokens or 0) * (count - 1) // count
+        turns = len(trace.usage_entries)
+        saved_tokens = saved_calls_est * avg_per_call
+        carry_tokens = saved_out_tokens_est * (turns // 2)
     cr_rate = _cache_read_rate(pricing_model, breakdown, cache_read_tokens)
+    if host_name != "claude" and saved_tokens > 0:
+        saved_usd = saved_tokens * cr_rate
+        carry_usd = carry_tokens * cr_rate
     potential_saved_usd = float(potential["tokens_saved"]) * cr_rate
     potential_carry_usd = float(potential["carry_tokens"]) * cr_rate
     potential_tokens_saved = int(potential["tokens_saved"])
