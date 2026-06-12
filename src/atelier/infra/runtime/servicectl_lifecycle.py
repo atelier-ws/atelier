@@ -33,6 +33,16 @@ from atelier.infra.runtime.daemon_units import (
 logger = logging.getLogger(__name__)
 
 
+def _atelier_version() -> str:
+    """Return the installed Atelier version string."""
+    try:
+        from importlib.metadata import version
+
+        return version("atelier")
+    except Exception:  # noqa: BLE001
+        return "0.0.0"
+
+
 def _servicectl_dir(root: Path) -> Path:
     return Path(root) / "servicectl"
 
@@ -275,61 +285,227 @@ def _servicectl_collect_external_analytics(
     return persisted
 
 
+def _git_project_root() -> Path | None:
+    """Resolve the git project root from install record or file-path traversal."""
+    record_path = Path.home() / ".atelier" / "install_dir"
+    if record_path.exists():
+        candidate = Path(record_path.read_text(encoding="utf-8").strip())
+        if (candidate / ".git").exists():
+            return candidate.resolve()
+    # Fallback: traverse up from this file
+    candidate = Path(__file__).resolve()
+    for parent in candidate.parents:
+        if (parent / ".git").exists() and (parent / "pyproject.toml").exists():
+            try:
+                content = (parent / "pyproject.toml").read_text("utf-8")
+                if 'name = "atelier"' in content:
+                    return parent
+            except OSError:
+                pass
+    return None
+
+
+def _detect_auto_update_method() -> tuple[str, str | None]:
+    """Detect the install method for auto-update.
+
+    Returns (method, project_root_or_None).
+    """
+    # Frozen binary (PyInstaller) — can't be anything else
+    if getattr(sys, "frozen", False):
+        return ("binary", None)
+
+    # Git checkout?
+    git_root = _git_project_root()
+    if git_root is not None:
+        return ("git", str(git_root))
+
+    # Fallback: try uv tool
+    return ("uv_tool", None)
+
+
+def _update_via_git(project_root: str) -> bool:
+    """Update from git: fetch, pull, sync deps. Returns True if applied."""
+    project_root_p = Path(project_root)
+    subprocess.run(["git", "fetch", "--quiet"], cwd=project_root_p, check=True)
+    res = subprocess.run(
+        ["git", "rev-list", "HEAD..@{u}", "--count"],
+        cwd=project_root_p,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    behind_count = int(res.stdout.strip())
+    if behind_count == 0:
+        return False
+
+    logger.info(f"Auto-update: detected {behind_count} new commits. Pulling...")
+    subprocess.run(["git", "pull", "--ff-only", "--quiet"], cwd=project_root_p, check=True)
+
+    if (project_root_p / "uv.lock").exists() or (project_root_p / "pyproject.toml").exists():
+        import shutil
+
+        if shutil.which("uv"):
+            logger.info("Auto-update: syncing dependencies with uv...")
+            subprocess.run(["uv", "sync"], cwd=project_root_p, check=True)
+    return True
+
+
+def _update_via_uv_tool() -> bool:
+    """Update via ``uv tool upgrade atelier``. Returns True if applied."""
+    result = subprocess.run(
+        ["uv", "tool", "upgrade", "atelier"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode == 0:
+        return True
+    # "already up-to-date" is not an error
+    if "already" in result.stderr.lower() or "already" in result.stdout.lower():
+        return False
+    logger.error(f"uv tool upgrade failed: {result.stderr.strip()}")
+    return False
+
+
+def _update_via_binary() -> bool:
+    """Update binary (PyInstaller) via GitHub Releases download.
+
+    Returns True if a new binary was downloaded.
+    """
+    import shutil
+    import tarfile
+    import tempfile
+    import urllib.request
+
+    os_name = sys.platform.lower()
+    if os_name == "darwin":
+        plat = "darwin"
+    elif os_name == "linux":
+        plat = "linux"
+    else:
+        logger.error(f"Auto-update: unsupported platform {os_name}")
+        return False
+
+    arch = os.uname().machine
+    if arch in ("x86_64", "amd64"):
+        arch_part = "x86_64"
+    elif arch in ("aarch64", "arm64"):
+        arch_part = "arm64"
+    else:
+        logger.error(f"Auto-update: unsupported architecture {arch}")
+        return False
+
+    suffix = f"{plat}-{arch_part}"
+    asset = f"atelier-binaries-{suffix}.tar.gz"
+    url = f"https://github.com/atelier-runtime/atelier/releases/latest/download/{asset}"
+
+    current_binary = Path(sys.executable if getattr(sys, "frozen", False) else (shutil.which("atelier") or ""))
+    if not current_binary.exists():
+        logger.error("Auto-update: could not locate atelier binary for replacement")
+        return False
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+            tmp_path = tmp.name
+            urllib.request.urlretrieve(url, tmp_path)  # nosec
+
+        extract_dir = Path(tempfile.mkdtemp(prefix="atelier-autoupdate-"))
+        try:
+            with tarfile.open(tmp_path, "r:gz") as tar:
+                tar.extractall(path=extract_dir)
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+        extracted_bin = extract_dir / "bin" / "atelier"
+        if not extracted_bin.exists():
+            extracted_bin = extract_dir / "atelier"
+        if not extracted_bin.exists():
+            logger.error(f"Auto-update: binary not found in release archive {asset}")
+            return False
+
+        import stat
+
+        target = current_binary.resolve()
+        shutil.copy2(str(extracted_bin), str(target))
+        target.chmod(target.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+        shutil.rmtree(extract_dir, ignore_errors=True)
+        logger.info("Auto-update: binary replaced successfully.")
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Auto-update: binary download failed: {exc}")
+        return False
+
+
+def _stack_restart() -> None:
+    """Trigger a restart of managed services (systemd or launchd)."""
+    if os.environ.get("INVOCATION_ID"):
+        logger.info("Auto-update: triggering systemd stack restart...")
+        subprocess.run(["systemctl", "--user", "restart", STACK_UNIT], check=False)
+    elif _is_macos() and (LAUNCHD_USER_DIR / f"{STACK_LABEL}.plist").exists():
+        logger.info("Auto-update: triggering launchd stack restart...")
+        subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{STACK_LABEL}"], check=False)
+
+
 def _servicectl_check_and_apply_updates(root: Path) -> bool:
-    """Check for git updates and apply them if available.
+    """Check for updates and apply them if available.
+
+    Supports git, uv tool (PyPI), and binary (GitHub Releases) installs.
+    Writes an update-state record after a successful update so that SessionStart
+    hooks can notify the user.
 
     Returns True if an update was applied and the process should restart.
     """
+    previous_version = _atelier_version()
+    method, project_root = _detect_auto_update_method()
+    logger.info(f"Auto-update: install method={method}, current version={previous_version}")
+
     try:
-        # 1. Identify project root (where .git is)
-        # We look for the install record or traverse up from this file.
-        record_path = Path.home() / ".atelier" / "install_dir"
-        if record_path.exists():
-            project_root = Path(record_path.read_text(encoding="utf-8").strip())
+        applied: bool = False
+        if method == "git" and project_root:
+            applied = _update_via_git(project_root)
+        elif method == "uv_tool":
+            applied = _update_via_uv_tool()
+        elif method == "binary":
+            applied = _update_via_binary()
         else:
-            # Fallback: traverse up from src/atelier/gateway/cli/app.py
-            project_root = Path(__file__).parents[4]
-
-        if not (project_root / ".git").exists():
+            logger.info("Auto-update: no update method available (unknown install type)")
             return False
 
-        # 2. git fetch
-        subprocess.run(["git", "fetch", "--quiet"], cwd=project_root, check=True)
-
-        # 3. Check if behind
-        res = subprocess.run(
-            ["git", "rev-list", "HEAD..@{u}", "--count"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        behind_count = int(res.stdout.strip())
-
-        if behind_count == 0:
+        if not applied:
+            logger.info("Auto-update: already up-to-date.")
             return False
 
-        logger.info(f"Auto-update: detected {behind_count} new commits. Pulling...")
+        # Write update-state for SessionStart hooks.
+        # After a git update the in-process version hasn't changed, so read
+        # the *new* version from pyproject.toml (git) or importlib (others).
+        try:
+            from atelier.core.foundation.update_state import write_update_state
 
-        # 4. Pull
-        subprocess.run(["git", "pull", "--ff-only", "--quiet"], cwd=project_root, check=True)
+            if method == "git" and project_root:
+                import re
 
-        # 5. Check if dependencies changed
-        if (project_root / "uv.lock").exists() or (project_root / "pyproject.toml").exists():
-            import shutil
+                pyproject = Path(project_root) / "pyproject.toml"
+                match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject.read_text("utf-8"), re.MULTILINE)
+                new_version = match.group(1) if match else previous_version
+            else:
+                try:
+                    from importlib.metadata import version
 
-            if shutil.which("uv"):
-                logger.info("Auto-update: syncing dependencies with uv...")
-                subprocess.run(["uv", "sync"], cwd=project_root, check=True)
+                    new_version = version("atelier")
+                except Exception:  # noqa: BLE001
+                    new_version = previous_version
 
-        # 6. Check if we should restart systemd/launchd managed services
-        # If we are running under systemd, we can trigger a restart of the whole stack
-        if os.environ.get("INVOCATION_ID"):
-            logger.info("Auto-update: update applied (systemd). Triggering stack restart...")
-            subprocess.run(["systemctl", "--user", "restart", STACK_UNIT], check=False)
-        elif _is_macos() and (LAUNCHD_USER_DIR / f"{STACK_LABEL}.plist").exists():
-            logger.info("Auto-update: update applied (launchd). Triggering stack restart...")
-            subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{STACK_LABEL}"], check=False)
+            write_update_state(
+                previous_version=previous_version,
+                current_version=new_version,
+                method=method,
+                root=root,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Auto-update: failed to write update state: {exc}")
+
+        # Trigger managed-service restart
+        _stack_restart()
 
         logger.info("Auto-update: update applied successfully. Exiting for restart.")
         return True

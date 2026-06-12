@@ -19,7 +19,7 @@ import click
     help="Atelier data root (default: ~/.atelier)",
 )
 @click.option("--host", envvar="ATELIER_AGENT", help="Agent host identifier (e.g. claude-code)")
-@click.version_option(version="0.3.1", prog_name="atelier mcp", message="%(prog_name)s %(version)s")
+@click.version_option(version="0.3.3", prog_name="atelier mcp", message="%(prog_name)s %(version)s")
 def mcp_cmd(root: Path | None, host: str | None) -> None:
     """Start the Atelier MCP server on stdio.
 

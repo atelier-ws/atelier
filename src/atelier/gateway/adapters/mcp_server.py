@@ -634,6 +634,27 @@ def _check_auto_update() -> None:
                 check=True,
             )
             _log.info("auto-update complete")
+
+            # Write update-state so SessionStart hooks can notify the user.
+            # Re-read the version from pyproject.toml since the install script
+            # may have updated it but the in-process version hasn't changed.
+            try:
+                from atelier.core.foundation.update_state import write_update_state
+
+                new_pyproject = repo / "pyproject.toml"
+                if new_pyproject.exists():
+                    m2 = re.search(r'^version\s*=\s*"([^"]+)"', new_pyproject.read_text("utf-8"), re.MULTILINE)
+                    new_ver = m2.group(1) if m2 else atelier_version
+                else:
+                    new_ver = atelier_version
+
+                write_update_state(
+                    previous_version=atelier_version,
+                    current_version=new_ver,
+                    method="git",
+                )
+            except Exception:  # noqa: BLE001
+                _log.exception("failed to write update state")
         else:
             _log.warning("install script not found at %s", install_script)
     except Exception:
