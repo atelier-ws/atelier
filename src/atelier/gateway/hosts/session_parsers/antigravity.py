@@ -30,7 +30,7 @@ class AntigravityImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
         cache_path = _cache_path(root)
         if not cache_path.is_file():
             return []
@@ -39,8 +39,19 @@ class AntigravityImporter:
         except json.JSONDecodeError:
             return []
         cascades = payload.get("cascades") or {}
+        # Sort cascades by timestamp (using the timestamp of the first call) descending
+        sorted_cascades = sorted(
+            cascades.items(),
+            key=lambda item: (
+                item[1][0].get("timestamp") if isinstance(item[1], dict) and isinstance(item[1].get("calls"), list) and item[1]["calls"] else ""
+            ),
+            reverse=True
+        )
+        if limit is not None:
+            sorted_cascades = sorted_cascades[:limit]
+        
         imported: list[str] = []
-        for cascade_id, cascade in cascades.items():
+        for cascade_id, cascade in sorted_cascades:
             calls = cascade.get("calls") if isinstance(cascade, dict) else None
             if not isinstance(calls, list):
                 continue
