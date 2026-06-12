@@ -216,12 +216,22 @@ class ClaudeImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
-        """Import all Claude sessions. Returns IDs of successfully imported traces."""
-        all_sessions = list(find_claude_sessions(root))
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
+        """Import newest sessions under *root* up to limit per type."""
+
+        # Helper to sort by mtime descending and take top N if limit is provided
+        def get_newest(paths: list[tuple[str, Path]], n: int | None) -> list[tuple[str, Path]]:
+            sorted_paths = sorted(paths, key=lambda p: p[1].stat().st_mtime, reverse=True)
+            return sorted_paths[:n] if n is not None else sorted_paths
+
+        all_sessions = get_newest(list(find_claude_sessions(root)), limit)
         total = len(all_sessions)
-        if total > 0:
-            logger.info("[atelier] claude: discovering sessions (found %d)", total)
+
+        logger.info(
+            "[atelier] claude: discovered sessions (found %d, processing top %s)",
+            total,
+            limit if limit is not None else "all",
+        )
 
         imported_ids = []
         for i, (workspace_slug, jsonl_path) in enumerate(all_sessions):
@@ -288,6 +298,7 @@ class ClaudeImporter:
         tools_called: dict[str, int] = {}
         tool_in_tokens: dict[str, int] = {}
         tool_out_tokens: dict[str, int] = {}
+        seen_tool_use_ids: set[str] = set()
         files_touched: list[str | FileEditRecord] = []
         errors_seen: set[str] = set()
         commands_run: list[str | CommandRecord] = []
@@ -470,6 +481,11 @@ class ClaudeImporter:
                         if bt != "tool_use":
                             continue
                         name = str(block.get("name", "unknown"))
+                        tid = str(block.get("id") or "")
+                        if tid:
+                            if tid in seen_tool_use_ids:
+                                continue
+                            seen_tool_use_ids.add(tid)
                         tools_called[name] = tools_called.get(name, 0) + 1
                         tool_in_tokens[name] = tool_in_tokens.get(name, 0) + dist_out
                         tool_out_tokens[name] = tool_out_tokens.get(name, 0) + dist_in
@@ -477,7 +493,6 @@ class ClaudeImporter:
                         if not isinstance(inp, dict):
                             inp = {}
                         tool_args[name] = inp or tool_args.get(name)
-                        tid = str(block.get("id") or "")
                         if tid:
                             pending_tool_uses[tid] = {"name": name, "input": inp}
                         if name in _FILE_TOOLS:
