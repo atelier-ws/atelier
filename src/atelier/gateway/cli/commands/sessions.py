@@ -550,35 +550,18 @@ def _is_atelier_tool_name(name: str) -> bool:
 _POTENTIAL_BATCHABLE = ("read", "view", "grep", "glob", "search", "rg")
 
 # Fallback context-window cap when the model's rate card has no threshold.
-_DEFAULT_CONTEXT_CAP = 200_000
-
-
-def _context_window_cap(model: str) -> int:
-    """Per-request context ceiling for sanity-capping avg context per call."""
-    try:
-        from atelier.core.capabilities.pricing import get_model_pricing
-        from atelier.core.capabilities.savings_summary import resolve_model_id
-
-        pricing = get_model_pricing(resolve_model_id(model))
-        if pricing is not None and pricing.known:
-            threshold = pricing.long_context_threshold()
-            if threshold > 0:
-                return int(threshold)
-    except Exception:
-        logging.exception("failed to resolve context window for model=%s", model)
-    return _DEFAULT_CONTEXT_CAP
-
 
 def _builtin_potential(
     trace: Trace,
-    input_tokens: int,
-    cache_read_tokens: int,
-    cache_write_tokens: int,
-    context_cap: int = _DEFAULT_CONTEXT_CAP,
 ) -> dict[str, Any]:
     """Estimate what Atelier would have saved, with the same credit model as
     real savings: avoidable duplicate read-like calls skip a context re-read
     (saved), and their outputs stay out of context on later turns (carry).
+
+    Both saved and carry are based on the actual output-token size of duplicate
+    calls (what Atelier dedup would have kept out of context), not the average
+    context size per request.  Using context-size as a proxy inflates estimates
+    by an order of magnitude for heavy-cache sessions.
 
     Token estimates here are raw; the caller bounds the priced total by the
     session's actual cache spend — you cannot save more than was spent.
@@ -610,13 +593,10 @@ def _builtin_potential(
             # would have kept out of context.
             dup_output_tokens += out_by_tool.get(key, 0) * (count - 1) // count
 
-    # Average context re-sent per call, capped at the model's per-request
-    # window: totals divided by an undercounted call tally must never imply
-    # an impossible context size.
-    total_context_tokens = max(0, int(input_tokens) + int(cache_read_tokens) + int(cache_write_tokens))
-    avg_per_call = total_context_tokens // max(1, _tool_call_total(trace))
-    avg_per_call = min(avg_per_call, max(1, int(context_cap)))
-    potential_tokens_saved = int(max(0, potential_calls_saved * avg_per_call))
+    # Saved: duplicate tool results that would have entered context.
+    # Sized by actual output tokens, not avg context-per-request (which
+    # overestimates by ~10x on cache-heavy sessions).
+    potential_tokens_saved = dup_output_tokens
 
     # Carry: deduped outputs are not re-read on later turns. Average position
     # of a call leaves ~half the session's turns after it.
@@ -655,13 +635,7 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
     breakdown = _estimated_trace_cost_breakdown(trace)
     subagents = _host_subagent_count(store, host_name, sid, trace)
     subagent_cost_usd = _host_subagent_cost_usd(host_name, sid, trace)
-    potential = _builtin_potential(
-        trace,
-        input_tokens=input_tokens,
-        cache_read_tokens=cache_read_tokens,
-        cache_write_tokens=cache_write_tokens,
-        context_cap=_context_window_cap(pricing_model),
-    )
+    potential = _builtin_potential(trace)
     saved_usd = 0.0
     carry_usd = 0.0
     carry_tokens = 0
@@ -687,9 +661,6 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
     elif int(potential["atelier_calls"]) > 0:
         # Estimate savings for non-Claude hosts from actual Atelier tool usage.
         # Each repeated atelier read/grep/search deduped a context re-read.
-        total_ctx = max(0, input_tokens + cache_read_tokens + cache_write_tokens)
-        avg_per_call = total_ctx // max(1, _tool_call_total(trace))
-        avg_per_call = min(avg_per_call, max(1, int(_context_window_cap(pricing_model))))
         saved_calls_est = 0
         saved_out_tokens_est = 0
         for tool in trace.tools_called:
@@ -704,13 +675,13 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
                 saved_calls_est += count - 1
                 saved_out_tokens_est += int(tool.output_tokens or 0) * (count - 1) // count
         turns = len(trace.usage_entries)
-        saved_tokens = saved_calls_est * avg_per_call
         # If per-tool output tokens aren't recorded (e.g. codex), fall back to
-        # estimating carry from total output tokens proportional to deduped calls.
+        # estimating from total output tokens proportional to deduped calls.
         if saved_out_tokens_est == 0 and saved_calls_est > 0 and output_tokens > 0:
             atelier_call_total = int(potential["atelier_calls"])
-            # assume deduped outputs are ~output_tokens * (saved_calls / atelier_calls)
             saved_out_tokens_est = output_tokens * saved_calls_est // max(1, atelier_call_total)
+        # Use output-token size of deduped calls (not avg context-per-request).
+        saved_tokens = saved_out_tokens_est
         carry_tokens = saved_out_tokens_est * max(1, turns // 2)
     cr_rate = _cache_read_rate(pricing_model, breakdown, cache_read_tokens)
     if host_name != "claude" and saved_tokens > 0:
