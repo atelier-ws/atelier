@@ -705,7 +705,13 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
                 saved_out_tokens_est += int(tool.output_tokens or 0) * (count - 1) // count
         turns = len(trace.usage_entries)
         saved_tokens = saved_calls_est * avg_per_call
-        carry_tokens = saved_out_tokens_est * (turns // 2)
+        # If per-tool output tokens aren't recorded (e.g. codex), fall back to
+        # estimating carry from total output tokens proportional to deduped calls.
+        if saved_out_tokens_est == 0 and saved_calls_est > 0 and output_tokens > 0:
+            atelier_call_total = int(potential["atelier_calls"])
+            # assume deduped outputs are ~output_tokens * (saved_calls / atelier_calls)
+            saved_out_tokens_est = output_tokens * saved_calls_est // max(1, atelier_call_total)
+        carry_tokens = saved_out_tokens_est * max(1, turns // 2)
     cr_rate = _cache_read_rate(pricing_model, breakdown, cache_read_tokens)
     if host_name != "claude" and saved_tokens > 0:
         saved_usd = saved_tokens * cr_rate
