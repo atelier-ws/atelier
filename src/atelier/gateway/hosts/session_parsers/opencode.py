@@ -73,7 +73,7 @@ class OpenCodeImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, db_path: Path | None = None, *, force: bool = False) -> list[str]:
+    def import_all(self, db_path: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
         resolved_db_path = db_path or (Path.home() / ".local/share/opencode/opencode.db")
         if not resolved_db_path.exists():
             return []
@@ -84,13 +84,13 @@ class OpenCodeImporter:
         for i, session_row in enumerate(all_sessions):
             if i % 10 == 0 and i > 0:
                 logger.info("[atelier] opencode: importing %d/%d...", i, len(all_sessions))
-            tid = self._import_session(session_row, resolved_db_path, force=force)
+            tid = self.import_session(session_row, resolved_db_path, force=force)
             if tid:
                 imported_ids.append(tid)
 
         return imported_ids
 
-    def _import_session(self, session_row: dict[str, Any], db_path: Path, *, force: bool = False) -> str | None:
+    def import_session(self, session_row: dict[str, Any], db_path: Path, *, force: bool = False) -> str | None:
         session_id: str = session_row["id"]
         artifact_id = f"opencode-{session_id}"
         existing = self.store.get_raw_artifact(artifact_id)
@@ -164,8 +164,11 @@ class OpenCodeImporter:
                 continue
             try:
                 ev = json.loads(line)
+            except json.JSONDecodeError:
+                logger.debug("Skipping malformed JSON line in OpenCode session: %s...", line[:50])
+                continue
             except Exception:
-                logging.exception("Recovered from broad exception handler")
+                logger.exception("Recovered from unexpected error during JSON parsing")
                 continue
 
             etype = ev.get("_type")
