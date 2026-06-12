@@ -646,6 +646,7 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
     output_tokens = int(trace.output_tokens or 0)
     total_cost_usd, reported_cost_usd, estimated_cost_usd = _best_trace_cost(trace)
     model = _trace_model(trace)
+    pricing_model = model if model != "-" else ""  # "-" is a display sentinel; don't warn on it
     breakdown = _estimated_trace_cost_breakdown(trace)
     subagents = _host_subagent_count(store, host_name, sid, trace)
     subagent_cost_usd = _host_subagent_cost_usd(host_name, sid, trace)
@@ -654,7 +655,7 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
         input_tokens=input_tokens,
         cache_read_tokens=cache_read_tokens,
         cache_write_tokens=cache_write_tokens,
-        context_cap=_context_window_cap(model),
+        context_cap=_context_window_cap(pricing_model),
     )
     saved_usd = 0.0
     carry_usd = 0.0
@@ -678,7 +679,7 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
                 if bucket_sum > 0:
                     ratio = block.est_cost_usd / bucket_sum
                     breakdown = {k: v * ratio for k, v in breakdown.items()}
-    cr_rate = _cache_read_rate(model, breakdown, cache_read_tokens)
+    cr_rate = _cache_read_rate(pricing_model, breakdown, cache_read_tokens)
     potential_saved_usd = float(potential["tokens_saved"]) * cr_rate
     potential_carry_usd = float(potential["carry_tokens"]) * cr_rate
     potential_tokens_saved = int(potential["tokens_saved"])
