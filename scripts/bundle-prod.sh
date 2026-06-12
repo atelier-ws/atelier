@@ -96,6 +96,7 @@ PFLAGS=(
     --noconfirm
     --onefile
     --add-data "src/atelier/infra/storage/migrations/*.sql:atelier/infra/storage/migrations/"
+    --add-data ".venv-build/lib/python3.13/site-packages/litellm/*.json:litellm/"
     --exclude-module benchmarks
     --hidden-import tiktoken_ext.openai_public
     --hidden-import ortools
