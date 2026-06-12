@@ -1562,7 +1562,7 @@ def _print_stats(
 @click.option("--host", "hosts_filter", multiple=True, help="Filter by host (can repeat).")
 @click.option("--source", type=click.Choice(["live", "store"]), default="live", show_default=True)
 @click.option("--top", default=5, show_default=True, type=int, help="Top sessions by cost to list.")
-@click.option("--scan", default=100, show_default=True, type=int, help="Max sessions to scan per host.")
+@click.option("--scan", default=20, show_default=True, type=int, help="Max sessions to scan per host.")
 @click.option("--path", "data_path", type=click.Path(path_type=Path), default=None)
 @click.pass_context
 def session_stats_cmd(
@@ -1574,7 +1574,7 @@ def session_stats_cmd(
     scan: int,
     data_path: Path | None,
 ) -> None:
-    """Aggregate usage statistics across all sessions in a time window."""
+    """Aggregate usage statistics across all sessions in a time window (default: last 7 days)."""
     root = Path(ctx.obj["root"])
     cutoff = datetime.now(UTC) - _parse_duration(since_str)
     selected_hosts = list(hosts_filter) if hosts_filter else list(SUPPORTED_SESSION_IMPORT_HOSTS)
@@ -1587,6 +1587,8 @@ def session_stats_cmd(
             for trace in store.list_traces(host=hn, since=cutoff, limit=scan):
                 all_rows.append(_build_session_row(trace, store, hn))
     else:
+        # Scan silently: suppress per-session output by redirecting via _scan_hosts_live
+        click.echo(f"Scanning last {since_str} across {len(selected_hosts)} host(s)…", err=True)
         _sync_counts, store, tmp_handle = _scan_hosts_live(
             selected_hosts=selected_hosts,
             force=False,
