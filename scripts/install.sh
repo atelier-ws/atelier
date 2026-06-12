@@ -2,23 +2,24 @@
 # install.sh — Standalone Atelier production bootstrap.
 #
 # Downloads a pre-compiled Atelier binary for your platform from the
-# latest GitHub release and installs it to ~/.local/bin/.
+# latest GitHub release, installs it to ~/.local/bin/, and then installs
+# Atelier into each detected agent host (Claude, Copilot, Cursor, Codex, etc.).
 #
 # Usage:
 #   curl -fsSL https://github.com/atelier-ws/atelier/releases/latest/download/install.sh | bash
 #
-# For a comprehensive developer install (with uv, git, node, host
-# integrations, etc.) use scripts/local.sh from the repo checkout or:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/atelier-ws/atelier/main/scripts/local.sh) --local
+# For a comprehensive developer install (with uv, git, node, etc.) use
+# scripts/local.sh from the repo checkout.
 #
 # Environment variables:
-#   ATELIER_INSTALL_DIR   Target directory (default: ~/.local)
-#   ATELIER_BIN_DIR       Binary directory (default: ~/.local/bin)
-#   ATELIER_RELEASE_TAG   Release tag to install (default: latest)
-#   ATELIER_DRY_RUN       If set to 1, print planned actions and exit
-#   ATELIER_VERBOSE       If set to 1, show verbose output
-#   ATELIER_NON_INTERACTIVE If set to 1, skip all prompts
-#   ATELIER_NO_PATH       If set to 1, skip adding to PATH
+#   ATELIER_INSTALL_DIR     Target directory (default: ~/.local)
+#   ATELIER_BIN_DIR         Binary directory (default: ~/.local/bin)
+#   ATELIER_RELEASE_TAG     Release tag to install (default: latest)
+#   ATELIER_DRY_RUN         If set to 1, print planned actions and exit
+#   ATELIER_VERBOSE         If set to 1, show verbose output
+#   ATELIER_NON_INTERACTIVE If set to 1, skip all prompts (auto-install all hosts)
+#   ATELIER_NO_PATH         If set to 1, skip adding to PATH
+#   ATELIER_NO_HOSTS        If set to 1, skip agent host integration install
 
 set -euo pipefail
 
@@ -39,6 +40,7 @@ ATELIER_DRY_RUN="${ATELIER_DRY_RUN:-0}"
 ATELIER_VERBOSE="${ATELIER_VERBOSE:-0}"
 ATELIER_NON_INTERACTIVE="${ATELIER_NON_INTERACTIVE:-0}"
 ATELIER_NO_PATH="${ATELIER_NO_PATH:-0}"
+ATELIER_NO_HOSTS="${ATELIER_NO_HOSTS:-0}"
 
 if [[ "$ATELIER_RELEASE_TAG" == "latest" ]]; then
     RELEASE_BASE_URL="https://github.com/atelier-ws/atelier/releases/latest/download"
@@ -126,6 +128,20 @@ if [[ ! -x "${ATELIER_BIN_DIR}/atelier" ]]; then
 fi
 
 info "Installed to: ${ATELIER_BIN_DIR}"
+
+# ---- run full setup via bundle.sh -------------------------------------------
+export PATH="${ATELIER_BIN_DIR}:${PATH}"
+BUNDLE_SH="${ATELIER_INSTALL_DIR}/scripts/bundle.sh"
+if [[ "$ATELIER_NO_HOSTS" != "1" && -f "$BUNDLE_SH" ]]; then
+    SETUP_ARGS=()
+    [[ "$ATELIER_DRY_RUN" == "1" ]] && SETUP_ARGS+=(--dry-run)
+    [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && SETUP_ARGS+=(--non-interactive)
+    ATELIER_INSTALL_DIR="$ATELIER_INSTALL_DIR" \
+    ATELIER_BIN_DIR="$ATELIER_BIN_DIR" \
+    bash "$BUNDLE_SH" "${SETUP_ARGS[@]+"${SETUP_ARGS[@]}"}"
+elif [[ "$ATELIER_NO_HOSTS" == "1" ]]; then
+    verbose "Skipping setup (ATELIER_NO_HOSTS=1)"
+fi
 
 # ---- PATH persistence --------------------------------------------------------
 if [[ "$ATELIER_NO_PATH" != "1" ]]; then
