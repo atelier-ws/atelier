@@ -11,7 +11,6 @@ from typing import Any
 
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
-    get_newest,
     build_normalized_jsonl,
     make_assistant_message,
     make_session_line,

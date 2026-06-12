@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import sqlite3
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -12,7 +12,6 @@ from typing import Any
 
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
-    get_newest,
     build_normalized_jsonl,
     char_tokens,
     make_assistant_message,
