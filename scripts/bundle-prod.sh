@@ -22,8 +22,8 @@ if [ ! -d "$BUILD_VENV" ]; then
     uv venv "$BUILD_VENV"
 fi
 PYTHON="$BUILD_VENV/bin/python"
-echo "◆ Syncing build venv with project dependencies..."
-uv pip install --python "$PYTHON" .
+echo "◆ Syncing build venv with project dependencies (including dev)..."
+uv pip install --python "$PYTHON" .[dev]
 
 # Remove scipy (119 MB native libs, not needed at runtime; gracefully handled)
 echo "◆ Removing scipy from build venv..."
