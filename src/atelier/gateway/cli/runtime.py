@@ -501,7 +501,6 @@ class InteractiveRuntime:
                     messages.append({"role": "tool", "tool_call_id": batch_id, "content": result_str})
 
                     if batch_name == "edit" and ok:
-                        _compress_edit_args_in_history(messages, batch_id)
                         try:
                             edited_paths = [
                                 str(e.get("file_path") or e.get("path") or "").split("#")[0]
@@ -1335,59 +1334,6 @@ async def _aiter_sync_stream(stream: Any) -> AsyncIterator[Any]:
         if chunk is sentinel:
             return
         yield chunk
-
-
-# After a successful large-file edit, replace the new_string payload in the
-# assistant message with a stub so the full file content doesn't get cached
-# and re-read on every subsequent turn.
-_EDIT_ARG_COMPRESS_THRESHOLD = 2_000  # chars; ~500 tokens
-
-
-def _compress_edit_args_in_history(
-    messages: list[dict[str, Any]],
-    tool_call_id: str,
-) -> None:
-    """Stub out large new_string values in the assistant message after a successful edit.
-
-    Finds the most recent assistant message that contains ``tool_call_id`` and
-    replaces any ``new_string`` longer than the threshold with a compact summary,
-    preventing the test/source file from being re-read from cache on every turn.
-    """
-    for i in range(len(messages) - 1, -1, -1):
-        msg = messages[i]
-        if msg.get("role") != "assistant":
-            continue
-        tool_calls = msg.get("tool_calls")
-        if not isinstance(tool_calls, list):
-            continue
-        for j, tc in enumerate(tool_calls):
-            if tc.get("id") != tool_call_id:
-                continue
-            args_str = tc.get("function", {}).get("arguments", "")
-            if not isinstance(args_str, str) or len(args_str) <= _EDIT_ARG_COMPRESS_THRESHOLD:
-                return
-            try:
-                args = json.loads(args_str)
-            except (json.JSONDecodeError, ValueError):
-                return
-            edits = args.get("edits")
-            if not isinstance(edits, list):
-                return
-            changed = False
-            for edit in edits:
-                ns = edit.get("new_string", "")
-                if isinstance(ns, str) and len(ns) > _EDIT_ARG_COMPRESS_THRESHOLD:
-                    fp = edit.get("file_path") or edit.get("path") or "?"
-                    edit["new_string"] = f"<wrote {len(ns)} chars — use read tool to inspect>"
-                    edit["_file_path_hint"] = str(fp)
-                    changed = True
-            if changed:
-                new_tc = {**tc, "function": {**tc["function"], "arguments": json.dumps(args)}}
-                new_tool_calls = list(tool_calls)
-                new_tool_calls[j] = new_tc
-                messages[i] = {**msg, "tool_calls": new_tool_calls}
-            return
-
 
 
 # The MCP host surface still exposes these (user-authorized overrides); hiding
