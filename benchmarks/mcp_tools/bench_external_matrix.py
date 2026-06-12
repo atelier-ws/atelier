@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import contextlib
 import csv
 import json
 import os
@@ -293,6 +294,20 @@ class AtelierRunner(_RunnerBase):
         from atelier.gateway.adapters.mcp_server import tool_code
 
         self.tool_code = tool_code
+        # Pre-warm: the first search on a fresh snapshot triggers a full index
+        # build (tens of seconds). Do it here so measured cases reflect steady
+        # state instead of folding a one-time build into one case's latency.
+        with contextlib.suppress(Exception):
+            tool_code(
+                {
+                    "op": "search",
+                    "repo_root": str(self.snapshot_root),
+                    "query": "warmup_index_build",
+                    "mode": "lexical",
+                    "limit": 1,
+                    "budget_tokens": 200,
+                }
+            )
 
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
         assert self.snapshot_root is not None and self.tool_code is not None
@@ -353,6 +368,9 @@ class ZoektRunner(_RunnerBase):
         )
         runtime_root = Path(tempfile.mkdtemp(prefix=f"{self.tool_name}-matrix-root-", dir=tool_workspace))
         configure_benchmark_runtime(runtime_root, workspace_root=self.snapshot_root)
+        # Zoekt defaults to off; the benchmark arms exist to measure it, so
+        # default to the managed (docker) runtime unless the caller overrides.
+        os.environ.setdefault("ATELIER_ZOEKT_MODE", "managed")
         from atelier.infra.code_intel.zoekt.adapter import (
             get_zoekt_supervisor,
             reset_zoekt_supervisors,
@@ -360,6 +378,15 @@ class ZoektRunner(_RunnerBase):
 
         reset_zoekt_supervisors()
         self.supervisor = get_zoekt_supervisor(self.snapshot_root)
+        # Pre-warm the index so measured cases reflect steady-state latency.
+        with contextlib.suppress(Exception):
+            self.supervisor.search(
+                query="warmup_index_build",
+                search_path=self.snapshot_root / "src" / "atelier",
+                max_files=1,
+                max_chars_per_file=100,
+                include_outline=False,
+            )
 
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
         assert self.snapshot_root is not None and self.supervisor is not None
