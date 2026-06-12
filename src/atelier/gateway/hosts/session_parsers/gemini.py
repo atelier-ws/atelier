@@ -25,6 +25,7 @@ from atelier.core.foundation.models import (
 from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
+    get_newest,
     _SIZE_LIMIT_BYTES,
     make_llm_usage_entry,
     summarize_usage_entries,
@@ -145,11 +146,11 @@ class GeminiImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
         """Import all sessions. Returns IDs of successfully imported sessions."""
         imported_ids = []
         skipped = 0
-        all_sessions = list(find_gemini_sessions(root))
+        all_sessions = get_newest(list(find_gemini_sessions(root)), limit)
         total = len(all_sessions)
 
         logger.info("[atelier] gemini: discovering sessions (found %d)", total)

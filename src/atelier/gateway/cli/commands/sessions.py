@@ -516,6 +516,23 @@ def _emit_kv(label: str, value: str) -> None:
     click.echo(click.style(f"    {label:<11}", fg="cyan") + value)
 
 
+def _emit_tree_rows(rows: list[tuple[str, str]]) -> None:
+    """Emit a list of (label, value) pairs with ├─ / └─ connectors.
+
+    An empty label signals a continuation line (tool-list wrap, etc.);
+    those are indented under the previous connector.
+    """
+    for i, (label, value) in enumerate(rows):
+        last = i == len(rows) - 1
+        connector = "└─" if last else "├─"
+        if label:
+            click.echo(click.style(f"  {connector} {label:<10}", fg="cyan") + value)
+        else:
+            # continuation: align under the value column
+            prefix = "   " if last else "  │"
+            click.echo(f"{prefix}  {' ' * 10} {value}")
+
+
 def _is_atelier_tool_name(name: str) -> bool:
     lowered = (name or "").strip().lower()
     return lowered.startswith("mcp__atelier__") or lowered.startswith("mcp__plugin_atelier_atelier__")
@@ -723,20 +740,26 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
 
 
 def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
-    """Print a single session row in the standard display format."""
+    """Print a single session row using tree-style connectors."""
     created = str(row["created_at"])[:19].replace("T", " ") if row["created_at"] else "-"
     sid = str(row["session_id"]) if row["session_id"] else "-"
     model = str(row["model"] or "-")[:32]
     click.echo("")
     click.secho(f"  {created}  {sid}  {model}", bold=True)
-    _emit_kv(
+
+    detail: list[tuple[str, str]] = []
+
+    # tokens
+    detail.append((
         "tokens",
         f"in={_fmt_tok_compact(int(row['input_tokens']))}"
         f"  cR={_fmt_tok_compact(int(row['cache_read_tokens']))}"
         f"  cW={_fmt_tok_compact(int(row['cache_write_tokens']))}"
         f"  out={_fmt_tok_compact(int(row['output_tokens']))}",
-    )
-    _emit_kv(
+    ))
+
+    # cost
+    detail.append((
         "cost",
         f"${float(row['cost_usd']):.4f}  "
         + click.style(
@@ -744,69 +767,78 @@ def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
             f" · cW ${float(row['cost_cache_write_usd']):.4f} · out ${float(row['cost_output_usd']):.4f})",
             dim=True,
         ),
-    )
+    ))
+
     if row.get("source") == "trace_fallback":
         est = float(row["estimated_cost_usd"])
         rep = float(row["reported_cost_usd"])
         if est > 0 and rep > 0 and abs(est - rep) / max(est, rep) > 0.25:
-            _emit_kv("cost-check", click.style(f"estimated ${est:.4f} vs host-reported ${rep:.4f}", fg="yellow"))
+            detail.append(("cost-check", click.style(f"estimated ${est:.4f} vs host-reported ${rep:.4f}", fg="yellow")))
+
+    # subagents
     if int(row["subagents"]) > 0:
         sub_cost = float(row["subagent_cost_usd"])
         cost_detail = f" · ≈${sub_cost:.4f} (included in cost)" if sub_cost > 0 else ""
         subagent_names: dict[str, int] = row.get("subagent_names") or {}
         if subagent_names:
             name_parts = [f"{n}x{c}" for n, c in sorted(subagent_names.items(), key=lambda x: -x[1])]
-            wrapped = _wrap_csv_items(name_parts)
-            _emit_kv("subagents", wrapped[0] + cost_detail)
-            for extra_line in wrapped[1:]:
-                click.echo(" " * 15 + extra_line)
+            wrapped_sub = _wrap_csv_items(name_parts)
+            detail.append(("subagents", wrapped_sub[0] + cost_detail))
+            for extra_line in wrapped_sub[1:]:
+                detail.append(("", extra_line))
         else:
-            _emit_kv("subagents", f"{int(row['subagents'])}{cost_detail}")
+            detail.append(("subagents", f"{int(row['subagents'])}{cost_detail}"))
+
+    # savings: merge saved + carry + baseline into one row
     saved = float(row["saved_usd"])
-    if saved > 0 or int(row["saved_tokens"]) > 0 or int(row["calls_avoided"]) > 0:
-        saved_parts = [f"${saved:.4f}"]
-        if int(row["saved_tokens"]) > 0:
-            saved_parts.append(f"{int(row['saved_tokens']):,} tokens saved")
-        if int(row["calls_avoided"]) > 0:
-            saved_parts.append(f"{int(row['calls_avoided'])} calls avoided")
-        _emit_kv("saved", click.style(" · ".join(saved_parts), fg="green"))
     carry = float(row["carry_usd"])
-    if carry > 0:
-        _emit_kv(
-            "carry",
-            click.style(
-                f"${carry:.4f} · {int(row['carry_tokens']):,} tokens",
-                fg="magenta",
-            ),
-        )
     row_cost = float(row["cost_usd"])
+    savings_parts: list[str] = []
+    if saved > 0 or int(row["saved_tokens"]) > 0 or int(row["calls_avoided"]) > 0:
+        sp = [click.style(f"${saved:.4f}", fg="green")]
+        if int(row["saved_tokens"]) > 0:
+            sp.append(click.style(f"{_fmt_tok_compact(int(row['saved_tokens']))} tok saved", fg="green"))
+        if int(row["calls_avoided"]) > 0:
+            sp.append(click.style(f"{int(row['calls_avoided'])} calls avoided", fg="green"))
+        savings_parts.append(" · ".join(sp))
+    if carry > 0:
+        savings_parts.append(
+            click.style(
+                f"carry ${carry:.4f} · {_fmt_tok_compact(int(row['carry_tokens']))} tok",
+                fg="magenta",
+            )
+        )
     if row_cost > 0 and (saved + carry) > 0:
         baseline = row_cost + saved + carry
-        _emit_kv(
-            "baseline",
+        savings_parts.append(
             click.style(
-                f"≈${baseline:.4f} without Atelier · paid {100 * (saved + carry) / baseline:.1f}% less",
+                f"baseline ≈${baseline:.4f} (-{100 * (saved + carry) / baseline:.1f}%)",
                 dim=True,
-            ),
+            )
         )
-    _emit_kv(
+    if savings_parts:
+        detail.append(("savings", "  ·  ".join(savings_parts)))
+
+    # calls
+    detail.append((
         "calls",
         f"{int(row['tool_calls'])} total · {int(row['atelier_calls'])} atelier"
         f" · {int(row['builtin_calls'])} builtin",
-    )
+    ))
+
     trace_calls = int(row["tool_calls"])
     block_calls = int(row.get("block_tool_calls") or 0)
-    # Only warn when trace *under*counts vs the stop-hook snapshot (parsing issue).
-    # trace_calls > block_calls is expected for resumed sessions (stop hook ran mid-session).
     if block_calls > 0 and trace_calls > 0 and trace_calls / block_calls < 0.5:
-        _emit_kv(
+        detail.append((
             "calls-check",
             click.style(
-                f"trace import counted {trace_calls} tool calls but the session file"
-                f" recorded {block_calls} — trace parser may have missed some calls",
+                f"trace import counted {trace_calls} but session file recorded {block_calls}"
+                f" — trace parser may have missed some calls",
                 fg="red",
             ),
-        )
+        ))
+
+    # potential
     if int(row["potential_calls_saved"]) > 0:
         pot = f"≈{int(row['potential_calls_saved'])} avoidable · " + click.style(
             f"saved ${float(row['potential_saved_usd']):.4f} ({_fmt_tok_compact(int(row['potential_tokens_saved']))} tok)",
@@ -818,20 +850,27 @@ def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
                 f" ({_fmt_tok_compact(int(row['potential_carry_tokens']))} tok)",
                 fg="magenta",
             )
-        _emit_kv("potential", pot + click.style("  via Atelier", dim=True))
+        detail.append(("potential", pot + click.style("  via Atelier", dim=True)))
+
+    # tools (may wrap)
     tool_items = [f"{t['name']}x{t['count']}" for t in (row["tools"] or [])]
     wrapped_tools = _wrap_csv_items(tool_items)
-    _emit_kv("tools", wrapped_tools[0])
+    detail.append(("tools", wrapped_tools[0]))
     for extra_line in wrapped_tools[1:]:
-        click.echo(" " * 15 + extra_line)
+        detail.append(("", extra_line))
+
+    # prompt
     first_user = str(row["first_user"] or "").replace("\n", " ").strip()
     max_prompt = max(40, _term_width() - 16)
     if len(first_user) > max_prompt:
         first_user = first_user[: max_prompt - 3] + "..."
-    _emit_kv("prompt", first_user or "(none)")
+    detail.append(("prompt", first_user or "(none)"))
+
     if verbose:
         for cmd in (row["commands"] or [])[:8]:
-            _emit_kv("cmd", cmd)
+            detail.append(("cmd", cmd))
+
+    _emit_tree_rows(detail)
 
 
 def _sync_hosts_from_source(
