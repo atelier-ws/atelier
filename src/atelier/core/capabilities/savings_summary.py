@@ -242,7 +242,12 @@ _STOP_EST_COST_RE = re.compile(r"est\. cost: ~\$([0-9][0-9.,]*)")
 _STOP_SAVINGS_RE = re.compile(
     rf"savings: \$([0-9][0-9.,]*) {_STOP_SEP} ([0-9,]+) tokens saved {_STOP_SEP} ([0-9,]+) calls avoided"
 )
-_STOP_CARRY_RE = re.compile(rf"context carry: \$([0-9][0-9.,]*) {_STOP_SEP} ([0-9,]+) tokens")
+_STOP_CARRY_RE = re.compile(
+    rf"context carry: \$([0-9][0-9.,]*)"
+    rf"(?:{_STOP_SEP} ([0-9,]+) tokens)?"  # token count optional in older hook format
+)
+# Older format: carry embedded inline in the savings line as "· incl. context carry $X"
+_STOP_CARRY_INLINE_RE = re.compile(r"incl\. context carry \$([0-9][0-9.,]*)")
 _STOP_CALLS_RE = re.compile(rf"([0-9,]+) turns {_STOP_SEP} ([0-9,]+) tool calls")
 
 
@@ -314,7 +319,10 @@ def read_transcript_savings_block(transcript_path: str | Path) -> TranscriptSavi
     carry = _STOP_CARRY_RE.search(last_text)
     if carry:
         block.carry_usd = _usd(carry.group(1))
-        block.carry_tokens = _num(carry.group(2))
+        block.carry_tokens = _num(carry.group(2)) if carry.group(2) else 0
+    elif (carry_inline := _STOP_CARRY_INLINE_RE.search(last_text)):
+        # Older format: carry was part of savings line, no token count available
+        block.carry_usd = _usd(carry_inline.group(1))
     cost = _STOP_EST_COST_RE.search(last_text)
     if cost:
         block.est_cost_usd = _usd(cost.group(1))
