@@ -1443,13 +1443,14 @@ def _print_stats(
         hn = str(r.get("host") or r.get("source") or "unknown")
         if hn not in host_agg:
             host_agg[hn] = {
-                "sessions": 0, "cost": 0.0, "saved": 0.0, "calls": 0,
+                "sessions": 0, "cost": 0.0, "saved": 0.0, "carry": 0.0, "calls": 0,
                 "atelier": 0, "builtin": 0, "pot_usd": 0.0,
             }
         ha = host_agg[hn]
         ha["sessions"] += 1
         ha["cost"] += float(r["cost_usd"])
         ha["saved"] += float(r["saved_usd"])
+        ha["carry"] += float(r["carry_usd"])
         ha["calls"] += int(r["tool_calls"])
         ha["atelier"] += int(r["atelier_calls"])
         ha["builtin"] += int(r["builtin_calls"])
@@ -1528,8 +1529,13 @@ def _print_stats(
                 f"{ha['sessions']} session{'s' if ha['sessions'] != 1 else ''}",
                 f"{ha['calls']:,} calls ({atelier_pct:.0f}% atelier)",
             ]
-            if ha["saved"] > 0:
-                parts.append(click.style(f"saved ${ha['saved']:.4f}", fg="green"))
+            if ha["saved"] > 0 or ha["carry"] > 0:
+                savings_parts = []
+                if ha["saved"] > 0:
+                    savings_parts.append(click.style(f"saved ${ha['saved']:.4f}", fg="green"))
+                if ha["carry"] > 0:
+                    savings_parts.append(click.style(f"carry ${ha['carry']:.4f}", fg="magenta"))
+                parts.append(" + ".join(savings_parts))
             if ha["pot_usd"] > 0 and ha["atelier"] == 0:
                 parts.append(click.style(f"potential ≈${ha['pot_usd']:.4f}", fg="yellow"))
             host_rows.append((hn, "  ·  ".join(parts)))
@@ -1588,7 +1594,7 @@ def session_stats_cmd(
     else:
         since_str = since_str or "7d"
         cutoff = datetime.now(UTC) - _parse_duration(since_str)
-        scan_cap = 100
+        scan_cap = 15  # practical limit per host; active large sessions can be slow to parse
         label = since_str
 
     all_rows: list[dict[str, Any]] = []
