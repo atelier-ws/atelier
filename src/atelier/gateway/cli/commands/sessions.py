@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import shutil
 import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -481,14 +482,19 @@ def _cache_read_rate(model: str, breakdown: dict[str, float], cache_read_tokens:
     return 0.0
 
 
-def _wrap_csv_items(items: list[str], *, width: int = 150) -> list[str]:
+def _term_width() -> int:
+    return shutil.get_terminal_size(fallback=(120, 24)).columns
+
+
+def _wrap_csv_items(items: list[str], *, width: int | None = None) -> list[str]:
+    max_width = (width or _term_width()) - 16  # 16 = label indent
     if not items:
         return ["(none)"]
     lines: list[str] = []
     current = ""
     for item in items:
         chunk = item if not current else f", {item}"
-        if current and len(current) + len(chunk) > width:
+        if current and len(current) + len(chunk) > max_width:
             lines.append(current)
             current = item
         else:
@@ -726,16 +732,16 @@ def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
     _emit_kv(
         "tokens",
         f"in={_fmt_tok_compact(int(row['input_tokens']))}"
-        f"  cacheR={_fmt_tok_compact(int(row['cache_read_tokens']))}"
-        f"  cacheW={_fmt_tok_compact(int(row['cache_write_tokens']))}"
+        f"  cR={_fmt_tok_compact(int(row['cache_read_tokens']))}"
+        f"  cW={_fmt_tok_compact(int(row['cache_write_tokens']))}"
         f"  out={_fmt_tok_compact(int(row['output_tokens']))}",
     )
     _emit_kv(
         "cost",
         f"${float(row['cost_usd']):.4f}  "
         + click.style(
-            f"(in ${float(row['cost_input_usd']):.4f} · cacheR ${float(row['cost_cache_read_usd']):.4f}"
-            f" · cacheW ${float(row['cost_cache_write_usd']):.4f} · out ${float(row['cost_output_usd']):.4f})",
+            f"(in ${float(row['cost_input_usd']):.4f} · cR ${float(row['cost_cache_read_usd']):.4f}"
+            f" · cW ${float(row['cost_cache_write_usd']):.4f} · out ${float(row['cost_output_usd']):.4f})",
             dim=True,
         ),
     )
@@ -750,7 +756,7 @@ def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
         subagent_names: dict[str, int] = row.get("subagent_names") or {}
         if subagent_names:
             name_parts = [f"{n}x{c}" for n, c in sorted(subagent_names.items(), key=lambda x: -x[1])]
-            wrapped = _wrap_csv_items(name_parts, width=110)
+            wrapped = _wrap_csv_items(name_parts)
             _emit_kv("subagents", wrapped[0] + cost_detail)
             for extra_line in wrapped[1:]:
                 click.echo(" " * 15 + extra_line)
@@ -769,7 +775,7 @@ def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
         _emit_kv(
             "carry",
             click.style(
-                f"${carry:.4f} · {int(row['carry_tokens']):,} tokens (cache re-reads avoided on later turns)",
+                f"${carry:.4f} · {int(row['carry_tokens']):,} tokens",
                 fg="magenta",
             ),
         )
@@ -802,24 +808,26 @@ def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
             ),
         )
     if int(row["potential_calls_saved"]) > 0:
-        pot = f"≈{int(row['potential_calls_saved'])} builtin calls avoidable · " + click.style(
-            f"saved ${float(row['potential_saved_usd']):.4f} ({int(row['potential_tokens_saved']):,} tokens)",
+        pot = f"≈{int(row['potential_calls_saved'])} avoidable · " + click.style(
+            f"saved ${float(row['potential_saved_usd']):.4f} ({_fmt_tok_compact(int(row['potential_tokens_saved']))} tok)",
             fg="yellow",
         )
         if float(row["potential_carry_usd"]) > 0:
             pot += " + " + click.style(
-                f"carry ${float(row['potential_carry_usd']):.4f}" f" ({int(row['potential_carry_tokens']):,} tokens)",
+                f"carry ${float(row['potential_carry_usd']):.4f}"
+                f" ({_fmt_tok_compact(int(row['potential_carry_tokens']))} tok)",
                 fg="magenta",
             )
-        _emit_kv("potential", pot + click.style(" if routed via Atelier", dim=True))
+        _emit_kv("potential", pot + click.style("  via Atelier", dim=True))
     tool_items = [f"{t['name']}x{t['count']}" for t in (row["tools"] or [])]
-    wrapped_tools = _wrap_csv_items(tool_items, width=110)
+    wrapped_tools = _wrap_csv_items(tool_items)
     _emit_kv("tools", wrapped_tools[0])
     for extra_line in wrapped_tools[1:]:
         click.echo(" " * 15 + extra_line)
     first_user = str(row["first_user"] or "").replace("\n", " ").strip()
-    if len(first_user) > 120:
-        first_user = first_user[:117] + "..."
+    max_prompt = max(40, _term_width() - 16)
+    if len(first_user) > max_prompt:
+        first_user = first_user[: max_prompt - 3] + "..."
     _emit_kv("prompt", first_user or "(none)")
     if verbose:
         for cmd in (row["commands"] or [])[:8]:
