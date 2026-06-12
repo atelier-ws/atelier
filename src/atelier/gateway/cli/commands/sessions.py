@@ -555,6 +555,11 @@ _POTENTIAL_DEDUP = frozenset((
 # a resource already seen earlier in the same session.
 _REREAD_RATE = 4  # 1 in _REREAD_RATE calls is an estimated re-read
 
+# Fallback output-token estimate per read-like call when the host doesn't
+# record per-tool output tokens (e.g. codex distributes turn tokens evenly).
+# Based on typical Claude atelier read/grep output sizes.
+_DEFAULT_READ_OUTPUT_TOKENS = 3000
+
 
 def _builtin_potential(
     trace: Trace,
@@ -600,7 +605,12 @@ def _builtin_potential(
         estimated_reruns = count // _REREAD_RATE
         dedup_calls_est += estimated_reruns
         total_out = out_by_tool.get(key, 0)
-        dedup_output_tokens += total_out * estimated_reruns // count
+        if total_out > 0:
+            dedup_output_tokens += total_out * estimated_reruns // count
+        else:
+            # Host doesn't record per-tool output tokens (e.g. codex): use a
+            # conservative per-call default based on typical read output sizes.
+            dedup_output_tokens += estimated_reruns * _DEFAULT_READ_OUTPUT_TOKENS
 
     turns = len(trace.usage_entries)
     potential_tokens_saved = dedup_output_tokens
