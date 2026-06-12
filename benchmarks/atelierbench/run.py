@@ -1085,7 +1085,12 @@ def _validate_result_excerpt(task: Task, excerpt: str) -> tuple[bool, str, bool]
     if text.lstrip().startswith('{"title"'):
         return False, "session-title payload instead of task response", True
     task_keywords = _extract_keywords(f"{task.prompt()}\n{_task_description(task)}")
-    response_keywords = _extract_keywords(text)
+    # Match task keywords against ALL response tokens, not the response's own
+    # top-N frequency ranking: long structured summaries (tables, test rosters)
+    # rank repeated table words above task terms and false-positive as off-topic.
+    response_keywords = {
+        token for token in re.findall(r"[A-Za-z][A-Za-z0-9_+-]{3,}", lowered) if token not in STOPWORDS
+    }
     overlap = task_keywords & response_keywords
     list_item_count = sum(
         1 for line in text.splitlines() if line.lstrip().startswith("- ") or re.match(r"^\s*\d+\.\s", line) is not None
