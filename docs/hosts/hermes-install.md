@@ -25,10 +25,10 @@ bash scripts/install_hermes.sh
 
 ## What Gets Installed
 
-| Artifact          | Global install                         |
-| ----------------- | -------------------------------------- |
+| Artifact          | Global install                                        |
+| ----------------- | ----------------------------------------------------- |
 | MCP server config | `$HERMES_HOME/config.yaml` or `~/.hermes/config.yaml` |
-| Toolset entry     | Added `mcp-atelier` to `platform_toolsets.cli` |
+| Toolset entry     | Added `mcp-atelier` to `platform_toolsets.cli`        |
 
 The installer merges an `atelier` entry into the `mcp_servers` key of
 `config.yaml`:
@@ -36,7 +36,7 @@ The installer merges an `atelier` entry into the `mcp_servers` key of
 ```yaml
 mcp_servers:
   atelier:
-    command: atelier-mcp
+    command: atelier mcp
     args:
       - --host
       - hermes
@@ -66,7 +66,7 @@ make verify
 Or manually:
 
 ```bash
-atelier-mcp --host hermes --version
+atelier mcp --host hermes --version
 ```
 
 Check that the config file contains the atelier entry:
@@ -90,13 +90,13 @@ cat ~/.hermes/config.yaml
 
 ## Troubleshooting
 
-| Problem                          | Fix                                                                                |
-| -------------------------------- | ---------------------------------------------------------------------------------- |
-| "atelier-mcp: command not found" | Run `pip install atelier-runtime` or reinstall via `make install`                  |
-| Tools not showing up in Hermes   | Verify `mcp-atelier` is in `platform_toolsets.cli` — start a new Hermes session    |
-| `$HERMES_HOME` not set           | Installer defaults to `~/.hermes/config.yaml`. Set `HERMES_HOME` to customize.     |
-| Tools fail with "hermes" label   | Check `config.yaml` has `--host hermes` in the atelier args                        |
-| MCP connection timeout           | Increase `connect_timeout` and `timeout` values in `config.yaml`                   |
+| Problem                          | Fix                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------- |
+| "atelier mcp: command not found" | Run `pip install atelier-runtime` or reinstall via `make install`               |
+| Tools not showing up in Hermes   | Verify `mcp-atelier` is in `platform_toolsets.cli` — start a new Hermes session |
+| `$HERMES_HOME` not set           | Installer defaults to `~/.hermes/config.yaml`. Set `HERMES_HOME` to customize.  |
+| Tools fail with "hermes" label   | Check `config.yaml` has `--host hermes` in the atelier args                     |
+| MCP connection timeout           | Increase `connect_timeout` and `timeout` values in `config.yaml`                |
 
 ---
 

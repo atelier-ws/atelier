@@ -12,7 +12,7 @@ if command -v jq >/dev/null 2>&1; then
   # an absent session_id shifts model.id into SESSION_ID and leaks stale
   # workspace savings into a brand-new statusline frame.
   ATELIER_STATUS_DELIM=$'\037'
-  IFS="${ATELIER_STATUS_DELIM}" read -r MODEL PCT COST DUR_MS IN_TOK OUT_TOK CACHE_R CACHE_W SESSION_ID MODEL_ID <<<"$(printf '%s' "$input" | jq -r '
+  IFS="${ATELIER_STATUS_DELIM}" read -r MODEL PCT COST DUR_MS IN_TOK OUT_TOK CACHE_R CACHE_W SESSION_ID MODEL_ID TRANSCRIPT_PATH <<<"$(printf '%s' "$input" | jq -r '
     [
       # MODEL = display_name for the UI label ("Opus 4.7")
       (.model.display_name // .model.id // "claude"),
@@ -25,7 +25,8 @@ if command -v jq >/dev/null 2>&1; then
       (.context_window.current_usage.cache_creation_input_tokens // 0),
       (.session_id // ""),
       # MODEL_ID = canonical id ("claude-opus-4-7") for pricing lookups
-      (.model.id // .model.display_name // "")
+      (.model.id // .model.display_name // ""),
+      (.transcript_path // "")
     ] | map(tostring) | join("")
   ' 2>/dev/null)"
 else  read_field() {
@@ -58,6 +59,7 @@ except Exception:
   CACHE_R=$(read_field "context_window.current_usage.cache_read_input_tokens" "0")
   CACHE_W=$(read_field "context_window.current_usage.cache_creation_input_tokens" "0")
   SESSION_ID=$(read_field "session_id" "")
+  TRANSCRIPT_PATH=$(read_field "transcript_path" "")
 fi
 
 PCT_INT=${PCT%%.*}
@@ -225,9 +227,95 @@ if [ "$ROUTING_USD" != "\$0.000" ]; then
     CARRY_SEG=""
   fi
 
-printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s) ↓ %s%s(%s)%s%s%s\n' \
+# Background tasks. The statusline JSON carries no task info, so derive it:
+# shell jobs from session transcripts (main + subagents) where launch markers
+# exist without terminal task-notification status, and where the task output
+# file still exists. This avoids stale "1 bg" from old transcript-only residue.
+# Running subagents are counted from per-session tasks/*.output symlinks whose
+# target transcript is still being appended to.
+BG_JOBS=0
+if [ -n "${TRANSCRIPT_PATH:-}" ] && [ -f "${TRANSCRIPT_PATH}" ]; then
+  _BG_SESSION_ROOT="${TRANSCRIPT_PATH%/subagents/*}"
+  if [ "${_BG_SESSION_ROOT}" = "${TRANSCRIPT_PATH}" ]; then
+    _BG_SESSION_ROOT="$(dirname "${TRANSCRIPT_PATH}")"
+  fi
+  _BG_SCAN_FILES=()
+  while IFS= read -r -d '' _BG_F; do
+    _BG_SCAN_FILES+=("${_BG_F}")
+  done < <(find "${_BG_SESSION_ROOT}" -maxdepth 2 -type f -name '*.jsonl' -print0 2>/dev/null)
+  if [ "${#_BG_SCAN_FILES[@]}" -eq 0 ]; then
+    _BG_SCAN_FILES=("${TRANSCRIPT_PATH}")
+  fi
+  BG_JOBS=$(awk '
+    /tool_use_id/ && /Command running in background with ID: / {
+      line = $0
+      path = ""
+      if (match(line, /Output is being written to: [^", ]+/)) {
+        path = substr(line, RSTART, RLENGTH)
+        sub(/^Output is being written to: /, "", path)
+      }
+      while (match(line, /Command running in background with ID: [a-z0-9]+/)) {
+        id = substr(line, RSTART, RLENGTH)
+        sub(/^.*ID: /, "", id)
+        launched[id] = 1
+        if (path != "") output_file[id] = path
+        line = substr(line, RSTART + RLENGTH)
+      }
+    }
+    /task-notification/ && match($0, /<task-id>[a-z0-9]+<\/task-id>/) {
+      id = substr($0, RSTART, RLENGTH)
+      gsub(/<\/?task-id>/, "", id)
+      if ($0 ~ /<status>(completed|failed|stopped|cancelled|killed)<\/status>/) done[id] = 1
+    }
+    END {
+      n = 0
+      for (id in launched) {
+        if (id in done) continue
+        # Only count jobs with a concrete output file path that still exists.
+        # This avoids counting synthetic/no-path IDs left in transcripts.
+        if (!(id in output_file)) continue
+        cmd = "test -e \"" output_file[id] "\""
+        if (system(cmd) != 0) continue
+        n++
+      }
+      print n
+    }
+  ' "${_BG_SCAN_FILES[@]}" 2>/dev/null)
+  [ -z "${BG_JOBS}" ] && BG_JOBS=0
+fi
+BG_AGENTS=0
+if [ -n "${SESSION_ID:-}" ]; then
+  _NOW_EPOCH=$(date +%s)
+  for _TASK_DIR in "${TMPDIR:-/tmp}/claude-$(id -u)"/*/"${SESSION_ID}/tasks"; do
+    [ -d "${_TASK_DIR}" ] || continue
+    for _TASK_LNK in "${_TASK_DIR}"/*.output; do
+      [ -L "${_TASK_LNK}" ] || continue
+      _TASK_MT=$(stat -L -c %Y "${_TASK_LNK}" 2>/dev/null || stat -L -f %m "${_TASK_LNK}" 2>/dev/null) || continue
+      [ $(( _NOW_EPOCH - _TASK_MT )) -le 60 ] && BG_AGENTS=$(( BG_AGENTS + 1 ))
+    done
+    break
+  done
+fi
+TASKS_SEG=""
+[ "${BG_JOBS:-0}" -gt 0 ] 2>/dev/null && TASKS_SEG=" ${SEP} ${BG_JOBS} bg"
+[ "${BG_AGENTS:-0}" -gt 0 ] 2>/dev/null && TASKS_SEG="${TASKS_SEG} ${SEP} ${BG_AGENTS} agent"
+
+# Compact layout: model, context %, cost, savings, background tasks — no
+# token breakdown. Enable with ATELIER_STATUS_COMPACT=1 in the statusLine
+# command.
+if [ -n "${ATELIER_STATUS_COMPACT:-}" ]; then
+  printf '%s%s%s %s %s %s ctx %s%% %s %s %s↓ %s%s%s\n' \
+    "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
+    "$PIPE" "$MODEL" "$SEP" "$PCT_INT" \
+    "$PIPE" "$COST_FMT" \
+    "$C_GREEN" "$SAVED_USD" "$C_RESET" \
+    "$TASKS_SEG"
+  exit 0
+fi
+
+printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s) ↓ %s%s(%s)%s%s%s%s\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
   "$PIPE" "$MODEL" "$STATUS_SEG" "$ACTUAL_CTX_F" "$PCT_INT" \
   "$PIPE" "$COST_FMT" "$TOK_DISPLAY" \
   "$C_GREEN" "$SAVED_USD" "$SAVED_CTX" "$C_RESET" \
-  "$CARRY_SEG" "$ROUTING_SEG"
+  "$CARRY_SEG" "$ROUTING_SEG" "$TASKS_SEG"

@@ -6,7 +6,7 @@
 #
 # Resolution order:
 #   1. $ATELIER_PYTHON env override
-#   2. atelier-mcp wrapper → its sibling venv python
+#   2. atelier wrapper → its sibling venv python
 #   3. ~/.local/share/uv/tools/atelier/bin/python (uv tool default)
 #   4. python3 (silent fallback)
 
@@ -17,10 +17,10 @@ resolve_atelier_python() {
         fi
     fi
 
-    local mcp_wrapper real venv_bin py
-    mcp_wrapper="$(command -v atelier-mcp 2>/dev/null || true)"
-    if [[ -n "${mcp_wrapper}" ]]; then
-        real="$(grep -oE '"[^"]*atelier-mcp.real"' "${mcp_wrapper}" 2>/dev/null | head -1 | tr -d '"')"
+    local wrapper real venv_bin py
+    wrapper="$(command -v atelier 2>/dev/null || true)"
+    if [[ -n "${wrapper}" ]]; then
+        real="$(grep -oE '"[^"]*atelier.real"' "${wrapper}" 2>/dev/null | head -1 | tr -d '"')"
         if [[ -x "${real}" ]]; then
             venv_bin="$(dirname "${real}")"
             for py in "${venv_bin}/python" "${venv_bin}/python3"; do

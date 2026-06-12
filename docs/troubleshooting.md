@@ -83,13 +83,13 @@ ATELIER_REQUIRE_AUTH=false atelier service start --host 0.0.0.0 --port 8787
 
 If you want auth enabled, set `ATELIER_API_KEY` and configure the client that is calling the service.
 
-## `atelier-mcp` Is Not Found
+## `atelier mcp` Is Not Found
 
 If you used the install script, re-run it and verify both commands:
 
 ```bash
 atelier --version
-atelier-mcp --version
+atelier mcp --version
 ```
 
 If you are on a source checkout instead of an installed setup:

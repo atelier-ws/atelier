@@ -8,7 +8,7 @@
 #
 # Tries, in order:
 #   1. $ATELIER_PYTHON env override
-#   2. resolve atelier-mcp on PATH → its sibling venv bin/python
+#   2. resolve atelier on PATH → its sibling venv bin/python
 #   3. ~/.local/share/uv/tools/atelier/bin/python (uv tool default)
 #   4. system python3 (silent no-op fallback, matches old behavior)
 
@@ -21,12 +21,12 @@ resolve_atelier_python() {
         fi
     fi
 
-    local mcp_wrapper py
-    mcp_wrapper="$(command -v atelier-mcp 2>/dev/null || true)"
-    if [[ -n "${mcp_wrapper}" ]]; then
-        # The wrapper exec's atelier-mcp.real in the uv venv; the python lives next to it.
+    local wrapper py
+    wrapper="$(command -v atelier 2>/dev/null || true)"
+    if [[ -n "${wrapper}" ]]; then
+        # The wrapper exec's atelier.real in the uv venv; the python lives next to it.
         local real venv_bin
-        real="$(grep -oE '"[^"]*atelier-mcp.real"' "${mcp_wrapper}" 2>/dev/null | head -1 | tr -d '"')"
+        real="$(grep -oE '"[^"]*atelier.real"' "${wrapper}" 2>/dev/null | head -1 | tr -d '"')"
         if [[ -x "${real}" ]]; then
             venv_bin="$(dirname "${real}")"
             for py in "${venv_bin}/python" "${venv_bin}/python3"; do

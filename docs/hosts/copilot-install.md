@@ -32,12 +32,12 @@ pins even when the global install stays neutral.
 
 ## What Gets Installed
 
-| Artifact             | Global install                                    | `--workspace DIR` install                     |
-| -------------------- | ------------------------------------------------- | --------------------------------------------- |
-| MCP server config    | VS Code user `mcp.json`                           | `<workspace>/.vscode/mcp.json`                |
-| Copilot instructions | `~/.copilot/instructions/atelier.instructions.md` | `<workspace>/.github/copilot-instructions.md` |
+| Artifact             | Global install                                    | `--workspace DIR` install                                                                         |
+| -------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| MCP server config    | VS Code user `mcp.json`                           | `<workspace>/.vscode/mcp.json`                                                                    |
+| Copilot instructions | `~/.copilot/instructions/atelier.instructions.md` | `<workspace>/.github/copilot-instructions.md`                                                     |
 | Agent                | not installed globally                            | `<workspace>/.github/agents/atelier.code.agent.md` plus the other `atelier.<role>.agent.md` files |
-| Task presets         | VS Code user `tasks.json` (merged)                | `<workspace>/.vscode/tasks.json` (merged)     |
+| Task presets         | VS Code user `tasks.json` (merged)                | `<workspace>/.vscode/tasks.json` (merged)                                                         |
 
 The MCP config registers Atelier as a stdio server:
 
@@ -58,7 +58,7 @@ write the selected model directly into the workspace agent frontmatter.json
   "servers": &#123;
     "atelier": {
       "type": "stdio",
-      "command": "atelier-mcp",
+      "command": "atelier mcp",
       "args": ["--host", "copilot"],
       "env": {
         "ATELIER_WORKSPACE_ROOT": "<workspace>"

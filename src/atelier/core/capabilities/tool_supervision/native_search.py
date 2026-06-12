@@ -245,7 +245,7 @@ def _spill_dir() -> Path:
     if configured:
         path = Path(configured).expanduser().resolve()
     else:
-        path = Path(tempfile.gettempdir()) / "atelier-mcp-spill"
+        path = Path(tempfile.gettempdir()) / "atelier-spill"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

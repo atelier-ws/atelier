@@ -133,10 +133,10 @@ else
     fail "Claude user MCP missing atelier - run: make install-claude"
 fi
 
-if command -v atelier-mcp &>/dev/null; then
-    pass "atelier-mcp is available on PATH"
+if command -v atelier &>/dev/null; then
+    pass "atelier is available on PATH"
 else
-    fail "atelier-mcp NOT found on PATH"
+    fail "atelier NOT found on PATH"
 fi
 
 if [ "$FAIL" -ne 0 ]; then
