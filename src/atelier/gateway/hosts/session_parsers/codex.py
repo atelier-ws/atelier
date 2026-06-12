@@ -56,7 +56,6 @@ from atelier.core.foundation.models import (
 from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
-    get_newest,
     _SIZE_LIMIT_BYTES,
     make_llm_usage_entry,
     summarize_usage_entries,
