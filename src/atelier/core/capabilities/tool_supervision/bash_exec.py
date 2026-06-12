@@ -20,6 +20,8 @@ from atelier.core.capabilities.tool_supervision import command_discipline
 
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _SEARCH_REGEX_METACHARS = re.compile(r"[][{}()|^$*+?\\]")
+# Shell file-write patterns: cat > file, cat >> file, or any heredoc (<<)
+_SHELL_FILE_WRITE_RE = re.compile(r"\bcat\s+>>?|<<\s*['\"]?\w+['\"]?", re.IGNORECASE)
 
 
 def _strip_ansi(text: str) -> str:
@@ -170,7 +172,26 @@ def _is_git_clean_fd(tokens: list[str]) -> bool:
     return "f" in joined_flags and "d" in joined_flags
 
 
+def _is_shell_file_write(command: str) -> bool:
+    """Return True for shell file-write patterns that should use the edit tool instead.
+
+    Catches ``cat > file``, ``cat >> file``, and heredoc writes (``<< 'EOF'``,
+    ``<< EOF``, etc.) before shlex.split, which chokes on heredoc syntax.
+    """
+    return bool(_SHELL_FILE_WRITE_RE.search(command))
+
+
 def classify_command(command: str) -> CommandPolicyDecision:
+    # Detect file-write patterns before shlex.split (heredocs break shlex parsing).
+    if _is_shell_file_write(command):
+        return CommandPolicyDecision(
+            category="file-write",
+            action="block",
+            reason=(
+                "Use the edit tool to create or modify files — "
+                "shell redirects and heredocs are blocked for file content"
+            ),
+        )
     try:
         tokens = shlex.split(command)
     except ValueError:
