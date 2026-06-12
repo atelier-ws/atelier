@@ -711,6 +711,7 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
             if isinstance(c, str) or hasattr(c, "command")
         ],
         "tools": [{"name": t.name, "count": int(t.count or 0)} for t in trace.tools_called],
+        "subagent_names": dict(trace.telemetry.get("subagent_names", {})) if trace.telemetry else {},
         "source": "host_sessions",
     }
 
@@ -745,8 +746,16 @@ def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
             _emit_kv("cost-check", click.style(f"estimated ${est:.4f} vs host-reported ${rep:.4f}", fg="yellow"))
     if int(row["subagents"]) > 0:
         sub_cost = float(row["subagent_cost_usd"])
-        detail = f" · ≈${sub_cost:.4f} (included in cost)" if sub_cost > 0 else ""
-        _emit_kv("subagents", f"{int(row['subagents'])}{detail}")
+        cost_detail = f" · ≈${sub_cost:.4f} (included in cost)" if sub_cost > 0 else ""
+        subagent_names: dict[str, int] = row.get("subagent_names") or {}
+        if subagent_names:
+            name_parts = [f"{n}x{c}" for n, c in sorted(subagent_names.items(), key=lambda x: -x[1])]
+            wrapped = _wrap_csv_items(name_parts, width=110)
+            _emit_kv("subagents", wrapped[0] + cost_detail)
+            for extra_line in wrapped[1:]:
+                click.echo(" " * 15 + extra_line)
+        else:
+            _emit_kv("subagents", f"{int(row['subagents'])}{cost_detail}")
     saved = float(row["saved_usd"])
     if saved > 0 or int(row["saved_tokens"]) > 0 or int(row["calls_avoided"]) > 0:
         saved_parts = [f"${saved:.4f}"]
