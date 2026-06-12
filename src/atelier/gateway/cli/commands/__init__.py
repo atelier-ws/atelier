@@ -74,11 +74,25 @@ def register(cli: click.Group) -> None:
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
 
+    try:
+        from .stack import stack_group
+
+        cli.add_command(stack_group)
+    except (ModuleNotFoundError, ImportError):
+        _IMPORT_FAILED = True
+
     # ── hidden internal commands (used by dev.sh, not user-facing) ───────────
     try:
         from .background import background_group
 
         cli.add_command(background_group, name="background")
+    except (ModuleNotFoundError, ImportError):
+        _IMPORT_FAILED = True
+
+    try:
+        from .background import systemd_alias_group
+
+        cli.add_command(systemd_alias_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
 
@@ -109,6 +123,13 @@ def register(cli: click.Group) -> None:
         _h(savings_cmd)
         cli.add_command(savings_cmd)
         cli.add_command(optimize_group)
+    except (ModuleNotFoundError, ImportError):
+        _IMPORT_FAILED = True
+
+    try:
+        from .update import update_cmd
+
+        cli.add_command(update_cmd)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
 
