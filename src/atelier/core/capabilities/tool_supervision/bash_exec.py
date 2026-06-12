@@ -22,6 +22,16 @@ _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _SEARCH_REGEX_METACHARS = re.compile(r"[][{}()|^$*+?\\]")
 # Shell file-write patterns: cat > file or cat >> file (write redirect)
 _SHELL_FILE_WRITE_RE = re.compile(r"\bcat\s+>>?", re.IGNORECASE)
+# Inline interpreter writes: python -c / heredoc scripts that write workspace
+# files (open(...,'w'), .write_text(...)) — same edit-tool bypass as cat >.
+_INTERP_WRITE_RE = re.compile(
+    r"""\bpython[0-9.]*\b.*(?:
+        open\([^)]*,\s*['"][wax]b?\+?['"]   # open(path, 'w'/'a'/'x')
+        | \.write_text\(
+        | \.write_bytes\(
+    )""",
+    re.IGNORECASE | re.VERBOSE | re.DOTALL,
+)
 
 
 def _strip_ansi(text: str) -> str:
@@ -175,10 +185,11 @@ def _is_git_clean_fd(tokens: list[str]) -> bool:
 def _is_shell_file_write(command: str) -> bool:
     """Return True for shell file-write patterns that should use the edit tool instead.
 
-    Catches ``cat > file``, ``cat >> file``, and heredoc writes (``<< 'EOF'``,
-    ``<< EOF``, etc.) before shlex.split, which chokes on heredoc syntax.
+    Catches ``cat > file``, ``cat >> file``, and inline interpreter writes
+    (``python -c "...open(f,'w').write(...)"`` or python heredocs) before
+    shlex.split, which chokes on heredoc syntax.
     """
-    return bool(_SHELL_FILE_WRITE_RE.search(command))
+    return bool(_SHELL_FILE_WRITE_RE.search(command)) or bool(_INTERP_WRITE_RE.search(command))
 
 
 def classify_command(command: str) -> CommandPolicyDecision:
@@ -188,8 +199,8 @@ def classify_command(command: str) -> CommandPolicyDecision:
             category="file-write",
             action="block",
             reason=(
-                "Use the edit tool to create or modify files — "
-                "shell redirects and heredocs are blocked for file content"
+                "Use the edit tool to create or modify files — shell redirects, "
+                "heredocs, and inline interpreter writes are blocked for file content"
             ),
         )
     try:
