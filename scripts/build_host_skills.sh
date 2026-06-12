@@ -65,6 +65,11 @@ for name in sorted(HIDDEN_SKILLS):
 PY
 )
 
+ROLE_SKILLS=()
+while IFS= read -r mode_path; do
+    [[ -n "$mode_path" ]] && ROLE_SKILLS+=("$(basename "$mode_path" .md)")
+done < <(find "${ATELIER_REPO}/integrations/agents" -mindepth 1 -maxdepth 1 -type f -name '*.md' | sort)
+
 is_hidden_skill() {
     local name="$1"
     local skill
@@ -90,11 +95,24 @@ default_dest_for_host() {
 render_host_bundle() {
     local host="$1"
     local dest_dir="$2"
+    local generated_dir
     local skill_dir
     local skill_name
+    local source_path
+    local dest_path
 
     mkdir -p "$dest_dir"
 
+    generated_dir="$(default_dest_for_host "$host")"
+    for skill_name in "${ROLE_SKILLS[@]}"; do
+        source_path="$generated_dir/$skill_name/SKILL.md"
+        dest_path="$dest_dir/$skill_name/SKILL.md"
+        [[ -f "$source_path" ]] || continue
+        mkdir -p "$dest_dir/$skill_name"
+        if [[ "$source_path" != "$dest_path" ]]; then
+            cp "$source_path" "$dest_path"
+        fi
+    done
 
     while IFS= read -r skill_dir; do
         [[ -n "$skill_dir" ]] || continue

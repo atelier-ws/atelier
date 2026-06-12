@@ -210,7 +210,7 @@ def test_non_remote_tool_calls_fallback_when_route_has_no_configured_vendor_keys
     assert "hello route fallback" in payload
 
 
-@pytest.mark.slow  # Spawns a real atelier-mcp subprocess for end-to-end stdio
+@pytest.mark.slow  # Spawns a real atelier mcp subprocess for end-to-end stdio
 def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) -> None:
     target = mcp_env / "stdio.txt"
     target.write_text("hello world\n", encoding="utf-8")

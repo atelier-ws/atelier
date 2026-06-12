@@ -103,8 +103,8 @@ if $WORKSPACE_SET; then
   "servers": {
       "atelier": {
         "type": "stdio",
-        "command": "atelier-mcp",
-        "args": ["--host", "copilot"],
+        "command": "atelier",
+        "args": ["mcp", "--host", "copilot"],
         "env": {
           "ATELIER_WORKSPACE_ROOT": "${WORKSPACE}"
         }
@@ -119,8 +119,8 @@ else
   "servers": {
     "atelier": {
       "type": "stdio",
-      "command": "atelier-mcp",
-      "args": ["--host", "copilot"]
+      "command": "atelier",
+      "args": ["mcp", "--host", "copilot"]
     }
   }
 }
@@ -317,10 +317,10 @@ else
     vfail "$INSTRUCTIONS missing or no Atelier reference"
 fi
 
-if command -v atelier-mcp &>/dev/null; then
-    vpass "atelier-mcp is available on PATH"
+if command -v atelier &>/dev/null; then
+    vpass "atelier is available on PATH"
 else
-    vfail "atelier-mcp NOT found on PATH"
+    vfail "atelier NOT found on PATH"
 fi
 
 if $WORKSPACE_SET; then

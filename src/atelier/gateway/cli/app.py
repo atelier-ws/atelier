@@ -207,7 +207,15 @@ _register_command_modules(cli)
 
 
 def main() -> None:
-    command_name = _cli_command_name(sys.argv[1:])
+    # Handle calling conventions (symlink for backward compat)
+    argv = sys.argv[1:]
+    prog_name = Path(sys.argv[0]).name
+    if prog_name == "atelierd":
+        argv = ["background", "service", *argv]
+    elif prog_name == "atelier-mcp":
+        argv = ["mcp", *argv]
+
+    command_name = _cli_command_name(argv)
     session_id, started_at = _begin_cli_telemetry(command_name)
     old_handlers: dict[int, Any] = {}
 
@@ -229,7 +237,7 @@ def main() -> None:
 
     try:
         try:
-            cli(obj={"_telemetry_session_id": session_id, "_telemetry_command_name": command_name})
+            cli(args=argv, obj={"_telemetry_session_id": session_id, "_telemetry_command_name": command_name})
         except SystemExit as exc:
             code = exc.code if isinstance(exc.code, int) else 1
             _finish_cli_telemetry(

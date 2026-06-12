@@ -16,7 +16,7 @@ Hermes config format (YAML)::
 
     mcp_servers:
       atelier:
-        command: atelier-mcp
+        command: atelier mcp
         args: []
         timeout: 120
         connect_timeout: 60
@@ -128,11 +128,11 @@ class HermesAdapter(AgentAdapter):
         return (
             "# Hermes Agent ← Atelier integration\n"
             "1. pip install atelier-runtime\n"
-            "2. atelier init && atelier-mcp    # verify MCP server starts\n"
+            "2. atelier init && atelier mcp    # verify MCP server starts\n"
             "3. Add to $HERMES_HOME/config.yaml or ~/.hermes/config.yaml:\n"
             "   mcp_servers:\n"
             "     atelier:\n"
-            "       command: atelier-mcp\n"
+            "       command: atelier mcp\n"
             "       args: []\n"
             "       timeout: 120\n"
             "       connect_timeout: 60\n"

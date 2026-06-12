@@ -249,8 +249,8 @@ def _atelier_mcp_config(host: str) -> dict[str, object]:
         "mcpServers": {
             "atelier": {
                 "type": "stdio",
-                "command": "atelier-mcp",
-                "args": ["--host", host],
+                "command": "atelier",
+                "args": ["mcp", "--host", host],
                 "env": {},
             }
         }
@@ -331,7 +331,7 @@ def _make_codex_home(enable_atelier: bool) -> Path:
     env = os.environ.copy()
     env["CODEX_HOME"] = str(home)
     subprocess.run(
-        ["codex", "mcp", "add", "atelier", "--", "atelier-mcp", "--host", "codex"],
+        ["codex", "mcp", "add", "atelier", "--", "atelier", "mcp", "--host", "codex"],
         check=True,
         timeout=120,
         env=env,
@@ -352,7 +352,7 @@ def _make_opencode_home(enable_atelier: bool, workspace: Path) -> Path:
             "mcp": {
                 "atelier": {
                     "type": "local",
-                    "command": ["atelier-mcp", "--host", "opencode"],
+                    "command": ["atelier", "mcp", "--host", "opencode"],
                     "environment": {"ATELIER_WORKSPACE_ROOT": str(workspace)},
                 }
             },

@@ -10,7 +10,7 @@ make install
 
 ## Config
 
-Configure Gemini CLI to launch `atelier-mcp` and pass `ATELIER_ROOT=.atelier`.
+Configure Gemini CLI to launch `atelier mcp` and pass `ATELIER_ROOT=.atelier`.
 
 ## Commands
 

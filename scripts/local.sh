@@ -78,9 +78,7 @@ if [[ "${LC_ALL:-${LANG:-}}" != *"UTF-8"* && "${LC_ALL:-${LANG:-}}" != *"utf8"* 
     ACTIVE_BAR="|"
 fi
 
-ATELIER_REPO_URL="${ATELIER_REPO_URL:-https://github.com/atelier-runtime/atelier.git}"
-ATELIER_REF="${ATELIER_REF:-main}"
-ATELIER_INSTALL_DIR="${ATELIER_INSTALL_DIR:-${HOME}/.local/share/atelier}"
+ATELIER_INSTALL_DIR="${ATELIER_INSTALL_DIR:-$(pwd)}"
 ATELIER_BIN_DIR="${ATELIER_BIN_DIR:-${HOME}/.local/bin}"
 ATELIER_NODE_DIR="${ATELIER_NODE_DIR:-${HOME}/.local/node}"
 ATELIER_TOOL_DIR="${ATELIER_TOOL_DIR:-${HOME}/.local/share/uv/tools}"
@@ -99,9 +97,8 @@ OS_NAME="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 BINARY_SUFFIX="${OS_NAME}-${ARCH}"
 
-ATELIER_BINARY_MODE="${ATELIER_BINARY_MODE:-1}"
-ATELIER_RELEASE_URL="${ATELIER_RELEASE_URL:-https://github.com/atelier-runtime/atelier/releases/latest/download/atelier-binaries-${BINARY_SUFFIX}.tar.gz}"
-ATELIER_LOCAL="${ATELIER_LOCAL:-0}"
+ATELIER_BINARY_MODE=0
+ATELIER_LOCAL=1
 ATELIER_STRICT="${ATELIER_STRICT:-0}"
 ATELIER_VERBOSE="${ATELIER_VERBOSE:-0}"
 ATELIER_NON_INTERACTIVE="${ATELIER_NON_INTERACTIVE:-0}"
@@ -1323,36 +1320,6 @@ install_uv_if_needed() {
     verbose "Installed uv: $(uv --version 2>/dev/null || echo unknown)"
 }
 
-prepare_repo() {
-    local dir
-    dir="$(dirname "$ATELIER_INSTALL_DIR")"
-    run mkdir -p "$dir"
-
-    if [[ -d "$ATELIER_INSTALL_DIR/.git" ]]; then
-        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-            echo "[dry-run] git -C $ATELIER_INSTALL_DIR fetch -q --tags --prune origin"
-            echo "[dry-run] git -C $ATELIER_INSTALL_DIR checkout -f -q $ATELIER_REF"
-            echo "[dry-run] git -C $ATELIER_INSTALL_DIR reset --hard -q origin/$ATELIER_REF"
-            echo "[dry-run] git -C $ATELIER_INSTALL_DIR clean -fd >/dev/null"
-        else
-            git -C "$ATELIER_INSTALL_DIR" fetch -q --tags --prune origin
-            git -C "$ATELIER_INSTALL_DIR" checkout -f -q "$ATELIER_REF"
-            if git -C "$ATELIER_INSTALL_DIR" rev-parse --verify "origin/$ATELIER_REF" >/dev/null 2>&1; then
-                git -C "$ATELIER_INSTALL_DIR" reset --hard -q "origin/$ATELIER_REF"
-            else
-                git -C "$ATELIER_INSTALL_DIR" reset --hard -q "$ATELIER_REF"
-            fi
-            git -C "$ATELIER_INSTALL_DIR" clean -fd >/dev/null
-        fi
-    else
-        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-            echo "[dry-run] git clone -q --depth=1 --branch $ATELIER_REF $ATELIER_REPO_URL $ATELIER_INSTALL_DIR"
-        else
-            git clone -q --depth=1 --branch "$ATELIER_REF" "$ATELIER_REPO_URL" "$ATELIER_INSTALL_DIR"
-        fi
-    fi
-}
-
 install_console_scripts() {
     local extras="mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,rename,telemetry"
     local package_spec="${ATELIER_INSTALL_DIR}[${extras}]"
@@ -1370,7 +1337,7 @@ install_console_scripts() {
     stop_existing_atelier_processes
     
     # Forcefully remove any existing manual wrappers to prevent uv collision
-    rm -f "${ATELIER_BIN_DIR}/atelier" "${ATELIER_BIN_DIR}/atelier-mcp" "${ATELIER_BIN_DIR}/atelier-mcp.real"
+    rm -f "${ATELIER_BIN_DIR}/atelier"
 
     # Gracefully remove old installation first
     UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" \
@@ -1381,17 +1348,6 @@ install_console_scripts() {
         UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
         uv tool install "$package_spec" --force
 
-    local mcp_path="$ATELIER_BIN_DIR/atelier-mcp"
-    local wrapped_path="$ATELIER_BIN_DIR/atelier-mcp.real"
-    if [[ -f "$mcp_path" || -L "$mcp_path" ]]; then
-        rm -f "$wrapped_path"
-        mv "$mcp_path" "$wrapped_path"
-        cat >"$mcp_path" <<EOF
-#!/usr/bin/env bash
-exec "$wrapped_path" "\$@"
-EOF
-        chmod +x "$mcp_path"
-    fi
 }
 
 stop_existing_atelier_processes() {
@@ -1402,15 +1358,17 @@ stop_existing_atelier_processes() {
     local pids=()
     local pid args
 
+    local ps_out
+    ps_out="$(mktemp "${TMPDIR:-/tmp}/atelier-ps.XXXXXX")"
+    ps -eo pid=,args= 2>/dev/null > "$ps_out" || true
     while read -r pid args; do
         [[ -n "${pid:-}" && -n "${args:-}" ]] || continue
         [[ "$pid" == "$current_pid" || "$pid" == "$parent_pid" ]] && continue
 
         case "$args" in
-            *"atelier-mcp.real"*|\
-            *"atelier-mcp --host"*|\
-            *"/atelier-mcp "*|\
-            *" atelier-mcp "*|\
+            *"atelier mcp --host"*|\
+            *"/atelier mcp "*|\
+            *" atelier mcp "*|\
             *"/atelier --root "*servicectl*|\
             *" atelier --root "*servicectl*|\
             *"/atelier servicectl "*|\
@@ -1420,7 +1378,8 @@ stop_existing_atelier_processes() {
                 pids+=("$pid")
                 ;;
         esac
-    done < <(ps -eo pid=,args= 2>/dev/null || true)
+    done < "$ps_out"
+    rm -f "$ps_out"
 
     [[ ${#pids[@]} -gt 0 ]] || return 0
 
@@ -1474,12 +1433,12 @@ install_code_tools() {
         # they expose the unscoped scip-python/scip-typescript binaries.
         spin "Installing JS/TS tools + SCIP indexers" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund eslint ts-morph typescript @sourcegraph/scip-python @sourcegraph/scip-typescript
     else
-        warn "npm not found — skipping JS/TS tools and Tier-1 SCIP indexers (install Node.js 20+ to enable)"
+        warn "npm not found - skipping JS/TS tools and Tier-1 SCIP indexers. Install Node.js 20+ to enable."
     fi
 
-    # Rust toolchain — only used by edit hooks for Rust file lint-fix. Optional.
+    # Rust toolchain - only used by edit hooks for Rust file lint-fix. Optional.
     if ! command -v cargo >/dev/null 2>&1; then
-        verbose "cargo not found — skipping optional Rust edit hooks"
+        verbose "cargo not found - skipping optional Rust edit hooks"
     else
         verbose "Found cargo: $(cargo --version 2>/dev/null || echo unknown)"
     fi
@@ -1592,33 +1551,9 @@ main() {
         stack_expected=1
     fi
 
-    if [[ "$ATELIER_LOCAL" == "1" ]]; then
-        verbose "Local mode: using current directory as an editable install source"
-        ATELIER_INSTALL_DIR="$(pwd)"
-    elif [[ "$ATELIER_BINARY_MODE" == "1" ]]; then
-        verbose "Binary mode: downloading pre-compiled binaries"
-        
-        # Default URL format for CI/CD generated artifacts
-        ATELIER_RELEASE_URL="${ATELIER_RELEASE_URL:-https://github.com/atelier-runtime/atelier/releases/latest/download/atelier-binaries-${BINARY_SUFFIX}.tar.gz}"
-
-        step_start "Downloading binaries ($BINARY_SUFFIX)"
-        local tmp_binaries
-        tmp_binaries="$(mktemp "${TMPDIR:-/tmp}/atelier-binaries-${BINARY_SUFFIX}.XXXXXX.tar.gz")"
-
-        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-            echo "[dry-run] curl -sSL $ATELIER_RELEASE_URL -o $tmp_binaries"
-            echo "[dry-run] mkdir -p $ATELIER_INSTALL_DIR"
-            echo "[dry-run] tar -xzf $tmp_binaries -C $ATELIER_INSTALL_DIR"
-        else
-            curl -sSL "$ATELIER_RELEASE_URL" -o "$tmp_binaries"
-            mkdir -p "$ATELIER_INSTALL_DIR"
-            tar -xzf "$tmp_binaries" -C "$ATELIER_INSTALL_DIR"
-            rm -f "$tmp_binaries"
-        fi
-        step_done
-    else
-        spin "Preparing repository" prepare_repo
-    fi
+    # Local mode is the only supported mode in local.sh
+    verbose "Using current directory as the install source"
+    ATELIER_INSTALL_DIR="$(pwd)"
     export ATELIER_INSTALL_DIR
 
     step_start "Installing Atelier"

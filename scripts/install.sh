@@ -8,8 +8,8 @@
 #   curl -fsSL https://github.com/atelier-runtime/atelier/releases/latest/download/install.sh | bash
 #
 # For a comprehensive developer install (with uv, git, node, host
-# integrations, etc.) use scripts/dev.sh from the repo checkout or:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/dev.sh) --local
+# integrations, etc.) use scripts/local.sh from the repo checkout or:
+#   bash <(curl -fsSL https://raw.githubusercontent.com/atelier-runtime/atelier/main/scripts/local.sh) --local
 #
 # Environment variables:
 #   ATELIER_INSTALL_DIR   Target directory (default: ~/.local)

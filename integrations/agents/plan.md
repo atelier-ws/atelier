@@ -22,7 +22,7 @@ Produce a plan another agent can execute without guessing:
 - **Name** — short and specific (2-5 words), not a sentence.
 - **Why** — the problem solved and what breaks without it; motivation, not a restatement of the steps.
 - **Files** — every file to create or modify, by exact path (no directories, no read-only files). Confirm uncertain paths with a tool first.
-- **Steps** — ordered, one coherent unit of work each. Each step names concrete identifiers (path, function, type), reuses existing utilities instead of reinventing them, and flags risky or shared-surface changes inline. End with a final **Verify** step listing the exact build/test commands.
+- **Steps** — ordered, one coherent unit of work each. Each step names concrete identifiers (path, function, type), reuses existing utilities instead of reinventing them, and flags risky or shared-surface changes inline. End with a final **Verify** step listing the repository's exact validation entrypoints.
 - **Risks & open questions** — known hazards and anything you could not confirm.
 
 Order steps so none depends on a later step's output.

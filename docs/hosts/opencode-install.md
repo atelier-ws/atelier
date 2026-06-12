@@ -26,14 +26,15 @@ bash scripts/run_opencode_with_atelier.sh --workspace /path/to/workspace
 
 ## What Gets Installed
 
-| Artifact          | Global install                                      | `--workspace DIR` install                  |
-| ----------------- | --------------------------------------------------- | ------------------------------------------ |
-| MCP server config | `~/.config/opencode/opencode.json`                  | `<workspace>/opencode.json`                |
-| Agent profile     | `~/.config/opencode/agents/atelier.md`              | `<workspace>/.opencode/agents/atelier.md`  |
-| Nudge plugin      | `~/.config/opencode/plugins/atelier-nudge.js`       | `<workspace>/.opencode/plugins/atelier-nudge.js` |
+| Artifact          | Global install                                | `--workspace DIR` install                        |
+| ----------------- | --------------------------------------------- | ------------------------------------------------ |
+| MCP server config | `~/.config/opencode/opencode.json`            | `<workspace>/opencode.json`                      |
+| Agent profile     | `~/.config/opencode/agents/atelier.md`        | `<workspace>/.opencode/agents/atelier.md`        |
+| Nudge plugin      | `~/.config/opencode/plugins/atelier-nudge.js` | `<workspace>/.opencode/plugins/atelier-nudge.js` |
 
 The installer merges:
-1. `mcp.atelier` for `atelier-mcp`
+
+1. `mcp.atelier` for `atelier mcp`
 2. `provider.atelier` for OpenAI-compatible chat completions (`http://127.0.0.1:8787/v1`)
 3. `model: "atelier/atelier-default"`
 4. A local `chat.message` plugin that injects Atelier guidance before a user prompt is sent
@@ -45,7 +46,7 @@ MCP entry:
   "mcp": &#123;
     "atelier": &#123;
       "type": "local",
-      "command": ["atelier-mcp", "--host", "opencode"],
+      "command": ["atelier mcp", "--host", "opencode"],
       "environment": {
         "ATELIER_WORKSPACE_ROOT": "<workspace>"
       }

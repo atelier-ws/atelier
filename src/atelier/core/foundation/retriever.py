@@ -30,7 +30,12 @@ from functools import lru_cache
 from typing import TypeVar
 
 import tiktoken
-from datasketch import MinHash, MinHashLSH
+from datasketch import MinHash
+
+try:
+    from datasketch import MinHashLSH
+except ImportError:
+    MinHashLSH = None
 
 from atelier.core.capabilities.archival_recall.ranking import rank_archival_passages
 from atelier.core.foundation.memory_models import ArchivalPassage, MemoryBlock
@@ -203,7 +208,7 @@ def _jaccard_tokens(left: set[str], right: set[str]) -> float:
     return len(left & right) / len(left | right)
 
 
-def deduplicate_by_reasonblock(
+def deduplicate_by_reasonblock[T](
     items: Sequence[T],
     block_getter: Callable[[T], ReasonBlock],
     *,
@@ -211,6 +216,9 @@ def deduplicate_by_reasonblock(
 ) -> list[T]:
     """Drop near-duplicate ReasonBlocks, keeping the first/highest-ranked item."""
     if len(items) < 2:
+        return list(items)
+
+    if MinHashLSH is None:
         return list(items)
 
     lsh = MinHashLSH(threshold=threshold, num_perm=_MINHASH_PERMUTATIONS)
@@ -236,7 +244,7 @@ def deduplicate_by_reasonblock(
     return kept
 
 
-def pack_by_reasonblock_token_budget(
+def pack_by_reasonblock_token_budget[T](
     items: Sequence[T],
     block_getter: Callable[[T], ReasonBlock],
     *,

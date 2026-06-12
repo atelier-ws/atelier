@@ -40,8 +40,8 @@ def test_plugin_mcp_server_is_loaded_at_session_start() -> None:
     server = config["mcpServers"]["atelier"]
     assert server["type"] == "stdio"
     assert server["alwaysLoad"] is True
-    assert server["command"] == "atelier-mcp"
-    assert server["args"] == ["--host", "claude"]
+    assert server["command"] == "atelier"
+    assert server["args"] == ["mcp", "--host", "claude"]
     assert server["env"]["CLAUDE_PLUGIN_ROOT"] == "${CLAUDE_PLUGIN_ROOT}"
 
 

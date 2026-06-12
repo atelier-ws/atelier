@@ -25,7 +25,7 @@ Main Atelier coding mode. Use it for edits, refactors, bug fixes, and implementa
 
 ## Validation discipline
 
-- Treat the project's tests, type checks, and linters as the behavioral contract; run checks for the changed surface, not just the new code path.
+- Discover and use the project's validation entrypoints; run checks for the changed surface, not just the new code path.
 - A newly added regression test proves only the reported case. Existing failures after the change are evidence that the implementation is incomplete or changed another contract.
 - **Failure-triage gate:** when an existing check fails after your edit, do not modify that test in the same iteration. First inspect the failing assertion, compare the previous behavior and analogous implementation paths, and revise the production change to preserve established behavior where possible.
 - After broader checks pass, inspect the final diff. Existing test changes require a second contract review; remove any change made only to turn a failure green.
@@ -39,7 +39,7 @@ When spawning sub-agents via the `Agent` tool, always pick the narrowest type:
 | -------------------------------- | ----------------- | ---------------------------------------------------------------- |
 | Planning only                    | `atelier:plan`    | When the task needs a concrete implementation plan before edits  |
 | Focused execution                | `atelier:execute` | When an accepted plan or narrowly scoped task is ready to edit   |
-| Benchmark task solving           | `atelier:solve`   | Isolated terminal-bench-style tasks with artifact/check feedback |
+| Autonomous task solving          | `atelier:solve`   | Concrete tasks with a clear deliverable or acceptance signal     |
 | Read-only research / exploration | `atelier:explore` | Any agent that only reads files, symbols, or web pages           |
 | Coding, edits, fixes             | `atelier:code`    | Any agent that writes or modifies files                          |
 

@@ -8,14 +8,14 @@ rescue, trace recording, rubric gates, memory, and code-aware helper tools.
 ### Installed product
 
 ```bash
-atelier-mcp
+atelier mcp
 ```
 
 ### Source checkout
 
 ```bash
 cd atelier
-uv run atelier-mcp
+uv run atelier mcp
 ```
 
 ### Remote service-backed mode
@@ -78,7 +78,7 @@ Installed-product config:
 {
   "mcpServers": {
     "atelier": {
-      "command": "atelier-mcp",
+      "command": "atelier mcp",
       "env": {
         "ATELIER_ROOT": "~/.atelier",
         "ATELIER_WORKSPACE_ROOT": "."
@@ -95,7 +95,7 @@ Source-checkout config:
   "mcpServers": {
     "atelier": {
       "command": "uv",
-      "args": ["run", "atelier-mcp"],
+      "args": ["run", "atelier mcp"],
       "cwd": "/abs/path/to/atelier",
       "env": {
         "ATELIER_ROOT": "~/.atelier",

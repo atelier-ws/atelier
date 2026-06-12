@@ -70,7 +70,7 @@ function EmptyState() {
       </h2>
       <p className="text-sm text-neutral-400">
         Run any task with{" "}
-        <code className="bg-neutral-900 px-1">atelier-mcp</code> enabled to
+        <code className="bg-neutral-900 px-1">atelier mcp</code> enabled to
         start collecting savings telemetry.
       </p>
     </div>
@@ -93,7 +93,6 @@ export default function Savings() {
       .then(setData)
       .catch((e) => setErr(String(e)));
   }, [days]);
-
 
   if (err) return <div className="text-red-400">Error: {err}</div>;
   if (!data) return <div className="text-neutral-500">Loading…</div>;
@@ -454,7 +453,6 @@ export default function Savings() {
                   onToggle={() => loadLedger(session.session_id)}
                 />
               ))}
-
             </section>
           )}
 
@@ -928,7 +926,8 @@ function SessionProofCard({
                     <div className="space-y-2">
                       {conversations.length === 0 ? (
                         <div className="text-neutral-500">
-                          No conversation transcript was attached to this session.
+                          No conversation transcript was attached to this
+                          session.
                         </div>
                       ) : (
                         conversations
