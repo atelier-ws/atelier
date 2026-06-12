@@ -50,7 +50,7 @@ Installed-product configuration:
   "servers": {
     "atelier": {
       "type": "stdio",
-      "command": "atelier-mcp",
+      "command": "atelier mcp",
       "env": {
         "ATELIER_WORKSPACE_ROOT": "${workspaceFolder}"
       }
@@ -67,7 +67,7 @@ Source-checkout configuration:
     "atelier": {
       "type": "stdio",
       "command": "uv",
-      "args": ["run", "--project", "${workspaceFolder}/atelier", "atelier-mcp"],
+      "args": ["run", "--project", "${workspaceFolder}/atelier", "atelier mcp"],
       "env": {
         "ATELIER_WORKSPACE_ROOT": "${workspaceFolder}"
       }

@@ -7,7 +7,12 @@ import re
 from typing import Any
 
 import tiktoken
-from datasketch import MinHash, MinHashLSH
+from datasketch import MinHash
+
+try:
+    from datasketch import MinHashLSH
+except ImportError:
+    MinHashLSH = None
 
 from .bm25 import bm25_score, build_idf, tokenise
 from .dead_ends import DeadEndTracker
@@ -80,6 +85,8 @@ def _dedupe_ranked(
     threshold: float = _DEDUP_THRESHOLD,
 ) -> list[RankedProcedure]:
     if len(ranked) < 2:
+        return ranked
+    if MinHashLSH is None:
         return ranked
     lsh = MinHashLSH(threshold=threshold, num_perm=_MINHASH_PERMUTATIONS)
     kept: list[RankedProcedure] = []

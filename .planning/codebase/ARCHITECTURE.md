@@ -1,4 +1,5 @@
 <!-- refreshed: 2026-06-08 -->
+
 # Architecture
 
 **Analysis Date:** 2026-06-08
@@ -51,19 +52,19 @@ direction: `gateway → core → infra`.
 
 ## Component Responsibilities
 
-| Component | Responsibility | File |
-|-----------|----------------|------|
-| Runtime orchestrator | Coordinates capabilities, rubrics, traces, evals, storage from one entry point | `src/atelier/core/runtime/engine.py` |
-| Capabilities | Domain logic units (context reuse, routing, proof gating, memory, code-intel) | `src/atelier/core/capabilities/` |
-| Foundation | Pydantic models, store, paths, retriever, renderer, redaction | `src/atelier/core/foundation/` |
-| HTTP service | FastAPI app exposing runtime over HTTP | `src/atelier/core/service/api.py` |
-| CLI | `atelier` / `atl` command surface | `src/atelier/gateway/cli/app.py` |
-| MCP server | stdio JSON-RPC MCP tool server for Claude/Codex/Gemini | `src/atelier/gateway/adapters/mcp_server.py` |
-| In-process adapter | `ContextRuntime` façade for embedding the runtime | `src/atelier/gateway/adapters/runtime.py` |
-| SDK middleware | LangChain/OpenAI/Anthropic/Gemini integration surfaces | `src/atelier/sdk/middleware.py` |
-| Storage backends | SQLite / Postgres / vector persistence | `src/atelier/infra/storage/` |
-| Run ledger | Append-only event/trace/token log per run | `src/atelier/infra/runtime/run_ledger.py` |
-| Frontend dashboard | React analytics UI over the HTTP API | `frontend/src/` |
+| Component            | Responsibility                                                                 | File                                         |
+| -------------------- | ------------------------------------------------------------------------------ | -------------------------------------------- |
+| Runtime orchestrator | Coordinates capabilities, rubrics, traces, evals, storage from one entry point | `src/atelier/core/runtime/engine.py`         |
+| Capabilities         | Domain logic units (context reuse, routing, proof gating, memory, code-intel)  | `src/atelier/core/capabilities/`             |
+| Foundation           | Pydantic models, store, paths, retriever, renderer, redaction                  | `src/atelier/core/foundation/`               |
+| HTTP service         | FastAPI app exposing runtime over HTTP                                         | `src/atelier/core/service/api.py`            |
+| CLI                  | `atelier` / `atl` command surface                                              | `src/atelier/gateway/cli/app.py`             |
+| MCP server           | stdio JSON-RPC MCP tool server for Claude/Codex/Gemini                         | `src/atelier/gateway/adapters/mcp_server.py` |
+| In-process adapter   | `ContextRuntime` façade for embedding the runtime                              | `src/atelier/gateway/adapters/runtime.py`    |
+| SDK middleware       | LangChain/OpenAI/Anthropic/Gemini integration surfaces                         | `src/atelier/sdk/middleware.py`              |
+| Storage backends     | SQLite / Postgres / vector persistence                                         | `src/atelier/infra/storage/`                 |
+| Run ledger           | Append-only event/trace/token log per run                                      | `src/atelier/infra/runtime/run_ledger.py`    |
+| Frontend dashboard   | React analytics UI over the HTTP API                                           | `frontend/src/`                              |
 
 ## Pattern Overview
 
@@ -71,6 +72,7 @@ direction: `gateway → core → infra`.
 orchestrator and pluggable capability modules.
 
 **Key Characteristics:**
+
 - Strict one-way dependency: `gateway → core → infra` (entry points never reach past core's public surface for business logic).
 - Capability-oriented core: each feature is an isolated package under `core/capabilities/` exposing a capability class (e.g. `ContextReuseCapability`, `ProofGateCapability`) aggregated by `engine.AtelierRuntimeCore`.
 - Multiple thin entry surfaces (CLI, MCP, HTTP, in-process SDK, host adapters) all delegate to the same core.
@@ -80,6 +82,7 @@ orchestrator and pluggable capability modules.
 ## Layers
 
 **Gateway (`src/atelier/gateway/`):**
+
 - Purpose: All agent-facing entry points; keep logic thin (dispatchers only).
 - Location: `src/atelier/gateway/`
 - Contains: `cli/` (Click app + commands), `adapters/` (MCP server, host adapters: aider, cursor, continue, langgraph, openhands, sweagent, hermes; `runtime.py` façade), `sdk/` (HTTP client/local/remote/mcp clients), `hosts/` (host registry + session parsers), `integrations/` (langfuse, openmemory, analytics).
@@ -87,6 +90,7 @@ orchestrator and pluggable capability modules.
 - Used by: external agents, CLI users, MCP hosts.
 
 **Core (`src/atelier/core/`):**
+
 - Purpose: Domain logic and orchestration.
 - Location: `src/atelier/core/`
 - Contains: `runtime/engine.py` (orchestrator), `capabilities/` (~60 feature packages), `foundation/` (models, store, retriever, renderer), `service/` (FastAPI api, auth, jobs, worker, sync, telemetry), `domains/` (domain loader/manager/builtin), `rubrics/`, `improvement/` (failure analyzer), `environment.py`.
@@ -94,6 +98,7 @@ orchestrator and pluggable capability modules.
 - Used by: `gateway/`
 
 **Infra (`src/atelier/infra/`):**
+
 - Purpose: Persistence and external integrations.
 - Location: `src/atelier/infra/`
 - Contains: `storage/` (base/factory/sqlite_store/postgres_store/vector/memory_store/migrations), `runtime/` (run_ledger, cost_tracker, realtime_context, checkpoint, session_state, swarm_worktree, lifecycle), `code_intel/` (scip, astgrep, zoekt, cross_lang, git_history), `embeddings/` (local/ollama/openai/letta/null), `memory_bridges/` (letta_adapter, openmemory), `internal_llm/` (litellm/ollama/openai clients), `seed_blocks/` (YAML reason blocks), `tree_sitter/`.
@@ -120,32 +125,37 @@ orchestrator and pluggable capability modules.
 
 ### MCP / Host Path
 
-1. Host (Claude/Codex/Gemini) launches `atelier-mcp` stdio server (`src/atelier/gateway/adapters/mcp_server.py`)
+1. Host (Claude/Codex/Gemini) launches `atelier mcp` stdio server (`src/atelier/gateway/adapters/mcp_server.py`)
 2. MCP tool calls dispatch to core capabilities; results return as JSON-RPC.
 3. Claude Code hooks (`integrations/claude/plugin/hooks/*.py`) emit savings/telemetry events into `~/.atelier/`.
 
 **State Management:**
+
 - Runtime state is file-based under `~/.atelier/` (or `$ATELIER_ROOT`): `runs/<session_id>.json`, `session_stats/<uuid>.json`, `live_savings_events.jsonl`, `workspaces/<hash>/session_state.json`, `smart_state.json`.
 - Structured persistence via SQLite (default) or Postgres backend selected by `ATELIER_STORAGE_BACKEND`.
 
 ## Key Abstractions
 
 **Capability:**
+
 - Purpose: A self-contained unit of reasoning logic registered with the runtime.
 - Examples: `src/atelier/core/capabilities/context_reuse/`, `.../proof_gate/`, `.../quality_router/`, `.../semantic_file_memory/`, `.../tool_supervision/`.
 - Pattern: Capability class imported into `engine.AtelierRuntimeCore` (see `CAPABILITIES` class var) and composed at construction; a `CapabilityRegistry`/`CapabilityNode` graph exists at `core/capabilities/registry/graph.py`.
 
 **ReasonBlock / Reason Block seeds:**
+
 - Purpose: Reusable procedural reasoning fragments.
 - Examples: `src/atelier/infra/seed_blocks/*.yaml`, `core/foundation/models.py` (`ReasonBlock`).
 - Pattern: Seeded from YAML, extracted from runs by `core/foundation/extractor.py`.
 
 **Storage backend:**
+
 - Purpose: Pluggable persistence (SQLite/Postgres/vector).
 - Examples: `src/atelier/infra/storage/factory.py`, `sqlite_store.py`, `postgres_store.py`.
 - Pattern: `create_store(root)` factory dispatching on `ATELIER_STORAGE_BACKEND`.
 
 **Run ledger:**
+
 - Purpose: Append-only event/trace record for a run.
 - Examples: `src/atelier/infra/runtime/run_ledger.py`.
 - Pattern: `LedgerEvent` records serialized to JSON; cost tracked via `cost_tracker.py`.
@@ -153,21 +163,25 @@ orchestrator and pluggable capability modules.
 ## Entry Points
 
 **CLI (`atelier` / `atl`):**
+
 - Location: `src/atelier/gateway/cli/app.py` (`cli`, `main`); subcommands in `gateway/cli/commands/`.
 - Triggers: console scripts `atelier`, `atl` (pyproject `[project.scripts]`).
 - Responsibilities: dispatch to core; thin command handlers.
 
-**MCP server (`atelier-mcp`):**
+**MCP server (`atelier mcp`):**
+
 - Location: `src/atelier/gateway/adapters/mcp_server.py:main`.
 - Triggers: stdio launch by MCP hosts.
 - Responsibilities: expose runtime tools over JSON-RPC.
 
 **HTTP service:**
+
 - Location: `src/atelier/core/service/api.py:create_app` (run via `atelier runtime start`).
 - Triggers: uvicorn/FastAPI.
 - Responsibilities: HTTP surface for runtime + dashboard data.
 
 **In-process SDK:**
+
 - Location: `src/atelier/gateway/adapters/runtime.py` (`ContextRuntime`), `src/atelier/sdk/middleware.py` (`AtelierMiddleware`).
 - Triggers: direct import by host frameworks (LangChain, OpenAI Agents, Anthropic, Gemini ADK).
 - Responsibilities: wrap runtime behind framework-native hooks.
@@ -204,6 +218,7 @@ orchestrator and pluggable capability modules.
 **Strategy:** Resilience-oriented — uses `tenacity` (retries) and `pybreaker` (circuit breakers) around external/LLM calls; `contextlib.suppress` for best-effort telemetry paths.
 
 **Patterns:**
+
 - LLM clients in `infra/internal_llm/` define explicit `exceptions.py` and `result.py` result types.
 - Best-effort side effects (telemetry, savings) wrapped in `suppress(...)` so they never break the main path.
 
@@ -216,4 +231,4 @@ orchestrator and pluggable capability modules.
 
 ---
 
-*Architecture analysis: 2026-06-08*
+_Architecture analysis: 2026-06-08_

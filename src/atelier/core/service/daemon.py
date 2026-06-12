@@ -1,15 +1,4 @@
-"""``atelierd`` — Atelier HTTP service daemon CLI.
-
-Single entry point for managing the Atelier HTTP service:
-
-  atelierd start       Start the HTTP service (foreground)
-  atelierd stop        Stop the running service
-  atelierd restart     Restart via systemd (or kill+start if no systemd)
-  atelierd status      Show running state
-  atelierd install     Install systemd/launchd unit
-  atelierd uninstall   Remove systemd/launchd unit
-  atelierd logs        Follow service logs
-"""
+"""``atelierd`` — Atelier HTTP service daemon CLI logic."""
 
 from __future__ import annotations
 
@@ -57,10 +46,10 @@ def _launchctl_available() -> bool:
 def cli(ctx: click.Context) -> None:
     """Atelier service daemon — manage the Atelier HTTP service.
 
-    Run with no arguments to start the service (same as ``atelierd start``).
+    Run with no arguments to show service status (same as ``atelierd status``).
     """
     if ctx.invoked_subcommand is None:
-        ctx.invoke(start)
+        ctx.invoke(status)
 
 
 @cli.command()
@@ -161,7 +150,11 @@ def install(enable: bool) -> None:
         click.echo("systemctl not available. On macOS use 'atelierd install --launchd'.", err=True)
         sys.exit(1)
 
-    atelierd_bin = shutil.which("atelierd") or str(Path(sys.executable).parent / "atelierd")
+    # Note: when running via 'atelier background service install', sys.argv[0] is 'atelier'
+    # but we want the service to point to 'atelier background service start'
+    atelier_bin = shutil.which("atelier") or sys.argv[0]
+    service_start_cmd = f"{atelier_bin} background service start"
+
     project_root = os.getcwd()
     root = default_store_root()
     unit_dir = SYSTEMD_USER_DIR
@@ -174,7 +167,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory={project_root}
-ExecStart={atelierd_bin} start
+ExecStart={service_start_cmd}
 Restart=on-failure
 RestartSec=5
 Environment=ATELIER_ROOT={root}
@@ -269,17 +262,21 @@ def frontend_install(enable: bool) -> None:
     if not fdir.exists():
         click.echo(f"Frontend directory not found: {fdir}", err=True)
         sys.exit(1)
-    atelierd_bin = shutil.which("atelierd") or str(Path(sys.executable).parent / "atelierd")
+
+    # We use 'atelier background service' as the proxy for the daemon logic
+    atelier_bin = shutil.which("atelier") or sys.argv[0]
+    service_start_cmd = f"{atelier_bin} background service"
+
     unit_dir = SYSTEMD_USER_DIR
     unit_dir.mkdir(parents=True, exist_ok=True)
     unit_content = f"""[Unit]
-    Description=Atelier Visualization Frontend
-    After={STACK_UNIT}
+Description=Atelier Visualization Frontend
+After={STACK_UNIT}
 
 [Service]
 Type=simple
 WorkingDirectory={fdir}
-ExecStart={atelierd_bin} frontend-start
+ExecStart={service_start_cmd} frontend-start
 Restart=on-failure
 RestartSec=5
 Environment=ATELIER_ROOT={default_store_root()}

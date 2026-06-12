@@ -127,6 +127,8 @@ def test_run_benchmark_solver_applies_stem_prompt_and_step_fork_history() -> Non
 
     assert "prompt caches stay warm" in prompts[(1, "explore")]
     assert "Current phase prompt:" in prompts[(1, "explore")]
+    assert "Execution profile:" in prompts[(1, "explore")]
+    assert "Do not inspect hidden evaluator" in prompts[(1, "explore")]
     assert "Forked conversation transcript:" in prompts[(1, "plan")]
     assert "explore attempt 1" in prompts[(1, "plan")]
     assert "owned-explore-phase" in prompts[(1, "plan")]

@@ -29,7 +29,7 @@ The README says Atelier is an MCP server and SDK middleware that plugs into Clau
 The installed surfaces are already:
 
 - `atelier` CLI
-- `atelier-mcp` MCP server
+- `atelier mcp` MCP server
 - `atelier background` or `atelierd` service
 
 The repo requires Python `>=3.11` and uses Hatchling.
@@ -470,10 +470,10 @@ Implement this minimum set:
 
 ### Command behavior
 
-| Command                      | Behavior                                                  |
-| ---------------------------- | --------------------------------------------------------- |
+| Command                    | Behavior                                                  |
+| -------------------------- | --------------------------------------------------------- |
 | `/help`                    | Render available commands and examples.                   |
-| `/exit`, `/quit`         | Exit gracefully.                                          |
+| `/exit`, `/quit`           | Exit gracefully.                                          |
 | `/clear`                   | Clear terminal screen.                                    |
 | `/tools`                   | Show available Atelier tools.                             |
 | `/sessions`                | Show known sessions.                                      |
@@ -508,13 +508,13 @@ Keep completions fast and non-blocking. Avoid doing expensive memory or session 
 
 Implement:
 
-| Key                                 | Behavior                                              |
-| ----------------------------------- | ----------------------------------------------------- |
+| Key                               | Behavior                                              |
+| --------------------------------- | ----------------------------------------------------- |
 | `Ctrl-C` once                     | Interrupt current runtime operation if one is active. |
 | `Ctrl-C` twice or at empty prompt | Exit prompt after confirmation or print hint.         |
 | `Ctrl-D`                          | Exit.                                                 |
 | `Ctrl-L`                          | Clear screen.                                         |
-| `Alt-Enter` or `Esc Enter`      | Insert newline for multiline messages if supported.   |
+| `Alt-Enter` or `Esc Enter`        | Insert newline for multiline messages if supported.   |
 
 Use simple behavior first. Do not overfit.
 
@@ -524,8 +524,8 @@ Use Rich for all output.
 
 Suggested renderer mapping:
 
-| Event                    | Rich rendering                           |
-| ------------------------ | ---------------------------------------- |
+| Event                  | Rich rendering                           |
+| ---------------------- | ---------------------------------------- |
 | `session.started`      | small panel or status line               |
 | `route.selected`       | compact panel with model/provider/reason |
 | `memory.hit`           | bullet list or table                     |
@@ -536,7 +536,7 @@ Suggested renderer mapping:
 | `tool.output`          | syntax-aware or plain log block          |
 | `tool.finished`        | success/failure line                     |
 | `patch.proposed`       | syntax-highlighted diff                  |
-| `permission.requested` | approval panel with `[y] [n] [always]` |
+| `permission.requested` | approval panel with `[y] [n] [always]`   |
 | `verification.result`  | success/failure panel                    |
 | `error`                | red error panel with optional details    |
 

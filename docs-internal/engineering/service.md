@@ -126,7 +126,7 @@ ATELIER_API_KEY=dev-key atelier service start --host 127.0.0.1 --port 8787
 ATELIER_MCP_MODE=remote \
 ATELIER_SERVICE_URL=http://localhost:8787 \
 ATELIER_API_KEY=dev-key \
-atelier-mcp
+atelier mcp
 ```
 
 ## OpenAPI

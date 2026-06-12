@@ -16,12 +16,12 @@ atelier serve-openai --port 8787
 
 Options for standalone mode:
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--port` | 8787 | TCP port |
-| `--host` | 0.0.0.0 | Bind address |
-| `--project-root` | cwd | Working directory for Atelier runtime |
-| `--no-yolo` | off | Require manual approval for tool calls (default: auto-approve) |
+| Flag             | Default | Description                                                    |
+| ---------------- | ------- | -------------------------------------------------------------- |
+| `--port`         | 8787    | TCP port                                                       |
+| `--host`         | 0.0.0.0 | Bind address                                                   |
+| `--project-root` | cwd     | Working directory for Atelier runtime                          |
+| `--no-yolo`      | off     | Require manual approval for tool calls (default: auto-approve) |
 
 ## Connect a TUI
 
@@ -91,13 +91,13 @@ Set `ATELIER_API_KEY=local` (or any non-empty value) in your shell.
 
 ### Claude Code (MCP — zero configuration)
 
-Atelier already ships `atelier-mcp`. Add to `~/.claude.json`:
+Atelier already ships `atelier mcp`. Add to `~/.claude.json`:
 
 ```json
 {
   "mcpServers": {
     "atelier": {
-      "command": "atelier-mcp",
+      "command": "atelier mcp",
       "env": { "ATELIER_SERVICE_URL": "http://127.0.0.1:8787" }
     }
   }
@@ -130,6 +130,7 @@ TUI  ──POST /v1/chat/completions──►  openai_gateway/app.py
 ```
 
 Key properties:
+
 - **Per-request session isolation** — each HTTP request gets a fresh session ID; prior messages are injected as history so context is preserved within a conversation.
 - **Auto-approve in gateway mode** — `--no-yolo` disables this; without it the agent loop would block waiting for terminal input that never comes.
 - **Streaming by default** — set `"stream": false` in the request body for a buffered response.
@@ -137,12 +138,12 @@ Key properties:
 
 ## Available models
 
-| Model ID | Description |
-|----------|-------------|
-| `atelier-default` | Atelier's auto-selected route (balanced) |
-| `atelier-auto` | Same as default |
-| `atelier-cheap` | Routes to cheapest available provider |
-| `atelier-best` | Routes to highest-quality available provider |
+| Model ID          | Description                                  |
+| ----------------- | -------------------------------------------- |
+| `atelier-default` | Atelier's auto-selected route (balanced)     |
+| `atelier-auto`    | Same as default                              |
+| `atelier-cheap`   | Routes to cheapest available provider        |
+| `atelier-best`    | Routes to highest-quality available provider |
 
 ---
 
@@ -171,30 +172,30 @@ curl -X GET http://localhost:8787/v1/models/refresh | jq '.data[].id'
 
 ### Supported providers
 
-| Provider | Required field | Env var alias |
-|---|---|---|
-| `anthropic` | `api_key` | `ANTHROPIC_API_KEY` |
-| `openai` | `api_key` | `OPENAI_API_KEY` |
-| `google` | `api_key` | `GOOGLE_API_KEY` |
-| `bedrock` | `aws_bearer_token_bedrock` + `aws_region` | `AWS_BEARER_TOKEN_BEDROCK` + `AWS_REGION` |
-| `bedrock` (IAM) | `aws_access_key_id` + `aws_secret_access_key` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
-| `vertex` | `project` + `application_credentials` | `VERTEXAI_PROJECT` + `GOOGLE_APPLICATION_CREDENTIALS` |
-| `azure` | `api_key` + `endpoint` | `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT` |
-| `openrouter` | `api_key` | `OPENROUTER_API_KEY` |
-| `groq` | `api_key` | `GROQ_API_KEY` |
-| `mistral` | `api_key` | `MISTRAL_API_KEY` |
-| `ollama` | `base_url` | `OLLAMA_HOST` |
-| `together` | `api_key` | `TOGETHER_API_KEY` |
-| `fireworks` | `api_key` | `FIREWORKS_API_KEY` |
+| Provider        | Required field                                | Env var alias                                         |
+| --------------- | --------------------------------------------- | ----------------------------------------------------- |
+| `anthropic`     | `api_key`                                     | `ANTHROPIC_API_KEY`                                   |
+| `openai`        | `api_key`                                     | `OPENAI_API_KEY`                                      |
+| `google`        | `api_key`                                     | `GOOGLE_API_KEY`                                      |
+| `bedrock`       | `aws_bearer_token_bedrock` + `aws_region`     | `AWS_BEARER_TOKEN_BEDROCK` + `AWS_REGION`             |
+| `bedrock` (IAM) | `aws_access_key_id` + `aws_secret_access_key` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`         |
+| `vertex`        | `project` + `application_credentials`         | `VERTEXAI_PROJECT` + `GOOGLE_APPLICATION_CREDENTIALS` |
+| `azure`         | `api_key` + `endpoint`                        | `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT`      |
+| `openrouter`    | `api_key`                                     | `OPENROUTER_API_KEY`                                  |
+| `groq`          | `api_key`                                     | `GROQ_API_KEY`                                        |
+| `mistral`       | `api_key`                                     | `MISTRAL_API_KEY`                                     |
+| `ollama`        | `base_url`                                    | `OLLAMA_HOST`                                         |
+| `together`      | `api_key`                                     | `TOGETHER_API_KEY`                                    |
+| `fireworks`     | `api_key`                                     | `FIREWORKS_API_KEY`                                   |
 
 ### Troubleshooting
 
-| Symptom | Fix |
-|---|---|
-| `/v1/models` returns empty list | No providers configured; check `~/.atelier/providers.json` |
-| Bedrock models missing | `boto3` must be installed (`uv add boto3`) and credentials valid |
-| Azure models missing | `endpoint` must be set (e.g. `https://my-resource.openai.azure.com`) |
-| Vertex models missing | `application_credentials` JSON file must exist and be valid |
-| Stale model list | `GET /v1/models/refresh` to force re-fetch |
+| Symptom                         | Fix                                                                  |
+| ------------------------------- | -------------------------------------------------------------------- |
+| `/v1/models` returns empty list | No providers configured; check `~/.atelier/providers.json`           |
+| Bedrock models missing          | `boto3` must be installed (`uv add boto3`) and credentials valid     |
+| Azure models missing            | `endpoint` must be set (e.g. `https://my-resource.openai.azure.com`) |
+| Vertex models missing           | `application_credentials` JSON file must exist and be valid          |
+| Stale model list                | `GET /v1/models/refresh` to force re-fetch                           |
 
 The example file is at `~/.atelier/providers.json.example` (auto-created on first service start).

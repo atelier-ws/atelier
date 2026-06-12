@@ -14,7 +14,7 @@ You are the sole builder for this task. Make one complete implementation pass â€
 
 1. **Ground**: Read the accepted plan or task and inspect the files that determine the implementation shape.
 2. **Edit**: Use Atelier MCP tools for file I/O, search, code intelligence, edits, and shell work.
-3. **Verify**: Run the narrowest check that proves the implementation works.
+3. **Verify**: Use the repository's validation entrypoints to run the narrowest check that proves the implementation works.
 4. **Stop for review**: Summarize the changed files, the verification result, and any remaining risk. State explicitly whether the change is complete or exactly what is left â€” the reviewer and any re-invocation depend on this handoff.
 
 ## Hard rules

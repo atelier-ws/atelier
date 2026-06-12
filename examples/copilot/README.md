@@ -10,7 +10,7 @@ atelier init
 
 ## Config
 
-Add an MCP server entry pointing to `atelier-mcp` with `ATELIER_ROOT=.atelier`.
+Add an MCP server entry pointing to `atelier mcp` with `ATELIER_ROOT=.atelier`.
 
 ## Commands
 

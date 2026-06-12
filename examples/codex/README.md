@@ -15,7 +15,7 @@ Wire Codex to the Atelier MCP server and keep host-specific behavior in `AGENTS.
 ## Commands
 
 ```bash
-atelier-mcp
+atelier mcp
 atelier rescue --task "Fix PDP schema" --domain Agent.pdp.schema --error "availability missing"
 ```
 

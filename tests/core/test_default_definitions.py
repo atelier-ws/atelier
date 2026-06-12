@@ -148,9 +148,23 @@ def test_registry_exposes_owned_workflows_and_solver_contracts() -> None:
     assert profile.role_id == "solve"
     assert profile.workflow_id == "owned-benchmark-solver"
     assert profile.retry_limit == 2
+    assert any("isolated and disposable" in rule.lower() for rule in profile.command_rules)
+    assert any("hidden evaluator" in rule.lower() for rule in profile.command_rules)
+    assert any("security and ctf" in rule.lower() for rule in profile.command_rules)
     assert any("stderr" in rule.lower() for rule in profile.command_rules)
     assert any("generator" in rule.lower() for rule in profile.command_rules)
     assert any("failed command" in rule.lower() for rule in profile.command_rules)
+
+
+def test_solve_role_is_general_and_benchmark_policy_is_profile_scoped() -> None:
+    registry = build_default_registry(ROOT)
+    solve = registry.render_prompt("solve", ROOT)
+
+    assert "Autonomous solver for concrete tasks" in solve
+    assert "repository's validation entrypoints" in solve
+    assert "terminal-bench" not in solve.lower()
+    assert "hidden evaluator" not in solve.lower()
+    assert "isolated and disposable" not in solve.lower()
 
 
 def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:

@@ -10,7 +10,7 @@ atelier init
 
 ## Config
 
-Point Claude Code at `atelier-mcp` and set `ATELIER_ROOT=.atelier`.
+Point Claude Code at `atelier mcp` and set `ATELIER_ROOT=.atelier`.
 
 ## Commands
 
@@ -27,5 +27,5 @@ atelier benchmark run --prompt "Fix Shopify publish" --json
 
 ## Troubleshooting
 
-- If the server is not visible, verify the MCP command uses `atelier-mcp` from the repo root.
+- If the server is not visible, verify the MCP command uses `atelier mcp` from the repo root.
 - If active context commands return `noop`, enable `ATELIER_DEV_MODE=1` in the shell or MCP environment.

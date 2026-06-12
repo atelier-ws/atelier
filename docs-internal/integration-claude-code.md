@@ -15,4 +15,4 @@ installation and verification path.
   match the current public CLI.
 
 If you need a hand-written MCP entry instead of the packaged installer, mirror the
-current `atelier-mcp` setup from [hosts/claude-code-install.md](hosts/claude-code-install.md).
+current `atelier mcp` setup from [hosts/claude-code-install.md](hosts/claude-code-install.md).
