@@ -50,9 +50,7 @@ class KeepaliveThread:
         interval = (
             _ANTHROPIC_INTERVAL_SECONDS
             if self._cache_style == "anthropic"
-            else _GEMINI_INTERVAL_SECONDS
-            if self._cache_style == "gemini"
-            else 0.0  # no-op for openai / others
+            else _GEMINI_INTERVAL_SECONDS if self._cache_style == "gemini" else 0.0  # no-op for openai / others
         )
         self._interval = interval
         self._stop = threading.Event()
