@@ -28,6 +28,8 @@ CLAUDE_READ_LINE_LIMIT = 2000
 MAX_STRUCTURED_OUTPUT_CHARS = 80_000
 DEFAULT_CONTEXT_BUDGET_TOKENS = 6_000
 INLINE_CHARS_PER_TOKEN = 2
+# Max paths emitted by output_mode=file_paths_only before truncation.
+_FILE_PATHS_ONLY_CAP = 200
 SKIP_DIRS: frozenset[str] = frozenset(
     {
         # VCS
@@ -867,10 +869,15 @@ def search_workspace(
 
     if output_mode == "file_paths_only":
         # Aggregate paths into a single text block — one path per line.
+        # Capped: an unbounded path dump (hundreds of files) permanently bloats
+        # the agent context; the caller can narrow path or globs to page through.
         agg_parts = [f"# grep — output_mode=file_paths_only ({len(fp_paths)} files)"]
         if fp_paths:
             agg_parts.append("")
-            agg_parts.extend(fp_paths)
+            agg_parts.extend(fp_paths[:_FILE_PATHS_ONLY_CAP])
+            overflow = len(fp_paths) - _FILE_PATHS_ONLY_CAP
+            if overflow > 0:
+                agg_parts.append(f"... and {overflow} more file(s) — narrow path or file_glob_patterns to see them")
         text = "\n".join(agg_parts)
         total_chars = len(text)
         blocks.append({"type": "text", "text": text})
