@@ -47,8 +47,29 @@ def main() -> int:
         if session_id:
             _write_session_state(session_id, cwd or None)
 
-        # SessionStart only bridges Codex session state. Prompt-time guidance
-        # is emitted by UserPromptSubmit so startup remains quiet.
+        # Check for update notification from daemon/MCP auto-update
+        state_path = _atelier_root() / "update_state.json"
+        if state_path.exists():
+            update_data = json.loads(state_path.read_text("utf-8"))
+            if (
+                isinstance(update_data, dict)
+                and update_data.get("current_version")
+                and update_data.get("previous_version")
+                and update_data["current_version"] != update_data["previous_version"]
+                and not update_data.get("notified")
+            ):
+                prev_ver = update_data["previous_version"]
+                cur_ver = update_data["current_version"]
+                method = update_data.get("method", "auto")
+                msg = (
+                    f"Atelier updated from {prev_ver} → {cur_ver} (via {method}). "
+                    "Release notes: https://github.com/atelier-runtime/atelier/releases"
+                )
+                sys.stdout.write(json.dumps({"systemMessage": msg}) + "\n")
+                sys.stdout.flush()
+                # Mark as notified
+                update_data["notified"] = True
+                state_path.write_text(json.dumps(update_data, indent=2), encoding="utf-8")
     except (ImportError, json.JSONDecodeError, KeyError, TypeError, ValueError, OSError):
         pass
     return 0
