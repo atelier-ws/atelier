@@ -966,10 +966,6 @@ def _scan_hosts_live(
         CodexImporter,
         find_codex_sessions,
     )
-    from atelier.gateway.hosts.session_parsers.gemini import (
-        GeminiImporter,
-        find_gemini_sessions,
-    )
     from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
 
     tmp = tempfile.TemporaryDirectory(prefix="atelier-session-hosts-")
@@ -998,22 +994,6 @@ def _scan_hosts_live(
                 )
                 for session_path in picked_paths:
                     if codex_importer.import_session(session_path, force=force):
-                        imported += 1
-                counts[host_name] = imported
-                continue
-            if host_name == "gemini":
-                gemini_importer = GeminiImporter(store)
-                imported = 0
-                picked_paths = _pick_live_sessions(
-                    list(find_gemini_sessions(path)),
-                    path_of=lambda p: p,
-                    limit=limit,
-                    scan=max_per_host,
-                    session_filter=session_filter,
-                    cutoff=cutoff,
-                )
-                for session_path in picked_paths:
-                    if gemini_importer.import_session(session_path, force=force):
                         imported += 1
                 counts[host_name] = imported
                 continue
@@ -1061,15 +1041,14 @@ def _stream_hosts_live(
 ) -> list[dict[str, Any]]:
     """Scan host session files and stream-display each session as it's imported.
 
-    For claude/codex/gemini/copilot/opencode: per-session streaming (each session
+    For claude/codex/copilot/opencode: per-session streaming (each session
     appears immediately after it's parsed).
-    For other generic importers: per-host streaming (sessions appear together after
-    import_all completes for that host).
+    For other generic importers (antigravity, cursor): per-host streaming
+    (sessions appear together after import_all completes for that host).
     """
     from atelier.gateway.hosts.session_parsers.claude import ClaudeImporter, find_claude_sessions
     from atelier.gateway.hosts.session_parsers.codex import CodexImporter, find_codex_sessions
     from atelier.gateway.hosts.session_parsers.copilot import CopilotImporter, find_copilot_sessions
-    from atelier.gateway.hosts.session_parsers.gemini import GeminiImporter, find_gemini_sessions
     from atelier.gateway.hosts.session_parsers.opencode import (  # type: ignore[attr-defined]
         OpenCodeImporter,
         find_opencode_sessions,
@@ -1110,32 +1089,6 @@ def _stream_hosts_live(
                 click.echo(f"  scanned this run: {len(picked)}")
                 for session_path in picked:
                     tid = importer_c.import_session(session_path, force=force)
-                    if tid:
-                        trace = store.get_trace(tid)
-                        if trace:
-                            row = _build_session_row(trace, store, host_name)
-                            collected_rows.append(row)
-                            _print_session_row(row, verbose)
-                continue
-
-            if host_name == "gemini":
-                importer_g = GeminiImporter(store)
-                picked_g = _pick_live_sessions(
-                    list(find_gemini_sessions(path)),
-                    path_of=lambda p: p,
-                    limit=limit,
-                    scan=max_per_host,
-                    session_filter=session_filter,
-                    cutoff=cutoff,
-                )
-                if not picked_g:
-                    continue
-                any_found = True
-                click.echo("")
-                click.secho(host_name, fg="magenta", bold=True)
-                click.echo(f"  scanned this run: {len(picked_g)}")
-                for session_path in picked_g:
-                    tid = importer_g.import_session(session_path, force=force)
                     if tid:
                         trace = store.get_trace(tid)
                         if trace:
