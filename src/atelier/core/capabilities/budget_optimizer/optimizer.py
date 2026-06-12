@@ -32,7 +32,6 @@ Usage::
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -43,8 +42,7 @@ try:
     from ortools.sat.python import cp_model as _cp_model
 
     _HAS_ORTOOLS = True
-except Exception:  # pragma: no cover
-    logging.exception("Recovered from broad exception handler")
+except ImportError:  # pragma: no cover
     _cp_model = None  # type: ignore[assignment]
     _HAS_ORTOOLS = False
 

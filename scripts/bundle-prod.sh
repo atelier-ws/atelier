@@ -120,13 +120,11 @@ PFLAGS=(
     # scipy: lazily imported by datasketch (patched) and river (try/except);
     #        the uninstall above removes it from the venv before this runs.
     --exclude-module scipy
-    # ortools: CP-SAT solver for exact context packing; degrades to greedy.
-    #          ortools has a hard pandas import so both must be excluded together.
-    --exclude-module ortools
-    --exclude-module pandas
     # hf_xet: optional HuggingFace Xet download accelerator, not used by
     #         Atelier at runtime. Saves ~12 MB.
     --exclude-module hf_xet
+    --hidden-import ortools
+    --hidden-import ortools.sat.python.cp_model
     --hidden-import tiktoken_ext.openai_public
     --hidden-import litellm.litellm_core_utils.tokenizers
     --hidden-import litellm.litellm_core_utils.get_model_cost_map
