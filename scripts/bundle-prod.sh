@@ -32,7 +32,47 @@ uv pip uninstall --python "$PYTHON" scipy -y 2>/dev/null || true
 DATASKETCH_INIT="$BUILD_VENV/lib/python3.13/site-packages/datasketch/__init__.py"
 if [ -f "$DATASKETCH_INIT" ] && ! grep -q "Lazy-load scipy-dependent" "$DATASKETCH_INIT" 2>/dev/null; then
     echo "◆ Patching datasketch for optional scipy..."
-    python3 /tmp/patch_datasketch.py "$DATASKETCH_INIT"
+    python3 -c "
+import re
+
+path = '$DATASKETCH_INIT'
+with open(path) as f:
+    content = f.read()
+
+# Wrap scipy-dependent imports in try/except ImportError blocks
+# These submodules transitively import scipy which was removed from the build venv
+LAZY_IMPORTS = {
+    'datasketch.aio': ['AsyncMinHashLSH'],
+    'datasketch.lsh': ['MinHashLSH'],
+    'datasketch.lsh_bloom': ['MinHashLSHBloom'],
+    'datasketch.lshensemble': ['MinHashLSHEnsemble'],
+    'datasketch.weighted_minhash': ['WeightedMinHash', 'WeightedMinHashGenerator'],
+}
+
+patched = False
+for mod, names in LAZY_IMPORTS.items():
+    pattern = r'^from ' + re.escape(mod) + r' import (.+)$'
+    match = re.search(pattern, content, re.MULTILINE)
+    if match:
+        existing = match.group(0)
+        indent = '    '
+        name_list = ', '.join(names)
+        none_assignments = ', '.join(['None'] * len(names))
+        header = '# Lazy-load scipy-dependent modules (scipy may not be installed)\n' if not patched else ''
+        replacement = (
+            f'{header}try:\n'
+            f'{indent}from {mod} import {name_list}\n'
+            f'except ImportError:\n'
+            f'{indent}{name_list} = {none_assignments}'
+        )
+        content = content.replace(existing, replacement, 1)
+        patched = True
+
+with open(path, 'w') as f:
+    f.write(content)
+
+print('Datasketch patched successfully.')
+"
 fi
 
 # 4. Compile Python Binaries
