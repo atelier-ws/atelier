@@ -384,19 +384,27 @@ class CopilotImporter:
     # Public
     # ------------------------------------------------------------------
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
-        """Import all sessions under *root*. Returns the IDs of successfully imported sessions."""
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
+        """Import newest sessions under *root* up to limit per type."""
         imported_ids = []
         skipped = 0
-        all_sessions = list(find_copilot_sessions(root))
-        all_transcripts = list(find_copilot_transcript_files(root))
-        all_debug_logs = list(find_copilot_debug_log_dirs(root))
+
+        # Helper to sort by mtime descending and take top N if limit is provided
+        def get_newest(paths: list[Path], n: int | None) -> list[Path]:
+            sorted_paths = sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True)
+            return sorted_paths[:n] if n is not None else sorted_paths
+
+        all_sessions = get_newest(list(find_copilot_sessions(root)), limit)
+        all_transcripts = get_newest(list(find_copilot_transcript_files(root)), limit)
+        all_debug_logs = get_newest(list(find_copilot_debug_log_dirs(root)), limit)
+
         total = len(all_sessions) + len(all_transcripts) + len(all_debug_logs)
         logger.info(
-            "[atelier] copilot: found %d session directories, %d transcript files, %d debug-log directories",
+            "[atelier] copilot: found %d session directories, %d transcript files, %d debug-log directories (processing top %s of each)",
             len(all_sessions),
             len(all_transcripts),
             len(all_debug_logs),
+            limit if limit is not None else "all",
         )
 
         processed = 0

@@ -18,7 +18,7 @@ class RooCodeImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
         imported: list[str] = []
         for task_dir in find_roo_code_sessions(root):
             trace_id = import_task_dir(

@@ -164,7 +164,7 @@ configure_project_enforcement() {
     }
 
 
-uv run python "$MODE_RENDERER" >/dev/null || python3 "$MODE_RENDERER" >/dev/null
+uv run python "$MODE_RENDERER" >/dev/null 2>&1 || python3 "$MODE_RENDERER" >/dev/null 2>&1 || true
 STAGING_DIR="${HOME}/.atelier/claude-plugin"
 # Start fresh — stale symlinks from prior installs (hooks → source dir)
 # will cause `cp -r` to error with "same file".
@@ -312,11 +312,15 @@ info "Structural validation passed"
 # until you re-run install.sh. Reinstall here so install_claude.sh is the
 # single command that keeps plugin assets AND the MCP runtime in sync.
 refresh_atelier_tool() {
+    # In binary mode (install.sh flow) the binary IS the runtime — skip uv reinstall.
+    if [[ "${ATELIER_BINARY_MODE:-0}" == "1" ]]; then
+        return 0
+    fi
     if ! command -v uv >/dev/null 2>&1; then
         warn "uv not on PATH — skipping atelier refresh"
         return 0
     fi
-    local extras="mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,rename,telemetry"
+    local extras="mcp,memory,smart,cloud,postgres,vector,parsers,rename"
     local pkg_spec="${ATELIER_REPO}[${extras}]"
 
     if $DRY_RUN; then

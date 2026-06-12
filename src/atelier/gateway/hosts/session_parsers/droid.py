@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import json
 import re
 from datetime import UTC, datetime
@@ -10,6 +11,7 @@ from typing import Any
 
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
+    get_newest,
     build_normalized_jsonl,
     make_assistant_message,
     make_session_line,
@@ -17,6 +19,8 @@ from atelier.gateway.hosts.session_parsers._common import (
     make_user_message,
     record_normalized_session,
 )
+
+logger = logging.getLogger(__name__)
 
 _SYSTEM_REMINDER_RE = re.compile(r"^<system-reminder>", re.IGNORECASE)
 
@@ -53,12 +57,16 @@ class DroidImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
         from atelier.gateway.hosts.session_parsers._common import import_paths_with_progress
 
-        return import_paths_with_progress(
-            "droid", list(find_droid_sessions(root)), lambda p: self.import_session(p, force=force)
+        sessions = get_newest(find_droid_sessions(root), limit)
+        logger.info(
+            "[atelier] droid: discovering sessions (found %d, limit=%s)",
+            len(sessions),
+            limit if limit is not None else "all",
         )
+        return import_paths_with_progress("droid", sessions, lambda p: self.import_session(p, force=force))
 
     def import_session(self, session_file: Path, *, force: bool = False) -> str | None:
         raw_source = session_file.read_text(encoding="utf-8")

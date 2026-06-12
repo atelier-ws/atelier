@@ -69,7 +69,6 @@ def sync_usage(
                         chunk_sessions.append(json.loads(stats_path.read_text(encoding="utf-8")))
                         continue
                     except Exception:
-                        logging.exception("Recovered from broad exception handler")
                         logger.warning(
                             "Suppressed exception at sync.py:69",
                             exc_info=True,
@@ -106,11 +105,9 @@ def _send_chunk(url: str, sessions: list[dict[str, Any]]) -> bool:
             try:
                 status = int(getattr(resp, "status", 0))
             except Exception:
-                logging.exception("Recovered from broad exception handler")
                 return False
             return status < 400
     except Exception as e:
-        logging.exception("Recovered from broad exception handler")
         _logger.debug(f"sync chunk to {url} failed: {e}")
         return False
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import json
 import sqlite3
 from collections import defaultdict
@@ -11,6 +12,7 @@ from typing import Any
 
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
+    get_newest,
     build_normalized_jsonl,
     char_tokens,
     make_assistant_message,
@@ -19,6 +21,8 @@ from atelier.gateway.hosts.session_parsers._common import (
     make_user_message,
     record_normalized_session,
 )
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "claude-sonnet-4-5"
 _PLACEHOLDER_MODELS = {"", "auto", "default", "composer-2"}
@@ -159,7 +163,7 @@ class CursorImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
         db_path = find_cursor_db(root)
         if db_path is None:
             return []
