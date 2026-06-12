@@ -1495,13 +1495,13 @@ def _print_stats(
         total_rows.append(("subagents", f"{total_subagents} total · ≈${total_sub_cost:.4f} ({sub_pct:.1f}% of cost)"))
 
     if total_pot_calls > 0:
-        total_rows.append((
-            "potential",
-            click.style(
-                f"≈{total_pot_calls} avoidable · ≈${total_pot_usd + total_pot_carry:.4f} more savings via Atelier",
-                fg="yellow",
-            ),
-        ))
+        pot_str = click.style(f"≈{total_pot_calls} avoidable", fg="yellow")
+        if total_pot_usd > 0:
+            pot_str += click.style(f" · ≈${total_pot_usd:.4f} saved", fg="yellow")
+        if total_pot_carry > 0:
+            pot_str += click.style(f" + ≈${total_pot_carry:.4f} carry", fg="yellow")
+        pot_str += click.style(" via Atelier", fg="yellow")
+        total_rows.append(("potential", pot_str))
 
     _emit_tree_rows(total_rows)
 
