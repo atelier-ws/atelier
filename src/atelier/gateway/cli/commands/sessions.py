@@ -1053,7 +1053,7 @@ def _stream_hosts_live(
     session_filter: str = "",
     cutoff: datetime | None = None,
     verbose: bool = False,
-) -> None:
+) -> list[dict[str, Any]]:
     """Scan host session files and stream-display each session as it's imported.
 
     For claude/codex/gemini/copilot/opencode: per-session streaming (each session
@@ -1081,6 +1081,7 @@ def _stream_hosts_live(
 
     host_set = set(selected_hosts)
     any_found = False
+    collected_rows: list[dict[str, Any]] = []
 
     for host_name, importer_cls in iter_importer_classes():
         if host_set and host_name not in host_set:
@@ -1107,7 +1108,9 @@ def _stream_hosts_live(
                     if tid:
                         trace = store.get_trace(tid)
                         if trace:
-                            _print_session_row(_build_session_row(trace, store, host_name), verbose)
+                            row = _build_session_row(trace, store, host_name)
+                            collected_rows.append(row)
+                            _print_session_row(row, verbose)
                 continue
 
             if host_name == "gemini":
@@ -1131,7 +1134,9 @@ def _stream_hosts_live(
                     if tid:
                         trace = store.get_trace(tid)
                         if trace:
-                            _print_session_row(_build_session_row(trace, store, host_name), verbose)
+                            row = _build_session_row(trace, store, host_name)
+                            collected_rows.append(row)
+                            _print_session_row(row, verbose)
                 continue
 
             if host_name == "claude":
@@ -1156,7 +1161,9 @@ def _stream_hosts_live(
                     if tid:
                         trace = store.get_trace(tid)
                         if trace:
-                            _print_session_row(_build_session_row(trace, store, host_name), verbose)
+                            row = _build_session_row(trace, store, host_name)
+                            collected_rows.append(row)
+                            _print_session_row(row, verbose)
                 continue
 
             if host_name == "copilot":
@@ -1180,7 +1187,9 @@ def _stream_hosts_live(
                     if tid:
                         trace = store.get_trace(tid)
                         if trace:
-                            _print_session_row(_build_session_row(trace, store, host_name), verbose)
+                            row = _build_session_row(trace, store, host_name)
+                            collected_rows.append(row)
+                            _print_session_row(row, verbose)
                 continue
 
             if host_name == "opencode":
@@ -1201,7 +1210,9 @@ def _stream_hosts_live(
                             if tid:
                                 trace = store.get_trace(tid)
                                 if trace:
-                                    _print_session_row(_build_session_row(trace, store, host_name), verbose)
+                                    row = _build_session_row(trace, store, host_name)
+                                    collected_rows.append(row)
+                                    _print_session_row(row, verbose)
                 continue
 
             # Generic importer: batch import_all then stream display
@@ -1226,6 +1237,7 @@ def _stream_hosts_live(
                 if session_filter and session_filter not in (row.get("session_id") or "").lower():
                     continue
                 _print_session_row(row, verbose)
+                collected_rows.append(row)
                 displayed += 1
                 if displayed >= limit:
                     break
@@ -1236,6 +1248,8 @@ def _stream_hosts_live(
 
     if not any_found:
         click.echo("No host sessions found for the selected filters.")
+
+    return collected_rows
 
 
 @session_group.command("hosts")
@@ -1344,6 +1358,7 @@ def session_hosts_cmd(
     if source_mode == "store":
         store = _load_store(root)
         any_found = False
+        all_store_rows: list[dict[str, Any]] = []
         for host_name in sorted(selected_hosts):
             traces = store.list_traces(host=host_name, since=cutoff, limit=scan)
             rows_store: list[dict[str, Any]] = []
@@ -1360,12 +1375,17 @@ def session_hosts_cmd(
                 click.secho(host_name, fg="magenta", bold=True)
                 for row in rows_store:
                     _print_session_row(row, verbose)
+                all_store_rows.extend(rows_store)
         if not any_found:
             click.echo("No host sessions found for the selected filters.")
+        elif all_store_rows:
+            click.echo("")
+            click.secho("─" * min(60, _term_width()), dim=True)
+            _print_stats(all_store_rows, since or f"{limit} sessions", top=0, show_header=False)
         return
 
     # live mode + text: stream each host as it's scanned
-    _stream_hosts_live(
+    displayed_rows = _stream_hosts_live(
         selected_hosts=selected_hosts,
         force=force,
         path=path,
@@ -1375,6 +1395,221 @@ def session_hosts_cmd(
         cutoff=cutoff,
         verbose=verbose,
     )
+    active_rows = [r for r in displayed_rows if int(r["tool_calls"]) > 0 or int(r["input_tokens"]) > 0]
+    if active_rows:
+        click.echo("")
+        click.secho("─" * min(60, _term_width()), dim=True)
+        _print_stats(active_rows, since or f"{limit} sessions", top=0, show_header=False)
+
+
+
+# ---------------------------------------------------------------------------
+# session stats
+# ---------------------------------------------------------------------------
+
+def _print_stats(
+    rows: list[dict[str, Any]],
+    since_label: str,
+    top: int,
+    show_header: bool = True,
+) -> None:
+    """Print aggregate usage statistics from a list of session rows."""
+    if not rows:
+        click.echo("No sessions found.")
+        return
+
+    # --- aggregate totals ---
+    n = len(rows)
+    n_atelier = sum(1 for r in rows if int(r["atelier_calls"]) > 0)
+    total_cost = sum(float(r["cost_usd"]) for r in rows)
+    total_saved = sum(float(r["saved_usd"]) for r in rows)
+    total_carry = sum(float(r["carry_usd"]) for r in rows)
+    total_in = sum(int(r["input_tokens"]) for r in rows)
+    total_cr = sum(int(r["cache_read_tokens"]) for r in rows)
+    total_cw = sum(int(r["cache_write_tokens"]) for r in rows)
+    total_out = sum(int(r["output_tokens"]) for r in rows)
+    total_calls = sum(int(r["tool_calls"]) for r in rows)
+    total_atelier = sum(int(r["atelier_calls"]) for r in rows)
+    total_builtin = sum(int(r["builtin_calls"]) for r in rows)
+    total_subagents = sum(int(r["subagents"]) for r in rows)
+    total_sub_cost = sum(float(r["subagent_cost_usd"]) for r in rows)
+    total_pot_calls = sum(int(r["potential_calls_saved"]) for r in rows)
+    total_pot_usd = sum(float(r["potential_saved_usd"]) for r in rows)
+    total_pot_carry = sum(float(r["potential_carry_usd"]) for r in rows)
+
+    # per-host aggregation
+    host_agg: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        hn = str(r.get("host") or r.get("source") or "unknown")
+        if hn not in host_agg:
+            host_agg[hn] = {
+                "sessions": 0, "cost": 0.0, "saved": 0.0, "calls": 0,
+                "atelier": 0, "builtin": 0, "pot_usd": 0.0,
+            }
+        ha = host_agg[hn]
+        ha["sessions"] += 1
+        ha["cost"] += float(r["cost_usd"])
+        ha["saved"] += float(r["saved_usd"])
+        ha["calls"] += int(r["tool_calls"])
+        ha["atelier"] += int(r["atelier_calls"])
+        ha["builtin"] += int(r["builtin_calls"])
+        ha["pot_usd"] += float(r["potential_saved_usd"]) + float(r["potential_carry_usd"])
+
+    hosts_sorted = sorted(host_agg.items(), key=lambda x: -x[1]["cost"])
+
+    # header
+    hosts_label = ", ".join(h for h, _ in hosts_sorted if host_agg[h]["sessions"] > 0)
+    if show_header:
+        click.secho(f"Last {since_label}  ·  {n} sessions  ·  {hosts_label}", bold=True)
+        if n_atelier > 0:
+            click.echo(f"  {n_atelier} of {n} sessions used Atelier tools")
+
+    # total section
+    click.echo("")
+    click.secho("  Total", bold=True)
+    total_rows: list[tuple[str, str]] = []
+
+    cost_str = click.style(f"${total_cost:.4f}", bold=True)
+    if total_saved + total_carry > 0:
+        baseline = total_cost + total_saved + total_carry
+        pct = 100 * (total_saved + total_carry) / baseline
+        savings_str = (
+            click.style(f"  saved ${total_saved:.4f}", fg="green")
+            + click.style(f" + carry ${total_carry:.4f}", fg="magenta")
+            + click.style(f" via Atelier  (-{pct:.1f}% vs baseline ≈${baseline:.4f})", dim=True)
+        )
+        total_rows.append(("cost", cost_str + savings_str))
+    else:
+        total_rows.append(("cost", cost_str))
+
+    total_rows.append((
+        "tokens",
+        f"in={_fmt_tok_compact(total_in)}"
+        f"  cR={_fmt_tok_compact(total_cr)}"
+        f"  cW={_fmt_tok_compact(total_cw)}"
+        f"  out={_fmt_tok_compact(total_out)}",
+    ))
+
+    if total_calls > 0:
+        atelier_pct = 100 * total_atelier / total_calls
+        calls_str = (
+            f"{total_calls:,} total · "
+            + click.style(f"{total_atelier:,} atelier ({atelier_pct:.0f}%)", fg="cyan")
+            + f" · {total_builtin:,} builtin"
+        )
+        total_rows.append(("calls", calls_str))
+
+    if total_subagents > 0:
+        sub_pct = 100 * total_sub_cost / total_cost if total_cost > 0 else 0.0
+        total_rows.append(("subagents", f"{total_subagents} total · ≈${total_sub_cost:.4f} ({sub_pct:.1f}% of cost)"))
+
+    if total_pot_calls > 0:
+        total_rows.append((
+            "potential",
+            click.style(
+                f"≈{total_pot_calls} avoidable · ≈${total_pot_usd + total_pot_carry:.4f} more savings via Atelier",
+                fg="yellow",
+            ),
+        ))
+
+    _emit_tree_rows(total_rows)
+
+    # by host section
+    if len(host_agg) > 1:
+        click.echo("")
+        click.secho("  By host", bold=True)
+        host_rows: list[tuple[str, str]] = []
+        for hn, ha in hosts_sorted:
+            if ha["sessions"] == 0:
+                continue
+            atelier_pct = 100 * ha["atelier"] / ha["calls"] if ha["calls"] > 0 else 0.0
+            parts = [
+                click.style(f"${ha['cost']:.4f}", bold=True),
+                f"{ha['sessions']} session{'s' if ha['sessions'] != 1 else ''}",
+                f"{ha['calls']:,} calls ({atelier_pct:.0f}% atelier)",
+            ]
+            if ha["saved"] > 0:
+                parts.append(click.style(f"saved ${ha['saved']:.4f}", fg="green"))
+            if ha["pot_usd"] > 0 and ha["atelier"] == 0:
+                parts.append(click.style(f"potential ≈${ha['pot_usd']:.4f}", fg="yellow"))
+            host_rows.append((hn, "  ·  ".join(parts)))
+        _emit_tree_rows(host_rows)
+
+    # top sessions section
+    if top > 0:
+        sorted_rows = sorted(rows, key=lambda r: -float(r["cost_usd"]))
+        top_rows = [r for r in sorted_rows if float(r["cost_usd"]) > 0][:top]
+        if top_rows:
+            click.echo("")
+            click.secho(f"  Top {len(top_rows)} sessions by cost", bold=True)
+            session_rows: list[tuple[str, str]] = []
+            for r in top_rows:
+                date = str(r["created_at"])[:10] if r["created_at"] else "-"
+                sid_short = str(r["session_id"] or "")[:8] if r["session_id"] else "-"
+                model_short = str(r["model"] or "-")[:14]
+                host_name_r = str(r.get("host") or "")
+                prompt = str(r["first_user"] or "").replace("\n", " ").strip()[:60]
+                cost = click.style(f"${float(r['cost_usd']):.4f}", bold=True)
+                session_rows.append((
+                    f"{date}  {sid_short}",
+                    f"{cost}  {host_name_r:<8}  {model_short:<14}  {prompt}",
+                ))
+            _emit_tree_rows(session_rows)
+
+
+@session_group.command("stats")
+@click.option("--since", "since_str", default="7d", show_default=True, help="Time window (e.g. 1d, 7d, 30d).")
+@click.option("--host", "hosts_filter", multiple=True, help="Filter by host (can repeat).")
+@click.option("--source", type=click.Choice(["live", "store"]), default="live", show_default=True)
+@click.option("--top", default=5, show_default=True, type=int, help="Top sessions by cost to list.")
+@click.option("--scan", default=100, show_default=True, type=int, help="Max sessions to scan per host.")
+@click.option("--path", "data_path", type=click.Path(path_type=Path), default=None)
+@click.pass_context
+def session_stats_cmd(
+    ctx: click.Context,
+    since_str: str,
+    hosts_filter: tuple[str, ...],
+    source: str,
+    top: int,
+    scan: int,
+    data_path: Path | None,
+) -> None:
+    """Aggregate usage statistics across all sessions in a time window."""
+    root = Path(ctx.obj["root"])
+    cutoff = datetime.now(UTC) - _parse_duration(since_str)
+    selected_hosts = list(hosts_filter) if hosts_filter else list(SUPPORTED_SESSION_IMPORT_HOSTS)
+
+    all_rows: list[dict[str, Any]] = []
+
+    if source == "store":
+        store = _load_store(root)
+        for hn in selected_hosts:
+            for trace in store.list_traces(host=hn, since=cutoff, limit=scan):
+                all_rows.append(_build_session_row(trace, store, hn))
+    else:
+        _sync_counts, store, tmp_handle = _scan_hosts_live(
+            selected_hosts=selected_hosts,
+            force=False,
+            path=data_path,
+            max_per_host=scan,
+            limit=scan,
+            cutoff=cutoff,
+        )
+        try:
+            for hn in selected_hosts:
+                for trace in store.list_traces(host=hn, since=cutoff, limit=scan):
+                    all_rows.append(_build_session_row(trace, store, hn))
+        finally:
+            tmp_handle.cleanup()
+
+    # skip zero-activity sessions (empty/aborted with no tokens or calls)
+    all_rows = [r for r in all_rows if int(r["tool_calls"]) > 0 or int(r["input_tokens"]) > 0]
+
+    if not all_rows:
+        click.echo(f"No sessions found in the last {since_str}.")
+        return
+
+    _print_stats(all_rows, since_str, top)
 
 
 __all__ = ["outcomes_group", "runs_group", "session_group"]
