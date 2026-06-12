@@ -535,14 +535,19 @@ def _emit_tree_rows(rows: list[tuple[str, str]]) -> None:
 
 def _is_atelier_tool_name(name: str) -> bool:
     lowered = (name or "").strip().lower()
-    return lowered.startswith("mcp__atelier__") or lowered.startswith("mcp__plugin_atelier_atelier__")
+    return (
+        lowered.startswith("mcp__atelier__")
+        or lowered.startswith("mcp__plugin_atelier_atelier__")
+        or lowered.startswith("atelier_")  # opencode registers tools without mcp__ prefix
+    )
 
 
 # Builtin tools whose repeated calls Atelier batches/dedupes into fewer calls.
 # Read-like builtin tools whose repeated calls Atelier dedupes/batches.
 # Deliberately excludes bash/shell/edit: repeated commands and edits are
 # usually distinct work, not redundant re-reads.
-_POTENTIAL_BATCHABLE = ("read", "grep", "glob", "search")
+# 'view' is the Copilot-CLI name for file reads; treat it the same as 'read'.
+_POTENTIAL_BATCHABLE = ("read", "view", "grep", "glob", "search", "rg")
 
 # Fallback context-window cap when the model's rate card has no threshold.
 _DEFAULT_CONTEXT_CAP = 200_000
