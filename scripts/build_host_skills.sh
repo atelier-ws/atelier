@@ -46,23 +46,29 @@ if [[ -z "$HOST" ]]; then
     exit 1
 fi
 
-uv run python "$RENDER_SCRIPT" >/dev/null
+# Regenerate host context files if uv is available; skip silently in binary-only envs
+# (bundle-prod.sh pre-generates these before packaging).
+if command -v uv >/dev/null 2>&1; then
+    uv run python "$RENDER_SCRIPT" >/dev/null 2>&1 || true
+fi
 
 if [[ ! -d "$SKILLS_SRC" ]]; then
     echo "Shared packaged skills directory not found: $SKILLS_SRC" >&2
     exit 1
 fi
 
-HIDDEN_SKILLS=()
-while IFS= read -r skill_name; do
-    [[ -n "$skill_name" ]] && HIDDEN_SKILLS+=("$skill_name")
-done < <(
-    PYTHONPATH="${ATELIER_REPO}/src:${PYTHONPATH:-}" uv run python - <<'PY'
-from atelier.core.environment import HIDDEN_SKILLS
-
-for name in sorted(HIDDEN_SKILLS):
-    print(name)
-PY
+# These skill names are dev/internal and should not be exposed in host bundles.
+# Kept as a static list to avoid importing the Python package at install time.
+HIDDEN_SKILLS=(
+    analyze-failures
+    benchmark
+    context
+    evals
+    rescue
+    savings
+    settings
+    status
+    record
 )
 
 ROLE_SKILLS=()
