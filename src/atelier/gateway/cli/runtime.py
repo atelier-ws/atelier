@@ -529,6 +529,12 @@ class InteractiveRuntime:
                             pass
                 index = end
 
+            # Compress stale tool results after each turn to keep context lean.
+            if len(messages) > 15:
+                from atelier.core.capabilities.tool_supervision.compact_output import compress_history
+
+                messages = compress_history(messages)
+
         total_input = max(0, total_input)
         denom = total_cache_read + total_cache_write + total_input
         if denom > 0:

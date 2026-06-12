@@ -38,8 +38,8 @@ You can:
 
 Use the right tool for each action:
 - `read` for reading files (use outline mode for large files)
-- `edit` for modifying files (use old_string/new_string for precision)
-- `shell` for commands (git, build, test, lint)
+- `edit` for **all** file creation and modification — the only correct tool for writing file content; never use `cat > file`, echo redirects, heredocs, or Python `open(f, "w")` inside shell for this purpose. If `edit` succeeds (no error), the file is written — do not re-write it via shell as a fallback.
+- `shell` for commands only (git, pytest, make, lint, etc.) — not for writing files
 - `grep` for searching patterns across files
 - `explore` for understanding symbols and their relationships
 
