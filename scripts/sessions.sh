@@ -31,13 +31,21 @@ case "$ARCH" in
 esac
 
 TAG="${ATELIER_RELEASE_TAG:-latest}"
+
+# If TAG is "latest", resolve the actual version tag from GitHub API
+if [[ "$TAG" == "latest" ]]; then
+    # Fetch the actual tag name from the latest release URL
+    REAL_TAG=$(curl -sI https://github.com/atelier-ws/atelier/releases/latest | grep -i location | awk -F/ '{print $NF}' | tr -d '\r')
+    if [[ -z "$REAL_TAG" ]]; then
+        echo "Failed to resolve 'latest' tag. Falling back to cached 'latest' if available." >&2
+    else
+        TAG="$REAL_TAG"
+    fi
+fi
+
 SUFFIX="${OS}-${ARCH}"
 ASSET="atelier-binaries-${SUFFIX}.tar.gz"
-if [[ "$TAG" == "latest" ]]; then
-    URL="https://github.com/atelier-runtime/atelier/releases/latest/download/${ASSET}"
-else
-    URL="https://github.com/atelier-runtime/atelier/releases/download/${TAG}/${ASSET}"
-fi
+URL="https://github.com/atelier-ws/atelier/releases/download/${TAG}/${ASSET}"
 
 TMP_BASE="/tmp/atelier-session-${SUFFIX}-$$"
 BIN_DIR="${TMP_BASE}/bin"
@@ -94,22 +102,6 @@ if "${ATELIER_BIN}" session hosts --help >/dev/null 2>&1; then
     exec "${ATELIER_BIN}" session hosts --source live "$@"
 fi
 
-# Fallback for unreleased binaries: if this script is run inside a source checkout,
-# use the local CLI so new commands can be tested before a release is cut.
-if command -v uv >/dev/null 2>&1 && [[ -f "pyproject.toml" ]]; then
-    HAS_SOURCE=0
-    for arg in "$@"; do
-        if [[ "$arg" == "--source" || "$arg" == --source=* ]]; then
-            HAS_SOURCE=1
-            break
-        fi
-    done
-    if [[ "$HAS_SOURCE" == "1" ]]; then
-        exec uv run --project . atelier session hosts "$@"
-    fi
-    exec uv run --project . atelier session hosts --source live "$@"
-fi
-
 echo "The downloaded Atelier release does not include 'session hosts' yet." >&2
-echo "Use a newer ATELIER_RELEASE_TAG, or run from source with: uv run atelier session hosts ..." >&2
+echo "Use a newer ATELIER_RELEASE_TAG." >&2
 exit 2

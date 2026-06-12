@@ -361,8 +361,7 @@ def test_background_install_writes_native_stack_unit(tmp_path: Path, monkeypatch
     assert res.exit_code == 0, res.output
     stack_unit = (unit_dir / "atelier-stack.service").read_text(encoding="utf-8")
     assert "docker compose" not in stack_unit
-    assert "stack run" in stack_unit
-    assert "stack stop" in stack_unit
+    assert "background service start" in stack_unit
     assert any(cmd[:3] == ["systemctl", "--user", "enable"] for cmd in commands)
     assert any(cmd[:3] == ["systemctl", "--user", "restart"] for cmd in commands)
 

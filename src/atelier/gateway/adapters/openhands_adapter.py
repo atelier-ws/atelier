@@ -129,7 +129,7 @@ class OpenHandsAdapter(AgentAdapter):
         """Return installation instructions for OpenHands integration."""
         return (
             "# OpenHands ← Atelier integration\n"
-            "1. pip install atelier-runtime\n"
+            "1. pip install atelier-ws\n"
             "2. atelier init              # creates ~/.atelier/\n"
             "3. In your OpenHands agent hook:\n"
             "    adapter = OpenHandsAdapter(client=AtelierClient.local(), mode='suggest')\n"
