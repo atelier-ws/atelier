@@ -30,10 +30,10 @@ from functools import lru_cache
 from typing import TypeVar
 
 import tiktoken
-from datasketch import MinHash
+from datasketch.minhash import MinHash
 
 try:
-    from datasketch import MinHashLSH
+    from datasketch.lsh import MinHashLSH
 except ImportError:
     MinHashLSH = None
 

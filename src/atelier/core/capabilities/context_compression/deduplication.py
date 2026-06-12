@@ -14,9 +14,8 @@ except Exception:  # pragma: no cover - optional dependency fallback
     blake3: Any = None  # type: ignore[no-redef]
 
 try:
-    from datasketch import MinHash
-except Exception:  # pragma: no cover - optional dependency fallback
-    logging.exception("Recovered from broad exception handler")
+    from datasketch.minhash import MinHash
+except ImportError:  # pragma: no cover - optional dependency fallback
     MinHash = None
 
 
