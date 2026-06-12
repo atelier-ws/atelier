@@ -55,6 +55,7 @@ _FILE_TOOLS = {
     "Write",
     "MultiEdit",
 }
+_SUBAGENT_TOOL_NAMES = {"agent", "task"}
 _SYSTEM_PREFIXES_CLAUDE = (
     "I have been initialized",
     "Environment context:",
@@ -299,6 +300,7 @@ class ClaudeImporter:
         tool_in_tokens: dict[str, int] = {}
         tool_out_tokens: dict[str, int] = {}
         seen_tool_use_ids: set[str] = set()
+        subagent_names: dict[str, int] = {}
         files_touched: list[str | FileEditRecord] = []
         errors_seen: set[str] = set()
         commands_run: list[str | CommandRecord] = []
@@ -495,6 +497,13 @@ class ClaudeImporter:
                         tool_args[name] = inp or tool_args.get(name)
                         if tid:
                             pending_tool_uses[tid] = {"name": name, "input": inp}
+                        if name.lower() in _SUBAGENT_TOOL_NAMES:
+                            key = (
+                                str(inp.get("agent_type") or inp.get("name") or "")
+                                or str(inp.get("description") or "")[:24].strip()
+                                or "agent"
+                            )
+                            subagent_names[key] = subagent_names.get(key, 0) + 1
                         if name in _FILE_TOOLS:
                             fp = inp.get("file_path") or inp.get("path")
                             if fp:
@@ -523,11 +532,13 @@ class ClaudeImporter:
             fallback_model=model_seen,
         )
 
-        telemetry = {}
+        telemetry: dict[str, Any] = {}
         if latencies:
             telemetry["avg_latency_ms"] = round(sum(latencies) / len(latencies), 1)
         if ttfts:
             telemetry["avg_ttft_ms"] = round(sum(ttfts) / len(ttfts), 1)
+        if subagent_names:
+            telemetry["subagent_names"] = subagent_names
 
         if task == "untitled claude session" and title:
             task = title
