@@ -1558,7 +1558,8 @@ def _print_stats(
 
 
 @session_group.command("stats")
-@click.option("--since", "since_str", default="7d", show_default=True, help="Time window (e.g. 1d, 7d, 30d).")
+@click.option("--since", "since_str", default=None, help="Time window, e.g. 1d, 7d, 30d. Default: 7d.")
+@click.option("--limit", default=None, type=int, help="Most-recent N sessions (alternative to --since).")
 @click.option("--host", "hosts_filter", multiple=True, help="Filter by host (can repeat).")
 @click.option("--source", type=click.Choice(["live", "store"]), default="live", show_default=True)
 @click.option("--top", default=5, show_default=True, type=int, help="Top sessions by cost to list.")
@@ -1566,38 +1567,50 @@ def _print_stats(
 @click.pass_context
 def session_stats_cmd(
     ctx: click.Context,
-    since_str: str,
+    since_str: str | None,
+    limit: int | None,
     hosts_filter: tuple[str, ...],
     source: str,
     top: int,
     data_path: Path | None,
 ) -> None:
-    """Aggregate usage statistics for sessions in a time window (default: last 7 days)."""
+    """Aggregate usage statistics. Use --since for a time window or --limit for the last N sessions."""
+    if since_str and limit:
+        raise click.UsageError("--since and --limit are mutually exclusive.")
+
     root = Path(ctx.obj["root"])
-    cutoff = datetime.now(UTC) - _parse_duration(since_str)
     selected_hosts = list(hosts_filter) if hosts_filter else list(SUPPORTED_SESSION_IMPORT_HOSTS)
-    _scan_cap = 100  # internal safety cap; cutoff is the real filter
+
+    if limit:
+        cutoff: datetime | None = None
+        scan_cap = limit
+        label = f"{limit} sessions"
+    else:
+        since_str = since_str or "7d"
+        cutoff = datetime.now(UTC) - _parse_duration(since_str)
+        scan_cap = 100
+        label = since_str
 
     all_rows: list[dict[str, Any]] = []
 
     if source == "store":
         store = _load_store(root)
         for hn in selected_hosts:
-            for trace in store.list_traces(host=hn, since=cutoff, limit=_scan_cap):
+            for trace in store.list_traces(host=hn, since=cutoff, limit=scan_cap):
                 all_rows.append(_build_session_row(trace, store, hn))
     else:
-        click.echo(f"Scanning last {since_str} across {len(selected_hosts)} host(s)…", err=True)
+        click.echo(f"Scanning last {label} across {len(selected_hosts)} host(s)…", err=True)
         _sync_counts, store, tmp_handle = _scan_hosts_live(
             selected_hosts=selected_hosts,
             force=False,
             path=data_path,
-            max_per_host=_scan_cap,
-            limit=_scan_cap,
+            max_per_host=scan_cap,
+            limit=scan_cap,
             cutoff=cutoff,
         )
         try:
             for hn in selected_hosts:
-                for trace in store.list_traces(host=hn, since=cutoff, limit=_scan_cap):
+                for trace in store.list_traces(host=hn, since=cutoff, limit=scan_cap):
                     all_rows.append(_build_session_row(trace, store, hn))
         finally:
             tmp_handle.cleanup()
@@ -1605,10 +1618,10 @@ def session_stats_cmd(
     all_rows = [r for r in all_rows if int(r["tool_calls"]) > 0 or int(r["input_tokens"]) > 0]
 
     if not all_rows:
-        click.echo(f"No sessions found in the last {since_str}.")
+        click.echo(f"No sessions found in the last {label}.")
         return
 
-    _print_stats(all_rows, since_str, top)
+    _print_stats(all_rows, label, top)
 
 
 __all__ = ["outcomes_group", "runs_group", "session_group"]
