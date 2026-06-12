@@ -3651,6 +3651,54 @@ def _render_search_md(result: dict[str, Any]) -> str | None:
     return "\n".join(lines)
 
 
+def render_tool_result_text(name: str, result: Any) -> str | None:
+    """Best-effort compact text rendering of a tool result for model context.
+
+    Shared by the MCP dispatch path and the in-process CLI runtime so both
+    hosts send the model identical, minimal text instead of raw dict dumps.
+    Returns ``None`` when no renderer applies or it produced nothing — callers
+    fall back to the raw string / compact JSON form.
+    """
+    if name in {"symbols"} | _CODE_INTEL_TOOLS:
+        return getattr(_tool_call_rendered_text, "value", None) or None
+    if not isinstance(result, dict):
+        return None
+    payload = result
+    text: str | None = None
+    if name == "read":
+        with contextlib.suppress(Exception):
+            files = payload.get("files")
+            if isinstance(files, list):
+                parts: list[str] = []
+                cwd = str(Path.cwd())
+                for entry in files:
+                    if not isinstance(entry, dict):
+                        continue
+                    entry_path = str(entry.get("path") or "?")
+                    if entry_path.startswith(cwd + os.sep):
+                        entry_path = entry_path[len(cwd) + 1 :]
+                    entry_text = _render_read_md(entry)
+                    if entry_text is None:
+                        entry_text = json.dumps(entry, ensure_ascii=False, separators=(",", ":"))
+                    parts.append(f"## {entry_path}\n{entry_text}")
+                text = "\n\n".join(parts) if parts else None
+            else:
+                text = _render_read_md(payload)
+    elif name == "grep":
+        with contextlib.suppress(Exception):
+            text = _render_grep_md(payload)
+    elif name == "search":
+        with contextlib.suppress(Exception):
+            text = _render_search_md(payload)
+    elif name == "shell":
+        with contextlib.suppress(Exception):
+            text = _render_shell_text(payload)
+    elif name == "web_fetch":
+        with contextlib.suppress(Exception):
+            text = str(payload.get("content") or "")
+    return text or None
+
+
 def _smart_read_single(
     path: str,
     range: str | None = None,
@@ -7217,23 +7265,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
                 # Compute MD text for read-heavy tools
                 _args = args if isinstance(args, dict) else {}
-                if name in {"symbols"} | _CODE_INTEL_TOOLS:
-                    rendered_text = getattr(_tool_call_rendered_text, "value", None)
-                elif name == "read":
-                    with contextlib.suppress(Exception):
-                        rendered_text = _render_read_md(result if isinstance(result, dict) else {})
-                elif name == "grep":
-                    with contextlib.suppress(Exception):
-                        rendered_text = _render_grep_md(result if isinstance(result, dict) else {})
-                elif name == "search":
-                    with contextlib.suppress(Exception):
-                        rendered_text = _render_search_md(result if isinstance(result, dict) else {})
-                elif name == "shell":
-                    with contextlib.suppress(Exception):
-                        rendered_text = _render_shell_text(result if isinstance(result, dict) else {})
-                elif name == "web_fetch":
-                    with contextlib.suppress(Exception):
-                        rendered_text = str((result if isinstance(result, dict) else {}).get("content") or "")
+                rendered_text = render_tool_result_text(name, result)
 
                 _record_context_budget_for_tool(
                     name,

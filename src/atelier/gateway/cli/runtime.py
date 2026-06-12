@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 import json
 import logging
@@ -173,6 +174,7 @@ class InteractiveRuntime:
         self,
         tool_name: str,
         tool_args: dict[str, Any],
+        session_id: str = "",
     ) -> tuple[str, bool]:
         """Execute one built-in or external MCP tool without blocking the event loop."""
         try:
@@ -180,7 +182,7 @@ class InteractiveRuntime:
                 result_str = await asyncio.to_thread(self._dispatch_mcp_tool, tool_name, tool_args)
                 return result_str, not result_str.startswith("Error:")
             result = await asyncio.to_thread(_dispatch_tool, tool_name, tool_args)
-            return str(result), True
+            return _render_tool_result(tool_name, result, tool_args, session_id=session_id), True
         except Exception as exc:  # noqa: BLE001 - tool failures are model-visible results
             return f"Error: {exc}", False
 
@@ -485,7 +487,10 @@ class InteractiveRuntime:
                 for batch_id, batch_name, _batch_args in batch:
                     yield ToolStarted(type="tool.started", id=batch_id, name=batch_name)
                 results = await asyncio.gather(
-                    *(self._execute_tool_call(batch_name, batch_args) for _, batch_name, batch_args in batch)
+                    *(
+                        self._execute_tool_call(batch_name, batch_args, session_id=session_id)
+                        for _, batch_name, batch_args in batch
+                    )
                 )
 
                 for (batch_id, batch_name, batch_args), (result_str, ok) in zip(batch, results, strict=True):
@@ -533,7 +538,20 @@ class InteractiveRuntime:
             if len(messages) > 15:
                 from atelier.core.capabilities.tool_supervision.compact_output import compress_history
 
+                originals = messages
                 messages = compress_history(messages)
+                # Compressed content no longer exists verbatim in the transcript:
+                # forget its dedup hash so an identical future read re-emits fully.
+                with contextlib.suppress(Exception):
+                    from atelier.core.capabilities import context_dedup
+
+                    epoch = context_dedup.current_epoch()
+                    for old_msg, new_msg in zip(originals, messages, strict=True):
+                        old_content = old_msg.get("content", "")
+                        if old_msg.get("role") == "tool" and new_msg.get("content", "") != old_content:
+                            context_dedup.registry().forget(
+                                session_id=session_id, content=str(old_content), epoch=epoch
+                            )
 
         total_input = max(0, total_input)
         denom = total_cache_read + total_cache_write + total_input
@@ -1395,3 +1413,42 @@ def _dispatch_tool(name: str, args: dict[str, Any]) -> Any:
     if not callable(handler):
         raise ValueError(f"Tool has no callable handler: {name!r}")
     return handler(args)
+
+
+# Read-style tools eligible for within-session byte-identical dedup.
+_CLI_DEDUP_TOOLS = frozenset({"read", "search", "grep", "explore"})
+
+
+def _render_tool_result(name: str, result: Any, args: dict[str, Any], *, session_id: str = "") -> str:
+    """Render a tool result as the compact model-facing text the MCP path emits.
+
+    Falls back to compact JSON (never Python ``repr``) when no renderer applies,
+    then applies within-session content dedup for read-style tools so a
+    byte-identical re-read costs a short stub instead of the full payload.
+    """
+    from atelier.gateway.adapters.mcp_server import render_tool_result_text
+
+    text: str | None = None
+    with contextlib.suppress(Exception):
+        text = render_tool_result_text(name, result)
+    if text is None:
+        if isinstance(result, str):
+            text = result
+        else:
+            try:
+                text = json.dumps(result, ensure_ascii=False, separators=(",", ":"), default=str)
+            except (TypeError, ValueError):
+                text = str(result)
+    if session_id and name in _CLI_DEDUP_TOOLS and os.environ.get("ATELIER_CONTEXT_DEDUP", "1") != "0":
+        with contextlib.suppress(Exception):
+            from atelier.core.capabilities import context_dedup
+
+            outcome = context_dedup.registry().stub_for(
+                session_id=session_id,
+                content=text,
+                epoch=context_dedup.current_epoch(),
+                force=bool(args.get("force")),
+            )
+            if outcome is not None:
+                text = outcome[0]
+    return text
