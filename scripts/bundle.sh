@@ -21,6 +21,9 @@ source "${SCRIPT_DIR}/lib/common.sh"
 # A binary install is never a source checkout; keep host configs global
 # unless an explicit --workspace is provided.
 ATELIER_LOCAL=0
+# Signal to host install scripts (install_claude.sh, install_codex.sh) that
+# the Atelier binary is pre-built — skip uv reinstall and Python-shebang hooks.
+export ATELIER_BINARY_MODE=1
 
 # ---- arg parsing ------------------------------------------------------------
 while [[ $# -gt 0 ]]; do

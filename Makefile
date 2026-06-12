@@ -36,7 +36,7 @@ release: ## Build and package for production distribution
 
 prod: ## Build and install from local production build
 	bash scripts/bundle-prod.sh
-	ATELIER_INSTALL_DIR=$(PWD)/bundle ATELIER_BIN_DIR=$(PWD)/bundle/bin bash scripts/bundle.sh
+	ATELIER_INSTALL_DIR=$(PWD)/bundle ATELIER_BIN_DIR=$(PWD)/bundle/bin bash scripts/bundle.sh --non-interactive
 
 
 
