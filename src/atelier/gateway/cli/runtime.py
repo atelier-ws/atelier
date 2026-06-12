@@ -534,24 +534,12 @@ class InteractiveRuntime:
                             pass
                 index = end
 
-            # Compress stale tool results after each turn to keep context lean.
-            if len(messages) > 15:
-                from atelier.core.capabilities.tool_supervision.compact_output import compress_history
-
-                originals = messages
-                messages = compress_history(messages)
-                # Compressed content no longer exists verbatim in the transcript:
-                # forget its dedup hash so an identical future read re-emits fully.
-                with contextlib.suppress(Exception):
-                    from atelier.core.capabilities import context_dedup
-
-                    epoch = context_dedup.current_epoch()
-                    for old_msg, new_msg in zip(originals, messages, strict=True):
-                        old_content = old_msg.get("content", "")
-                        if old_msg.get("role") == "tool" and new_msg.get("content", "") != old_content:
-                            context_dedup.registry().forget(
-                                session_id=session_id, content=str(old_content), epoch=epoch
-                            )
+            # History must stay append-only: with prompt caching, mutating any
+            # prior message (e.g. squashing stale tool output) invalidates the
+            # cached prefix and re-writes the whole conversation at the cache
+            # write rate (~12.5x the read rate) — measured far more expensive
+            # than re-reading the verbose output. Dedup stubs handle repeats
+            # without touching history.
 
         total_input = max(0, total_input)
         denom = total_cache_read + total_cache_write + total_input
