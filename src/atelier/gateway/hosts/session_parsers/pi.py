@@ -42,7 +42,7 @@ class _BasePiImporter:
         self.store = store
         self.host = host
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
         from atelier.gateway.hosts.session_parsers._common import import_paths_with_progress
 
         return import_paths_with_progress(

@@ -28,6 +28,7 @@ from atelier.core.foundation.models import (
 from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
+    get_newest,
     make_llm_usage_entry,
     summarize_usage_entries,
 )
@@ -191,16 +192,21 @@ class ClineImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
         if root is None:
             root = _CLINE_ROOT.expanduser()
-        task_dirs = find_cline_tasks(root)
+
+        task_dirs = get_newest(find_cline_tasks(root), limit)
         if not task_dirs:
             return []
 
         task_history = _load_task_history(root)
         total = len(task_dirs)
-        logger.info("[atelier] cline: discovering tasks (found %d)", total)
+        logger.info(
+            "[atelier] cline: discovering tasks (found %d, processing top %s)",
+            total,
+            limit if limit is not None else "all",
+        )
 
         imported_ids: list[str] = []
         skipped = 0

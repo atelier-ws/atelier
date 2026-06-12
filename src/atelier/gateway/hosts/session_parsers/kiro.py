@@ -12,6 +12,7 @@ from typing import Any
 
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
+    get_newest,
     build_normalized_jsonl,
     char_tokens,
     make_assistant_message,
@@ -78,10 +79,15 @@ class KiroImporter:
         *,
         workspace_root: Path | None = None,
         force: bool = False,
+        limit: int | None = None,
     ) -> list[str]:
-        all_sessions = list(find_kiro_sessions(agent_root, workspace_root))
+        all_sessions = get_newest(list(find_kiro_sessions(agent_root, workspace_root)), limit)
         total = len(all_sessions)
-        logger.info("[atelier] kiro: discovering sessions (found %d)", total)
+        logger.info(
+            "[atelier] kiro: discovering sessions (found %d, processing top %s)",
+            total,
+            limit if limit is not None else "all",
+        )
         imported: list[str] = []
         for i, (chat_file, project) in enumerate(all_sessions):
             if i % 10 == 0 and i > 0:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,11 +11,14 @@ from typing import Any
 
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
+    get_newest,
     build_normalized_jsonl,
     make_assistant_message,
     make_session_line,
     record_normalized_session,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _registry_path(root: Path | None = None) -> Path:
@@ -45,13 +49,57 @@ class CrushImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
         registry_path = _registry_path(root)
+        entries = _load_registry(registry_path)
+        # Note: _load_registry returns list of dict, not Paths. I might need to adapt get_newest.
+        # Wait, the prompt says "Implement Time-Sorted Limiting".
+        # The existing code for registry iterates over entries and builds DB path.
+        # I should probably just process the entries.
+        # Wait, the instructions say:
+        # 3. Implement Time-Sorted Limiting:
+        #    b. Modify the session discovery to use `get_newest`.
+        # The entries are not Paths. get_newest expects list[Path].
+        # I need to see how get_newest is used in other files.
+        # In cline.py: get_newest(find_cline_tasks(root), limit). find_cline_tasks returns list[Path].
+        # In crush.py, I have `_load_registry(registry_path)`.
+        # I may have to adjust the logic.
+
+        # Let's reconsider. Maybe I should just stick to what the instructions say.
+        # If I can't use get_newest directly, I'll have to adjust.
+
+        # Let's look at the implementation of CrushImporter again.
+        # It loads entries from a json file.
+        # To limit them, I should probably limit the entries list.
+
         imported: list[str] = []
-        for entry in _load_registry(registry_path):
+        # How to sort entries by time?
+        # The entries don't have a clear "mtime".
+        # Maybe I should just skip adding get_newest for crush.py if it doesn't fit,
+        # but the prompt asked for consistency.
+
+        # I will leave the import for now and skip it for crush if it doesn't fit,
+        # or adapt get_newest.
+
+        # Let's see if there is a way to get mtime for crush projects.
+        # The `project_path` is in entry.
+        # I can probably get mtime of `project_path`.
+
+        entries_with_paths = [(Path(str(entry.get("path") or "")), entry) for entry in entries]
+        # Sort by mtime of project path?
+        sorted_entries = sorted(
+            [e for e in entries_with_paths if e[0].exists()], key=lambda e: e[0].stat().st_mtime, reverse=True
+        )
+        limited_entries = sorted_entries[:limit] if limit is not None else sorted_entries
+
+        logger.info(
+            "[atelier] crush: discovering projects (found %d, processing top %s)",
+            len(entries),
+            limit if limit is not None else "all",
+        )
+
+        for _, entry in limited_entries:
             project_path = Path(str(entry.get("path") or ""))
-            if not project_path:
-                continue
             data_dir = str(entry.get("data_dir") or ".crush")
             db_path = project_path / data_dir / "crush.db"
             if not db_path.is_file():

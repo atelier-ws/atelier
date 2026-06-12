@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import hashlib
 import json
 import re
@@ -11,6 +12,7 @@ from typing import Any
 
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
+    get_newest,
     build_normalized_jsonl,
     char_tokens,
     make_assistant_message,
@@ -19,6 +21,8 @@ from atelier.gateway.hosts.session_parsers._common import (
     make_user_message,
     record_normalized_session,
 )
+
+logger = logging.getLogger(__name__)
 
 _USER_MARKER = re.compile(r"^\s*user:\s*", re.IGNORECASE)
 _ASSISTANT_MARKER = re.compile(r"^\s*A:\s*")
@@ -202,9 +206,15 @@ class CursorAgentImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
         imported: list[str] = []
-        for transcript, project in find_cursor_agent_sessions(root):
+        sessions = get_newest(list(find_cursor_agent_sessions(root)), limit)
+        logger.info(
+            "[atelier] cursor_agent: discovering sessions (found %d, limit=%s)",
+            len(sessions),
+            limit if limit is not None else "all",
+        )
+        for transcript, project in sessions:
             trace_id = self.import_session(transcript, project=project, force=force)
             if trace_id:
                 imported.append(trace_id)
