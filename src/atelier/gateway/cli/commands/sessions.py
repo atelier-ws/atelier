@@ -1427,7 +1427,7 @@ def _print_stats(
         if hn not in host_agg:
             host_agg[hn] = {
                 "sessions": 0, "cost": 0.0, "saved": 0.0, "carry": 0.0, "calls": 0,
-                "atelier": 0, "builtin": 0, "pot_usd": 0.0,
+                "atelier": 0, "builtin": 0, "pot_saved": 0.0, "pot_carry": 0.0,
             }
         ha = host_agg[hn]
         ha["sessions"] += 1
@@ -1437,7 +1437,8 @@ def _print_stats(
         ha["calls"] += int(r["tool_calls"])
         ha["atelier"] += int(r["atelier_calls"])
         ha["builtin"] += int(r["builtin_calls"])
-        ha["pot_usd"] += float(r["potential_saved_usd"]) + float(r["potential_carry_usd"])
+        ha["pot_saved"] += float(r["potential_saved_usd"])
+        ha["pot_carry"] += float(r["potential_carry_usd"])
 
     hosts_sorted = sorted(host_agg.items(), key=lambda x: -x[1]["cost"])
 
@@ -1512,15 +1513,23 @@ def _print_stats(
                 f"{ha['sessions']} session{'s' if ha['sessions'] != 1 else ''}",
                 f"{ha['calls']:,} calls ({atelier_pct:.0f}% atelier)",
             ]
+            # realized savings
             if ha["saved"] > 0 or ha["carry"] > 0:
-                savings_parts = []
+                sp = []
                 if ha["saved"] > 0:
-                    savings_parts.append(click.style(f"saved ${ha['saved']:.4f}", fg="green"))
+                    sp.append(click.style(f"saved ${ha['saved']:.4f}", fg="green"))
                 if ha["carry"] > 0:
-                    savings_parts.append(click.style(f"carry ${ha['carry']:.4f}", fg="magenta"))
-                parts.append(" + ".join(savings_parts))
-            if ha["pot_usd"] > 0 and ha["atelier"] == 0:
-                parts.append(click.style(f"potential ≈${ha['pot_usd']:.4f}", fg="yellow"))
+                    sp.append(click.style(f"carry ${ha['carry']:.4f}", fg="magenta"))
+                parts.append(" + ".join(sp))
+            # potential additional savings (always show if non-zero)
+            pot_total = ha["pot_saved"] + ha["pot_carry"]
+            if pot_total > 0:
+                pot_str = click.style("potential", fg="yellow")
+                if ha["pot_saved"] > 0:
+                    pot_str += click.style(f" ≈${ha['pot_saved']:.4f} saved", fg="yellow")
+                if ha["pot_carry"] > 0:
+                    pot_str += click.style(f" + ≈${ha['pot_carry']:.4f} carry", fg="yellow")
+                parts.append(pot_str)
             host_rows.append((hn, "  ·  ".join(parts)))
         _emit_tree_rows(host_rows)
 
