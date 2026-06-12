@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    tags:
+      - "v*"
   schedule:
     - cron: "25 3 * * *"
   workflow_dispatch:
