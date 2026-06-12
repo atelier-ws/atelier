@@ -118,7 +118,7 @@ class AiderAdapter(AgentAdapter):
         """Return installation instructions for Aider integration."""
         return (
             "# Aider ← Atelier integration\n"
-            "1. pip install atelier-runtime\n"
+            "1. pip install atelier-ws\n"
             "2. atelier init\n"
             "3. In your Aider pre-edit hook or wrapper:\n"
             "    adapter = AiderAdapter(client=AtelierClient.local(), mode='suggest')\n"

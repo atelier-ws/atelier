@@ -397,7 +397,7 @@ def _update_via_binary() -> bool:
 
     suffix = f"{plat}-{arch_part}"
     asset = f"atelier-binaries-{suffix}.tar.gz"
-    url = f"https://github.com/atelier-runtime/atelier/releases/latest/download/{asset}"
+    url = f"https://github.com/atelier-ws/atelier/releases/latest/download/{asset}"
 
     current_binary = Path(sys.executable if getattr(sys, "frozen", False) else (shutil.which("atelier") or ""))
     if not current_binary.exists():
