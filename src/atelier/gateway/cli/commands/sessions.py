@@ -790,12 +790,14 @@ def _print_session_row(row: dict[str, Any], verbose: bool) -> None:
     )
     trace_calls = int(row["tool_calls"])
     block_calls = int(row.get("block_tool_calls") or 0)
-    if block_calls > 0 and trace_calls > 0 and not (0.5 <= trace_calls / block_calls <= 2.0):
+    # Only warn when trace *under*counts vs the stop-hook snapshot (parsing issue).
+    # trace_calls > block_calls is expected for resumed sessions (stop hook ran mid-session).
+    if block_calls > 0 and trace_calls > 0 and trace_calls / block_calls < 0.5:
         _emit_kv(
             "calls-check",
             click.style(
                 f"trace import counted {trace_calls} tool calls but the session file"
-                f" recorded {block_calls} — trace-derived numbers may be unreliable",
+                f" recorded {block_calls} — trace parser may have missed some calls",
                 fg="red",
             ),
         )
