@@ -56,6 +56,7 @@ from atelier.core.foundation.models import (
 from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
+    get_newest,
     _SIZE_LIMIT_BYTES,
     make_llm_usage_entry,
     summarize_usage_entries,
@@ -328,13 +329,23 @@ class CodexImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
-        """Import all sessions. Returns IDs of successfully imported sessions."""
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
+        """Import newest sessions under *root* up to limit."""
         imported_ids = []
         skipped = 0
-        all_sessions = list(find_codex_sessions(root))
+
+        # Helper to sort by mtime descending and take top N if limit is provided
+        def get_newest(paths: list[Path], n: int | None) -> list[Path]:
+            sorted_paths = sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True)
+            return sorted_paths[:n] if n is not None else sorted_paths
+
+        all_sessions = get_newest(list(find_codex_sessions(root)), limit)
         total = len(all_sessions)
-        logger.info("[atelier] codex: discovering sessions (found %d)", total)
+        logger.info(
+            "[atelier] codex: discovering sessions (found %d, processing top %s)",
+            total,
+            limit if limit is not None else "all",
+        )
         for i, jsonl_path in enumerate(all_sessions):
             try:
                 size = jsonl_path.stat().st_size

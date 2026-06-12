@@ -35,7 +35,7 @@ class OpenClawImporter:
     def __init__(self, store: ContextStore) -> None:
         self.store = store
 
-    def import_all(self, root: Path | None = None, *, force: bool = False) -> list[str]:
+    def import_all(self, root: Path | None = None, *, force: bool = False, limit: int | None = None) -> list[str]:
         from atelier.gateway.hosts.session_parsers._common import import_paths_with_progress
 
         return import_paths_with_progress(

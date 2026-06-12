@@ -469,42 +469,31 @@ dependencies = [
     { name = "fastapi" },
     { name = "gitpython" },
     { name = "litellm" },
-    { name = "lxml" },
     { name = "markdownify" },
-    { name = "mypy" },
     { name = "networkx" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
     { name = "ortools" },
-    { name = "pexpect" },
     { name = "prometheus-client" },
     { name = "prompt-toolkit" },
     { name = "pybreaker" },
     { name = "pydantic", version = "2.11.10", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.15'" },
     { name = "pydantic", version = "2.13.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.15'" },
-    { name = "pydantic-settings" },
     { name = "pygit2" },
-    { name = "python-multipart" },
     { name = "pyyaml" },
     { name = "rich" },
     { name = "river" },
-    { name = "sqlalchemy" },
     { name = "tenacity" },
     { name = "tiktoken" },
     { name = "trafilatura" },
     { name = "tree-sitter" },
     { name = "tree-sitter-language-pack" },
-    { name = "types-pyyaml" },
     { name = "urllib3" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
-api = [
-    { name = "fastapi" },
-    { name = "uvicorn", extra = ["standard"] },
-]
 cloud = [
     { name = "openai" },
 ]
@@ -516,9 +505,6 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "types-pyyaml" },
-]
-litellm = [
-    { name = "litellm" },
 ]
 mcp = [
     { name = "mcp", version = "1.16.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.15'" },
@@ -539,18 +525,8 @@ postgres = [
 rename = [
     { name = "rope" },
 ]
-repo-map = [
-    { name = "networkx" },
-    { name = "tree-sitter" },
-    { name = "tree-sitter-languages", marker = "python_full_version < '3.13'" },
-]
 smart = [
     { name = "ollama" },
-]
-telemetry = [
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-otlp-proto-http" },
-    { name = "opentelemetry-sdk" },
 ]
 vector = [
     { name = "numpy" },
@@ -581,63 +557,47 @@ requires-dist = [
     { name = "datasketch", specifier = ">=1.6" },
     { name = "diff-match-patch", specifier = ">=2.1" },
     { name = "fastapi", specifier = ">=0.136.1" },
-    { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.110" },
     { name = "gitpython", specifier = ">=3.1.50" },
     { name = "letta", marker = "extra == 'memory-server'", specifier = ">=0.16.7" },
     { name = "letta-client", marker = "extra == 'memory'", specifier = ">=1.7.12" },
     { name = "litellm", specifier = ">=1.83.14" },
-    { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.40" },
-    { name = "lxml", specifier = ">=5.0" },
     { name = "markdownify", specifier = ">=1.2.2" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
-    { name = "mypy", specifier = ">=1.20.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "networkx", specifier = ">=3.4" },
-    { name = "networkx", marker = "extra == 'repo-map'", specifier = ">=3.4" },
     { name = "numpy", marker = "extra == 'vector'", specifier = ">=1.26" },
     { name = "ollama", marker = "extra == 'smart'", specifier = ">=0.4.0" },
     { name = "openai", marker = "extra == 'cloud'", specifier = ">=1.0" },
     { name = "opentelemetry-api", specifier = ">=1.27" },
-    { name = "opentelemetry-api", marker = "extra == 'telemetry'", specifier = ">=1.27" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.27" },
-    { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'telemetry'", specifier = ">=1.27" },
     { name = "opentelemetry-sdk", specifier = ">=1.27" },
-    { name = "opentelemetry-sdk", marker = "extra == 'telemetry'", specifier = ">=1.27" },
     { name = "ortools", specifier = ">=9.10" },
-    { name = "pexpect", specifier = ">=4.9.0" },
     { name = "pgvector", marker = "extra == 'vector'", specifier = ">=0.2" },
     { name = "prometheus-client", specifier = ">=0.21" },
     { name = "prompt-toolkit", specifier = ">=3.0" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.1" },
     { name = "pybreaker", specifier = ">=1.2" },
     { name = "pydantic", specifier = ">=2.6" },
-    { name = "pydantic-settings", specifier = ">=2.14.0" },
     { name = "pygit2", specifier = "==1.19.2" },
     { name = "pyinstaller", marker = "extra == 'dev'", specifier = ">=6.10.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
-    { name = "python-multipart", specifier = ">=0.0.27" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=13.7" },
     { name = "river", specifier = ">=0.22" },
     { name = "rope", marker = "extra == 'rename'", specifier = ">=0.23" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
-    { name = "sqlalchemy", specifier = ">=2.0.49" },
     { name = "tenacity", specifier = ">=9.0" },
     { name = "tiktoken", specifier = ">=0.9" },
     { name = "trafilatura", specifier = ">=2.0.0" },
     { name = "tree-sitter", specifier = ">=0.23" },
-    { name = "tree-sitter", marker = "extra == 'repo-map'", specifier = ">=0.23" },
     { name = "tree-sitter-language-pack", specifier = ">=1.8.1" },
     { name = "tree-sitter-languages", marker = "python_full_version < '3.13' and extra == 'parsers'", specifier = ">=1.10" },
-    { name = "tree-sitter-languages", marker = "python_full_version < '3.13' and extra == 'repo-map'", specifier = ">=1.10" },
-    { name = "types-pyyaml", specifier = ">=6.0.12.20260408" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },
     { name = "urllib3", specifier = ">=2.7.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.46.0" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.27" },
 ]
-provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "litellm", "repo-map", "api", "postgres", "vector", "parsers", "rename", "telemetry", "dev"]
+provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "postgres", "vector", "parsers", "rename", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -5251,7 +5211,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess" },
+    { name = "ptyprocess", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
