@@ -3933,13 +3933,20 @@ def _looks_like_test_path(path: str) -> bool:
     )
 
 
+# Files created by this process's edit tool. Tests the agent authored in this
+# session are its own work in progress, not a pre-existing contract to protect.
+_SESSION_CREATED_FILES: set[str] = set()
+
+
 def _existing_test_contract_paths(
     snapshots: dict[str, tuple[Path, str | None]],
 ) -> list[str]:
     return sorted(
         path
-        for path, (_fp, old_content) in snapshots.items()
-        if old_content is not None and _looks_like_test_path(path)
+        for path, (fp, old_content) in snapshots.items()
+        if old_content is not None
+        and _looks_like_test_path(path)
+        and str(fp.resolve()) not in _SESSION_CREATED_FILES
     )
 
 
@@ -3963,6 +3970,8 @@ def _compute_and_record_diffs(
         except Exception:
             logging.exception("Recovered from broad exception handler")
             new_content = None
+        if old_content is None and new_content is not None:
+            _SESSION_CREATED_FILES.add(str(fp.resolve()))
         if old_content == new_content:
             continue
         old_lines = (old_content or "").splitlines(keepends=True)
@@ -5922,6 +5931,11 @@ def _render_shell_text(result: dict[str, Any]) -> str:
         if stdout or stderr:
             parts.append("")
         parts.append(f"[output truncated: {lines_omitted} lines omitted]")
+    if exit_code not in (None, 0) and ("No module named pip" in stdout or "No module named pip" in stderr):
+        parts.append(
+            "[hint] This venv has no pip (uv-managed). Install with: "
+            "uv pip install --python <venv>/bin/python <pkg>  (or python -m ensurepip first)"
+        )
     discipline = str(result.get("discipline") or "")
     if discipline:
         if parts:
