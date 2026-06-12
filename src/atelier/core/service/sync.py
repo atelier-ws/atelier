@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -68,7 +69,7 @@ def sync_usage(
                     try:
                         chunk_sessions.append(json.loads(stats_path.read_text(encoding="utf-8")))
                         continue
-                    except Exception:
+                    except (json.JSONDecodeError, OSError):
                         logger.warning(
                             "Suppressed exception at sync.py:69",
                             exc_info=True,
@@ -76,7 +77,7 @@ def sync_usage(
                 # Fallback to Trace reconstruction
                 trace = store.get_trace(sid)
                 if trace:
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(json.JSONDecodeError, OSError):
                         chunk_sessions.append(get_session_stats_from_trace(trace))
 
             if chunk_sessions and _send_chunk(url, chunk_sessions):
@@ -104,10 +105,10 @@ def _send_chunk(url: str, sessions: list[dict[str, Any]]) -> bool:
         with urllib.request.urlopen(req, timeout=10) as resp:
             try:
                 status = int(getattr(resp, "status", 0))
-            except Exception:
+            except (ValueError, TypeError):
                 return False
             return status < 400
-    except Exception as e:
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
         _logger.debug(f"sync chunk to {url} failed: {e}")
         return False
 

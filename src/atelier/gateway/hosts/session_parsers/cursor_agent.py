@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import logging
 import hashlib
 import json
+import logging
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,9 +12,9 @@ from typing import Any
 
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.hosts.session_parsers._common import (
-    get_newest,
     build_normalized_jsonl,
     char_tokens,
+    get_newest,
     make_assistant_message,
     make_session_line,
     make_tool_call,
