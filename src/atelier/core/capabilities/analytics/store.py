@@ -35,8 +35,7 @@ class AnalyticsStore:
         self._init_schema()
 
     def _init_schema(self) -> None:
-        self._conn.execute(
-            """
+        self._conn.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 session_id TEXT PRIMARY KEY,
                 started_at TEXT,
@@ -54,8 +53,7 @@ class AnalyticsStore:
                 turns INTEGER DEFAULT 0,
                 tool_calls INTEGER DEFAULT 0
             )
-            """
-        )
+            """)
         self._conn.commit()
 
     def upsert_session(self, record: SessionRecord) -> None:
@@ -95,8 +93,7 @@ class AnalyticsStore:
         return [SessionRecord(**dict(zip(cols, row, strict=False))) for row in rows]
 
     def summary_stats(self) -> dict[str, Any]:
-        row = self._conn.execute(
-            """
+        row = self._conn.execute("""
             SELECT
                 COUNT(*) as total_sessions,
                 SUM(total_cost_usd) as total_cost,
@@ -105,8 +102,7 @@ class AnalyticsStore:
                 SUM(turns) as total_turns,
                 SUM(tool_calls) as total_tool_calls
             FROM sessions
-            """
-        ).fetchone()
+            """).fetchone()
         if row:
             return {
                 "total_sessions": row[0],
