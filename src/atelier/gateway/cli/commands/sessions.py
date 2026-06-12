@@ -546,8 +546,13 @@ def _is_atelier_tool_name(name: str) -> bool:
 # context (carry credit) and repeated identical calls are deduplicated (saved).
 # Includes shell/bash (Atelier compresses large outputs) and edit (results
 # stay in the Atelier store, not in the conversation context).
-# 'view' and 'rg' are Copilot-CLI aliases for read and grep.
-_POTENTIAL_BATCHABLE = ("read", "view", "grep", "glob", "search", "rg", "bash", "shell", "edit")
+# Host-specific aliases: 'view'/'rg' = Copilot; 'exec_command' = Codex shell;
+# 'apply_patch'/'patch' = Codex edit; 'run_shell_command' = Gemini shell.
+_POTENTIAL_BATCHABLE = (
+    "read", "view", "grep", "glob", "search", "rg",
+    "bash", "shell", "exec_command", "run_shell_command",
+    "edit", "apply_patch", "patch",
+)
 
 
 def _builtin_potential(
@@ -737,7 +742,11 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
         potential_carry_tokens = int(potential["carry_tokens"])
     total_calls = int(potential["builtin_calls"]) + int(potential["atelier_calls"])
     builtin_share = int(potential["builtin_calls"]) / max(1, total_calls)
-    potential_cap_usd = (breakdown["cache_read"] + breakdown["cache_write"]) * builtin_share
+    cache_cost = breakdown["cache_read"] + breakdown["cache_write"]
+    # For non-caching models (e.g. codex/GPT where cacheR=cacheW=0), fall
+    # back to input cost as the cap: Atelier avoids re-feeding context tokens.
+    cap_base = cache_cost if cache_cost > 0 else breakdown["input"]
+    potential_cap_usd = cap_base * builtin_share
     potential_total_usd = potential_saved_usd + potential_carry_usd
     if potential_total_usd > potential_cap_usd:
         scale = (potential_cap_usd / potential_total_usd) if potential_total_usd > 0 else 0.0
@@ -1547,9 +1556,9 @@ def _print_stats(
             if pot_total > 0:
                 pot_str = click.style("potential", fg="yellow")
                 if ha["pot_saved"] > 0:
-                    pot_str += click.style(f" ≈${ha['pot_saved']:.4f} saved", fg="yellow")
+                    pot_str += click.style(f" ${ha['pot_saved']:.4f} saved", fg="yellow")
                 if ha["pot_carry"] > 0:
-                    pot_str += click.style(f" + ≈${ha['pot_carry']:.4f} carry", fg="yellow")
+                    pot_str += click.style(f" + ${ha['pot_carry']:.4f} carry", fg="yellow")
                 parts.append(pot_str)
             host_rows.append((hn, "  ·  ".join(parts)))
         _emit_tree_rows(host_rows)
