@@ -687,10 +687,34 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
     if host_name != "claude" and saved_tokens > 0:
         saved_usd = saved_tokens * cr_rate
         carry_usd = carry_tokens * cr_rate
-    potential_saved_usd = float(potential["tokens_saved"]) * cr_rate
-    potential_carry_usd = float(potential["carry_tokens"]) * cr_rate
-    potential_tokens_saved = int(potential["tokens_saved"])
-    potential_carry_tokens = int(potential["carry_tokens"])
+
+    # --- potential ---
+    avoidable_calls = int(potential["calls_saved"])
+    if (
+        host_name == "claude"
+        and (saved_usd + carry_usd) > 0
+        and int(potential["atelier_calls"]) > 0
+        and avoidable_calls > 0
+    ):
+        # For Claude where Atelier stop-hook data is available, use the
+        # observed savings rate per atelier call instead of output-token
+        # extrapolation.  The rate accounts for all Atelier value (dedup,
+        # carry, routing) not just batchable context size.
+        actual_total = saved_usd + carry_usd
+        rate = actual_total / int(potential["atelier_calls"])
+        pot_total = rate * avoidable_calls
+        saved_frac = saved_usd / actual_total
+        potential_saved_usd = pot_total * saved_frac
+        potential_carry_usd = pot_total * (1.0 - saved_frac)
+        # Derive token counts from USD for display (cr_rate already computed)
+        potential_tokens_saved = int(potential_saved_usd / cr_rate) if cr_rate > 0 else 0
+        potential_carry_tokens = int(potential_carry_usd / cr_rate) if cr_rate > 0 else 0
+    else:
+        # Non-Claude or Claude without savings data: use output-token approach
+        potential_saved_usd = float(potential["tokens_saved"]) * cr_rate
+        potential_carry_usd = float(potential["carry_tokens"]) * cr_rate
+        potential_tokens_saved = int(potential["tokens_saved"])
+        potential_carry_tokens = int(potential["carry_tokens"])
     total_calls = int(potential["builtin_calls"]) + int(potential["atelier_calls"])
     builtin_share = int(potential["builtin_calls"]) / max(1, total_calls)
     potential_cap_usd = (breakdown["cache_read"] + breakdown["cache_write"]) * builtin_share
