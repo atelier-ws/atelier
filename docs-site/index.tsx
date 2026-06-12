@@ -72,7 +72,7 @@ function HomepageHeader() {
           </Link>
           <Link
             className="button button--outline button--lg"
-            href="https://github.com/atelier-runtime/atelier"
+            href="https://github.com/atelier-ws/atelier"
             style={{ borderColor: "#9B75D9", color: "#9B75D9" }}
           >
             GitHub

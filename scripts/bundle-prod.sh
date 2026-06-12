@@ -85,6 +85,7 @@ rm -rf bundle/bin/*
 PFLAGS=(
     --noconfirm
     --onefile
+    --add-data "src/atelier/infra/storage/migrations/*.sql:atelier/infra/storage/migrations/"
     --exclude-module benchmarks
     --hidden-import tiktoken_ext.openai_public
     --hidden-import atelier.core.capabilities.failure_analysis

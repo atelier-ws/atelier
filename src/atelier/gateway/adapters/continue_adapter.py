@@ -91,7 +91,7 @@ class ContinueAdapter(AgentAdapter):
         """Return installation instructions for Continue.dev integration."""
         return (
             "# Continue.dev ← Atelier integration\n"
-            "1. pip install atelier-runtime\n"
+            "1. pip install atelier-ws\n"
             "2. atelier init && atelier serve   # starts HTTP service on :8123\n"
             "3. Add to ~/.continue/config.json:\n"
             '   { "name": "Atelier",\n'
