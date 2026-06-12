@@ -542,29 +542,28 @@ def _is_atelier_tool_name(name: str) -> bool:
     )
 
 
-# Builtin tools whose repeated calls Atelier batches/dedupes into fewer calls.
-# Read-like builtin tools whose repeated calls Atelier dedupes/batches.
-# Deliberately excludes bash/shell/edit: repeated commands and edits are
-# usually distinct work, not redundant re-reads.
-# 'view' is the Copilot-CLI name for file reads; treat it the same as 'read'.
-_POTENTIAL_BATCHABLE = ("read", "view", "grep", "glob", "search", "rg")
+# Builtin tools that Atelier can manage: results are kept out of persistent
+# context (carry credit) and repeated identical calls are deduplicated (saved).
+# Includes shell/bash (Atelier compresses large outputs) and edit (results
+# stay in the Atelier store, not in the conversation context).
+# 'view' and 'rg' are Copilot-CLI aliases for read and grep.
+_POTENTIAL_BATCHABLE = ("read", "view", "grep", "glob", "search", "rg", "bash", "shell", "edit")
 
-# Fallback context-window cap when the model's rate card has no threshold.
 
 def _builtin_potential(
     trace: Trace,
 ) -> dict[str, Any]:
-    """Estimate what Atelier would have saved, with the same credit model as
-    real savings: avoidable duplicate read-like calls skip a context re-read
-    (saved), and their outputs stay out of context on later turns (carry).
+    """Estimate what Atelier would have saved if builtin calls had been Atelier calls.
 
-    Both saved and carry are based on the actual output-token size of duplicate
-    calls (what Atelier dedup would have kept out of context), not the average
-    context size per request.  Using context-size as a proxy inflates estimates
-    by an order of magnitude for heavy-cache sessions.
+    Two credit types mirror the real savings model:
+    - saved: duplicate calls that Atelier deduplicates; output tokens of the
+      redundant calls would never have entered context at all.
+    - carry: ALL batchable calls keep their results out of the persistent context.
+      Each result avoids re-entering context on every subsequent turn.  Even a
+      single non-repeated call earns carry; only duplicates earn 'saved'.
 
-    Token estimates here are raw; the caller bounds the priced total by the
-    session's actual cache spend — you cannot save more than was spent.
+    Token estimates are raw; the caller bounds the total by the session's actual
+    cache spend — you cannot save more than was spent on caching.
     """
     by_tool: dict[str, int] = {}
     out_by_tool: dict[str, int] = {}
@@ -584,24 +583,27 @@ def _builtin_potential(
             builtin_calls += count
 
     potential_calls_saved = 0
-    dup_output_tokens = 0
+    dup_output_tokens = 0    # output of deduplicated (redundant) calls
+    all_batchable_output_tokens = 0  # output of ALL batchable calls
     for key in _POTENTIAL_BATCHABLE:
         count = by_tool.get(key, 0)
+        if count == 0:
+            continue
+        total_out = out_by_tool.get(key, 0)
+        all_batchable_output_tokens += total_out
         if count > 1:
             potential_calls_saved += count - 1
-            # Output share of the duplicate calls — results Atelier dedup
-            # would have kept out of context.
-            dup_output_tokens += out_by_tool.get(key, 0) * (count - 1) // count
+            # Proportional output of the duplicate (beyond-first) calls.
+            dup_output_tokens += total_out * (count - 1) // count
 
-    # Saved: duplicate tool results that would have entered context.
-    # Sized by actual output tokens, not avg context-per-request (which
-    # overestimates by ~10x on cache-heavy sessions).
+    # Saved: output tokens of deduplicated calls that would have entered context.
     potential_tokens_saved = dup_output_tokens
 
-    # Carry: deduped outputs are not re-read on later turns. Average position
-    # of a call leaves ~half the session's turns after it.
+    # Carry: ALL batchable call outputs kept out of context across remaining turns.
+    # Atelier never keeps tool results in persistent context — even a single call
+    # earns carry. Average position ≈ half the session's turns remain after each call.
     turns = len(trace.usage_entries)
-    potential_carry_tokens = int(max(0, dup_output_tokens) * (turns // 2))
+    potential_carry_tokens = int(max(0, all_batchable_output_tokens) * (turns // 2))
 
     return {
         "builtin_calls": builtin_calls,
@@ -660,9 +662,11 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
                     breakdown = {k: v * ratio for k, v in breakdown.items()}
     elif int(potential["atelier_calls"]) > 0:
         # Estimate savings for non-Claude hosts from actual Atelier tool usage.
-        # Each repeated atelier read/grep/search deduped a context re-read.
-        saved_calls_est = 0
+        # saved = output of duplicated atelier calls (dedup savings).
+        # carry = ALL atelier batchable output x remaining turns (every Atelier
+        #         call keeps its result out of persistent context).
         saved_out_tokens_est = 0
+        all_atelier_out_tokens = 0
         for tool in trace.tools_called:
             name = str(tool.name or "").lower()
             if not _is_atelier_tool_name(name):
@@ -671,22 +675,38 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
             if base not in _POTENTIAL_BATCHABLE:
                 continue
             count = int(tool.count or 0)
+            if count == 0:
+                continue
+            total_out = int(tool.output_tokens or 0)
+            all_atelier_out_tokens += total_out
             if count > 1:
-                saved_calls_est += count - 1
-                saved_out_tokens_est += int(tool.output_tokens or 0) * (count - 1) // count
+                saved_out_tokens_est += total_out * (count - 1) // count
         turns = len(trace.usage_entries)
         # If per-tool output tokens aren't recorded (e.g. codex), fall back to
-        # estimating from total output tokens proportional to deduped calls.
-        if saved_out_tokens_est == 0 and saved_calls_est > 0 and output_tokens > 0:
+        # estimating from total output tokens proportional to atelier calls.
+        if all_atelier_out_tokens == 0 and output_tokens > 0:
             atelier_call_total = int(potential["atelier_calls"])
-            saved_out_tokens_est = output_tokens * saved_calls_est // max(1, atelier_call_total)
-        # Use output-token size of deduped calls (not avg context-per-request).
+            all_atelier_out_tokens = output_tokens * atelier_call_total // max(1, atelier_call_total + int(potential["builtin_calls"]))
+            saved_out_tokens_est = all_atelier_out_tokens // max(1, atelier_call_total)
         saved_tokens = saved_out_tokens_est
-        carry_tokens = saved_out_tokens_est * max(1, turns // 2)
+        carry_tokens = all_atelier_out_tokens * max(1, turns // 2)
     cr_rate = _cache_read_rate(pricing_model, breakdown, cache_read_tokens)
     if host_name != "claude" and saved_tokens > 0:
         saved_usd = saved_tokens * cr_rate
         carry_usd = carry_tokens * cr_rate
+        # Cap: Atelier tools are atelier_share of all calls; they can't save more
+        # than that fraction of the session's total cache cost.
+        _atelier_call_cnt = int(potential["atelier_calls"])
+        _total_call_cnt = _atelier_call_cnt + int(potential["builtin_calls"])
+        _atelier_share = _atelier_call_cnt / max(1, _total_call_cnt)
+        _cache_cost_cap = (breakdown["cache_read"] + breakdown["cache_write"]) * _atelier_share
+        _savings_total = saved_usd + carry_usd
+        if _savings_total > _cache_cost_cap > 0:
+            _scale = _cache_cost_cap / _savings_total
+            saved_usd *= _scale
+            carry_usd *= _scale
+            saved_tokens = int(saved_tokens * _scale)
+            carry_tokens = int(carry_tokens * _scale)
 
     # --- potential ---
     avoidable_calls = int(potential["calls_saved"])
