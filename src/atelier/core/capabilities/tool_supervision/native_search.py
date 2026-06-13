@@ -131,7 +131,10 @@ def _safe_resolve(root: Path, raw_path: str | Path) -> Path:
     try:
         resolved.relative_to(root)
     except ValueError as exc:
-        raise ValueError(f"path escape denied: {raw_path}") from exc
+        raise ValueError(
+            f"path escape denied: {raw_path} is outside the workspace root {root} — "
+            "atelier tools only operate inside the workspace; use the host's native shell/read for system paths"
+        ) from exc
     return resolved
 
 

@@ -3699,6 +3699,64 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
     return text or None
 
 
+def _read_dedup_resource(args: dict[str, Any]) -> str:
+    """Stable resource key for delta re-reads: single-path reads only.
+
+    Batch reads (``files=[...]``) render multiple bodies into one text and are
+    not delta-tracked. The range/expand projection is part of the key so
+    different views of the same file never cross-diff.
+    """
+    path = str(args.get("path") or "")
+    if not path or args.get("files") is not None:
+        return ""
+    range_spec = str(args.get("range") or "")
+    return f"read:{path}:{range_spec}:{int(bool(args.get('expand')))}"
+
+
+_READ_SUGGEST_PRUNE_DIRS = frozenset(
+    {
+        ".git",
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".tox",
+        "dist",
+        "build",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        ".next",
+        "target",
+    }
+)
+
+
+def _suggest_paths_for_missing(workspace_root: Path, missing: str, *, limit: int = 3) -> list[str]:
+    """Workspace-relative paths whose basename matches the missing file's."""
+    name = Path(missing).name
+    if not name:
+        return []
+    lowered = name.lower()
+    hits: list[str] = []
+    scanned = 0
+    try:
+        for dirpath, dirnames, filenames in os.walk(workspace_root):
+            dirnames[:] = [d for d in dirnames if d not in _READ_SUGGEST_PRUNE_DIRS]
+            scanned += len(filenames)
+            for fname in filenames:
+                if fname.lower() == lowered:
+                    with contextlib.suppress(ValueError):
+                        hits.append(str((Path(dirpath) / fname).relative_to(workspace_root)))
+                    if len(hits) >= limit:
+                        return hits
+            if scanned > 50_000:
+                break
+    except OSError:
+        return hits
+    return hits
+
+
 def _smart_read_single(
     path: str,
     range: str | None = None,
@@ -3743,7 +3801,18 @@ def _smart_read_single(
         }
 
     cap = SemanticFileMemoryCapability(_atelier_root())
-    payload = cap.smart_read(target, range_spec=range, expand=expand)
+    try:
+        payload = cap.smart_read(target, range_spec=range, expand=expand)
+    except FileNotFoundError as exc:
+        # Append nearest basename matches (or an authoritative "no such file
+        # anywhere") so the model corrects the path instead of retrying it.
+        workspace_root = Path(os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()))
+        suggestions = _suggest_paths_for_missing(workspace_root, target_path)
+        if suggestions:
+            raise FileNotFoundError(f"{exc}. Did you mean: {', '.join(suggestions)}") from exc
+        raise FileNotFoundError(
+            f"{exc}. No file named {Path(target_path).name!r} found under {workspace_root} — do not retry this path."
+        ) from exc
     mode = payload["mode"]
     content = payload.get("content")
     # Whitespace-minify file bodies before they enter the agent's context
@@ -7339,6 +7408,16 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         epoch=_cdedup.current_epoch(),
                         force=bool(_args.get("force")),
                     )
+                    if _dedup_outcome is None and name == "read":
+                        _dedup_resource = _read_dedup_resource(_args)
+                        if _dedup_resource:
+                            _dedup_outcome = _cdedup.registry().delta_for(
+                                session_id=_dedup_sid,
+                                resource=_dedup_resource,
+                                content=response_text,
+                                epoch=_cdedup.current_epoch(),
+                                force=bool(_args.get("force")),
+                            )
                     if _dedup_outcome is not None:
                         stub_text, dedup_chars_saved = _dedup_outcome
                         response_text = stub_text
