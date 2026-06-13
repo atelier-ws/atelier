@@ -56,7 +56,11 @@ from atelier.core.capabilities.owned_execution_routing import (
     select_owned_route,
 )
 from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
-from atelier.core.capabilities.source_projection import SourceProjection
+from atelier.core.capabilities.source_projection import (
+    CompactProjectionResult,
+    MinifiedProjectionResult,
+    SourceProjection,
+)
 from atelier.core.capabilities.workflow_context import WorkflowContextState
 from atelier.core.capabilities.workflow_runner import WorkflowRunner
 from atelier.core.capabilities.workflow_runtime_state import (
@@ -797,6 +801,25 @@ def _read_workspace_session_bridge() -> tuple[str, str]:
         return "", ""
 
 
+def _claude_session_id() -> str:
+    """Session UUID for *this* MCP server process.
+
+    Claude Code sets ``CLAUDE_CODE_SESSION_ID`` in every MCP server's
+    environment at launch, so it identifies the owning session even when
+    several sessions run concurrently in one workspace. The workspace bridge
+    (``workspaces/<hash>/session_state.json``) is a single shared slot the most
+    recent SessionStart hook overwrites - keying per-call savings off it
+    misattributes them to whichever sibling session last started. Prefer the
+    per-process env var; fall back to the bridge only when the host does not
+    set it. Empty when neither exists (non-Claude hosts).
+    """
+    env_sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
+    if env_sid:
+        return env_sid
+    bridge_sid, _ = _read_workspace_session_bridge()
+    return bridge_sid
+
+
 def _read_workspace_session_state() -> dict[str, Any]:
     try:
         path = _workspace_session_state_file()
@@ -842,7 +865,7 @@ def _default_workflow_agent_executor(
 
     workspace = _workspace_root().resolve()
     defaults = build_default_registry()
-    decision = None
+    decision: Any = None
     route_args = route if isinstance(route, Mapping) else {}
     route_mode = str(route_args.get("mode") or "native").strip() or "native"
     explicit_requested = any(str(route_args.get(field) or "").strip() for field in ("provider", "model", "runner"))
@@ -1059,12 +1082,12 @@ def _workflow_runner_model(
 def _native_workflow_execution_receipt(
     *,
     defaults: DefaultRegistry,
+    status: str,
     runner: str | None = None,
     model: str | None = None,
     role_id: str = "",
     compiled_prompt: Any | None = None,
     spawn_envelope: dict[str, Any] | None = None,
-    status: str,
     duration_seconds: float = 0.0,
     observed_fields: tuple[str, ...] = (),
     unverified_fields: tuple[str, ...] = (),
@@ -1766,6 +1789,14 @@ def _get_claude_session_id() -> str:
     if _cached_claude_session_id:
         return _cached_claude_session_id
 
+    # CLAUDE_CODE_SESSION_ID is set per MCP process by Claude Code, so it is the
+    # authoritative session identity even with concurrent sessions in one
+    # workspace. Prefer it over the shared workspace bridge.
+    env_sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
+    if env_sid:
+        _cached_claude_session_id = env_sid
+        return env_sid
+
     sid, model = _read_workspace_session_bridge()
     if sid:
         _cached_claude_session_id = sid
@@ -1795,9 +1826,12 @@ def _get_mcp_model() -> str:
         _get_claude_session_id()
 
     # Re-read model from workspace bridge on each call — SessionStart may fire
-    # again on resume/compact with a different model.
+    # again on resume/compact with a different model. Only trust it when the
+    # bridge belongs to this session; otherwise a sibling session sharing the
+    # workspace could hand us a wrong model. The live transcript model (preferred
+    # in _append_savings) covers the common case; this is a pre-first-turn fallback.
     sid, model = _read_workspace_session_bridge()
-    if sid and model:
+    if sid and model and sid == _claude_session_id():
         _cached_mcp_model = model
         return _cached_mcp_model
 
@@ -1817,13 +1851,15 @@ def _get_host_session_sidecar_path() -> Path:
     """Return per-session sidecar path for the current host.
 
     Priority:
-    1. Claude: workspace bridge or MCP session file (both written exclusively by
-       Claude Code's SessionStart hook — their presence is the reliable signal).
+    1. Claude: CLAUDE_CODE_SESSION_ID (set per MCP process by Claude Code), then
+       the workspace bridge / MCP session file (written by the SessionStart hook).
     2. All other hosts: native session-ID env var exposed to the MCP process.
     3. Fallback: workspace-scoped file (no per-session isolation).
     """
-    # 1. Check the workspace bridge (written only by Claude Code's SessionStart hook).
-    sid, _ = _read_workspace_session_bridge()
+    # 1. Per-process Claude session id, then the SessionStart-written fallbacks.
+    #    The env var is unique per session, so concurrent sessions sharing one
+    #    workspace no longer write into each other's sidecar.
+    sid = _claude_session_id()
     if not sid:
         try:
             f = _mcp_session_file()
@@ -1876,7 +1912,7 @@ def _current_context_state() -> tuple[int, str]:
             is_real_model,
         )
 
-        sid, _ = _read_workspace_session_bridge()
+        sid = _claude_session_id()
         if not sid:
             return 0, ""
         from atelier.gateway.hosts.context_state import _tail_lines
@@ -1996,7 +2032,7 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
         # available so that session_report.py can find savings via
         # runs/<uuid>_context_savings.jsonl — matching the UUID-keyed run ledger
         # files. Falls back to the MCP ledger hex session_id for non-Claude hosts.
-        host_sid, _ = _read_workspace_session_bridge()
+        host_sid = _claude_session_id()
         cpath = _context_savings_path(host_sid or led.session_id)
         cpath.parent.mkdir(parents=True, exist_ok=True)
         with cpath.open("a", encoding="utf-8") as fh:
@@ -3763,6 +3799,7 @@ def _smart_read_single(
     expand: bool = False,
     max_lines: int | None = None,
     include_meta: bool = False,
+    projection_kind: str | None = None,
 ) -> dict[str, Any]:
     """Execute a single-file smart-read.  Called by both the decorated tool and the batch loop."""
     target_path = path
@@ -3823,25 +3860,41 @@ def _smart_read_single(
     projection = SourceProjection.outline() if mode == "outline" else SourceProjection.exact()
     projection_saved = 0
     projection_delta: dict[str, Any] | None = None
-    compact = None
+    projection_result: CompactProjectionResult | MinifiedProjectionResult | None = None
     exact_read = expand or range is not None
     if isinstance(content, str) and content and mode in ("full", "range") and not exact_read:
         from atelier.core.capabilities.source_projection import (
             ProjectionDelta,
             build_compact_projection,
+            build_minified_projection,
+            language_for_minify,
         )
 
         language = str(payload.get("language") or "")
-        compact = build_compact_projection(content, language, include_mapping=include_meta, path=str(target))
-        if compact.applied:
-            content = compact.content
-            projection = SourceProjection.compact()
-            projection_saved = compact.saved_tokens
+        # Prefer the tree-sitter minified view (comments and blank lines
+        # dropped, then re-parsed); fall back to the conservative compact
+        # whitespace transform when minification does not apply. Callers can
+        # pin the conservative compact view via projection_kind="compact".
+        force_compact = projection_kind == "compact"
+        minify_lang = language_for_minify(str(target))
+        if minify_lang is not None and not force_compact:
+            minified = build_minified_projection(content, minify_lang, include_mapping=include_meta, path=str(target))
+            if minified.applied:
+                projection_result = minified
+                projection = SourceProjection.minified()
+        if projection_result is None:
+            compact = build_compact_projection(content, language, include_mapping=include_meta, path=str(target))
+            if compact.applied:
+                projection_result = compact
+                projection = SourceProjection.compact()
+        if projection_result is not None:
+            content = projection_result.content
+            projection_saved = projection_result.saved_tokens
             projection_delta = ProjectionDelta(
                 path=str(payload.get("path", str(target))),
                 lang=language,
-                original_tokens=compact.original_tokens,
-                projected_tokens=compact.projected_tokens,
+                original_tokens=projection_result.original_tokens,
+                projected_tokens=projection_result.projected_tokens,
             ).to_dict()
     elif mode == "range":
         projection = SourceProjection.range()
@@ -3860,15 +3913,15 @@ def _smart_read_single(
         response["tokens_saved"] = ts
         if projection_delta is not None:
             response["projection_delta"] = projection_delta
-        if compact is not None and compact.applied and compact.mapping is not None:
-            response["projection_mapping"] = compact.mapping.to_dict()
+        if projection_result is not None and projection_result.mapping is not None:
+            response["projection_mapping"] = projection_result.mapping.to_dict()
     # Always save real savings via thread-local for the budget recorder
     if ts > 0:
         _tool_call_tokens_saved.value = ts
     return response
 
 
-@mcp_tool(name="read")
+@mcp_tool(name="read", hidden_params=("projection_kind",))
 def tool_smart_read(
     path: Annotated[
         str,
@@ -3887,16 +3940,18 @@ def tool_smart_read(
         Field(description="Include tool metadata fields (cache and token counters)."),
     ] = False,
     files: Annotated[
-        list[dict[str, Any]] | None,
+        list[dict[str, Any] | str] | None,
         Field(
             description=(
-                "Batch read: [{path, range?, expand?, max_lines?}, ...]. "
+                "Batch read: ['path', ...] or [{path, range?, expand?, max_lines?}, ...] "
+                "(plain strings and dict specs may be mixed). "
                 "Returns {files: [{path, ...single-read result...}, ...]}. "
                 "Use this whenever reading 2+ independent files — it costs one round trip "
                 "vs one per file, cutting cached-context re-read tax by (N-1) turns."
             )
         ),
     ] = None,
+    projection_kind: str | None = None,
 ) -> dict[str, Any]:
     """Read a file (or batch of files) with automatic source projection.
 
@@ -3917,6 +3972,8 @@ def tool_smart_read(
     if files is not None:
         results = []
         for spec in files:
+            if isinstance(spec, str):
+                spec = {"path": spec}
             spec_path = str(spec.get("path") or "")
             if not spec_path:
                 results.append({"error": "path is required in each files entry"})
@@ -3928,13 +3985,21 @@ def tool_smart_read(
                     expand=bool(spec.get("expand", False)),
                     max_lines=spec.get("max_lines"),
                     include_meta=include_meta,
+                    projection_kind=spec.get("projection_kind", projection_kind),
                 )
                 results.append(single)
             except Exception as exc:  # noqa: BLE001
                 results.append({"path": spec_path, "error": str(exc)})
         return {"files": results}
 
-    return _smart_read_single(path=path, range=range, expand=expand, max_lines=max_lines, include_meta=include_meta)
+    return _smart_read_single(
+        path=path,
+        range=range,
+        expand=expand,
+        max_lines=max_lines,
+        include_meta=include_meta,
+        projection_kind=projection_kind,
+    )
 
 
 def _snapshot_path(raw_path: str) -> str:
@@ -4013,9 +4078,7 @@ def _existing_test_contract_paths(
     return sorted(
         path
         for path, (fp, old_content) in snapshots.items()
-        if old_content is not None
-        and _looks_like_test_path(path)
-        and str(fp.resolve()) not in _SESSION_CREATED_FILES
+        if old_content is not None and _looks_like_test_path(path) and str(fp.resolve()) not in _SESSION_CREATED_FILES
     )
 
 
@@ -4179,7 +4242,12 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "default": True,
             "description": "Run formatter/linter on touched files; error/warning diagnostics appear in the result.",
         },
-        "post_edit_timeout_ms": {"type": "integer", "default": 30000, "minimum": 0},
+        "post_edit_timeout_ms": {
+            "type": "integer",
+            "default": 30000,
+            "minimum": 0,
+            "description": "Maximum total timeout for post-edit hooks in milliseconds.",
+        },
         "allow_test_contract_change": {
             "type": "boolean",
             "default": False,
@@ -4225,13 +4293,20 @@ def tool_smart_edit(
 ) -> dict[str, Any]:
     """Apply many mechanical edits across files in one deterministic call.
 
-    Descriptors:
+    Choose the right descriptor family for each edit (all must be the same family):
+
+    Rich (preferred) — ``file_path`` required:
       - Replace text:    {file_path, old_string, new_string}
       - Create/overwrite:{file_path, new_string, overwrite: true}
       - Line-scoped:     {file_path: "foo.py#10-20", old_string, new_string}
       - Notebook cell:   {file_path, cell_action: insert_after|delete|..., new_string}
       - Symbol:          {kind: "symbol", qualified_name|name, mode, new_body}
       - Projection:      {kind: "projection", file_path, projection_mapping, projected_start+projected_end+new_string or projected_ranges}
+
+    Legacy — ``path`` + ``op`` required:
+      - replace:       {path, op: "replace", old_string, new_string, fuzzy?}
+      - insert_after:  {path, op: "insert_after", anchor, new_string}
+      - replace_range: {path, op: "replace_range", line_start, line_end, new_string}
 
     Returns ordinary successful hunks as {applied: ["path:line,start-end", ...]};
     failures and edits carrying special metadata remain structured.
@@ -4305,12 +4380,10 @@ def tool_smart_edit(
             except Exception as hook_exc:
                 logging.exception("Recovered from broad exception handler")
                 result["hooks"] = {"error": str(hook_exc)}
-        # Diffs are always recorded for telemetry, but echoed back only when
-        # the applied content may differ from what the caller sent (fuzzy or
-        # scoped matches) — an exact replace needs no echo.
+        # Diffs are recorded for telemetry and echoed inline so the caller
+        # sees exactly what changed without a follow-up read.
         diffs = _compute_and_record_diffs(snapshots)
-        needs_diff_echo = any(entry.get("match_mode") not in (None, "exact") for entry in result.get("applied") or [])
-        if diffs and needs_diff_echo:
+        if diffs:
             result["diff"] = diffs
         # match_mode is only informative when it is not the default exact match.
         for entry in result.get("applied") or []:
@@ -7441,8 +7514,8 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # eligible; smaller responses are not worth the write overhead.
             if len(response_text) >= 4096:
                 content_item["cache_control"] = {"type": "ephemeral"}
-            # When deduped, skip the original per-call savings and structuredContent
-            # (which would otherwise re-carry the full bytes we just elided).
+            # When deduped, skip the original per-call savings (they'd otherwise be
+            # credited against bytes we just elided).
             if not dedup_stubbed and isinstance(result, dict):
                 saved_tokens = _extract_tokens_saved(result)
                 saved_calls = _coerce_saved_tokens(result.pop("calls_saved", None))
@@ -7454,8 +7527,6 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     _append_workspace_savings(name, saved_tokens, saved_calls, rid=str(rid))
 
             response_payload: dict[str, Any] = {"content": [content_item]}
-            if not dedup_stubbed and isinstance(result, dict):
-                response_payload["structuredContent"] = result
             return _ok(rid, response_payload)
         except Exception as exc:
             logging.exception("Recovered from broad exception handler")

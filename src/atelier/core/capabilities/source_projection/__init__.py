@@ -3,6 +3,14 @@
 from .compact import CompactProjectionResult, build_compact_projection
 from .edit import ProjectionEditError, apply_compact_projection_edit, apply_compact_projection_edits
 from .mapping import build_compact_mapping, resolve_projected_range, suggest_exact_reread_range
+from .minify import (
+    MinifiedEditError,
+    MinifiedProjectionResult,
+    apply_minified_edit,
+    build_minified_projection,
+    language_for_minify,
+    resolve_minified_span,
+)
 from .models import (
     ProjectionDelta,
     ProjectionMapping,
@@ -13,6 +21,8 @@ from .models import (
 
 __all__ = [
     "CompactProjectionResult",
+    "MinifiedEditError",
+    "MinifiedProjectionResult",
     "ProjectionDelta",
     "ProjectionEditError",
     "ProjectionMapping",
@@ -21,8 +31,12 @@ __all__ = [
     "SourceRange",
     "apply_compact_projection_edit",
     "apply_compact_projection_edits",
+    "apply_minified_edit",
     "build_compact_mapping",
     "build_compact_projection",
+    "build_minified_projection",
+    "language_for_minify",
+    "resolve_minified_span",
     "resolve_projected_range",
     "suggest_exact_reread_range",
 ]

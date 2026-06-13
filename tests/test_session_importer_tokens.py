@@ -1258,7 +1258,7 @@ class TestOpenCodeImporterTokens:
             "title": "test opencode session",
             "time_created": self.TS_MS,
         }
-        result = importer._import_session(session_row, db_path, force=True)
+        result = importer.import_session(session_row, db_path, force=True)
         assert result is not None
 
         trace = _get_trace(store, "opencode")

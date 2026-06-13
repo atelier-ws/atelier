@@ -13,7 +13,7 @@ TEST_PRINT_TIME ?= 0
 COV_FAIL_UNDER ?= 66
 FORCE_ARG := $(if $(f),--force,)
 EXTERNAL_PERIODS ?= today week month
-.PHONY: help install uninstall status start restart build-host-skills sync-agent-context \
+.PHONY: help install uninstall dev build prod status start restart build-host-skills sync-agent-context \
 	check-agent-context docs-check worktree-env runtime-evidence \
 	test test-fast test-cov test-full security-test lint format-check format typecheck launch-gate verify pre-commit \
 	proof-cost-quality demo import clean \
@@ -31,12 +31,15 @@ EXTERNAL_PERIODS ?= today week month
 dev: ## Install Atelier in editable/dev mode
 	bash scripts/local.sh
 
-release: ## Build and package for production distribution
-	bash scripts/bundle-prod.sh
+build: ## Build and package for production distribution
+	bash scripts/build.sh
 
-prod: ## Build and install from local production build
-	bash scripts/bundle-prod.sh
-	ATELIER_INSTALL_DIR=$(PWD)/bundle ATELIER_BIN_DIR=$(PWD)/bundle/bin bash scripts/bundle.sh --non-interactive
+prod: ## Build and install from local production build (includes mypyc compilation; expects ~2-3 min build time)
+	bash scripts/build.sh
+	# Run the BUNDLED bundle.sh (next to the generated constraints.txt) — the exact
+	# same step the distribution installer runs. install.sh only downloads and
+	# extracts the bundle before invoking this same script.
+	ATELIER_INSTALL_DIR=$(PWD)/bundle ATELIER_BIN_DIR=$(PWD)/bundle/bin bash $(PWD)/bundle/scripts/bundle.sh --non-interactive
 
 
 

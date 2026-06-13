@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,10 +42,10 @@ def _db_path(root: Path | None = None) -> Path:
 def _resolved_db_path(root: Path | None = None) -> Path:
     if root is not None:
         return root
-    if "GOOSE_PATH_ROOT" in __import__("os").environ:
-        return Path(__import__("os").environ["GOOSE_PATH_ROOT"]) / "data" / "sessions" / "sessions.db"
-    if "XDG_DATA_HOME" in __import__("os").environ:
-        return Path(__import__("os").environ["XDG_DATA_HOME"]) / "goose" / "sessions" / "sessions.db"
+    if "GOOSE_PATH_ROOT" in os.environ:
+        return Path(os.environ["GOOSE_PATH_ROOT"]) / "data" / "sessions" / "sessions.db"
+    if "XDG_DATA_HOME" in os.environ:
+        return Path(os.environ["XDG_DATA_HOME"]) / "goose" / "sessions" / "sessions.db"
     return _db_path(root)
 
 

@@ -5,7 +5,8 @@ Scans the current working directory and renders a rich breakdown:
   - top files by size / LOC
   - top directories by LOC
   - code-to-test ratio, doc coverage
-  - Atelier projection savings estimate (tokens saved if read tool runs on all source)
+  - Atelier projection savings (runs the real semantic_file_memory
+    projection pipeline — AST / tree-sitter / generic outline — per file)
 
 Run:
     atelier project [PATH]
@@ -113,21 +114,14 @@ class FileStats:
     blank_lines: int
     is_test: bool
     is_doc: bool
+    tokens: int  # raw tokens (tiktoken, Claude-read baseline)
+    proj_tokens: int  # tokens after real projection; == tokens if not projected
+    proj_mode: str  # outline / minified / compact / full from the projection pipeline
+    proj_reason: str | None  # None when projected; why not otherwise
 
     @property
     def ext(self) -> str:
         return self.path.suffix.lower()
-
-    @property
-    def tokens(self) -> int:
-        return _est_tokens(self.size_bytes)
-
-    @property
-    def proj_tokens(self) -> int:
-        """Tokens after projection; same as raw if not projectable."""
-        if _proj_reason(self) is not None:
-            return self.tokens
-        return int(self.tokens * (1 - _proj_save_rate(self.lines)))
 
 
 def _count_lines(text: str, comment_prefix: str) -> tuple[int, int, int]:
@@ -145,7 +139,7 @@ def _count_lines(text: str, comment_prefix: str) -> tuple[int, int, int]:
     return code, comment, blank
 
 
-def _scan_file(path: Path, root: Path) -> FileStats | None:
+def _scan_file(path: Path, root: Path, threshold: int) -> FileStats | None:
     ext = path.suffix.lower()
     lang = _EXT_TO_LANG.get(ext)
     if lang is None:
@@ -175,6 +169,11 @@ def _scan_file(path: Path, root: Path) -> FileStats | None:
     )
     is_doc = ext in (".md", ".mdx", ".rst", ".txt") or "docs/" in rel or "doc/" in rel
 
+    preview = _project_file(path, text, threshold)
+    raw_tokens = preview["raw_tokens"]
+    # Clamp like smart_read's max(0, savings): never report negative savings.
+    proj_tokens = min(preview["tokens"], raw_tokens)
+
     return FileStats(
         path=path,
         rel=rel,
@@ -186,47 +185,53 @@ def _scan_file(path: Path, root: Path) -> FileStats | None:
         blank_lines=blank,
         is_test=is_test,
         is_doc=is_doc,
+        tokens=raw_tokens,
+        proj_tokens=proj_tokens,
+        proj_mode=preview["mode"],
+        proj_reason=_full_mode_reason(preview),
     )
 
 
 # ---------------------------------------------------------------------------
-# Projection savings estimate
-# tiktoken costs ~100ms to import, so we lazily estimate without it:
-# Average English/code token ≈ 4 chars. Projection outline typically saves ~60%
-# on large files (>200 LOC). We use a conservative 50%.
+# Projection — runs the real semantic_file_memory pipeline (cache-free) so the
+# numbers here match exactly what the `read` tool ships to agents.
 # ---------------------------------------------------------------------------
 
-_OUTLINE_THRESHOLD_LOC = 200  # matches SemanticFileMemoryCapability.smart_read default
-_PROJ_SAVE_OUTLINE = 0.55  # outline mode: structure only, bodies omitted
-_PROJ_SAVE_COMPACT = 0.10  # compact mode: whitespace normalization only
 
-# No code structure → outline can't extract signatures; only whitespace compact applies
-_NON_PROJ_TYPES = frozenset({"JSON", "YAML", "TOML", "Markdown", "HTML", "CSS"})
+def _resolve_threshold(threshold: int | None) -> int:
+    """CLI override, else the pipeline default (ATELIER_OUTLINE_THRESHOLD / 200)."""
+    if threshold is not None:
+        return max(0, threshold)
+    from atelier.core.capabilities.semantic_file_memory.capability import (
+        default_outline_threshold,
+    )
 
-
-def _proj_reason(f: FileStats) -> str | None:
-    """None = outline-eligible (best savings). String = why outline doesn't apply."""
-    if f.lang is None:
-        return "unrecognized type"
-    if f.lang.name in _NON_PROJ_TYPES:
-        return "no code structure (compact only)"
-    if f.lines < _OUTLINE_THRESHOLD_LOC:
-        return f"< {_OUTLINE_THRESHOLD_LOC} LOC (compact only)"
-    return None
+    return default_outline_threshold()
 
 
-def _proj_save_rate(lines: int) -> float:
-    """Outline for large code files; compact whitespace normalization for small ones."""
-    return _PROJ_SAVE_OUTLINE if lines >= _OUTLINE_THRESHOLD_LOC else _PROJ_SAVE_COMPACT
+def _project_file(path: Path, source: str, threshold: int) -> dict[str, Any]:
+    """Real projection preview: {"mode", "language", "loc", "text", "raw_tokens", "tokens"}."""
+    from atelier.core.capabilities.semantic_file_memory.capability import (
+        SemanticFileMemoryCapability,
+    )
+
+    return SemanticFileMemoryCapability.project_preview(path, source, outline_threshold=threshold)
 
 
-def _est_tokens(chars: int) -> int:
-    return max(1, chars // 4)
+def _full_mode_reason(preview: dict[str, Any]) -> str | None:
+    """None when the pipeline projected the file (outline / minified / compact);
+    otherwise why it shipped in full at raw token cost."""
+    if preview["mode"] != "full":
+        return None
+    if preview["language"] == "text":
+        return "no structural grammar"
+    return "already minimal"
 
 
 @dataclass
 class ProjectSnapshot:
     root: Path
+    threshold: int = 0
     files: list[FileStats] = field(default_factory=list)
 
     # aggregated
@@ -281,9 +286,9 @@ class ProjectSnapshot:
             raw = f.tokens
             self.proj_tokens_total += raw
             self.proj_tokens_after += f.proj_tokens
-            if _proj_reason(f) is None:
+            self.proj_tokens_saved += raw - f.proj_tokens
+            if f.proj_reason is None:
                 self.large_files += 1
-                self.proj_tokens_saved += raw - f.proj_tokens
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -407,8 +412,8 @@ def _get_files(root: Path) -> list[Path]:
     return files
 
 
-def _scan(root: Path, respect_gitignore: bool = True) -> ProjectSnapshot:
-    snap = ProjectSnapshot(root=root)
+def _scan(root: Path, threshold: int, respect_gitignore: bool = True) -> ProjectSnapshot:
+    snap = ProjectSnapshot(root=root, threshold=threshold)
     for path in _get_files(root):
         if not path.is_file():
             continue
@@ -417,7 +422,7 @@ def _scan(root: Path, respect_gitignore: bool = True) -> ProjectSnapshot:
             continue
         if path.name.startswith("."):
             continue
-        fs = _scan_file(path, root)
+        fs = _scan_file(path, root, threshold)
         if fs is not None:
             snap.files.append(fs)
     snap.build()
@@ -548,7 +553,7 @@ def _render(snap: ProjectSnapshot, top_n: int) -> None:
         lang_color = f.lang.color if f.lang else "white"
         lang_label = f.lang.name if f.lang else "?"
         ftype = "[blue]test[/]" if f.is_test else ("[dim]doc[/]" if f.is_doc else "[dim green]src[/]")
-        reason = _proj_reason(f)
+        reason = f.proj_reason
         proj_str = f"[bright_green]{_fmt_num(f.proj_tokens)}[/]" if reason is None else f"[dim]{_fmt_num(f.tokens)}[/]"
         file_table.add_row(
             str(i),
@@ -630,7 +635,7 @@ def _render(snap: ProjectSnapshot, top_n: int) -> None:
 
     reason_counts: Counter[str] = Counter()
     for f in snap.files:
-        r = _proj_reason(f)
+        r = f.proj_reason
         if r is not None:
             reason_counts[r] += 1
     nonproj_lines: list[str] = []
@@ -648,11 +653,51 @@ def _render(snap: ProjectSnapshot, top_n: int) -> None:
     bottom.add_row(health_panel, atelier_panel, nonproj_panel)
     console.print(bottom)
     console.print()
+    _render_mode_breakdown(console, snap)
 
 
 # ---------------------------------------------------------------------------
 # --files view
 # ---------------------------------------------------------------------------
+
+
+def _render_mode_breakdown(console: Any, snap: ProjectSnapshot) -> None:
+    """Per-mode projection breakdown — outline / minified / compact / full, nothing hidden."""
+    from rich import box
+    from rich.table import Table
+
+    mode_agg: dict[str, dict[str, int]] = defaultdict(lambda: {"files": 0, "raw": 0, "proj": 0})
+    for f in snap.files:
+        agg = mode_agg[f.proj_mode]
+        agg["files"] += 1
+        agg["raw"] += f.tokens
+        agg["proj"] += f.proj_tokens
+    mode_meta = {
+        "outline": ("Outline", "bright_green", "structure only · bodies omitted (LLM fetches on demand)"),
+        "minified": ("Minified", "green", "comments · blank lines dropped · full code kept"),
+        "compact": ("Compact", "yellow", "trailing whitespace · blank runs collapsed"),
+        "full": ("Full", "dim", "raw — nothing worth dropping"),
+    }
+    tbl = Table(box=box.SIMPLE, show_header=True, header_style="dim", padding=(0, 1))
+    tbl.add_column("Projection mode")
+    tbl.add_column("Files", justify="right")
+    tbl.add_column("Raw", justify="right")
+    tbl.add_column("Shipped", justify="right")
+    tbl.add_column("Saved", justify="right")
+    tbl.add_column("What it does", style="dim")
+    for name in ("outline", "minified", "compact", "full"):
+        agg = mode_agg.get(name) or {}
+        if not agg or agg["files"] == 0:
+            continue
+        label, color, desc = mode_meta[name]
+        raw_t, proj_t = agg["raw"], agg["proj"]
+        saved = int((raw_t - proj_t) / max(1, raw_t) * 100)
+        saved_str = f"[bright_green]-{saved}%[/]" if saved > 0 else "[dim]0%[/]"
+        tbl.add_row(f"[{color}]{label}[/]", _fmt_num(agg["files"]), _fmt_num(raw_t), _fmt_num(proj_t), saved_str, desc)
+    console.print("[bold bright_white]  Projection by mode[/]  [dim]what each strategy shipped[/]")
+    console.print()
+    console.print(tbl)
+    console.print()
 
 
 def _render_files(snap: ProjectSnapshot, limit: int) -> None:
@@ -682,7 +727,7 @@ def _render_files(snap: ProjectSnapshot, limit: int) -> None:
 
     shown = all_files[:limit]
     for i, f in enumerate(shown, 1):
-        reason = _proj_reason(f)
+        reason = f.proj_reason
         lang_color = f.lang.color if f.lang else "dim white"
         lang_label = f.lang.name if f.lang else "?"
         raw = f.tokens
@@ -715,7 +760,7 @@ def _render_files(snap: ProjectSnapshot, limit: int) -> None:
     console.print()
 
     # ── Non-projectable summary ──
-    non_proj = [(f, _proj_reason(f)) for f in snap.files if _proj_reason(f) is not None]
+    non_proj = [(f, f.proj_reason) for f in snap.files if f.proj_reason is not None]
 
     # Group by reason
     by_reason: dict[str, list[FileStats]] = defaultdict(list)
@@ -732,8 +777,8 @@ def _render_files(snap: ProjectSnapshot, limit: int) -> None:
     reason_tbl.add_column("Notes", style="dim")
 
     reason_notes = {
-        "no code structure (compact only)": "data/config/markup — whitespace-only savings",
-        "unrecognized type": "extension not in language registry",
+        "no structural grammar": "plain text / data — no tree-sitter grammar",
+        "already minimal": "nothing to drop — no comments, blank runs, or padding",
     }
 
     for reason, files in sorted(by_reason.items(), key=lambda x: -len(x[1])):
@@ -762,6 +807,8 @@ def _render_files(snap: ProjectSnapshot, limit: int) -> None:
             detail_tbl.add_row(f.rel, reason or "", _fmt_num(f.tokens))
         console.print(detail_tbl)
 
+    _render_mode_breakdown(console, snap)
+
     # Summary panel
     proj_count = snap.large_files
     nonproj_count = len(non_proj)
@@ -782,264 +829,24 @@ def _render_files(snap: ProjectSnapshot, limit: int) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Projection engine — approximate what Atelier's outline/read tool produces
-# ---------------------------------------------------------------------------
-
-
-def _project_python(lines: list[str]) -> str:
-    """Extract Python outline: imports, class/def signatures, docstrings."""
-    out: list[str] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        stripped = line.lstrip()
-        indent = len(line) - len(stripped)
-
-        # Always keep imports and top-level blank lines
-        if stripped.startswith(("import ", "from ", "@")) or not stripped:
-            out.append(line.rstrip())
-            i += 1
-            continue
-
-        # Class or function definition
-        if stripped.startswith(("def ", "class ", "async def ")):
-            out.append(line.rstrip())
-            i += 1
-            # Include immediate docstring
-            if i < len(lines):
-                ds = lines[i].strip()
-                if ds.startswith('"""') or ds.startswith("'''"):
-                    quote = ds[:3]
-                    out.append(lines[i].rstrip())
-                    if not ds.endswith(quote) or len(ds) == 3:  # multi-line
-                        i += 1
-                        while i < len(lines) and quote not in lines[i]:
-                            out.append(lines[i].rstrip())
-                            i += 1
-                        if i < len(lines):
-                            out.append(lines[i].rstrip())
-                            i += 1
-                    else:
-                        i += 1
-            # Skip body, count skipped lines
-            body_start = i
-            while i < len(lines):
-                next_indent = len(lines[i]) - len(lines[i].lstrip())
-                if lines[i].strip() and next_indent <= indent:
-                    break
-                i += 1
-            skipped = i - body_start
-            if skipped > 0:
-                pad = " " * (indent + 4)
-                out.append(f"{pad}# ... {skipped} lines")
-            continue
-
-        # Top-level assignments / constants
-        if indent == 0 and "=" in stripped and not stripped.startswith("#"):
-            out.append(line.rstrip())
-            i += 1
-            continue
-
-        i += 1  # skip all other lines
-
-    return "\n".join(out)
-
-
-def _project_ts(lines: list[str]) -> str:
-    """Extract TypeScript/JavaScript outline: imports, exports, signatures."""
-    out: list[str] = []
-    i = 0
-
-    while i < len(lines):
-        line = lines[i]
-        s = line.strip()
-
-        if not s:
-            out.append("")
-            i += 1
-            continue
-
-        # Imports always kept
-        if s.startswith(("import ", "export {", "export type", "export *", "require(")):
-            out.append(line.rstrip())
-            i += 1
-            continue
-
-        # Interfaces and type aliases — keep fully (usually short)
-        if s.startswith(("interface ", "type ", "export interface", "export type")):
-            out.append(line.rstrip())
-            i += 1
-            depth = s.count("{") - s.count("}")
-            while depth > 0 and i < len(lines):
-                out.append(lines[i].rstrip())
-                depth += lines[i].count("{") - lines[i].count("}")
-                i += 1
-            continue
-
-        # Function / class / const arrow signatures — keep signature, skip body
-        is_sig = (
-            s.startswith(
-                (
-                    "function ",
-                    "async function",
-                    "class ",
-                    "export class",
-                    "export function",
-                    "export async",
-                    "export default",
-                )
-            )
-            or ("=> {" in s and s.startswith(("const ", "let ", "export const")))
-            or (s.startswith(("const ", "let ")) and ("function" in s or "=>" in s))
-        )
-        if is_sig:
-            out.append(line.rstrip())
-            i += 1
-            # Count and skip body braces
-            depth = line.count("{") - line.count("}")
-            body_lines = 0
-            while depth > 0 and i < len(lines):
-                depth += lines[i].count("{") - lines[i].count("}")
-                i += 1
-                body_lines += 1
-            if body_lines > 1:
-                out.append(f"  // ... {body_lines} lines")
-            continue
-
-        i += 1  # skip other lines
-
-    return "\n".join(out)
-
-
-def _project_c(lines: list[str]) -> str:
-    """Extract C/C++ outline: preprocessor, typedefs, structs, function signatures."""
-    out: list[str] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
-
-        if not stripped:
-            out.append("")
-            i += 1
-            continue
-
-        # Preprocessor — always keep (handle backslash continuation)
-        if stripped.startswith("#"):
-            out.append(line.rstrip())
-            i += 1
-            while line.rstrip().endswith("\\") and i < len(lines):
-                line = lines[i]
-                out.append(line.rstrip())
-                i += 1
-            continue
-
-        # Block comments at top level — keep
-        if stripped.startswith("/*"):
-            out.append(line.rstrip())
-            i += 1
-            if "*/" not in stripped:
-                while i < len(lines):
-                    out.append(lines[i].rstrip())
-                    if "*/" in lines[i]:
-                        i += 1
-                        break
-                    i += 1
-            continue
-
-        if stripped.startswith("//"):
-            out.append(line.rstrip())
-            i += 1
-            continue
-
-        # typedef / struct / union / enum — keep declaration including body
-        if stripped.startswith(("typedef ", "struct ", "union ", "enum ")):
-            out.append(line.rstrip())
-            i += 1
-            depth = line.count("{") - line.count("}")
-            while i < len(lines):
-                out.append(lines[i].rstrip())
-                depth += lines[i].count("{") - lines[i].count("}")
-                i += 1
-                if depth <= 0:
-                    break
-            continue
-
-        # Function-like: collect signature lines until { or ;
-        sig: list[str] = [line.rstrip()]
-        j = i + 1
-        has_brace = "{" in line
-        has_semi = ";" in line and "{" not in line
-
-        if not has_brace and not has_semi:
-            while j < len(lines) and j < i + 12:
-                nxt = lines[j]
-                sig.append(nxt.rstrip())
-                if "{" in nxt:
-                    has_brace = True
-                    break
-                if ";" in nxt:
-                    has_semi = True
-                    break
-                j += 1
-
-        if has_brace:
-            for sl in sig:
-                out.append(sl)
-            i = j + 1
-            depth = sum(ln.count("{") - ln.count("}") for ln in sig)
-            body_start = i
-            while depth > 0 and i < len(lines):
-                depth += lines[i].count("{") - lines[i].count("}")
-                i += 1
-            skipped = i - body_start
-            if skipped > 0:
-                out.append(f"  /* ... {skipped} lines */")
-            continue
-
-        # Declaration or unknown — keep as-is
-        out.append(line.rstrip())
-        i += 1
-
-    return "\n".join(out)
-
-
-def _build_projection(text: str, lang: LangDef) -> str:
-    lines = text.splitlines()
-    if lang.name == "Python":
-        return _project_python(lines)
-    if lang.name in ("TypeScript", "JavaScript", "Astro"):
-        return _project_ts(lines)
-    if lang.name in ("C/C++", "Rust", "Go", "Java", "C#", "Kotlin", "Scala", "PHP", "Ruby", "Swift"):
-        return _project_c(lines)  # brace-based fallback works for all C-family
-    # For Shell, TOML, etc — just return as-is (they're usually short config/scripts)
-    return text
-
-
-# ---------------------------------------------------------------------------
 # --diff view
 # ---------------------------------------------------------------------------
 
 
-def _compact_whitespace(text: str) -> str:
-    """Apply Atelier's real compact projection: strip trailing whitespace, collapse blank runs."""
-    import re
+def _render_diff(file_path: Path, threshold: int) -> None:
+    import json as _json
 
-    out = re.sub(r"[ \t]+$", "", text, flags=re.MULTILINE)
-    out = re.sub(r"\n{3,}", "\n\n", out)
-    return out
-
-
-def _render_diff(file_path: Path) -> None:
+    from rich import box
     from rich.console import Console
     from rich.panel import Panel
     from rich.syntax import Syntax
     from rich.table import Table
 
-    console = Console()
+    from atelier.core.capabilities.semantic_file_memory.capability import (
+        SemanticFileMemoryCapability,
+    )
 
-    ext = file_path.suffix.lower()
-    lang = _EXT_TO_LANG.get(ext)
+    console = Console()
 
     try:
         text = file_path.read_text(encoding="utf-8", errors="replace")
@@ -1047,85 +854,80 @@ def _render_diff(file_path: Path) -> None:
         console.print(f"[red]Cannot read file: {e}[/]")
         return
 
-    if lang is None:
-        console.print(f"[yellow]Unrecognized file type: {ext}[/]")
-        return
+    info = SemanticFileMemoryCapability.project_modes(file_path, text, outline_threshold=threshold)
+    language = info["language"]
+    raw_tok = int(info["raw_tokens"])
+    winner = info["winner"]
+    modes = info["modes"]
 
-    raw_lines = text.splitlines()
-    loc = len(raw_lines)
-    reason = _proj_reason(
-        FileStats(
-            path=file_path,
-            rel=str(file_path),
-            lang=lang,
-            size_bytes=file_path.stat().st_size,
-            lines=loc,
-            code_lines=0,
-            comment_lines=0,
-            blank_lines=0,
-            is_test=False,
-            is_doc=False,
-        )
-    )
-
-    # Choose projection mode matching Atelier's actual behaviour
-    use_outline = reason is None  # outline-eligible: code file >= 200 LOC
-    if use_outline:
-        projected = _build_projection(text, lang)
-        mode_label = "[bright_green]Outline[/] [dim](structure only · bodies omitted)[/]"
-        mode_note = "LLM can fetch any body via read(path, range='Lx-Ly')"
-    else:
-        projected = _compact_whitespace(text)
-        mode_label = "[yellow]Compact[/] [dim](whitespace-normalized · full body)[/]"
-        mode_note = reason or ""
-
-    raw_lines = text.splitlines()
-    proj_lines = projected.splitlines()
-    raw_tok = _est_tokens(len(text.encode()))
-    proj_tok = _est_tokens(len(projected.encode()))
-    saved_pct = int((raw_tok - proj_tok) / max(1, raw_tok) * 100)
-
-    lexer_map = {
-        "Python": "python",
-        "TypeScript": "typescript",
-        "JavaScript": "javascript",
-        "Rust": "rust",
-        "Go": "go",
-        "Astro": "astro",
-        "Shell": "bash",
-        "C/C++": "c",
-        "Java": "java",
-        "Ruby": "ruby",
-        "C#": "csharp",
+    meta = {
+        "full": ("Full", "white", "raw source · no projection"),
+        "outline": ("Outline", "bright_green", "structure only · bodies omitted (LLM fetches bodies on demand)"),
+        "minified": ("Minified", "green", "comments · blank lines dropped · re-parsed (full code kept)"),
+        "compact": ("Compact", "yellow", "trailing whitespace · blank runs collapsed"),
     }
-    lexer = lexer_map.get(lang.name, "text")
+    raw_lines = text.splitlines()
 
     console.print()
-    console.rule(f"[bold bright_white]{file_path.name}[/]  [dim]{lang.name}  ·  {loc} lines[/]")
-    console.print(f"  Mode: {mode_label}")
-    if mode_note:
-        console.print(f"  [dim]{mode_note}[/]")
-    console.print()
-
-    stats = Table.grid(expand=True)
-    stats.add_column(justify="center")
-    stats.add_column(justify="center")
-    stats.add_column(justify="center")
-
-    def _chip(label: str, value: str, color: str) -> Panel:
-        return Panel(f"[bold {color}]{value}[/]\n[dim]{label}[/]", border_style="dim", padding=(0, 2))
-
-    stats.add_row(
-        _chip("Raw lines", f"{len(raw_lines):,}", "white"),
-        _chip("Projected lines", f"{len(proj_lines):,}", "bright_green"),
-        _chip("Tokens saved", f"-{saved_pct}%  ({raw_tok:,} → {proj_tok:,})", "bright_green"),
+    console.rule(
+        f"[bold bright_white]{file_path.name}[/]  [dim]{language}  ·  {len(raw_lines)} lines  ·  {raw_tok:,} tok[/]"
     )
-    console.print(stats)
     console.print()
 
-    raw_syntax = Syntax(text, lexer, theme="monokai", line_numbers=True, word_wrap=False)
-    proj_syntax = Syntax(projected, lexer, theme="monokai", line_numbers=True, word_wrap=False)
+    # ── Every projection mode, nothing hidden ──
+    tbl = Table(box=box.SIMPLE, show_header=True, header_style="dim", padding=(0, 2))
+    tbl.add_column("Mode")
+    tbl.add_column("Tokens", justify="right")
+    tbl.add_column("Saved", justify="right")
+    tbl.add_column("")
+    for name in ("full", "outline", "minified", "compact"):
+        label, color, desc = meta[name]
+        m = modes[name]
+        available = bool(m["available"]) or name == "full"
+        tok = min(int(m["tokens"]), raw_tok)
+        saved = int((raw_tok - tok) / max(1, raw_tok) * 100)
+        if name == winner:
+            note = "[bold bright_green]◀ shipped to the LLM[/]"
+        elif not available:
+            note = f"[dim]n/a here — {desc}[/]"
+        else:
+            note = f"[dim]{desc}[/]"
+        name_cell = f"[{color}]{label}[/]" if available else f"[dim]{label}[/]"
+        tok_cell = f"{tok:,}" if available else "[dim]—[/]"
+        if name == "full":
+            saved_cell = "[dim]—[/]"
+        elif not available:
+            saved_cell = "[dim]n/a[/]"
+        else:
+            saved_cell = f"[bright_green]-{saved}%[/]" if saved > 0 else "[dim]0%[/]"
+        tbl.add_row(name_cell, tok_cell, saved_cell, note)
+    console.print(tbl)
+    console.print()
 
+    # ── Winner, side by side (outline pretty-printed for readability) ──
+    label, color, desc = meta[winner]
+    winner_text = modes[winner]["text"] or text
+    proj_lexer = language
+    display_text = winner_text
+    pretty_note = ""
+    if winner == "outline" and display_text.lstrip().startswith(("{", "[")):
+        proj_lexer = "json"
+        try:
+            display_text = _json.dumps(_json.loads(display_text), indent=2, ensure_ascii=False)
+            pretty_note = "pretty-printed for readability — shipped to the LLM as single-line JSON"
+        except ValueError:
+            pass
+
+    proj_lines = display_text.splitlines()
+    proj_tok = min(int(modes[winner]["tokens"]), raw_tok)
+
+    console.print(f"  Winner: [{color}]{label}[/] [dim]({desc})[/]")
+    if pretty_note:
+        console.print(f"  [dim]{pretty_note}[/]")
+    console.print()
+
+    raw_syntax = Syntax(text, language, theme="monokai", line_numbers=True, word_wrap=False)
+    proj_syntax = Syntax(display_text, proj_lexer, theme="monokai", line_numbers=True, word_wrap=False)
     split = Table.grid(expand=True, padding=(0, 1))
     split.add_column(ratio=1)
     split.add_column(ratio=1)
@@ -1138,9 +940,8 @@ def _render_diff(file_path: Path) -> None:
         ),
         Panel(
             proj_syntax,
-            title=f"[bright_green]{'Outline' if use_outline else 'Compact'} "
-            f"({len(proj_lines)} lines · {proj_tok:,} tok)[/]",
-            border_style="bright_green dim",
+            title=f"[{color}]{label} ({len(proj_lines)} lines · {proj_tok:,} tok shipped)[/]",
+            border_style=f"{color} dim",
             padding=(0, 0),
         ),
     )
@@ -1172,9 +973,23 @@ def _render_diff(file_path: Path) -> None:
     help="Show raw vs projected outline for a specific file.",
 )
 @click.option("--json", "as_json", is_flag=True, help="Output raw JSON.")
+@click.option(
+    "--threshold",
+    default=None,
+    type=int,
+    metavar="LOC",
+    help="Outline threshold in effective LOC. Default: ATELIER_OUTLINE_THRESHOLD env or 0 "
+    "(project every file) — same knob the read tool uses.",
+)
 @click.pass_context
 def project_cmd(
-    ctx: click.Context, path: Path, top: int, files_limit: int, diff_path: Path | None, as_json: bool
+    ctx: click.Context,
+    path: Path,
+    top: int,
+    files_limit: int,
+    diff_path: Path | None,
+    as_json: bool,
+    threshold: int | None,
 ) -> None:
     """Scan a project and show language breakdown, top files, directories, and Atelier savings.
 
@@ -1183,14 +998,16 @@ def project_cmd(
       atelier project               # overview of cwd
       atelier project --files 30    # per-file token table (top 30 by tokens)
       atelier project --diff src/foo.py   # raw vs projected side-by-side
+      atelier project --threshold 0      # outline-project every file
       atelier project --json        # raw JSON
     """
+    resolved = _resolve_threshold(threshold)
     if diff_path is not None:
-        _render_diff(diff_path)
+        _render_diff(diff_path, resolved)
         return
 
     root = path.resolve()
-    snap = _scan(root)
+    snap = _scan(root, resolved)
 
     if as_json:
         click.echo(json.dumps(snap.to_json(), indent=2))

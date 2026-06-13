@@ -108,7 +108,7 @@ def _build_compact_cases() -> list[BenchCase]:
                     "cost_saved_usd",
                 ],
                 custom_assert=_compact_assert(tokens_before),
-                baseline_tokens=1400,
+                baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
             )
         )
     return cases

@@ -7,8 +7,10 @@ import json
 import os
 import time
 from collections import deque
+from typing import TYPE_CHECKING
 
-from mitmproxy import http
+if TYPE_CHECKING:
+    from mitmproxy import http
 
 
 def _is_model_request(flow: http.HTTPFlow) -> bool:

@@ -47,7 +47,7 @@ if [[ -z "$HOST" ]]; then
 fi
 
 # Regenerate host context files if uv is available; skip silently in binary-only envs
-# (bundle-prod.sh pre-generates these before packaging).
+# (build.sh pre-generates these before packaging).
 if command -v uv >/dev/null 2>&1; then
     uv run python "$RENDER_SCRIPT" >/dev/null 2>&1 || true
 fi

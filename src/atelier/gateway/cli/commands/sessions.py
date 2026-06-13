@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import tempfile
 from collections.abc import Callable
@@ -198,8 +199,6 @@ def session_report_cmd(
         click.echo(render_json(report))
     else:
         click.echo(render_text(report, no_color=no_color))
-
-
 
 
 # Claude Code launches subagents via "Agent" (formerly "Task").
@@ -404,6 +403,45 @@ def _claude_transcript_block(session_id: str) -> TranscriptSavingsBlock | None:
     except Exception:
         logging.exception("failed to read transcript savings for session=%s", session_id)
     return None
+
+
+def _live_sidecar_savings(
+    session_id: str,
+    pricing_model: str,
+    breakdown: dict[str, float],
+    input_tokens: int,
+) -> tuple[float, int, int]:
+    """Realized savings from the local MCP sidecar (session_stats/claude/<id>.jsonl).
+
+    This is the live source the statusline reads: it keeps accumulating past the
+    session's last Stop event, unlike the stop-hook block embedded in the
+    transcript. Returns ``(saved_usd, saved_tokens, calls_avoided)`` - all zero
+    when no local sidecar exists (e.g. a transcript imported from another
+    machine), so callers fall back to the portable transcript block.
+    """
+    if not session_id:
+        return 0.0, 0, 0
+    try:
+        from atelier.core.capabilities.savings_summary import _read_claude_session_savings
+
+        root = Path(
+            os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or (Path.home() / ".atelier")
+        )
+        priced_tokens, calls, usd, unpriced = _read_claude_session_savings(session_id, root)
+    except Exception:
+        logging.exception("failed to read sidecar savings for session=%s", session_id)
+        return 0.0, 0, 0
+    saved_tokens = priced_tokens
+    saved_usd = usd
+    # Rows written without a usable model are unpriced by the reader; price them
+    # at the session's input rate so the (usd / tokens) ratio matches the
+    # statusline, which applies the same weighted fallback.
+    if unpriced > 0:
+        rate = _input_rate(pricing_model, breakdown, input_tokens)
+        if rate > 0:
+            saved_tokens += unpriced
+            saved_usd += rate * unpriced
+    return saved_usd, saved_tokens, calls
 
 
 def _cache_read_rate(model: str, breakdown: dict[str, float], cache_read_tokens: int) -> float:
@@ -977,6 +1015,20 @@ def _build_session_row(trace: Trace, store: ContextStore, host_name: str) -> dic
                 if bucket_sum > 0:
                     ratio = block.est_cost_usd / bucket_sum
                     breakdown = {k: v * ratio for k, v in breakdown.items()}
+        # The stop-hook block freezes at the session's last clean Stop event, so
+        # active, resumed, or interrupted sessions under-report it (often as 0).
+        # The live MCP sidecar is the source the statusline reads and keeps the
+        # true running total; prefer it when it carries more than the frozen
+        # block. Sessions with no local sidecar (e.g. a transcript imported from
+        # another machine) yield zeros here, leaving the portable block/potential
+        # path untouched.
+        live_saved_usd, live_saved_tokens, live_calls = _live_sidecar_savings(
+            sid, pricing_model, breakdown, input_tokens
+        )
+        if live_saved_tokens > saved_tokens or live_calls > calls_avoided:
+            saved_usd = max(saved_usd, live_saved_usd)
+            saved_tokens = max(saved_tokens, live_saved_tokens)
+            calls_avoided = max(calls_avoided, live_calls)
     elif int(potential["atelier_calls"]) > 0:
         # Estimate actual savings for non-Claude hosts that routed work through
         # Atelier: fleet rate (tokens saved per routed call) x routed calls.

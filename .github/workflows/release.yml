@@ -47,13 +47,13 @@ jobs:
         run: uv sync
 
       - name: Build release archive
-        run: bash scripts/bundle-prod.sh
+        run: bash scripts/build.sh
 
       - name: Upload release archive
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.os }}
-          path: dist/atelier-binaries-*.tar.gz
+          path: dist/atelier-distribution-*.tar.gz
           if-no-files-found: error
 
   release:
@@ -92,7 +92,7 @@ jobs:
           ### Assets
           - \`install.sh\` — public installer script
           - \`sessions.sh\` — session management utility
-          - \`atelier-binaries-*.tar.gz\` — bundled production binaries for supported platforms
+          - \`atelier-distribution-*.tar.gz\` — bundled production binaries for supported platforms
           EOF
 
       - name: Create Release in Public Repo

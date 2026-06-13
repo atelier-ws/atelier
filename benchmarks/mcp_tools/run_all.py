@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-EXCLUDED = {"bench_code_3way.py", "bench_external_indexers.py"}
+EXCLUDED = {"bench_external_indexers.py"}
 
 
 def _suite_files() -> list[str]:

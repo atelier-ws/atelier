@@ -11,7 +11,7 @@ Installers write user/global host config by default. To install project-local
 artifacts for a specific workspace, pass `--workspace DIR` to the script:
 
 ```bash
-bash scripts/install_agent_clis.sh --workspace /path/to/workspace
+bash scripts/install_hosts.sh --workspace /path/to/workspace
 ```
 
 ---

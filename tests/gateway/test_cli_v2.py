@@ -136,7 +136,7 @@ def test_analyze_failures_cli(tmp_path: Path) -> None:
     root = tmp_path / "a"
     init_store_at(str(root))
     _seed_ledger(root)
-    res = _invoke(root, "analyze-failures", "--json")
+    res = _invoke(root, "failure", "analyze", "--json")
     assert res.exit_code == 0
     assert json.loads(res.output)
 
@@ -175,12 +175,12 @@ def test_eval_lifecycle(tmp_path: Path) -> None:
 def test_tool_mode_show_set(tmp_path: Path) -> None:
     root = tmp_path / "a"
     init_store_at(str(root))
-    res = _invoke(root, "tool-mode", "show")
+    res = _invoke(root, "tools", "mode", "show")
     assert res.exit_code == 0
     assert res.output.strip() == "shadow"
-    res2 = _invoke(root, "tool-mode", "set", "suggest")
+    res2 = _invoke(root, "tools", "mode", "set", "suggest")
     assert res2.exit_code == 0
-    res3 = _invoke(root, "tool-mode", "show")
+    res3 = _invoke(root, "tools", "mode", "show")
     assert res3.output.strip() == "suggest"
 
 
@@ -237,11 +237,13 @@ def test_optimize_accepts_new_registry_host_choice(tmp_path: Path, monkeypatch: 
     _seed_optimizer_traces(root)
     monkeypatch.setattr("atelier.gateway.cli.commands.savings._run_external_optimize", lambda *_args, **_kwargs: None)
 
-    res = _invoke(root, "optimize", "--host", "qwen", "--json")
+    # `cursor` is a supported registry host with no seeded traces here; optimize
+    # must accept it and report an empty trace count.
+    res = _invoke(root, "optimize", "--host", "cursor", "--json")
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
-    assert payload["host"] == "qwen"
+    assert payload["host"] == "cursor"
     assert payload["trace_count"] == 0
 
 
@@ -330,7 +332,7 @@ def test_external_status_cli_reports_tools(tmp_path: Path, monkeypatch: pytest.M
         ],
     )
 
-    res = _invoke(root, "external-status", "--json")
+    res = _invoke(root, "savings", "external", "status", "--json")
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
@@ -357,7 +359,7 @@ def test_external_report_cli_returns_reports(tmp_path: Path, monkeypatch: pytest
         },
     )
 
-    res = _invoke(root, "external-report", "--tool", "codeburn", "--json")
+    res = _invoke(root, "savings", "external", "report", "--tool", "codeburn", "--json")
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
@@ -387,7 +389,7 @@ def test_external_report_cli_persists_reports(tmp_path: Path, monkeypatch: pytes
         },
     )
 
-    res = _invoke(root, "external-report", "--tool", "all", "--period", "today", "--persist", "--json")
+    res = _invoke(root, "savings", "external", "report", "--tool", "all", "--period", "today", "--persist", "--json")
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
@@ -420,7 +422,7 @@ def test_external_report_cli_streams_tool_progress(tmp_path: Path, monkeypatch: 
         fake_run_external_report,
     )
 
-    res = _invoke(root, "external-report", "--tool", "all", "--period", "today")
+    res = _invoke(root, "savings", "external", "report", "--tool", "all", "--period", "today")
 
     assert res.exit_code == 0, res.output
     assert calls == ["tokscale", "codeburn", "codeburn:optimize"]
@@ -471,7 +473,7 @@ def test_session_hosts_lists_host_rows_without_sync(tmp_path: Path) -> None:
         )
     )
 
-    res = _invoke(root, "session", "hosts", "--host", "codex", "--limit", "5", "--source", "store", "--json")
+    res = _invoke(root, "session", "list", "--host", "codex", "--limit", "5", "--source", "store", "--json")
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
     assert payload["hosts"]["codex"][0]["session_id"] == "sid-codex-1"
@@ -487,29 +489,29 @@ def test_session_hosts_filters_by_session_id(tmp_path: Path) -> None:
     now = datetime.now(UTC)
     store.record_trace(
         Trace(
-            id="gemini-1",
-            session_id="gemini-target-xyz",
+            id="codex-1",
+            session_id="codex-target-xyz",
             agent="atelier:code",
-            host="gemini",
+            host="codex",
             domain="coding",
             task="A",
             status="success",
-            model="gemini-3.1-flash-lite-preview",
-            usage_entries=[UsageEntry(model="gemini-3.1-flash-lite-preview", cost_usd=0.01)],
+            model="gpt-5.5",
+            usage_entries=[UsageEntry(model="gpt-5.5", cost_usd=0.01)],
             created_at=now,
         )
     )
     store.record_trace(
         Trace(
-            id="gemini-2",
-            session_id="gemini-other-abc",
+            id="codex-2",
+            session_id="codex-other-abc",
             agent="atelier:code",
-            host="gemini",
+            host="codex",
             domain="coding",
             task="B",
             status="success",
-            model="gemini-3.1-flash-lite-preview",
-            usage_entries=[UsageEntry(model="gemini-3.1-flash-lite-preview", cost_usd=0.02)],
+            model="gpt-5.5",
+            usage_entries=[UsageEntry(model="gpt-5.5", cost_usd=0.02)],
             created_at=now,
         )
     )
@@ -517,9 +519,9 @@ def test_session_hosts_filters_by_session_id(tmp_path: Path) -> None:
     res = _invoke(
         root,
         "session",
-        "hosts",
+        "list",
         "--host",
-        "gemini",
+        "codex",
         "--id",
         "target",
         "--source",
@@ -528,6 +530,6 @@ def test_session_hosts_filters_by_session_id(tmp_path: Path) -> None:
     )
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
-    rows = payload["hosts"]["gemini"]
+    rows = payload["hosts"]["codex"]
     assert len(rows) == 1
-    assert rows[0]["session_id"] == "gemini-target-xyz"
+    assert rows[0]["session_id"] == "codex-target-xyz"

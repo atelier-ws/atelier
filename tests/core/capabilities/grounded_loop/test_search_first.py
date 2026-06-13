@@ -80,6 +80,7 @@ def test_search_first_reuses_existing_search_primitive(monkeypatch: pytest.Monke
         max_chars_per_file=1600,
         include_outline=True,
         budget_tokens=2000,
+        indexed_search=None,
     )
     assert payload["matches"][0]["path"] == "src/orders.py"
     assert payload["handoff"]["memory"]["tool"] == "context"

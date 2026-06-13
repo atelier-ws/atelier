@@ -65,8 +65,9 @@ def register(cli: click.Group) -> None:
         _IMPORT_FAILED = True
 
     try:
-        from .servicectl import servicectl_group, worker_group
+        from .servicectl import service_group, servicectl_group, worker_group
 
+        cli.add_command(service_group)
         _h(worker_group)
         cli.add_command(worker_group)
         _h(servicectl_group)
@@ -221,6 +222,13 @@ def register(cli: click.Group) -> None:
         _IMPORT_FAILED = True
 
     try:
+        from .letta import letta_group
+
+        cli.add_command(letta_group)
+    except (ModuleNotFoundError, ImportError):
+        _IMPORT_FAILED = True
+
+    try:
         import click as _click
 
         from . import admin as admin_commands
@@ -334,6 +342,13 @@ def register(cli: click.Group) -> None:
         cli.add_command(completions_cmd)
     except ImportError:
         _IMPORT_FAILED = True
+
+    try:
+        from .project import project_cmd
+
+        cli.add_command(project_cmd, name="project")
+    except ImportError:
+        pass
 
 
 _ZSH_COMPLETION = """

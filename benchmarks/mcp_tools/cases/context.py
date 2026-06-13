@@ -93,7 +93,7 @@ def _build_context_cases() -> list[BenchCase]:
                 },
                 assert_keys=["symbols", "entry_points", "total_tokens"],
                 custom_assert=_symbols_assert(symbol.name, symbol.path),
-                baseline_tokens=10_000,
+                baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
             )
         )
     return cases
