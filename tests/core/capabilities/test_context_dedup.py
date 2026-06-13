@@ -73,3 +73,49 @@ def test_current_epoch_reads_session_state(tmp_path, monkeypatch) -> None:
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps({"compaction_epoch": 3}), encoding="utf-8")
     assert current_epoch() == 3
+
+
+_FILE_V1 = "\n".join(f"line {i} {'pad' * 8}" for i in range(400)) + "\n"
+_FILE_V2 = _FILE_V1.replace(f"line 200 {'pad' * 8}", "line 200 EDITED")
+
+
+def test_delta_first_read_emits_full_then_diff_on_change() -> None:
+    d = ContextDedup()
+    assert d.delta_for(session_id="s", resource="r", content=_FILE_V1, epoch=0, force=False) is None
+    out = d.delta_for(session_id="s", resource="r", content=_FILE_V2, epoch=0, force=False)
+    assert out is not None
+    delta, saved = out
+    assert "atelier delta" in delta
+    assert "+line 200 EDITED" in delta
+    assert saved > 0
+    assert len(delta) < len(_FILE_V2) // 2
+
+
+def test_delta_identical_content_returns_none_and_keeps_baseline() -> None:
+    d = ContextDedup()
+    d.delta_for(session_id="s", resource="r", content=_FILE_V1, epoch=0, force=False)
+    assert d.delta_for(session_id="s", resource="r", content=_FILE_V1, epoch=0, force=False) is None
+    # baseline survived: a change still diffs
+    assert d.delta_for(session_id="s", resource="r", content=_FILE_V2, epoch=0, force=False) is not None
+
+
+def test_delta_force_emits_full_but_updates_baseline() -> None:
+    d = ContextDedup()
+    d.delta_for(session_id="s", resource="r", content=_FILE_V1, epoch=0, force=False)
+    assert d.delta_for(session_id="s", resource="r", content=_FILE_V2, epoch=0, force=True) is None
+    # baseline is now V2, so re-reading V2 unchanged emits nothing
+    assert d.delta_for(session_id="s", resource="r", content=_FILE_V2, epoch=0, force=False) is None
+
+
+def test_delta_large_rewrite_falls_back_to_full_body() -> None:
+    d = ContextDedup()
+    d.delta_for(session_id="s", resource="r", content=_FILE_V1, epoch=0, force=False)
+    rewritten = "\n".join(f"totally new {i}" for i in range(400)) + "\n"
+    assert d.delta_for(session_id="s", resource="r", content=rewritten, epoch=0, force=False) is None
+
+
+def test_delta_epoch_change_resets_baselines() -> None:
+    d = ContextDedup()
+    d.delta_for(session_id="s", resource="r", content=_FILE_V1, epoch=0, force=False)
+    # epoch bump => V2 is treated as a first read
+    assert d.delta_for(session_id="s", resource="r", content=_FILE_V2, epoch=1, force=False) is None

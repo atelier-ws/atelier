@@ -52,7 +52,10 @@ def _resolve_path(path: str, repo_root: Path) -> Path:
     try:
         p.relative_to(repo_root.resolve())
     except ValueError as exc:
-        raise ValueError(f"Path escape denied: {path!r} is outside the repo root") from exc
+        raise ValueError(
+            f"Path escape denied: {path!r} is outside the repo root — "
+            "use the host's native tools for files outside the workspace"
+        ) from exc
     if any(part in PROTECTED_PARTS for part in p.parts):
         raise ValueError(f"Protected path denied: {path!r}")
     return p
