@@ -320,7 +320,7 @@ def read_transcript_savings_block(transcript_path: str | Path) -> TranscriptSavi
     if carry:
         block.carry_usd = _usd(carry.group(1))
         block.carry_tokens = _num(carry.group(2)) if carry.group(2) else 0
-    elif (carry_inline := _STOP_CARRY_INLINE_RE.search(last_text)):
+    elif carry_inline := _STOP_CARRY_INLINE_RE.search(last_text):
         # Older format: carry was part of savings line, no token count available
         block.carry_usd = _usd(carry_inline.group(1))
     cost = _STOP_EST_COST_RE.search(last_text)
@@ -582,6 +582,12 @@ class SavingsSummary:
     status_text: str = ""
     saved_pct: float = 0.0
     carry_pct: float = 0.0
+    # Comparative "vs vanilla Claude Code" replay (roundtrips vanilla CC would
+    # have spent that Atelier avoided, priced at full-context resend). This is a
+    # SEPARATE counterfactual estimate and is intentionally NOT added into
+    # saved_usd or any measured-savings field.
+    vs_vanilla_calls: int = 0
+    vs_vanilla_usd: float = 0.0
 
 
 def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[int, int, float, int]:
@@ -879,6 +885,17 @@ def compute_savings_summary(
     result.ctx_saved = priced_tokens + extra_tokens
     result.saved_usd = row_usd + extra_usd
 
+    # --- vs vanilla Claude Code (separate counterfactual; never in saved_usd) ---
+    if paths:
+        try:
+            from atelier.core.capabilities.vanilla_baseline import replay_session
+
+            vs = replay_session(paths[0])
+            result.vs_vanilla_calls = int(vs.get("calls_saved", 0) or 0)
+            result.vs_vanilla_usd = float(vs.get("cost_saved_usd", 0.0) or 0.0)
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+
     total_baseline = result.saved_usd + result.carry_usd + result.est_cost_usd
     if total_baseline > 0:
         result.saved_pct = (result.saved_usd / total_baseline) * 100
@@ -1013,7 +1030,12 @@ def savings_line(
     """Return the pipe-delimited savings line consumed by statusline.sh.
 
     Format:
-    ``$<saved_usd>|<tokens_saved>|<calls_saved>|<status_text>|$<routing_saved_usd>|<est_cost_usd>|<total_tokens>|<display_input_tokens>|<display_cache_tokens>|<display_output_tokens>|$<carry_usd>|<carry_tokens>|<carry_pct>%|<saved_pct>%``
+    ``$<saved_usd>|<tokens_saved>|<calls_saved>|<status_text>|$<routing_saved_usd>|<est_cost_usd>|<total_tokens>|<display_input_tokens>|<display_cache_tokens>|<display_output_tokens>|$<carry_usd>|<carry_tokens>|<carry_pct>%|<saved_pct>%|<vs_vanilla_calls>|$<vs_vanilla_usd>``
+
+    The two trailing fields are the comparative "vs vanilla Claude Code" replay
+    (roundtrips avoided and their estimated full-context-resend cost). They are
+    separate from the measured savings and are appended last so statusline.sh's
+    positional parsing of the existing fields stays byte-identical.
     """
     summary = compute_savings_summary(session_id, atelier_root=atelier_root, workspace=workspace)
     summary.status_text = _resolve_status_text(atelier_root)
@@ -1024,4 +1046,5 @@ def savings_line(
         f"|{summary.display_input_tokens}|{summary.display_cache_tokens}|{summary.display_output_tokens}"
         f"|${summary.carry_usd:.3f}|{_fmt_tok(summary.carry_tokens)}|{summary.carry_pct:.0f}%"
         f"|{summary.saved_pct:.0f}%"
+        f"|{summary.vs_vanilla_calls}|${summary.vs_vanilla_usd:.3f}"
     )
