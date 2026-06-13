@@ -7,10 +7,12 @@ Covers 300 real repo-backed scenarios:
 
 from __future__ import annotations
 
+import re
+import subprocess
 from collections.abc import Callable
 from typing import Any
 
-from benchmarks.mcp_tools.harness import BenchCase
+from benchmarks.mcp_tools.harness import BaselineMeasurement, BenchCase
 from benchmarks.mcp_tools.repo_facts import (
     benchmark_repo_root,
     collect_repo_file_facts,
@@ -21,6 +23,23 @@ from benchmarks.mcp_tools.repo_facts import (
 )
 
 _TARGET_PER_MODE = 150
+
+
+def _rg_baseline(pattern: str, path: str = "src") -> Callable[[BenchCase], BaselineMeasurement]:
+    """Baseline = raw `rg` output (what an agent without semantic search would get)."""
+
+    def _builder(_case: BenchCase) -> BaselineMeasurement:
+        result = subprocess.run(
+            ["rg", "-n", pattern, path],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=str(benchmark_repo_root()),
+        )
+        out = (result.stdout or "")[:200_000]
+        return BaselineMeasurement(payload=out, commands=[f"rg -n {pattern!r} {path}"])
+
+    return _builder
 
 
 def _assert_search_common(result: dict[str, object], expected_mode: str) -> None:
@@ -105,7 +124,8 @@ def _build_search_cases() -> list[BenchCase]:
                 },
                 assert_keys=["backend", "cache_hit", "matches", "mode"],
                 custom_assert=_chunks_assert(symbol.path, symbol.name),
-                baseline_tokens=8000,
+                baseline_builder=_rg_baseline(re.escape(symbol.name), "src"),
+                min_baseline_tokens=0,
             )
         )
     for index, (token, symbol) in enumerate(chunk_substrings, start=1):
@@ -121,7 +141,8 @@ def _build_search_cases() -> list[BenchCase]:
                 },
                 assert_keys=["backend", "cache_hit", "matches", "mode"],
                 custom_assert=_chunks_assert(symbol.path, token),
-                baseline_tokens=8000,
+                baseline_builder=_rg_baseline(re.escape(token), "src"),
+                min_baseline_tokens=0,
             )
         )
     for index, symbol in enumerate(map_symbols, start=1):
@@ -138,7 +159,8 @@ def _build_search_cases() -> list[BenchCase]:
                 },
                 assert_keys=["outline", "ranked_files", "token_count", "budget_tokens", "mode"],
                 custom_assert=_map_assert(symbol.path),
-                baseline_tokens=12_000,
+                baseline_builder=_rg_baseline(re.escape(symbol.name), "src"),
+                min_baseline_tokens=0,
             )
         )
     return cases

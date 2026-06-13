@@ -83,7 +83,7 @@ class SessionDirectoryWatcher:
         self.store = store
         self.poll_interval = poll_interval
         self._stop_event = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._worker: threading.Thread | None = None
         self._seen_files: dict[Path, float] = {}
 
         if self.store is None:
@@ -96,13 +96,13 @@ class SessionDirectoryWatcher:
 
     def start(self) -> None:
         """Start the directory watcher in a background thread."""
-        if self._thread is not None and self._thread.is_alive():
+        if self._worker is not None and self._worker.is_alive():
             logger.warning("Directory watcher is already running")
             return
 
         self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
+        self._worker = threading.Thread(target=self._run, daemon=True)
+        self._worker.start()
         logger.info(
             "Started directory watcher for: %s (poll interval: %ss)",
             self.directory_path,
@@ -112,9 +112,9 @@ class SessionDirectoryWatcher:
     def stop(self) -> None:
         """Stop the directory watcher."""
         self._stop_event.set()
-        if self._thread is not None:
-            self._thread.join(timeout=10.0)
-            self._thread = None
+        if self._worker is not None:
+            self._worker.join(timeout=10.0)
+            self._worker = None
         logger.info("Stopped directory watcher for: %s", self.directory_path)
 
     def _run(self) -> None:

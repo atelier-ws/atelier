@@ -277,8 +277,8 @@ class SearchReranker:
         self,
         *,
         status: str,
-        reason: str | None = None,
         candidates: int,
+        reason: str | None = None,
         reranked: int = 0,
         elapsed_ms: float | None = None,
     ) -> None:

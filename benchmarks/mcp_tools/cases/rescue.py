@@ -116,7 +116,7 @@ def _build_rescue_cases() -> list[BenchCase]:
                 },
                 assert_keys=["rescue", "matched_blocks", "analysis"],
                 custom_assert=_matched_assert(block_id, procedure_fragment),
-                baseline_tokens=1800,
+                baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
             )
         )
     for index, symbol in enumerate(unmatched_symbols, start=1):
@@ -133,7 +133,7 @@ def _build_rescue_cases() -> list[BenchCase]:
                 },
                 assert_keys=["rescue", "matched_blocks"],
                 custom_assert=_assert_unmatched_rescue,
-                baseline_tokens=1200,
+                baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
             )
         )
     return cases

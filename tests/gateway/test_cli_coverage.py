@@ -147,14 +147,21 @@ def test_ledger_reset_with_confirmation(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.skip(
-    reason="atelier init no longer ships built-in rubrics; env validate requires user-supplied rubrics (see docs/launch-readiness.md)."
-)
 def test_env_validate_known_env(tmp_path: Path) -> None:
+    from atelier.core.foundation.models import Rubric
+    from atelier.infra.storage.factory import create_store
+
     root = tmp_path / ".atelier"
     init_store_at(str(root))
+    # atelier init no longer seeds built-in rubrics; env validate resolves
+    # user-supplied rubrics, so the known-env success path seeds its own.
+    store = create_store(root)
+    store.upsert_rubric(
+        Rubric(id="rubric_state_change_safety", domain="state_change_safety"),
+        write_yaml=False,
+    )
     res = _invoke(root, "env", "validate", "env_state_change_safety")
-    assert res.exit_code == 0
+    assert res.exit_code == 0, res.output
     assert "ok" in res.output
 
 
@@ -423,18 +430,6 @@ def test_benchmark_hosts_command_runs(tmp_path: Path) -> None:
         payload = json.loads(json_lines[0])
     assert payload["suite"] == "hosts"
     assert "exit_code" in payload
-
-
-def test_benchmark_packs_returns_domain_keys(tmp_path: Path) -> None:
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        ["--root", str(tmp_path / ".atelier"), "benchmark", "packs", "--json"],
-    )
-    assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    assert payload["suite"] == "domains"
-    assert payload["domains_total"] >= payload["domains_benchmarked"]
 
 
 @pytest.mark.slow

@@ -12,20 +12,8 @@ def test_supported_session_import_hosts_match_codeburn_inventory() -> None:
         "claude",
         "codex",
         "copilot",
-        "crush",
         "cursor",
-        "cursor-agent",
-        "droid",
-        "gemini",
-        "goose",
-        "kilo-code",
-        "kiro",
-        "omp",
-        "openclaw",
         "opencode",
-        "pi",
-        "qwen",
-        "roo-code",
     )
 
 

@@ -362,7 +362,7 @@ def _tool_policies() -> dict[str, ToolPolicy]:
             ),
             denied_actions=("edit", "write", "delete", "agent-spawn"),
         ),
-        "execute": ToolPolicy(policy_id="execute", allowed_tools=("*",)),
+        "execute": ToolPolicy(policy_id="execute", allowed_tools=("*",), denied_actions=("agent-spawn",)),
         "review": ToolPolicy(
             policy_id="review",
             allowed_tools=(

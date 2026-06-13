@@ -160,43 +160,31 @@ def _call_llm(
             result.cache_write_input_tokens,
         )
 
-    # Non-Anthropic: call litellm directly with provider-specific parameters
-    try:
-        import litellm as _litellm
-    except ImportError as exc:
-        raise RuntimeError("litellm is required for non-Anthropic providers") from exc
+    # Non-Anthropic: route through the infra litellm wrapper with
+    # provider-specific parameters so no provider SDK is imported on the user's
+    # path outside src/atelier/infra/internal_llm/.
+    from atelier.infra.internal_llm.litellm_client import LiteLLMUnavailable, chat_with_result
 
-    kwargs: dict[str, Any] = {"model": model, "messages": messages}
-
+    extra_kwargs: dict[str, Any] = {}
     if cache_style == "openai":
         # Seed stabilises prefix for OpenAI automatic prefix caching
-        kwargs["seed"] = 42
-
+        extra_kwargs["seed"] = 42
     if cache_style == "gemini" and gemini_cached_content:
-        kwargs["extra_body"] = {"cachedContent": gemini_cached_content}
+        extra_kwargs["extra_body"] = {"cachedContent": gemini_cached_content}
 
     try:
-        response = _litellm.completion(**kwargs)
+        result = chat_with_result(messages, model=model, extra_kwargs=extra_kwargs or None)
+    except LiteLLMUnavailable as exc:
+        raise RuntimeError("litellm is required for non-Anthropic providers") from exc
     except Exception as exc:
         raise RuntimeError(f"LLM call failed ({provider}/{model}): {exc}") from exc
 
-    usage = getattr(response, "usage", None)
-    content_text: str = ""
-    choices = getattr(response, "choices", [])
-    if choices:
-        msg = getattr(choices[0], "message", None)
-        content_text = str(getattr(msg, "content", "") or "")
-
-    def _tok(attr: str) -> int:
-        return int(getattr(usage, attr, 0) or 0)
-
     return (
-        content_text,
-        _tok("prompt_tokens"),
-        _tok("completion_tokens"),
-        # Gemini / OpenAI surface cached tokens differently; litellm normalises both
-        _tok("cache_read_input_tokens") or _tok("cached_tokens"),
-        _tok("cache_write_input_tokens") or _tok("cache_creation_input_tokens"),
+        result.content,
+        result.input_tokens,
+        result.output_tokens,
+        result.cache_read_input_tokens,
+        result.cache_write_input_tokens,
     )
 
 

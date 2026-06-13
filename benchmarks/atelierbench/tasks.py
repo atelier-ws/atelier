@@ -1,4 +1,4 @@
-"""The seven AtelierBench tasks, adapted from kirby88/eval-eval.
+"""The seven AtelierBench tasks.
 
 Prompts and bundled workspaces are read from a local task-source checkout
 (default ``../benchmarks/<repo>/atelierbench-tasks``; override with

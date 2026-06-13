@@ -18,15 +18,19 @@ import sqlite3
 import subprocess
 import threading
 import time
-import warnings
 import weakref
 from bisect import bisect_right
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - non-POSIX platforms
+    fcntl = None  # type: ignore[assignment]
 
 from atelier.core.capabilities.code_context.budget import (
     PROTECTED_TOP_RANK,
@@ -774,7 +778,7 @@ def _extract_python_symbols(source: str, tree: ast.Module | None = None) -> list
                 start_line=start_line,
                 end_line=end_line,
                 parent_symbol=parent,
-                doc_summary=doc.strip().splitlines()[0][:200] if doc else None,
+                doc_summary=(stripped.splitlines()[0][:200] if doc and (stripped := doc.strip()) else None),
             )
         )
 
@@ -1023,6 +1027,7 @@ class CodeContextEngine:
         self.repo_id = _repo_id(self.repo_root)
         self.db_path = Path(db_path).resolve() if db_path is not None else _default_db_path(self.repo_root)
         self._db_lock = _shared_db_lock(self.db_path)
+        self._schema_ready = False
         self._cache = RetrievalCache(self.db_path)
         self._budget = BudgetPacker()
         self._semantic_ranker = SemanticSearchRanker(self.repo_root, store_root=default_store_root())
@@ -1066,6 +1071,7 @@ class CodeContextEngine:
         include_globs: list[str] | None = None,
         exclude_globs: list[str] | None = None,
         force: bool = True,
+        block: bool = True,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> IndexStats:
         """Build or refresh the persistent symbol/import index for this repository.
@@ -1075,16 +1081,69 @@ class CodeContextEngine:
             exclude_globs: Glob patterns to exclude.
             force: If True (default), wipe and rebuild the full index. Pass
                 ``force=False`` for an incremental update (skip unchanged files).
+            block: If True (default), wait for the cross-process index-write lock.
+                Pass ``block=False`` to skip indexing (returning the current
+                snapshot) when another process is already rebuilding.
             progress_callback: Optional callback ``fn(current, total)`` called
                 after each file is processed during indexing.
         """
         with self._db_lock, self._autosync_lock:
-            return self._index_repo_unsafe(
-                include_globs=include_globs,
-                exclude_globs=exclude_globs,
-                force=force,
-                progress_callback=progress_callback,
-            )
+            with self._index_write_lock(block=block) as acquired:
+                if not acquired:
+                    # Another process holds the cross-process index-write lock.
+                    # Don't pile on a redundant concurrent rebuild — return the
+                    # current on-disk snapshot and let the other writer finish.
+                    return self._current_index_stats()
+                return self._index_repo_unsafe(
+                    include_globs=include_globs,
+                    exclude_globs=exclude_globs,
+                    force=force,
+                    progress_callback=progress_callback,
+                )
+
+    @contextlib.contextmanager
+    def _index_write_lock(self, *, block: bool) -> Iterator[bool]:
+        """Serialize index writes across separate processes sharing this DB.
+
+        ``_db_lock`` only guards threads inside one process; multiple ``atelier``
+        processes (MCP servers, background service, CLI) each hold their own. This
+        advisory ``flock`` ensures only one of them rebuilds the index at a time.
+        Yields ``True`` when the lock was acquired (always so when ``block`` is
+        True) and ``False`` when a non-blocking attempt found another process
+        already indexing.
+        """
+        if fcntl is None:  # pragma: no cover - non-POSIX platforms
+            yield True
+            return
+        lock_path = self.db_path.with_name(self.db_path.name + ".indexlock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
+        acquired = False
+        try:
+            flags = fcntl.LOCK_EX if block else fcntl.LOCK_EX | fcntl.LOCK_NB
+            try:
+                fcntl.flock(fd, flags)
+                acquired = True
+            except OSError:
+                acquired = False
+            yield acquired
+        finally:
+            if acquired:
+                with contextlib.suppress(OSError):
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
+    def _current_index_stats(self) -> IndexStats:
+        snapshot = self._index_snapshot()
+        return IndexStats(
+            repo_id=self.repo_id,
+            repo_root=str(self.repo_root),
+            db_path=str(self.db_path),
+            files_indexed=int(snapshot["files_indexed"]),
+            symbols_indexed=int(snapshot["symbols_indexed"]),
+            imports_indexed=int(snapshot["imports_indexed"]),
+            index_version=self._current_index_version(),
+        )
 
     def _apply_file_data_batch(
         self,
@@ -1250,21 +1309,21 @@ class CodeContextEngine:
             sb = source_bytes_map.get(str(path)) if source_bytes_map else None
             args_list.append((str(self.repo_root), str(path), sb))
 
-        # fork is safe here: _autosync_lock is held during indexing so no
-        # background thread runs at fork time; suppress the deprecation warning
-        # from multiprocessing's os.fork() call (Python 3.13+).
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message=".*fork.*", category=DeprecationWarning)
-            mp_ctx = multiprocessing.get_context("fork")
-            results: list[_FileIndexData] = []
-            with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers, mp_context=mp_ctx) as executor:
-                future_map = {executor.submit(_process_one_file, *args): args for args in args_list}
-                for completed, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
-                    data = future.result()
-                    if data is not None:
-                        results.append(data)
-                    if progress_callback is not None:
-                        progress_callback(completed, total_count)
+        # Use spawn, not fork: workers are fresh interpreters, so they never
+        # inherit this multi-threaded process's locks or open fds. Forking here
+        # could deadlock a worker that inherited a lock held by a background
+        # thread (autosync / lineage) at fork time, and would also let a stuck
+        # worker keep the cross-process index lock, freezing other processes.
+        mp_ctx = multiprocessing.get_context("spawn")
+        results: list[_FileIndexData] = []
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers, mp_context=mp_ctx) as executor:
+            future_map = {executor.submit(_process_one_file, *args): args for args in args_list}
+            for completed, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
+                data = future.result()
+                if data is not None:
+                    results.append(data)
+                if progress_callback is not None:
+                    progress_callback(completed, total_count)
 
         results.sort(key=lambda r: r.rel)
         return results
@@ -1552,6 +1611,10 @@ class CodeContextEngine:
             items = [item for item in items if str(item.get("file_path") or "") in changed_files]
         items = self._dedupe_search_items(items)
         items = self._prioritize_grounded_search_items(items, seed_files=normalized_seed_files)
+        # Capture aggregate provenance before compaction strips per-item provenance
+        # (repo-scope compaction drops "provenance"/"symbol_id" as redundant with the
+        # top-level fields), so the routed-provider provenance survives in the payload.
+        aggregate_provenance = self._items_provenance(items)
         if effective_snippet == "none":
             items = self._compact_search_items(items, scope=scope)
         essential_keys = _DELETED_SEARCH_ESSENTIAL_KEYS if scope == "deleted" else _SEARCH_ESSENTIAL_KEYS
@@ -1561,7 +1624,11 @@ class CodeContextEngine:
             budget_tokens=effective_budget_tokens,
             essential_keys=essential_keys,
             optional_keys_in_drop_order=optional_keys,
-            extra_payload={"mode": resolved_mode, "snippet": effective_snippet},
+            extra_payload={
+                "mode": resolved_mode,
+                "snippet": effective_snippet,
+                "provenance": aggregate_provenance,
+            },
         )
         self._cache_set("code.search", cache_args, payload)
         return payload
@@ -2994,6 +3061,7 @@ class CodeContextEngine:
         self,
         query: str,
         *,
+        scope: Literal["deleted"],
         limit: int = 20,
         mode: SearchMode = "auto",
         kind: str | None = None,
@@ -3001,7 +3069,6 @@ class CodeContextEngine:
         snippet: Literal["none", "head", "full"] = "none",
         snippet_lines: int = 8,
         file_glob: str | None = None,
-        scope: Literal["deleted"],
         since: str | None = None,
         touched_by: str | None = None,
         auto_index: bool = True,
@@ -4627,12 +4694,32 @@ class CodeContextEngine:
             return self._symbols_for_files(sorted(item for item in changed if item), limit=500)
         return []
 
-    def _connect(self) -> sqlite3.Connection:
+    def _connect(self, *, readonly: bool = False) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
-        conn.execute("PRAGMA busy_timeout = 30000")
+        if readonly:
+            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=30.0)
+        else:
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+        self._apply_pragmas(conn, readonly=readonly)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def _apply_pragmas(self, conn: sqlite3.Connection, *, readonly: bool = False) -> None:
+        conn.execute("PRAGMA busy_timeout = 30000")
+        if readonly:
+            return
+        row = conn.execute("PRAGMA journal_mode").fetchone()
+        current_mode = str(row[0]).lower() if row else ""
+        if current_mode != "wal":
+            # WAL gives concurrent readers + a single writer across processes, so
+            # reads never get "database is locked". The switch only fails while
+            # another connection holds a lock; busy_timeout (set above) lets it
+            # wait for a quiet moment, and once flipped WAL persists on the file.
+            with contextlib.suppress(sqlite3.OperationalError):
+                result = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+                if result is not None and str(result[0]).lower() != "wal":
+                    logger.debug("code index WAL switch deferred (journal_mode=%s)", result[0])
+        conn.execute("PRAGMA synchronous = NORMAL")
 
     def connection(self) -> sqlite3.Connection:
         conn = self._connect()
@@ -4640,8 +4727,8 @@ class CodeContextEngine:
         return conn
 
     def _init_schema(self, conn: sqlite3.Connection) -> None:
-        with contextlib.suppress(sqlite3.OperationalError):
-            conn.execute("PRAGMA journal_mode=WAL")
+        if self._schema_ready:
+            return
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS engine_state (
                 key TEXT PRIMARY KEY,
@@ -4734,6 +4821,7 @@ class CodeContextEngine:
             CREATE INDEX IF NOT EXISTS idx_commit_files ON commit_chunks(files_touched);
             """)
         conn.execute("INSERT OR IGNORE INTO engine_state(key, value) VALUES ('index_version', '0')")
+        self._schema_ready = True
 
     def _ensure_indexed(self) -> None:
         with self._db_lock, self._autosync_lock:
@@ -4742,7 +4830,7 @@ class CodeContextEngine:
                 row = conn.execute("SELECT COUNT(*) AS n FROM files WHERE repo_id = ?", (self.repo_id,)).fetchone()
                 count = int(row["n"]) if row is not None else 0
             if count == 0:
-                self.index_repo()
+                self.index_repo(force=False)
                 if self._autosync_enabled:
                     self._autosync_signature = self._source_tree_signature()
                     self._autosync_last_sync_ms = int(time.time() * 1000)
@@ -4819,7 +4907,7 @@ class CodeContextEngine:
                     start_line=start_line,
                     end_line=end_line,
                     parent_symbol=parent,
-                    doc_summary=doc.strip().splitlines()[0][:200] if doc else None,
+                    doc_summary=(stripped.splitlines()[0][:200] if doc and (stripped := doc.strip()) else None),
                 )
             )
 
@@ -6429,6 +6517,10 @@ class CodeContextEngine:
         scope: Literal["repo", "external", "deleted"],
     ) -> list[dict[str, Any]]:
         allowed_keys = _DELETED_SEARCH_COMPACT_DEFAULT_KEYS if scope == "deleted" else _SEARCH_COMPACT_DEFAULT_KEYS
+        # For external scope "origin" is the load-bearing field that distinguishes
+        # external symbols from repo symbols, so it must survive compaction.
+        if scope == "external":
+            allowed_keys = allowed_keys | {"origin", "repo_name"}
         compacted = [{key: value for key, value in item.items() if key in allowed_keys} for item in items]
         if scope == "repo":
             result: list[dict[str, Any]] = []
@@ -7422,7 +7514,7 @@ class CodeContextEngine:
             self._record_autosync_event(event="change_detected", reason="within_debounce_window", reindexed=False)
             return
         self._autosync_state = "syncing"
-        self.index_repo(force=False)
+        self.index_repo(force=False, block=False)
         self._autosync_signature = self._source_tree_signature()
         self._autosync_last_sync_ms = int(time.time() * 1000)
         self._autosync_pending_events = 0
@@ -7518,6 +7610,8 @@ class CodeContextEngine:
 
         Non-blocking: launches a daemon thread. Safe to call multiple times.
         """
+        if os.getenv("ATELIER_LINEAGE_DISABLED") == "1":
+            return
         if self._lineage_thread is not None:
             return
         current_head = self._safe_current_head_sha()

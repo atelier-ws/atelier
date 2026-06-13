@@ -99,7 +99,8 @@ def test_rich_replace_basic(workspace: Path) -> None:
     assert "WORLD" in f.read_text(encoding="utf-8")
     assert "HELLO" not in f.read_text(encoding="utf-8")
     assert len(payload["applied"]) == 1
-    assert payload["applied"][0]["path"] == "hello.py"
+    # Ordinary exact replaces are reported as compact "path:line[,span]" strings.
+    assert payload["applied"][0].split(":")[0] == "hello.py"
 
 
 def test_benchmark_mode_blocks_ungrounded_edit(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -613,16 +614,21 @@ def test_schema_edits_array_requires_min_one_item() -> None:
     assert EDIT_TOOL_INPUT_SCHEMA["properties"]["edits"].get("minItems") == 1
 
 
-def test_schema_has_six_onoeof_variants() -> None:
-    """The edits array items schema defines exactly 6 oneOf variants."""
+def test_schema_documents_descriptor_variants() -> None:
+    """The edits array items schema defines the published descriptor variants.
+
+    The schema advertises the rich-style descriptor families via ``anyOf``
+    (File / Notebook cell / Symbol / Projection). Legacy op/path descriptors
+    remain accepted by the handler but are no longer published in the schema.
+    """
     from atelier.gateway.adapters.mcp_server import EDIT_TOOL_INPUT_SCHEMA
 
-    variants = EDIT_TOOL_INPUT_SCHEMA["properties"]["edits"]["items"]["oneOf"]
-    titles = [v["title"] for v in variants]
-    assert len(variants) == 6
-    assert "Legacy replace" in titles
-    assert "Legacy insert_after" in titles
-    assert "Legacy replace_range" in titles
-    assert "Rich file edit" in titles
-    assert "Notebook cell edit" in titles
-    assert "Symbol edit" in titles
+    variants = EDIT_TOOL_INPUT_SCHEMA["properties"]["edits"]["items"]["anyOf"]
+    titles = {v["title"] for v in variants}
+    assert len(variants) == 4
+    assert titles == {
+        "File edit",
+        "Notebook cell edit",
+        "Symbol edit",
+        "Projection edit",
+    }

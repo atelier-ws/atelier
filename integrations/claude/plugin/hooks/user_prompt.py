@@ -438,6 +438,15 @@ def _maybe_emit_compaction_advice(prompt: str, transcript_path: str) -> str | No
         occupancy, model = _context_occupancy(transcript_path) if transcript_path else (0, None)
         state = _read_session_state()
         _credit_pending_compaction(state, occupancy, model)
+        # Reset drift baseline when compact just ran or occupancy dropped sharply
+        # (/clear).  Without this the first new prompt after compaction is always
+        # flagged as unrelated to the now-gone conversation and the warning fires
+        # uselessly.
+        last_occupancy = int(state.get("last_occupancy", 0) or 0)
+        sharp_drop = last_occupancy > 0 and occupancy > 0 and occupancy < last_occupancy * 0.5
+        if state.get("precompact_pending") or sharp_drop:
+            state["prompt_topic_history"] = []
+            state.pop("last_compact_notice_count", None)
         history_raw = [h for h in state.get("prompt_topic_history", []) if isinstance(h, str)]
         history_tok = [_topic_tokens(h) for h in history_raw]
         sim = _cosine_drift(_topic_tokens(prompt), history_tok)
@@ -457,6 +466,8 @@ def _maybe_emit_compaction_advice(prompt: str, transcript_path: str) -> str | No
                 if count - last >= _compact_cooldown(occupancy):
                     state["last_compact_notice_count"] = count
                     msg = _compaction_advice_msg(occupancy, _context_window_tokens(model), model, drifted)
+        if occupancy > 0:
+            state["last_occupancy"] = occupancy
         _write_session_state(state)
         return msg
     except (OSError, ValueError, TypeError):

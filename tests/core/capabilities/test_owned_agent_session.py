@@ -90,8 +90,8 @@ def test_keepalive_start_stop() -> None:
     ka = KeepaliveThread(model="anthropic/claude-opus-4-8", provider="anthropic")
     ka.start()
     ka.stop()
-    ka._thread.join(timeout=2.0)
-    assert not ka._thread.is_alive()
+    ka._worker.join(timeout=2.0)
+    assert not ka._worker.is_alive()
 
 
 def test_format_receipt_nonempty() -> None:

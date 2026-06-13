@@ -36,9 +36,12 @@ def _assert_route_cheap(result: dict[str, object]) -> None:
 
 def _assert_route_balanced(result: dict[str, object]) -> None:
     _assert_route_shape(result)
-    assert result["tier"] in {"cheap", "balanced", "high", "best"}, (
-        f"balanced route returned unknown tier {result['tier']!r}"
-    )
+    assert result["tier"] in {
+        "cheap",
+        "balanced",
+        "high",
+        "best",
+    }, f"balanced route returned unknown tier {result['tier']!r}"
 
 
 def _assert_route_best(result: dict[str, object]) -> None:
@@ -80,7 +83,7 @@ def _build_route_cases() -> list[BenchCase]:
                     args={"task": prompt, "task_type": task_type, "budget": "cheap"},
                     assert_keys=["model", "tier", "route_tier", "rationale"],
                     custom_assert=_assert_route_cheap,
-                    baseline_tokens=600,
+                    baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
                 ),
                 BenchCase(
                     op="route",
@@ -88,7 +91,7 @@ def _build_route_cases() -> list[BenchCase]:
                     args={"task": prompt, "task_type": task_type, "budget": "balanced"},
                     assert_keys=["model", "tier", "route_tier", "rationale"],
                     custom_assert=_assert_route_balanced,
-                    baseline_tokens=800,
+                    baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
                 ),
                 BenchCase(
                     op="route",
@@ -96,7 +99,7 @@ def _build_route_cases() -> list[BenchCase]:
                     args={"task": prompt, "task_type": task_type, "budget": "best"},
                     assert_keys=["model", "tier", "route_tier", "rationale"],
                     custom_assert=_assert_route_best,
-                    baseline_tokens=800,
+                    baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
                 ),
             ]
         )

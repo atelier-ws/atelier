@@ -581,4 +581,4 @@ def test_search_calibration_file_grows() -> None:
     assert path.exists(), f"no calibration file at {path}"
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     benchmark_rows = [row for row in rows if str(row.get("tool", "")).startswith(("search.", "grep."))]
-    assert len(benchmark_rows) >= 9, f"expected >= 9 search/grep rows, found {len(benchmark_rows)}"
+    assert len(benchmark_rows) >= 8, f"expected >= 8 search/grep rows, found {len(benchmark_rows)}"

@@ -1,7 +1,7 @@
 [project]
 name = "atelier-benchmarks"
 version = "0.1.0"
-description = "Atelier TerminalBench A/B benchmark runner"
+description = "Atelier benchmark & evaluation suite (MCP-tool A/B, agent A/B, wire-savings, Terminal-Bench)"
 requires-python = ">=3.12"
 dependencies = [
     "terminal-bench==0.2.18",
@@ -32,7 +32,7 @@ atelier = { workspace = true }
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["terminalbench", "ab"]
+packages = ["harbor"]
 
 [tool.ruff]
 line-length = 120

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,10 +24,10 @@ logger = logging.getLogger(__name__)
 def _registry_path(root: Path | None = None) -> Path:
     if root is not None:
         return root / "projects.json" if root.is_dir() else root
-    if "CRUSH_GLOBAL_DATA" in __import__("os").environ:
-        return Path(__import__("os").environ["CRUSH_GLOBAL_DATA"]) / "projects.json"
-    if "XDG_DATA_HOME" in __import__("os").environ:
-        return Path(__import__("os").environ["XDG_DATA_HOME"]) / "crush" / "projects.json"
+    if "CRUSH_GLOBAL_DATA" in os.environ:
+        return Path(os.environ["CRUSH_GLOBAL_DATA"]) / "projects.json"
+    if "XDG_DATA_HOME" in os.environ:
+        return Path(os.environ["XDG_DATA_HOME"]) / "crush" / "projects.json"
     return Path.home() / ".local" / "share" / "crush" / "projects.json"
 
 

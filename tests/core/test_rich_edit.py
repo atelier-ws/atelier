@@ -158,6 +158,36 @@ def test_rich_edit_peer_level_def_not_indented(tmp_path: Path) -> None:
     assert "    mp.setenv" in text
 
 
+def test_rich_edit_exact_match_indented_anchor_keeps_dedented_constant(tmp_path: Path) -> None:
+    """rich_edit incident: an exact match whose anchor starts inside an indented
+    block must not re-indent replacement lines that legitimately dedent. Inserting
+    a module-level constant after a list literal previously got every column-0 line
+    prefixed with the anchor's indent, producing a SyntaxError that the parse gate
+    rolled back — silently rejecting a valid edit.
+    """
+    path = tmp_path / "mod.py"
+    original = '_A: list[str] = [\n    "x",\n    "y",\n]\n\n\ndef f() -> None:\n    return None\n'
+    path.write_text(original, encoding="utf-8")
+
+    result = apply_rich_edits(
+        [
+            {
+                "file_path": "mod.py",
+                "old_string": '    "y",\n]\n\n\ndef f() -> None:',
+                "new_string": ('    "y",\n]\n\n_B: list[str] = [\n    "z",\n]\n\n\ndef f() -> None:'),
+            }
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"] == []
+    assert result["applied"][0]["match_mode"] == "exact"
+    text = path.read_text(encoding="utf-8")
+    # the inserted module-level constant must land at column 0, not re-indented
+    assert "\n_B: list[str] = [\n" in text
+    assert "    _B: list[str]" not in text
+
+
 def test_rich_edit_projection_descriptor_applies_exact_span(tmp_path: Path) -> None:
     path = tmp_path / "code.go"
     source = 'package   main\n\nfunc   main()   {\n    println("hi")\n}\n'

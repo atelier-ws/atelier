@@ -105,7 +105,7 @@ def _action_for_cluster(cluster: Any) -> dict[str, Any]:
         parts = fingerprint.split(":")
         command = parts[1] if len(parts) > 1 else "unknown"
         suggested_fix = (
-            f"stabilize command `{command}` path: validate preconditions, capture stderr, " "and prevent blind retries"
+            f"stabilize command `{command}` path: validate preconditions, capture stderr, and prevent blind retries"
         )
         verification = f"run `{command}` path under same preconditions and verify non-zero exits are eliminated"
     elif fingerprint.startswith("tool_failure:"):
@@ -662,67 +662,12 @@ def eval_cycle_group() -> None:
     """Unified failure->case->run workflow namespace."""
 
 
-@eval_.command("list", hidden=True)
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def eval_list(ctx: click.Context, as_json: bool) -> None:
-    d = _eval_dir(ctx.obj["root"])
-    cases = []
-    if d.is_dir():
-        for p in sorted(d.glob("*.json")):
-            cases.append(json.loads(p.read_text(encoding="utf-8")))
-    if as_json:
-        _emit(cases, as_json=True)
-        return
-    for c in cases:
-        click.echo(f"{c.get('id')}\t{c.get('status', 'draft')}\t{c.get('domain', '')}\t{c.get('description', '')[:60]}")
-
-
-@eval_.command("show", hidden=True)
-@click.argument("case_id")
-@click.pass_context
-def eval_show(ctx: click.Context, case_id: str) -> None:
-    case = _load_eval(ctx.obj["root"], case_id)
-    if case is None:
-        raise click.ClickException(f"eval case not found: {case_id}")
-    _emit(case, as_json=True)
-
-
-@eval_.command("promote", hidden=True)
-@click.argument("case_id")
-@click.pass_context
-def eval_promote(ctx: click.Context, case_id: str) -> None:
-    case = _load_eval(ctx.obj["root"], case_id)
-    if case is None:
-        raise click.ClickException(f"eval case not found: {case_id}")
-    case["status"] = "active"
-    _save_eval(ctx.obj["root"], case)
-    click.echo(f"promoted {case_id}")
-
-
-@eval_.command("deprecate", hidden=True)
-@click.argument("case_id")
-@click.pass_context
-def eval_deprecate(ctx: click.Context, case_id: str) -> None:
-    case = _load_eval(ctx.obj["root"], case_id)
-    if case is None:
-        raise click.ClickException(f"eval case not found: {case_id}")
-    case["status"] = "deprecated"
-    _save_eval(ctx.obj["root"], case)
-    click.echo(f"deprecated {case_id}")
-
-
-@eval_.command("run", hidden=True)
-@click.option("--domain", default=None)
-@click.option("--case", "case_id", default=None)
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def eval_run(ctx: click.Context, domain: str | None, case_id: str | None, as_json: bool) -> None:
-    """Run deterministic eval cases (legacy alias: use `eval cycle run`)."""
-    d = _eval_dir(ctx.obj["root"])
+def _run_eval_cases(root: Path, domain: str | None, case_id: str | None, as_json: bool) -> None:
+    """Run deterministic eval cases (shared by `eval cycle run`)."""
+    d = _eval_dir(root)
     cases: list[dict[str, Any]] = []
     if case_id:
-        c = _load_eval(ctx.obj["root"], case_id)
+        c = _load_eval(root, case_id)
         if c is None:
             raise click.ClickException(f"eval case not found: {case_id}")
         cases = [c]
@@ -881,7 +826,7 @@ def eval_harbor(
     import subprocess
     from pathlib import Path as _Path
 
-    tasks_yaml = _Path(__file__).parents[5] / "benchmarks" / "terminalbench" / "tasks.yaml"
+    tasks_yaml = _Path(__file__).parents[5] / "benchmarks" / "harbor" / "tasks.yaml"
     selected_tasks: list[str] = []
     if tasks_yaml.exists():
         import yaml as _yaml  # type: ignore[import-untyped]
@@ -982,7 +927,7 @@ def eval_cycle_run(
 
     root = ctx.obj["root"]
     if case_id or domain:
-        ctx.invoke(eval_run, domain=domain, case_id=case_id, as_json=as_json)
+        _run_eval_cases(root, domain, case_id, as_json)
         return
 
     store = _load_store(root)
@@ -1230,11 +1175,65 @@ def eval_cycle_run(
             click.echo(f"- {cid}")
 
 
-@eval_.command("from-cluster", hidden=True)
+@eval_cycle_group.command("list")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def eval_cycle_list(ctx: click.Context, as_json: bool) -> None:
+    """List eval cases."""
+    d = _eval_dir(ctx.obj["root"])
+    cases = []
+    if d.is_dir():
+        for p in sorted(d.glob("*.json")):
+            cases.append(json.loads(p.read_text(encoding="utf-8")))
+    if as_json:
+        _emit(cases, as_json=True)
+        return
+    for c in cases:
+        click.echo(f"{c.get('id')}\t{c.get('status', 'draft')}\t{c.get('domain', '')}\t{c.get('description', '')[:60]}")
+
+
+@eval_cycle_group.command("show")
+@click.argument("case_id")
+@click.pass_context
+def eval_cycle_show(ctx: click.Context, case_id: str) -> None:
+    """Show one eval case."""
+    case = _load_eval(ctx.obj["root"], case_id)
+    if case is None:
+        raise click.ClickException(f"eval case not found: {case_id}")
+    _emit(case, as_json=True)
+
+
+@eval_cycle_group.command("promote")
+@click.argument("case_id")
+@click.pass_context
+def eval_cycle_promote(ctx: click.Context, case_id: str) -> None:
+    """Mark one eval case active."""
+    case = _load_eval(ctx.obj["root"], case_id)
+    if case is None:
+        raise click.ClickException(f"eval case not found: {case_id}")
+    case["status"] = "active"
+    _save_eval(ctx.obj["root"], case)
+    click.echo(f"promoted {case_id}")
+
+
+@eval_cycle_group.command("deprecate")
+@click.argument("case_id")
+@click.pass_context
+def eval_cycle_deprecate(ctx: click.Context, case_id: str) -> None:
+    """Mark one eval case deprecated."""
+    case = _load_eval(ctx.obj["root"], case_id)
+    if case is None:
+        raise click.ClickException(f"eval case not found: {case_id}")
+    case["status"] = "deprecated"
+    _save_eval(ctx.obj["root"], case)
+    click.echo(f"deprecated {case_id}")
+
+
+@eval_cycle_group.command("from-cluster")
 @click.argument("cluster_id")
 @click.pass_context
-def eval_from_cluster(ctx: click.Context, cluster_id: str) -> None:
-    """Generate a draft eval from an accepted FailureCluster."""
+def eval_cycle_from_cluster(ctx: click.Context, cluster_id: str) -> None:
+    """Generate one draft case from an accepted cluster."""
     from atelier.core.improvement.failure_analyzer import FailureAnalyzer
 
     state = _load_failure_state(ctx.obj["root"])
@@ -1260,46 +1259,6 @@ def eval_from_cluster(ctx: click.Context, cluster_id: str) -> None:
     click.echo(f"saved draft eval at {p}")
 
 
-@eval_cycle_group.command("list")
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def eval_cycle_list(ctx: click.Context, as_json: bool) -> None:
-    """List eval cases."""
-    ctx.invoke(eval_list, as_json=as_json)
-
-
-@eval_cycle_group.command("show")
-@click.argument("case_id")
-@click.pass_context
-def eval_cycle_show(ctx: click.Context, case_id: str) -> None:
-    """Show one eval case."""
-    ctx.invoke(eval_show, case_id=case_id)
-
-
-@eval_cycle_group.command("promote")
-@click.argument("case_id")
-@click.pass_context
-def eval_cycle_promote(ctx: click.Context, case_id: str) -> None:
-    """Mark one eval case active."""
-    ctx.invoke(eval_promote, case_id=case_id)
-
-
-@eval_cycle_group.command("deprecate")
-@click.argument("case_id")
-@click.pass_context
-def eval_cycle_deprecate(ctx: click.Context, case_id: str) -> None:
-    """Mark one eval case deprecated."""
-    ctx.invoke(eval_deprecate, case_id=case_id)
-
-
-@eval_cycle_group.command("from-cluster")
-@click.argument("cluster_id")
-@click.pass_context
-def eval_cycle_from_cluster(ctx: click.Context, cluster_id: str) -> None:
-    """Generate one draft case from an accepted cluster."""
-    ctx.invoke(eval_from_cluster, cluster_id=cluster_id)
-
-
 # Remove legacy top-level eval case commands; cycle namespace is the supported UX.
 for _legacy_eval_cmd in ("list", "show", "promote", "deprecate", "run", "from-cluster"):
     eval_.commands.pop(_legacy_eval_cmd, None)
@@ -1321,7 +1280,6 @@ __all__ = [
     "analyze_failures_cmd",
     "checkpoint",
     "eval_",
-    "eval_from_cluster",
     "failure",
     "ledger",
     "lesson",

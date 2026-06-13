@@ -63,7 +63,7 @@ def test_model_recommendation_state_supports_review_workflow_state(workflow_env:
     assert state["session_phase"] == "review"
 
 
-def test_legacy_route_stickiness_resets_when_workflow_step_changes(workflow_env: Path) -> None:
+def test_owned_route_tier_tracks_task_weight_across_workflow_steps(workflow_env: Path) -> None:
     path = _workspace_session_state_file()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -72,12 +72,15 @@ def test_legacy_route_stickiness_resets_when_workflow_step_changes(workflow_env:
     )
     led = RunLedger(root=workflow_env)
 
+    # Owned execution routing is the default decision path now: it scores each
+    # turn on its own merits rather than carrying a legacy "sticky" route.
     first = _emit_model_recommendation("read", {"task": "explain briefly"}, led)
     second = _emit_model_recommendation("Agent", {"task": "design an end-to-end migration plan"}, led)
 
-    assert first["decision"] == "baseline"
-    assert second["decision"] == "sticky"
-    assert second["tier"] == "cheap"
+    assert first["mode"] == "auto"
+    assert first["tier"] == "cheap"
+    assert second["mode"] == "auto"
+    assert second["tier"] == "high"
 
     path.write_text(
         json.dumps({"workflow": {"current_step": "execution", "session_phase": "execute", "sticky_window": 2}}),
@@ -86,8 +89,10 @@ def test_legacy_route_stickiness_resets_when_workflow_step_changes(workflow_env:
 
     third = _emit_model_recommendation("Agent", {"task": "design an end-to-end migration plan"}, led)
 
-    assert third["decision"] == "baseline"
-    assert third["tier"] == "expensive"
+    # A heavy planning/architecture task keeps routing to the high tier
+    # regardless of the workflow step change.
+    assert third["mode"] == "auto"
+    assert third["tier"] == "high"
 
 
 def test_route_outcome_calibration_uses_workspace_outcomes(workflow_env: Path) -> None:
