@@ -112,8 +112,8 @@ def _bar(done: int, total: int, width: int = 20) -> str:
 
 
 def _fmt_duration(seconds: float) -> str:
-    seconds = round(seconds)
-    minutes, sec = divmod(seconds, 60)
+    total = round(seconds)
+    minutes, sec = divmod(total, 60)
     hours, minute = divmod(minutes, 60)
     if hours:
         return f"{hours:d}:{minute:02d}:{sec:02d}"

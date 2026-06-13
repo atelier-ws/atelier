@@ -21,7 +21,7 @@ from typing import Any
 from atelier.core.capabilities.session_optimizer import effective_input_tokens
 from atelier.core.foundation.models import Trace
 
-_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+_PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 _HOST_CONFIG_DIR = _PACKAGE_ROOT / "gateway" / "hosts" / "configs"
 _BUNDLED_BLOCKS_DIR = _PACKAGE_ROOT / "infra" / "seed_blocks"
 _BUNDLED_RUBRICS_DIR = _PACKAGE_ROOT / "core" / "rubrics"

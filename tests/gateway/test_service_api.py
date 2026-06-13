@@ -465,6 +465,9 @@ def test_external_analytics_endpoints_return_summary_and_detail(
     app_no_auth: TestClient,
     store: SQLiteStore,
 ) -> None:
+    now = datetime.now(UTC)
+    codeburn_collected_at = (now - timedelta(minutes=10)).isoformat()
+    tokscale_collected_at = (now - timedelta(minutes=5)).isoformat()
     store.record_external_analytics_run(
         tool="codeburn",
         period="today",
@@ -502,7 +505,7 @@ def test_external_analytics_endpoints_return_summary_and_detail(
                 },
             ],
         },
-        collected_at="2026-05-11T12:00:00+00:00",
+        collected_at=codeburn_collected_at,
     )
     store.record_external_analytics_run(
         tool="tokscale",
@@ -514,7 +517,7 @@ def test_external_analytics_endpoints_return_summary_and_detail(
         summary={"highlights": [{"key": "input_tokens", "label": "input tokens", "value": 1200}]},
         payload={"summary": {"input_tokens": 1200}},
         stderr="tool missing",
-        collected_at="2026-05-11T13:00:00+00:00",
+        collected_at=tokscale_collected_at,
     )
 
     external_resp = app_no_auth.get("/analytics/external")

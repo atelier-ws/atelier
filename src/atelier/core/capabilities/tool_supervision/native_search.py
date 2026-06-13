@@ -12,7 +12,7 @@ import os
 import re
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -723,7 +723,7 @@ def search_workspace(
 
         ranked.sort(key=lambda item: (-item.score, item.file))
         top_score = max(item.score for item in ranked) or 1.0
-        normalized = [RankedMatch(**{**item.__dict__, "score": round(item.score / top_score, 3)}) for item in ranked]
+        normalized = [replace(item, score=round(item.score / top_score, 3)) for item in ranked]
         selected: list[RankedMatch] = []
         used_tokens = 0
         for idx, item in enumerate(normalized):
@@ -733,7 +733,7 @@ def search_workspace(
             if selected and used_tokens + est > total_budget:
                 break
             used_tokens += est
-            selected.append(RankedMatch(**{**item.__dict__, "ranges": reduced_ranges}))
+            selected.append(replace(item, ranges=reduced_ranges))
 
         handles: dict[str, tuple[str, tuple[int, int] | None]] = {}
         matches_payload: list[dict[str, Any]] = []

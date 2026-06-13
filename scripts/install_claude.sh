@@ -191,6 +191,43 @@ run "chmod +x '$STAGING_DIR/scripts/'*.sh 2>/dev/null || true"
 run "chmod +x '$STAGING_DIR/hooks/'*.sh '$STAGING_DIR/hooks/'*.py 2>/dev/null || true"
 PLUGIN_DIR="$STAGING_DIR"
 INSTALL_SOURCE_DIR="$STAGING_DIR"
+
+# Write the Python interpreter path so _run_hook.sh can find atelier in all
+# install modes (binary, dev-venv, uv-tool, pip).  Probe in preference order:
+#   1. uv run from the repo (dev / local checkout)
+#   2. uv tool venv python (uv tool install atelier)
+#   3. system python3/python (pip install atelier)
+# Binary-mode installs have no importable Python; the file is left absent and
+# hooks degrade gracefully via their try/except guards.
+if ! $DRY_RUN; then
+    _ATELIER_PY=""
+    # 1. dev / local checkout
+    if [[ -z "${_ATELIER_PY}" ]] && command -v uv >/dev/null 2>&1; then
+        _ATELIER_PY="$(cd "${ATELIER_REPO}" && uv run python -c "import sys; print(sys.executable)" 2>/dev/null || true)"
+        [[ -n "${_ATELIER_PY}" ]] && "${_ATELIER_PY}" -c "import atelier" 2>/dev/null || _ATELIER_PY=""
+    fi
+    # 2. uv tool venv
+    if [[ -z "${_ATELIER_PY}" ]]; then
+        for _py in "${HOME}/.local/share/uv/tools/atelier/bin/python" "${HOME}/.local/share/uv/tools/atelier/bin/python3"; do
+            if [[ -x "${_py}" ]] && "${_py}" -c "import atelier" 2>/dev/null; then
+                _ATELIER_PY="${_py}"; break
+            fi
+        done
+    fi
+    # 3. system python (pip install)
+    if [[ -z "${_ATELIER_PY}" ]]; then
+        for _py in python3 python; do
+            if command -v "${_py}" >/dev/null 2>&1 && "$(command -v "${_py}")" -c "import atelier" 2>/dev/null; then
+                _ATELIER_PY="$(command -v "${_py}")"; break
+            fi
+        done
+    fi
+    if [[ -n "${_ATELIER_PY}" && -x "${_ATELIER_PY}" ]]; then
+        echo "${_ATELIER_PY}" > "${STAGING_DIR}/atelier-python"
+        info "Stored atelier python: ${_ATELIER_PY}"
+    fi
+fi
+
 if $PRINT_ONLY; then
     echo ""
     echo "=== Atelier Claude Code - Install Steps ==="
@@ -305,43 +342,11 @@ if [ "$STRUCT_FAIL" -ne 0 ]; then
 fi
 info "Structural validation passed"
 
-# ---- refresh atelier from local source ---------------------------------
-# The CLI + MCP server runs from `uv tool install`'s isolated site-packages, NOT
-# from a live source link. Without this step, any change you make under src/
-# (e.g. capability fixes that affect savings emission) won't reach Claude
-# until you re-run install.sh. Reinstall here so install_claude.sh is the
-# single command that keeps plugin assets AND the MCP runtime in sync.
-refresh_atelier_tool() {
-    # In binary mode (install.sh flow) the binary IS the runtime — skip uv reinstall.
-    if [[ "${ATELIER_BINARY_MODE:-0}" == "1" ]]; then
-        return 0
-    fi
-    if ! command -v uv >/dev/null 2>&1; then
-        warn "uv not on PATH — skipping atelier refresh"
-        return 0
-    fi
-    local extras="mcp,memory,smart,cloud,postgres,vector,parsers,rename"
-    local pkg_spec="${ATELIER_REPO}[${extras}]"
-
-    if $DRY_RUN; then
-        echo "  [dry-run] uv tool install --reinstall ${pkg_spec}"
-        return 0
-    fi
-
-    info "Refreshing atelier from ${ATELIER_REPO}"
-    uv tool install --reinstall "$pkg_spec" >/dev/null 2>&1 || {
-        warn "uv tool install --reinstall failed; atelier may run stale code"
-        return 0
-    }
-}
-
-refresh_atelier_tool
-
 # ---- plugin install ---------------------------------------------------------
 if $DRY_RUN; then
     echo "  [dry-run] claude plugin validate ${PLUGIN_DIR}"
     echo "  [dry-run] claude plugin marketplace add '${INSTALL_SOURCE_DIR}'"
-    echo "  [dry-run] reinstall ${PLUGIN_REF}"
+    echo "  [dry-run] claude plugin install ${PLUGIN_REF}"
 else
     info "Validating plugin package with Claude CLI at ${PLUGIN_DIR}"
     if ! claude plugin validate "${PLUGIN_DIR}" 2>&1 | grep -q "Validation passed"; then

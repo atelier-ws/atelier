@@ -24,9 +24,9 @@ class ArchivalRecallCapability:
     def archive(
         self,
         *,
-        agent_id: str | None = None,
         text: str,
         source: ArchivalSource,
+        agent_id: str | None = None,
         source_ref: str = "",
         tags: list[str] | None = None,
     ) -> ArchivalPassage:

@@ -50,7 +50,18 @@ def test_plugin_no_longer_ships_dev_agent_variants() -> None:
 
 
 def test_plugin_skills_are_packaged_locally() -> None:
-    found = {path.parent.name for path in (PLUGIN / "skills").glob("*/SKILL.md")}
+    # Only the canonical standalone skills are committed under the plugin.
+    # Agent-role skills (code/explore/...) are generated build artifacts that
+    # `build_host_skills.sh` writes into this directory and are gitignored, so
+    # check the git-tracked set rather than whatever a prior build left behind.
+    tracked = subprocess.run(
+        ["git", "ls-files", "integrations/claude/plugin/skills/*/SKILL.md"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    found = {Path(line).parent.name for line in tracked if line.strip()}
     assert found == {"orchestrate", "swarms"}
 
 

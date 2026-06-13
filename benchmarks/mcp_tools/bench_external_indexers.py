@@ -73,7 +73,6 @@ def run_cmd(
 class ToolBenchResult:
     tool: str
     ok: bool
-    correctness: float
     median_ms: float
     p95_ms: float
     median_tokens: int
@@ -279,11 +278,16 @@ def _find_free_port() -> int:
 SNAPSHOT_IGNORE_NAMES = {
     ".git",
     ".venv",
+    ".venv-build",
     ".atelier-benchmarks",
     ".codegraph",
     ".mcp-vector-search",
     "node_modules",
     "reports",
+    "benchmarks",
+    "build",
+    "build_dist",
+    "dist",
     ".bench-work",
     ".cocoindex_code",
     ".serena",
@@ -293,21 +297,90 @@ SNAPSHOT_IGNORE_NAMES = {
 }
 
 
+def _is_ignored_snapshot_name(name: str) -> bool:
+    # Exact-match the curated set, and prefix-match any virtualenv (.venv,
+    # .venv-build, .venv-*) so build venvs never get copied/hashed into a
+    # provider snapshot. Indexing third-party site-packages is slow, pollutes
+    # results, and copies gigabytes of artifacts per shard.
+    return name in SNAPSHOT_IGNORE_NAMES or name.startswith(".venv")
+
+
+def _snapshot_relpaths(repo_root: Path) -> list[str] | None:
+    """Repo-relative paths to snapshot: tracked + untracked files git would keep
+    (honoring .gitignore / .git/info/exclude / global excludes), with the
+    harness's own ignore list applied on top.
+
+    Returns ``None`` when ``repo_root`` is not a git work tree (or git is
+    unavailable), so callers fall back to a plain recursive walk.
+    """
+    if shutil.which("git") is None:
+        return None
+    proc = run_cmd(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-x",
+            ".venv*",  # skip untracked build venvs git itself does not ignore
+            "-z",
+        ],
+        timeout=300,
+    )
+    if proc.returncode != 0:
+        return None
+    rels = (rel for rel in proc.stdout.split("\0") if rel)
+    return [rel for rel in rels if not any(_is_ignored_snapshot_name(part) for part in rel.split("/"))]
+
+
+def _copy_one(src: Path, dst: Path) -> None:
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_symlink():
+            if src.exists():
+                dst.symlink_to(os.readlink(src))
+            return
+        if src.is_file():
+            shutil.copy2(src, dst)
+    except FileNotFoundError:
+        # File vanished between listing and copy (volatile output written
+        # concurrently); skip it rather than aborting the whole snapshot.
+        return
+
+
 def _copy_repo_tree(src_dir: Path, dst_dir: Path) -> None:
     dst_dir.mkdir(parents=True, exist_ok=True)
+    rels = _snapshot_relpaths(src_dir)
+    if rels is None:
+        _copy_repo_tree_walk(src_dir, dst_dir)
+        return
+    for rel in rels:
+        _copy_one(src_dir / rel, dst_dir / rel)
+
+
+def _copy_repo_tree_walk(src_dir: Path, dst_dir: Path) -> None:
+    """Fallback copy when ``src_dir`` is not a git work tree: honor only the
+    harness ignore list."""
+    dst_dir.mkdir(parents=True, exist_ok=True)
     for entry in src_dir.iterdir():
-        if entry.name in SNAPSHOT_IGNORE_NAMES:
+        if _is_ignored_snapshot_name(entry.name):
             continue
         target = dst_dir / entry.name
-        if entry.is_symlink():
-            if entry.exists():
-                target.symlink_to(os.readlink(entry))
+        try:
+            if entry.is_symlink():
+                if entry.exists():
+                    target.symlink_to(os.readlink(entry))
+                continue
+            if entry.is_dir():
+                _copy_repo_tree_walk(entry, target)
+                continue
+            if entry.is_file():
+                shutil.copy2(entry, target)
+        except FileNotFoundError:
             continue
-        if entry.is_dir():
-            _copy_repo_tree(entry, target)
-            continue
-        if entry.is_file():
-            shutil.copy2(entry, target)
 
 
 def prepare_repo_snapshot(repo_root: Path, workspace_root: Path, name: str) -> Path:
@@ -319,11 +392,31 @@ def prepare_repo_snapshot(repo_root: Path, workspace_root: Path, name: str) -> P
 
 def repo_cache_key(repo_root: Path) -> str:
     digest = hashlib.sha256()
+    rels = _snapshot_relpaths(repo_root)
+    if rels is not None:
+        # Hash exactly what the snapshot will contain so the key tracks the
+        # gitignore-aware file set and their contents.
+        for rel in sorted(rels):
+            path = repo_root / rel
+            try:
+                if path.is_symlink():
+                    digest.update(f"link:{rel}:{os.readlink(path)}".encode())
+                    continue
+                if not path.is_file():
+                    continue
+                digest.update(f"file:{rel}".encode())
+                with path.open("rb") as handle:
+                    while chunk := handle.read(1024 * 1024):
+                        digest.update(chunk)
+            except FileNotFoundError:
+                continue
+        return digest.hexdigest()[:16]
+    # Fallback: recursive walk honoring the harness ignore list.
     stack = [repo_root]
     while stack:
         current = stack.pop()
         for entry in sorted(current.iterdir(), key=lambda item: item.name):
-            if entry.name in SNAPSHOT_IGNORE_NAMES:
+            if _is_ignored_snapshot_name(entry.name):
                 continue
             relative = entry.relative_to(repo_root).as_posix()
             if entry.is_dir():
@@ -383,6 +476,7 @@ def install_external_tools(workspace: Path) -> None:
     ensure_workspace(workspace)
     commands = [
         ["npm", "i", "-g", "@colbymchenry/codegraph"],
+        ["uv", "tool", "install", "-p", "3.13", "serena-agent"],
         ["uv", "tool", "install", "--upgrade", "cocoindex-code[full]"],
         [
             "uv",
@@ -392,10 +486,23 @@ def install_external_tools(workspace: Path) -> None:
             "https://github.com/jgravelle/jcodemunch-mcp/releases/download/v1.108.22/jcodemunch_mcp-1.108.22-py3-none-any.whl",
         ],
     ]
+    # Best-effort: a missing package manager (npm/uv) or a single failed install
+    # must not abort the whole matrix. Warn and continue so every provider whose
+    # tool *did* install (plus the self-provisioning ones) still runs.
+    failures: list[str] = []
     for cmd in commands:
         proc = run_cmd(cmd, cwd=workspace, timeout=1800)
         if proc.returncode != 0:
-            raise RuntimeError(f"install failed: {' '.join(cmd)}\n{proc.stderr[:1200]}")
+            label = " ".join(cmd)
+            detail = (proc.stderr or proc.stdout or "").strip()[:800]
+            failures.append(f"  {label}\n    {detail}")
+            print(f"[install] WARNING: failed to install: {label}", file=sys.stderr)
+    if failures:
+        print(
+            "[install] Some external provider tools could not be installed; "
+            "those providers will report startup_failed:\n" + "\n".join(failures),
+            file=sys.stderr,
+        )
 
 
 def external_workspace_root(workspace_root: Path) -> Path:
@@ -472,7 +579,6 @@ def bench_atelier(repo_root: Path, workspace_root: Path, query: str, iterations:
     return ToolBenchResult(
         tool="atelier",
         ok=True,
-        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -527,7 +633,6 @@ def bench_atelier_zoekt(repo_root: Path, workspace_root: Path, query: str, itera
     return ToolBenchResult(
         tool="atelier-zoekt",
         ok=True,
-        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -567,7 +672,6 @@ def bench_serena(repo_root: Path, workspace_root: Path, query: str, iterations: 
         return ToolBenchResult(
             tool="serena",
             ok=True,
-            correctness=1.0,
             median_ms=statistics.median(times),
             p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
             median_tokens=int(statistics.median(toks)),
@@ -604,7 +708,6 @@ def bench_codegraph(repo_root: Path, query: str, iterations: int) -> ToolBenchRe
     return ToolBenchResult(
         tool="codegraph",
         ok=True,
-        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -638,7 +741,6 @@ def bench_code_index(
     return ToolBenchResult(
         tool="code-index-mcp",
         ok=True,
-        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -689,7 +791,6 @@ def bench_ccc(repo_root: Path, workspace_root: Path, query: str, iterations: int
     return ToolBenchResult(
         tool="cocoindex-code",
         ok=True,
-        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -724,7 +825,6 @@ def bench_jcodemunch(repo_root: Path, iterations: int) -> ToolBenchResult:
     return ToolBenchResult(
         tool="jcodemunch-mcp",
         ok=True,
-        correctness=1.0,
         median_ms=statistics.median(times),
         p95_ms=sorted(times)[int(0.95 * (len(times) - 1))],
         median_tokens=int(statistics.median(toks)),
@@ -771,7 +871,6 @@ def run_external_benchmarks(
                 ToolBenchResult(
                     tool=name,
                     ok=False,
-                    correctness=0.0,
                     median_ms=0.0,
                     p95_ms=0.0,
                     median_tokens=0,
@@ -785,14 +884,12 @@ def run_external_benchmarks(
 
 def render_table(results: list[ToolBenchResult]) -> str:
     lines = [
-        "| Tool | Status | Correctness | Median ms | P95 ms | Median tokens | Runs |",
-        "|---|---|---:|---:|---:|---:|---:|",
+        "| Tool | Status | Median ms | P95 ms | Median tokens | Runs |",
+        "|---|---|---:|---:|---:|---:|",
     ]
     for r in results:
         status = "ok" if r.ok else "failed"
-        lines.append(
-            f"| {r.tool} | {status} | {r.correctness * 100:.1f}% | {r.median_ms:.1f} | {r.p95_ms:.1f} | {r.median_tokens} | {r.runs} |"
-        )
+        lines.append(f"| {r.tool} | {status} | {r.median_ms:.1f} | {r.p95_ms:.1f} | {r.median_tokens} | {r.runs} |")
     return "\n".join(lines)
 
 
@@ -805,7 +902,6 @@ def write_csv(results: list[ToolBenchResult], path: Path) -> None:
                 "query",
                 "tool",
                 "status",
-                "correctness",
                 "median_ms",
                 "p95_ms",
                 "median_tokens",
@@ -822,7 +918,6 @@ def write_csv(results: list[ToolBenchResult], path: Path) -> None:
                     "query": result.query,
                     "tool": result.tool,
                     "status": "ok" if result.ok else "failed",
-                    "correctness": result.correctness,
                     "median_ms": result.median_ms,
                     "p95_ms": result.p95_ms,
                     "median_tokens": result.median_tokens,

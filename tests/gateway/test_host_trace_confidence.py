@@ -14,9 +14,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
-DOCS_ROOT = Path(__file__).parent.parent.parent / "docs"
-TRACE_CONFIDENCE_DOC = DOCS_ROOT / "engineering" / "trace-confidence.md"
-HOST_MATRIX = DOCS_ROOT / "hosts" / "host-capability-matrix.md"
+REPO_ROOT = Path(__file__).parent.parent.parent
+
+
+def _doc(*relparts: str) -> Path:
+    """Resolve a doc that may live under docs/ or docs-internal/.
+
+    Engineering docs were relocated to docs-internal/ on the bench refactor;
+    prefer that location and fall back to the public docs/ tree.
+    """
+    for base in ("docs-internal", "docs"):
+        candidate = REPO_ROOT.joinpath(base, *relparts)
+        if candidate.exists():
+            return candidate
+    return REPO_ROOT.joinpath("docs", *relparts)
+
+
+TRACE_CONFIDENCE_DOC = _doc("engineering", "trace-confidence.md")
+HOST_MATRIX = _doc("hosts", "host-capability-matrix.md")
 # CODEX_README and COPILOT_README paths removed — AGENTS_README.md files deleted
 # in favor of live code-index discovery via atelier_context mode="symbols"
 

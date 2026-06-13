@@ -190,15 +190,15 @@ def validate_provider(provider_id: str, credentials: dict[str, str]) -> tuple[bo
             os.environ[key] = credentials[key]
 
     try:
-        import litellm
+        from atelier.infra.internal_llm.litellm_client import chat_with_result
 
         test_model = cfg["test_model"]
-        response = litellm.completion(
+        result = chat_with_result(
+            [{"role": "user", "content": "hi"}],
             model=test_model,
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=5,
+            extra_kwargs={"max_tokens": 5},
         )
-        return True, f"✓ Connected to {cfg['name']} ({response.model or test_model})"
+        return True, f"✓ Connected to {cfg['name']} ({result.model or test_model})"
     except Exception as exc:  # noqa: BLE001 - validation surfaces any failure to the user
         return False, f"✗ Failed: {str(exc)[:200]}"
     finally:

@@ -1503,7 +1503,7 @@ run_setup() {
             fi
         fi
         if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-            echo "[dry-run] bash $ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh ${host_install_args[*]+${host_install_args[*]}}"
+            echo "[dry-run] bash $ATELIER_INSTALL_DIR/scripts/install_hosts.sh ${host_install_args[*]+${host_install_args[*]}}"
         else
             local host_output host_output_file host_ret
             host_output_file="${TMPDIR:-/tmp}/atelier-hosts.$(date +%Y%m%dT%H%M%S).$$.log"
@@ -1511,9 +1511,9 @@ run_setup() {
             set +e
             if [[ "$ATELIER_VERBOSE" == "1" ]]; then
                 if [[ -n "$C_RESET" ]]; then
-                    FORCE_COLOR=1 bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]+"${host_install_args[@]}"}" 2>&1 | tee "$host_output_file"
+                    FORCE_COLOR=1 bash "$ATELIER_INSTALL_DIR/scripts/install_hosts.sh" "${host_install_args[@]+"${host_install_args[@]}"}" 2>&1 | tee "$host_output_file"
                 else
-                    bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]+"${host_install_args[@]}"}" 2>&1 | tee "$host_output_file"
+                    bash "$ATELIER_INSTALL_DIR/scripts/install_hosts.sh" "${host_install_args[@]+"${host_install_args[@]}"}" 2>&1 | tee "$host_output_file"
                 fi
                 host_ret=${PIPESTATUS[0]}
             else
@@ -1526,7 +1526,7 @@ run_setup() {
                 fi
                 _SPINNER_MSG="Installing host integrations"                _SPINNER_ACTIVE=1
                 _spinner_run
-                ATELIER_HOST_STATUS_STREAM=1 bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh" "${host_install_args[@]+"${host_install_args[@]}"}" 2>&1 | while IFS= read -r line; do
+                ATELIER_HOST_STATUS_STREAM=1 bash "$ATELIER_INSTALL_DIR/scripts/install_hosts.sh" "${host_install_args[@]+"${host_install_args[@]}"}" 2>&1 | while IFS= read -r line; do
                     printf "%s\n" "$line" >>"$host_output_file"
                     if [[ "$line" =~ ^@@ATELIER_HOST_STATUS@@[[:space:]]+([A-Z]+)[[:space:]]+(.+)$ ]]; then
                         local status="${BASH_REMATCH[1]}"

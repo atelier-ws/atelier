@@ -54,6 +54,7 @@ install_console_scripts() {
 
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
         stop_existing_atelier_processes
+        printf '[dry-run] uv sync --frozen (prime cache from uv.lock)\n'
         printf '[dry-run] uv tool uninstall atelier (if present)\n'
         printf '[dry-run] UV_TOOL_BIN_DIR=%q UV_TOOL_DIR=%q uv tool install' "$ATELIER_BIN_DIR" "$ATELIER_TOOL_DIR"
         printf ' %q' "$package_spec"
@@ -61,9 +62,24 @@ install_console_scripts() {
         return
     fi
 
+    # Use the project "as is": resolve from the committed uv.lock instead of
+    # re-resolving from PyPI. `uv tool install` ignores uv.lock and always
+    # resolves from scratch against the index, which is what causes the
+    # "stuck resolving packages" hang on a cold/stale cache. Priming the
+    # project environment with `--frozen` (no resolution, no network when the
+    # cache is warm) pulls every locked wheel into ~/.cache/uv first, so the
+    # subsequent `uv tool install` resolves entirely from cache.
+    # NOTE: never pass --no-cache/--refresh/--upgrade here — those would defeat
+    # the cache reuse this step exists to guarantee.
+    if [[ -f "${ATELIER_INSTALL_DIR}/uv.lock" ]]; then
+        verbose "Priming uv cache from uv.lock (uv sync --frozen)"
+        ( cd "$ATELIER_INSTALL_DIR" && uv sync --frozen ) || \
+            verbose "uv sync --frozen failed; falling back to fresh resolve"
+    fi
+
     mkdir -p "$ATELIER_BIN_DIR" "$ATELIER_TOOL_DIR"
     stop_existing_atelier_processes
-    
+
     # Forcefully remove any existing manual wrappers to prevent uv collision
     rm -f "${ATELIER_BIN_DIR}/atelier"
 
@@ -74,7 +90,7 @@ install_console_scripts() {
     
     UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" \
         UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
-        uv tool install "$package_spec" --force
+        ATELIER_SKIP_MYPYC=1 uv tool install "$package_spec" --force
 
 }
 

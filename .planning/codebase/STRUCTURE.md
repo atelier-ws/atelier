@@ -7,7 +7,7 @@
 ```
 atelier/
 ├── src/
-│   ├── atelier/             # Main Python package (453 .py files)
+│   ├── atelier/             # Main Python package (488 .py files)
 │   │   ├── gateway/         # Agent-facing entry points (CLI, MCP, adapters, SDK, hosts)
 │   │   ├── core/            # Domain logic (runtime, capabilities, foundation, service)
 │   │   ├── infra/           # Persistence + integrations (storage, code_intel, embeddings)

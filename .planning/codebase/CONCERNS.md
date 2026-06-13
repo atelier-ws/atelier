@@ -1,6 +1,13 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-06-08
+**Analysis Date:** 2026-06-08 · **Health re-verified:** 2026-06-13
+
+> **Live launch tracking:** see `.planning/LAUNCH-READINESS.md` for the current work plan.
+> As of 2026-06-13 the test suite is **red at collection** (19 errors — orphaned tests pointing
+> at removed `benchmarks.code_intel` / `benchmarks.swe.config` / `core/capabilities/sync` modules),
+> `make launch-gate` is broken (missing `scripts/launch_gate.sh`), and uncommitted
+> `source_projection/minify.py` fails lint+mypy. The "no specific bugs" note below predates these.
+> God-file sizes have drifted: `mcp_server.py` → 7,664, `api.py` → 6,835, `engine.py` 7,819.
 
 ## Tech Debt
 

@@ -9,6 +9,7 @@ from atelier.core.capabilities.source_projection.mapping import (
     resolve_projected_range,
     suggest_exact_reread_range,
 )
+from atelier.core.capabilities.source_projection.minify import resolve_minified_span
 from atelier.core.capabilities.source_projection.models import ProjectionMapping
 
 
@@ -196,11 +197,11 @@ def _overlap_retry(
 
 
 def _validate_projection_mapping(content: str, mapping: ProjectionMapping) -> None:
-    if mapping.projection_kind != "compact":
+    if mapping.projection_kind not in {"compact", "minified"}:
         raise ProjectionEditError(
             f"unsupported projection kind: {mapping.projection_kind}",
             code="unsupported_projection_kind",
-            hint="Use projection_kind='compact'.",
+            hint="Use projection_kind='compact' or 'minified'.",
         )
     if ProjectionMapping.digest(content) != mapping.source_hash:
         raise ProjectionEditError(
@@ -225,11 +226,18 @@ def apply_compact_projection_edits(
         projected_start = int(edit["projected_start"])
         projected_end = int(edit["projected_end"])
         new_string = str(edit.get("new_string", ""))
-        source_range = resolve_projected_range(
-            mapping,
-            projected_start=projected_start,
-            projected_end=projected_end,
-        )
+        if mapping.projection_kind == "minified":
+            source_range = resolve_minified_span(
+                mapping,
+                projected_start=projected_start,
+                projected_end=projected_end,
+            )
+        else:
+            source_range = resolve_projected_range(
+                mapping,
+                projected_start=projected_start,
+                projected_end=projected_end,
+            )
         if source_range is None:
             hint, retry_with = _ambiguous_retry(
                 content,

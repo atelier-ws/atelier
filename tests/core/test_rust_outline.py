@@ -6,17 +6,22 @@ from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCap
 
 
 def test_rust_outline_keeps_container_bodies_out(tmp_path: Path) -> None:
-    source = """
-pub struct Worker {
+    # Body is padded so the outline clears the 25%-savings guard (which now
+    # also accounts for the projection-notice overhead); the point of the test
+    # is that the stripped container body keeps ``sentinel_body`` out of the
+    # outline, not that any tiny snippet outlines.
+    body = "\n".join(f"        let sentinel_body_{i} = {i};" for i in range(30))
+    source = f"""
+pub struct Worker {{
     id: usize,
-}
+}}
 
-impl Worker {
-    pub fn run(&self) -> usize {
-        let sentinel_body = 42;
-        sentinel_body
-    }
-}
+impl Worker {{
+    pub fn run(&self) -> usize {{
+{body}
+        sentinel_body_0
+    }}
+}}
 """.strip()
     path = tmp_path / "sample.rs"
     path.write_text(source, encoding="utf-8")

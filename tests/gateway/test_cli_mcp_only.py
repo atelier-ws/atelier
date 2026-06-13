@@ -24,7 +24,9 @@ from atelier.gateway.cli.app import MCP_TOOL_ONLY_COMMANDS, MCP_TOOL_ONLY_GROUPS
 
 # Dev-only subcommands of the suppressed @_dev_group("memory") / @_dev_group("route").
 # These have no live equivalent and must be absent from the resolvable tree.
-_DEV_ONLY_MEMORY_SUBCOMMANDS = ("upsert", "get", "archive", "recall")
+# NOTE: ``recall`` is a live user-facing command (`atelier memory recall <query>`),
+# so it is intentionally excluded here -- only the raw MCP-block primitives are dev-only.
+_DEV_ONLY_MEMORY_SUBCOMMANDS = ("upsert", "get", "archive")
 _DEV_ONLY_ROUTE_SUBCOMMANDS = ("decide",)
 
 

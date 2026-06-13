@@ -358,10 +358,10 @@ def execute_owned_prompt(
 def _execute_transport(
     prompt: str,
     *,
-    compiled_prompt: Mapping[str, Any] | None = None,
     provider: str,
     model: str,
     transport: str,
+    compiled_prompt: Mapping[str, Any] | None = None,
 ) -> InternalLLMChatResult:
     messages, cache_metadata = _transport_payload(
         prompt, compiled_prompt=compiled_prompt, transport=transport, provider=provider

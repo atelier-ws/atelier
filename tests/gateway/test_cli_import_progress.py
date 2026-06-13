@@ -44,12 +44,12 @@ def test_import_progress_lands_on_stderr_not_stdout(tmp_path: Path) -> None:
     _invoke(root, "init", "--no-index")
     sessions = _make_claude_fixture(tmp_path)
 
-    result = _invoke(root, "claude", "import", "--path", str(sessions))
+    result = _invoke(root, "import", "--host", "claude", "--path", str(sessions))
 
     assert result.exit_code == 0, result.output
 
     # Progress diagnostic appears on stderr.
-    assert "[atelier] claude: discovering sessions" in result.stderr
+    assert "[atelier] claude: discovered sessions" in result.stderr
 
     # Import progress text must NOT leak onto stdout.
     assert "[atelier]" not in result.stdout

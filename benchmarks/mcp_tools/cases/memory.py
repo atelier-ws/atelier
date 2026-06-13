@@ -90,7 +90,7 @@ def _build_memory_cases() -> list[BenchCase]:
                 },
                 assert_keys=["id", "subject", "fact", "scope", "citations", "reason"],
                 custom_assert=_store_assert(fact),
-                baseline_tokens=700,
+                baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
             )
         )
         cases.append(
@@ -107,7 +107,7 @@ def _build_memory_cases() -> list[BenchCase]:
                 },
                 assert_keys=["id", "fact", "direction", "reason", "scope"],
                 custom_assert=_vote_assert(fact),
-                baseline_tokens=500,
+                baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
             )
         )
         cases.append(
@@ -125,7 +125,7 @@ def _build_memory_cases() -> list[BenchCase]:
                 },
                 assert_keys=["passages"],
                 custom_assert=_recall_assert(symbol.name, symbol.path),
-                baseline_tokens=1000,
+                baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
             )
         )
     return cases

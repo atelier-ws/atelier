@@ -285,9 +285,6 @@ def test_store_falls_back_to_local_provider(tmp_path: Path) -> None:
     assert hits[0].provenance == "local"
 
 
-@pytest.mark.skip(
-    reason="SCIP routing for engine.tool_*() under field-shortening migration; tracked for post-launch hardening (see docs/launch-readiness.md)."
-)
 def test_scip_provider_routes_search_and_symbol_payloads(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -300,7 +297,8 @@ def test_scip_provider_routes_search_and_symbol_payloads(tmp_path: Path) -> None
     assert hits
     assert hits[0].symbol_id == "scip-order-service"
     assert hits[0].provenance == "scip"
-    assert symbol["symbol_id"] == "scip-order-service"
+    # tool_symbol output applies field-name shortening: symbol_id -> id.
+    assert symbol["id"] == "scip-order-service"
     assert symbol["provenance"] == "scip"
     assert "class OrderService" in symbol["source"]
     assert symbol["index_sha"] == FIXTURE_INDEX_SHA
@@ -523,9 +521,6 @@ def test_scip_provider_switches_branch_scoped_artifacts_without_reinstantiation(
     assert provider.search_symbols("MainService", limit=5) == []
 
 
-@pytest.mark.skip(
-    reason="SCIP routing for engine.tool_usages() under field-shortening migration; tracked for post-launch hardening (see docs/launch-readiness.md)."
-)
 def test_scip_provider_routes_usages_payloads(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -534,15 +529,13 @@ def test_scip_provider_routes_usages_payloads(tmp_path: Path) -> None:
 
     payload = engine.tool_usages(query="OrderService", budget_tokens=4000)
 
-    assert payload["target"]["symbol_id"] == "scip-order-service"
+    # tool_usages output applies field-name shortening: symbol_id -> id.
+    assert payload["target"]["id"] == "scip-order-service"
     assert payload["provenance"] == "scip"
     assert payload["provenance_breakdown"] == {"scip": 1}
     assert payload["references"]["src/checkout.py"][0]["provenance"] == "scip"
 
 
-@pytest.mark.skip(
-    reason="SCIP routing for engine.tool_usages() under field-shortening migration; tracked for post-launch hardening (see docs/launch-readiness.md)."
-)
 def test_scip_provider_falls_back_to_treesitter_when_reference_data_is_missing(
     tmp_path: Path,
 ) -> None:
@@ -553,7 +546,8 @@ def test_scip_provider_falls_back_to_treesitter_when_reference_data_is_missing(
 
     payload = engine.tool_usages(query="OrderService", budget_tokens=4000)
 
-    assert payload["target"]["symbol_id"] == "scip-order-service"
+    # tool_usages output applies field-name shortening: symbol_id -> id.
+    assert payload["target"]["id"] == "scip-order-service"
     assert payload["provenance"] == "local_index"
     assert payload["provenance_breakdown"] == {"local_index": 1}
 
@@ -637,46 +631,51 @@ def test_scip_provider_falls_back_when_artifact_is_invalid(tmp_path: Path) -> No
     assert hits[0].provenance == "local"
 
 
-@pytest.mark.skip(
-    reason="SCIP cache-invalidation surface under field-shortening migration; tracked for post-launch hardening (see docs/launch-readiness.md)."
-)
 def test_scip_refresh_invalidates_cached_search(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
-    artifact_path = _write_scip_fixture(engine, symbol_id="scip-v1")
+    # The fixture symbol name is the user-visible, non-shortened-away field on each
+    # search item (repo-scope compaction strips symbol_id), so rename the symbol to
+    # observe that the cache picks up the rewritten artifact.
+    artifact_path = _write_scip_fixture(engine, symbol_id="scip-v1", symbol_name="OrderService")
 
     first = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     cached = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
-    artifact_path.write_text(artifact_path.read_text(encoding="utf-8").replace("scip-v1", "scip-v2"), encoding="utf-8")
-    fresh = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+    artifact_path.write_text(
+        artifact_path.read_text(encoding="utf-8").replace("OrderService", "OrderServiceV2"),
+        encoding="utf-8",
+    )
+    fresh = engine.tool_search("OrderServiceV2", limit=5, budget_tokens=4000)
 
     assert first["cache_hit"] is False
     assert first["provenance"] == "scip"
     assert cached["cache_hit"] is True
     assert fresh["cache_hit"] is False
     assert fresh["provenance"] == "scip"
-    assert fresh["items"][0]["symbol_id"] == "scip-v2"
+    assert fresh["items"][0]["name"] == "OrderServiceV2"
 
 
-@pytest.mark.skip(
-    reason="SCIP cache-invalidation surface under field-shortening migration; tracked for post-launch hardening (see docs/launch-readiness.md)."
-)
 def test_scip_refresh_invalidates_cached_search_for_new_engine_instance(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
-    artifact_path = _write_scip_fixture(engine, symbol_id="scip-v1")
+    # Rename the symbol (the field that survives repo-scope compaction) so a fresh
+    # engine instance observably routes to the rewritten artifact.
+    artifact_path = _write_scip_fixture(engine, symbol_id="scip-v1", symbol_name="OrderService")
 
     cached = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
-    artifact_path.write_text(artifact_path.read_text(encoding="utf-8").replace("scip-v1", "scip-v2"), encoding="utf-8")
+    artifact_path.write_text(
+        artifact_path.read_text(encoding="utf-8").replace("OrderService", "OrderServiceV2"),
+        encoding="utf-8",
+    )
     fresh_engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
-    fresh = fresh_engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+    fresh = fresh_engine.tool_search("OrderServiceV2", limit=5, budget_tokens=4000)
 
     assert cached["provenance"] == "scip"
     assert fresh["cache_hit"] is False
     assert fresh["provenance"] == "scip"
-    assert fresh["items"][0]["symbol_id"] == "scip-v2"
+    assert fresh["items"][0]["name"] == "OrderServiceV2"
 
 
 def test_scip_env_var_contract_preserved_after_registry_migration(

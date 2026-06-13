@@ -54,11 +54,11 @@ class KeepaliveThread:
         )
         self._interval = interval
         self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, daemon=True, name="atelier-keepalive")
+        self._worker = threading.Thread(target=self._run, daemon=True, name="atelier-keepalive")
 
     def start(self) -> None:
         if self._interval > 0:
-            self._thread.start()
+            self._worker.start()
         # else: no-op provider (OpenAI / unknown) — don't start thread at all
 
     def stop(self) -> None:
@@ -92,14 +92,15 @@ class KeepaliveThread:
         if self._gemini_cache is not None:
             self._gemini_cache.refresh()
         else:
-            # No context cache available — fall back to a tiny completion
+            # No context cache available — fall back to a tiny completion,
+            # routed through the infra litellm wrapper to keep the provider SDK
+            # confined to src/atelier/infra/internal_llm/.
             try:
-                import litellm as _litellm
-
-                _litellm.completion(
-                    model=self._model,
-                    messages=[{"role": "user", "content": "ping"}],
-                )
+                from atelier.infra.internal_llm.litellm_client import chat_with_result
+            except Exception:  # noqa: BLE001
+                return
+            try:
+                chat_with_result([{"role": "user", "content": "ping"}], model=self._model)
             except Exception:  # noqa: BLE001
                 pass
 

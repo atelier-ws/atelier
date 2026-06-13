@@ -13,10 +13,13 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.capabilities.source_projection import (
+    MinifiedEditError,
     ProjectionEditError,
     ProjectionMapping,
     apply_compact_projection_edit,
     apply_compact_projection_edits,
+    apply_minified_edit,
+    language_for_minify,
 )
 
 from . import command_discipline
@@ -172,7 +175,16 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
                 matched = match.group(0)
                 match_mode = "placeholder"
     if index != -1:
-        replacement = _adapt_indentation(old_string, new_string, matched)
+        # Exact matches replace verbatim: the caller's new_string is authoritative.
+        # Indentation adaptation is only a courtesy for whitespace-divergent matches
+        # (normalized/placeholder/fuzzy). Applying it to an exact match whose anchor
+        # begins inside an indented block wrongly re-indents replacement lines that
+        # legitimately dedent (e.g. a module-level constant inserted after a list
+        # literal), turning a valid edit into a SyntaxError.
+        if match_mode == "exact":
+            replacement = new_string
+        else:
+            replacement = _adapt_indentation(old_string, new_string, matched)
         absolute = start_offset + index
         line_start = content[:absolute].count("\n") + 1
         line_end = line_start + matched.count("\n")
@@ -199,6 +211,23 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
         if len(flat_new) >= _REFORMAT_NOOP_MIN_CHARS and flat_new in _strip_formatting(scoped):
             line = spec.start_line or 1
             return content, line, line, "noop"
+
+    # Minified-projection fallback: old_string may have been copied from a
+    # minified read view (comments and blank lines stripped, inline
+    # whitespace collapsed). Re-minify the live file, match in minified space,
+    # then splice back onto the untransformed source. Skipped for line-scoped
+    # edits, whose disk line numbers are authoritative.
+    if spec.start_line is None:
+        minify_lang = language_for_minify(spec.path)
+        if minify_lang is not None:
+            try:
+                minified_content, minified_start, minified_end = apply_minified_edit(
+                    content, minify_lang, old_string, new_string, path=spec.path
+                )
+            except MinifiedEditError:
+                pass
+            else:
+                return minified_content, minified_start, minified_end, "minified"
 
     if normalize_for_fuzzy(old_string):
         fuzzed, line_start, line_end = apply_fuzzy_replace(scoped, old_string, new_string)
