@@ -1437,6 +1437,18 @@ def _render_tool_result(name: str, result: Any, args: dict[str, Any], *, session
                 epoch=context_dedup.current_epoch(),
                 force=bool(args.get("force")),
             )
+            if outcome is None and name == "read":
+                from atelier.gateway.adapters.mcp_server import _read_dedup_resource
+
+                resource = _read_dedup_resource(args)
+                if resource:
+                    outcome = context_dedup.registry().delta_for(
+                        session_id=session_id,
+                        resource=resource,
+                        content=text,
+                        epoch=context_dedup.current_epoch(),
+                        force=bool(args.get("force")),
+                    )
             if outcome is not None:
                 text = outcome[0]
     return text

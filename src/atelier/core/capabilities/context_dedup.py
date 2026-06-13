@@ -5,6 +5,11 @@ to content already returned earlier in the *same* session, emit a short stub
 pointer instead of re-paying to put the same bytes back into the context window.
 The model still has the original earlier in the transcript, so nothing is lost.
 
+For single-file ``read`` results that *changed* since the previous read (the
+common re-read-after-edit case, where exact dedup can never fire), ``delta_for``
+emits a unified diff against the text previously returned instead of the full
+body — the model already holds the prior version in its transcript.
+
 **Scope**: MCP tool-output level, within one session, exact SHA-256 hash match.
 Do not confuse with ``context_compression.deduplication``, which runs inside
 the compression pipeline and uses edit-distance / MinHash for *near*-duplicate
@@ -30,6 +35,12 @@ from pathlib import Path
 
 # Not worth stubbing small results (also matches the cache_control threshold).
 _MIN_DEDUP_CHARS = 4096
+# Delta must be meaningfully smaller than a full re-emit to be worth the
+# indirection; otherwise just resend the body.
+_DELTA_MAX_RATIO = 0.5
+# Bound per-session memory for stored read bodies (LRU-evicted).
+_MAX_TRACKED_RESOURCES = 64
+_MAX_TRACKED_CONTENT_CHARS = 2_000_000
 
 
 @dataclass
@@ -37,6 +48,7 @@ class _SessionDedup:
     epoch: int = 0
     calls: int = 0
     seen: dict[str, int] = field(default_factory=dict)  # content hash -> call ordinal
+    last_read: dict[str, str] = field(default_factory=dict)  # resource key -> last emitted text
 
 
 class ContextDedup:
@@ -84,6 +96,57 @@ class ContextDedup:
             return None
         stub = f"[atelier dedup] read #{seen_ordinal} — {len(content)} chars omitted. force=true re-emits."
         return stub, len(content) - len(stub)
+
+    def delta_for(
+        self,
+        *,
+        session_id: str,
+        resource: str,
+        content: str,
+        epoch: int,
+        force: bool,
+    ) -> tuple[str, int] | None:
+        """Return ``(delta_text, chars_saved)`` vs the last read of *resource*.
+
+        Records *content* as the new baseline either way. Returns ``None`` (emit
+        the full body) when forced, on first read, when content is small, or
+        when the diff is not meaningfully smaller than the body itself.
+        """
+        if not session_id or not resource:
+            return None
+        st = self._session(session_id, epoch)
+        previous = st.last_read.get(resource)
+        if len(content) <= _MAX_TRACKED_CONTENT_CHARS:
+            st.last_read.pop(resource, None)  # re-insert for LRU ordering
+            st.last_read[resource] = content
+            while len(st.last_read) > _MAX_TRACKED_RESOURCES:
+                st.last_read.pop(next(iter(st.last_read)))
+        else:
+            st.last_read.pop(resource, None)
+        if force or previous is None or previous == content or len(content) < _MIN_DEDUP_CHARS:
+            return None
+        import difflib
+
+        diff_lines = list(
+            difflib.unified_diff(
+                previous.splitlines(keepends=True),
+                content.splitlines(keepends=True),
+                fromfile="previous read",
+                tofile="current",
+                n=3,
+            )
+        )
+        if not diff_lines:
+            return None
+        diff_text = "".join(diff_lines)
+        header = (
+            f"[atelier delta] {resource} changed since your last read — unified diff vs that read "
+            f"({len(content)} chars total). force=true re-emits the full body.\n"
+        )
+        delta = header + diff_text
+        if len(delta) > len(content) * _DELTA_MAX_RATIO:
+            return None
+        return delta, len(content) - len(delta)
 
 
 _REGISTRY = ContextDedup()
