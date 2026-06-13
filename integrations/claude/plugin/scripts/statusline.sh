@@ -111,10 +111,10 @@ fi
 # local project entrypoint so statusline development picks up the new fields
 # before the global binary is upgraded.
 SAVED_FIELD_COUNT=$(printf '%s' "${SAVED_LINE:-}" | awk -F'|' '{print NF}' 2>/dev/null || echo 0)
-if [ "${SAVED_FIELD_COUNT:-0}" -lt 14 ] 2>/dev/null; then
+if [ "${SAVED_FIELD_COUNT:-0}" -lt 16 ] 2>/dev/null; then
   SAVED_LINE=$(uv run --quiet atelier savings --line 2>/dev/null)
 fi
-IFS="|" read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_BASE_COST CUMULATIVE_TOK DISPLAY_IN_TOK DISPLAY_CACHE_TOK DISPLAY_OUT_TOK CARRY_USD CARRY_TOK CARRY_PCT SAVED_PCT <<<"${SAVED_LINE:-}"
+IFS="|" read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_BASE_COST CUMULATIVE_TOK DISPLAY_IN_TOK DISPLAY_CACHE_TOK DISPLAY_OUT_TOK CARRY_USD CARRY_TOK CARRY_PCT SAVED_PCT VS_VANILLA_CALLS VS_VANILLA_USD <<<"${SAVED_LINE:-}"
 [ -z "${SAVED_USD:-}" ] && SAVED_USD="\$0.000"
 [ -z "${SAVED_CTX:-}" ] && SAVED_CTX="0"
 [ -z "${SAVED_CALLS:-}" ] && SAVED_CALLS="0"
@@ -128,6 +128,8 @@ IFS="|" read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_
 [ -z "${CARRY_TOK:-}" ] && CARRY_TOK="0"
 [ -z "${CARRY_PCT:-}" ] && CARRY_PCT="0%"
 [ -z "${SAVED_PCT:-}" ] && SAVED_PCT="0%"
+[ -z "${VS_VANILLA_CALLS:-}" ] && VS_VANILLA_CALLS="0"
+[ -z "${VS_VANILLA_USD:-}" ] && VS_VANILLA_USD="\$0.000"
 # Reset the displayed cost on /clear. SessionStart(clear) drops a marker; here
 # we snapshot the cumulative live cost at that moment and subtract it from then
 # on, so the row reflects only post-clear spend. (Claude's cost.total_cost_usd
@@ -241,6 +243,15 @@ else
   SAVED_SEG_COMPACT=""
 fi
 
+# Comparative "vs vanilla Claude Code" replay: roundtrips vanilla CC would have
+# spent that Atelier avoided, with their estimated cost. Counterfactual / labeled
+# separately — never mixed into the headline saved figure. Shown only when >0.
+if [ "${VS_VANILLA_CALLS:-0}" -gt 0 ] 2>/dev/null; then
+  VS_VANILLA_SEG=" ${SEP} vs CC: ${VS_VANILLA_CALLS} rt ${SEP} ${VS_VANILLA_USD}"
+else
+  VS_VANILLA_SEG=""
+fi
+
 # Background tasks. The statusline JSON carries no task info, so derive it:
 # shell jobs from session transcripts (main + subagents) where launch markers
 # exist without terminal task-notification status, and where the task output
@@ -318,18 +329,19 @@ TASKS_SEG=""
 # token breakdown. Enable with ATELIER_STATUS_COMPACT=1 in the statusLine
 # command.
 if [ -n "${ATELIER_STATUS_COMPACT:-}" ]; then
-  printf '%s%s%s %s %s %s ctx %s%% %s %s%s%s\n' \
+  printf '%s%s%s %s %s %s ctx %s%% %s %s%s%s%s\n' \
     "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
     "$PIPE" "$MODEL" "$SEP" "$PCT_INT" \
     "$PIPE" "$COST_FMT" \
     "$SAVED_SEG_COMPACT" \
+    "$VS_VANILLA_SEG" \
     "$TASKS_SEG"
   exit 0
 fi
 
-printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s)%s%s%s%s\n' \
+printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s)%s%s%s%s%s\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
   "$PIPE" "$MODEL" "$STATUS_SEG" "$ACTUAL_CTX_F" "$PCT_INT" \
   "$PIPE" "$COST_FMT" "$TOK_DISPLAY" \
   "$SAVED_SEG" \
-  "$CARRY_SEG" "$ROUTING_SEG" "$TASKS_SEG"
+  "$CARRY_SEG" "$ROUTING_SEG" "$VS_VANILLA_SEG" "$TASKS_SEG"
