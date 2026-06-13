@@ -1156,57 +1156,172 @@ def _tool_uses(turns: list[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
     return [(idx, tool) for idx, turn in enumerate(turns) for tool in (turn.get("tool_uses") or [])]
 
 
-def detect_read_batch(turns: list[dict[str, Any]]) -> dict[str, Any]:
-    for _, turn in enumerate(turns):
-        reads = [tool for tool in turn.get("tool_uses", []) if tool.get("name") == "Read"]
-        if len(reads) >= 2:
-            return {
-                "workflows": 1,
-                "calls_saved": len(reads) - 1,
-                "consumed_tool_use_ids": [r.get("id") for r in reads],
-            }
-    return {"workflows": 0, "calls_saved": 0, "consumed_tool_use_ids": []}
+# Bash commands used as code navigation (one indexed Atelier call replaces them).
+_BASH_NAV_TOKENS = ("grep", "rg", "ast-grep", "sg ", "find ")
 
 
-def detect_edit_batch(turns: list[dict[str, Any]]) -> dict[str, Any]:
+def _consume(tool: dict[str, Any], consumed: set[str] | None) -> bool:
+    """Return True if *tool* is newly consumable; record its id in *consumed*.
+
+    A tool_use whose id is already in *consumed* is skipped so a single Read is
+    never double-credited by two detectors (e.g. grep_read and read_batch).
+    """
+    if consumed is None:
+        return True
+    tid = tool.get("id")
+    if tid is None:
+        return True
+    if tid in consumed:
+        return False
+    consumed.add(tid)
+    return True
+
+
+def detect_read_batch(turns: list[dict[str, Any]], consumed_tool_use_ids: set[str] | None = None) -> dict[str, Any]:
+    """Sum every per-turn run of >=2 Reads; each run of N saves N-1 calls."""
+    calls_saved = 0
+    workflows = 0
+    ids: list[str] = []
     for turn in turns:
-        edits = [tool for tool in turn.get("tool_uses", []) if tool.get("name") in {"Edit", "Write", "MultiEdit"}]
+        reads = [
+            tool
+            for tool in turn.get("tool_uses", [])
+            if tool.get("name") == "Read" and _consume(tool, consumed_tool_use_ids)
+        ]
+        if len(reads) >= 2:
+            workflows += 1
+            calls_saved += len(reads) - 1
+            ids.extend(r.get("id") for r in reads if r.get("id") is not None)
+    return {"workflows": workflows, "calls_saved": calls_saved, "consumed_tool_use_ids": ids}
+
+
+def detect_edit_batch(turns: list[dict[str, Any]], consumed_tool_use_ids: set[str] | None = None) -> dict[str, Any]:
+    """Sum every per-turn run of >=2 Edit/Write/MultiEdit calls."""
+    calls_saved = 0
+    workflows = 0
+    for turn in turns:
+        edits = [
+            tool
+            for tool in turn.get("tool_uses", [])
+            if tool.get("name") in {"Edit", "Write", "MultiEdit"} and _consume(tool, consumed_tool_use_ids)
+        ]
         if len(edits) >= 2:
-            return {"workflows": 1, "calls_saved": len(edits) - 1}
-    return {"workflows": 0, "calls_saved": 0}
+            workflows += 1
+            calls_saved += len(edits) - 1
+    return {"workflows": workflows, "calls_saved": calls_saved}
 
 
-def detect_grep_read(turns: list[dict[str, Any]], max_gap_turns: int = 3) -> dict[str, Any]:
+def detect_grep_read(
+    turns: list[dict[str, Any]], max_gap_turns: int = 3, consumed_tool_use_ids: set[str] | None = None
+) -> dict[str, Any]:
+    """Sum every Grep-then-Read navigation chain (Glob is handled separately)."""
+    calls_saved = 0
+    workflows = 0
     for idx, turn in enumerate(turns):
-        greps = [tool for tool in turn.get("tool_uses", []) if tool.get("name") in {"Grep", "Glob"}]
+        greps = [
+            tool
+            for tool in turn.get("tool_uses", [])
+            if tool.get("name") == "Grep" and _consume(tool, consumed_tool_use_ids)
+        ]
         if not greps:
             continue
         reads: list[dict[str, Any]] = []
         for later in turns[idx + 1 : idx + max_gap_turns + 1]:
-            reads.extend([tool for tool in later.get("tool_uses", []) if tool.get("name") == "Read"])
+            reads.extend(
+                tool
+                for tool in later.get("tool_uses", [])
+                if tool.get("name") == "Read" and _consume(tool, consumed_tool_use_ids)
+            )
         if reads:
-            return {"workflows": 1, "calls_saved": len(greps) + len(reads) - 1}
-    return {"workflows": 0, "calls_saved": 0}
+            workflows += 1
+            calls_saved += len(greps) + len(reads) - 1
+    return {"workflows": workflows, "calls_saved": calls_saved}
 
 
-def detect_failed_edit(turns: list[dict[str, Any]], max_gap_turns: int = 5) -> dict[str, Any]:
+def detect_glob_read(
+    turns: list[dict[str, Any]], max_gap_turns: int = 3, consumed_tool_use_ids: set[str] | None = None
+) -> dict[str, Any]:
+    """Sum every Glob-then-Read navigation chain (split out of grep_read)."""
+    calls_saved = 0
+    workflows = 0
     for idx, turn in enumerate(turns):
-        failed = [tool for tool in turn.get("tool_uses", []) if tool.get("name") == "Edit" and tool.get("is_error")]
+        globs = [
+            tool
+            for tool in turn.get("tool_uses", [])
+            if tool.get("name") == "Glob" and _consume(tool, consumed_tool_use_ids)
+        ]
+        if not globs:
+            continue
+        reads: list[dict[str, Any]] = []
+        for later in turns[idx + 1 : idx + max_gap_turns + 1]:
+            reads.extend(
+                tool
+                for tool in later.get("tool_uses", [])
+                if tool.get("name") == "Read" and _consume(tool, consumed_tool_use_ids)
+            )
+        if reads:
+            workflows += 1
+            calls_saved += len(globs) + len(reads) - 1
+    return {"workflows": workflows, "calls_saved": calls_saved}
+
+
+def detect_failed_edit(
+    turns: list[dict[str, Any]], max_gap_turns: int = 5, consumed_tool_use_ids: set[str] | None = None
+) -> dict[str, Any]:
+    """Sum every failed-Edit recovery chain (a failed Edit + its follow-up Reads/Edits)."""
+    calls_saved = 0
+    workflows = 0
+    for idx, turn in enumerate(turns):
+        failed = [
+            tool
+            for tool in turn.get("tool_uses", [])
+            if tool.get("name") == "Edit" and tool.get("is_error") and _consume(tool, consumed_tool_use_ids)
+        ]
         if not failed:
             continue
         chain = list(failed)
         for later in turns[idx + 1 : idx + max_gap_turns + 1]:
-            chain.extend([tool for tool in later.get("tool_uses", []) if tool.get("name") in {"Read", "Edit"}])
+            chain.extend(
+                tool
+                for tool in later.get("tool_uses", [])
+                if tool.get("name") in {"Read", "Edit"} and _consume(tool, consumed_tool_use_ids)
+            )
         if len(chain) >= 2:
-            return {"workflows": 1, "calls_saved": len(chain) - 1}
-    return {"workflows": 0, "calls_saved": 0}
+            workflows += 1
+            calls_saved += len(chain) - 1
+    return {"workflows": workflows, "calls_saved": calls_saved}
 
 
-def detect_bash_sql(turns: list[dict[str, Any]]) -> dict[str, Any]:
+def detect_bash_sql(turns: list[dict[str, Any]], consumed_tool_use_ids: set[str] | None = None) -> dict[str, Any]:
+    """Sum Bash SQL-client calls (>=2 of them = N-1 indexed-query calls saved)."""
     matches = []
     for _, tool in _tool_uses(turns):
         command = str((tool.get("input") or {}).get("command", ""))
-        if tool.get("name") == "Bash" and any(sql_cmd in command for sql_cmd in _SQL_COMMANDS):
+        if (
+            tool.get("name") == "Bash"
+            and any(sql_cmd in command for sql_cmd in _SQL_COMMANDS)
+            and _consume(tool, consumed_tool_use_ids)
+        ):
+            matches.append(tool)
+    if len(matches) >= 2:
+        return {"workflows": 1, "calls_saved": len(matches) - 1}
+    return {"workflows": 0, "calls_saved": 0}
+
+
+def detect_bash_grep_chain(
+    turns: list[dict[str, Any]], consumed_tool_use_ids: set[str] | None = None
+) -> dict[str, Any]:
+    """Sum Bash commands used for code navigation (grep/rg/ast-grep/find).
+
+    Atelier replaces these ad-hoc shell searches with one indexed call, so a run
+    of >=2 such Bash invocations saves N-1 roundtrips.
+    """
+    matches = []
+    for _, tool in _tool_uses(turns):
+        if tool.get("name") != "Bash":
+            continue
+        command = str((tool.get("input") or {}).get("command", ""))
+        if any(token in command for token in _BASH_NAV_TOKENS) and _consume(tool, consumed_tool_use_ids):
             matches.append(tool)
     if len(matches) >= 2:
         return {"workflows": 1, "calls_saved": len(matches) - 1}
@@ -1809,6 +1924,16 @@ def build_savings_report(
     if not isinstance(subscription, dict):
         subscription = {}
     ab_calibration = _summarize_ab_calibration(root_path)
+    # Comparative "vs vanilla Claude Code" replay number. This is a SEPARATE,
+    # counterfactual estimate (roundtrips vanilla CC would have spent that
+    # Atelier's batching/indexing avoided) and is never folded into saved_usd.
+    try:
+        from atelier.core.capabilities.vanilla_baseline import aggregate_vanilla_baseline
+
+        vs_vanilla = aggregate_vanilla_baseline(root_path)
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        vs_vanilla = {"calls_saved": 0, "time_saved_ms": 0, "tokens_saved": 0, "cost_saved_usd": 0.0}
     return {
         "calls_avoided": calls_avoided,
         "tokens_saved": tokens_saved,
@@ -1816,6 +1941,7 @@ def build_savings_report(
         "live": live,
         "session": session,
         "lifetime": lifetime,
+        "vs_vanilla": vs_vanilla,
         "baseline": {
             "available": baseline_gate.get("available", False),
             "estimate": baseline,
