@@ -65,7 +65,10 @@ def _resolve(root: Path, raw_path: str) -> Path:
     try:
         resolved.relative_to(root)
     except ValueError as exc:
-        raise ValueError(f"path escape denied: {raw_path}") from exc
+        raise ValueError(
+            f"path escape denied: {raw_path} is outside the workspace root {root} — "
+            "use the host's native tools for files outside the workspace"
+        ) from exc
     if any(part in PROTECTED_PARTS for part in resolved.parts):
         raise ValueError(f"protected path denied: {raw_path}")
     return resolved
