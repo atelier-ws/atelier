@@ -4836,7 +4836,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
         payload: dict[str, Any] = {"path": path, "include_meta": True}
         if view == "compact":
-            pass
+            # The HTTP surface pins the conservative compact projection; the
+            # tree-sitter "minified" view is an MCP-layer default only.
+            payload["projection_kind"] = "compact"
         elif view == "exact":
             payload["expand"] = True
         elif view == "summary":

@@ -65,8 +65,8 @@ def test_mcp_binary_on_path() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_install_agent_clis_script_exists() -> None:
-    script = SCRIPTS / "install_agent_clis.sh"
+def test_install_hosts_script_exists() -> None:
+    script = SCRIPTS / "install_hosts.sh"
     assert script.exists()
     assert is_executable(script)
 
@@ -126,31 +126,34 @@ def test_verify_agent_clis_script_exists() -> None:
     assert is_executable(script)
 
 
-def test_install_agent_clis_references_all_hosts() -> None:
-    content = (SCRIPTS / "install_agent_clis.sh").read_text()
+def test_install_hosts_references_all_hosts() -> None:
+    content = (SCRIPTS / "install_hosts.sh").read_text()
     for host in ["claude", "codex", "opencode", "copilot", "antigravity"]:
-        assert host in content, f"install_agent_clis.sh missing reference to {host}"
+        assert host in content, f"install_hosts.sh missing reference to {host}"
 
 
 def test_host_installers_stream_output_instead_of_buffering() -> None:
-    install_content = (SCRIPTS / "dev.sh").read_text()
-    host_content = (SCRIPTS / "install_agent_clis.sh").read_text()
+    # The shared run_setup() orchestrator (lib/common.sh) streams host installer
+    # output through `tee` rather than capturing it into a variable, and the
+    # per-host dispatcher (install_hosts.sh) streams via stream_colored_output.
+    common_content = (SCRIPTS / "lib" / "common.sh").read_text()
+    host_content = (SCRIPTS / "install_hosts.sh").read_text()
 
-    assert 'host_output="$(bash "$ATELIER_INSTALL_DIR/scripts/install_agent_clis.sh"' not in install_content
-    assert '| tee "$host_output_file"' in install_content
+    assert 'host_output="$(bash "$ATELIER_INSTALL_DIR/scripts/install_hosts.sh"' not in common_content
+    assert '| tee "$host_output_file"' in common_content
     assert 'output=$(bash "$script"' not in host_content
     assert '| stream_colored_output "$output_file"' in host_content
 
 
 def test_host_installer_default_selection_uses_detection() -> None:
-    content = (SCRIPTS / "install_agent_clis.sh").read_text()
+    content = (SCRIPTS / "install_hosts.sh").read_text()
     assert "host_is_detected()" in content
     assert "enable_detected_hosts_by_default" in content
     assert "enable_detected_hosts_by_default" in content.split("# Default: all hosts", 1)[1]
 
 
 def test_host_installer_has_timeout_guard() -> None:
-    content = (SCRIPTS / "install_agent_clis.sh").read_text()
+    content = (SCRIPTS / "install_hosts.sh").read_text()
     assert 'ATELIER_HOST_INSTALL_TIMEOUT_SECONDS="${ATELIER_HOST_INSTALL_TIMEOUT_SECONDS:-180}"' in content
     assert "run_host_installer()" in content
     assert "host installer timed out after" in content
@@ -430,31 +433,40 @@ def test_managed_context_helper_shared_across_host_installs() -> None:
         ), f"{script_name} must use the shared managed context helper"
 
 
-def test_dev_sh_bootstraps_atelier_before_host_installers() -> None:
-    content = (SCRIPTS / "dev.sh").read_text()
-    install_pos = content.index('step_start "Installing Atelier"')
-    hosts_pos = content.index('step_start "Installing host integrations"')
+def test_local_sh_bootstraps_atelier_before_host_installers() -> None:
+    # The source installer (local.sh) installs the Atelier console scripts, then
+    # delegates to run_setup() in lib/common.sh, which installs host integrations.
+    local_content = (SCRIPTS / "local.sh").read_text()
+    common_content = (SCRIPTS / "lib" / "common.sh").read_text()
 
-    assert install_pos < hosts_pos, "Atelier console installation must precede host integration installation"
-    # Note: `atelier init` (runtime store initialization) runs after host integrations
-    # in the current script flow — both orderings are valid.
+    assert 'step_start "Installing Atelier"' in local_content
+    assert 'step_start "Installing host integrations"' in common_content
+    # local.sh installs Atelier and only then calls run_setup (which installs hosts).
+    install_pos = local_content.index('step_start "Installing Atelier"')
+    # rindex: the actual run_setup call in main(), not the comment near the top.
+    run_setup_pos = local_content.rindex("run_setup")
+    assert install_pos < run_setup_pos, "Atelier console installation must precede run_setup (host integrations)"
 
 
-def test_dev_sh_installs_tool_scripts_not_uv_runtime_wrappers() -> None:
-    content = (SCRIPTS / "dev.sh").read_text()
+def test_local_sh_installs_tool_scripts_not_uv_runtime_wrappers() -> None:
+    content = (SCRIPTS / "local.sh").read_text()
     assert "tool install" in content
     assert "UV_TOOL_BIN_DIR" in content
-    assert "mcp,memory,smart,cloud,repo-map,api,postgres,vector,parsers,rename,telemetry" in content
+    # The console-script extras the source installer requests. The runtime
+    # ("repo-map"/"api"/"telemetry") extras were dropped on this branch.
+    assert "mcp,memory,smart,cloud,postgres,vector,parsers,rename" in content
 
 
-def test_dev_sh_has_only_local_and_remote_source_modes() -> None:
-    content = (SCRIPTS / "dev.sh").read_text()
+def test_source_installer_is_always_local_mode() -> None:
+    # The legacy dev.sh switched between source and binary modes via --local/--remote
+    # and a prepare_repo clone step. That mode-switching was removed: local.sh is
+    # always the source installer (ATELIER_LOCAL=1), bundle.sh is the binary one.
+    content = (SCRIPTS / "local.sh").read_text()
     assert "ATELIER_USE_CURRENT_REPO" not in content
-    assert 'elif [[ -f "uv.lock" && -d "src/atelier" && -f "scripts/local.sh" ]]' not in content
-    assert "--local) ATELIER_LOCAL=1" in content
-    assert "--remote|--no-local) ATELIER_LOCAL=0" in content
-    assert 'if [[ "$ATELIER_LOCAL" == "1" ]]; then' in content
-    assert "prepare_repo" in content
+    assert "prepare_repo" not in content
+    assert "ATELIER_LOCAL=1" in content
+    # --local/--remote/--no-local remain accepted as no-ops for CLI compatibility.
+    assert "--local|--remote|--no-local) : ;;" in content
 
 
 def test_copilot_tasks_include_preflight_wrapper() -> None:

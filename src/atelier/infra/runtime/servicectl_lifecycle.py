@@ -305,22 +305,39 @@ def _git_project_root() -> Path | None:
     return None
 
 
+# Distribution channel — keep in lockstep with scripts/install.sh and
+# src/atelier/gateway/cli/commands/update.py.
+_GH_REPO = "atelier-ws/atelier"
+_RELEASE_LATEST_URL = f"https://github.com/{_GH_REPO}/releases/latest/download"
+
+
+def _github_latest_version() -> str | None:
+    """Fetch the latest release tag from GitHub Releases (e.g. "0.3.5")."""
+    import urllib.request
+
+    try:
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{_GH_REPO}/releases/latest",
+            headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "atelier-update/1.0"},
+        )
+        resp = urllib.request.urlopen(req, timeout=10)  # nosec - pinned GitHub API URL
+        data = json.loads(resp.read().decode())
+        tag = data.get("tag_name", "")
+        return tag.lstrip("v") or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _detect_auto_update_method() -> tuple[str, str | None]:
     """Detect the install method for auto-update.
 
-    Returns (method, project_root_or_None).
+    Returns ("git", project_root) for a source checkout, or ("release", None)
+    for an end-user install, which updates through the GitHub release installer.
     """
-    # Frozen binary (PyInstaller) — can't be anything else
-    if getattr(sys, "frozen", False):
-        return ("binary", None)
-
-    # Git checkout?
     git_root = _git_project_root()
     if git_root is not None:
         return ("git", str(git_root))
-
-    # Fallback: try uv tool
-    return ("uv_tool", None)
+    return ("release", None)
 
 
 def _update_via_git(project_root: str) -> bool:
@@ -350,90 +367,56 @@ def _update_via_git(project_root: str) -> bool:
     return True
 
 
-def _update_via_uv_tool() -> bool:
-    """Update via ``uv tool upgrade atelier``. Returns True if applied."""
-    result = subprocess.run(
-        ["uv", "tool", "upgrade", "atelier"],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode == 0:
-        return True
-    # "already up-to-date" is not an error
-    if "already" in result.stderr.lower() or "already" in result.stdout.lower():
-        return False
-    logger.error(f"uv tool upgrade failed: {result.stderr.strip()}")
-    return False
+def _update_via_release() -> bool:
+    """Launch a detached installer to reinstall from the latest GitHub release.
 
+    The daemon cannot reinstall itself inline: ``install.sh`` stops running
+    atelier processes (this daemon included). So download the published
+    ``install.sh`` and run it in a fully detached session — it outlives this
+    process, reinstalls the uv tool from ``atelier-distribution-*.tar.gz``, and
+    its own ``run_setup`` restarts the stack on the new code.
 
-def _update_via_binary() -> bool:
-    """Update binary (PyInstaller) via GitHub Releases download.
-
-    Returns True if a new binary was downloaded.
+    Returns True if an installer was launched (a newer release exists and the
+    download succeeded), else False.
     """
     import shutil
-    import tarfile
     import tempfile
     import urllib.request
 
-    os_name = sys.platform.lower()
-    if os_name == "darwin":
-        plat = "darwin"
-    elif os_name == "linux":
-        plat = "linux"
-    else:
-        logger.error(f"Auto-update: unsupported platform {os_name}")
+    if not shutil.which("bash"):
+        logger.error("Auto-update: bash unavailable; cannot apply release update")
         return False
 
-    arch = os.uname().machine
-    if arch in ("x86_64", "amd64"):
-        arch_part = "x86_64"
-    elif arch in ("aarch64", "arm64"):
-        arch_part = "arm64"
-    else:
-        logger.error(f"Auto-update: unsupported architecture {arch}")
+    latest = _github_latest_version()
+    if latest is None:
+        logger.error("Auto-update: could not determine latest release version")
+        return False
+    current = _atelier_version()
+    if latest == current:
         return False
 
-    suffix = f"{plat}-{arch_part}"
-    asset = f"atelier-binaries-{suffix}.tar.gz"
-    url = f"https://github.com/atelier-ws/atelier/releases/latest/download/{asset}"
-
-    current_binary = Path(sys.executable if getattr(sys, "frozen", False) else (shutil.which("atelier") or ""))
-    if not current_binary.exists():
-        logger.error("Auto-update: could not locate atelier binary for replacement")
-        return False
-
+    installer_url = f"{_RELEASE_LATEST_URL}/install.sh"
     try:
-        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
-            tmp_path = tmp.name
-            urllib.request.urlretrieve(url, tmp_path)  # nosec
-
-        extract_dir = Path(tempfile.mkdtemp(prefix="atelier-autoupdate-"))
-        try:
-            with tarfile.open(tmp_path, "r:gz") as tar:
-                tar.extractall(path=extract_dir)
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-        extracted_bin = extract_dir / "bin" / "atelier"
-        if not extracted_bin.exists():
-            extracted_bin = extract_dir / "atelier"
-        if not extracted_bin.exists():
-            logger.error(f"Auto-update: binary not found in release archive {asset}")
-            return False
-
-        import stat
-
-        target = current_binary.resolve()
-        shutil.copy2(str(extracted_bin), str(target))
-        target.chmod(target.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-        shutil.rmtree(extract_dir, ignore_errors=True)
-        logger.info("Auto-update: binary replaced successfully.")
-        return True
+        fd, tmp_path = tempfile.mkstemp(suffix="-atelier-install.sh")
+        with os.fdopen(fd, "wb") as fh, urllib.request.urlopen(installer_url, timeout=30) as resp:  # nosec
+            shutil.copyfileobj(resp, fh)
     except Exception as exc:  # noqa: BLE001
-        logger.error(f"Auto-update: binary download failed: {exc}")
+        logger.error(f"Auto-update: failed to download installer ({installer_url}): {exc}")
         return False
+
+    logger.info(f"Auto-update: launching detached installer ({current} -> {latest})")
+    # Fully detached: new session so the installer survives this daemon being
+    # stopped by the installer's own process-cleanup, plus its later restart.
+    subprocess.Popen(
+        ["bash", tmp_path],
+        env={**os.environ, "ATELIER_NON_INTERACTIVE": "1"},
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+        close_fds=True,
+    )
+    return True
 
 
 def _stack_restart() -> None:
@@ -449,66 +432,59 @@ def _stack_restart() -> None:
 def _servicectl_check_and_apply_updates(root: Path) -> bool:
     """Check for updates and apply them if available.
 
-    Supports git, uv tool (PyPI), and binary (GitHub Releases) installs.
-    Writes an update-state record after a successful update so that SessionStart
-    hooks can notify the user.
+    Two install topologies, two behaviours:
 
-    Returns True if an update was applied and the process should restart.
+    - **git** — pull + ``uv sync`` inline, write update-state, restart the stack,
+      and return True so the caller exits for an immediate restart on new code.
+    - **release** — launch a *detached* installer (see ``_update_via_release``)
+      and return False. The installer owns the reinstall and stack restart, so the
+      caller must NOT exit here; returning False lets the tick record its check
+      timestamp, preventing a relaunch on the next tick before the installer lands.
+
+    Returns True only when the caller should exit for an immediate restart.
     """
     previous_version = _atelier_version()
     method, project_root = _detect_auto_update_method()
     logger.info(f"Auto-update: install method={method}, current version={previous_version}")
 
     try:
-        applied: bool = False
         if method == "git" and project_root:
-            applied = _update_via_git(project_root)
-        elif method == "uv_tool":
-            applied = _update_via_uv_tool()
-        elif method == "binary":
-            applied = _update_via_binary()
-        else:
-            logger.info("Auto-update: no update method available (unknown install type)")
-            return False
+            if not _update_via_git(project_root):
+                logger.info("Auto-update: already up-to-date.")
+                return False
 
-        if not applied:
-            logger.info("Auto-update: already up-to-date.")
-            return False
-
-        # Write update-state for SessionStart hooks.
-        # After a git update the in-process version hasn't changed, so read
-        # the *new* version from pyproject.toml (git) or importlib (others).
-        try:
-            from atelier.core.foundation.update_state import write_update_state
-
-            if method == "git" and project_root:
+            # In-process version is unchanged after a git pull; read the new
+            # version from pyproject.toml for the SessionStart notification.
+            try:
                 import re
+
+                from atelier.core.foundation.update_state import write_update_state
 
                 pyproject = Path(project_root) / "pyproject.toml"
                 match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject.read_text("utf-8"), re.MULTILINE)
                 new_version = match.group(1) if match else previous_version
-            else:
-                try:
-                    from importlib.metadata import version
+                write_update_state(
+                    previous_version=previous_version,
+                    current_version=new_version,
+                    method=method,
+                    root=root,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"Auto-update: failed to write update state: {exc}")
 
-                    new_version = version("atelier")
-                except Exception:  # noqa: BLE001
-                    new_version = previous_version
+            _stack_restart()
+            logger.info("Auto-update: update applied successfully. Exiting for restart.")
+            return True
 
-            write_update_state(
-                previous_version=previous_version,
-                current_version=new_version,
-                method=method,
-                root=root,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"Auto-update: failed to write update state: {exc}")
-
-        # Trigger managed-service restart
-        _stack_restart()
-
-        logger.info("Auto-update: update applied successfully. Exiting for restart.")
-        return True
+        # release install: the detached installer reinstalls and restarts the
+        # stack itself. Never exit the daemon here — the installer stops it when
+        # ready, and returning False records the check timestamp so we don't
+        # launch a second installer on the next tick.
+        if _update_via_release():
+            logger.info("Auto-update: detached installer launched; it will restart the stack.")
+        else:
+            logger.info("Auto-update: already up-to-date.")
+        return False
 
     except Exception as exc:
         logging.exception("Recovered from broad exception handler")

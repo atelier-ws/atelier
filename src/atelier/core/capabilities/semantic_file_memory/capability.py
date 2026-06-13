@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -21,6 +22,40 @@ from .typescript_ast import outline as typescript_outline
 
 _logger = logging.getLogger(__name__)
 _CLAUDE_READ_LINE_LIMIT = 2000
+_DEFAULT_OUTLINE_THRESHOLD = 0
+
+
+def default_outline_threshold() -> int:
+    """Outline LOC threshold: ``ATELIER_OUTLINE_THRESHOLD`` env override, else 0.
+
+    Files with effective LOC above the threshold are outline-eligible. The
+    default of 0 makes every non-empty file outline-eligible — the 25% savings
+    guard still decides whether the outline actually ships.
+    """
+    raw = os.environ.get("ATELIER_OUTLINE_THRESHOLD", "").strip()
+    if raw:
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            _logger.warning("invalid ATELIER_OUTLINE_THRESHOLD=%r, using %d", raw, _DEFAULT_OUTLINE_THRESHOLD)
+    return _DEFAULT_OUTLINE_THRESHOLD
+
+
+@lru_cache(maxsize=1)
+def _outline_notice_chars() -> int:
+    """Chars the read layer prepends to outline bodies (notice + blank line)."""
+    from atelier.core.capabilities.source_projection import SourceProjection
+
+    return len(SourceProjection.outline().notice or "") + 2
+
+
+def _outline_saves_enough(outline_text: str, source: str) -> bool:
+    """25% savings guard, counting the projection notice the agent actually receives.
+
+    Without the notice overhead a tiny file passes on the bare outline but
+    ships *larger* than its own body (and forces an expand=true round-trip).
+    """
+    return len(outline_text) + _outline_notice_chars() <= int(len(source) * 0.75)
 
 
 @lru_cache(maxsize=1)
@@ -179,7 +214,8 @@ class SemanticFileMemoryCapability:
         returned_tokens = max(1, _count_tokens(returned_text))
         return max(0, full_tokens - returned_tokens)
 
-    def _outline_for(self, path: Path, source: str, language: str, *, effective_loc: int) -> FileOutline:
+    @staticmethod
+    def _outline_for(path: Path, source: str, language: str, *, effective_loc: int) -> FileOutline:
         if language == "python":
             base = python_outline(str(path), source)
         else:
@@ -284,9 +320,11 @@ class SemanticFileMemoryCapability:
         *,
         range_spec: str | None = None,
         expand: bool = False,
-        outline_threshold: int = 200,
+        outline_threshold: int | None = None,
     ) -> dict[str, Any]:
         """Read file in full/range/outline mode with token-savings accounting."""
+        if outline_threshold is None:
+            outline_threshold = default_outline_threshold()
         file_path = Path(path)
         if not file_path.is_file():
             raise FileNotFoundError(f"file not found: {file_path}")
@@ -321,80 +359,220 @@ class SemanticFileMemoryCapability:
             )
             return result
 
-        # Per-language AST outline (python only — TS/JS now go through tree-sitter below)
-        if not expand and effective_loc > outline_threshold and language == "python":
-            outline = self._outline_for(
-                file_path,
-                source,
-                language,
-                effective_loc=effective_loc,
+        mode, payload, outline_payload = self._projection_payload(
+            file_path,
+            source,
+            language,
+            effective_loc,
+            expand=expand,
+            outline_threshold=outline_threshold,
+        )
+        baseline = _claude_read_baseline_text(source)
+        if mode == "outline":
+            result.update(
+                {
+                    "mode": "outline",
+                    "outline": outline_payload,
+                    "tokens_saved": self._token_savings(baseline, payload),
+                }
             )
-            outline_json = json.dumps(outline.model_dump(mode="json"), ensure_ascii=False)
-            # Same 25% guard as tree-sitter branch: don't ship a fake savings
-            # event if the outline is larger than the source (e.g. parse failed
-            # and returned an empty FileOutline, or source has invalid syntax).
-            if len(outline_json) <= int(len(source) * 0.75):
-                baseline = _claude_read_baseline_text(source)
-                result.update(
-                    {
-                        "mode": "outline",
-                        "outline": outline.model_dump(mode="json"),
-                        "tokens_saved": self._token_savings(baseline, outline_json),
-                    }
-                )
-                return result
-            # Guard failed — fall through to tree-sitter / generic / full.
+        else:
+            result.update(
+                {
+                    "mode": "full",
+                    "content": source,
+                    "tokens_saved": self._token_savings(baseline, source),
+                }
+            )
+        return result
 
-        # Tree-sitter outline for languages with a per-grammar config.
-        # Same 25% guard as generic: if the structural extraction doesn't
-        # save at least a quarter, fall through to the next stage rather than
-        # ship a fake savings event.
+    @classmethod
+    def _projection_payload(
+        cls,
+        file_path: Path,
+        source: str,
+        language: str,
+        effective_loc: int,
+        *,
+        expand: bool,
+        outline_threshold: int,
+    ) -> tuple[str, str, dict[str, Any] | None]:
+        """Mode-selection cascade shared by ``smart_read`` and ``project_preview``.
+
+        Returns ``(mode, payload_text, outline_payload)`` where *payload_text*
+        is the exact text shipped to the agent and *outline_payload* is the
+        value for the result's ``outline`` key (``None`` in full mode).
+        """
         if not expand and effective_loc > outline_threshold:
+            # Per-language AST outline (python only — TS/JS go through tree-sitter
+            # below). 25% guard: don't ship a fake savings event if the outline is
+            # larger than the source (e.g. parse failed and returned an empty
+            # FileOutline, or source has invalid syntax).
+            if language == "python":
+                outline = cls._outline_for(file_path, source, language, effective_loc=effective_loc)
+                outline_json = json.dumps(outline.model_dump(mode="json"), ensure_ascii=False)
+                if _outline_saves_enough(outline_json, source):
+                    return "outline", outline_json, outline.model_dump(mode="json")
+                # Guard failed — fall through to tree-sitter / generic / full.
+
+            # Tree-sitter outline for languages with a per-grammar config.
+            # Same 25% guard: if the structural extraction doesn't save at
+            # least a quarter, fall through rather than ship fake savings.
             from .treesitter_ast import SUPPORTED_LANGUAGES
             from .treesitter_ast import outline_text as ts_outline_text
 
             if language in SUPPORTED_LANGUAGES:
                 ts_text = ts_outline_text(language, source)
-                if ts_text and len(ts_text) <= int(len(source) * 0.75):
-                    baseline = _claude_read_baseline_text(source)
-                    result.update(
-                        {
-                            "mode": "outline",
-                            "outline": {
-                                "kind": "treesitter",
-                                "language": language,
-                                "text": ts_text,
-                            },
-                            "tokens_saved": self._token_savings(baseline, ts_text),
-                        }
-                    )
-                    return result
+                if ts_text and _outline_saves_enough(ts_text, source):
+                    return "outline", ts_text, {"kind": "treesitter", "language": language, "text": ts_text}
 
-        # Generic regex-based outline fallback for languages without a
-        # tree-sitter config or where the tree-sitter outline didn't earn the
-        # 25% bar. Same 25% safety guard so we never ship fake savings.
-        if not expand and effective_loc > outline_threshold and language != "text":
-            outline_text = self._generic_outline_text(source, language)
-            if outline_text and len(outline_text) <= int(len(source) * 0.75):
-                baseline = _claude_read_baseline_text(source)
-                result.update(
-                    {
-                        "mode": "outline",
-                        "outline": {"kind": "generic", "language": language, "text": outline_text},
-                        "tokens_saved": self._token_savings(baseline, outline_text),
-                    }
-                )
-                return result
+            # Generic regex-based outline fallback for languages without a
+            # tree-sitter config or where the tree-sitter outline didn't earn
+            # the 25% bar. Same 25% safety guard.
+            if language != "text":
+                outline_text = cls._generic_outline_text(source, language)
+                if outline_text and _outline_saves_enough(outline_text, source):
+                    return "outline", outline_text, {"kind": "generic", "language": language, "text": outline_text}
 
-        baseline = _claude_read_baseline_text(source)
-        result.update(
-            {
-                "mode": "full",
-                "content": source,
-                "tokens_saved": self._token_savings(baseline, source),
-            }
+        return "full", source, None
+
+    @classmethod
+    def project_preview(
+        cls,
+        path: str | Path,
+        source: str | None = None,
+        *,
+        outline_threshold: int | None = None,
+    ) -> dict[str, Any]:
+        """Cache-free preview of what the ``read`` tool would ship for *path*.
+
+        Runs the real projection cascade (outline → compact whitespace → full)
+        without touching the summary cache, mirroring ``smart_read`` plus the
+        MCP layer's ``build_compact_projection`` post-pass. Used by
+        ``atelier project`` so CLI savings numbers match the live read
+        pipeline. Token counts use the same tiktoken accounting (baseline =
+        Claude's built-in Read approximation).
+        """
+        if outline_threshold is None:
+            outline_threshold = default_outline_threshold()
+        file_path = Path(path)
+        if source is None:
+            source = file_path.read_text(encoding="utf-8", errors="replace")
+        language = cls._language_for(file_path)
+        effective_loc = cls._effective_loc(source, language)
+        mode, payload, _ = cls._projection_payload(
+            file_path,
+            source,
+            language,
+            effective_loc,
+            expand=False,
+            outline_threshold=outline_threshold,
         )
-        return result
+        if mode == "full" and source:
+            # Mirror the MCP read layer: full-mode bodies enter the agent's
+            # context projected — prefer the tree-sitter minified view, falling
+            # back to the conservative compact transform (mcp_server._smart_read_single).
+            from atelier.core.capabilities.source_projection import (
+                build_compact_projection,
+                build_minified_projection,
+                language_for_minify,
+            )
+
+            minify_lang = language_for_minify(str(file_path))
+            minified = build_minified_projection(source, minify_lang) if minify_lang is not None else None
+            if minified is not None and minified.applied:
+                mode, payload = "minified", minified.content
+            else:
+                compact = build_compact_projection(source, language)
+                if compact.applied:
+                    mode, payload = "compact", compact.content
+        baseline = _claude_read_baseline_text(source)
+        raw_tokens = _count_tokens(baseline)
+        tokens = raw_tokens if payload == baseline else _count_tokens(payload)
+        return {
+            "mode": mode,
+            "language": language,
+            "loc": effective_loc,
+            "text": payload,
+            "raw_tokens": raw_tokens,
+            "tokens": tokens,
+        }
+
+    @classmethod
+    def project_modes(
+        cls,
+        path: str | Path,
+        source: str | None = None,
+        *,
+        outline_threshold: int | None = None,
+    ) -> dict[str, Any]:
+        """Token cost of every projection mode for *path* plus the cascade winner.
+
+        Unlike ``project_preview`` (winner only), this reports outline / minified
+        / compact / full side by side so nothing is hidden. Outline is
+        force-evaluated (threshold ignored) so its number is visible even when
+        the real cascade skips it; ``available`` is False when a mode can't earn
+        its keep.
+        """
+        from atelier.core.capabilities.source_projection import (
+            build_compact_projection,
+            build_minified_projection,
+            language_for_minify,
+        )
+
+        if outline_threshold is None:
+            outline_threshold = default_outline_threshold()
+        file_path = Path(path)
+        if source is None:
+            source = file_path.read_text(encoding="utf-8", errors="replace")
+        language = cls._language_for(file_path)
+        effective_loc = cls._effective_loc(source, language)
+        raw_tokens = _count_tokens(_claude_read_baseline_text(source))
+
+        # Outline forced eligible (threshold=-1) so its savings show even when
+        # the real threshold skips it; o_mode != "outline" means it can't earn 25%.
+        o_mode, o_text, _ = cls._projection_payload(
+            file_path, source, language, effective_loc, expand=False, outline_threshold=-1
+        )
+        outline_ok = o_mode == "outline"
+
+        minify_lang = language_for_minify(str(file_path))
+        minified = build_minified_projection(source, minify_lang) if minify_lang is not None else None
+        if minified is not None and minified.applied:
+            minified_ok, minified_tokens, minified_text = True, minified.projected_tokens, minified.content
+        else:
+            minified_ok, minified_tokens, minified_text = False, raw_tokens, None
+        compact = build_compact_projection(source, language)
+
+        if effective_loc > outline_threshold and outline_ok:
+            winner = "outline"
+        elif minified_ok:
+            winner = "minified"
+        elif compact.applied:
+            winner = "compact"
+        else:
+            winner = "full"
+
+        return {
+            "language": language,
+            "loc": effective_loc,
+            "raw_tokens": raw_tokens,
+            "winner": winner,
+            "modes": {
+                "outline": {
+                    "tokens": _count_tokens(o_text) if outline_ok else raw_tokens,
+                    "text": o_text if outline_ok else None,
+                    "available": outline_ok,
+                },
+                "minified": {"tokens": minified_tokens, "text": minified_text, "available": minified_ok},
+                "compact": {
+                    "tokens": compact.projected_tokens if compact.applied else raw_tokens,
+                    "text": compact.content if compact.applied else None,
+                    "available": compact.applied,
+                },
+                "full": {"tokens": raw_tokens, "text": source, "available": True},
+            },
+        }
 
     def summarize_file(
         self,

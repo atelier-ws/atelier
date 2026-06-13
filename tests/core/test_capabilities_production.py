@@ -600,7 +600,7 @@ def test_cli_tool_report_no_crash(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     _init_root(root)
     runner = CliRunner()
-    res = runner.invoke(cli, ["--root", str(root), "tool-report"])
+    res = runner.invoke(cli, ["--root", str(root), "tools", "report"])
     assert res.exit_code == 0
 
 

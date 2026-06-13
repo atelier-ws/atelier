@@ -34,10 +34,10 @@ class DeletedHistorySearchAdapter:
         self,
         query: str,
         *,
-        limit: int = 20,
         since_ts: int | None,
         touched_by: str | None,
         language: str | None,
+        limit: int = 20,
     ) -> list[dict[str, Any]]:
         self._ensure_history_ready()
         lowered_query = query.strip().lower()

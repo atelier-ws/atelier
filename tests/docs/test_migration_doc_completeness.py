@@ -21,10 +21,20 @@ REQUIRED_MATRIX_AREAS = {
 }
 
 
+def _first_existing(*candidates: str) -> Path:
+    for candidate in candidates:
+        path = Path(candidate)
+        if path.exists():
+            return path
+    return Path(candidates[0])
+
+
 def test_v2_to_v3_migration_guide_covers_operator_steps() -> None:
-    path = Path("docs/migrations/v2-to-v3.md")
-    if not path.exists():
-        path = Path("docs-archive/migrations/v2-to-v3.md")
+    path = _first_existing(
+        "docs/migrations/v2-to-v3.md",
+        "docs-internal/migrations/v2-to-v3.md",
+        "docs-archive/migrations/v2-to-v3.md",
+    )
     text = path.read_text(encoding="utf-8")
 
     for topic in REQUIRED_TOPICS:
@@ -32,9 +42,11 @@ def test_v2_to_v3_migration_guide_covers_operator_steps() -> None:
 
 
 def test_v2_to_v3_deprecation_matrix_covers_changed_surfaces() -> None:
-    path = Path("docs/migrations/v2-to-v3-deprecation-matrix.md")
-    if not path.exists():
-        path = Path("docs-archive/migrations/v2-to-v3-deprecation-matrix.md")
+    path = _first_existing(
+        "docs/migrations/v2-to-v3-deprecation-matrix.md",
+        "docs-internal/migrations/v2-to-v3-deprecation-matrix.md",
+        "docs-archive/migrations/v2-to-v3-deprecation-matrix.md",
+    )
     text = path.read_text(encoding="utf-8")
 
     for area in REQUIRED_MATRIX_AREAS:

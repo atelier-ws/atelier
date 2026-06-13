@@ -144,7 +144,10 @@ def test_claude_import_accumulates_tools_across_main_and_subagent_files(tmp_path
 
 def test_claude_parallel_coverage_matrix_doc_exists_and_has_required_rows() -> None:
     repo_root = Path(__file__).resolve().parents[2]
-    matrix = repo_root / "docs" / "engineering" / "claude-parallel-session-harvest-matrix.md"
+    # Engineering docs were relocated to docs-internal/ on the bench refactor.
+    matrix = repo_root / "docs-internal" / "engineering" / "claude-parallel-session-harvest-matrix.md"
+    if not matrix.exists():
+        matrix = repo_root / "docs" / "engineering" / "claude-parallel-session-harvest-matrix.md"
 
     content = matrix.read_text(encoding="utf-8")
 

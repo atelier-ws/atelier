@@ -103,12 +103,19 @@ def chat_with_result(
     json_schema: dict[str, Any] | None = None,
     cache_metadata: dict[str, Any] | None = None,
     api_key: str | None = None,
+    extra_kwargs: dict[str, Any] | None = None,
 ) -> InternalLLMChatResult:
     """Call LiteLLM and optionally parse a JSON response.
 
     JSON mode is attempted via ``response_format``; providers that reject it
     (some Bedrock / Vertex models) transparently fall back to a plain call and
     the content is JSON-parsed afterward.
+
+    ``extra_kwargs`` are forwarded verbatim to ``litellm.completion`` for
+    provider-specific parameters (e.g. ``seed`` for OpenAI prefix caching,
+    ``extra_body={"cachedContent": ...}`` for Gemini context caching,
+    ``max_tokens`` for a connectivity probe). This keeps every litellm call on
+    the user's path routed through this single infra wrapper.
     """
     litellm = _litellm_module()
     chosen_model = _resolve_model(model)
@@ -116,6 +123,8 @@ def chat_with_result(
     request_kwargs: dict[str, Any] = {"model": chosen_model, "messages": request_messages}
     if api_key:
         request_kwargs["api_key"] = api_key
+    if extra_kwargs:
+        request_kwargs.update(extra_kwargs)
     try:
         if json_schema is None:
             response = litellm.completion(**request_kwargs)

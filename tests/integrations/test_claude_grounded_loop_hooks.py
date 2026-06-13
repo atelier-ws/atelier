@@ -139,15 +139,38 @@ def test_pre_tool_use_allows_benchmark_off_even_for_risky_edit(
     assert payload == {"decision": "allow"}
 
 
-def test_user_prompt_hook_emits_grounded_batching_nudge_without_hiding_compact_warning(
+def test_user_prompt_hook_emits_compaction_nudge_as_ui_only_system_message(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    # The grounded-batching nudge was intentionally removed (commit b27437c):
+    # the compaction nudge is now UI-only advice for the user (systemMessage),
+    # never injected into model context, and no separate batching nudge fires.
+    # Occupancy is read from the transcript's real ``usage`` numbers, so the
+    # fixture carries a usage block above the 100k compaction floor rather than
+    # raw bytes.
     transcript = tmp_path / "transcript.jsonl"
-    transcript.write_text("x" * 600_000, encoding="utf-8")
+    transcript.write_text(
+        json.dumps(
+            {
+                "message": {
+                    "model": "claude-sonnet-4-5",
+                    "usage": {
+                        "input_tokens": 150_000,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                    },
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(user_prompt, "_persist_last_user_prompt", lambda prompt: None)
     monkeypatch.setattr(user_prompt, "_active_session_id", lambda: None)
+    monkeypatch.setattr(user_prompt, "_read_session_state", lambda: {})
+    monkeypatch.setattr(user_prompt, "_write_session_state", lambda state: None)
     monkeypatch.setattr(
         USER_PROMPT.sys,
         "stdin",
@@ -164,10 +187,13 @@ def test_user_prompt_hook_emits_grounded_batching_nudge_without_hiding_compact_w
     assert user_prompt.main() == 0
 
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
-    assert len(lines) == 2
-    assert "Context estimated" in lines[0]["content"]
-    assert "search" in lines[1]["content"]
-    assert "batch" in lines[1]["content"]
+    # Exactly one UI-only message: the compaction nudge. No grounded-batching nudge.
+    assert len(lines) == 1
+    assert "systemMessage" in lines[0]
+    assert "content" not in lines[0]
+    assert "additionalContext" not in json.dumps(lines[0])
+    assert "/compact" in lines[0]["systemMessage"]
+    assert "Context is" in lines[0]["systemMessage"]
 
 
 def test_user_prompt_hook_skips_grounded_nudge_for_already_grounded_prompt(

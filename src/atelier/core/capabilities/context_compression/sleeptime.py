@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from pydantic import BaseModel
@@ -55,7 +56,7 @@ def summarize_ledger(
         from atelier.core.foundation.paths import default_store_root
 
         backend = _memory_backend(
-            Path(__import__("os").environ.get("ATELIER_ROOT", str(default_store_root()))),
+            Path(os.environ.get("ATELIER_ROOT", str(default_store_root()))),
             prefer=None,
         )
         if backend == "letta":

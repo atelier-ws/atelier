@@ -31,77 +31,6 @@ def test_help_command_shows_root_command_help(tmp_path: Path) -> None:
     assert "benchmark" in root_help.output
 
 
-def test_benchmark_terminalbench_defaults_to_all_tasks_and_modes(monkeypatch, tmp_path: Path) -> None:
-    runner = CliRunner()
-    root = tmp_path / ".atelier"
-    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-
-    monkeypatch.chdir(REPO_ROOT)
-    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
-
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "terminalbench"])
-
-    assert result.exit_code == 0, result.output
-    trial_calls = [cmd for cmd, label, _env in calls if label == "TerminalBench trial"]
-    summary_calls = [cmd for cmd, label, _env in calls if label == "TerminalBench summary"]
-    assert len(trial_calls) == 20
-    assert len(summary_calls) == 1
-    assert {cmd[cmd.index("--mode") + 1] for cmd in trial_calls} == {"on", "off"}
-    assert {cmd[cmd.index("--task") + 1] for cmd in trial_calls} == {
-        "hello-world",
-        "fix-pandas-version",
-        "incompatible-python-fasttext",
-        "csv-to-parquet",
-        "fibonacci-server",
-        "simple-web-scraper",
-        "fix-git",
-        "swe-bench-fsspec",
-        "swe-bench-langcodes",
-        "grid-pattern-transform",
-    }
-    manifest = json.loads((tmp_path / "terminalbench" / "benchmark-manifest.json").read_text("utf-8"))
-    assert manifest["suite"] == "terminalbench"
-    assert manifest["protocol"]["baseline_arm"] == "off"
-    assert manifest["corpus"]["tasks"][0] == "hello-world"
-    evidence = json.loads((tmp_path / "terminalbench" / "benchmark-evidence.json").read_text("utf-8"))
-    assert evidence["suite"] == "terminalbench"
-    assert evidence["artifacts"]["runs_jsonl"]["path"].endswith("runs.jsonl")
-    gate = json.loads((tmp_path / "terminalbench" / "benchmark-gate.json").read_text("utf-8"))
-    assert gate["suite"] == "terminalbench"
-    assert gate["passed"] is False
-
-
-def test_benchmark_terminalbench_require_pass_exits_nonzero_after_writing_artifacts(
-    monkeypatch, tmp_path: Path
-) -> None:
-    runner = CliRunner()
-    root = tmp_path / ".atelier"
-    calls: list[tuple[list[str], str, dict[str, str] | None]] = []
-
-    monkeypatch.chdir(REPO_ROOT)
-    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _repo_root: ["python"])
-    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
-
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "terminalbench", "--require-pass"])
-
-    assert result.exit_code != 0
-    assert "no paired benchmark evidence is available" in result.output
-    assert (tmp_path / "terminalbench" / "benchmark-manifest.json").is_file()
-    assert (tmp_path / "terminalbench" / "benchmark-evidence.json").is_file()
-    assert (tmp_path / "terminalbench" / "benchmark-gate.json").is_file()
-
-
 def test_benchmark_gate_command_reads_gate_and_optionally_fails(tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
@@ -122,29 +51,6 @@ def test_benchmark_gate_command_reads_gate_and_optionally_fails(tmp_path: Path) 
     )
     assert failed.exit_code != 0
     assert "candidate cost was higher" in failed.output
-
-
-def test_benchmark_swe_defaults_to_real_eval(monkeypatch, tmp_path: Path) -> None:
-    runner = CliRunner()
-    root = tmp_path / ".atelier"
-    captured: dict[str, object] = {}
-
-    monkeypatch.chdir(REPO_ROOT)
-    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
-
-    def fake_run_swe_eval(**kwargs: object) -> None:
-        captured.update(kwargs)
-
-    monkeypatch.setattr(benchmark_cmds, "_run_swe_eval", fake_run_swe_eval)
-
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "swe"])
-
-    assert result.exit_code == 0, result.output
-    assert captured["subset"] == "lite"
-    assert captured["split"] == "dev"
-    assert captured["slice_expr"] == "0:5"
-    assert captured["workers"] == 1
-    assert captured["proxy_upstream"] == "http://localhost:11434/v1"
 
 
 def test_benchmark_atelierbench_wraps_runner(monkeypatch, tmp_path: Path) -> None:
@@ -243,8 +149,6 @@ def test_benchmark_atelierbench_accepts_vix_arm_and_api_options(monkeypatch, tmp
             "baseline",
             "--arm",
             "atelier",
-            "--arm",
-            "eval",
             "--model",
             "llama3.2",
             "--transport",
@@ -262,7 +166,7 @@ def test_benchmark_atelierbench_accepts_vix_arm_and_api_options(monkeypatch, tmp
     assert result.exit_code == 0, result.output
     cmd, label, env = calls[0]
     assert label == "AtelierBench"
-    assert cmd[cmd.index("--arms") + 1 : cmd.index("--reps")] == ["baseline", "atelier", "eval"]
+    assert cmd[cmd.index("--arms") + 1 : cmd.index("--reps")] == ["baseline", "atelier"]
     assert cmd[cmd.index("--model") + 1] == "llama3.2"
     assert cmd[cmd.index("--transport") + 1] == "api"
     assert cmd[cmd.index("--api-provider") + 1] == "ollama"

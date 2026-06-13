@@ -45,7 +45,7 @@ def _single_replace_case(index: int, target: str, old: str, new: str) -> BenchCa
         },
         assert_keys=["applied"],
         custom_assert=_assert_edit_applied,
-        baseline_tokens=200,
+        baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
     )
 
 
@@ -59,7 +59,7 @@ def _line_replace_case(index: int, target: str, old: str, new: str) -> BenchCase
         },
         assert_keys=["applied"],
         custom_assert=_assert_edit_applied,
-        baseline_tokens=220,
+        baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
     )
 
 
@@ -85,7 +85,7 @@ def _multi_file_case(index: int, new_alpha: str, new_beta: str) -> BenchCase:
         },
         assert_keys=["applied"],
         custom_assert=_assert_multi_file_atomic,
-        baseline_tokens=400,
+        baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
     )
 
 
@@ -99,7 +99,7 @@ def _create_case(index: int, content: str) -> BenchCase:
         },
         assert_keys=["applied"],
         custom_assert=_assert_create_file,
-        baseline_tokens=300,
+        baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
     )
 
 

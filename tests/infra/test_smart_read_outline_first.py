@@ -110,8 +110,12 @@ def test_smart_read_large_file_savings_use_claude_read_cap(tmp_path: Path) -> No
     assert payload["tokens_saved"] < full_file_tokens
 
 
-def test_smart_read_compact_projection_banner_for_safe_language(tmp_path: Path, monkeypatch: Any) -> None:
+def test_smart_read_minified_projection_banner_for_safe_language(tmp_path: Path, monkeypatch: Any) -> None:
     _seed_store(tmp_path, monkeypatch)
+    # Pin the outline threshold above this file's LOC so the read stays in
+    # full mode — this test exercises the minified projection banner, not the
+    # outline-by-default behavior.
+    monkeypatch.setenv("ATELIER_OUTLINE_THRESHOLD", "200")
 
     target = tmp_path / "sample.go"
     target.write_text(
@@ -121,5 +125,5 @@ def test_smart_read_compact_projection_banner_for_safe_language(tmp_path: Path, 
 
     rendered = _smart_read({"path": str(target)})
 
-    assert rendered.startswith("Projection: compact")
+    assert rendered.startswith("Projection: minified")
     assert "package main" in rendered
