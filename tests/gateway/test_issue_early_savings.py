@@ -32,13 +32,16 @@ def _run_statusline(root: Path, payload: dict[str, object], *, env_extra: dict[s
     return result.stdout.strip()
 
 
-def _payload(session_id: str) -> dict[str, object]:
+def _payload(session_id: str, *, input_tokens: int = 1200) -> dict[str, object]:
+    # Nonzero tokens by default: the statusline now hides the savings figure
+    # until the session registers real input/cache usage, so tests that exercise
+    # the savings display must look like a session that has actually done work.
     return {
         "session_id": session_id,
         "model": {"display_name": "Sonnet"},
         "context_window": {
             "used_percentage": 0,
-            "current_usage": {"input_tokens": 0, "output_tokens": 0},
+            "current_usage": {"input_tokens": input_tokens, "output_tokens": 0},
         },
         "cost": {"total_cost_usd": 0.0, "total_duration_ms": 0},
     }
@@ -98,3 +101,31 @@ def test_statusline_borrows_for_subagents_via_transcript(tmp_path: Path) -> None
 
     # It SHOULD borrow the 603 savings from the parent transcript
     assert "(603)" in output
+
+
+def test_statusline_hides_savings_until_real_token_usage(tmp_path: Path) -> None:
+    """Zero input AND zero cache tokens must not display savings, even when a
+    sidecar carries a value: those are stale or cross-attributed from a sibling
+    session until this session registers real usage. Once tokens are nonzero the
+    figure shows normally. CLAUDE_CONFIG_DIR is isolated to a temp dir so no real
+    transcript on the host supplies token counts.
+    """
+    sid = "3d829763-d5f4-47ce-b45f-8006fe864df2"
+    sidecar = tmp_path / "session_stats" / "claude"
+    sidecar.mkdir(parents=True)
+    (sidecar / f"{sid}.jsonl").write_text(
+        json.dumps({"tool": "search", "tokens": 603, "calls": 0}) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
+    config_dir = tmp_path / "home" / ".claude"
+    config_dir.mkdir(parents=True)
+    env = {"CLAUDE_CONFIG_DIR": str(config_dir)}
+
+    zero = _run_statusline(tmp_path, _payload(sid, input_tokens=0), env_extra=env)
+    assert "\u2193" not in zero
+    assert "(603)" not in zero
+
+    active = _run_statusline(tmp_path, _payload(sid, input_tokens=1200), env_extra=env)
+    assert "\u2193" in active
+    assert "(603)" in active

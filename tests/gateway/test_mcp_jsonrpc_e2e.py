@@ -295,8 +295,10 @@ def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) ->
     assert edit_payload["failed"] == []
     assert target.read_text(encoding="utf-8") == "hello stdio\n"
 
-    search_payload = json.loads(responses[2]["result"]["content"][0]["text"])
-    assert search_payload["matches"]
+    search_text = responses[2]["result"]["content"][0]["text"]
+    # search returns formatted markdown, not JSON
+    assert "stdio" in search_text, f"expected 'stdio' in search output: {search_text}"
+    assert "stdio.txt" in search_text, f"expected 'stdio.txt' in search output: {search_text}"
 
 
 def test_stdio_server_processes_requests_concurrently(monkeypatch: pytest.MonkeyPatch) -> None:

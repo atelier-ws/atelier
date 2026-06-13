@@ -92,6 +92,31 @@ class AnalyticsStore:
         cols = [d[0] for d in cur.description]
         return [SessionRecord(**dict(zip(cols, row, strict=False))) for row in rows]
 
+    def per_host_stats(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute("""
+            SELECT
+                provider,
+                SUM(input_tokens) as total_input_tokens,
+                SUM(output_tokens) as total_output_tokens,
+                SUM(cache_read_tokens) as total_cache_read_tokens,
+                SUM(cache_write_tokens) as total_cache_write_tokens
+            FROM sessions
+            GROUP BY provider
+            """).fetchall()
+
+        stats = []
+        for row in rows:
+            stats.append(
+                {
+                    "provider": row[0],
+                    "in": row[1] or 0,
+                    "out": row[2] or 0,
+                    "cR": row[3] or 0,
+                    "cW": row[4] or 0,
+                }
+            )
+        return stats
+
     def summary_stats(self) -> dict[str, Any]:
         row = self._conn.execute("""
             SELECT
@@ -104,7 +129,7 @@ class AnalyticsStore:
             FROM sessions
             """).fetchone()
         if row:
-            return {
+            summary = {
                 "total_sessions": row[0],
                 "total_cost_usd": round(row[1] or 0, 4),
                 "total_savings_usd": round(row[2] or 0, 4),
@@ -112,6 +137,8 @@ class AnalyticsStore:
                 "total_turns": row[4] or 0,
                 "total_tool_calls": row[5] or 0,
             }
+            summary["per_host_token_counts"] = self.per_host_stats()
+            return summary
         return {}
 
     def close(self) -> None:

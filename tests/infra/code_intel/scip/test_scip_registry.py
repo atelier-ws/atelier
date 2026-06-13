@@ -109,7 +109,7 @@ def test_discover_scip_binaries_iterates_supported_specs(tmp_path: Path, monkeyp
 
 
 def test_install_script_installs_tier1_scip_npm_packages() -> None:
-    install_script = (REPO_ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    install_script = (REPO_ROOT / "scripts" / "lib" / "common.sh").read_text(encoding="utf-8")
     npm_install_line = next(
         line for line in install_script.splitlines() if 'npm install -g --prefix "$ATELIER_NODE_DIR"' in line
     )

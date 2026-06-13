@@ -244,12 +244,12 @@ def _astgrep_rename(
 def build_rename_edits(
     engine: Any,  # CodeContextEngine -- avoid circular import
     *,
+    new_name: str,
+    repo_root: Path,
     symbol_id: str | None = None,
     qualified_name: str | None = None,
     symbol_name: str | None = None,
     file_path: str | None = None,
-    new_name: str,
-    repo_root: Path,
     backend: str = "auto",
 ) -> list[dict[str, Any]]:
     """Resolve symbol, collect usages, return rich-edit descriptors for atomic rename.

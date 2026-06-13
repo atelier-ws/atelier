@@ -8,10 +8,13 @@ from atelier.core.capabilities.source_projection import build_compact_projection
 from atelier.gateway.adapters.mcp_server import tool_smart_edit, tool_smart_read
 
 
-def test_default_reader_read_uses_compact_projection_for_safe_language(
+def test_default_reader_read_uses_minified_projection_for_safe_language(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    # Pin the outline threshold above this file's LOC — this test exercises
+    # minified (tree-sitter) projection of full bodies, not outline-by-default.
+    monkeypatch.setenv("ATELIER_OUTLINE_THRESHOLD", "200")
     target = tmp_path / "sample.go"
     source = (
         "package   main\n\n"
@@ -27,11 +30,11 @@ def test_default_reader_read_uses_compact_projection_for_safe_language(
 
     assert payload["content"] != source
     assert "fmt.Println( message )" in payload["content"]
-    assert payload["projection"]["view"] == "compact"
+    assert payload["projection"]["view"] == "minified"
     assert payload["projection"]["transformed"] is True
     assert payload["projection_delta"]["saved_tokens"] > 0
     assert payload["projection_delta"]["lang"] == "go"
-    assert payload["projection_mapping"]["projection_kind"] == "compact"
+    assert payload["projection_mapping"]["projection_kind"] == "minified"
     assert payload["projection_mapping"]["segments"]
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -21,8 +22,8 @@ from atelier.gateway.hosts.session_parsers._common import (
 def _cache_path(root: Path | None = None) -> Path:
     if root is not None:
         return root / "antigravity-results.json" if root.is_dir() else root
-    if "CODEBURN_CACHE_DIR" in __import__("os").environ:
-        return Path(__import__("os").environ["CODEBURN_CACHE_DIR"]) / "antigravity-results.json"
+    if "CODEBURN_CACHE_DIR" in os.environ:
+        return Path(os.environ["CODEBURN_CACHE_DIR"]) / "antigravity-results.json"
     return Path.home() / ".cache" / "codeburn" / "antigravity-results.json"
 
 
@@ -43,13 +44,15 @@ class AntigravityImporter:
         sorted_cascades = sorted(
             cascades.items(),
             key=lambda item: (
-                item[1][0].get("timestamp") if isinstance(item[1], dict) and isinstance(item[1].get("calls"), list) and item[1]["calls"] else ""
+                item[1]["calls"][0].get("timestamp")
+                if isinstance(item[1], dict) and isinstance(item[1].get("calls"), list) and item[1]["calls"]
+                else ""
             ),
-            reverse=True
+            reverse=True,
         )
         if limit is not None:
             sorted_cascades = sorted_cascades[:limit]
-        
+
         imported: list[str] = []
         for cascade_id, cascade in sorted_cascades:
             calls = cascade.get("calls") if isinstance(cascade, dict) else None

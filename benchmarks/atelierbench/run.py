@@ -11,20 +11,20 @@ Baseline uses an isolated CLAUDE_CONFIG_DIR with plugins/hooks/MCP stripped
 The Atelier arm adds the atelier stdio MCP server + a tool-discipline CLAUDE.md.
 
 Usage:
-    uv run python -m benchmarks.atelierbench.run --tasks task1 --reps 1 --model sonnet
+    uv run python -m benchmarks.atelierbench.run task1 --model sonnet
 
     # Cloud providers - reads credentials from .env or current env automatically:
-    uv run python -m benchmarks.atelierbench.run --tasks task1 --arms atelier vix \
+    uv run python -m benchmarks.atelierbench.run task1 -a atelier \
         --provider aws --model us.anthropic.claude-sonnet-4-5-20250929-v1:0
-    uv run python -m benchmarks.atelierbench.run --tasks task1 --arms atelier vix \
+    uv run python -m benchmarks.atelierbench.run task1 -a atelier \
         --provider gcp --model claude-sonnet-4-5@20250929
-    uv run python -m benchmarks.atelierbench.run --tasks task1 --arms atelier vix \
+    uv run python -m benchmarks.atelierbench.run task1 -a atelier \
         --provider azure --model claude-sonnet-4-5
-    uv run python -m benchmarks.atelierbench.run --tasks task1 --arms baseline atelier \
+    uv run python -m benchmarks.atelierbench.run task1 -a baseline atelier \
         --provider openrouter --model anthropic/claude-sonnet-4-5
 
     # Manual override (--agent-env takes precedence over --provider):
-    uv run python -m benchmarks.atelierbench.run --tasks task1 --arms baseline atelier \
+    uv run python -m benchmarks.atelierbench.run task1 -a baseline atelier \
         --model claude-opus-4-8 \
         --agent-env ANTHROPIC_BASE_URL=https://openrouter.ai/api \
         --agent-env-from-host ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY \
@@ -34,7 +34,7 @@ Usage:
     # Owned-agent arm (Atelier runs the loop itself on YOUR API key; different
     # price/savings profile than the host-plugin "atelier" arm). Requires a real
     # provider key, e.g. ANTHROPIC_API_KEY, and an explicit --model:
-    uv run python -m benchmarks.atelierbench.run --tasks task1 \
+    uv run python -m benchmarks.atelierbench.run task1 \
     """
 
 from __future__ import annotations
@@ -52,8 +52,6 @@ import subprocess
 import tempfile
 import threading
 import time
-import urllib.error
-import urllib.request
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -63,7 +61,7 @@ from typing import Any
 
 from atelier.core.capabilities.host_runners import (
     CLAUDE_PROVIDER_PRESETS,
-    build_vix_cli_command,
+    build_driver_command,
 )
 from atelier.core.capabilities.pricing import usage_cost_breakdown_usd, usage_cost_usd
 
@@ -75,7 +73,7 @@ RESULTS_ROOT = REPO_ROOT / "benchmarks" / "atelierbench" / "results"
 CA_CERT = Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"
 
 EMPTY_MCP: dict[str, dict[str, object]] = {"mcpServers": {}}
-VALID_ARMS = ("baseline", "atelier", "woz", "vix")
+VALID_ARMS = ("baseline", "atelier")
 PERSISTENT_WORKSPACE_ROOT = Path(
     os.environ.get("ATELIERBENCH_WORKSPACE_ROOT", str(Path(tempfile.gettempdir()) / "atelierbench_workspaces"))
 )
@@ -87,7 +85,7 @@ PROVIDER_ALIASES: dict[str, str] = {
     "azure": "azure-claude",
     "openrouter": "openrouter-claude",
 }
-CLI_DRIVERS = ("claude", "copilot", "codex", "opencode", "vix", "atelier-run")
+CLI_DRIVERS = ("claude", "atelier-run")
 PLACEHOLDER_RESPONSE_MARKERS = (
     "i'm ready to help",
     "what would you like to work on",
@@ -173,88 +171,7 @@ STOPWORDS = frozenset(
         "your",
     }
 )
-API_DEFAULT_BASE_URLS = {
-    "openai": "https://api.openai.com/v1",
-    "litellm": "http://localhost:4000/v1",
-    "ollama": "http://localhost:11434/v1",
-}
-WOZ_PLUGIN_ROOT = Path("/home/pankaj/.claude/plugins/cache/wozcode-marketplace/woz/0.3.75")
 ATELIER_CLAUDE_PLUGIN_ROOT = REPO_ROOT / "integrations" / "claude" / "plugin"
-WOZ_CLAUDE_MD = ""
-ATELIER_CLAUDE_MD = """\
-# Benchmark Instructions
-
-You are running in a non-interactive benchmark environment.
-
-**Critical**: Do NOT use plan mode. Do not call EnterPlanMode or ExitPlanMode.
-Implement the task directly using your available tools and complete the full
-implementation without waiting for user input or approval.
-
-{{EFFICIENCY_RULES}}
-
-**Tools**: Use the Atelier MCP tools for all file I/O and shell work:
-`mcp__atelier__edit` to create/modify files, `mcp__atelier__read` to read them,
-`mcp__atelier__grep`/`mcp__atelier__search` to search, and `mcp__atelier__shell`
-for shell commands. The Bash, Write, and Edit tools are disabled — do not rely
-on them.
-
-**Navigate cheaply**: prefer the code-intelligence tools over reading whole
-files — `mcp__atelier__symbols` to locate a definition, `mcp__atelier__node` to
-read one symbol's source, `mcp__atelier__callers`/`mcp__atelier__usages` for the
-call graph, and `mcp__atelier__explore` for grouped context. Use ranged/outline
-`mcp__atelier__read` instead of pulling entire large files. This keeps context
-small and your edits precisely targeted.
-
-**Scope**: Implement only the core source files and the tests. Do NOT create
-README, example, summary, checklist, or "deliverables" files, and do not print a
-summary banner. Every file you write must be required by the task.
-
-Work in the current directory. Deliver a complete, working implementation.
-"""
-BASELINE_CLAUDE_MD = """\
-# Benchmark Instructions
-
-You are running in a non-interactive benchmark environment.
-
-**Critical**: Do NOT use plan mode. Do not call EnterPlanMode or ExitPlanMode.
-Implement the task directly and complete the full implementation without waiting
-for user input or approval.
-
-**Scope**: Implement only the core source files and the tests. Do NOT create
-README, example, summary, checklist, or "deliverables" files, and do not print a
-summary banner. Every file you write must be required by the task.
-
-Work in the current directory. Deliver a complete, working implementation.
-"""
-
-
-def _woz_mcp_config() -> dict[str, object]:
-    return {
-        "mcpServers": {
-            "plugin_woz_code": {
-                "type": "stdio",
-                "command": "node",
-                "args": [str(WOZ_PLUGIN_ROOT / "servers" / "code-server.js")],
-                "env": {
-                    "CLAUDE_PLUGIN_ROOT": str(WOZ_PLUGIN_ROOT),
-                    "WOZCODE_POSTHOG_ENABLED": "false",
-                },
-            }
-        }
-    }
-
-
-def _atelier_mcp_config(host: str) -> dict[str, object]:
-    return {
-        "mcpServers": {
-            "atelier": {
-                "type": "stdio",
-                "command": "atelier",
-                "args": ["mcp", "--host", host],
-                "env": {},
-            }
-        }
-    }
 
 
 def _atelier_claude_agent_args() -> list[str]:
@@ -311,64 +228,10 @@ def _make_baseline_config(dest: Path | None = None) -> Path:
     return cfg
 
 
-def _copy_if_exists(src: Path, dest: Path) -> None:
-    if src.exists():
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(src, dest)
-
-
-def _instruction_filename(cli_driver: str) -> str:
-    return "AGENTS.md" if cli_driver == "codex" else "CLAUDE.md"
-
-
-def _make_codex_home(enable_atelier: bool) -> Path:
-    home = Path(_mktemp("codex-home-"))
-    source_home = Path.home() / ".codex"
-    _copy_if_exists(source_home / "auth.json", home / "auth.json")
-    _copy_if_exists(source_home / "installation_id", home / "installation_id")
-    if not enable_atelier:
-        return home
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(home)
-    subprocess.run(
-        ["codex", "mcp", "add", "atelier", "--", "atelier", "mcp", "--host", "codex"],
-        check=True,
-        timeout=120,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
-    return home
-
-
-def _make_opencode_home(enable_atelier: bool, workspace: Path) -> Path:
-    home = Path(_mktemp("opencode-home-"))
-    (home / "agents").mkdir(parents=True, exist_ok=True)
-    config: dict[str, object] = {}
-    if enable_atelier:
-        config = {
-            "default_agent": "atelier",
-            "permission": {"atelier_*": "allow"},
-            "mcp": {
-                "atelier": {
-                    "type": "local",
-                    "command": ["atelier", "mcp", "--host", "opencode"],
-                    "environment": {"ATELIER_WORKSPACE_ROOT": str(workspace)},
-                }
-            },
-        }
-        shutil.copy(
-            REPO_ROOT / "integrations" / "opencode" / "agents" / "atelier.md",
-            home / "agents" / "atelier.md",
-        )
-    (home / "opencode.json").write_text(json.dumps(config), encoding="utf-8")
-    return home
-
-
 def _mktemp(prefix: str) -> str:
     import tempfile
 
-    return tempfile.mkdtemp(prefix=f"vixeval-{prefix}")
+    return tempfile.mkdtemp(prefix=f"atelierbench-{prefix}")
 
 
 def prepare_workspace(task: Task, workspace: Path | None = None) -> Path:
@@ -611,355 +474,6 @@ def _usage_int(value: object) -> int:
     return 0
 
 
-def _parse_copilot_result(
-    stdout: str,
-    flow_path: Path,
-    task: str,
-    arm: str,
-    rep: int,
-    wall_duration_ms: int,
-) -> ArmResult:
-    events = _iter_jsonl_objects(stdout)
-    assistant_messages: list[str] = []
-    models: set[str] = set()
-    input_tokens = 0
-    cache_read_tokens = 0
-    cache_creation_tokens = 0
-    output_tokens = 0
-    for event in events:
-        event_type = str(event.get("type") or "")
-        data = event.get("data")
-        payload = data if isinstance(data, dict) else event
-        if event_type == "assistant.message":
-            text = _flatten_text_blocks(payload.get("content"))
-            if not text:
-                text = _flatten_text_blocks(payload.get("message"))
-            if not text:
-                text = _flatten_text_blocks(payload.get("text"))
-            if text:
-                assistant_messages.append(text)
-            model = payload.get("model")
-            if isinstance(model, str) and model:
-                models.add(model)
-        elif event_type == "session.shutdown":
-            metrics = payload.get("modelMetrics")
-            if isinstance(metrics, dict):
-                input_tokens = 0
-                cache_read_tokens = 0
-                cache_creation_tokens = 0
-                output_tokens = 0
-                for model_name, metric in metrics.items():
-                    if isinstance(model_name, str) and model_name:
-                        models.add(model_name)
-                    if not isinstance(metric, dict):
-                        continue
-                    input_total = _usage_int(
-                        metric.get("inputTokens")
-                        or metric.get("promptTokens")
-                        or metric.get("input_tokens")
-                        or metric.get("prompt_tokens")
-                    )
-                    cached_tokens = _usage_int(
-                        metric.get("cachedInputTokens")
-                        or metric.get("cacheReadTokens")
-                        or metric.get("cached_input_tokens")
-                        or metric.get("cache_read_tokens")
-                    )
-                    input_tokens += max(input_total - cached_tokens, 0)
-                    cache_read_tokens += cached_tokens
-                    cache_creation_tokens += _usage_int(
-                        metric.get("cacheCreationInputTokens")
-                        or metric.get("cacheWriteTokens")
-                        or metric.get("cache_creation_input_tokens")
-                        or metric.get("cache_write_tokens")
-                    )
-                    output_tokens += _usage_int(
-                        metric.get("outputTokens")
-                        or metric.get("completionTokens")
-                        or metric.get("output_tokens")
-                        or metric.get("completion_tokens")
-                    )
-    excerpt = (assistant_messages[-1] if assistant_messages else stdout)[:4000]
-    return ArmResult(
-        task=task,
-        arm=arm,
-        rep=rep,
-        ok=bool(assistant_messages),
-        cost_usd=0.0,
-        duration_ms=wall_duration_ms,
-        duration_api_ms=wall_duration_ms,
-        num_turns=len(assistant_messages),
-        input_tokens=input_tokens,
-        cache_read_tokens=cache_read_tokens,
-        cache_creation_tokens=cache_creation_tokens,
-        output_tokens=output_tokens,
-        models=sorted(models),
-        is_error=not bool(assistant_messages),
-        result_excerpt=excerpt,
-        flow_path=str(flow_path),
-    )
-
-
-def _parse_codex_result(
-    stdout: str,
-    flow_path: Path,
-    task: str,
-    arm: str,
-    rep: int,
-    wall_duration_ms: int,
-) -> ArmResult:
-    events = _iter_jsonl_objects(stdout)
-    assistant_messages: list[str] = []
-    models: set[str] = set()
-    input_tokens = 0
-    cache_read_tokens = 0
-    cache_creation_tokens = 0
-    output_tokens = 0
-    token_count_seen = False
-    for event in events:
-        event_type = str(event.get("type") or "")
-        model = event.get("model") or event.get("model_id") or event.get("modelId")
-        if isinstance(model, str) and model:
-            models.add(model)
-        if event_type == "message" and event.get("role") == "assistant":
-            text = _flatten_text_blocks(event.get("content"))
-            if text:
-                assistant_messages.append(text)
-            usage = event.get("usage")
-            if isinstance(usage, dict) and not token_count_seen:
-                input_tokens += max(
-                    _usage_int(
-                        usage.get("input_tokens")
-                        or usage.get("inputTokens")
-                        or usage.get("prompt_tokens")
-                        or usage.get("promptTokens")
-                    )
-                    - _usage_int(
-                        usage.get("cached_input_tokens")
-                        or usage.get("cachedInputTokens")
-                        or usage.get("cache_read_tokens")
-                        or usage.get("cacheReadTokens")
-                    ),
-                    0,
-                )
-                cache_read_tokens += _usage_int(
-                    usage.get("cached_input_tokens")
-                    or usage.get("cachedInputTokens")
-                    or usage.get("cache_read_tokens")
-                    or usage.get("cacheReadTokens")
-                )
-                cache_creation_tokens += _usage_int(
-                    usage.get("cache_creation_input_tokens")
-                    or usage.get("cacheCreationInputTokens")
-                    or usage.get("cache_write_tokens")
-                    or usage.get("cacheWriteTokens")
-                )
-                output_tokens += _usage_int(
-                    usage.get("output_tokens")
-                    or usage.get("outputTokens")
-                    or usage.get("completion_tokens")
-                    or usage.get("completionTokens")
-                )
-        elif event_type == "event_msg":
-            payload = event.get("payload")
-            if not isinstance(payload, dict):
-                continue
-            if payload.get("type") != "token_count":
-                continue
-            info = payload.get("info")
-            if not isinstance(info, dict):
-                continue
-            total_usage = info.get("total_token_usage")
-            if not isinstance(total_usage, dict):
-                continue
-            token_count_seen = True
-            input_total = _usage_int(total_usage.get("input_tokens") or total_usage.get("inputTokens"))
-            cache_read_tokens = _usage_int(
-                total_usage.get("cached_input_tokens") or total_usage.get("cachedInputTokens")
-            )
-            cache_creation_tokens = _usage_int(
-                total_usage.get("cache_creation_input_tokens") or total_usage.get("cacheCreationInputTokens")
-            )
-            output_tokens = _usage_int(total_usage.get("output_tokens") or total_usage.get("outputTokens"))
-            input_tokens = max(input_total - cache_read_tokens, 0)
-        elif event_type == "item.completed":
-            item = event.get("item")
-            if not isinstance(item, dict):
-                continue
-            if item.get("type") == "agent_message":
-                text = str(item.get("text") or "").strip()
-                if text:
-                    assistant_messages.append(text)
-        elif event_type == "turn.completed":
-            usage = event.get("usage")
-            if not isinstance(usage, dict):
-                continue
-            output_tokens = _usage_int(usage.get("output_tokens") or usage.get("outputTokens"))
-            cache_read_tokens = _usage_int(usage.get("cached_input_tokens") or usage.get("cachedInputTokens"))
-            input_total = _usage_int(usage.get("input_tokens") or usage.get("inputTokens"))
-            input_tokens = max(input_total - cache_read_tokens, 0)
-    excerpt = (assistant_messages[-1] if assistant_messages else stdout)[:4000]
-    return ArmResult(
-        task=task,
-        arm=arm,
-        rep=rep,
-        ok=bool(assistant_messages),
-        cost_usd=0.0,
-        duration_ms=wall_duration_ms,
-        duration_api_ms=wall_duration_ms,
-        num_turns=len(assistant_messages),
-        input_tokens=input_tokens,
-        cache_read_tokens=cache_read_tokens,
-        cache_creation_tokens=cache_creation_tokens,
-        output_tokens=output_tokens,
-        models=sorted(models),
-        is_error=not bool(assistant_messages),
-        result_excerpt=excerpt,
-        flow_path=str(flow_path),
-    )
-
-
-def _parse_opencode_result(
-    stdout: str,
-    flow_path: Path,
-    task: str,
-    arm: str,
-    rep: int,
-    wall_duration_ms: int,
-) -> ArmResult:
-    events = _iter_jsonl_objects(stdout)
-    assistant_messages: list[str] = []
-    models: set[str] = set()
-    input_tokens = 0
-    cache_read_tokens = 0
-    cache_creation_tokens = 0
-    output_tokens = 0
-    for event in events:
-        event_type = str(event.get("_type") or event.get("type") or "")
-        data = event.get("data")
-        if not isinstance(data, dict):
-            continue
-        if event_type == "message" and data.get("role") == "assistant":
-            text = str(data.get("text") or "").strip()
-            if text:
-                assistant_messages.append(text)
-            model_id = str(data.get("modelID") or data.get("model") or "").strip()
-            provider_id = str(data.get("providerID") or "").strip()
-            model = f"{provider_id}/{model_id}" if provider_id and model_id else model_id
-            if model:
-                models.add(model)
-        elif event_type == "part" and data.get("type") == "step-finish":
-            tokens = data.get("tokens")
-            if not isinstance(tokens, dict):
-                continue
-            cache = tokens.get("cache")
-            cache_read = _usage_int((cache or {}).get("read") if isinstance(cache, dict) else 0)
-            input_total = _usage_int(tokens.get("input"))
-            input_tokens = max(input_total - cache_read, 0)
-            cache_read_tokens = cache_read
-            cache_creation_tokens = _usage_int((cache or {}).get("write") if isinstance(cache, dict) else 0)
-            output_tokens = _usage_int(tokens.get("output"))
-    excerpt = (assistant_messages[-1] if assistant_messages else stdout)[:4000]
-    return ArmResult(
-        task=task,
-        arm=arm,
-        rep=rep,
-        ok=bool(assistant_messages),
-        cost_usd=0.0,
-        duration_ms=wall_duration_ms,
-        duration_api_ms=wall_duration_ms,
-        num_turns=len(assistant_messages),
-        input_tokens=input_tokens,
-        cache_read_tokens=cache_read_tokens,
-        cache_creation_tokens=cache_creation_tokens,
-        output_tokens=output_tokens,
-        models=sorted(models),
-        is_error=not bool(assistant_messages),
-        result_excerpt=excerpt,
-        flow_path=str(flow_path),
-    )
-
-
-def _parse_text_result(
-    stdout: str,
-    flow_path: Path,
-    task: str,
-    arm: str,
-    rep: int,
-    wall_duration_ms: int,
-) -> ArmResult:
-    text = stdout.strip()
-    return ArmResult(
-        task=task,
-        arm=arm,
-        rep=rep,
-        ok=bool(text),
-        cost_usd=0.0,
-        duration_ms=wall_duration_ms,
-        duration_api_ms=wall_duration_ms,
-        num_turns=1 if text else 0,
-        input_tokens=0,
-        cache_read_tokens=0,
-        cache_creation_tokens=0,
-        output_tokens=0,
-        models=[],
-        is_error=not bool(text),
-        result_excerpt=text[:4000],
-        flow_path=str(flow_path),
-    )
-
-
-def _parse_vix_result(
-    stdout: str,
-    flow_path: Path,
-    task: str,
-    arm: str,
-    rep: int,
-    wall_duration_ms: int,
-) -> ArmResult:
-    payload: dict[str, object] | None = None
-    for obj in _iter_jsonl_objects(stdout):
-        if obj.get("type") == "result":
-            payload = obj
-    if payload is None:
-        return _parse_text_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
-    usage = payload.get("usage")
-    usage_dict = usage if isinstance(usage, dict) else {}
-    result = str(payload.get("result") or "").strip()
-    is_error = bool(payload.get("is_error")) or not bool(result)
-    duration_ms = _usage_int(payload.get("duration_ms") or payload.get("durationMs"))
-    model = str(payload.get("model") or "").strip()
-    model_for_pricing = model or "claude-sonnet-4.6"
-    input_tokens = _usage_int(usage_dict.get("input_tokens") or usage_dict.get("inputTokens"))
-    cache_read_tokens = _usage_int(usage_dict.get("cache_read_tokens") or usage_dict.get("cacheReadTokens"))
-    cache_creation_tokens = _usage_int(usage_dict.get("cache_creation_tokens") or usage_dict.get("cacheCreationTokens"))
-    output_tokens = _usage_int(usage_dict.get("output_tokens") or usage_dict.get("outputTokens"))
-    return ArmResult(
-        task=task,
-        arm=arm,
-        rep=rep,
-        ok=not is_error,
-        cost_usd=usage_cost_usd(
-            model_for_pricing,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cache_read_tokens=cache_read_tokens,
-            cache_write_tokens=cache_creation_tokens,
-        ),
-        duration_ms=duration_ms or wall_duration_ms,
-        duration_api_ms=duration_ms or wall_duration_ms,
-        num_turns=_usage_int(payload.get("num_turns") or payload.get("numTurns")) or (1 if result else 0),
-        input_tokens=input_tokens,
-        cache_read_tokens=cache_read_tokens,
-        cache_creation_tokens=cache_creation_tokens,
-        output_tokens=output_tokens,
-        models=[model_for_pricing],
-        is_error=is_error,
-        result_excerpt=result[:4000],
-        flow_path=str(flow_path) if flow_path.exists() else "",
-    )
-
-
 def _parse_atelier_run_result(
     stdout: str,
     flow_path: Path,
@@ -1034,14 +548,6 @@ def _parse_cli_result(
         if result.duration_api_ms == 0:
             result.duration_api_ms = wall_duration_ms
         return result
-    if cli_driver == "copilot":
-        return _parse_copilot_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
-    if cli_driver == "codex":
-        return _parse_codex_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
-    if cli_driver == "opencode":
-        return _parse_opencode_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
-    if cli_driver == "vix":
-        return _parse_vix_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
     if cli_driver == "atelier-run":
         return _parse_atelier_run_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
     raise ValueError(f"unsupported cli driver: {cli_driver}")
@@ -1235,11 +741,7 @@ def run_arm(
     out_dir: Path,
     timeout: int,
     agent_command: str = "claude",
-    transport: str = "cli",
     cli_driver: str = "claude",
-    api_provider: str = "ollama",
-    api_base_url: str | None = None,
-    api_key_env: str | None = None,
     agent_env: dict[str, str] | None = None,
     cli_extra_args: list[str] | tuple[str, ...] = (),
     resume_state: bool = False,
@@ -1248,7 +750,7 @@ def run_arm(
     row_state: dict[str, object] = {}
     persistent_workspace = False
     should_resume_session = False
-    if transport == "cli" and cli_driver == "claude":
+    if cli_driver == "claude":
         state_dir = _row_state_dir(out_dir, task.id, arm, rep)
         existing_state = _load_row_state(state_dir)
         existing_workspace = Path(str(existing_state.get("workspace", "")))
@@ -1257,30 +759,12 @@ def run_arm(
         ws = prepare_workspace(task, Path(str(row_state["workspace"])))
         persistent_workspace = True
         should_resume_session = resume_state and has_saved_state
-    elif transport == "cli" and cli_driver == "atelier-run":
+    elif cli_driver == "atelier-run":
         workspace_path = out_dir / "workspaces" / f"{task.id}_{arm}_rep{rep}"
         ws = prepare_workspace(task, workspace_path)
         persistent_workspace = True
     else:
         ws = prepare_workspace(task)
-    if transport == "api":
-        try:
-            result = run_api_arm(
-                task,
-                arm,
-                rep,
-                model,
-                ws,
-                timeout,
-                api_provider=api_provider,
-                api_base_url=api_base_url,
-                api_key_env=api_key_env,
-            )
-            return _apply_result_validity(task, result)
-        finally:
-            shutil.rmtree(ws, ignore_errors=True)
-    if transport != "cli":
-        raise ValueError(f"unknown transport {transport}")
     if cli_driver not in CLI_DRIVERS:
         raise ValueError(f"unsupported cli driver: {cli_driver}")
     flow_path = out_dir / f"{task.id}_{arm}_rep{rep}.flow"
@@ -1333,7 +817,7 @@ def run_arm(
             env["AWS_CA_BUNDLE"] = str(CA_CERT)
         temp_paths: list[Path] = []
         if cli_driver == "claude":
-            cmd = build_vix_cli_command(
+            cmd = build_driver_command(
                 cli_driver=cli_driver,
                 prompt="Continue from where you left off." if should_resume_session else task.prompt(),
                 model=model,
@@ -1356,45 +840,15 @@ def run_arm(
                 cmd += ["--resume" if should_resume_session else "--session-id", session_id]
                 cmd += ["--add-dir", str(ws)]
             if arm == "baseline":
-                # Match the atelier arm's non-tool guidance (no plan mode, finish
-                # the task) so the measured delta is the toolset, not the prompt.
-                (ws / "CLAUDE.md").write_text(BASELINE_CLAUDE_MD)
+                # Bare baseline: stock Claude Code with no injected CLAUDE.md and no
+                # MCP servers. The comparison is the full Atelier agent vs a vanilla
+                # Claude Code session, persona and all.
                 cmd.extend(["--mcp-config", json.dumps(EMPTY_MCP), "--strict-mcp-config"])
             if arm == "atelier":
                 # Load the generated Claude plugin and run its real coding
                 # agent. The agent definition owns its prompt, MCP wiring, hooks,
                 # and native-tool restrictions.
                 cmd.extend(_atelier_claude_agent_args())
-        elif cli_driver == "copilot":
-            cmd = build_vix_cli_command(
-                cli_driver=cli_driver,
-                prompt=task.prompt(),
-                model=model,
-                workspace=str(ws),
-                extra_args=cli_extra_args,
-            )
-            if arm in {"baseline", "atelier"}:
-                cmd.append("--disable-builtin-mcps")
-            if arm == "baseline":
-                cmd.append("--no-custom-instructions")
-            if arm == "atelier":
-                cmd.extend(["--additional-mcp-config", json.dumps(_atelier_mcp_config("copilot"))])
-                (ws / _instruction_filename(cli_driver)).write_text(ATELIER_CLAUDE_MD)
-        elif cli_driver == "codex":
-            cmd = build_vix_cli_command(
-                cli_driver=cli_driver,
-                prompt=task.prompt(),
-                model=model,
-                workspace=str(ws),
-                extra_args=cli_extra_args,
-            )
-            if arm in {"baseline", "atelier"}:
-                codex_home = _make_codex_home(enable_atelier=arm == "atelier")
-                temp_paths.append(codex_home)
-                env["CODEX_HOME"] = str(codex_home)
-                cmd.append("--ignore-rules")
-            if arm == "atelier":
-                (ws / _instruction_filename(cli_driver)).write_text(ATELIER_CLAUDE_MD)
         elif cli_driver == "atelier-run":
             # Direct owned-session arm: Atelier owns prompt assembly, model routing,
             # caching, and the executable tool loop on the caller's API credentials.
@@ -1404,20 +858,7 @@ def run_arm(
                 cmd += ["--model", model]
             cmd += list(cli_extra_args)
         else:
-            cmd = build_vix_cli_command(
-                cli_driver=cli_driver,
-                prompt=task.prompt(),
-                model=model,
-                workspace=str(ws),
-                extra_args=cli_extra_args,
-            )
-            if arm in {"baseline", "atelier"}:
-                opencode_home = _make_opencode_home(enable_atelier=arm == "atelier", workspace=ws)
-                temp_paths.append(opencode_home)
-                env["OPENCODE_CONFIG_HOME"] = str(opencode_home)
-                cmd.append("--pure")
-            if arm == "atelier":
-                cmd.extend(["--agent", "atelier"])
+            raise ValueError(f"unsupported cli driver: {cli_driver}")
         started = time.time()
         proc = subprocess.run(
             cmd,
@@ -1446,170 +887,6 @@ def run_arm(
             shutil.rmtree(ws, ignore_errors=True)
         for temp_path in locals().get("temp_paths", []):
             shutil.rmtree(temp_path, ignore_errors=True)
-
-
-def run_api_arm(
-    task: Task,
-    arm: str,
-    rep: int,
-    model: str,
-    workspace: Path,
-    timeout: int,
-    *,
-    api_provider: str,
-    api_base_url: str | None,
-    api_key_env: str | None,
-) -> ArmResult:
-    prompt = task.prompt()
-    if arm == "atelier":
-        prompt = f"{ATELIER_CLAUDE_MD}\n\n{prompt}"
-    elif arm == "baseline":
-        prompt = f"Work in this repository path: {workspace}\n\n{prompt}"
-    base_url = (api_base_url or API_DEFAULT_BASE_URLS[api_provider]).rstrip("/")
-    api_key = os.environ.get(api_key_env or _default_api_key_env(api_provider), "")
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": False,
-    }
-    data = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        f"{base_url}/chat/completions",
-        data=data,
-        headers=_api_headers(api_provider, api_key),
-        method="POST",
-    )
-    started = time.time()
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = response.read().decode("utf-8")
-        duration_ms = int((time.time() - started) * 1000)
-        parsed = json.loads(body)
-        choice = (parsed.get("choices") or [{}])[0]
-        message = choice.get("message") or {}
-        result = str(message.get("content", ""))
-        usage = parsed.get("usage") or {}
-        return ArmResult(
-            task=task.id,
-            arm=arm,
-            rep=rep,
-            ok=True,
-            cost_usd=0.0,
-            duration_ms=duration_ms,
-            duration_api_ms=duration_ms,
-            num_turns=1,
-            input_tokens=int(usage.get("prompt_tokens", 0) or 0),
-            cache_read_tokens=0,
-            cache_creation_tokens=0,
-            output_tokens=int(usage.get("completion_tokens", 0) or 0),
-            models=[str(parsed.get("model") or model)],
-            is_error=False,
-            result_excerpt=result[:4000],
-            flow_path="",
-        )
-    except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError) as exc:
-        duration_ms = int((time.time() - started) * 1000)
-        return ArmResult(
-            task=task.id,
-            arm=arm,
-            rep=rep,
-            ok=False,
-            cost_usd=0.0,
-            duration_ms=duration_ms,
-            duration_api_ms=duration_ms,
-            num_turns=1,
-            input_tokens=0,
-            cache_read_tokens=0,
-            cache_creation_tokens=0,
-            output_tokens=0,
-            models=[model],
-            is_error=True,
-            result_excerpt=f"api error: {exc}"[:200],
-            flow_path="",
-        )
-
-
-def _default_api_key_env(api_provider: str) -> str:
-    if api_provider == "openai":
-        return "OPENAI_API_KEY"
-    if api_provider == "litellm":
-        return "LITELLM_API_KEY"
-    return "OLLAMA_API_KEY"
-
-
-def _api_headers(api_provider: str, api_key: str) -> dict[str, str]:
-    headers = {"Content-Type": "application/json"}
-    if api_key or api_provider != "ollama":
-        headers["Authorization"] = f"Bearer {api_key}"
-    return headers
-
-
-def _chat_completion(
-    *,
-    prompt: str,
-    model: str,
-    timeout: int,
-    api_provider: str,
-    api_base_url: str | None,
-    api_key_env: str | None,
-) -> tuple[str, dict[str, object], int]:
-    base_url = (api_base_url or API_DEFAULT_BASE_URLS[api_provider]).rstrip("/")
-    api_key = os.environ.get(api_key_env or _default_api_key_env(api_provider), "")
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": False,
-    }
-    request = urllib.request.Request(
-        f"{base_url}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers=_api_headers(api_provider, api_key),
-        method="POST",
-    )
-    started = time.time()
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        body = response.read().decode("utf-8")
-    duration_ms = int((time.time() - started) * 1000)
-    parsed = json.loads(body)
-    choice = (parsed.get("choices") or [{}])[0]
-    message = choice.get("message") or {}
-    return str(message.get("content", "")), parsed, duration_ms
-
-
-def _claude_completion(
-    *,
-    prompt: str,
-    model: str,
-    timeout: int,
-    agent_command: str,
-    agent_env: dict[str, str] | None = None,
-) -> tuple[str, dict[str, object], int]:
-    started = time.time()
-    completed = subprocess.run(
-        [
-            *shlex.split(agent_command),
-            "-p",
-            prompt,
-            "--model",
-            model,
-            "--output-format",
-            "json",
-            "--permission-mode",
-            "bypassPermissions",
-        ],
-        cwd=str(REPO_ROOT),
-        env={**os.environ, **(agent_env or {})},
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
-    duration_ms = int((time.time() - started) * 1000)
-    if completed.returncode != 0:
-        raise RuntimeError((completed.stderr or completed.stdout or "").strip()[:300])
-    payload = json.loads(completed.stdout)
-    return str(payload.get("result", "")), payload, duration_ms
 
 
 def _task_description(task: Task) -> str:
@@ -1647,12 +924,8 @@ Candidate response:
 def judge_results(
     results: list[ArmResult],
     *,
-    judge_transport: str,
-    judge_provider: str,
     judge_model: str,
     judge_agent_command: str,
-    judge_api_base_url: str | None,
-    judge_api_key_env: str | None,
     timeout: int,
     agent_env: dict[str, str] | None = None,
 ) -> None:
@@ -1661,7 +934,7 @@ def judge_results(
             result.correct = False
             result.score = 0.0
             result.judge_model = judge_model
-            result.judge_reason = "transport/runtime failure"
+            result.judge_reason = "runtime failure"
             continue
         task = BY_ID.get(result.task)
         if task is None:
@@ -1672,23 +945,26 @@ def judge_results(
             continue
         try:
             prompt = _judge_prompt(task, result)
-            if judge_transport == "cli":
-                text, _payload, _duration_ms = _claude_completion(
-                    prompt=prompt,
-                    model=judge_model,
-                    timeout=timeout,
-                    agent_command=judge_agent_command,
-                    agent_env=agent_env,
-                )
-            else:
-                text, _payload, _duration_ms = _chat_completion(
-                    prompt=prompt,
-                    model=judge_model,
-                    timeout=timeout,
-                    api_provider=judge_provider,
-                    api_base_url=judge_api_base_url,
-                    api_key_env=judge_api_key_env,
-                )
+            cmd = build_driver_command(
+                cli_driver="claude",
+                prompt=prompt,
+                model=judge_model,
+                workspace=str(REPO_ROOT),
+                agent_command=judge_agent_command,
+            )
+            completed = subprocess.run(
+                cmd,
+                cwd=str(REPO_ROOT),
+                env={**os.environ, **(agent_env or {})},
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            if completed.returncode != 0:
+                raise RuntimeError((completed.stderr or completed.stdout or "").strip()[:300])
+            text = str(json.loads(completed.stdout).get("result", ""))
             parsed = _parse_judge_json(text)
             result.correct = bool(parsed.get("correct", False))
             result.score = max(0.0, min(1.0, _as_float(parsed.get("score", 0.0) or 0.0)))
@@ -2077,11 +1353,7 @@ def _run_task_rep(
     out_dir: Path,
     timeout: int,
     agent_command: str,
-    transport: str,
     cli_driver: str,
-    api_provider: str,
-    api_base_url: str | None,
-    api_key_env: str | None,
     agent_env: dict[str, str] | None,
     cli_extra_args: list[str] | tuple[str, ...],
     resume_state: bool,
@@ -2101,11 +1373,7 @@ def _run_task_rep(
                 out_dir,
                 timeout,
                 agent_command,
-                transport,
                 cli_driver,
-                api_provider,
-                api_base_url,
-                api_key_env,
                 agent_env,
                 cli_extra_args,
                 resume_state=resume_state,
@@ -2150,11 +1418,7 @@ def _run_single_arm(
     out_dir: Path,
     timeout: int,
     agent_command: str,
-    transport: str,
     cli_driver: str,
-    api_provider: str,
-    api_base_url: str | None,
-    api_key_env: str | None,
     agent_env: dict[str, str] | None,
     cli_extra_args: list[str] | tuple[str, ...],
     resume_state: bool,
@@ -2168,11 +1432,7 @@ def _run_single_arm(
         out_dir=out_dir,
         timeout=timeout,
         agent_command=agent_command,
-        transport=transport,
         cli_driver=cli_driver,
-        api_provider=api_provider,
-        api_base_url=api_base_url,
-        api_key_env=api_key_env,
         agent_env=agent_env,
         cli_extra_args=cli_extra_args,
         resume_state=resume_state,
@@ -2181,42 +1441,18 @@ def _run_single_arm(
 
 
 def main() -> int:
-    # Initialize prompt from shared core discipline to ensure SSOT
-    discipline_path = REPO_ROOT / "integrations/shared/core-discipline.md"
-    efficiency_text = ""
-    if discipline_path.exists():
-        lines = discipline_path.read_text(encoding="utf-8").splitlines()
-        found_start = False
-        efficiency_lines = []
-        for line in lines:
-            if found_start:
-                if line.startswith("- **"):  # Next rule starts
-                    break
-                efficiency_lines.append(line)
-            if "- **Be Efficient**:" in line:
-                found_start = True
-                efficiency_lines.append(line)
-        efficiency_text = "\n".join(efficiency_lines).strip()
-
-    global ATELIER_CLAUDE_MD
-    ATELIER_CLAUDE_MD = ATELIER_CLAUDE_MD.replace("{{EFFICIENCY_RULES}}", efficiency_text)
-
     p = argparse.ArgumentParser(description="AtelierBench head-to-head runner")
-    p.add_argument("--tasks", nargs="*", default=["all"], help="task ids or 'all'")
-    p.add_argument("--arms", nargs="*", default=["baseline", "atelier"])
+    p.add_argument("tasks", nargs="*", default=["all"], metavar="TASK", help="task ids or 'all' (default: all)")
+    p.add_argument("-a", "--arms", nargs="*", default=["baseline", "atelier"])
     p.add_argument("--reps", type=int, default=1)
     p.add_argument("--model", default="sonnet")
     p.add_argument("--timeout", type=int, default=1800)
     p.add_argument(
-        "--max-output-tokens",
-        type=int,
-        default=8192,
-        help="Claude Code max output tokens per model request",
-    )
-    p.add_argument(
         "--rate-limit-rpm",
+        "--rate-limit",
         type=float,
         default=0,
+        dest="rate_limit_rpm",
         help="Maximum model inference requests per minute; 0 disables throttling",
     )
     p.add_argument(
@@ -2225,8 +1461,7 @@ def main() -> int:
         default=0,
         help="Maximum reserved output tokens per rolling minute; 0 disables throttling",
     )
-    p.add_argument("--transport", choices=["cli", "api"], default="cli")
-    p.add_argument("--cli-driver", choices=CLI_DRIVERS, default="claude")
+    p.add_argument("--driver", "--cli-driver", choices=CLI_DRIVERS, default="claude", dest="cli_driver")
     p.add_argument("--jobs", type=int, default=1, help="Parallel task/rep workers; arms stay serial per worker")
     p.add_argument(
         "--parallel-scope",
@@ -2234,17 +1469,9 @@ def main() -> int:
         default="task",
         help="Use 'arm' only for throughput experiments; 'task' preserves fair per-task comparisons.",
     )
-    p.add_argument("--api-provider", choices=["openai", "litellm", "ollama"], default="ollama")
-    p.add_argument("--api-base-url", default=None)
-    p.add_argument("--api-key-env", default=None)
-    p.add_argument("--launch-ollama", action="store_true", help="Start 'ollama serve' before API runs")
     p.add_argument("--judge", action="store_true", help="Score correctness with an LLM judge")
-    p.add_argument("--judge-transport", choices=["cli", "api"], default=None)
-    p.add_argument("--judge-provider", choices=["openai", "litellm", "ollama"], default=None)
     p.add_argument("--judge-model", default=None)
     p.add_argument("--judge-agent-command", default=None)
-    p.add_argument("--judge-api-base-url", default=None)
-    p.add_argument("--judge-api-key-env", default=None)
     p.add_argument("--agent-command", default="claude", help="Claude-compatible command to run each arm")
     p.add_argument(
         "--agent-env",
@@ -2286,11 +1513,9 @@ def main() -> int:
     p.add_argument("--report", default=None, help="path to a results dir to re-report")
     args = p.parse_args()
     if args.rate_limit_rpm < 0:
-        p.error("--rate-limit-rpm must be >= 0")
+        p.error("--rate-limit must be >= 0")
     if args.rate_limit_tpm < 0:
         p.error("--rate-limit-tpm must be >= 0")
-    if args.max_output_tokens < 1:
-        p.error("--max-output-tokens must be >= 1")
     os.environ["ATELIERBENCH_RATE_LIMIT_RPM"] = str(args.rate_limit_rpm)
     os.environ["ATELIERBENCH_RATE_LIMIT_TPM"] = str(args.rate_limit_tpm)
     agent_env = {
@@ -2298,9 +1523,6 @@ def main() -> int:
         **_parse_agent_env(args.agent_env),
         **_parse_agent_env_from_host(args.agent_env_from_host),
     }
-    agent_env.setdefault("CLAUDE_CODE_MAX_OUTPUT_TOKENS", str(args.max_output_tokens))
-    judge_transport = args.judge_transport or args.transport
-    judge_provider = args.judge_provider or args.api_provider
     judge_model = args.judge_model or args.model
     judge_agent_command = args.judge_agent_command or args.agent_command
     if args.report:
@@ -2309,12 +1531,8 @@ def main() -> int:
         if args.judge:
             judge_results(
                 report_results,
-                judge_transport=judge_transport,
-                judge_provider=judge_provider,
                 judge_model=judge_model,
                 judge_agent_command=judge_agent_command,
-                judge_api_base_url=args.judge_api_base_url or args.api_base_url,
-                judge_api_key_env=args.judge_api_key_env or args.api_key_env,
                 timeout=args.timeout,
                 agent_env=agent_env,
             )
@@ -2346,8 +1564,6 @@ def main() -> int:
         print("Aborting: install the missing prerequisites and rerun.", flush=True)
         return 1
     bridge_command = args.bridge_command
-    if args.launch_ollama and bridge_command is None:
-        bridge_command = "ollama serve"
     bridge = subprocess.Popen(shlex.split(bridge_command), cwd=str(REPO_ROOT)) if bridge_command else None
     if bridge is not None and args.bridge_wait > 0:
         time.sleep(args.bridge_wait)
@@ -2402,11 +1618,7 @@ def main() -> int:
                     out_dir=run_dir,
                     timeout=args.timeout,
                     agent_command=args.agent_command,
-                    transport=args.transport,
                     cli_driver=args.cli_driver,
-                    api_provider=args.api_provider,
-                    api_base_url=args.api_base_url,
-                    api_key_env=args.api_key_env,
                     agent_env=agent_env,
                     cli_extra_args=args.cli_extra_arg,
                     resume_state=args.resume,
@@ -2424,11 +1636,7 @@ def main() -> int:
                         out_dir=run_dir,
                         timeout=args.timeout,
                         agent_command=args.agent_command,
-                        transport=args.transport,
                         cli_driver=args.cli_driver,
-                        api_provider=args.api_provider,
-                        api_base_url=args.api_base_url,
-                        api_key_env=args.api_key_env,
                         agent_env=agent_env,
                         cli_extra_args=args.cli_extra_arg,
                         resume_state=args.resume,
@@ -2448,11 +1656,7 @@ def main() -> int:
                     out_dir=run_dir,
                     timeout=args.timeout,
                     agent_command=args.agent_command,
-                    transport=args.transport,
                     cli_driver=args.cli_driver,
-                    api_provider=args.api_provider,
-                    api_base_url=args.api_base_url,
-                    api_key_env=args.api_key_env,
                     agent_env=agent_env,
                     cli_extra_args=args.cli_extra_arg,
                     resume_state=args.resume,
@@ -2470,11 +1674,7 @@ def main() -> int:
                         out_dir=run_dir,
                         timeout=args.timeout,
                         agent_command=args.agent_command,
-                        transport=args.transport,
                         cli_driver=args.cli_driver,
-                        api_provider=args.api_provider,
-                        api_base_url=args.api_base_url,
-                        api_key_env=args.api_key_env,
                         agent_env=agent_env,
                         cli_extra_args=args.cli_extra_arg,
                         resume_state=args.resume,
@@ -2493,12 +1693,8 @@ def main() -> int:
     if args.judge:
         judge_results(
             results,
-            judge_transport=judge_transport,
-            judge_provider=judge_provider,
             judge_model=judge_model,
             judge_agent_command=judge_agent_command,
-            judge_api_base_url=args.judge_api_base_url or args.api_base_url,
-            judge_api_key_env=args.judge_api_key_env or args.api_key_env,
             timeout=args.timeout,
             agent_env=agent_env,
         )

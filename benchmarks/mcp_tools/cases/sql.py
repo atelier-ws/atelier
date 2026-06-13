@@ -2,10 +2,31 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable
 from typing import Any
 
-from benchmarks.mcp_tools.harness import BenchCase
+from benchmarks.mcp_tools.harness import BaselineMeasurement, BenchCase
+
+
+def _sql_baseline_builder(case: BenchCase) -> BaselineMeasurement:
+    conn_str = str(case.args.get("connection_string", ""))
+    db_path = conn_str.replace("sqlite:///", "")
+    statements = []
+    if case.args.get("sql"):
+        statements = [str(case.args["sql"])]
+    elif case.args.get("queries"):
+        statements = [str(q["sql"]) for q in case.args["queries"]]
+    rows_dump: list[Any] = []
+    try:
+        conn = sqlite3.connect(db_path)
+        for stmt in statements:
+            cur = conn.execute(stmt)
+            rows_dump.append([list(r) for r in cur.fetchall()])
+        conn.close()
+    except Exception as exc:
+        rows_dump = [f"error: {exc}"]
+    return BaselineMeasurement(payload=rows_dump, commands=statements)
 
 
 def _assert_connect(result: dict[str, Any]) -> None:
@@ -73,7 +94,8 @@ SQL_CASES: list[BenchCase] = [
         },
         assert_keys=["results"],
         custom_assert=_assert_query_rows(),
-        baseline_tokens=150,
+        baseline_builder=_sql_baseline_builder,
+        min_baseline_tokens=0,
     ),
     BenchCase(
         op="sql",
@@ -85,7 +107,8 @@ SQL_CASES: list[BenchCase] = [
         },
         assert_keys=["results"],
         custom_assert=_assert_query_rows(1, 1),
-        baseline_tokens=170,
+        baseline_builder=_sql_baseline_builder,
+        min_baseline_tokens=0,
     ),
     BenchCase(
         op="sql",
@@ -97,7 +120,8 @@ SQL_CASES: list[BenchCase] = [
         },
         assert_keys=["results"],
         custom_assert=_assert_query_rows(1, 1),
-        baseline_tokens=150,
+        baseline_builder=_sql_baseline_builder,
+        min_baseline_tokens=0,
     ),
     BenchCase(
         op="sql",
@@ -111,7 +135,8 @@ SQL_CASES: list[BenchCase] = [
         },
         assert_keys=["results"],
         custom_assert=_assert_query_rows(1, 2),
-        baseline_tokens=160,
+        baseline_builder=_sql_baseline_builder,
+        min_baseline_tokens=0,
     ),
     BenchCase(
         op="sql",
@@ -126,7 +151,8 @@ SQL_CASES: list[BenchCase] = [
         },
         assert_keys=["results"],
         custom_assert=_assert_batch_query(2),
-        baseline_tokens=300,
+        baseline_builder=_sql_baseline_builder,
+        min_baseline_tokens=0,
     ),
     BenchCase(
         op="sql",
@@ -142,7 +168,8 @@ SQL_CASES: list[BenchCase] = [
         },
         assert_keys=["results"],
         custom_assert=_assert_batch_query(3),
-        baseline_tokens=450,
+        baseline_builder=_sql_baseline_builder,
+        min_baseline_tokens=0,
     ),
     BenchCase(
         op="sql",

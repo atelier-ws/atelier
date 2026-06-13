@@ -47,7 +47,7 @@ if [[ "$ATELIER_RELEASE_TAG" == "latest" ]]; then
 else
     RELEASE_BASE_URL="https://github.com/atelier-ws/atelier/releases/download/${ATELIER_RELEASE_TAG}"
 fi
-ASSET_NAME="atelier-binaries-${BINARY_SUFFIX}.tar.gz"
+ASSET_NAME="atelier-distribution-${BINARY_SUFFIX}.tar.gz"
 RELEASE_URL="${RELEASE_BASE_URL}/${ASSET_NAME}"
 
 # ---- helpers -----------------------------------------------------------------
@@ -123,13 +123,20 @@ fi
 
 tar -xzf "$TMP_ARCHIVE" -C "$ATELIER_INSTALL_DIR"
 
-if [[ ! -x "${ATELIER_BIN_DIR}/atelier" ]]; then
-    fail "Binary extraction failed — ${ATELIER_BIN_DIR}/atelier not found. Try ATELIER_VERBOSE=1 for details."
+info "Distribution extracted to: ${ATELIER_INSTALL_DIR}"
+
+# ---- ensure uv is available -------------------------------------------------
+if ! command -v uv >/dev/null 2>&1; then
+    info "Installing uv..."
+    if command -v curl >/dev/null 2>&1; then
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+    else
+        wget -qO- https://astral.sh/uv/install.sh | sh
+    fi
+    export PATH="${HOME}/.local/bin:${PATH}"
 fi
 
-info "Installed to: ${ATELIER_BIN_DIR}"
-
-# ---- run full setup via bundle.sh -------------------------------------------
+# ---- run full setup via bundle.sh (installs wheel + host integrations) ------
 export PATH="${ATELIER_BIN_DIR}:${PATH}"
 BUNDLE_SH="${ATELIER_INSTALL_DIR}/scripts/bundle.sh"
 if [[ "$ATELIER_NO_HOSTS" != "1" && -f "$BUNDLE_SH" ]]; then
@@ -170,7 +177,7 @@ fi
 
 # ---- done --------------------------------------------------------------------
 echo ""
-if command -v atelier >/dev/null 2>&1; then
+if command -v atelier >/dev/null 2>&1 || command -v uv >/dev/null 2>&1 && uv tool list 2>/dev/null | grep -q "^atelier"; then
     info "Atelier $(atelier --version 2>/dev/null || echo '') ready!"
     echo ""
     echo "  Quick start:  atelier --help"

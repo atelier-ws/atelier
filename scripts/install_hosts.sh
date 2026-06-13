@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install_agent_clis.sh — Install Atelier into all available agent CLIs
+# install_hosts.sh — Install Atelier into all available agent CLIs
 #
 # When run without flags in an interactive terminal, prompts the user to
 # select which AI coding agents to install and whether to install globally
@@ -449,10 +449,7 @@ run_installer() {
     local output_file output ret
     local spinner_started=0
 
-    case "$host" in
-        claude) script="${SCRIPT_DIR}/install_claude.sh" ;;
-        *) script="${SCRIPT_DIR}/install_${host}.sh" ;;
-    esac
+    script="${SCRIPT_DIR}/install_${host}.sh"
 
     echo ""
     emit_host_status "START" "$host"

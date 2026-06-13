@@ -82,16 +82,16 @@ def test_role_prompts_include_todo_and_question_discipline() -> None:
 
     code = registry.render_prompt("code", ROOT)
     assert "todo list" in code
-    assert "Ask the user only for real ambiguity" in code
+    assert "continue only when you can name the unresolved question" in code
 
     execute = registry.render_prompt("execute", ROOT)
     assert "todo list" in execute
-    assert "Ask the user only for real ambiguity" in execute
+    assert "Resolve the design questions a reviewer would raise instead of handing them back" in execute
     assert "{{CODING_GUIDELINES}}" in execute
 
     plan = registry.render_prompt("plan", ROOT)
     assert "todo list" in plan
-    assert "ask the user instead of guessing" in plan.lower()
+    assert "ask the user when it is material" in plan.lower()
     assert "{{CORE_DISCIPLINE}}" in plan
 
 

@@ -135,7 +135,7 @@ TRACE_CASES: list[BenchCase] = [
         args={key: value for key, value in spec.items() if key != "label"},
         assert_keys=["trace_id", "event_recorded"],
         custom_assert=_assert_trace,
-        baseline_tokens=2600,
+        baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
     )
     for spec in _TRACE_SPECS
 ]

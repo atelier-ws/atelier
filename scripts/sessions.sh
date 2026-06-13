@@ -1,22 +1,55 @@
 #!/usr/bin/env bash
-# sessions.sh — download Atelier distribution to /tmp and run `atelier session hosts`.
+# sessions.sh — fetch the Atelier distribution and run `atelier session hosts`.
+#
+# The release ships a Python wheel inside atelier-distribution-<os>-<arch>.tar.gz
+# (not a standalone binary), so this installs that wheel into an ephemeral uv
+# venv and runs it. The venv is cached under /tmp keyed by release tag + platform,
+# so repeated runs are fast.
 #
 # Examples:
 #   bash scripts/sessions.sh
 #   bash scripts/sessions.sh --host codex --limit 10
 #   bash scripts/sessions.sh --host copilot --id d6cf6de0 --verbose
-#   bash scripts/sessions.sh --local                    # use local bundle/bin/atelier (no download)
-#   bash scripts/sessions.sh --local --host copilot     # local binary + extra flags
+#   bash scripts/sessions.sh --local                    # install from local bundle wheel (no download)
+#   bash scripts/sessions.sh --local --host copilot     # local wheel + extra flags
 #
 # Optional env:
 #   ATELIER_RELEASE_TAG=v1.2.3        (default: latest)
-#   ATELIER_SESSION_CACHE=1            (default: 1; cache binary under /tmp)
+#   ATELIER_SESSION_CACHE=1            (default: 1; cache the venv under /tmp)
 #   ATELIER_SESSION_CACHE_DIR=/tmp/atelier-session-cache
-#   ATELIER_LOCAL_BIN=./bundle/bin/atelier  (override local binary path)
+#   ATELIER_LOCAL_WHEEL=./bundle/bin/atelier-*.whl  (override local wheel path)
 
 set -euo pipefail
 
-# ── Parse --local flag out before forwarding remaining args ──────────────────
+# ── shared helpers ───────────────────────────────────────────────────────────
+ensure_uv() {
+    if command -v uv >/dev/null 2>&1; then return; fi
+    echo "◆ Installing uv..." >&2
+    if command -v curl >/dev/null 2>&1; then
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO- https://astral.sh/uv/install.sh | sh
+    else
+        echo "Missing downloader: install curl or wget." >&2
+        exit 1
+    fi
+    export PATH="${HOME}/.local/bin:${PATH}"
+    command -v uv >/dev/null 2>&1 || { echo "uv install completed but uv is not on PATH." >&2; exit 1; }
+}
+
+# install_wheel_to_venv <wheel> <venv_dir> [constraints]
+# Installs the wheel into a fresh venv at <venv_dir>; resolution is pinned by the
+# bundled constraints file when present (avoids re-resolving unbounded deps).
+install_wheel_to_venv() {
+    local wheel="$1" venv="$2" constraints="${3:-}"
+    ensure_uv
+    uv venv "$venv" >/dev/null
+    local cargs=()
+    [[ -n "$constraints" && -f "$constraints" ]] && cargs=(-c "$constraints")
+    uv pip install --python "$venv" "${cargs[@]+"${cargs[@]}"}" "$wheel" >/dev/null
+}
+
+# ── parse --local out before forwarding remaining args ───────────────────────
 USE_LOCAL=0
 FORWARD_ARGS=()
 for arg in "$@"; do
@@ -28,36 +61,36 @@ for arg in "$@"; do
 done
 set -- "${FORWARD_ARGS[@]+"${FORWARD_ARGS[@]}"}"
 
+CACHE_ENABLED="${ATELIER_SESSION_CACHE:-1}"
+CACHE_ROOT="${ATELIER_SESSION_CACHE_DIR:-/tmp/atelier-session-cache}"
+
 if [[ "$USE_LOCAL" == "1" ]]; then
-    # Resolve the local binary: prefer explicit ATELIER_LOCAL_BIN env, then
-    # look for bundle/bin/atelier relative to script location, then cwd.
+    # Resolve the local wheel: explicit ATELIER_LOCAL_WHEEL, then bundle/bin next
+    # to the script (dist layout), then repo/cwd bundle/bin.
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    LOCAL_BIN="${ATELIER_LOCAL_BIN:-}"
-    if [[ -z "$LOCAL_BIN" ]]; then
-        # Try next to the script (dist layout: scripts/ sibling of bin/)
-        if [[ -x "${SCRIPT_DIR}/../bin/atelier" ]]; then
-            LOCAL_BIN="$(cd "${SCRIPT_DIR}/../bin" && pwd)/atelier"
-        # Try repo root bundle/bin/
-        elif [[ -x "${SCRIPT_DIR}/../bundle/bin/atelier" ]]; then
-            LOCAL_BIN="$(cd "${SCRIPT_DIR}/../bundle/bin" && pwd)/atelier"
-        # Try cwd-relative bundle/bin/
-        elif [[ -x "./bundle/bin/atelier" ]]; then
-            LOCAL_BIN="$(pwd)/bundle/bin/atelier"
-        else
-            echo "--local: could not find local atelier binary." >&2
-            echo "  Tried: ${SCRIPT_DIR}/../bin/atelier, ${SCRIPT_DIR}/../bundle/bin/atelier, ./bundle/bin/atelier" >&2
-            echo "  Set ATELIER_LOCAL_BIN=/path/to/atelier to override." >&2
-            exit 1
-        fi
+    WHEEL="${ATELIER_LOCAL_WHEEL:-}"
+    if [[ -z "$WHEEL" ]]; then
+        for cand in "${SCRIPT_DIR}/../bin" "${SCRIPT_DIR}/../bundle/bin" "./bundle/bin"; do
+            match="$(ls "${cand}"/atelier-*.whl 2>/dev/null | head -1 || true)"
+            if [[ -n "$match" ]]; then WHEEL="$match"; break; fi
+        done
     fi
-    if [[ ! -x "$LOCAL_BIN" ]]; then
-        echo "--local: binary not executable: $LOCAL_BIN" >&2
+    if [[ -z "$WHEEL" || ! -f "$WHEEL" ]]; then
+        echo "--local: could not find a local atelier wheel." >&2
+        echo "  Tried: ${SCRIPT_DIR}/../bin, ${SCRIPT_DIR}/../bundle/bin, ./bundle/bin (atelier-*.whl)" >&2
+        echo "  Set ATELIER_LOCAL_WHEEL=/path/to/atelier-*.whl to override." >&2
         exit 1
     fi
-    echo "◆ Using local binary: $LOCAL_BIN" >&2
-    ATELIER_BIN="$LOCAL_BIN"
+    echo "◆ Using local wheel: $WHEEL" >&2
 
-    # Skip download / cache logic; fall through to exec below.
+    CONSTRAINTS=""
+    [[ -f "$(dirname "$WHEEL")/../constraints.txt" ]] && CONSTRAINTS="$(cd "$(dirname "$WHEEL")/.." && pwd)/constraints.txt"
+    VENV="${CACHE_ROOT}/local/$(basename "$WHEEL" .whl)/venv"
+    ATELIER_BIN="${VENV}/bin/atelier"
+    if [[ "${CACHE_ENABLED}" != "1" || ! -x "$ATELIER_BIN" ]]; then
+        rm -rf "$VENV"
+        install_wheel_to_venv "$WHEEL" "$VENV" "$CONSTRAINTS"
+    fi
 else
     OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
     ARCH="$(uname -m)"
@@ -89,24 +122,19 @@ else
     fi
 
     SUFFIX="${OS}-${ARCH}"
-    ASSET="atelier-binaries-${SUFFIX}.tar.gz"
+    ASSET="atelier-distribution-${SUFFIX}.tar.gz"
     URL="https://github.com/atelier-ws/atelier/releases/download/${TAG}/${ASSET}"
 
-    TMP_BASE="/tmp/atelier-session-${SUFFIX}-$$"
-    BIN_DIR="${TMP_BASE}/bin"
-    ARCHIVE="${TMP_BASE}.tar.gz"
-    CACHE_ENABLED="${ATELIER_SESSION_CACHE:-1}"
-    CACHE_ROOT="${ATELIER_SESSION_CACHE_DIR:-/tmp/atelier-session-cache}"
     CACHE_DIR="${CACHE_ROOT}/${TAG}/${SUFFIX}"
-    CACHED_BIN="${CACHE_DIR}/bin/atelier"
+    VENV="${CACHE_DIR}/venv"
+    ATELIER_BIN="${VENV}/bin/atelier"
 
-    cleanup() {
-        rm -rf "${TMP_BASE}" "${ARCHIVE}" 2>/dev/null || true
-    }
-    trap cleanup EXIT
+    if [[ "${CACHE_ENABLED}" != "1" || ! -x "$ATELIER_BIN" ]]; then
+        TMP_BASE="/tmp/atelier-session-${SUFFIX}-$$"
+        ARCHIVE="${TMP_BASE}.tar.gz"
+        cleanup() { rm -rf "${TMP_BASE}" "${ARCHIVE}" 2>/dev/null || true; }
+        trap cleanup EXIT
 
-    ATELIER_BIN="${CACHED_BIN}"
-    if [[ ! -x "${ATELIER_BIN}" ]]; then
         mkdir -p "${TMP_BASE}"
         if command -v curl >/dev/null 2>&1; then
             curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 "${URL}" -o "${ARCHIVE}"
@@ -118,19 +146,23 @@ else
         fi
 
         tar -xzf "${ARCHIVE}" -C "${TMP_BASE}"
-        ATELIER_BIN="${BIN_DIR}/atelier"
-        if [[ ! -x "${ATELIER_BIN}" ]]; then
-            echo "atelier binary not found after extraction: ${ATELIER_BIN}" >&2
+        WHEEL="$(ls "${TMP_BASE}"/bin/atelier-*.whl 2>/dev/null | head -1 || true)"
+        if [[ -z "$WHEEL" ]]; then
+            echo "atelier wheel not found in release archive ${ASSET}" >&2
             exit 1
         fi
+        CONSTRAINTS=""
+        [[ -f "${TMP_BASE}/constraints.txt" ]] && CONSTRAINTS="${TMP_BASE}/constraints.txt"
 
-        if [[ "${CACHE_ENABLED}" == "1" ]]; then
-            mkdir -p "${CACHE_DIR}"
-            rm -rf "${CACHE_DIR}/bin"
-            cp -a "${BIN_DIR}" "${CACHE_DIR}/"
-            ATELIER_BIN="${CACHED_BIN}"
-        fi
+        rm -rf "$VENV"
+        mkdir -p "$CACHE_DIR"
+        install_wheel_to_venv "$WHEEL" "$VENV" "$CONSTRAINTS"
     fi
+fi
+
+if [[ ! -x "$ATELIER_BIN" ]]; then
+    echo "atelier not found after install: ${ATELIER_BIN}" >&2
+    exit 1
 fi
 
 if "${ATELIER_BIN}" session hosts --help >/dev/null 2>&1; then

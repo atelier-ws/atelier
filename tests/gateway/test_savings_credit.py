@@ -227,3 +227,26 @@ def test_price_avoided_calls_usd_uses_cache_read_rate() -> None:
     assert _price_avoided_calls_usd("", 3, 100_000) == 0.0
     assert _price_avoided_calls_usd(MODEL, 3, 0) == 0.0
     assert _price_avoided_calls_usd(MODEL, 0, 100_000) == 0.0
+
+
+def test_sidecar_keyed_by_per_process_session_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The savings sidecar must key off CLAUDE_CODE_SESSION_ID (unique per MCP
+    process), not the shared workspace bridge, so concurrent sessions in one
+    workspace never write into each other's sidecar. The bridge stays a fallback
+    for hosts/launchers that don't set the env var.
+    """
+    from atelier.gateway.adapters import mcp_server as m
+
+    monkeypatch.setattr(m, "_atelier_root", lambda: tmp_path)
+    # Bridge points at a *sibling* session that last won the shared slot.
+    monkeypatch.setattr(m, "_read_workspace_session_bridge", lambda: ("sibling-sid", "claude-sonnet-4-5"))
+
+    # With the per-process env var set, identity + sidecar follow it, not the bridge.
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "my-sid")
+    assert m._claude_session_id() == "my-sid"
+    assert m._get_host_session_sidecar_path() == tmp_path / "session_stats" / "claude" / "my-sid.jsonl"
+
+    # Without it, fall back to the shared bridge (legacy single-session behavior).
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    assert m._claude_session_id() == "sibling-sid"
+    assert m._get_host_session_sidecar_path() == tmp_path / "session_stats" / "claude" / "sibling-sid.jsonl"

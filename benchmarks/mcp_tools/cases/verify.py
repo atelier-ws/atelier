@@ -27,20 +27,20 @@ def _assert_verify_case(
     expected_outcomes: dict[str, str],
     expected_escalations: list[str],
 ) -> None:
-    assert result.get("rubric_id") == expected_rubric_id, (
-        f"verify must return rubric_id={expected_rubric_id!r}, got {result.get('rubric_id')!r}"
-    )
-    assert result.get("status") == expected_status, (
-        f"verify must return status={expected_status!r}, got {result.get('status')!r}"
-    )
+    assert (
+        result.get("rubric_id") == expected_rubric_id
+    ), f"verify must return rubric_id={expected_rubric_id!r}, got {result.get('rubric_id')!r}"
+    assert (
+        result.get("status") == expected_status
+    ), f"verify must return status={expected_status!r}, got {result.get('status')!r}"
     outcomes = result.get("outcomes")
     assert isinstance(outcomes, list), "verify must return outcomes list"
     statuses = {str(item.get("name")): str(item.get("status")) for item in outcomes if isinstance(item, dict)}
     for name, status in expected_outcomes.items():
         assert statuses.get(name) == status, f"expected outcome {name!r}={status!r}, got {statuses.get(name)!r}"
-    assert result.get("escalations") == expected_escalations, (
-        f"expected escalations {expected_escalations!r}, got {result.get('escalations')!r}"
-    )
+    assert (
+        result.get("escalations") == expected_escalations
+    ), f"expected escalations {expected_escalations!r}, got {result.get('escalations')!r}"
 
 
 def _verify_assert(
@@ -106,7 +106,7 @@ def _build_verify_cases() -> list[BenchCase]:
                     },
                     assert_keys=["rubric_id", "status", "outcomes", "escalations"],
                     custom_assert=_verify_assert(rubric_id, status, expected_outcomes, expected_escalations),
-                    baseline_tokens=900,
+                    baseline_tokens=0,  # fixed-constant baseline removed; savings not claimed (correctness-only)
                 )
             )
     return cases

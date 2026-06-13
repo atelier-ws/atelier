@@ -45,7 +45,21 @@ def test_route_plan_returns_cross_vendor_recommendation(tmp_path: Path, monkeypa
     monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-key")
     monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
     monkeypatch.setenv("GOOGLE_API_KEY", "google-key")
-    configured = _invoke(root, "route", "configure", "--json")
+    # Pin the vendor set explicitly so host-surface auto-detection (e.g. a locally
+    # installed `ollama` binary) cannot leak a free local vendor into the routing
+    # decision and make this test environment-dependent.
+    configured = _invoke(
+        root,
+        "route",
+        "configure",
+        "--vendor",
+        "anthropic",
+        "--vendor",
+        "openai",
+        "--vendor",
+        "google",
+        "--json",
+    )
     assert configured.exit_code == 0, configured.output
 
     res = _invoke(

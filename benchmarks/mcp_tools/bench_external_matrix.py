@@ -979,7 +979,13 @@ def _payload_contains_all(payload: str, values: Iterable[str]) -> bool:
 
 
 def _payload_looks_empty(payload: str) -> bool:
-    compact = payload.replace(" ", "").replace("\n", "")
+    stripped = payload.strip()
+    # Whole payload is an empty JSON container (codegraph -> "[]", serena -> "{}").
+    if stripped in {"", "[]", "{}", "null"}:
+        return True
+    # Drop whitespace AND backslashes so escaped nested JSON also matches, e.g.
+    # jcodemunch's {"content":[{"text":"{\"result_count\":0,\"results\":[]}"}]}.
+    compact = payload.replace(" ", "").replace("\n", "").replace("\\", "").lower()
     empty_markers = [
         '"items":[]',
         '"results":[]',
@@ -988,10 +994,13 @@ def _payload_looks_empty(payload: str) -> bool:
         '"symbols":[]',
         '"hits":[]',
         '"found":false',
-        "Noresultsfound",
+        '"result_count":0',
+        "result_count=0",  # jcodemunch compact (st2) encoding uses '=' not ':'
+        '"total_matches":0',
+        "noresultsfound",
         "0matches",
     ]
-    return any(marker.lower() in compact.lower() for marker in empty_markers)
+    return any(marker in compact for marker in empty_markers)
 
 
 def _compact_provider_payload(tool: str, case: ExternalBenchCase, output: str) -> str:
@@ -1358,14 +1367,6 @@ def _atelier_better_pct(
     return f"{pct:+.1f}%"
 
 
-def _comparison_label(atelier_score: float, provider_score: float) -> str:
-    if atelier_score > provider_score:
-        return "atelier better"
-    if atelier_score < provider_score:
-        return "atelier worse"
-    return "equal"
-
-
 def _add_atelier_comparisons(summary: list[dict[str, object]]) -> None:
     baselines = {row["family"]: row for row in summary if row["tool"] == "atelier"}
     for row in summary:
@@ -1388,7 +1389,15 @@ def _add_atelier_comparisons(summary: list[dict[str, object]]) -> None:
         provider_ms = float(cast(float, row["median_ms"]))
         atelier_tokens = float(cast(int, baseline["median_tokens"]))
         provider_tokens = float(cast(int, row["median_tokens"]))
-        row["atelier_score_result"] = _comparison_label(atelier_score, provider_score)
+        # Atelier "score" verdict is token efficiency only (fewer tokens wins);
+        # correctness and latency are reported in their own columns but do not
+        # affect this result.
+        if atelier_tokens < provider_tokens:
+            row["atelier_score_result"] = "atelier better"
+        elif atelier_tokens > provider_tokens:
+            row["atelier_score_result"] = "atelier worse"
+        else:
+            row["atelier_score_result"] = "equal"
         row["atelier_score_vs_provider_pct"] = _atelier_better_pct(
             atelier_value=atelier_score,
             provider_value=provider_score,
@@ -1568,6 +1577,7 @@ def _run_parallel_tool_matrix(
     selected_tools: set[str],
     selected_families: set[str],
     jobs: int,
+    shard_timeout: float,
     total_units: int,
 ) -> list[CaseBenchResult]:
     shard_root = workspace_root / "provider-shards"
@@ -1625,13 +1635,37 @@ def _run_parallel_tool_matrix(
     progress.start("starting parallel provider benchmark", current=f"{len(commands)} tools x {jobs} jobs")
 
     def _run_child(tool_name: str, command: list[str], json_path: Path, log_path: Path) -> tuple[str, Path]:
-        completed = subprocess.run(
-            command,
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=shard_timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stdout = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+            stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+            log_path.write_text(
+                "\n".join(
+                    [
+                        "$ " + " ".join(command),
+                        "",
+                        f"[timeout] shard exceeded {shard_timeout:.0f}s and was killed",
+                        "",
+                        "[stdout]",
+                        stdout,
+                        "",
+                        "[stderr]",
+                        stderr,
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            raise RuntimeError(
+                f"Provider shard {tool_name} timed out after {shard_timeout:.0f}s (killed)\nLog: {log_path}"
+            ) from exc
         log_path.write_text(
             "\n".join(
                 [
@@ -1663,6 +1697,7 @@ def _run_parallel_tool_matrix(
             for tool_name, command, json_path, log_path, _status_file in commands
         }
         completed_jsons: list[Path] = []
+        failed_shards: list[str] = []
         last_snapshot = ""
         pending = set(futures)
         while pending:
@@ -1681,13 +1716,21 @@ def _run_parallel_tool_matrix(
                 progress.phase("running provider shards", current=snapshot)
                 last_snapshot = snapshot
             for future in done:
-                tool_name, json_path = future.result()
+                tool_name = futures[future]
+                try:
+                    _name, json_path = future.result()
+                except Exception as exc:
+                    failed_shards.append(tool_name)
+                    progress.step("provider shard failed", current=f"{tool_name}: {exc}")
+                    continue
                 completed_jsons.append(json_path)
                 progress.step("provider shard complete", current=tool_name)
         for json_path in completed_jsons:
             payload = json.loads(json_path.read_text(encoding="utf-8"))
             for item in payload.get("results", []):
                 results.append(CaseBenchResult(**item))
+    if failed_shards:
+        print(f"[providers] WARNING: {len(failed_shards)} shard(s) failed or timed out: {', '.join(failed_shards)}")
     progress.finish("parallel provider benchmark complete")
     results.sort(key=lambda item: (item.tool, item.family, item.case_id))
     return results
@@ -1728,6 +1771,12 @@ def main() -> None:
     parser.add_argument("--iterations", type=int, default=1)
     parser.add_argument("--max-cases", type=int, default=100)
     parser.add_argument("--jobs", type=int, default=0)
+    parser.add_argument(
+        "--shard-timeout",
+        type=float,
+        default=1800.0,
+        help="Seconds before a parallel provider shard is killed and recorded as failed (default 1800).",
+    )
     parser.add_argument("--tools", default=",".join(DEFAULT_PROVIDER_TOOLS))
     parser.add_argument(
         "--families",
@@ -1786,6 +1835,7 @@ def main() -> None:
             selected_tools=selected_tools,
             selected_families=selected_families,
             jobs=resolved_jobs,
+            shard_timeout=args.shard_timeout,
             total_units=len(selected_tools) * len(selected_cases) * max(args.iterations, 1),
         )
     else:

@@ -16,6 +16,7 @@ from atelier.core.capabilities.model_settings import (
     normalize_model_for_host,
     resolve_host_model,
 )
+from atelier.core.environment import skill_visible
 
 ATELIER_REPO_ROOT = Path(__file__).resolve().parents[4]
 
@@ -26,9 +27,7 @@ def workspace_copilot_agent_text(
     *,
     repo_root: str | Path | None = None,
 ) -> str:
-    agent_path = importlib.resources.files("atelier").joinpath(
-        "integrations", "copilot", "agents", _copilot_agent_filename(role_id)
-    )
+    agent_path = _integration_resource(repo_root, "copilot", "agents", _copilot_agent_filename(role_id))
     text = agent_path.read_text(encoding="utf-8")
     model = resolve_host_model(
         "copilot",
@@ -45,9 +44,7 @@ def workspace_claude_agent_text(
     *,
     repo_root: str | Path | None = None,
 ) -> str:
-    agent_path = importlib.resources.files("atelier").joinpath(
-        "integrations", "claude", "plugin", "agents", f"{role_id}.md"
-    )
+    agent_path = _integration_resource(repo_root, "claude", "plugin", "agents", f"{role_id}.md")
     text = agent_path.read_text(encoding="utf-8")
     # Only inject model if user explicitly set a host override (otherwise inherit session model)
     model = _claude_explicit_host_model(role_id, workspace_root)
@@ -111,6 +108,11 @@ def write_workspace_claude_overrides(
     if target_skills.exists():
         shutil.rmtree(target_skills)
     for source in sorted(source_skills.glob("*/SKILL.md")):
+        skill_name = source.parent.name
+        # Surfaced role skills (code/explore/...) are projected as agents, not as
+        # user skills; hidden skills are never surfaced. Skip both.
+        if skill_name in SURFACED_ROLE_IDS or not skill_visible(skill_name):
+            continue
         relative = source.relative_to(source_skills)
         target = target_skills / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -304,6 +306,22 @@ def _read_json(path: Path) -> dict[str, object]:
 
 def _resolve_repo_root(repo_root: str | Path | None) -> Path:
     return ATELIER_REPO_ROOT if repo_root is None else Path(repo_root).expanduser().resolve()
+
+
+def _integration_resource(repo_root: str | Path | None, *parts: str) -> Path:
+    """Resolve an ``integrations/`` asset.
+
+    In a source/editable checkout the assets live under the repo root. In a
+    built wheel they are force-included under ``atelier/integrations``. Prefer
+    the repo-root copy and fall back to the packaged copy.
+    """
+    repo_candidate = _resolve_repo_root(repo_root).joinpath("integrations", *parts)
+    if repo_candidate.exists():
+        return repo_candidate
+    packaged = importlib.resources.files("atelier").joinpath("integrations", *parts)
+    if packaged.is_file():
+        return Path(str(packaged))
+    return repo_candidate
 
 
 def _copilot_agent_filename(role_id: str) -> str:

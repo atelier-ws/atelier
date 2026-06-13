@@ -181,15 +181,21 @@ def _trace_recorded(session_id: str) -> bool:
 
 
 def _is_real_model_id(raw: object) -> bool:
-    from atelier.core.capabilities.savings_summary import is_real_model
+    try:
+        from atelier.core.capabilities.savings_summary import is_real_model
 
-    return is_real_model(raw)
+        return is_real_model(raw)
+    except (ImportError, ModuleNotFoundError):
+        return bool(raw) and raw != "unknown"
 
 
 def _resolve_model_id(raw: str | None) -> str:
-    from atelier.core.capabilities.savings_summary import resolve_model_id
+    try:
+        from atelier.core.capabilities.savings_summary import resolve_model_id
 
-    return resolve_model_id(raw or "")
+        return resolve_model_id(raw or "")
+    except (ImportError, ModuleNotFoundError):
+        return raw or "unknown"
 
 
 def _estimate_cost_usd(
@@ -200,15 +206,18 @@ def _estimate_cost_usd(
     cache_read_tokens: int,
     cache_write_tokens: int,
 ) -> float:
-    from atelier.core.capabilities.savings_summary import estimate_cost_usd
+    try:
+        from atelier.core.capabilities.savings_summary import estimate_cost_usd
 
-    return estimate_cost_usd(
-        model_id=model_id,
-        input_tokens=int(input_tokens or 0),
-        output_tokens=int(output_tokens or 0),
-        cache_read_tokens=int(cache_read_tokens or 0),
-        cache_write_tokens=int(cache_write_tokens or 0),
-    )
+        return estimate_cost_usd(
+            model_id=model_id,
+            input_tokens=int(input_tokens or 0),
+            output_tokens=int(output_tokens or 0),
+            cache_read_tokens=int(cache_read_tokens or 0),
+            cache_write_tokens=int(cache_write_tokens or 0),
+        )
+    except (ImportError, ModuleNotFoundError):
+        return 0.0
 
 
 def _read_transcript_stats(transcript_path: str) -> dict[str, Any] | None:
@@ -218,8 +227,10 @@ def _read_transcript_stats(transcript_path: str) -> dict[str, Any] | None:
     then converts the TranscriptStats dataclass to the dict format stop.py
     has always returned.
     """
-    from atelier.core.capabilities.savings_summary import TranscriptStats, read_transcript_stats
-
+    try:
+        from atelier.core.capabilities.savings_summary import TranscriptStats, read_transcript_stats
+    except (ImportError, ModuleNotFoundError):
+        return None
     stats: TranscriptStats | None = read_transcript_stats(transcript_path)
     if stats is None:
         return None

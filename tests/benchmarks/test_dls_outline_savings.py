@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
+from atelier.core.capabilities.semantic_file_memory.capability import _outline_saves_enough
 from atelier.core.capabilities.semantic_file_memory.treesitter_ast import outline_text
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "languages"
@@ -63,7 +64,7 @@ def measure_outline_savings(language: str, fixture: Path, cache_root: Path) -> O
     full_tokens = _count_tokens(source)
     generic_tokens = _count_tokens(generic)
     dedicated_tokens = _count_tokens(dedicated)
-    guard_passed = bool(dedicated and len(dedicated) <= int(len(source) * 0.75))
+    guard_passed = bool(dedicated and _outline_saves_enough(dedicated, source))
 
     return OutlineSavingsRow(
         language=language,

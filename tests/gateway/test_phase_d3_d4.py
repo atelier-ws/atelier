@@ -26,6 +26,7 @@ EXPECTED_TOOLS = {
     "usages",
     "web_fetch",
     "workflow",
+    "agent",
 }
 
 

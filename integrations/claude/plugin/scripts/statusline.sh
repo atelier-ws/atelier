@@ -227,6 +227,20 @@ if [ "$ROUTING_USD" != "\$0.000" ]; then
     CARRY_SEG=""
   fi
 
+# Hide the savings figure until the session registers real token usage. A frame
+# with zero input AND zero cache tokens has done no billable work, so any "saved"
+# value there is stale or cross-attributed from another session sharing this
+# workspace (savings rows are logged per tool call and can lead the per-turn
+# I/C/O buckets, or land under a sibling session's id). Show "↓" only once real
+# usage exists.
+if [ "${EFF_IN:-0}" -gt 0 ] 2>/dev/null || [ "${EFF_CACHE:-0}" -gt 0 ] 2>/dev/null; then
+  SAVED_SEG=" ↓ ${C_GREEN}${SAVED_USD}(${SAVED_CTX})${C_RESET}"
+  SAVED_SEG_COMPACT=" ${C_GREEN}↓ ${SAVED_USD}${C_RESET}"
+else
+  SAVED_SEG=""
+  SAVED_SEG_COMPACT=""
+fi
+
 # Background tasks. The statusline JSON carries no task info, so derive it:
 # shell jobs from session transcripts (main + subagents) where launch markers
 # exist without terminal task-notification status, and where the task output
@@ -304,18 +318,18 @@ TASKS_SEG=""
 # token breakdown. Enable with ATELIER_STATUS_COMPACT=1 in the statusLine
 # command.
 if [ -n "${ATELIER_STATUS_COMPACT:-}" ]; then
-  printf '%s%s%s %s %s %s ctx %s%% %s %s %s↓ %s%s%s\n' \
+  printf '%s%s%s %s %s %s ctx %s%% %s %s%s%s\n' \
     "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
     "$PIPE" "$MODEL" "$SEP" "$PCT_INT" \
     "$PIPE" "$COST_FMT" \
-    "$C_GREEN" "$SAVED_USD" "$C_RESET" \
+    "$SAVED_SEG_COMPACT" \
     "$TASKS_SEG"
   exit 0
 fi
 
-printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s) ↓ %s%s(%s)%s%s%s%s\n' \
+printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s)%s%s%s%s\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
   "$PIPE" "$MODEL" "$STATUS_SEG" "$ACTUAL_CTX_F" "$PCT_INT" \
   "$PIPE" "$COST_FMT" "$TOK_DISPLAY" \
-  "$C_GREEN" "$SAVED_USD" "$SAVED_CTX" "$C_RESET" \
+  "$SAVED_SEG" \
   "$CARRY_SEG" "$ROUTING_SEG" "$TASKS_SEG"

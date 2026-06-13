@@ -43,7 +43,6 @@ FIXTURES_SYNTHETIC: tuple[Path, ...] = (
     FIXTURE_DIR / "sample.go",
     FIXTURE_DIR / "sample.rs",
     FIXTURE_DIR / "Sample.java",
-    REPO_ROOT / "docs/specs/optimization-autopilot.md",  # real big markdown
     # Language fixtures added in gap-fill pass (10 new languages)
     FIXTURE_DIR / "sample.ts",
     FIXTURE_DIR / "sample.rb",
@@ -139,7 +138,15 @@ def _measure_read_fixture(fixture: Path) -> ABRow:
     delivered_parts = [str(payload.get("content") or "")]
     outline = payload.get("outline")
     if outline:
-        delivered_parts.append(json.dumps(outline) if not isinstance(outline, str) else outline)
+        if isinstance(outline, str):
+            delivered_parts.append(outline)
+        else:
+            # Mirror what the MCP layer actually ships to the agent
+            # (mcp_server._render_read_outline_md), not json.dumps — JSON
+            # escaping inflates newlines and would understate savings.
+            from atelier.gateway.adapters.mcp_server import _render_read_outline_md
+
+            delivered_parts.append(_render_read_outline_md(str(fixture), outline, language))
     atelier_chars = sum(len(part) for part in delivered_parts)
     atelier_tokens = _count_tiktoken("".join(delivered_parts))
     tokens_saved = int(payload.get("tokens_saved", 0) or 0)
