@@ -45,6 +45,7 @@ from atelier.core.capabilities.code_context.call_graph import (
     build_call_graph_payload,
     traverse_call_graph,
 )
+from atelier.core.capabilities.code_context.call_graph_centrality import compute_call_graph_centrality
 from atelier.core.capabilities.code_context.embedding import (
     SearchMode,
     SemanticSearchRanker,
@@ -1049,6 +1050,11 @@ class CodeContextEngine:
         self._autosync_thread: threading.Thread | None = None
         self._lineage_thread: threading.Thread | None = None
         self._index_ready_cached = False
+        # G6/N16: symbol-level call-graph centrality cache, keyed to the index
+        # version so a graph mutation (any reindex bumps index_version) forces a
+        # recompute and stale rankings are never served. Guarded by its own lock.
+        self._centrality_cache: dict[tuple[int, int], dict[str, Any]] = {}
+        self._centrality_cache_lock = threading.Lock()
         # MCP transport engines pass nonblocking_reads=True so read tools never
         # block on a cold index build; direct/SDK callers keep blocking semantics.
         self._nonblocking_reads = nonblocking_reads
@@ -5700,6 +5706,47 @@ class CodeContextEngine:
             )
             for row in rows
         ]
+
+    # ------------------------------------------------------------------
+    # G6 -- symbol-level call-graph centrality (with N16 cache guard)
+    # ------------------------------------------------------------------
+
+    def call_graph_centrality(self, *, limit: int = 50, use_cache: bool = True) -> dict[str, Any]:
+        """Rank the most important symbols by call-graph centrality.
+
+        Reads the persisted ``call_edges`` graph for this repo and returns degree
+        and (power-iteration) eigenvector centrality per symbol, most central
+        first. ``index_version`` is included so callers can tell which graph
+        snapshot produced a ranking.
+
+        N16: results are cached keyed to ``(index_version, limit)``. Every
+        reindex bumps ``index_version`` (see ``_bump_index_version``), which
+        changes the key, so a graph mutation can never serve a stale ranking.
+        """
+        version = self._current_index_version()
+        cache_key = (version, limit)
+        if use_cache:
+            with self._centrality_cache_lock:
+                cached = self._centrality_cache.get(cache_key)
+            if cached is not None:
+                return dict(cached)
+        with self._connect() as conn:
+            self._init_schema(conn)
+            rows = conn.execute(
+                """
+                SELECT caller_qualified_name, callee_name
+                FROM call_edges
+                WHERE repo_id = ?
+                """,
+                (self.repo_id,),
+            ).fetchall()
+        edges = [(str(row["caller_qualified_name"]), str(row["callee_name"])) for row in rows]
+        result = compute_call_graph_centrality(edges, limit=limit)
+        result["index_version"] = version
+        if use_cache:
+            with self._centrality_cache_lock:
+                self._centrality_cache[cache_key] = dict(result)
+        return result
 
     def _fallback_callers_from_references(
         self,
