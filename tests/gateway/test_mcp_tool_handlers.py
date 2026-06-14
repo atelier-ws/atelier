@@ -652,22 +652,6 @@ def test_context_pull_reuses_cached_scoped_context(monkeypatch: pytest.MonkeyPat
     assert second["provenance"] == "cached"
 
 
-def test_rescue_failure_returns_procedure(store_root: Path) -> None:
-    _ = store_root
-    payload = _result(
-        _call(
-            "rescue",
-            {
-                "task": "Run tests",
-                "error": "pytest AssertionError",
-                "recent_actions": ["run pytest", "run pytest"],
-            },
-        )
-    )
-    assert "rescue" in payload
-    assert "analysis" in payload
-
-
 def test_record_trace_accepts_monitor_event_payload(store_root: Path) -> None:
     _ = store_root
     payload = _result(
@@ -1494,9 +1478,6 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     )
     assert "def alpha" in symbol
 
-    outline = _result(_call("outline", {"repo_root": str(tmp_path), "path": "a.py"}))
-    assert "a.py" in outline
-
     context = _result(
         _call(
             "context",
@@ -2032,36 +2013,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert (
-        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
-    ), f"'trace_id' missing or empty in trace receipt: {payload}"
-
-
-def test_route_decide_summary_is_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """tool_route op=decide must return top-level route fields."""
-    root = tmp_path / ".atelier"
-    monkeypatch.setenv("ATELIER_ROOT", str(root))
-    import atelier.gateway.adapters.mcp_server as m
-
-    m._current_ledger = None
-
-    payload = _result(
-        _call(
-            "route",
-            {
-                "user_goal": "Fix a bug in the parser",
-                "repo_root": ".",
-                "task_type": "debug",
-                "risk_level": "medium",
-                "step_type": "edit",
-                "step_index": 1,
-            },
-        )
+    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
+        f"'trace_id' missing or empty in trace receipt: {payload}"
     )
-
-    assert "model" in payload, f"'model' key missing from route response: {list(payload)}"
-    assert "route_tier" in payload, f"'route_tier' key missing from route response: {list(payload)}"
-    assert "rationale" in payload, f"'rationale' key missing from route response: {list(payload)}"
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

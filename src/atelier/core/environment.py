@@ -27,10 +27,8 @@ MEMORY_BACKENDS = frozenset({"sqlite", "letta", "openmemory"})
 
 HIDDEN_LLM_TOOLS = frozenset(
     {
-        "rescue",
         "verify",
         "callees",
-        "route",
         "trace",
         "workflow",
         "agent",
@@ -39,8 +37,6 @@ HIDDEN_LLM_TOOLS = frozenset(
         # Repo/admin code-intel ops: callable by name (tests, CLI, power use)
         # but not surfaced to agents.
         "index",
-        "outline",
-        "hover",
         "blame",
         "rename",
         "cache_status",

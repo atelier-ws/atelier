@@ -51,25 +51,6 @@ def _seed_state_change_rubric(root: Path) -> None:
     )
 
 
-def _seed_rescue_block(root: Path) -> None:
-    ContextStore(root).upsert_block(
-        ReasonBlock(
-            id="state-change-rescue",
-            title="Recover from wrong target update",
-            domain="state.change",
-            triggers=["wrong target updated", "Update external state"],
-            failure_signals=["wrong target updated"],
-            situation="When an external state change was applied to the wrong target.",
-            procedure=[
-                "Stop retrying the write path.",
-                "Confirm the intended target before any further state changes.",
-            ],
-            verification=["Verify the target identifier against the original request."],
-            dead_ends=["Do not repeat the mutation without checking the target."],
-        )
-    )
-
-
 def test_init_seeds_blocks_and_rubrics(tmp_path: Path) -> None:
     res = _invoke(tmp_path / "a", "init")
     assert res.exit_code == 0, res.output
@@ -157,32 +138,6 @@ def test_record_trace_and_extract_block(tmp_path: Path) -> None:
     assert res.exit_code == 0, res.output
     trace_id = res.output.strip()
     assert len(trace_id) > 0
-
-
-def test_rescue_returns_procedure(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    init_store_at(str(root))
-    _seed_rescue_block(root)
-    res = _invoke(
-        root,
-        "tools",
-        "call",
-        "rescue",
-        "--dev",
-        "--args",
-        json.dumps(
-            {
-                "task": "Update external state",
-                "error": "wrong target updated",
-                "domain": "state.change",
-            }
-        ),
-        "--json",
-    )
-    assert res.exit_code == 0
-    payload = json.loads(res.output)
-    assert "rescue" in payload
-    assert payload["rescue"]
 
 
 def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
