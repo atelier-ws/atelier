@@ -904,8 +904,29 @@ def compute_savings_summary(
     return result
 
 
+_STATUS_TIPS: tuple[str, ...] = (
+    "Try `atelier savings` to see tokens, time, and $ saved",
+    "Use `sql` to explore your schema without reading SQL files",
+    "Batch reads: read(files=[...]) — one call, many files",
+    "grep content-mode finds and reads code in one step",
+    "Delegate scans to atelier:explore — cheaper model, fewer tokens",
+    "Use the memory tool to recall past sessions and decisions",
+)
+
+
+def _status_tip() -> str:
+    """A rotating feature tip (changes ~every 90s so it isn't flickery)."""
+    import time
+
+    return _STATUS_TIPS[int(time.time() // 90) % len(_STATUS_TIPS)]
+
+
 def _resolve_status_text(atelier_root: str | Path | None = None) -> str:
-    """Return update / login / subscription warning text for the statusline."""
+    """Return update / login / subscription warning text for the statusline.
+
+    Falls back to a rotating feature tip (when ``statusLineTips`` is enabled)
+    so the lowest-priority slot coaches the user toward Atelier features.
+    """
     root = Path(atelier_root) if atelier_root else None
     if root is None:
         root_env = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or ""
@@ -933,6 +954,12 @@ def _resolve_status_text(atelier_root: str | Path | None = None) -> str:
     subscription = _read("subscription.json")
     if subscription.get("warning"):
         return str(subscription.get("message") or "subscription")[:40]
+    # Lowest priority: a rotating feature tip, when statusLineTips is enabled.
+    raw = _read("plugin_settings.json")
+    nested = raw.get("atelier")
+    settings = nested if isinstance(nested, dict) else raw
+    if settings.get("statusLineTips", True) is not False:
+        return _status_tip()
     return ""
 
 
