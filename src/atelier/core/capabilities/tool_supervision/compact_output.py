@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 import tiktoken
 from pydantic import BaseModel, ConfigDict
@@ -320,11 +320,201 @@ def compress_history(
     return result
 
 
+# --------------------------------------------------------------------------- #
+# N6 — Savings gate for compact encoding                                       #
+# --------------------------------------------------------------------------- #
+
+# Default savings floor: only ship a compact form when it removes at least this
+# fraction of the original JSON length. Below the floor, the original JSON is
+# emitted unchanged — this guarantees compaction never inflates small or
+# low-redundancy payloads.
+DEFAULT_SAVINGS_THRESHOLD = 0.15
+
+
+class GateResult(BaseModel):
+    """Outcome of the N6 savings gate.
+
+    ``chosen`` is the text that should actually be emitted. ``used_compact`` is
+    True only when the compact form cleared the savings threshold.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    chosen: str
+    used_compact: bool
+    original_chars: int
+    compact_chars: int
+    savings_ratio: float
+    threshold: float
+
+
+def savings_ratio(original: str, compact_form: str) -> float:
+    """Fraction of characters removed by *compact_form* vs *original*.
+
+    Returns 0.0 (never negative) when the compact form is not smaller, so an
+    inflating encoding can never appear to "save".
+    """
+    original_len = len(original)
+    if original_len <= 0:
+        return 0.0
+    saved = original_len - len(compact_form)
+    if saved <= 0:
+        return 0.0
+    return saved / original_len
+
+
+def gate_compact(
+    original: str,
+    compact_form: str,
+    *,
+    threshold: float = DEFAULT_SAVINGS_THRESHOLD,
+) -> GateResult:
+    """Pick the compact form only when it beats *original* by *threshold*.
+
+    ``(len(original) - len(compact)) / len(original) >= threshold`` ships the
+    compact form; otherwise the original is returned unchanged. This is the
+    safety guard that makes aggressive encoding safe to enable by default —
+    compaction NEVER inflates small / low-redundancy payloads.
+    """
+    ratio = savings_ratio(original, compact_form)
+    use_compact = ratio >= threshold
+    return GateResult(
+        chosen=compact_form if use_compact else original,
+        used_compact=use_compact,
+        original_chars=len(original),
+        compact_chars=len(compact_form),
+        savings_ratio=ratio,
+        threshold=threshold,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# N7 — Schema-driven columnar + string-intern encoding                        #
+# --------------------------------------------------------------------------- #
+
+# Self-describing header so the consumer / model can interpret the encoding.
+COLUMNAR_FORMAT = "atelier-columnar-v1"
+
+
+def _row_keys(rows: list[dict[str, Any]]) -> list[str]:
+    """Stable union of keys across all rows, first-seen order preserved."""
+    keys: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        for key in row.keys():
+            if key not in seen:
+                seen.add(key)
+                keys.append(key)
+    return keys
+
+
+def columnar_encode(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Encode a list of homogeneous-ish row dicts columnar with a string legend.
+
+    Repeated string values (file paths, FQNs, etc.) are interned into a
+    ``legend`` list; each column holds either the raw value or a ``{"$": idx}``
+    reference into the legend. The result is self-describing (``format`` header
+    plus ``columns``) and lossless: ``columnar_decode`` reconstructs the exact
+    original rows including missing keys (encoded as a JSON null and decoded as
+    an absent key only when it was absent originally — see below).
+
+    Missing keys are preserved exactly: a column carries one entry per row, and
+    a per-column ``present`` bitmap records which rows actually had the key, so
+    a stored ``None`` value is distinguished from an absent key on decode.
+    """
+    keys = _row_keys(rows)
+    legend: list[str] = []
+    legend_index: dict[str, int] = {}
+    # Count string occurrences so we only intern values that repeat — interning
+    # a once-seen string would add legend bytes without removing redundancy.
+    string_counts: dict[str, int] = {}
+    for row in rows:
+        for key in keys:
+            value = row.get(key)
+            if isinstance(value, str):
+                string_counts[value] = string_counts.get(value, 0) + 1
+
+    def _intern(value: str) -> int:
+        idx = legend_index.get(value)
+        if idx is None:
+            idx = len(legend)
+            legend.append(value)
+            legend_index[value] = idx
+        return idx
+
+    columns: dict[str, list[Any]] = {}
+    present: dict[str, list[int]] = {}
+    for key in keys:
+        col: list[Any] = []
+        present_col: list[int] = []
+        for row in rows:
+            has_key = key in row
+            present_col.append(1 if has_key else 0)
+            value = row.get(key)
+            if isinstance(value, str) and string_counts.get(value, 0) > 1:
+                col.append({"$": _intern(value)})
+            else:
+                col.append(value)
+        columns[key] = col
+        present[key] = present_col
+
+    return {
+        "format": COLUMNAR_FORMAT,
+        "n": len(rows),
+        "keys": keys,
+        "legend": legend,
+        "columns": columns,
+        "present": present,
+    }
+
+
+def columnar_decode(encoded: dict[str, Any]) -> list[dict[str, Any]]:
+    """Reconstruct the exact original rows from :func:`columnar_encode` output."""
+    if encoded.get("format") != COLUMNAR_FORMAT:
+        raise ValueError(f"unsupported columnar format: {encoded.get('format')!r}")
+    n = int(encoded.get("n") or 0)
+    keys = encoded.get("keys") or []
+    legend = encoded.get("legend") or []
+    columns = encoded.get("columns") or {}
+    present = encoded.get("present") or {}
+
+    def _resolve(value: Any) -> Any:
+        if isinstance(value, dict) and set(value.keys()) == {"$"}:
+            return legend[int(value["$"])]
+        return value
+
+    rows: list[dict[str, Any]] = []
+    for i in range(n):
+        row: dict[str, Any] = {}
+        for key in keys:
+            present_col = present.get(key) or []
+            if i < len(present_col) and not present_col[i]:
+                continue  # key was absent in the original row
+            col = columns.get(key) or []
+            if i < len(col):
+                row[key] = _resolve(col[i])
+        rows.append(row)
+    return rows
+
+
+def columnar_encode_json(rows: list[dict[str, Any]]) -> str:
+    """Compact-JSON serialise the columnar encoding of *rows*."""
+    return json.dumps(columnar_encode(rows), ensure_ascii=False, separators=(",", ":"))
+
+
 __all__ = [
+    "COLUMNAR_FORMAT",
+    "DEFAULT_SAVINGS_THRESHOLD",
     "CompactResult",
+    "GateResult",
     "TokenSavingStats",
+    "columnar_decode",
+    "columnar_encode",
+    "columnar_encode_json",
     "compact",
     "compress_history",
     "compress_tool_output",
     "deterministic_truncate",
+    "gate_compact",
+    "savings_ratio",
 ]
