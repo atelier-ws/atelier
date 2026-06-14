@@ -86,7 +86,6 @@ _TRACE_SPECS: list[dict[str, object]] = [
         "status": "success",
         "learnings": [
             {"surface": "grep", "lesson": "preserve case for substring probes"},
-            {"surface": "impact", "lesson": "assert importer paths, not caller edges"},
         ],
     },
     {

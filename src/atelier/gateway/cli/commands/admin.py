@@ -166,8 +166,7 @@ Use the dedicated, focused code-intel tools (SCIP-indexed, prefer over `grep`):
 | Read the full source of one symbol | `mcp__atelier__node` |
 | Who calls a function / what it calls | `mcp__atelier__callers` / `mcp__atelier__callees` |
 | All references to a symbol | `mcp__atelier__usages` |
-| Blast radius before refactoring | `mcp__atelier__impact` |
-| Match/rewrite code by AST shape | `mcp__atelier__pattern` |
+| Match/rewrite code by AST shape | `mcp__atelier__codemod` |
 | Grouped source + relationships in one call | `mcp__atelier__explore` |
 
 ## Agent Spawning Rules

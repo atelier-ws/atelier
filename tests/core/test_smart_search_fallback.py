@@ -16,7 +16,7 @@ def test_smart_search_relaxes_natural_language_query_after_empty_primary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _configure(monkeypatch, tmp_path)
-    target = tmp_path / "benchmarks" / "atelierbench" / "run.py"
+    target = tmp_path / "benchmarks" / "codebench" / "run.py"
     target.parent.mkdir(parents=True)
     target.write_text(
         "parser.add_argument('--rate-limit-rpm', type=int)\n",
@@ -34,7 +34,7 @@ def test_smart_search_relaxes_natural_language_query_after_empty_primary(
     )
 
     payload = smart_search_mod.smart_search(
-        query="atelierbench CLI arguments rate-limit-rpm arms drivers model timeout command execution",
+        query="codebench CLI arguments rate-limit-rpm arms drivers model timeout command execution",
         path=str(target),
         max_files=8,
         budget_tokens=8000,

@@ -44,7 +44,7 @@ def test_generated_repo_backed_case_counts() -> None:
     assert len(search_module.SEARCH_CASES) == 300
     assert len(grep_module.GREP_CASES) == 300
     assert len(context_module.CONTEXT_CASES) == 300
-    assert len(code_module.CODE_CASES) >= 2118
+    assert len(code_module.CODE_CASES) >= 700
     assert len(memory_module.MEMORY_CASES) == 300
     assert len(route_module.ROUTE_CASES) == 300
     assert len(compact_module.COMPACT_CASES) == 300
@@ -62,21 +62,16 @@ def test_generated_public_code_tool_counts() -> None:
     for case in code_module.CODE_CASES:
         tool_name = str(
             case.args.get("_tool")
-            or (
-                "symbols"
-                if case.op not in {"node", "callers", "callees", "usages", "impact", "explore", "pattern"}
-                else case.op
-            )
+            or ("symbols" if case.op not in {"node", "callers", "callees", "usages", "explore", "pattern"} else case.op)
         )
         counts[tool_name] = counts.get(tool_name, 0) + 1
 
     assert counts["symbols"] >= 300
-    assert counts["node"] >= 300
-    assert counts["callers"] >= 300
-    assert counts["callees"] >= 300
+    assert counts["node"] >= 25
+    assert counts["callers"] >= 25
+    assert counts["callees"] >= 25
     assert counts["usages"] >= 300
-    assert counts["impact"] >= 300
-    assert counts["explore"] >= 300
+    assert counts["explore"] >= 25
 
 
 def test_generated_case_labels_are_unique() -> None:

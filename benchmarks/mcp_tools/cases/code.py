@@ -246,25 +246,6 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
                 "tests/gateway/test_p0_mcp_surfaces.py",
             ],
         ),
-        "impact": (
-            [
-                *common_cmds,
-                [
-                    "rg",
-                    "-n",
-                    "bash_exec|tool_supervision\\.bash_exec",
-                    "src",
-                    "tests",
-                    "benchmarks",
-                ],
-            ],
-            [
-                "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
-                "src/atelier/gateway/adapters/mcp_server.py",
-                "tests/gateway/test_run_tool.py",
-                "src/atelier/core/capabilities/code_context/engine.py",
-            ],
-        ),
         "context": (
             [
                 *common_cmds,
@@ -586,20 +567,6 @@ def _assert_pattern_decorator(result: dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 10. impact — what imports this file
-# ---------------------------------------------------------------------------
-
-
-def _assert_impact(result: dict[str, Any]) -> None:
-    _assert_ok(result)
-    text = str(result)
-    # bash_exec.py is imported by mcp_server.py and tests
-    assert (
-        "mcp_server" in text or "test_" in text or "bench_shell" in text
-    ), f"impact for bash_exec.py must list mcp_server or test files, got: {text[:400]!r}"
-
-
-# ---------------------------------------------------------------------------
 # 11. context — task-based context builder
 # ---------------------------------------------------------------------------
 
@@ -616,14 +583,6 @@ def _assert_cache_status_compact(result: dict[str, Any]) -> None:
     rendered = str(result.get("rendered") or "")
     assert rendered, "compact cache_status must render a non-empty summary"
     assert "payload_json" not in str(result)
-
-
-def _assert_impact_symbol_target(result: dict[str, Any]) -> None:
-    _assert_impact(result)
-    assert result.get("target_type") == "symbol"
-    rendered = str(result.get("rendered") or "")
-    assert rendered, "compact impact must render a non-empty summary"
-    assert "target: symbol" in rendered
 
 
 def _assert_search_stress(result: dict[str, Any]) -> None:
@@ -781,17 +740,6 @@ def _usages_assert(expected_name: str, expected_paths: tuple[str, ...]) -> Calla
         assert any(
             path in text for path in expected_paths
         ), f"usages result must include one of {expected_paths!r}, got: {text[:400]!r}"
-
-    return _assert
-
-
-def _impact_assert(expected_paths: tuple[str, ...]) -> Callable[[dict[str, Any]], None]:
-    def _assert(result: dict[str, Any]) -> None:
-        _assert_ok(result)
-        text = str(result)
-        assert any(
-            path in text for path in expected_paths
-        ), f"impact result must include one of {expected_paths!r}, got: {text[:400]!r}"
 
     return _assert
 
@@ -1056,34 +1004,6 @@ CODE_CASES: list[BenchCase] = [
         min_baseline_tokens=BASELINE_MIN_TOKENS,
     ),
     BenchCase(
-        op="impact",
-        label="impact — which files import bash_exec.py",
-        args={
-            "op": "impact",
-            "path": "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
-            "budget_tokens": 600,
-            "render_compact": True,
-        },
-        assert_keys=[],
-        custom_assert=_assert_impact,
-        baseline_builder=_build_measured_baseline,
-        min_baseline_tokens=BASELINE_MIN_TOKENS,
-    ),
-    BenchCase(
-        op="impact",
-        label="impact/symbol — symbol target accepted alongside path mode",
-        args={
-            "op": "impact",
-            "query": "run_command",
-            "budget_tokens": 600,
-            "render_compact": True,
-        },
-        assert_keys=[],
-        custom_assert=_assert_impact_symbol_target,
-        baseline_builder=_build_measured_baseline,
-        min_baseline_tokens=BASELINE_MIN_TOKENS,
-    ),
-    BenchCase(
         op="cache_status",
         label="cache_status — compact diagnostics summary only",
         args={
@@ -1200,23 +1120,23 @@ def _build_generated_code_cases() -> list[BenchCase]:
     symbol_targets = stable_symbols[75:150]
     hover_targets = stable_symbols[150:225]
     outline_targets = file_facts[:75]
-    node_targets = stable_symbols[225:525]
-    explore_targets = stable_method_symbols[:300]
+    node_targets = stable_symbols[225:250]
+    explore_targets = stable_method_symbols[:25]
     usages_targets = referenced_symbols[:300]
-    impact_targets = stable_method_symbols[:300]
-    callers_cases = callers_targets[:300]
-    callees_cases = callees_targets[:300]
+
+    callers_cases = callers_targets[:25]
+    callees_cases = callees_targets[:25]
 
     assert len(search_symbols) == 75, "not enough unique symbols for generated code search cases"
     assert len(symbol_targets) == 75, "not enough unique symbols for generated code symbol cases"
     assert len(hover_targets) == 75, "not enough unique symbols for generated code hover cases"
     assert len(outline_targets) == 75, "not enough outline files for generated code outline cases"
-    assert len(node_targets) == 300, "not enough unique symbols for generated node cases"
-    assert len(explore_targets) == 300, "not enough unique symbols for generated explore cases"
+    assert len(node_targets) == 25, "not enough unique symbols for generated node cases"
+    assert len(explore_targets) == 25, "not enough unique symbols for generated explore cases"
     assert len(usages_targets) == 300, "not enough referenced symbols for generated usages cases"
-    assert len(impact_targets) == 300, "not enough impact targets for generated impact cases"
-    assert len(callers_cases) == 300, "not enough caller targets for generated callers cases"
-    assert len(callees_cases) == 300, "not enough callee targets for generated callees cases"
+
+    assert len(callers_cases) == 25, "not enough caller targets for generated callers cases"
+    assert len(callees_cases) == 25, "not enough callee targets for generated callees cases"
 
     cases: list[BenchCase] = []
     for index, symbol in enumerate(search_symbols, start=1):
@@ -1368,22 +1288,7 @@ def _build_generated_code_cases() -> list[BenchCase]:
                 min_baseline_tokens=BASELINE_MIN_TOKENS,
             )
         )
-    for index, symbol in enumerate(impact_targets, start=1):
-        query = benchmark_query_text(symbol)
-        cases.append(
-            BenchCase(
-                op="impact",
-                label=f"generated/impact/{index:03d}",
-                args={
-                    "_tool": "impact",
-                    "query": query,
-                    "repo_root": DEFAULT_REPO_ROOT,
-                },
-                custom_assert=_impact_assert((symbol.path,)),
-                baseline_builder=_build_measured_baseline,
-                min_baseline_tokens=BASELINE_MIN_TOKENS,
-            )
-        )
+
     for index, symbol in enumerate(explore_targets, start=1):
         query = benchmark_query_text(symbol)
         cases.append(

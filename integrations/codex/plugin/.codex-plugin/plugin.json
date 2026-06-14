@@ -17,7 +17,7 @@
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "For coding tasks, call mcp__atelier__context first. Use Atelier MCP tools before native Codex tools: node/callers/callees/impact/explore for code intelligence, grep/search for discovery, read for file reads, edit for writes, and shell only for git/build/test commands. Treat native Read/Edit/Write/MultiEdit/Bash/Grep/Glob as fallback-only when the Atelier equivalent is hidden, unavailable, or returned noop."
+      "For coding tasks, call mcp__atelier__context first. Use Atelier MCP tools before native Codex tools: node/callers/callees/explore for code intelligence, grep/search for discovery, read for file reads, edit for writes, and shell only for git/build/test commands. Treat native Read/Edit/Write/MultiEdit/Bash/Grep/Glob as fallback-only when the Atelier equivalent is hidden, unavailable, or returned noop."
     ],
     "brandColor": "#0f766e"
   }

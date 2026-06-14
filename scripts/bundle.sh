@@ -74,7 +74,6 @@ install_atelier_from_wheel() {
 
     local extras="mcp,memory,smart,cloud,postgres,vector,parsers,rename"
     info "Installing atelier from wheel (uv tool install)..."
-    stop_existing_atelier_processes
     # Install the console script to the same bin/tool dirs as `make dev` (scripts/local.sh),
     # so prod and dev share ONE on-PATH binary location (ATELIER_BIN_DIR, default ~/.local/bin).
     UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" UV_TOOL_DIR="$ATELIER_TOOL_DIR" \

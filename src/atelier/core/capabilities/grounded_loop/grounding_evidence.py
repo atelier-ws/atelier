@@ -10,7 +10,7 @@ from typing import Any
 GROUNDING_EVIDENCE_KEY = "grounding_evidence"
 MAX_GROUNDING_EVIDENCE = 64
 _ANCHOR_PATTERN = re.compile(r"#\d+(?:-\d+)?$")
-_CODE_INTEL_TOOLS = frozenset({"symbols", "node", "explore", "callers", "callees", "usages", "impact"})
+_CODE_INTEL_TOOLS = frozenset({"symbols", "node", "explore", "callers", "callees", "usages"})
 
 
 def _workspace_root(workspace_root: str | Path | None) -> Path:

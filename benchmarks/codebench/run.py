@@ -11,30 +11,30 @@ Baseline uses an isolated CLAUDE_CONFIG_DIR with plugins/hooks/MCP stripped
 The Atelier arm adds the atelier stdio MCP server + a tool-discipline CLAUDE.md.
 
 Usage:
-    uv run python -m benchmarks.atelierbench.run task1 --model sonnet
+    uv run python -m benchmarks.codebench.run task1 --model sonnet
 
     # Cloud providers - reads credentials from .env or current env automatically:
-    uv run python -m benchmarks.atelierbench.run task1 -a atelier \
+    uv run python -m benchmarks.codebench.run task1 -a atelier \
         --provider aws --model us.anthropic.claude-sonnet-4-5-20250929-v1:0
-    uv run python -m benchmarks.atelierbench.run task1 -a atelier \
+    uv run python -m benchmarks.codebench.run task1 -a atelier \
         --provider gcp --model claude-sonnet-4-5@20250929
-    uv run python -m benchmarks.atelierbench.run task1 -a atelier \
+    uv run python -m benchmarks.codebench.run task1 -a atelier \
         --provider azure --model claude-sonnet-4-5
-    uv run python -m benchmarks.atelierbench.run task1 -a baseline atelier \
+    uv run python -m benchmarks.codebench.run task1 -a baseline atelier \
         --provider openrouter --model anthropic/claude-sonnet-4-5
 
     # Manual override (--agent-env takes precedence over --provider):
-    uv run python -m benchmarks.atelierbench.run task1 -a baseline atelier \
+    uv run python -m benchmarks.codebench.run task1 -a baseline atelier \
         --model claude-opus-4-8 \
         --agent-env ANTHROPIC_BASE_URL=https://openrouter.ai/api \
         --agent-env-from-host ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY \
         --agent-env ANTHROPIC_API_KEY=
-    uv run python -m benchmarks.atelierbench.run --report results/<run_dir>
+    uv run python -m benchmarks.codebench.run --report results/<run_dir>
 
     # Owned-agent arm (Atelier runs the loop itself on YOUR API key; different
     # price/savings profile than the host-plugin "atelier" arm). Requires a real
     # provider key, e.g. ANTHROPIC_API_KEY, and an explicit --model:
-    uv run python -m benchmarks.atelierbench.run task1 \
+    uv run python -m benchmarks.codebench.run task1 \
     """
 
 from __future__ import annotations
@@ -65,17 +65,17 @@ from atelier.core.capabilities.host_runners import (
 )
 from atelier.core.capabilities.pricing import usage_cost_breakdown_usd, usage_cost_usd
 
-from benchmarks.atelierbench.tasks import BY_ID, TASKS, Task
+from benchmarks.codebench.tasks import BY_ID, TASKS, Task
 from benchmarks.wire_savings.report import aggregate, flow_records
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-RESULTS_ROOT = REPO_ROOT / "benchmarks" / "atelierbench" / "results"
+RESULTS_ROOT = REPO_ROOT / "benchmarks" / "codebench" / "results"
 CA_CERT = Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"
 
 EMPTY_MCP: dict[str, dict[str, object]] = {"mcpServers": {}}
 VALID_ARMS = ("baseline", "atelier")
 PERSISTENT_WORKSPACE_ROOT = Path(
-    os.environ.get("ATELIERBENCH_WORKSPACE_ROOT", str(Path(tempfile.gettempdir()) / "atelierbench_workspaces"))
+    os.environ.get("CODEBENCH_WORKSPACE_ROOT", str(Path(tempfile.gettempdir()) / "codebench_workspaces"))
 )
 PROVIDER_ALIASES: dict[str, str] = {
     "aws": "aws-claude",
@@ -86,6 +86,14 @@ PROVIDER_ALIASES: dict[str, str] = {
     "openrouter": "openrouter-claude",
 }
 CLI_DRIVERS = ("claude", "atelier-run")
+# Arms that drive many model + tool round-trips and so dominate wall time.
+HEAVY_ARMS = ("atelier",)
+# Heuristic floor: on a non-trivial task a tool-heavy arm routinely issues this
+# many model round-trips. If --rate-limit-rpm x --timeout cannot fit this many
+# requests, the heavy arm will very likely hit the timeout, so we warn up front.
+# Calibrated above the ~300-request budget of rpm=10 x 1800s, which was observed
+# to time out in practice.
+RPM_TIMEOUT_MIN_REQUESTS = 400
 PLACEHOLDER_RESPONSE_MARKERS = (
     "i'm ready to help",
     "what would you like to work on",
@@ -231,7 +239,7 @@ def _make_baseline_config(dest: Path | None = None) -> Path:
 def _mktemp(prefix: str) -> str:
     import tempfile
 
-    return tempfile.mkdtemp(prefix=f"atelierbench-{prefix}")
+    return tempfile.mkdtemp(prefix=f"codebench-{prefix}")
 
 
 def prepare_workspace(task: Task, workspace: Path | None = None) -> Path:
@@ -357,6 +365,7 @@ class ArmResult:
     saved_tokens: int = 0
     thinking_tokens: int = 0
     model_usage: dict[str, dict[str, int]] = field(default_factory=dict)
+    timed_out: bool = False
 
 
 def _calculate_savings(flow_path: Path) -> tuple[float, int]:
@@ -370,6 +379,78 @@ def _calculate_savings(flow_path: Path) -> tuple[float, int]:
         return 0.0, stats.usage.total
     except Exception:
         return 0.0, 0
+
+
+def _fmt_hms(seconds: float) -> str:
+    """Format a duration as a compact h/m/s string for progress lines."""
+    total = round(seconds)
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
+
+
+def _recover_flow_result(
+    flow_path: Path,
+    task: str,
+    arm: str,
+    rep: int,
+    model: str,
+    wall_duration_ms: int,
+    excerpt: str,
+    *,
+    timed_out: bool,
+) -> ArmResult:
+    """Best-effort ArmResult rebuilt from captured proxy traffic.
+
+    When the CLI is killed before it prints its JSON receipt (e.g. the run hits
+    --timeout), the .flow file still holds every completed model round-trip. We
+    recover the real token usage and cost from it so the trial is recorded with
+    its true price instead of $0.
+    """
+    input_tokens = output_tokens = cache_read = cache_write = requests = 0
+    cost_usd = 0.0
+    if flow_path.exists():
+        with contextlib.suppress(Exception):
+            stats = aggregate("flow", flow_records(str(flow_path)))
+            usage = stats.usage
+            input_tokens = usage.input_tokens
+            output_tokens = usage.output_tokens
+            cache_read = usage.cache_read_input_tokens
+            cache_write = usage.cache_creation_input_tokens
+            requests = stats.requests
+    if model and (input_tokens or output_tokens or cache_read or cache_write):
+        with contextlib.suppress(Exception):
+            cost_usd = usage_cost_usd(
+                model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_tokens=cache_read,
+                cache_write_tokens=cache_write,
+            )
+    detail = f"{excerpt} (recovered ${cost_usd:.4f} / {requests} request(s) from flow)"
+    return ArmResult(
+        task=task,
+        arm=arm,
+        rep=rep,
+        ok=False,
+        cost_usd=cost_usd,
+        duration_ms=wall_duration_ms,
+        duration_api_ms=wall_duration_ms,
+        num_turns=requests,
+        input_tokens=input_tokens,
+        cache_read_tokens=cache_read,
+        cache_creation_tokens=cache_write,
+        output_tokens=output_tokens,
+        models=[model] if model else [],
+        is_error=True,
+        result_excerpt=detail[:4000],
+        flow_path=str(flow_path),
+        timed_out=timed_out,
+    )
 
 
 def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep: int) -> ArmResult:
@@ -658,7 +739,7 @@ def _env_file_candidates() -> tuple[Path, ...]:
     return (
         REPO_ROOT / ".env",
         REPO_ROOT / "benchmarks" / ".env",
-        REPO_ROOT / "benchmarks" / "atelierbench" / ".env",
+        REPO_ROOT / "benchmarks" / "codebench" / ".env",
     )
 
 
@@ -783,7 +864,7 @@ def run_arm(
                 "--listen-port",
                 str(port),
                 "-s",
-                str(REPO_ROOT / "benchmarks" / "atelierbench" / "rate_limit.py"),
+                str(REPO_ROOT / "benchmarks" / "codebench" / "rate_limit.py"),
                 "-q",
             ],
             cwd=str(REPO_ROOT),
@@ -860,15 +941,31 @@ def run_arm(
         else:
             raise ValueError(f"unsupported cli driver: {cli_driver}")
         started = time.time()
-        proc = subprocess.run(
-            cmd,
-            cwd=str(ws),
-            env=env,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(ws),
+                env=env,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            wall_duration_ms = int((time.time() - started) * 1000)
+            # Stop the proxy first so the .flow file holds every completed
+            # round-trip before we read token usage back out of it.
+            if mitm is not None:
+                mitm.terminate()
+                with contextlib.suppress(Exception):
+                    mitm.wait(timeout=5)
+                mitm = None
+            stderr_text = exc.stderr if isinstance(exc.stderr, str) else ""
+            excerpt = f"timed out after {timeout}s"
+            if stderr_text.strip():
+                excerpt = f"{excerpt}\n\n[stderr]\n{stderr_text.strip()}"
+            res = _recover_flow_result(flow_path, task.id, arm, rep, model, wall_duration_ms, excerpt, timed_out=True)
+            return _apply_result_validity(task, res)
         wall_duration_ms = int((time.time() - started) * 1000)
         res = _parse_cli_result(proc.stdout, flow_path, task.id, arm, rep, cli_driver, wall_duration_ms)
         if not res.ok and proc.stderr.strip():
@@ -897,7 +994,7 @@ def _task_description(task: Task) -> str:
 
 
 def _judge_prompt(task: Task, result: ArmResult) -> str:
-    return f"""You are grading an AtelierBench response.
+    return f"""You are grading an CodeBench response.
 
 Return ONLY compact JSON with these keys:
 {{"correct": boolean, "score": number, "reason": string}}
@@ -1026,6 +1123,7 @@ def _agg(results: list[ArmResult], arm: str) -> dict[str, Any]:
         "cache_creation_tokens": sum(r.cache_creation_tokens for r in rs),
         "thinking_tokens": sum(r.thinking_tokens for r in rs),
         "num_turns": sum(r.num_turns for r in rs),
+        "timed_out": sum(1 for r in rs if r.timed_out),
         "saved_usd": round(sum(r.saved_usd for r in rs), 4),
         "saved_tokens": sum(r.saved_tokens for r in rs),
         "model_usage": aggregated_model_usage,
@@ -1038,7 +1136,7 @@ def report(results: list[ArmResult]) -> str:
     baseline = aggregates.get("baseline")
     lines = [
         "",
-        "=== AtelierBench head-to-head ===",
+        "=== CodeBench head-to-head ===",
         f"{'metric':<22}" + "".join(f"{arm:>14}" for arm in arms),
     ]
 
@@ -1142,6 +1240,9 @@ def report(results: list[ArmResult]) -> str:
     lines.append(f"Runs ok     : {'  '.join(ok_parts)}")
     valid_parts = [f"{arm} {aggregates[arm]['valid']}/{aggregates[arm]['runs']}" for arm in arms]
     lines.append(f"Valid       : {'  '.join(valid_parts)}")
+    if any(aggregates[arm]["timed_out"] for arm in arms):
+        timeout_parts = [f"{arm} {aggregates[arm]['timed_out']}/{aggregates[arm]['runs']}" for arm in arms]
+        lines.append(f"Timeouts    : {'  '.join(timeout_parts)}")
     if any(result.valid is False for result in results):
         lines.append("Validity    : invalid/off-topic runs detected; cost/token comparisons are not meaningful.")
     if any(result.score is not None for result in results):
@@ -1306,6 +1407,7 @@ def write_csv_artifacts(run_dir: Path, results: list[ArmResult]) -> None:
             "output_tokens",
             "models",
             "is_error",
+            "timed_out",
             "result_excerpt",
             "flow_path",
             "valid",
@@ -1399,10 +1501,23 @@ def _run_task_rep(
             )
             result = _apply_result_validity(task, result)
         wall = time.time() - t0
-        print(
-            f"     -> ok={result.ok} cost=${result.cost_usd:.4f} dur={result.duration_ms}ms wall={wall:.0f}s turns={result.num_turns} {result.result_excerpt[:60]!r}",
-            flush=True,
+        if result.ok:
+            status = "OK"
+        elif result.timed_out:
+            status = "TIMEOUT"
+        else:
+            status = "FAIL"
+        summary = (
+            f"  -> [{status}] {task_id}/{arm} rep{rep}"
+            f"  cost=${result.cost_usd:.4f}"
+            f"  turns={result.num_turns}"
+            f"  out={result.output_tokens:,}tok"
+            f"  wall={_fmt_hms(wall)}"
         )
+        if not result.ok and result.result_excerpt:
+            first_line = result.result_excerpt.strip().splitlines()[0][:100]
+            summary += f"\n        {first_line}"
+        print(summary, flush=True)
         results.append(result)
         if on_result is not None:
             on_result(result)
@@ -1441,7 +1556,7 @@ def _run_single_arm(
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="AtelierBench head-to-head runner")
+    p = argparse.ArgumentParser(description="CodeBench head-to-head runner")
     p.add_argument("tasks", nargs="*", default=["all"], metavar="TASK", help="task ids or 'all' (default: all)")
     p.add_argument("-a", "--arms", nargs="*", default=["baseline", "atelier"])
     p.add_argument("--reps", type=int, default=1)
@@ -1516,8 +1631,19 @@ def main() -> int:
         p.error("--rate-limit must be >= 0")
     if args.rate_limit_tpm < 0:
         p.error("--rate-limit-tpm must be >= 0")
-    os.environ["ATELIERBENCH_RATE_LIMIT_RPM"] = str(args.rate_limit_rpm)
-    os.environ["ATELIERBENCH_RATE_LIMIT_TPM"] = str(args.rate_limit_tpm)
+    os.environ["CODEBENCH_RATE_LIMIT_RPM"] = str(args.rate_limit_rpm)
+    os.environ["CODEBENCH_RATE_LIMIT_TPM"] = str(args.rate_limit_tpm)
+    if args.rate_limit_rpm > 0 and any(arm in HEAVY_ARMS for arm in args.arms):
+        request_budget = args.rate_limit_rpm * args.timeout / 60.0
+        if request_budget < RPM_TIMEOUT_MIN_REQUESTS:
+            suggested_timeout = int(RPM_TIMEOUT_MIN_REQUESTS / args.rate_limit_rpm * 60)
+            print(
+                f"WARNING: --rate-limit-rpm {args.rate_limit_rpm:g} allows only "
+                f"~{request_budget:.0f} model requests within --timeout {args.timeout}s. "
+                f"Tool-heavy arms (atelier) routinely exceed that and will time out. "
+                f"Raise --timeout to >= {suggested_timeout}s or increase --rate-limit-rpm.",
+                flush=True,
+            )
     agent_env = {
         **_resolve_provider_env(args.provider),
         **_parse_agent_env(args.agent_env),
