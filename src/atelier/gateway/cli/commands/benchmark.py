@@ -283,7 +283,7 @@ def benchmark_mcp_cmd(out: Path | None, tools: tuple[str, ...], jobs: int) -> No
     "--families",
     default=(
         "exact_symbol,exact_search,substring_search,file_outline,references,"
-        "callers,callees,fuzzy_symbol,structural_search,semantic_search,nohit_search"
+        "callers,callees,fuzzy_symbol,structural_search,nohit_search"
     ),
     show_default=True,
 )
