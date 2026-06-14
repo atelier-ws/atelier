@@ -2332,6 +2332,70 @@ def _append_workspace_savings(tool_name: str, tokens_saved: int, calls_saved: in
     _append_savings(tool_name, tokens_saved, calls_saved, rid=rid)
 
 
+def _mcp_debug_enabled() -> bool:
+    return os.environ.get("ATELIER_MCP_DEBUG", "0") not in ("0", "", "false", "no")
+
+
+def _mcp_debug_path() -> Path:
+    return _atelier_root() / "mcp_debug.jsonl"
+
+
+_DEBUG_LARGE_KEYS = frozenset({"new_string", "old_string", "content", "prompt", "task", "query"})
+
+
+def _scrub_args_for_debug(args: dict[str, Any]) -> dict[str, Any]:
+    """Replace large string values with a byte-count placeholder.
+
+    Prevents giant file contents or prompts from bloating the debug log.
+    Values longer than 300 chars (or matching known large-value keys) are
+    replaced with ``<N chars>``.
+    """
+    result: dict[str, Any] = {}
+    for k, v in args.items():
+        if isinstance(v, str) and (k in _DEBUG_LARGE_KEYS or len(v) > 300):
+            result[k] = f"<{len(v)} chars>"
+        else:
+            result[k] = v
+    return result
+
+
+def _append_mcp_debug_event(
+    *,
+    tool: str,
+    args: dict[str, Any],
+    duration_ms: int,
+    response_size: int,
+    status: str,
+    error: str | None = None,
+    session_id: str = "",
+) -> None:
+    """Write a per-call debug record to ~/.atelier/mcp_debug.jsonl.
+
+    Only active when ATELIER_MCP_DEBUG=1. Fail-open: errors are swallowed
+    so the MCP server is never disrupted by the debug log writer.
+    """
+    if not _mcp_debug_enabled():
+        return
+    try:
+        entry: dict[str, Any] = {
+            "ts": time.time(),
+            "tool": tool,
+            "args": _scrub_args_for_debug(args),
+            "duration_ms": duration_ms,
+            "response_size_bytes": response_size,
+            "status": status,
+            "session_id": session_id,
+        }
+        if error:
+            entry["error"] = error
+        path = _mcp_debug_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, sort_keys=True) + "\n")
+    except Exception:  # noqa: BLE001
+        pass  # never disrupt the server
+
+
 def _smart_state_path() -> Path:
     return _atelier_root() / "smart_state.json"
 
@@ -5972,19 +6036,6 @@ def _op_index(
     return _finish_code_result(_maybe_attach_code_rendered("index", payload, render_compact=render_compact))
 
 
-def _op_outline(
-    *,
-    path: str | None = None,
-    limit: int = 200,
-    budget_tokens: int = 4000,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-) -> dict[str, Any]:
-    engine = _code_engine_at(repo_root)
-    payload = cast(dict[str, Any], engine.file_outline(file_path=path, limit=limit))
-    return _finish_code_result(_maybe_attach_code_rendered("outline", payload, render_compact=render_compact))
-
-
 def _op_blame(
     *,
     query: str | None = None,
@@ -8011,9 +8062,12 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         if name == "context" and isinstance(args, dict) and args.get("mode") == "symbols":
             remote_routed = False
         rendered_text: str | None = None
+        _call_duration_ms: int = 0
         try:
             if remote_routed:
+                _remote_start = time.perf_counter()
                 result = _dispatch_remote(name, args)
+                _call_duration_ms = round((time.perf_counter() - _remote_start) * 1000)
                 if isinstance(result, dict):
                     result = _clean_tool_result(result, name)
             else:
@@ -8038,8 +8092,10 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 from atelier.core.capabilities.pricing import active_model_override
 
                 try:
+                    _handler_start = time.perf_counter()
                     with active_model_override(wrapper_model or None):
                         result = handler(args)
+                    _call_duration_ms = round((time.perf_counter() - _handler_start) * 1000)
                 finally:
                     # Runs in finally; a raise here would mask the handler's real
                     # exception, so suppress like the sibling savings-event calls.
@@ -8088,13 +8144,15 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         writer=_make_outcome_writer(led),
                     )
 
+                _ok_session_id = getattr(_get_ledger(), "session_id", "") or ""
                 with contextlib.suppress(Exception):
                     _append_live_savings_event(
                         {
                             "kind": "tool_call",
                             "tool": name,
                             "status": "ok",
-                            "session_id": getattr(_get_ledger(), "session_id", "") or "",
+                            "duration_ms": _call_duration_ms,
+                            "session_id": _ok_session_id,
                             "ts": time.time(),
                         }
                     )
@@ -8106,6 +8164,29 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 response_text = result
             else:
                 response_text = json.dumps(result, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+            _ok_response_size = len(response_text.encode("utf-8", errors="replace"))
+            _ok_sid = _ok_session_id if not remote_routed else (getattr(_get_ledger(), "session_id", "") or "")
+            with contextlib.suppress(Exception):
+                _append_mcp_debug_event(
+                    tool=name,
+                    args=args if isinstance(args, dict) else {},
+                    duration_ms=_call_duration_ms,
+                    response_size=_ok_response_size,
+                    status="ok",
+                    session_id=_ok_sid,
+                )
+            with contextlib.suppress(Exception):
+                from atelier.gateway.integrations.langfuse import emit_tool_call as _lf_emit_tool
+
+                _lf_emit_tool(
+                    tool=name,
+                    args=args if isinstance(args, dict) else {},
+                    duration_ms=_call_duration_ms,
+                    response_size=_ok_response_size,
+                    status="ok",
+                    session_id=_ok_sid,
+                )
 
             # Within-session content dedup: if this read-style result is
             # byte-identical to one already returned this session (and the model
@@ -8211,6 +8292,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         is_env_error=isinstance(exc, (OSError, IOError)),
                         writer=_make_outcome_writer(led),
                     )
+                _err_session_id = getattr(_get_ledger(), "session_id", "") or ""
                 with contextlib.suppress(Exception):
                     _append_live_savings_event(
                         {
@@ -8218,9 +8300,32 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                             "tool": name,
                             "status": "error",
                             "error": type(exc).__name__,
-                            "session_id": getattr(_get_ledger(), "session_id", "") or "",
+                            "duration_ms": _call_duration_ms,
+                            "session_id": _err_session_id,
                             "ts": time.time(),
                         }
+                    )
+                with contextlib.suppress(Exception):
+                    _append_mcp_debug_event(
+                        tool=name,
+                        args=args if isinstance(args, dict) else {},
+                        duration_ms=_call_duration_ms,
+                        response_size=0,
+                        status="error",
+                        error=type(exc).__name__,
+                        session_id=_err_session_id,
+                    )
+                with contextlib.suppress(Exception):
+                    from atelier.gateway.integrations.langfuse import emit_tool_call as _lf_emit_tool
+
+                    _lf_emit_tool(
+                        tool=name,
+                        args=args if isinstance(args, dict) else {},
+                        duration_ms=_call_duration_ms,
+                        response_size=0,
+                        status="error",
+                        error=type(exc).__name__,
+                        session_id=_err_session_id,
                     )
             return _err(rid, _tool_error_code(exc), str(exc))
 
