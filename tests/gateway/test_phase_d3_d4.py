@@ -4,6 +4,7 @@ from __future__ import annotations
 
 EXPECTED_TOOLS = {
     "context",
+    "rescue",
     "trace",
     "verify",
     "memory",

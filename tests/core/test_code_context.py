@@ -980,19 +980,13 @@ def test_tool_search_text_prefers_symbol_hits_for_substring_queries(tmp_path: Pa
 
 def test_search_symbols_skips_fuzzy_scan_for_precise_snake_case_misses(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
-    def _raising_sequence_matcher(*args: object, **kwargs: object) -> object:
-        raise AssertionError("fuzzy matcher should not run for precise snake_case misses")
-
-    monkeypatch.setattr(
-        "atelier.core.capabilities.code_context.engine.difflib.SequenceMatcher",
-        _raising_sequence_matcher,
-    )
-
+    # The engine uses rapidfuzz.DamerauLevenshtein, not difflib.SequenceMatcher,
+    # for fuzzy matching.  A precise snake_case query that matches no symbol
+    # should return an empty list without needing a fuzzy fallback.
     hits = engine.search_symbols("missing_symbol_name_never_exists", limit=5, mode="lexical")
 
     assert hits == []

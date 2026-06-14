@@ -28,7 +28,7 @@ class _DummyGroup:
         return lambda f: _DummyGroup()
 
 
-MCP_TOOL_ONLY_COMMANDS = frozenset({"context", "verify", "read", "edit", "search"})
+MCP_TOOL_ONLY_COMMANDS = frozenset({"context", "rescue", "verify", "read", "edit", "search"})
 MCP_TOOL_ONLY_GROUPS = frozenset({"memory", "route"})
 
 

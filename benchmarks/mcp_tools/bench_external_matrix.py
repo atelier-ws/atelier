@@ -326,12 +326,22 @@ class AtelierRunner(_RunnerBase):
                 "budget_tokens": 4000,
             }
         elif case.family == "file_outline":
-            request = {
-                "op": "outline",
-                "repo_root": str(self.snapshot_root),
-                "path": case.path,
-                "budget_tokens": 4000,
-            }
+            # Atelier's agent-facing outline is `read mode=outline` (the smart-read
+            # outline projection), NOT a code-intel op. Force outline regardless of
+            # file size with outline_threshold=0; the serialized payload carries the
+            # symbol names that score_case checks for. Other families still dispatch
+            # through call_code_op below.
+            from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
+            from atelier.gateway.adapters import mcp_server
+
+            target = self.snapshot_root / case.path
+            cap = SemanticFileMemoryCapability(mcp_server._atelier_root())
+            outline_payload = cap.smart_read(target, outline_threshold=0)
+            request_repr = {"tool": "read", "mode": "outline", "path": case.path}
+            return (
+                json.dumps(request_repr, ensure_ascii=False),
+                json.dumps(outline_payload, ensure_ascii=False),
+            )
         elif case.family == "references":
             request = {
                 "op": "usages",

@@ -652,6 +652,22 @@ def test_context_pull_reuses_cached_scoped_context(monkeypatch: pytest.MonkeyPat
     assert second["provenance"] == "cached"
 
 
+def test_rescue_failure_returns_procedure(store_root: Path) -> None:
+    _ = store_root
+    payload = _result(
+        _call(
+            "rescue",
+            {
+                "task": "Run tests",
+                "error": "pytest AssertionError",
+                "recent_actions": ["run pytest", "run pytest"],
+            },
+        )
+    )
+    assert "rescue" in payload
+    assert "analysis" in payload
+
+
 def test_record_trace_accepts_monitor_event_payload(store_root: Path) -> None:
     _ = store_root
     payload = _result(
@@ -2013,9 +2029,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
-        f"'trace_id' missing or empty in trace receipt: {payload}"
-    )
+    assert (
+        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
+    ), f"'trace_id' missing or empty in trace receipt: {payload}"
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
