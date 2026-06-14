@@ -58,7 +58,7 @@ def test_run_review_pins_explicit_model(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
     monkeypatch.setattr(runner_mod, "select_owned_route", fake_select)
     monkeypatch.setattr(runner_mod, "execute_owned_prompt", fake_exec)
-    v = run_review("s1", "deep", ["a.py"], ReviewerSettings(review_model="anthropic/claude-x"), tmp_path)
+    v = run_review("s1", "deep", ["a.py"], ReviewerSettings(review_model="anthropic/claude-x", agentic=False), tmp_path)
     assert v["verdict"] == "NEEDS_FIX"
     assert captured["mode"] == "explicit"
     assert captured["provider"] == "anthropic"
@@ -81,7 +81,7 @@ def test_run_review_auto_when_no_provider(monkeypatch: pytest.MonkeyPatch, tmp_p
 
     monkeypatch.setattr(runner_mod, "select_owned_route", fake_select)
     monkeypatch.setattr(runner_mod, "execute_owned_prompt", fake_exec)
-    run_review("s1", "live", ["a.py"], ReviewerSettings(), tmp_path)
+    run_review("s1", "live", ["a.py"], ReviewerSettings(agentic=False), tmp_path)
     assert captured["mode"] == "auto"
     assert captured["budget"] == "cheap"
     assert captured["allow_fallback"] is True
