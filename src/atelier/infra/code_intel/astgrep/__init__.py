@@ -6,6 +6,8 @@ from atelier.infra.code_intel.astgrep.adapter import (
     PatternMatch,
     PatternRewriteResult,
     PatternSearchResult,
+    RuleMatch,
+    RuleScanResult,
 )
 from atelier.infra.code_intel.astgrep.binaries import (
     AstGrepBinaryResolution,
@@ -29,6 +31,8 @@ __all__ = [
     "PatternSearchResult",
     "RewriteCandidate",
     "RewriteOutcome",
+    "RuleMatch",
+    "RuleScanResult",
     "bootstrap_managed_astgrep",
     "discover_astgrep_binary",
     "execute_rewrite",

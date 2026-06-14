@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from atelier.infra.code_intel.astgrep.binaries import discover_astgrep_binary
 from atelier.infra.code_intel.astgrep.rewrite import (
     RewriteCandidate,
@@ -63,6 +65,50 @@ class PatternRewriteResult:
 
     diff: str
     files_changed: list[str]
+
+
+@dataclass(frozen=True)
+class RuleMatch:
+    """Typed ast-grep rule-mode match (scan / --rule output).
+
+    Unlike :class:`PatternMatch`, a rule match carries the originating
+    ``rule_id`` and ``severity`` because a single scan can evaluate many rules
+    at once (relational/composite matchers such as ``inside``/``has``/``all``).
+    """
+
+    rule_id: str
+    severity: str
+    file_path: str
+    line: int
+    column: int
+    end_line: int
+    end_column: int
+    snippet: str
+    message: str
+    captures: dict[str, str]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "rule_id": self.rule_id,
+            "severity": self.severity,
+            "file_path": self.file_path,
+            "line": self.line,
+            "column": self.column,
+            "end_line": self.end_line,
+            "end_column": self.end_column,
+            "snippet": self.snippet,
+            "message": self.message,
+            "captures": self.captures,
+        }
+
+
+@dataclass(frozen=True)
+class RuleScanResult:
+    """Typed ast-grep rule-scan payload."""
+
+    matches: list[RuleMatch]
+    truncated: bool = False
+    total_matches: int | None = None
 
 
 def _capture_text(raw_capture: Any) -> str | None:
@@ -259,6 +305,70 @@ class AstGrepAdapter:
         outcome: RewriteOutcome = execute_rewrite(self.repo_root, candidates, dry_run=dry_run)
         return PatternRewriteResult(diff=outcome.diff, files_changed=outcome.files_changed)
 
+    def scan(
+        self,
+        *,
+        rules: list[dict[str, Any]] | str,
+        paths: list[str] | None = None,
+        no_ignore: bool = True,
+        limit: int = 200,
+    ) -> RuleScanResult:
+        """Run ast-grep in rule mode (``scan --inline-rules``).
+
+        ``rules`` is either a list of rule dicts (each a full ast-grep rule with
+        at least ``id``/``language``/``rule`` keys, where ``rule`` may contain
+        relational/composite matchers: ``inside``, ``has``, ``precedes``,
+        ``follows``, ``all``, ``any``, ``not``, ``pattern``, ``kind``) or a
+        pre-rendered YAML string (multiple rules separated by ``---``).
+
+        This is additive: the legacy ``--pattern``/``--rewrite`` paths in
+        :meth:`search`/:meth:`rewrite` are untouched.
+        """
+        inline = rules if isinstance(rules, str) else _render_rules_yaml(rules)
+        # --json=compact emits a single JSON array; --json=stream would emit one
+        # bare object per line, which _parse_json_output collapses to a single
+        # dict (no `matches` key) when only one finding exists.
+        args = ["scan", "--inline-rules", inline, "--json=compact"]
+        if no_ignore:
+            # Temp dirs, dotfiles, and worktrees are frequently gitignored;
+            # without this a scan silently returns nothing on hidden/VCS paths.
+            args.extend(["--no-ignore", "hidden", "--no-ignore", "vcs"])
+        scan_paths = paths if paths else [str(self.repo_root)]
+        args.extend(scan_paths)
+        result = self._run(args)
+        payload = _parse_json_output(result.stdout)
+        matches_payload = payload.get("matches", [])
+        raw_matches = matches_payload if isinstance(matches_payload, list) else []
+        matches: list[RuleMatch] = []
+        for raw in raw_matches[:limit]:
+            if not isinstance(raw, dict):
+                continue
+            line, column, end_line, end_column = _parse_range(raw)
+            matches.append(
+                RuleMatch(
+                    rule_id=str(raw.get("ruleId") or raw.get("rule_id") or ""),
+                    severity=str(raw.get("severity") or "info"),
+                    file_path=str(raw.get("file") or raw.get("file_path") or ""),
+                    line=line,
+                    column=column,
+                    end_line=end_line,
+                    end_column=end_column,
+                    snippet=str(raw.get("text") or raw.get("snippet") or ""),
+                    message=str(raw.get("message") or ""),
+                    captures=_parse_captures(raw),
+                )
+            )
+        return RuleScanResult(
+            matches=matches,
+            truncated=len(raw_matches) > limit,
+            total_matches=len(raw_matches),
+        )
+
+
+def _render_rules_yaml(rules: list[dict[str, Any]]) -> str:
+    """Serialize rule dicts into ast-grep's ``---``-separated inline YAML."""
+    return "\n---\n".join(yaml.safe_dump(rule, sort_keys=False, default_flow_style=False) for rule in rules)
+
 
 __all__ = [
     "AstGrepAdapter",
@@ -266,4 +376,6 @@ __all__ = [
     "PatternMatch",
     "PatternRewriteResult",
     "PatternSearchResult",
+    "RuleMatch",
+    "RuleScanResult",
 ]
