@@ -153,16 +153,16 @@ def _render_dashboard(root: Path, *, line_mode: bool, n_runs: int, session_id: s
 
 
 def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id: str | None) -> None:
-    runs_dir = root / "runs"
+    sessions_dir = root / "sessions"
 
     # Resolve ledger path
     ledger_path: str | None = None
     if session_id:
-        candidate = runs_dir / f"{session_id}.json"
+        candidate = sessions_dir / session_id / "run.json"
         if candidate.exists():
             ledger_path = str(candidate)
-    elif runs_dir.is_dir():
-        files = sorted(runs_dir.glob("*.json"), key=os.path.getmtime, reverse=True)
+    elif sessions_dir.is_dir():
+        files = sorted(sessions_dir.glob("*/run.json"), key=os.path.getmtime, reverse=True)
         if files:
             ledger_path = str(files[0])
     if not ledger_path:
@@ -316,8 +316,8 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
     all_run_entries: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
 
-    if runs_dir.is_dir():
-        for rf in sorted(runs_dir.glob("*.json"), key=os.path.getmtime, reverse=True):
+    if sessions_dir.is_dir():
+        for rf in sorted(sessions_dir.glob("*/run.json"), key=os.path.getmtime, reverse=True):
             try:
                 d = json.loads(rf.read_text())
                 rid = d.get("session_id") or rf.stem
@@ -430,7 +430,7 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
         _box_line(meta_line)
 
     _rule()
-    _box_line(f"{_DIM}store: {root}   runs dir: {runs_dir}{_RESET}")
+    _box_line(f"{_DIM}store: {root}   runs dir: {sessions_dir}{_RESET}")
     _rule()
 
 

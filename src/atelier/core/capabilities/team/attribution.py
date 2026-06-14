@@ -20,13 +20,11 @@ def summarize_workspace_usage(
     workspace_manager = manager or TeamWorkspaceManager(store_root)
     workspace = workspace_manager.load_workspace()
     totals: dict[str, dict[str, Any]] = {}
-    runs_dir = store_root / "runs"
+    sessions_dir = store_root / "sessions"
     session_count = 0
     total_cost_usd = 0.0
-    if runs_dir.exists():
-        for path in sorted(runs_dir.glob("*.json")):
-            if path.name.endswith("_outcomes.json"):
-                continue
+    if sessions_dir.exists():
+        for path in sorted(sessions_dir.glob("*/run.json")):
             snapshot = json.loads(path.read_text(encoding="utf-8"))
             updated_at_raw = snapshot.get("updated_at") or snapshot.get("created_at")
             updated_at = _parse_datetime(updated_at_raw) if updated_at_raw else None
