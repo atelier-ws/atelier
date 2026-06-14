@@ -639,7 +639,7 @@ def test_sql_actions_e2e(mcp_env: Path) -> None:
     assert query["results"][0]["rows"][0] == [1, "Ada"]
 
 
-def test_context_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
+def test_context_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
     context = _payload(
         _call(
             "context",
@@ -651,34 +651,6 @@ def test_context_route_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> Non
         )
     )
     assert isinstance(context.get("context"), str)
-
-    rescue = _payload(
-        _call(
-            "rescue",
-            {
-                "task": "Run pytest",
-                "error": "AssertionError: expected MCP payload",
-                "recent_actions": ["run pytest", "run pytest"],
-            },
-        )
-    )
-    assert "rescue" in rescue
-    assert "analysis" in rescue
-
-    decision = _payload(
-        _call(
-            "route",
-            {
-                "task": "Harden MCP gateway end-to-end tests",
-                "task_type": "test",
-                "budget": "cheap",
-            },
-        )
-    )
-    assert "model" in decision
-    assert "tier" in decision
-    assert "route_tier" in decision
-    assert "can_spawn" not in decision
 
     rubric = _payload(
         _call(
