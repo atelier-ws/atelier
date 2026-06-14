@@ -73,6 +73,9 @@ class ArchivalRecallCapability:
             if vectors and vectors[0]:
                 query_embedding = vectors[0]
 
+        # G5: pass the live embedder model-id so the opt-in ANN can N5-gate
+        # passages to the current vector space (no-op when the flag is off).
+        embedding_model = self._embedder.name if query_embedding else None
         passages = self._store.list_passages(agent_id, tags=tags, since=since, limit=500)
         ranked = rank_archival_passages(
             query=clean_query,
@@ -81,6 +84,7 @@ class ArchivalRecallCapability:
             tags=tags,
             since=since,
             top_k=top_k,
+            embedding_model=embedding_model,
         )
         recall_query = clean_query
         if not ranked:
@@ -94,6 +98,7 @@ class ArchivalRecallCapability:
                     tags=tags,
                     since=since,
                     top_k=top_k,
+                    embedding_model=embedding_model,
                 )
                 recall_query = widened_query
         selected = [item.passage for item in ranked]
