@@ -3,8 +3,13 @@
 Internal-LLM calls (summaries for background compaction, consolidation, etc.)
 are effectively pure functions of ``(text, model, max_tokens, backend)``: the
 same input yields an equivalent summary, so recomputing it burns provider tokens
-for nothing. This is a small thread-safe LRU that memoizes those results within
-a process.
+for nothing. This is a thread-safe LRU that memoizes those results within a
+process.
+
+Entries are short strings (a summary bounded by ``max_tokens``), so even a large
+entry count is modest memory -- the default holds ~16k summaries. Tune the
+capacity with ``ATELIER_INTERNAL_LLM_CACHE_MAX_ENTRIES``; disable caching
+entirely with ``ATELIER_INTERNAL_LLM_CACHE=0``.
 
 Kept self-contained (stdlib only) on purpose: this module lives in the infra
 layer and must not import from ``core/`` or ``gateway/``.
@@ -18,18 +23,34 @@ import threading
 from collections import OrderedDict
 from collections.abc import Callable
 
-_DEFAULT_MAX_ENTRIES = 256
+# Generous default: cached summaries are small strings and most machines have
+# plenty of RAM, so a large entry count costs little memory while greatly
+# improving hit rate across a long-lived MCP server process. Override per-process
+# with ATELIER_INTERNAL_LLM_CACHE_MAX_ENTRIES.
+_DEFAULT_MAX_ENTRIES = 16384
 
 
 def _enabled() -> bool:
     return os.environ.get("ATELIER_INTERNAL_LLM_CACHE", "1") != "0"
 
 
+def _configured_max_entries() -> int:
+    raw = os.environ.get("ATELIER_INTERNAL_LLM_CACHE_MAX_ENTRIES")
+    if raw is None:
+        return _DEFAULT_MAX_ENTRIES
+    try:
+        configured = int(raw)
+    except ValueError:
+        return _DEFAULT_MAX_ENTRIES
+    return max(1, configured)
+
+
 class _LRUCache:
     """Minimal thread-safe LRU over string keys and string values."""
 
-    def __init__(self, max_entries: int = _DEFAULT_MAX_ENTRIES) -> None:
-        self._max_entries = max(1, max_entries)
+    def __init__(self, max_entries: int | None = None) -> None:
+        resolved = max_entries if max_entries is not None else _configured_max_entries()
+        self._max_entries = max(1, resolved)
         self._store: OrderedDict[str, str] = OrderedDict()
         self._lock = threading.Lock()
 
