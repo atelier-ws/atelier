@@ -164,6 +164,23 @@ class SemanticSearchRanker:
         )
         return [entry.symbol.model_copy(update={"score": entry.score}) for entry in ordered[:limit]]
 
+    def embed_query(self, query: str) -> list[float]:
+        """Public query-embedding entry point (cached). Empty list when disabled."""
+        return self._embed_query(query)
+
+    def embed_symbol(self, symbol: SymbolRecord, *, source_text: str | None = None) -> list[float]:
+        """Public symbol-embedding entry point (cached) for the ANN store.
+
+        Renders the same embedding text as :meth:`semantic_search` so the
+        persisted ANN vectors and the brute-force fallback stay in one vector
+        space. Returns an empty list when the embedder is disabled or the symbol
+        renders no text.
+        """
+        embedding_text = render_embedding_text(symbol, source_text=source_text)
+        if not embedding_text:
+            return []
+        return self._embed_symbol(symbol, embedding_text)
+
     def _embed_query(self, query: str) -> list[float]:
         cache_key = vector_cache_key("code-search-query", f"{self.embedder.name}:{query.strip().lower()}")
         return self._embed_text(query, cache_key=cache_key, embed_many=embed_queries)
