@@ -5695,7 +5695,22 @@ def _code_engine_at(repo_root: str | None) -> Any:
     return engine
 
 
-_GRAPH_KINDS: frozenset[str] = frozenset({"blast_radius", "dead_code", "cycles", "coupling", "centrality"})
+_GRAPH_KINDS: frozenset[str] = frozenset(
+    {
+        "blast_radius",
+        "dead_code",
+        "cycles",
+        "coupling",
+        "centrality",
+        # WS10 code health & history (G15/G16/N17): additive, read-only, fail-open.
+        "design_gaps",
+        "verify_design",
+        "pr_risk",
+        "commit_provenance",
+        "index_docs",
+        "recall_docs",
+    }
+)
 
 
 def _synthesize_edges_for_paths(paths: list[str]) -> list[dict[str, Any]]:
@@ -5727,6 +5742,8 @@ def _op_graph(
     paths: list[str] | None = None,
     limit: int = 50,
     synthesize: bool = False,
+    query: str | None = None,
+    enable: bool | None = None,
     repo_root: str | None = None,
     render_compact: bool = False,
 ) -> dict[str, Any]:
@@ -5744,6 +5761,14 @@ def _op_graph(
     """
     if kind not in _GRAPH_KINDS:
         raise ValueError(f"unknown graph kind: {kind!r}; expected one of {sorted(_GRAPH_KINDS)}")
+
+    # WS10 code health & history kinds (G15/G16/N17). Each is additive, read-only
+    # analytics that fails open inside its own module; dispatched before the
+    # file-graph kinds because they have distinct argument shapes.
+    if kind in {"design_gaps", "verify_design", "pr_risk", "commit_provenance", "index_docs", "recall_docs"}:
+        return _op_graph_code_health(
+            kind=kind, path=path, paths=paths, limit=limit, query=query, enable=enable, repo_root=repo_root
+        )
 
     if kind == "centrality":
         engine = _code_engine_at(repo_root)
@@ -5773,6 +5798,53 @@ def _op_graph(
     result["kind"] = kind
     _ = render_compact  # file-graph analytics render as JSON; no markdown view
     return result
+
+
+def _op_graph_code_health(
+    *,
+    kind: str,
+    path: str | None,
+    paths: list[str] | None,
+    limit: int,
+    query: str | None,
+    enable: bool | None,
+    repo_root: str | None,
+) -> dict[str, Any]:
+    """Dispatch the WS10 code health & history graph kinds (G15/G16/N17).
+
+    Each delegated function is independently fail-open; this seam only resolves
+    the repo/atelier roots and routes by ``kind``.
+    """
+    from atelier.core.capabilities.code_health import (
+        commit_provenance,
+        design_gaps,
+        index_design_docs,
+        pr_risk,
+        recall_design_docs,
+        verify_design,
+    )
+
+    workspace = _workspace_root()
+    repo = (Path(repo_root) if repo_root else workspace).resolve()
+    atelier_root = _atelier_root()
+
+    if kind == "design_gaps":
+        return design_gaps(repo_root=repo, atelier_root=atelier_root, paths=paths)
+    if kind == "verify_design":
+        return verify_design(repo_root=repo, atelier_root=atelier_root, paths=paths)
+    if kind == "pr_risk":
+        targets = paths or ([path] if path else [])
+        if not targets:
+            raise ValueError("pr_risk requires 'paths' (or 'path') -- the changed files")
+        return pr_risk(repo_root=repo, atelier_root=atelier_root, paths=targets)
+    if kind == "commit_provenance":
+        return commit_provenance(repo_root=repo, path=path, limit=limit)
+    if kind == "index_docs":
+        return index_design_docs(repo_root=repo, atelier_root=atelier_root, paths=paths, enable=enable)
+    # recall_docs
+    if not query:
+        raise ValueError("recall_docs requires 'query'")
+    return recall_design_docs(atelier_root=atelier_root, query=query, limit=limit)
 
 
 def _op_callers(
@@ -6351,6 +6423,8 @@ def _tool_symbols_alias_handler(args: dict[str, Any]) -> dict[str, Any]:
             paths=g("paths"),
             limit=g("limit", 50),
             synthesize=g("synthesize", False),
+            query=g("query"),
+            enable=g("enable"),
             repo_root=rr,
             render_compact=rc,
         )
@@ -6611,8 +6685,11 @@ def tool_graph(
     paths: list[str] | None = None,
     limit: int = 50,
     synthesize: bool = False,
+    query: str | None = None,
+    enable: bool | None = None,
 ) -> dict[str, Any]:
-    """Repo graph analytics: blast radius, dead code, import cycles, coupling, symbol centrality.
+    """Repo graph analytics + code health & history: blast radius, dead code, cycles,
+    coupling, centrality, doc/code drift, PR risk, commit provenance, design-doc recall.
 
     kind:
       - blast_radius (default): reverse-dependency closure + affected tests + risk tier for `path`.
@@ -6620,7 +6697,17 @@ def tool_graph(
       - cycles: import dependency cycles (strongly-connected components, size >= 2).
       - coupling: per-file afferent/efferent coupling + Martin's instability metric.
       - centrality: most important symbols by call-graph centrality (degree + eigenvector).
-    Pass `paths` to fold specific files into the index first (dead_code/cycles/coupling).
+      - design_gaps (G15): doc-referenced symbols absent from the index (stale/aspirational refs).
+      - verify_design (G15): doc-referenced symbols whose signature drifted from the index.
+      - pr_risk (G16): fuse blast-radius + complexity + churn + test-gap into a 0..1 risk score
+        and tier for the changed `paths` (or `path`).
+      - commit_provenance (G16): heuristic bugfix/refactor/feature/perf/rename/revert/docs/test
+        classification of commits touching `path` (or the repo), with tagged confidence.
+      - index_docs (N17): opt-in heading-tree indexing of Markdown design docs into a SEPARATE
+        retrieval store (pass `enable=true`, or set ATELIER_DOC_INDEXING=1; off by default).
+      - recall_docs (N17): recall design-doc chunks for `query` from the separate doc store.
+    Pass `paths` to fold specific files into the index first (dead_code/cycles/coupling/pr_risk);
+    for design_gaps/verify_design/index_docs `paths` selects the docs/dirs to scan.
     `synthesize=true` (with `paths`, kind=centrality) also returns heuristic route/event
     edges as a SEPARATE `synthesized_edges` list (never merged into the static call graph).
     """
@@ -6632,6 +6719,8 @@ def tool_graph(
             "paths": paths,
             "limit": limit,
             "synthesize": synthesize,
+            "query": query,
+            "enable": enable,
         }
     )
 
