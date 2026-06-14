@@ -45,7 +45,21 @@ PLUGIN_DEFAULT_SETTINGS: dict[str, bool] = {
     "spinnerVerbs": True,
     "alwaysLoadTools": True,
 }
-SPINNER_VERBS = ["reasoning", "searching", "editing", "validating", "recalling"]
+SPINNER_VERBS = [
+    "Reasoning",
+    "Searching",
+    "Editing",
+    "Validating",
+    "Recalling",
+    "Routing",
+    "Compacting",
+    "Forging",
+]
+# Commit/PR co-author identity for the opt-in attribution trailer, installed
+# into a repo via scripts/install_attribution_hook.sh.
+ATTRIBUTION_NAME = "atelier-agent[bot]"
+ATTRIBUTION_EMAIL = "293447754+atelier-agent[bot]@users.noreply.github.com"
+ATTRIBUTION_TRAILER = f"Co-Authored-By: {ATTRIBUTION_NAME} <{ATTRIBUTION_EMAIL}>"
 AUTH_REFRESH_GRACE_SECONDS = 300
 UPDATE_CHECK_THROTTLE_SECONDS = 30 * 60
 
@@ -641,16 +655,15 @@ def apply_status_line_setting(host_settings: dict[str, Any], plugin_root: str, e
 
 
 def apply_spinner_setting(host_settings: dict[str, Any], enabled: bool) -> dict[str, Any]:
+    # Claude Code consumes a top-level ``spinnerVerbs`` object
+    # ({"mode": "replace"|"append", "verbs": [...]}). A namespaced
+    # ``atelier.spinnerVerbs`` array is ignored by the host, so write the
+    # documented top-level key.
     updated = dict(host_settings or {})
-    namespace = dict(updated.get("atelier") or {})
     if enabled:
-        namespace["spinnerVerbs"] = list(SPINNER_VERBS)
+        updated["spinnerVerbs"] = {"mode": "replace", "verbs": list(SPINNER_VERBS)}
     else:
-        namespace.pop("spinnerVerbs", None)
-    if namespace:
-        updated["atelier"] = namespace
-    else:
-        updated.pop("atelier", None)
+        updated.pop("spinnerVerbs", None)
     return updated
 
 
@@ -659,8 +672,14 @@ def apply_attribution_setting(host_settings: dict[str, Any], enabled: bool) -> d
     namespace = dict(updated.get("atelier") or {})
     if enabled:
         namespace["attribution"] = {"enabled": True, "source": "Atelier"}
+        # Suppress Claude Code's default Co-Authored-By trailer so the Atelier
+        # trailer (installed by scripts/install_attribution_hook.sh) is the only
+        # co-author line — but never override a value the user set themselves.
+        if "includeCoAuthoredBy" not in updated:
+            updated["includeCoAuthoredBy"] = False
     else:
         namespace.pop("attribution", None)
+        # Leave includeCoAuthoredBy untouched on disable (respect prior state).
     if namespace:
         updated["atelier"] = namespace
     else:
