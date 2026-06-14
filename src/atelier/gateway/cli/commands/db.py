@@ -39,22 +39,19 @@ def db_vacuum_cmd(ctx: click.Context, reset_traces: bool, force: bool, as_json: 
     conn = sqlite3.connect(str(db_path))
     try:
         if reset_traces:
-            for table in ("traces", "raw_artifacts", "sync_status"):
+            # traces/traces_fts/sync_status are legacy (removed from the schema once
+            # sessions became file-based) — drop them outright to reclaim old DBs.
+            for table in ("traces", "traces_fts", "sync_status"):
                 try:
                     cleared[table] = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-                    conn.execute(f"DELETE FROM {table}")
+                    conn.execute(f"DROP TABLE IF EXISTS {table}")
                 except sqlite3.OperationalError:
                     continue
-            # FTS5 DELETE leaves segment data in the shadow tables that VACUUM
-            # cannot reclaim; drop + recreate empty to actually free the space
-            # (recreate keeps the table valid for any concurrent reader/writer).
+            # raw_artifacts is still a live table; clear its rows (session bloat).
             try:
-                from atelier.core.foundation.store import TRACE_FTS_DDL
-
-                cleared["traces_fts"] = conn.execute("SELECT COUNT(*) FROM traces_fts").fetchone()[0]
-                conn.execute("DROP TABLE IF EXISTS traces_fts")
-                conn.execute(TRACE_FTS_DDL)
-            except (sqlite3.OperationalError, ImportError):
+                cleared["raw_artifacts"] = conn.execute("SELECT COUNT(*) FROM raw_artifacts").fetchone()[0]
+                conn.execute("DELETE FROM raw_artifacts")
+            except sqlite3.OperationalError:
                 pass
             conn.commit()
         conn.execute("VACUUM")
