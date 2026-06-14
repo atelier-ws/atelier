@@ -185,6 +185,7 @@ def test_search_symbols_reranks_after_filters_before_final_limit(tmp_path: Path,
 def test_tool_search_cache_keys_include_rerank_fingerprint(tmp_path: Path, monkeypatch) -> None:
     _write_symbol_file(tmp_path, "src/helper.py", "helper")
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code-context.sqlite")
+    monkeypatch.setattr(type(engine._semantic_ranker), "available", property(lambda self: True))
     monkeypatch.setattr(engine, "_ensure_indexed", lambda: None)
     monkeypatch.setattr(engine, "_sync_symbol_intel", lambda: None)
 

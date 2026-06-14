@@ -61,42 +61,6 @@ def test_render_symbol_compact_summary_excludes_source_body() -> None:
     assert "total = sum(items)" not in rendered
 
 
-def test_render_outline_compact_summary_is_sorted_and_includes_signatures() -> None:
-    rendered = render_code_payload(
-        "outline",
-        {
-            "files": {
-                "src/orders.py": [
-                    {
-                        "name": "run",
-                        "qualified_name": "Worker.run",
-                        "kind": "method",
-                        "signature": "def run(self) -> None",
-                        "line_start": 25,
-                        "line_end": 30,
-                        "source": "def run(self): ...",
-                    },
-                    {
-                        "name": "Worker",
-                        "qualified_name": "Worker",
-                        "kind": "class",
-                        "signature": "class Worker",
-                        "line_start": 10,
-                        "line_end": 40,
-                    },
-                ]
-            }
-        },
-    )
-
-    assert rendered is not None
-    assert rendered.startswith("### outline")
-    worker_idx = rendered.index("10-40: Worker [class] — class Worker")
-    run_idx = rendered.index("25-30: Worker.run [method] — def run(self) -> None")
-    assert worker_idx < run_idx
-    assert "def run(self): ..." not in rendered
-
-
 def test_render_context_includes_deterministic_sections_and_caps() -> None:
     rendered = render_code_payload(
         "context",

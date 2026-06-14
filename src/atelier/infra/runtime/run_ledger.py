@@ -19,6 +19,46 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+# --------------------------------------------------------------------------- #
+# Per-session paths — the run ledger and its sidecars live in sessions/<id>/  #
+# alongside the trace files, so a session is one self-contained folder.       #
+# --------------------------------------------------------------------------- #
+
+
+def session_run_dir(root: str | Path, session_id: str) -> Path:
+    """Per-session folder holding the run ledger and its sidecars."""
+    return Path(root) / "sessions" / session_id
+
+
+def run_file_path(root: str | Path, session_id: str) -> Path:
+    """Run-ledger snapshot: ``sessions/<session_id>/run.json``."""
+    return session_run_dir(root, session_id) / "run.json"
+
+
+def outcomes_path(root: str | Path, session_id: str) -> Path:
+    """Captured route/compact outcomes: ``sessions/<session_id>/outcomes.json``."""
+    return session_run_dir(root, session_id) / "outcomes.json"
+
+
+def context_savings_path(root: str | Path, session_id: str) -> Path:
+    """Context-compression savings: ``sessions/<session_id>/context_savings.jsonl``."""
+    return session_run_dir(root, session_id) / "context_savings.jsonl"
+
+
+def iter_run_files(root: str | Path) -> list[Path]:
+    """All run-ledger snapshots, name-sorted: ``sessions/*/run.json``."""
+    base = Path(root) / "sessions"
+    return sorted(base.glob("*/run.json")) if base.is_dir() else []
+
+
+def iter_session_outcomes(root: str | Path) -> list[tuple[str, Path]]:
+    """``(session_id, outcomes.json)`` for every session that captured outcomes."""
+    base = Path(root) / "sessions"
+    if not base.is_dir():
+        return []
+    return [(p.parent.name, p) for p in sorted(base.glob("*/outcomes.json"))]
+
+
 class RunLedger:
     """Append-only ledger for a single agent run."""
 
@@ -520,9 +560,8 @@ class RunLedger:
         target_root = root or self._root
         if target_root is None:
             raise ValueError("RunLedger.persist requires a root directory.")
-        runs_dir = Path(target_root) / "runs"
-        runs_dir.mkdir(parents=True, exist_ok=True)
-        path = runs_dir / f"{self.session_id}.json"
+        path = run_file_path(target_root, self.session_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(self.snapshot(), indent=2), encoding="utf-8")
         return path
 

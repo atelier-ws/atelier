@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import concurrent.futures
 import contextlib
-import difflib
 import fnmatch
 import hashlib
 import json
@@ -31,6 +30,9 @@ try:
     import fcntl
 except ImportError:  # pragma: no cover - non-POSIX platforms
     fcntl = None  # type: ignore[assignment]
+
+from rapidfuzz import process as rapidfuzz_process
+from rapidfuzz.distance import DamerauLevenshtein
 
 from atelier.core.capabilities.code_context.ann_symbol_index import (
     SymbolAnnIndex,
@@ -192,7 +194,6 @@ _LINEAGE_DEFAULT_SCORE_PENALTY = 0.1
 _DELETED_SEARCH_COMPACT_DEFAULT_KEYS = set(
     [*_DELETED_SEARCH_ESSENTIAL_KEYS, "score", "matched_on", "rename_target", "rename_note"]
 )
-_OUTLINE_ESSENTIAL_KEYS = ["file_path", "name"]
 _FILES_ESSENTIAL_KEYS = ["file_path"]
 _FILES_OPTIONAL_KEYS = ["top_symbols", "symbol_count", "language"]
 _ROUTES_ESSENTIAL_KEYS = ["framework", "method", "route", "file_path", "line", "provenance"]
@@ -301,7 +302,6 @@ _CACHE_TOOL_ALIASES = {
     "routes": "code.routes",
     "search": "code.search",
     "symbol": "code.symbol",
-    "outline": "code.outline",
     "context": "code.context",
     "usages": "code.usages",
     "callers": "code.callers",
@@ -313,14 +313,12 @@ _OPERATION_TOKEN_CAPS = {
     "index": 80,
     "search": 800,
     "symbol": 800,
-    "outline": 150,
     "pattern": 800,
     "callers": 700,
     "callees": 300,
     "usages": 700,
     "context": 2400,
     "blame": 50,
-    "hover": 190,
     "cache_invalidate": 35,
 }
 # Map internal field names to shortened MCP output names to reduce token bloat.
@@ -482,13 +480,17 @@ def _safe_relpath(repo_root: Path, path: Path) -> str:
 
 
 def _safe_fts_query(query: str) -> str:
+    # Quote each term as an FTS5 string literal so natural-language queries whose
+    # words happen to be FTS operators (or/and/near/not) are treated as literal
+    # terms instead of breaking the MATCH grammar. Terms are [A-Za-z0-9_]+ only,
+    # so no embedded-quote escaping is required.
     terms = _FTS_TERM_RE.findall(query)
-    return " OR ".join(term[:64] for term in terms[:12])
+    return " OR ".join(f'"{term[:64]}"' for term in terms[:12] if term)
 
 
 def _fts_prefix_query(query: str) -> str:
     terms = _FTS_TERM_RE.findall(query)
-    return " OR ".join(f"{term[:64]}*" for term in terms[:12] if term)
+    return " OR ".join(f'"{term[:64]}"*' for term in terms[:12] if term)
 
 
 def _identifier_terms(text: str) -> list[str]:
@@ -501,15 +503,14 @@ def _identifier_terms(text: str) -> list[str]:
     return terms
 
 
+# Damerau-Levenshtein normalized-similarity floor for fuzzy symbol recovery. A
+# single transposition/typo in a >=4-char name stays above this; shorter noise is
+# rejected. Scale is 0..1 (1.0 == identical).
+_FUZZY_SIMILARITY_CUTOFF = 0.75
+
+
 def _is_precise_symbol_query(query: str) -> bool:
     return bool(_PRECISE_SYMBOL_QUERY_RE.fullmatch(query.strip()))
-
-
-def _should_skip_fuzzy_for_precise_query(query: str) -> bool:
-    normalized = query.strip()
-    if not _is_precise_symbol_query(normalized):
-        return False
-    return "_" in normalized or "." in normalized
 
 
 def _matches_file_glob(path: str, pattern: str) -> bool:
@@ -643,6 +644,20 @@ def _git_repo_class() -> Any:
         logging.exception("Recovered from broad exception handler")
         return None
     return Repo
+
+
+def _resolve_index_max_workers() -> int:
+    """Worker count for the indexing ProcessPool.
+
+    Defaults to the CPU count, but honors the ``ATELIER_INDEX_MAX_WORKERS``
+    environment variable so resource-constrained environments (CI, sandboxes)
+    can cap parallelism: each spawn worker is a fresh interpreter that re-imports
+    the full package, so one-per-CPU can OOM-kill the pool on large repos.
+    """
+    override = os.environ.get("ATELIER_INDEX_MAX_WORKERS", "").strip()
+    if override.isdigit() and int(override) > 0:
+        return int(override)
+    return os.cpu_count() or 1
 
 
 def _process_one_file(
@@ -1319,7 +1334,7 @@ class CodeContextEngine:
         Results are sorted deterministically by relative path.
         *total* is the denominator for *progress_callback* (defaults to ``len(files)``).
         """
-        max_workers = os.cpu_count() or 1
+        max_workers = _resolve_index_max_workers()
         total_count = total or len(files)
 
         # Build argument tuples for the pickleable worker function
@@ -1533,6 +1548,23 @@ class CodeContextEngine:
             self._ensure_indexed()
         self._sync_symbol_intel()
         resolved_mode = "semantic" if intent == "semantic" else resolve_search_mode(query, mode)
+        if resolved_mode in {"semantic", "hybrid"} and not self._semantic_ranker.available:
+            # Semantic search requires a configured embedding backend. By default none
+            # is set (no external LLM is contacted). If the caller explicitly asked for
+            # semantic/hybrid, say so; for an auto-resolved query fall back to lexical.
+            if intent == "semantic" or mode in {"semantic", "hybrid"}:
+                return {
+                    "items": [],
+                    "mode": resolved_mode,
+                    "semantic_available": False,
+                    "provenance": _LOCAL_PROVENANCE,
+                    "cache_hit": False,
+                    "message": (
+                        "Semantic search is not configured. Set ATELIER_CODE_EMBEDDER "
+                        "(local|openai|letta|ollama) and optionally ATELIER_CODE_EMBED_MODEL to enable it."
+                    ),
+                }
+            resolved_mode = "lexical"
         use_text_substring = intent == "text" or (
             intent == "auto"
             and self._should_use_text_substring_search(
@@ -1794,55 +1826,6 @@ class CodeContextEngine:
         source = path.read_bytes()[symbol_rec.start_byte : symbol_rec.end_byte].decode("utf-8", errors="replace")
         return {**symbol_rec.model_dump(mode="json"), "source": source}
 
-    def tool_hover(
-        self,
-        *,
-        symbol_id: str | None = None,
-        qualified_name: str | None = None,
-        symbol_name: str | None = None,
-        file_path: str | None = None,
-        line: int | None = None,
-        col: int | None = None,
-        budget_tokens: int = 2000,
-        auto_index: bool = True,
-    ) -> dict[str, Any]:
-        """Surface type, docstring, and signature for a symbol — no subprocess needed.
-
-        Resolution priority: symbol_id → qualified_name → (file_path, line) → symbol_name.
-        Returns {symbol_id, symbol_name, qualified_name, kind, signature, docstring,
-                 documentation, file, line, col, source_snippet, provenance, cache_hit}.
-        """
-        if auto_index:
-            self._ensure_indexed()
-        self._sync_symbol_intel()
-
-        sym: dict[str, Any]
-
-        positional_lookup = (
-            file_path is not None and line is not None and not symbol_id and not qualified_name and not symbol_name
-        )
-        if positional_lookup:
-            sym = self._symbol_at_line(file_path, line)  # type: ignore[arg-type]
-        else:
-            sym = self.get_symbol(
-                symbol_id=symbol_id,
-                qualified_name=qualified_name,
-                symbol_name=symbol_name,
-                file_path=file_path,
-                auto_index=False,
-            )
-
-        emit_product_local("code_hover_retrieved", repo_id=self.repo_id, kind=sym["kind"])
-        return {
-            "symbol_id": sym["symbol_id"],
-            "symbol_name": sym["symbol_name"],
-            "signature": sym["signature"],
-            "file": sym["file_path"],
-            "line": sym["start_line"],
-            "provenance": sym.get("provenance", "local"),
-            "cache_hit": sym.get("cache_hit", False),
-        }
-
     def tool_symbol(
         self,
         *,
@@ -1974,78 +1957,6 @@ class CodeContextEngine:
 
     def _cross_lang_store(self) -> CrossLangEdgeStore:
         return CrossLangEdgeStore(self.connection)
-
-    def tool_outline(
-        self,
-        *,
-        file_path: str | None = None,
-        limit: int = 200,
-        budget_tokens: int = 4000,
-        auto_index: bool = True,
-    ) -> dict[str, Any]:
-        effective_budget_tokens = self._effective_budget_tokens("outline", budget_tokens)
-        if auto_index:
-            self._ensure_indexed()
-        self._sync_symbol_intel()
-        normalized_file_path = self._normalize_file_arg(file_path) if file_path else None
-        cache_args = {
-            "file_path": normalized_file_path,
-            "limit": limit,
-            "budget_tokens": effective_budget_tokens,
-            "file_mtime_ns": self._file_mtime_ns(normalized_file_path) if normalized_file_path else None,
-        }
-        hit, cached = self._cache_get("code.outline", cache_args)
-        if hit and cached is not None:
-            return self._mark_cache_hit(cached)
-
-        raw = self.file_outline(file_path=normalized_file_path, limit=limit, auto_index=False)
-        flat_items = self._flatten_outline(raw["files"])
-        if normalized_file_path:
-
-            def _outline_rank(item: dict[str, Any]) -> tuple[int, int, int, str]:
-                kind = str(item.get("kind") or "").lower()
-                name = str(item.get("name") or "")
-                public = 0 if name and not name.startswith("_") else 1
-                kind_rank = {
-                    "function": 0,
-                    "async_function": 0,
-                    "method": 1,
-                    "class": 2,
-                }.get(kind, 3)
-                return (public, kind_rank, 0 if kind_rank <= 1 else 1, name)
-
-            flat_items = sorted(flat_items, key=_outline_rank)
-        full_symbol_count = int(raw["symbol_count"])
-        full_payload = {
-            "repo_id": str(raw["repo_id"]),
-            "files": raw["files"],
-            "symbol_count": full_symbol_count,
-            "provenance": _LOCAL_PROVENANCE,
-        }
-        full_total_tokens = self._compute_total_tokens({**full_payload, "cache_hit": False, "tokens_saved": 0})
-
-        def build_payload(packed_items: list[dict[str, Any]]) -> dict[str, Any]:
-            return self._finalize_packed_payload(
-                {
-                    "repo_id": str(raw["repo_id"]),
-                    "files": self._group_outline(packed_items),
-                    "symbol_count": full_symbol_count,
-                    "cache_hit": False,
-                    "provenance": _LOCAL_PROVENANCE,
-                },
-                full_total_tokens=full_total_tokens,
-            )
-
-        payload = self._fit_items_to_budget(
-            flat_items,
-            budget_tokens=effective_budget_tokens,
-            essential_keys=_OUTLINE_ESSENTIAL_KEYS,
-            optional_keys_in_drop_order=[],
-            build_payload=build_payload,
-            enforce_protected_top_rank=False,
-        )
-        self._cache_set("code.outline", cache_args, payload)
-        return payload
 
     def tool_files(
         self,
@@ -3132,7 +3043,6 @@ class CodeContextEngine:
         terms = _identifier_terms(normalized_query)
         first_term = terms[0] if terms else normalized_query_lower[:4]
         strong_fetch_limit = max(limit * 8, 80)
-        fuzzy_fetch_limit = max(limit * 120, 1200)
         query_mentions_tests = _query_implies_test_scope(normalized_query)
         kind_boosts = {
             "class": 18.0,
@@ -3326,43 +3236,39 @@ class CodeContextEngine:
             ]
             consider_rows(camel_rows, channel_rank=6, base=790.0)
 
-            if not scored:
-                if _should_skip_fuzzy_for_precise_query(normalized_query):
-                    return []
+            # Fuzzy recovery (RapidFuzz / Damerau-Levenshtein). Fires whenever the
+            # strong channels found no EXACT name match -- not only on a total miss --
+            # so a stray partial-token hit no longer suppresses the real target.
+            # Damerau-Levenshtein scores transpositions (``make_ram_env`` ->
+            # ``make_arm_env``) and insert/delete/substitute typos in one pass; the
+            # scan covers EVERY in-scope symbol so recall is independent of fetch
+            # order, and matches merge below exact/strong hits, ranked by similarity.
+            has_exact_name_match = any(
+                record.symbol_name.lower() == normalized_query_lower
+                or record.qualified_name.lower() == normalized_query_lower
+                for _, _, record in scored.values()
+            )
+            if not has_exact_name_match:
                 fuzzy_rows = conn.execute(
-                    f"""
-                    SELECT *, NULL AS score
-                    FROM symbols
-                    WHERE {where_sql}
-                    ORDER BY file_path, start_line
-                    LIMIT ?
-                    """,
-                    tuple([*params, fuzzy_fetch_limit]),
+                    f"SELECT *, NULL AS score FROM symbols WHERE {where_sql}",
+                    tuple(params),
                 ).fetchall()
-                fuzzy_scored: list[tuple[float, sqlite3.Row]] = []
-                for row in fuzzy_rows:
-                    symbol_name = str(row["symbol_name"]).lower()
-                    qualified_name = str(row["qualified_name"]).lower()
-                    ratio = max(
-                        difflib.SequenceMatcher(None, normalized_query_lower, symbol_name, autojunk=False).ratio(),
-                        difflib.SequenceMatcher(None, normalized_query_lower, qualified_name, autojunk=False).ratio(),
-                    )
-                    if ratio < 0.58:
-                        continue
-                    fuzzy_scored.append((ratio, row))
-                fuzzy_scored.sort(
-                    key=lambda item: (
-                        -item[0],
-                        str(item[1]["file_path"]),
-                        int(item[1]["start_line"]),
-                        str(item[1]["qualified_name"]),
-                    )
-                )
-                consider_rows(
-                    [row for _, row in fuzzy_scored[:strong_fetch_limit]],
-                    channel_rank=7,
-                    base=640.0,
-                )
+                if fuzzy_rows:
+                    candidate_names = [str(row["symbol_name"]).lower() for row in fuzzy_rows]
+                    for _matched, similarity, index in rapidfuzz_process.extract(
+                        normalized_query_lower,
+                        candidate_names,
+                        scorer=DamerauLevenshtein.normalized_similarity,
+                        score_cutoff=_FUZZY_SIMILARITY_CUTOFF,
+                        limit=strong_fetch_limit,
+                    ):
+                        if candidate_names[index] == normalized_query_lower:
+                            continue
+                        consider_rows(
+                            [fuzzy_rows[index]],
+                            channel_rank=7,
+                            base=600.0 + similarity * 60.0,
+                        )
 
         ranked = sorted(
             scored.values(),
@@ -3946,18 +3852,6 @@ class CodeContextEngine:
             scope="repo",
             auto_index=False,
         )
-        # SymbolIntelStore.search_symbols short-circuits on the first non-empty provider
-        # (e.g. SCIP returns methods via qualified_name match). Symbols whose query token
-        # appears only as a name suffix in a non-adapter-named file (e.g.
-        # _deleted_history_adapter in engine.py) are then never found. Supplement with
-        # an explicit SQLite LIKE search so the full name-contains pool is considered.
-        local_hits = self._search_symbols_local(query, limit=max(limit * 40, 200))
-        if local_hits:
-            seen_ids = {h.symbol_id for h in symbol_hits}
-            extra = [h for h in local_hits if h.symbol_id not in seen_ids]
-            if file_glob:
-                extra = [h for h in extra if _matches_file_glob(h.file_path, file_glob)]
-            symbol_hits = symbol_hits + extra
         ranked_symbol_hits = sorted(
             (
                 item
@@ -3967,12 +3861,7 @@ class CodeContextEngine:
             key=lambda item: self._text_substring_symbol_score(query_lower, item),
             reverse=True,
         )
-        # Use 2x the request limit so that symbols ranking just below the primary adapter
-        # class definitions still make it into the payload; _pack_items_payload trims by
-        # token budget anyway.
-        symbol_items = [
-            item.model_dump(mode="json", exclude_none=True) for item in ranked_symbol_hits[: max(limit * 2, 40)]
-        ]
+        symbol_items = [item.model_dump(mode="json", exclude_none=True) for item in ranked_symbol_hits[:limit]]
         raw_limit = max(limit * 50, 500)
         matches = self.search_text(query, path=search_path, limit=raw_limit, ignore_case=True)
         if file_glob:
@@ -4020,21 +3909,14 @@ class CodeContextEngine:
         path_hit = int(query_lower in lowered_path)
         return (definition, symbolish, path_hit, -len(match.file_path))
 
-    def _text_substring_symbol_score(
-        self, query_lower: str, symbol: SymbolRecord
-    ) -> tuple[int, int, int, int, int, int]:
+    def _text_substring_symbol_score(self, query_lower: str, symbol: SymbolRecord) -> tuple[int, int, int, int, int]:
         symbol_name_lower = symbol.symbol_name.lower()
         qualified_name_lower = symbol.qualified_name.lower()
         preferred_kind = int(symbol.kind in {"class", "method", "function"})
         startswith = int(symbol_name_lower.startswith(query_lower) or qualified_name_lower.startswith(query_lower))
         bare_startswith = int(symbol_name_lower.lstrip("_").startswith(query_lower))
-        # Reward symbols where the query appears in the SHORT symbol name (not just the
-        # file path or the class-name prefix of a qualified_name). This ensures e.g.
-        # _deleted_history_adapter ranks above _run in astgrep/adapter.py when searching
-        # for "adapter", because the latter only matches via path_hit.
-        name_contains = int(query_lower in symbol_name_lower)
         path_hit = int(query_lower in symbol.file_path.lower())
-        return (preferred_kind, startswith, bare_startswith, name_contains, path_hit, -len(symbol.symbol_name))
+        return (preferred_kind, startswith, bare_startswith, path_hit, -len(symbol.symbol_name))
 
     def _text_match_search_item(self, query: str, match: TextMatch) -> dict[str, Any]:
         name = self._text_match_name(query, match.text)
@@ -6787,29 +6669,6 @@ class CodeContextEngine:
             max_end_index = min(max_end_index, max(start_index + 1, end_line))
         snippet_slice = lines[start_index:max_end_index]
         return "\n".join(snippet_slice)
-
-    def _flatten_outline(self, files: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
-        items: list[dict[str, Any]] = []
-        for file_path in sorted(files):
-            for item in files[file_path]:
-                items.append({"file_path": file_path, **item})
-        return items
-
-    def _group_outline(self, items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-        normalized = sorted(
-            items,
-            key=lambda item: (
-                str(item.get("file_path") or ""),
-                int(item.get("line_start") or 0),
-                str(item.get("qualified_name") or item.get("name") or ""),
-                str(item.get("kind") or ""),
-            ),
-        )
-        grouped: dict[str, list[dict[str, Any]]] = {}
-        for item in normalized:
-            file_path = str(item["file_path"])
-            grouped.setdefault(file_path, []).append({k: v for k, v in item.items() if k != "file_path"})
-        return grouped
 
     def _normalize_files_path(self, value: str | None) -> str | None:
         if value is None:

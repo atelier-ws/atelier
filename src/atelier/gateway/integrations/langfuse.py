@@ -95,6 +95,61 @@ def emit_trace(payload: dict[str, Any]) -> None:
         )
 
 
+def emit_tool_call(
+    *,
+    tool: str,
+    args: dict[str, Any],
+    duration_ms: int,
+    response_size: int,
+    status: str,
+    error: str | None = None,
+    session_id: str = "",
+) -> None:
+    """Emit one Langfuse span per MCP tool invocation. Silently no-ops on any error.
+
+    Enabled only when ATELIER_LANGFUSE_ENABLED=true and keys are configured.
+    Args are scrubbed before sending: string values longer than 300 chars are
+    replaced with a ``<N chars>`` placeholder to avoid leaking large file contents.
+    """
+    if not _enabled():
+        return
+    try:
+        client = _make_client()
+        if client is None:
+            return
+
+        scrubbed: dict[str, Any] = {
+            k: (f"<{len(str(v))} chars>" if isinstance(v, str) and len(v) > 300 else v) for k, v in args.items()
+        }
+
+        trace = client.trace(
+            name=f"mcp.{tool}",
+            session_id=session_id or None,
+            metadata={"tool": tool, "status": status},
+            tags=["mcp_tool", tool, status],
+        )
+        span = trace.span(
+            name=f"mcp.{tool}",
+            input=scrubbed,
+            output=(
+                {"status": status, "response_size_bytes": response_size}
+                if not error
+                else {"status": status, "error": error}
+            ),
+            metadata={
+                "duration_ms": duration_ms,
+                "response_size_bytes": response_size,
+                "session_id": session_id,
+            },
+            level="ERROR" if error else "DEFAULT",
+            status_message=error or "",
+        )
+        span.end()
+        client.flush()
+    except Exception:  # noqa: BLE001
+        logger.warning("Suppressed exception in emit_tool_call", exc_info=True)
+
+
 def health_check() -> dict[str, Any]:
     """Return Langfuse integration status for diagnostics."""
     enabled = _enabled()

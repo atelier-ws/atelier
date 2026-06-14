@@ -108,8 +108,7 @@ def _active_session_id() -> str | None:
 
 
 def _append_prompt_event(session_id: str, prompt: str) -> None:
-    runs_dir = _atelier_root() / "runs"
-    run_file = runs_dir / f"{session_id}.json"
+    run_file = _atelier_root() / "sessions" / session_id / "run.json"
     if not run_file.exists():
         return
 
@@ -369,7 +368,7 @@ def _append_compaction_savings_row(tokens: int, usd: float, model: str | None) -
         sid = _active_session_id()
         if not sid:
             return
-        path = _atelier_root() / "session_stats" / "claude" / f"{sid}.jsonl"
+        path = _atelier_root() / "sessions" / sid / "savings.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         row = {
             "kind": "compaction",

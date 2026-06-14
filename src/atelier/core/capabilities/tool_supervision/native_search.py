@@ -32,6 +32,12 @@ DEFAULT_CONTEXT_BUDGET_TOKENS = 6_000
 INLINE_CHARS_PER_TOKEN = 2
 # Max paths emitted by output_mode=file_paths_only before truncation.
 _FILE_PATHS_ONLY_CAP = 200
+# Wall-clock budget for running a user-supplied content_regex across all
+# candidate files. Caps catastrophic-backtracking ReDoS to a bounded hang.
+_REGEX_DEADLINE_SECONDS = 5.0
+# Per-line input cap fed to the user regex — a single pathological line cannot
+# drive backtracking time superlinearly past this bound.
+_REGEX_MAX_LINE_CHARS = 20_000
 SKIP_DIRS: frozenset[str] = frozenset(
     {
         # VCS
@@ -202,10 +208,20 @@ def _iter_files(
     for spec in expanded:
         raw = spec.pattern or "."
         if _has_glob(raw):
-            matches = base.glob(raw) if not Path(raw).is_absolute() else Path("/").glob(raw.lstrip("/"))
-            for match in matches:
-                if match.is_file() and not any(part in _SKIP_DIRS for part in match.parts):
-                    candidates.setdefault(match.resolve(), spec)
+            # Absolute globs (e.g. "/etc/*") and "../"-escaping globs must not
+            # bypass the workspace boundary — resolve every match and require
+            # it to live under root before admitting it.
+            if Path(raw).is_absolute():
+                continue
+            for match in base.glob(raw):
+                if not match.is_file():
+                    continue
+                resolved = match.resolve()
+                if not resolved.is_relative_to(root):
+                    continue
+                if any(part in _SKIP_DIRS for part in resolved.parts):
+                    continue
+                candidates.setdefault(resolved, spec)
             continue
 
         candidate = _safe_resolve(root, raw)
@@ -435,16 +451,23 @@ def _match_line_numbers(
     content_regex: str | None,
     *,
     include_all_when_no_regex: bool,
+    deadline: float | None = None,
 ) -> list[int]:
     if regex is not None:
-        return [idx for idx, line in enumerate(lines, start=1) if regex.search(line)]
+        out: list[int] = []
+        for idx, line in enumerate(lines, start=1):
+            if deadline is not None and idx % 256 == 0 and time.monotonic() > deadline:
+                break
+            if regex.search(line[:_REGEX_MAX_LINE_CHARS]):
+                out.append(idx)
+        return out
     if include_all_when_no_regex:
         return list(range(1, len(lines) + 1))
     variants = _query_variants(content_regex)
     if not variants:
         return []
     compiled = [re.compile(re.escape(item), re.I) for item in variants]
-    out: list[int] = []
+    out = []
     for idx, line in enumerate(lines, start=1):
         if any(pat.search(line) for pat in compiled):
             out.append(idx)
@@ -515,12 +538,18 @@ def _render_text_result(
     lines_per_file: int | None,
     summary: bool | None,
     if_modified_since: datetime | None,
+    deadline: float | None = None,
 ) -> tuple[str | None, int]:
     rel = str(path.relative_to(root)) if path.is_relative_to(root) else str(path)
     mtime = datetime.fromtimestamp(path.stat().st_mtime)
     unchanged = if_modified_since is not None and mtime <= if_modified_since
-    if unchanged and output_mode == "file_paths_with_content":
-        return f"{rel} (unchanged)", 0
+    if unchanged:
+        if output_mode == "file_paths_only":
+            return None, 0
+        if output_mode == "file_paths_with_match_count":
+            return f"{rel}\t0 (unchanged)", 0
+        if output_mode == "file_paths_with_content":
+            return f"{rel} (unchanged)", 0
 
     source = (
         _extract_pdf(path)
@@ -538,7 +567,9 @@ def _render_text_result(
         return None, 0
 
     lines = source.splitlines()
-    if spec.start_line is not None:
+    # A "#start-end" suffix with no pattern is a range read via grep: return the
+    # raw slice. With a pattern, the range instead scopes which matches report.
+    if spec.start_line is not None and regex is None and content_regex is None:
         start = spec.start_line
         end = spec.end_line or start
         selected = lines[start - 1 : end]
@@ -546,7 +577,12 @@ def _render_text_result(
         return f"{rel}#{start}-{end}\n{body}", len(selected)
 
     include_all = regex is None and content_regex is None
-    match_lines = _match_line_numbers(lines, regex, content_regex, include_all_when_no_regex=include_all)
+    match_lines = _match_line_numbers(
+        lines, regex, content_regex, include_all_when_no_regex=include_all, deadline=deadline
+    )
+    if spec.start_line is not None:
+        lo, hi = spec.start_line, spec.end_line or spec.start_line
+        match_lines = [n for n in match_lines if lo <= n <= hi]
     if include_all and lines_per_file:
         match_lines = match_lines[: max(0, lines_per_file)]
 
@@ -610,12 +646,6 @@ def search_workspace(
     include_metadata: bool = True,
 ) -> dict[str, Any]:
     """Search and read files in one structured response."""
-    if not (content_regex or file_glob_patterns or type or Path(path).is_file()):
-        return {
-            "isError": True,
-            "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}],
-        }
-
     # Track naive vs rendered bytes to compute tokens_saved. Naive = grep
     # output bytes (matching lines + context, not full file); rendered = what
     # Atelier actually returns after ranking/summarisation. ~4 bytes/token.
@@ -623,6 +653,14 @@ def search_workspace(
     root = _repo_root(repo_root)
     base_spec = _parse_pattern(path)
     base = _safe_resolve(root, base_spec.pattern or ".")
+    # Resolve the base first (which strips any "#start-end" line-range suffix)
+    # so a bare "file.py#60-100" path is accepted as a single-file search rather
+    # than rejected for having no pattern.
+    if not (content_regex or file_glob_patterns or type or base.is_file()):
+        return {
+            "isError": True,
+            "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}],
+        }
     specs = [_parse_pattern(item) for item in (file_glob_patterns or [])]
     if not specs and base.is_file():
         specs = [base_spec]
@@ -630,7 +668,19 @@ def search_workspace(
     flags = re.I if ignore_case else 0
     if multiline:
         flags |= re.S | re.M
-    regex = re.compile(content_regex, flags) if content_regex else None
+    if content_regex:
+        try:
+            regex = re.compile(content_regex, flags)
+        except re.error as exc:
+            return {
+                "isError": True,
+                "content": [{"type": "text", "text": f"Invalid content_regex: {exc}"}],
+            }
+    else:
+        regex = None
+    # Bound total time spent running a user-supplied regex across files so a
+    # catastrophic-backtracking pattern cannot hang the worker indefinitely.
+    deadline = time.monotonic() + _REGEX_DEADLINE_SECONDS if regex is not None else None
     since = _parse_when(if_modified_since)
     candidates = _iter_files(root, base if base.is_dir() else root, specs, type)
     limit = file_limit or 100
@@ -646,6 +696,8 @@ def search_workspace(
             if len(ranked) >= limit:
                 break
             if not _is_text_file(candidate) and candidate.suffix.lower() not in _PDF_SUFFIXES:
+                continue
+            if since is not None and datetime.fromtimestamp(candidate.stat().st_mtime) <= since:
                 continue
             source = (
                 _extract_pdf(candidate)
@@ -684,7 +736,14 @@ def search_workspace(
                 )
                 continue
 
-            line_nos = _match_line_numbers(lines, regex, content_regex, include_all_when_no_regex=regex is None)
+            line_nos = _match_line_numbers(
+                lines, regex, content_regex, include_all_when_no_regex=regex is None, deadline=deadline
+            )
+            if spec.start_line is not None:
+                lo, hi = spec.start_line, spec.end_line or spec.start_line
+                line_nos = [n for n in line_nos if lo <= n <= hi]
+                if not line_nos:
+                    continue
             if regex and not line_nos:
                 continue
             rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
@@ -813,6 +872,8 @@ def search_workspace(
                 blocks.append({"type": "text", "text": "[truncated: structured output cap reached]"})
                 break
             text = rendered[:remaining]
+            if len(rendered) > remaining:
+                text += f"\n[truncated: {len(rendered) - remaining} omitted]"
             total_chars += len(text)
             blocks.append({"type": "text", "text": text})
             continue
@@ -829,6 +890,7 @@ def search_workspace(
             lines_per_file=lines_per_file,
             summary=summary,
             if_modified_since=since,
+            deadline=deadline,
         )
         if _file_rendered is None:
             continue
@@ -852,6 +914,8 @@ def search_workspace(
             blocks.append({"type": "text", "text": "[truncated: structured output cap reached]"})
             break
         text = rendered[:remaining]
+        if len(rendered) > remaining:
+            text += f"\n[truncated: {len(rendered) - remaining} omitted]"
         total_chars += len(text)
         blocks.append({"type": "text", "text": text})
 

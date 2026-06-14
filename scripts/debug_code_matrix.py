@@ -9,7 +9,7 @@ from typing import Any
 
 import tiktoken
 
-from atelier.gateway.adapters.mcp_server import tool_code
+from benchmarks.mcp_tools._env import call_code_op
 
 ENC = tiktoken.get_encoding("cl100k_base")
 
@@ -134,9 +134,9 @@ def main() -> int:
         error: str | None = None
         raw_output: Any
         try:
-            raw_output = tool_code(payload)
+            raw_output = call_code_op(payload)
         except Exception as exc:
-            logger.exception("tool_code failed for operation %s", operation)
+            logger.exception("call_code_op failed for operation %s", operation)
             raw_output = {}
             error = f"{type(exc).__name__}: {exc}"
         elapsed_ms = (perf_counter() - t0) * 1000.0

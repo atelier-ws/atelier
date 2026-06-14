@@ -22,6 +22,12 @@ def test_redacts_jwt() -> None:
     assert "<redacted-jwt>" in redact(f"Bearer {jwt}")
 
 
+def test_redacts_email() -> None:
+    out = redact("ping me at pankaj4u4m@gmail.com please")
+    assert "pankaj4u4m@gmail.com" not in out
+    assert "<redacted-email>" in out
+
+
 def test_redact_list_applies_per_item() -> None:
     out = redact_list(["clean", "password=hunter2"])
     assert out[0] == "clean"

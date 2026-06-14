@@ -12,8 +12,11 @@ def test_init_with_stack_copies_templates(tmp_path: Path) -> None:
     result = CliRunner().invoke(cli, ["--root", str(root), "init", "--stack", "python-fastapi"])
 
     assert result.exit_code == 0, result.output
-    # Lessons are project-local by default in .lessons/
-    blocks_dir = tmp_path / ".lessons" / "blocks"
+    # Block mirrors live per-project under the global store root, not in .lessons.
+    from atelier.core.foundation.paths import resolve_workspace_store_dir
+
+    blocks_dir = resolve_workspace_store_dir(root) / "blocks"
+    assert ".lessons" not in blocks_dir.parts
     copied = sorted(blocks_dir.glob("template_*.md"))
     assert len(copied) == 8
     assert any(path.name == "template_pydantic-api-boundaries.md" for path in copied)

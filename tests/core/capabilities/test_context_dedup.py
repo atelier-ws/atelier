@@ -29,6 +29,25 @@ def test_force_bypasses_and_keeps_recording() -> None:
     assert d.stub_for(session_id="s", content=_BIG, epoch=0, force=False) is not None
 
 
+def test_stub_and_delta_carry_self_heal_cue() -> None:
+    # A fresh-context caller (e.g. a subagent) that never received the original
+    # must be able to recover it: both the stub and the delta tell it to re-read
+    # with force=true when the content is not in its context.
+    d = ContextDedup()
+    d.stub_for(session_id="s", content=_BIG, epoch=0, force=False)
+    out = d.stub_for(session_id="s", content=_BIG, epoch=0, force=False)
+    assert out is not None
+    stub, _ = out
+    assert "force=true" in stub
+    assert "context" in stub
+
+    d.delta_for(session_id="s", resource="r", content=_FILE_V1, epoch=0, force=False)
+    out2 = d.delta_for(session_id="s", resource="r", content=_FILE_V2, epoch=0, force=False)
+    assert out2 is not None
+    delta, _ = out2
+    assert "force=true" in delta
+
+
 def test_small_content_is_never_stubbed() -> None:
     d = ContextDedup()
     small = "tiny"

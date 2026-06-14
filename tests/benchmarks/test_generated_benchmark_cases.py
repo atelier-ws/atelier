@@ -44,7 +44,9 @@ def test_generated_repo_backed_case_counts() -> None:
     assert len(search_module.SEARCH_CASES) == 300
     assert len(grep_module.GREP_CASES) == 300
     assert len(context_module.CONTEXT_CASES) == 300
-    assert len(code_module.CODE_CASES) >= 700
+    # Outline is no longer a code-op (measured via `read mode=outline`), so its
+    # 77 generated/static cases were removed from CODE_CASES.
+    assert len(code_module.CODE_CASES) >= 640
     assert len(memory_module.MEMORY_CASES) == 300
     assert len(route_module.ROUTE_CASES) == 300
     assert len(compact_module.COMPACT_CASES) == 300
@@ -66,7 +68,11 @@ def test_generated_public_code_tool_counts() -> None:
         )
         counts[tool_name] = counts.get(tool_name, 0) + 1
 
-    assert counts["symbols"] >= 300
+    # The bucketing folds every non-graph op (search, symbol, hover, index,
+    # cache_status) into "symbols". Removing the 77 outline cases (outline is no
+    # longer a code-op; it's measured via `read mode=outline`) drops this bucket
+    # from ~312 to its true search+symbol+hover floor.
+    assert counts["symbols"] >= 235
     assert counts["node"] >= 25
     assert counts["callers"] >= 25
     assert counts["callees"] >= 25

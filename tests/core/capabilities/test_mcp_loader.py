@@ -34,6 +34,8 @@ def test_discover_parses_mcp_json(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     monkeypatch.setattr(loader, "_MCP_CONFIG_PATHS", [cfg_path])
+    # A config outside a trusted root is only auto-spawned with explicit opt-in.
+    monkeypatch.setenv("ATELIER_MCP_ALLOW_UNTRUSTED", "1")
     configs = discover_mcp_configs()
     assert len(configs) == 1
     assert configs[0].name == "weather"
