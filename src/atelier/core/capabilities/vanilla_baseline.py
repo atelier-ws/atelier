@@ -154,6 +154,19 @@ def build_turns(transcript_path: str | Path) -> list[dict[str, Any]]:
     return turns
 
 
+# Labelled detectors, in claim order. The label is the human-readable pattern
+# name surfaced by `atelier savings --deep`.
+_DETECTORS: tuple[tuple[str, Any], ...] = (
+    ("grep->read", detect_grep_read),
+    ("glob->read", detect_glob_read),
+    ("failed-edit", detect_failed_edit),
+    ("read-batch", detect_read_batch),
+    ("edit-batch", detect_edit_batch),
+    ("bash->sql", detect_bash_sql),
+    ("bash-grep-chain", detect_bash_grep_chain),
+)
+
+
 def replay_session(transcript_path: str | Path) -> dict[str, Any]:
     """Replay one transcript through every detector and sum all hits.
 
@@ -166,17 +179,16 @@ def replay_session(transcript_path: str | Path) -> dict[str, Any]:
     turns = build_turns(transcript_path)
     consumed: set[str] = set()
 
-    calls_saved = 0
     # Order matters only for which detector claims a shared tool_use first; the
     # consumed set keeps the total honest regardless. Navigation chains first,
     # then batches, then bash families.
-    calls_saved += detect_grep_read(turns, consumed_tool_use_ids=consumed)["calls_saved"]
-    calls_saved += detect_glob_read(turns, consumed_tool_use_ids=consumed)["calls_saved"]
-    calls_saved += detect_failed_edit(turns, consumed_tool_use_ids=consumed)["calls_saved"]
-    calls_saved += detect_read_batch(turns, consumed_tool_use_ids=consumed)["calls_saved"]
-    calls_saved += detect_edit_batch(turns, consumed_tool_use_ids=consumed)["calls_saved"]
-    calls_saved += detect_bash_sql(turns, consumed_tool_use_ids=consumed)["calls_saved"]
-    calls_saved += detect_bash_grep_chain(turns, consumed_tool_use_ids=consumed)["calls_saved"]
+    by_detector: dict[str, int] = {}
+    calls_saved = 0
+    for label, detector in _DETECTORS:
+        hit = detector(turns, consumed_tool_use_ids=consumed)["calls_saved"]
+        if hit:
+            by_detector[label] = by_detector.get(label, 0) + hit
+        calls_saved += hit
 
     stats = read_transcript_stats(transcript_path)
     per_call_tokens, per_call_cost = price_avoided_call(stats, stats.model if stats else "")
@@ -186,6 +198,7 @@ def replay_session(transcript_path: str | Path) -> dict[str, Any]:
         "time_saved_ms": baseline_time_saved(calls_saved)["time_saved_ms"],
         "tokens_saved": round(calls_saved * per_call_tokens),
         "cost_saved_usd": round(calls_saved * per_call_cost, 6),
+        "by_detector": by_detector,
     }
 
 
@@ -270,6 +283,7 @@ def aggregate_vanilla_baseline(
     tokens = 0
     cost = 0.0
     sessions = 0
+    by_detector: dict[str, int] = {}
     for path in _transcript_paths_in_window(window_days):
         try:
             session = replay_session(path)
@@ -283,6 +297,8 @@ def aggregate_vanilla_baseline(
         time_ms += session["time_saved_ms"]
         tokens += session["tokens_saved"]
         cost += session["cost_saved_usd"]
+        for label, hit in session.get("by_detector", {}).items():
+            by_detector[label] = by_detector.get(label, 0) + hit
 
     capped = cost > cap_usd
     if capped:
@@ -293,6 +309,7 @@ def aggregate_vanilla_baseline(
         "time_saved_ms": time_ms,
         "tokens_saved": tokens,
         "cost_saved_usd": round(cost, 6),
+        "by_detector": by_detector,
         "sessions": sessions,
         "window_days": window_days,
         "cap_usd": cap_usd,
