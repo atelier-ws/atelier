@@ -7,6 +7,7 @@ written to the store.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
@@ -69,6 +70,38 @@ def redact_list(items: list[str]) -> list[str]:
     return [redact(i) for i in items]
 
 
+# Env kill-switch for live tool-output redaction (G8). Default ON; set
+# ATELIER_OUTPUT_REDACTION to one of the falsey tokens below to disable.
+_OUTPUT_REDACTION_OFF = {"0", "false", "no", "off"}
+
+
+def output_redaction_enabled() -> bool:
+    """Return whether live tool-output redaction is enabled (default True)."""
+    raw = os.getenv("ATELIER_OUTPUT_REDACTION")
+    if raw is None:
+        return True
+    return raw.strip().lower() not in _OUTPUT_REDACTION_OFF
+
+
+def redact_tool_output(text: str) -> str:
+    """Scrub secrets from tool OUTPUT before it reaches the model.
+
+    This is the live-output dual of the persistence-boundary :func:`redact`.
+    It reuses the same conservative mask-not-drop credential patterns so a
+    read/grep/search/bash result that incidentally contains an AWS key, a
+    JWT, a private key, or a ``token=...`` pair is masked rather than handed
+    verbatim to the model. Honors the ``ATELIER_OUTPUT_REDACTION`` kill-switch
+    (default ON) and never raises: on any failure it returns the input
+    unchanged so output is never lost.
+    """
+    if not text or not output_redaction_enabled():
+        return text
+    out = text
+    for pattern, replacement in _PATTERNS:
+        out = pattern.sub(replacement, out)
+    return out
+
+
 def redact_failure_cluster(cluster: dict[str, Any] | object) -> dict[str, Any]:
     """Return a redacted dict view of a FailureCluster.
 
@@ -113,6 +146,37 @@ def is_shell_injection(value: str) -> bool:
     if not isinstance(value, str):
         return True
     return any(token in value for token in _SHELL_INJECTION_TOKENS)
+
+
+# Prompt-injection needles for inbound (index-time) trust labelling (N15).
+# Conservative and deterministic: these phrases are the canonical instruction-
+# override patterns used in indirect prompt-injection against doc/RAG content.
+# We FLAG (never drop) matching chunks so the label can ride along in
+# retrieval results; callers that ignore the flag are unaffected.
+_PROMPT_INJECTION_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"(?i)\bignore\s+(?:all\s+|any\s+)?(?:previous|prior|above|earlier)\s+instructions?\b"),
+    re.compile(r"(?i)\bdisregard\s+(?:all\s+|any\s+)?(?:previous|prior|above|earlier)\b"),
+    re.compile(r"(?i)\byou\s+are\s+now\b.{0,40}\b(?:dan|do\s+anything\s+now|unrestricted|jailbroken)\b"),
+    re.compile(r"(?i)\bnew\s+(?:system\s+)?(?:prompt|instructions?)\s*[:=]"),
+    re.compile(r"(?i)<\s*/?\s*(?:system|assistant)\s*>"),
+    re.compile(r"(?i)\bsystem\s+override\b"),
+    re.compile(r"(?i)\bdeveloper\s+mode\b"),
+    re.compile(r"(?i)\boverride\s+(?:your\s+|the\s+)?(?:safety|guard\s*rails?|instructions?)\b"),
+)
+
+
+def is_prompt_injection(text: str) -> bool:
+    """Return True if ``text`` matches a known prompt-injection needle.
+
+    Inbound dual of :func:`redact_tool_output`. Deterministic and
+    conservative — matches only canonical instruction-override phrasing so a
+    legitimate code/doc chunk is rarely flagged. Intended for index-time
+    trust labelling: the caller attaches the boolean to indexed content; it
+    never alters or drops the content itself.
+    """
+    if not isinstance(text, str) or not text:
+        return False
+    return any(pattern.search(text) for pattern in _PROMPT_INJECTION_PATTERNS)
 
 
 def assert_safe_grep_args(pattern: str, path: str) -> None:
