@@ -6,7 +6,7 @@ Public API::
     from atelier.gateway.hosts.session_parsers._session_parser import parse_session_turns
     turns = parse_session_turns(content, source="claude")
 
-Supported sources: ``"claude"``, ``"codex"``, ``"opencode"``, ``"gemini"``, ``"copilot"``.
+Supported sources: ``"claude"``, ``"codex"``, ``"opencode"``, ``"copilot"``.
 """
 
 from __future__ import annotations
@@ -212,8 +212,6 @@ def parse_session_turns(content: str, source: str) -> list[dict[str, Any]]:
         turns = _parse_codex(content)
     elif source == "opencode":
         turns = _parse_opencode(content)
-    elif source == "gemini":
-        turns = _parse_gemini(content)
     elif source == "copilot":
         turns = _parse_copilot(content)
     elif source in _NORMALIZED_SESSION_SOURCES:
@@ -677,8 +675,6 @@ def extract_session_usage_summary(content: str, source: str) -> dict[str, Any]:
         return _summarize_codex_usage(content)
     if source == "copilot":
         return _summarize_copilot_usage(content)
-    if source == "gemini":
-        return _summarize_gemini_usage(content)
     if source == "opencode":
         return _summarize_opencode_usage(content)
     if source in _NORMALIZED_SESSION_SOURCES:
@@ -913,42 +909,6 @@ def _summarize_copilot_usage(content: str) -> dict[str, Any]:
                 shutdown_summary["models_used"][model_id] = int(shutdown_summary["models_used"].get(model_id, 0)) + 1
         return shutdown_summary
     return fallback_summary
-
-
-def _summarize_gemini_usage(content: str) -> dict[str, Any]:
-    summary = _empty_usage_summary()
-    merged: dict[str, dict[str, Any]] = {}
-    order: list[str] = []
-    for line in content.splitlines():
-        try:
-            ev = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if ev.get("type") != "gemini":
-            continue
-        mid = str(ev.get("id") or "")
-        if not mid:
-            continue
-        if mid not in merged:
-            merged[mid] = {
-                "model": "",
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "thinking_tokens": 0,
-                "cached_input_tokens": 0,
-                "cache_creation_input_tokens": 0,
-            }
-            order.append(mid)
-        record = merged[mid]
-        tokens = ev.get("tokens") or {}
-        record["model"] = str(ev.get("model") or record["model"] or "").strip()
-        record["input_tokens"] = max(record["input_tokens"], int(tokens.get("input", 0) or 0))
-        record["output_tokens"] = max(record["output_tokens"], int(tokens.get("output", 0) or 0))
-        record["thinking_tokens"] = max(record["thinking_tokens"], int(tokens.get("thoughts", 0) or 0))
-        record["cached_input_tokens"] = max(record["cached_input_tokens"], int(tokens.get("cached", 0) or 0))
-    for mid in order:
-        _record_usage_turn(summary, **merged[mid])
-    return summary
 
 
 def _summarize_opencode_usage(content: str) -> dict[str, Any]:
@@ -1758,182 +1718,6 @@ def _parse_codex_format_b(content: str) -> list[dict[str, Any]]:
                 )
             )
     return turns
-
-
-# ---------------------------------------------------------------------------
-# Gemini parser
-# ---------------------------------------------------------------------------
-
-
-def _parse_gemini(content: str) -> list[dict[str, Any]]:
-    merged: dict[str, dict[str, Any]] = {}
-    order: list[str] = []
-    for line in content.splitlines():
-        try:
-            ev = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        mid = str(ev.get("id") or "")
-        et = ev.get("type")
-        at = ev.get("timestamp")
-        if not mid or et in ("$set", "session_start"):
-            continue
-        if mid not in merged:
-            order.append(mid)
-            merged[mid] = {
-                "kind": "unknown",
-                "content": "",
-                "at": at,
-                "tokens": {
-                    "in": 0,
-                    "out": 0,
-                    "thinking": 0,
-                    "cache_read": 0,
-                    "cache_write": 0,
-                },
-                "raw": ev,
-                "structured_turns": [],
-            }
-
-        t_raw = ev.get("tokens") or {}
-        merged[mid]["tokens"]["in"] = max(merged[mid]["tokens"]["in"], t_raw.get("input", 0))
-        merged[mid]["tokens"]["out"] = max(merged[mid]["tokens"]["out"], t_raw.get("output", 0))
-        merged[mid]["tokens"]["thinking"] = max(merged[mid]["tokens"]["thinking"], t_raw.get("thoughts", 0))
-        merged[mid]["tokens"]["cache_read"] = max(merged[mid]["tokens"].get("cache_read", 0), t_raw.get("cached", 0))
-
-        if et == "user":
-            merged[mid]["kind"] = "user_message"
-            txt = "".join(p.get("text", "") for p in ev.get("content", []) if isinstance(p, dict))
-            if txt:
-                merged[mid]["content"] = txt
-        elif et in ("gemini", "info"):
-            merged[mid]["kind"] = "agent_message" if et == "gemini" else "user_message"
-            thoughts = "\n".join(th.get("description", "") for th in ev.get("thoughts") or [])
-            if thoughts:
-                merged[mid]["thinking_content"] = thoughts
-            c = ev.get("content")
-            txt = c if isinstance(c, str) else "".join(p.get("text", "") for p in (c or []) if isinstance(p, dict))
-            if txt:
-                merged[mid]["content"] = txt
-            tcalls = ev.get("toolCalls") or []
-            if tcalls:
-                _FILE_TOOL_NAMES = {
-                    "write_file",
-                    "edit_file",
-                    "apply_patch",
-                    "str_replace_editor",
-                    "create_file",
-                    "replace_file",
-                    "patch_file",
-                }
-                for tc in tcalls:
-                    name = tc.get("name", "unknown")
-                    args = tc.get("args") or {}
-                    todos = _extract_todos(args) or _extract_todos(tc.get("result"))
-                    if todos:
-                        merged[mid]["structured_turns"].append(
-                            _turn(
-                                "todo_write",
-                                f"{name} · {len(todos)} item{'s' if len(todos) != 1 else ''}",
-                                "",
-                                at=at,
-                                raw=ev,
-                                tokens=merged[mid]["tokens"],
-                                tool_name=name,
-                                arguments=args,
-                                todos=todos,
-                            )
-                        )
-                        continue
-                    if str(name).lower() in {"agent", "task"}:
-                        merged[mid]["structured_turns"].append(
-                            _turn(
-                                "subagent_event",
-                                f"{name} subagent",
-                                str(args.get("prompt") or args.get("description") or ""),
-                                at=at,
-                                raw=ev,
-                                tokens=merged[mid]["tokens"],
-                                tool_name=name,
-                                arguments=args,
-                                subagent_status="started",
-                                subagent_name=str(args.get("subagent_type") or args.get("agent") or name),
-                            )
-                        )
-                        continue
-                    if name in _FILE_TOOL_NAMES:
-                        _fpath = (
-                            str(args.get("path") or args.get("file_path") or args.get("filename") or "").strip() or None
-                        )
-                        _raw_diff = args.get("patch") or args.get("diff")
-                        if not _raw_diff and args.get("old_string") is not None:
-                            old = str(args.get("old_string") or "")
-                            new = str(args.get("new_string") or "")
-                            _raw_diff = f"--- a/{_fpath or 'file'}\n+++ b/{_fpath or 'file'}\n"
-                            for _line in old.splitlines():
-                                _raw_diff += f"-{_line}\n"
-                            for _line in new.splitlines():
-                                _raw_diff += f"+{_line}\n"
-                        _diff = str(_raw_diff).strip() if _raw_diff else None
-                        _fcontent = _diff or str(args.get("content") or args.get("text") or _text_from_value(args))
-                        merged[mid].setdefault("file_edits", []).append((name, _fpath, _diff, _fcontent))
-                    else:
-                        merged[mid]["structured_turns"].append(
-                            _turn(
-                                "tool_call",
-                                f"{name}(...)",
-                                _text_from_value(args),
-                                at=at,
-                                raw=ev,
-                                tokens=merged[mid]["tokens"],
-                                tool_name=name,
-                                arguments=args,
-                            )
-                        )
-
-    final = []
-    for mid in order:
-        turn = merged[mid]
-        assistant_turns: list[dict[str, Any]] = []
-        if turn.get("thinking_content"):
-            assistant_turns.append(
-                _turn(
-                    "thinking",
-                    turn["thinking_content"][:80],
-                    turn["thinking_content"],
-                    at=turn["at"],
-                    raw=turn["raw"],
-                    tokens=turn["tokens"],
-                )
-            )
-        # Emit file_edit turns before the agent response turn
-        for fe_name, fe_path, fe_diff, fe_content in turn.get("file_edits", []):
-            assistant_turns.append(
-                _turn(
-                    "file_edit",
-                    f"{fe_name}({fe_path or ''})",
-                    fe_content,
-                    at=turn["at"],
-                    raw=turn["raw"],
-                    tokens=turn["tokens"],
-                    path=fe_path,
-                    diff=fe_diff,
-                )
-            )
-        assistant_turns.extend(turn.get("structured_turns", []))
-        if turn["kind"] != "unknown":
-            assistant_turns.append(
-                _turn(
-                    turn["kind"],
-                    turn["content"][:80],
-                    turn["content"],
-                    at=turn["at"],
-                    raw=turn["raw"],
-                    tokens=turn["tokens"],
-                )
-            )
-        final.extend(_apply_tokens_once(assistant_turns, turn["tokens"]))
-    return final
 
 
 # ---------------------------------------------------------------------------
