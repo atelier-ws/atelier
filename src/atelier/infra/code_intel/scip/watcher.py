@@ -10,6 +10,31 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+# Env tokens that disable native recursive FS watching (N11). Default OFF
+# (watching enabled); set ATELIER_DISABLE_FS_WATCH to a truthy token to force
+# the poll/git-state fallback path.
+_FS_WATCH_DISABLE_ON = {"1", "true", "yes", "on"}
+
+
+def native_fs_watch_disabled(path: Path) -> bool:
+    """Return True when native FS watching must be avoided for ``path``.
+
+    Availability safety (N11): an unconditional native FS watch on a WSL2
+    ``/mnt`` drive can stall the MCP startup handshake so badly that tools
+    never register. We disable native watching when the workspace lives under
+    a WSL mount (``/mnt/``) or when ``ATELIER_DISABLE_FS_WATCH`` is set. The
+    caller falls back to the existing poll/git-state signature path; it never
+    crashes when watching is off.
+    """
+    if os.getenv("ATELIER_DISABLE_FS_WATCH", "").strip().lower() in _FS_WATCH_DISABLE_ON:
+        return True
+    try:
+        resolved = str(path.resolve())
+    except OSError:
+        resolved = str(path)
+    return resolved == "/mnt" or resolved.startswith("/mnt/")
+
+
 _GITDIR_PREFIX = "gitdir: "
 _HEAD_REF_PREFIX = "ref: "
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
@@ -205,10 +230,16 @@ def _watch_signature(repo_state: GitRepoState, cache_root: Path, artifact_paths:
 class _InotifyWatcher:
     """Best-effort Linux inotify integration with safe fallback elsewhere."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, enabled: bool = True) -> None:
         self._fd: int | None = None
         self._wd_by_path: dict[Path, int] = {}
         self._path_by_wd: dict[int, Path] = {}
+        # N11: when native watching is disabled (WSL mount / kill-switch) we
+        # never open an inotify fd. The existing ``self._fd is None`` guards on
+        # drain()/sync_paths() then make every native operation a safe no-op,
+        # and ScipArtifactWatcher.refresh() falls back to poll/git-state.
+        if not enabled:
+            return
         try:
             libc = ctypes.CDLL(None, use_errno=True)
         except OSError:
@@ -291,7 +322,8 @@ class ScipArtifactWatcher:
         self._cache_root = cache_root
         self._state_sync = state_sync
         self._state_key = state_key
-        self._events = _InotifyWatcher()
+        self._fs_watch_enabled = not native_fs_watch_disabled(self._repo_root)
+        self._events = _InotifyWatcher(enabled=self._fs_watch_enabled)
 
     def refresh(self, artifact_paths: list[Path]) -> bool:
         repo_state = resolve_git_repo_state(self._repo_root)
