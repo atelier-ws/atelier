@@ -358,11 +358,24 @@ def _write_copilot_vscode_settings(workspace_root: Path) -> Path:
     return target
 
 
+def _toml_basic_escape(value: str) -> str:
+    """Escape a string for a TOML basic string (single- or multi-line).
+
+    Backslashes first (so literal ``\d``/Windows paths survive instead of being
+    read as TOML escapes), then double-quotes (so a ``"`` or ``\"\"\"`` run can
+    never terminate the string early). Safe inside both ``"..."`` and
+    ``\"\"\"...\"\"\"`` forms.
+    """
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _render_codex_agent_toml(role_id: str, description: str, instructions: str, model: str | None) -> str:
-    body = instructions.strip().replace('"""', '\\"\\"\\"')
-    rendered = f'name = "atelier.{role_id}"\ndescription = "{description}"\n'
+    # description is a single-line basic string: escape, then flatten newlines.
+    desc = _toml_basic_escape(description).replace("\r", " ").replace("\n", " ")
+    body = _toml_basic_escape(instructions.strip())
+    rendered = f'name = "atelier.{role_id}"\ndescription = "{desc}"\n'
     if model:
-        rendered += f'model = "{model}"\n'
+        rendered += f'model = "{_toml_basic_escape(model)}"\n'
     rendered += f'developer_instructions = """\n{body}\n"""\n'
     return rendered
 
