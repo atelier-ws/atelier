@@ -33,6 +33,7 @@ HIDDEN_LLM_TOOLS = frozenset(
         "route",
         "trace",
         "workflow",
+        "agent",
         "compact",
         "context",
         # Repo/admin code-intel ops: callable by name (tests, CLI, power use)

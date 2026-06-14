@@ -1527,6 +1527,23 @@ class CodeContextEngine:
             self._ensure_indexed()
         self._sync_symbol_intel()
         resolved_mode = "semantic" if intent == "semantic" else resolve_search_mode(query, mode)
+        if resolved_mode in {"semantic", "hybrid"} and not self._semantic_ranker.available:
+            # Semantic search requires a configured embedding backend. By default none
+            # is set (no external LLM is contacted). If the caller explicitly asked for
+            # semantic/hybrid, say so; for an auto-resolved query fall back to lexical.
+            if intent == "semantic" or mode in {"semantic", "hybrid"}:
+                return {
+                    "items": [],
+                    "mode": resolved_mode,
+                    "semantic_available": False,
+                    "provenance": _LOCAL_PROVENANCE,
+                    "cache_hit": False,
+                    "message": (
+                        "Semantic search is not configured. Set ATELIER_CODE_EMBEDDER "
+                        "(local|openai|letta|ollama) and optionally ATELIER_CODE_EMBED_MODEL to enable it."
+                    ),
+                }
+            resolved_mode = "lexical"
         use_text_substring = intent == "text" or (
             intent == "auto"
             and self._should_use_text_substring_search(

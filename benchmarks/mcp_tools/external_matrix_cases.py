@@ -20,13 +20,12 @@ DEFAULT_CASE_QUOTAS: dict[str, int] = {
     "callees": 100,
     "fuzzy_symbol": 100,
     "structural_search": 100,
-    "semantic_search": 100,
     "nohit_search": 100,
 }
 
 # Families whose corpus is opportunistic: generate up to the quota, but do not
 # fail if the repository yields fewer well-posed cases.
-_BEST_EFFORT_FAMILIES = frozenset({"nohit_search", "structural_search", "semantic_search"})
+_BEST_EFFORT_FAMILIES = frozenset({"nohit_search", "structural_search"})
 
 
 @dataclass(frozen=True)
@@ -354,51 +353,6 @@ def _collect_structural_facts(repo_root: Path) -> list[tuple[str, tuple[str, ...
     return facts
 
 
-def _first_docstring_sentence(docstring: str) -> str:
-    paragraph = docstring.strip().split("\n\n", 1)[0].replace("\n", " ").strip()
-    for terminator in (". ", ".\n", "; "):
-        index = paragraph.find(terminator)
-        if index > 0:
-            paragraph = paragraph[:index]
-            break
-    return " ".join(paragraph.split())[:160].rstrip(".")
-
-
-def _collect_semantic_facts(
-    repo_root: Path,
-    unique_symbols: list[SymbolFact],
-) -> list[tuple[str, SymbolFact]]:
-    """(natural-language query, symbol) from each symbol's docstring first sentence.
-
-    Ground truth is the documenting symbol itself. Only embedding-backed providers
-    can answer this, so it mostly profiles Atelier's semantic mode rather than
-    comparing across the matrix.
-    """
-    by_key = {(symbol.path, symbol.name): symbol for symbol in unique_symbols}
-    pairs: list[tuple[str, SymbolFact]] = []
-    for path in _repo_python_files(repo_root):
-        relative_path = path.relative_to(repo_root).as_posix()
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (SyntaxError, UnicodeDecodeError):
-            continue
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-                continue
-            symbol = by_key.get((relative_path, node.name))
-            if symbol is None:
-                continue
-            docstring = ast.get_docstring(node)
-            if not docstring:
-                continue
-            sentence = _first_docstring_sentence(docstring)
-            # Skip queries that just echo the symbol name (not a semantic test).
-            if len(sentence) < 24 or symbol.name.lower() in sentence.lower():
-                continue
-            pairs.append((sentence, symbol))
-    return pairs
-
-
 def _make_nohit_query(index: int) -> str:
     return f"atelier_missing_symbol_{index:04d}_never_exists"
 
@@ -418,7 +372,6 @@ def generate_case_manifest(
     callers_facts, callees_facts = _collect_call_facts(repo_root, unique_symbols)
     fuzzy_pairs = _fuzzy_symbol_queries(unique_symbols, all_symbol_names=[symbol.name for symbol in symbol_facts])
     structural_facts = _collect_structural_facts(repo_root)
-    semantic_pairs = _collect_semantic_facts(repo_root, unique_symbols)
 
     required = {
         "exact_symbol": len(unique_symbols),
@@ -585,23 +538,6 @@ def generate_case_manifest(
             )
         )
 
-    for index, (sentence, symbol) in enumerate(
-        semantic_pairs[: case_quotas.get("semantic_search", 0)],
-        start=1,
-    ):
-        cases.append(
-            ExternalBenchCase(
-                case_id=f"semantic-search-{index:04d}",
-                family="semantic_search",
-                query=sentence,
-                path=symbol.path,
-                symbol_name=symbol.name,
-                expected_paths=(symbol.path,),
-                expected_names=(symbol.name,),
-                metadata={"qualified_name": symbol.qualified_name, "kind": symbol.kind},
-            )
-        )
-
     for index in range(1, case_quotas["nohit_search"] + 1):
         query = _make_nohit_query(index)
         cases.append(
@@ -615,11 +551,10 @@ def generate_case_manifest(
         )
 
     # Strict families must hit their quota exactly; best-effort families
-    # (no-hit/structural/semantic) contribute however many well-posed cases the
+    # (no-hit/structural) contribute however many well-posed cases the
     # repository yields, up to the quota.
     available = {
         "structural_search": len(structural_facts),
-        "semantic_search": len(semantic_pairs),
     }
     expected_total = sum(
         min(quota, available[family]) if family in available else quota for family, quota in case_quotas.items()
