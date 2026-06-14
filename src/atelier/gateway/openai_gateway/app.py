@@ -94,4 +94,14 @@ def create_app(
     async def chat_completions(req: ChatCompletionRequest) -> Any:
         return await run_chat_completion(runtime, req)
 
+    # ── MCP HTTP transport (G17, opt-in) ─────────────────────────────────────
+    # Mount the streamable-HTTP/SSE MCP transport + discovery manifest only when
+    # explicitly enabled. stdio remains the default; this never auto-starts.
+    from atelier.core.environment import bool_env
+
+    if bool_env("ATELIER_MCP_HTTP"):
+        from atelier.gateway.adapters.mcp_http import register_mcp_http
+
+        register_mcp_http(app)
+
     return app

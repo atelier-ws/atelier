@@ -195,6 +195,62 @@ class GraphAnalytics:
             "truncated": len(rows) > limit,
         }
 
+    # ------------------------------------------------------------------
+    # topology (G17) -- module-boundary + god-module discovery
+    # ------------------------------------------------------------------
+
+    def topology(self, *, limit: int = 50) -> dict[str, Any]:
+        """Cluster files into modules (by directory) and surface module topology.
+
+        Fuses the file import graph into module-level edges so the hidden module
+        structure is visible: which modules depend on which, and which files are
+        coupling hotspots (god-module candidates, reusing ``coupling``). Pure and
+        read-only over the existing index.
+        """
+        entries = self._index.all_entries()
+
+        def _module_of(path: str) -> str:
+            norm = path.replace("\\", "/")
+            return norm.rsplit("/", 1)[0] if "/" in norm else "."
+
+        efferent: dict[str, set[str]] = {}
+        file_counts: dict[str, int] = {}
+        for path, entry in entries.items():
+            module = _module_of(path)
+            file_counts[module] = file_counts.get(module, 0) + 1
+            for dep in entry.get("dependency_map", []):
+                if dep in entries and dep != path:
+                    dep_module = _module_of(dep)
+                    if dep_module != module:
+                        efferent.setdefault(module, set()).add(dep_module)
+        afferent: dict[str, set[str]] = {}
+        for module, deps in efferent.items():
+            for dep_module in deps:
+                afferent.setdefault(dep_module, set()).add(module)
+
+        modules: list[dict[str, Any]] = []
+        for module in sorted(file_counts):
+            eff = sorted(efferent.get(module, set()))
+            modules.append(
+                {
+                    "module": module,
+                    "files": file_counts[module],
+                    "depends_on": eff,
+                    "efferent_modules": len(eff),
+                    "afferent_modules": len(afferent.get(module, set())),
+                }
+            )
+        # Most-connected modules first (likely architectural hubs / god-modules).
+        modules.sort(key=lambda r: (-(int(r["efferent_modules"]) + int(r["afferent_modules"])), str(r["module"])))
+        hotspots = self.coupling(limit=limit)["files"][:10]
+        return {
+            "analyzed_files": len(entries),
+            "module_count": len(file_counts),
+            "modules": modules[:limit],
+            "hotspots": hotspots,
+            "truncated": len(file_counts) > limit,
+        }
+
 
 def _tarjan_scc(graph: dict[str, list[str]]) -> list[list[str]]:
     """Iterative Tarjan strongly-connected components.
