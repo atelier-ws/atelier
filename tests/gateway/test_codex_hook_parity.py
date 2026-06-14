@@ -283,6 +283,95 @@ def test_auto_record_trace_noop_without_run_file(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------
+# PermissionRequest auto-deny (Codex-exclusive)
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rm -rf /",
+        "rm -rf /*",
+        "rm -rf ~",
+        "rm -rf $HOME",
+        "sudo rm -rf /",
+        "git push --force origin main",
+        "dd if=/dev/zero of=/dev/sda",
+        ":(){ :|:& };:",
+    ],
+)
+def test_permission_request_denies_destructive_commands(tmp_path: Path, command: str) -> None:
+    payload = {
+        "hook_event_name": "PermissionRequest",
+        "tool_name": "shell",
+        "tool_input": {"command": command},
+    }
+    out = plugin_runtime.build_codex_permission_request_output(tmp_path / ".atelier", payload)
+    assert (out.get("hookSpecificOutput") or {}).get("behavior") == "deny", command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rm -rf build/",
+        "rm -rf ./node_modules",
+        "git push --force-with-lease",
+        "ls -la",
+        "pytest -q",
+    ],
+)
+def test_permission_request_allows_safe_commands(tmp_path: Path, command: str) -> None:
+    payload = {
+        "hook_event_name": "PermissionRequest",
+        "tool_name": "shell",
+        "tool_input": {"command": command},
+    }
+    assert plugin_runtime.build_codex_permission_request_output(tmp_path / ".atelier", payload).get("no_output") is True
+
+
+def test_permission_request_ignores_non_bash_tools(tmp_path: Path) -> None:
+    payload = {
+        "hook_event_name": "PermissionRequest",
+        "tool_name": "apply_patch",
+        "tool_input": {"file_path": "a.py"},
+    }
+    assert plugin_runtime.build_codex_permission_request_output(tmp_path / ".atelier", payload).get("no_output") is True
+
+
+# --------------------------------------------------------------------------
+# codex exec --json telemetry collector (Codex-exclusive)
+# --------------------------------------------------------------------------
+def test_ingest_codex_exec_events_records_command_and_file(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    session_id = "run1"
+    _seed_run_file(root, session_id)
+    lines = [
+        json.dumps({"type": "thread.started", "thread_id": "t1"}),
+        json.dumps(
+            {
+                "type": "item.completed",
+                "item": {"type": "command_execution", "command": "pytest -q", "exit_code": 1, "output": "boom"},
+            }
+        ),
+        json.dumps({"type": "item.completed", "item": {"type": "file_change", "changes": [{"path": "a.py"}]}}),
+        json.dumps({"type": "turn.completed", "usage": {"input_tokens": 10}}),
+        "not json",
+    ]
+    count = plugin_runtime.ingest_codex_exec_events(root, session_id, lines)
+    assert count == 2
+    events = _events(root, session_id)
+    kinds = {e["kind"] for e in events}
+    assert kinds == {"command_result", "file_edit"}
+    cmd = next(e for e in events if e["kind"] == "command_result")
+    assert cmd["payload"]["ok"] is False
+    assert cmd["payload"]["command"] == "pytest -q"
+    data = json.loads((root / "runs" / f"{session_id}.json").read_text(encoding="utf-8"))
+    assert "a.py" in data["files_touched"]
+
+
+def test_ingest_codex_exec_events_noop_without_session(tmp_path: Path) -> None:
+    assert plugin_runtime.ingest_codex_exec_events(tmp_path / ".atelier", "", ["{}"]) == 0
+
+
+# --------------------------------------------------------------------------
 # Statusline savings line
 # --------------------------------------------------------------------------
 def test_codex_savings_line_is_14_field_parseable(tmp_path: Path) -> None:
@@ -312,9 +401,11 @@ def test_codex_hooks_manifest_includes_new_lifecycle_events() -> None:
         "Stop",
     ):
         assert event in data["hooks"], f"missing hooks.json event: {event}"
+    assert "PermissionRequest" in data["hooks"]
     rendered = json.dumps(data)
     assert "pre_tool_use.py" in rendered
     assert "compact.py" in rendered
+    assert "permission_request.py" in rendered
     assert "${PLUGIN_ROOT}/hooks/" in rendered
     assert "__ATELIER_PYTHON__" in rendered
     assert "__ATELIER_REPO_SRC__" in rendered
