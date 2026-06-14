@@ -80,10 +80,12 @@ def main() -> int:
 
     if nudge_now:
         msg = (
-            f"\U0001f4a1 Atelier: {streak} single-edit calls in a row. The `edit` tool batches — put every "
-            "change for this step in one call's `edits` array (multiple files too) to cut round-trips and cost."
+            f"{streak} single-edit calls in a row. The `edit` tool batches — put every change for this "
+            "step in one call's `edits` array (multiple files too) to cut round-trips and cost."
         )
-        print(json.dumps({"systemMessage": msg}))
+        # additionalContext is model-facing (it adjusts behaviour) rather than a
+        # user-only systemMessage — the point is to change how the model edits.
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": msg}}))
     return 0
 
 

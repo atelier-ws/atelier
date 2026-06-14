@@ -35,7 +35,7 @@ def test_nudges_after_three_single_edits(tmp_path: Path) -> None:
     assert _run(root, "mcp__atelier__edit", 1) == ""
     out = _run(root, "mcp__atelier__edit", 1)
     assert "single-edit" in out
-    assert json.loads(out)["systemMessage"]
+    assert json.loads(out)["hookSpecificOutput"]["additionalContext"]
     # Already nudged this streak -> stays quiet on the 4th.
     assert _run(root, "mcp__atelier__edit", 1) == ""
 
