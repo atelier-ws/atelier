@@ -5636,6 +5636,86 @@ def _code_engine_at(repo_root: str | None) -> Any:
     return engine
 
 
+_GRAPH_KINDS: frozenset[str] = frozenset({"blast_radius", "dead_code", "cycles", "coupling", "centrality"})
+
+
+def _synthesize_edges_for_paths(paths: list[str]) -> list[dict[str, Any]]:
+    """Run the bounded N2/N3 edge synthesizer over *paths*; clearly-labelled output.
+
+    Returns a flat list of heuristic edge dicts (provenance="heuristic"). Never
+    touches the static call graph -- this is a separate, opt-in addendum.
+    """
+    from atelier.core.capabilities.code_context.edge_synthesis import synthesize_edges
+    from atelier.infra.code_intel.languages import language_for_path
+
+    out: list[dict[str, Any]] = []
+    for raw in paths:
+        candidate = Path(raw)
+        if not candidate.is_file():
+            continue
+        lang = language_for_path(candidate)
+        language = lang.name if lang is not None else ""
+        source = candidate.read_text(encoding="utf-8", errors="replace")
+        for edge in synthesize_edges(source, language=language):
+            out.append({"file": str(candidate), **edge.to_dict()})
+    return out
+
+
+def _op_graph(
+    *,
+    kind: str = "blast_radius",
+    path: str | None = None,
+    paths: list[str] | None = None,
+    limit: int = 50,
+    synthesize: bool = False,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    """Agent-facing graph analytics (G3/G6) dispatched by ``kind``.
+
+    * ``blast_radius`` (default) -- reverse-dependency closure + affected tests +
+      risk tier for ``path`` (file-level; uses the existing change_impact).
+    * ``dead_code`` / ``cycles`` / ``coupling`` -- repo-wide file-graph analytics
+      over the semantic file index. Pass ``paths`` to fold those files into the
+      index first; otherwise analyses whatever the index already holds.
+    * ``centrality`` -- symbol-level call-graph centrality from the SCIP engine.
+      Pass ``synthesize=true`` with ``paths`` to additionally return
+      heuristic (route/event) edges as a SEPARATE ``synthesized_edges`` list
+      (N2/N3); they are never merged into the static call graph.
+    """
+    if kind not in _GRAPH_KINDS:
+        raise ValueError(f"unknown graph kind: {kind!r}; expected one of {sorted(_GRAPH_KINDS)}")
+
+    if kind == "centrality":
+        engine = _code_engine_at(repo_root)
+        result = cast(dict[str, Any], engine.call_graph_centrality(limit=limit))
+        result["kind"] = "centrality"
+        if synthesize and paths:
+            result["synthesized_edges"] = _synthesize_edges_for_paths(paths)
+        return _finish_code_result(result)
+
+    cap = SemanticFileMemoryCapability(_atelier_root())
+    if paths:
+        for raw in paths:
+            candidate = Path(raw)
+            if candidate.is_file():
+                cap.summarize_file(candidate)
+    analytics = cap.graph_analytics()
+    if kind == "blast_radius":
+        if not path:
+            raise ValueError("path is required for kind='blast_radius'")
+        result = analytics.blast_radius(str(Path(path)))
+    elif kind == "dead_code":
+        result = analytics.dead_code(limit=limit)
+    elif kind == "cycles":
+        result = analytics.cycles(limit=limit)
+    else:  # coupling
+        result = analytics.coupling(limit=limit)
+    result["kind"] = kind
+    _ = render_compact  # file-graph analytics render as JSON; no markdown view
+    return result
+
+
 def _op_callers(
     *,
     query: str | None = None,
@@ -6163,6 +6243,8 @@ _CODE_INTEL_PARAM_TYPES: dict[str, Any] = {
     "include_source": bool,
     "include_relationships": bool,
     "line_numbers": bool,
+    "paths": list,
+    "synthesize": bool,
 }
 
 
@@ -6200,6 +6282,16 @@ def _tool_symbols_alias_handler(args: dict[str, Any]) -> dict[str, Any]:
             limit=g("limit", 20),
             budget_tokens=bt,
             repo=repo,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op == "graph":
+        return _op_graph(
+            kind=g("kind", "blast_radius"),
+            path=g("path"),
+            paths=g("paths"),
+            limit=g("limit", 50),
+            synthesize=g("synthesize", False),
             repo_root=rr,
             render_compact=rc,
         )
@@ -6451,6 +6543,38 @@ def tool_usages(
     Returns: references grouped by file with line numbers and matched snippets.
     """
     return _tool_symbols_alias_handler({"op": "usages", **_parse_symbol(symbol), "limit": limit})
+
+
+@mcp_tool(name="graph")
+def tool_graph(
+    kind: str = "blast_radius",
+    path: str | None = None,
+    paths: list[str] | None = None,
+    limit: int = 50,
+    synthesize: bool = False,
+) -> dict[str, Any]:
+    """Repo graph analytics: blast radius, dead code, import cycles, coupling, symbol centrality.
+
+    kind:
+      - blast_radius (default): reverse-dependency closure + affected tests + risk tier for `path`.
+      - dead_code: indexed files with no inbound importers (likely removable), ranked by complexity.
+      - cycles: import dependency cycles (strongly-connected components, size >= 2).
+      - coupling: per-file afferent/efferent coupling + Martin's instability metric.
+      - centrality: most important symbols by call-graph centrality (degree + eigenvector).
+    Pass `paths` to fold specific files into the index first (dead_code/cycles/coupling).
+    `synthesize=true` (with `paths`, kind=centrality) also returns heuristic route/event
+    edges as a SEPARATE `synthesized_edges` list (never merged into the static call graph).
+    """
+    return _tool_symbols_alias_handler(
+        {
+            "op": "graph",
+            "kind": kind,
+            "path": path,
+            "paths": paths,
+            "limit": limit,
+            "synthesize": synthesize,
+        }
+    )
 
 
 @mcp_tool(name="codemod")
