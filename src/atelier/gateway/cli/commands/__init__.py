@@ -175,7 +175,6 @@ def register(cli: click.Group) -> None:
         from .lessons import (
             checkpoint,
             eval_,
-            failure,
             ledger,
             lesson,
         )
@@ -183,8 +182,6 @@ def register(cli: click.Group) -> None:
         _h(ledger)
         cli.add_command(ledger)
         cli.add_command(checkpoint)
-        _h(failure)
-        cli.add_command(failure)
         _h(lesson)
         cli.add_command(lesson)
         cli.add_command(eval_)
@@ -283,7 +280,12 @@ def register(cli: click.Group) -> None:
         @_click.option(
             "--port", default=8790, show_default=True, help="Port to listen on (8787 is the Atelier service port)"
         )
-        @_click.option("--host", default="0.0.0.0", show_default=True, help="Bind address")
+        @_click.option(
+            "--host",
+            default="127.0.0.1",
+            show_default=True,
+            help="Bind address (default loopback-only; the gateway runs an auto-approving agent)",
+        )
         @_click.option("--project-root", default=None, help="Project root directory")
         @_click.option(
             "--no-yolo",

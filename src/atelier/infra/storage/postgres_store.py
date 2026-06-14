@@ -213,29 +213,7 @@ CREATE TABLE IF NOT EXISTS monitor_events (
 );
 CREATE INDEX IF NOT EXISTS idx_me_project_name ON monitor_events(project_id, monitor_name, created_at);
 
--- 9. failure_clusters
-CREATE TABLE IF NOT EXISTS failure_clusters (
-    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id              UUID REFERENCES projects(id) ON DELETE SET NULL,
-    domain                  TEXT NOT NULL,
-    symptom                 TEXT NOT NULL,
-    root_cause              TEXT NOT NULL DEFAULT '',
-    evidence_trace_ids      UUID[] NOT NULL DEFAULT '{}',
-    affected_files          JSONB NOT NULL DEFAULT '[]',
-    affected_tools          JSONB NOT NULL DEFAULT '[]',
-    suggested_reasonblock   JSONB,
-    suggested_rubric        JSONB,
-    suggested_eval_cases    JSONB,
-    suggested_prompt_patch  TEXT,
-    severity                TEXT NOT NULL DEFAULT 'medium',
-    confidence              NUMERIC NOT NULL DEFAULT 0,
-    status                  TEXT NOT NULL DEFAULT 'open',
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_fc_project_domain ON failure_clusters(project_id, domain, status);
-
--- 10. eval_cases
+-- 9. eval_cases
 CREATE TABLE IF NOT EXISTS eval_cases (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id        UUID REFERENCES projects(id) ON DELETE SET NULL,

@@ -34,7 +34,7 @@ _DISPLAY_NAME_MODEL_MAP: dict[str, str] = {
     "opus 4": "claude-opus-4-0",
     "sonnet 4.7": "claude-sonnet-4-7",
     "sonnet 4.6": "claude-sonnet-4-6",
-    "sonnet 4.5": "claude-sonnet-4-5",
+    "Sonnet 4.6": "claude-sonnet-4-5",
     "sonnet 4": "claude-sonnet-4-0",
     "haiku 4.7": "claude-haiku-4-7",
     "haiku 4.6": "claude-haiku-4-6",
@@ -80,7 +80,7 @@ def estimate_cost_usd(
     is supplied (1h writes bill at a higher rate). ``long_context=True`` prices
     the bucket at the model's >200k per-request premium rates.
 
-    Falls back to Sonnet 4.5 rates when the model is unknown so we never
+    Falls back to Sonnet 4.6 rates when the model is unknown so we never
     silently show $0 for an active session.
     """
     try:
@@ -985,7 +985,7 @@ def load_usage_breakdown(root: str | Path) -> dict[str, Any]:
                 inp, out, cr = row
                 if inp is None:
                     continue
-                # Note: context_budget doesn't store model, so we use Sonnet 4.5 as proxy for these aggregates
+                # Note: context_budget doesn't store model, so we use Sonnet 4.6 as proxy for these aggregates
                 # if they weren't already captured in traces (usually they are).
                 # To avoid double counting, we'd need to link them, but context_budget is often
                 # a redundant high-level log. Dashboard uses it as a fallback.

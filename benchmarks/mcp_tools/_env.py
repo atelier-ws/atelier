@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 
 def configure_benchmark_runtime(root: Path, *, workspace_root: Path | None = None) -> Path:
@@ -28,3 +29,32 @@ def configure_benchmark_runtime(root: Path, *, workspace_root: Path | None = Non
     os.environ.pop("VSCODE_CWD", None)
     os.environ.pop("ATELIER_MEM_ROOT", None)
     return resolved_root
+
+
+def call_code_op(request: dict[str, Any]) -> dict[str, Any]:
+    """Dispatch a ``{"op": X, ...}`` code-intel benchmark request to its engine wrapper.
+
+    Replaces the retired ``tool_code`` multiplexer: the MCP surface no longer routes
+    code ops through a single handler, so benchmarks call the ``_op_*`` wrappers here.
+    """
+    from atelier.gateway.adapters import mcp_server
+
+    ops = {
+        "search": mcp_server._op_search,
+        "symbol": mcp_server._op_node,
+        "node": mcp_server._op_node,
+        "callers": mcp_server._op_callers,
+        "callees": mcp_server._op_callees,
+        "usages": mcp_server._op_usages,
+        "explore": mcp_server._op_explore,
+        "pattern": mcp_server._op_pattern,
+        "index": mcp_server._op_index,
+        "outline": mcp_server._op_outline,
+        "hover": mcp_server._op_hover,
+        "blame": mcp_server._op_blame,
+        "rename": mcp_server._op_rename,
+        "cache_status": mcp_server._op_cache_status,
+        "cache_invalidate": mcp_server._op_cache_invalidate,
+    }
+    kwargs = {k: v for k, v in request.items() if k != "op"}
+    return ops[request["op"]](**kwargs)

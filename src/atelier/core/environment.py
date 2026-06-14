@@ -35,6 +35,15 @@ HIDDEN_LLM_TOOLS = frozenset(
         "workflow",
         "compact",
         "context",
+        # Repo/admin code-intel ops: callable by name (tests, CLI, power use)
+        # but not surfaced to agents.
+        "index",
+        "outline",
+        "hover",
+        "blame",
+        "rename",
+        "cache_status",
+        "cache_invalidate",
     }
 )
 HIDDEN_SKILLS = frozenset(

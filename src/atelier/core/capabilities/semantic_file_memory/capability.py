@@ -204,9 +204,12 @@ class SemanticFileMemoryCapability:
             # Single-line form (e.g., "L42") -> read one line.
             end = start
 
+        if start > total_lines:
+            raise ValueError(f"range start {start} exceeds file length {total_lines}")
+
         if end < start:
             end = start
-        return min(start, total_lines), min(end, total_lines)
+        return start, min(end, total_lines)
 
     @staticmethod
     def _token_savings(baseline_text: str, returned_text: str) -> int:

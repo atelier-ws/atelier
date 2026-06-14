@@ -59,11 +59,25 @@ def openai_messages_to_atelier(
 
     last_user_text = _text(last_user)
 
-    # Prior history excludes the last user message; map to plain dicts
+    # Prior history excludes the last user message (identity, not position, so a
+    # request that ends with a non-user turn doesn't duplicate it). The runtime
+    # owns its own system prompt, so client ``system``/``tool`` roles must not be
+    # forwarded as authoritative turns: system text is folded into a user turn,
+    # tool results are dropped. Assistant turns that carry ``tool_calls`` can't
+    # be flattened to a string without losing structure, so they're dropped too.
     prior: list[dict[str, Any]] = []
-    for i, msg in enumerate(messages):
-        if i == len(messages) - 1 and msg is last_user:
-            break
+    for msg in messages:
+        if msg is last_user:
+            continue
+        if msg.role == "tool":
+            continue
+        if msg.role == "assistant" and msg.tool_calls:
+            continue
+        if msg.role == "system":
+            text = _text(msg)
+            if text:
+                prior.append({"role": "user", "content": text})
+            continue
         prior.append({"role": msg.role, "content": _text(msg)})
 
     return last_user_text, prior
@@ -91,7 +105,6 @@ async def atelier_events_to_sse(
         chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
 
     created = int(time.time())
-    tool_index = 0
 
     def _chunk(delta: DeltaContent, finish_reason: str | None = None) -> str:
         chunk = ChatCompletionChunk(
@@ -115,19 +128,10 @@ async def atelier_events_to_sse(
             yield "data: [DONE]\n\n"
             return
 
-        # ── tool call requested → forward as function-call delta ─────────────
-        elif ev_type == "tool.requested":
-            tool_call_delta = {
-                "index": tool_index,
-                "id": getattr(event, "id", f"call_{uuid.uuid4().hex[:8]}"),
-                "type": "function",
-                "function": {
-                    "name": getattr(event, "name", "unknown"),
-                    "arguments": json.dumps(getattr(event, "args", {}) or {}),
-                },
-            }
-            yield _chunk(DeltaContent(tool_calls=[tool_call_delta]))
-            tool_index += 1
+        # ── tool call requested → Atelier runs it server-side; emit nothing ──
+        # The resulting text arrives as later assistant.delta events. We do not
+        # forward OpenAI tool_calls deltas: the client cannot execute them and
+        # the stream finishes with finish_reason='stop', not 'tool_calls'.
 
         # ── permission / approval prompt → inject a system note as text ──────
         elif ev_type == "permission.requested":

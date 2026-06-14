@@ -247,8 +247,14 @@ class AstGrepAdapter:
             except OSError:
                 continue
             updated = original
+            prev_start: int | None = None
             for start, end, replacement in sorted(edits, key=lambda edit: edit[0], reverse=True):
+                if prev_start is not None and end > prev_start:
+                    # Sorted back-to-front: an end past the previous edit's start means
+                    # overlapping/nested matches that would corrupt the splice. Skip it.
+                    continue
                 updated = updated[:start] + replacement.encode("utf-8") + updated[end:]
+                prev_start = start
             candidates.append(
                 RewriteCandidate(
                     file_path=file_path,
