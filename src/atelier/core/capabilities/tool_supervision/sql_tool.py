@@ -145,6 +145,42 @@ def _top_level_verb(sql: str) -> str:
     return "with"
 
 
+def _has_data_modifying_cte(sql: str) -> bool:
+    """True if a write verb opens a parenthesized sub-statement.
+
+    A data-modifying CTE looks like ``WITH x AS (DELETE ... RETURNING ...)``.
+    Normal subqueries always open with SELECT/VALUES, so a write verb as the
+    first identifier after ``(`` is a reliable signal of a write that
+    :func:`_top_level_verb` (which skips parenthesized bodies) would otherwise
+    misclassify as a read.
+    """
+    in_single = in_double = False
+    expect_verb = False
+    for match in re.finditer(r"[()'\"]|[A-Za-z_][A-Za-z_]*", sql):
+        token = match.group(0)
+        if in_single:
+            if token == "'":
+                in_single = False
+            continue
+        if in_double:
+            if token == '"':
+                in_double = False
+            continue
+        if token == "'":
+            in_single = True
+        elif token == '"':
+            in_double = True
+        elif token == "(":
+            expect_verb = True
+        elif token == ")":
+            expect_verb = False
+        elif expect_verb:
+            expect_verb = False
+            if token.lower() in _WRITE_PREFIXES:
+                return True
+    return False
+
+
 def lint_sql(sql: str, *, allow_writes: bool = True) -> dict[str, Any]:
     normalized = _strip_comments(sql)
     if not normalized:
@@ -154,7 +190,7 @@ def lint_sql(sql: str, *, allow_writes: bool = True) -> dict[str, Any]:
             "ok": False,
             "message": "multiple statements are not allowed in one sql string; use queries[] for batching",
         }
-    if not allow_writes and _top_level_verb(normalized) in _WRITE_PREFIXES:
+    if not allow_writes and (_top_level_verb(normalized) in _WRITE_PREFIXES or _has_data_modifying_cte(normalized)):
         return {"ok": False, "message": "write SQL rejected for read-only execution"}
     return {"ok": True, "message": "ok"}
 
