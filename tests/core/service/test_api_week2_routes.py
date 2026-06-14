@@ -307,39 +307,7 @@ def _build_imported_host_fixture(host: str) -> tuple[str, dict[str, int | str]]:
                 "cache_creation_input_tokens": 15,
             },
         )
-    if host == "gemini":
-        return (
-            "\n".join(
-                [
-                    json.dumps(
-                        {
-                            "id": "gemini-msg-1",
-                            "type": "gemini",
-                            "timestamp": "2026-05-16T00:00:02Z",
-                            "model": "gemini-2.5-pro",
-                            "tokens": {"input": 120, "output": 35, "thoughts": 8, "cached": 25},
-                            "content": "Applied the requested edit.",
-                            "toolCalls": [
-                                {
-                                    "name": "write_file",
-                                    "args": {
-                                        "path": "frontend/src/pages/Sessions.tsx",
-                                        "content": "updated",
-                                    },
-                                }
-                            ],
-                        }
-                    )
-                ]
-            ),
-            {
-                "model": "gemini-2.5-pro",
-                "input_tokens": 120,
-                "output_tokens": 35,
-                "cached_input_tokens": 25,
-                "cache_creation_input_tokens": 0,
-            },
-        )
+
     if host == "opencode":
         return (
             "\n".join(
@@ -546,7 +514,7 @@ class TestListSessions:
         assert resp.status_code == 200
         assert resp.json() == []
 
-    @pytest.mark.parametrize("host", ["claude", "codex", "copilot", "gemini", "opencode"])
+    @pytest.mark.parametrize("host", ["claude", "codex", "copilot", "opencode"])
     def test_imported_sessions_prefer_raw_artifact_resumming(
         self,
         host: str,

@@ -161,36 +161,6 @@ def opencode_import(ctx: click.Context, path: Path | None, force: bool) -> None:
     click.echo(f"imported {len(ids)} opencode sessions")
 
 
-@click.group()
-def gemini() -> None:
-    """Gemini CLI session integration (~/.gemini/tmp/atelier/chats/)."""
-
-
-@gemini.command("import")
-@click.option(
-    "--path",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Override sessions root.",
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    default=False,
-    help="Force re-import all sessions, ignoring timestamp dedup.",
-)
-@click.pass_context
-def gemini_import(ctx: click.Context, path: Path | None, force: bool) -> None:
-    """Import Gemini sessions into the Atelier store (loss-preserving)."""
-    from atelier.gateway.hosts.session_parsers.gemini import GeminiImporter
-
-    _ensure_import_progress_logging()
-    store = _load_store(ctx.obj["root"])
-    importer = GeminiImporter(store)
-    ids = importer.import_all(path, force=force)
-    click.echo(f"imported {len(ids)} gemini sessions")
-
-
 @click.command("import")
 @click.option(
     "--host",
@@ -220,7 +190,7 @@ def gemini_import(ctx: click.Context, path: Path | None, force: bool) -> None:
 def global_import(
     ctx: click.Context, host: str | None, force: bool, path: Path | None, export_dir: Path | None
 ) -> None:
-    """Unified import for ALL agent sessions (Claude, Gemini, Codex, etc.)."""
+    """Unified import for ALL agent sessions (Claude, Codex, etc.)."""
     from atelier.gateway.hosts.session_parsers._session_parser import parse_session_turns
     from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
 
@@ -303,7 +273,6 @@ __all__ = [
     "claude",
     "codex",
     "copilot",
-    "gemini",
     "global_import",
     "opencode",
 ]
