@@ -73,6 +73,7 @@ run "mkdir -p '$STAGING_DIR/.codex-plugin'"
 run "cp '${PLUGIN_TEMPLATE}/.codex-plugin/plugin.json' '$STAGING_DIR/.codex-plugin/'"
 run "cp '${PLUGIN_TEMPLATE}/.mcp.json' '$STAGING_DIR/'"
 run "cp -R '${ATELIER_REPO}/integrations/codex/hooks' '$STAGING_DIR/'"
+run "cp -R '${ATELIER_REPO}/integrations/codex/plugin/scripts' '$STAGING_DIR/'"
 run "mkdir -p '$STAGING_DIR/agents'"
 AGENT_SRC="${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md"
 info "Staging Codex agent instructions"
@@ -306,6 +307,7 @@ fi
 # ---- install plugin bundle + marketplace ------------------------------------
 info "Installing Codex plugin source → $PLUGIN_DIR"
 install_plugin_bundle
+run "chmod +x '${PLUGIN_DIR}/scripts/'*.sh 2>/dev/null || true"
 patch_plugin_hooks
 patch_plugin_mcp
 ensure_codex_mcp
@@ -347,6 +349,26 @@ else:
 PYEOF
     python3 "${APPROVE_SCRIPT}" "${CODEX_CONFIG}"
     rm -f "${APPROVE_SCRIPT}"
+fi
+
+# ---- statusline (command-backed; tui.status_line schema is version-dependent)
+STATUSLINE_SCRIPT="${PLUGIN_DIR}/scripts/statusline.sh"
+if $DRY_RUN; then
+    echo "  [dry-run] configure tui.status_line → ${STATUSLINE_SCRIPT} in ${CODEX_CONFIG}"
+elif [ -f "$CODEX_CONFIG" ] && grep -qE '^\[tui\]' "$CODEX_CONFIG" 2>/dev/null; then
+    info "existing [tui] section in ${CODEX_CONFIG}; add manually to enable the Atelier statusline:"
+    info "  status_line = { type = \"command\", command = \"${STATUSLINE_SCRIPT}\" }"
+elif grep -q 'status_line' "${CODEX_CONFIG}" 2>/dev/null; then
+    info "status_line already configured in ${CODEX_CONFIG}; leaving as-is"
+else
+    {
+        echo ""
+        echo "[tui]"
+        echo "# Atelier command-backed statusline. The tui.status_line schema is"
+        echo "# Codex-version-dependent; if your build ignores it, run /statusline in Codex."
+        echo "status_line = { type = \"command\", command = \"${STATUSLINE_SCRIPT}\" }"
+    } >> "${CODEX_CONFIG}"
+    info "configured Atelier statusline in ${CODEX_CONFIG}"
 fi
 
 # ---- AGENTS.md --------------------------------------------------------------
@@ -489,6 +511,12 @@ if [ -f "${PLUGIN_DIR}/hooks/hooks.json" ]; then
     else
     vfail "Codex plugin lifecycle hooks missing: ${PLUGIN_DIR}/hooks/hooks.json"
     fi
+
+if [ -f "${PLUGIN_DIR}/scripts/statusline.sh" ] && [ -x "${PLUGIN_DIR}/scripts/statusline.sh" ]; then
+    vpass "Codex statusline script installed and executable: ${PLUGIN_DIR}/scripts/statusline.sh"
+else
+    vwarn "Codex statusline script missing or not executable (optional feature)"
+fi
 
 if [ -f "$AGENTS_FILE" ] && grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; then
     vpass "AGENTS.md present with atelier:code persona: $AGENTS_FILE"

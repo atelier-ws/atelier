@@ -62,9 +62,15 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
     if line:
         from atelier.core.capabilities.savings_summary import savings_line
 
+        session_id = os.environ.get("ATELIER_STATUS_SESSION_ID", "")
+        if os.environ.get("ATELIER_STATUS_HOST", "").strip().lower() == "codex":
+            from atelier.core.capabilities.plugin_runtime import build_codex_savings_line
+
+            click.echo(build_codex_savings_line(ctx.obj["root"], session_id))
+            return
         click.echo(
             savings_line(
-                os.environ.get("ATELIER_STATUS_SESSION_ID", ""),
+                session_id,
                 workspace=os.environ.get("CLAUDE_WORKSPACE_ROOT", "") or None,
             )
         )
