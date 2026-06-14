@@ -6672,6 +6672,56 @@ def tool_pattern(
     )
 
 
+@mcp_tool(name="scan")
+def tool_scan(
+    path: str | None = None,
+    include_taint: bool = True,
+    include_rules: bool = True,
+    repo_root: str | None = None,
+) -> dict[str, Any]:
+    """Security scan (SAST, first iteration) over the repo or a sub-path.
+
+    Runs a small bundled pack of high-signal OWASP/CWE ast-grep rules
+    (eval/exec, subprocess shell=True with interpolation, SQL string
+    concatenation, hardcoded secrets) plus a BOUNDED intra-procedural Python
+    taint check (request/argv/env/input sources reaching exec/subprocess/SQL
+    sinks). Scope to a file or directory with `path`; toggle the rule pack or
+    taint pass with `include_rules`/`include_taint`.
+
+    This is a first iteration, NOT a full SAST engine: every finding carries a
+    `rule_id`, `severity`, and `confidence`, and heuristic findings are flagged
+    (`heuristic: true`). It does not claim exhaustiveness.
+    Returns: findings (path, line, rule_id, cwe, severity, confidence, message,
+    source, heuristic) and a summary count.
+    """
+    from atelier.core.capabilities.security import scan_repository
+
+    workspace = _workspace_root()
+    root_arg = repo_root or "."
+    root_path = Path(root_arg)
+    resolved_root = (root_path if root_path.is_absolute() else workspace / root_path).resolve()
+    paths = [path] if path else None
+    findings = scan_repository(
+        resolved_root,
+        paths=paths,
+        include_taint=include_taint,
+        include_rules=include_rules,
+    )
+    severity_counts: dict[str, int] = {}
+    for finding in findings:
+        sev = str(finding.get("severity", "info"))
+        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+    return {
+        "findings": findings,
+        "summary": {
+            "total": len(findings),
+            "by_severity": severity_counts,
+            "heuristic": True,
+            "note": "First-iteration SAST: bounded coverage, not exhaustive.",
+        },
+    }
+
+
 def _run_shell_tool(
     command: str = "",
     timeout: int = 30,
