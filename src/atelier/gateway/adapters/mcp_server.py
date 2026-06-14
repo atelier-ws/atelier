@@ -2370,7 +2370,66 @@ def _workspace_path(file_path: str) -> Path:
     return Path(workspace) / p
 
 
+# N10 — per-request project isolation. The stdio MCP server normally serves a
+# single workspace resolved from env/cwd. A request may instead carry an
+# ``Mcp-Project-Path``-style override (via ``params._meta`` or a reserved
+# ``project_path`` arg); when present we serve that repo for the duration of the
+# request only. The executor runs each request on its own worker thread, so a
+# thread-local override is naturally request-scoped and keeps per-repo isolation.
+# Absent override -> today's single-workspace behavior is unchanged.
+_request_project: threading.local = threading.local()
+
+
+def _set_request_project(path: str | None) -> str | None:
+    """Set the request-scoped project override; return the prior value.
+
+    Only an existing directory is accepted; anything else clears the override so
+    a bad header can never silently mis-route to a non-repo path.
+    """
+    prior = getattr(_request_project, "value", None)
+    resolved: str | None = None
+    if isinstance(path, str) and path.strip():
+        try:
+            candidate = Path(path).expanduser().resolve()
+            if candidate.is_dir():
+                resolved = str(candidate)
+        except OSError:
+            resolved = None
+    _request_project.value = resolved
+    return prior
+
+
+def _clear_request_project(prior: str | None) -> None:
+    _request_project.value = prior
+
+
+def _extract_request_project(params: dict[str, Any], args: dict[str, Any]) -> str | None:
+    """Pull an ``Mcp-Project-Path``-style override from a tools/call request.
+
+    Checks, in order: ``params._meta`` (the MCP metadata channel) under any of
+    the conventional keys, then a reserved ``project_path`` argument. The arg is
+    popped so it never reaches the tool handler. Returns ``None`` when absent so
+    the default single-workspace path is preserved.
+    """
+    meta = params.get("_meta")
+    if isinstance(meta, dict):
+        for key in ("mcp-project-path", "projectPath", "project_path", "projectRoot", "project_root"):
+            value = meta.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    if isinstance(args, dict):
+        value = args.pop("project_path", None)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
 def _workspace_root() -> Path:
+    # A request-scoped project override (N10) wins for the lifetime of the
+    # request; everything else falls back to the single-workspace resolution.
+    override = getattr(_request_project, "value", None)
+    if isinstance(override, str) and override:
+        return Path(override)
     workspace = (
         os.environ.get("CLAUDE_WORKSPACE_ROOT")
         or os.environ.get("ATELIER_WORKSPACE_ROOT")
@@ -8152,6 +8211,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         # mode="symbols" must always run locally (SCIP engine); bypass remote routing
         if name == "context" and isinstance(args, dict) and args.get("mode") == "symbols":
             remote_routed = False
+        # N10 — request-scoped project isolation. Honor an Mcp-Project-Path-style
+        # override for the lifetime of this request only; absent -> unchanged.
+        _prior_project = _set_request_project(_extract_request_project(params, args if isinstance(args, dict) else {}))
         rendered_text: str | None = None
         try:
             if remote_routed:
@@ -8381,6 +8443,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         }
                     )
             return _err(rid, _tool_error_code(exc), str(exc))
+        finally:
+            # Always drop the request-scoped project override (N10).
+            _clear_request_project(_prior_project)
 
     return _err(rid, -32601, f"unknown method: {method}")
 
@@ -8510,6 +8575,20 @@ def _setup_file_logging(root: str | Path) -> None:
     mcp_logger.setLevel(logging.DEBUG)
 
 
+def _warm_stdio_code_index() -> None:
+    """Warm the single-workspace code-context engine for the stdio MCP path.
+
+    Reuses the service ``_CodeWarmer`` patterns via ``warm_stdio_workspace``.
+    Fail-open: any failure is swallowed so stdio server startup is unaffected.
+    """
+    try:
+        from atelier.core.service.code_warm import warm_stdio_workspace
+
+        warm_stdio_workspace(_workspace_root())
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+
+
 def main() -> None:
     # Phase 1: Absorb wrapper logic into `atelier mcp` (zero-config)
     os.environ.setdefault("ATELIER_SERVICE_URL", "http://127.0.0.1:8787")
@@ -8553,6 +8632,12 @@ def main() -> None:
     # Register before serve() so the SessionStart hook can find this process
     # and write the Claude session UUID before the first tool call arrives.
     _register_mcp_session()
+
+    # Warm the code-context engine/index once on stdio startup (G10) so the
+    # first code-context tool call does not pay cold-start on Zoekt/scip/
+    # ast-grep subprocesses. Off the hot path in a daemon thread; fail-open so
+    # warming failure never breaks server startup.
+    threading.Thread(target=_warm_stdio_code_index, daemon=True).start()
 
     threading.Thread(target=_check_auto_update, daemon=True).start()
     serve()
