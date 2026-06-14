@@ -72,7 +72,7 @@ def recall_config_cmd(
 
     updated = set_recall_settings(ctx.obj["root"], auto_index=auto_index, embedder=embedder, embed_model=embed_model)
     summary = {
-        "recallAutoIndex": updated.get("recallAutoIndex", False),
+        "recallAutoIndex": updated.get("recallAutoIndex", True),
         "recallEmbedder": updated.get("recallEmbedder", "local"),
         "recallEmbedModel": updated.get("recallEmbedModel", ""),
     }
