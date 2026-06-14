@@ -9,11 +9,6 @@ import click
 
 from atelier.gateway.cli.commands._shared import _emit
 
-# Ephemeral session/trace history that bloats atelier.db. Clearing these is the
-# "start fresh" reclaim — session transcripts already live as files, so the DB copy
-# is redundant history, not a source of truth.
-_TRACE_TABLES = ("traces_fts", "traces", "raw_artifacts", "sync_status")
-
 
 @click.group("db")
 def db_group() -> None:
@@ -44,12 +39,23 @@ def db_vacuum_cmd(ctx: click.Context, reset_traces: bool, force: bool, as_json: 
     conn = sqlite3.connect(str(db_path))
     try:
         if reset_traces:
-            for table in _TRACE_TABLES:
+            for table in ("traces", "raw_artifacts", "sync_status"):
                 try:
                     cleared[table] = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                     conn.execute(f"DELETE FROM {table}")
                 except sqlite3.OperationalError:
                     continue
+            # FTS5 DELETE leaves segment data in the shadow tables that VACUUM
+            # cannot reclaim; drop + recreate empty to actually free the space
+            # (recreate keeps the table valid for any concurrent reader/writer).
+            try:
+                from atelier.core.foundation.store import TRACE_FTS_DDL
+
+                cleared["traces_fts"] = conn.execute("SELECT COUNT(*) FROM traces_fts").fetchone()[0]
+                conn.execute("DROP TABLE IF EXISTS traces_fts")
+                conn.execute(TRACE_FTS_DDL)
+            except (sqlite3.OperationalError, ImportError):
+                pass
             conn.commit()
         conn.execute("VACUUM")
         conn.commit()
