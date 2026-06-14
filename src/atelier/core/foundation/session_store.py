@@ -22,6 +22,8 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from atelier.core.foundation.models import RawArtifact
+
 _INDEX_SCHEMA = """
 CREATE TABLE IF NOT EXISTS trace_index (
     id              TEXT PRIMARY KEY,
@@ -45,6 +47,18 @@ CREATE INDEX IF NOT EXISTS idx_trace_index_session ON trace_index(session_id);
 CREATE INDEX IF NOT EXISTS idx_trace_index_domain ON trace_index(domain);
 CREATE INDEX IF NOT EXISTS idx_trace_index_created ON trace_index(created_at);
 CREATE VIRTUAL TABLE IF NOT EXISTS trace_search USING fts5(id UNINDEXED, document);
+
+CREATE TABLE IF NOT EXISTS raw_artifacts (
+    id                 TEXT PRIMARY KEY,
+    session_id         TEXT NOT NULL,
+    source             TEXT NOT NULL,
+    source_session_id  TEXT NOT NULL,
+    kind               TEXT,
+    source_file_mtime  TEXT,
+    created_at         TEXT,
+    payload            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_raw_artifacts_source ON raw_artifacts(source, source_session_id);
 """
 
 _INDEXED_FIELDS = (
@@ -296,6 +310,95 @@ class SessionStore:
             kept = [t for t in self._read_jsonl(path) if t.get("id") != trace_id]
             path.write_text("".join(json.dumps(t, ensure_ascii=False) + "\n" for t in kept), encoding="utf-8")
 
+    # ----- raw artifacts ---------------------------------------------------
+    def _raw_meta_path(self, session_id: str) -> Path:
+        return self.session_dir(session_id) / "raw_artifacts.jsonl"
+
+    def _artifact_content_path(self, artifact: RawArtifact) -> Path:
+        base = self.session_dir(artifact.source_session_id).resolve()
+        path = (base / artifact.content_path).resolve()
+        if base not in path.parents and path != base:
+            raise ValueError(f"raw artifact path escapes session dir: {artifact.content_path}")
+        return path
+
+    def _index_raw_artifact(self, conn: sqlite3.Connection, payload: dict[str, Any], session_id: str) -> None:
+        conn.execute(
+            """
+            INSERT INTO raw_artifacts (
+                id, session_id, source, source_session_id, kind, source_file_mtime, created_at, payload
+            ) VALUES (
+                :id, :session_id, :source, :source_session_id, :kind, :source_file_mtime, :created_at, :payload
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                session_id=excluded.session_id, source=excluded.source,
+                source_session_id=excluded.source_session_id, kind=excluded.kind,
+                source_file_mtime=excluded.source_file_mtime, created_at=excluded.created_at,
+                payload=excluded.payload
+            """,
+            {
+                "id": payload["id"],
+                "session_id": session_id,
+                "source": payload.get("source"),
+                "source_session_id": payload.get("source_session_id"),
+                "kind": payload.get("kind"),
+                "source_file_mtime": payload.get("source_file_mtime"),
+                "created_at": payload.get("created_at"),
+                "payload": json.dumps(payload, ensure_ascii=False),
+            },
+        )
+
+    def record_raw_artifact(self, artifact: RawArtifact, content: str) -> None:
+        """Persist a raw artifact's content + metadata under its session folder.
+
+        Content lives at ``sessions/<sid>/<content_path>`` (source of truth for the
+        bytes); metadata is appended to ``sessions/<sid>/raw_artifacts.jsonl`` (source
+        of truth for the record); a derivable row is upserted into the index.
+        """
+        session_id = artifact.source_session_id or "unknown"
+        self.session_dir(session_id).mkdir(parents=True, exist_ok=True)
+        content_file = self._artifact_content_path(artifact)
+        content_file.parent.mkdir(parents=True, exist_ok=True)
+        content_file.write_text(content, encoding="utf-8")
+        payload = artifact.model_dump(mode="json")
+        meta_path = self._raw_meta_path(session_id)
+        existing = [a for a in self._read_jsonl(meta_path) if a.get("id") != artifact.id]
+        existing.append(payload)
+        meta_path.write_text("".join(json.dumps(a, ensure_ascii=False) + "\n" for a in existing), encoding="utf-8")
+        with closing(self._connect_index()) as conn:
+            self._index_raw_artifact(conn, payload, session_id)
+            conn.commit()
+
+    def get_raw_artifact(self, artifact_id: str) -> RawArtifact | None:
+        with closing(self._connect_index()) as conn:
+            row = conn.execute("SELECT payload FROM raw_artifacts WHERE id = ?", (artifact_id,)).fetchone()
+        if row is None:
+            return None
+        return RawArtifact.model_validate_json(row["payload"])
+
+    def list_raw_artifacts(
+        self,
+        *,
+        source: str | None = None,
+        source_session_id: str | None = None,
+        limit: int = 100,
+    ) -> list[RawArtifact]:
+        sql = "SELECT payload FROM raw_artifacts WHERE 1=1"
+        params: list[Any] = []
+        if source:
+            sql += " AND source = ?"
+            params.append(source)
+        if source_session_id:
+            sql += " AND source_session_id = ?"
+            params.append(source_session_id)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with closing(self._connect_index()) as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [RawArtifact.model_validate_json(r["payload"]) for r in rows]
+
+    def read_raw_artifact_content(self, artifact: RawArtifact) -> str:
+        return self._artifact_content_path(artifact).read_text(encoding="utf-8")
+
     # ----- sync tracking ---------------------------------------------------
     def mark_synced(self, session_id: str, *, at: str) -> None:
         with closing(self._connect_index()) as conn:
@@ -435,6 +538,7 @@ class SessionStore:
         with closing(self._connect_index()) as conn:
             conn.execute("DELETE FROM trace_index")
             conn.execute("DELETE FROM trace_search")
+            conn.execute("DELETE FROM raw_artifacts")
             count = 0
             if self.sessions_dir.exists():
                 for session_path in self.sessions_dir.iterdir():
@@ -445,5 +549,9 @@ class SessionStore:
                             continue
                         self._index_trace(conn, trace, _session_id_of(trace))
                         count += 1
+                    for payload in self._read_jsonl(session_path / "raw_artifacts.jsonl"):
+                        if "id" not in payload:
+                            continue
+                        self._index_raw_artifact(conn, payload, session_path.name)
             conn.commit()
         return count

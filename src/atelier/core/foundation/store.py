@@ -76,24 +76,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS reasonblocks_fts USING fts5(
 );
 
 
-CREATE TABLE IF NOT EXISTS raw_artifacts (
-    id TEXT PRIMARY KEY,
-    source TEXT NOT NULL,
-    source_session_id TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    relative_path TEXT NOT NULL,
-    content_path TEXT NOT NULL,
-    sha256_original TEXT NOT NULL,
-    sha256_redacted TEXT NOT NULL,
-    byte_count_original INTEGER NOT NULL,
-    byte_count_redacted INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    source_file_mtime TEXT,
-    payload TEXT NOT NULL DEFAULT '{}'
-);
-CREATE INDEX IF NOT EXISTS idx_raw_artifacts_source_session
-    ON raw_artifacts(source, source_session_id);
-
 CREATE TABLE IF NOT EXISTS rubrics (
     id TEXT PRIMARY KEY,
     domain TEXT NOT NULL,
@@ -227,7 +209,6 @@ class ContextStore:
         self.rubrics_dir = _k_root / "rubrics"
 
         self.traces_dir = self.root / "traces"
-        self.raw_dir = self.root / "raw"
 
         self._initialized = False
         self._connection: sqlite3.Connection | None = None
@@ -274,16 +255,9 @@ class ContextStore:
         self.blocks_dir.mkdir(parents=True, exist_ok=True)
         self.traces_dir.mkdir(parents=True, exist_ok=True)
         self.rubrics_dir.mkdir(parents=True, exist_ok=True)
-        self.raw_dir.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(SCHEMA)
-            # Ensure source_file_mtime column exists (migration for existing DBs)
             import contextlib
-
-            with contextlib.suppress(sqlite3.OperationalError):
-                conn.execute("ALTER TABLE raw_artifacts ADD COLUMN source_file_mtime TEXT")
-            with contextlib.suppress(sqlite3.OperationalError):
-                conn.execute("ALTER TABLE raw_artifacts ADD COLUMN payload TEXT NOT NULL DEFAULT '{}'")
 
             for ddl in (
                 "ALTER TABLE lesson_candidate ADD COLUMN body TEXT NOT NULL DEFAULT ''",
@@ -720,54 +694,10 @@ class ContextStore:
     # ----- Raw artifacts -------------------------------------------------- #
 
     def record_raw_artifact(self, artifact: RawArtifact, content: str) -> None:
-        payload = json.dumps(to_jsonable(artifact), ensure_ascii=False)
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO raw_artifacts (
-                    id, source, source_session_id, kind, relative_path,
-                    content_path, sha256_original, sha256_redacted,
-                    byte_count_original, byte_count_redacted,
-                    created_at, source_file_mtime, payload
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    source = excluded.source,
-                    source_session_id = excluded.source_session_id,
-                    kind = excluded.kind,
-                    relative_path = excluded.relative_path,
-                    content_path = excluded.content_path,
-                    sha256_original = excluded.sha256_original,
-                    sha256_redacted = excluded.sha256_redacted,
-                    byte_count_original = excluded.byte_count_original,
-                    byte_count_redacted = excluded.byte_count_redacted,
-                    source_file_mtime = excluded.source_file_mtime,
-                    payload = excluded.payload
-                """,
-                (
-                    artifact.id,
-                    artifact.source,
-                    artifact.source_session_id,
-                    artifact.kind,
-                    artifact.relative_path,
-                    artifact.content_path,
-                    artifact.sha256_original,
-                    artifact.sha256_redacted,
-                    artifact.byte_count_original,
-                    artifact.byte_count_redacted,
-                    artifact.created_at.isoformat(),
-                    artifact.source_file_mtime.isoformat() if artifact.source_file_mtime else None,
-                    payload,
-                ),
-            )
-        self._write_raw_artifact(artifact, content)
+        self.session_store.record_raw_artifact(artifact, content)
 
     def get_raw_artifact(self, artifact_id: str) -> RawArtifact | None:
-        with self._connect() as conn:
-            row = conn.execute("SELECT payload FROM raw_artifacts WHERE id = ?", (artifact_id,)).fetchone()
-        if row is None:
-            return None
-        return RawArtifact.model_validate_json(row["payload"])
+        return self.session_store.get_raw_artifact(artifact_id)
 
     def list_raw_artifacts(
         self,
@@ -776,22 +706,10 @@ class ContextStore:
         source_session_id: str | None = None,
         limit: int = 100,
     ) -> list[RawArtifact]:
-        sql = "SELECT payload FROM raw_artifacts WHERE 1=1"
-        params: list[Any] = []
-        if source:
-            sql += " AND source = ?"
-            params.append(source)
-        if source_session_id:
-            sql += " AND source_session_id = ?"
-            params.append(source_session_id)
-        sql += " ORDER BY created_at DESC LIMIT ?"
-        params.append(limit)
-        with self._connect() as conn:
-            rows = conn.execute(sql, params).fetchall()
-        return [RawArtifact.model_validate_json(r["payload"]) for r in rows]
+        return self.session_store.list_raw_artifacts(source=source, source_session_id=source_session_id, limit=limit)
 
     def read_raw_artifact_content(self, artifact: RawArtifact) -> str:
-        return self._artifact_path(artifact).read_text(encoding="utf-8")
+        return self.session_store.read_raw_artifact_content(artifact)
 
     # ----- Rubrics --------------------------------------------------------- #
 
@@ -1379,17 +1297,6 @@ class ContextStore:
             yaml.safe_dump(to_jsonable(rubric), sort_keys=False),
             encoding="utf-8",
         )
-
-    def _write_raw_artifact(self, artifact: RawArtifact, content: str) -> None:
-        path = self._artifact_path(artifact)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-
-    def _artifact_path(self, artifact: RawArtifact) -> Path:
-        path = (self.root / artifact.content_path).resolve()
-        if self.root.resolve() not in path.parents and path != self.root.resolve():
-            raise ValueError(f"raw artifact path escapes store root: {artifact.content_path}")
-        return path
 
     # ----- Bulk import ---------------------------------------------------- #
 
