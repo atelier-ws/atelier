@@ -56,9 +56,9 @@ def test_statusline_does_not_borrow_from_stale_bridge_in_new_main_session(tmp_pa
 
     # Old session has savings
     old_sid = "3d829763-d5f4-47ce-b45f-8006fe864df2"
-    sidecar = tmp_path / "session_stats" / "claude"
+    sidecar = tmp_path / "sessions" / old_sid
     sidecar.mkdir(parents=True)
-    (sidecar / f"{old_sid}.jsonl").write_text(
+    (sidecar / "savings.jsonl").write_text(
         json.dumps({"tool": "search", "tokens": 603, "calls": 0}) + "\n",
         encoding="utf-8",
     )
@@ -87,9 +87,9 @@ def test_statusline_borrows_for_subagents_via_transcript(tmp_path: Path) -> None
     (projects_dir / f"{subagent_sid}.jsonl").write_text(json.dumps(transcript) + "\n", encoding="utf-8")
 
     # Parent session has savings
-    sidecar = tmp_path / "session_stats" / "claude"
+    sidecar = tmp_path / "sessions" / parent_sid
     sidecar.mkdir(parents=True)
-    (sidecar / f"{parent_sid}.jsonl").write_text(
+    (sidecar / "savings.jsonl").write_text(
         json.dumps({"tool": "search", "tokens": 603, "calls": 0}) + "\n",
         encoding="utf-8",
     )
@@ -111,9 +111,9 @@ def test_statusline_hides_savings_until_real_token_usage(tmp_path: Path) -> None
     transcript on the host supplies token counts.
     """
     sid = "3d829763-d5f4-47ce-b45f-8006fe864df2"
-    sidecar = tmp_path / "session_stats" / "claude"
+    sidecar = tmp_path / "sessions" / sid
     sidecar.mkdir(parents=True)
-    (sidecar / f"{sid}.jsonl").write_text(
+    (sidecar / "savings.jsonl").write_text(
         json.dumps({"tool": "search", "tokens": 603, "calls": 0}) + "\n",
         encoding="utf-8",
     )

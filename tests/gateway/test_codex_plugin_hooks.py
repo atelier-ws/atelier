@@ -86,7 +86,7 @@ def test_codex_savings_reporter_updates_session_stats(tmp_path: Path) -> None:
         },
     )
 
-    stats = json.loads((root / "session_stats" / "c1.json").read_text(encoding="utf-8"))
+    stats = json.loads((root / "sessions" / "c1" / "stats.json").read_text(encoding="utf-8"))
     assert result.stdout == ""
     assert stats["total_tool_calls"] == 1
     assert stats["savings"]["calls_saved"] > 0
@@ -136,7 +136,7 @@ def test_codex_savings_reporter_records_loop_state_without_output(tmp_path: Path
     )
 
     assert result.stdout == ""
-    stats = json.loads((root / "session_stats" / "c1.json").read_text(encoding="utf-8"))
+    stats = json.loads((root / "sessions" / "c1" / "stats.json").read_text(encoding="utf-8"))
     assert stats["total_tool_calls"] == 1
 
 

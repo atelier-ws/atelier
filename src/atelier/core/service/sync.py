@@ -64,7 +64,7 @@ def sync_usage(
             chunk_sessions = []
             for sid in chunk_ids:
                 # Try live stats first
-                stats_path = root_path / "session_stats" / f"{sid}.json"
+                stats_path = root_path / "sessions" / sid / "stats.json"
                 if stats_path.exists():
                     try:
                         chunk_sessions.append(json.loads(stats_path.read_text(encoding="utf-8")))

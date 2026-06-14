@@ -369,7 +369,7 @@ def _append_compaction_savings_row(tokens: int, usd: float, model: str | None) -
         sid = _active_session_id()
         if not sid:
             return
-        path = _atelier_root() / "session_stats" / "claude" / f"{sid}.jsonl"
+        path = _atelier_root() / "sessions" / sid / "savings.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         row = {
             "kind": "compaction",

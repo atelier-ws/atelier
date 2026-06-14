@@ -507,7 +507,7 @@ def _load_session_savings(session_id: str) -> dict[str, Any]:
     Delegates to ``compute_savings_summary`` — the same function the
     statusline calls via ``atelier savings --line`` — so the statusline
     figure and this stop-hook summary are always derived from the same
-    source (``session_stats/claude/<session_id>.jsonl``, priced per-row
+    source (``sessions/<session_id>/savings.jsonl``, priced per-row
     at the model captured when each row was written).
     """
     zero = {

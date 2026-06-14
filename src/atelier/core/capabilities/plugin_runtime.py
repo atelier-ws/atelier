@@ -1409,11 +1409,11 @@ def efficiency_gain(actual_tool_calls: int, equivalent_baseline_calls: int) -> d
 
 
 def session_stats_path(root: str | Path, session_id: str) -> Path:
-    return Path(root) / "session_stats" / f"{session_id}.json"
+    return Path(root) / "sessions" / session_id / "stats.json"
 
 
 def _session_event_path(root: str | Path, session_id: str) -> Path:
-    return Path(root) / "session_events" / f"{session_id}.jsonl"
+    return Path(root) / "sessions" / session_id / "events.jsonl"
 
 
 def _now_ms(payload: dict[str, Any] | None = None) -> int:
@@ -1740,12 +1740,12 @@ def get_session_stats_from_trace(trace: Any) -> dict[str, Any]:
 
 
 def list_session_stats(root: str | Path, limit: int = 100) -> list[dict[str, Any]]:
-    stats_dir = Path(root) / "session_stats"
-    if not stats_dir.exists():
+    sessions_dir = Path(root) / "sessions"
+    if not sessions_dir.exists():
         return []
 
     # Get the newest sessions first
-    files = sorted(stats_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    files = sorted(sessions_dir.glob("*/stats.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     results: list[dict[str, Any]] = []
     for file_path in files[:limit]:
         try:
@@ -1759,11 +1759,11 @@ def list_session_stats(root: str | Path, limit: int = 100) -> list[dict[str, Any
 
 
 def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> dict[str, Any]:
-    stats_dir = Path(root) / "session_stats"
+    sessions_dir = Path(root) / "sessions"
     files = (
         [session_stats_path(root, session_id)]
         if session_id
-        else sorted(stats_dir.glob("*.json")) if stats_dir.exists() else []
+        else sorted(sessions_dir.glob("*/stats.json")) if sessions_dir.exists() else []
     )
     aggregate: dict[str, Any] = {
         "session_count": 0,
