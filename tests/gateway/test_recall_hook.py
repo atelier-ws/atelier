@@ -80,6 +80,16 @@ def test_enabled_spawns_indexer(tmp_path: Path) -> None:
     assert str(root) in out
 
 
+def test_absent_setting_defaults_on(tmp_path: Path) -> None:
+    # recallAutoIndex is on by default: an absent setting still spawns the indexer.
+    root, ws = _setup(tmp_path, {})
+    stub = tmp_path / "stub.py"
+    stub.write_text(_STUB, encoding="utf-8")
+    marker = tmp_path / "marker.txt"
+    _run(_env(root, ws, marker, stub))
+    assert "--root" in _wait_marker(marker)
+
+
 def test_in_review_env_guard_spawns_nothing(tmp_path: Path) -> None:
     root, ws = _setup(tmp_path, {"recallAutoIndex": True})
     stub = tmp_path / "stub.py"
