@@ -176,7 +176,29 @@ def chat(
     return dict(result.parsed_json or {})
 
 
-__all__ = ["LiteLLMUnavailable", "chat", "chat_with_result", "summarize"]
+def tool_completion(
+    *,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    model: str | None = None,
+    tool_choice: str = "auto",
+) -> Any:
+    """Run a tool-calling completion and return the raw LiteLLM response.
+
+    Kept in this module so the ``litellm`` import stays within the infra
+    boundary; callers (e.g. the agentic reviewer) inspect
+    ``response.choices[0].message.tool_calls`` on the returned object.
+    """
+    litellm = _litellm_module()
+    return litellm.completion(
+        model=_resolve_model(model),
+        messages=messages,
+        tools=tools,
+        tool_choice=tool_choice,
+    )
+
+
+__all__ = ["LiteLLMUnavailable", "chat", "chat_with_result", "summarize", "tool_completion"]
 
 
 def _apply_cache_control(

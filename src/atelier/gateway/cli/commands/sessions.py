@@ -411,7 +411,7 @@ def _live_sidecar_savings(
     breakdown: dict[str, float],
     input_tokens: int,
 ) -> tuple[float, int, int]:
-    """Realized savings from the local MCP sidecar (session_stats/claude/<id>.jsonl).
+    """Realized savings from the local MCP sidecar (sessions/<id>/savings.jsonl).
 
     This is the live source the statusline reads: it keeps accumulating past the
     session's last Stop event, unlike the stop-hook block embedded in the

@@ -48,9 +48,9 @@ def make_memory_store(root: str | Path | None, *, prefer: str | None = None) -> 
         return OpenMemoryMemoryStore(resolved_root)
     if backend != "sqlite":
         raise ValueError("memory backend must be 'sqlite', 'letta', or 'openmemory'")
-    from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
+    from atelier.infra.storage.sqlite_memory_store import MEMORY_DB_NAME, SqliteMemoryStore
 
-    return SqliteMemoryStore(resolved_root)
+    return SqliteMemoryStore(resolved_root, db_name=MEMORY_DB_NAME)
 
 
 def _memory_backend(root: Path, *, prefer: str | None) -> str:

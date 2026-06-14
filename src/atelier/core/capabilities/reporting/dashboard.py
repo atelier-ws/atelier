@@ -208,17 +208,25 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
         try:
             import sqlite3
 
+            from atelier.core.foundation.session_store import SessionStore
+
+            sessions = SessionStore(root)
+            token_rows = sessions.token_rows()
+            for trow in token_rows:
+                rid = trow["id"]
+                inp, out, cr, th = (
+                    trow["input_tokens"],
+                    trow["output_tokens"],
+                    trow["cached_input_tokens"],
+                    trow["thinking_tokens"],
+                )
+                cost_map[rid] = ((inp or 0) * 3 + (cr or 0) * 0.3 + (out or 0) * 15) / 1_000_000.0
+                tokens_map[rid] = (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
+            total_runs_in_db = len(token_rows)
+            db_runs = sessions.list_full(limit=1000)
+
+            # context_budget remains in atelier.db (separate table, not traces).
             with sqlite3.connect(str(db_path)) as conn:
-                for row in conn.execute(
-                    "SELECT id, json_extract(payload, '$.input_tokens'), json_extract(payload, '$.output_tokens'), json_extract(payload, '$.cached_input_tokens'), json_extract(payload, '$.thinking_tokens'), host FROM traces"
-                ):
-                    rid, inp, out, cr, th, _h = row
-                    c = ((inp or 0) * 3 + (cr or 0) * 0.3 + (out or 0) * 15) / 1_000_000.0
-                    cost_map[rid] = c
-                    tokens_map[rid] = (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
-
-                total_runs_in_db = conn.execute("SELECT COUNT(*) FROM traces").fetchone()[0]
-
                 for row in conn.execute(
                     "SELECT session_id, SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens) FROM context_budget GROUP BY session_id"
                 ):
@@ -226,10 +234,6 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
                     cost = ((inp or 0) * 3 + (cr or 0) * 0.3 + (out or 0) * 15) / 1_000_000.0
                     cost_map[rid] = cost
                     tokens_map[rid] = (inp or 0) + (out or 0) + (cr or 0)
-
-                for row in conn.execute("SELECT payload FROM traces ORDER BY created_at DESC LIMIT 1000"):
-                    p = json.loads(row[0])
-                    db_runs.append(p)
         except Exception:
             logging.exception("dashboard trace read failed")
             # Best-effort SQLite trace read; dashboard still renders without DB data.
