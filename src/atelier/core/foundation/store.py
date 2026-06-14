@@ -959,63 +959,30 @@ class ContextStore:
         )
 
     def delete_trace(self, trace_id: str) -> None:
-        with self._connect() as conn, closing(conn.cursor()) as cur:
-            cur.execute("DELETE FROM traces WHERE id = ?", (trace_id,))
-            cur.execute("DELETE FROM traces_fts WHERE id = ?", (trace_id,))
-
-        trace_json_path = self.traces_dir / f"{trace_id}.json"
+        self.session_store.delete(trace_id)
+        # Remove the legacy traces_dir mirror if it still exists.
         with contextlib.suppress(OSError):
-            trace_json_path.unlink()
+            (self.traces_dir / f"{trace_id}.json").unlink()
 
     def trace_exists(self, trace_id: str) -> bool:
         """Lightweight existence check — no deserialization."""
-        with self._connect() as conn:
-            row = conn.execute("SELECT 1 FROM traces WHERE id = ?", (trace_id,)).fetchone()
-        return row is not None
+        return self.session_store.exists(trace_id)
 
     def get_trace(self, trace_id: str) -> Trace | None:
-        with self._connect() as conn:
-            row = conn.execute("SELECT payload FROM traces WHERE id = ?", (trace_id,)).fetchone()
-            if row is None:
-                # Fallback: check if trace_id was actually a session_id
-                row = conn.execute(
-                    "SELECT payload FROM traces WHERE json_extract(payload, '$.session_id') = ?",
-                    (trace_id,),
-                ).fetchone()
-
-        if row is None:
-            return None
-        return Trace.model_validate_json(coerce_trace_json(row["payload"]))
+        data = self.session_store.get(trace_id)
+        if data is None:
+            # Fallback: trace_id may actually be a session_id.
+            traces = self.session_store.traces_for(trace_id)
+            data = traces[0] if traces else None
+        return Trace.model_validate(data) if data is not None else None
 
     def list_unsynced_trace_ids(self, limit: int = 500) -> list[str]:
         """Return IDs of traces that have not been successfully synced."""
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT t.id FROM traces t
-                LEFT JOIN sync_status s ON t.id = s.session_id
-                WHERE s.session_id IS NULL
-                ORDER BY t.created_at DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-        return [row[0] for row in rows]
+        return self.session_store.unsynced_ids(limit)
 
     def mark_synced(self, session_id: str, payload_hash: str) -> None:
-        """Mark a session as successfully synced."""
-        synced_at = datetime.now(UTC).isoformat()
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO sync_status (session_id, synced_at, payload_hash)
-                VALUES (?, ?, ?)
-                ON CONFLICT(session_id) DO UPDATE SET
-                    synced_at = excluded.synced_at,
-                    payload_hash = excluded.payload_hash
-                """,
-                (session_id, synced_at, payload_hash),
-            )
+        """Mark a session as successfully synced (payload_hash kept for API compat)."""
+        self.session_store.mark_synced(session_id, at=datetime.now(UTC).isoformat())
 
     def list_traces(
         self,
@@ -1029,80 +996,17 @@ class ContextStore:
         limit: int = 100,
         offset: int = 0,
     ) -> list[Trace]:
-        if query and query.strip():
-            search_query = self._build_trace_search_query(query)
-            sql = (
-                "SELECT t.payload, "
-                "snippet(traces_fts, 1, '[[', ']]', '...', 12) as s_task, "
-                "snippet(traces_fts, 2, '[[', ']]', '...', 12) as s_reasoning, "
-                "snippet(traces_fts, 3, '[[', ']]', '...', 12) as s_tools, "
-                "snippet(traces_fts, 4, '[[', ']]', '...', 12) as s_commands, "
-                "snippet(traces_fts, 5, '[[', ']]', '...', 12) as s_errors, "
-                "snippet(traces_fts, 6, '[[', ']]', '...', 12) as s_summary, "
-                "snippet(traces_fts, 7, '[[', ']]', '...', 12) as s_files, "
-                "snippet(traces_fts, 8, '[[', ']]', '...', 12) as s_validations, "
-                "snippet(traces_fts, 9, '[[', ']]', '...', 12) as s_learnings, "
-                "snippet(traces_fts, 10, '[[', ']]', '...', 12) as s_run "
-                "FROM traces_fts "
-                "JOIN traces t ON t.id = traces_fts.id "
-                "WHERE traces_fts MATCH ? "
-                "AND t.task != 'session-auto-record' "
-            )
-            params: list[Any] = [search_query]
-            if domain:
-                sql += " AND t.domain = ?"
-                params.append(domain)
-            if status:
-                sql += " AND t.status = ?"
-                params.append(status)
-            if agent:
-                sql += " AND t.agent = ?"
-                params.append(agent)
-            if host:
-                sql += " AND t.host = ?"
-                params.append(host)
-            if since:
-                sql += " AND t.created_at >= ?"
-                params.append(since.isoformat())
-
-            sql += " ORDER BY bm25(traces_fts), t.created_at DESC LIMIT ? OFFSET ?"
-            params.append(limit)
-            params.append(offset)
-
-            with self._connect() as conn:
-                rows = conn.execute(sql, params).fetchall()
-
-            results = []
-            for row in rows:
-                trace = Trace.model_validate_json(coerce_trace_json(row["payload"]))
-                trace.snippets = self._trace_search_snippets(row)
-                results.append(trace)
-            return results
-
-        # Standard filter path
-        sql = "SELECT payload FROM traces WHERE task != 'session-auto-record' AND 1=1"
-        params = []
-        if domain:
-            sql += " AND domain = ?"
-            params.append(domain)
-        if status:
-            sql += " AND status = ?"
-            params.append(status)
-        if agent:
-            sql += " AND agent = ?"
-            params.append(agent)
-        if host:
-            sql += " AND host = ?"
-            params.append(host)
-        if since:
-            sql += " AND created_at >= ?"
-            params.append(since.isoformat())
-        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
-        params.append(limit)
-        params.append(offset)
-        with self._connect() as conn:
-            rows = conn.execute(sql, params).fetchall()
-        return [Trace.model_validate_json(coerce_trace_json(r["payload"])) for r in rows]
+        rows = self.session_store.list_full(
+            domain=domain,
+            status=status,
+            agent=agent,
+            host=host,
+            query=query,
+            since=since.isoformat() if since else None,
+            limit=limit,
+            offset=offset,
+        )
+        return [Trace.model_validate(row) for row in rows]
 
     def get_traces_metrics(
         self,
@@ -1113,50 +1017,19 @@ class ContextStore:
         since: datetime | None = None,
     ) -> dict[str, Any]:
         """Return aggregate metrics for traces matching the filters."""
-        base_sql = "FROM traces WHERE task != 'session-auto-record' AND 1=1"
-        params: list[Any] = []
-        if domain:
-            base_sql += " AND domain = ?"
-            params.append(domain)
-        if agent:
-            base_sql += " AND agent = ?"
-            params.append(agent)
-        if host:
-            base_sql += " AND host = ?"
-            params.append(host)
-        if since:
-            base_sql += " AND created_at >= ?"
-            params.append(since.isoformat())
-
-        with closing(self._connect()) as conn:
-            with conn:
-                # 1. Total and status breakdown
-                status_sql = f"SELECT status, COUNT(*) {base_sql} GROUP BY status"
-                status_rows = conn.execute(status_sql, params).fetchall()
-
-                # 2. Distinct hosts, agents, and domains
-                host_sql = f"SELECT DISTINCT host {base_sql}"
-                host_rows = conn.execute(host_sql, params).fetchall()
-
-                agent_sql = f"SELECT DISTINCT agent {base_sql}"
-                agent_rows = conn.execute(agent_sql, params).fetchall()
-
-                domain_sql = f"SELECT DISTINCT domain {base_sql}"
-                domain_rows = conn.execute(domain_sql, params).fetchall()
-
-        stats = {"total": 0, "success": 0, "failed": 0, "partial": 0}
-        for row in status_rows:
-            s = row["status"]
-            c = row["COUNT(*)"]
-            stats["total"] += c
-            if s in stats:
-                stats[s] = c
-
+        metrics = self.session_store.metrics(
+            domain=domain, agent=agent, host=host, since=since.isoformat() if since else None
+        )
         return {
-            "stats": stats,
-            "hosts": [r["host"] for r in host_rows if r["host"]],
-            "agents": [r["agent"] for r in agent_rows if r["agent"]],
-            "domains": [r["domain"] for r in domain_rows if r["domain"]],
+            "stats": {
+                "total": metrics["total"],
+                "success": metrics["success"],
+                "failed": metrics["failed"],
+                "partial": metrics["partial"],
+            },
+            "hosts": metrics["hosts"],
+            "agents": metrics["agents"],
+            "domains": metrics["domains"],
         }
 
     # ----- Raw artifacts -------------------------------------------------- #

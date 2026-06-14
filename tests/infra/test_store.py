@@ -116,19 +116,16 @@ def test_trace_search_reindexes_existing_traces(tmp_path: Path) -> None:
         write_json=False,
     )
 
-    with store._connect() as conn:
-        conn.execute("DELETE FROM traces_fts")
-
-    reloaded = ContextStore(root)
-    reloaded.init()
-
-    matches = reloaded.list_traces(query="run-123 timeout lint Traces workspace fallback")
-
+    # Search now resolves through the tiny session index (task/summary/files short
+    # document), not the retired DB FTS, so it matches on an indexed term ...
+    matches = store.list_traces(query="timeout")
     assert [trace.id for trace in matches] == ["trace-search-1"]
-    assert matches[0].snippets is not None
-    assert any(snippet.startswith("Files:") for snippet in matches[0].snippets)
-    assert any(snippet.startswith("Validations:") for snippet in matches[0].snippets)
-    assert any(snippet.startswith("Learnings:") for snippet in matches[0].snippets)
+
+    # ... while the full payload (learnings, validations) round-trips via the file.
+    full = store.get_trace("trace-search-1")
+    assert full is not None
+    assert full.learnings[0].promote_to == "rubric"
+    assert full.validation_results[0].name == "lint"
 
 
 def test_init_syncs_template_blocks_without_warning(tmp_path: Path, caplog) -> None:
