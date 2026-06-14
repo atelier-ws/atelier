@@ -3,7 +3,11 @@
 When a ``read`` / ``search`` / ``grep`` / ``explore`` result is byte-identical
 to content already returned earlier in the *same* session, emit a short stub
 pointer instead of re-paying to put the same bytes back into the context window.
-The model still has the original earlier in the transcript, so nothing is lost.
+The pointer is self-healing: it tells the caller to re-request with ``force=true``
+when the content is not in its context. This matters for subagents — they run in
+a *separate* context window but share this session id (one stdio MCP process, no
+per-caller identity; see anthropics/claude-code#32514), so a subagent can receive
+a pointer for content it never got; the force=true cue lets it recover.
 
 For single-file ``read`` results that *changed* since the previous read (the
 common re-read-after-edit case, where exact dedup can never fire), ``delta_for``
@@ -94,7 +98,10 @@ class ContextDedup:
         if force or seen_ordinal is None:
             self._record(st, content_hash)
             return None
-        stub = f"[atelier dedup] read #{seen_ordinal} — {len(content)} chars omitted. force=true re-emits."
+        stub = (
+            f"[atelier dedup] identical to read #{seen_ordinal} earlier this session "
+            f"({len(content)} chars omitted). If not in your context, re-read with force=true."
+        )
         return stub, len(content) - len(stub)
 
     def delta_for(
@@ -140,8 +147,8 @@ class ContextDedup:
             return None
         diff_text = "".join(diff_lines)
         header = (
-            f"[atelier delta] {resource} changed since your last read — unified diff vs that read "
-            f"({len(content)} chars total). force=true re-emits the full body.\n"
+            f"[atelier delta] {resource} changed since your last read — diff vs that read below "
+            f"({len(content)} chars full). If you don't have that version, re-read with force=true.\n"
         )
         delta = header + diff_text
         if len(delta) > len(content) * _DELTA_MAX_RATIO:
