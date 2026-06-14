@@ -33,6 +33,7 @@ from pydantic import Field, create_model
 
 from atelier import __version__ as atelier_version
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
+from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
 from atelier.core.capabilities.default_definitions import DefaultRegistry, build_default_registry
 from atelier.core.capabilities.grounded_loop.grounding_evidence import (
     extract_grounding_targets,
@@ -51,6 +52,7 @@ from atelier.core.capabilities.owned_execution_lanes import (
     execute_owned_prompt,
 )
 from atelier.core.capabilities.owned_execution_routing import (
+    NoFeasibleRouteError,
     OwnedCachePolicy,
     OwnedRouteRequest,
     select_owned_route,
@@ -1747,6 +1749,107 @@ WORKFLOW_TOOL_INPUT_SCHEMA: dict[str, Any] = {
 }
 
 
+@mcp_tool(name="agent")
+def tool_agent(
+    prompt: Annotated[
+        str,
+        Field(description="Full task/instruction for the spawned Atelier-owned sub-agent."),
+    ],
+    budget: Annotated[
+        str,
+        Field(description="Cost/quality tier: 'cheap' | 'balanced' | 'best'. Default 'balanced'."),
+    ] = "balanced",
+    provider: Annotated[
+        str,
+        Field(description="Force a provider (e.g. 'anthropic'); empty = auto-select from configured vendors."),
+    ] = "",
+    model: Annotated[
+        str,
+        Field(description="Force a model id; empty = auto-pick by budget."),
+    ] = "",
+    cache_policy: Annotated[
+        str,
+        Field(
+            description="'inherit' shares the prompt-cache scope with prior owned spawns (cheaper); 'fresh' starts a new scope."
+        ),
+    ] = "inherit",
+) -> dict[str, Any]:
+    """Spawn an Atelier-owned sub-agent and return its result.
+
+    Runs the task on Atelier's owned-execution runtime: it selects a provider and
+    model from the credentials already configured in the environment (a provider
+    API key when present, otherwise the installed host CLI), executes the prompt,
+    and shares a prompt-cache scope with sibling spawns when
+    ``cache_policy='inherit'``. Prefer this over the host ``Agent`` tool when you
+    want Atelier to control the sub-agent's model, cost, and cache affinity.
+    """
+    root = _workspace_root()
+    session_state = _read_workspace_session_state()
+    norm_cache: OwnedCachePolicy = "fresh" if str(cache_policy).strip().lower() == "fresh" else "inherit"
+    use_explicit = bool(provider.strip() and model.strip())
+    request = OwnedRouteRequest(
+        tool_name="agent",
+        task_text=prompt,
+        mode="explicit" if use_explicit else "auto",
+        budget=cast(Any, str(budget).strip().lower() or "balanced"),
+        provider=provider.strip(),
+        model=model.strip(),
+        host_agent=_detect_agent(),
+        cache_policy=norm_cache,
+        session_state=session_state,
+    )
+    try:
+        decision = select_owned_route(root, request)
+    except (NoFeasibleRouteError, RouteConfigError) as exc:
+        return {
+            "isError": True,
+            "status": "no_route",
+            "message": (
+                f"No owned-execution route available: {exc}. Configure a route config (route.yaml) "
+                "plus a provider API key in the environment or an installed host CLI, and enable "
+                "owned routing."
+            ),
+        }
+    try:
+        result = execute_owned_prompt(
+            prompt,
+            root=root,
+            tool_name="agent",
+            task_text=prompt,
+            decision=decision,
+            host_agent=_detect_agent(),
+            session_state=session_state,
+            cache_policy=norm_cache,
+        )
+    except OwnedExecutionError as exc:
+        return {
+            "isError": True,
+            "status": "failed",
+            "message": str(exc),
+            "receipt": exc.receipt.to_dict(),
+        }
+    receipt = result.receipt
+    return {
+        "status": receipt.status,
+        "output": result.output,
+        "provider": receipt.executed_provider,
+        "model": receipt.executed_model,
+        "transport": receipt.executed_transport,
+        "cost_usd": receipt.cost_usd,
+        "tokens": {
+            "input": receipt.input_tokens,
+            "output": receipt.output_tokens,
+            "cache_read": receipt.cache_read_input_tokens,
+            "cache_write": receipt.cache_write_input_tokens,
+        },
+        "cache": {
+            "evidence": receipt.cache_evidence,
+            "reuse_observed": receipt.reuse_observed,
+            "scope_id": receipt.cache_scope_id,
+        },
+    }
+
+
 @mcp_tool(name="workflow", input_schema=WORKFLOW_TOOL_INPUT_SCHEMA)
 def tool_workflow(
     op: str,
@@ -3008,7 +3111,9 @@ def tool_rescue_failure(
 ) -> dict[str, Any]:
     """Suggest a rescue procedure for a repeated failure (call after the same approach fails twice).
 
-    Returns: {cluster_id, domain, rescue_type, procedure: [{step, rationale}], rationale, analysis?}.
+    Returns: {rescue, matched_blocks, analysis?} -- `rescue` is the suggested procedure
+    text, `matched_blocks` the reason-block IDs it drew from, `analysis` an optional
+    failure-incident breakdown.
     """
     if recent_actions is None:
         recent_actions = []
@@ -3880,6 +3985,99 @@ def _render_search_md(result: dict[str, Any]) -> str | None:
     return "\n".join(lines)
 
 
+def _render_verify_md(result: dict[str, Any]) -> str | None:
+    """Compact rubric-gate rendering: one line per check instead of a list of dicts
+    that repeats name/status/detail keys (detail is empty on every passing check).
+    """
+    outcomes = result.get("outcomes")
+    if not isinstance(outcomes, list):
+        return None
+    lines = [f"### verify rubric={result.get('rubric_id') or '?'} status={result.get('status') or '?'}"]
+    for outcome in outcomes:
+        if not isinstance(outcome, dict):
+            continue
+        status = str(outcome.get("status") or "?")
+        check_name = str(outcome.get("name") or "?")
+        detail = str(outcome.get("detail") or "").strip()
+        lines.append(f"- {status} {check_name}" + (f": {detail}" if detail else ""))
+    escalations = result.get("escalations")
+    if isinstance(escalations, list):
+        for escalation in escalations:
+            lines.append(f"- escalation: {escalation}")
+    return "\n".join(lines)
+
+
+def _render_sql_md(result: dict[str, Any]) -> str | None:
+    """Compact rendering for sql introspection (schema/table/search/relationships/lint).
+
+    Collapses per-column dicts ({cid,name,type,notnull,pk}) -- which repeat their keys
+    on every column -- into one line per column. The `query` action is already columnar
+    (positional rows + a single header), so it is left as JSON (returns None).
+    """
+
+    def _cols(columns: Any) -> list[str]:
+        out: list[str] = []
+        if isinstance(columns, list):
+            for col in columns:
+                if not isinstance(col, dict):
+                    continue
+                parts = [str(col.get("name") or "?"), str(col.get("type") or "")]
+                if col.get("pk"):
+                    parts.append("pk")
+                if col.get("notnull"):
+                    parts.append("notnull")
+                out.append("  - " + " ".join(p for p in parts if p))
+        return out
+
+    def _fks(fks: Any) -> list[str]:
+        out: list[str] = []
+        if isinstance(fks, list):
+            for fk in fks:
+                if isinstance(fk, dict):
+                    out.append(
+                        f"  fk: {fk.get('from_column', '?')} -> {fk.get('table', '?')}.{fk.get('to_column', '?')}"
+                    )
+        return out
+
+    if "results" in result:  # query: already columnar, leave as JSON
+        return None
+    if isinstance(result.get("schema"), dict):
+        schema = result["schema"]
+        lines = [f"### sql schema ({result.get('table_count', len(schema))} tables)"]
+        for table, info in schema.items():
+            lines.append(f"- {table}")
+            if isinstance(info, dict):
+                lines.extend(_cols(info.get("columns")))
+                lines.extend(_fks(info.get("foreign_keys")))
+        return "\n".join(lines)
+    if isinstance(result.get("matches"), list):
+        lines = ["### sql search"]
+        for match in result["matches"]:
+            if not isinstance(match, dict):
+                continue
+            lines.append(f"- {match.get('table', '?')}")
+            lines.extend(_cols(match.get("columns")))
+            lines.extend(_fks(match.get("foreign_keys")))
+        return "\n".join(lines)
+    if isinstance(result.get("relationships"), list):
+        lines = ["### sql relationships"]
+        for rel in result["relationships"]:
+            if isinstance(rel, dict):
+                lines.append(f"- {rel.get('from', '?')} -> {rel.get('to', '?')}")
+        return "\n".join(lines)
+    if isinstance(result.get("columns"), list) and "table" in result:
+        lines = [f"### sql table {result.get('table', '?')}"]
+        lines.extend(_cols(result.get("columns")))
+        lines.extend(_fks(result.get("foreign_keys")))
+        return "\n".join(lines)
+    if "ok" in result:  # lint
+        return f"### sql lint: {'ok' if result.get('ok') else (result.get('message') or 'invalid')}"
+    if isinstance(result.get("tables"), list):
+        tables = result["tables"]
+        return "\n".join([f"### sql tables ({result.get('table_count', len(tables))})", *(f"- {t}" for t in tables)])
+    return None
+
+
 def render_tool_result_text(name: str, result: Any) -> str | None:
     """Best-effort compact text rendering of a tool result for model context.
 
@@ -3925,6 +4123,12 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
     elif name == "web_fetch":
         with contextlib.suppress(Exception):
             text = str(payload.get("content") or "")
+    elif name == "verify":
+        with contextlib.suppress(Exception):
+            text = _render_verify_md(payload)
+    elif name == "sql":
+        with contextlib.suppress(Exception):
+            text = _render_sql_md(payload)
     return text or None
 
 
@@ -3989,6 +4193,26 @@ def _suggest_paths_for_missing(workspace_root: Path, missing: str, *, limit: int
     return hits
 
 
+# A trailing "#start-end" / "#line" suffix on a read path is parsed as a line
+# range (parity with the edit tool's `file_path#start-end` form and with the
+# range specs models naturally emit, e.g. "store.py#60-100"). Optional "L"
+# prefixes mirror the read tool's own range syntax. A non-numeric "#..." tail is
+# left intact so genuine '#' filenames still resolve.
+_READ_RANGE_SUFFIX = re.compile(r"#(L?\d+(?:[-,:]L?\d+)?)$", re.IGNORECASE)
+
+
+def _split_read_range_suffix(raw_path: str) -> tuple[str, str | None]:
+    """Split a trailing line-range suffix off a read path.
+
+    Returns (path, range_spec) where range_spec is in the read tool's range
+    syntax (e.g. "60-100"), or (raw_path, None) when there is no numeric suffix.
+    """
+    match = _READ_RANGE_SUFFIX.search(raw_path)
+    if match is None:
+        return raw_path, None
+    return raw_path[: match.start()], match.group(1)
+
+
 def _smart_read_single(
     path: str,
     range: str | None = None,
@@ -4001,6 +4225,11 @@ def _smart_read_single(
     target_path = path
     if not target_path:
         raise ValueError("provide path")
+    # Support a trailing "#start-end" / "#line" line-range suffix on the path
+    # itself (e.g. "store.py#60-100"); an explicit range= argument wins.
+    target_path, suffix_range = _split_read_range_suffix(target_path)
+    if range is None and suffix_range is not None:
+        range = suffix_range
     # Enforce workspace containment up front so the summary branch below (which
     # reads via the core runtime, bypassing _workspace_path) is covered too.
     _workspace_path(target_path)
@@ -4159,7 +4388,8 @@ def tool_smart_read(
         str,
         Field(
             description=(
-                "Workspace-relative file path to read. "
+                "Workspace-relative file path to read. May carry a '#start-end' / '#line' "
+                "line-range suffix, e.g. 'store.py#60-100'. "
                 "For multiple independent files use `files` instead — one round trip for N reads."
             ),
         ),
@@ -4177,6 +4407,8 @@ def tool_smart_read(
             description=(
                 "Batch read: ['path', ...] or [{path, range?, expand?, max_lines?}, ...] "
                 "(plain strings and dict specs may be mixed). "
+                "A plain string may carry a '#start-end' / '#line' suffix, e.g. "
+                "'store.py#60-100', read as that line range. "
                 "Returns {files: [{path, ...single-read result...}, ...]}. "
                 "Use this whenever reading 2+ independent files — it costs one round trip "
                 "vs one per file, cutting cached-context re-read tax by (N-1) turns."
@@ -6165,8 +6397,15 @@ def tool_node(
     Returns: signature, docstring, body, file location, and a stable symbol_id for follow-up calls.
 
     Pass symbol as unqualified name ('run_command'), qualified path ('module.Class.method'),
-    or SCIP id (from a prior search/callers result). Or use path+line for positional lookup.
+    or SCIP id (from a prior search/callers result). Or use path+line for positional lookup —
+    the line may be passed separately or as a "path#line" suffix (e.g. "store.py#100").
     """
+    if path is not None:
+        path, suffix_range = _split_read_range_suffix(path)
+        if suffix_range is not None and line is None:
+            match = re.match(r"L?(\d+)", suffix_range)
+            if match is not None:
+                line = int(match.group(1))
     target = _parse_symbol(symbol) if symbol else {}
     return _op_node(**target, path=path, line=line)
 
@@ -6724,7 +6963,10 @@ def tool_grep(
     path: Annotated[
         str,
         Field(
-            description=("Workspace-relative file or directory to search."),
+            description=(
+                "Workspace-relative file or directory to search. A single file may carry a "
+                "'#start-end' suffix (e.g. 'store.py#60-100') to scope matches to that line range."
+            ),
         ),
     ] = ".",
     content_regex: Annotated[
@@ -6837,6 +7079,38 @@ def tool_grep(
     return payload
 
 
+def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[int, int]) -> None:
+    """Restrict ranked-search matches to snippets overlapping [lo, hi].
+
+    A "path#start-end" search scopes results to that line window. Snippets carry
+    line_start/line_end; matches with no overlapping snippet are dropped. Matches
+    lacking snippet line data are kept (they cannot be filtered).
+    """
+    lo, hi = line_range
+    matches = payload.get("matches")
+    if not isinstance(matches, list):
+        return
+    kept: list[dict[str, Any]] = []
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        snippets = match.get("snippets")
+        if isinstance(snippets, list) and snippets:
+            in_window = [
+                snip
+                for snip in snippets
+                if isinstance(snip, dict)
+                and int(snip.get("line_start", 0) or 0) <= hi
+                and int(snip.get("line_end", snip.get("line_start", 0)) or 0) >= lo
+            ]
+            if not in_window:
+                continue
+            match = {**match, "snippets": in_window}
+        kept.append(match)
+    payload["matches"] = kept
+    payload["match_paths"] = [str(match.get("path")) for match in kept if isinstance(match, dict) and match.get("path")]
+
+
 @mcp_tool(
     name="search",
     description=(
@@ -6855,7 +7129,11 @@ def tool_grep(
             "path": {
                 "type": "string",
                 "default": ".",
-                "description": "Workspace-relative file or directory to search.",
+                "description": (
+                    "Workspace-relative file or directory to search. A single file may carry "
+                    "a '#start-end' suffix (e.g. 'store.py#60-100') to scope ranked results to "
+                    "that line range."
+                ),
             },
             "mode": {
                 "type": "string",
@@ -6900,7 +7178,10 @@ def tool_smart_search(
     path: Annotated[
         str,
         Field(
-            description="Workspace-relative file or directory to search.",
+            description=(
+                "Workspace-relative file or directory to search. A single file may carry a "
+                "'#start-end' suffix (e.g. 'store.py#60-100') to scope ranked results to that line range."
+            ),
         ),
     ] = ".",
     mode: Annotated[
@@ -6947,6 +7228,15 @@ def tool_smart_search(
     - Use `grep` instead when you need regex, glob, type filters, summaries, or incremental reruns.
     - Once grounded, use `node`, `callers`, `callees`, `usages`, or `explore` for exact code-intel follow-up.
     """
+    # A "path#start-end" suffix scopes ranked results to a line window of one file.
+    line_range: tuple[int, int] | None = None
+    path, suffix_range = _split_read_range_suffix(path)
+    if suffix_range is not None:
+        lo_text, _, hi_text = suffix_range.partition("-")
+        lo = int(re.sub(r"\D", "", lo_text) or 0)
+        hi = int(re.sub(r"\D", "", hi_text) or 0) if hi_text else lo
+        if lo:
+            line_range = (lo, hi or lo)
     if mode == "map":
         if not seed_files:
             raise ValueError("seed_files is required when mode='map'")
@@ -7007,6 +7297,8 @@ def tool_smart_search(
             budget_tokens=budget_tokens,
             indexed_search=indexed_search,
         )
+    if line_range is not None and mode == "chunks":
+        _scope_search_matches_to_range(payload, line_range)
     # Plumb savings via thread-local and strip from the LLM-facing payload.
     ts = int(payload.pop("tokens_saved", 0) or 0)
     if ts > 0:

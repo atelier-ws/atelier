@@ -32,7 +32,6 @@ from atelier.infra.storage.factory import create_store, make_memory_store
 from tests.helpers import init_store_at
 
 EXPECTED_TOOLS = {
-    "agent",
     "memory",
     "read",
     "edit",
@@ -385,7 +384,8 @@ def test_tools_list_search_schema_prefers_path_and_documents_modes() -> None:
     assert "path" in properties
     assert "file_path" not in properties
     assert "content_regex" not in properties
-    assert properties["path"]["description"] == "Workspace-relative file or directory to search."
+    assert properties["path"]["description"].startswith("Workspace-relative file or directory to search.")
+    assert "#start-end" in properties["path"]["description"]
     assert "repo map" in properties["mode"]["description"].lower()
 
 
@@ -994,6 +994,43 @@ def test_smart_read_batch_accepts_string_paths(store_root: Path, tmp_path: Path)
     mixed = _result(_call("read", {"files": [str(a), {"path": str(b), "range": "1-1"}]}))
     assert "alpha_val" in mixed
     assert "beta_val" in mixed
+
+
+def test_node_accepts_path_line_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`node` parses a "path#line" suffix into the positional line, like read/edit."""
+    captured: dict[str, Any] = {}
+
+    def fake_op_node(**kwargs: Any) -> dict[str, Any]:
+        captured.clear()
+        captured.update(kwargs)
+        return {}
+
+    monkeypatch.setattr(mcp_server, "_op_node", fake_op_node)
+
+    mcp_server.tool_node({"path": "store.py#100"})
+    assert captured["path"] == "store.py"
+    assert captured["line"] == 100
+
+    # An explicit line wins; the suffix is still stripped off the path.
+    mcp_server.tool_node({"path": "store.py#100", "line": 42})
+    assert captured["path"] == "store.py"
+    assert captured["line"] == 42
+
+
+def test_scope_search_matches_to_range_filters_snippets() -> None:
+    payload: dict[str, Any] = {
+        "matches": [
+            {"path": "a.py", "snippets": [{"line_start": 1, "line_end": 5}, {"line_start": 80, "line_end": 90}]},
+            {"path": "b.py", "snippets": [{"line_start": 200, "line_end": 210}]},
+            {"path": "c.py"},  # no snippet line data -> cannot filter, kept
+        ],
+        "match_paths": ["a.py", "b.py", "c.py"],
+    }
+    mcp_server._scope_search_matches_to_range(payload, (1, 50))
+    assert [m["path"] for m in payload["matches"]] == ["a.py", "c.py"]
+    a = next(m for m in payload["matches"] if m["path"] == "a.py")
+    assert a["snippets"] == [{"line_start": 1, "line_end": 5}]
+    assert payload["match_paths"] == ["a.py", "c.py"]
 
 
 def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

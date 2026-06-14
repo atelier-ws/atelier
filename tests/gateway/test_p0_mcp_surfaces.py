@@ -184,7 +184,8 @@ def test_search_tool_schema_prefers_path_and_documents_ranked_contract() -> None
     assert "path" in properties
     assert "file_path" not in properties
     assert "content_regex" not in properties
-    assert properties["path"]["description"] == "Workspace-relative file or directory to search."
+    assert properties["path"]["description"].startswith("Workspace-relative file or directory to search.")
+    assert "#start-end" in properties["path"]["description"]
     assert "repo map" in properties["mode"]["description"].lower()
     assert "mode='map'" in properties["seed_files"]["description"]
 
@@ -404,7 +405,7 @@ def test_tool_code_search_accepts_hardened_params(tmp_path: Path) -> None:
     assert payload["items"][0]["signature"] == "class OrderService:"
 
 
-def test_tool_code_search_accepts_semantic_modes_additively(tmp_path: Path) -> None:
+def test_tool_code_search_semantic_unavailable_without_embedder(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src" / "auth.py").write_text(
@@ -421,30 +422,25 @@ def test_tool_code_search_accepts_semantic_modes_additively(tmp_path: Path) -> N
         encoding="utf-8",
     )
 
+    # Semantic search is opt-in: with no embedding backend configured (the default),
+    # an explicit semantic request reports it is unavailable instead of contacting an
+    # external LLM (ollama). It does not silently fall back to lexical.
     semantic = mcp_server._op_search(
         repo_root=str(tmp_path),
         query="create login token for authenticated user",
         mode="semantic",
         budget_tokens=4000,
     )
-    hybrid_auto = mcp_server._op_search(
-        repo_root=str(tmp_path),
-        query="create login token for authenticated user",
-        mode="auto",
-        budget_tokens=4000,
-    )
+    assert semantic.get("semantic_available") is False
+    assert semantic["items"] == []
+
+    # Auto mode with an exact identifier still works via lexical search (no LLM).
     exact_auto = mcp_server._op_search(
         repo_root=str(tmp_path),
         query="issue_access_token",
         mode="auto",
         budget_tokens=4000,
     )
-
-    assert "mode" not in semantic
-    semantic_names = {item["name"] for item in semantic["items"]}
-    assert "issue_access_token" in semantic_names
-    hybrid_names = {item["name"] for item in hybrid_auto["items"]}
-    assert "issue_access_token" in hybrid_names
     exact_names = {item["name"] for item in exact_auto["items"]}
     assert "issue_access_token" in exact_names
 

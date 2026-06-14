@@ -97,6 +97,11 @@ class SemanticSearchRanker:
         self.embedder = embedder if embedder is not None else get_code_embedder()
         self.rrf_k = rrf_k
 
+    @property
+    def available(self) -> bool:
+        """True only when a real embedding backend is configured (not the null embedder)."""
+        return getattr(self.embedder, "name", "") != "null" and int(getattr(self.embedder, "dim", 0)) > 0
+
     def semantic_search(
         self,
         query: str,
