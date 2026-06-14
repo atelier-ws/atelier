@@ -142,6 +142,13 @@ def register(cli: click.Group) -> None:
         _IMPORT_FAILED = True
 
     try:
+        from .knowledge import knowledge_group
+
+        cli.add_command(knowledge_group)
+    except (ModuleNotFoundError, ImportError):
+        _IMPORT_FAILED = True
+
+    try:
         from .defaults import defaults_group
 
         _h(defaults_group)
