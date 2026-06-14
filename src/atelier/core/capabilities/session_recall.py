@@ -127,11 +127,14 @@ def _make_recall_embedder(root: str | Path) -> Any:
 
 
 def _capability(root: str | Path) -> Any:
+    # Recall indexes thousands of transcript passages; route them to a dedicated
+    # global recall.db so the bulk writes never contend with the main atelier.db.
     from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
     from atelier.core.foundation.redaction import redact
-    from atelier.infra.storage.factory import make_memory_store
+    from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
 
-    return ArchivalRecallCapability(make_memory_store(Path(root)), _make_recall_embedder(root), redactor=redact)
+    store = SqliteMemoryStore(Path(root), db_name="recall.db")
+    return ArchivalRecallCapability(store, _make_recall_embedder(root), redactor=redact)
 
 
 def index_sessions(
