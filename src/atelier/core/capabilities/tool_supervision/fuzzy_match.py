@@ -195,6 +195,60 @@ def _anchor_end_line_idx(
     return _count_end_line_idx(lines, start_idx, n_old_lines)
 
 
+_FUZZY_AMBIGUITY_MARGIN = 0.05
+
+
+def _fuzzy_window_candidates(
+    content: str,
+    lines: list[str],
+    offsets: list[int],
+    old_string: str,
+) -> list[FuzzyCandidate]:
+    """Windows whose normalized similarity to old_string clears the floor.
+
+    Scans every plausible start line (a cheap first-line pre-filter keeps the
+    full-window scoring proportional to the number of near matches, not the file
+    size) and returns candidates sorted best-first. DMP alone returns only the
+    first acceptable location, which silently mis-anchors onto the first of
+    several similar blocks (duplicated text); ranking all candidates lets the
+    caller pick the global best and detect ties.
+    """
+    old_lines = old_string.splitlines()
+    first_anchor = next((line for line in old_lines if line.strip()), "")
+    norm_first = normalize_for_fuzzy(first_anchor)
+    norm_old = normalize_for_fuzzy(old_string)
+    n_old_lines = max(1, len(old_lines))
+
+    def _similarity(start_idx: int, end_idx: int) -> float:
+        window = content[offsets[start_idx] : offsets[end_idx]]
+        return SequenceMatcher(None, norm_old, normalize_for_fuzzy(window), autojunk=False).ratio()
+
+    candidates: list[FuzzyCandidate] = []
+    for start_idx in range(len(lines)):
+        norm_line = normalize_for_fuzzy(lines[start_idx].rstrip("\n"))
+        if norm_first and SequenceMatcher(None, norm_first, norm_line).quick_ratio() < 0.6:
+            continue
+        ends = {
+            _anchor_end_line_idx(lines, start_idx, n_old_lines, old_string),
+            _count_end_line_idx(lines, start_idx, n_old_lines),
+        }
+        end_idx = max(ends, key=lambda end: _similarity(start_idx, end))
+        ratio = _similarity(start_idx, end_idx)
+        if ratio >= _FUZZY_SIMILARITY_FLOOR:
+            candidates.append(
+                FuzzyCandidate(
+                    start_line=start_idx + 1,
+                    end_line=end_idx,
+                    start_offset=offsets[start_idx],
+                    end_offset=offsets[end_idx],
+                    distance=0,
+                    ratio=ratio,
+                )
+            )
+    candidates.sort(key=lambda candidate: candidate.ratio, reverse=True)
+    return candidates
+
+
 def apply_fuzzy_replace(content: str, old_string: str, new_string: str) -> tuple[str, int, int]:
     """Fuzzy-replace old_string with new_string inside content.
 
@@ -224,7 +278,27 @@ def apply_fuzzy_replace(content: str, old_string: str, new_string: str) -> tuple
         # letting DMP pick one arbitrarily.
         raise FuzzyAmbiguousMatchError(exact_candidates)
 
-    # R3 / R5: DMP for start location, then anchor-based window + similarity gate
+    # R3 / R5: prefer the globally best-scoring window over DMP's first hit.
+    # DMP returns only the first acceptable location, so with duplicated blocks
+    # it silently anchors onto the wrong one even when old_string targets a
+    # later block. Rank all candidates, take the best, and refuse on a true tie.
+    candidates = _fuzzy_window_candidates(content, lines, offsets, old_string)
+    if candidates:
+        best = candidates[0]
+        rivals = [
+            other
+            for other in candidates[1:]
+            if other.start_offset != best.start_offset and best.ratio - other.ratio <= _FUZZY_AMBIGUITY_MARGIN
+        ]
+        if rivals:
+            raise FuzzyAmbiguousMatchError([best, *rivals])
+        replacement = _preserve_window_newline(content[best.start_offset : best.end_offset], new_string)
+        new_content = content[: best.start_offset] + replacement + content[best.end_offset :]
+        return new_content, best.start_line, best.end_line
+
+    # Fallback: no pre-filtered window cleared the floor (e.g. the first line of
+    # old_string diverges too much for the cheap pre-filter). Use DMP's single
+    # location for a best-effort match and a helpful similarity message.
     dmp = _make_dmp(len(content))
     match_char = dmp.match_main(content, old_string, 0)
     if match_char == -1:
@@ -238,16 +312,12 @@ def apply_fuzzy_replace(content: str, old_string: str, new_string: str) -> tuple
         window = content[offsets[start_line_idx] : offsets[end_idx]]
         return SequenceMatcher(None, norm_old, normalize_for_fuzzy(window), autojunk=False).ratio()
 
-    # R3: anchor-pinned window end, with the count-based window as a rival —
-    # keep whichever window is more similar to old_string.
     window_ends = {
         _anchor_end_line_idx(lines, start_line_idx, n_old_lines, old_string),
         _count_end_line_idx(lines, start_line_idx, n_old_lines),
     }
     end_line_idx = max(window_ends, key=_window_similarity)
 
-    # Similarity gate: reject the rung if the matched window is too dissimilar.
-    # This prevents silent corruption when DMP guesses a wrong location.
     similarity = _window_similarity(end_line_idx)
     if similarity < _FUZZY_SIMILARITY_FLOOR:
         raise ValueError(

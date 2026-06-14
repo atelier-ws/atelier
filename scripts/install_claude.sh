@@ -417,7 +417,12 @@ PYEOF
     if $DRY_RUN; then
         echo "  [dry-run] project workspace-local Claude agents into ${WORKSPACE}/.claude/agents"
     else
-        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+        # Use an interpreter that can import atelier (pydantic et al). The bare
+        # system python3 usually can't; _ATELIER_PY was resolved above to the
+        # dev-venv / uv-tool / pip interpreter. Projection is best-effort — a
+        # failure must NOT abort the remaining workspace setup (hooks,
+        # statusLine, enforcement), so swallow non-zero exits with a warning.
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" "${_ATELIER_PY:-python3}" - <<PYEOF || warn "workspace-local Claude agent projection failed (non-fatal); skipping"
 from pathlib import Path
 from atelier.core.capabilities.workspace_host_overrides import write_workspace_claude_overrides
 
