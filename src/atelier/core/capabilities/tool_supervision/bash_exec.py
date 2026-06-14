@@ -389,11 +389,14 @@ def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, 
         _terminate_process_group(managed.proc)
 
     if managed.proc.poll() is None:
+        elapsed_ms = int((time.perf_counter() - managed.started) * 1000)
+        timeout_remaining_ms = max(0, managed.timeout * 1000 - elapsed_ms)
         return {
             "status": "running",
             "session_id": session_id,
             "pid": managed.proc.pid,
-            "duration_ms": int((time.perf_counter() - managed.started) * 1000),
+            "duration_ms": elapsed_ms,
+            "timeout_remaining_ms": timeout_remaining_ms,
         }
 
     with _MANAGED_COMMANDS_LOCK:

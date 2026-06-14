@@ -39,7 +39,7 @@ prod: ## Build and install from local production build (includes mypyc compilati
 	# Run the BUNDLED bundle.sh (next to the generated constraints.txt) — the exact
 	# same step the distribution installer runs. install.sh only downloads and
 	# extracts the bundle before invoking this same script.
-	ATELIER_INSTALL_DIR=$(PWD)/bundle ATELIER_BIN_DIR=$(PWD)/bundle/bin bash $(PWD)/bundle/scripts/bundle.sh --non-interactive
+	ATELIER_INSTALL_DIR=$(PWD)/bundle bash $(PWD)/bundle/scripts/bundle.sh --non-interactive
 
 
 

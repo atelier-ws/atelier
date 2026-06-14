@@ -1390,13 +1390,6 @@ def _dispatch_tool(name: str, args: dict[str, Any]) -> Any:
     hidden = _OWNED_HIDDEN_PARAMS.get(name, ())
     if hidden:
         args = {key: value for key, value in args.items() if key not in hidden}
-    if name == "shell":
-        args = dict(args)
-        if not args.get("background"):
-            # In-process dispatch has no MCP stdio sync window: wait for
-            # completion instead of detaching long-timeout commands, which
-            # would force the model to burn poll turns.
-            args["sync_wait"] = True
     handler = spec.get("handler")
     if not callable(handler):
         raise ValueError(f"Tool has no callable handler: {name!r}")
