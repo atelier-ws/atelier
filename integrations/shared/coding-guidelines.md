@@ -17,7 +17,6 @@ Before implementing:
 
 - No features beyond what was asked.
 - No abstractions for single-use code.
-- No error handling for impossible scenarios.
 - If you write 200 lines and it could be 50, rewrite it.
 
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
@@ -31,8 +30,6 @@ When editing existing code:
 - Don't "improve" adjacent code, comments, or formatting.
 - Match existing style, even if you'd do it differently.
 - If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans: remove imports/variables/functions that YOUR changes made unused; don't remove pre-existing dead code unless asked.
 
 The test: Every changed line should trace directly to the user's request.
 
