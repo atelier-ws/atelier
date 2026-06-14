@@ -91,11 +91,12 @@ def test_benchmark_codebench_wraps_runner(monkeypatch, tmp_path: Path) -> None:
     cmd, label, env = calls[0]
     assert label == "CodeBench"
     assert cmd[:3] == ["python", "-m", "benchmarks.codebench.run"]
-    assert "--tasks" in cmd and cmd[cmd.index("--tasks") + 1] == "all"
+    assert cmd[3] == "all"
+    assert "--tasks" not in cmd
     assert "--arms" in cmd
     assert cmd[cmd.index("--cli-driver") + 1] == "claude"
     assert cmd[cmd.index("--timeout") + 1] == "1800"
-    assert cmd[cmd.index("--max-output-tokens") + 1] == "8192"
+    assert "--max-output-tokens" not in cmd
     assert cmd[cmd.index("--rate-limit-rpm") + 1] == "0.0"
     assert cmd[cmd.index("--rate-limit-tpm") + 1] == "0"
     assert cmd[cmd.index("--jobs") + 1] == "1"
@@ -151,11 +152,6 @@ def test_benchmark_codebench_accepts_vix_arm_and_api_options(monkeypatch, tmp_pa
             "atelier",
             "--model",
             "llama3.2",
-            "--transport",
-            "api",
-            "--api-provider",
-            "ollama",
-            "--launch-ollama",
             "--bridge-wait",
             "0",
             "--task-source-dir",
@@ -168,9 +164,7 @@ def test_benchmark_codebench_accepts_vix_arm_and_api_options(monkeypatch, tmp_pa
     assert label == "CodeBench"
     assert cmd[cmd.index("--arms") + 1 : cmd.index("--reps")] == ["baseline", "atelier"]
     assert cmd[cmd.index("--model") + 1] == "llama3.2"
-    assert cmd[cmd.index("--transport") + 1] == "api"
-    assert cmd[cmd.index("--api-provider") + 1] == "ollama"
-    assert "--launch-ollama" in cmd
+    assert "--transport" not in cmd
     assert env == {"CODEBENCH_TASKS_DIR": str(codebench_tasks_dir.resolve())}
 
 
@@ -202,8 +196,6 @@ def test_benchmark_codebench_judge_defaults_to_runner_transport(monkeypatch, tmp
             str(root),
             "benchmark",
             "codebench",
-            "--transport",
-            "cli",
             "--model",
             "claude-sonnet-4-6",
             "--judge",
@@ -218,7 +210,7 @@ def test_benchmark_codebench_judge_defaults_to_runner_transport(monkeypatch, tmp
     assert "--judge-provider" not in cmd
     assert "--judge-model" not in cmd
     assert "--judge-transport" not in cmd
-    assert cmd[cmd.index("--transport") + 1] == "cli"
+    assert "--transport" not in cmd
     assert cmd[cmd.index("--model") + 1] == "claude-sonnet-4-6"
 
 
@@ -250,8 +242,6 @@ def test_benchmark_codebench_openrouter_claude_preset_passes_agent_env(monkeypat
             str(root),
             "benchmark",
             "codebench",
-            "--transport",
-            "cli",
             "--model",
             "openrouter/owl-alpha",
             "--openrouter-claude",
@@ -303,8 +293,6 @@ def test_benchmark_codebench_generic_claude_provider_flags_pass_through(monkeypa
             str(root),
             "benchmark",
             "codebench",
-            "--transport",
-            "cli",
             "--model",
             "provider/model-x",
             "--claude-base-url",
@@ -409,8 +397,6 @@ def test_benchmark_codebench_named_aws_claude_preset_passes_env(monkeypatch, tmp
             str(root),
             "benchmark",
             "codebench",
-            "--transport",
-            "cli",
             "--cli-driver",
             "claude",
             "--claude-provider-preset",
@@ -447,8 +433,6 @@ def test_benchmark_codebench_rejects_claude_flags_for_non_claude_driver(monkeypa
             str(root),
             "benchmark",
             "codebench",
-            "--transport",
-            "cli",
             "--cli-driver",
             "copilot",
             "--openrouter-claude",
@@ -458,7 +442,7 @@ def test_benchmark_codebench_rejects_claude_flags_for_non_claude_driver(monkeypa
     )
 
     assert result.exit_code != 0
-    assert "--openrouter-claude only applies to --transport cli --cli-driver claude." in result.output
+    assert "openrouter-claude only supports CLI drivers: claude" in result.output
 
 
 def test_benchmark_mcp_defaults_jobs_to_auto(monkeypatch, tmp_path: Path) -> None:

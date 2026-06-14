@@ -5,12 +5,14 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from atelier.core.capabilities.owned_execution_routing import NoFeasibleRouteError
+from atelier.core.environment import HIDDEN_LLM_TOOLS
 from atelier.gateway.adapters import mcp_server
 
 
-def test_agent_tool_registered_and_visible() -> None:
+def test_agent_tool_registered_but_hidden() -> None:
     assert "agent" in mcp_server.TOOLS
-    assert mcp_server._tool_visible_to_llm("agent", mcp_server.TOOLS["agent"])
+    assert "agent" in HIDDEN_LLM_TOOLS
+    assert not mcp_server._tool_visible_to_llm("agent", mcp_server.TOOLS["agent"])
 
 
 def test_agent_tool_no_route_is_graceful(monkeypatch) -> None:

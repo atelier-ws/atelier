@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any
 
 # Common secret patterns. Conservative — false positives are acceptable
 # because we only mask, not drop, and the surrounding text remains.
@@ -33,6 +32,10 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
     # AWS-style access keys.
     (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), "<redacted-aws-key>"),
+    # Email addresses — the most common PII in transcripts indexed into the
+    # cross-session recall store. High-precision pattern; IP/phone are deliberately
+    # omitted so version numbers and digit literals in code stay searchable.
+    (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"), "<redacted-email>"),
 ]
 
 # Phrases that signal hidden chain-of-thought.
@@ -100,37 +103,6 @@ def redact_tool_output(text: str) -> str:
     for pattern, replacement in _PATTERNS:
         out = pattern.sub(replacement, out)
     return out
-
-
-def redact_failure_cluster(cluster: dict[str, Any] | object) -> dict[str, Any]:
-    """Return a redacted dict view of a FailureCluster.
-
-    Works on either a Pydantic ``FailureCluster`` instance or a plain
-    dict snapshot. All free-text fields that may carry user data are
-    routed through :func:`redact` before the result is exposed to a
-    downstream sink (logs, MCP responses, persistence).
-    """
-    data: dict[str, Any]
-    if hasattr(cluster, "model_dump"):
-        data = cluster.model_dump()
-    elif isinstance(cluster, dict):
-        data = dict(cluster)
-    else:
-        raise TypeError(f"unsupported cluster type: {type(cluster).__name__}")
-
-    for key in (
-        "fingerprint",
-        "suggested_block_title",
-        "suggested_rubric_check",
-        "suggested_eval_case",
-    ):
-        if key in data and isinstance(data[key], str):
-            data[key] = redact(data[key])
-
-    if "sample_errors" in data and isinstance(data["sample_errors"], list):
-        data["sample_errors"] = redact_list([str(s) for s in data["sample_errors"]])
-
-    return data
 
 
 # Characters and substrings that are never legitimate inside a

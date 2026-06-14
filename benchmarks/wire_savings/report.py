@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 
 from benchmarks.wire_savings.usage_parser import Usage, extract_usage
 
-# Model pricing -- USD per 1M tokens. Defaults: Claude Sonnet 4.5 on Amazon
+# Model pricing -- USD per 1M tokens. Defaults: Claude Sonnet 4.6 on Amazon
 # Bedrock (2025). Override per-run with --in / --out / --cache-read / --cache-write.
 _DEFAULT_PRICING: dict[str, float] = {
     "input_per_m": 3.00,

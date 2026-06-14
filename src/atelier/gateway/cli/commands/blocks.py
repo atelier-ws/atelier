@@ -38,10 +38,13 @@ def reembed(ctx: click.Context, dry_run: bool, batch_size: int, as_json: bool) -
     root: Path = ctx.obj["root"]
     store = ContextStore(root)
     store.init()
+    # archival_passage lives in the dedicated memory.db; lesson_candidate in atelier.db.
+    mem = ContextStore(root, db_name="memory.db")
+    mem.init()
     embedder = make_embedder()
     counts = {"archival_passage": 0, "lesson_candidate": 0, "dry_run": dry_run}
-    with store._connect() as conn:
-        passages = conn.execute(
+    with mem._connect() as mconn:
+        passages = mconn.execute(
             """
             SELECT id, text FROM archival_passage
             WHERE embedding_provenance = 'legacy_stub'
@@ -49,6 +52,19 @@ def reembed(ctx: click.Context, dry_run: bool, batch_size: int, as_json: bool) -
             """,
             (batch_size,),
         ).fetchall()
+        counts["archival_passage"] = len(passages)
+        if not dry_run:
+            for row in passages:
+                vector = embedder.embed([str(row["text"])])[0]
+                mconn.execute(
+                    """
+                    UPDATE archival_passage
+                    SET embedding = ?, embedding_provenance = ?
+                    WHERE id = ?
+                    """,
+                    (json.dumps(vector).encode("utf-8"), embedder.__class__.__name__, row["id"]),
+                )
+    with store._connect() as conn:
         lessons = conn.execute(
             """
             SELECT id, cluster_fingerprint, evidence_trace_ids, body FROM lesson_candidate
@@ -57,19 +73,8 @@ def reembed(ctx: click.Context, dry_run: bool, batch_size: int, as_json: bool) -
             """,
             (batch_size,),
         ).fetchall()
-        counts["archival_passage"] = len(passages)
         counts["lesson_candidate"] = len(lessons)
         if not dry_run:
-            for row in passages:
-                vector = embedder.embed([str(row["text"])])[0]
-                conn.execute(
-                    """
-                    UPDATE archival_passage
-                    SET embedding = ?, embedding_provenance = ?
-                    WHERE id = ?
-                    """,
-                    (json.dumps(vector).encode("utf-8"), embedder.__class__.__name__, row["id"]),
-                )
             for row in lessons:
                 text = "\n".join(
                     [

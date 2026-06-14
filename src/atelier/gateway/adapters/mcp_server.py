@@ -96,7 +96,12 @@ from atelier.core.foundation.rubric_gate import run_rubric
 from atelier.gateway.adapters.runtime import ContextRuntime
 from atelier.infra.embeddings.factory import make_embedder
 from atelier.infra.runtime.realtime_context import RealtimeContextManager
-from atelier.infra.runtime.run_ledger import RunLedger
+from atelier.infra.runtime.run_ledger import (
+    RunLedger,
+    context_savings_path,
+    outcomes_path,
+    session_run_dir,
+)
 from atelier.infra.storage.factory import make_memory_store
 from atelier.infra.storage.memory_store import MemoryConcurrencyError, MemorySidecarUnavailable
 
@@ -229,6 +234,36 @@ def _coerce_json_strings(args: dict[str, Any], param_annotations: dict[str, Any]
     return coerced
 
 
+def _slim_schema(node: Any) -> Any:
+    """Shrink a generated JSON schema for LLM tool clients without changing its contract.
+
+    Drops per-node ``title`` keys and collapses nullable ``anyOf`` unions
+    (Pydantic's ``X | None``) down to ``X``: the parameter stays optional via
+    its absence from ``required``, and the tool handler's Pydantic model is
+    untouched, so omitted or ``None`` arguments are still accepted. Purely
+    removes wire bytes that never guided the model.
+    """
+    if isinstance(node, dict):
+        # Strip Pydantic's scalar `title` annotation, but keep a property that is
+        # literally named `title` (its value is a schema dict, not a string).
+        slimmed = {
+            key: _slim_schema(value) for key, value in node.items() if not (key == "title" and isinstance(value, str))
+        }
+        branches = slimmed.get("anyOf")
+        if isinstance(branches, list):
+            non_null = [b for b in branches if not (isinstance(b, dict) and b.get("type") == "null")]
+            if len(non_null) == 1 and len(non_null) < len(branches):
+                collapsed = {key: value for key, value in slimmed.items() if key != "anyOf"}
+                collapsed.update(non_null[0])
+                if collapsed.get("default") is None:
+                    collapsed.pop("default", None)
+                return collapsed
+        return slimmed
+    if isinstance(node, list):
+        return [_slim_schema(item) for item in node]
+    return node
+
+
 def mcp_tool(
     name: str | None = None,
     description: str | None = None,
@@ -267,21 +302,34 @@ def mcp_tool(
         if fields:
             # Convert to format expected by create_model: (type, default/Field)
             field_defs = {k: (v[0], v[1]) for k, v in fields.items()}
+            known_params = frozenset(field_defs)
             ArgsModel = create_model(f"{func.__name__}_Args", **field_defs)  # type: ignore[call-overload]
             schema = ArgsModel.model_json_schema()
-            # Clean up Pydantic-isms for MCP clients
-            if "title" in schema:
-                del schema["title"]
-            # Pydantic emits a "title" per property — pure token noise for LLM clients.
-            for prop in schema.get("properties", {}).values():
-                if isinstance(prop, dict):
-                    prop.pop("title", None)
             # Niche params stay accepted by the handler but are not published to LLMs.
             for hidden in hidden_params:
                 schema.get("properties", {}).pop(hidden, None)
+            # Strip Pydantic schema noise (per-node `title`, nullable `anyOf`
+            # unions) that costs tokens on every request without guiding the
+            # LLM. The handler's model is unchanged, so omitted/None args are
+            # still accepted; this only shrinks the wire schema.
+            schema = _slim_schema(schema)
 
             @wraps(func)
             def handler_wrapper(args: dict[str, Any]) -> Any:
+                # Pydantic's default config silently drops unknown keys, so a
+                # typo'd argument (e.g. codemod `dryrun` for `dry_run`) would be
+                # discarded and the wrong default used while the call still
+                # "succeeds". Surface those keys instead of forbidding them, so
+                # callers that legitimately pass extras are not broken.
+                if isinstance(args, dict):
+                    unknown = [key for key in args if key not in known_params]
+                    if unknown:
+                        logger.warning(
+                            "tool %s received unknown argument(s) %s (ignored; known: %s)",
+                            tool_name,
+                            sorted(unknown),
+                            sorted(known_params),
+                        )
                 validated = ArgsModel.model_validate(_coerce_json_strings(args, param_annotations))
                 return func(**validated.model_dump())
 
@@ -407,8 +455,38 @@ _cached_claude_session_id: str = ""
 _cached_mcp_model: str = ""
 _STDOUT_LOCK = threading.Lock()
 _STATE_LOCK = threading.RLock()
+# Per-file edit locks: concurrent edit calls (the MCP dispatcher runs a thread
+# pool) that touch the same file must not interleave snapshot/apply/write, or one
+# write clobbers the other (lost update). _EDIT_PATH_LOCKS maps a resolved file
+# path to its Lock; _EDIT_PATH_LOCKS_GUARD serializes registry mutation only.
+_EDIT_PATH_LOCKS: dict[str, threading.Lock] = {}
+_EDIT_PATH_LOCKS_GUARD = threading.Lock()
 _DEFAULT_MCP_MAX_WORKERS = 16
+
+
+def _edit_path_locks(resolved_paths: list[Path]) -> list[threading.Lock]:
+    """Return locks for *resolved_paths*, ordered deterministically to avoid
+    deadlock when an edit batch touches several files at once."""
+    keys = sorted({str(p) for p in resolved_paths})
+    with _EDIT_PATH_LOCKS_GUARD:
+        return [_EDIT_PATH_LOCKS.setdefault(key, threading.Lock()) for key in keys]
+
+
 _MAX_MCP_MAX_WORKERS = 64
+
+# Single JSON-RPC frames larger than the host's stdout guard (~16 MiB in Claude
+# Code) make the client disconnect the entire MCP server, and it does not
+# auto-reconnect mid-session. Cap per-result text well under that, and keep a
+# hard frame ceiling as a backstop so no single message can ever trip the guard.
+_DEFAULT_MAX_RESULT_BYTES = 6 * 1024 * 1024
+_MAX_WIRE_BYTES = 14 * 1024 * 1024
+# Context-hygiene bound (chars). Distinct from the multi-MB wire guards above,
+# which only keep a JSON-RPC frame under the host's stdout limit: this caps a
+# single runaway tool result (huge log, minified file, unbounded grep) that
+# would otherwise flood the host prompt -- and the host re-pays for those bytes
+# on every later turn. ~64k tokens. Set ATELIER_MCP_COMPACT_RESULT_CHARS=0 to
+# disable.
+_DEFAULT_COMPACT_RESULT_CHARS = 256 * 1024
 
 
 def _service_backed_state() -> bool:
@@ -563,8 +641,7 @@ def _make_outcome_writer(led: RunLedger) -> Any:
 
         root = led._root
         if root is not None:
-            runs_dir = Path(root) / "runs"
-            return FileStateWriter(runs_dir / f"{led.session_id}_outcomes.json")
+            return FileStateWriter(outcomes_path(root, led.session_id))
     return None
 
 
@@ -971,53 +1048,88 @@ def _process_tool_accounting(name: str, args: dict[str, Any], result: Any, rid: 
         if not is_read and not is_code_intel and not _tool_accounting_pending_hint:
             return  # nothing to net or record, and no pending credit to age
 
-        state = _read_workspace_session_state()
-        # Epoch guard: a compaction resets both ledgers so credits cannot leak
-        # across context windows.
-        epoch = context_dedup.current_epoch()
-        if state.get("code_intel_epoch") != epoch:
-            state = code_intel_credit.reset_pending(state)
-            state = read_baseline_credit.reset(state)
-            state["code_intel_epoch"] = epoch
+        # An in-band error means the handler did not actually surface usable
+        # content, so its saving is illusory: don't credit it. Covers a
+        # top-level `error` and any per-file `error` in a batch read.
+        result_errored = isinstance(result, dict) and bool(result.get("error"))
 
-        if is_read:
-            if read_dedup_on and isinstance(result, dict):
-                mode = result.get("mode")
-                path = result.get("path") or args.get("path")
-                state, credit = read_baseline_credit.should_credit(state, path, mode)
-                if not credit:
-                    # Baseline already counted this session -> zero the saving so
-                    # neither the budget recorder nor the `saved` field re-counts it.
+        # The session_state read-modify-write (and the process-wide pending hint)
+        # must be serialized: atomic os.replace prevents a torn file but not a
+        # lost update when two tool calls interleave RMW. _STATE_LOCK is an
+        # RLock, so reentrant helper calls below are safe.
+        with _STATE_LOCK:
+            state = _read_workspace_session_state()
+            # Epoch guard: a compaction resets both ledgers so credits cannot leak
+            # across context windows.
+            epoch = context_dedup.current_epoch()
+            if state.get("code_intel_epoch") != epoch:
+                state = code_intel_credit.reset_pending(state)
+                state = read_baseline_credit.reset(state)
+                state["code_intel_epoch"] = epoch
+
+            if is_read:
+                if result_errored:
+                    # Errored read earned nothing -> zero its saving outright.
                     _tool_call_tokens_saved.value = 0
+                    if isinstance(result, dict):
+                        result.pop("tokens_saved", None)
+                elif read_dedup_on and isinstance(result, dict):
+                    files_out = result.get("files")
+                    if isinstance(files_out, list):
+                        # Batch read: de-dup each file independently and re-sum the
+                        # surviving per-file savings instead of bypassing dedup.
+                        surviving = 0
+                        for entry in files_out:
+                            if not isinstance(entry, dict) or entry.get("error"):
+                                continue
+                            state, credit = read_baseline_credit.should_credit(
+                                state, entry.get("path"), entry.get("mode")
+                            )
+                            if not credit:
+                                entry.pop("tokens_saved", None)
+                            else:
+                                surviving += int(entry.get("tokens_saved", 0) or 0)
+                        _tool_call_tokens_saved.value = surviving
+                    else:
+                        mode = result.get("mode")
+                        path = result.get("path") or args.get("path")
+                        state, credit = read_baseline_credit.should_credit(state, path, mode)
+                        if not credit:
+                            # Baseline already counted this session -> zero the
+                            # saving in BOTH the thread-local and the result so
+                            # neither the budget recorder nor the `saved` field
+                            # (which reads result['tokens_saved'] first) re-counts it.
+                            _tool_call_tokens_saved.value = 0
+                            result.pop("tokens_saved", None)
+                if code_intel_on and not result_errored:
+                    read_paths: list[str] = []
+                    single = args.get("path")
+                    if isinstance(single, str) and single:
+                        read_paths.append(single)
+                    files = args.get("files")
+                    if isinstance(files, list):
+                        for entry in files:
+                            if isinstance(entry, str) and entry:
+                                read_paths.append(entry)
+                            elif isinstance(entry, dict):
+                                ep = entry.get("path")
+                                if isinstance(ep, str) and ep:
+                                    read_paths.append(ep)
+                    state = code_intel_credit.consume_reads(state, read_paths)
+            elif is_code_intel and isinstance(result, dict) and not result_errored:
+                paths = code_intel_credit.extract_credited_paths(name, result)
+                state = code_intel_credit.record_pending(state, name, paths)
+
             if code_intel_on:
-                read_paths: list[str] = []
-                single = args.get("path")
-                if isinstance(single, str) and single:
-                    read_paths.append(single)
-                files = args.get("files")
-                if isinstance(files, list):
-                    for entry in files:
-                        if isinstance(entry, str) and entry:
-                            read_paths.append(entry)
-                        elif isinstance(entry, dict):
-                            ep = entry.get("path")
-                            if isinstance(ep, str) and ep:
-                                read_paths.append(ep)
-                state = code_intel_credit.consume_reads(state, read_paths)
-        elif is_code_intel and isinstance(result, dict):
-            paths = code_intel_credit.extract_credited_paths(name, result)
-            state = code_intel_credit.record_pending(state, name, paths)
+                threshold = int(os.environ.get("ATELIER_CODE_INTEL_CREDIT_AGE", "8"))
+                state, credits = code_intel_credit.tick_and_credit(state, threshold=threshold)
+                for credit_entry in credits:
+                    # Deferred credit for an EARLIER call -> sidecar only; never the
+                    # current response's `saved` field.
+                    _append_savings(credit_entry["tool"], 0, 1, rid=str(rid))
 
-        if code_intel_on:
-            threshold = int(os.environ.get("ATELIER_CODE_INTEL_CREDIT_AGE", "8"))
-            state, credits = code_intel_credit.tick_and_credit(state, threshold=threshold)
-            for credit_entry in credits:
-                # Deferred credit for an EARLIER call -> sidecar only; never the
-                # current response's `saved` field.
-                _append_savings(credit_entry["tool"], 0, 1, rid=str(rid))
-
-        _write_workspace_session_state(state)
-        _tool_accounting_pending_hint = bool(state.get("code_intel_pending"))
+            _write_workspace_session_state(state)
+            _tool_accounting_pending_hint = bool(state.get("code_intel_pending"))
     except Exception:
         logging.exception("Recovered from broad exception handler")
 
@@ -1442,14 +1554,34 @@ def _provider_for_model(model_id: str) -> str:
     return "unknown"
 
 
+_WORKFLOW_SPAWN_DEPTH_ENV = "ATELIER_WORKFLOW_SPAWN_DEPTH"
+_WORKFLOW_SPAWN_DEPTH_LIMIT = 8
+# Tools that themselves spawn sub-agents/workflows: invoking them from a
+# workflow step opens an unbounded recursive spawn path, so they are blocked.
+_WORKFLOW_SPAWNING_TOOLS = frozenset({"workflow"})
+
+
 def _default_workflow_tool_executor(step: Any, args: dict[str, Any], context_state: Any) -> Any:
-    if step.tool == "workflow":
-        raise ValueError("workflow cannot recursively invoke itself")
+    if step.tool in _WORKFLOW_SPAWNING_TOOLS:
+        raise ValueError(f"workflow steps cannot invoke spawning tool {step.tool!r} (unbounded recursion)")
     spec = TOOLS.get(step.tool)
     if spec is None:
         raise ValueError(f"unknown workflow tool: {step.tool}")
+    depth = int(os.environ.get(_WORKFLOW_SPAWN_DEPTH_ENV, "0") or "0")
+    if depth >= _WORKFLOW_SPAWN_DEPTH_LIMIT:
+        raise ValueError(
+            f"workflow spawn depth limit ({_WORKFLOW_SPAWN_DEPTH_LIMIT}) exceeded; aborting recursive tool execution"
+        )
     handler = cast(Callable[[dict[str, Any]], Any], spec["handler"])
-    return handler(args)
+    previous_depth = os.environ.get(_WORKFLOW_SPAWN_DEPTH_ENV)
+    os.environ[_WORKFLOW_SPAWN_DEPTH_ENV] = str(depth + 1)
+    try:
+        return handler(args)
+    finally:
+        if previous_depth is None:
+            os.environ.pop(_WORKFLOW_SPAWN_DEPTH_ENV, None)
+        else:
+            os.environ[_WORKFLOW_SPAWN_DEPTH_ENV] = previous_depth
 
 
 def _default_workflow_shell_executor(step: Any, command: str, forked_context: dict[str, Any]) -> Any:
@@ -1781,7 +1913,11 @@ def tool_workflow(
     if normalized_op == "inspect":
         return _inspect_workflow_runtime(session_state)
     if normalized_op not in {"pause", "resume", "stop"}:
-        raise ValueError(f"unsupported workflow op: {op}")
+        return {
+            "isError": True,
+            "status": "unsupported_op",
+            "message": f"unsupported workflow op: {op}",
+        }
     _require_active_workflow_runtime(session_state, run_id or "")
     if normalized_op == "resume":
         arguments: dict[str, Any] = {"resume": True, "plan_review": plan_review or {}}
@@ -1806,7 +1942,7 @@ def tool_workflow(
         )
         _write_workspace_session_state(session_state)
         return _coerce_workflow_runtime_status(session_state)
-    raise ValueError(f"unsupported workflow op: {op}")
+    raise AssertionError(f"unreachable workflow op: {op!r}")  # op is guaranteed pause/resume/stop above
 
 
 def _inspect_workflow_runtime(session_state: dict[str, Any]) -> dict[str, Any]:
@@ -2041,7 +2177,7 @@ def _get_host_session_sidecar_path() -> Path:
         except (OSError, json.JSONDecodeError):
             _log.debug("MCP sidecar session id read failed", exc_info=True)
     if sid:
-        return _atelier_root() / "session_stats" / "claude" / f"{sid}.jsonl"
+        return _atelier_root() / "sessions" / sid / "savings.jsonl"
 
     # 2. Other hosts — use their native session ID env var directly.
     _HOST_SESSION_ENVS: list[tuple[str, str]] = [
@@ -2054,17 +2190,17 @@ def _get_host_session_sidecar_path() -> Path:
         ("ANTIGRAVITY_SESSION_ID", "antigravity"),
         ("AGY_SESSION_ID", "antigravity"),
     ]
-    for env_var, host in _HOST_SESSION_ENVS:
+    for env_var, _host in _HOST_SESSION_ENVS:
         env_sid = os.environ.get(env_var, "").strip()
         if env_sid:
-            return _atelier_root() / "session_stats" / host / f"{env_sid}.jsonl"
+            return _atelier_root() / "sessions" / env_sid / "savings.jsonl"
 
     return _workspace_savings_path()
 
 
 def _context_savings_path(session_id: str) -> Path:
     """Per-session context-compression savings file, alongside the run ledger."""
-    return _atelier_root() / "runs" / f"{session_id}_context_savings.jsonl"
+    return context_savings_path(_atelier_root(), session_id)
 
 
 def _current_context_state() -> tuple[int, str]:
@@ -2145,8 +2281,8 @@ def _price_avoided_calls_usd(model: str, calls_saved: int, ctx_tokens: int) -> f
 def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: str = "") -> None:
     """Write per-call savings to two places:
 
-    1. session_stats/<host>/<id>.jsonl  — host session UUID, read by statusline/stop hook
-    2. runs/<ledger_session_id>_context_savings.jsonl — per-session, read by session report
+    1. sessions/<id>/savings.jsonl  — per-session, read by statusline/stop hook
+    2. sessions/<id>/context_savings.jsonl — per-session, read by session report
     """
     if tokens_saved <= 0 and calls_saved <= 0:
         return
@@ -2166,7 +2302,7 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
         entry: dict[str, Any] = {
             "tool": tool_name,
             # Field names match the in-response `saved: {tokens, calls}` shape.
-            # The file lives under session_stats/<host>/ so "savings" is implicit
+            # The file lives under sessions/<id>/ so "savings" is implicit
             # from context — no need to suffix the keys.
             "tokens": int(tokens_saved),
             "calls": int(calls_saved),
@@ -2201,7 +2337,7 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
             event["rid"] = rid
         # Key the file by the Claude host session UUID (workspace bridge) when
         # available so that session_report.py can find savings via
-        # runs/<uuid>_context_savings.jsonl — matching the UUID-keyed run ledger
+        # sessions/<uuid>/context_savings.jsonl — matching the UUID-keyed run ledger
         # files. Falls back to the MCP ledger hex session_id for non-Claude hosts.
         host_sid = _claude_session_id()
         cpath = _context_savings_path(host_sid or led.session_id)
@@ -2217,6 +2353,70 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
 def _append_workspace_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: str = "") -> None:
     """Backward-compat shim — delegates to _append_savings."""
     _append_savings(tool_name, tokens_saved, calls_saved, rid=rid)
+
+
+def _mcp_debug_enabled() -> bool:
+    return os.environ.get("ATELIER_MCP_DEBUG", "0") not in ("0", "", "false", "no")
+
+
+def _mcp_debug_path() -> Path:
+    return _atelier_root() / "mcp_debug.jsonl"
+
+
+_DEBUG_LARGE_KEYS = frozenset({"new_string", "old_string", "content", "prompt", "task", "query"})
+
+
+def _scrub_args_for_debug(args: dict[str, Any]) -> dict[str, Any]:
+    """Replace large string values with a byte-count placeholder.
+
+    Prevents giant file contents or prompts from bloating the debug log.
+    Values longer than 300 chars (or matching known large-value keys) are
+    replaced with ``<N chars>``.
+    """
+    result: dict[str, Any] = {}
+    for k, v in args.items():
+        if isinstance(v, str) and (k in _DEBUG_LARGE_KEYS or len(v) > 300):
+            result[k] = f"<{len(v)} chars>"
+        else:
+            result[k] = v
+    return result
+
+
+def _append_mcp_debug_event(
+    *,
+    tool: str,
+    args: dict[str, Any],
+    duration_ms: int,
+    response_size: int,
+    status: str,
+    error: str | None = None,
+    session_id: str = "",
+) -> None:
+    """Write a per-call debug record to ~/.atelier/mcp_debug.jsonl.
+
+    Only active when ATELIER_MCP_DEBUG=1. Fail-open: errors are swallowed
+    so the MCP server is never disrupted by the debug log writer.
+    """
+    if not _mcp_debug_enabled():
+        return
+    try:
+        entry: dict[str, Any] = {
+            "ts": time.time(),
+            "tool": tool,
+            "args": _scrub_args_for_debug(args),
+            "duration_ms": duration_ms,
+            "response_size_bytes": response_size,
+            "status": status,
+            "session_id": session_id,
+        }
+        if error:
+            entry["error"] = error
+        path = _mcp_debug_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, sort_keys=True) + "\n")
+    except Exception:  # noqa: BLE001
+        pass  # never disrupt the server
 
 
 def _smart_state_path() -> Path:
@@ -2239,7 +2439,19 @@ def _write_smart_state(state: dict[str, Any]) -> None:
     try:
         path = _smart_state_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        # Atomic write: a torn smart_state.json would corrupt cumulative
+        # counters, so stage to a temp file and os.replace into place.
+        tmp_path: str | None = None
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=path.parent,
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8",
+        ) as handle:
+            json.dump(state, handle, indent=2)
+            tmp_path = handle.name
+        Path(tmp_path).replace(path)
     except Exception:
         logging.exception("Recovered from broad exception handler")
         logger.warning("Suppressed exception while writing smart_state", exc_info=True)
@@ -2279,14 +2491,17 @@ def _extract_tokens_saved(result: dict[str, Any]) -> int:
 def _record_smart_state_savings(tokens_saved: int, calls_avoided: int) -> None:
     if tokens_saved <= 0 and calls_avoided <= 0:
         return
-    state = _read_smart_state()
-    savings = state.get("savings")
-    if not isinstance(savings, dict):
-        savings = {"calls_avoided": 0, "tokens_saved": 0}
-    savings["calls_avoided"] = int(savings.get("calls_avoided", 0) or 0) + max(0, calls_avoided)
-    savings["tokens_saved"] = int(savings.get("tokens_saved", 0) or 0) + max(0, tokens_saved)
-    state["savings"] = savings
-    _write_smart_state(state)
+    # Serialize the read-modify-write so concurrent tool calls can't lose an
+    # update to the cumulative counters. _STATE_LOCK is an RLock.
+    with _STATE_LOCK:
+        state = _read_smart_state()
+        savings = state.get("savings")
+        if not isinstance(savings, dict):
+            savings = {"calls_avoided": 0, "tokens_saved": 0}
+        savings["calls_avoided"] = int(savings.get("calls_avoided", 0) or 0) + max(0, calls_avoided)
+        savings["tokens_saved"] = int(savings.get("tokens_saved", 0) or 0) + max(0, tokens_saved)
+        state["savings"] = savings
+        _write_smart_state(state)
 
 
 class _NoOpContextBudgetRecorder:
@@ -2443,6 +2658,10 @@ def _workspace_root() -> Path:
 # budget recorder without polluting the LLM-facing response dict.
 _tool_call_tokens_saved: threading.local = threading.local()
 _tool_call_rendered_text: threading.local = threading.local()
+# Raw structured result of the last tool call, stashed per-call for the in-process
+# `atelier tools call ... --json` CLI to recover the full dict. Never serialized
+# into the host-facing MCP response, so the host's main model only sees `content`.
+_tool_call_raw_result: threading.local = threading.local()
 
 
 def _bootstrap_context_status(root: Path) -> dict[str, Any]:
@@ -2533,6 +2752,8 @@ def tool_get_context(
             budget_tokens=token_budget or 4000,
         )
         return cast(dict[str, Any], _scoped_context_capability(".").pull(subtask).to_dict())
+    if mode != "procedures":
+        raise ValueError(f"unknown mode: {mode!r}")
     if errors is None:
         errors = []
     if tools is None:
@@ -2665,49 +2886,6 @@ def tool_get_context(
         _log.debug("prefix-cache planning failed", exc_info=True)
 
     return result
-
-
-_TASK_TYPE_TO_ADVISOR_TOOL: dict[str, str] = {
-    "debug": "shell",
-    "feature": "edit",
-    "refactor": "edit",
-    "test": "context",
-    "explain": "search",
-    "review": "read",
-    "docs": "compact",
-    "ops": "shell",
-}
-
-_TIER_PRIORITY: dict[str, int] = {"cheap": 0, "medium": 1, "high": 2, "expensive": 2}
-
-
-def _get_available_models() -> list[dict[str, Any]]:
-    """Return models the current session can access, ordered cheapest-first."""
-    from atelier.core.capabilities.counterfactual.pricing import load_pricing_table
-    from atelier.core.capabilities.cross_vendor_routing.configuration import (
-        detect_configured_vendors,
-    )
-
-    configured = set(detect_configured_vendors())
-    return [
-        {"vendor": c.vendor, "model_id": c.model_id, "tier": c.tier}
-        for c in load_pricing_table().candidates
-        if c.vendor in configured
-    ]
-
-
-def _compute_route_tier_for_response(tier: str, led: Any) -> str:
-    """Map raw tier string to semantic RouteTier string for the route response."""
-    from atelier.core.capabilities.model_routing.router import _detect_local_slm
-
-    escalating = any(e.payload.get("escalate") for e in led.events if e.kind == "watchdog_alert")
-    if escalating:
-        return "human_review"
-    if tier == "expensive":
-        return "frontier_llm"
-    if tier == "cheap" and _detect_local_slm():
-        return "local_slm"
-    return "cheap_llm"
 
 
 def _prefix_cache_diagnostics_from_ledger(led: Any) -> dict[str, Any]:
@@ -2884,157 +3062,6 @@ def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
             }
 
     return None  # No supported CLI available
-
-
-@mcp_tool(
-    name="route",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "task": {
-                "type": "string",
-                "description": "Describe what you are about to do so the router can pick the right model.",
-            },
-            "task_type": {
-                "type": "string",
-                "enum": [
-                    "debug",
-                    "feature",
-                    "refactor",
-                    "test",
-                    "explain",
-                    "review",
-                    "docs",
-                    "ops",
-                ],
-                "default": "feature",
-                "description": "Task category — used to calibrate expected model complexity.",
-            },
-            "budget": {
-                "type": "string",
-                "enum": ["cheap", "balanced", "best"],
-                "default": "balanced",
-                "description": "Cost preference: cheap=lowest cost, balanced=smart default, best=highest quality.",
-            },
-            "mode": {
-                "type": "string",
-                "enum": ["auto", "explicit"],
-                "default": "auto",
-                "description": "Owned route selection mode.",
-            },
-            "provider": {
-                "type": "string",
-                "description": "Explicit provider/vendor for owned execution when mode=explicit.",
-            },
-            "model": {
-                "type": "string",
-                "description": "Explicit model for owned execution when mode=explicit.",
-            },
-            "runner": {
-                "type": "string",
-                "description": "Optional runner profile override for the selected provider.",
-            },
-        },
-        "required": [],
-    },
-)
-def tool_route(
-    task: str = "",
-    task_type: Literal["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"] = "feature",
-    budget: Literal["cheap", "balanced", "best"] = "balanced",
-    mode: Literal["auto", "explicit"] = "auto",
-    provider: str = "",
-    model: str = "",
-    runner: str = "",
-) -> dict[str, Any]:
-    """Pick the provider/model for an upcoming Atelier-owned subcall.
-
-    `mode="auto"` lets policy choose from task class, budget, provider health, and cache warmth;
-    `mode="explicit"` (or setting `provider`/`model`/`runner`) pins a route for control or benchmark isolation.
-
-    Returns: {model, tier, route_tier, rationale} — echoes the resolved provider/model when explicit.
-    """
-    led = _get_ledger()
-
-    led.record_tool_call(
-        "route",
-        {
-            "task_type": task_type,
-            "budget": budget,
-            "mode": mode,
-            "provider": provider,
-            "model": model,
-        },
-    )
-    available = _get_available_models()
-
-    # Try the owned execution selector first so the route is executable, not advisory-only.
-    chosen_model = ""
-    tier = ""
-    rationale = ""
-    payload: dict[str, Any] = {}
-    explicit_requested = mode == "explicit" or any(value.strip() for value in (provider, model, runner))
-    try:
-        from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
-        from atelier.core.capabilities.cross_vendor_routing.router import NoFeasibleRouteError
-
-        advisor_tool = _TASK_TYPE_TO_ADVISOR_TOOL.get(task_type, "edit")
-        decision = _select_owned_execution_route(
-            tool_name=advisor_tool,
-            task_text=task,
-            mode=mode,
-            provider=provider,
-            model=model,
-            runner=runner,
-            session_state=_model_recommendation_state(led, {}),
-        )
-        payload = decision.to_dict()
-        chosen_model = decision.model
-        tier = decision.tier
-        rationale = decision.reason
-    except (RouteConfigError, NoFeasibleRouteError):
-        if explicit_requested:
-            raise
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        _log.debug("owned route selection failed", exc_info=True)
-
-    # Apply budget override on top of advisor recommendation
-    if budget == "cheap" and available:
-        cheap_models = [m for m in available if m["tier"] == "cheap"]
-        if cheap_models:
-            chosen_model = cheap_models[0]["model_id"]
-            tier = "cheap"
-            rationale = "cheapest available model selected per budget=cheap"
-    elif budget == "best" and available:
-        expensive_models = sorted(
-            available,
-            key=lambda m: _TIER_PRIORITY.get(m["tier"], 0),
-            reverse=True,
-        )
-        if expensive_models:
-            chosen_model = expensive_models[0]["model_id"]
-            tier = expensive_models[0]["tier"]
-            rationale = "highest-capability available model selected per budget=best"
-
-    # Final fallback: pick cheapest available model
-    if not chosen_model and available:
-        chosen_model = available[0]["model_id"]
-        tier = available[0]["tier"]
-        rationale = "fallback: cheapest configured model"
-
-    # Emit route_tier using the semantic 5-tier model
-    route_tier = _compute_route_tier_for_response(tier, led)
-
-    payload.update(
-        {
-            "model": chosen_model,
-            "tier": tier,
-            "route_tier": payload.get("route_tier", route_tier),
-            "rationale": rationale,
-        }
-    )
-    return payload
 
 
 @mcp_tool(name="rescue")
@@ -3647,7 +3674,7 @@ def _memory_recall(
     since: str | None = None,
 ) -> dict[str, Any]:
     """Recall relevant archival memory passages."""
-    return (
+    result = (
         _memory_service()
         .recall(
             agent_id=agent_id,
@@ -3658,6 +3685,14 @@ def _memory_recall(
         )
         .model_dump(mode="json")
     )
+    if not result.get("passages"):
+        # Helpful state hint instead of a bare empty result, so the model knows
+        # memory is working and how to seed it.
+        result["hint"] = (
+            "No matching memories yet — memory accrues as you work. Store durable facts with "
+            "memory(op=store_fact); past-session recall improves as sessions are indexed."
+        )
+    return result
 
 
 def _memory_service() -> MemoryService:
@@ -3919,6 +3954,99 @@ def _render_search_md(result: dict[str, Any]) -> str | None:
     return "\n".join(lines)
 
 
+def _render_verify_md(result: dict[str, Any]) -> str | None:
+    """Compact rubric-gate rendering: one line per check instead of a list of dicts
+    that repeats name/status/detail keys (detail is empty on every passing check).
+    """
+    outcomes = result.get("outcomes")
+    if not isinstance(outcomes, list):
+        return None
+    lines = [f"### verify rubric={result.get('rubric_id') or '?'} status={result.get('status') or '?'}"]
+    for outcome in outcomes:
+        if not isinstance(outcome, dict):
+            continue
+        status = str(outcome.get("status") or "?")
+        check_name = str(outcome.get("name") or "?")
+        detail = str(outcome.get("detail") or "").strip()
+        lines.append(f"- {status} {check_name}" + (f": {detail}" if detail else ""))
+    escalations = result.get("escalations")
+    if isinstance(escalations, list):
+        for escalation in escalations:
+            lines.append(f"- escalation: {escalation}")
+    return "\n".join(lines)
+
+
+def _render_sql_md(result: dict[str, Any]) -> str | None:
+    """Compact rendering for sql introspection (schema/table/search/relationships/lint).
+
+    Collapses per-column dicts ({cid,name,type,notnull,pk}) -- which repeat their keys
+    on every column -- into one line per column. The `query` action is already columnar
+    (positional rows + a single header), so it is left as JSON (returns None).
+    """
+
+    def _cols(columns: Any) -> list[str]:
+        out: list[str] = []
+        if isinstance(columns, list):
+            for col in columns:
+                if not isinstance(col, dict):
+                    continue
+                parts = [str(col.get("name") or "?"), str(col.get("type") or "")]
+                if col.get("pk"):
+                    parts.append("pk")
+                if col.get("notnull"):
+                    parts.append("notnull")
+                out.append("  - " + " ".join(p for p in parts if p))
+        return out
+
+    def _fks(fks: Any) -> list[str]:
+        out: list[str] = []
+        if isinstance(fks, list):
+            for fk in fks:
+                if isinstance(fk, dict):
+                    out.append(
+                        f"  fk: {fk.get('from_column', '?')} -> {fk.get('table', '?')}.{fk.get('to_column', '?')}"
+                    )
+        return out
+
+    if "results" in result:  # query: already columnar, leave as JSON
+        return None
+    if isinstance(result.get("schema"), dict):
+        schema = result["schema"]
+        lines = [f"### sql schema ({result.get('table_count', len(schema))} tables)"]
+        for table, info in schema.items():
+            lines.append(f"- {table}")
+            if isinstance(info, dict):
+                lines.extend(_cols(info.get("columns")))
+                lines.extend(_fks(info.get("foreign_keys")))
+        return "\n".join(lines)
+    if isinstance(result.get("matches"), list):
+        lines = ["### sql search"]
+        for match in result["matches"]:
+            if not isinstance(match, dict):
+                continue
+            lines.append(f"- {match.get('table', '?')}")
+            lines.extend(_cols(match.get("columns")))
+            lines.extend(_fks(match.get("foreign_keys")))
+        return "\n".join(lines)
+    if isinstance(result.get("relationships"), list):
+        lines = ["### sql relationships"]
+        for rel in result["relationships"]:
+            if isinstance(rel, dict):
+                lines.append(f"- {rel.get('from', '?')} -> {rel.get('to', '?')}")
+        return "\n".join(lines)
+    if isinstance(result.get("columns"), list) and "table" in result:
+        lines = [f"### sql table {result.get('table', '?')}"]
+        lines.extend(_cols(result.get("columns")))
+        lines.extend(_fks(result.get("foreign_keys")))
+        return "\n".join(lines)
+    if "ok" in result:  # lint
+        return f"### sql lint: {'ok' if result.get('ok') else (result.get('message') or 'invalid')}"
+    if isinstance(result.get("tables"), list):
+        tables = result["tables"]
+        return "\n".join([f"### sql tables ({result.get('table_count', len(tables))})", *(f"- {t}" for t in tables)])
+    return None
+
+
 def render_tool_result_text(name: str, result: Any) -> str | None:
     """Best-effort compact text rendering of a tool result for model context.
 
@@ -3964,6 +4092,12 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
     elif name == "web_fetch":
         with contextlib.suppress(Exception):
             text = str(payload.get("content") or "")
+    elif name == "verify":
+        with contextlib.suppress(Exception):
+            text = _render_verify_md(payload)
+    elif name == "sql":
+        with contextlib.suppress(Exception):
+            text = _render_sql_md(payload)
     return text or None
 
 
@@ -3978,7 +4112,10 @@ def _read_dedup_resource(args: dict[str, Any]) -> str:
     if not path or args.get("files") is not None:
         return ""
     range_spec = str(args.get("range") or "")
-    return f"read:{path}:{range_spec}:{int(bool(args.get('expand')))}"
+    max_lines = args.get("max_lines")
+    max_lines_spec = "" if max_lines is None else str(max_lines)
+    projection_spec = str(args.get("projection_kind") or "")
+    return f"read:{path}:{range_spec}:{max_lines_spec}:{projection_spec}:{int(bool(args.get('expand')))}"
 
 
 _READ_SUGGEST_PRUNE_DIRS = frozenset(
@@ -4025,6 +4162,26 @@ def _suggest_paths_for_missing(workspace_root: Path, missing: str, *, limit: int
     return hits
 
 
+# A trailing "#start-end" / "#line" suffix on a read path is parsed as a line
+# range (parity with the edit tool's `file_path#start-end` form and with the
+# range specs models naturally emit, e.g. "store.py#60-100"). Optional "L"
+# prefixes mirror the read tool's own range syntax. A non-numeric "#..." tail is
+# left intact so genuine '#' filenames still resolve.
+_READ_RANGE_SUFFIX = re.compile(r"#(L?\d+(?:[-,:]L?\d+)?)$", re.IGNORECASE)
+
+
+def _split_read_range_suffix(raw_path: str) -> tuple[str, str | None]:
+    """Split a trailing line-range suffix off a read path.
+
+    Returns (path, range_spec) where range_spec is in the read tool's range
+    syntax (e.g. "60-100"), or (raw_path, None) when there is no numeric suffix.
+    """
+    match = _READ_RANGE_SUFFIX.search(raw_path)
+    if match is None:
+        return raw_path, None
+    return raw_path[: match.start()], match.group(1)
+
+
 def _smart_read_single(
     path: str,
     range: str | None = None,
@@ -4037,6 +4194,14 @@ def _smart_read_single(
     target_path = path
     if not target_path:
         raise ValueError("provide path")
+    # Support a trailing "#start-end" / "#line" line-range suffix on the path
+    # itself (e.g. "store.py#60-100"); an explicit range= argument wins.
+    target_path, suffix_range = _split_read_range_suffix(target_path)
+    if range is None and suffix_range is not None:
+        range = suffix_range
+    # Enforce workspace containment up front so the summary branch below (which
+    # reads via the core runtime, bypassing _workspace_path) is covered too.
+    _workspace_path(target_path)
     if max_lines is not None and range is None and not expand:
         payload = cast(dict[str, Any], _core_runtime().smart_read(target_path, max_lines=max_lines))
         payload.setdefault("mode", "summary")
@@ -4068,6 +4233,35 @@ def _smart_read_single(
                 "or `atelier_grep` with `file_glob_patterns` to list non-code files."
             ),
         }
+
+    # Source-side guard: an exact full read (expand) of a very large file would
+    # load the whole file into memory and serialize into one oversized JSON-RPC
+    # frame, which disconnects the host. Read only a bounded prefix from disk so
+    # gigabytes are never materialized. Range reads are inherently bounded, and
+    # non-expand reads of code files become cheap outlines, so neither is touched.
+    if expand and range is None:
+        result_cap = _max_result_bytes()
+        try:
+            total_bytes = target.stat().st_size
+        except OSError:
+            total_bytes = 0
+        if total_bytes > result_cap:
+            notice = (
+                f"\n\n[atelier: result truncated — file is {total_bytes} bytes; read the "
+                f"first {result_cap} bytes only to keep the MCP connection alive. "
+                'Re-request a narrower slice, e.g. read with range="L1-L400".]'
+            )
+            prefix_bytes = max(0, result_cap - len(notice.encode("utf-8")) - 1024)
+            with open(target, "rb") as fh:
+                head = fh.read(prefix_bytes)
+            return {
+                "mode": "full",
+                "content": head.decode("utf-8", "ignore") + notice,
+                "path": str(target),
+                "projection": SourceProjection.exact().to_dict(),
+                "truncated": True,
+                "bytes_total": total_bytes,
+            }
 
     cap = SemanticFileMemoryCapability(_atelier_root())
     try:
@@ -4110,12 +4304,12 @@ def _smart_read_single(
         force_compact = projection_kind == "compact"
         minify_lang = language_for_minify(str(target))
         if minify_lang is not None and not force_compact:
-            minified = build_minified_projection(content, minify_lang, include_mapping=include_meta, path=str(target))
+            minified = build_minified_projection(content, minify_lang, include_mapping=True, path=str(target))
             if minified.applied:
                 projection_result = minified
                 projection = SourceProjection.minified()
         if projection_result is None:
-            compact = build_compact_projection(content, language, include_mapping=include_meta, path=str(target))
+            compact = build_compact_projection(content, language, include_mapping=True, path=str(target))
             if compact.applied:
                 projection_result = compact
                 projection = SourceProjection.compact()
@@ -4140,13 +4334,17 @@ def _smart_read_single(
         "projection": projection.to_dict(),
     }
     ts = int(payload.get("tokens_saved", 0) or 0) + projection_saved
+    # Always carry the projection mapping when a projection replaced the body, so
+    # downstream edits can map projected coordinates back to source even without
+    # include_meta (the top-level mode still reads "full"; the mapping is the
+    # authoritative signal that the body is transformed).
+    if projection_result is not None and projection_result.mapping is not None:
+        response["projection_mapping"] = projection_result.mapping.to_dict()
     if include_meta:
         response["cache_hit"] = bool(payload.get("cache_hit", False))
         response["tokens_saved"] = ts
         if projection_delta is not None:
             response["projection_delta"] = projection_delta
-        if projection_result is not None and projection_result.mapping is not None:
-            response["projection_mapping"] = projection_result.mapping.to_dict()
     # Always save real savings via thread-local for the budget recorder
     if ts > 0:
         _tool_call_tokens_saved.value = ts
@@ -4159,7 +4357,8 @@ def tool_smart_read(
         str,
         Field(
             description=(
-                "Workspace-relative file path to read. "
+                "Workspace-relative file path to read. May carry a '#start-end' / '#line' "
+                "line-range suffix, e.g. 'store.py#60-100'. "
                 "For multiple independent files use `files` instead — one round trip for N reads."
             ),
         ),
@@ -4177,6 +4376,8 @@ def tool_smart_read(
             description=(
                 "Batch read: ['path', ...] or [{path, range?, expand?, max_lines?}, ...] "
                 "(plain strings and dict specs may be mixed). "
+                "A plain string may carry a '#start-end' / '#line' suffix, e.g. "
+                "'store.py#60-100', read as that line range. "
                 "Returns {files: [{path, ...single-read result...}, ...]}. "
                 "Use this whenever reading 2+ independent files — it costs one round trip "
                 "vs one per file, cutting cached-context re-read tax by (N-1) turns."
@@ -4200,10 +4401,16 @@ def tool_smart_read(
     BATCH: when reading 2+ independent files, use files=[{path, range?}, ...]
     in a single call rather than separate calls — each extra turn re-reads the
     entire conversation history at ~$0.49/turn on large context windows.
+
+    Cross-tool: after editing a file via `edit`, don't re-read it — the edit
+    response already confirms the change. When you don't yet know which file
+    holds something, use `grep` with output_mode="file_paths_with_content" to
+    discover and read in one step instead of grep-then-read.
     """
     # Batch mode: process each file spec and return aggregated results.
     if files is not None:
         results = []
+        batch_saved = 0
         for spec in files:
             if isinstance(spec, str):
                 spec = {"path": spec}
@@ -4211,6 +4418,12 @@ def tool_smart_read(
             if not spec_path:
                 results.append({"error": "path is required in each files entry"})
                 continue
+            # _smart_read_single writes each file's saving to the thread-local
+            # (last write wins). Capture it per file, stamp it on the entry so
+            # per-entry baseline de-dup can zero an already-credited file, and
+            # accumulate the batch total instead of letting the last file clobber
+            # the rest. Reset between iterations so a stale value can't bleed in.
+            _tool_call_tokens_saved.value = 0
             try:
                 single = _smart_read_single(
                     path=spec_path,
@@ -4220,9 +4433,14 @@ def tool_smart_read(
                     include_meta=include_meta,
                     projection_kind=spec.get("projection_kind", projection_kind),
                 )
+                entry_saved = int(getattr(_tool_call_tokens_saved, "value", 0) or 0)
+                if entry_saved > 0:
+                    single["tokens_saved"] = entry_saved
+                    batch_saved += entry_saved
                 results.append(single)
             except Exception as exc:  # noqa: BLE001
                 results.append({"path": spec_path, "error": str(exc)})
+        _tool_call_tokens_saved.value = batch_saved
         return {"files": results}
 
     return _smart_read_single(
@@ -4678,6 +4896,13 @@ def tool_smart_edit(
       - insert_after:  {path, op: "insert_after", anchor, new_string}
       - replace_range: {path, op: "replace_range", line_start, line_end, new_string}
 
+    Maximise work per call: ``edits`` is the batching surface — fill it with every
+    change in one call (ten edits to one file, or one edit each to ten files). One
+    call with N edit objects beats N calls in both latency and cost. Prefer several
+    small edits over one huge ``new_string``, and identify all target files up-front
+    from your initial read. After editing, don't re-read the file — the response
+    below already confirms the change.
+
     Returns ordinary successful hunks as {applied: ["path:line,start-end", ...]};
     failures and edits carrying special metadata remain structured.
     """
@@ -4686,98 +4911,106 @@ def tool_smart_edit(
     family = _validate_edit_descriptor_families(edits)
 
     paths = _collect_touched_paths(edits, repo_root=repo_root)
-    snapshots = _snapshot_paths(paths)
-    contract_paths = _existing_test_contract_paths(snapshots)
-    evidence = (contract_change_evidence or "").strip()
-    if contract_paths and (not allow_test_contract_change or len(evidence) < 20):
-        return {
-            "applied": [],
-            "failed": [
-                {
-                    "paths": contract_paths,
-                    "error": (
-                        "Existing test contract edit requires explicit review before writing. Reconsider the production "
-                        "change first. If the contract truly must change, retry with allow_test_contract_change=true "
-                        "and contract_change_evidence citing the user request or repository source of truth."
-                    ),
-                }
-            ],
-            "rolled_back": True,
-            "writes": 0,
-            "contract_review": {"required": True, "paths": contract_paths},
-        }
-
-    if family == "rich":
-        from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
-
-        result = apply_rich_edits(edits, atomic=atomic, repo_root=repo_root)
-    else:
-        from atelier.core.capabilities.tool_supervision.batch_edit import apply_batch_edit
-
-        result = apply_batch_edit(edits, atomic=atomic, repo_root=repo_root)
-
-    if not result.get("failed") and not result.get("rolled_back"):
-        if post_edit_hooks:
-            from atelier.core.capabilities.tool_supervision.post_edit_hooks import (
-                HookConfig,
-                run_post_edit_hooks,
-            )
-
-            try:
-                hook_result = run_post_edit_hooks(
-                    [str(p) for p in paths.values()],
-                    repo_root=repo_root,
-                    config=HookConfig(total_timeout_s=post_edit_timeout_ms / 1000),
-                )
-                result["diagnostics"] = [
+    # Serialize the snapshot/apply/write critical section per touched file so two
+    # concurrent edit calls cannot read-modify-write the same file and lose one
+    # update. Locks are ordered by path (inside _edit_path_locks) to avoid
+    # deadlock and release on every return below via the ExitStack.
+    with contextlib.ExitStack() as _edit_locks:
+        for _lock in _edit_path_locks(list(paths.values())):
+            _edit_locks.enter_context(_lock)
+        snapshots = _snapshot_paths(paths)
+        contract_paths = _existing_test_contract_paths(snapshots)
+        evidence = (contract_change_evidence or "").strip()
+        if contract_paths and (not allow_test_contract_change or len(evidence) < 20):
+            return {
+                "applied": [],
+                "failed": [
                     {
-                        "file": d.file,
-                        "line": d.line,
-                        "col": d.col,
-                        "severity": d.severity,
-                        "message": d.message,
-                        "code": d.code,
-                        "source": d.source,
+                        "paths": contract_paths,
+                        "error": (
+                            "Existing test contract edit requires explicit review before writing. Reconsider the "
+                            "production change first. If the contract truly must change, retry with "
+                            "allow_test_contract_change=true and contract_change_evidence citing the user request or "
+                            "repository source of truth."
+                        ),
                     }
-                    for d in hook_result.diagnostics
-                ]
-                result["hooks"] = {
-                    "ran": hook_result.steps_ran,
-                    "skipped": hook_result.steps_skipped,
-                    "failed_steps": hook_result.steps_failed,
-                    "total_ms": hook_result.total_ms,
-                }
-            except Exception as hook_exc:
-                logging.exception("Recovered from broad exception handler")
-                result["hooks"] = {"error": str(hook_exc)}
-        # WS1 edit-loop correctness gate: optional executing parse + scoped
-        # mypy/pytest verification with rollback. Opt-in via the `verify` arg or
-        # the ATELIER_EDIT_VERIFY env var; fully fail-open.
-        if _edit_verify_enabled(verify):
-            _apply_edit_verify_gate(
-                result,
-                touched=list(paths.values()),
-                snapshots=snapshots,
-                checks=verify_checks,
-                rollback=verify_rollback,
-                timeout_ms=verify_timeout_ms,
-                repo_root=repo_root,
-            )
-        # Diffs are recorded for telemetry and echoed inline so the caller
-        # sees exactly what changed without a follow-up read.
-        diffs = _compute_and_record_diffs(snapshots)
-        if diffs:
-            result["diff"] = diffs
-        # match_mode is only informative when it is not the default exact match.
-        for entry in result.get("applied") or []:
-            if isinstance(entry, dict) and entry.get("match_mode") == "exact":
-                entry.pop("match_mode", None)
-        if contract_paths:
-            result["contract_review"] = {
-                "required": True,
-                "paths": contract_paths,
-                "evidence": evidence,
+                ],
+                "rolled_back": True,
+                "writes": 0,
+                "contract_review": {"required": True, "paths": contract_paths},
             }
+
+        if family == "rich":
+            from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
+
+            result = apply_rich_edits(edits, atomic=atomic, repo_root=repo_root)
+        else:
+            from atelier.core.capabilities.tool_supervision.batch_edit import apply_batch_edit
+
+            result = apply_batch_edit(edits, atomic=atomic, repo_root=repo_root)
+
+        if not result.get("failed") and not result.get("rolled_back"):
+            if post_edit_hooks:
+                from atelier.core.capabilities.tool_supervision.post_edit_hooks import (
+                    HookConfig,
+                    run_post_edit_hooks,
+                )
+
+                try:
+                    hook_result = run_post_edit_hooks(
+                        [str(p) for p in paths.values()],
+                        repo_root=repo_root,
+                        config=HookConfig(total_timeout_s=post_edit_timeout_ms / 1000),
+                    )
+                    result["diagnostics"] = [
+                        {
+                            "file": d.file,
+                            "line": d.line,
+                            "col": d.col,
+                            "severity": d.severity,
+                            "message": d.message,
+                            "code": d.code,
+                            "source": d.source,
+                        }
+                        for d in hook_result.diagnostics
+                    ]
+                    result["hooks"] = {
+                        "ran": hook_result.steps_ran,
+                        "skipped": hook_result.steps_skipped,
+                        "failed_steps": hook_result.steps_failed,
+                        "total_ms": hook_result.total_ms,
+                    }
+                except Exception as hook_exc:
+                    logging.exception("Recovered from broad exception handler")
+                    result["hooks"] = {"error": str(hook_exc)}
+            # WS1 edit-loop correctness gate: optional executing parse + scoped
+            # mypy/pytest verification with rollback. Opt-in via the `verify` arg or
+            # the ATELIER_EDIT_VERIFY env var; fully fail-open.
+            if _edit_verify_enabled(verify):
+                _apply_edit_verify_gate(
+                    result,
+                    touched=list(paths.values()),
+                    snapshots=snapshots,
+                    checks=verify_checks,
+                    rollback=verify_rollback,
+                    timeout_ms=verify_timeout_ms,
+                    repo_root=repo_root,
+                )
+            # Diffs are recorded for telemetry and echoed inline so the caller
+            # sees exactly what changed without a follow-up read.
+            diffs = _compute_and_record_diffs(snapshots)
+            if diffs:
+                result["diff"] = diffs
+            # match_mode is only informative when it is not the default exact match.
+            for entry in result.get("applied") or []:
+                if isinstance(entry, dict) and entry.get("match_mode") == "exact":
+                    entry.pop("match_mode", None)
+            if contract_paths:
+                result["contract_review"] = {
+                    "required": True,
+                    "paths": contract_paths,
+                    "evidence": evidence,
+                }
 
     # Include diagnostics inline: this IS the lint-after-edit turn.
     # Filter to errors/warnings only — informational notes add noise.
@@ -5021,7 +5254,7 @@ def _write_handover_packet(led: RunLedger, state: Any) -> Path:
     from atelier.infra.runtime.context_compressor import HandoverPacket
 
     root = _atelier_root()
-    run_dir = root / "runs" / led.session_id
+    run_dir = session_run_dir(root, led.session_id)
     run_dir.mkdir(parents=True, exist_ok=True)
     handover_path = run_dir / "HANDOVER.md"
     packet = HandoverPacket.from_ledger(led, state, workspace_root=_workspace_root())
@@ -5098,7 +5331,7 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
         # Persist manifest to disk
         try:
             root = _atelier_root()
-            run_dir = root / "runs" / led.session_id
+            run_dir = session_run_dir(root, led.session_id)
             run_dir.mkdir(parents=True, exist_ok=True)
             manifest_path = run_dir / "compact_manifest.json"
             manifest = {
@@ -5624,7 +5857,7 @@ def tool_symbols(
 
     For call-graph, reference, and structural work use the dedicated tools:
     `node` (read a definition), `callers` / `callees` (call graph), `usages`
-    (all references), `pattern` (AST search/rewrite), `explore` (grouped context).
+    (all references), `codemod` (AST search/rewrite), `explore` (grouped context).
     """
     return _op_search(
         query=query,
@@ -5658,6 +5891,9 @@ _CODE_BATCH_KEYS: tuple[str, ...] = (
     "callers",
     "callees",
     "usages",
+    "related",
+    "edges",
+    "references",
     "results",
     "items",
     "files",
@@ -6063,6 +6299,14 @@ def _op_search(
         raise ValueError("repo filter requires .atelier/workspace.toml")
     engine = _code_context_engine(engine_root)
     _code_engine_for_current_call.value = engine
+    if workspace_router.is_configured and view in {"graph", "explain", "context"}:
+        # The workspace-routed search path only produces a target-shaped payload;
+        # graph/explain/context are not routed. Reject explicitly so callers get a
+        # clear error instead of a silently-wrong (unrouted, repo-ignoring) result.
+        raise ValueError(
+            f"view={view!r} is not supported when a workspace is configured (.atelier/workspace.toml); "
+            "use view='target' for routed search"
+        )
     if view == "context":
         context_payload = engine.tool_context(
             task=query,
@@ -6168,37 +6412,6 @@ def _op_blame(
     return _finish_code_result(_maybe_attach_code_rendered("blame", payload, render_compact=render_compact))
 
 
-def _op_hover(
-    *,
-    query: str | None = None,
-    symbol_id: str | None = None,
-    qualified_name: str | None = None,
-    symbol_name: str | None = None,
-    path: str | None = None,
-    line: int | None = None,
-    col: int | None = None,
-    budget_tokens: int = 4000,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-) -> dict[str, Any]:
-    if not any([symbol_id, qualified_name, symbol_name, query, (path and line is not None)]):
-        raise ValueError("symbol_id, qualified_name, symbol_name, query, or (file_path + line) is required for hover")
-    engine = _code_engine_at(repo_root)
-    payload = cast(
-        dict[str, Any],
-        engine.tool_hover(
-            symbol_id=symbol_id,
-            qualified_name=qualified_name,
-            symbol_name=symbol_name or query,
-            file_path=path,
-            line=line,
-            col=col,
-            budget_tokens=budget_tokens,
-        ),
-    )
-    return _finish_code_result(_maybe_attach_code_rendered("hover", payload, render_compact=render_compact))
-
-
 def _op_node(
     *,
     symbol_id: str | None = None,
@@ -6246,22 +6459,6 @@ def _op_node(
     return _finish_code_result(_maybe_attach_code_rendered("symbol", payload, render_compact=render_compact))
 
 
-def _op_outline(
-    *,
-    path: str | None = None,
-    limit: int = 20,
-    budget_tokens: int = 4000,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-) -> dict[str, Any]:
-    engine = _code_engine_at(repo_root)
-    payload = cast(
-        dict[str, Any],
-        engine.tool_outline(file_path=path, limit=limit, budget_tokens=budget_tokens),
-    )
-    return _finish_code_result(_maybe_attach_code_rendered("outline", payload, render_compact=render_compact))
-
-
 def _op_rename(
     *,
     new_name: str | None = None,
@@ -6282,7 +6479,10 @@ def _op_rename(
     engine = _code_engine_at(repo_root)
     from atelier.core.capabilities.tool_supervision.rename_symbol import build_rename_edits
 
-    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    # Single root: the engine indexes repo_root (cwd fallback), so edits must be
+    # built and applied under the SAME root — otherwise a cross-repo rename hits
+    # the wrong working tree.
+    root = Path(repo_root or os.getcwd())
     edits = build_rename_edits(
         engine,
         symbol_id=symbol_id,
@@ -6290,30 +6490,16 @@ def _op_rename(
         symbol_name=symbol_name or query,
         file_path=path,
         new_name=new_name,
-        repo_root=Path(workspace),
+        repo_root=root,
         backend=rename_backend,
     )
-    # Filter out ast-grep sentinel entries (already applied on disk)
-    rich_edits = [e for e in edits if not e.get("_astgrep_applied")]
-    if not rich_edits and edits:
-        # ast-grep applied everything directly; return summary
-        return _finish_code_result(
-            _maybe_attach_code_rendered(
-                "rename",
-                {
-                    "op": "rename",
-                    "files_changed": len(edits),
-                    "backend": "ast-grep",
-                    "new_name": new_name,
-                },
-                render_compact=render_compact,
-            )
-        )
+    if not edits:
+        raise ValueError(f"no occurrences renamed: symbol not found or no references for new_name {new_name!r}")
     from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
 
-    touched = _collect_touched_paths(rich_edits, repo_root=Path(workspace))
+    touched = _collect_touched_paths(edits, repo_root=root)
     snaps = _snapshot_paths(touched)
-    result = apply_rich_edits(rich_edits, atomic=True, repo_root=Path(workspace))
+    result = apply_rich_edits(edits, atomic=True, repo_root=root)
     if not result.get("failed") and not result.get("rolled_back"):
         _compute_and_record_diffs(snaps)
     result["op"] = "rename"
@@ -6358,231 +6544,32 @@ def _op_cache_invalidate(
     return _finish_code_result(_maybe_attach_code_rendered("cache_invalidate", payload, render_compact=render_compact))
 
 
-# Scalar param types for code-intel ops. The `symbols` tool's handler is this
-# router (not the @mcp_tool handler_wrapper), so stringified scalar args must be
-# coerced here too. Keep in sync with the _op_* signatures.
-_CODE_INTEL_PARAM_TYPES: dict[str, Any] = {
-    "limit": int,
-    "depth": int,
-    "budget_tokens": int,
-    "max_files": int,
-    "max_symbols": int,
-    "snippet_lines": int,
-    "line": int,
-    "col": int,
-    "render_compact": bool,
-    "include_churn": bool,
-    "force": bool,
-    "snapshot": bool,
-    "dry_run": bool,
-    "include_source": bool,
-    "include_relationships": bool,
-    "line_numbers": bool,
-    "paths": list,
-    "synthesize": bool,
-}
-
-
-def _tool_symbols_alias_handler(args: dict[str, Any]) -> dict[str, Any]:
-    if isinstance(args, dict):
-        args = _coerce_json_strings(args, _CODE_INTEL_PARAM_TYPES)
-    g = args.get
-    op = g("op") or "search"
-    if op == "node":
-        op = "symbol"
-    repo = g("repo")
-    if repo is not None and op not in {"search", "symbol"}:
-        raise ValueError("repo filter is only supported for workspace search and symbol operations")
-    rr = g("repo_root")
-    rc = g("render_compact", False)
-    bt = g("budget_tokens", 4000)
-    if op == "search":
-        return _op_search(
-            query=g("query"),
-            mode=g("mode", "auto"),
-            intent=g("intent", "auto"),
-            view=g("view", "target"),
-            kind=g("kind"),
-            language=g("language"),
-            snippet=g("snippet", "none"),
-            snippet_lines=g("snippet_lines", 8),
-            file_glob=g("file_glob"),
-            scope=g("scope", "repo"),
-            since=g("since"),
-            touched_by=g("touched_by"),
-            provenance=g("provenance"),
-            seed_files=g("seed_files"),
-            max_symbols=g("max_symbols", 4),
-            depth=g("depth", 1),
-            limit=g("limit", 20),
-            budget_tokens=bt,
-            repo=repo,
-            repo_root=rr,
-            render_compact=rc,
-        )
-    if op == "graph":
-        return _op_graph(
-            kind=g("kind", "blast_radius"),
-            path=g("path"),
-            paths=g("paths"),
-            limit=g("limit", 50),
-            synthesize=g("synthesize", False),
-            query=g("query"),
-            enable=g("enable"),
-            repo_root=rr,
-            render_compact=rc,
-        )
-    if op in ("callers", "callees"):
-        fn = _op_callers if op == "callers" else _op_callees
-        return fn(
-            query=g("query"),
-            symbol_id=g("symbol_id"),
-            qualified_name=g("qualified_name"),
-            symbol_name=g("symbol_name"),
-            path=g("path"),
-            kind=g("kind"),
-            language=g("language"),
-            depth=g("depth", 1),
-            limit=g("limit", 20),
-            snapshot=g("snapshot", False),
-            budget_tokens=bt,
-            repo_root=rr,
-            render_compact=rc,
-        )
-    if op == "usages":
-        return _op_usages(
-            query=g("query"),
-            symbol_id=g("symbol_id"),
-            qualified_name=g("qualified_name"),
-            symbol_name=g("symbol_name"),
-            path=g("path"),
-            kind=g("kind"),
-            language=g("language"),
-            file_glob=g("file_glob"),
-            group_by=g("group_by", "file"),
-            snippet_lines=g("snippet_lines", 8),
-            limit=g("limit", 20),
-            budget_tokens=bt,
-            repo_root=rr,
-            render_compact=rc,
-        )
-    if op == "explore":
-        return _op_explore(
-            query=g("query"),
-            seed_files=g("seed_files"),
-            max_files=g("max_files", 8),
-            max_symbols=g("max_symbols", 4),
-            include_source=g("include_source", True),
-            include_relationships=g("include_relationships", True),
-            line_numbers=g("line_numbers", True),
-            depth=g("depth", 1),
-            budget_tokens=bt,
-            repo_root=rr,
-            render_compact=rc,
-        )
-    if op == "pattern":
-        return _op_pattern(
-            pattern=g("pattern"),
-            rewrite=g("rewrite"),
-            language=g("language"),
-            file_glob=g("file_glob"),
-            dry_run=g("dry_run", True),
-            limit=g("limit", 20),
-            budget_tokens=bt,
-            repo_root=rr,
-            render_compact=rc,
-        )
-    if op == "index":
-        return _op_index(
-            include_globs=g("include_globs"),
-            exclude_globs=g("exclude_globs"),
-            force=g("force", False),
-            budget_tokens=bt,
-            repo_root=rr,
-            render_compact=rc,
-        )
-    if op == "blame":
-        return _op_blame(
-            query=g("query"),
-            symbol_id=g("symbol_id"),
-            qualified_name=g("qualified_name"),
-            symbol_name=g("symbol_name"),
-            path=g("path"),
-            include_churn=g("include_churn", True),
-            budget_tokens=bt,
-            repo_root=rr,
-            render_compact=rc,
-        )
-    if op == "hover":
-        return _op_hover(
-            query=g("query"),
-            symbol_id=g("symbol_id"),
-            qualified_name=g("qualified_name"),
-            symbol_name=g("symbol_name"),
-            path=g("path"),
-            line=g("line"),
-            col=g("col"),
-            budget_tokens=bt,
-            repo_root=rr,
-            render_compact=rc,
-        )
-    if op == "symbol":
-        return _op_node(
-            symbol_id=g("symbol_id"),
-            qualified_name=g("qualified_name"),
-            symbol_name=g("symbol_name"),
-            path=g("path"),
-            line=g("line"),
-            budget_tokens=bt,
-            repo=repo,
-            repo_root=rr,
-            render_compact=rc,
-        )
-    if op == "outline":
-        return _op_outline(
-            path=g("path"),
-            limit=g("limit", 20),
-            budget_tokens=bt,
-            repo_root=rr,
-            render_compact=rc,
-        )
-    if op in {"routes", "status", "files", "context"}:
-        raise ValueError(
-            f"op={op!r} is no longer available on this tool. "
-            "Use: `context` tool with mode='symbols' (was context), "
-            "`grep` (was files), status/routes are retired."
-        )
-    if op == "rename":
-        return _op_rename(
-            new_name=g("new_name"),
-            query=g("query"),
-            symbol_id=g("symbol_id"),
-            qualified_name=g("qualified_name"),
-            symbol_name=g("symbol_name"),
-            path=g("path"),
-            rename_backend=g("rename_backend", "auto"),
-            budget_tokens=bt,
-            repo_root=rr,
-            render_compact=rc,
-        )
-    if op == "cache_status":
-        return _op_cache_status(cache_tool=g("cache_tool"), budget_tokens=bt, repo_root=rr, render_compact=rc)
-    if op == "cache_invalidate":
-        return _op_cache_invalidate(cache_tool=g("cache_tool"), budget_tokens=bt, repo_root=rr, render_compact=rc)
-    raise ValueError(f"unknown op: {op!r}")
-
-
-TOOLS["symbols"]["handler"] = _tool_symbols_alias_handler
-tool_symbols = _tool_symbols_alias_handler  # noqa: F811
-tool_code = _tool_symbols_alias_handler
-
 # ------------------------------------------------------------------ #
-# Dedicated code-intel tools — thin wrappers over the `symbols` op.  #
-# Dedicated names let LLMs pick the right tool without knowing the   #
-# op parameter; each has a focused schema and clear description.      #
+# Dedicated code-intel tools — each calls its `_op_*` engine wrapper  #
+# directly (no multiplexer). Published tools carry focused schemas;   #
+# repo/admin ops (index, blame, rename, cache_status, cache_invalidate)    #
+# are registered hidden via HIDDEN_LLM_TOOLS so tests and power use reach   #
+# them by name.                                                            #
 # ------------------------------------------------------------------ #
 
-_CODE_INTEL_TOOLS: frozenset[str] = frozenset({"node", "callers", "callees", "explore"})
+# Code-intel tool names whose pre-rendered text (set during the _op_* call) is
+# surfaced verbatim by render_tool_result_text. Includes the hidden repo/admin
+# ops so `_call("index"/...)` returns rendered text for tests/power use.
+_CODE_INTEL_TOOLS: frozenset[str] = frozenset(
+    {
+        "node",
+        "callers",
+        "callees",
+        "explore",
+        "usages",
+        "codemod",
+        "index",
+        "blame",
+        "rename",
+        "cache_status",
+        "cache_invalidate",
+    }
+)
 
 
 def _parse_symbol(symbol: str) -> dict[str, Any]:
@@ -6606,16 +6593,17 @@ def tool_node(
     Returns: signature, docstring, body, file location, and a stable symbol_id for follow-up calls.
 
     Pass symbol as unqualified name ('run_command'), qualified path ('module.Class.method'),
-    or SCIP id (from a prior search/callers result). Or use path+line for positional lookup.
+    or SCIP id (from a prior search/callers result). Or use path+line for positional lookup —
+    the line may be passed separately or as a "path#line" suffix (e.g. "store.py#100").
     """
-    kwargs: dict[str, Any] = {"op": "node"}
-    if symbol:
-        kwargs.update(_parse_symbol(symbol))
-    if path:
-        kwargs["path"] = path
-    if line is not None:
-        kwargs["line"] = line
-    return _tool_symbols_alias_handler(kwargs)
+    if path is not None:
+        path, suffix_range = _split_read_range_suffix(path)
+        if suffix_range is not None and line is None:
+            match = re.match(r"L?(\d+)", suffix_range)
+            if match is not None:
+                line = int(match.group(1))
+    target = _parse_symbol(symbol) if symbol else {}
+    return _op_node(**target, path=path, line=line)
 
 
 @mcp_tool(name="callers")
@@ -6630,7 +6618,7 @@ def tool_callers(
     Returns caller names, file paths, and line numbers grouped by file.
     depth=1: direct callers; depth=2: transitive callers.
     """
-    return _tool_symbols_alias_handler({"op": "callers", **_parse_symbol(symbol), "depth": depth, "limit": limit})
+    return _op_callers(**_parse_symbol(symbol), depth=depth, limit=limit)
 
 
 @mcp_tool(name="callees")
@@ -6645,7 +6633,7 @@ def tool_callees(
     Returns callee names, file paths, and call sites grouped by file.
     depth=1: direct callees; depth=2: transitive callees.
     """
-    return _tool_symbols_alias_handler({"op": "callees", **_parse_symbol(symbol), "depth": depth, "limit": limit})
+    return _op_callees(**_parse_symbol(symbol), depth=depth, limit=limit)
 
 
 @mcp_tool(name="explore")
@@ -6660,9 +6648,7 @@ def tool_explore(
     Returns: symbol definitions, source, and caller/callee summaries in one call.
     Use seed_files to bias search toward specific files.
     """
-    return _tool_symbols_alias_handler(
-        {"op": "explore", "query": query, "seed_files": seed_files, "max_files": max_files}
-    )
+    return _op_explore(query=query, seed_files=seed_files, max_files=max_files)
 
 
 @mcp_tool(name="usages")
@@ -6679,7 +6665,7 @@ def tool_usages(
     or a SCIP id from a prior result.
     Returns: references grouped by file with line numbers and matched snippets.
     """
-    return _tool_symbols_alias_handler({"op": "usages", **_parse_symbol(symbol), "limit": limit})
+    return _op_usages(**_parse_symbol(symbol), limit=limit)
 
 
 @mcp_tool(name="graph")
@@ -6715,17 +6701,14 @@ def tool_graph(
     `synthesize=true` (with `paths`, kind=centrality) also returns heuristic route/event
     edges as a SEPARATE `synthesized_edges` list (never merged into the static call graph).
     """
-    return _tool_symbols_alias_handler(
-        {
-            "op": "graph",
-            "kind": kind,
-            "path": path,
-            "paths": paths,
-            "limit": limit,
-            "synthesize": synthesize,
-            "query": query,
-            "enable": enable,
-        }
+    return _op_graph(
+        kind=kind,
+        path=path,
+        paths=paths,
+        limit=limit,
+        synthesize=synthesize,
+        query=query,
+        enable=enable,
     )
 
 
@@ -6752,16 +6735,122 @@ def tool_pattern(
     `language` (e.g. 'python') and `file_glob`.
     Returns: matches (snippet, file_path, line); with `rewrite`, a diff and `files_changed`.
     """
-    return _tool_symbols_alias_handler(
-        {
-            "op": "pattern",
-            "pattern": pattern,
-            "language": language,
-            "file_glob": file_glob,
-            "rewrite": rewrite,
-            "limit": limit,
-            "dry_run": dry_run,
-        }
+    return _op_pattern(
+        pattern=pattern,
+        rewrite=rewrite,
+        language=language,
+        file_glob=file_glob,
+        dry_run=dry_run,
+        limit=limit,
+    )
+
+
+# Repo/admin code-intel ops — registered hidden (see HIDDEN_LLM_TOOLS). Not
+# surfaced to agents; reachable by name for tests, the CLI, and power use. Each
+# delegates straight to its _op_* engine wrapper.
+@mcp_tool(name="index")
+def tool_index(
+    include_globs: list[str] | None = None,
+    exclude_globs: list[str] | None = None,
+    force: bool = False,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    """Build or refresh the SCIP code index for the repo (internal/admin)."""
+    return _op_index(
+        include_globs=include_globs,
+        exclude_globs=exclude_globs,
+        force=force,
+        budget_tokens=budget_tokens,
+        repo_root=repo_root,
+        render_compact=render_compact,
+    )
+
+
+@mcp_tool(name="blame")
+def tool_blame(
+    query: str | None = None,
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    path: str | None = None,
+    include_churn: bool = True,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    """Git blame / churn summary for a symbol or file (internal/admin)."""
+    return _op_blame(
+        query=query,
+        symbol_id=symbol_id,
+        qualified_name=qualified_name,
+        symbol_name=symbol_name,
+        path=path,
+        include_churn=include_churn,
+        budget_tokens=budget_tokens,
+        repo_root=repo_root,
+        render_compact=render_compact,
+    )
+
+
+@mcp_tool(name="rename")
+def tool_rename(
+    new_name: str | None = None,
+    query: str | None = None,
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    path: str | None = None,
+    rename_backend: str = "auto",
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    """Rename a symbol across the repo via SCIP/ast-grep edits (internal/admin)."""
+    return _op_rename(
+        new_name=new_name,
+        query=query,
+        symbol_id=symbol_id,
+        qualified_name=qualified_name,
+        symbol_name=symbol_name,
+        path=path,
+        rename_backend=rename_backend,
+        budget_tokens=budget_tokens,
+        repo_root=repo_root,
+        render_compact=render_compact,
+    )
+
+
+@mcp_tool(name="cache_status")
+def tool_cache_status(
+    cache_tool: str | None = None,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    """Report code-intel cache hit/miss counters (internal/admin)."""
+    return _op_cache_status(
+        cache_tool=cache_tool,
+        budget_tokens=budget_tokens,
+        repo_root=repo_root,
+        render_compact=render_compact,
+    )
+
+
+@mcp_tool(name="cache_invalidate")
+def tool_cache_invalidate(
+    cache_tool: str | None = None,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    """Invalidate code-intel caches (internal/admin)."""
+    return _op_cache_invalidate(
+        cache_tool=cache_tool,
+        budget_tokens=budget_tokens,
+        repo_root=repo_root,
+        render_compact=render_compact,
     )
 
 
@@ -7128,7 +7217,14 @@ def _run_native_grep(
     name="grep",
     description=(
         "Search files with regex, glob, and type filters. Use this instead of `search` for "
-        "grep-style matching, path listing, context lines, summaries, or incremental reruns."
+        "grep-style matching, path listing, context lines, summaries, or incremental reruns.\n"
+        "Maximise work per call: pass every glob/path you need at once (file_glob_patterns) and "
+        "combine content_regex + type to narrow by scope and content in one call instead of "
+        "chaining narrow calls — tool-side filtering is cheaper than another round-trip. When "
+        "you'll need the matched code, set output_mode='file_paths_with_content' to discover AND "
+        "read matched context in one step rather than grep-then-read. Run independent searches in "
+        "parallel within one response. Pass a prior result's timestamp back as if_modified_since "
+        "to skip files unchanged since then."
     ),
     hidden_params=("include_meta",),
 )
@@ -7136,7 +7232,10 @@ def tool_grep(
     path: Annotated[
         str,
         Field(
-            description=("Workspace-relative file or directory to search."),
+            description=(
+                "Workspace-relative file or directory to search. A single file may carry a "
+                "'#start-end' suffix (e.g. 'store.py#60-100') to scope matches to that line range."
+            ),
         ),
     ] = ".",
     content_regex: Annotated[
@@ -7250,6 +7349,38 @@ def tool_grep(
     return payload
 
 
+def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[int, int]) -> None:
+    """Restrict ranked-search matches to snippets overlapping [lo, hi].
+
+    A "path#start-end" search scopes results to that line window. Snippets carry
+    line_start/line_end; matches with no overlapping snippet are dropped. Matches
+    lacking snippet line data are kept (they cannot be filtered).
+    """
+    lo, hi = line_range
+    matches = payload.get("matches")
+    if not isinstance(matches, list):
+        return
+    kept: list[dict[str, Any]] = []
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        snippets = match.get("snippets")
+        if isinstance(snippets, list) and snippets:
+            in_window = [
+                snip
+                for snip in snippets
+                if isinstance(snip, dict)
+                and int(snip.get("line_start", 0) or 0) <= hi
+                and int(snip.get("line_end", snip.get("line_start", 0)) or 0) >= lo
+            ]
+            if not in_window:
+                continue
+            match = {**match, "snippets": in_window}
+        kept.append(match)
+    payload["matches"] = kept
+    payload["match_paths"] = [str(match.get("path")) for match in kept if isinstance(match, dict) and match.get("path")]
+
+
 @mcp_tool(
     name="search",
     description=(
@@ -7268,7 +7399,11 @@ def tool_grep(
             "path": {
                 "type": "string",
                 "default": ".",
-                "description": "Workspace-relative file or directory to search.",
+                "description": (
+                    "Workspace-relative file or directory to search. A single file may carry "
+                    "a '#start-end' suffix (e.g. 'store.py#60-100') to scope ranked results to "
+                    "that line range."
+                ),
             },
             "mode": {
                 "type": "string",
@@ -7314,7 +7449,10 @@ def tool_smart_search(
     path: Annotated[
         str,
         Field(
-            description="Workspace-relative file or directory to search.",
+            description=(
+                "Workspace-relative file or directory to search. A single file may carry a "
+                "'#start-end' suffix (e.g. 'store.py#60-100') to scope ranked results to that line range."
+            ),
         ),
     ] = ".",
     mode: Annotated[
@@ -7361,7 +7499,17 @@ def tool_smart_search(
     - Use `mode='map'` with `seed_files` to build a repo map.
     - Use `grep` instead when you need regex, glob, type filters, summaries, or incremental reruns.
     - Once grounded, use `node`, `callers`, `callees`, `usages`, or `explore` for exact code-intel follow-up.
+    - Run independent searches in parallel within a single response; don't chain them serially.
     """
+    # A "path#start-end" suffix scopes ranked results to a line window of one file.
+    line_range: tuple[int, int] | None = None
+    path, suffix_range = _split_read_range_suffix(path)
+    if suffix_range is not None:
+        lo_text, _, hi_text = suffix_range.partition("-")
+        lo = int(re.sub(r"\D", "", lo_text) or 0)
+        hi = int(re.sub(r"\D", "", hi_text) or 0) if hi_text else lo
+        if lo:
+            line_range = (lo, hi or lo)
     if mode == "map":
         if not seed_files:
             raise ValueError("seed_files is required when mode='map'")
@@ -7422,6 +7570,8 @@ def tool_smart_search(
             budget_tokens=budget_tokens,
             indexed_search=indexed_search,
         )
+    if line_range is not None and mode == "chunks":
+        _scope_search_matches_to_range(payload, line_range)
     # Plumb savings via thread-local and strip from the LLM-facing payload.
     ts = int(payload.pop("tokens_saved", 0) or 0)
     if ts > 0:
@@ -8336,7 +8486,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 "description": _tool_description(s),
                 "inputSchema": s.get("inputSchema", {}),
             }
-            for n, s in TOOLS.items()
+            for n, s in sorted(TOOLS.items())
             if _tool_visible_to_llm(n, s)
         ]
         return _ok(rid, {"tools": tools})
@@ -8376,9 +8526,12 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         # override for the lifetime of this request only; absent -> unchanged.
         _prior_project = _set_request_project(_extract_request_project(params, args if isinstance(args, dict) else {}))
         rendered_text: str | None = None
+        _call_duration_ms: int = 0
         try:
             if remote_routed:
+                _remote_start = time.perf_counter()
                 result = _dispatch_remote(name, args)
+                _call_duration_ms = round((time.perf_counter() - _remote_start) * 1000)
                 if isinstance(result, dict):
                     result = _clean_tool_result(result, name)
             else:
@@ -8403,19 +8556,24 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 from atelier.core.capabilities.pricing import active_model_override
 
                 try:
+                    _handler_start = time.perf_counter()
                     with active_model_override(wrapper_model or None):
                         result = handler(args)
+                    _call_duration_ms = round((time.perf_counter() - _handler_start) * 1000)
                 finally:
-                    _finalize_model_recommendation(
-                        route_payload,
-                        led=led,
-                        tool_name=name,
-                        session_state=route_state,
-                        workflow=route_workflow,
-                        current_step=route_step,
-                        wrapper_applied=bool(wrapper_model),
-                        wrapper_model=wrapper_model or None,
-                    )
+                    # Runs in finally; a raise here would mask the handler's real
+                    # exception, so suppress like the sibling savings-event calls.
+                    with contextlib.suppress(Exception):
+                        _finalize_model_recommendation(
+                            route_payload,
+                            led=led,
+                            tool_name=name,
+                            session_state=route_state,
+                            workflow=route_workflow,
+                            current_step=route_step,
+                            wrapper_applied=bool(wrapper_model),
+                            wrapper_model=wrapper_model or None,
+                        )
 
                 if isinstance(result, dict):
                     result = _clean_tool_result(result, name)
@@ -8450,13 +8608,15 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         writer=_make_outcome_writer(led),
                     )
 
+                _ok_session_id = getattr(_get_ledger(), "session_id", "") or ""
                 with contextlib.suppress(Exception):
                     _append_live_savings_event(
                         {
                             "kind": "tool_call",
                             "tool": name,
                             "status": "ok",
-                            "session_id": getattr(_get_ledger(), "session_id", "") or "",
+                            "duration_ms": _call_duration_ms,
+                            "session_id": _ok_session_id,
                             "ts": time.time(),
                         }
                     )
@@ -8467,7 +8627,30 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             elif isinstance(result, str):
                 response_text = result
             else:
-                response_text = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+                response_text = json.dumps(result, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+            _ok_response_size = len(response_text.encode("utf-8", errors="replace"))
+            _ok_sid = _ok_session_id if not remote_routed else (getattr(_get_ledger(), "session_id", "") or "")
+            with contextlib.suppress(Exception):
+                _append_mcp_debug_event(
+                    tool=name,
+                    args=args if isinstance(args, dict) else {},
+                    duration_ms=_call_duration_ms,
+                    response_size=_ok_response_size,
+                    status="ok",
+                    session_id=_ok_sid,
+                )
+            with contextlib.suppress(Exception):
+                from atelier.gateway.integrations.langfuse import emit_tool_call as _lf_emit_tool
+
+                _lf_emit_tool(
+                    tool=name,
+                    args=args if isinstance(args, dict) else {},
+                    duration_ms=_call_duration_ms,
+                    response_size=_ok_response_size,
+                    status="ok",
+                    session_id=_ok_sid,
+                )
 
             # G13 — caller-selectable output encoding (auto | compact | json).
             # Default `auto` returns response_text unchanged (byte-compatible);
@@ -8545,6 +8728,14 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # (session_stats + runs/*_context_savings); read ONE, never sum both.
             # Shape: {"tokens": int, "calls": int}. Either may be 0 but the
             # object is omitted entirely when both are 0.
+            # First bound, for context hygiene: head+tail compact a single
+            # runaway result so it can't flood the host prompt (which the host
+            # re-pays for on every later turn). Deterministic, so the compacted
+            # bytes stay prefix-cache stable across identical calls.
+            response_text = _compact_result_text(response_text, name)
+            # Bound the result so one oversized frame can't trip the host's
+            # stdout guard and disconnect the server (no mid-session reconnect).
+            response_text = _truncate_result_text(response_text, _max_result_bytes())
             content_item: dict[str, Any] = {
                 "type": "text",
                 "text": response_text,
@@ -8577,6 +8768,12 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     _append_workspace_savings(name, saved_tokens, saved_calls, rid=str(rid))
 
             response_payload: dict[str, Any] = {"content": [content_item]}
+            # Stash the full structured result for the in-process CLI so `tools call
+            # ... --json` returns the dict for EVERY tool -- including the ones whose
+            # host-facing content is rendered text (read, grep, search, shell, ...).
+            # This never goes on response_payload, so the MCP host's main model only
+            # ever sees `content`; no structured data rides the wire to any consumer.
+            _tool_call_raw_result.value = result if isinstance(result, dict) else None
             return _ok(rid, response_payload)
         except Exception as exc:
             logging.exception("Recovered from broad exception handler")
@@ -8592,6 +8789,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         is_env_error=isinstance(exc, (OSError, IOError)),
                         writer=_make_outcome_writer(led),
                     )
+                _err_session_id = getattr(_get_ledger(), "session_id", "") or ""
                 with contextlib.suppress(Exception):
                     _append_live_savings_event(
                         {
@@ -8599,9 +8797,32 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                             "tool": name,
                             "status": "error",
                             "error": type(exc).__name__,
-                            "session_id": getattr(_get_ledger(), "session_id", "") or "",
+                            "duration_ms": _call_duration_ms,
+                            "session_id": _err_session_id,
                             "ts": time.time(),
                         }
+                    )
+                with contextlib.suppress(Exception):
+                    _append_mcp_debug_event(
+                        tool=name,
+                        args=args if isinstance(args, dict) else {},
+                        duration_ms=_call_duration_ms,
+                        response_size=0,
+                        status="error",
+                        error=type(exc).__name__,
+                        session_id=_err_session_id,
+                    )
+                with contextlib.suppress(Exception):
+                    from atelier.gateway.integrations.langfuse import emit_tool_call as _lf_emit_tool
+
+                    _lf_emit_tool(
+                        tool=name,
+                        args=args if isinstance(args, dict) else {},
+                        duration_ms=_call_duration_ms,
+                        response_size=0,
+                        status="error",
+                        error=type(exc).__name__,
+                        session_id=_err_session_id,
                     )
             return _err(rid, _tool_error_code(exc), str(exc))
         finally:
@@ -8667,8 +8888,106 @@ def _mcp_max_workers() -> int:
     return max(1, min(configured, _MAX_MCP_MAX_WORKERS))
 
 
+def _max_result_bytes() -> int:
+    raw = os.environ.get("ATELIER_MCP_MAX_RESULT_BYTES", str(_DEFAULT_MAX_RESULT_BYTES))
+    try:
+        configured = int(raw)
+    except ValueError:
+        _log.warning(
+            "invalid ATELIER_MCP_MAX_RESULT_BYTES=%r; using %d",
+            raw,
+            _DEFAULT_MAX_RESULT_BYTES,
+        )
+        return _DEFAULT_MAX_RESULT_BYTES
+    # Floor avoids pathological tiny caps; ceiling keeps capped results safely
+    # under the hard wire limit even after JSON string-escaping inflation.
+    return max(64 * 1024, min(configured, _MAX_WIRE_BYTES - 1024 * 1024))
+
+
+def _truncate_result_text(text: str, limit: int) -> str:
+    """Bound a tool-result string to *limit* UTF-8 bytes, appending a notice.
+
+    A single oversized result would otherwise serialize into one JSON-RPC frame
+    larger than the host's stdout guard, which disconnects the whole server.
+    """
+    encoded = text.encode("utf-8")
+    if len(encoded) <= limit:
+        return text
+    notice = (
+        f"\n\n[atelier: result truncated to {limit} bytes to keep the MCP "
+        f"connection alive ({len(encoded)} bytes total). Re-request a narrower slice — "
+        'e.g. read with range="L1-L400", a tighter grep pattern, or smaller '
+        "shell output.]"
+    )
+    headroom = max(0, limit - len(notice.encode("utf-8")))
+    head = encoded[:headroom].decode("utf-8", "ignore")
+    return head + notice
+
+
+def _compact_result_chars() -> int:
+    """Char threshold above which an oversized tool result is head+tail compacted.
+
+    Distinct from the multi-MB wire guard (``_max_result_bytes``): that one only
+    keeps the JSON-RPC frame under the host's stdout limit. This is a context-
+    hygiene bound -- a single runaway result otherwise floods the host prompt and
+    the host re-pays for it on every later turn. Set
+    ``ATELIER_MCP_COMPACT_RESULT_CHARS=0`` to disable.
+    """
+    raw = os.environ.get("ATELIER_MCP_COMPACT_RESULT_CHARS", str(_DEFAULT_COMPACT_RESULT_CHARS))
+    try:
+        configured = int(raw)
+    except ValueError:
+        _log.warning(
+            "invalid ATELIER_MCP_COMPACT_RESULT_CHARS=%r; using %d",
+            raw,
+            _DEFAULT_COMPACT_RESULT_CHARS,
+        )
+        return _DEFAULT_COMPACT_RESULT_CHARS
+    return max(0, configured)
+
+
+def _compact_result_text(text: str, tool_name: str) -> str:
+    """Head+tail compact a single oversized tool result before it reaches the host.
+
+    Deterministic (no LLM) so identical calls yield identical bytes and never
+    bust the host's prefix cache. Keeps the head (command, first error, initial
+    context) and the tail (final status/return value) with an omission marker in
+    between, then appends a recovery hint. Results within the threshold pass
+    through untouched.
+    """
+    threshold = _compact_result_chars()
+    if threshold <= 0 or len(text) <= threshold:
+        return text
+    from atelier.core.capabilities.tool_supervision.compact_output import compress_tool_output
+
+    target = max(4096, threshold // 4)
+    head = int(target * 0.7)
+    tail = max(1, target - head)
+    compacted = compress_tool_output(text, threshold_chars=target, head_chars=head, tail_chars=tail)
+    return (
+        f"{compacted}\n\n[atelier: result compacted from {len(text)} chars to protect host "
+        f"context; re-request a narrower slice (tighter {tool_name} query/range) for the full output]"
+    )
+
+
 def _write_jsonrpc(message: dict[str, Any]) -> None:
-    payload = json.dumps(message, ensure_ascii=False) + "\n"
+    payload = json.dumps(message, ensure_ascii=False, sort_keys=True) + "\n"
+    # Hard backstop: a frame above the host's ~16 MiB stdout guard disconnects
+    # the server. Per-result capping should prevent this, but escaping overhead
+    # or non-result frames could still exceed it — replace such a frame with
+    # a small error so the session survives instead of dropping.
+    if len(payload.encode("utf-8")) > _MAX_WIRE_BYTES and message.get("id") is not None:
+        _log.warning(
+            "jsonrpc frame exceeds %d bytes; replacing with error to protect the connection",
+            _MAX_WIRE_BYTES,
+        )
+        message = _err(
+            message["id"],
+            -32000,
+            f"result exceeded the {_MAX_WIRE_BYTES} byte MCP frame limit and was dropped to "
+            "keep the connection alive; re-request a narrower slice.",
+        )
+        payload = json.dumps(message, ensure_ascii=False) + "\n"
     with _STDOUT_LOCK:
         sys.stdout.write(payload)
         sys.stdout.flush()

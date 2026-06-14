@@ -95,10 +95,6 @@ def test_failure_analysis_clusters_and_matches(tmp_path: Path) -> None:
         )
     )
 
-    report = rt.analyze_failures(domain="coding", lookback=50, min_cluster_size=1)
-    assert report["total_failed_traces"] >= 2
-    assert report["cluster_count"] >= 1
-
     matched = rt.analyze_failure_for_error(
         task="Fix auth endpoint",
         error="AssertionError: expected 204 got 500",

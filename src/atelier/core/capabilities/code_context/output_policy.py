@@ -64,20 +64,6 @@ CONTEXT_COMPACT = OutputPolicy(
     container_outline_only=True,
 )
 
-NODE_OUTLINE_COMPACT = OutputPolicy(
-    include_code=False,
-    include_docstring=False,
-    include_snippet=False,
-    include_edges=False,
-    max_results=1,
-    max_related_symbols=24,
-    max_code_blocks=0,
-    max_code_block_chars=0,
-    max_total_tokens=2400,
-    max_symbols_per_file=24,
-    container_outline_only=True,
-)
-
 NODE_CODE_COMPACT = OutputPolicy(
     include_code=True,
     include_docstring=False,
@@ -96,7 +82,6 @@ _POLICY_BY_OPERATION = {
     "search": SEARCH_COMPACT,
     "relation": RELATION_COMPACT,
     "context": CONTEXT_COMPACT,
-    "outline": NODE_OUTLINE_COMPACT,
     "node": NODE_CODE_COMPACT,
 }
 
@@ -128,7 +113,6 @@ def hard_cap_chars(text: str, max_chars: int) -> str:
 __all__ = [
     "CONTEXT_COMPACT",
     "NODE_CODE_COMPACT",
-    "NODE_OUTLINE_COMPACT",
     "RELATION_COMPACT",
     "SEARCH_COMPACT",
     "TRUNCATION_MARKER",

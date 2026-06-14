@@ -148,6 +148,11 @@ class SemanticSearchRanker:
         # N12: resolve once from env (defaults reproduce baseline ranking).
         self.fusion_weights = fusion_weights if fusion_weights is not None else FusionWeights.from_env()
 
+    @property
+    def available(self) -> bool:
+        """True only when a real embedding backend is configured (not the null embedder)."""
+        return getattr(self.embedder, "name", "") != "null" and int(getattr(self.embedder, "dim", 0)) > 0
+
     def semantic_search(
         self,
         query: str,

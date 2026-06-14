@@ -17,6 +17,7 @@ import contextlib
 import csv
 import json
 import os
+import re
 import select
 import statistics
 import subprocess
@@ -37,6 +38,8 @@ from benchmarks.mcp_tools.bench_external_indexers import (
     default_benchmark_root,
     ensure_code_index_checkout,
     ensure_code_index_runtime,
+    ensure_scip_python,
+    ensure_universal_ctags,
     external_workspace_root,
     install_external_tools,
     prepare_cached_repo_snapshot,
@@ -62,9 +65,11 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "search:substring", "family": "substring_search", "benchmarked": True},
         {"surface": "outline", "family": "file_outline", "benchmarked": True},
         {"surface": "search:nohit", "family": "nohit_search", "benchmarked": True},
-        {"surface": "usages", "family": "graph", "benchmarked": False},
-        {"surface": "callers", "family": "graph", "benchmarked": False},
-        {"surface": "callees", "family": "graph", "benchmarked": False},
+        {"surface": "usages", "family": "references", "benchmarked": True},
+        {"surface": "callers", "family": "callers", "benchmarked": True},
+        {"surface": "callees", "family": "callees", "benchmarked": True},
+        {"surface": "search:fuzzy", "family": "fuzzy_symbol", "benchmarked": True},
+        {"surface": "pattern", "family": "structural_search", "benchmarked": True},
     ],
     "atelier-zoekt": [
         {"surface": "search:exact", "family": "exact_search", "benchmarked": True},
@@ -72,9 +77,9 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "search:nohit", "family": "nohit_search", "benchmarked": True},
     ],
     "zoekt": [
-        {"surface": "search:exact", "family": "exact_search", "benchmarked": True},
-        {"surface": "search:substring", "family": "substring_search", "benchmarked": True},
-        {"surface": "search:nohit", "family": "nohit_search", "benchmarked": True},
+        {"surface": "raw:exact", "family": "exact_search", "benchmarked": True},
+        {"surface": "raw:substring", "family": "substring_search", "benchmarked": True},
+        {"surface": "raw:nohit", "family": "nohit_search", "benchmarked": True},
     ],
     "serena": [
         {"surface": "find_symbol", "family": "exact_symbol", "benchmarked": True},
@@ -86,12 +91,7 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         },
         {"surface": "get_symbols_overview", "family": "file_outline", "benchmarked": True},
         {"surface": "search_for_pattern:nohit", "family": "nohit_search", "benchmarked": True},
-        {"surface": "find_referencing_symbols", "family": "graph", "benchmarked": False},
-    ],
-    "atelier-codegraph": [
-        {"surface": "query:search:compact", "family": "exact_search", "benchmarked": True},
-        {"surface": "query:substring:compact", "family": "substring_search", "benchmarked": True},
-        {"surface": "query:nohit:compact", "family": "nohit_search", "benchmarked": True},
+        {"surface": "find_referencing_symbols", "family": "references", "benchmarked": True},
     ],
     "codegraph": [
         {"surface": "query:exact", "family": "exact_symbol", "benchmarked": True},
@@ -118,9 +118,22 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "search_text:substring", "family": "substring_search", "benchmarked": True},
         {"surface": "get_file_outline", "family": "file_outline", "benchmarked": True},
         {"surface": "search_text:nohit", "family": "nohit_search", "benchmarked": True},
-        {"surface": "find_references", "family": "graph", "benchmarked": False},
-        {"surface": "get_call_hierarchy", "family": "graph", "benchmarked": False},
+        {"surface": "find_references", "family": "references", "benchmarked": True},
+        {"surface": "get_call_hierarchy", "family": "callers", "benchmarked": True},
+        {"surface": "search_symbols:fuzzy", "family": "fuzzy_symbol", "benchmarked": True},
         {"surface": "get_blast_radius", "family": "graph", "benchmarked": False},
+    ],
+    "ast-grep": [
+        {"surface": "run:pattern", "family": "structural_search", "benchmarked": True},
+    ],
+    "scip-python": [
+        {"surface": "scip:definition", "family": "exact_symbol", "benchmarked": True},
+        {"surface": "scip:outline", "family": "file_outline", "benchmarked": True},
+        {"surface": "scip:references", "family": "references", "benchmarked": True},
+    ],
+    "universal-ctags": [
+        {"surface": "readtags:exact", "family": "exact_symbol", "benchmarked": True},
+        {"surface": "ctags:outline", "family": "file_outline", "benchmarked": True},
     ],
 }
 
@@ -134,10 +147,12 @@ DEFAULT_PROVIDER_TOOLS = (
     "atelier-zoekt",
     "zoekt",
     "serena",
-    "atelier-codegraph",
     "codegraph",
     "code-index-mcp",
     "jcodemunch-mcp",
+    "ast-grep",
+    "scip-python",
+    "universal-ctags",
 )
 
 
@@ -256,7 +271,7 @@ class AtelierRunner(_RunnerBase):
         self.cache_root = cache_root
         self.cache_key = cache_key
         self.snapshot_root: Path | None = None
-        self.tool_code: Any | None = None
+        self.call_code_op: Any | None = None
 
     def start(self) -> None:
         if str(self.repo_root) not in sys.path:
@@ -271,14 +286,14 @@ class AtelierRunner(_RunnerBase):
         )
         runtime_root = Path(tempfile.mkdtemp(prefix="atelier-matrix-root-", dir=tool_workspace))
         configure_benchmark_runtime(runtime_root, workspace_root=self.snapshot_root)
-        from atelier.gateway.adapters.mcp_server import tool_code
+        from benchmarks.mcp_tools._env import call_code_op
 
-        self.tool_code = tool_code
+        self.call_code_op = call_code_op
         # Pre-warm: the first search on a fresh snapshot triggers a full index
         # build (tens of seconds). Do it here so measured cases reflect steady
         # state instead of folding a one-time build into one case's latency.
         with contextlib.suppress(Exception):
-            tool_code(
+            call_code_op(
                 {
                     "op": "search",
                     "repo_root": str(self.snapshot_root),
@@ -290,7 +305,7 @@ class AtelierRunner(_RunnerBase):
             )
 
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
-        assert self.snapshot_root is not None and self.tool_code is not None
+        assert self.snapshot_root is not None and self.call_code_op is not None
         if case.family == "exact_symbol":
             request = {
                 "op": "symbol",
@@ -311,16 +326,76 @@ class AtelierRunner(_RunnerBase):
                 "budget_tokens": 4000,
             }
         elif case.family == "file_outline":
+            # Atelier's agent-facing outline is `read mode=outline` (the smart-read
+            # outline projection), NOT a code-intel op. Force outline regardless of
+            # file size with outline_threshold=0; the serialized payload carries the
+            # symbol names that score_case checks for. Other families still dispatch
+            # through call_code_op below.
+            from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
+            from atelier.gateway.adapters import mcp_server
+
+            target = self.snapshot_root / case.path
+            cap = SemanticFileMemoryCapability(mcp_server._atelier_root())
+            outline_payload = cap.smart_read(target, outline_threshold=0)
+            request_repr = {"tool": "read", "mode": "outline", "path": case.path}
+            return (
+                json.dumps(request_repr, ensure_ascii=False),
+                json.dumps(outline_payload, ensure_ascii=False),
+            )
+        elif case.family == "references":
             request = {
-                "op": "outline",
+                "op": "usages",
                 "repo_root": str(self.snapshot_root),
+                "symbol_name": case.symbol_name,
                 "path": case.path,
+                "limit": 50,
+                "budget_tokens": 4000,
+            }
+        elif case.family in {"callers", "callees"}:
+            request = {
+                "op": case.family,
+                "repo_root": str(self.snapshot_root),
+                "symbol_name": case.symbol_name,
+                "path": case.path,
+                "limit": 50,
+                "budget_tokens": 4000,
+            }
+        elif case.family == "fuzzy_symbol":
+            request = {
+                "op": "search",
+                "repo_root": str(self.snapshot_root),
+                "query": case.query,
+                "mode": "lexical",
+                "intent": "symbol",
+                "limit": 20,
+                "file_glob": "src/atelier/**/*.py",
+                "budget_tokens": 4000,
+            }
+        elif case.family == "structural_search":
+            request = {
+                "op": "pattern",
+                "repo_root": str(self.snapshot_root),
+                "pattern": case.query,
+                "language": "python",
+                "file_glob": "src/atelier/**/*.py",
+                "limit": 50,
                 "budget_tokens": 4000,
             }
         else:
             raise ValueError(f"unsupported family for {self.tool_name}: {case.family}")
-        response = self.tool_code(request)
-        return json.dumps(request, ensure_ascii=False), json.dumps(response, ensure_ascii=False)
+        # Measure the REAL MCP response body the model receives. Code-intel tools
+        # surface the rendered markdown (one compact line per match, set during the
+        # op call) verbatim -- NOT the JSON items, which the model never sees. Fall
+        # back to JSON for ops without a markdown renderer (e.g. pattern).
+        from atelier.gateway.adapters import mcp_server
+
+        mcp_server._tool_call_rendered_text.value = None
+        response = self.call_code_op(request)
+        rendered = getattr(mcp_server._tool_call_rendered_text, "value", None)
+        output = (
+            rendered if isinstance(rendered, str) and rendered.strip() else json.dumps(response, ensure_ascii=False)
+        )
+        return json.dumps(request, ensure_ascii=False), output
 
 
 class ZoektRunner(_RunnerBase):
@@ -369,33 +444,24 @@ class ZoektRunner(_RunnerBase):
             )
 
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
+        # RAW Zoekt baseline: query the Zoekt server directly and return its native
+        # file/line matches with NO Atelier reranking, source-preference, noise
+        # skipping, or compaction. This is the honest baseline that `atelier` and
+        # `atelier-zoekt` are measured against -- it shows Atelier's value-add (or
+        # lack of it) over the underlying search engine.
         assert self.snapshot_root is not None and self.supervisor is not None
-        search_path = self.snapshot_root / "src" / "atelier"
-        request = {
+        client = self.supervisor.ensure_started()
+        results = [result for result in client.search(case.query, num_matches=40) if "src/atelier" in result.path]
+        payload = {
+            "provider": "zoekt-raw",
             "query": case.query,
-            "search_path": str(search_path),
-            "max_files": 20,
-            "max_chars_per_file": 600,
-            "include_outline": False,
-            "result_mode": "expanded",
-            "context_lines": 2,
-            "max_snippets_per_file": 3,
-            "skip_noise": False,
-            "prefer_source": False,
+            "files": [
+                {"path": result.path, "lines": [match.line_text for match in result.matches][:10]}
+                for result in results[:20]
+            ],
         }
-        result = self.supervisor.search(
-            query=case.query,
-            search_path=search_path,
-            max_files=request["max_files"],
-            max_chars_per_file=request["max_chars_per_file"],
-            include_outline=request["include_outline"],
-            result_mode="expanded",
-            context_lines=2,
-            max_snippets_per_file=3,
-            skip_noise=False,
-            prefer_source=False,
-        )
-        return json.dumps(request, ensure_ascii=False), json.dumps(asdict(result), ensure_ascii=False)
+        request = {"query": case.query, "num_matches": 40, "raw": True}
+        return json.dumps(request, ensure_ascii=False), json.dumps(payload, ensure_ascii=False)
 
 
 class AtelierZoektRunner(ZoektRunner):
@@ -429,7 +495,20 @@ class AtelierZoektRunner(ZoektRunner):
             skip_noise=True,
             prefer_source=True,
         )
-        return json.dumps(request, ensure_ascii=False), json.dumps(asdict(result), ensure_ascii=False)
+        # Measure only the LLM-facing content (path + trimmed snippet text), NOT the
+        # internal dataclass metadata (byte offsets, scores, line numbers, per-file
+        # token counters, backend/index fields). asdict(result) serialized all of that
+        # and bloated the payload above the raw provider despite Atelier's compaction;
+        # this reflects what the model actually consumes and what Atelier truly trims.
+        payload = {
+            "provider": "atelier-zoekt",
+            "query": case.query,
+            "files": [
+                {"path": file_match.path, "snippets": [snippet.text for snippet in file_match.snippets]}
+                for file_match in result.matches
+            ],
+        }
+        return json.dumps(request, ensure_ascii=False), json.dumps(payload, ensure_ascii=False)
 
 
 class SerenaMatrixRunner(_RunnerBase):
@@ -482,6 +561,13 @@ class SerenaMatrixRunner(_RunnerBase):
         elif case.family == "file_outline":
             tool_name = "get_symbols_overview"
             params = {"relative_path": case.path, "depth": 0}
+        elif case.family == "references":
+            tool_name = "find_referencing_symbols"
+            params = {
+                "name_path": case.symbol_name,
+                "relative_path": case.path,
+                "max_answer_chars": 20000,
+            }
         else:
             raise ValueError(f"unsupported family for {self.tool_name}: {case.family}")
         response = self.runner.query(tool_name, params)
@@ -535,13 +621,251 @@ class CodeGraphRunner(_RunnerBase):
         return json.dumps({"command": command}, ensure_ascii=False), proc.stdout
 
 
-class AtelierCodeGraphRunner(CodeGraphRunner):
-    tool_name = "atelier-codegraph"
+class AstGrepRunner(_RunnerBase):
+    """Raw ast-grep CLI as a structural-search comparator for Atelier's pattern op.
+
+    Uses ``npx @ast-grep/cli`` so it works wherever Node is available; if the CLI
+    cannot be fetched the shard is recorded as startup/case failed (honest).
+    """
+
+    tool_name = "ast-grep"
     supported_families = TOOL_SUPPORT[tool_name]
 
+    def __init__(self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str) -> None:
+        self.repo_root = repo_root
+        self.workspace_root = workspace_root
+        self.cache_root = cache_root
+        self.cache_key = cache_key
+        self.snapshot_root: Path | None = None
+
+    def start(self) -> None:
+        self.snapshot_root = _prepare_provider_snapshot(
+            self.repo_root,
+            self.workspace_root,
+            tool_name=self.tool_name,
+            cache_root=self.cache_root,
+            cache_key=self.cache_key,
+        )
+
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
-        request, output = super().run_case(case)
-        return request, _compact_provider_payload(self.tool_name, case, output)
+        assert self.snapshot_root is not None
+        command = [
+            "npx",
+            "--yes",
+            "@ast-grep/cli",
+            "run",
+            "--pattern",
+            case.query,
+            "--lang",
+            "python",
+            "--json",
+            str(self.snapshot_root / "src" / "atelier"),
+        ]
+        proc = run_cmd(command, timeout=300)
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
+        return json.dumps({"command": command}, ensure_ascii=False), proc.stdout
+
+
+class CtagsRunner(_RunnerBase):
+    """universal-ctags: a classic tag-index comparator (definitions + outline).
+
+    Builds one repo-wide tag DB over ``src/atelier`` (paths stored repo-relative),
+    then answers exact-symbol lookups via ``readtags`` and file outlines via a
+    single-file ``ctags`` invocation. ctags has no reference/call graph or
+    edit-distance fuzzy search, so those families are intentionally not claimed.
+    """
+
+    tool_name = "universal-ctags"
+    supported_families = TOOL_SUPPORT[tool_name]
+
+    def __init__(self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str) -> None:
+        self.repo_root = repo_root
+        self.workspace_root = workspace_root
+        self.cache_root = cache_root
+        self.cache_key = cache_key
+        self.snapshot_root: Path | None = None
+        self.ctags: Path | None = None
+        self.readtags: Path | None = None
+        self.tags_db: Path | None = None
+
+    def start(self) -> None:
+        self.ctags, self.readtags = ensure_universal_ctags()
+        self.snapshot_root = _prepare_provider_snapshot(
+            self.repo_root,
+            self.workspace_root,
+            tool_name=self.tool_name,
+            cache_root=self.cache_root,
+            cache_key=self.cache_key,
+        )
+        assert self.snapshot_root is not None
+        self.tags_db = self.snapshot_root / ".atelier-ctags.tags"
+        if not _provider_cache_ready(self.snapshot_root, self.tool_name, self.cache_key):
+            lock_root = self.cache_root or self.snapshot_root.parent
+            with cache_lock(lock_root / f"{self.tool_name}-{self.cache_key}.lock"):
+                if not _provider_cache_ready(self.snapshot_root, self.tool_name, self.cache_key):
+                    proc = run_cmd(
+                        [
+                            str(self.ctags),
+                            "-R",
+                            "--languages=Python",
+                            "--fields=+nKsS",
+                            "-f",
+                            str(self.tags_db),
+                            "src/atelier",
+                        ],
+                        cwd=self.snapshot_root,
+                        timeout=600,
+                    )
+                    if proc.returncode != 0:
+                        raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
+                    _write_provider_cache_marker(self.snapshot_root, self.tool_name, self.cache_key)
+
+    def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
+        assert self.snapshot_root is not None and self.ctags is not None
+        assert self.readtags is not None and self.tags_db is not None
+        if case.family == "exact_symbol":
+            cmd = [str(self.readtags), "-t", str(self.tags_db), "-e", case.symbol_name or case.query]
+        elif case.family == "file_outline":
+            cmd = [str(self.ctags), "-f", "-", "--languages=Python", "--fields=+nKsS", case.path or ""]
+        else:
+            raise ValueError(f"unsupported family for {self.tool_name}: {case.family}")
+        proc = run_cmd(cmd, cwd=self.snapshot_root, timeout=120)
+        # readtags exits non-zero on a clean miss; that is a legitimate empty
+        # result (scored 0), not a harness failure -- return stdout regardless.
+        return json.dumps({"command": cmd[1:]}, ensure_ascii=False), proc.stdout
+
+
+_SCIP_DESCRIPTOR_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?[#.:/]")
+
+
+def _scip_leaf_name(symbol: str) -> str:
+    """Return the trailing descriptor identifier of a SCIP symbol string.
+
+    SCIP chains descriptors (e.g. ``pkg`/Class#method().``); the leaf is the last
+    identifier preceding a descriptor terminator (``# . : /`` or ``().``).
+    """
+    matches = _SCIP_DESCRIPTOR_RE.findall(symbol)
+    return matches[-1] if matches else ""
+
+
+class ScipPythonRunner(_RunnerBase):
+    """scip-python: a precise SCIP comparator (the protocol Atelier itself speaks).
+
+    Indexes ``src/atelier`` once with Pyright-grade scip-python, then loads the
+    index via the ``scip`` CLI (``print --json``) into in-memory lookups for
+    definitions, per-file outlines, and references.
+    """
+
+    tool_name = "scip-python"
+    supported_families = TOOL_SUPPORT[tool_name]
+
+    def __init__(self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str) -> None:
+        self.repo_root = repo_root
+        self.workspace_root = workspace_root
+        self.cache_root = cache_root
+        self.cache_key = cache_key
+        self.snapshot_root: Path | None = None
+        self.scip_python: Path | None = None
+        self.scip_cli: Path | None = None
+        self._defs_by_name: dict[str, list[str]] = {}
+        self._defs_by_doc: dict[str, list[str]] = {}
+        self._docs_by_leaf: dict[str, set[str]] = {}
+
+    def start(self) -> None:
+        self.scip_python, self.scip_cli = ensure_scip_python()
+        self.snapshot_root = _prepare_provider_snapshot(
+            self.repo_root,
+            self.workspace_root,
+            tool_name=self.tool_name,
+            cache_root=self.cache_root,
+            cache_key=self.cache_key,
+        )
+        assert self.snapshot_root is not None
+        index_path = self.snapshot_root / ".atelier-scip-index.scip"
+        if not _provider_cache_ready(self.snapshot_root, self.tool_name, self.cache_key):
+            lock_root = self.cache_root or self.snapshot_root.parent
+            with cache_lock(lock_root / f"{self.tool_name}-{self.cache_key}.lock"):
+                if not _provider_cache_ready(self.snapshot_root, self.tool_name, self.cache_key):
+                    proc = run_cmd(
+                        [
+                            str(self.scip_python),
+                            "index",
+                            "--project-name",
+                            "atelier",
+                            "--quiet",
+                            "--target-only",
+                            "src/atelier",
+                            "--output",
+                            str(index_path),
+                        ],
+                        cwd=self.snapshot_root,
+                        timeout=1800,
+                    )
+                    if proc.returncode != 0:
+                        raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
+                    _write_provider_cache_marker(self.snapshot_root, self.tool_name, self.cache_key)
+        printed = run_cmd([str(self.scip_cli), "print", "--json", str(index_path)], timeout=600)
+        if printed.returncode != 0:
+            raise RuntimeError(printed.stderr[:1200] or printed.stdout[:1200])
+        self._build_lookups(printed.stdout)
+
+    def _build_lookups(self, printed_json: str) -> None:
+        data = json.loads(printed_json)
+        for doc in data.get("documents", []):
+            rel = doc.get("relative_path", "")
+            if not rel:
+                continue
+            full = f"src/atelier/{rel}"
+            def_names: list[str] = []
+            for occ in doc.get("occurrences", []):
+                sym = occ.get("symbol", "")
+                if not sym or sym.startswith("local "):
+                    continue
+                leaf = _scip_leaf_name(sym)
+                if not leaf:
+                    continue
+                # Name-keyed occurrence index: references are answered at the same
+                # (name-based) granularity as the reference ground truth, so a
+                # precise tool is not penalised for distinguishing same-named
+                # symbols the AST-derived expected set conflates.
+                self._docs_by_leaf.setdefault(leaf, set()).add(full)
+                if int(occ.get("symbol_roles", 0) or 0) & 1:  # Definition bit
+                    bucket = self._defs_by_name.setdefault(leaf, [])
+                    if full not in bucket:
+                        bucket.append(full)
+                    def_names.append(leaf)
+            if def_names:
+                self._defs_by_doc[full] = def_names
+
+    def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
+        name = case.symbol_name or case.query
+        if case.family == "exact_symbol":
+            paths = self._defs_by_name.get(name, [])
+            payload: dict[str, Any] = {
+                "provider": "scip-python",
+                "op": "definition",
+                "symbol": name,
+                "matches": [{"path": p, "name": name} for p in paths[:20]],
+            }
+        elif case.family == "file_outline":
+            payload = {
+                "provider": "scip-python",
+                "op": "outline",
+                "path": case.path,
+                "symbols": self._defs_by_doc.get(case.path or "", []),
+            }
+        elif case.family == "references":
+            payload = {
+                "provider": "scip-python",
+                "op": "references",
+                "symbol": name,
+                "files": sorted(self._docs_by_leaf.get(name, set()))[:50],
+            }
+        else:
+            raise ValueError(f"unsupported family for {self.tool_name}: {case.family}")
+        request = {"family": case.family, "symbol": name, "path": case.path}
+        return json.dumps(request, ensure_ascii=False), json.dumps(payload, ensure_ascii=False)
 
 
 class CodeIndexMatrixRunner(_RunnerBase):
@@ -902,6 +1226,33 @@ class JCodeMunchRunner(_RunnerBase):
         elif case.family == "file_outline":
             arguments = {"repo": self.repo_id, "file_path": case.path}
             result = self._tool_call("get_file_outline", arguments)
+        elif case.family == "references":
+            arguments = {
+                "repo": self.repo_id,
+                "symbol": case.symbol_name,
+                "file_path": case.path,
+                "max_results": 50,
+            }
+            result = self._tool_call("find_references", arguments)
+        elif case.family == "callers":
+            arguments = {
+                "repo": self.repo_id,
+                "symbol": case.symbol_name,
+                "file_path": case.path,
+                "direction": "callers",
+                "max_results": 50,
+            }
+            result = self._tool_call("get_call_hierarchy", arguments)
+        elif case.family == "fuzzy_symbol":
+            arguments = {
+                "repo": self.repo_id,
+                "query": case.query,
+                "language": "python",
+                "max_results": 10,
+                "detail_level": "compact",
+                "fuzzy": True,
+            }
+            result = self._tool_call("search_symbols", arguments)
         else:
             raise ValueError(f"unsupported family for {self.tool_name}: {case.family}")
         return json.dumps(arguments, ensure_ascii=False), json.dumps(result, ensure_ascii=False)
@@ -963,6 +1314,7 @@ def _payload_looks_empty(payload: str) -> bool:
         '"items":[]',
         '"results":[]',
         '"matches":[]',
+        '"files":[]',
         '"content":[]',
         '"symbols":[]',
         '"hits":[]',
@@ -972,144 +1324,10 @@ def _payload_looks_empty(payload: str) -> bool:
         '"total_matches":0',
         "noresultsfound",
         "0matches",
+        "nomatches",  # rendered-markdown empty form: "### search\n- no matches"
+        "nosymbols",
     ]
     return any(marker in compact for marker in empty_markers)
-
-
-def _compact_provider_payload(tool: str, case: ExternalBenchCase, output: str) -> str:
-    """Compact provider-native output into an Atelier-style benchmark payload."""
-    if case.family == "nohit_search":
-        return output[:1200]
-    query = case.query.lower()
-    selected: list[tuple[float, object]] = []
-
-    def _interesting_text(value: str) -> bool:
-        lowered = value.lower()
-        return query in lowered or "src/atelier" in lowered
-
-    def _append(item: object, *, path: str = "", text: str = "") -> None:
-        score = _compact_item_score(query, path, text)
-        selected.append((score, item))
-
-    def _walk_path_mapping(value: dict[str, object]) -> bool:
-        handled = False
-        for key, item in value.items():
-            if "/" not in key:
-                continue
-            handled = True
-            snippets: list[str] = []
-            if isinstance(item, list):
-                for entry in item:
-                    compact = " ".join(str(entry).split())
-                    if compact and _interesting_text(f"{key} {compact}"):
-                        snippets.append(compact[:240])
-                    if len(snippets) >= 3:
-                        break
-            else:
-                compact = " ".join(str(item).split())
-                if compact:
-                    snippets.append(compact[:240])
-            if snippets:
-                _append({"path": key, "snippets": snippets}, path=key, text=" ".join(snippets))
-        return handled
-
-    def _walk(value: object) -> None:
-        if len(selected) >= 80:
-            return
-        if isinstance(value, dict):
-            if _walk_path_mapping(value):
-                return
-            blob = json.dumps(value, ensure_ascii=False)
-            if _interesting_text(blob):
-                compact = _shrink_mapping(value)
-                _append(compact, text=json.dumps(compact, ensure_ascii=False))
-                return
-            for child in value.values():
-                _walk(child)
-            return
-        if isinstance(value, list):
-            for child in value:
-                _walk(child)
-                if len(selected) >= 80:
-                    break
-            return
-        if isinstance(value, str) and _interesting_text(value):
-            compact = " ".join(value.split())[:240]
-            _append(compact, text=compact)
-
-    try:
-        parsed = json.loads(output)
-    except json.JSONDecodeError:
-        parsed = None
-    if parsed is not None:
-        _walk(parsed)
-    else:
-        for line in output.splitlines():
-            compact = " ".join(line.split())
-            if compact and _interesting_text(compact):
-                _append(compact[:240], text=compact)
-            if len(selected) >= 80:
-                break
-        if not selected:
-            for line in output.splitlines()[:20]:
-                compact = " ".join(line.split())[:240]
-                if compact:
-                    _append(compact, text=compact)
-    selected_items = [item for _, item in sorted(selected, key=lambda pair: pair[0], reverse=True)[:40]]
-
-    return json.dumps(
-        {
-            "provider": tool,
-            "query": case.query,
-            "view": "atelier-compact",
-            "items": selected_items,
-        },
-        ensure_ascii=False,
-    )
-
-
-def _compact_item_score(query: str, path: str, text: str) -> float:
-    score = 0.0
-    haystack = f"{path} {text}".lower()
-    if query and query in haystack:
-        score += 2.0
-    if path.startswith("src/atelier/"):
-        score += 3.0
-    elif path.startswith("src/"):
-        score += 1.0
-    if "def " in haystack and query in haystack:
-        score += 2.0
-    if "class " in haystack and query in haystack:
-        score += 2.0
-    return score
-
-
-def _shrink_mapping(value: dict[str, object]) -> dict[str, object]:
-    keep = {
-        "file",
-        "file_path",
-        "filename",
-        "kind",
-        "line",
-        "line_number",
-        "line_start",
-        "line_end",
-        "name",
-        "path",
-        "qualified_name",
-        "signature",
-        "symbol",
-        "text",
-    }
-    compact: dict[str, object] = {}
-    for key, item in value.items():
-        if key.lower() not in keep:
-            continue
-        if isinstance(item, str):
-            compact[key] = " ".join(item.split())[:240]
-        else:
-            compact[key] = item
-    return compact or {"text": json.dumps(value, ensure_ascii=False)[:300]}
 
 
 def score_case(case: ExternalBenchCase, output: str) -> float:
@@ -1124,6 +1342,19 @@ def score_case(case: ExternalBenchCase, output: str) -> float:
             output, case.expected_names[:1]
         )
         return 1.0 if has_expected_path and has_query_or_name else 0.0
+    if case.family in {"references", "callers", "callees"}:
+        # Correct if the provider surfaced at least one true related file
+        # (expected_paths holds the neutral AST-detected referrers / callers /
+        # callee definition files).
+        lowered = output.lower()
+        return 1.0 if any(path.lower() in lowered for path in case.expected_paths) else 0.0
+    if case.family == "fuzzy_symbol":
+        expected = [*case.expected_paths[:1], *case.expected_names[:1]]
+        return 1.0 if _payload_contains_all(output, expected) else 0.0
+    if case.family == "structural_search":
+        # Correct if the provider surfaced at least one file the pattern truly matches.
+        lowered = output.lower()
+        return 1.0 if any(path.lower() in lowered for path in case.expected_paths) else 0.0
     expected = [*case.expected_paths[:1], *case.expected_names[:1]]
     return 1.0 if _payload_contains_all(output, expected) else 0.0
 
@@ -1153,10 +1384,6 @@ def _runner_specs(
             SerenaMatrixRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
         ),
         (
-            "atelier-codegraph",
-            AtelierCodeGraphRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
-        ),
-        (
             "codegraph",
             CodeGraphRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
         ),
@@ -1177,6 +1404,18 @@ def _runner_specs(
         (
             "jcodemunch-mcp",
             JCodeMunchRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
+        ),
+        (
+            "ast-grep",
+            AstGrepRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
+        ),
+        (
+            "scip-python",
+            ScipPythonRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
+        ),
+        (
+            "universal-ctags",
+            CtagsRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
         ),
     ]
 

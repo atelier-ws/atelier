@@ -47,20 +47,16 @@ def test_bench_atelier_uses_snapshot_root(monkeypatch, tmp_path: Path) -> None:
         captured["runtime_root"] = runtime_root
         captured["workspace_root"] = workspace_root
 
-    env_mod.configure_benchmark_runtime = configure_benchmark_runtime
-
-    adapter_mod = types.ModuleType("atelier.gateway.adapters.mcp_server")
-
-    def tool_code(request: dict[str, object]) -> dict[str, object]:
+    def call_code_op(request: dict[str, object]) -> dict[str, object]:
         captured["request"] = request
         return {"items": []}
 
-    adapter_mod.tool_code = tool_code
+    env_mod.configure_benchmark_runtime = configure_benchmark_runtime
+    env_mod.call_code_op = call_code_op
 
     monkeypatch.setitem(sys.modules, "benchmarks", benchmarks_pkg)
     monkeypatch.setitem(sys.modules, "benchmarks.mcp_tools", mcp_pkg)
     monkeypatch.setitem(sys.modules, "benchmarks.mcp_tools._env", env_mod)
-    monkeypatch.setitem(sys.modules, "atelier.gateway.adapters.mcp_server", adapter_mod)
 
     result = bench.bench_atelier(ROOT, tmp_path / "workspace", "classify_command", 1)
 

@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import difflib
+import os
+import stat
+import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,7 +41,6 @@ def execute_rewrite(
     for candidate in candidates:
         if candidate.before == candidate.after:
             continue
-        files_changed.append(candidate.file_path)
         diff_parts.extend(
             difflib.unified_diff(
                 candidate.before.splitlines(keepends=True),
@@ -49,7 +52,21 @@ def execute_rewrite(
         if not dry_run:
             target = (repo_root / candidate.file_path).resolve()
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(candidate.after, encoding="utf-8")
+            fd, tmp_name = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    handle.write(candidate.after)
+                # Preserve the target's existing permissions: mkstemp creates the
+                # temp file as 0o600 and os.replace swaps in that inode, which would
+                # otherwise strip the executable bit and group/other access.
+                with suppress(OSError):
+                    os.chmod(tmp_name, stat.S_IMODE(target.stat().st_mode))
+                os.replace(tmp_name, target)
+            except BaseException:
+                with suppress(OSError):
+                    os.unlink(tmp_name)
+                raise
+        files_changed.append(candidate.file_path)
     return RewriteOutcome(diff="".join(diff_parts), files_changed=files_changed)
 
 

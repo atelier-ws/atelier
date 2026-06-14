@@ -150,29 +150,3 @@ def test_run_ledger_record_call_attaches_cost_to_snapshot(tmp_path: Path) -> Non
     assert snap["token_count"] == 5500
     # cost_history.json populated
     assert (tmp_path / "cost_history.json").exists()
-
-
-def test_failure_cluster_includes_suggested_prompt() -> None:
-    from atelier.core.improvement.failure_analyzer import analyze_failures
-
-    snapshots = [
-        {
-            "session_id": f"run-{i}",
-            "status": "failed",
-            "environment_id": "shopify",
-            "events": [
-                {
-                    "kind": "command_result",
-                    "summary": "publish",
-                    "payload": {"ok": False, "error_signature": "HTTP 429 rate limit exceeded"},
-                }
-            ],
-        }
-        for i in range(3)
-    ]
-    clusters = analyze_failures(snapshots)
-    assert clusters
-    c = clusters[0]
-    assert c.suggested_prompt
-    assert "backoff" in c.suggested_prompt.lower() or "rate" in c.suggested_prompt.lower()
-    assert "shopify" in c.suggested_prompt
