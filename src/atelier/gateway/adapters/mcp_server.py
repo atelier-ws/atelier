@@ -3476,7 +3476,7 @@ def _memory_recall(
     since: str | None = None,
 ) -> dict[str, Any]:
     """Recall relevant archival memory passages."""
-    return (
+    result = (
         _memory_service()
         .recall(
             agent_id=agent_id,
@@ -3487,6 +3487,14 @@ def _memory_recall(
         )
         .model_dump(mode="json")
     )
+    if not result.get("passages"):
+        # Helpful state hint instead of a bare empty result, so the model knows
+        # memory is working and how to seed it.
+        result["hint"] = (
+            "No matching memories yet — memory accrues as you work. Store durable facts with "
+            "memory(op=store_fact); past-session recall improves as sessions are indexed."
+        )
+    return result
 
 
 def _memory_service() -> MemoryService:
