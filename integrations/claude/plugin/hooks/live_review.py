@@ -94,7 +94,7 @@ def main() -> int:
         session_id = _active_session_id()
         if not session_id:
             return 0
-        count = count_file_edits(root / "runs" / f"{session_id}.json")
+        count = count_file_edits(root / "sessions" / session_id / "run.json")
         if settings.deep_edit_count_reviewer and count > 0 and count % settings.deep_edit_count_interval == 0:
             _spawn(session_id, "deep", edited, root)
         elif settings.live_reviewer:
