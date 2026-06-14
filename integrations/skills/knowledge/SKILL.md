@@ -5,10 +5,12 @@ description: View or curate the review knowledge base — repo lessons + persona
 
 # Review knowledge base
 
-The live/automated reviewer applies two knowledge layers when it reviews a diff:
+The live/automated reviewer applies three knowledge layers when it reviews a
+diff — commit the first two to **distribute learning across the team**:
 
-- **repo lessons** — the first heading of each `.lessons/blocks/*.md` (conventions learned in this repo).
-- **personal overlay** — `~/.atelier/review_overlay.json`, which you curate.
+- **repo lessons** — `.lessons/blocks/*.md` (commit them; every clone gets them).
+- **team overlay** — `.atelier/review.json` in the repo (commit it: every teammate's reviewer applies these `notes`/`boost`/`suppress`).
+- **personal overlay** — `~/.atelier/review_overlay.json` (per-user, not shared).
 
 ## Overlay shape (`~/.atelier/review_overlay.json`)
 
@@ -33,13 +35,16 @@ cap the spend:
 ```bash
 atelier knowledge extract --host auto            # Atelier's owned model/routing
 atelier knowledge extract --host ollama --model llama3.1   # local, free
+atelier knowledge extract --scope personal       # per-user instead of team
 atelier knowledge extract --dry-run              # preview without writing
 ```
 
 Hosts: `auto` (owned agent-spawn), `claude`, `codex`, `ollama` (needs `--model`).
-`--max-spend <usd>` is a hard cap — the run aborts before spending if the
-estimate exceeds it (`ollama`/`codex` are treated as free). The installer can
-also run this once if you opt in (`ATELIER_KB_EXTRACT=1`).
+`--scope` defaults to **repo** — rules land in the committable team overlay
+(`.atelier/review.json`); commit it so the whole team gets them. `--scope
+personal` keeps them per-user. `--max-spend <usd>` is a hard cap — the run aborts
+before spending if the estimate exceeds it (`ollama`/`codex` are treated as
+free). The installer can also run this once if you opt in (`ATELIER_KB_EXTRACT=1`).
 
 ## Operating loop
 
