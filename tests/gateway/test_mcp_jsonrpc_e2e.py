@@ -22,7 +22,6 @@ from atelier.gateway.adapters.mcp_server import TOOLS, _handle
 from tests.helpers import init_store_at
 
 EXPECTED_TOOLS = {
-    "agent",
     "memory",
     "read",
     "edit",
