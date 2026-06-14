@@ -89,6 +89,14 @@ ATELIER_KB_EXTRACT="${ATELIER_KB_EXTRACT:-0}"      # 1 = run knowledge extractio
 ATELIER_KB_HOST="${ATELIER_KB_HOST:-auto}"        # auto | claude | codex | ollama
 ATELIER_KB_MODEL="${ATELIER_KB_MODEL:-}"          # model id (required for ollama)
 ATELIER_KB_MAX_SPEND="${ATELIER_KB_MAX_SPEND:-0.50}"  # hard USD cap per run (auto/claude)
+# All-sessions Recall (opt-in). Background-index past transcripts so recall spans
+# every session. Embedding has a cost, so the auto-indexer is off by default.
+# Claude has no embeddings API, so it is not an embedder choice.
+[[ -n "${ATELIER_RECALL_INDEX+x}" ]] && ATELIER_RECALL_PRESET=1 || ATELIER_RECALL_PRESET=0
+ATELIER_RECALL_PROMPTED=0
+ATELIER_RECALL_INDEX="${ATELIER_RECALL_INDEX:-0}"            # 1 = enable SessionStart background indexer
+ATELIER_RECALL_EMBEDDER="${ATELIER_RECALL_EMBEDDER:-local}"  # local | openai (codex) | ollama
+ATELIER_RECALL_EMBED_MODEL="${ATELIER_RECALL_EMBED_MODEL:-}" # embed model (e.g. an ollama model name)
 ATELIER_ZOEKT="${ATELIER_ZOEKT:-0}"                    # 1 = install persistent Zoekt sidecar
 OS_NAME="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
@@ -1467,6 +1475,57 @@ run_knowledge_extraction_if_selected() {
     step_done
 }
 
+prompt_recall_indexing() {
+    # Opt-in. Honor an explicit env preset; only ask when interactive.
+    [[ "$ATELIER_RECALL_PRESET" == "1" ]] && return 0
+    [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && return 0
+    has_interactive_input || return 0
+    ATELIER_RECALL_PROMPTED=1
+
+    local ans=""
+    printf "  ◇  Enable all-sessions Recall (background-index past sessions for semantic recall)? [y/N] "
+    IFS= read -r ans </dev/tty 2>/dev/null || ans=""
+    case "$ans" in
+        y | Y | yes | YES) ATELIER_RECALL_INDEX=1 ;;
+        *) ATELIER_RECALL_INDEX=0 ;;
+    esac
+
+    local choice=""
+    printf "  ◇  Recall embedder  1) local (offline)  2) openai (codex)  3) ollama  [1] "
+    IFS= read -r choice </dev/tty 2>/dev/null || choice=""
+    case "$choice" in
+        2) ATELIER_RECALL_EMBEDDER=openai ;;
+        3) ATELIER_RECALL_EMBEDDER=ollama ;;
+        *) ATELIER_RECALL_EMBEDDER=local ;;
+    esac
+
+    if [[ "$ATELIER_RECALL_EMBEDDER" == "ollama" ]]; then
+        local model=""
+        printf "  ◇  Ollama embed model [nomic-embed-text]: "
+        IFS= read -r model </dev/tty 2>/dev/null || model=""
+        ATELIER_RECALL_EMBED_MODEL="${model:-nomic-embed-text}"
+    fi
+}
+
+configure_recall_if_selected() {
+    # Persist the choice only when the user opted in (preset or interactive),
+    # so a non-interactive re-install never resets a prior recall config.
+    [[ "$ATELIER_RECALL_PRESET" == "1" || "$ATELIER_RECALL_PROMPTED" == "1" ]] || return 0
+    local atelier_bin="$ATELIER_BIN_DIR/atelier"
+    [[ -x "$atelier_bin" ]] || atelier_bin="atelier"
+    local auto_flag="--no-auto-index"
+    [[ "$ATELIER_RECALL_INDEX" == "1" ]] && auto_flag="--auto-index"
+    local rc_args=(recall config "$auto_flag" --embedder "$ATELIER_RECALL_EMBEDDER")
+    [[ -n "$ATELIER_RECALL_EMBED_MODEL" ]] && rc_args+=(--embed-model "$ATELIER_RECALL_EMBED_MODEL")
+    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+        info "[dry-run] $atelier_bin ${rc_args[*]}"
+        return 0
+    fi
+    if ! "$atelier_bin" "${rc_args[@]}" >/dev/null 2>&1; then
+        degrade "recall config did not complete (continuing install)"
+    fi
+}
+
 run_setup() {
     local stack_available=0
     if [[ "$ATELIER_NO_STACK" != "1" ]] && command -v npm >/dev/null 2>&1; then
@@ -1485,6 +1544,7 @@ run_setup() {
     step_done
 
     prompt_knowledge_extraction
+    prompt_recall_indexing
 
     local selected_memory=""
     if [[ "$ATELIER_ADVANCED" == "1" ]]; then
@@ -1830,6 +1890,7 @@ run_setup() {
     fi
 
     run_knowledge_extraction_if_selected
+    configure_recall_if_selected
 
     print_final_report
     local completion_title_line="✓ Installation Complete!                              "

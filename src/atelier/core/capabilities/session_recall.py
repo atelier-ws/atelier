@@ -11,6 +11,7 @@ background run stays cheap.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -94,13 +95,43 @@ def _session_snippets(path: str | Path) -> list[str]:
     return out
 
 
+def _recall_embedder_choice(root: str | Path) -> tuple[str, str]:
+    """Resolve (embedder, model) for recall: env overrides plugin_settings.json."""
+    choice = (os.environ.get("ATELIER_RECALL_EMBEDDER") or "").strip().lower()
+    model = (os.environ.get("ATELIER_RECALL_EMBED_MODEL") or "").strip()
+    if not choice or not model:
+        try:
+            data = json.loads((Path(root) / "plugin_settings.json").read_text("utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = {}
+        if isinstance(data, dict):
+            choice = choice or str(data.get("recallEmbedder", "") or "").strip().lower()
+            model = model or str(data.get("recallEmbedModel", "") or "").strip()
+    return choice, model
+
+
+def _make_recall_embedder(root: str | Path) -> Any:
+    """Build the embedder for recall. Claude has no embeddings API, so it is not an
+    option: codex maps to OpenAI, ollama runs locally, everything else falls back
+    to the offline LocalEmbedder."""
+    from atelier.infra.embeddings.factory import make_code_embedder, make_embedder
+
+    choice, model = _recall_embedder_choice(root)
+    if choice == "ollama":
+        return make_code_embedder(pin="ollama", model=model or None)
+    if choice in ("openai", "codex"):
+        return make_embedder("openai")
+    if choice == "local":
+        return make_embedder("local")
+    return make_embedder()
+
+
 def _capability(root: str | Path) -> Any:
     from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
     from atelier.core.foundation.redaction import redact
-    from atelier.infra.embeddings.factory import make_embedder
     from atelier.infra.storage.factory import make_memory_store
 
-    return ArchivalRecallCapability(make_memory_store(Path(root)), make_embedder(), redactor=redact)
+    return ArchivalRecallCapability(make_memory_store(Path(root)), _make_recall_embedder(root), redactor=redact)
 
 
 def index_sessions(
