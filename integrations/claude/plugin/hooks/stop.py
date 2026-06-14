@@ -612,42 +612,6 @@ def _format_stats(
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Auto-record helper
-# ---------------------------------------------------------------------------
-
-
-def _auto_record(session_id: str, stats: dict[str, Any] | None) -> None:
-    """Call `atelier runs record` silently so the ledger stays complete."""
-    import subprocess
-
-    if not session_id:
-        return
-    total_in = (stats or {}).get("input_tokens", 0)
-    total_out = (stats or {}).get("output_tokens", 0)
-    cost = (stats or {}).get("est_cost_usd", 0.0)
-    tool_calls = (stats or {}).get("tool_calls", 0)
-    trace = {
-        "agent": "claude-code",
-        "domain": "session",
-        "task": "session-auto-record",
-        "status": "success",
-        "session_id": session_id,
-        "output_summary": f"tokens: {total_in}in/{total_out}out  cost: ~${cost:.4f}  tools: {tool_calls}",
-    }
-
-    atelier_bin = os.environ.get("ATELIER_BIN") or str(Path.home() / ".local" / "bin" / "atelier")
-    with contextlib.suppress(Exception):
-        subprocess.run(
-            [atelier_bin, "runs", "record", "--input", "-"],
-            input=json.dumps(trace),
-            text=True,
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
-
-
 def _format_review_findings(session_id: str) -> str:
     """Surface unconsumed NEEDS_FIX live-reviewer verdicts; mark them consumed.
 
@@ -747,11 +711,10 @@ def main() -> int:
             print(json.dumps({"systemMessage": f"Atelier session complete.\n{summary}{review_suffix}"}))
         return 0
 
-    # ── Code work done but no trace — auto-record and show stats ─────────────
-    _auto_record(session_id, stats)
+    # ── Code work done but no trace — show stats ─────────────
     if stats and stats["total_tokens"] > 0:
         summary = _format_stats(stats, savings, real_cost=real_cost)
-        print(json.dumps({"systemMessage": f"Atelier: session auto-recorded.\n{summary}{review_suffix}"}))
+        print(json.dumps({"systemMessage": f"Atelier session complete.\n{summary}{review_suffix}"}))
     return 0
 
 
