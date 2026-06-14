@@ -186,35 +186,52 @@ def write_workspace_cursor_rules(
     return written
 
 
+def write_codex_agents(
+    target_dir: str | Path,
+    *,
+    model_workspace: str | Path | None = None,
+    repo_root: str | Path | None = None,
+) -> list[Path]:
+    """Write per-role Codex agent TOMLs (``atelier.<role>.toml``) into target_dir.
+
+    Used for both global installs (``$CODEX_HOME/agents``) and workspace installs
+    (``<repo>/.codex/agents``). ``model_workspace`` scopes per-role model
+    overrides to a workspace ``settings.json``; pass ``None`` for a global
+    install to use global/default model settings. Stale ``atelier.*.toml`` files
+    in the target are removed first so the set always matches the current roles.
+    """
+    root = _resolve_repo_root(repo_root)
+    registry = build_default_registry(root)
+    mode_docs = load_mode_docs(root)
+    target = Path(target_dir).expanduser().resolve()
+    target.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+
+    for stale_path in target.glob("atelier.*.toml"):
+        stale_path.unlink()
+
+    for role_id in SURFACED_ROLE_IDS:
+        role = registry.roles[role_id]
+        mode_doc = mode_docs[role_id]
+        path = target / f"atelier.{role_id}.toml"
+        model = normalize_model_for_host(
+            "codex",
+            resolve_host_model("codex", role_id, workspace_root=model_workspace, fallback=None),
+        )
+        path.write_text(
+            _render_codex_agent_toml(role_id, role.agent_description, mode_doc.body, model), encoding="utf-8"
+        )
+        written.append(path)
+    return written
+
+
 def write_workspace_codex_agents(
     workspace_root: str | Path,
     *,
     repo_root: str | Path | None = None,
 ) -> list[Path]:
     workspace = Path(workspace_root).expanduser().resolve()
-    root = _resolve_repo_root(repo_root)
-    registry = build_default_registry(root)
-    mode_docs = load_mode_docs(root)
-    target_dir = workspace / ".codex" / "agents"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    written: list[Path] = []
-
-    for stale_path in target_dir.glob("atelier.*.toml"):
-        stale_path.unlink()
-
-    for role_id in SURFACED_ROLE_IDS:
-        role = registry.roles[role_id]
-        mode_doc = mode_docs[role_id]
-        target = target_dir / f"atelier.{role_id}.toml"
-        model = normalize_model_for_host(
-            "codex",
-            resolve_host_model("codex", role_id, workspace_root=workspace, fallback=None),
-        )
-        target.write_text(
-            _render_codex_agent_toml(role_id, role.agent_description, mode_doc.body, model), encoding="utf-8"
-        )
-        written.append(target)
-    return written
+    return write_codex_agents(workspace / ".codex" / "agents", model_workspace=workspace, repo_root=repo_root)
 
 
 def rewrite_agent_model(text: str, model: str | None) -> str:
@@ -355,6 +372,7 @@ __all__ = [
     "rewrite_agent_name",
     "workspace_claude_agent_text",
     "workspace_copilot_agent_text",
+    "write_codex_agents",
     "write_workspace_claude_overrides",
     "write_workspace_codex_agents",
     "write_workspace_copilot_agents",

@@ -396,6 +396,18 @@ written = write_workspace_codex_agents(Path("${WORKSPACE}"), repo_root=Path("${A
 print(f"[atelier:codex] projected {len(written)} workspace-local Codex agents into ${WORKSPACE}/.codex/agents")
 PYEOF
     fi
+else
+    if $DRY_RUN; then
+        echo "  [dry-run] project global Codex agents into '${CODEX_HOME}/agents'"
+    else
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+from pathlib import Path
+from atelier.core.capabilities.workspace_host_overrides import write_codex_agents
+
+written = write_codex_agents(Path("${CODEX_HOME}") / "agents", repo_root=Path("${ATELIER_REPO}"))
+print(f"[atelier:codex] projected {len(written)} global Codex agents into ${CODEX_HOME}/agents")
+PYEOF
+    fi
 fi
 
 if $DRY_RUN; then
@@ -522,6 +534,17 @@ if [ -f "$AGENTS_FILE" ] && grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; t
     vpass "AGENTS.md present with atelier:code persona: $AGENTS_FILE"
 else
     vfail "AGENTS.md missing or has no atelier:code persona: $AGENTS_FILE"
+fi
+
+if $WORKSPACE_SET; then
+    CODEX_AGENTS_DIR="${WORKSPACE}/.codex/agents"
+else
+    CODEX_AGENTS_DIR="${CODEX_HOME}/agents"
+fi
+if [ -f "${CODEX_AGENTS_DIR}/atelier.code.toml" ]; then
+    vpass "Codex per-role agents installed: ${CODEX_AGENTS_DIR}"
+else
+    vwarn "Codex per-role agents missing in ${CODEX_AGENTS_DIR} (optional)"
 fi
 
 if $WORKSPACE_SET; then
