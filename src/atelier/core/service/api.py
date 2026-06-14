@@ -2092,7 +2092,7 @@ def _savings_summary_payload(
         return datetime.now(UTC)
 
     def _load_run_ledger(session_id: str) -> dict[str, Any] | None:
-        run_path = root / "runs" / f"{session_id}.json"
+        run_path = root / "sessions" / session_id / "run.json"
         if not run_path.exists():
             return None
         with contextlib.suppress(Exception):
@@ -4831,7 +4831,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         """
         from atelier.infra.runtime.run_ledger import RunLedger
 
-        ledger_path = Path(cfg.atelier_root) / "runs" / f"{session_id}.json"
+        ledger_path = Path(cfg.atelier_root) / "sessions" / session_id / "run.json"
         snap = None
         if ledger_path.exists():
             try:
@@ -6197,8 +6197,8 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         high_extra_reads: list[str] = []
 
         for f in files:
-            session_id = f.stem
-            state_path = root / "runs" / f"{session_id}.outcomes.json"
+            session_id = f.parent.name
+            state_path = root / "sessions" / session_id / "outcomes.json"
             if not state_path.exists():
                 continue
             try:
@@ -6240,7 +6240,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         from atelier.infra.runtime.outcome_capture import load_outcomes_from_state
 
         root = Path(cfg.atelier_root)
-        state_path = root / "runs" / f"{session_id}.outcomes.json"
+        state_path = root / "sessions" / session_id / "outcomes.json"
         if not state_path.exists():
             raise HTTPException(status_code=404, detail=f"No outcomes for session '{session_id}'")
         try:

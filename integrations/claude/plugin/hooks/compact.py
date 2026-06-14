@@ -130,7 +130,7 @@ def _active_session_id() -> str | None:
 def _ensure_compact_manifest(session_id: str) -> Path:
     """Ensure manifest file exists. Return the path."""
     atelier_root = _atelier_root()
-    run_dir = atelier_root / "runs" / session_id
+    run_dir = atelier_root / "sessions" / session_id
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = run_dir / "compact_manifest.json"
 
@@ -166,7 +166,7 @@ def _read_compact_manifest(session_id: str) -> dict[str, Any] | None:
     """Read compact_manifest.json from the run directory."""
     try:
         atelier_root = _atelier_root()
-        manifest_path = atelier_root / "runs" / session_id / "compact_manifest.json"
+        manifest_path = atelier_root / "sessions" / session_id / "compact_manifest.json"
         if manifest_path.exists():
             data = json.loads(manifest_path.read_text("utf-8"))
             if isinstance(data, dict):
@@ -185,8 +185,7 @@ def _append_compact_event(
     session_id: str, hook_event: str, trigger: str, payload: dict[str, Any] | None = None
 ) -> None:
     atelier_root = _atelier_root()
-    runs_dir = atelier_root / "runs"
-    run_file = runs_dir / f"{session_id}.json"
+    run_file = atelier_root / "sessions" / session_id / "run.json"
     if not run_file.exists():
         return
 

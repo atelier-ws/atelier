@@ -75,10 +75,10 @@ def _run_snapshot(session_id: str, cost: float = 0.5) -> dict[str, Any]:
 
 
 def _write_run(root: Path, session_id: str, cost: float = 0.5) -> Path:
-    runs_dir = root / "runs"
+    runs_dir = root / "sessions" / session_id
     runs_dir.mkdir(parents=True, exist_ok=True)
     snap = _run_snapshot(session_id, cost=cost)
-    p = runs_dir / f"{session_id}.json"
+    p = runs_dir / "run.json"
     p.write_text(json.dumps(snap))
     return p
 
@@ -412,7 +412,7 @@ def _build_imported_host_fixture(host: str) -> tuple[str, dict[str, int | str]]:
 
 
 def _write_outcomes(root: Path, session_id: str) -> Path:
-    runs_dir = root / "runs"
+    runs_dir = root / "sessions" / session_id
     runs_dir.mkdir(parents=True, exist_ok=True)
     outcomes = {
         "route_outcomes": [
@@ -428,7 +428,7 @@ def _write_outcomes(root: Path, session_id: str) -> Path:
             }
         ],
     }
-    p = runs_dir / f"{session_id}.outcomes.json"
+    p = runs_dir / "outcomes.json"
     p.write_text(json.dumps(outcomes))
     return p
 
@@ -607,13 +607,13 @@ class TestListSessions:
         now = datetime.now(UTC)
 
         def write_run(session_id: str, started: str, mtime: float) -> None:
-            runs_dir = tmp_path / "runs"
+            runs_dir = tmp_path / "sessions" / session_id
             runs_dir.mkdir(parents=True, exist_ok=True)
             snap = _run_snapshot(session_id)
             snap["status"] = "running"
             snap["created_at"] = started
             snap["updated_at"] = started
-            path = runs_dir / f"{session_id}.json"
+            path = runs_dir / "run.json"
             path.write_text(json.dumps(snap))
             os.utime(path, (mtime, mtime))
 

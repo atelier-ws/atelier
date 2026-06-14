@@ -73,10 +73,6 @@ def _parse_dt(value: str | None) -> datetime | None:
         return None
 
 
-def _runs_dir(root: Path) -> Path:
-    return root / "runs"
-
-
 def _live_savings_path(root: Path) -> Path:
     return root / "live_savings_events.jsonl"
 
@@ -163,7 +159,7 @@ def _read_context_compression_savings(session_id: str, root: Path) -> tuple[int,
     """Read per-tool context-compression savings for *session_id*.
 
     Two sources, in priority order:
-      1. ``runs/<session_id>_context_savings.jsonl`` — written by the MCP
+      1. ``sessions/<session_id>/context_savings.jsonl`` — written by the MCP
          server keyed by the internal ledger session id; carries a
          pre-computed ``cost_saved_usd`` per row.
       2. ``sessions/<session_id>/savings.jsonl`` (the host sidecar) —
@@ -177,7 +173,7 @@ def _read_context_compression_savings(session_id: str, root: Path) -> tuple[int,
     the run-ledger ``context_savings.jsonl`` shape
     (tool, tokens_saved, calls_saved, model, cost_saved_usd, at).
     """
-    path = _runs_dir(root) / f"{session_id}_context_savings.jsonl"
+    path = root / "sessions" / session_id / "context_savings.jsonl"
     if path.exists():
         count = 0
         total_saved = 0.0
@@ -274,7 +270,7 @@ def read_total_savings_from_events(session_id: str, root: Path) -> float:
 
       1. ``live_savings_events.jsonl`` (routing/compaction savings keyed by
          internal Atelier session id)
-      2. ``runs/<session_id>_context_savings.jsonl`` (context-compression
+      2. ``sessions/<session_id>/context_savings.jsonl`` (context-compression
          savings keyed by ledger session id)
       3. ``sessions/<session_id>/savings.jsonl`` (host sidecar keyed by
          host UUID — the source the statusline reads)
@@ -570,7 +566,7 @@ def build_report_from_ledger(ledger: RunLedger, root: Path) -> SessionReport:
 
 def load_report(session_id: str, root: Path) -> SessionReport | None:
     """Load and build a report from a persisted run file, or *None* if not found."""
-    run_path = _runs_dir(root) / f"{session_id}.json"
+    run_path = root / "sessions" / session_id / "run.json"
     if not run_path.exists():
         return None
     try:
@@ -582,10 +578,10 @@ def load_report(session_id: str, root: Path) -> SessionReport | None:
 
 def list_run_files(root: Path, *, since: datetime | None = None) -> list[Path]:
     """Return run JSON files sorted newest-first, optionally filtered by *since*."""
-    runs_dir = _runs_dir(root)
+    runs_dir = root / "sessions"
     if not runs_dir.exists():
         return []
-    files = sorted(runs_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    files = sorted(runs_dir.glob("*/run.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     if since is None:
         return files
     cutoff = since.timestamp()

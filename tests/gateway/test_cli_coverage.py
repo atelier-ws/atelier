@@ -107,7 +107,7 @@ def test_ledger_update_field(tmp_path: Path) -> None:
     assert res.exit_code == 0
     assert "updated task" in res.output
 
-    snap = json.loads((root / "runs" / "run1.json").read_text(encoding="utf-8"))
+    snap = json.loads((root / "sessions" / "run1" / "run.json").read_text(encoding="utf-8"))
     assert snap["task"] == "updated task text"
 
 
@@ -126,7 +126,7 @@ def test_ledger_update_json_value(tmp_path: Path) -> None:
         '["blocker one", "blocker two"]',
     )
     assert res.exit_code == 0
-    snap = json.loads((root / "runs" / "run1.json").read_text(encoding="utf-8"))
+    snap = json.loads((root / "sessions" / "run1" / "run.json").read_text(encoding="utf-8"))
     assert snap["current_blockers"] == ["blocker one", "blocker two"]
 
 
@@ -134,7 +134,7 @@ def test_ledger_reset_with_confirmation(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     init_store_at(str(root))
     _seed_ledger(root)
-    ledger_path = root / "runs" / "run1.json"
+    ledger_path = root / "sessions" / "run1" / "run.json"
     assert ledger_path.exists()
 
     res = _invoke(root, "ledger", "reset", input="y\n")

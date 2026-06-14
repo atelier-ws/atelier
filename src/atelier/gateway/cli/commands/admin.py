@@ -1104,12 +1104,12 @@ def status_cmd(
         return
 
     if as_json:
-        runs_dir = root / "runs"
+        sessions_dir = root / "sessions"
         target: Path | None
         if session_id:
-            target = runs_dir / f"{session_id}.json"
+            target = sessions_dir / session_id / "run.json"
         else:
-            files = sorted(runs_dir.glob("*.json"), key=os.path.getmtime, reverse=True)
+            files = sorted(sessions_dir.glob("*/run.json"), key=os.path.getmtime, reverse=True)
             target = files[0] if files else None
         if target and target.exists():
             click.echo(target.read_text().strip())

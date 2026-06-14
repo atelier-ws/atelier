@@ -1075,12 +1075,12 @@ def _summarize_output(stdout_path: Path, stderr_path: Path) -> str:
 
 
 def _collect_cost_and_tokens(atelier_root: Path) -> tuple[int, float]:
-    runs_dir = atelier_root / "runs"
+    runs_dir = atelier_root / "sessions"
     if not runs_dir.is_dir():
         return 0, 0.0
     total_tokens = 0
     total_cost = 0.0
-    for path in runs_dir.glob("*.json"):
+    for path in runs_dir.glob("*/run.json"):
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
