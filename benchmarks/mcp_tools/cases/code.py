@@ -29,7 +29,6 @@ from benchmarks.mcp_tools.repo_facts import (
     SymbolFact,
     benchmark_query_text,
     collect_call_relation_facts,
-    collect_repo_file_facts,
     collect_symbol_facts,
     stable_symbol_facts,
     symbols_with_text_references,
@@ -164,22 +163,6 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
                 "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
                 "src/atelier/core/capabilities/code_context/engine.py",
                 "src/atelier/gateway/adapters/mcp_server.py",
-            ],
-        ),
-        "outline": (
-            [
-                *common_cmds,
-                [
-                    "rg",
-                    "-n",
-                    "^def\\s+|^class\\s+",
-                    "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
-                ],
-            ],
-            [
-                "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
-                "src/atelier/gateway/adapters/mcp_server.py",
-                "src/atelier/core/capabilities/code_context/engine.py",
             ],
         ),
         "usages": (
@@ -464,44 +447,6 @@ def _assert_hover(result: dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 5. outline — all symbols in a file
-# ---------------------------------------------------------------------------
-
-
-def _assert_outline(result: dict[str, Any]) -> None:
-    _assert_ok(result)
-    # The outline returns 'files' dict mapping path → list of symbols
-    assert (
-        "files" in result or "symbols" in result
-    ), f"outline must return files or symbols key, got keys={list(result)}"
-    files_dict = result.get("files") or {}
-    # Find the symbols list for bash_exec.py (key may be full or relative path)
-    symbols: list[Any] = []
-    for path_key, syms in files_dict.items():
-        if "bash_exec" in path_key:
-            symbols = syms
-            break
-    if not symbols:
-        # Maybe flat structure
-        symbols = result.get("symbols") or []
-    assert len(symbols) >= 1, f"outline of bash_exec.py must return symbols, got {len(symbols)}"
-    # All symbols should have name and line_start
-    for s in symbols[:3]:
-        assert "name" in s or "symbol_name" in s, f"symbol entry must have name, got: {s}"
-
-
-def _assert_outline_compact_members(result: dict[str, Any]) -> None:
-    if result.get("error") == "budget_too_small":
-        assert int(result.get("minimum_required_tokens", 0)) > int(result.get("budget_tokens", 0))
-        return
-    _assert_outline(result)
-    rendered = str(result.get("rendered") or "")
-    assert rendered, "compact outline must render a non-empty summary"
-    assert "bash_exec.py" in rendered
-    assert "```" not in rendered
-
-
-# ---------------------------------------------------------------------------
 # 6. usages — all references across the repo
 # ---------------------------------------------------------------------------
 
@@ -606,15 +551,6 @@ def _assert_call_graph_stress(result: dict[str, Any]) -> None:
     assert edge_count >= 1, f"stress callers should return at least one edge, got edge_count={edge_count}"
 
 
-def _assert_outline_stress(result: dict[str, Any]) -> None:
-    if result.get("error") == "budget_too_small":
-        assert int(result.get("minimum_required_tokens", 0)) > int(result.get("budget_tokens", 0))
-        return
-    _assert_ok(result)
-    count = int(result.get("symbol_count", 0))
-    assert count >= 20, f"stress outline should surface large symbol set, got symbol_count={count}"
-
-
 def _assert_pattern_stress(result: dict[str, Any]) -> None:
     _assert_ok(result)
     text = str(result)
@@ -656,21 +592,6 @@ def _assert_generated_hover(result: dict[str, Any], expected_name: str, expected
     ), f"hover result must include {expected_name!r} or {expected_path!r}, got: {text[:300]!r}"
 
 
-def _assert_generated_outline(result: dict[str, Any], expected_path: str, expected_symbols: tuple[str, ...]) -> None:
-    _assert_ok(result)
-    text = str(result)
-    assert expected_path in text, f"outline result must include {expected_path!r}"
-    if any(symbol in text for symbol in expected_symbols):
-        return
-    symbol_count = int(result.get("symbol_count", 0) or 0)
-    assert symbol_count >= 1, f"outline result must expose at least one symbol for {expected_path!r}"
-    files = result.get("files")
-    assert isinstance(files, dict), f"outline result must include files map for {expected_path!r}"
-    assert any(
-        expected_path in path_key for path_key in files
-    ), f"outline files map must include {expected_path!r}, got {list(files)}"
-
-
 def _search_assert(expected_name: str, expected_path: str) -> Callable[[dict[str, Any]], None]:
     def _assert(result: dict[str, Any]) -> None:
         _assert_generated_search(result, expected_name, expected_path)
@@ -688,13 +609,6 @@ def _symbol_assert(expected_name: str, expected_path: str) -> Callable[[dict[str
 def _hover_assert(expected_name: str, expected_path: str) -> Callable[[dict[str, Any]], None]:
     def _assert(result: dict[str, Any]) -> None:
         _assert_generated_hover(result, expected_name, expected_path)
-
-    return _assert
-
-
-def _outline_assert(expected_path: str, expected_symbols: tuple[str, ...]) -> Callable[[dict[str, Any]], None]:
-    def _assert(result: dict[str, Any]) -> None:
-        _assert_generated_outline(result, expected_path, expected_symbols)
 
     return _assert
 
@@ -929,21 +843,6 @@ CODE_CASES: list[BenchCase] = [
         min_baseline_tokens=BASELINE_MIN_TOKENS,
     ),
     BenchCase(
-        op="outline",
-        label="outline — all symbols in bash_exec.py",
-        args={
-            "op": "outline",
-            "path": "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
-            "limit": 6,
-            "budget_tokens": 1500,
-            "render_compact": True,
-        },
-        assert_keys=[],
-        custom_assert=_assert_outline_compact_members,
-        baseline_builder=_build_measured_baseline,
-        min_baseline_tokens=BASELINE_MIN_TOKENS,
-    ),
-    BenchCase(
         op="usages",
         label="usages — all references to run_command across repo",
         args={
@@ -1085,21 +984,6 @@ CODE_CASES: list[BenchCase] = [
         baseline_builder=_build_measured_baseline,
         min_baseline_tokens=BASELINE_MIN_TOKENS,
     ),
-    BenchCase(
-        op="outline",
-        label="stress/outline — large file symbol inventory",
-        args={
-            "op": "outline",
-            "path": "src/atelier/gateway/adapters/mcp_server.py",
-            "limit": 600,
-            "budget_tokens": 12000,
-        },
-        assert_keys=[],
-        custom_assert=_assert_outline_stress,
-        spill_probe_pattern='"symbol_count"',
-        baseline_builder=_build_measured_baseline,
-        min_baseline_tokens=BASELINE_MIN_TOKENS,
-    ),
 ]
 
 
@@ -1109,7 +993,6 @@ def _build_generated_code_cases() -> list[BenchCase]:
     unique_symbols = unique_symbol_facts(symbol_facts)
     stable_symbols = stable_symbol_facts(unique_symbols)
     stable_method_symbols = stable_symbol_facts(unique_symbols, require_dotted=True)
-    file_facts = [fact for fact in collect_repo_file_facts(repo_root) if fact.symbols]
     call_relations = collect_call_relation_facts(repo_root)
     stable_method_queries = {benchmark_query_text(symbol) for symbol in stable_method_symbols}
     callers_targets = _group_callers(call_relations, allowed_queries=stable_method_queries)
@@ -1119,7 +1002,6 @@ def _build_generated_code_cases() -> list[BenchCase]:
     search_symbols = stable_symbols[:75]
     symbol_targets = stable_symbols[75:150]
     hover_targets = stable_symbols[150:225]
-    outline_targets = file_facts[:75]
     node_targets = stable_symbols[225:250]
     explore_targets = stable_method_symbols[:25]
     usages_targets = referenced_symbols[:300]
@@ -1130,7 +1012,6 @@ def _build_generated_code_cases() -> list[BenchCase]:
     assert len(search_symbols) == 75, "not enough unique symbols for generated code search cases"
     assert len(symbol_targets) == 75, "not enough unique symbols for generated code symbol cases"
     assert len(hover_targets) == 75, "not enough unique symbols for generated code hover cases"
-    assert len(outline_targets) == 75, "not enough outline files for generated code outline cases"
     assert len(node_targets) == 25, "not enough unique symbols for generated node cases"
     assert len(explore_targets) == 25, "not enough unique symbols for generated explore cases"
     assert len(usages_targets) == 300, "not enough referenced symbols for generated usages cases"
@@ -1189,23 +1070,6 @@ def _build_generated_code_cases() -> list[BenchCase]:
                     "budget_tokens": 300,
                 },
                 custom_assert=_hover_assert(symbol.name, symbol.path),
-                baseline_builder=_build_measured_baseline,
-                min_baseline_tokens=BASELINE_MIN_TOKENS,
-            )
-        )
-    for index, fact in enumerate(outline_targets, start=1):
-        cases.append(
-            BenchCase(
-                op="outline",
-                label=f"generated/outline/{index:03d}",
-                args={
-                    "op": "outline",
-                    "path": fact.path,
-                    "limit": min(12, max(4, len(fact.symbols))),
-                    "budget_tokens": 1600,
-                    "render_compact": True,
-                },
-                custom_assert=_outline_assert(fact.path, fact.symbols[:3]),
                 baseline_builder=_build_measured_baseline,
                 min_baseline_tokens=BASELINE_MIN_TOKENS,
             )

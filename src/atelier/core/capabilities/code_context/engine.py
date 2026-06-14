@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import concurrent.futures
 import contextlib
-import difflib
 import fnmatch
 import hashlib
 import json
@@ -31,6 +30,9 @@ try:
     import fcntl
 except ImportError:  # pragma: no cover - non-POSIX platforms
     fcntl = None  # type: ignore[assignment]
+
+from rapidfuzz import process as rapidfuzz_process
+from rapidfuzz.distance import DamerauLevenshtein
 
 from atelier.core.capabilities.code_context.budget import (
     PROTECTED_TOP_RANK,
@@ -492,15 +494,14 @@ def _identifier_terms(text: str) -> list[str]:
     return terms
 
 
+# Damerau-Levenshtein normalized-similarity floor for fuzzy symbol recovery. A
+# single transposition/typo in a >=4-char name stays above this; shorter noise is
+# rejected. Scale is 0..1 (1.0 == identical).
+_FUZZY_SIMILARITY_CUTOFF = 0.75
+
+
 def _is_precise_symbol_query(query: str) -> bool:
     return bool(_PRECISE_SYMBOL_QUERY_RE.fullmatch(query.strip()))
-
-
-def _should_skip_fuzzy_for_precise_query(query: str) -> bool:
-    normalized = query.strip()
-    if not _is_precise_symbol_query(normalized):
-        return False
-    return "_" in normalized or "." in normalized
 
 
 def _matches_file_glob(path: str, pattern: str) -> bool:
@@ -3018,7 +3019,6 @@ class CodeContextEngine:
         terms = _identifier_terms(normalized_query)
         first_term = terms[0] if terms else normalized_query_lower[:4]
         strong_fetch_limit = max(limit * 8, 80)
-        fuzzy_fetch_limit = max(limit * 120, 1200)
         query_mentions_tests = _query_implies_test_scope(normalized_query)
         kind_boosts = {
             "class": 18.0,
@@ -3212,74 +3212,39 @@ class CodeContextEngine:
             ]
             consider_rows(camel_rows, channel_rank=6, base=790.0)
 
-            if not scored:
-                if _should_skip_fuzzy_for_precise_query(normalized_query):
-                    # The full difflib scan is skipped for precise snake_case /
-                    # dotted misses (too noisy, too slow). But a single-character
-                    # transposition typo (e.g. ``make_ram_env`` -> ``make_arm_env``)
-                    # has the SAME multiset of characters, so it can be recovered
-                    # cheaply with a length-filtered anagram check -- no difflib,
-                    # preserving the precise-miss performance contract.
-                    signature = "".join(sorted(normalized_query_lower))
-                    transposition_rows = conn.execute(
-                        f"""
-                        SELECT *, NULL AS score
-                        FROM symbols
-                        WHERE {where_sql} AND length(symbol_name) = ?
-                        ORDER BY file_path, start_line
-                        LIMIT ?
-                        """,
-                        tuple([*params, len(normalized_query), strong_fetch_limit]),
-                    ).fetchall()
-                    consider_rows(
-                        [
-                            row
-                            for row in transposition_rows
-                            if "".join(sorted(str(row["symbol_name"]).lower())) == signature
-                            and str(row["symbol_name"]).lower() != normalized_query_lower
-                        ],
-                        channel_rank=7,
-                        base=620.0,
-                    )
-                    if not scored:
-                        return []
-                else:
-                    fuzzy_rows = conn.execute(
-                        f"""
-                        SELECT *, NULL AS score
-                        FROM symbols
-                        WHERE {where_sql}
-                        ORDER BY file_path, start_line
-                        LIMIT ?
-                        """,
-                        tuple([*params, fuzzy_fetch_limit]),
-                    ).fetchall()
-                    fuzzy_scored: list[tuple[float, sqlite3.Row]] = []
-                    for row in fuzzy_rows:
-                        symbol_name = str(row["symbol_name"]).lower()
-                        qualified_name = str(row["qualified_name"]).lower()
-                        ratio = max(
-                            difflib.SequenceMatcher(None, normalized_query_lower, symbol_name, autojunk=False).ratio(),
-                            difflib.SequenceMatcher(
-                                None, normalized_query_lower, qualified_name, autojunk=False
-                            ).ratio(),
-                        )
-                        if ratio < 0.58:
+            # Fuzzy recovery (RapidFuzz / Damerau-Levenshtein). Fires whenever the
+            # strong channels found no EXACT name match -- not only on a total miss --
+            # so a stray partial-token hit no longer suppresses the real target.
+            # Damerau-Levenshtein scores transpositions (``make_ram_env`` ->
+            # ``make_arm_env``) and insert/delete/substitute typos in one pass; the
+            # scan covers EVERY in-scope symbol so recall is independent of fetch
+            # order, and matches merge below exact/strong hits, ranked by similarity.
+            has_exact_name_match = any(
+                record.symbol_name.lower() == normalized_query_lower
+                or record.qualified_name.lower() == normalized_query_lower
+                for _, _, record in scored.values()
+            )
+            if not has_exact_name_match:
+                fuzzy_rows = conn.execute(
+                    f"SELECT *, NULL AS score FROM symbols WHERE {where_sql}",
+                    tuple(params),
+                ).fetchall()
+                if fuzzy_rows:
+                    candidate_names = [str(row["symbol_name"]).lower() for row in fuzzy_rows]
+                    for _matched, similarity, index in rapidfuzz_process.extract(
+                        normalized_query_lower,
+                        candidate_names,
+                        scorer=DamerauLevenshtein.normalized_similarity,
+                        score_cutoff=_FUZZY_SIMILARITY_CUTOFF,
+                        limit=strong_fetch_limit,
+                    ):
+                        if candidate_names[index] == normalized_query_lower:
                             continue
-                        fuzzy_scored.append((ratio, row))
-                    fuzzy_scored.sort(
-                        key=lambda item: (
-                            -item[0],
-                            str(item[1]["file_path"]),
-                            int(item[1]["start_line"]),
-                            str(item[1]["qualified_name"]),
+                        consider_rows(
+                            [fuzzy_rows[index]],
+                            channel_rank=7,
+                            base=600.0 + similarity * 60.0,
                         )
-                    )
-                    consider_rows(
-                        [row for _, row in fuzzy_scored[:strong_fetch_limit]],
-                        channel_rank=7,
-                        base=640.0,
-                    )
 
         ranked = sorted(
             scored.values(),
@@ -4197,9 +4162,7 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found"
-                if merged_status == "empty"
-                else None
+                else "no related call edges were found" if merged_status == "empty" else None
             )
             merged_snapshot = None
             if snapshot:
