@@ -15,6 +15,7 @@ index from the files at any time, so the files remain the single source of truth
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 from contextlib import closing
@@ -35,7 +36,8 @@ CREATE TABLE IF NOT EXISTS trace_index (
     input_tokens    INTEGER DEFAULT 0,
     output_tokens   INTEGER DEFAULT 0,
     cached_input_tokens INTEGER DEFAULT 0,
-    files_json      TEXT DEFAULT '[]'
+    files_json      TEXT DEFAULT '[]',
+    synced_at       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_trace_index_session ON trace_index(session_id);
 CREATE INDEX IF NOT EXISTS idx_trace_index_domain ON trace_index(domain);
@@ -97,6 +99,9 @@ class SessionStore:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(_INDEX_SCHEMA)
+        # Idempotent migration for index.db files created before synced_at existed.
+        with contextlib.suppress(sqlite3.OperationalError):
+            conn.execute("ALTER TABLE trace_index ADD COLUMN synced_at TEXT")
         return conn
 
     def _index_trace(self, conn: sqlite3.Connection, trace: dict[str, Any], session_id: str) -> None:
@@ -258,6 +263,142 @@ class SessionStore:
             except sqlite3.OperationalError:
                 return []
         return [dict(row) for row in rows]
+
+    def exists(self, trace_id: str) -> bool:
+        with closing(self._connect_index()) as conn:
+            return conn.execute("SELECT 1 FROM trace_index WHERE id = ?", (trace_id,)).fetchone() is not None
+
+    def delete(self, trace_id: str) -> None:
+        with closing(self._connect_index()) as conn:
+            row = conn.execute("SELECT session_id FROM trace_index WHERE id = ?", (trace_id,)).fetchone()
+            conn.execute("DELETE FROM trace_index WHERE id = ?", (trace_id,))
+            conn.execute("DELETE FROM trace_search WHERE id = ?", (trace_id,))
+            conn.commit()
+        if row is None:
+            return
+        path = self._traces_path(str(row["session_id"]))
+        if path.exists():
+            kept = [t for t in self._read_jsonl(path) if t.get("id") != trace_id]
+            path.write_text("".join(json.dumps(t, ensure_ascii=False) + "\n" for t in kept), encoding="utf-8")
+
+    # ----- sync tracking ---------------------------------------------------
+    def mark_synced(self, session_id: str, *, at: str) -> None:
+        with closing(self._connect_index()) as conn:
+            conn.execute("UPDATE trace_index SET synced_at = ? WHERE session_id = ?", (at, session_id))
+            conn.commit()
+
+    def unsynced_ids(self, limit: int = 500) -> list[str]:
+        with closing(self._connect_index()) as conn:
+            rows = conn.execute(
+                "SELECT id FROM trace_index WHERE synced_at IS NULL ORDER BY created_at LIMIT ?", (limit,)
+            ).fetchall()
+        return [str(row["id"]) for row in rows]
+
+    # ----- aggregates ------------------------------------------------------
+    def _filter_sql(
+        self,
+        *,
+        domain: str | None,
+        status: str | None,
+        agent: str | None,
+        host: str | None,
+        since: str | None,
+        exclude_tasks: tuple[str, ...],
+    ) -> tuple[str, list[Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        for column, value in (("domain", domain), ("status", status), ("agent", agent), ("host", host)):
+            if value is not None:
+                clauses.append(f"{column} = ?")
+                params.append(value)
+        if since is not None:
+            clauses.append("created_at >= ?")
+            params.append(since)
+        for task in exclude_tasks:
+            clauses.append("task IS NOT ?")
+            params.append(task)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        return where, params
+
+    def metrics(
+        self,
+        *,
+        domain: str | None = None,
+        agent: str | None = None,
+        host: str | None = None,
+        since: str | None = None,
+        exclude_tasks: tuple[str, ...] = ("session-auto-record",),
+    ) -> dict[str, Any]:
+        where, params = self._filter_sql(
+            domain=domain, status=None, agent=agent, host=host, since=since, exclude_tasks=exclude_tasks
+        )
+        stats: dict[str, Any] = {"total": 0, "success": 0, "failed": 0, "partial": 0}
+        with closing(self._connect_index()) as conn:
+            for row in conn.execute(f"SELECT status, COUNT(*) AS c FROM trace_index{where} GROUP BY status", params):
+                count = int(row["c"])
+                stats["total"] += count
+                key = str(row["status"] or "")
+                if key in stats:
+                    stats[key] = count
+            stats["hosts"] = [
+                r["host"] for r in conn.execute(f"SELECT DISTINCT host FROM trace_index{where}", params) if r["host"]
+            ]
+            stats["agents"] = [
+                r["agent"] for r in conn.execute(f"SELECT DISTINCT agent FROM trace_index{where}", params) if r["agent"]
+            ]
+            stats["domains"] = [
+                r["domain"]
+                for r in conn.execute(f"SELECT DISTINCT domain FROM trace_index{where}", params)
+                if r["domain"]
+            ]
+        return stats
+
+    def list_full(
+        self,
+        *,
+        domain: str | None = None,
+        status: str | None = None,
+        agent: str | None = None,
+        host: str | None = None,
+        query: str | None = None,
+        since: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        exclude_tasks: tuple[str, ...] = ("session-auto-record",),
+    ) -> list[dict[str, Any]]:
+        """Return full trace payloads (from the files) matching the filters."""
+        where, params = self._filter_sql(
+            domain=domain, status=status, agent=agent, host=host, since=since, exclude_tasks=exclude_tasks
+        )
+        with closing(self._connect_index()) as conn:
+            if query and query.strip():
+                rows = conn.execute(
+                    f"""
+                    SELECT t.id, t.session_id FROM trace_search s JOIN trace_index t ON t.id = s.id
+                    {where.replace("WHERE", "WHERE trace_search MATCH ? AND") if where else "WHERE trace_search MATCH ?"}
+                    ORDER BY rank LIMIT ? OFFSET ?
+                    """,
+                    [query, *params, limit, offset],
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    f"SELECT id, session_id FROM trace_index{where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                    [*params, limit, offset],
+                ).fetchall()
+        ordered_ids = [str(row["id"]) for row in rows]
+        wanted = set(ordered_ids)
+        # Load full payloads, reading each session file at most once.
+        by_session: dict[str, list[str]] = {}
+        for row in rows:
+            by_session.setdefault(str(row["session_id"]), []).append(str(row["id"]))
+        loaded: dict[str, dict[str, Any]] = {}
+        for session_id, ids in by_session.items():
+            ids_set = set(ids)
+            for trace in self.traces_for(session_id):
+                tid = trace.get("id")
+                if tid in ids_set and tid in wanted:
+                    loaded[str(tid)] = trace
+        return [loaded[tid] for tid in ordered_ids if tid in loaded]
 
     def rebuild_index(self) -> int:
         """Rebuild the index from the session files (the source of truth)."""
