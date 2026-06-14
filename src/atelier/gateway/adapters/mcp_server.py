@@ -2918,6 +2918,82 @@ def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
     return None  # No supported CLI available
 
 
+@mcp_tool(name="rescue")
+def tool_rescue_failure(
+    task: str,
+    error: str,
+    domain: str | None = None,
+    files: list[str] | None = None,
+    recent_actions: list[str] | None = None,
+) -> dict[str, Any]:
+    """Suggest a rescue procedure for a repeated failure (call after the same approach fails twice).
+
+    Returns: {cluster_id, domain, rescue_type, procedure: [{step, rationale}], rationale, analysis?}.
+    """
+    if recent_actions is None:
+        recent_actions = []
+    if files is None:
+        files = []
+    rt = _runtime()
+    led = _get_ledger()
+    _match_mcp_lexical({"task": task, "error": error})
+    led.record_tool_call(
+        "rescue_failure",
+        {
+            "task": task,
+            "error": error,
+            "domain": domain,
+            "files": files,
+            "recent_actions": recent_actions,
+        },
+    )
+
+    result = rt.rescue_failure(
+        task=task,
+        error=error,
+        files=files,
+        domain=domain,
+        recent_actions=recent_actions,
+    )
+    payload = to_jsonable(result)
+    with contextlib.suppress(Exception):
+        from atelier.core.service.telemetry import emit_product
+        from atelier.core.service.telemetry.schema import hash_identifier
+
+        matched = list(payload.get("matched_blocks", []) or []) if isinstance(payload, dict) else []
+        emit_product(
+            "rescue_offered",
+            cluster_id_hash=hash_identifier(str(matched[0] if matched else "unmatched_rescue")),
+            rescue_type="reasonblock" if matched else "summary",
+            session_id=_get_product_session_id(),
+        )
+
+    # Lemma-style failure incident analysis from prior failed traces.
+    with contextlib.suppress(Exception):
+        analysis = rt.core_runtime.analyze_failure_for_error(
+            task=task,
+            error=error,
+            domain=domain,
+            lookback=200,
+        )
+        payload["analysis"] = analysis
+        incident = analysis.get("incident") if isinstance(analysis, dict) else None
+        if isinstance(incident, dict):
+            root_cause = incident.get("root_cause_hypothesis", "")
+            if isinstance(root_cause, str) and root_cause:
+                led.record(
+                    "note",
+                    "failure_analysis",
+                    {
+                        "root_cause": root_cause,
+                        "fingerprint": incident.get("fingerprint"),
+                        "count": incident.get("count"),
+                    },
+                )
+
+    return payload
+
+
 @mcp_tool(name="trace")
 def tool_record_trace(
     agent: str,
@@ -5896,6 +5972,19 @@ def _op_index(
     return _finish_code_result(_maybe_attach_code_rendered("index", payload, render_compact=render_compact))
 
 
+def _op_outline(
+    *,
+    path: str | None = None,
+    limit: int = 200,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    engine = _code_engine_at(repo_root)
+    payload = cast(dict[str, Any], engine.file_outline(file_path=path, limit=limit))
+    return _finish_code_result(_maybe_attach_code_rendered("outline", payload, render_compact=render_compact))
+
+
 def _op_blame(
     *,
     query: str | None = None,
@@ -7047,6 +7136,7 @@ _REMOTE_TOOLS = frozenset(
     {
         "context",
         "memory",
+        "rescue",
         "trace",
         "verify",
     }
@@ -7209,6 +7299,15 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("context tool not registered")
             handler = cast(Callable[[dict[str, Any]], dict[str, Any]], spec["handler"])
             return handler(args)
+        if name == "rescue":
+            rescue_result = _runtime().rescue_failure(
+                task=str(args.get("task") or ""),
+                error=str(args.get("error") or ""),
+                files=cast(list[str], args.get("files") or []),
+                recent_actions=cast(list[str], args.get("recent_actions") or []),
+                domain=cast(str | None, args.get("domain")),
+            )
+            return rescue_result.model_dump()
         spec = TOOLS.get(name)
         if spec is None:
             raise ValueError(f"unknown remote tool: {name}")
@@ -7224,6 +7323,8 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return cast(dict[str, Any], client.get_context(context_args))
     if name == "memory":
         return cast(dict[str, Any], client.memory(args))
+    if name == "rescue":
+        return cast(dict[str, Any], client.rescue_failure(args))
     if name in {"trace", "record"}:
         trace_result = cast(dict[str, Any], client.record_trace(args))
         trace_id = str(trace_result.get("trace_id") or trace_result.get("id") or "")
