@@ -609,10 +609,6 @@ def test_servicectl_tick_imports_only_new_or_updated_sessions(
         "atelier.gateway.hosts.session_parsers.opencode.find_opencode_sessions",
         lambda db_path=None: iter(()),
     )
-    monkeypatch.setattr(
-        "atelier.gateway.hosts.session_parsers.gemini.find_gemini_sessions",
-        lambda root=None: iter(()),
-    )
 
     def unavailable(messages: object, json_schema: object | None = None) -> None:
         _ = (messages, json_schema)

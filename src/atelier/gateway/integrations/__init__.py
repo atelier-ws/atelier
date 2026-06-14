@@ -1,4 +1,4 @@
-"""External host integrations (Claude, Codex, Copilot, Gemini, OpenCode)."""
+"""External host integrations (Claude, Codex, Copilot, OpenCode)."""
 
 from __future__ import annotations
 
