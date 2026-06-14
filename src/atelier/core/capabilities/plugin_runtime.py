@@ -1780,6 +1780,9 @@ _CODEX_DANGEROUS_COMMAND_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     for pattern in (
         r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+/\s*(\*\s*)?$",  # rm -rf /   or  rm -rf /*
         r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+/\*",  # rm -rf /* (mid-line)
+        # rm -rf /<critical-root> (bare root only; /usr/local/... is left to the prompt)
+        r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+/(usr|etc|bin|sbin|lib|lib64|boot|sys|proc|root)/?(\s|$|[;&|])",
+        r"\brm\b[^\n]*--force\b[^\n]*\s/\s*($|[;&|])",  # rm --recursive --force /  (long-form, bare root)
         r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+~",  # rm -rf ~  /  ~/...
         r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+\$HOME\b",
         r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+\*",  # rm -rf *
@@ -1788,7 +1791,8 @@ _CODEX_DANGEROUS_COMMAND_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         r"\bmkfs\.[a-z0-9]+\b",
         r"\bdd\b[^\n]*\bof=/dev/(sd|nvme|disk)",
         r">\s*/dev/(sd|nvme|disk)",
-        r"\bgit\s+push\b[^\n]*--force(?!-with-lease)",
+        r"\bgit\s+push\b[^\n]*--force(?!-with-lease)",  # git push --force
+        r"\bgit\s+push\b[^\n]*\s-[a-zA-Z]*f[a-zA-Z]*(\s|$)",  # git push -f / -fv (short force)
         r"\bchmod\s+-R\s+0?777\s+/(\s|$)",
     )
 )
