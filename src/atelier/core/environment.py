@@ -27,6 +27,7 @@ MEMORY_BACKENDS = frozenset({"sqlite", "letta", "openmemory"})
 
 HIDDEN_LLM_TOOLS = frozenset(
     {
+        "rescue",
         "verify",
         "callees",
         "trace",

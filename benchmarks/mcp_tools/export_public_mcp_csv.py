@@ -37,6 +37,7 @@ from benchmarks.mcp_tools.bench_external_indexers import (
     prepare_cached_repo_snapshot,
     repo_cache_key,
 )
+from benchmarks.mcp_tools.bench_rescue import run_rescue_suite
 from benchmarks.mcp_tools.bench_shell import _patch_paths as _patch_shell_paths
 from benchmarks.mcp_tools.bench_sql import _patch_db as _patch_sql_db
 from benchmarks.mcp_tools.bench_verify import run_verify_suite
@@ -47,6 +48,7 @@ from benchmarks.mcp_tools.cases.edit import EDIT_CASES
 from benchmarks.mcp_tools.cases.grep import GREP_CASES
 from benchmarks.mcp_tools.cases.memory import MEMORY_CASES
 from benchmarks.mcp_tools.cases.read import READ_CASES
+from benchmarks.mcp_tools.cases.rescue import RESCUE_CASES
 from benchmarks.mcp_tools.cases.search import SEARCH_CASES
 from benchmarks.mcp_tools.cases.shell import SHELL_CASES
 from benchmarks.mcp_tools.cases.sql import SQL_CASES
@@ -717,6 +719,11 @@ def _suite_aliases() -> dict[str, list[str]]:
 def _suite_specs() -> list[tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]]:
     specs: list[tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]] = [
         ("context", len(CONTEXT_CASES), _run_context_suite),
+        (
+            "rescue",
+            len(RESCUE_CASES),
+            lambda root, progress: run_rescue_suite(_runtime_root(root, "rescue"), progress),
+        ),
         ("trace", len(TRACE_CASES), _run_trace_suite),
         (
             "verify",
