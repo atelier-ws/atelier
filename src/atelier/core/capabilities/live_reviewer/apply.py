@@ -40,9 +40,14 @@ def apply_review_patches(
     session_id: str,
     *,
     indices: Sequence[int] | None = None,
+    record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Apply the latest review's patch findings (all, or the given indices)."""
-    patches = patch_findings(latest_verdict(root, session_id))
+    """Apply a review's patch findings (all, or the given indices).
+
+    Uses ``record`` when provided (the just-produced verdict, so the live pass can
+    auto-apply without a sink round-trip); otherwise reads the latest verdict.
+    """
+    patches = patch_findings(record if record is not None else latest_verdict(root, session_id))
     if indices is not None:
         wanted = set(indices)
         patches = [p for i, p in enumerate(patches) if i in wanted]
