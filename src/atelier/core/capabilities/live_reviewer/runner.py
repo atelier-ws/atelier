@@ -142,7 +142,23 @@ def run_review(
         return {**record, "verdict": "DONE", "checklist": "no diff to review", "missing": "", "findings": []}
 
     duplications = find_duplications(repo_root, diffs)
-    prompt = _build_prompt(diffs, collect_review_context(root, repo_root), duplications)
+    kb = collect_review_context(root, repo_root)
+    if settings.agentic:
+        from atelier.core.capabilities.live_reviewer.agentic import run_agentic_review
+
+        agentic_verdict = run_agentic_review(
+            repo_root=repo_root,
+            diffs=diffs,
+            contract=_REVIEW_CONTRACT,
+            kb=kb,
+            model=settings.model_for(mode),
+        )
+        if agentic_verdict is not None:
+            if duplications:
+                agentic_verdict["duplications"] = duplications
+            agentic_verdict["agentic"] = True
+            return {**record, **agentic_verdict}
+    prompt = _build_prompt(diffs, kb, duplications)
     provider, model_id = split_provider_model(settings.model_for(mode))
     if provider and model_id:
         request = OwnedRouteRequest(

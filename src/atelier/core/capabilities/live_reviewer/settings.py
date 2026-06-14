@@ -32,6 +32,7 @@ class ReviewerSettings:
     deep_edit_count_reviewer: bool = False
     deep_edit_count_interval: int = DEFAULT_DEEP_INTERVAL
     review_model: str = ""
+    agentic: bool = True
 
     @property
     def enabled(self) -> bool:
@@ -74,6 +75,7 @@ def load_reviewer_settings(root: str | Path) -> ReviewerSettings:
         deep_edit_count_reviewer=bool(raw.get("deepEditCountReviewer", False)),
         deep_edit_count_interval=_clamp_interval(raw.get("deepEditCountInterval", DEFAULT_DEEP_INTERVAL)),
         review_model=str(raw.get("reviewModel", "") or ""),
+        agentic=bool(raw.get("agenticReviewer", True)),
     )
 
 
