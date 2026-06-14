@@ -21,6 +21,17 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "apply_patch|Edit|Write|MultiEdit|edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/pre_tool_use.py\""
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "hooks": [
@@ -31,7 +42,28 @@
         ]
       }
     ],
-    "Stop": [      {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/compact.py\""
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/compact.py\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
         "hooks": [
           {
             "type": "command",

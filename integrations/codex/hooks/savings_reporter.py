@@ -19,13 +19,21 @@ def _atelier_root() -> Path:
 def main() -> int:
     try:
         from atelier.core.capabilities.plugin_runtime import (
+            build_codex_post_tool_use_ledger_output,
             build_codex_post_tool_use_savings_output,
         )
 
         payload = json.loads(sys.stdin.read() or "{}")
-        build_codex_post_tool_use_savings_output(_atelier_root(), payload)
-        # PostToolUse records telemetry and savings state only. Prompt-time
-        # guidance is emitted by UserPromptSubmit so tool completion stays quiet.
+        root = _atelier_root()
+        # Savings + native-tool telemetry stay silent (state only). The run
+        # ledger + tool-supervision capture also happen here. The only surfaced
+        # output is the repeat-failure rescue nudge -- Codex has no separate
+        # PostToolUseFailure event, so it is folded into PostToolUse.
+        build_codex_post_tool_use_savings_output(root, payload)
+        ledger = build_codex_post_tool_use_ledger_output(root, payload)
+        message = ledger.get("systemMessage")
+        if isinstance(message, str) and message.strip():
+            sys.stdout.write(json.dumps({"systemMessage": message}) + "\n")
     except (ImportError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         pass
     return 0
