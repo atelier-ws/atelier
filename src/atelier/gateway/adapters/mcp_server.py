@@ -1929,7 +1929,7 @@ def _get_host_session_sidecar_path() -> Path:
         except (OSError, json.JSONDecodeError):
             _log.debug("MCP sidecar session id read failed", exc_info=True)
     if sid:
-        return _atelier_root() / "session_stats" / "claude" / f"{sid}.jsonl"
+        return _atelier_root() / "sessions" / sid / "savings.jsonl"
 
     # 2. Other hosts — use their native session ID env var directly.
     _HOST_SESSION_ENVS: list[tuple[str, str]] = [
@@ -1942,10 +1942,10 @@ def _get_host_session_sidecar_path() -> Path:
         ("ANTIGRAVITY_SESSION_ID", "antigravity"),
         ("AGY_SESSION_ID", "antigravity"),
     ]
-    for env_var, host in _HOST_SESSION_ENVS:
+    for env_var, _host in _HOST_SESSION_ENVS:
         env_sid = os.environ.get(env_var, "").strip()
         if env_sid:
-            return _atelier_root() / "session_stats" / host / f"{env_sid}.jsonl"
+            return _atelier_root() / "sessions" / env_sid / "savings.jsonl"
 
     return _workspace_savings_path()
 
@@ -2033,7 +2033,7 @@ def _price_avoided_calls_usd(model: str, calls_saved: int, ctx_tokens: int) -> f
 def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: str = "") -> None:
     """Write per-call savings to two places:
 
-    1. session_stats/<host>/<id>.jsonl  — host session UUID, read by statusline/stop hook
+    1. sessions/<id>/savings.jsonl  — per-session, read by statusline/stop hook
     2. runs/<ledger_session_id>_context_savings.jsonl — per-session, read by session report
     """
     if tokens_saved <= 0 and calls_saved <= 0:
@@ -2054,7 +2054,7 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
         entry: dict[str, Any] = {
             "tool": tool_name,
             # Field names match the in-response `saved: {tokens, calls}` shape.
-            # The file lives under session_stats/<host>/ so "savings" is implicit
+            # The file lives under sessions/<id>/ so "savings" is implicit
             # from context — no need to suffix the keys.
             "tokens": int(tokens_saved),
             "calls": int(calls_saved),
