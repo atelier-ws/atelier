@@ -1071,6 +1071,8 @@ def build_codex_user_prompt_output(root: str | Path, payload: dict[str, Any]) ->
     except (json.JSONDecodeError, OSError, TypeError):
         stats = {}
 
+    with suppress(Exception):
+        _codex_enrich_user_prompt(root, payload)
     updated, ctx_output = _maybe_emit_ctx_notice(stats, payload, host="codex")
     output: dict[str, Any] = {}
     compact_message = ctx_output.get("message")
@@ -1121,6 +1123,8 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
 
     session_id = str(payload.get("session_id") or "default")
     update_session_stats(root, payload)
+    with suppress(Exception):
+        _codex_auto_record_trace(root, payload)
     report = build_savings_report(root, session_id=session_id)
     session = report.get("session") or {}
     cost = report.get("cost") or {}
@@ -1150,6 +1154,581 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
     if routing_saved_usd > 0:
         lines.append(f"routing savings: ${routing_saved_usd:.4f}")
     return {"systemMessage": "\n".join(lines), "report": report}
+
+
+# ===========================================================================
+# Codex lifecycle-hook parity
+# ---------------------------------------------------------------------------
+# These helpers give the Codex plugin the depth the Claude plugin has: a
+# PreToolUse grounding gate, PostToolUse run-ledger capture + tool supervision
+# + repeat-failure rescue, and compaction lifecycle bookkeeping. They emit
+# Codex-native output schemas (hookSpecificOutput / permissionDecision for
+# PreToolUse; systemMessage for surfaced guidance) and mirror the Claude hook
+# bodies, but always fail open -- a raised exception must never block the Codex
+# agent. Run-ledger writes reuse the proven raw-append pattern from the Claude
+# hooks rather than round-tripping the RunLedger model, so unknown fields
+# written by the MCP server are preserved verbatim.
+# ===========================================================================
+
+_CODEX_RISKY_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"(^|/)shopify(/|$)",
+        r"(^|/)pdp(/|$)",
+        r"(^|/)catalog(/|$)",
+        r"(^|/)tracker(/|$)",
+        r"(^|/)publish(/|$)",
+        r"(^|/)schema(/|$)",
+        r"alembic/versions/",
+    )
+)
+
+_CODEX_MAX_LEDGER_BYTES = 4096
+_CODEX_MAX_DIFF_BYTES = 20_000
+_CODEX_FAILURE_THRESHOLD = 2
+
+
+def _codex_is_risky_path(path: str) -> bool:
+    return any(pattern.search(path) for pattern in _CODEX_RISKY_PATTERNS)
+
+
+def _codex_workspace_root(payload: dict[str, Any]) -> str:
+    cwd = str(payload.get("cwd") or "").strip()
+    if cwd:
+        return cwd
+    return os.environ.get("CODEX_WORKSPACE_ROOT") or os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()
+
+
+def _codex_session_state_path(root: str | Path, payload: dict[str, Any]) -> Path:
+    workspace = _codex_workspace_root(payload)
+    digest = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+    return Path(root) / "workspaces" / digest / "session_state.json"
+
+
+def _read_codex_session_state(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    path = _codex_session_state_path(root, payload)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text("utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_codex_session_state(root: str | Path, payload: dict[str, Any], state: dict[str, Any]) -> None:
+    path = _codex_session_state_path(root, payload)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def _codex_run_file(root: str | Path, session_id: str) -> Path:
+    return Path(root) / "runs" / f"{session_id}.json"
+
+
+def _codex_ledger_session_id(root: str | Path, payload: dict[str, Any]) -> str:
+    """Resolve the run-ledger id whose ``runs/<id>.json`` exists.
+
+    Priority: session_state ``active_session_id`` / ``session_id`` (the internal
+    Atelier id the MCP server keys the ledger to), then the host ``session_id``
+    on the payload. Returns "" when no run file exists yet -- callers then skip
+    rather than create a spurious ledger from a hook.
+    """
+    state = _read_codex_session_state(root, payload)
+    for candidate in (state.get("active_session_id"), state.get("session_id"), payload.get("session_id")):
+        sid = str(candidate or "").strip()
+        if sid and _codex_run_file(root, sid).exists():
+            return sid
+    return ""
+
+
+def _codex_atomic_write_json(path: Path, data: dict[str, Any]) -> bool:
+    import tempfile
+
+    tmp_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=path.parent, suffix=".tmp", delete=False, encoding="utf-8"
+        ) as tmp:
+            json.dump(data, tmp, indent=2)
+            tmp_path = tmp.name
+        Path(tmp_path).replace(path)
+        return True
+    except (OSError, TypeError, ValueError):
+        if tmp_path:
+            with suppress(OSError):
+                Path(tmp_path).unlink(missing_ok=True)
+        return False
+
+
+def _codex_append_ledger_events(root: str | Path, session_id: str, events_to_add: list[dict[str, Any]]) -> bool:
+    if not session_id or not events_to_add:
+        return False
+    run_file = _codex_run_file(root, session_id)
+    if not run_file.exists():
+        return False
+    try:
+        data = json.loads(run_file.read_text("utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    events = data.setdefault("events", [])
+    if not isinstance(events, list):
+        return False
+    events.extend(events_to_add)
+    touched = data.setdefault("files_touched", [])
+    if isinstance(touched, list):
+        for event in events_to_add:
+            if event.get("kind") == "file_edit":
+                path_value = (event.get("payload") or {}).get("path")
+                if isinstance(path_value, str) and path_value and path_value not in touched:
+                    touched.append(path_value)
+    return _codex_atomic_write_json(run_file, data)
+
+
+def _normalize_codex_tool(tool_name: str) -> str:
+    base = tool_name.lower().rsplit("__", 1)[-1].strip()
+    if base in {"edit", "write", "multiedit", "apply_patch", "applypatch", "str_replace_editor"}:
+        return "edit"
+    if base in {"bash", "shell", "exec_command", "run_command", "unified_exec", "local_shell"}:
+        return "bash"
+    if base == "read":
+        return "read"
+    if base in {"grep", "glob", "search"}:
+        return "search"
+    return "other"
+
+
+def _codex_bench_gate_enabled() -> bool:
+    if os.environ.get("ATELIER_BENCH_MODE") is None:
+        return False
+    try:
+        from atelier.bench.mode import is_off
+
+        return not is_off()
+    except (ImportError, AttributeError, ValueError):
+        return False
+
+
+def _codex_edit_targets(tool_input: dict[str, Any]) -> list[str]:
+    targets: list[str] = []
+    edits = tool_input.get("edits")
+    if isinstance(edits, list):
+        for edit in edits:
+            if isinstance(edit, dict):
+                value = edit.get("file_path") or edit.get("path") or edit.get("filename")
+                if isinstance(value, str) and value:
+                    targets.append(value)
+    single = tool_input.get("file_path") or tool_input.get("path") or tool_input.get("filename")
+    if isinstance(single, str) and single:
+        targets.append(single)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for target in targets:
+        if target not in seen:
+            seen.add(target)
+            ordered.append(target)
+    return ordered
+
+
+def build_codex_pre_tool_use_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """PreToolUse grounding gate for Codex edits.
+
+    Default posture is allow (``no_output``). Under an active benchmark gate
+    (``ATELIER_BENCH_MODE`` + bench not off), edits to risky paths are denied
+    until the target has read/grep/search grounding evidence in session state --
+    the same proof-gating the Claude plugin enforces, emitted with Codex's
+    ``permissionDecision`` schema.
+    """
+    if str(payload.get("hook_event_name") or "") != "PreToolUse":
+        return {"no_output": True}
+    if _normalize_codex_tool(str(payload.get("tool_name") or "")) != "edit":
+        return {"no_output": True}
+    if not _codex_bench_gate_enabled():
+        return {"no_output": True}
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return {"no_output": True}
+    risky = [target for target in _codex_edit_targets(tool_input) if _codex_is_risky_path(target)]
+    if not risky:
+        return {"no_output": True}
+    try:
+        from atelier.core.capabilities.grounded_loop.grounding_evidence import missing_grounding_targets
+    except (ImportError, AttributeError):
+        return {"no_output": True}
+    workspace = _codex_workspace_root(payload)
+    state = _read_codex_session_state(root, payload)
+    session_id = str(
+        state.get("session_id") or state.get("active_session_id") or payload.get("session_id") or ""
+    ).strip()
+    missing = missing_grounding_targets(state, session_id=session_id, targets=risky, workspace_root=workspace)
+    if not missing:
+        return {"no_output": True}
+    reason = (
+        "Atelier benchmark gate: ground this edit with read, grep, search, symbols, node, "
+        "explore, callers, callees, or usages before editing " + ", ".join(missing[:4]) + "."
+    )
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }
+
+
+def _codex_unified_diff(old: str, new: str, path: str) -> str:
+    import difflib
+
+    diff = difflib.unified_diff(
+        old.splitlines(keepends=True),
+        new.splitlines(keepends=True),
+        fromfile=f"a/{path}",
+        tofile=f"b/{path}",
+        lineterm="",
+    )
+    return "\n".join(diff)
+
+
+def _codex_git_diff(path: str, workspace: str) -> str:
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "diff", "HEAD", "--", path],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=workspace or None,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return ""
+    return result.stdout.strip()
+
+
+def _codex_edit_diff(tool_input: dict[str, Any], path: str, workspace: str) -> str:
+    parts: list[str] = []
+    edits = tool_input.get("edits")
+    if isinstance(edits, list):
+        for edit in edits:
+            if not isinstance(edit, dict):
+                continue
+            edit_path = edit.get("file_path") or edit.get("path") or edit.get("filename")
+            if isinstance(edit_path, str) and edit_path and edit_path != path:
+                continue
+            old = str(edit.get("old_string") or "")
+            new = str(edit.get("new_string") or "")
+            if old or new:
+                parts.append(_codex_unified_diff(old, new, path))
+    old = str(tool_input.get("old_string") or "")
+    new = str(tool_input.get("new_string") or "")
+    if old or new:
+        parts.append(_codex_unified_diff(old, new, path))
+    diff = "\n".join(part for part in parts if part)
+    if not diff:
+        diff = _codex_git_diff(path, workspace)
+    return diff[:_CODEX_MAX_DIFF_BYTES]
+
+
+def _codex_command_text(tool_input: dict[str, Any]) -> str:
+    raw = tool_input.get("command")
+    if isinstance(raw, list):
+        return " ".join(str(item) for item in raw).strip()
+    return str(raw or "").strip()
+
+
+def _codex_return_code(tool_response: dict[str, Any]) -> int | None:
+    for key in ("exit_code", "exitCode", "returnCode", "return_code", "code"):
+        value = tool_response.get(key)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _codex_error_signature(command: str, error: str) -> str:
+    norm = re.sub(r"0x[0-9a-fA-F]+", "0xX", error)
+    norm = re.sub(r"\b\d+\b", "N", norm)
+    norm = re.sub(r"/[^\s:]+", "<path>", norm)
+    key = f"{command.strip()[:80]}::{norm.strip()[:200]}"
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+
+
+def _codex_cache_bash(root: str | Path, command: str, stdout: str, stderr: str, rc: int | None) -> None:
+    if os.environ.get("ATELIER_CACHE_DISABLED") == "1":
+        return
+    try:
+        from atelier.core.capabilities.tool_supervision import ToolSupervisionCapability
+
+        cap = ToolSupervisionCapability(Path(root))
+        key = f"Bash:{json.dumps({'command': command}, sort_keys=True)[:100]}"
+        cap.observe(
+            key,
+            {
+                "command": command,
+                "stdout": stdout[:_CODEX_MAX_LEDGER_BYTES],
+                "stderr": stderr[:_CODEX_MAX_LEDGER_BYTES],
+                "return_code": rc,
+            },
+            cache_hit=False,
+        )
+    except (OSError, ImportError, ValueError, AttributeError, TypeError):
+        pass
+
+
+def _codex_record_file_edits(
+    root: str | Path, payload: dict[str, Any], session_id: str, tool_input: dict[str, Any]
+) -> None:
+    if not session_id:
+        return
+    targets = _codex_edit_targets(tool_input)
+    if not targets:
+        return
+    workspace = _codex_workspace_root(payload)
+    events: list[dict[str, Any]] = []
+    for path in targets:
+        diff = _codex_edit_diff(tool_input, path, workspace)
+        events.append(
+            {
+                "kind": "file_edit",
+                "at": _iso_now(),
+                "summary": f"edited {Path(path).name}",
+                "payload": {"path": path, "diff": diff, "event": "PostToolUse"},
+            }
+        )
+    _codex_append_ledger_events(root, session_id, events)
+
+
+def _codex_record_command(
+    root: str | Path,
+    payload: dict[str, Any],
+    session_id: str,
+    tool_input: dict[str, Any],
+    tool_response: dict[str, Any],
+) -> dict[str, Any]:
+    command = _codex_command_text(tool_input)
+    if not command:
+        return {"no_output": True}
+    stdout = str(tool_response.get("stdout") or tool_response.get("output") or "")
+    stderr = str(tool_response.get("stderr") or "")
+    rc = _codex_return_code(tool_response)
+    ok = (rc == 0) if rc is not None else not stderr
+    error = stderr or str(tool_response.get("error") or "")
+    signature = _codex_error_signature(command, error)
+
+    _codex_cache_bash(root, command, stdout, stderr, rc)
+
+    if session_id:
+        short = command[:80] + ("…" if len(command) > 80 else "")
+        _codex_append_ledger_events(
+            root,
+            session_id,
+            [
+                {
+                    "kind": "command_result",
+                    "at": _iso_now(),
+                    "summary": f"{'✓' if ok else '✗'} {short}",
+                    "payload": {
+                        "command": command,
+                        "stdout": stdout[:_CODEX_MAX_LEDGER_BYTES],
+                        "stderr": stderr[:_CODEX_MAX_LEDGER_BYTES],
+                        "return_code": rc,
+                        "ok": ok,
+                        "event": "PostToolUse",
+                    },
+                }
+            ],
+        )
+
+    if ok:
+        return {"no_output": True}
+    return _codex_track_failure(root, payload, command, signature)
+
+
+def _codex_track_failure(root: str | Path, payload: dict[str, Any], command: str, signature: str) -> dict[str, Any]:
+    state = _read_codex_session_state(root, payload)
+    failures = state.get("failures")
+    if not isinstance(failures, dict):
+        failures = {}
+    failures[signature] = int(failures.get(signature, 0) or 0) + 1
+    state["failures"] = failures
+    _write_codex_session_state(root, payload, state)
+    if failures[signature] < _CODEX_FAILURE_THRESHOLD:
+        return {"no_output": True}
+    return {
+        "systemMessage": (
+            "Atelier: this command has failed repeatedly with the same error. "
+            "Call `rescue` before retrying and change the approach instead of repeating the fix."
+        )
+    }
+
+
+def build_codex_post_tool_use_ledger_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """Capture PostToolUse edits/commands into the run ledger + supervision cache.
+
+    Stays silent (records state only) except on the second identical command
+    failure, where it returns a ``systemMessage`` telling the agent to call
+    ``rescue`` -- Codex has no separate PostToolUseFailure event, so the rescue
+    nudge is folded into PostToolUse.
+    """
+    if str(payload.get("hook_event_name") or "") != "PostToolUse":
+        return {"no_output": True}
+    tool_input = payload.get("tool_input")
+    tool_response = payload.get("tool_response")
+    if not isinstance(tool_input, dict):
+        tool_input = {}
+    if not isinstance(tool_response, dict):
+        tool_response = {}
+    norm = _normalize_codex_tool(str(payload.get("tool_name") or ""))
+    session_id = _codex_ledger_session_id(root, payload)
+    if norm == "edit":
+        _codex_record_file_edits(root, payload, session_id, tool_input)
+        return {"no_output": True}
+    if norm == "bash":
+        return _codex_record_command(root, payload, session_id, tool_input, tool_response)
+    return {"no_output": True}
+
+
+def _codex_append_note(root: str | Path, session_id: str, summary: str, payload: dict[str, Any]) -> None:
+    if not session_id:
+        return
+    _codex_append_ledger_events(
+        root,
+        session_id,
+        [{"kind": "note", "at": _iso_now(), "summary": summary, "payload": payload}],
+    )
+
+
+def _codex_context_occupancy(payload: dict[str, Any]) -> tuple[int, str]:
+    try:
+        from atelier.gateway.hosts.context_state import host_context_state
+
+        occ, model = host_context_state("codex", str(payload.get("session_id") or ""))
+        return int(occ or 0), str(model or "")
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return 0, ""
+
+
+def build_codex_pre_compact_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    if str(payload.get("hook_event_name") or "") != "PreCompact":
+        return {"no_output": True}
+    trigger = str(payload.get("trigger") or payload.get("matcher") or "auto")
+    occ, model = _codex_context_occupancy(payload)
+    if occ > 0:
+        state = _read_codex_session_state(root, payload)
+        state["precompact_occupancy"] = occ
+        state["precompact_model"] = model
+        state["precompact_pending"] = True
+        state["precompact_attempts"] = 0
+        _write_codex_session_state(root, payload, state)
+    _codex_append_note(
+        root,
+        _codex_ledger_session_id(root, payload),
+        f"context compaction starting ({trigger})",
+        {"event": "PreCompact", "trigger": trigger},
+    )
+    return {"no_output": True}
+
+
+def build_codex_post_compact_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    if str(payload.get("hook_event_name") or "") != "PostCompact":
+        return {"no_output": True}
+    trigger = str(payload.get("trigger") or payload.get("matcher") or "auto")
+    _codex_append_note(
+        root,
+        _codex_ledger_session_id(root, payload),
+        f"context compaction completed ({trigger})",
+        {"event": "PostCompact", "trigger": trigger},
+    )
+    state = _read_codex_session_state(root, payload)
+    state["compaction_epoch"] = int(state.get("compaction_epoch", 0) or 0) + 1
+    _write_codex_session_state(root, payload, state)
+    return {"no_output": True}
+
+
+def _codex_enrich_user_prompt(root: str | Path, payload: dict[str, Any]) -> None:
+    """Record the user prompt into the run ledger + session state (fail-open)."""
+    prompt = str(payload.get("prompt") or "")
+    if not prompt.strip():
+        return
+    stored = prompt[:8192]
+    state = _read_codex_session_state(root, payload)
+    state["last_user_prompt"] = stored
+    _write_codex_session_state(root, payload, state)
+    session_id = _codex_ledger_session_id(root, payload)
+    if not session_id:
+        return
+    short = stored[:100].replace("\n", " ")
+    _codex_append_ledger_events(
+        root,
+        session_id,
+        [
+            {
+                "kind": "agent_message",
+                "at": _iso_now(),
+                "summary": f"user: {short}{'…' if len(stored) > 100 else ''}",
+                "payload": {
+                    "role": "user",
+                    "prompt": stored,
+                    "truncated": len(prompt) > 8192,
+                    "event": "UserPromptSubmit",
+                },
+            }
+        ],
+    )
+
+
+def _codex_auto_record_trace(root: str | Path, payload: dict[str, Any]) -> None:
+    """Auto-record a session trace when code work happened and none was recorded."""
+    session_id = _codex_ledger_session_id(root, payload)
+    if not session_id:
+        return
+    state = _read_codex_session_state(root, payload)
+    sessions = state.get("sessions")
+    session_data = sessions.get(session_id, {}) if isinstance(sessions, dict) else {}
+    if (isinstance(session_data, dict) and session_data.get("trace_recorded")) or state.get("trace_recorded"):
+        return
+    run_file = _codex_run_file(root, session_id)
+    try:
+        data = json.loads(run_file.read_text("utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(data, dict):
+        return
+    files_touched = data.get("files_touched")
+    edited = bool(files_touched) or any(
+        isinstance(event, dict) and event.get("kind") == "file_edit" for event in (data.get("events") or [])
+    )
+    if not edited:
+        return
+    import subprocess
+
+    trace = {
+        "agent": "codex",
+        "domain": "session",
+        "task": "session-auto-record",
+        "status": "success",
+        "session_id": session_id,
+        "output_summary": f"files touched: {len(files_touched or [])}",
+    }
+    atelier_bin = os.environ.get("ATELIER_BIN") or "atelier"
+    with suppress(Exception):
+        subprocess.run(
+            [atelier_bin, "runs", "record", "--input", "-"],
+            input=json.dumps(trace),
+            text=True,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
 
 
 def _tool_uses(turns: list[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
