@@ -74,6 +74,7 @@ def _seed_symbol_recall(tmp_path: Path) -> tuple[SymbolRecallCapability, str]:
     )
 
     trace_store = ContextStore(atelier_root)
+    trace_store.init()
     trace_store.record_trace(
         Trace(
             id=Trace.make_id("auth trace", "gsd-executor"),

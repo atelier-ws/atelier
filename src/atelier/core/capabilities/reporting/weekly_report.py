@@ -25,7 +25,6 @@ from atelier.core.foundation.models import (
     ToolCall,
     Trace,
     ValidationResult,
-    coerce_trace_json,
 )
 from atelier.core.foundation.store import ContextStore
 
@@ -242,16 +241,8 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def _list_traces_between(store: ContextStore, start: datetime, end: datetime) -> list[Trace]:
-    with store._connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT payload FROM traces
-            WHERE created_at >= ? AND created_at < ?
-            ORDER BY created_at DESC
-            """,
-            (start.isoformat(), end.isoformat()),
-        ).fetchall()
-    return [Trace.model_validate_json(coerce_trace_json(row["payload"])) for row in rows]
+    # Traces live in the file-based session store; window the upper bound in Python.
+    return [trace for trace in store.list_traces(since=start, limit=100_000) if trace.created_at < end]
 
 
 def _rubric_rates(traces: Iterable[Trace]) -> tuple[RateMetric, list[DomainRubricRate]]:

@@ -507,7 +507,7 @@ def _load_session_savings(session_id: str) -> dict[str, Any]:
     Delegates to ``compute_savings_summary`` — the same function the
     statusline calls via ``atelier savings --line`` — so the statusline
     figure and this stop-hook summary are always derived from the same
-    source (``session_stats/claude/<session_id>.jsonl``, priced per-row
+    source (``sessions/<session_id>/savings.jsonl``, priced per-row
     at the model captured when each row was written).
     """
     zero = {
@@ -648,6 +648,37 @@ def _auto_record(session_id: str, stats: dict[str, Any] | None) -> None:
         )
 
 
+def _format_review_findings(session_id: str) -> str:
+    """Surface unconsumed NEEDS_FIX live-reviewer verdicts; mark them consumed.
+
+    Advisory only — returns a short suffix appended to the session message.
+    Fail-open: any problem yields an empty suffix.
+    """
+    if not session_id:
+        return ""
+    try:
+        from atelier.core.capabilities.live_reviewer.sink import (
+            latest_unconsumed,
+            mark_consumed,
+        )
+    except ImportError:
+        return ""
+    root = _atelier_root()
+    pending = latest_unconsumed(root, session_id)
+    if not pending:
+        return ""
+    mark_consumed(root, session_id)
+    needs_fix = [row for row in pending if row.get("verdict") == "NEEDS_FIX"]
+    if not needs_fix:
+        return ""
+    lines = ["", "Code review (atelier) — NEEDS_FIX:"]
+    for row in needs_fix[:5]:
+        paths = ", ".join(str(p) for p in (row.get("paths") or []))
+        missing = str(row.get("missing") or "").strip().replace("\n", " ")
+        lines.append(f"  • {paths}: {missing[:300]}" if missing else f"  • {paths}")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -690,6 +721,11 @@ def main() -> int:
     with contextlib.suppress(Exception):
         savings = _load_session_savings(session_id)
 
+    # ── Surface unconsumed live-reviewer findings (advisory) ─────────────────
+    review_suffix = ""
+    with contextlib.suppress(Exception):
+        review_suffix = _format_review_findings(session_id)
+
     # Transcript JSONL stays as the source of truth even after stop —
     # cost, tokens, and savings are all derivable from it. No snapshot needed.
 
@@ -698,7 +734,7 @@ def main() -> int:
     if not _is_task_session(stats, session_aggregate):
         if stats and stats["total_tokens"] > 0:
             summary = _format_stats(stats, savings, real_cost=real_cost)
-            print(json.dumps({"systemMessage": f"Session stats:\n{summary}"}))
+            print(json.dumps({"systemMessage": f"Session stats:\n{summary}{review_suffix}"}))
         return 0
 
     # ── Code work happened: check if trace was recorded ──────────────────────
@@ -708,14 +744,14 @@ def main() -> int:
         # PostToolUse, UserPromptSubmit, PostToolBatch support it).
         if stats and stats["total_tokens"] > 0:
             summary = _format_stats(stats, savings, real_cost=real_cost)
-            print(json.dumps({"systemMessage": f"Atelier session complete.\n{summary}"}))
+            print(json.dumps({"systemMessage": f"Atelier session complete.\n{summary}{review_suffix}"}))
         return 0
 
     # ── Code work done but no trace — auto-record and show stats ─────────────
     _auto_record(session_id, stats)
     if stats and stats["total_tokens"] > 0:
         summary = _format_stats(stats, savings, real_cost=real_cost)
-        print(json.dumps({"systemMessage": f"Atelier: session auto-recorded.\n{summary}"}))
+        print(json.dumps({"systemMessage": f"Atelier: session auto-recorded.\n{summary}{review_suffix}"}))
     return 0
 
 
