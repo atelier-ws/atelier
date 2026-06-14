@@ -1,6 +1,6 @@
 """Cluster failed runs into FailureCluster objects.
 
-Input: persisted run ledger snapshots (dicts) from ``<root>/runs/``.
+Input: persisted run ledger snapshots (dicts) from ``<root>/sessions/<id>/run.json``.
 Output: ``list[FailureCluster]`` ranked by frequency x severity.
 
 Fingerprint rules:
@@ -321,7 +321,7 @@ class FailureAnalyzer:
         if not self.runs_dir.is_dir():
             return []
         snapshots: list[dict[str, Any]] = []
-        for path in sorted(self.runs_dir.glob("*.json")):
+        for path in sorted(self.runs_dir.glob("*/run.json")):
             try:
                 snapshots.append(json.loads(path.read_text(encoding="utf-8")))
             except (OSError, json.JSONDecodeError):

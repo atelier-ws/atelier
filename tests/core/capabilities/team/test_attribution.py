@@ -10,13 +10,14 @@ from atelier.core.capabilities.team import TeamWorkspaceManager, summarize_works
 def test_summarize_workspace_usage_rolls_up_by_user(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     TeamWorkspaceManager(root).init_workspace(name="Acme", admin_email="admin@example.com")
-    runs = root / "runs"
+    runs = root / "sessions"
     runs.mkdir(parents=True, exist_ok=True)
     for session_id, user_id, cost in (
         ("run-1", "admin@example.com", 0.25),
         ("run-2", "member@example.com", 1.5),
     ):
-        (runs / f"{session_id}.json").write_text(
+        (runs / session_id).mkdir(parents=True, exist_ok=True)
+        (runs / session_id / "run.json").write_text(
             json.dumps(
                 {
                     "session_id": session_id,

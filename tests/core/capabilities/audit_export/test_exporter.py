@@ -40,9 +40,9 @@ def test_export_bundle_redacts_and_verifies_then_detects_tampering(tmp_path: Pat
             metadata={"team_id": workspace.id},
         )
     )
-    runs = root / "runs"
+    runs = root / "sessions" / "run-1"
     runs.mkdir(parents=True, exist_ok=True)
-    (runs / "run-1.json").write_text(
+    (runs / "run.json").write_text(
         json.dumps(
             {
                 "session_id": "run-1",

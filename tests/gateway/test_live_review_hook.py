@@ -26,9 +26,9 @@ def _setup(tmp_path: Path, settings: dict, n_edits: int) -> tuple[Path, Path]:
     state_dir.mkdir(parents=True)
     (state_dir / "session_state.json").write_text(json.dumps({"session_id": "sid1"}), encoding="utf-8")
     (root / "plugin_settings.json").write_text(json.dumps(settings), encoding="utf-8")
-    runs = root / "runs"
-    runs.mkdir()
-    (runs / "sid1.json").write_text(json.dumps({"events": [{"kind": "file_edit"}] * n_edits}), encoding="utf-8")
+    runs = root / "sessions" / "sid1"
+    runs.mkdir(parents=True)
+    (runs / "run.json").write_text(json.dumps({"events": [{"kind": "file_edit"}] * n_edits}), encoding="utf-8")
     return root, ws
 
 
