@@ -11,7 +11,6 @@ from atelier.core.foundation.models import RescueResult, RubricResult
 from atelier.gateway.sdk import (
     AtelierClient,
     ContextResult,
-    FailureAnalysisResult,
     SavingsSummary,
 )
 
@@ -97,6 +96,3 @@ class AgentAdapter:
 
     def benchmark_report(self) -> SavingsSummary:
         return self.client.savings.summary()
-
-    def failure_clusters(self, *, domain: str | None = None, limit: int = 100) -> FailureAnalysisResult:
-        return self.client.failures.analyze(domain=domain or self.default_domain, limit=limit)

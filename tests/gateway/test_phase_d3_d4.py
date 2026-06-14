@@ -4,7 +4,6 @@ from __future__ import annotations
 
 EXPECTED_TOOLS = {
     "context",
-    "route",
     "rescue",
     "trace",
     "verify",
@@ -29,6 +28,12 @@ EXPECTED_TOOLS = {
     "graph",
     "scan",
     "orient",
+    # Repo/admin code-intel ops registered hidden (full split: no multiplexer).
+    "index",
+    "blame",
+    "rename",
+    "cache_status",
+    "cache_invalidate",
 }
 
 

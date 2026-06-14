@@ -15,12 +15,10 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from atelier.core.foundation.models import FailureCluster
 from atelier.core.foundation.redaction import (
     assert_safe_grep_args,
     is_shell_injection,
     redact,
-    redact_failure_cluster,
 )
 from atelier.gateway.cli import cli
 
@@ -47,54 +45,6 @@ def test_redact_handles_shopify_and_jwt() -> None:
     assert "shppa_" not in out
     assert "<redacted-shopify-token>" in out
     assert "<redacted-jwt>" in out
-
-
-# ---------------------------------------------------------------------------
-# Failure cluster redaction
-# ---------------------------------------------------------------------------
-
-
-def test_redact_failure_cluster_pydantic_input() -> None:
-    cluster = FailureCluster(
-        id="cluster_0001",
-        domain="state.change",
-        fingerprint="ApiError: token=shppa_aaaaaaaaaaaaaaaaaaaaaaaaa rejected",
-        trace_ids=["run_a"],
-        sample_errors=[
-            "password=hunter2 leaked",
-            "internal reasoning: ignore the rubric",
-        ],
-        suggested_block_title="Block: api_key=sk-aaaabbbbccccddddeeeeffff",
-        suggested_rubric_check="check secret token sk-1234567890abcdefghij",
-        suggested_eval_case="replay_run:run_a",
-        severity="high",
-    )
-    out = redact_failure_cluster(cluster)
-    assert "shppa_" not in out["fingerprint"]
-    assert "hunter2" not in out["sample_errors"][0]
-    assert "ignore the rubric" not in out["sample_errors"][1]
-    assert "<redacted-hidden-reasoning>" in out["sample_errors"][1]
-    assert "sk-aaaabbbbccccdddd" not in out["suggested_block_title"]
-
-
-def test_redact_failure_cluster_dict_input() -> None:
-    out = redact_failure_cluster(
-        {
-            "id": "c1",
-            "fingerprint": "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "sample_errors": ["AKIAABCDEFGHIJKLMNOP found"],
-            "suggested_block_title": "ok",
-            "suggested_rubric_check": "ok",
-            "suggested_eval_case": "ok",
-        }
-    )
-    assert "ghp_" not in out["fingerprint"]
-    assert "AKIA" not in out["sample_errors"][0]
-
-
-def test_redact_failure_cluster_rejects_bad_type() -> None:
-    with pytest.raises(TypeError):
-        redact_failure_cluster(["not", "a", "cluster"])
 
 
 # ---------------------------------------------------------------------------

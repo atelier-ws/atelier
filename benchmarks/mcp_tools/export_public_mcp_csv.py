@@ -38,7 +38,6 @@ from benchmarks.mcp_tools.bench_external_indexers import (
     repo_cache_key,
 )
 from benchmarks.mcp_tools.bench_rescue import run_rescue_suite
-from benchmarks.mcp_tools.bench_route import _setup_env as _setup_route_env
 from benchmarks.mcp_tools.bench_shell import _patch_paths as _patch_shell_paths
 from benchmarks.mcp_tools.bench_sql import _patch_db as _patch_sql_db
 from benchmarks.mcp_tools.bench_verify import run_verify_suite
@@ -50,7 +49,6 @@ from benchmarks.mcp_tools.cases.grep import GREP_CASES
 from benchmarks.mcp_tools.cases.memory import MEMORY_CASES
 from benchmarks.mcp_tools.cases.read import READ_CASES
 from benchmarks.mcp_tools.cases.rescue import RESCUE_CASES
-from benchmarks.mcp_tools.cases.route import ROUTE_CASES
 from benchmarks.mcp_tools.cases.search import SEARCH_CASES
 from benchmarks.mcp_tools.cases.shell import SHELL_CASES
 from benchmarks.mcp_tools.cases.sql import SQL_CASES
@@ -223,23 +221,6 @@ def _run_trace_suite(artifact_root: Path, progress: ProgressReporter | None = No
         tool_record_trace,
         progress=progress,
     )
-
-
-def _run_route_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
-    root = _runtime_root(artifact_root, "route")
-    _setup_route_env(root)
-    from atelier.gateway.adapters import mcp_server
-    from atelier.gateway.adapters.mcp_server import tool_route
-
-    mcp_server._reset_runtime_cache_for_testing()
-    results: list[CaseResult] = []
-    for case in ROUTE_CASES:
-        if progress is not None:
-            progress.phase("running MCP tool benchmark", current=f"route {case.label}")
-        results.append(run_case(case, tool_route))
-        if progress is not None:
-            progress.step("running MCP tool benchmark", current=f"route {case.label}")
-    return _tool_report("route", results)
 
 
 def _run_memory_suite(artifact_root: Path, progress: ProgressReporter | None = None) -> ToolReport:
@@ -738,7 +719,6 @@ def _suite_aliases() -> dict[str, list[str]]:
 def _suite_specs() -> list[tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]]:
     specs: list[tuple[str, int, Callable[[Path, ProgressReporter], ToolReport | list[ToolReport]]]] = [
         ("context", len(CONTEXT_CASES), _run_context_suite),
-        ("route", len(ROUTE_CASES), _run_route_suite),
         (
             "rescue",
             len(RESCUE_CASES),

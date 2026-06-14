@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+MAX_WORKFLOW_STEPS = 256
 # Leaf (executor-backed) step kinds and control-flow step kinds. Leaf kinds run
 # through the agent/tool/shell executors; control-flow kinds (G19) orchestrate
 # nested sub-steps deterministically without an executor of their own.
@@ -304,6 +305,10 @@ def validate_workflow_definition(definition: WorkflowDefinition) -> WorkflowDefi
         raise ValueError("workflow definition requires workflow_id")
     if not definition.steps:
         raise ValueError("workflow definition requires at least one step")
+    if len(definition.steps) > MAX_WORKFLOW_STEPS:
+        raise ValueError(
+            f"workflow definition exceeds maximum step count: {len(definition.steps)} > {MAX_WORKFLOW_STEPS}"
+        )
 
     seen_ids: set[str] = set()
     step_ids = {step.step_id for step in definition.steps}

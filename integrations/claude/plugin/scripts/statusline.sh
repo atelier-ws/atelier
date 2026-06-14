@@ -111,10 +111,10 @@ fi
 # local project entrypoint so statusline development picks up the new fields
 # before the global binary is upgraded.
 SAVED_FIELD_COUNT=$(printf '%s' "${SAVED_LINE:-}" | awk -F'|' '{print NF}' 2>/dev/null || echo 0)
-if [ "${SAVED_FIELD_COUNT:-0}" -lt 14 ] 2>/dev/null; then
+if [ "${SAVED_FIELD_COUNT:-0}" -lt 16 ] 2>/dev/null; then
   SAVED_LINE=$(uv run --quiet atelier savings --line 2>/dev/null)
 fi
-IFS="|" read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_BASE_COST CUMULATIVE_TOK DISPLAY_IN_TOK DISPLAY_CACHE_TOK DISPLAY_OUT_TOK CARRY_USD CARRY_TOK CARRY_PCT SAVED_PCT <<<"${SAVED_LINE:-}"
+IFS="|" read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_BASE_COST CUMULATIVE_TOK DISPLAY_IN_TOK DISPLAY_CACHE_TOK DISPLAY_OUT_TOK CARRY_USD CARRY_TOK CARRY_PCT SAVED_PCT VS_VANILLA_CALLS VS_VANILLA_USD <<<"${SAVED_LINE:-}"
 [ -z "${SAVED_USD:-}" ] && SAVED_USD="\$0.000"
 [ -z "${SAVED_CTX:-}" ] && SAVED_CTX="0"
 [ -z "${SAVED_CALLS:-}" ] && SAVED_CALLS="0"
@@ -128,6 +128,8 @@ IFS="|" read -r SAVED_USD SAVED_CTX SAVED_CALLS STATUS_TEXT ROUTING_USD SESSION_
 [ -z "${CARRY_TOK:-}" ] && CARRY_TOK="0"
 [ -z "${CARRY_PCT:-}" ] && CARRY_PCT="0%"
 [ -z "${SAVED_PCT:-}" ] && SAVED_PCT="0%"
+[ -z "${VS_VANILLA_CALLS:-}" ] && VS_VANILLA_CALLS="0"
+[ -z "${VS_VANILLA_USD:-}" ] && VS_VANILLA_USD="\$0.000"
 # Reset the displayed cost on /clear. SessionStart(clear) drops a marker; here
 # we snapshot the cumulative live cost at that moment and subtract it from then
 # on, so the row reflects only post-clear spend. (Claude's cost.total_cost_usd
@@ -227,6 +229,23 @@ if [ "$ROUTING_USD" != "\$0.000" ]; then
     CARRY_SEG=""
   fi
 
+# Last tool call's tokens saved, surfaced inline as (SAVED_CTX+N). Reads the most
+# recent positive tokens_saved from this session's per-call savings ledger
+# (runs/<session>_context_savings.jsonl, written one row per tool call).
+LAST_CALL_SEG=""
+_CTX_SAVINGS="${ATELIER_STATUS_ROOT}/runs/${SESSION_ID}_context_savings.jsonl"
+if [ -n "${SESSION_ID:-}" ] && [ -f "${_CTX_SAVINGS}" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    _LAST_SAVED_TOK=$(tail -n 40 "${_CTX_SAVINGS}" 2>/dev/null | jq -rs 'map(.tokens_saved // 0) | map(select(. > 0)) | last // 0' 2>/dev/null)
+  else
+    _LAST_SAVED_TOK=$(tail -n 40 "${_CTX_SAVINGS}" 2>/dev/null | grep -o '"tokens_saved":[ ]*[0-9]*' | sed 's/[^0-9]//g' | awk 'NF{ if($1>0) v=$1 } END{ print v+0 }')
+  fi
+  [ -z "${_LAST_SAVED_TOK:-}" ] && _LAST_SAVED_TOK=0
+  if [ "${_LAST_SAVED_TOK}" -gt 0 ] 2>/dev/null; then
+    LAST_CALL_SEG="+${_LAST_SAVED_TOK}"
+  fi
+fi
+
 # Hide the savings figure until the session registers real token usage. A frame
 # with zero input AND zero cache tokens has done no billable work, so any "saved"
 # value there is stale or cross-attributed from another session sharing this
@@ -234,11 +253,51 @@ if [ "$ROUTING_USD" != "\$0.000" ]; then
 # I/C/O buckets, or land under a sibling session's id). Show "↓" only once real
 # usage exists.
 if [ "${EFF_IN:-0}" -gt 0 ] 2>/dev/null || [ "${EFF_CACHE:-0}" -gt 0 ] 2>/dev/null; then
-  SAVED_SEG="${C_GREEN} ↓ ${SAVED_USD}(${SAVED_CTX})${C_RESET}"
+  SAVED_SEG="${C_GREEN} ↓ ${SAVED_USD}(${SAVED_CTX}${LAST_CALL_SEG})${C_RESET}"
   SAVED_SEG_COMPACT=" ${C_GREEN}↓ ${SAVED_USD}${C_RESET}"
 else
   SAVED_SEG=""
   SAVED_SEG_COMPACT=""
+fi
+
+# Comparative "vs vanilla Claude Code" replay: roundtrips vanilla CC would have
+# spent that Atelier avoided, with their estimated cost. Counterfactual / labeled
+# separately — never mixed into the headline saved figure. Shown only when >0.
+if [ "${VS_VANILLA_CALLS:-0}" -gt 0 ] 2>/dev/null; then
+  VS_VANILLA_SEG=" ${SEP} vs CC: ${VS_VANILLA_CALLS} rt ${SEP} ${VS_VANILLA_USD}"
+else
+  VS_VANILLA_SEG=""
+fi
+
+# Live-reviewer status: surface the latest unconsumed NEEDS_FIX verdict, if any.
+# Read straight from the review log so this stays independent of the savings line.
+REVIEW_SEG=""
+if [ -n "${SESSION_ID:-}" ]; then
+  _ATELIER_REVIEW_LOG="${ATELIER_STATUS_ROOT}/reviews/${SESSION_ID}.jsonl"
+  if [ -s "${_ATELIER_REVIEW_LOG}" ]; then
+    _REVIEW_VERDICT=$("${ATELIER_PY}" -c '
+import json, sys
+verdict = ""
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(row, dict) and not row.get("consumed") and row.get("verdict") == "NEEDS_FIX":
+                verdict = "NEEDS_FIX"
+except Exception:
+    pass
+print(verdict)
+' "${_ATELIER_REVIEW_LOG}" 2>/dev/null)
+    if [ "${_REVIEW_VERDICT:-}" = "NEEDS_FIX" ]; then
+      REVIEW_SEG=" ${SEP} review: NEEDS_FIX"
+    fi
+  fi
 fi
 
 # Background tasks. The statusline JSON carries no task info, so derive it:
@@ -314,10 +373,9 @@ TASKS_SEG=""
 [ "${BG_JOBS:-0}" -gt 0 ] 2>/dev/null && TASKS_SEG=" ${SEP} ${BG_JOBS} bg"
 [ "${BG_AGENTS:-0}" -gt 0 ] 2>/dev/null && TASKS_SEG="${TASKS_SEG} ${SEP} ${BG_AGENTS} agent"
 
-
-printf '%s%s%s %s %s%s ctx %s %s%% %s(%s)%s%s%s%s\n' \
+printf '%s%s%s %s %s%s ctx %s %s%% %s(%s)%s%s%s%s%s%s\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
   "$PIPE" "$MODEL" "$STATUS_SEG" "$ACTUAL_CTX_F" "$PCT_INT" \
   "$COST_FMT" "$TOK_DISPLAY" \
   "$SAVED_SEG" \
-  "$CARRY_SEG" "$ROUTING_SEG" "$TASKS_SEG"
+  "$CARRY_SEG" "$ROUTING_SEG" "$VS_VANILLA_SEG" "$REVIEW_SEG" "$TASKS_SEG"

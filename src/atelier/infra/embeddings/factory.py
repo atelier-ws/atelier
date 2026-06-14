@@ -105,20 +105,22 @@ def make_code_embedder(pin: str | None = None, model: str | None = None) -> Embe
         raise ValueError(f"Unknown code embedder pin {chosen!r}; must be one of {sorted(_CODE_PIN_CHOICES)}")
     if chosen == "local":
         return LocalEmbedder()
-    if chosen == "null":
-        return NullEmbedder()
     if chosen == "openai":
         return OpenAIEmbedder()
     if chosen == "letta":
         return LettaEmbedder()
-    if chosen and chosen != "ollama":
-        return make_embedder(chosen)
-    if os.getenv("ATELIER_OFFLINE"):
-        return LocalEmbedder()
-    try:
-        return _make_available_ollama_code_embedder(_default_code_model(model))
-    except RuntimeError:
-        return LocalEmbedder()
+    if chosen == "ollama":
+        if os.getenv("ATELIER_OFFLINE"):
+            return LocalEmbedder()
+        try:
+            return _make_available_ollama_code_embedder(_default_code_model(model))
+        except RuntimeError:
+            return LocalEmbedder()
+    # Default (or explicit "null"): semantic code search is OFF unless an embedding
+    # backend is configured via ATELIER_CODE_EMBEDDER (local|openai|letta|ollama) and
+    # optionally ATELIER_CODE_EMBED_MODEL. No external LLM (ollama) is contacted by
+    # default -- callers see the null embedder and surface "semantic unavailable".
+    return NullEmbedder()
 
 
 def get_code_embedder() -> Embedder:

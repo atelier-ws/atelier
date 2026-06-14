@@ -21,11 +21,13 @@ import csv
 import hashlib
 import json
 import os
+import platform
 import shutil
 import socket
 import statistics
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import urllib.request
@@ -545,6 +547,90 @@ def ensure_code_index_runtime(code_index_repo: Path) -> Path:
     return python_bin
 
 
+def bench_tools_root() -> Path:
+    """Shared location for self-provisioned external comparator binaries."""
+    root = Path.home() / ".atelier" / "_bench_tools"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def ensure_universal_ctags() -> tuple[Path, Path]:
+    """Build universal-ctags from source (no root required); return (ctags, readtags).
+
+    Idempotent: a prior build is reused. Requires a C toolchain (gcc/make/autoconf/
+    automake/pkg-config) on PATH. JSON output is unavailable without libjansson, so
+    the runner consumes the native tags format via readtags instead.
+    """
+    prefix = bench_tools_root() / "ctags"
+    ctags = prefix / "bin" / "ctags"
+    readtags = prefix / "bin" / "readtags"
+    if ctags.exists() and readtags.exists():
+        return ctags, readtags
+    src = bench_tools_root() / "ctags-src"
+    if src.exists():
+        shutil.rmtree(src)
+    clone = run_cmd(
+        ["git", "clone", "--depth", "1", "https://github.com/universal-ctags/ctags.git", str(src)],
+        timeout=600,
+    )
+    if clone.returncode != 0:
+        raise RuntimeError(clone.stderr[:1200] or clone.stdout[:1200])
+    steps = [
+        ["./autogen.sh"],
+        ["./configure", f"--prefix={prefix}"],
+        ["make", f"-j{os.cpu_count() or 2}"],
+        ["make", "install"],
+    ]
+    for step in steps:
+        proc = run_cmd(step, cwd=src, timeout=1800)
+        if proc.returncode != 0:
+            raise RuntimeError(f"ctags build failed at '{' '.join(step)}': " + (proc.stderr[:800] or proc.stdout[:800]))
+    if not (ctags.exists() and readtags.exists()):
+        raise RuntimeError("ctags build did not produce ctags/readtags binaries")
+    return ctags, readtags
+
+
+SCIP_CLI_VERSION = "v0.8.1"
+
+
+def _scip_release_asset() -> str:
+    machine = platform.machine().lower()
+    arch = "arm64" if machine in {"arm64", "aarch64"} else "amd64"
+    os_name = "darwin" if platform.system().lower() == "darwin" else "linux"
+    return f"scip-{os_name}-{arch}.tar.gz"
+
+
+def ensure_scip_python() -> tuple[Path, Path]:
+    """Install scip-python (npm) + the scip CLI (prebuilt release binary).
+
+    Returns (scip_python_bin, scip_cli). Idempotent. Requires npm on PATH. The
+    ``go install`` path is unusable (upstream go.mod replace directives), so the
+    CLI is fetched from the published release tarball.
+    """
+    root = bench_tools_root()
+    sp_dir = root / "scip-python"
+    sp_bin = sp_dir / "node_modules" / ".bin" / "scip-python"
+    if not sp_bin.exists():
+        sp_dir.mkdir(parents=True, exist_ok=True)
+        proc = run_cmd(["npm", "install", "--prefix", str(sp_dir), "@sourcegraph/scip-python"], timeout=1800)
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
+    scip_dir = root / "scip"
+    scip_cli = scip_dir / "scip"
+    if not scip_cli.exists():
+        scip_dir.mkdir(parents=True, exist_ok=True)
+        url = f"https://github.com/scip-code/scip/releases/download/{SCIP_CLI_VERSION}/{_scip_release_asset()}"
+        archive = scip_dir / "scip.tar.gz"
+        urllib.request.urlretrieve(url, str(archive))
+        with tarfile.open(archive) as handle:
+            handle.extractall(scip_dir, filter="data")
+    if scip_cli.exists():
+        scip_cli.chmod(0o755)
+    if not (sp_bin.exists() and scip_cli.exists()):
+        raise RuntimeError("scip-python / scip CLI provisioning failed")
+    return sp_bin, scip_cli
+
+
 def bench_atelier(repo_root: Path, workspace_root: Path, query: str, iterations: int) -> ToolBenchResult:
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
@@ -554,7 +640,7 @@ def bench_atelier(repo_root: Path, workspace_root: Path, query: str, iterations:
     snapshot_root = prepare_repo_snapshot(repo_root, tool_workspace, "atelier-repo")
     runtime_root = Path(tempfile.mkdtemp(prefix="atelier-root-", dir=tool_workspace))
     configure_benchmark_runtime(runtime_root, workspace_root=snapshot_root)
-    from atelier.gateway.adapters.mcp_server import tool_code
+    from benchmarks.mcp_tools._env import call_code_op
 
     times: list[float] = []
     toks: list[int] = []
@@ -570,7 +656,7 @@ def bench_atelier(repo_root: Path, workspace_root: Path, query: str, iterations:
     }
     for _ in range(iterations):
         t0 = time.perf_counter()
-        resp = tool_code(request)
+        resp = call_code_op(request)
         elapsed = (time.perf_counter() - t0) * 1000
         payload = json.dumps(resp, ensure_ascii=False)
         times.append(elapsed)

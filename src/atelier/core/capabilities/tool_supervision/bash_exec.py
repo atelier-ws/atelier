@@ -86,10 +86,14 @@ class _ManagedCommand:
     max_lines: int
     state: str = "running"
     discipline_warning: str = ""
+    reaped: bool = False
 
 
 _MANAGED_COMMANDS: dict[str, _ManagedCommand] = {}
 _MANAGED_COMMANDS_LOCK = threading.Lock()
+# Grace period before the watcher reaps a finished-but-never-polled session,
+# so a poll that arrives just after completion still finds its output.
+_DETACHED_REAP_GRACE_S = 300.0
 
 
 def _rewrite_cat(tokens: list[str]) -> CommandPolicyDecision:
@@ -169,17 +173,56 @@ def _rewrite_search(tokens: list[str], command_name: str) -> CommandPolicyDecisi
 def _is_rm_family(tokens: list[str]) -> bool:
     if not tokens or tokens[0] != "rm":
         return False
-    return any(tok.startswith("-") and "r" in tok and "f" in tok for tok in tokens[1:])
+    recursive = force = False
+    for tok in tokens[1:]:
+        if not tok.startswith("-"):
+            continue
+        if tok.startswith("--"):
+            if tok == "--recursive":
+                recursive = True
+            elif tok == "--force":
+                force = True
+            continue
+        # Short flags may be bundled (-rf) or split (-r -f).
+        if "r" in tok or "R" in tok:
+            recursive = True
+        if "f" in tok:
+            force = True
+    return recursive and force
+
+
+def _git_subcommand_index(tokens: list[str]) -> int:
+    """Index of the git subcommand, skipping leading global options.
+
+    ``git -C <dir> reset --hard`` and ``git --git-dir=x clean -fd`` place the
+    subcommand after global options, so a hardcoded ``tokens[1]`` misses it.
+    """
+    _takes_value = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
+    i = 1
+    while i < len(tokens) and tokens[i].startswith("-"):
+        tok = tokens[i]
+        # ``--git-dir=x`` carries its value inline; bare forms consume the next token.
+        if tok in _takes_value and "=" not in tok:
+            i += 2
+        else:
+            i += 1
+    return i
 
 
 def _is_git_reset_hard(tokens: list[str]) -> bool:
-    return len(tokens) >= 3 and tokens[0] == "git" and tokens[1] == "reset" and "--hard" in tokens[2:]
+    if not tokens or tokens[0] != "git":
+        return False
+    idx = _git_subcommand_index(tokens)
+    return idx < len(tokens) and tokens[idx] == "reset" and "--hard" in tokens[idx + 1 :]
 
 
 def _is_git_clean_fd(tokens: list[str]) -> bool:
-    if len(tokens) < 2 or tokens[0] != "git" or tokens[1] != "clean":
+    if not tokens or tokens[0] != "git":
         return False
-    joined_flags = "".join(tok for tok in tokens[2:] if tok.startswith("-"))
+    idx = _git_subcommand_index(tokens)
+    if idx >= len(tokens) or tokens[idx] != "clean":
+        return False
+    joined_flags = "".join(tok for tok in tokens[idx + 1 :] if tok.startswith("-"))
     return "f" in joined_flags and "d" in joined_flags
 
 
@@ -193,24 +236,44 @@ def _is_shell_file_write(command: str) -> bool:
     return bool(_SHELL_FILE_WRITE_RE.search(command)) or bool(_INTERP_WRITE_RE.search(command))
 
 
-def classify_command(command: str) -> CommandPolicyDecision:
-    # Detect file-write patterns before shlex.split (heredocs break shlex parsing).
-    if _is_shell_file_write(command):
-        return CommandPolicyDecision(
-            category="file-write",
-            action="block",
-            reason=(
-                "Use the edit tool to create or modify files — shell redirects, "
-                "heredocs, and inline interpreter writes are blocked for file content"
-            ),
-        )
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return CommandPolicyDecision(category="generic", action="allow")
-    if not tokens:
-        return CommandPolicyDecision(category="generic", action="allow")
+def _split_command_segments(command: str) -> list[list[str]]:
+    """Split a command line into segments on shell control operators.
 
+    ``bash -c`` runs the whole line, so blocklist checks that only inspect
+    ``tokens[0]`` are bypassed by chaining (``ok && rm -rf x``) or command
+    substitution (``$(rm -rf x)``). Tokenizing the full line and breaking on
+    ``; & | && ||``, newlines, and substitution/brace markers yields each
+    segment's own leading token for the blocklist checks.
+    """
+    operators = {";", "&", "|", "&&", "||", "\n", "$(", ")", "`", "{", "}"}
+    # Pad control operators and substitution/brace boundaries with whitespace so
+    # shlex isolates them even when glued to a token (``a&&rm``, ``true;rm``) and
+    # the command inside ``$(...)`` / ``\`...\``` starts a fresh segment.
+    # Over-splitting inside a quoted literal only yields extra benign segments;
+    # it can never mask a dangerous leading token.
+    normalized = re.sub(r"(\$\(|\)|`|\{|\}|&&|\|\||;|&|\||\n)", r" \1 ", command)
+    try:
+        tokens = shlex.split(normalized, comments=False)
+    except ValueError:
+        return []
+    segments: list[list[str]] = []
+    current: list[str] = []
+    for tok in tokens:
+        if tok in operators:
+            if current:
+                segments.append(current)
+                current = []
+            continue
+        current.append(tok)
+    if current:
+        segments.append(current)
+    return segments
+
+
+def _block_check_segment(tokens: list[str]) -> CommandPolicyDecision | None:
+    """Return a block decision if *tokens* (one segment) is dangerous, else None."""
+    if not tokens:
+        return None
     head = tokens[0].lower()
     if head in {"bash", "sh", "zsh", "fish"}:
         return CommandPolicyDecision(
@@ -218,7 +281,6 @@ def classify_command(command: str) -> CommandPolicyDecision:
             action="block",
             reason=f"Direct {head} execution is blocked; use Atelier tools instead",
         )
-
     if _is_rm_family(tokens):
         return CommandPolicyDecision(
             category="destructive",
@@ -237,7 +299,35 @@ def classify_command(command: str) -> CommandPolicyDecision:
             action="block",
             reason="git clean -fd is blocked",
         )
+    return None
 
+
+def classify_command(command: str) -> CommandPolicyDecision:
+    # Detect file-write patterns before shlex.split (heredocs break shlex parsing).
+    if _is_shell_file_write(command):
+        return CommandPolicyDecision(
+            category="file-write",
+            action="block",
+            reason=(
+                "Use the edit tool to create or modify files — shell redirects, "
+                "heredocs, and inline interpreter writes are blocked for file content"
+            ),
+        )
+    # Block checks run per segment: bash -c executes the whole line, so chaining
+    # and command substitution must not slip a dangerous segment past tokens[0].
+    for segment in _split_command_segments(command):
+        blocked = _block_check_segment(segment)
+        if blocked is not None:
+            return blocked
+
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return CommandPolicyDecision(category="generic", action="allow")
+    if not tokens:
+        return CommandPolicyDecision(category="generic", action="allow")
+
+    head = tokens[0].lower()
     if head == "cat":
         return _rewrite_cat(tokens)
     if head in {"rg", "grep"}:
@@ -270,9 +360,11 @@ def _compact_result(
         tail = max(max_lines - head, 50)
     else:
         head = max(20, max_lines // 4)
-        tail = max_lines - head
-    stdout_compact, lines_omitted, chars_omitted = _head_tail_lines(_strip_ansi(raw_stdout).splitlines(), head, tail)
-    stderr_compact, _, _ = _head_tail_lines(_strip_ansi(raw_stderr).splitlines(), 100, 100)
+        tail = max(max_lines - head, 0)
+    stdout_compact, stdout_omitted, stdout_chars = _head_tail_lines(_strip_ansi(raw_stdout).splitlines(), head, tail)
+    stderr_compact, stderr_omitted, stderr_chars = _head_tail_lines(_strip_ansi(raw_stderr).splitlines(), 100, 100)
+    lines_omitted = stdout_omitted + stderr_omitted
+    chars_omitted = stdout_chars + stderr_chars
     # Live tool-output redaction (G8): scrub secrets from command output
     # before it reaches the model. Honors the ATELIER_OUTPUT_REDACTION
     # kill-switch and is a no-op on already-clean text.
@@ -304,6 +396,20 @@ def _watch_managed_command(session_id: str) -> None:
         with _MANAGED_COMMANDS_LOCK:
             if managed.state == "running":
                 managed.state = "completed"
+
+    # The process has finished. If no one polls the result, its temp files and
+    # dict entry would leak forever, so reap it after a grace window. A poll that
+    # arrives first reaps it under the lock and clears the entry; this then no-ops.
+    time.sleep(_DETACHED_REAP_GRACE_S)
+    with _MANAGED_COMMANDS_LOCK:
+        if _MANAGED_COMMANDS.get(session_id) is not managed or managed.reaped:
+            return
+        managed.reaped = True
+        _MANAGED_COMMANDS.pop(session_id, None)
+    with contextlib.suppress(Exception):
+        managed.stdout_file.close()
+    with contextlib.suppress(Exception):
+        managed.stderr_file.close()
 
 
 def start_managed_command(
@@ -404,17 +510,22 @@ def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, 
         }
 
     with _MANAGED_COMMANDS_LOCK:
+        if managed.reaped:
+            # The watcher already reaped this finished session; its temp files are
+            # closed. Report completion without re-reading or double-closing.
+            raise KeyError(f"unknown shell session: {session_id}")
         if managed.state == "running":
             managed.state = "completed"
+        managed.reaped = True
         _MANAGED_COMMANDS.pop(session_id, None)
-    managed.stdout_file.flush()
-    managed.stderr_file.flush()
-    managed.stdout_file.seek(0)
-    managed.stderr_file.seek(0)
-    raw_stdout = managed.stdout_file.read()
-    raw_stderr = managed.stderr_file.read()
-    managed.stdout_file.close()
-    managed.stderr_file.close()
+        managed.stdout_file.flush()
+        managed.stderr_file.flush()
+        managed.stdout_file.seek(0)
+        managed.stderr_file.seek(0)
+        raw_stdout = managed.stdout_file.read()
+        raw_stderr = managed.stderr_file.read()
+        managed.stdout_file.close()
+        managed.stderr_file.close()
 
     if managed.state == "timed_out":
         exit_code = -1

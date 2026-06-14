@@ -58,7 +58,7 @@ from atelier.core.capabilities.workflow_runtime_state import (
     stop_workflow_runtime,
     workflow_runtime_detail,
 )
-from atelier.core.foundation.models import Trace, coerce_trace_json, to_jsonable
+from atelier.core.foundation.models import Trace, to_jsonable
 from atelier.core.foundation.paths import resolve_session_state_path, resolve_workspace_root
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.auth import verify_api_key
@@ -1120,37 +1120,19 @@ def _query_analytics_rows(
         window_days = max(1, int(days))
         start_day = (datetime.now().astimezone().date() - timedelta(days=window_days - 1)).isoformat()
 
-    params: list[Any] = []
-
-    sql = f"""
-        SELECT id, agent, host, payload, created_at
-        FROM traces
-        WHERE 1=1 {"AND date(datetime(created_at, 'localtime')) >= ?" if start_day else ""}
-        ORDER BY created_at DESC
-    """
-
-    if start_day:
-        params.append(start_day)
-
     events: list[dict[str, Any]] = []
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        for row in conn.execute(sql, params).fetchall():
-            try:
-                payload = json.loads(row["payload"] or "{}")
-            except (TypeError, json.JSONDecodeError):
-                continue
-            if not isinstance(payload, dict):
-                continue
-            events.extend(
-                _trace_analytics_events(
-                    str(row["id"]),
-                    str(row["agent"] or ""),
-                    str(row["host"] or ""),
-                    str(row["created_at"] or ""),
-                    payload,
-                )
+    store = ContextStore(Path(db_path).parent)
+    since_dt = datetime.fromisoformat(start_day) if start_day else None
+    for trace in store.list_traces(since=since_dt, limit=100_000):
+        events.extend(
+            _trace_analytics_events(
+                trace.id,
+                trace.agent or "",
+                trace.host or "",
+                trace.created_at.isoformat(),
+                to_jsonable(trace),
             )
+        )
 
     if grouped:
         return _group_analytics_rows(events, limit=limit)
@@ -2110,7 +2092,7 @@ def _savings_summary_payload(
         return datetime.now(UTC)
 
     def _load_run_ledger(session_id: str) -> dict[str, Any] | None:
-        run_path = root / "runs" / f"{session_id}.json"
+        run_path = root / "sessions" / session_id / "run.json"
         if not run_path.exists():
             return None
         with contextlib.suppress(Exception):
@@ -3076,7 +3058,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     def compat_overview(days: int = Query(30)) -> dict[str, Any]:
         """Compatibility: GET /overview -> basic summary stats."""
         from atelier.core.foundation.metrics import summarize
-        from atelier.core.improvement.failure_analyzer import FailureAnalyzer
         from atelier.infra.runtime.cost_tracker import CostTracker
 
         root = Path(cfg.atelier_root)
@@ -3088,40 +3069,23 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         total_raw_tokens = 0
         total_cost_usd = 0.0
 
-        with sqlite3.connect(store.db_path) as conn:
-            sql = """
-                SELECT 
-                    SUM(json_extract(payload, '$.input_tokens')),
-                    SUM(json_extract(payload, '$.output_tokens')),
-                    SUM(json_extract(payload, '$.cached_input_tokens')),
-                    SUM(json_extract(payload, '$.thinking_tokens'))
-                FROM traces
-                WHERE created_at >= ?
-            """
-            row = conn.execute(sql, (since.isoformat(),)).fetchone()
-            if row:
-                inp, out, cr, th = row
-                total_raw_tokens = (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
-
-            conn.row_factory = sqlite3.Row
-            for trace_row in conn.execute("SELECT payload FROM traces WHERE created_at >= ?", (since.isoformat(),)):
-                try:
-                    payload = json.loads(trace_row["payload"] or "{}")
-                except (TypeError, json.JSONDecodeError):
-                    continue
-                total_cost_usd += _trace_cost_from_payload(payload)
+        for row in store.session_store.token_rows(since=since.isoformat()):
+            total_raw_tokens += (
+                (row["input_tokens"] or 0)
+                + (row["output_tokens"] or 0)
+                + (row["cached_input_tokens"] or 0)
+                + (row["thinking_tokens"] or 0)
+            )
+        for trace in store.list_traces(since=since, limit=100_000):
+            total_cost_usd += _trace_cost_from_payload(to_jsonable(trace))
 
         tracker = CostTracker(root)
         savings = tracker.total_savings(since=since)
-
-        analyzer = FailureAnalyzer(store=store)
-        clusters = analyzer.analyze()
 
         return {
             "total_traces": summary.traces_total,
             "total_blocks": summary.blocks_active,
             "total_rubrics": summary.rubrics_total,
-            "total_clusters": len(clusters),
             "total_raw_tokens_estimate": total_raw_tokens,
             "estimated_total_cost_usd": max(total_cost_usd, savings["actually_cost_usd"]),
             "estimated_saved_cost_usd": savings["saved_usd"],
@@ -3902,37 +3866,37 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         """
         db_path = store.db_path
         start_day = (datetime.now().astimezone().date() - timedelta(days=max(1, days) - 1)).isoformat()
-        host_filter = "AND COALESCE(host, agent) = ?" if host else ""
-        sql = f"""
-            SELECT
-                id,
-            COALESCE(host, agent) AS host,
-                domain,
-                json_extract(payload, '$.model') AS model,
-                CAST(json_extract(payload, '$.input_tokens') AS INTEGER) AS input_tokens,
-                CAST(json_extract(payload, '$.output_tokens') AS INTEGER) AS output_tokens,
-                CAST(json_extract(payload, '$.reasoning_output_tokens') AS INTEGER) AS reasoning_output_tokens,
-                CAST(json_extract(payload, '$.thinking_tokens') AS INTEGER) AS thinking_tokens,
-                CAST(json_extract(payload, '$.cached_input_tokens') AS INTEGER) AS cached_tokens,
-                CAST(json_extract(payload, '$.cache_creation_input_tokens') AS INTEGER) AS cache_write_tokens,
-                CAST(json_extract(payload, '$.user_prompt_tokens') AS INTEGER) AS user_prompt_tokens,
-                payload,
-                created_at,
-                date(datetime(created_at, 'localtime')) AS day,
-                strftime('%Y-%m-%d %H:00', datetime(created_at)) AS hour_bucket
-            FROM traces
-            WHERE date(datetime(created_at, 'localtime')) >= ?
-            {host_filter}
-            ORDER BY created_at DESC
-        """
-        params: list[Any] = [start_day]
-        if host:
-            params.append(host)
-
         sessions = []
-        with sqlite3.connect(db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(sql, params).fetchall()
+        # Traces live in the file-based session store; build the dashboard rows
+        # from it (the SQL column shape is reproduced so the body is unchanged).
+        _store = ContextStore(Path(db_path).parent)
+        _since = datetime.fromisoformat(start_day) if start_day else None
+        rows: list[dict[str, Any]] = []
+        for _t in _store.list_traces(since=_since, limit=100_000):
+            _h = _t.host or _t.agent or ""
+            if host and _h != host:
+                continue
+            _c = _t.created_at
+            rows.append(
+                {
+                    "id": _t.id,
+                    "host": _h,
+                    "domain": _t.domain,
+                    "model": _t.model,
+                    "input_tokens": _t.input_tokens,
+                    "output_tokens": _t.output_tokens,
+                    "reasoning_output_tokens": _t.reasoning_output_tokens,
+                    "thinking_tokens": _t.thinking_tokens,
+                    "cached_tokens": _t.cached_input_tokens,
+                    "cache_write_tokens": _t.cache_creation_input_tokens,
+                    "user_prompt_tokens": _t.user_prompt_tokens,
+                    "payload": json.dumps(to_jsonable(_t)),
+                    "created_at": _c.isoformat(),
+                    "day": _c.astimezone().date().isoformat(),
+                    "hour_bucket": _c.strftime("%Y-%m-%d %H:00"),
+                }
+            )
+        with contextlib.nullcontext():
             for row in rows:
                 d = dict(row)
                 payload_obj: dict[str, Any] = {}
@@ -4862,7 +4826,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         """
         from atelier.infra.runtime.run_ledger import RunLedger
 
-        ledger_path = Path(cfg.atelier_root) / "runs" / f"{session_id}.json"
+        ledger_path = Path(cfg.atelier_root) / "sessions" / session_id / "run.json"
         snap = None
         if ledger_path.exists():
             try:
@@ -4890,16 +4854,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 if trace:
                     break
 
-        # 3. Slower fallback: search for the session_id inside payloads
+        # 3. Slower fallback: the store resolves a session_id to its first trace.
         if trace is None:
-            with sqlite3.connect(store_inst.db_path) as conn:
-                # Use json_extract for efficient searching
-                row = conn.execute(
-                    "SELECT payload FROM traces WHERE json_extract(payload, '$.session_id') = ?",
-                    (session_id,),
-                ).fetchone()
-                if row:
-                    trace = Trace.model_validate_json(coerce_trace_json(row[0]))
+            trace = store_inst.get_trace(session_id)
 
         def _conversation_sort_key(turn: dict[str, Any]) -> tuple[int, str]:
             raw_at = turn.get("at")
@@ -5296,21 +5253,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         return all_calls[:limit]
 
     # ------------------------------------------------------------------ #
-    # Clusters (compat)                                                   #
-    # ------------------------------------------------------------------ #
-
-    @app.get("/clusters", tags=["compat"], dependencies=[Depends(verify_api_key)])
-    def compat_clusters() -> list[dict[str, Any]]:
-        from atelier.core.improvement.failure_analyzer import FailureAnalyzer
-
-        try:
-            return [to_jsonable(c) for c in FailureAnalyzer(store=get_store()).analyze()]
-        except Exception as exc:
-            logging.exception("Recovered from broad exception handler")
-            logger.warning("Failure analyzer raised an exception: %s", exc, exc_info=True)
-            return []
-
-    # ------------------------------------------------------------------ #
     # Watchdogs                                                           #
     # ------------------------------------------------------------------ #
 
@@ -5396,14 +5338,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             if trace is not None:
                 return trace
 
-        with sqlite3.connect(store.db_path) as conn:
-            row = conn.execute(
-                "SELECT payload FROM traces WHERE json_extract(payload, '$.session_id') = ?",
-                (session_id,),
-            ).fetchone()
-        if not row:
-            return None
-        return Trace.model_validate_json(coerce_trace_json(row[0]))
+        return store.get_trace(session_id)
 
     def _reconstruct_trace_conversations(
         session_id: str,
@@ -6242,8 +6177,8 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         high_extra_reads: list[str] = []
 
         for f in files:
-            session_id = f.stem
-            state_path = root / "runs" / f"{session_id}.outcomes.json"
+            session_id = f.parent.name
+            state_path = root / "sessions" / session_id / "outcomes.json"
             if not state_path.exists():
                 continue
             try:
@@ -6285,7 +6220,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         from atelier.infra.runtime.outcome_capture import load_outcomes_from_state
 
         root = Path(cfg.atelier_root)
-        state_path = root / "runs" / f"{session_id}.outcomes.json"
+        state_path = root / "sessions" / session_id / "outcomes.json"
         if not state_path.exists():
             raise HTTPException(status_code=404, detail=f"No outcomes for session '{session_id}'")
         try:
