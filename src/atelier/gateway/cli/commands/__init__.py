@@ -163,6 +163,13 @@ def register(cli: click.Group) -> None:
         _IMPORT_FAILED = True
 
     try:
+        from .db import db_group
+
+        cli.add_command(db_group)
+    except (ModuleNotFoundError, ImportError):
+        _IMPORT_FAILED = True
+
+    try:
         from .defaults import defaults_group
 
         _h(defaults_group)
