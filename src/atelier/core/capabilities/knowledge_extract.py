@@ -19,7 +19,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from atelier.core.capabilities.live_reviewer.knowledge import load_overlay, overlay_path
+from atelier.core.capabilities.live_reviewer.knowledge import (
+    load_overlay,
+    load_repo_overlay,
+    overlay_path,
+    repo_overlay_path,
+    write_overlay,
+)
 
 _MAX_RULES = 25
 _DEFAULT_MAX_ITEMS = 20
@@ -110,23 +116,37 @@ def parse_rules(text: str) -> list[str]:
     return uniq[:_MAX_RULES]
 
 
-def merge_into_overlay(root: str | Path, rules: list[str]) -> int:
-    """Append new rules to review_overlay.json notes (deduped). Returns count added."""
+def overlay_target(root: str | Path, repo_root: str | Path | None, scope: str) -> Path:
+    """Where extracted rules are written. ``repo`` = team-shared (committable)."""
+    if scope == "repo" and repo_root is not None:
+        return repo_overlay_path(repo_root)
+    return overlay_path(root)
+
+
+def merge_into_overlay(
+    root: str | Path,
+    rules: list[str],
+    *,
+    repo_root: str | Path | None = None,
+    scope: str = "repo",
+) -> int:
+    """Append new rules to the target overlay's notes (deduped). Returns count added.
+
+    Default scope ``repo`` writes the team overlay (<repo>/.atelier/review.json) so
+    committing it distributes the rules; ``personal`` writes the per-user overlay.
+    """
     if not rules:
         return 0
-    overlay = load_overlay(root)
+    if scope == "repo" and repo_root is not None:
+        overlay = load_repo_overlay(repo_root)
+    else:
+        overlay = load_overlay(root)
     existing = {note.lower() for note in overlay["notes"]}
     added = [rule for rule in rules if rule.lower() not in existing]
     if not added:
         return 0
     overlay["notes"] = (overlay["notes"] + added)[:_OVERLAY_NOTES_CAP]
-    path = overlay_path(root)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(overlay, indent=2), encoding="utf-8")
-    except OSError:
-        return 0
-    return len(added)
+    return len(added) if write_overlay(overlay_target(root, repo_root, scope), overlay) else 0
 
 
 def _run_owned(prompt: str, *, root: str | Path, model: str) -> str:
@@ -198,6 +218,7 @@ def extract_rules(
     max_chars: int = _DEFAULT_MAX_CHARS,
     max_spend_usd: float = _DEFAULT_MAX_SPEND_USD,
     dry_run: bool = False,
+    scope: str = "repo",
     runner: Callable[..., str] | None = None,
 ) -> dict[str, Any]:
     """Distill review rules from .lessons and merge them into the overlay.
@@ -214,6 +235,8 @@ def extract_rules(
         "estimated_cost_usd": 0.0,
         "dry_run": dry_run,
         "sources": len(sources),
+        "scope": scope,
+        "overlay": str(overlay_target(root, repo_root, scope)),
     }
     if not sources:
         return {**base, "reason": "no .lessons/blocks found"}
@@ -230,5 +253,5 @@ def extract_rules(
     except Exception as exc:  # noqa: BLE001 - extraction must never crash the caller
         return {**base, "error": str(exc)}
     rules = parse_rules(output)
-    applied = 0 if dry_run else merge_into_overlay(root, rules)
+    applied = 0 if dry_run else merge_into_overlay(root, rules, repo_root=repo_root, scope=scope)
     return {**base, "rules": rules, "applied": applied}

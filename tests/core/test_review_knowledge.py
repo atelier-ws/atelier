@@ -30,6 +30,24 @@ def test_collect_empty_when_nothing(tmp_path: Path) -> None:
     assert collect_review_context(tmp_path, repo) == ""
 
 
+def test_collect_merges_team_and_personal_layers(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    repo = tmp_path / "repo"
+    (repo / ".atelier").mkdir(parents=True)
+    (repo / ".atelier" / "review.json").write_text(
+        json.dumps({"notes": ["team authz rule"], "boost": ["security"], "suppress": []}), encoding="utf-8"
+    )
+    (root / "review_overlay.json").write_text(
+        json.dumps({"notes": ["personal style rule"], "boost": [], "suppress": ["nits"]}), encoding="utf-8"
+    )
+    out = collect_review_context(root, repo)
+    assert "team rule: team authz rule" in out
+    assert "your rule: personal style rule" in out
+    assert "security" in out
+    assert "nits" in out
+
+
 def test_collect_merges_overlay_and_lessons(tmp_path: Path) -> None:
     root = tmp_path / "root"
     root.mkdir()
