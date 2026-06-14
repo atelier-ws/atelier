@@ -137,8 +137,7 @@ def _compute_diff(tool_name: str, tool_input: dict) -> tuple[str, str]:  # type:
 
 def _append_file_edit_event(session_id: str, file_path: str, diff: str) -> None:
     """Append a file_edit event to runs/<session_id>.json atomically."""
-    runs_dir = _atelier_root() / "runs"
-    run_file = runs_dir / f"{session_id}.json"
+    run_file = _atelier_root() / "sessions" / session_id / "run.json"
     if not run_file.exists():
         return
 

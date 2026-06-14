@@ -123,10 +123,10 @@ def _read_tool_cost_fraction(report: SessionReport) -> float:
 
 def _load_outcomes_for_session(
     session_id: str,
-    runs_dir: Path,
+    root: Path,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Load outcomes from ``{runs_dir}/{session_id}_outcomes.json``."""
-    path = runs_dir / f"{session_id}_outcomes.json"
+    """Load outcomes from ``sessions/<session_id>/outcomes.json``."""
+    path = root / "sessions" / session_id / "outcomes.json"
     return load_outcomes_from_state(path)
 
 
@@ -297,8 +297,6 @@ def build_insights(
     until: datetime,
 ) -> InsightsWindow:
     """Aggregate all sessions in ``[since, until)`` into an ``InsightsWindow``."""
-    runs_dir = root / "runs"
-
     # Load raw snapshots and build reports in one pass.
     files = list_run_files(root, since=since)
     snaps: list[dict[str, Any]] = []
@@ -333,7 +331,7 @@ def build_insights(
 
         # Use session_id from report; fall back to run_id from snapshot for outcomes lookup.
         sid = report.session_id or str(snap.get("run_id") or "")
-        outcomes_by_session[sid] = _load_outcomes_for_session(sid, runs_dir)
+        outcomes_by_session[sid] = _load_outcomes_for_session(sid, root)
 
     # Aggregate totals.
     total_cost = sum(r.total_cost_usd for r in reports)

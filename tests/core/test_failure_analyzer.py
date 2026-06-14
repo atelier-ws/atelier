@@ -48,9 +48,9 @@ def test_analyzer_proposes_concrete_fields() -> None:
 
 
 def test_analyzer_loads_from_runs_dir(tmp_path: Path) -> None:
-    runs = tmp_path / "runs"
-    runs.mkdir()
-    (runs / "r1.json").write_text(json.dumps(_snap("r1", "x", "sig")), encoding="utf-8")
+    runs = tmp_path / "sessions"
+    (runs / "r1").mkdir(parents=True)
+    (runs / "r1" / "run.json").write_text(json.dumps(_snap("r1", "x", "sig")), encoding="utf-8")
     fa = FailureAnalyzer(runs)
     clusters = fa.analyze()
     assert clusters and clusters[0].fingerprint == "sig"
