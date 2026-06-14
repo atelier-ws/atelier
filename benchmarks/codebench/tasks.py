@@ -137,6 +137,13 @@ TASKS: list[Task] = [
         # is the CI bug this task is designed to diagnose and fix.
         setup_cmds=("cargo fetch --quiet 2>/dev/null || true",),
     ),
+    Task(
+        "task8",
+        "rust",
+        ("workspace", "workspace"),
+        1,
+        "task8_RenameAcrossCallSites",
+    ),
 ]
 
 BY_ID = {t.id: t for t in TASKS}
