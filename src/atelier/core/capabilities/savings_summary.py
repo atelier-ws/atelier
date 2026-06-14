@@ -320,7 +320,7 @@ def read_transcript_savings_block(transcript_path: str | Path) -> TranscriptSavi
     if carry:
         block.carry_usd = _usd(carry.group(1))
         block.carry_tokens = _num(carry.group(2)) if carry.group(2) else 0
-    elif (carry_inline := _STOP_CARRY_INLINE_RE.search(last_text)):
+    elif carry_inline := _STOP_CARRY_INLINE_RE.search(last_text):
         # Older format: carry was part of savings line, no token count available
         block.carry_usd = _usd(carry_inline.group(1))
     cost = _STOP_EST_COST_RE.search(last_text)

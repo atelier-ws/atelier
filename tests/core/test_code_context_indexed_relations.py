@@ -99,37 +99,3 @@ def test_native_python_pattern_search_supports_call_def_and_class_shapes(tmp_pat
         "snippet",
         "captures",
     }
-
-
-def test_src_layout_import_impact(tmp_path: Path) -> None:
-    (tmp_path / "src" / "atelier" / "core").mkdir(parents=True)
-    (tmp_path / "src" / "atelier" / "core" / "__init__.py").write_text("", encoding="utf-8")
-    (tmp_path / "src" / "atelier" / "core" / "bash_exec.py").write_text(
-        "def run_command(cmd: str) -> int:\n    return 0\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "src" / "atelier" / "gateway.py").write_text(
-        "from atelier.core.bash_exec import run_command\n\ndef go() -> int:\n    return run_command('x')\n",
-        encoding="utf-8",
-    )
-    engine = CodeContextEngine(tmp_path)
-    engine.tool_index(include_globs=["src/**/*.py"], budget_tokens=2000)
-    impact = engine.tool_impact("src/atelier/core/bash_exec.py", budget_tokens=1000)
-    assert "gateway.py" in str(impact)
-    assert impact["target_type"] == "file"
-    assert any(row["path"].endswith("gateway.py") for row in impact["affected_files"])
-
-
-def test_symbol_impact_groups_affected_files(tmp_path: Path) -> None:
-    _write_repo(tmp_path)
-    engine = CodeContextEngine(tmp_path)
-    engine.tool_index(include_globs=["src/**/*.py"], budget_tokens=2000)
-
-    impact = engine.tool_impact(query="run_command", budget_tokens=1000)
-
-    assert impact["target_type"] == "symbol"
-    assert impact["target"]["type"] == "symbol"
-    assert impact["target"]["match_count"] >= 1
-    assert "src/pkg/server.py" in impact["direct_importers"]
-    assert any(row["path"] == "src/pkg/server.py" for row in impact["affected_files"])
-    assert any("reference" in row["reasons"] or "caller" in row["reasons"] for row in impact["affected_files"])

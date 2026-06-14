@@ -30,8 +30,6 @@ HIDDEN_LLM_TOOLS = frozenset(
         "rescue",
         "verify",
         "callees",
-        "impact",
-        "pattern",
         "route",
         "trace",
         "workflow",

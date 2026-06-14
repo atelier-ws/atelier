@@ -1,8 +1,8 @@
-"""The seven AtelierBench tasks.
+"""The seven CodeBench tasks.
 
 Prompts and bundled workspaces are read from a local task-source checkout
-(default ``../benchmarks/<repo>/atelierbench-tasks``; override with
-``ATELIERBENCH_TASKS_DIR``).
+(default ``../benchmarks/<repo>/codebench-tasks``; override with
+``CODEBENCH_TASKS_DIR``).
 """
 
 from __future__ import annotations
@@ -17,12 +17,12 @@ TaskSource: TypeAlias = (  # noqa: UP040
 )
 
 
-def atelierbench_tasks_dir() -> Path:
-    root = os.environ.get("ATELIERBENCH_TASKS_DIR")
+def codebench_tasks_dir() -> Path:
+    root = os.environ.get("CODEBENCH_TASKS_DIR")
     if root:
         return Path(root)
     repo_root = Path(__file__).resolve().parents[2]
-    return repo_root.parent / "benchmarks" / repo_root.name / "atelierbench-tasks"
+    return repo_root.parent / "benchmarks" / repo_root.name / "codebench-tasks"
 
 
 @dataclass(frozen=True)
@@ -33,13 +33,13 @@ class Task:
     source: TaskSource
     # rough budget ordering for cheap-first runs
     weight: int  # 1=cheap (no clone) .. 3=heavy (large repo clone+build)
-    task_dir: str  # folder name under atelierbench-tasks/tasks/
+    task_dir: str  # folder name under codebench-tasks/tasks/
     # Shell commands run inside the prepared workspace before the agent starts.
     # Each string is passed to subprocess shell=True with the workspace as cwd.
     setup_cmds: tuple[str, ...] = field(default_factory=tuple)
 
     def prompt_path(self) -> Path:
-        task_root = atelierbench_tasks_dir() / "tasks" / self.task_dir
+        task_root = codebench_tasks_dir() / "tasks" / self.task_dir
         candidates = (
             "prompt.md",
             "prompt_hard.md",
@@ -62,7 +62,7 @@ class Task:
 
     def workspace_src(self) -> Path | None:
         if self.source[0] == "workspace":
-            return atelierbench_tasks_dir() / "tasks" / self.task_dir / self.source[1]
+            return codebench_tasks_dir() / "tasks" / self.task_dir / self.source[1]
         return None
 
 

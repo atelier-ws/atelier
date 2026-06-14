@@ -33,7 +33,6 @@ _READ_TOOLS: frozenset[str] = frozenset(
         "mcp__atelier__callers",
         "mcp__atelier__callees",
         "mcp__atelier__usages",
-        "mcp__atelier__impact",
         "mcp__atelier__explore",
         "atelier_smart_read",
         "atelier_smart_search",
@@ -48,7 +47,6 @@ _READ_TOOLS: frozenset[str] = frozenset(
         "callers",
         "callees",
         "usages",
-        "impact",
         "explore",
     }
 )
@@ -63,7 +61,7 @@ _EDIT_TOOLS: frozenset[str] = frozenset(
         "mcp__atelier__edit",
         "mcp__atelier__shell",
         "mcp__atelier__sql",
-        "mcp__atelier__pattern",
+        "mcp__atelier__codemod",
         "mcp__atelier__trace",
         "mcp__atelier__verify",
         "mcp__atelier__rescue",

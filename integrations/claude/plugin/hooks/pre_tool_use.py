@@ -121,7 +121,7 @@ def main() -> int:
         if missing:
             msg = (
                 "Atelier benchmark gate: ground this edit with read, grep, search, "
-                "symbols, node, explore, callers, callees, usages, or impact before editing "
+                "symbols, node, explore, callers, callees, or usages before editing "
                 f"{', '.join(missing[:4])}."
             )
             print(json.dumps({"decision": "block", "reason": msg}))

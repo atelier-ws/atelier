@@ -29,7 +29,7 @@ if str(ROOT) not in sys.path:
 from atelier.gateway.cli.progress import ProgressReporter
 
 from benchmarks.mcp_tools._env import configure_benchmark_runtime
-from benchmarks.mcp_tools.bench_code import _impact_query, _symbol_arg, _tool_name_for_case_args
+from benchmarks.mcp_tools.bench_code import _symbol_arg, _tool_name_for_case_args
 from benchmarks.mcp_tools.bench_context import _preseed_bootstrap
 from benchmarks.mcp_tools.bench_edit import _run_edit_case
 from benchmarks.mcp_tools.bench_external_indexers import (
@@ -365,8 +365,6 @@ def _run_code_suite_cases(
             )
         if tool_name == "usages":
             return mcp_server.tool_usages({"symbol": _symbol_arg(payload), "limit": int(payload.get("limit", 20))})
-        if tool_name == "impact":
-            return mcp_server.tool_impact({"query": _impact_query(payload)})
         if tool_name == "explore":
             return mcp_server.tool_explore(
                 {

@@ -167,7 +167,7 @@ def test_compact_provider_payload_preserves_path_keyed_matches() -> None:
         ],
     }
 
-    compact = runner_module._compact_provider_payload("atelier-serena", case, json.dumps(raw))
+    compact = runner_module._compact_provider_payload("atelier-codegraph", case, json.dumps(raw))
 
     assert runner_module.score_case(case, compact) == 1.0
     assert "src/atelier/gateway/hosts/session_parsers/copilot.py" in compact
@@ -202,7 +202,7 @@ def test_render_provider_progress_includes_total_cases(tmp_path: Path) -> None:
     assert "atelier 7/10 running" in status
 
 
-def test_balanced_case_subset_round_robins_families() -> None:
+def test_balanced_case_subset_caps_each_family() -> None:
     _ensure_benchmarks_package()
     cases_module = _load_module(
         "benchmarks.mcp_tools.external_matrix_cases",
@@ -221,6 +221,13 @@ def test_balanced_case_subset_round_robins_families() -> None:
         cases_module.ExternalBenchCase(case_id="c2", family="substring_search", query="c2"),
     ]
 
-    subset = runner_module._balanced_case_subset(cases, 5)
-
-    assert [case.case_id for case in subset] == ["b1", "a1", "c1", "b2", "a2"]
+    # The cap is PER FAMILY and round-robined in sorted-family order.
+    assert [case.case_id for case in runner_module._balanced_case_subset(cases, 1)] == ["b1", "a1", "c1"]
+    assert [case.case_id for case in runner_module._balanced_case_subset(cases, 5)] == [
+        "b1",
+        "a1",
+        "c1",
+        "b2",
+        "a2",
+        "c2",
+    ]

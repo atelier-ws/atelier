@@ -1,4 +1,4 @@
-"""mitmproxy addon for limiting model inference requests during AtelierBench."""
+"""mitmproxy addon for limiting model inference requests during CodeBench."""
 
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ def _is_model_request(flow: http.HTTPFlow) -> bool:
 
 class ModelRequestRateLimiter:
     def __init__(self) -> None:
-        rpm = float(os.environ.get("ATELIERBENCH_RATE_LIMIT_RPM", "0") or 0)
+        rpm = float(os.environ.get("CODEBENCH_RATE_LIMIT_RPM", "0") or 0)
         self._interval = 60.0 / rpm if rpm > 0 else 0.0
-        self._tokens_per_minute = int(os.environ.get("ATELIERBENCH_RATE_LIMIT_TPM", "0") or 0)
+        self._tokens_per_minute = int(os.environ.get("CODEBENCH_RATE_LIMIT_TPM", "0") or 0)
         self._lock = asyncio.Lock()
         self._next_request_at = 0.0
         self._token_reservations: deque[tuple[float, int]] = deque()
