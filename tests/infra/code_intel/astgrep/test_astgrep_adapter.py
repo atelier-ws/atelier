@@ -71,12 +71,15 @@ def test_astgrep_rewrite_dry_run_returns_diff_and_apply_reports_changed_files(
     target.write_text("requests.get(url)\n", encoding="utf-8")
 
     adapter = AstGrepAdapter(repo_root, binary_path=repo_root / "ast-grep")
+    # Real ast-grep --json emits one object per match with `replacement` and byte
+    # `replacementOffsets`; the adapter reconstructs whole-file content from them.
     payload = {
-        "rewrites": [
+        "matches": [
             {
                 "file": "src/app.py",
-                "before": "requests.get(url)\n",
-                "after": "requests.get(url, timeout=30)\n",
+                "text": "requests.get(url)",
+                "replacement": "requests.get(url, timeout=30)",
+                "replacementOffsets": {"start": 0, "end": 17},
             }
         ]
     }

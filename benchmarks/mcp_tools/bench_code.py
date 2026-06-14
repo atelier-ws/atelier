@@ -4,7 +4,7 @@ Run:
     uv run pytest benchmarks/mcp_tools/bench_code.py -v -s
 
 Exercises the public `symbols`, `node`, `callers`, `callees`, `usages`,
-`impact`, `explore`, and `pattern` MCP tools against the real Atelier codebase.
+`explore`, and `pattern` MCP tools against the real Atelier codebase.
 The first run builds the SCIP index (~10-30 s); subsequent runs are cached.
 
 Baseline comparison: each case has a `baseline_tokens` estimate of what
@@ -76,8 +76,6 @@ def code_tool_fn() -> Any:
                     "limit": int(payload.get("limit", 20)),
                 }
             )
-        if tool_name == "impact":
-            return mcp_server.tool_impact({"query": _impact_query(payload)})
         if tool_name == "explore":
             return mcp_server.tool_explore(
                 {
@@ -133,7 +131,7 @@ def _tool_name_for_case_args(args: dict[str, Any]) -> str:
     if isinstance(explicit, str) and explicit:
         return explicit
     op = str(args.get("op") or "")
-    if op in {"callers", "callees", "impact", "explore", "usages", "pattern", "node"}:
+    if op in {"callers", "callees", "explore", "usages", "pattern", "node"}:
         return op
     return "symbols"
 
@@ -148,14 +146,6 @@ def _symbol_arg(args: dict[str, Any]) -> str:
         if isinstance(value, str) and value:
             return value
     raise ValueError(f"missing symbol identifier in args: {args}")
-
-
-def _impact_query(args: dict[str, Any]) -> str:
-    for key in ("query", "path", "qualified_name", "symbol_name", "symbol_id"):
-        value = args.get(key)
-        if isinstance(value, str) and value:
-            return value
-    raise ValueError(f"missing impact query in args: {args}")
 
 
 def _group_reports(results: list[CaseResult]) -> list[ToolReport]:

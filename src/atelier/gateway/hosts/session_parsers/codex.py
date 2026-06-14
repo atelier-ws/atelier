@@ -687,7 +687,7 @@ class CodexImporter:
         # Reconcile Atelier MCP calls: remove their duplicate function_call counts,
         # then merge with atelier_<tool> prefix so downstream can classify correctly.
         for atelier_key, mcp_count in mcp_atelier_calls.items():
-            native_key = atelier_key[len("atelier_"):]  # strip prefix to get base name
+            native_key = atelier_key[len("atelier_") :]  # strip prefix to get base name
             native_remaining = tools_called.get(native_key, 0) - mcp_count
             if native_remaining <= 0:
                 tools_called.pop(native_key, None)

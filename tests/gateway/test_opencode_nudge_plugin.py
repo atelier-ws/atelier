@@ -31,7 +31,7 @@ def test_opencode_javascript_plugin_leaves_multi_file_prompt_unchanged(tmp_path:
     env = os.environ.copy()
     env["ATELIER_ROOT"] = str(tmp_path / ".atelier")
     script = f"""
-import {{ AtelierNudge }} from {json.dumps((PLUGINS / 'atelier-nudge.js').as_uri())}
+import {{ AtelierNudge }} from {json.dumps((PLUGINS / "atelier-nudge.js").as_uri())}
 const client = {{ tui: {{ showToast: async () => true }} }}
 const hooks = await AtelierNudge({{ client, directory: process.cwd() }})
 const output = {{ parts: [{{ type: 'text', text: 'Update auth.py and billing.py together' }}] }}
@@ -54,7 +54,7 @@ def test_opencode_repeated_failure_injects_rescue_on_next_prompt(tmp_path: Path)
     env = os.environ.copy()
     env["ATELIER_ROOT"] = str(tmp_path / ".atelier")
     script = f"""
-    import {{ AtelierNudge }} from {json.dumps((PLUGINS / 'atelier-nudge.js').as_uri())}
+    import {{ AtelierNudge }} from {json.dumps((PLUGINS / "atelier-nudge.js").as_uri())}
     const client = {{ tui: {{ showToast: async () => true }} }}
     const hooks = await AtelierNudge({{ client, directory: process.cwd() }})
     const input = {{ tool: 'bash', sessionID: 's1', callID: 'c1', args: {{ command: 'make test' }} }}

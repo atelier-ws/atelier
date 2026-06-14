@@ -13,7 +13,7 @@ def write_benchmark_manifest(run_dir: Path, payload: dict[str, Any]) -> Path:
     return path
 
 
-def build_atelierbench_manifest(
+def build_codebench_manifest(
     *,
     tasks: list[dict[str, Any]],
     arms: list[str],
@@ -23,18 +23,18 @@ def build_atelierbench_manifest(
     timeout: int,
     jobs: int,
     parallel_scope: str,
-    atelierbench_tasks_dir: Path,
+    codebench_tasks_dir: Path,
     bridge_command: str | None,
 ) -> dict[str, Any]:
     baseline_arm = "baseline" if "baseline" in arms else arms[0]
     treatment_arms = [arm for arm in arms if arm != baseline_arm]
     return {
-        "suite": "atelierbench",
+        "suite": "codebench",
         "frozen_at": datetime.now(UTC).isoformat(),
         "corpus": {
-            "dataset_name": "atelierbench",
+            "dataset_name": "codebench",
             "dataset_version": "ported-local",
-            "source_root": str(atelierbench_tasks_dir.resolve()),
+            "source_root": str(codebench_tasks_dir.resolve()),
             "tasks": tasks,
         },
         "protocol": {
@@ -100,7 +100,7 @@ def build_terminalbench_manifest(
 
 
 __all__ = [
-    "build_atelierbench_manifest",
+    "build_codebench_manifest",
     "build_terminalbench_manifest",
     "write_benchmark_manifest",
 ]

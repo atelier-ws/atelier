@@ -69,7 +69,6 @@ sql(connection_alias="default", sql="SELECT * FROM products LIMIT 5")
 
 # Code index operations
 code(op="search", repo_root=".", query="publish_product")
-code(op="impact", repo_root=".", file_path="src/foo.py")
 
 # Advise before host-native /compact — get preserve/reinject hints
 compact(session_id="run_123")

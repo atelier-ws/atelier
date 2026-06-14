@@ -801,62 +801,6 @@ def test_tool_code_outline_rendered_shape_is_structural(tmp_path: Path, monkeypa
     assert "def run(self): ..." not in payload["rendered"]
 
 
-def test_tool_code_impact_rendered_shape_groups_lists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_engine = MagicMock()
-    fake_engine.tool_impact.return_value = {
-        "target": {"type": "file", "path": "src/orders.py"},
-        "target_type": "file",
-        "file_path": "src/orders.py",
-        "affected_files": [
-            {
-                "file_path": "src/api.py",
-                "reasons": ["direct_import"],
-                "symbols": [],
-                "symbol_count": 0,
-            },
-            {
-                "file_path": "src/handlers.py",
-                "reasons": ["transitive_import"],
-                "symbols": [],
-                "symbol_count": 0,
-            },
-            {
-                "file_path": "tests/test_orders.py",
-                "reasons": ["test"],
-                "symbols": [],
-                "symbol_count": 0,
-            },
-        ],
-        "direct_importers": ["src/api.py"],
-        "transitive_importers": ["src/handlers.py"],
-        "affected_tests": ["tests/test_orders.py"],
-        "risk_level": "high",
-        "cache_hit": False,
-        "provenance": "local",
-        "tokens_saved": 0,
-        "total_tokens": 70,
-    }
-    monkeypatch.setattr(
-        "atelier.gateway.adapters.mcp_server._code_context_engine",
-        lambda repo_root=".": fake_engine,
-    )
-
-    payload = tool_code(
-        {
-            "op": "impact",
-            "repo_root": str(tmp_path),
-            "path": "src/orders.py",
-            "budget_tokens": 220,
-            "render_compact": True,
-        }
-    )
-
-    assert "rendered" in payload
-    assert "- direct: 1" in payload["rendered"]
-    assert "- affected_files: 3" in payload["rendered"]
-    assert "tests/test_orders.py" in payload["rendered"]
-
-
 def test_tool_code_index_rendered_shape_is_compact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fake_engine = MagicMock()
     fake_engine.tool_index.return_value = {

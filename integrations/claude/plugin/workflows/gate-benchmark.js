@@ -63,7 +63,7 @@ function collectorPrompt(task) {
     "Collect benchmark evidence using only benchmark/reporting surfaces that already exist in this repository.",
     "",
     "Preferred sources, in order:",
-    "1. paired multi-run benchmark reports from benchmarks/atelierbench/run.py --report <dir>",
+    "1. paired multi-run benchmark reports from benchmarks/codebench/run.py --report <dir>",
     "2. real A/B calibration data from tests/benchmarks/test_*_ab_real.py outputs",
     "3. wire captures compared with uv run python -m benchmarks.wire_savings.report base=... cand=...",
     "",

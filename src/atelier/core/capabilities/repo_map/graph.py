@@ -10,6 +10,14 @@ import networkx as nx
 
 from atelier.infra.tree_sitter.tags import Tag, detect_language, extract_tags
 
+# In-process cache: building the reference graph parses every source file with
+# tree-sitter (~14-37 s for a mid-size repo). The result is pure-functional given
+# the repo root + file list, so a single dict cache makes repeated calls free.
+_REFERENCE_GRAPH_CACHE: dict[
+    tuple[str, tuple[str, ...] | None],
+    tuple[nx.DiGraph, dict[str, list[Tag]]],
+] = {}
+
 _SKIP_PARTS = {
     ".git",
     ".atelier",
@@ -112,6 +120,12 @@ def build_reference_graph(
 ) -> tuple[nx.DiGraph, dict[str, list[Tag]]]:
     """Build a file graph from symbol references to definitions."""
     root = Path(repo_root)
+    cache_key: tuple[str, tuple[str, ...] | None] = (
+        str(root.resolve()),
+        tuple(sorted(files)) if files is not None else None,
+    )
+    if cache_key in _REFERENCE_GRAPH_CACHE:
+        return _REFERENCE_GRAPH_CACHE[cache_key]
     paths = [root / file for file in files] if files else iter_source_files(root)
     tags_by_file: dict[str, list[Tag]] = {}
     definitions: dict[str, set[str]] = {}
@@ -138,6 +152,7 @@ def build_reference_graph(
                     continue
                 weight = float(graph.get_edge_data(rel, def_file, {}).get("weight", 0.0)) + 1.0
                 graph.add_edge(rel, def_file, weight=weight)
+    _REFERENCE_GRAPH_CACHE[cache_key] = (graph, tags_by_file)
     return graph, tags_by_file
 
 

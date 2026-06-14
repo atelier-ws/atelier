@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from collections.abc import Mapping
 from typing import Any
 
@@ -25,8 +24,6 @@ def render_code_payload(op: str, payload: Mapping[str, Any]) -> str | None:
         return _render_outline(payload)
     if op in {"callers", "callees", "usages"}:
         return _render_relations(op, payload)
-    if op == "impact":
-        return _render_impact(payload)
     if op == "status":
         return _render_status(payload)
     if op == "index":
@@ -198,78 +195,6 @@ def _flatten_usages(references: Any) -> list[Mapping[str, Any]]:
             int(item.get("column") or 0),
         ),
     )
-
-
-def _render_impact(payload: Mapping[str, Any]) -> str:
-    target = payload.get("target")
-    target_label = str(payload.get("path") or payload.get("file_path") or "?")
-    if isinstance(target, Mapping):
-        target_type = str(target.get("type") or payload.get("target_type") or "file")
-        if target_type == "symbol":
-            matches = target.get("matches")
-            first_match: Mapping[str, Any] | None = None
-            if isinstance(matches, list):
-                for item in matches:
-                    if isinstance(item, Mapping):
-                        first_match = item
-                        break
-            if first_match is not None:
-                symbol = str(
-                    first_match.get("qualified_name")
-                    or first_match.get("name")
-                    or first_match.get("symbol_name")
-                    or "?"
-                )
-                file_path = str(first_match.get("path") or first_match.get("file_path") or "?")
-                line = int(first_match.get("line") or first_match.get("start_line") or 0)
-                target_label = f"symbol {symbol} @ {file_path}:{line}" if line > 0 else f"symbol {symbol} @ {file_path}"
-            else:
-                target_label = f"symbol {(target.get('query') or '?')!s}"
-        else:
-            target_label = str(target.get("path") or payload.get("file_path") or "?")
-    lines = [
-        "### impact",
-        f"- target: {target_label}",
-        f"- target_type: {(payload.get('target_type') or 'file')!s}",
-        f"- risk: {(payload.get('risk_level') or 'unknown')!s}",
-    ]
-    provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
-    grouped: dict[str, list[str]] = defaultdict(list)
-    for label, key in (
-        ("direct", "direct_importers"),
-        ("transitive", "transitive_importers"),
-        ("tests", "affected_tests"),
-    ):
-        values = payload.get(key)
-        if isinstance(values, list):
-            grouped[label] = sorted(str(value) for value in values)
-    for label in ("direct", "transitive", "tests"):
-        values = grouped.get(label, [])
-        lines.append(f"- {label}: {len(values)}")
-        for value in values:
-            lines.append(f"  - {value}")
-    affected_files = payload.get("affected_files")
-    if isinstance(affected_files, list):
-        rows = sorted(
-            (item for item in affected_files if isinstance(item, Mapping)),
-            key=lambda item: str(item.get("path") or item.get("file_path") or ""),
-        )
-        lines.append(f"- affected_files: {len(rows)}")
-        for item in rows:
-            file_path = str(item.get("path") or item.get("file_path") or "?")
-            reasons = item.get("reasons")
-            reason_text = ""
-            if isinstance(reasons, list):
-                reason_text = f" ({', '.join(sorted(str(reason) for reason in reasons))})"
-            symbols = item.get("symbols")
-            symbol_text = ""
-            if isinstance(symbols, list) and symbols:
-                rendered = ", ".join(sorted(str(symbol) for symbol in symbols)[:3])
-                symbol_text = f" [{rendered}]"
-            lines.append(f"  - {file_path}{reason_text}{symbol_text}")
-    return "\n".join(lines)
 
 
 def _render_status(payload: Mapping[str, Any]) -> str:

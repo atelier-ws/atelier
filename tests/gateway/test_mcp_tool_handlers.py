@@ -47,6 +47,7 @@ EXPECTED_TOOLS = {
     "callers",
     "usages",
     "explore",
+    "codemod",
 }
 
 
@@ -1476,16 +1477,6 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     )
     assert isinstance(context, dict)
     assert context.get("task") == "change alpha"
-
-    impact = _result(_call("symbols", {"op": "impact", "repo_root": str(tmp_path), "path": "a.py"}))
-    assert "b.py" in impact
-    assert "target_type: file" in impact
-    assert "provenance: local" in impact
-
-    symbol_impact = _result(_call("symbols", {"op": "impact", "repo_root": str(tmp_path), "query": "alpha"}))
-    assert "target_type: symbol" in symbol_impact
-    assert "target: symbol" in symbol_impact
-    assert "affected_files:" in symbol_impact
 
 
 def test_code_context_mcp_routes_scip_and_invalidates_cache(store_root: Path, tmp_path: Path) -> None:

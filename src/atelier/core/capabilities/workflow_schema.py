@@ -18,7 +18,6 @@ SAFE_PARALLEL_TOOL_NAMES = frozenset(
         "callers",
         "callees",
         "usages",
-        "impact",
     }
 )
 _STEP_REF_PATTERN = re.compile(r"\{\{\s*steps\.([A-Za-z0-9_\-]+)\.(?:output|output_json(?:\.[A-Za-z0-9_\-]+)*)\s*\}\}")
