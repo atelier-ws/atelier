@@ -4294,6 +4294,68 @@ def _validate_edit_descriptor_families(edits: list[dict[str, Any]]) -> str:
     return families.pop()
 
 
+def _edit_verify_enabled(verify_flag: bool) -> bool:
+    """Whether the WS1 executing edit gate should run for this call."""
+    if verify_flag:
+        return True
+    val = os.environ.get("ATELIER_EDIT_VERIFY", "").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
+def _restore_snapshots(snapshots: dict[str, tuple[Path, str | None]]) -> None:
+    """Restore files to their pre-edit content (used when the verify gate fails)."""
+    for _display, (fp, old_content) in snapshots.items():
+        try:
+            if old_content is None:
+                if fp.exists():
+                    fp.unlink()
+            else:
+                fp.write_text(old_content, encoding="utf-8")
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+
+
+def _apply_edit_verify_gate(
+    result: dict[str, Any],
+    *,
+    touched: list[Path],
+    snapshots: dict[str, tuple[Path, str | None]],
+    checks: list[str] | None,
+    rollback: bool,
+    timeout_ms: int,
+    repo_root: Path,
+) -> None:
+    """Run the executing parse + mypy/pytest gate; attach counterexamples and roll back on failure.
+
+    Fully fail-open: a gate crash never blocks a legitimate edit.
+    """
+    try:
+        from atelier.core.capabilities.verification.edit_gate import run_edit_gate
+
+        checks_seq = tuple(checks) if checks else ("typecheck", "tests")
+        counterexamples = run_edit_gate(
+            touched,
+            repo_root=repo_root,
+            checks=checks_seq,
+            timeout_s=max(1.0, timeout_ms / 1000),
+        )
+        errors = [c for c in counterexamples if c.severity == "error"]
+        if not errors:
+            result["verify"] = {"passed": True, "checks": list(checks_seq)}
+            return
+        result["verify"] = {"passed": False, "checks": list(checks_seq)}
+        result["counterexamples"] = [c.to_dict() for c in errors]
+        if rollback:
+            _restore_snapshots(snapshots)
+            result["rolled_back"] = True
+            result["applied"] = []
+            result["writes"] = 0
+            result["verify"]["rolled_back"] = True
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        result["verify"] = {"passed": None, "error": "verify gate failed open"}
+
+
 EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -4407,6 +4469,32 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "Required with allow_test_contract_change=true: cite the user request or source of truth requiring the contract change.",
         },
+        "verify": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Run an executing correctness gate after the edit: a tree-sitter parse check "
+                "(TS/JS/Rust/Go), scoped mypy over touched Python source, and pytest over touched "
+                "test files. On an error-severity failure the edit is rolled back (see verify_rollback). "
+                "Fail-open. Also enabled globally via ATELIER_EDIT_VERIFY=1."
+            ),
+        },
+        "verify_checks": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["typecheck", "tests", "lint"]},
+            "description": "Which executing checks the verify gate runs (default: typecheck + tests). The parse gate always runs when verify is enabled.",
+        },
+        "verify_rollback": {
+            "type": "boolean",
+            "default": True,
+            "description": "When the verify gate finds an error-severity counterexample, restore all touched files to their pre-edit state.",
+        },
+        "verify_timeout_ms": {
+            "type": "integer",
+            "default": 60000,
+            "minimum": 0,
+            "description": "Maximum per-subprocess timeout for the verify gate's mypy/pytest runs.",
+        },
     },
     "required": ["edits"],
     "additionalProperties": False,
@@ -4485,6 +4573,10 @@ def tool_smart_edit(
     post_edit_timeout_ms: int = 30_000,
     allow_test_contract_change: bool = False,
     contract_change_evidence: str | None = None,
+    verify: bool = False,
+    verify_checks: list[str] | None = None,
+    verify_rollback: bool = True,
+    verify_timeout_ms: int = 60_000,
 ) -> dict[str, Any]:
     """Apply many mechanical edits across files in one deterministic call.
 
@@ -4575,6 +4667,19 @@ def tool_smart_edit(
             except Exception as hook_exc:
                 logging.exception("Recovered from broad exception handler")
                 result["hooks"] = {"error": str(hook_exc)}
+        # WS1 edit-loop correctness gate: optional executing parse + scoped
+        # mypy/pytest verification with rollback. Opt-in via the `verify` arg or
+        # the ATELIER_EDIT_VERIFY env var; fully fail-open.
+        if _edit_verify_enabled(verify):
+            _apply_edit_verify_gate(
+                result,
+                touched=list(paths.values()),
+                snapshots=snapshots,
+                checks=verify_checks,
+                rollback=verify_rollback,
+                timeout_ms=verify_timeout_ms,
+                repo_root=repo_root,
+            )
         # Diffs are recorded for telemetry and echoed inline so the caller
         # sees exactly what changed without a follow-up read.
         diffs = _compute_and_record_diffs(snapshots)
