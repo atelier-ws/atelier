@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.capabilities.live_reviewer.knowledge import (
+    ensure_repo_share_gitignore,
     load_overlay,
     load_repo_overlay,
     overlay_path,
@@ -146,7 +147,11 @@ def merge_into_overlay(
     if not added:
         return 0
     overlay["notes"] = (overlay["notes"] + added)[:_OVERLAY_NOTES_CAP]
-    return len(added) if write_overlay(overlay_target(root, repo_root, scope), overlay) else 0
+    if not write_overlay(overlay_target(root, repo_root, scope), overlay):
+        return 0
+    if scope == "repo" and repo_root is not None:
+        ensure_repo_share_gitignore(repo_root)
+    return len(added)
 
 
 def _run_owned(prompt: str, *, root: str | Path, model: str) -> str:

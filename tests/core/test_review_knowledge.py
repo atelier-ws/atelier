@@ -30,6 +30,18 @@ def test_collect_empty_when_nothing(tmp_path: Path) -> None:
     assert collect_review_context(tmp_path, repo) == ""
 
 
+def test_ensure_repo_share_gitignore(tmp_path: Path) -> None:
+    from atelier.core.capabilities.live_reviewer.knowledge import ensure_repo_share_gitignore
+
+    ensure_repo_share_gitignore(tmp_path)
+    gi = (tmp_path / ".atelier" / ".gitignore").read_text(encoding="utf-8")
+    assert "!review.json" in gi and gi.splitlines()[2] == "*"
+    # Non-destructive: never clobbers a user's customised allow-list.
+    (tmp_path / ".atelier" / ".gitignore").write_text("custom\n", encoding="utf-8")
+    ensure_repo_share_gitignore(tmp_path)
+    assert (tmp_path / ".atelier" / ".gitignore").read_text(encoding="utf-8") == "custom\n"
+
+
 def test_collect_merges_team_and_personal_layers(tmp_path: Path) -> None:
     root = tmp_path / "root"
     root.mkdir()

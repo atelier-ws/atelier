@@ -73,6 +73,8 @@ def test_extract_rules_applies_with_stub_runner(tmp_path: Path) -> None:
     # Default scope=repo writes the team overlay in the repo (committable/shared).
     overlay = json.loads((repo / ".atelier" / "review.json").read_text(encoding="utf-8"))
     assert "Prefer dependency injection" in overlay["notes"]
+    # A managed allow-list is emitted so the team overlay is committable.
+    assert (repo / ".atelier" / ".gitignore").exists()
 
 
 def test_extract_rules_personal_scope_writes_user_overlay(tmp_path: Path) -> None:
