@@ -37,57 +37,12 @@ from atelier.core.foundation.models import (
     ReasonBlock,
     Rubric,
     Trace,
-    coerce_trace_json,
     to_jsonable,
 )
 from atelier.core.foundation.paths import resolve_workspace_store_dir
 from atelier.core.foundation.session_store import SessionStore
 
 logger = logging.getLogger(__name__)
-
-TRACE_FTS_COLUMNS = [
-    "id",
-    "task",
-    "reasoning",
-    "tools",
-    "commands",
-    "errors",
-    "output",
-    "files",
-    "validations",
-    "learnings",
-    "meta",
-]
-
-TRACE_FTS_SNIPPETS = [
-    (1, "Task"),
-    (2, "Reasoning"),
-    (3, "Tools"),
-    (4, "Commands"),
-    (5, "Errors"),
-    (6, "Summary"),
-    (7, "Files"),
-    (8, "Validations"),
-    (9, "Learnings"),
-    (10, "Run"),
-]
-
-TRACE_FTS_DDL = """
-CREATE VIRTUAL TABLE traces_fts USING fts5(
-    id UNINDEXED,
-    task,
-    reasoning,
-    tools,
-    commands,
-    errors,
-    output,
-    files,
-    validations,
-    learnings,
-    meta,
-    tokenize = 'porter'
-)
-"""
 
 # --------------------------------------------------------------------------- #
 # Schema                                                                      #
@@ -117,35 +72,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS reasonblocks_fts USING fts5(
     dead_ends,
     procedure,
     failure_signals,
-    tokenize = 'porter'
-);
-
-CREATE TABLE IF NOT EXISTS traces (
-    id TEXT PRIMARY KEY,
-    agent TEXT NOT NULL,
-    host TEXT,
-    domain TEXT,
-    status TEXT NOT NULL,
-    task TEXT NOT NULL,
-    workspace_path TEXT,
-    created_at TEXT NOT NULL,
-    payload TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_traces_domain ON traces(domain);
-CREATE INDEX IF NOT EXISTS idx_traces_status ON traces(status);
-
-CREATE VIRTUAL TABLE IF NOT EXISTS traces_fts USING fts5(
-    id UNINDEXED,
-    task,
-    reasoning,
-    tools,
-    commands,
-    errors,
-    output,
-    files,
-    validations,
-    learnings,
-    meta,
     tokenize = 'porter'
 );
 
@@ -219,12 +145,6 @@ CREATE TABLE IF NOT EXISTS consolidation_candidate (
 );
 CREATE INDEX IF NOT EXISTS ix_consolidation_candidate_pending
     ON consolidation_candidate(decided_at, created_at DESC);
-
-CREATE TABLE IF NOT EXISTS sync_status (
-    session_id TEXT PRIMARY KEY,
-    synced_at TEXT NOT NULL,
-    payload_hash TEXT NOT NULL
-);
 
 CREATE TABLE IF NOT EXISTS benchmark_run (
     id TEXT PRIMARY KEY,
@@ -365,28 +285,6 @@ class ContextStore:
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE raw_artifacts ADD COLUMN payload TEXT NOT NULL DEFAULT '{}'")
 
-            # Data recovery: Infer host from ID prefix for existing imported runs
-
-            with contextlib.suppress(sqlite3.OperationalError):
-                conn.execute("ALTER TABLE traces ADD COLUMN host TEXT")
-
-            from atelier.gateway.hosts.session_parsers.registry import (
-                SUPPORTED_SESSION_IMPORT_HOSTS,
-            )
-
-            for h in SUPPORTED_SESSION_IMPORT_HOSTS:
-                conn.execute("UPDATE traces SET host = ? WHERE id LIKE ? AND host IS NULL", (h, f"{h}-%"))
-
-            # Strip legacy fields (e.g. run_id) from stored trace payloads so old
-            # data doesn't crash Trace.model_validate_json() during FTS reindex.
-            conn.execute(
-                "UPDATE traces SET payload = json_remove(payload, '$.run_id')"
-                " WHERE json_extract(payload, '$.run_id') IS NOT NULL"
-            )
-
-            recreated_trace_fts = self._ensure_trace_search_schema(conn)
-            self._reindex_traces_fts_if_needed(conn, force=recreated_trace_fts)
-
             for ddl in (
                 "ALTER TABLE lesson_candidate ADD COLUMN body TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE lesson_candidate ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}'",
@@ -440,146 +338,6 @@ class ContextStore:
                 (name,),
             )
             conn.commit()
-
-    def _ensure_trace_search_schema(self, conn: sqlite3.Connection) -> bool:
-        rows = conn.execute("PRAGMA table_info(traces_fts)").fetchall()
-        actual_columns = [row[1] for row in rows]
-        if actual_columns == TRACE_FTS_COLUMNS:
-            return False
-        conn.execute("DROP TABLE IF EXISTS traces_fts")
-        conn.execute(TRACE_FTS_DDL)
-        return True
-
-    def _reindex_traces_fts_if_needed(self, conn: sqlite3.Connection, *, force: bool = False) -> None:
-        trace_count = conn.execute("SELECT COUNT(*) FROM traces").fetchone()[0]
-        fts_count = conn.execute("SELECT COUNT(*) FROM traces_fts").fetchone()[0]
-        if not force and trace_count == fts_count:
-            return
-        self._reindex_traces_fts(conn)
-
-    def _reindex_traces_fts(self, conn: sqlite3.Connection) -> None:
-        rows = conn.execute("SELECT payload FROM traces").fetchall()
-        with closing(conn.cursor()) as cur:
-            cur.execute("DELETE FROM traces_fts")
-            for row in rows:
-                self._update_trace_fts(cur, Trace.model_validate_json(coerce_trace_json(row["payload"])))
-
-    def _build_trace_search_document(self, trace: Trace) -> tuple[str, ...]:
-        reasoning = "\n".join(trace.reasoning)
-
-        tools_parts = []
-        for tool in trace.tools_called:
-            sections = [tool.name]
-            if tool.result_summary:
-                sections.append(tool.result_summary)
-            if tool.args:
-                sections.append(json.dumps(tool.args, ensure_ascii=False, sort_keys=True))
-            tools_parts.append("\n".join(part for part in sections if part))
-        tools = "\n\n".join(tools_parts)
-
-        command_parts = []
-        for command in trace.commands_run:
-            if isinstance(command, str):
-                command_parts.append(command)
-                continue
-            command_parts.append(
-                "\n".join(part for part in [command.command, command.stdout or "", command.stderr or ""] if part)
-            )
-        commands = "\n\n".join(command_parts)
-
-        errors = "\n".join(trace.errors_seen)
-        output = "\n\n".join(part for part in [trace.diff_summary, trace.output_summary] if part)
-
-        file_parts = []
-        for file_record in trace.files_touched:
-            if isinstance(file_record, str):
-                file_parts.append(file_record)
-                continue
-            sections = [file_record.path]
-            if file_record.event:
-                sections.append(file_record.event)
-            if file_record.diff:
-                sections.append(file_record.diff)
-            file_parts.append("\n".join(part for part in sections if part))
-        files = "\n\n".join(file_parts)
-
-        validation_parts = []
-        for validation in trace.validation_results:
-            status = "passed" if validation.passed else "failed"
-            validation_parts.append(
-                " ".join(part for part in [validation.name, status, validation.detail or ""] if part)
-            )
-        validations = "\n".join(validation_parts)
-
-        learning_parts = []
-        for learning in trace.learnings:
-            learning_parts.append(
-                "\n".join(
-                    part
-                    for part in [
-                        learning.kind,
-                        learning.text,
-                        learning.evidence,
-                        learning.promote_to or "",
-                    ]
-                    if part
-                )
-            )
-        learnings = "\n\n".join(learning_parts)
-
-        meta = "\n".join(
-            part
-            for part in [
-                trace.id,
-                trace.session_id or "",
-                trace.agent,
-                trace.host or "",
-                trace.domain or "",
-                trace.status,
-                trace.model,
-            ]
-            if part
-        )
-
-        return (
-            trace.task,
-            reasoning,
-            tools,
-            commands,
-            errors,
-            output,
-            files,
-            validations,
-            learnings,
-            meta,
-        )
-
-    def _build_trace_search_query(self, query: str) -> str:
-        clauses: list[str] = []
-        for phrase, token in re.findall(r'"([^"]+)"|(\S+)', query):
-            term = (phrase or token).strip().lower()
-            if not term:
-                continue
-            if phrase:
-                escaped_term = term.replace('"', '""')
-                clauses.append(f'"{escaped_term}"')
-                continue
-            pieces = [piece for piece in re.split(r"[^0-9a-z_]+", term) if piece]
-            clauses.extend(f"{piece}*" for piece in pieces)
-        if clauses:
-            return " AND ".join(clauses)
-        escaped = query.strip().replace('"', '""')
-        return f'"{escaped}"'
-
-    def _trace_search_snippets(self, row: sqlite3.Row) -> list[str]:
-        snippets: list[str] = []
-        for _, label in TRACE_FTS_SNIPPETS:
-            value = row[f"s_{label.lower()}"]
-            if not value or "[[" not in value:
-                continue
-            cleaned_value = re.sub(r"\s+", " ", value).strip()
-            snippets.append(f"{label}: {cleaned_value}")
-        return snippets
 
     def verify_v2_schema(self, conn: sqlite3.Connection | None = None) -> bool:
         """Return True when every V2 table exists in SQLite."""
@@ -884,45 +642,6 @@ class ContextStore:
         self.session_store.record(to_jsonable(trace))
         if write_json:
             self._write_trace_json(trace)
-
-    def _update_trace_fts(self, cur: sqlite3.Cursor, trace: Trace) -> None:
-        """Update the FTS5 index for a single trace."""
-        task, reasoning, tools, commands, errors, output, files, validations, learnings, meta = (
-            self._build_trace_search_document(trace)
-        )
-
-        cur.execute("DELETE FROM traces_fts WHERE id = ?", (trace.id,))
-        cur.execute(
-            """
-            INSERT INTO traces_fts (
-                id,
-                task,
-                reasoning,
-                tools,
-                commands,
-                errors,
-                output,
-                files,
-                validations,
-                learnings,
-                meta
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                trace.id,
-                task,
-                reasoning,
-                tools,
-                commands,
-                errors,
-                output,
-                files,
-                validations,
-                learnings,
-                meta,
-            ),
-        )
 
     def delete_trace(self, trace_id: str) -> None:
         self.session_store.delete(trace_id)
