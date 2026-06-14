@@ -35,6 +35,10 @@ HIDDEN_LLM_TOOLS = frozenset(
         "workflow",
         "compact",
         "context",
+        # WS4 graph analytics (blast radius / dead code / cycles / coupling /
+        # symbol centrality): registered and callable by name, but kept off the
+        # advertised surface to preserve the lean public tool set.
+        "graph",
     }
 )
 HIDDEN_SKILLS = frozenset(
