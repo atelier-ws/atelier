@@ -279,12 +279,42 @@ def test_session_start_bootstrap_applies_settings_auth_and_always_load(tmp_path:
 
     assert result["host_settings"]["statusLine"]["command"].endswith("/plugin/scripts/statusline.sh")
     assert result["host_settings"]["subagentStatusLine"]["command"].endswith("/plugin/scripts/statusline.sh")
-    assert result["host_settings"]["atelier"]["spinnerVerbs"]
+    assert result["host_settings"]["spinnerVerbs"]["mode"] == "replace"
+    assert result["host_settings"]["spinnerVerbs"]["verbs"]
     assert result["host_settings"]["atelier"]["attribution"]["source"] == "Atelier"
+    assert result["host_settings"]["includeCoAuthoredBy"] is False
     assert result["mcp_json"]["mcpServers"]["atelier"]["alwaysLoad"] is False
     assert result["auth"]["isAnonymous"] is True
     assert "Atelier budget optimizer" in result["stdout"]["additionalContext"]
     assert (root / "session_stats" / "s1.json").exists()
+
+
+def test_spinner_setting_writes_top_level_object() -> None:
+    from atelier.core.capabilities.plugin_runtime import apply_spinner_setting
+
+    out = apply_spinner_setting({}, True)
+    assert out["spinnerVerbs"]["mode"] == "replace"
+    assert out["spinnerVerbs"]["verbs"]
+    # No inert namespaced key is written.
+    assert "atelier" not in out
+    # Disabling removes the top-level key.
+    assert "spinnerVerbs" not in apply_spinner_setting({"spinnerVerbs": {"mode": "replace", "verbs": ["x"]}}, False)
+
+
+def test_attribution_suppresses_coauthor_with_guard() -> None:
+    from atelier.core.capabilities.plugin_runtime import apply_attribution_setting
+
+    # Absent key -> we suppress Claude's trailer.
+    out = apply_attribution_setting({}, True)
+    assert out["includeCoAuthoredBy"] is False
+    assert out["atelier"]["attribution"]["enabled"] is True
+    # User already set the key -> never override it.
+    out_user = apply_attribution_setting({"includeCoAuthoredBy": True}, True)
+    assert out_user["includeCoAuthoredBy"] is True
+    # Disabling drops bookkeeping and leaves includeCoAuthoredBy untouched.
+    out_off = apply_attribution_setting({"includeCoAuthoredBy": False}, False)
+    assert out_off["includeCoAuthoredBy"] is False
+    assert "atelier" not in out_off
 
 
 def test_claude_session_start_hook_prints_optimizer_context(tmp_path: Path) -> None:
