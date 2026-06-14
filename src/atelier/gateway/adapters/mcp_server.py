@@ -6,6 +6,7 @@ Codex / Claude Code to discover and call the runtime tools.
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import dataclasses
 import inspect
@@ -18,6 +19,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import uuid as _uuid_mod
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
@@ -25,7 +27,7 @@ from datetime import UTC, datetime
 from functools import wraps
 from hashlib import sha256
 from pathlib import Path
-from typing import Annotated, Any, Literal, Union, cast
+from typing import Annotated, Any, Literal, Union, cast, get_args, get_origin, get_type_hints
 
 from pydantic import Field, create_model
 
@@ -135,48 +137,95 @@ def _tool_mode(spec: dict[str, Any]) -> str:
     return mcp_tool_mode(str(spec.get("name", "") or ""))
 
 
-def _annotation_is_str(ann: Any) -> bool:
-    """Return True when annotation is str or Optional[str] / str | None."""
-    if ann is str:
-        return True
-    origin = getattr(ann, "__origin__", None)
-    if origin is Union:
-        args = getattr(ann, "__args__", ())
-        non_none = [a for a in args if a is not type(None)]
-        return len(non_none) == 1 and non_none[0] is str
-    return False
+_COERCE_UNCHANGED: Any = object()
 
 
-def _coerce_json_strings(args: dict[str, Any], sig: inspect.Signature) -> dict[str, Any]:
-    """Self-heal JSON-string-encoded parameters before Pydantic validation.
+def _annotation_base_types(annotation: Any) -> set[Any]:
+    """Resolve an annotation to the set of concrete base types it accepts.
 
-    Models occasionally send a structured parameter (list, dict, nested object)
-    as a serialised JSON string instead of an inline value.  Silently parsing
-    it here eliminates a wasted retry turn with zero quality loss.
-
-    Strategy: for every non-str-annotated parameter whose value is a string
-    that parses as a JSON list or dict, use the parsed value.  Pydantic still
-    validates the result, and scalar coercions (int, bool) are left to Pydantic.
+    Unwraps Optional/Union (both ``Union[...]`` and ``X | Y``) and generic
+    aliases (``list[str]`` -> ``list``). Returns an empty set for ``Any`` or
+    anything unrecognised, signalling "leave the value alone".
     """
+    origin = get_origin(annotation)
+    if origin is Union or origin is types.UnionType:
+        resolved: set[Any] = set()
+        for arg in get_args(annotation):
+            resolved |= _annotation_base_types(arg)
+        return resolved
+    if origin is not None:
+        return {origin}
+    if isinstance(annotation, type):
+        return {annotation}
+    return set()
+
+
+def _coerce_str_to_annotation(value: Any, annotation: Any) -> Any:
+    """Coerce a stringified value to its parameter's annotated type.
+
+    Some MCP clients serialise argument *values* as strings (``"20"`` for an
+    int, ``"true"`` for a bool, ``'["a"]'`` for a list). Returns the coerced
+    value, or the ``_COERCE_UNCHANGED`` sentinel when the value should be left
+    untouched (already acceptable as a str, ambiguous, or not coercible).
+    """
+    if not isinstance(value, str):
+        return _COERCE_UNCHANGED
+    base = _annotation_base_types(annotation)
+    if not base or str in base:
+        return _COERCE_UNCHANGED
+    if bool in base:
+        low = value.strip().lower()
+        if low in {"true", "1", "yes", "on"}:
+            return True
+        if low in {"false", "0", "no", "off"}:
+            return False
+        return _COERCE_UNCHANGED
+    if int in base:
+        try:
+            return int(value)
+        except ValueError:
+            return _COERCE_UNCHANGED
+    if float in base:
+        try:
+            return float(value)
+        except ValueError:
+            return _COERCE_UNCHANGED
+    if base & {list, dict, tuple, set}:
+        for parser in (json.loads, ast.literal_eval):
+            try:
+                parsed = parser(value)
+            except (ValueError, SyntaxError):
+                continue
+            if isinstance(parsed, (list, dict, tuple, set)):
+                return parsed
+        return _COERCE_UNCHANGED
+    return _COERCE_UNCHANGED
+
+
+def _coerce_json_strings(args: dict[str, Any], param_annotations: dict[str, Any]) -> dict[str, Any]:
+    """Self-heal stringified argument values before Pydantic validation.
+
+    Some MCP clients serialise argument values as strings (``"20"`` instead of
+    ``20``, ``"true"`` instead of ``True``, ``'["a"]'`` instead of ``["a"]``).
+    Each value is coerced to its parameter's annotated type so otherwise-valid
+    calls don't fail. This matters doubly for the mypyc-compiled build, whose
+    handlers enforce argument types at runtime and reject a stringified value
+    outright. ``param_annotations`` maps each parameter to its *resolved* type:
+    resolution (``get_type_hints`` in ``mcp_tool``) is required because
+    ``from __future__ import annotations`` makes raw annotations plain strings.
+    """
+    if not isinstance(args, dict):
+        return args
     coerced = args
-    for param_name, param in sig.parameters.items():
+    for param_name, annotation in param_annotations.items():
         if param_name not in coerced:
             continue
-        val = coerced[param_name]
-        if not isinstance(val, str):
-            continue
-        ann = param.annotation
-        if ann is inspect.Parameter.empty or _annotation_is_str(ann):
-            continue
-        try:
-            parsed = json.loads(val)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            continue
-        if not isinstance(parsed, (list, dict)):
+        new_val = _coerce_str_to_annotation(coerced[param_name], annotation)
+        if new_val is _COERCE_UNCHANGED:
             continue
         if coerced is args:
             coerced = dict(args)
-        coerced[param_name] = parsed
+        coerced[param_name] = new_val
     return coerced
 
 
@@ -196,6 +245,16 @@ def mcp_tool(
         tool_description = description or (func.__doc__ or "").strip()
 
         sig = inspect.signature(func)
+        # `from __future__ import annotations` makes raw signature annotations
+        # plain strings; resolve them to real types so stringified scalar args
+        # ("20" -> 20) can be coerced before the (mypyc-strict) handler runs.
+        try:
+            resolved_hints = get_type_hints(func)
+        except Exception:  # noqa: BLE001 - fall back to raw annotations if hints don't resolve
+            resolved_hints = {}
+        param_annotations = {
+            param_name: resolved_hints.get(param_name, param.annotation) for param_name, param in sig.parameters.items()
+        }
         fields = {}
         for param_name, param in sig.parameters.items():
             annotation = param.annotation if param.annotation is not inspect.Parameter.empty else Any
@@ -223,7 +282,7 @@ def mcp_tool(
 
             @wraps(func)
             def handler_wrapper(args: dict[str, Any]) -> Any:
-                validated = ArgsModel.model_validate(_coerce_json_strings(args, sig))
+                validated = ArgsModel.model_validate(_coerce_json_strings(args, param_annotations))
                 return func(**validated.model_dump())
 
         else:
@@ -4268,6 +4327,51 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
 }
 
 
+def _applied_entry_path(entry: str | dict[str, Any]) -> str | None:
+    """Extract the file path from a raw applied entry, tolerating both shapes.
+
+    Entries can be dicts (``{"path": ...}`` / ``{"file": ...}`` / ``{"file_path": ...}``,
+    as emitted by ``apply_rich_edits`` and ``apply_batch_edit``) or already-compacted
+    strings of the form ``"path:line,start-end"`` (as emitted by
+    ``_compact_applied_entries``). A ``#10-20`` line suffix on the path is stripped so
+    line-scoped edits to the same file collapse onto one path. Returns ``None`` when no
+    path can be recovered.
+    """
+    if isinstance(entry, str):
+        # Compacted form "path:spans" or plain "path"; spans only ever follow the
+        # final ":" and contain digits/commas/hyphens, so split on the last ":".
+        raw = entry.rsplit(":", 1)[0] if ":" in entry else entry
+        raw = raw.strip()
+    elif isinstance(entry, dict):
+        candidate = entry.get("path") or entry.get("file") or entry.get("file_path")
+        raw = str(candidate).strip() if candidate is not None else ""
+    else:
+        return None
+    if not raw:
+        return None
+    # Drop a "#10-20" / "#cell=..." line/cell scope suffix so same-file scopes merge.
+    return raw.split("#", 1)[0] or raw
+
+
+def _distinct_edited_files(entries: list[Any]) -> int:
+    """Count distinct files across applied entries.
+
+    Built-in MultiEdit already batches multiple same-file hunks into one call, so
+    Atelier's only honest advantage over a competent baseline is cross-file batching.
+    Entries whose path cannot be recovered are counted as their own file so a
+    legitimate cross-file edit is never under-credited.
+    """
+    distinct: set[str] = set()
+    unparsed = 0
+    for entry in entries:
+        path = _applied_entry_path(entry)
+        if path is None:
+            unparsed += 1
+        else:
+            distinct.add(path)
+    return len(distinct) + unparsed
+
+
 def _compact_applied_entries(entries: list[dict[str, Any]]) -> list[str | dict[str, Any]]:
     """Group ordinary edit hunks by path while retaining special edit metadata."""
     grouped: dict[str, list[str]] = {}
@@ -4417,13 +4521,16 @@ def tool_smart_edit(
     # Strip verbose hooks metadata — callers don't need step details.
     result.pop("hooks", None)
 
-    # Batched edits collapse N would-be individual edit calls into 1.
-    # Use successful applies as the count; the dispatcher reads this and
-    # writes it into the response's content[].saved.calls field.
+    # Honest cross-file batching credit: Claude Code's built-in MultiEdit already
+    # batches multiple hunks within a single file into one call, so collapsing
+    # same-file hunks is no saving vs a competent baseline. Atelier's genuine
+    # advantage is only batching edits across *distinct files*, so credit
+    # (distinct files - 1) calls. The dispatcher reads this and writes it into the
+    # response's content[].saved.calls field.
     applied_entries = result.get("applied") or []
-    applied_count = len(applied_entries)
-    if applied_count > 1:
-        result.setdefault("calls_saved", applied_count - 1)
+    distinct_files = _distinct_edited_files(applied_entries)
+    if distinct_files > 1:
+        result.setdefault("calls_saved", distinct_files - 1)
     if applied_entries and not result.get("failed") and not result.get("rolled_back"):
         result["applied"] = _compact_applied_entries(applied_entries)
     return result
@@ -4880,7 +4987,7 @@ def _code_context_engine(repo_root: str = ".") -> Any:
         with _code_engine_cache_lock:
             engine = _code_engine_cache.get(cache_key)  # re-check under lock
             if engine is None:
-                engine = CodeContextEngine(resolved)
+                engine = CodeContextEngine(resolved, nonblocking_reads=True)
                 _code_engine_cache[cache_key] = engine
     return engine
 
@@ -5214,15 +5321,7 @@ SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
 
 @mcp_tool(name="symbols", input_schema=SYMBOLS_TOOL_INPUT_SCHEMA)
 def tool_symbols(
-    op: str = "search",
-    repo: str | None = None,
-    repo_root: str | None = None,
-    include_globs: list[str] | None = None,
-    exclude_globs: list[str] | None = None,
     query: str | None = None,
-    pattern: str | None = None,
-    rewrite: str | None = None,
-    limit: int = 20,
     mode: Literal["auto", "lexical", "semantic", "hybrid"] = "auto",
     intent: Literal["auto", "symbol", "text", "semantic"] = "auto",
     view: Literal["target", "graph", "context", "explain"] = "target",
@@ -5230,50 +5329,19 @@ def tool_symbols(
     language: str | None = None,
     snippet: Literal["none", "head", "full"] = "none",
     snippet_lines: int = 8,
-    group_by: Literal["file", "caller", "none"] = "file",
-    depth: int = 1,
-    snapshot: bool = False,
     file_glob: str | None = None,
     scope: Literal["repo", "external", "deleted"] = "repo",
     since: str | None = None,
     touched_by: str | None = None,
-    include_churn: bool = True,
-    symbol_id: str | None = None,
-    qualified_name: str | None = None,
-    symbol_name: str | None = None,
-    path: str | None = None,
-    max_files: int = 8,
-    include_source: bool = True,
-    include_relationships: bool = True,
-    line_numbers: bool = True,
-    line: int | None = None,
-    col: int | None = None,
-    new_name: str | None = None,
-    rename_backend: Literal["auto", "rope", "ts-morph", "ast-grep", "naive"] = "auto",
-    seed_files: list[str] | None = None,
-    budget_tokens: int = 4000,
-    max_symbols: int = 4,
-    dry_run: bool = True,
-    cache_tool: (
-        Literal[
-            "all",
-            "search",
-            "symbol",
-            "outline",
-            "context",
-            "impact",
-            "usages",
-            "callers",
-            "callees",
-            "pattern",
-            "hover",
-            "explore",
-        ]
-        | None
-    ) = None,
-    render_compact: bool = False,
     provenance: str | None = None,
-    force: bool = False,  # op=index only: True = full rebuild, False = incremental (default)
+    seed_files: list[str] | None = None,
+    max_symbols: int = 4,
+    depth: int = 1,
+    limit: int = 20,
+    budget_tokens: int = 4000,
+    repo: str | None = None,
+    repo_root: str | None = None,
+    render_compact: bool = False,
 ) -> dict[str, Any]:
     """Search the SCIP code index for symbols by name or description.
 
@@ -5289,410 +5357,29 @@ def tool_symbols(
     (all references), `impact` (blast radius), `pattern` (AST search/rewrite),
     `explore` (grouped context).
     """
-    if op == "node":
-        op = "symbol"
-    engine_root = repo_root or "."
-    workspace_router = _workspace_code_router(engine_root)
-    if repo is not None and not workspace_router.is_configured:
-        raise ValueError("repo filter requires .atelier/workspace.toml")
-    if repo is not None and op not in {"search", "symbol"}:
-        raise ValueError("repo filter is only supported for workspace search and symbol operations")
-
-    engine = _code_context_engine(engine_root)
-    _code_engine_for_current_call.value = engine
-
-    if op == "index":
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_index(
-                    include_globs=include_globs,
-                    exclude_globs=exclude_globs,
-                    force=force,
-                    budget_tokens=budget_tokens,
-                ),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op == "search":
-        if not query:
-            raise ValueError("query is required for code search")
-        if view == "context":
-            context_payload = engine.tool_context(
-                task=query,
-                seed_files=seed_files,
-                budget_tokens=budget_tokens,
-                max_symbols=max_symbols,
-            )
-            return _maybe_attach_code_rendered(
-                "context",
-                cast(dict[str, Any], context_payload),
-                render_compact=render_compact,
-            )
-        search_kwargs: dict[str, Any] = {
-            "limit": limit,
-            "mode": mode,
-            "kind": kind,
-            "language": language,
-            "snippet": snippet,
-            "snippet_lines": snippet_lines,
-            "file_glob": file_glob,
-            "scope": scope,
-            "budget_tokens": budget_tokens,
-        }
-        if scope != "deleted":
-            search_kwargs["intent"] = intent
-            search_kwargs["seed_files"] = seed_files
-        if since is not None:
-            search_kwargs["since"] = since
-        if touched_by is not None:
-            search_kwargs["touched_by"] = touched_by
-        if provenance is not None:
-            search_kwargs["provenance_filter"] = provenance
-        if workspace_router.is_configured:
-            routed_payload = cast(
-                dict[str, Any],
-                workspace_router.route("search", repo=repo, query=query, **search_kwargs),
-            )
-            routed_payload = _code_search_target_view(routed_payload)
-            return _maybe_attach_code_rendered(
-                op,
-                routed_payload,
-                render_compact=render_compact,
-            )
-        search_payload = cast(dict[str, Any], engine.tool_search(query, **search_kwargs))
-        if view == "target":
-            search_payload = _code_search_target_view(search_payload)
-        elif view in {"graph", "explain"}:
-            search_payload = _code_search_graph_view(
-                engine,
-                query=query,
-                search_payload=search_payload,
-                view=view,
-                limit=limit,
-                depth=depth,
-                budget_tokens=budget_tokens,
-            )
-        return _maybe_attach_code_rendered(
-            op,
-            search_payload,
-            render_compact=render_compact,
-        )
-
-    if op == "blame":
-        if not (query or symbol_id or qualified_name or symbol_name):
-            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code blame")
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_blame(
-                    query=query,
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    symbol_name=symbol_name,
-                    file_path=path,
-                    include_churn=include_churn,
-                    budget_tokens=budget_tokens,
-                ),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op == "hover":
-        if not any([symbol_id, qualified_name, symbol_name, query, (path and line is not None)]):
-            raise ValueError(
-                "symbol_id, qualified_name, symbol_name, query, or (file_path + line) is required for hover"
-            )
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_hover(
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    symbol_name=symbol_name or query,
-                    file_path=path,
-                    line=line,
-                    col=col,
-                    budget_tokens=budget_tokens,
-                ),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op == "symbol":
-        if workspace_router.is_configured:
-            return _maybe_attach_code_rendered(
-                op,
-                cast(
-                    dict[str, Any],
-                    workspace_router.route(
-                        "symbol",
-                        repo=repo,
-                        symbol_id=symbol_id,
-                        qualified_name=qualified_name,
-                        symbol_name=symbol_name,
-                        file_path=path,
-                        budget_tokens=budget_tokens,
-                    ),
-                ),
-                render_compact=render_compact,
-            )
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_symbol(
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    symbol_name=symbol_name,
-                    file_path=path,
-                    budget_tokens=budget_tokens,
-                ),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op == "outline":
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_outline(file_path=path, limit=limit, budget_tokens=budget_tokens),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op == "explore":
-        if not query:
-            raise ValueError("query is required for code explore")
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_explore(
-                    query=query,
-                    seed_files=seed_files,
-                    max_files=max_files,
-                    max_symbols=max_symbols,
-                    include_source=include_source,
-                    include_relationships=include_relationships,
-                    line_numbers=line_numbers,
-                    depth=depth,
-                    budget_tokens=budget_tokens,
-                ),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op in {"routes", "status", "files", "context"}:
-        raise ValueError(
-            f"op={op!r} is no longer available on this tool. "
-            "Use: `context` tool with mode='symbols' (was context), "
-            "`grep` (was files), status/routes are retired."
-        )
-
-    if op == "pattern":
-        if not pattern:
-            raise ValueError("pattern is required for code pattern")
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_pattern(
-                    pattern=pattern,
-                    rewrite=rewrite,
-                    language=language,
-                    file_glob=file_glob,
-                    dry_run=dry_run,
-                    limit=limit,
-                    budget_tokens=budget_tokens,
-                ),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op == "usages":
-        if not any([query, symbol_id, qualified_name, symbol_name]):
-            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code usages")
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_usages(
-                    query=query,
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    symbol_name=symbol_name,
-                    file_path=path,
-                    kind=kind,
-                    language=language,
-                    file_glob=file_glob,
-                    group_by=group_by,
-                    snippet_lines=3 if snippet_lines == 8 else snippet_lines,
-                    limit=limit,
-                    budget_tokens=budget_tokens,
-                ),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op == "callers":
-        if not any([query, symbol_id, qualified_name, symbol_name]):
-            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code callers")
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_callers(
-                    query=query,
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    symbol_name=symbol_name,
-                    file_path=path,
-                    kind=kind,
-                    language=language,
-                    depth=depth,
-                    limit=limit,
-                    snapshot=snapshot,
-                    budget_tokens=budget_tokens,
-                ),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op == "callees":
-        if not any([query, symbol_id, qualified_name, symbol_name]):
-            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code callees")
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_callees(
-                    query=query,
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    symbol_name=symbol_name,
-                    file_path=path,
-                    kind=kind,
-                    language=language,
-                    depth=depth,
-                    limit=limit,
-                    snapshot=snapshot,
-                    budget_tokens=budget_tokens,
-                ),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op == "rename":
-        if not new_name:
-            raise ValueError("new_name is required for code rename")
-        if not any([query, symbol_id, qualified_name, symbol_name]):
-            raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code rename")
-        from atelier.core.capabilities.tool_supervision.rename_symbol import build_rename_edits
-
-        workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-        edits = build_rename_edits(
-            engine,
-            symbol_id=symbol_id,
-            qualified_name=qualified_name,
-            symbol_name=symbol_name or query,
-            file_path=path,
-            new_name=new_name,
-            repo_root=Path(workspace),
-            backend=rename_backend,
-        )
-        # Filter out ast-grep sentinel entries (already applied on disk)
-        rich_edits = [e for e in edits if not e.get("_astgrep_applied")]
-        if not rich_edits and edits:
-            # ast-grep applied everything directly; return summary
-            return _maybe_attach_code_rendered(
-                op,
-                {
-                    "op": "rename",
-                    "files_changed": len(edits),
-                    "backend": "ast-grep",
-                    "new_name": new_name,
-                },
-                render_compact=render_compact,
-            )
-        from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
-
-        touched = _collect_touched_paths(rich_edits, repo_root=Path(workspace))
-        snaps = _snapshot_paths(touched)
-        result = apply_rich_edits(rich_edits, atomic=True, repo_root=Path(workspace))
-        if not result.get("failed") and not result.get("rolled_back"):
-            _compute_and_record_diffs(snaps)
-        result["op"] = "rename"
-        result["new_name"] = new_name
-        result["backend"] = rename_backend
-        return _maybe_attach_code_rendered(op, result, render_compact=render_compact)
-
-    if op == "cache_status":
-        if cache_tool is None:
-            return _maybe_attach_code_rendered(
-                op,
-                cast(dict[str, Any], engine.tool_cache_status(budget_tokens=budget_tokens)),
-                render_compact=render_compact,
-            )
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_cache_status(cache_tool=cache_tool, budget_tokens=budget_tokens),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op == "cache_invalidate":
-        if cache_tool is None:
-            return _maybe_attach_code_rendered(
-                op,
-                cast(dict[str, Any], engine.tool_cache_invalidate(budget_tokens=budget_tokens)),
-                render_compact=render_compact,
-            )
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_cache_invalidate(cache_tool=cache_tool, budget_tokens=budget_tokens),
-            ),
-            render_compact=render_compact,
-        )
-
-    if op == "impact":
-        if not any([path, query, symbol_id, qualified_name, symbol_name]):
-            raise ValueError("path or symbol identifier is required for code impact")
-        return _maybe_attach_code_rendered(
-            op,
-            cast(
-                dict[str, Any],
-                engine.tool_impact(
-                    path,
-                    query=query,
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    symbol_name=symbol_name,
-                    file_path=path,
-                    kind=kind,
-                    language=language,
-                    file_glob=file_glob,
-                    budget_tokens=budget_tokens,
-                ),
-            ),
-            render_compact=render_compact,
-        )
-
-    raise ValueError(f"unknown op: {op!r}")
-
-
-# Normalize "code:callers" → "callers" etc. so legacy callers using the
-# "code:" prefix alias convention still route correctly.
-_raw_tool_symbols_handler = TOOLS["symbols"]["handler"]
+    return _op_search(
+        query=query,
+        mode=mode,
+        intent=intent,
+        view=view,
+        kind=kind,
+        language=language,
+        snippet=snippet,
+        snippet_lines=snippet_lines,
+        file_glob=file_glob,
+        scope=scope,
+        since=since,
+        touched_by=touched_by,
+        provenance=provenance,
+        seed_files=seed_files,
+        max_symbols=max_symbols,
+        depth=depth,
+        limit=limit,
+        budget_tokens=budget_tokens,
+        repo=repo,
+        repo_root=repo_root,
+        render_compact=render_compact,
+    )
 
 
 # Result keys that represent batched discoveries — each item would have
@@ -5710,11 +5397,7 @@ _CODE_BATCH_KEYS: tuple[str, ...] = (
 )
 
 
-def _tool_symbols_alias_handler(args: dict[str, Any]) -> dict[str, Any]:
-    op = args.get("op")
-    if isinstance(op, str) and op.startswith("code:"):
-        args = {**args, "op": op[5:]}
-    result: dict[str, Any] = _raw_tool_symbols_handler(args)
+def _finish_code_result(result: dict[str, Any]) -> dict[str, Any]:
     # Infer calls_saved for batched ops: each list-of-items result represents
     # N findings that would have cost N naive calls (grep + read + scan).
     if isinstance(result, dict) and "calls_saved" not in result:
@@ -5723,7 +5406,776 @@ def _tool_symbols_alias_handler(args: dict[str, Any]) -> dict[str, Any]:
             if isinstance(items, list) and len(items) > 1:
                 result["calls_saved"] = len(items) - 1
                 break
+    engine = getattr(_code_engine_for_current_call, "value", None)
+    if engine is not None and isinstance(result, dict) and "index_status" not in result:
+        try:
+            if not engine.index_ready():
+                result["index_status"] = "warming"
+                result.setdefault(
+                    "hint",
+                    "code index is still building in the background; retry shortly for complete results",
+                )
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
     return result
+
+
+def _code_engine_at(repo_root: str | None) -> Any:
+    engine = _code_context_engine(repo_root or ".")
+    _code_engine_for_current_call.value = engine
+    return engine
+
+
+def _op_callers(
+    *,
+    query: str | None = None,
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    path: str | None = None,
+    kind: str | None = None,
+    language: str | None = None,
+    depth: int = 1,
+    limit: int = 20,
+    snapshot: bool = False,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    if not any([query, symbol_id, qualified_name, symbol_name]):
+        raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code callers")
+    engine = _code_engine_at(repo_root)
+    payload = cast(
+        dict[str, Any],
+        engine.tool_callers(
+            query=query,
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=path,
+            kind=kind,
+            language=language,
+            depth=depth,
+            limit=limit,
+            snapshot=snapshot,
+            budget_tokens=budget_tokens,
+        ),
+    )
+    return _finish_code_result(_maybe_attach_code_rendered("callers", payload, render_compact=render_compact))
+
+
+def _op_callees(
+    *,
+    query: str | None = None,
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    path: str | None = None,
+    kind: str | None = None,
+    language: str | None = None,
+    depth: int = 1,
+    limit: int = 20,
+    snapshot: bool = False,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    if not any([query, symbol_id, qualified_name, symbol_name]):
+        raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code callees")
+    engine = _code_engine_at(repo_root)
+    payload = cast(
+        dict[str, Any],
+        engine.tool_callees(
+            query=query,
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=path,
+            kind=kind,
+            language=language,
+            depth=depth,
+            limit=limit,
+            snapshot=snapshot,
+            budget_tokens=budget_tokens,
+        ),
+    )
+    return _finish_code_result(_maybe_attach_code_rendered("callees", payload, render_compact=render_compact))
+
+
+def _op_usages(
+    *,
+    query: str | None = None,
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    path: str | None = None,
+    kind: str | None = None,
+    language: str | None = None,
+    file_glob: str | None = None,
+    group_by: str = "file",
+    snippet_lines: int = 8,
+    limit: int = 20,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    if not any([query, symbol_id, qualified_name, symbol_name]):
+        raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code usages")
+    engine = _code_engine_at(repo_root)
+    payload = cast(
+        dict[str, Any],
+        engine.tool_usages(
+            query=query,
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=path,
+            kind=kind,
+            language=language,
+            file_glob=file_glob,
+            group_by=group_by,
+            snippet_lines=3 if snippet_lines == 8 else snippet_lines,
+            limit=limit,
+            budget_tokens=budget_tokens,
+        ),
+    )
+    return _finish_code_result(_maybe_attach_code_rendered("usages", payload, render_compact=render_compact))
+
+
+def _op_impact(
+    *,
+    path: str | None = None,
+    query: str | None = None,
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    kind: str | None = None,
+    language: str | None = None,
+    file_glob: str | None = None,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    if not any([path, query, symbol_id, qualified_name, symbol_name]):
+        raise ValueError("path or symbol identifier is required for code impact")
+    engine = _code_engine_at(repo_root)
+    payload = cast(
+        dict[str, Any],
+        engine.tool_impact(
+            path,
+            query=query,
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=path,
+            kind=kind,
+            language=language,
+            file_glob=file_glob,
+            budget_tokens=budget_tokens,
+        ),
+    )
+    return _finish_code_result(_maybe_attach_code_rendered("impact", payload, render_compact=render_compact))
+
+
+def _op_explore(
+    *,
+    query: str | None = None,
+    seed_files: list[str] | None = None,
+    max_files: int = 8,
+    max_symbols: int = 4,
+    include_source: bool = True,
+    include_relationships: bool = True,
+    line_numbers: bool = True,
+    depth: int = 1,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    if not query:
+        raise ValueError("query is required for code explore")
+    engine = _code_engine_at(repo_root)
+    payload = cast(
+        dict[str, Any],
+        engine.tool_explore(
+            query=query,
+            seed_files=seed_files,
+            max_files=max_files,
+            max_symbols=max_symbols,
+            include_source=include_source,
+            include_relationships=include_relationships,
+            line_numbers=line_numbers,
+            depth=depth,
+            budget_tokens=budget_tokens,
+        ),
+    )
+    return _finish_code_result(_maybe_attach_code_rendered("explore", payload, render_compact=render_compact))
+
+
+def _op_pattern(
+    *,
+    pattern: str | None = None,
+    rewrite: str | None = None,
+    language: str | None = None,
+    file_glob: str | None = None,
+    dry_run: bool = True,
+    limit: int = 20,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    if not pattern:
+        raise ValueError("pattern is required for code pattern")
+    engine = _code_engine_at(repo_root)
+    payload = cast(
+        dict[str, Any],
+        engine.tool_pattern(
+            pattern=pattern,
+            rewrite=rewrite,
+            language=language,
+            file_glob=file_glob,
+            dry_run=dry_run,
+            limit=limit,
+            budget_tokens=budget_tokens,
+        ),
+    )
+    return _finish_code_result(_maybe_attach_code_rendered("pattern", payload, render_compact=render_compact))
+
+
+def _op_search(
+    *,
+    query: str | None = None,
+    mode: str = "auto",
+    intent: str = "auto",
+    view: Literal["target", "graph", "context", "explain"] = "target",
+    kind: str | None = None,
+    language: str | None = None,
+    snippet: str = "none",
+    snippet_lines: int = 8,
+    file_glob: str | None = None,
+    scope: str = "repo",
+    since: str | None = None,
+    touched_by: str | None = None,
+    provenance: str | None = None,
+    seed_files: list[str] | None = None,
+    max_symbols: int = 4,
+    depth: int = 1,
+    limit: int = 20,
+    budget_tokens: int = 4000,
+    repo: str | None = None,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    if not query:
+        raise ValueError("query is required for code search")
+    engine_root = repo_root or "."
+    workspace_router = _workspace_code_router(engine_root)
+    if repo is not None and not workspace_router.is_configured:
+        raise ValueError("repo filter requires .atelier/workspace.toml")
+    engine = _code_context_engine(engine_root)
+    _code_engine_for_current_call.value = engine
+    if view == "context":
+        context_payload = engine.tool_context(
+            task=query,
+            seed_files=seed_files,
+            budget_tokens=budget_tokens,
+            max_symbols=max_symbols,
+        )
+        return _finish_code_result(
+            _maybe_attach_code_rendered("context", cast(dict[str, Any], context_payload), render_compact=render_compact)
+        )
+    search_kwargs: dict[str, Any] = {
+        "limit": limit,
+        "mode": mode,
+        "kind": kind,
+        "language": language,
+        "snippet": snippet,
+        "snippet_lines": snippet_lines,
+        "file_glob": file_glob,
+        "scope": scope,
+        "budget_tokens": budget_tokens,
+    }
+    if scope != "deleted":
+        search_kwargs["intent"] = intent
+        search_kwargs["seed_files"] = seed_files
+    if since is not None:
+        search_kwargs["since"] = since
+    if touched_by is not None:
+        search_kwargs["touched_by"] = touched_by
+    if provenance is not None:
+        search_kwargs["provenance_filter"] = provenance
+    if workspace_router.is_configured:
+        routed_payload = cast(
+            dict[str, Any],
+            workspace_router.route("search", repo=repo, query=query, **search_kwargs),
+        )
+        routed_payload = _code_search_target_view(routed_payload)
+        return _finish_code_result(_maybe_attach_code_rendered("search", routed_payload, render_compact=render_compact))
+    search_payload = cast(dict[str, Any], engine.tool_search(query, **search_kwargs))
+    if view == "target":
+        search_payload = _code_search_target_view(search_payload)
+    elif view in {"graph", "explain"}:
+        search_payload = _code_search_graph_view(
+            engine,
+            query=query,
+            search_payload=search_payload,
+            view=view,
+            limit=limit,
+            depth=depth,
+            budget_tokens=budget_tokens,
+        )
+    return _finish_code_result(_maybe_attach_code_rendered("search", search_payload, render_compact=render_compact))
+
+
+def _op_index(
+    *,
+    include_globs: list[str] | None = None,
+    exclude_globs: list[str] | None = None,
+    force: bool = False,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    engine = _code_engine_at(repo_root)
+    payload = cast(
+        dict[str, Any],
+        engine.tool_index(
+            include_globs=include_globs,
+            exclude_globs=exclude_globs,
+            force=force,
+            budget_tokens=budget_tokens,
+        ),
+    )
+    return _finish_code_result(_maybe_attach_code_rendered("index", payload, render_compact=render_compact))
+
+
+def _op_blame(
+    *,
+    query: str | None = None,
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    path: str | None = None,
+    include_churn: bool = True,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    if not (query or symbol_id or qualified_name or symbol_name):
+        raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code blame")
+    engine = _code_engine_at(repo_root)
+    payload = cast(
+        dict[str, Any],
+        engine.tool_blame(
+            query=query,
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name,
+            file_path=path,
+            include_churn=include_churn,
+            budget_tokens=budget_tokens,
+        ),
+    )
+    return _finish_code_result(_maybe_attach_code_rendered("blame", payload, render_compact=render_compact))
+
+
+def _op_hover(
+    *,
+    query: str | None = None,
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    path: str | None = None,
+    line: int | None = None,
+    col: int | None = None,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    if not any([symbol_id, qualified_name, symbol_name, query, (path and line is not None)]):
+        raise ValueError("symbol_id, qualified_name, symbol_name, query, or (file_path + line) is required for hover")
+    engine = _code_engine_at(repo_root)
+    payload = cast(
+        dict[str, Any],
+        engine.tool_hover(
+            symbol_id=symbol_id,
+            qualified_name=qualified_name,
+            symbol_name=symbol_name or query,
+            file_path=path,
+            line=line,
+            col=col,
+            budget_tokens=budget_tokens,
+        ),
+    )
+    return _finish_code_result(_maybe_attach_code_rendered("hover", payload, render_compact=render_compact))
+
+
+def _op_node(
+    *,
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    path: str | None = None,
+    budget_tokens: int = 4000,
+    repo: str | None = None,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    engine_root = repo_root or "."
+    workspace_router = _workspace_code_router(engine_root)
+    if repo is not None and not workspace_router.is_configured:
+        raise ValueError("repo filter requires .atelier/workspace.toml")
+    engine = _code_context_engine(engine_root)
+    _code_engine_for_current_call.value = engine
+    if workspace_router.is_configured:
+        payload = cast(
+            dict[str, Any],
+            workspace_router.route(
+                "symbol",
+                repo=repo,
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=path,
+                budget_tokens=budget_tokens,
+            ),
+        )
+    else:
+        payload = cast(
+            dict[str, Any],
+            engine.tool_symbol(
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=path,
+                budget_tokens=budget_tokens,
+            ),
+        )
+    return _finish_code_result(_maybe_attach_code_rendered("symbol", payload, render_compact=render_compact))
+
+
+def _op_outline(
+    *,
+    path: str | None = None,
+    limit: int = 20,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    engine = _code_engine_at(repo_root)
+    payload = cast(
+        dict[str, Any],
+        engine.tool_outline(file_path=path, limit=limit, budget_tokens=budget_tokens),
+    )
+    return _finish_code_result(_maybe_attach_code_rendered("outline", payload, render_compact=render_compact))
+
+
+def _op_rename(
+    *,
+    new_name: str | None = None,
+    query: str | None = None,
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    path: str | None = None,
+    rename_backend: str = "auto",
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    if not new_name:
+        raise ValueError("new_name is required for code rename")
+    if not any([query, symbol_id, qualified_name, symbol_name]):
+        raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code rename")
+    engine = _code_engine_at(repo_root)
+    from atelier.core.capabilities.tool_supervision.rename_symbol import build_rename_edits
+
+    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    edits = build_rename_edits(
+        engine,
+        symbol_id=symbol_id,
+        qualified_name=qualified_name,
+        symbol_name=symbol_name or query,
+        file_path=path,
+        new_name=new_name,
+        repo_root=Path(workspace),
+        backend=rename_backend,
+    )
+    # Filter out ast-grep sentinel entries (already applied on disk)
+    rich_edits = [e for e in edits if not e.get("_astgrep_applied")]
+    if not rich_edits and edits:
+        # ast-grep applied everything directly; return summary
+        return _finish_code_result(
+            _maybe_attach_code_rendered(
+                "rename",
+                {
+                    "op": "rename",
+                    "files_changed": len(edits),
+                    "backend": "ast-grep",
+                    "new_name": new_name,
+                },
+                render_compact=render_compact,
+            )
+        )
+    from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
+
+    touched = _collect_touched_paths(rich_edits, repo_root=Path(workspace))
+    snaps = _snapshot_paths(touched)
+    result = apply_rich_edits(rich_edits, atomic=True, repo_root=Path(workspace))
+    if not result.get("failed") and not result.get("rolled_back"):
+        _compute_and_record_diffs(snaps)
+    result["op"] = "rename"
+    result["new_name"] = new_name
+    result["backend"] = rename_backend
+    return _finish_code_result(_maybe_attach_code_rendered("rename", result, render_compact=render_compact))
+
+
+def _op_cache_status(
+    *,
+    cache_tool: str | None = None,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    engine = _code_engine_at(repo_root)
+    if cache_tool is None:
+        payload = cast(dict[str, Any], engine.tool_cache_status(budget_tokens=budget_tokens))
+    else:
+        payload = cast(
+            dict[str, Any],
+            engine.tool_cache_status(cache_tool=cache_tool, budget_tokens=budget_tokens),
+        )
+    return _finish_code_result(_maybe_attach_code_rendered("cache_status", payload, render_compact=render_compact))
+
+
+def _op_cache_invalidate(
+    *,
+    cache_tool: str | None = None,
+    budget_tokens: int = 4000,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    engine = _code_engine_at(repo_root)
+    if cache_tool is None:
+        payload = cast(dict[str, Any], engine.tool_cache_invalidate(budget_tokens=budget_tokens))
+    else:
+        payload = cast(
+            dict[str, Any],
+            engine.tool_cache_invalidate(cache_tool=cache_tool, budget_tokens=budget_tokens),
+        )
+    return _finish_code_result(_maybe_attach_code_rendered("cache_invalidate", payload, render_compact=render_compact))
+
+
+# Scalar param types for code-intel ops. The `symbols` tool's handler is this
+# router (not the @mcp_tool handler_wrapper), so stringified scalar args must be
+# coerced here too. Keep in sync with the _op_* signatures.
+_CODE_INTEL_PARAM_TYPES: dict[str, Any] = {
+    "limit": int,
+    "depth": int,
+    "budget_tokens": int,
+    "max_files": int,
+    "max_symbols": int,
+    "snippet_lines": int,
+    "line": int,
+    "col": int,
+    "render_compact": bool,
+    "include_churn": bool,
+    "force": bool,
+    "snapshot": bool,
+    "dry_run": bool,
+    "include_source": bool,
+    "include_relationships": bool,
+    "line_numbers": bool,
+}
+
+
+def _tool_symbols_alias_handler(args: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(args, dict):
+        args = _coerce_json_strings(args, _CODE_INTEL_PARAM_TYPES)
+    g = args.get
+    op = g("op") or "search"
+    if op == "node":
+        op = "symbol"
+    repo = g("repo")
+    if repo is not None and op not in {"search", "symbol"}:
+        raise ValueError("repo filter is only supported for workspace search and symbol operations")
+    rr = g("repo_root")
+    rc = g("render_compact", False)
+    bt = g("budget_tokens", 4000)
+    if op == "search":
+        return _op_search(
+            query=g("query"),
+            mode=g("mode", "auto"),
+            intent=g("intent", "auto"),
+            view=g("view", "target"),
+            kind=g("kind"),
+            language=g("language"),
+            snippet=g("snippet", "none"),
+            snippet_lines=g("snippet_lines", 8),
+            file_glob=g("file_glob"),
+            scope=g("scope", "repo"),
+            since=g("since"),
+            touched_by=g("touched_by"),
+            provenance=g("provenance"),
+            seed_files=g("seed_files"),
+            max_symbols=g("max_symbols", 4),
+            depth=g("depth", 1),
+            limit=g("limit", 20),
+            budget_tokens=bt,
+            repo=repo,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op in ("callers", "callees"):
+        fn = _op_callers if op == "callers" else _op_callees
+        return fn(
+            query=g("query"),
+            symbol_id=g("symbol_id"),
+            qualified_name=g("qualified_name"),
+            symbol_name=g("symbol_name"),
+            path=g("path"),
+            kind=g("kind"),
+            language=g("language"),
+            depth=g("depth", 1),
+            limit=g("limit", 20),
+            snapshot=g("snapshot", False),
+            budget_tokens=bt,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op == "usages":
+        return _op_usages(
+            query=g("query"),
+            symbol_id=g("symbol_id"),
+            qualified_name=g("qualified_name"),
+            symbol_name=g("symbol_name"),
+            path=g("path"),
+            kind=g("kind"),
+            language=g("language"),
+            file_glob=g("file_glob"),
+            group_by=g("group_by", "file"),
+            snippet_lines=g("snippet_lines", 8),
+            limit=g("limit", 20),
+            budget_tokens=bt,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op == "impact":
+        return _op_impact(
+            path=g("path"),
+            query=g("query"),
+            symbol_id=g("symbol_id"),
+            qualified_name=g("qualified_name"),
+            symbol_name=g("symbol_name"),
+            kind=g("kind"),
+            language=g("language"),
+            file_glob=g("file_glob"),
+            budget_tokens=bt,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op == "explore":
+        return _op_explore(
+            query=g("query"),
+            seed_files=g("seed_files"),
+            max_files=g("max_files", 8),
+            max_symbols=g("max_symbols", 4),
+            include_source=g("include_source", True),
+            include_relationships=g("include_relationships", True),
+            line_numbers=g("line_numbers", True),
+            depth=g("depth", 1),
+            budget_tokens=bt,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op == "pattern":
+        return _op_pattern(
+            pattern=g("pattern"),
+            rewrite=g("rewrite"),
+            language=g("language"),
+            file_glob=g("file_glob"),
+            dry_run=g("dry_run", True),
+            limit=g("limit", 20),
+            budget_tokens=bt,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op == "index":
+        return _op_index(
+            include_globs=g("include_globs"),
+            exclude_globs=g("exclude_globs"),
+            force=g("force", False),
+            budget_tokens=bt,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op == "blame":
+        return _op_blame(
+            query=g("query"),
+            symbol_id=g("symbol_id"),
+            qualified_name=g("qualified_name"),
+            symbol_name=g("symbol_name"),
+            path=g("path"),
+            include_churn=g("include_churn", True),
+            budget_tokens=bt,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op == "hover":
+        return _op_hover(
+            query=g("query"),
+            symbol_id=g("symbol_id"),
+            qualified_name=g("qualified_name"),
+            symbol_name=g("symbol_name"),
+            path=g("path"),
+            line=g("line"),
+            col=g("col"),
+            budget_tokens=bt,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op == "symbol":
+        return _op_node(
+            symbol_id=g("symbol_id"),
+            qualified_name=g("qualified_name"),
+            symbol_name=g("symbol_name"),
+            path=g("path"),
+            budget_tokens=bt,
+            repo=repo,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op == "outline":
+        return _op_outline(
+            path=g("path"),
+            limit=g("limit", 20),
+            budget_tokens=bt,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op in {"routes", "status", "files", "context"}:
+        raise ValueError(
+            f"op={op!r} is no longer available on this tool. "
+            "Use: `context` tool with mode='symbols' (was context), "
+            "`grep` (was files), status/routes are retired."
+        )
+    if op == "rename":
+        return _op_rename(
+            new_name=g("new_name"),
+            query=g("query"),
+            symbol_id=g("symbol_id"),
+            qualified_name=g("qualified_name"),
+            symbol_name=g("symbol_name"),
+            path=g("path"),
+            rename_backend=g("rename_backend", "auto"),
+            budget_tokens=bt,
+            repo_root=rr,
+            render_compact=rc,
+        )
+    if op == "cache_status":
+        return _op_cache_status(cache_tool=g("cache_tool"), budget_tokens=bt, repo_root=rr, render_compact=rc)
+    if op == "cache_invalidate":
+        return _op_cache_invalidate(cache_tool=g("cache_tool"), budget_tokens=bt, repo_root=rr, render_compact=rc)
+    raise ValueError(f"unknown op: {op!r}")
 
 
 TOOLS["symbols"]["handler"] = _tool_symbols_alias_handler
@@ -5891,7 +6343,6 @@ def _run_shell_tool(
     background: bool = False,
     session_id: str | None = None,
     action: Literal["run", "poll", "cancel"] = "run",
-    sync_wait: bool = False,
 ) -> dict[str, Any]:
     """Execute a shell command and return compact structured output."""
     from atelier.core.capabilities.tool_supervision.bash_exec import (
@@ -5927,7 +6378,17 @@ def _run_shell_tool(
     if action in {"poll", "cancel"}:
         if not session_id:
             raise ValueError(f"session_id is required for shell action={action}")
-        return poll_managed_command(session_id, cancel=action == "cancel")
+        if action == "cancel":
+            return poll_managed_command(session_id, cancel=True)
+        # Block until the backgrounded command finishes (or its own timeout
+        # kills it). No artificial window -- the command's timeout is the bound.
+        delay = 0.02
+        while True:
+            poll_result = poll_managed_command(session_id)
+            if poll_result.get("status") != "running":
+                return poll_result
+            time.sleep(delay)
+            delay = min(delay * 2, 0.5)
     if not command.strip():
         raise ValueError("command is required for shell action=run")
 
@@ -5993,16 +6454,9 @@ def _run_shell_tool(
 
     # One execution model: every command runs as a managed session; the only
     # variable is how long we block inline before returning a poll handle.
-    #   background → 0s (return the handle immediately)
-    #   sync_wait  → full timeout (in-process callers with no MCP stdio window)
-    #   default    → min(timeout, sync window)
-    sync_limit = max(1, int(os.environ.get("ATELIER_MCP_SYNC_SHELL_MAX_SECONDS", "90")))
-    if background:
-        inline_wait = 0.0
-    elif sync_wait:
-        inline_wait = float(timeout)
-    else:
-        inline_wait = float(min(timeout, sync_limit))
+    #   background → 0s (detach immediately, poll/cancel by session)
+    #   default    → full timeout (block until the command finishes or is killed)
+    inline_wait = 0.0 if background else float(timeout)
 
     started = start_managed_command(
         command,
@@ -6044,6 +6498,18 @@ def _run_shell_tool(
     return polled
 
 
+def _fmt_duration_ms(ms: int) -> str:
+    """Render a millisecond span as a compact human duration (e.g. 95s, 29m25s)."""
+    secs = max(0, ms) // 1000
+    if secs < 60:
+        return f"{secs}s"
+    minutes, seconds = divmod(secs, 60)
+    if minutes < 60:
+        return f"{minutes}m{seconds:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h{minutes:02d}m"
+
+
 def _render_shell_text(result: dict[str, Any]) -> str:
     """Render shell output as compact text while preserving structured internals."""
     exit_code = result.get("exit_code")
@@ -6061,6 +6527,15 @@ def _render_shell_text(result: dict[str, Any]) -> str:
         parts.append(f"status=running session_id={session_id}")
         if result.get("pid") is not None:
             parts.append(f"pid={result['pid']}")
+        meta: list[str] = []
+        duration_ms = result.get("duration_ms")
+        if isinstance(duration_ms, int):
+            meta.append(f"elapsed={_fmt_duration_ms(duration_ms)}")
+        timeout_remaining_ms = result.get("timeout_remaining_ms")
+        if isinstance(timeout_remaining_ms, int):
+            meta.append(f"timeout_in={_fmt_duration_ms(timeout_remaining_ms)}")
+        if meta:
+            parts.append(" ".join(meta))
     elif status:
         parts.append(f"status={status} session_id={session_id}")
     if blocked:
@@ -6580,17 +7055,21 @@ SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         "background": {
             "type": "boolean",
             "default": False,
-            "description": "Return a managed session handle immediately instead of waiting. By default the command runs inline and detaches only if still running when the synchronous MCP window closes.",
+            "description": "Return a managed session handle immediately instead of waiting. By default the command runs inline and blocks until it finishes or its timeout elapses -- no need to poll.",
         },
         "session_id": {
             "type": "string",
-            "description": "Managed shell session returned by a background or automatically detached run.",
+            "description": "Managed shell session returned by a background run.",
         },
         "action": {
             "type": "string",
             "enum": ["run", "poll", "cancel"],
             "default": "run",
-            "description": "Run a command, poll a managed session, or cancel it.",
+            "description": (
+                "Run a command, poll a managed (background) session, or cancel it. run blocks "
+                "until the command finishes or its timeout elapses; poll blocks until a "
+                "background session finishes. Most commands need only run."
+            ),
         },
     },
     "additionalProperties": False,
@@ -6606,7 +7085,6 @@ def tool_shell(
     background: bool = False,
     session_id: str | None = None,
     action: Literal["run", "poll", "cancel"] = "run",
-    sync_wait: bool = False,
 ) -> str:
     """Execute a shell command and return compact text output.
 
@@ -6621,7 +7099,6 @@ def tool_shell(
         background=background,
         session_id=session_id,
         action=action,
-        sync_wait=sync_wait,
     )
     return _render_shell_text(result)
 
@@ -7376,6 +7853,14 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         if name == "run":
             name = "shell"
         args = params.get("arguments") or {}
+        # Some MCP clients deliver the whole `arguments` payload as a JSON string
+        # instead of an object. mypyc-compiled handlers enforce dict at the boundary
+        # and would reject it with "dict object expected; got str", so parse it here.
+        if isinstance(args, str):
+            with contextlib.suppress(json.JSONDecodeError, ValueError):
+                args = json.loads(args)
+        if not isinstance(args, dict):
+            args = {}
         spec = TOOLS.get(name)
         if spec is None:
             return _err(rid, -32601, f"unknown tool: {name}")
@@ -7407,7 +7892,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     args if isinstance(args, dict) else {},
                     led,
                 )
-                handler: Callable[[dict[str, Any]], dict[str, Any]] = spec["handler"]
+                handler: Callable[[dict[str, Any]], Any] = spec["handler"]
                 if name == "edit" and isinstance(args, dict):
                     blocked_message = _benchmark_edit_block_message(args)
                     if blocked_message:
