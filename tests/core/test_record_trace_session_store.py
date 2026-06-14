@@ -37,11 +37,14 @@ def test_record_trace_populates_session_store(tmp_path: Path) -> None:
     assert [r["id"] for r in store.session_store.query(domain="coding")] == [trace.id]
 
 
-def test_record_trace_write_json_false_skips_session_store(tmp_path: Path) -> None:
-    # Bulk import path (write_json=False) must not pay per-trace file/index I/O;
-    # host-session import populates the session store directly instead.
+def test_record_trace_write_json_false_still_records_to_session_store(tmp_path: Path) -> None:
+    # Bulk host import passes write_json=False but its sessions MUST land in the
+    # file-based store (it is the storage going forward), only skipping the legacy
+    # per-trace traces_dir mirror.
     root = tmp_path / ".atelier"
     store = ContextStore(root)
     store.init()
-    store.record_trace(_trace("sess-2"), write_json=False)
-    assert not (root / "sessions" / "sess-2").exists()
+    trace = _trace("sess-2")
+    store.record_trace(trace, write_json=False)
+    assert [t["id"] for t in store.session_store.traces_for("sess-2")] == [trace.id]
+    assert not (root / "traces" / f"{trace.id}.json").exists()  # legacy mirror skipped

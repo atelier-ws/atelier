@@ -909,14 +909,15 @@ class ContextStore:
             # Update FTS index
             self._update_trace_fts(cur, trace)
 
+        # Always persist to the file-based session store — it is the storage going
+        # forward, including bulk host imports (which pass write_json=False).
+        # Best-effort: a session-store hiccup must never drop a trace.
+        try:
+            self.session_store.record(jsonable)
+        except (OSError, sqlite3.Error, ValueError, TypeError):
+            logger.warning("session_store: failed to record trace %s", trace.id, exc_info=True)
         if write_json:
             self._write_trace_json(trace)
-            # Mirror into the file-based session store (source of truth going
-            # forward). Best-effort: a session-store hiccup must never drop a trace.
-            try:
-                self.session_store.record(jsonable)
-            except (OSError, sqlite3.Error, ValueError, TypeError):
-                logger.warning("session_store: failed to record trace %s", trace.id, exc_info=True)
 
     def _update_trace_fts(self, cur: sqlite3.Cursor, trace: Trace) -> None:
         """Update the FTS5 index for a single trace."""
