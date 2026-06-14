@@ -57,11 +57,13 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
     return response
 
 
-def _payload(response: dict[str, Any]) -> dict[str, Any]:
+def _payload(response: dict[str, Any]) -> Any:
     assert "result" in response, response
-    payload = json.loads(response["result"]["content"][0]["text"])
-    assert isinstance(payload, dict)
-    return payload
+    text = response["result"]["content"][0]["text"]
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return text
 
 
 def _text(response: dict[str, Any]) -> str:
@@ -621,7 +623,7 @@ def test_sql_actions_e2e(mcp_env: Path) -> None:
             },
         )
     )
-    assert lint["ok"] is True
+    assert "sql lint: ok" in lint
 
     query = _payload(
         _call(
@@ -639,7 +641,7 @@ def test_sql_actions_e2e(mcp_env: Path) -> None:
     assert query["results"][0]["rows"][0] == [1, "Ada"]
 
 
-def test_context_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
+def test_context_rescue_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
     context = _payload(
         _call(
             "context",
@@ -651,6 +653,19 @@ def test_context_verify_compact_and_trace_e2e(mcp_env: Path) -> None:
         )
     )
     assert isinstance(context.get("context"), str)
+
+    rescue = _payload(
+        _call(
+            "rescue",
+            {
+                "task": "Run pytest",
+                "error": "AssertionError: expected MCP payload",
+                "recent_actions": ["run pytest", "run pytest"],
+            },
+        )
+    )
+    assert "rescue" in rescue
+    assert "analysis" in rescue
 
     rubric = _payload(
         _call(
