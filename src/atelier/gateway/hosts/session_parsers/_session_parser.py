@@ -135,7 +135,7 @@ def attach_atelier_sidecar_savings(turns: list[dict[str, Any]], session_id: str,
     Claude Code drops unknown fields off MCP ``content[]`` items when it
     persists the transcript, so the in-response ``saved`` block doesn't
     survive to disk.  The MCP server's host sidecar
-    (``session_stats/<host>/<session_id>.jsonl``) does survive, and its rows
+    (``sessions/<session_id>/savings.jsonl``) does survive, and its rows
     are appended in the order tools were called.  We pair each Atelier MCP
     tool turn against the next matching sidecar row, by tool name.
 
@@ -143,30 +143,23 @@ def attach_atelier_sidecar_savings(turns: list[dict[str, Any]], session_id: str,
     """
     if not session_id:
         return
-    stats_dir = atelier_root / "session_stats"
-    if not stats_dir.is_dir():
+    sidecar = atelier_root / "sessions" / session_id / "savings.jsonl"
+    if not sidecar.is_file():
         return
 
-    # Collect sidecar rows from any host directory that contains a matching file
-    # (Claude UUIDs are unique enough that we don't need to scope by host).
+    # Sidecar rows are appended in tool-call order; pair them FIFO by tool name.
     sidecar_rows: list[dict[str, Any]] = []
-    for host_dir in sorted(stats_dir.iterdir()):
-        if not host_dir.is_dir():
-            continue
-        sidecar = host_dir / f"{session_id}.jsonl"
-        if not sidecar.is_file():
-            continue
-        try:
-            for line in sidecar.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    sidecar_rows.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-        except OSError:
-            continue
+    try:
+        for line in sidecar.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                sidecar_rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    except OSError:
+        return
     if not sidecar_rows:
         return
 

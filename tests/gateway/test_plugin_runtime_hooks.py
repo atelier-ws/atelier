@@ -100,10 +100,10 @@ def test_session_telemetry_persists_session_savings(tmp_path: Path) -> None:
         env={"ATELIER_ROOT": str(atelier_root)},
     )
 
-    stats = json.loads((atelier_root / "session_stats" / "s1.json").read_text(encoding="utf-8"))
+    stats = json.loads((atelier_root / "sessions" / "s1" / "stats.json").read_text(encoding="utf-8"))
     assert stats["total_tool_calls"] == 1
     assert stats["edit_tool_calls"] == 1
-    assert (atelier_root / "session_events" / "s1.jsonl").exists()
+    assert (atelier_root / "sessions" / "s1" / "events.jsonl").exists()
 
 
 def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path) -> None:
@@ -124,7 +124,7 @@ def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path)
     update_session_stats(root, {"hook_event_name": "PostCompact", "session_id": "s1", "now_ms": 2750})
     update_session_stats(root, {"hook_event_name": "SubagentStop", "session_id": "s1", "now_ms": 3000})
 
-    stats = json.loads((root / "session_stats" / "s1.json").read_text(encoding="utf-8"))
+    stats = json.loads((root / "sessions" / "s1" / "stats.json").read_text(encoding="utf-8"))
     # Only per-turn deltas from payload.usage accumulate; transcript is NOT read here.
     assert stats["usage"]["input_tokens"] == 5
     assert stats["usage"]["output_tokens"] == 3
@@ -134,7 +134,7 @@ def test_session_telemetry_tracks_usage_compaction_and_subagents(tmp_path: Path)
     assert stats["subagents_started"] == 1
     assert stats["subagents_completed"] == 1
     assert stats["pending_subagents"] == 0
-    assert (root / "session_events" / "s1.jsonl").exists()
+    assert (root / "sessions" / "s1" / "events.jsonl").exists()
 
 
 def test_session_telemetry_tracks_spawn_cache_signals(tmp_path: Path) -> None:
@@ -206,7 +206,7 @@ def test_context_window_snapshot_overwrites_not_accumulates(tmp_path: Path) -> N
             },
         )
 
-    stats = json.loads((root / "session_stats" / "s1.json").read_text(encoding="utf-8"))
+    stats = json.loads((root / "sessions" / "s1" / "stats.json").read_text(encoding="utf-8"))
     # Must equal the LAST snapshot values, not the sum over 5 calls.
     assert stats["usage"]["cache_read_tokens"] == 200_000  # last cR snapshot
     assert stats["usage"]["input_tokens"] == 50  # turn=5: 5*10
@@ -286,7 +286,7 @@ def test_session_start_bootstrap_applies_settings_auth_and_always_load(tmp_path:
     assert result["mcp_json"]["mcpServers"]["atelier"]["alwaysLoad"] is False
     assert result["auth"]["isAnonymous"] is True
     assert "Atelier budget optimizer" in result["stdout"]["additionalContext"]
-    assert (root / "session_stats" / "s1.json").exists()
+    assert (root / "sessions" / "s1" / "stats.json").exists()
 
 
 def test_spinner_setting_writes_top_level_object() -> None:
@@ -341,9 +341,9 @@ def test_claude_session_start_hook_prints_optimizer_context(tmp_path: Path) -> N
 
 def test_claude_stop_hook_shows_cache_and_estimated_session_savings(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    stats_dir = root / "session_stats"
+    stats_dir = root / "sessions" / "s1"
     stats_dir.mkdir(parents=True)
-    (stats_dir / "s1.json").write_text(
+    (stats_dir / "stats.json").write_text(
         json.dumps(
             {
                 "session_id": "s1",
@@ -614,9 +614,9 @@ def test_live_savings_summary_counts_cost_only_routing_events(tmp_path: Path) ->
 
 def test_statusline_shows_routing_savings(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
-    (root / "session_stats").mkdir(parents=True)
+    (root / "sessions" / "s1").mkdir(parents=True)
     (root / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
-    (root / "session_stats" / "s1.json").write_text(
+    (root / "sessions" / "s1" / "stats.json").write_text(
         json.dumps({"session_id": "s1", "savings": {"calls_saved": 1, "tokens_saved": 10_000}}),
         encoding="utf-8",
     )
