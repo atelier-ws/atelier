@@ -44,6 +44,10 @@ from atelier.core.foundation.renderer import render_block_for_agent
 from atelier.core.foundation.store import ContextStore
 
 T = TypeVar("T")
+# Compact metadata describing one recalled item injected into context. Shared
+# by the fact and passage summarizers so callers can concatenate the two lists.
+# ``bool`` carries the N15 injection-flag trust label alongside id/source/score.
+PassageSummary = dict[str, str | float | bool]
 _DEFAULT_TOKEN_BUDGET = 2000
 _DEDUP_THRESHOLD = 0.75
 _MINHASH_PERMUTATIONS = 128
@@ -121,13 +125,17 @@ def render_memory_for_agent(passages: Sequence[ArchivalPassage]) -> str:
     for passage in passages:
         source = passage.source_ref or passage.source
         out.append("")
-        out.append(f"Passage: {passage.id}  [{source}]")
+        # N15: tag provenance when the indexed passage matched a prompt-
+        # injection needle so the reader can treat its instructions as
+        # untrusted. The text is still surfaced verbatim (flag, never drop).
+        trust = "  [untrusted: injection-flagged]" if passage.injection_flagged else ""
+        out.append(f"Passage: {passage.id}  [{source}]{trust}")
         out.append(passage.text.strip())
     out.append("</memory>")
     return "\n".join(out) + "\n"
 
 
-def summarize_recalled_passages(passages: Sequence[ArchivalPassage], *, query: str) -> list[dict[str, str | float]]:
+def summarize_recalled_passages(passages: Sequence[ArchivalPassage], *, query: str) -> list[PassageSummary]:
     """Return compact metadata for passages injected into context."""
     scores = {
         item.passage.id: item.score
@@ -138,6 +146,8 @@ def summarize_recalled_passages(passages: Sequence[ArchivalPassage], *, query: s
             "id": passage.id,
             "source": passage.source_ref or passage.source,
             "score": round(float(scores.get(passage.id, 0.0)), 6),
+            # N15: index-time trust label rides along in retrieval results.
+            "injection_flagged": passage.injection_flagged,
         }
         for passage in passages
     ]
@@ -167,9 +177,9 @@ def render_memory_facts_for_agent(blocks: Sequence[MemoryBlock]) -> str:
     return "\n".join(out) + "\n"
 
 
-def summarize_memory_facts(blocks: Sequence[MemoryBlock]) -> list[dict[str, str | float]]:
+def summarize_memory_facts(blocks: Sequence[MemoryBlock]) -> list[PassageSummary]:
     """Return compact metadata for stored memory facts injected into context."""
-    summaries: list[dict[str, str | float]] = []
+    summaries: list[PassageSummary] = []
     for block in blocks:
         metadata = block.metadata or {}
         votes = metadata.get("votes", {})

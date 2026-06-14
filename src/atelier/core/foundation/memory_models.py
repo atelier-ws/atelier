@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 from atelier.core.foundation.models import _utcnow
+from atelier.core.foundation.redaction import is_prompt_injection
 from atelier.infra.storage.ids import make_uuid7
 
 ArchivalSource = Literal["trace", "block_evict", "user", "tool_output", "file_chunk"]
@@ -78,6 +79,20 @@ class ArchivalPassage(BaseModel):
         if not value.strip():
             raise ValueError("dedup_hash must be non-empty")
         return value
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def injection_flagged(self) -> bool:
+        """Index-time trust label (N15): True when the passage text matches a
+        prompt-injection needle.
+
+        Inbound dual of live output redaction. Derived deterministically from
+        ``text`` so the flag rides along in every retrieval result (and
+        ``model_dump``) without a schema migration, and survives store/bridge
+        round-trips. Additive only: callers that ignore it are unaffected; the
+        passage text itself is never altered or dropped.
+        """
+        return is_prompt_injection(self.text)
 
 
 class MemoryRecall(BaseModel):
