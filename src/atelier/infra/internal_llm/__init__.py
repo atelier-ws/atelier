@@ -65,8 +65,9 @@ def summarize(text: str, *, model: str | None = None, max_tokens: int = 4096) ->
     """Summarize text using the configured internal LLM.
 
     Identical ``(text, model, max_tokens, backend)`` inputs are memoized in a
-    process-local cache so repeated background summaries don't re-pay provider
-    tokens; disable with ``ATELIER_INTERNAL_LLM_CACHE=0``.
+    persistent on-disk cache (shared across processes and sessions) so repeated
+    background summaries don't re-pay provider tokens; disable with
+    ``ATELIER_INTERNAL_LLM_CACHE=0``.
     """
     backend = _backend()
     if backend == "none":
