@@ -20,6 +20,10 @@
 #   ATELIER_NON_INTERACTIVE If set to 1, skip all prompts (auto-install all hosts)
 #   ATELIER_NO_PATH         If set to 1, skip adding to PATH
 #   ATELIER_NO_HOSTS        If set to 1, skip agent host integration install
+#   ATELIER_KB_EXTRACT      If set to 1, run knowledge extraction during setup (opt-in)
+#   ATELIER_KB_HOST         Extraction backend: auto | claude | codex | ollama
+#   ATELIER_KB_MODEL        Model id for extraction (required for ollama)
+#   ATELIER_KB_MAX_SPEND    Hard USD cap per extraction run (auto/claude)
 
 set -euo pipefail
 
