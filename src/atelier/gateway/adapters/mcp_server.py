@@ -2501,6 +2501,10 @@ def _workspace_root() -> Path:
 # budget recorder without polluting the LLM-facing response dict.
 _tool_call_tokens_saved: threading.local = threading.local()
 _tool_call_rendered_text: threading.local = threading.local()
+# Process-internal stash for the raw structured tool result. Read only by the
+# in-process `atelier tools call ... --json` CLI so it can emit the structured
+# dict; never serialized into the host-facing MCP response.
+_tool_call_raw_result: threading.local = threading.local()
 
 
 def _bootstrap_context_status(root: Path) -> dict[str, Any]:
@@ -8231,13 +8235,11 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     _append_workspace_savings(name, saved_tokens, saved_calls, rid=str(rid))
 
             response_payload: dict[str, Any] = {"content": [content_item]}
-            # Surface read summary metadata (lines_total, summary, symbols, ...) on the
-            # machine-readable channel so structured consumers (e.g. `tools call read
-            # --json`) recover the dict instead of the rendered text. Scoped to summary
-            # mode (a compact projection) so full/range/outline/batch reads -- the hot,
-            # content-heavy paths -- stay text-only and never double bytes on the wire.
-            if name == "read" and isinstance(result, dict) and result.get("mode") == "summary":
-                response_payload["structuredContent"] = result
+            # Stash the raw structured result on a process-internal thread-local so the
+            # in-process `atelier tools call ... --json` CLI can recover the dict. This is
+            # never added to response_payload, so the MCP host's main model only ever sees
+            # `content` -- the structured form does not ride the wire to any MCP consumer.
+            _tool_call_raw_result.value = result if isinstance(result, dict) else None
             return _ok(rid, response_payload)
         except Exception as exc:
             logging.exception("Recovered from broad exception handler")
