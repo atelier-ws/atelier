@@ -33,7 +33,6 @@ from pydantic import Field, create_model
 
 from atelier import __version__ as atelier_version
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
-from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
 from atelier.core.capabilities.default_definitions import DefaultRegistry, build_default_registry
 from atelier.core.capabilities.grounded_loop.grounding_evidence import (
     extract_grounding_targets,
@@ -52,7 +51,6 @@ from atelier.core.capabilities.owned_execution_lanes import (
     execute_owned_prompt,
 )
 from atelier.core.capabilities.owned_execution_routing import (
-    NoFeasibleRouteError,
     OwnedCachePolicy,
     OwnedRouteRequest,
     select_owned_route,
@@ -1524,7 +1522,7 @@ _WORKFLOW_SPAWN_DEPTH_ENV = "ATELIER_WORKFLOW_SPAWN_DEPTH"
 _WORKFLOW_SPAWN_DEPTH_LIMIT = 8
 # Tools that themselves spawn sub-agents/workflows: invoking them from a
 # workflow step opens an unbounded recursive spawn path, so they are blocked.
-_WORKFLOW_SPAWNING_TOOLS = frozenset({"workflow", "agent"})
+_WORKFLOW_SPAWNING_TOOLS = frozenset({"workflow"})
 
 
 def _default_workflow_tool_executor(step: Any, args: dict[str, Any], context_state: Any) -> Any:
@@ -1747,107 +1745,6 @@ WORKFLOW_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "required": ["op"],
     "additionalProperties": False,
 }
-
-
-@mcp_tool(name="agent")
-def tool_agent(
-    prompt: Annotated[
-        str,
-        Field(description="Full task/instruction for the spawned Atelier-owned sub-agent."),
-    ],
-    budget: Annotated[
-        str,
-        Field(description="Cost/quality tier: 'cheap' | 'balanced' | 'best'. Default 'balanced'."),
-    ] = "balanced",
-    provider: Annotated[
-        str,
-        Field(description="Force a provider (e.g. 'anthropic'); empty = auto-select from configured vendors."),
-    ] = "",
-    model: Annotated[
-        str,
-        Field(description="Force a model id; empty = auto-pick by budget."),
-    ] = "",
-    cache_policy: Annotated[
-        str,
-        Field(
-            description="'inherit' shares the prompt-cache scope with prior owned spawns (cheaper); 'fresh' starts a new scope."
-        ),
-    ] = "inherit",
-) -> dict[str, Any]:
-    """Spawn an Atelier-owned sub-agent and return its result.
-
-    Runs the task on Atelier's owned-execution runtime: it selects a provider and
-    model from the credentials already configured in the environment (a provider
-    API key when present, otherwise the installed host CLI), executes the prompt,
-    and shares a prompt-cache scope with sibling spawns when
-    ``cache_policy='inherit'``. Prefer this over the host ``Agent`` tool when you
-    want Atelier to control the sub-agent's model, cost, and cache affinity.
-    """
-    root = _workspace_root()
-    session_state = _read_workspace_session_state()
-    norm_cache: OwnedCachePolicy = "fresh" if str(cache_policy).strip().lower() == "fresh" else "inherit"
-    use_explicit = bool(provider.strip() and model.strip())
-    request = OwnedRouteRequest(
-        tool_name="agent",
-        task_text=prompt,
-        mode="explicit" if use_explicit else "auto",
-        budget=cast(Any, str(budget).strip().lower() or "balanced"),
-        provider=provider.strip(),
-        model=model.strip(),
-        host_agent=_detect_agent(),
-        cache_policy=norm_cache,
-        session_state=session_state,
-    )
-    try:
-        decision = select_owned_route(root, request)
-    except (NoFeasibleRouteError, RouteConfigError) as exc:
-        return {
-            "isError": True,
-            "status": "no_route",
-            "message": (
-                f"No owned-execution route available: {exc}. Configure a route config (route.yaml) "
-                "plus a provider API key in the environment or an installed host CLI, and enable "
-                "owned routing."
-            ),
-        }
-    try:
-        result = execute_owned_prompt(
-            prompt,
-            root=root,
-            tool_name="agent",
-            task_text=prompt,
-            decision=decision,
-            host_agent=_detect_agent(),
-            session_state=session_state,
-            cache_policy=norm_cache,
-        )
-    except OwnedExecutionError as exc:
-        return {
-            "isError": True,
-            "status": "failed",
-            "message": str(exc),
-            "receipt": exc.receipt.to_dict(),
-        }
-    receipt = result.receipt
-    return {
-        "status": receipt.status,
-        "output": result.output,
-        "provider": receipt.executed_provider,
-        "model": receipt.executed_model,
-        "transport": receipt.executed_transport,
-        "cost_usd": receipt.cost_usd,
-        "tokens": {
-            "input": receipt.input_tokens,
-            "output": receipt.output_tokens,
-            "cache_read": receipt.cache_read_input_tokens,
-            "cache_write": receipt.cache_write_input_tokens,
-        },
-        "cache": {
-            "evidence": receipt.cache_evidence,
-            "reuse_observed": receipt.reuse_observed,
-            "scope_id": receipt.cache_scope_id,
-        },
-    }
 
 
 @mcp_tool(name="workflow", input_schema=WORKFLOW_TOOL_INPUT_SCHEMA)
@@ -2501,6 +2398,10 @@ def _workspace_root() -> Path:
 # budget recorder without polluting the LLM-facing response dict.
 _tool_call_tokens_saved: threading.local = threading.local()
 _tool_call_rendered_text: threading.local = threading.local()
+# Raw structured result of the last tool call, stashed per-call for the in-process
+# `atelier tools call ... --json` CLI to recover the full dict. Never serialized
+# into the host-facing MCP response, so the host's main model only sees `content`.
+_tool_call_raw_result: threading.local = threading.local()
 
 
 def _bootstrap_context_status(root: Path) -> dict[str, Any]:
@@ -8231,13 +8132,12 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     _append_workspace_savings(name, saved_tokens, saved_calls, rid=str(rid))
 
             response_payload: dict[str, Any] = {"content": [content_item]}
-            # Read summary mode is structural metadata (lines_total, summary, symbols, ...)
-            # produced WITHOUT internal_llm, so it is safe to expose. Put it on the MCP
-            # structuredContent side-channel -- the structured-result field clients consume
-            # programmatically (e.g. `tools call read --json`) -- scoped to summary mode so
-            # the hot full/range/outline/batch read paths stay content-only.
-            if name == "read" and isinstance(result, dict) and result.get("mode") == "summary":
-                response_payload["structuredContent"] = result
+            # Stash the full structured result for the in-process CLI so `tools call
+            # ... --json` returns the dict for EVERY tool -- including the ones whose
+            # host-facing content is rendered text (read, grep, search, shell, ...).
+            # This never goes on response_payload, so the MCP host's main model only
+            # ever sees `content`; no structured data rides the wire to any consumer.
+            _tool_call_raw_result.value = result if isinstance(result, dict) else None
             return _ok(rid, response_payload)
         except Exception as exc:
             logging.exception("Recovered from broad exception handler")
