@@ -698,51 +698,6 @@ def test_tool_code_symbol_rendered_shape_is_compact_summary(tmp_path: Path, monk
     assert "total = sum(items)" not in payload["rendered"]
 
 
-def test_tool_code_outline_rendered_shape_is_structural(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_engine = MagicMock()
-    fake_engine.tool_outline.return_value = {
-        "repo_id": "repo",
-        "files": {
-            "src/orders.py": [
-                {
-                    "name": "run",
-                    "qualified_name": "Worker.run",
-                    "kind": "method",
-                    "signature": "def run(self) -> None",
-                    "line_start": 25,
-                    "line_end": 30,
-                    "source": "def run(self): ...",
-                },
-                {
-                    "name": "Worker",
-                    "qualified_name": "Worker",
-                    "kind": "class",
-                    "signature": "class Worker",
-                    "line_start": 10,
-                    "line_end": 40,
-                },
-            ]
-        },
-        "symbol_count": 2,
-        "cache_hit": False,
-        "provenance": "local",
-        "tokens_saved": 0,
-        "total_tokens": 90,
-    }
-    monkeypatch.setattr(
-        "atelier.gateway.adapters.mcp_server._code_context_engine",
-        lambda repo_root=".": fake_engine,
-    )
-
-    payload = mcp_server._op_outline(repo_root=str(tmp_path), budget_tokens=220, render_compact=True)
-
-    assert "rendered" in payload
-    assert "  - 10-40: Worker [class] — class Worker" in payload["rendered"]
-    assert "  - 25-30: Worker.run [method] — def run(self) -> None" in payload["rendered"]
-    assert payload["rendered"].index("Worker [class]") < payload["rendered"].index("Worker.run [method]")
-    assert "def run(self): ..." not in payload["rendered"]
-
-
 def test_tool_code_index_rendered_shape_is_compact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fake_engine = MagicMock()
     fake_engine.tool_index.return_value = {

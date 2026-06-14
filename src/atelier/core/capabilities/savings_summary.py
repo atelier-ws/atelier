@@ -202,6 +202,10 @@ class TranscriptStats:
     last_model: str = ""
     # ISO timestamps of assistant turns with usage — drives the carry credit.
     turn_timestamps: list[str] = field(default_factory=list)
+    # Per-subagent assistant-turn timestamps (one inner list per subagent
+    # transcript). Drives per-window carry: a token a subagent saved carries
+    # across that subagent's own later turns, not the main thread's.
+    subagent_turn_timestamps: list[list[str]] = field(default_factory=list)
 
     @property
     def total_tokens(self) -> int:
@@ -418,6 +422,7 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
     last_model_id = ""  # tracks most recently seen model (for resumed sessions)
     per_model: dict[str, dict[str, int]] = {}
     turn_timestamps: list[str] = []
+    subagent_turn_timestamps: list[list[str]] = []
     seen_usage_message_ids: set[str] = set()
     seen_tool_use_ids: set[str] = set()
     lc_thresholds: dict[str, int] = {}
@@ -427,6 +432,7 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
 
     try:
         for source, is_main in sources:
+            sub_ts: list[str] = []
             for raw in source.read_text(encoding="utf-8", errors="replace").splitlines():
                 raw = raw.strip()
                 if not raw:
@@ -475,13 +481,18 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
                     output_tokens += out_t
                     cache_read_tokens += cr_t
                     cache_write_tokens += cw_t
+                    # A turn = one assistant message with non-zero usage.
+                    # Dedup on msg_id (same dedup as token accumulation).
+                    ts_raw = str(entry.get("timestamp") or "")
                     if is_main:
-                        # A turn = one assistant message with non-zero usage.
-                        # Dedup on msg_id (same dedup as token accumulation).
                         turns += 1
-                        ts_raw = str(entry.get("timestamp") or "")
                         if ts_raw:
                             turn_timestamps.append(ts_raw)
+                    elif ts_raw:
+                        # Subagent assistant turn — bucketed per subagent so
+                        # carry credit attributes a subagent-saved token to that
+                        # subagent's own context window, not the main thread's.
+                        sub_ts.append(ts_raw)
 
                     turn_model = str(msg.get("model") or entry.get("model") or "").strip()
                     if is_real_model(turn_model):
@@ -522,6 +533,8 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
                         seen_tool_use_ids.add(tool_key)
                     tools_used[name] = tools_used.get(name, 0) + 1
                     tool_calls += 1
+            if not is_main and sub_ts:
+                subagent_turn_timestamps.append(sub_ts)
     except Exception:
         logging.exception("Recovered from broad exception handler")
         return None
@@ -558,6 +571,7 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
         tools_used=tools_used,
         per_model={resolve_model_id(m): b for m, b in per_model.items()} if per_model else {},
         turn_timestamps=turn_timestamps,
+        subagent_turn_timestamps=subagent_turn_timestamps,
     )
 
 
@@ -684,16 +698,34 @@ def _resolve_workspace_session_id(workspace: str | None, root_path: Path) -> str
         return ""
 
 
-def _carry_credit(session_id: str, atelier_root: Path, turn_timestamps: list[str]) -> tuple[int, float]:
-    """Context-carry credit for saved tokens.
+def _carry_credit(
+    session_id: str,
+    atelier_root: Path,
+    turn_timestamps: list[str],
+    subagent_turn_timestamps: list[list[str]] | None = None,
+) -> tuple[int, float]:
+    """Context-carry credit for saved tokens, attributed per context window.
 
-    A token kept out of context at turn N is also NOT re-read at the
-    cache-read rate on every later assistant turn. Fully measured: row
-    timestamps from the sidecar, turn timestamps from the transcript, rates
-    from the per-row model. Rows with unknown models contribute nothing.
-    Returned separately — never folded into the conservative saved_usd.
+    A token kept out of context at turn N is also NOT re-read at the cache-read
+    rate on every later assistant turn that re-sends that window. Each subagent
+    runs in its *own* context window: a token a subagent saved carries across
+    that subagent's own later turns only — the main thread never re-reads it
+    (the subagent's context is discarded on return) and neither do sibling
+    subagents (fresh contexts). So a savings row is credited against the turns
+    of the window it was generated in: if its timestamp falls inside a
+    subagent's lifetime it carries over that subagent's turns; otherwise over
+    the main thread's turns (until the next compaction drops it).
+
+    Subagent rows land in the *parent* session's savings.jsonl (the shared MCP
+    process keys by the parent session id and cannot tell a subagent call from
+    a main-loop call), so attribution is reconstructed here from the row
+    timestamp and the per-subagent turn windows parsed from the transcript.
+
+    Fully measured: row timestamps from the sidecar, turn timestamps from the
+    transcript, rates from the per-row model. Rows with unknown models
+    contribute nothing. Returned separately — never folded into saved_usd.
     """
-    if not session_id or not turn_timestamps:
+    if not session_id:
         return 0, 0.0
     path = atelier_root / "sessions" / session_id / "savings.jsonl"
     if not path.exists():
@@ -708,8 +740,20 @@ def _carry_credit(session_id: str, atelier_root: Path, turn_timestamps: list[str
             return None
         return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
 
-    turns = sorted(t for t in (_parse(x) for x in turn_timestamps) if t is not None)
-    if not turns:
+    main_turns = sorted(t for t in (_parse(x) for x in turn_timestamps) if t is not None)
+
+    # One (start, end, sorted_turns) window per subagent transcript, sorted
+    # latest-start-first so an overlapping row (parallel subagents) is
+    # attributed to the most-recently-spawned containing window — a
+    # deterministic tiebreak.
+    sub_windows: list[tuple[datetime, datetime, list[datetime]]] = []
+    for sub in subagent_turn_timestamps or []:
+        ts_list = sorted(t for t in (_parse(x) for x in sub) if t is not None)
+        if ts_list:
+            sub_windows.append((ts_list[0], ts_list[-1], ts_list))
+    sub_windows.sort(key=lambda w: w[0], reverse=True)
+
+    if not main_turns and not sub_windows:
         return 0, 0.0
     from atelier.core.capabilities.pricing import get_model_pricing
 
@@ -743,14 +787,23 @@ def _carry_credit(session_id: str, atelier_root: Path, turn_timestamps: list[str
             row_dt = _parse(str(ev.get("ts") or ""))
             if row_dt is None:
                 continue
-            first_turn = bisect.bisect_right(turns, row_dt)
-            next_compaction = bisect.bisect_right(compactions, row_dt)
-            last_turn = (
-                bisect.bisect_left(turns, compactions[next_compaction])
-                if next_compaction < len(compactions)
-                else len(turns)
-            )
-            n_after = max(0, last_turn - first_turn)
+            window = next((w for w in sub_windows if w[0] <= row_dt <= w[1]), None)
+            if window is not None:
+                # Subagent-saved token: carries across that subagent's own
+                # later turns (the window bounds the count implicitly).
+                sub_t = window[2]
+                n_after = len(sub_t) - bisect.bisect_right(sub_t, row_dt)
+            else:
+                # Main-thread token: carries across later main turns, until the
+                # next main-session compaction drops it from context.
+                first_turn = bisect.bisect_right(main_turns, row_dt)
+                next_compaction = bisect.bisect_right(compactions, row_dt)
+                last_turn = (
+                    bisect.bisect_left(main_turns, compactions[next_compaction])
+                    if next_compaction < len(compactions)
+                    else len(main_turns)
+                )
+                n_after = max(0, last_turn - first_turn)
             if n_after <= 0:
                 continue
             pricing = get_model_pricing(resolve_model_id(str(ev.get("model") or "").strip()))
@@ -850,8 +903,10 @@ def compute_savings_summary(
         result.display_cache_tokens = stats.cache_read_tokens
         result.display_output_tokens = stats.output_tokens
     # --- context-carry credit (separate display line; never in saved_usd) ---
-    if stats is not None and stats.turn_timestamps:
-        result.carry_tokens, result.carry_usd = _carry_credit(session_id, root_path, stats.turn_timestamps)
+    if stats is not None and (stats.turn_timestamps or stats.subagent_turn_timestamps):
+        result.carry_tokens, result.carry_usd = _carry_credit(
+            session_id, root_path, stats.turn_timestamps, stats.subagent_turn_timestamps
+        )
 
     # --- price unpriced tokens at the session's weighted input rate ---
     # Per-row prices are exact (model captured at write time).  For rows that

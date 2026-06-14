@@ -2738,49 +2738,6 @@ def tool_get_context(
     return result
 
 
-_TASK_TYPE_TO_ADVISOR_TOOL: dict[str, str] = {
-    "debug": "shell",
-    "feature": "edit",
-    "refactor": "edit",
-    "test": "context",
-    "explain": "search",
-    "review": "read",
-    "docs": "compact",
-    "ops": "shell",
-}
-
-_TIER_PRIORITY: dict[str, int] = {"cheap": 0, "medium": 1, "high": 2, "expensive": 2}
-
-
-def _get_available_models() -> list[dict[str, Any]]:
-    """Return models the current session can access, ordered cheapest-first."""
-    from atelier.core.capabilities.counterfactual.pricing import load_pricing_table
-    from atelier.core.capabilities.cross_vendor_routing.configuration import (
-        detect_configured_vendors,
-    )
-
-    configured = set(detect_configured_vendors())
-    return [
-        {"vendor": c.vendor, "model_id": c.model_id, "tier": c.tier}
-        for c in load_pricing_table().candidates
-        if c.vendor in configured
-    ]
-
-
-def _compute_route_tier_for_response(tier: str, led: Any) -> str:
-    """Map raw tier string to semantic RouteTier string for the route response."""
-    from atelier.core.capabilities.model_routing.router import _detect_local_slm
-
-    escalating = any(e.payload.get("escalate") for e in led.events if e.kind == "watchdog_alert")
-    if escalating:
-        return "human_review"
-    if tier == "expensive":
-        return "frontier_llm"
-    if tier == "cheap" and _detect_local_slm():
-        return "local_slm"
-    return "cheap_llm"
-
-
 def _prefix_cache_diagnostics_from_ledger(led: Any) -> dict[str, Any]:
     """Extract prefix cache metrics from recorded llm_call events in the ledger."""
     call_events = [e for e in led.events if e.payload.get("kind") == "llm_call"]
@@ -2955,235 +2912,6 @@ def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
             }
 
     return None  # No supported CLI available
-
-
-@mcp_tool(
-    name="route",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "task": {
-                "type": "string",
-                "description": "Describe what you are about to do so the router can pick the right model.",
-            },
-            "task_type": {
-                "type": "string",
-                "enum": [
-                    "debug",
-                    "feature",
-                    "refactor",
-                    "test",
-                    "explain",
-                    "review",
-                    "docs",
-                    "ops",
-                ],
-                "default": "feature",
-                "description": "Task category — used to calibrate expected model complexity.",
-            },
-            "budget": {
-                "type": "string",
-                "enum": ["cheap", "balanced", "best"],
-                "default": "balanced",
-                "description": "Cost preference: cheap=lowest cost, balanced=smart default, best=highest quality.",
-            },
-            "mode": {
-                "type": "string",
-                "enum": ["auto", "explicit"],
-                "default": "auto",
-                "description": "Owned route selection mode.",
-            },
-            "provider": {
-                "type": "string",
-                "description": "Explicit provider/vendor for owned execution when mode=explicit.",
-            },
-            "model": {
-                "type": "string",
-                "description": "Explicit model for owned execution when mode=explicit.",
-            },
-            "runner": {
-                "type": "string",
-                "description": "Optional runner profile override for the selected provider.",
-            },
-        },
-        "required": [],
-    },
-)
-def tool_route(
-    task: str = "",
-    task_type: Literal["debug", "feature", "refactor", "test", "explain", "review", "docs", "ops"] = "feature",
-    budget: Literal["cheap", "balanced", "best"] = "balanced",
-    mode: Literal["auto", "explicit"] = "auto",
-    provider: str = "",
-    model: str = "",
-    runner: str = "",
-) -> dict[str, Any]:
-    """Pick the provider/model for an upcoming Atelier-owned subcall.
-
-    `mode="auto"` lets policy choose from task class, budget, provider health, and cache warmth;
-    `mode="explicit"` (or setting `provider`/`model`/`runner`) pins a route for control or benchmark isolation.
-
-    Returns: {model, tier, route_tier, rationale} — echoes the resolved provider/model when explicit.
-    """
-    led = _get_ledger()
-
-    led.record_tool_call(
-        "route",
-        {
-            "task_type": task_type,
-            "budget": budget,
-            "mode": mode,
-            "provider": provider,
-            "model": model,
-        },
-    )
-    available = _get_available_models()
-
-    # Try the owned execution selector first so the route is executable, not advisory-only.
-    chosen_model = ""
-    tier = ""
-    rationale = ""
-    payload: dict[str, Any] = {}
-    explicit_requested = mode == "explicit" or any(value.strip() for value in (provider, model, runner))
-    try:
-        from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
-        from atelier.core.capabilities.cross_vendor_routing.router import NoFeasibleRouteError
-
-        advisor_tool = _TASK_TYPE_TO_ADVISOR_TOOL.get(task_type, "edit")
-        decision = _select_owned_execution_route(
-            tool_name=advisor_tool,
-            task_text=task,
-            mode=mode,
-            provider=provider,
-            model=model,
-            runner=runner,
-            session_state=_model_recommendation_state(led, {}),
-        )
-        payload = decision.to_dict()
-        chosen_model = decision.model
-        tier = decision.tier
-        rationale = decision.reason
-    except (RouteConfigError, NoFeasibleRouteError):
-        if explicit_requested:
-            raise
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        _log.debug("owned route selection failed", exc_info=True)
-
-    # Apply budget override on top of advisor recommendation
-    if budget == "cheap" and available:
-        cheap_models = [m for m in available if m["tier"] == "cheap"]
-        if cheap_models:
-            chosen_model = cheap_models[0]["model_id"]
-            tier = "cheap"
-            rationale = "cheapest available model selected per budget=cheap"
-    elif budget == "best" and available:
-        expensive_models = sorted(
-            available,
-            key=lambda m: _TIER_PRIORITY.get(m["tier"], 0),
-            reverse=True,
-        )
-        if expensive_models:
-            chosen_model = expensive_models[0]["model_id"]
-            tier = expensive_models[0]["tier"]
-            rationale = "highest-capability available model selected per budget=best"
-
-    # Final fallback: pick cheapest available model
-    if not chosen_model and available:
-        chosen_model = available[0]["model_id"]
-        tier = available[0]["tier"]
-        rationale = "fallback: cheapest configured model"
-
-    # Emit route_tier using the semantic 5-tier model
-    route_tier = _compute_route_tier_for_response(tier, led)
-
-    payload.update(
-        {
-            "model": chosen_model,
-            "tier": tier,
-            "route_tier": payload.get("route_tier", route_tier),
-            "rationale": rationale,
-        }
-    )
-    return payload
-
-
-@mcp_tool(name="rescue")
-def tool_rescue_failure(
-    task: str,
-    error: str,
-    domain: str | None = None,
-    files: list[str] | None = None,
-    recent_actions: list[str] | None = None,
-) -> dict[str, Any]:
-    """Suggest a rescue procedure for a repeated failure (call after the same approach fails twice).
-
-    Returns: {rescue, matched_blocks, analysis?} -- `rescue` is the suggested procedure
-    text, `matched_blocks` the reason-block IDs it drew from, `analysis` an optional
-    failure-incident breakdown.
-    """
-    if recent_actions is None:
-        recent_actions = []
-    if files is None:
-        files = []
-    rt = _runtime()
-    led = _get_ledger()
-    _match_mcp_lexical({"task": task, "error": error})
-    led.record_tool_call(
-        "rescue_failure",
-        {
-            "task": task,
-            "error": error,
-            "domain": domain,
-            "files": files,
-            "recent_actions": recent_actions,
-        },
-    )
-
-    result = rt.rescue_failure(
-        task=task,
-        error=error,
-        files=files,
-        domain=domain,
-        recent_actions=recent_actions,
-    )
-    payload = to_jsonable(result)
-    with contextlib.suppress(Exception):
-        from atelier.core.service.telemetry import emit_product
-        from atelier.core.service.telemetry.schema import hash_identifier
-
-        matched = list(payload.get("matched_blocks", []) or []) if isinstance(payload, dict) else []
-        emit_product(
-            "rescue_offered",
-            cluster_id_hash=hash_identifier(str(matched[0] if matched else "unmatched_rescue")),
-            rescue_type="reasonblock" if matched else "summary",
-            session_id=_get_product_session_id(),
-        )
-
-    # Lemma-style failure incident analysis from prior failed traces.
-    with contextlib.suppress(Exception):
-        analysis = rt.core_runtime.analyze_failure_for_error(
-            task=task,
-            error=error,
-            domain=domain,
-            lookback=200,
-        )
-        payload["analysis"] = analysis
-        incident = analysis.get("incident") if isinstance(analysis, dict) else None
-        if isinstance(incident, dict):
-            root_cause = incident.get("root_cause_hypothesis", "")
-            if isinstance(root_cause, str) and root_cause:
-                led.record(
-                    "note",
-                    "failure_analysis",
-                    {
-                        "root_cause": root_cause,
-                        "fingerprint": incident.get("fingerprint"),
-                        "count": incident.get("count"),
-                    },
-                )
-
-    return payload
 
 
 @mcp_tool(name="trace")
@@ -6194,37 +5922,6 @@ def _op_blame(
     return _finish_code_result(_maybe_attach_code_rendered("blame", payload, render_compact=render_compact))
 
 
-def _op_hover(
-    *,
-    query: str | None = None,
-    symbol_id: str | None = None,
-    qualified_name: str | None = None,
-    symbol_name: str | None = None,
-    path: str | None = None,
-    line: int | None = None,
-    col: int | None = None,
-    budget_tokens: int = 4000,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-) -> dict[str, Any]:
-    if not any([symbol_id, qualified_name, symbol_name, query, (path and line is not None)]):
-        raise ValueError("symbol_id, qualified_name, symbol_name, query, or (file_path + line) is required for hover")
-    engine = _code_engine_at(repo_root)
-    payload = cast(
-        dict[str, Any],
-        engine.tool_hover(
-            symbol_id=symbol_id,
-            qualified_name=qualified_name,
-            symbol_name=symbol_name or query,
-            file_path=path,
-            line=line,
-            col=col,
-            budget_tokens=budget_tokens,
-        ),
-    )
-    return _finish_code_result(_maybe_attach_code_rendered("hover", payload, render_compact=render_compact))
-
-
 def _op_node(
     *,
     symbol_id: str | None = None,
@@ -6270,22 +5967,6 @@ def _op_node(
             ),
         )
     return _finish_code_result(_maybe_attach_code_rendered("symbol", payload, render_compact=render_compact))
-
-
-def _op_outline(
-    *,
-    path: str | None = None,
-    limit: int = 20,
-    budget_tokens: int = 4000,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-) -> dict[str, Any]:
-    engine = _code_engine_at(repo_root)
-    payload = cast(
-        dict[str, Any],
-        engine.tool_outline(file_path=path, limit=limit, budget_tokens=budget_tokens),
-    )
-    return _finish_code_result(_maybe_attach_code_rendered("outline", payload, render_compact=render_compact))
 
 
 def _op_rename(
@@ -6376,14 +6057,14 @@ def _op_cache_invalidate(
 # ------------------------------------------------------------------ #
 # Dedicated code-intel tools — each calls its `_op_*` engine wrapper  #
 # directly (no multiplexer). Published tools carry focused schemas;   #
-# repo/admin ops (index, outline, hover, blame, rename, cache_status, #
-# cache_invalidate) are registered hidden via HIDDEN_LLM_TOOLS so     #
-# tests and power use reach them by name.                             #
+# repo/admin ops (index, blame, rename, cache_status, cache_invalidate)    #
+# are registered hidden via HIDDEN_LLM_TOOLS so tests and power use reach   #
+# them by name.                                                            #
 # ------------------------------------------------------------------ #
 
 # Code-intel tool names whose pre-rendered text (set during the _op_* call) is
 # surfaced verbatim by render_tool_result_text. Includes the hidden repo/admin
-# ops so `_call("index"/"outline"/...)` returns rendered text for tests/power use.
+# ops so `_call("index"/...)` returns rendered text for tests/power use.
 _CODE_INTEL_TOOLS: frozenset[str] = frozenset(
     {
         "node",
@@ -6393,8 +6074,6 @@ _CODE_INTEL_TOOLS: frozenset[str] = frozenset(
         "usages",
         "codemod",
         "index",
-        "outline",
-        "hover",
         "blame",
         "rename",
         "cache_status",
@@ -6549,52 +6228,6 @@ def tool_index(
         include_globs=include_globs,
         exclude_globs=exclude_globs,
         force=force,
-        budget_tokens=budget_tokens,
-        repo_root=repo_root,
-        render_compact=render_compact,
-    )
-
-
-@mcp_tool(name="outline")
-def tool_outline(
-    path: str | None = None,
-    limit: int = 20,
-    budget_tokens: int = 4000,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-) -> dict[str, Any]:
-    """Structural outline of a file's top-level symbols (internal/admin)."""
-    return _op_outline(
-        path=path,
-        limit=limit,
-        budget_tokens=budget_tokens,
-        repo_root=repo_root,
-        render_compact=render_compact,
-    )
-
-
-@mcp_tool(name="hover")
-def tool_hover(
-    query: str | None = None,
-    symbol_id: str | None = None,
-    qualified_name: str | None = None,
-    symbol_name: str | None = None,
-    path: str | None = None,
-    line: int | None = None,
-    col: int | None = None,
-    budget_tokens: int = 4000,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-) -> dict[str, Any]:
-    """Hover summary (signature + docs) for a symbol or position (internal/admin)."""
-    return _op_hover(
-        query=query,
-        symbol_id=symbol_id,
-        qualified_name=qualified_name,
-        symbol_name=symbol_name,
-        path=path,
-        line=line,
-        col=col,
         budget_tokens=budget_tokens,
         repo_root=repo_root,
         render_compact=render_compact,
@@ -7410,7 +7043,6 @@ _REMOTE_TOOLS = frozenset(
     {
         "context",
         "memory",
-        "rescue",
         "trace",
         "verify",
     }
@@ -7573,15 +7205,6 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("context tool not registered")
             handler = cast(Callable[[dict[str, Any]], dict[str, Any]], spec["handler"])
             return handler(args)
-        if name == "rescue":
-            rescue_result = _runtime().rescue_failure(
-                task=str(args.get("task") or ""),
-                error=str(args.get("error") or ""),
-                files=cast(list[str], args.get("files") or []),
-                recent_actions=cast(list[str], args.get("recent_actions") or []),
-                domain=cast(str | None, args.get("domain")),
-            )
-            return rescue_result.model_dump()
         spec = TOOLS.get(name)
         if spec is None:
             raise ValueError(f"unknown remote tool: {name}")
@@ -7597,8 +7220,6 @@ def _dispatch_remote(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return cast(dict[str, Any], client.get_context(context_args))
     if name == "memory":
         return cast(dict[str, Any], client.memory(args))
-    if name == "rescue":
-        return cast(dict[str, Any], client.rescue_failure(args))
     if name in {"trace", "record"}:
         trace_result = cast(dict[str, Any], client.record_trace(args))
         trace_id = str(trace_result.get("trace_id") or trace_result.get("id") or "")
