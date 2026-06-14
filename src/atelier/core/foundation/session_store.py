@@ -203,6 +203,7 @@ class SessionStore:
             "host": trace.get("host"),
             "workspace_path": trace.get("workspace_path"),
             "title": trace.get("session_title"),
+            "transcript_path": trace.get("transcript_path"),
             "created_at": trace.get("created_at"),
             "trace_ids": [],
         }
@@ -211,6 +212,7 @@ class SessionStore:
         meta["trace_ids"] = trace_ids
         meta["updated_at"] = trace.get("created_at")
         meta["title"] = meta.get("title") or trace.get("session_title")
+        meta["transcript_path"] = trace.get("transcript_path") or meta.get("transcript_path")
         self._meta_path(session_id).write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # ----- read ------------------------------------------------------------

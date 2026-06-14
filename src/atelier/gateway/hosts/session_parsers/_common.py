@@ -760,6 +760,7 @@ def _build_trace_from_normalized_content(
         skills=unique_strings(skills),
         telemetry=telemetry,
         created_at=created_at,
+        transcript_path=artifact.source_path,
     )
     return trace
 
