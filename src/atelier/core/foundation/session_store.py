@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS trace_index (
     input_tokens    INTEGER DEFAULT 0,
     output_tokens   INTEGER DEFAULT 0,
     cached_input_tokens INTEGER DEFAULT 0,
+    thinking_tokens INTEGER DEFAULT 0,
+    model           TEXT,
     files_json      TEXT DEFAULT '[]',
     synced_at       TEXT
 );
@@ -56,6 +58,8 @@ _INDEXED_FIELDS = (
     "input_tokens",
     "output_tokens",
     "cached_input_tokens",
+    "thinking_tokens",
+    "model",
 )
 
 
@@ -99,9 +103,14 @@ class SessionStore:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(_INDEX_SCHEMA)
-        # Idempotent migration for index.db files created before synced_at existed.
-        with contextlib.suppress(sqlite3.OperationalError):
-            conn.execute("ALTER TABLE trace_index ADD COLUMN synced_at TEXT")
+        # Idempotent migrations for index.db files created before these columns.
+        for ddl in (
+            "ALTER TABLE trace_index ADD COLUMN synced_at TEXT",
+            "ALTER TABLE trace_index ADD COLUMN thinking_tokens INTEGER DEFAULT 0",
+            "ALTER TABLE trace_index ADD COLUMN model TEXT",
+        ):
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute(ddl)
         return conn
 
     def _index_trace(self, conn: sqlite3.Connection, trace: dict[str, Any], session_id: str) -> None:
@@ -110,17 +119,21 @@ class SessionStore:
             """
             INSERT INTO trace_index (
                 id, session_id, agent, host, domain, status, task, workspace_path,
-                created_at, input_tokens, output_tokens, cached_input_tokens, files_json
+                created_at, input_tokens, output_tokens, cached_input_tokens,
+                thinking_tokens, model, files_json
             ) VALUES (
                 :id, :session_id, :agent, :host, :domain, :status, :task, :workspace_path,
-                :created_at, :input_tokens, :output_tokens, :cached_input_tokens, :files_json
+                :created_at, :input_tokens, :output_tokens, :cached_input_tokens,
+                :thinking_tokens, :model, :files_json
             )
             ON CONFLICT(id) DO UPDATE SET
                 session_id=excluded.session_id, agent=excluded.agent, host=excluded.host,
                 domain=excluded.domain, status=excluded.status, task=excluded.task,
                 workspace_path=excluded.workspace_path, created_at=excluded.created_at,
                 input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens,
-                cached_input_tokens=excluded.cached_input_tokens, files_json=excluded.files_json
+                cached_input_tokens=excluded.cached_input_tokens,
+                thinking_tokens=excluded.thinking_tokens, model=excluded.model,
+                files_json=excluded.files_json
             """,
             {
                 "id": trace["id"],
@@ -135,6 +148,8 @@ class SessionStore:
                 "input_tokens": int(values["input_tokens"] or 0),
                 "output_tokens": int(values["output_tokens"] or 0),
                 "cached_input_tokens": int(values["cached_input_tokens"] or 0),
+                "thinking_tokens": int(values["thinking_tokens"] or 0),
+                "model": values["model"],
                 "files_json": json.dumps(trace.get("files_touched") or []),
             },
         )
@@ -399,6 +414,21 @@ class SessionStore:
                 if tid in ids_set and tid in wanted:
                     loaded[str(tid)] = trace
         return [loaded[tid] for tid in ordered_ids if tid in loaded]
+
+    def token_rows(self, *, since: str | None = None) -> list[dict[str, Any]]:
+        """Lightweight per-trace token/host/model rows for cost aggregates (index-only)."""
+        params: list[Any] = []
+        where = ""
+        if since is not None:
+            where = " WHERE created_at >= ?"
+            params.append(since)
+        with closing(self._connect_index()) as conn:
+            rows = conn.execute(
+                "SELECT id, host, model, input_tokens, output_tokens, cached_input_tokens, thinking_tokens "
+                f"FROM trace_index{where}",
+                params,
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def rebuild_index(self) -> int:
         """Rebuild the index from the session files (the source of truth)."""
