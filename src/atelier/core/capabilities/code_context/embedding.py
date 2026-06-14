@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -31,6 +32,52 @@ _STOP_WORDS = frozenset({"a", "an", "for", "how", "in", "of", "the", "to", "with
 _DEFAULT_RRF_K = 60
 _DEFAULT_CANDIDATE_LIMIT = 200
 
+# N12: per-signal weights for the BM25(lexical) + semantic + graph RRF blend.
+# Env overrides (opt-in, WS6 ATELIER_* style):
+_WEIGHT_ENV = {
+    "lexical": "ATELIER_FUSION_WEIGHT_LEXICAL",
+    "semantic": "ATELIER_FUSION_WEIGHT_SEMANTIC",
+    "graph": "ATELIER_FUSION_WEIGHT_GRAPH",
+}
+
+
+@dataclass(frozen=True)
+class FusionWeights:
+    """Tunable per-signal weights for tri-signal reciprocal-rank fusion (N12).
+
+    Each signal's RRF contribution ``1/(k+rank)`` is scaled by its weight before
+    summation. Defaults reproduce today's two-signal behaviour exactly: lexical
+    and semantic both weight 1.0 (so the blend is identical to the prior
+    ``1/(k+rank)`` sum) and graph weights 0.0 (the third signal is a no-op until
+    a caller supplies graph hits AND a non-zero weight). Override per-process via
+    ``ATELIER_FUSION_WEIGHT_{LEXICAL,SEMANTIC,GRAPH}`` or per-call via the
+    ``weights`` argument -- so weight tuning never silently shifts existing
+    rankings.
+    """
+
+    lexical: float = 1.0
+    semantic: float = 1.0
+    graph: float = 0.0
+
+    @classmethod
+    def from_env(cls, env: dict[str, str] | None = None) -> FusionWeights:
+        """Build weights from ``ATELIER_FUSION_WEIGHT_*``; defaults reproduce baseline."""
+        values = os.environ if env is None else env
+        defaults = cls()
+        resolved: dict[str, float] = {}
+        for field_name, env_name in _WEIGHT_ENV.items():
+            raw = values.get(env_name, "").strip()
+            current = getattr(defaults, field_name)
+            if not raw:
+                resolved[field_name] = current
+                continue
+            try:
+                resolved[field_name] = float(raw)
+            except ValueError:
+                # Robust to garbage env: fall back to the baseline weight.
+                resolved[field_name] = current
+        return cls(**resolved)
+
 
 @dataclass
 class _FusionEntry:
@@ -38,6 +85,7 @@ class _FusionEntry:
     score: float
     lexical_rank: int | None = None
     semantic_rank: int | None = None
+    graph_rank: int | None = None
 
 
 def is_identifier_query(query: str) -> bool:
@@ -91,11 +139,14 @@ class SemanticSearchRanker:
         store_root: str | Path | None = None,
         embedder: Embedder | None = None,
         rrf_k: int = _DEFAULT_RRF_K,
+        fusion_weights: FusionWeights | None = None,
     ) -> None:
         self.repo_root = Path(repo_root)
         self.store_root = Path(store_root) if store_root is not None else default_store_root()
         self.embedder = embedder if embedder is not None else get_code_embedder()
         self.rrf_k = rrf_k
+        # N12: resolve once from env (defaults reproduce baseline ranking).
+        self.fusion_weights = fusion_weights if fusion_weights is not None else FusionWeights.from_env()
 
     def semantic_search(
         self,
@@ -133,24 +184,45 @@ class SemanticSearchRanker:
         semantic_hits: Sequence[SymbolRecord],
         *,
         limit: int,
+        graph_hits: Sequence[SymbolRecord] | None = None,
+        weights: FusionWeights | None = None,
     ) -> list[SymbolRecord]:
-        """Fuse lexical and semantic rankings with reciprocal rank fusion."""
+        """Fuse lexical + semantic (+ optional graph) rankings with weighted RRF.
+
+        N12: each signal's reciprocal-rank contribution ``1/(k+rank)`` is scaled
+        by its per-signal weight before summation. ``weights=None`` falls back to
+        this ranker's ``fusion_weights`` (resolved once from
+        ``ATELIER_FUSION_WEIGHT_*`` at construction; default lexical=1.0,
+        semantic=1.0, graph=0.0), so existing call sites stay byte-identical
+        unless those env knobs are set. The ``graph_hits`` signal is a no-op
+        unless callers pass it AND a non-zero graph weight.
+        """
+        effective = weights if weights is not None else self.fusion_weights
         fused: dict[str, _FusionEntry] = {}
         for rank, symbol in enumerate(lexical_hits, start=1):
             entry = fused.setdefault(
                 symbol.symbol_id,
                 _FusionEntry(symbol=symbol, score=0.0, lexical_rank=rank),
             )
-            entry.score += 1.0 / (self.rrf_k + rank)
+            entry.score += effective.lexical * (1.0 / (self.rrf_k + rank))
         for rank, symbol in enumerate(semantic_hits, start=1):
             entry = fused.setdefault(
                 symbol.symbol_id,
                 _FusionEntry(symbol=symbol, score=0.0, semantic_rank=rank),
             )
-            entry.score += 1.0 / (self.rrf_k + rank)
+            entry.score += effective.semantic * (1.0 / (self.rrf_k + rank))
             if entry.lexical_rank is None:
                 entry.symbol = symbol
             entry.semantic_rank = rank
+        for rank, symbol in enumerate(graph_hits or (), start=1):
+            entry = fused.setdefault(
+                symbol.symbol_id,
+                _FusionEntry(symbol=symbol, score=0.0, graph_rank=rank),
+            )
+            entry.score += effective.graph * (1.0 / (self.rrf_k + rank))
+            if entry.lexical_rank is None and entry.semantic_rank is None:
+                entry.symbol = symbol
+            entry.graph_rank = rank
 
         ordered = sorted(
             fused.values(),
@@ -210,6 +282,7 @@ class SemanticSearchRanker:
 
 
 __all__ = [
+    "FusionWeights",
     "SearchMode",
     "SemanticSearchRanker",
     "is_identifier_query",
