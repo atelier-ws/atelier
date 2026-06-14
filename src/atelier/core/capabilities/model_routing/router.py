@@ -13,6 +13,11 @@ from math import isfinite
 from typing import Any, Literal
 
 from atelier.core.capabilities.model_routing.cache_cost import cache_eviction_cost_usd
+from atelier.core.capabilities.model_routing.complexity import (
+    signals_from_state,
+    tier_for_complexity,
+    tier_routing_enabled,
+)
 from atelier.core.capabilities.model_routing.stickiness import decrement_stickiness
 from atelier.core.capabilities.model_routing.stickiness import (
     stickiness_remaining as _stickiness_remaining,
@@ -204,6 +209,11 @@ class ModelRouter:
         reasons.append(phase_reason)
 
         tier = self._tier_for_score(score)
+
+        # N1 (opt-in): complexity-scored tier routing.  Default-off so the
+        # baseline decision above is unchanged for existing callers/tests.
+        tier = self._apply_complexity_tier(tier, task_text, state, reasons)
+
         model = self._models[tier]
 
         cache_affinity_model = _clean_string(state.get("cache_affinity_model"))
@@ -330,6 +340,49 @@ class ModelRouter:
         except Exception:
             logging.exception("Recovered from broad exception handler")
             return
+
+    def _apply_complexity_tier(
+        self,
+        baseline_tier: ModelTier,
+        task_text: str,
+        state: Mapping[str, Any],
+        reasons: list[str],
+    ) -> ModelTier:
+        """Apply complexity-scored tier routing when opted in (N1).
+
+        Returns ``baseline_tier`` unchanged unless tier routing is enabled via
+        ``session_state["tier_routing"]`` or ``ATELIER_TIER_ROUTING``.  When
+        enabled it may step **up** (escalation preserved -- hard work never
+        downgraded) or step **down** by one level for clearly simple work.
+        """
+        if not tier_routing_enabled(state):
+            return baseline_tier
+
+        signals = signals_from_state(task_text, state)
+        result = tier_for_complexity(signals)
+        complexity_tier = result.model_tier  # "cheap" | "medium" | "expensive"
+        reasons.extend(result.reasons)
+
+        rank: dict[str, int] = {"cheap": 0, "medium": 1, "expensive": 2}
+        ranks: list[ModelTier] = ["cheap", "medium", "expensive"]
+        base_rank = rank[baseline_tier]
+        complexity_rank = rank[complexity_tier]
+
+        # Step up: complexity (incl. escalation/cross-project/error signals)
+        # outranks the baseline -> take the stronger tier.  Never downgrades.
+        if complexity_rank > base_rank:
+            reasons.append(f"tier_routing: step up {baseline_tier} -> {complexity_tier}")
+            return complexity_tier  # type: ignore[return-value]
+
+        # Step down (silent): only for clearly simple work with no risk signals.
+        # Drop exactly one level toward the complexity tier and never below it.
+        if complexity_rank < base_rank and not result.stepped_up and not signals.escalate and not signals.cross_project:
+            stepped = ranks[max(complexity_rank, base_rank - 1)]
+            reasons.append(f"tier_routing: step down {baseline_tier} -> {stepped}")
+            return stepped
+
+        reasons.append(f"tier_routing: hold {baseline_tier}")
+        return baseline_tier
 
     def _compute_route_tier(self, tier: ModelTier, score: int, state: Mapping[str, Any]) -> RouteTier:
         """Map scored ModelTier to semantic RouteTier.
