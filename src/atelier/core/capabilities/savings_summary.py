@@ -602,7 +602,7 @@ def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[i
     """
     if not session_id:
         return 0, 0, 0.0, 0
-    path = atelier_root / "session_stats" / "claude" / f"{session_id}.jsonl"
+    path = atelier_root / "sessions" / session_id / "savings.jsonl"
     if not path.exists():
         return 0, 0, 0.0, 0
     from atelier.core.capabilities.pricing import get_model_pricing
@@ -695,7 +695,7 @@ def _carry_credit(session_id: str, atelier_root: Path, turn_timestamps: list[str
     """
     if not session_id or not turn_timestamps:
         return 0, 0.0
-    path = atelier_root / "session_stats" / "claude" / f"{session_id}.jsonl"
+    path = atelier_root / "sessions" / session_id / "savings.jsonl"
     if not path.exists():
         return 0, 0.0
     import bisect
@@ -771,7 +771,7 @@ def compute_savings_summary(
 ) -> SavingsSummary:
     """Aggregate savings for a session.
 
-    Token savings come from ``session_stats/claude/<session_id>.jsonl`` —
+    Token savings come from ``sessions/<session_id>/savings.jsonl`` —
     the MCP dispatcher appends one row per tool call there (keyed by the
     Claude session UUID that SessionStart writes to session_state.json).
 
