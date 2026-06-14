@@ -61,12 +61,10 @@ fi
 # Kept as a static list to avoid importing the Python package at install time.
 HIDDEN_SKILLS=(
     analyze-failures
-    benchmark
     context
     evals
     rescue
     savings
-    settings
     status
     record
 )

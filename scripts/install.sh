@@ -20,6 +20,13 @@
 #   ATELIER_NON_INTERACTIVE If set to 1, skip all prompts (auto-install all hosts)
 #   ATELIER_NO_PATH         If set to 1, skip adding to PATH
 #   ATELIER_NO_HOSTS        If set to 1, skip agent host integration install
+#   ATELIER_KB_EXTRACT      If set to 1, run knowledge extraction during setup (opt-in)
+#   ATELIER_KB_HOST         Extraction backend: auto | claude | codex | ollama
+#   ATELIER_KB_MODEL        Model id for extraction (required for ollama)
+#   ATELIER_KB_MAX_SPEND    Hard USD cap per extraction run (auto/claude)
+#   ATELIER_RECALL_INDEX    SessionStart background recall indexer: on by default (set to 0 to disable)
+#   ATELIER_RECALL_EMBEDDER Recall embedder: local | openai (codex) | ollama (Claude has no embeddings API)
+#   ATELIER_RECALL_EMBED_MODEL  Embed model id (e.g. an ollama model name)
 
 set -euo pipefail
 

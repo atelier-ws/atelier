@@ -582,6 +582,12 @@ class SavingsSummary:
     status_text: str = ""
     saved_pct: float = 0.0
     carry_pct: float = 0.0
+    # Comparative "vs vanilla Claude Code" replay (roundtrips vanilla CC would
+    # have spent that Atelier avoided, priced at full-context resend). This is a
+    # SEPARATE counterfactual estimate and is intentionally NOT added into
+    # saved_usd or any measured-savings field.
+    vs_vanilla_calls: int = 0
+    vs_vanilla_usd: float = 0.0
 
 
 def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[int, int, float, int]:
@@ -596,7 +602,7 @@ def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[i
     """
     if not session_id:
         return 0, 0, 0.0, 0
-    path = atelier_root / "session_stats" / "claude" / f"{session_id}.jsonl"
+    path = atelier_root / "sessions" / session_id / "savings.jsonl"
     if not path.exists():
         return 0, 0, 0.0, 0
     from atelier.core.capabilities.pricing import get_model_pricing
@@ -689,7 +695,7 @@ def _carry_credit(session_id: str, atelier_root: Path, turn_timestamps: list[str
     """
     if not session_id or not turn_timestamps:
         return 0, 0.0
-    path = atelier_root / "session_stats" / "claude" / f"{session_id}.jsonl"
+    path = atelier_root / "sessions" / session_id / "savings.jsonl"
     if not path.exists():
         return 0, 0.0
     import bisect
@@ -765,7 +771,7 @@ def compute_savings_summary(
 ) -> SavingsSummary:
     """Aggregate savings for a session.
 
-    Token savings come from ``session_stats/claude/<session_id>.jsonl`` —
+    Token savings come from ``sessions/<session_id>/savings.jsonl`` —
     the MCP dispatcher appends one row per tool call there (keyed by the
     Claude session UUID that SessionStart writes to session_state.json).
 
@@ -879,6 +885,17 @@ def compute_savings_summary(
     result.ctx_saved = priced_tokens + extra_tokens
     result.saved_usd = row_usd + extra_usd
 
+    # --- vs vanilla Claude Code (separate counterfactual; never in saved_usd) ---
+    if paths:
+        try:
+            from atelier.core.capabilities.vanilla_baseline import replay_session
+
+            vs = replay_session(paths[0])
+            result.vs_vanilla_calls = int(vs.get("calls_saved", 0) or 0)
+            result.vs_vanilla_usd = float(vs.get("cost_saved_usd", 0.0) or 0.0)
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+
     total_baseline = result.saved_usd + result.carry_usd + result.est_cost_usd
     if total_baseline > 0:
         result.saved_pct = (result.saved_usd / total_baseline) * 100
@@ -887,8 +904,29 @@ def compute_savings_summary(
     return result
 
 
+_STATUS_TIPS: tuple[str, ...] = (
+    "Try `atelier savings` to see tokens, time, and $ saved",
+    "Use `sql` to explore your schema without reading SQL files",
+    "Batch reads: read(files=[...]) — one call, many files",
+    "grep content-mode finds and reads code in one step",
+    "Delegate scans to atelier:explore — cheaper model, fewer tokens",
+    "Use the memory tool to recall past sessions and decisions",
+)
+
+
+def _status_tip() -> str:
+    """A rotating feature tip (changes ~every 90s so it isn't flickery)."""
+    import time
+
+    return _STATUS_TIPS[int(time.time() // 90) % len(_STATUS_TIPS)]
+
+
 def _resolve_status_text(atelier_root: str | Path | None = None) -> str:
-    """Return update / login / subscription warning text for the statusline."""
+    """Return update / login / subscription warning text for the statusline.
+
+    Falls back to a rotating feature tip (when ``statusLineTips`` is enabled)
+    so the lowest-priority slot coaches the user toward Atelier features.
+    """
     root = Path(atelier_root) if atelier_root else None
     if root is None:
         root_env = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or ""
@@ -916,6 +954,12 @@ def _resolve_status_text(atelier_root: str | Path | None = None) -> str:
     subscription = _read("subscription.json")
     if subscription.get("warning"):
         return str(subscription.get("message") or "subscription")[:40]
+    # Lowest priority: a rotating feature tip, when statusLineTips is enabled.
+    raw = _read("plugin_settings.json")
+    nested = raw.get("atelier")
+    settings = nested if isinstance(nested, dict) else raw
+    if settings.get("statusLineTips", True) is not False:
+        return _status_tip()
     return ""
 
 
@@ -954,18 +998,16 @@ def load_usage_breakdown(root: str | Path) -> dict[str, Any]:
     try:
         import sqlite3
 
+        from atelier.core.foundation.session_store import SessionStore
+
         with sqlite3.connect(str(db_path)) as conn:
-            # traces table
-            for row in conn.execute(
-                "SELECT json_extract(payload, '$.input_tokens'), json_extract(payload, '$.output_tokens'), "
-                "json_extract(payload, '$.cached_input_tokens'), json_extract(payload, '$.thinking_tokens'), host, "
-                "json_extract(payload, '$.model') FROM traces"
-            ):
-                inp, out, cr, _th, _host, model = row
-                inp = int(inp or 0)
-                out = int(out or 0)
-                cr = int(cr or 0)
-                model_id = resolve_model_id(model) or "claude-sonnet-4-5"
+            # Traces live in the file-based session store; read token/model rows
+            # from its tiny index (atelier.db keeps only context_budget below).
+            for row in SessionStore(root_path).token_rows():
+                inp = int(row["input_tokens"] or 0)
+                out = int(row["output_tokens"] or 0)
+                cr = int(row["cached_input_tokens"] or 0)
+                model_id = resolve_model_id(row["model"]) or "claude-sonnet-4-5"
 
                 input_tokens += inp
                 output_tokens += out
@@ -1013,7 +1055,12 @@ def savings_line(
     """Return the pipe-delimited savings line consumed by statusline.sh.
 
     Format:
-    ``$<saved_usd>|<tokens_saved>|<calls_saved>|<status_text>|$<routing_saved_usd>|<est_cost_usd>|<total_tokens>|<display_input_tokens>|<display_cache_tokens>|<display_output_tokens>|$<carry_usd>|<carry_tokens>|<carry_pct>%|<saved_pct>%``
+    ``$<saved_usd>|<tokens_saved>|<calls_saved>|<status_text>|$<routing_saved_usd>|<est_cost_usd>|<total_tokens>|<display_input_tokens>|<display_cache_tokens>|<display_output_tokens>|$<carry_usd>|<carry_tokens>|<carry_pct>%|<saved_pct>%|<vs_vanilla_calls>|$<vs_vanilla_usd>``
+
+    The two trailing fields are the comparative "vs vanilla Claude Code" replay
+    (roundtrips avoided and their estimated full-context-resend cost). They are
+    separate from the measured savings and are appended last so statusline.sh's
+    positional parsing of the existing fields stays byte-identical.
     """
     summary = compute_savings_summary(session_id, atelier_root=atelier_root, workspace=workspace)
     summary.status_text = _resolve_status_text(atelier_root)
@@ -1024,4 +1071,5 @@ def savings_line(
         f"|{summary.display_input_tokens}|{summary.display_cache_tokens}|{summary.display_output_tokens}"
         f"|${summary.carry_usd:.3f}|{_fmt_tok(summary.carry_tokens)}|{summary.carry_pct:.0f}%"
         f"|{summary.saved_pct:.0f}%"
+        f"|{summary.vs_vanilla_calls}|${summary.vs_vanilla_usd:.3f}"
     )

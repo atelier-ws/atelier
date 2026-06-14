@@ -50,12 +50,10 @@ HIDDEN_LLM_TOOLS = frozenset(
 HIDDEN_SKILLS = frozenset(
     {
         "analyze-failures",
-        "benchmark",
         "context",
         "evals",
         "rescue",
         "savings",
-        "settings",
         "status",
         "record",
     }
