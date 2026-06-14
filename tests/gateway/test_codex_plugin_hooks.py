@@ -250,3 +250,28 @@ def test_codex_compact_hook_bumps_epoch(tmp_path: Path) -> None:
     state_files = list((root / "workspaces").glob("*/session_state.json"))
     assert len(state_files) == 1
     assert json.loads(state_files[0].read_text(encoding="utf-8"))["compaction_epoch"] == 1
+
+
+def test_codex_savings_reporter_is_fail_open_on_unwritable_root(tmp_path: Path) -> None:
+    # ATELIER_ROOT points at a regular file, so session_stats writes raise OSError.
+    # The hook MUST still exit 0 (fail-open) rather than crash with a traceback.
+    bad_root = tmp_path / "rootfile"
+    bad_root.write_text("not a directory", encoding="utf-8")
+    env = os.environ.copy()
+    env.update({"ATELIER_ROOT": str(bad_root), "ATELIER_CTX_NUDGE_TOKENS": "999999999"})
+    result = subprocess.run(
+        [sys.executable, str(HOOKS / "savings_reporter.py")],
+        input=json.dumps(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "c1",
+                "tool_name": "mcp__atelier__edit",
+                "tool_input": {"file_path": "a.py"},
+            }
+        ),
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
