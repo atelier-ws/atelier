@@ -183,7 +183,6 @@ _LINEAGE_DEFAULT_SCORE_PENALTY = 0.1
 _DELETED_SEARCH_COMPACT_DEFAULT_KEYS = set(
     [*_DELETED_SEARCH_ESSENTIAL_KEYS, "score", "matched_on", "rename_target", "rename_note"]
 )
-_OUTLINE_ESSENTIAL_KEYS = ["file_path", "name"]
 _FILES_ESSENTIAL_KEYS = ["file_path"]
 _FILES_OPTIONAL_KEYS = ["top_symbols", "symbol_count", "language"]
 _ROUTES_ESSENTIAL_KEYS = ["framework", "method", "route", "file_path", "line", "provenance"]
@@ -292,7 +291,6 @@ _CACHE_TOOL_ALIASES = {
     "routes": "code.routes",
     "search": "code.search",
     "symbol": "code.symbol",
-    "outline": "code.outline",
     "context": "code.context",
     "usages": "code.usages",
     "callers": "code.callers",
@@ -304,14 +302,12 @@ _OPERATION_TOKEN_CAPS = {
     "index": 80,
     "search": 800,
     "symbol": 800,
-    "outline": 150,
     "pattern": 800,
     "callers": 700,
     "callees": 300,
     "usages": 700,
     "context": 2400,
     "blame": 50,
-    "hover": 190,
     "cache_invalidate": 35,
 }
 # Map internal field names to shortened MCP output names to reduce token bloat.
@@ -1805,55 +1801,6 @@ class CodeContextEngine:
         source = path.read_bytes()[symbol_rec.start_byte : symbol_rec.end_byte].decode("utf-8", errors="replace")
         return {**symbol_rec.model_dump(mode="json"), "source": source}
 
-    def tool_hover(
-        self,
-        *,
-        symbol_id: str | None = None,
-        qualified_name: str | None = None,
-        symbol_name: str | None = None,
-        file_path: str | None = None,
-        line: int | None = None,
-        col: int | None = None,
-        budget_tokens: int = 2000,
-        auto_index: bool = True,
-    ) -> dict[str, Any]:
-        """Surface type, docstring, and signature for a symbol — no subprocess needed.
-
-        Resolution priority: symbol_id → qualified_name → (file_path, line) → symbol_name.
-        Returns {symbol_id, symbol_name, qualified_name, kind, signature, docstring,
-                 documentation, file, line, col, source_snippet, provenance, cache_hit}.
-        """
-        if auto_index:
-            self._ensure_indexed()
-        self._sync_symbol_intel()
-
-        sym: dict[str, Any]
-
-        positional_lookup = (
-            file_path is not None and line is not None and not symbol_id and not qualified_name and not symbol_name
-        )
-        if positional_lookup:
-            sym = self._symbol_at_line(file_path, line)  # type: ignore[arg-type]
-        else:
-            sym = self.get_symbol(
-                symbol_id=symbol_id,
-                qualified_name=qualified_name,
-                symbol_name=symbol_name,
-                file_path=file_path,
-                auto_index=False,
-            )
-
-        emit_product_local("code_hover_retrieved", repo_id=self.repo_id, kind=sym["kind"])
-        return {
-            "symbol_id": sym["symbol_id"],
-            "symbol_name": sym["symbol_name"],
-            "signature": sym["signature"],
-            "file": sym["file_path"],
-            "line": sym["start_line"],
-            "provenance": sym.get("provenance", "local"),
-            "cache_hit": sym.get("cache_hit", False),
-        }
-
     def tool_symbol(
         self,
         *,
@@ -1985,67 +1932,6 @@ class CodeContextEngine:
 
     def _cross_lang_store(self) -> CrossLangEdgeStore:
         return CrossLangEdgeStore(self.connection)
-
-    def tool_outline(
-        self,
-        *,
-        file_path: str | None = None,
-        limit: int = 200,
-        budget_tokens: int = 4000,
-        auto_index: bool = True,
-    ) -> dict[str, Any]:
-        effective_budget_tokens = self._effective_budget_tokens("outline", budget_tokens)
-        if auto_index:
-            self._ensure_indexed()
-        self._sync_symbol_intel()
-        normalized_file_path = self._normalize_file_arg(file_path) if file_path else None
-        cache_args = {
-            "file_path": normalized_file_path,
-            "limit": limit,
-            "budget_tokens": effective_budget_tokens,
-            "file_mtime_ns": self._file_mtime_ns(normalized_file_path) if normalized_file_path else None,
-        }
-        hit, cached = self._cache_get("code.outline", cache_args)
-        if hit and cached is not None:
-            return self._mark_cache_hit(cached)
-
-        raw = self.file_outline(file_path=normalized_file_path, limit=limit, auto_index=False)
-        # Preserve source order for a single-file outline: top-to-bottom is the most
-        # intuitive structural view, and it keeps the leading definitions (classes
-        # included) instead of re-ranking them below public functions where the
-        # compact token budget would truncate them away.
-        flat_items = self._flatten_outline(raw["files"])
-        full_symbol_count = int(raw["symbol_count"])
-        full_payload = {
-            "repo_id": str(raw["repo_id"]),
-            "files": raw["files"],
-            "symbol_count": full_symbol_count,
-            "provenance": _LOCAL_PROVENANCE,
-        }
-        full_total_tokens = self._compute_total_tokens({**full_payload, "cache_hit": False, "tokens_saved": 0})
-
-        def build_payload(packed_items: list[dict[str, Any]]) -> dict[str, Any]:
-            return self._finalize_packed_payload(
-                {
-                    "repo_id": str(raw["repo_id"]),
-                    "files": self._group_outline(packed_items),
-                    "symbol_count": full_symbol_count,
-                    "cache_hit": False,
-                    "provenance": _LOCAL_PROVENANCE,
-                },
-                full_total_tokens=full_total_tokens,
-            )
-
-        payload = self._fit_items_to_budget(
-            flat_items,
-            budget_tokens=effective_budget_tokens,
-            essential_keys=_OUTLINE_ESSENTIAL_KEYS,
-            optional_keys_in_drop_order=[],
-            build_payload=build_payload,
-            enforce_protected_top_rank=False,
-        )
-        self._cache_set("code.outline", cache_args, payload)
-        return payload
 
     def tool_files(
         self,
@@ -4311,7 +4197,9 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found" if merged_status == "empty" else None
+                else "no related call edges were found"
+                if merged_status == "empty"
+                else None
             )
             merged_snapshot = None
             if snapshot:
@@ -6555,29 +6443,6 @@ class CodeContextEngine:
             max_end_index = min(max_end_index, max(start_index + 1, end_line))
         snippet_slice = lines[start_index:max_end_index]
         return "\n".join(snippet_slice)
-
-    def _flatten_outline(self, files: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
-        items: list[dict[str, Any]] = []
-        for file_path in sorted(files):
-            for item in files[file_path]:
-                items.append({"file_path": file_path, **item})
-        return items
-
-    def _group_outline(self, items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-        normalized = sorted(
-            items,
-            key=lambda item: (
-                str(item.get("file_path") or ""),
-                int(item.get("line_start") or 0),
-                str(item.get("qualified_name") or item.get("name") or ""),
-                str(item.get("kind") or ""),
-            ),
-        )
-        grouped: dict[str, list[dict[str, Any]]] = {}
-        for item in normalized:
-            file_path = str(item["file_path"])
-            grouped.setdefault(file_path, []).append({k: v for k, v in item.items() if k != "file_path"})
-        return grouped
 
     def _normalize_files_path(self, value: str | None) -> str | None:
         if value is None:

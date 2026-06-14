@@ -276,7 +276,10 @@ def benchmark_mcp_cmd(out: Path | None, tools: tuple[str, ...], jobs: int) -> No
 )
 @click.option(
     "--providers",
-    default=("atelier,atelier-zoekt,zoekt,serena,codegraph,code-index-mcp,jcodemunch-mcp,ast-grep"),
+    default=(
+        "atelier,atelier-zoekt,zoekt,serena,codegraph,code-index-mcp,jcodemunch-mcp,"
+        "ast-grep,scip-python,universal-ctags"
+    ),
     show_default=True,
 )
 @click.option(

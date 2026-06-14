@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from atelier.core.foundation.models import (
-    RescueResult,
     RubricResult,
     TraceLearning,
     TraceStatus,
@@ -32,11 +31,9 @@ class _LoopbackTransport(MCPToolTransport):
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         tools = {
             "context": mcp_server.tool_get_context,
-            "rescue": mcp_server.tool_rescue_failure,
             "trace": mcp_server.tool_record_trace,
             "record": mcp_server.tool_record_trace,
             "verify": mcp_server.tool_run_rubric_gate,
-            "route": mcp_server.tool_route,
             "memory": mcp_server.tool_memory,
             "read": mcp_server.tool_smart_read,
             "search": mcp_server.tool_smart_search,
@@ -113,9 +110,6 @@ class MCPClient(LocalClient):
         )
         return MemoryRecallResult.model_validate(payload)
 
-    def route(self, *, op: str, **kwargs: Any) -> dict[str, Any]:
-        return self._transport.call_tool("route", {"op": op, **kwargs})
-
     def compact(self, *, op: str, **kwargs: Any) -> dict[str, Any]:
         return self._transport.call_tool("compact", {"op": op, **kwargs})
 
@@ -127,31 +121,6 @@ class MCPClient(LocalClient):
 
     def repo_map(self, *, seed_files: list[str], **kwargs: Any) -> dict[str, Any]:
         return self._transport.call_tool("search", {"seed_files": seed_files, "mode": "map", **kwargs})
-
-    def rescue_failure(
-        self,
-        *,
-        task: str,
-        error: str,
-        domain: str | None = None,
-        files: list[str] | None = None,
-        recent_actions: list[str] | None = None,
-    ) -> RescueResult:
-        payload = self._transport.call_tool(
-            "rescue",
-            {
-                "task": task,
-                "error": error,
-                "domain": domain,
-                "files": files or [],
-                "recent_actions": recent_actions or [],
-            },
-        )
-        payload = {
-            "rescue": str(payload.get("rescue") or ""),
-            "matched_blocks": list(payload.get("matched_blocks") or []),
-        }
-        return RescueResult.model_validate(payload)
 
     def run_rubric_gate(self, *, rubric_id: str, checks: dict[str, bool | None]) -> RubricResult:
         payload = self._transport.call_tool(
