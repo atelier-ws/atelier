@@ -89,12 +89,12 @@ ATELIER_KB_EXTRACT="${ATELIER_KB_EXTRACT:-0}"      # 1 = run knowledge extractio
 ATELIER_KB_HOST="${ATELIER_KB_HOST:-auto}"        # auto | claude | codex | ollama
 ATELIER_KB_MODEL="${ATELIER_KB_MODEL:-}"          # model id (required for ollama)
 ATELIER_KB_MAX_SPEND="${ATELIER_KB_MAX_SPEND:-0.50}"  # hard USD cap per run (auto/claude)
-# All-sessions Recall (opt-in). Background-index past transcripts so recall spans
-# every session. Embedding has a cost, so the auto-indexer is off by default.
+# All-sessions Recall. Background-index past transcripts so recall spans every
+# session. On by default (the local embedder is free; set to 0 to disable).
 # Claude has no embeddings API, so it is not an embedder choice.
 [[ -n "${ATELIER_RECALL_INDEX+x}" ]] && ATELIER_RECALL_PRESET=1 || ATELIER_RECALL_PRESET=0
 ATELIER_RECALL_PROMPTED=0
-ATELIER_RECALL_INDEX="${ATELIER_RECALL_INDEX:-0}"            # 1 = enable SessionStart background indexer
+ATELIER_RECALL_INDEX="${ATELIER_RECALL_INDEX:-1}"            # 1 = enable SessionStart background indexer (default)
 ATELIER_RECALL_EMBEDDER="${ATELIER_RECALL_EMBEDDER:-local}"  # local | openai (codex) | ollama
 ATELIER_RECALL_EMBED_MODEL="${ATELIER_RECALL_EMBED_MODEL:-}" # embed model (e.g. an ollama model name)
 ATELIER_ZOEKT="${ATELIER_ZOEKT:-0}"                    # 1 = install persistent Zoekt sidecar
@@ -1483,11 +1483,11 @@ prompt_recall_indexing() {
     ATELIER_RECALL_PROMPTED=1
 
     local ans=""
-    printf "  ◇  Enable all-sessions Recall (background-index past sessions for semantic recall)? [y/N] "
+    printf "  ◇  Enable all-sessions Recall (background-index past sessions for semantic recall)? [Y/n] "
     IFS= read -r ans </dev/tty 2>/dev/null || ans=""
     case "$ans" in
-        y | Y | yes | YES) ATELIER_RECALL_INDEX=1 ;;
-        *) ATELIER_RECALL_INDEX=0 ;;
+        n | N | no | NO) ATELIER_RECALL_INDEX=0 ;;
+        *) ATELIER_RECALL_INDEX=1 ;;
     esac
 
     local choice=""

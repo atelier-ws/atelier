@@ -3,8 +3,9 @@
 
 When ``recallAutoIndex`` is enabled in plugin_settings.json, detaches a child
 that incrementally indexes past session transcripts into the archival vector
-store so Recall can search across ALL sessions. Off by default (embedding work
-has a cost); the ``atelier recall index`` CLI is always available regardless.
+store so Recall can search across ALL sessions. On by default (the local
+embedder is free); set ``recallAutoIndex`` to false to disable. The
+``atelier recall index`` CLI is available regardless.
 
 Fail-open and non-blocking: returns 0 immediately, never waits on the child.
 """
@@ -53,7 +54,10 @@ def _auto_index_enabled(root: Path) -> bool:
         data = json.loads(plugin_settings_path(root).read_text("utf-8"))
     except (OSError, json.JSONDecodeError, ImportError):
         return False
-    return bool(isinstance(data, dict) and data.get("recallAutoIndex", False))
+    # On by default: only an explicit false disables the background indexer.
+    if not isinstance(data, dict):
+        return True
+    return bool(data.get("recallAutoIndex", True))
 
 
 def _spawn(root: Path) -> None:

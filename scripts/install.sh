@@ -24,7 +24,7 @@
 #   ATELIER_KB_HOST         Extraction backend: auto | claude | codex | ollama
 #   ATELIER_KB_MODEL        Model id for extraction (required for ollama)
 #   ATELIER_KB_MAX_SPEND    Hard USD cap per extraction run (auto/claude)
-#   ATELIER_RECALL_INDEX    If set to 1, enable the SessionStart background recall indexer (opt-in)
+#   ATELIER_RECALL_INDEX    SessionStart background recall indexer: on by default (set to 0 to disable)
 #   ATELIER_RECALL_EMBEDDER Recall embedder: local | openai (codex) | ollama (Claude has no embeddings API)
 #   ATELIER_RECALL_EMBED_MODEL  Embed model id (e.g. an ollama model name)
 
