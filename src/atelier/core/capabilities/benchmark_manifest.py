@@ -20,8 +20,6 @@ def build_atelierbench_manifest(
     reps: int,
     model: str,
     cli_driver: str,
-    transport: str,
-    api_provider: str,
     timeout: int,
     jobs: int,
     parallel_scope: str,
@@ -49,8 +47,6 @@ def build_atelierbench_manifest(
             "matched_fields": {
                 "model": model,
                 "cli_driver": cli_driver,
-                "transport": transport,
-                "api_provider": api_provider,
                 "timeout_seconds": timeout,
                 "jobs": jobs,
                 "parallel_scope": parallel_scope,

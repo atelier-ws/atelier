@@ -29,6 +29,38 @@ def test_apply_fuzzy_replace_handles_indentation_drift() -> None:
     assert line_end == 3
 
 
+def test_apply_fuzzy_replace_refuses_ambiguous_duplicate_blocks() -> None:
+    """Near-miss old_string over duplicated blocks must not silently mis-anchor.
+
+    Regression: DMP returned the *first* acceptable window, so a near-miss
+    old_string targeting the *second* of two similar blocks silently replaced
+    the first. The scan now ranks every window and refuses on a tie.
+    """
+    shared = (
+        "long shared paragraph line one\n"
+        "long shared paragraph line two\n"
+        "long shared paragraph line three\n"
+        "long shared paragraph line four\n"
+    )
+    content = "HEADER_B1 marker\n" + shared + "HEADER_B2 marker\n" + shared + "TAIL\n"
+    old = "HEADER_B2 markerX\n" + shared  # near-miss targeting block 2
+
+    with pytest.raises(FuzzyAmbiguousMatchError):
+        apply_fuzzy_replace(content, old, "REPLACED\n")
+    # block 1 is never silently clobbered
+    assert "HEADER_B1 marker" in content
+
+
+def test_apply_fuzzy_replace_refuses_identical_block_tie() -> None:
+    """Two identical blocks + a near-miss that matches both equally -> refuse."""
+    block = "shared line a\nshared line b\nshared line c\nshared line d\n"
+    content = "top\n" + block + "mid\n" + block + "end\n"
+    old = "shared line a\nshared line b\nshared line c\nshared line dX\n"
+
+    with pytest.raises(FuzzyAmbiguousMatchError):
+        apply_fuzzy_replace(content, old, "REPLACED\n")
+
+
 def test_apply_fuzzy_replace_handles_trailing_whitespace_drift() -> None:
     content = "SELECT id, name   \nFROM users\n"
     old = "SELECT id, name\nFROM users\n"

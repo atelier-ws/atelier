@@ -2338,3 +2338,24 @@ def test_overflow_metadata_and_artifact_payload_are_compact(tmp_path: Path, monk
     assert "total_tokens" not in artifact_payload
     assert "cache_hit" not in artifact_payload
     assert "overflow" not in artifact_payload
+
+
+def test_nonblocking_reads_skip_cold_build_while_default_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Neuter the autosync worker so the test is deterministic (no async build race).
+    monkeypatch.setattr(CodeContextEngine, "_start_autosync_worker", lambda self: None)
+    _write_fixture_repo(tmp_path)
+
+    # MCP transport mode: a read must not trigger a synchronous cold build.
+    mcp_engine = CodeContextEngine(tmp_path, db_path=tmp_path / "mcp.sqlite", nonblocking_reads=True)
+    assert mcp_engine.index_ready() is False
+    warming = mcp_engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+    assert not warming.get("items")
+    assert mcp_engine.index_ready() is False
+
+    # Default (direct / SDK) mode: a read blocks and builds the index.
+    direct_engine = CodeContextEngine(tmp_path, db_path=tmp_path / "direct.sqlite")
+    result = direct_engine.tool_search("OrderService", limit=5, budget_tokens=4000)
+    assert any(item["name"] == "OrderService" for item in result["items"])
+    assert direct_engine.index_ready() is True
