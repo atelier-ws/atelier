@@ -409,6 +409,26 @@ def test_write_codex_agents_generates_all_surfaced_roles(tmp_path: Path) -> None
     assert "developer_instructions" in text
 
 
+def test_render_codex_agent_toml_escapes_hostile_body() -> None:
+    import tomllib
+
+    from atelier.core.capabilities.workspace_host_overrides import _render_codex_agent_toml
+
+    # Body with everything that breaks naive TOML rendering: a regex backslash,
+    # a Windows path, a bare quote, and a literal triple-quote run.
+    body = 'use regex \\d+ and path C:\\temp; quote " and triple """ end'
+    description = 'a "quoted" desc with \\ backslash'
+    rendered = _render_codex_agent_toml("code", description, body, "gpt-5.5")
+    parsed = tomllib.loads(rendered)  # must not raise
+    assert parsed["name"] == "atelier.code"
+    assert parsed["model"] == "gpt-5.5"
+    assert parsed["description"] == 'a "quoted" desc with \\ backslash'
+    instr = parsed["developer_instructions"]
+    assert "\\d+" in instr  # literal backslash-d survived (not a TOML escape)
+    assert "C:\\temp" in instr
+    assert '"""' in instr  # literal triple-quote round-tripped
+
+
 def test_write_codex_agents_prunes_stale_roles(tmp_path: Path) -> None:
     from atelier.core.capabilities.workspace_host_overrides import write_codex_agents
 
