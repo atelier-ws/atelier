@@ -28,6 +28,7 @@ EXPECTED_TOOLS = {
     "agent",
     "graph",
     "scan",
+    "orient",
 }
 
 

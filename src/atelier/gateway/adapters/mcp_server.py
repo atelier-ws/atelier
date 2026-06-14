@@ -6815,6 +6815,24 @@ def tool_scan(
     }
 
 
+@mcp_tool(name="orient")
+def tool_orient(topic: str | None = None) -> dict[str, Any]:
+    """Return Atelier's tool-usage playbook on demand (N8).
+
+    One fetch for the optimal tool sequencing -- explore -> navigate -> edit ->
+    verify -- and which tool to reach for in each phase, so this guidance need
+    not be duplicated in every system prompt. Static and deterministic.
+
+    Pass an optional `topic` (explore, navigate, edit, verify, selection) for a
+    single focused section instead of the whole playbook. An unknown topic is
+    not an error: it returns the overview plus the list of valid topics.
+    Returns: sequence, sections (title/body), topics, and rendered `text`.
+    """
+    from atelier.core.capabilities.orientation import orientation_playbook
+
+    return orientation_playbook(topic)
+
+
 def _run_shell_tool(
     command: str = "",
     timeout: int = 30,

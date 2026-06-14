@@ -42,6 +42,10 @@ HIDDEN_LLM_TOOLS = frozenset(
         # WS8 G11 security scan (SAST first iteration): callable by name but kept
         # off the advertised surface to preserve the lean public tool set.
         "scan",
+        # WS12 N8 on-demand tool-usage playbook: callable by name so the
+        # orientation guidance lives in one fetch, but kept off the advertised
+        # surface to preserve the lean public tool set.
+        "orient",
     }
 )
 HIDDEN_SKILLS = frozenset(
