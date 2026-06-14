@@ -51,7 +51,7 @@ _EXTERNAL_REPORT_ALL_TOOLS = (
 )
 
 
-def _echo_vs_vanilla_block(root: str | Path) -> None:
+def _echo_vs_vanilla_block(root: str | Path, *, deep: bool = False) -> None:
     """Render the comparative \"vs vanilla Claude Code\" replay block.
 
     Sourced from aggregate_vanilla_baseline (lifetime window + cap). This is an
@@ -72,14 +72,25 @@ def _echo_vs_vanilla_block(root: str | Path) -> None:
     usd = float(vs.get("cost_saved_usd", 0.0) or 0.0)
     seconds = int((vs.get("time_saved_ms", 0) or 0) / 1000)
     click.echo("")
-    click.echo(f"vs vanilla Claude Code: {calls} roundtrips avoided " f"· ${usd:.2f} · ~{seconds}s faster (estimate)")
+    click.echo(f"vs vanilla Claude Code: {calls} roundtrips avoided · ${usd:.2f} · ~{seconds}s faster (estimate)")
+    if deep:
+        by_detector = vs.get("by_detector") or {}
+        if by_detector:
+            click.echo("  by pattern (roundtrips avoided):")
+            for label, hits in sorted(by_detector.items(), key=lambda kv: kv[1], reverse=True):
+                click.echo(f"    {label}: {hits}")
+        click.echo(
+            f"  window: {int(vs.get('window_days', 0) or 0)}d · {int(vs.get('sessions', 0) or 0)} sessions"
+            + ("  (lifetime cap hit)" if vs.get("capped") else "")
+        )
 
 
 @click.group("savings", invoke_without_command=True)
 @click.option("--json", "as_json", is_flag=True)
 @click.option("--line", is_flag=True, help="Pipe-delimited one-liner for statusline.sh.")
+@click.option("--deep", is_flag=True, help="Add a per-pattern vs-vanilla breakdown (which workflows save most).")
 @click.pass_context
-def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
+def savings_cmd(ctx: click.Context, as_json: bool, line: bool, deep: bool) -> None:
     """Aggregate savings: cache + reasoning-library + cost-delta vs. baseline."""
     if ctx.invoked_subcommand is not None:
         return
@@ -130,7 +141,7 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
                     click.echo(f"  {k2}: {v2}")
             else:
                 click.echo(f"{k}: {v}")
-        _echo_vs_vanilla_block(ctx.obj["root"])
+        _echo_vs_vanilla_block(ctx.obj["root"], deep=deep)
 
 
 @savings_cmd.command("wire")
