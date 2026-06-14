@@ -65,6 +65,7 @@ def rank_archival_passages(
     since: datetime | None = None,
     top_k: int = 5,
     embedding_model: str | None = None,
+    valid_as_of: datetime | None = None,
 ) -> list[RankedPassage]:
     """Rank archival passages with hybrid BM25 and cosine scoring.
 
@@ -82,6 +83,12 @@ def rank_archival_passages(
         filtered = [p for p in filtered if required.issubset(set(p.tags))]
     if since is not None:
         filtered = [p for p in filtered if p.created_at >= since]
+    # N13: opt-in bi-temporal recall filter. Default ``valid_as_of=None`` skips
+    # this entirely, so existing recall behaviour is byte-identical; when a
+    # moment is supplied, passages whose validity window does not cover it
+    # (e.g. invalidated by a calibrated code change) are excluded from recall.
+    if valid_as_of is not None:
+        filtered = [p for p in filtered if p.is_valid_at(valid_as_of)]
     if not filtered:
         return []
 
