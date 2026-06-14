@@ -39,6 +39,9 @@ HIDDEN_LLM_TOOLS = frozenset(
         # symbol centrality): registered and callable by name, but kept off the
         # advertised surface to preserve the lean public tool set.
         "graph",
+        # WS8 G11 security scan (SAST first iteration): callable by name but kept
+        # off the advertised surface to preserve the lean public tool set.
+        "scan",
     }
 )
 HIDDEN_SKILLS = frozenset(
