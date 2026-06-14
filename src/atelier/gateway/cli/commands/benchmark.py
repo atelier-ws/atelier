@@ -276,10 +276,17 @@ def benchmark_mcp_cmd(out: Path | None, tools: tuple[str, ...], jobs: int) -> No
 )
 @click.option(
     "--providers",
-    default=("atelier,atelier-zoekt,zoekt,serena,atelier-codegraph,codegraph,code-index-mcp,jcodemunch-mcp"),
+    default=("atelier,atelier-zoekt,zoekt,serena,codegraph,code-index-mcp,jcodemunch-mcp,ast-grep"),
     show_default=True,
 )
-@click.option("--families", default="exact_search,substring_search,nohit_search", show_default=True)
+@click.option(
+    "--families",
+    default=(
+        "exact_symbol,exact_search,substring_search,file_outline,references,"
+        "callers,callees,fuzzy_symbol,structural_search,semantic_search,nohit_search"
+    ),
+    show_default=True,
+)
 @click.option(
     "--install/--no-install",
     default=True,

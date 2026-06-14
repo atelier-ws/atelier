@@ -62,9 +62,12 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "search:substring", "family": "substring_search", "benchmarked": True},
         {"surface": "outline", "family": "file_outline", "benchmarked": True},
         {"surface": "search:nohit", "family": "nohit_search", "benchmarked": True},
-        {"surface": "usages", "family": "graph", "benchmarked": False},
-        {"surface": "callers", "family": "graph", "benchmarked": False},
-        {"surface": "callees", "family": "graph", "benchmarked": False},
+        {"surface": "usages", "family": "references", "benchmarked": True},
+        {"surface": "callers", "family": "callers", "benchmarked": True},
+        {"surface": "callees", "family": "callees", "benchmarked": True},
+        {"surface": "search:fuzzy", "family": "fuzzy_symbol", "benchmarked": True},
+        {"surface": "pattern", "family": "structural_search", "benchmarked": True},
+        {"surface": "search:semantic", "family": "semantic_search", "benchmarked": True},
     ],
     "atelier-zoekt": [
         {"surface": "search:exact", "family": "exact_search", "benchmarked": True},
@@ -86,12 +89,7 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         },
         {"surface": "get_symbols_overview", "family": "file_outline", "benchmarked": True},
         {"surface": "search_for_pattern:nohit", "family": "nohit_search", "benchmarked": True},
-        {"surface": "find_referencing_symbols", "family": "graph", "benchmarked": False},
-    ],
-    "atelier-codegraph": [
-        {"surface": "query:search:compact", "family": "exact_search", "benchmarked": True},
-        {"surface": "query:substring:compact", "family": "substring_search", "benchmarked": True},
-        {"surface": "query:nohit:compact", "family": "nohit_search", "benchmarked": True},
+        {"surface": "find_referencing_symbols", "family": "references", "benchmarked": True},
     ],
     "codegraph": [
         {"surface": "query:exact", "family": "exact_symbol", "benchmarked": True},
@@ -118,9 +116,13 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "search_text:substring", "family": "substring_search", "benchmarked": True},
         {"surface": "get_file_outline", "family": "file_outline", "benchmarked": True},
         {"surface": "search_text:nohit", "family": "nohit_search", "benchmarked": True},
-        {"surface": "find_references", "family": "graph", "benchmarked": False},
-        {"surface": "get_call_hierarchy", "family": "graph", "benchmarked": False},
+        {"surface": "find_references", "family": "references", "benchmarked": True},
+        {"surface": "get_call_hierarchy", "family": "callers", "benchmarked": True},
+        {"surface": "search_symbols:fuzzy", "family": "fuzzy_symbol", "benchmarked": True},
         {"surface": "get_blast_radius", "family": "graph", "benchmarked": False},
+    ],
+    "ast-grep": [
+        {"surface": "run:pattern", "family": "structural_search", "benchmarked": True},
     ],
 }
 
@@ -134,10 +136,10 @@ DEFAULT_PROVIDER_TOOLS = (
     "atelier-zoekt",
     "zoekt",
     "serena",
-    "atelier-codegraph",
     "codegraph",
     "code-index-mcp",
     "jcodemunch-mcp",
+    "ast-grep",
 )
 
 
@@ -256,7 +258,7 @@ class AtelierRunner(_RunnerBase):
         self.cache_root = cache_root
         self.cache_key = cache_key
         self.snapshot_root: Path | None = None
-        self.tool_code: Any | None = None
+        self.call_code_op: Any | None = None
 
     def start(self) -> None:
         if str(self.repo_root) not in sys.path:
@@ -271,14 +273,14 @@ class AtelierRunner(_RunnerBase):
         )
         runtime_root = Path(tempfile.mkdtemp(prefix="atelier-matrix-root-", dir=tool_workspace))
         configure_benchmark_runtime(runtime_root, workspace_root=self.snapshot_root)
-        from atelier.gateway.adapters.mcp_server import tool_code
+        from benchmarks.mcp_tools._env import call_code_op
 
-        self.tool_code = tool_code
+        self.call_code_op = call_code_op
         # Pre-warm: the first search on a fresh snapshot triggers a full index
         # build (tens of seconds). Do it here so measured cases reflect steady
         # state instead of folding a one-time build into one case's latency.
         with contextlib.suppress(Exception):
-            tool_code(
+            call_code_op(
                 {
                     "op": "search",
                     "repo_root": str(self.snapshot_root),
@@ -290,7 +292,7 @@ class AtelierRunner(_RunnerBase):
             )
 
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
-        assert self.snapshot_root is not None and self.tool_code is not None
+        assert self.snapshot_root is not None and self.call_code_op is not None
         if case.family == "exact_symbol":
             request = {
                 "op": "symbol",
@@ -317,9 +319,58 @@ class AtelierRunner(_RunnerBase):
                 "path": case.path,
                 "budget_tokens": 4000,
             }
+        elif case.family == "references":
+            request = {
+                "op": "usages",
+                "repo_root": str(self.snapshot_root),
+                "symbol_name": case.symbol_name,
+                "file_path": case.path,
+                "limit": 50,
+                "budget_tokens": 4000,
+            }
+        elif case.family in {"callers", "callees"}:
+            request = {
+                "op": case.family,
+                "repo_root": str(self.snapshot_root),
+                "symbol_name": case.symbol_name,
+                "file_path": case.path,
+                "limit": 50,
+                "budget_tokens": 4000,
+            }
+        elif case.family == "fuzzy_symbol":
+            request = {
+                "op": "search",
+                "repo_root": str(self.snapshot_root),
+                "query": case.query,
+                "mode": "lexical",
+                "intent": "symbol",
+                "limit": 20,
+                "file_glob": "src/atelier/**/*.py",
+                "budget_tokens": 4000,
+            }
+        elif case.family == "structural_search":
+            request = {
+                "op": "pattern",
+                "repo_root": str(self.snapshot_root),
+                "pattern": case.query,
+                "language": "python",
+                "file_glob": "src/atelier/**/*.py",
+                "limit": 50,
+                "budget_tokens": 4000,
+            }
+        elif case.family == "semantic_search":
+            request = {
+                "op": "search",
+                "repo_root": str(self.snapshot_root),
+                "query": case.query,
+                "mode": "semantic",
+                "limit": 20,
+                "file_glob": "src/atelier/**/*.py",
+                "budget_tokens": 4000,
+            }
         else:
             raise ValueError(f"unsupported family for {self.tool_name}: {case.family}")
-        response = self.tool_code(request)
+        response = self.call_code_op(request)
         return json.dumps(request, ensure_ascii=False), json.dumps(response, ensure_ascii=False)
 
 
@@ -482,6 +533,13 @@ class SerenaMatrixRunner(_RunnerBase):
         elif case.family == "file_outline":
             tool_name = "get_symbols_overview"
             params = {"relative_path": case.path, "depth": 0}
+        elif case.family == "references":
+            tool_name = "find_referencing_symbols"
+            params = {
+                "name_path": case.symbol_name,
+                "relative_path": case.path,
+                "max_answer_chars": 20000,
+            }
         else:
             raise ValueError(f"unsupported family for {self.tool_name}: {case.family}")
         response = self.runner.query(tool_name, params)
@@ -535,13 +593,50 @@ class CodeGraphRunner(_RunnerBase):
         return json.dumps({"command": command}, ensure_ascii=False), proc.stdout
 
 
-class AtelierCodeGraphRunner(CodeGraphRunner):
-    tool_name = "atelier-codegraph"
+class AstGrepRunner(_RunnerBase):
+    """Raw ast-grep CLI as a structural-search comparator for Atelier's pattern op.
+
+    Uses ``npx @ast-grep/cli`` so it works wherever Node is available; if the CLI
+    cannot be fetched the shard is recorded as startup/case failed (honest).
+    """
+
+    tool_name = "ast-grep"
     supported_families = TOOL_SUPPORT[tool_name]
 
+    def __init__(self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str) -> None:
+        self.repo_root = repo_root
+        self.workspace_root = workspace_root
+        self.cache_root = cache_root
+        self.cache_key = cache_key
+        self.snapshot_root: Path | None = None
+
+    def start(self) -> None:
+        self.snapshot_root = _prepare_provider_snapshot(
+            self.repo_root,
+            self.workspace_root,
+            tool_name=self.tool_name,
+            cache_root=self.cache_root,
+            cache_key=self.cache_key,
+        )
+
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
-        request, output = super().run_case(case)
-        return request, _compact_provider_payload(self.tool_name, case, output)
+        assert self.snapshot_root is not None
+        command = [
+            "npx",
+            "--yes",
+            "@ast-grep/cli",
+            "run",
+            "--pattern",
+            case.query,
+            "--lang",
+            "python",
+            "--json",
+            str(self.snapshot_root / "src" / "atelier"),
+        ]
+        proc = run_cmd(command, timeout=300)
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
+        return json.dumps({"command": command}, ensure_ascii=False), proc.stdout
 
 
 class CodeIndexMatrixRunner(_RunnerBase):
@@ -902,6 +997,33 @@ class JCodeMunchRunner(_RunnerBase):
         elif case.family == "file_outline":
             arguments = {"repo": self.repo_id, "file_path": case.path}
             result = self._tool_call("get_file_outline", arguments)
+        elif case.family == "references":
+            arguments = {
+                "repo": self.repo_id,
+                "symbol": case.symbol_name,
+                "file_path": case.path,
+                "max_results": 50,
+            }
+            result = self._tool_call("find_references", arguments)
+        elif case.family == "callers":
+            arguments = {
+                "repo": self.repo_id,
+                "symbol": case.symbol_name,
+                "file_path": case.path,
+                "direction": "callers",
+                "max_results": 50,
+            }
+            result = self._tool_call("get_call_hierarchy", arguments)
+        elif case.family == "fuzzy_symbol":
+            arguments = {
+                "repo": self.repo_id,
+                "query": case.query,
+                "language": "python",
+                "max_results": 10,
+                "detail_level": "compact",
+                "fuzzy": True,
+            }
+            result = self._tool_call("search_symbols", arguments)
         else:
             raise ValueError(f"unsupported family for {self.tool_name}: {case.family}")
         return json.dumps(arguments, ensure_ascii=False), json.dumps(result, ensure_ascii=False)
@@ -976,142 +1098,6 @@ def _payload_looks_empty(payload: str) -> bool:
     return any(marker in compact for marker in empty_markers)
 
 
-def _compact_provider_payload(tool: str, case: ExternalBenchCase, output: str) -> str:
-    """Compact provider-native output into an Atelier-style benchmark payload."""
-    if case.family == "nohit_search":
-        return output[:1200]
-    query = case.query.lower()
-    selected: list[tuple[float, object]] = []
-
-    def _interesting_text(value: str) -> bool:
-        lowered = value.lower()
-        return query in lowered or "src/atelier" in lowered
-
-    def _append(item: object, *, path: str = "", text: str = "") -> None:
-        score = _compact_item_score(query, path, text)
-        selected.append((score, item))
-
-    def _walk_path_mapping(value: dict[str, object]) -> bool:
-        handled = False
-        for key, item in value.items():
-            if "/" not in key:
-                continue
-            handled = True
-            snippets: list[str] = []
-            if isinstance(item, list):
-                for entry in item:
-                    compact = " ".join(str(entry).split())
-                    if compact and _interesting_text(f"{key} {compact}"):
-                        snippets.append(compact[:240])
-                    if len(snippets) >= 3:
-                        break
-            else:
-                compact = " ".join(str(item).split())
-                if compact:
-                    snippets.append(compact[:240])
-            if snippets:
-                _append({"path": key, "snippets": snippets}, path=key, text=" ".join(snippets))
-        return handled
-
-    def _walk(value: object) -> None:
-        if len(selected) >= 80:
-            return
-        if isinstance(value, dict):
-            if _walk_path_mapping(value):
-                return
-            blob = json.dumps(value, ensure_ascii=False)
-            if _interesting_text(blob):
-                compact = _shrink_mapping(value)
-                _append(compact, text=json.dumps(compact, ensure_ascii=False))
-                return
-            for child in value.values():
-                _walk(child)
-            return
-        if isinstance(value, list):
-            for child in value:
-                _walk(child)
-                if len(selected) >= 80:
-                    break
-            return
-        if isinstance(value, str) and _interesting_text(value):
-            compact = " ".join(value.split())[:240]
-            _append(compact, text=compact)
-
-    try:
-        parsed = json.loads(output)
-    except json.JSONDecodeError:
-        parsed = None
-    if parsed is not None:
-        _walk(parsed)
-    else:
-        for line in output.splitlines():
-            compact = " ".join(line.split())
-            if compact and _interesting_text(compact):
-                _append(compact[:240], text=compact)
-            if len(selected) >= 80:
-                break
-        if not selected:
-            for line in output.splitlines()[:20]:
-                compact = " ".join(line.split())[:240]
-                if compact:
-                    _append(compact, text=compact)
-    selected_items = [item for _, item in sorted(selected, key=lambda pair: pair[0], reverse=True)[:40]]
-
-    return json.dumps(
-        {
-            "provider": tool,
-            "query": case.query,
-            "view": "atelier-compact",
-            "items": selected_items,
-        },
-        ensure_ascii=False,
-    )
-
-
-def _compact_item_score(query: str, path: str, text: str) -> float:
-    score = 0.0
-    haystack = f"{path} {text}".lower()
-    if query and query in haystack:
-        score += 2.0
-    if path.startswith("src/atelier/"):
-        score += 3.0
-    elif path.startswith("src/"):
-        score += 1.0
-    if "def " in haystack and query in haystack:
-        score += 2.0
-    if "class " in haystack and query in haystack:
-        score += 2.0
-    return score
-
-
-def _shrink_mapping(value: dict[str, object]) -> dict[str, object]:
-    keep = {
-        "file",
-        "file_path",
-        "filename",
-        "kind",
-        "line",
-        "line_number",
-        "line_start",
-        "line_end",
-        "name",
-        "path",
-        "qualified_name",
-        "signature",
-        "symbol",
-        "text",
-    }
-    compact: dict[str, object] = {}
-    for key, item in value.items():
-        if key.lower() not in keep:
-            continue
-        if isinstance(item, str):
-            compact[key] = " ".join(item.split())[:240]
-        else:
-            compact[key] = item
-    return compact or {"text": json.dumps(value, ensure_ascii=False)[:300]}
-
-
 def score_case(case: ExternalBenchCase, output: str) -> float:
     if case.family == "nohit_search":
         return 1.0 if _payload_looks_empty(output) else 0.0
@@ -1124,6 +1110,22 @@ def score_case(case: ExternalBenchCase, output: str) -> float:
             output, case.expected_names[:1]
         )
         return 1.0 if has_expected_path and has_query_or_name else 0.0
+    if case.family in {"references", "callers", "callees"}:
+        # Correct if the provider surfaced at least one true related file
+        # (expected_paths holds the neutral AST-detected referrers / callers /
+        # callee definition files).
+        lowered = output.lower()
+        return 1.0 if any(path.lower() in lowered for path in case.expected_paths) else 0.0
+    if case.family == "fuzzy_symbol":
+        expected = [*case.expected_paths[:1], *case.expected_names[:1]]
+        return 1.0 if _payload_contains_all(output, expected) else 0.0
+    if case.family == "structural_search":
+        # Correct if the provider surfaced at least one file the pattern truly matches.
+        lowered = output.lower()
+        return 1.0 if any(path.lower() in lowered for path in case.expected_paths) else 0.0
+    if case.family == "semantic_search":
+        expected = [*case.expected_paths[:1], *case.expected_names[:1]]
+        return 1.0 if _payload_contains_all(output, expected) else 0.0
     expected = [*case.expected_paths[:1], *case.expected_names[:1]]
     return 1.0 if _payload_contains_all(output, expected) else 0.0
 
@@ -1153,10 +1155,6 @@ def _runner_specs(
             SerenaMatrixRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
         ),
         (
-            "atelier-codegraph",
-            AtelierCodeGraphRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
-        ),
-        (
             "codegraph",
             CodeGraphRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
         ),
@@ -1177,6 +1175,10 @@ def _runner_specs(
         (
             "jcodemunch-mcp",
             JCodeMunchRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
+        ),
+        (
+            "ast-grep",
+            AstGrepRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
         ),
     ]
 

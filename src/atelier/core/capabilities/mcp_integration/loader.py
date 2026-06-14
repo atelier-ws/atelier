@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import subprocess
 import threading
 from dataclasses import dataclass, field
@@ -18,6 +19,45 @@ _MCP_CONFIG_PATHS = [
     Path(".claude") / "mcp.json",
     Path.home() / ".atelier" / "tui" / ".mcp.json",
 ]
+
+# Seconds to wait for a JSON-RPC response before treating the server as hung.
+_RPC_TIMEOUT_SECONDS = 10.0
+# Cap on the textual result returned from a tool call.
+_MAX_TOOL_RESULT_CHARS = 64_000
+_TRUST_OPT_IN_ENV = "ATELIER_MCP_ALLOW_UNTRUSTED"
+
+
+def _trusted_roots() -> list[Path]:
+    """Directories an MCP config may live under to be auto-spawned without opt-in."""
+    roots = [Path.home() / ".atelier"]
+    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT")
+    if workspace:
+        roots.append(Path(workspace))
+    return roots
+
+
+def _is_trusted_config_path(config_path: Path) -> bool:
+    """True if the config may be auto-spawned without explicit opt-in.
+
+    Auto-spawning servers declared by a `.mcp.json` in an untrusted working
+    directory is arbitrary command execution. Only configs resolved under a
+    trusted root (the Atelier home or the explicit workspace root) are spawned
+    automatically; everything else requires the operator to set
+    ``ATELIER_MCP_ALLOW_UNTRUSTED``.
+    """
+    if os.environ.get(_TRUST_OPT_IN_ENV, "").strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+    try:
+        resolved = config_path.resolve()
+    except OSError:
+        return False
+    for root in _trusted_roots():
+        try:
+            resolved.relative_to(root.resolve())
+            return True
+        except (OSError, ValueError):
+            continue
+    return False
 
 
 @dataclass
@@ -43,14 +83,22 @@ def discover_mcp_configs() -> list[MCPServerConfig]:
     for config_path in _MCP_CONFIG_PATHS:
         if not config_path.exists():
             continue
+        if not _is_trusted_config_path(config_path):
+            logger.info(
+                "Skipping untrusted MCP config %s; set %s to auto-spawn its servers",
+                config_path,
+                _TRUST_OPT_IN_ENV,
+            )
+            continue
         try:
             data = json.loads(config_path.read_text(encoding="utf-8"))
             servers = data.get("mcpServers") or data.get("servers") or {}
             for name, cfg in servers.items():
                 if name in seen_names:
+                    logger.debug("Skipping duplicate MCP server %s from %s", name, config_path)
                     continue
-                seen_names.add(name)
                 if isinstance(cfg, dict) and cfg.get("command"):
+                    seen_names.add(name)
                     configs.append(
                         MCPServerConfig(
                             name=name,
@@ -104,13 +152,40 @@ class MCPServerProcess:
                 line = json.dumps(request) + "\n"
                 self._proc.stdin.write(line.encode())
                 self._proc.stdin.flush()
-                response_line = self._proc.stdout.readline()
+                response_line = self._read_response_line()
                 if response_line:
                     resp = json.loads(response_line)
                     return resp.get("result")
             except Exception as exc:  # noqa: BLE001 - rpc is best-effort
                 logger.debug("MCP RPC error for %s: %s", self.config.name, exc)
         return None
+
+    def _read_response_line(self) -> bytes | None:
+        """Read one response line with a timeout; terminate a hung server.
+
+        A bare ``readline()`` blocks forever if the child never replies, which
+        wedges session startup. Read on a background thread and bound the wait
+        with ``queue.get``; on timeout the child is terminated and ``None`` is
+        returned so the caller falls back to the no-result path.
+        """
+        stdout = self._proc.stdout if self._proc is not None else None
+        if stdout is None:
+            return None
+        result: queue.Queue[bytes | None] = queue.Queue(maxsize=1)
+
+        def _read() -> None:
+            try:
+                result.put(stdout.readline())
+            except Exception:  # noqa: BLE001 - reader thread is best-effort
+                result.put(None)
+
+        threading.Thread(target=_read, daemon=True).start()
+        try:
+            return result.get(timeout=_RPC_TIMEOUT_SECONDS)
+        except queue.Empty:
+            logger.debug("MCP server %s timed out; terminating", self.config.name)
+            self.stop()
+            return None
 
     def _initialize(self) -> None:
         """Send initialize + notifications/initialized to complete handshake."""
@@ -151,11 +226,28 @@ class MCPServerProcess:
         if isinstance(result, dict):
             content = result.get("content", [])
             if isinstance(content, list):
-                return "\n".join(
-                    item.get("text", "") for item in content if isinstance(item, dict) and item.get("type") == "text"
-                )
-            return str(content)
-        return str(result)
+                rendered = self._render_content_blocks(content)
+            else:
+                rendered = str(content)
+            if result.get("isError"):
+                rendered = f"Error: MCP tool {tool_name} reported failure: {rendered}"
+            return rendered[:_MAX_TOOL_RESULT_CHARS]
+        return str(result)[:_MAX_TOOL_RESULT_CHARS]
+
+    @staticmethod
+    def _render_content_blocks(content: list[Any]) -> str:
+        """Flatten MCP content blocks, keeping non-text blocks instead of dropping them."""
+        parts: list[str] = []
+        for item in content:
+            if not isinstance(item, dict):
+                parts.append(str(item))
+                continue
+            block_type = item.get("type")
+            if block_type == "text":
+                parts.append(str(item.get("text", "")))
+            else:
+                parts.append(f"[{block_type or 'non-text'} block]")
+        return "\n".join(parts)
 
     def stop(self) -> None:
         if self._proc is not None:

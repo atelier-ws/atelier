@@ -180,6 +180,15 @@ class MemoryService:
         clean_direction = self._vote_direction(direction)
         clean_scope = self._fact_scope(scope) if scope else None
         target_agent = agent_id or "shared"
+        if clean_scope is None:
+            matched_scopes = {
+                str((block.metadata or {}).get("fact_scope") or (block.metadata or {}).get("scope") or "")
+                for block in self._store.list_blocks(target_agent, include_tombstoned=False, limit=500)
+                if (block.metadata or {}).get("kind") == "memory_fact"
+                and str((block.metadata or {}).get("fact", "")) == clean_fact
+            }
+            if len(matched_scopes) > 1:
+                raise ValueError("fact exists in multiple scopes; specify scope to disambiguate vote_fact")
         match = self._find_fact_block(target_agent, clean_fact, scope=clean_scope)
         if match is None:
             raise ValueError("no matching stored fact found for vote_fact")
@@ -333,7 +342,12 @@ class MemoryService:
             return target
         if decision.op == "UPDATE" and target is not None:
             return self._store.upsert_block(
-                target.model_copy(update={"value": decision.merged_value or block.value}),
+                target.model_copy(
+                    update={
+                        "value": decision.merged_value or block.value,
+                        "metadata": {**(target.metadata or {}), **(block.metadata or {})},
+                    }
+                ),
                 actor=actor,
                 reason=decision.reason,
             )

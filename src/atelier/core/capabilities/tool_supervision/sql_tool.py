@@ -101,18 +101,60 @@ def _strip_comments(sql: str) -> str:
     return re.sub(r"/\*.*?\*/", "", re.sub(r"--[^\n]*", "", sql), flags=re.S).strip()
 
 
+def _is_multi_statement(sql: str) -> bool:
+    """Quote-aware check for >1 statement; ignores `;` inside string literals."""
+    body = sql.rstrip().rstrip(";").rstrip()
+    in_single = in_double = False
+    for ch in body:
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif ch == ";" and not in_single and not in_double:
+            return True
+    return False
+
+
+def _top_level_verb(sql: str) -> str:
+    """Leading verb, skipping a leading WITH ... CTE list to the trailing verb."""
+    first = re.split(r"\s+", sql, maxsplit=1)[0].lower()
+    if first != "with":
+        return first
+    depth = 0
+    in_single = in_double = False
+    for match in re.finditer(r"[()'\"]|[A-Za-z_][A-Za-z_]*", sql):
+        token = match.group(0)
+        if in_single:
+            if token == "'":
+                in_single = False
+            continue
+        if in_double:
+            if token == '"':
+                in_double = False
+            continue
+        if token == "'":
+            in_single = True
+        elif token == '"':
+            in_double = True
+        elif token == "(":
+            depth += 1
+        elif token == ")":
+            depth -= 1
+        elif depth == 0 and token.lower() in _WRITE_PREFIXES | {"select"}:
+            return token.lower()
+    return "with"
+
+
 def lint_sql(sql: str, *, allow_writes: bool = True) -> dict[str, Any]:
     normalized = _strip_comments(sql)
     if not normalized:
         return {"ok": False, "message": "sql is empty"}
-    statements = [part.strip() for part in normalized.split(";") if part.strip()]
-    if len(statements) > 1:
+    if _is_multi_statement(normalized):
         return {
             "ok": False,
             "message": "multiple statements are not allowed in one sql string; use queries[] for batching",
         }
-    first = re.split(r"\s+", statements[0], maxsplit=1)[0].lower()
-    if not allow_writes and first in _WRITE_PREFIXES:
+    if not allow_writes and _top_level_verb(normalized) in _WRITE_PREFIXES:
         return {"ok": False, "message": "write SQL rejected for read-only execution"}
     return {"ok": True, "message": "ok"}
 
@@ -191,6 +233,7 @@ def _sqlite_search(conn: sqlite3.Connection, terms: list[str], *, limit: int = 2
 
 
 def _run_sqlite(conn: sqlite3.Connection, sql: str, max_rows: int) -> dict[str, Any]:
+    max_rows = max(1, max_rows)
     cursor = conn.execute(sql)
     rows = cursor.fetchmany(max_rows + 1)
     columns = [col[0] for col in cursor.description or []]
@@ -272,37 +315,40 @@ def sql_tool(
     conn = sqlite3.connect(db_path, uri=uri, timeout=max(1.0, timeout_ms / 1000.0))
     try:
         conn.row_factory = sqlite3.Row
-        if action == "connect":
-            overview = _sqlite_overview(conn)
-            return {
-                "isError": False,
-                "dialect": "sqlite",
-                "connection": mask_connection_string(str(dsn)),
-                "overview": overview,
-                "source": discovered.get("source"),
-            }
-        if action == "tables":
-            tables = _sqlite_all_tables(conn)
-            return {"isError": False, "dialect": "sqlite", "tables": tables, "table_count": len(tables)}
-        if action == "schema":
-            return {"isError": False, "dialect": "sqlite", **_sqlite_overview(conn)}
-        if action == "table":
-            table_name = str(name or "")
-            if not table_name:
-                return {"isError": True, "message": "action='table' requires name=<table>"}
-            return {
-                "isError": False,
-                "table": table_name,
-                "columns": _sqlite_columns(conn, table_name),
-                "foreign_keys": _sqlite_table_fks(conn, table_name),
-            }
-        if action == "relationships":
-            return {"isError": False, "dialect": "sqlite", "relationships": _sqlite_relationships(conn)}
-        if action == "search":
-            terms = name if isinstance(name, list) else [name] if name else []
-            if not terms:
-                return {"isError": True, "message": "action='search' requires name=<keyword>"}
-            return {"isError": False, "dialect": "sqlite", "matches": _sqlite_search(conn, terms)}
+        try:
+            if action == "connect":
+                overview = _sqlite_overview(conn)
+                return {
+                    "isError": False,
+                    "dialect": "sqlite",
+                    "connection": mask_connection_string(str(dsn)),
+                    "overview": overview,
+                    "source": discovered.get("source"),
+                }
+            if action == "tables":
+                tables = _sqlite_all_tables(conn)
+                return {"isError": False, "dialect": "sqlite", "tables": tables, "table_count": len(tables)}
+            if action == "schema":
+                return {"isError": False, "dialect": "sqlite", **_sqlite_overview(conn)}
+            if action == "table":
+                table_name = str(name or "")
+                if not table_name:
+                    return {"isError": True, "message": "action='table' requires name=<table>"}
+                return {
+                    "isError": False,
+                    "table": table_name,
+                    "columns": _sqlite_columns(conn, table_name),
+                    "foreign_keys": _sqlite_table_fks(conn, table_name),
+                }
+            if action == "relationships":
+                return {"isError": False, "dialect": "sqlite", "relationships": _sqlite_relationships(conn)}
+            if action == "search":
+                terms = name if isinstance(name, list) else [name] if name else []
+                if not terms:
+                    return {"isError": True, "message": "action='search' requires name=<keyword>"}
+                return {"isError": False, "dialect": "sqlite", "matches": _sqlite_search(conn, terms)}
+        except sqlite3.Error as exc:
+            return {"isError": True, "message": str(exc)}
         if action == "lint":
             lint = lint_sql(sql or "", allow_writes=allow_writes)
             return {"isError": not lint["ok"], **lint}
@@ -320,6 +366,8 @@ def sql_tool(
             limited = sql_auto_limit(query_sql, max_rows=max_rows, auto_limit=auto_limit)
             try:
                 result = _run_sqlite(conn, limited["sql"], max_rows)
+                if _top_level_verb(_strip_comments(query_sql)) in _WRITE_PREFIXES:
+                    conn.commit()
                 outputs.append({"name": label, **result, "auto_limit_changed": limited.get("changed", False)})
             except sqlite3.Error as exc:
                 outputs.append({"name": label, "isError": True, "message": str(exc)})
