@@ -123,6 +123,12 @@ def test_recall_maps_passages(tmp_path: Path) -> None:
     ]
 
 
+def test_recall_uses_dedicated_recall_db(tmp_path: Path) -> None:
+    # Recall must write to its own recall.db, isolated from the main atelier.db.
+    cap = session_recall._capability(tmp_path / ".atelier")
+    assert cap._store.db_path.name == "recall.db"
+
+
 def test_recall_fail_open(tmp_path: Path) -> None:
     class _Boom:
         def recall(self, **_kwargs: Any) -> tuple[list[Any], Any]:
