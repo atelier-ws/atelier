@@ -108,8 +108,7 @@ def _active_session_id() -> str | None:
 
 
 def _append_prompt_event(session_id: str, prompt: str) -> None:
-    runs_dir = _atelier_root() / "runs"
-    run_file = runs_dir / f"{session_id}.json"
+    run_file = _atelier_root() / "sessions" / session_id / "run.json"
     if not run_file.exists():
         return
 

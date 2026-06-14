@@ -96,7 +96,12 @@ from atelier.core.foundation.rubric_gate import run_rubric
 from atelier.gateway.adapters.runtime import ContextRuntime
 from atelier.infra.embeddings.factory import make_embedder
 from atelier.infra.runtime.realtime_context import RealtimeContextManager
-from atelier.infra.runtime.run_ledger import RunLedger
+from atelier.infra.runtime.run_ledger import (
+    RunLedger,
+    context_savings_path,
+    outcomes_path,
+    session_run_dir,
+)
 from atelier.infra.storage.factory import make_memory_store
 from atelier.infra.storage.memory_store import MemoryConcurrencyError, MemorySidecarUnavailable
 
@@ -613,8 +618,7 @@ def _make_outcome_writer(led: RunLedger) -> Any:
 
         root = led._root
         if root is not None:
-            runs_dir = Path(root) / "runs"
-            return FileStateWriter(runs_dir / f"{led.session_id}_outcomes.json")
+            return FileStateWriter(outcomes_path(root, led.session_id))
     return None
 
 
@@ -2173,7 +2177,7 @@ def _get_host_session_sidecar_path() -> Path:
 
 def _context_savings_path(session_id: str) -> Path:
     """Per-session context-compression savings file, alongside the run ledger."""
-    return _atelier_root() / "runs" / f"{session_id}_context_savings.jsonl"
+    return context_savings_path(_atelier_root(), session_id)
 
 
 def _current_context_state() -> tuple[int, str]:
@@ -2255,7 +2259,7 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
     """Write per-call savings to two places:
 
     1. sessions/<id>/savings.jsonl  — per-session, read by statusline/stop hook
-    2. runs/<ledger_session_id>_context_savings.jsonl — per-session, read by session report
+    2. sessions/<id>/context_savings.jsonl — per-session, read by session report
     """
     if tokens_saved <= 0 and calls_saved <= 0:
         return
@@ -2310,7 +2314,7 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
             event["rid"] = rid
         # Key the file by the Claude host session UUID (workspace bridge) when
         # available so that session_report.py can find savings via
-        # runs/<uuid>_context_savings.jsonl — matching the UUID-keyed run ledger
+        # sessions/<uuid>/context_savings.jsonl — matching the UUID-keyed run ledger
         # files. Falls back to the MCP ledger hex session_id for non-Claude hosts.
         host_sid = _claude_session_id()
         cpath = _context_savings_path(host_sid or led.session_id)
@@ -4922,7 +4926,7 @@ def _write_handover_packet(led: RunLedger, state: Any) -> Path:
     from atelier.infra.runtime.context_compressor import HandoverPacket
 
     root = _atelier_root()
-    run_dir = root / "runs" / led.session_id
+    run_dir = session_run_dir(root, led.session_id)
     run_dir.mkdir(parents=True, exist_ok=True)
     handover_path = run_dir / "HANDOVER.md"
     packet = HandoverPacket.from_ledger(led, state, workspace_root=_workspace_root())
@@ -4999,7 +5003,7 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
         # Persist manifest to disk
         try:
             root = _atelier_root()
-            run_dir = root / "runs" / led.session_id
+            run_dir = session_run_dir(root, led.session_id)
             run_dir.mkdir(parents=True, exist_ok=True)
             manifest_path = run_dir / "compact_manifest.json"
             manifest = {
