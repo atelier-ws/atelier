@@ -85,7 +85,7 @@ def test_statusline_reads_session_savings(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    # Savings at Sonnet 4.5 rate ($3/MTok x 12k = $0.036).
+    # Savings at Sonnet 4.6 rate ($3/MTok x 12k = $0.036).
     # The payload has no model.id so compute_savings_summary falls back to
     # claude-sonnet-4-5 for pricing.
     (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")

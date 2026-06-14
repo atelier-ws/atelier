@@ -36,13 +36,13 @@ echo "--- enqueue and claim job ---"
 uv run python3 - <<PYEOF
 import os
 from atelier.infra.storage.postgres_store import PostgresStore
-from atelier.core.service.jobs import JOB_ANALYZE_FAILURES
+from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
 
 url = os.environ["ATELIER_DATABASE_URL"]
 store = PostgresStore(database_url=url)
 store.init_schema()
 
-jid = store.enqueue_job(JOB_ANALYZE_FAILURES, {"test": True})
+jid = store.enqueue_job(JOB_CONSOLIDATE_BLOCKS, {"test": True})
 print(f"enqueued job: {jid}")
 
 job = store.claim_job()

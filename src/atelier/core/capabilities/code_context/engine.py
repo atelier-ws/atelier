@@ -473,13 +473,17 @@ def _safe_relpath(repo_root: Path, path: Path) -> str:
 
 
 def _safe_fts_query(query: str) -> str:
+    # Quote each term as an FTS5 string literal so natural-language queries whose
+    # words happen to be FTS operators (or/and/near/not) are treated as literal
+    # terms instead of breaking the MATCH grammar. Terms are [A-Za-z0-9_]+ only,
+    # so no embedded-quote escaping is required.
     terms = _FTS_TERM_RE.findall(query)
-    return " OR ".join(term[:64] for term in terms[:12])
+    return " OR ".join(f'"{term[:64]}"' for term in terms[:12] if term)
 
 
 def _fts_prefix_query(query: str) -> str:
     terms = _FTS_TERM_RE.findall(query)
-    return " OR ".join(f"{term[:64]}*" for term in terms[:12] if term)
+    return " OR ".join(f'"{term[:64]}"*' for term in terms[:12] if term)
 
 
 def _identifier_terms(text: str) -> list[str]:
@@ -634,6 +638,20 @@ def _git_repo_class() -> Any:
         logging.exception("Recovered from broad exception handler")
         return None
     return Repo
+
+
+def _resolve_index_max_workers() -> int:
+    """Worker count for the indexing ProcessPool.
+
+    Defaults to the CPU count, but honors the ``ATELIER_INDEX_MAX_WORKERS``
+    environment variable so resource-constrained environments (CI, sandboxes)
+    can cap parallelism: each spawn worker is a fresh interpreter that re-imports
+    the full package, so one-per-CPU can OOM-kill the pool on large repos.
+    """
+    override = os.environ.get("ATELIER_INDEX_MAX_WORKERS", "").strip()
+    if override.isdigit() and int(override) > 0:
+        return int(override)
+    return os.cpu_count() or 1
 
 
 def _process_one_file(
@@ -1295,7 +1313,7 @@ class CodeContextEngine:
         Results are sorted deterministically by relative path.
         *total* is the denominator for *progress_callback* (defaults to ``len(files)``).
         """
-        max_workers = os.cpu_count() or 1
+        max_workers = _resolve_index_max_workers()
         total_count = total or len(files)
 
         # Build argument tuples for the pickleable worker function
@@ -1975,22 +1993,11 @@ class CodeContextEngine:
             return self._mark_cache_hit(cached)
 
         raw = self.file_outline(file_path=normalized_file_path, limit=limit, auto_index=False)
+        # Preserve source order for a single-file outline: top-to-bottom is the most
+        # intuitive structural view, and it keeps the leading definitions (classes
+        # included) instead of re-ranking them below public functions where the
+        # compact token budget would truncate them away.
         flat_items = self._flatten_outline(raw["files"])
-        if normalized_file_path:
-
-            def _outline_rank(item: dict[str, Any]) -> tuple[int, int, int, str]:
-                kind = str(item.get("kind") or "").lower()
-                name = str(item.get("name") or "")
-                public = 0 if name and not name.startswith("_") else 1
-                kind_rank = {
-                    "function": 0,
-                    "async_function": 0,
-                    "method": 1,
-                    "class": 2,
-                }.get(kind, 3)
-                return (public, kind_rank, 0 if kind_rank <= 1 else 1, name)
-
-            flat_items = sorted(flat_items, key=_outline_rank)
         full_symbol_count = int(raw["symbol_count"])
         full_payload = {
             "repo_id": str(raw["repo_id"]),
@@ -3304,41 +3311,72 @@ class CodeContextEngine:
 
             if not scored:
                 if _should_skip_fuzzy_for_precise_query(normalized_query):
-                    return []
-                fuzzy_rows = conn.execute(
-                    f"""
-                    SELECT *, NULL AS score
-                    FROM symbols
-                    WHERE {where_sql}
-                    ORDER BY file_path, start_line
-                    LIMIT ?
-                    """,
-                    tuple([*params, fuzzy_fetch_limit]),
-                ).fetchall()
-                fuzzy_scored: list[tuple[float, sqlite3.Row]] = []
-                for row in fuzzy_rows:
-                    symbol_name = str(row["symbol_name"]).lower()
-                    qualified_name = str(row["qualified_name"]).lower()
-                    ratio = max(
-                        difflib.SequenceMatcher(None, normalized_query_lower, symbol_name, autojunk=False).ratio(),
-                        difflib.SequenceMatcher(None, normalized_query_lower, qualified_name, autojunk=False).ratio(),
+                    # The full difflib scan is skipped for precise snake_case /
+                    # dotted misses (too noisy, too slow). But a single-character
+                    # transposition typo (e.g. ``make_ram_env`` -> ``make_arm_env``)
+                    # has the SAME multiset of characters, so it can be recovered
+                    # cheaply with a length-filtered anagram check -- no difflib,
+                    # preserving the precise-miss performance contract.
+                    signature = "".join(sorted(normalized_query_lower))
+                    transposition_rows = conn.execute(
+                        f"""
+                        SELECT *, NULL AS score
+                        FROM symbols
+                        WHERE {where_sql} AND length(symbol_name) = ?
+                        ORDER BY file_path, start_line
+                        LIMIT ?
+                        """,
+                        tuple([*params, len(normalized_query), strong_fetch_limit]),
+                    ).fetchall()
+                    consider_rows(
+                        [
+                            row
+                            for row in transposition_rows
+                            if "".join(sorted(str(row["symbol_name"]).lower())) == signature
+                            and str(row["symbol_name"]).lower() != normalized_query_lower
+                        ],
+                        channel_rank=7,
+                        base=620.0,
                     )
-                    if ratio < 0.58:
-                        continue
-                    fuzzy_scored.append((ratio, row))
-                fuzzy_scored.sort(
-                    key=lambda item: (
-                        -item[0],
-                        str(item[1]["file_path"]),
-                        int(item[1]["start_line"]),
-                        str(item[1]["qualified_name"]),
+                    if not scored:
+                        return []
+                else:
+                    fuzzy_rows = conn.execute(
+                        f"""
+                        SELECT *, NULL AS score
+                        FROM symbols
+                        WHERE {where_sql}
+                        ORDER BY file_path, start_line
+                        LIMIT ?
+                        """,
+                        tuple([*params, fuzzy_fetch_limit]),
+                    ).fetchall()
+                    fuzzy_scored: list[tuple[float, sqlite3.Row]] = []
+                    for row in fuzzy_rows:
+                        symbol_name = str(row["symbol_name"]).lower()
+                        qualified_name = str(row["qualified_name"]).lower()
+                        ratio = max(
+                            difflib.SequenceMatcher(None, normalized_query_lower, symbol_name, autojunk=False).ratio(),
+                            difflib.SequenceMatcher(
+                                None, normalized_query_lower, qualified_name, autojunk=False
+                            ).ratio(),
+                        )
+                        if ratio < 0.58:
+                            continue
+                        fuzzy_scored.append((ratio, row))
+                    fuzzy_scored.sort(
+                        key=lambda item: (
+                            -item[0],
+                            str(item[1]["file_path"]),
+                            int(item[1]["start_line"]),
+                            str(item[1]["qualified_name"]),
+                        )
                     )
-                )
-                consider_rows(
-                    [row for _, row in fuzzy_scored[:strong_fetch_limit]],
-                    channel_rank=7,
-                    base=640.0,
-                )
+                    consider_rows(
+                        [row for _, row in fuzzy_scored[:strong_fetch_limit]],
+                        channel_rank=7,
+                        base=640.0,
+                    )
 
         ranked = sorted(
             scored.values(),
@@ -3828,18 +3866,6 @@ class CodeContextEngine:
             scope="repo",
             auto_index=False,
         )
-        # SymbolIntelStore.search_symbols short-circuits on the first non-empty provider
-        # (e.g. SCIP returns methods via qualified_name match). Symbols whose query token
-        # appears only as a name suffix in a non-adapter-named file (e.g.
-        # _deleted_history_adapter in engine.py) are then never found. Supplement with
-        # an explicit SQLite LIKE search so the full name-contains pool is considered.
-        local_hits = self._search_symbols_local(query, limit=max(limit * 40, 200))
-        if local_hits:
-            seen_ids = {h.symbol_id for h in symbol_hits}
-            extra = [h for h in local_hits if h.symbol_id not in seen_ids]
-            if file_glob:
-                extra = [h for h in extra if _matches_file_glob(h.file_path, file_glob)]
-            symbol_hits = symbol_hits + extra
         ranked_symbol_hits = sorted(
             (
                 item
@@ -3849,12 +3875,7 @@ class CodeContextEngine:
             key=lambda item: self._text_substring_symbol_score(query_lower, item),
             reverse=True,
         )
-        # Use 2x the request limit so that symbols ranking just below the primary adapter
-        # class definitions still make it into the payload; _pack_items_payload trims by
-        # token budget anyway.
-        symbol_items = [
-            item.model_dump(mode="json", exclude_none=True) for item in ranked_symbol_hits[: max(limit * 2, 40)]
-        ]
+        symbol_items = [item.model_dump(mode="json", exclude_none=True) for item in ranked_symbol_hits[:limit]]
         raw_limit = max(limit * 50, 500)
         matches = self.search_text(query, path=search_path, limit=raw_limit, ignore_case=True)
         if file_glob:
@@ -3902,21 +3923,14 @@ class CodeContextEngine:
         path_hit = int(query_lower in lowered_path)
         return (definition, symbolish, path_hit, -len(match.file_path))
 
-    def _text_substring_symbol_score(
-        self, query_lower: str, symbol: SymbolRecord
-    ) -> tuple[int, int, int, int, int, int]:
+    def _text_substring_symbol_score(self, query_lower: str, symbol: SymbolRecord) -> tuple[int, int, int, int, int]:
         symbol_name_lower = symbol.symbol_name.lower()
         qualified_name_lower = symbol.qualified_name.lower()
         preferred_kind = int(symbol.kind in {"class", "method", "function"})
         startswith = int(symbol_name_lower.startswith(query_lower) or qualified_name_lower.startswith(query_lower))
         bare_startswith = int(symbol_name_lower.lstrip("_").startswith(query_lower))
-        # Reward symbols where the query appears in the SHORT symbol name (not just the
-        # file path or the class-name prefix of a qualified_name). This ensures e.g.
-        # _deleted_history_adapter ranks above _run in astgrep/adapter.py when searching
-        # for "adapter", because the latter only matches via path_hit.
-        name_contains = int(query_lower in symbol_name_lower)
         path_hit = int(query_lower in symbol.file_path.lower())
-        return (preferred_kind, startswith, bare_startswith, name_contains, path_hit, -len(symbol.symbol_name))
+        return (preferred_kind, startswith, bare_startswith, path_hit, -len(symbol.symbol_name))
 
     def _text_match_search_item(self, query: str, match: TextMatch) -> dict[str, Any]:
         name = self._text_match_name(query, match.text)

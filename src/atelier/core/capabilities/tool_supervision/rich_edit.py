@@ -6,7 +6,9 @@ import ast
 import contextlib
 import json
 import logging
+import os
 import re
+import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -158,6 +160,10 @@ def _replace_in_scope(content: str, spec: TargetSpec, old_string: str, new_strin
     index = scoped.find(old_string)
     matched = old_string
     match_mode = "exact"
+    if index != -1 and old_string and scoped.count(old_string) > 1:
+        raise ValueError(
+            "old_string is not unique within the resolved scope; add surrounding context to identify a single match"
+        )
     if index == -1:
         normalized_content = _normalize_typography(scoped)
         normalized_old = _normalize_typography(old_string)
@@ -320,6 +326,12 @@ def _atomic_write(path: Path, text: str) -> None:
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
         handle.write(text)
         tmp = Path(handle.name)
+    if path.exists():
+        # tmp.replace() discards the destination's metadata, stripping the exec
+        # bit from scripts/hooks. Carry the original mode (and other stat) over.
+        with contextlib.suppress(OSError):
+            shutil.copystat(path, tmp)
+            os.chmod(tmp, os.stat(path).st_mode)
     tmp.replace(path)
 
 

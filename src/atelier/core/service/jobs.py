@@ -31,8 +31,6 @@ class Job(BaseModel):
 
 # Supported job type constants.
 JOB_EXTRACT_REASONBLOCK = "extract_reasonblock_from_trace"
-JOB_ANALYZE_FAILURES = "analyze_failures"
-JOB_GENERATE_EVAL = "generate_eval_from_failure_cluster"
 JOB_COMPUTE_EMBEDDINGS = "compute_embeddings"
 JOB_CONSOLIDATE_BLOCKS = "consolidate_reasonblocks"
 JOB_OPTIMIZE = "optimize_runtime"
@@ -44,8 +42,6 @@ JOB_INGEST_SESSION_DIRECTORY = "ingest_session_directory"
 KNOWN_JOB_TYPES: frozenset[str] = frozenset(
     {
         JOB_EXTRACT_REASONBLOCK,
-        JOB_ANALYZE_FAILURES,
-        JOB_GENERATE_EVAL,
         JOB_COMPUTE_EMBEDDINGS,
         JOB_CONSOLIDATE_BLOCKS,
         JOB_OPTIMIZE,
@@ -58,12 +54,10 @@ KNOWN_JOB_TYPES: frozenset[str] = frozenset(
 
 
 __all__ = [
-    "JOB_ANALYZE_FAILURES",
     "JOB_BOOTSTRAP_CONTEXT",
     "JOB_COMPUTE_EMBEDDINGS",
     "JOB_CONSOLIDATE_BLOCKS",
     "JOB_EXTRACT_REASONBLOCK",
-    "JOB_GENERATE_EVAL",
     "JOB_INGEST_SESSION_DIRECTORY",
     "JOB_INGEST_SESSION_FILE",
     "JOB_OPTIMIZE",

@@ -554,7 +554,7 @@ def bench_atelier(repo_root: Path, workspace_root: Path, query: str, iterations:
     snapshot_root = prepare_repo_snapshot(repo_root, tool_workspace, "atelier-repo")
     runtime_root = Path(tempfile.mkdtemp(prefix="atelier-root-", dir=tool_workspace))
     configure_benchmark_runtime(runtime_root, workspace_root=snapshot_root)
-    from atelier.gateway.adapters.mcp_server import tool_code
+    from benchmarks.mcp_tools._env import call_code_op
 
     times: list[float] = []
     toks: list[int] = []
@@ -570,7 +570,7 @@ def bench_atelier(repo_root: Path, workspace_root: Path, query: str, iterations:
     }
     for _ in range(iterations):
         t0 = time.perf_counter()
-        resp = tool_code(request)
+        resp = call_code_op(request)
         elapsed = (time.perf_counter() - t0) * 1000
         payload = json.dumps(resp, ensure_ascii=False)
         times.append(elapsed)
