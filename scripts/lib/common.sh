@@ -82,6 +82,13 @@ ATELIER_NO_STACK="${ATELIER_NO_STACK:-0}"
 ATELIER_ADVANCED="${ATELIER_ADVANCED:-0}"
 ATELIER_MEMORY_BACKEND="${ATELIER_MEMORY_BACKEND:-}"   # letta | openmemory | (empty = none)
 ATELIER_AUTO_OPTIMIZE="${ATELIER_AUTO_OPTIMIZE:-1}"   # 1 = enable periodic optimize automation
+# Local knowledge extraction (opt-in; off by default to bound spend). Distils
+# review rules from .lessons into the reviewer overlay.
+[[ -n "${ATELIER_KB_EXTRACT+x}" ]] && ATELIER_KB_EXTRACT_PRESET=1 || ATELIER_KB_EXTRACT_PRESET=0
+ATELIER_KB_EXTRACT="${ATELIER_KB_EXTRACT:-0}"      # 1 = run knowledge extraction during setup
+ATELIER_KB_HOST="${ATELIER_KB_HOST:-auto}"        # auto | claude | codex | ollama
+ATELIER_KB_MODEL="${ATELIER_KB_MODEL:-}"          # model id (required for ollama)
+ATELIER_KB_MAX_SPEND="${ATELIER_KB_MAX_SPEND:-0.50}"  # hard USD cap per run (auto/claude)
 ATELIER_ZOEKT="${ATELIER_ZOEKT:-0}"                    # 1 = install persistent Zoekt sidecar
 OS_NAME="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
@@ -1405,6 +1412,61 @@ _ensure_path_persistence() {
 # Atelier CLI is available at "$ATELIER_BIN_DIR/atelier": code tools, memory /
 # zoekt selection, host integrations, init, indexing, optimize automation,
 # background services, PATH persistence, and the final report.
+prompt_knowledge_extraction() {
+    # Opt-in. Honor an explicit env preset (CI / scripted installs); only ask
+    # when interactive and the user hasn't already decided.
+    [[ "$ATELIER_KB_EXTRACT_PRESET" == "1" ]] && return 0
+    [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && return 0
+    has_interactive_input || return 0
+
+    local ans=""
+    printf "  ◇  Enable automatic knowledge extraction from .lessons into the reviewer? [y/N] "
+    IFS= read -r ans </dev/tty 2>/dev/null || ans=""
+    case "$ans" in
+        y | Y | yes | YES) ATELIER_KB_EXTRACT=1 ;;
+        *) ATELIER_KB_EXTRACT=0; return 0 ;;
+    esac
+
+    local choice=""
+    printf "  ◇  Backend  1) auto (Atelier model)  2) claude  3) codex  4) ollama  [1] "
+    IFS= read -r choice </dev/tty 2>/dev/null || choice=""
+    case "$choice" in
+        2) ATELIER_KB_HOST=claude ;;
+        3) ATELIER_KB_HOST=codex ;;
+        4) ATELIER_KB_HOST=ollama ;;
+        *) ATELIER_KB_HOST=auto ;;
+    esac
+
+    if [[ "$ATELIER_KB_HOST" == "ollama" ]]; then
+        local model=""
+        printf "  ◇  Ollama model name [llama3.1]: "
+        IFS= read -r model </dev/tty 2>/dev/null || model=""
+        ATELIER_KB_MODEL="${model:-llama3.1}"
+    fi
+
+    local cap=""
+    printf "  ◇  Max spend per run in USD (auto/claude only) [%s]: " "$ATELIER_KB_MAX_SPEND"
+    IFS= read -r cap </dev/tty 2>/dev/null || cap=""
+    [[ -n "$cap" ]] && ATELIER_KB_MAX_SPEND="$cap"
+}
+
+run_knowledge_extraction_if_selected() {
+    [[ "$ATELIER_KB_EXTRACT" == "1" ]] || return 0
+    local atelier_bin="$ATELIER_BIN_DIR/atelier"
+    [[ -x "$atelier_bin" ]] || atelier_bin="atelier"
+    step_start "Extracting knowledge from .lessons (host=$ATELIER_KB_HOST)"
+    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+        info "[dry-run] $atelier_bin knowledge extract --host $ATELIER_KB_HOST --max-spend $ATELIER_KB_MAX_SPEND"
+    else
+        local kb_args=(knowledge extract --host "$ATELIER_KB_HOST" --max-spend "$ATELIER_KB_MAX_SPEND")
+        [[ -n "$ATELIER_KB_MODEL" ]] && kb_args+=(--model "$ATELIER_KB_MODEL")
+        if ! "$atelier_bin" "${kb_args[@]}"; then
+            degrade "knowledge extraction did not complete (continuing install)"
+        fi
+    fi
+    step_done
+}
+
 run_setup() {
     local stack_available=0
     if [[ "$ATELIER_NO_STACK" != "1" ]] && command -v npm >/dev/null 2>&1; then
@@ -1421,6 +1483,8 @@ run_setup() {
     step_start "Installing code tools"
     install_code_tools
     step_done
+
+    prompt_knowledge_extraction
 
     local selected_memory=""
     if [[ "$ATELIER_ADVANCED" == "1" ]]; then
@@ -1764,6 +1828,8 @@ run_setup() {
     else
         verbose "Skipping background services because ATELIER_NO_SERVICECTL=1"
     fi
+
+    run_knowledge_extraction_if_selected
 
     print_final_report
     local completion_title_line="✓ Installation Complete!                              "
