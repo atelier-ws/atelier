@@ -68,9 +68,24 @@ def test_extract_rules_applies_with_stub_runner(tmp_path: Path) -> None:
 
     result = extract_rules(root, repo, host="ollama", model="llama3", runner=runner)
     assert result["applied"] == 2
+    assert result["scope"] == "repo"
     assert "Validate inputs at boundaries" in result["rules"]
-    overlay = json.loads((root / "review_overlay.json").read_text(encoding="utf-8"))
+    # Default scope=repo writes the team overlay in the repo (committable/shared).
+    overlay = json.loads((repo / ".atelier" / "review.json").read_text(encoding="utf-8"))
     assert "Prefer dependency injection" in overlay["notes"]
+
+
+def test_extract_rules_personal_scope_writes_user_overlay(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _lessons(repo, "# A lesson about error handling here")
+    root = tmp_path / "root"
+    root.mkdir()
+    result = extract_rules(
+        root, repo, host="ollama", model="m", scope="personal", runner=lambda *a, **k: '["personal rule here"]'
+    )
+    assert result["scope"] == "personal"
+    assert (root / "review_overlay.json").exists()
+    assert not (repo / ".atelier" / "review.json").exists()
 
 
 def test_extract_rules_dry_run_does_not_write(tmp_path: Path) -> None:
