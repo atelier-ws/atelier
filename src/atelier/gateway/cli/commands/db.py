@@ -39,20 +39,14 @@ def db_vacuum_cmd(ctx: click.Context, reset_traces: bool, force: bool, as_json: 
     conn = sqlite3.connect(str(db_path))
     try:
         if reset_traces:
-            # traces/traces_fts/sync_status are legacy (removed from the schema once
-            # sessions became file-based) — drop them outright to reclaim old DBs.
-            for table in ("traces", "traces_fts", "sync_status"):
+            # traces/traces_fts/sync_status/raw_artifacts are legacy (removed from the
+            # schema once sessions became file-based) — drop them to reclaim old DBs.
+            for table in ("traces", "traces_fts", "sync_status", "raw_artifacts"):
                 try:
                     cleared[table] = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                     conn.execute(f"DROP TABLE IF EXISTS {table}")
                 except sqlite3.OperationalError:
                     continue
-            # raw_artifacts is still a live table; clear its rows (session bloat).
-            try:
-                cleared["raw_artifacts"] = conn.execute("SELECT COUNT(*) FROM raw_artifacts").fetchone()[0]
-                conn.execute("DELETE FROM raw_artifacts")
-            except sqlite3.OperationalError:
-                pass
             conn.commit()
         conn.execute("VACUUM")
         conn.commit()
