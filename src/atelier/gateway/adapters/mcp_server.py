@@ -2143,7 +2143,7 @@ def _get_host_session_sidecar_path() -> Path:
         except (OSError, json.JSONDecodeError):
             _log.debug("MCP sidecar session id read failed", exc_info=True)
     if sid:
-        return _atelier_root() / "session_stats" / "claude" / f"{sid}.jsonl"
+        return _atelier_root() / "sessions" / sid / "savings.jsonl"
 
     # 2. Other hosts — use their native session ID env var directly.
     _HOST_SESSION_ENVS: list[tuple[str, str]] = [
@@ -2156,10 +2156,10 @@ def _get_host_session_sidecar_path() -> Path:
         ("ANTIGRAVITY_SESSION_ID", "antigravity"),
         ("AGY_SESSION_ID", "antigravity"),
     ]
-    for env_var, host in _HOST_SESSION_ENVS:
+    for env_var, _host in _HOST_SESSION_ENVS:
         env_sid = os.environ.get(env_var, "").strip()
         if env_sid:
-            return _atelier_root() / "session_stats" / host / f"{env_sid}.jsonl"
+            return _atelier_root() / "sessions" / env_sid / "savings.jsonl"
 
     return _workspace_savings_path()
 
@@ -2247,7 +2247,7 @@ def _price_avoided_calls_usd(model: str, calls_saved: int, ctx_tokens: int) -> f
 def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: str = "") -> None:
     """Write per-call savings to two places:
 
-    1. session_stats/<host>/<id>.jsonl  — host session UUID, read by statusline/stop hook
+    1. sessions/<id>/savings.jsonl  — per-session, read by statusline/stop hook
     2. runs/<ledger_session_id>_context_savings.jsonl — per-session, read by session report
     """
     if tokens_saved <= 0 and calls_saved <= 0:
@@ -2268,7 +2268,7 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
         entry: dict[str, Any] = {
             "tool": tool_name,
             # Field names match the in-response `saved: {tokens, calls}` shape.
-            # The file lives under session_stats/<host>/ so "savings" is implicit
+            # The file lives under sessions/<id>/ so "savings" is implicit
             # from context — no need to suffix the keys.
             "tokens": int(tokens_saved),
             "calls": int(calls_saved),
@@ -3713,7 +3713,7 @@ def _memory_recall(
     since: str | None = None,
 ) -> dict[str, Any]:
     """Recall relevant archival memory passages."""
-    return (
+    result = (
         _memory_service()
         .recall(
             agent_id=agent_id,
@@ -3724,6 +3724,14 @@ def _memory_recall(
         )
         .model_dump(mode="json")
     )
+    if not result.get("passages"):
+        # Helpful state hint instead of a bare empty result, so the model knows
+        # memory is working and how to seed it.
+        result["hint"] = (
+            "No matching memories yet — memory accrues as you work. Store durable facts with "
+            "memory(op=store_fact); past-session recall improves as sessions are indexed."
+        )
+    return result
 
 
 def _memory_service() -> MemoryService:
@@ -4431,6 +4439,11 @@ def tool_smart_read(
     BATCH: when reading 2+ independent files, use files=[{path, range?}, ...]
     in a single call rather than separate calls — each extra turn re-reads the
     entire conversation history at ~$0.49/turn on large context windows.
+
+    Cross-tool: after editing a file via `edit`, don't re-read it — the edit
+    response already confirms the change. When you don't yet know which file
+    holds something, use `grep` with output_mode="file_paths_with_content" to
+    discover and read in one step instead of grep-then-read.
     """
     # Batch mode: process each file spec and return aggregated results.
     if files is not None:
@@ -4828,6 +4841,13 @@ def tool_smart_edit(
       - replace:       {path, op: "replace", old_string, new_string, fuzzy?}
       - insert_after:  {path, op: "insert_after", anchor, new_string}
       - replace_range: {path, op: "replace_range", line_start, line_end, new_string}
+
+    Maximise work per call: ``edits`` is the batching surface — fill it with every
+    change in one call (ten edits to one file, or one edit each to ten files). One
+    call with N edit objects beats N calls in both latency and cost. Prefer several
+    small edits over one huge ``new_string``, and identify all target files up-front
+    from your initial read. After editing, don't re-read the file — the response
+    below already confirms the change.
 
     Returns ordinary successful hunks as {applied: ["path:line,start-end", ...]};
     failures and edits carrying special metadata remain structured.
@@ -6955,7 +6975,14 @@ def _run_native_grep(
     name="grep",
     description=(
         "Search files with regex, glob, and type filters. Use this instead of `search` for "
-        "grep-style matching, path listing, context lines, summaries, or incremental reruns."
+        "grep-style matching, path listing, context lines, summaries, or incremental reruns.\n"
+        "Maximise work per call: pass every glob/path you need at once (file_glob_patterns) and "
+        "combine content_regex + type to narrow by scope and content in one call instead of "
+        "chaining narrow calls — tool-side filtering is cheaper than another round-trip. When "
+        "you'll need the matched code, set output_mode='file_paths_with_content' to discover AND "
+        "read matched context in one step rather than grep-then-read. Run independent searches in "
+        "parallel within one response. Pass a prior result's timestamp back as if_modified_since "
+        "to skip files unchanged since then."
     ),
     hidden_params=("include_meta",),
 )
@@ -7227,6 +7254,7 @@ def tool_smart_search(
     - Use `mode='map'` with `seed_files` to build a repo map.
     - Use `grep` instead when you need regex, glob, type filters, summaries, or incremental reruns.
     - Once grounded, use `node`, `callers`, `callees`, `usages`, or `explore` for exact code-intel follow-up.
+    - Run independent searches in parallel within a single response; don't chain them serially.
     """
     # A "path#start-end" suffix scopes ranked results to a line window of one file.
     line_range: tuple[int, int] | None = None

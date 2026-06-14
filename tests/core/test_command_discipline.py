@@ -76,3 +76,33 @@ def test_silencing_on_non_diagnostic_command_is_allowed() -> None:
 
 def test_install_without_silencing_is_allowed() -> None:
     assert command_discipline.pre_run_gate("uv pip install requests").action == "allow"
+
+
+def test_shell_grep_is_redirected_to_grep_tool() -> None:
+    decision = command_discipline.pre_run_gate("grep -r foo src/")
+    assert decision.action == "warn"
+    assert "`grep`" in decision.reason and "`read`" in decision.reason
+
+
+def test_db_shell_is_redirected_to_sql_tool() -> None:
+    decision = command_discipline.pre_run_gate("psql -c 'select 1'")
+    assert decision.action == "warn"
+    assert "`sql`" in decision.reason
+
+
+def test_search_redirect_warns_once_per_class_then_allows() -> None:
+    assert command_discipline.pre_run_gate("grep foo a.py").action == "warn"
+    # Same class already coached this session -> allow (never nags or escalates).
+    assert command_discipline.pre_run_gate("find . -name '*.py'").action == "allow"
+    assert command_discipline.pre_run_gate("cat a.py").action == "allow"
+
+
+def test_piped_grep_is_not_redirected() -> None:
+    # grep filtering command output is legitimate; only the leading word matters.
+    assert command_discipline.pre_run_gate("ps aux | grep node").action == "allow"
+
+
+def test_reset_clears_redirect_memory() -> None:
+    assert command_discipline.pre_run_gate("grep foo a.py").action == "warn"
+    command_discipline.reset()
+    assert command_discipline.pre_run_gate("grep foo a.py").action == "warn"

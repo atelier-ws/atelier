@@ -77,10 +77,10 @@ def test_statusline_shows_missing_login_before_update(tmp_path: Path) -> None:
 
 
 def test_statusline_reads_session_savings(tmp_path: Path) -> None:
-    # MCP dispatcher writes one row per tool call to session_stats/claude/<session_id>.jsonl.
-    sidecar = tmp_path / "session_stats" / "claude"
+    # MCP dispatcher writes one row per tool call to sessions/<session_id>/savings.jsonl.
+    sidecar = tmp_path / "sessions" / "s1"
     sidecar.mkdir(parents=True)
-    (sidecar / "s1.jsonl").write_text(
+    (sidecar / "savings.jsonl").write_text(
         json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
         encoding="utf-8",
     )
@@ -102,9 +102,9 @@ def test_statusline_prices_fallback_savings_from_claude_transcript_model_mix(
     tmp_path: Path,
 ) -> None:
     # Write session sidecar with token counts.
-    sidecar = tmp_path / "session_stats" / "claude"
+    sidecar = tmp_path / "sessions" / "s1"
     sidecar.mkdir(parents=True)
-    (sidecar / "s1.jsonl").write_text(
+    (sidecar / "savings.jsonl").write_text(
         json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
         encoding="utf-8",
     )
@@ -169,9 +169,9 @@ def test_statusline_falls_back_to_workspace_session_state(tmp_path: Path) -> Non
     (state_dir / "session_state.json").write_text(json.dumps({"session_id": "s1"}), encoding="utf-8")
 
     # Savings are keyed under "s1" (the real session id from session_state.json).
-    sidecar = tmp_path / "session_stats" / "claude"
+    sidecar = tmp_path / "sessions" / "s1"
     sidecar.mkdir(parents=True)
-    (sidecar / "s1.jsonl").write_text(
+    (sidecar / "savings.jsonl").write_text(
         json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
         encoding="utf-8",
     )
@@ -195,9 +195,9 @@ def test_statusline_does_not_fallback_when_session_id_is_missing(tmp_path: Path)
     state_dir.mkdir(parents=True)
     (state_dir / "session_state.json").write_text(json.dumps({"session_id": "s1"}), encoding="utf-8")
 
-    sidecar = tmp_path / "session_stats" / "claude"
+    sidecar = tmp_path / "sessions" / "s1"
     sidecar.mkdir(parents=True)
-    (sidecar / "s1.jsonl").write_text(
+    (sidecar / "savings.jsonl").write_text(
         json.dumps({"tool": "search", "tokens": 12_000, "calls": 4}) + "\n",
         encoding="utf-8",
     )
@@ -215,9 +215,9 @@ def test_statusline_does_not_fallback_when_session_id_is_missing(tmp_path: Path)
 
 def test_statusline_ignores_lifetime_savings_files(tmp_path: Path) -> None:
     # Session sidecar has the real per-session data.
-    sidecar = tmp_path / "session_stats" / "claude"
+    sidecar = tmp_path / "sessions" / "s1"
     sidecar.mkdir(parents=True)
-    (sidecar / "s1.jsonl").write_text(
+    (sidecar / "savings.jsonl").write_text(
         json.dumps({"tool": "search", "tokens": 2_000, "calls": 2}) + "\n",
         encoding="utf-8",
     )
