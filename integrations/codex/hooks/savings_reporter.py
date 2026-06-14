@@ -34,7 +34,7 @@ def main() -> int:
         message = ledger.get("systemMessage")
         if isinstance(message, str) and message.strip():
             sys.stdout.write(json.dumps({"systemMessage": message}) + "\n")
-    except (ImportError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+    except (ImportError, json.JSONDecodeError, KeyError, TypeError, ValueError, OSError):
         pass
     return 0
 
