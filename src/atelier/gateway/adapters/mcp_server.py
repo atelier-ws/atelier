@@ -5709,6 +5709,8 @@ _GRAPH_KINDS: frozenset[str] = frozenset(
         "commit_provenance",
         "index_docs",
         "recall_docs",
+        # WS11 (G17): module-boundary / god-module topology discovery.
+        "topology",
     }
 )
 
@@ -5793,6 +5795,8 @@ def _op_graph(
         result = analytics.dead_code(limit=limit)
     elif kind == "cycles":
         result = analytics.cycles(limit=limit)
+    elif kind == "topology":
+        result = analytics.topology(limit=limit)
     else:  # coupling
         result = analytics.coupling(limit=limit)
     result["kind"] = kind
