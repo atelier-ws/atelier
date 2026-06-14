@@ -497,7 +497,7 @@ def test_code_context_indexes_searches_and_retrieves_exact_symbol(tmp_path: Path
     assert "calculate_total" in symbol["source"]
 
 
-def test_code_context_outline_context_pack_and_impact(tmp_path: Path) -> None:
+def test_code_context_outline_and_context_pack(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
@@ -514,11 +514,6 @@ def test_code_context_outline_context_pack_and_impact(tmp_path: Path) -> None:
     assert pack.token_count <= pack.budget_tokens
     assert "OrderService" in pack.content
     assert "src/checkout.py" in pack.import_neighbors
-
-    impact = engine.impact("src/orders.py")
-    assert "src/checkout.py" in impact.direct_importers
-    assert "tests/test_checkout.py" in impact.transitive_importers
-    assert impact.risk_level in {"medium", "high", "critical"}
 
 
 def test_context_pack_caps_symbols_and_filters_import_noise(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

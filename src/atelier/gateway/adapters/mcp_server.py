@@ -910,6 +910,95 @@ def _write_workspace_session_state(state: dict[str, Any]) -> None:
         logging.exception("Recovered from broad exception handler")
 
 
+# Process-local hint for the fast path in _process_tool_accounting: when False, a
+# call that is neither a read nor a credit-enabled code-intel tool has no pending
+# credits to age, so it can skip the session_state read+write entirely. Safe
+# because one MCP server process owns the session's pending list; re-derived
+# after every real pass.
+_tool_accounting_pending_hint: bool = True
+
+
+def _process_tool_accounting(name: str, args: dict[str, Any], result: Any, rid: Any) -> None:
+    """Per-call savings accounting that never touches the model-facing response.
+
+    Two honest corrections share ONE session_state read/write:
+
+    1. Read baseline de-dup: outline/range reads both credit ``tokens_saved``
+       against the full-file baseline; crediting that more than once per file per
+       session double-counts (you can only avoid reading a file once). The 2nd+
+       baseline read of a file has its saving zeroed (via the thread-local)
+       BEFORE budget recording. Switch: ATELIER_READ_BASELINE_DEDUP=0.
+    2. Code-intel avoided-read credit: a deferred, observed credit booked to the
+       sidecar after an unread observation window
+       (``ATELIER_CODE_INTEL_CREDIT_AGE`` ticks). Switch: ATELIER_CODE_INTEL_CREDIT=0.
+
+    Fast path: a call that is neither a read nor a credit-enabled code-intel tool,
+    with no pending code-intel credits to age, skips all session_state I/O.
+    """
+    global _tool_accounting_pending_hint
+    code_intel_on = os.environ.get("ATELIER_CODE_INTEL_CREDIT", "1") != "0"
+    read_dedup_on = os.environ.get("ATELIER_READ_BASELINE_DEDUP", "1") != "0"
+    if not code_intel_on and not read_dedup_on:
+        return
+    try:
+        from atelier.core.capabilities import code_intel_credit, context_dedup, read_baseline_credit
+
+        is_read = name == "read"
+        is_code_intel = code_intel_on and name in code_intel_credit.CODE_INTEL_TOOLS
+        if not is_read and not is_code_intel and not _tool_accounting_pending_hint:
+            return  # nothing to net or record, and no pending credit to age
+
+        state = _read_workspace_session_state()
+        # Epoch guard: a compaction resets both ledgers so credits cannot leak
+        # across context windows.
+        epoch = context_dedup.current_epoch()
+        if state.get("code_intel_epoch") != epoch:
+            state = code_intel_credit.reset_pending(state)
+            state = read_baseline_credit.reset(state)
+            state["code_intel_epoch"] = epoch
+
+        if is_read:
+            if read_dedup_on and isinstance(result, dict):
+                mode = result.get("mode")
+                path = result.get("path") or args.get("path")
+                state, credit = read_baseline_credit.should_credit(state, path, mode)
+                if not credit:
+                    # Baseline already counted this session -> zero the saving so
+                    # neither the budget recorder nor the `saved` field re-counts it.
+                    _tool_call_tokens_saved.value = 0
+            if code_intel_on:
+                read_paths: list[str] = []
+                single = args.get("path")
+                if isinstance(single, str) and single:
+                    read_paths.append(single)
+                files = args.get("files")
+                if isinstance(files, list):
+                    for entry in files:
+                        if isinstance(entry, str) and entry:
+                            read_paths.append(entry)
+                        elif isinstance(entry, dict):
+                            ep = entry.get("path")
+                            if isinstance(ep, str) and ep:
+                                read_paths.append(ep)
+                state = code_intel_credit.consume_reads(state, read_paths)
+        elif is_code_intel and isinstance(result, dict):
+            paths = code_intel_credit.extract_credited_paths(name, result)
+            state = code_intel_credit.record_pending(state, name, paths)
+
+        if code_intel_on:
+            threshold = int(os.environ.get("ATELIER_CODE_INTEL_CREDIT_AGE", "8"))
+            state, credits = code_intel_credit.tick_and_credit(state, threshold=threshold)
+            for credit_entry in credits:
+                # Deferred credit for an EARLIER call -> sidecar only; never the
+                # current response's `saved` field.
+                _append_savings(credit_entry["tool"], 0, 1, rid=str(rid))
+
+        _write_workspace_session_state(state)
+        _tool_accounting_pending_hint = bool(state.get("code_intel_pending"))
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+
+
 def _default_workflow_agent_executor(
     step: Any,
     prompt: str,
@@ -1807,7 +1896,7 @@ def _benchmark_edit_block_message(args: dict[str, Any]) -> str | None:
     return (
         "Benchmark edit gate requires grounding evidence before editing. "
         f"Ground the target with read, grep, search, symbols, node, explore, callers, "
-        f"callees, usages, or impact first: {target_list}"
+        f"callees, or usages first: {target_list}"
     )
 
 
@@ -3670,9 +3759,11 @@ def _render_read_outline_md(path: str, outline: dict[str, Any], language: str) -
         lines.append(f"hint: {hint}")
     imports_list = outline.get("imports")
     if isinstance(imports_list, list) and imports_list:
-        lines.append("imports:")
-        for imp in imports_list:
-            lines.append(f"- {imp}")
+        # Collapse to distinct top-level roots instead of one line per import.
+        # On import-heavy files the full list is dozens of lines the model
+        # rarely needs; the root set conveys the dependency surface far cheaper.
+        roots = sorted({str(imp).split()[0].split(".")[0] for imp in imports_list if str(imp).strip()})
+        lines.append(f"imports ({len(imports_list)}): {', '.join(roots)}")
     symbols_list = outline.get("symbols")
     if isinstance(symbols_list, list) and symbols_list:
         lines.append("symbols:")
@@ -5336,14 +5427,14 @@ def tool_symbols(
     Prefer over `grep` for symbol lookup — results are exact (not textual), indexed, and token-budgeted.
     Use `grep` for regex on arbitrary text. Use `search` for ranked file/snippet retrieval.
 
-    For `op="search"`, `view` controls response shape: `target` locates primary
-    definitions/files, `graph` returns relationships for the best target, `context`
-    returns a broader context pack, and `explain` combines targets with graph evidence.
+    The `view` parameter controls response shape: `target` locates primary
+    definitions/files, `graph` returns relationships for the best target,
+    `context` returns a broader context pack, and `explain` combines targets
+    with graph evidence.
 
     For call-graph, reference, and structural work use the dedicated tools:
     `node` (read a definition), `callers` / `callees` (call graph), `usages`
-    (all references), `impact` (blast radius), `pattern` (AST search/rewrite),
-    `explore` (grouped context).
+    (all references), `pattern` (AST search/rewrite), `explore` (grouped context).
     """
     return _op_search(
         query=query,
@@ -5528,41 +5619,6 @@ def _op_usages(
         ),
     )
     return _finish_code_result(_maybe_attach_code_rendered("usages", payload, render_compact=render_compact))
-
-
-def _op_impact(
-    *,
-    path: str | None = None,
-    query: str | None = None,
-    symbol_id: str | None = None,
-    qualified_name: str | None = None,
-    symbol_name: str | None = None,
-    kind: str | None = None,
-    language: str | None = None,
-    file_glob: str | None = None,
-    budget_tokens: int = 4000,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-) -> dict[str, Any]:
-    if not any([path, query, symbol_id, qualified_name, symbol_name]):
-        raise ValueError("path or symbol identifier is required for code impact")
-    engine = _code_engine_at(repo_root)
-    payload = cast(
-        dict[str, Any],
-        engine.tool_impact(
-            path,
-            query=query,
-            symbol_id=symbol_id,
-            qualified_name=qualified_name,
-            symbol_name=symbol_name,
-            file_path=path,
-            kind=kind,
-            language=language,
-            file_glob=file_glob,
-            budget_tokens=budget_tokens,
-        ),
-    )
-    return _finish_code_result(_maybe_attach_code_rendered("impact", payload, render_compact=render_compact))
 
 
 def _op_explore(
@@ -5803,6 +5859,7 @@ def _op_node(
     qualified_name: str | None = None,
     symbol_name: str | None = None,
     path: str | None = None,
+    line: int | None = None,
     budget_tokens: int = 4000,
     repo: str | None = None,
     repo_root: str | None = None,
@@ -5824,6 +5881,7 @@ def _op_node(
                 qualified_name=qualified_name,
                 symbol_name=symbol_name,
                 file_path=path,
+                line=line,
                 budget_tokens=budget_tokens,
             ),
         )
@@ -5835,6 +5893,7 @@ def _op_node(
                 qualified_name=qualified_name,
                 symbol_name=symbol_name,
                 file_path=path,
+                line=line,
                 budget_tokens=budget_tokens,
             ),
         )
@@ -6047,20 +6106,6 @@ def _tool_symbols_alias_handler(args: dict[str, Any]) -> dict[str, Any]:
             repo_root=rr,
             render_compact=rc,
         )
-    if op == "impact":
-        return _op_impact(
-            path=g("path"),
-            query=g("query"),
-            symbol_id=g("symbol_id"),
-            qualified_name=g("qualified_name"),
-            symbol_name=g("symbol_name"),
-            kind=g("kind"),
-            language=g("language"),
-            file_glob=g("file_glob"),
-            budget_tokens=bt,
-            repo_root=rr,
-            render_compact=rc,
-        )
     if op == "explore":
         return _op_explore(
             query=g("query"),
@@ -6127,6 +6172,7 @@ def _tool_symbols_alias_handler(args: dict[str, Any]) -> dict[str, Any]:
             qualified_name=g("qualified_name"),
             symbol_name=g("symbol_name"),
             path=g("path"),
+            line=g("line"),
             budget_tokens=bt,
             repo=repo,
             repo_root=rr,
@@ -6176,7 +6222,7 @@ tool_code = _tool_symbols_alias_handler
 # op parameter; each has a focused schema and clear description.      #
 # ------------------------------------------------------------------ #
 
-_CODE_INTEL_TOOLS: frozenset[str] = frozenset({"node", "callers", "callees", "impact", "explore"})
+_CODE_INTEL_TOOLS: frozenset[str] = frozenset({"node", "callers", "callees", "explore"})
 
 
 def _parse_symbol(symbol: str) -> dict[str, Any]:
@@ -6242,22 +6288,6 @@ def tool_callees(
     return _tool_symbols_alias_handler({"op": "callees", **_parse_symbol(symbol), "depth": depth, "limit": limit})
 
 
-@mcp_tool(name="impact")
-def tool_impact(
-    query: str,
-) -> dict[str, Any]:
-    """Blast radius for a file or symbol — all files/symbols affected by changing it.
-
-    Use before refactoring to understand scope.
-    Pass a file path (e.g. 'src/auth.py') for file-level, or a symbol name/qualified path/scip-id for symbol-level.
-    Returns: files grouped by reason (calls, imports, inherits, etc.).
-    """
-    result = _tool_symbols_alias_handler({"op": "impact", "query": query})
-    if isinstance(result, dict) and "affected_files" in result:
-        result["files"] = result.pop("affected_files")
-    return result
-
-
 @mcp_tool(name="explore")
 def tool_explore(
     query: str,
@@ -6292,7 +6322,7 @@ def tool_usages(
     return _tool_symbols_alias_handler({"op": "usages", **_parse_symbol(symbol), "limit": limit})
 
 
-@mcp_tool(name="pattern")
+@mcp_tool(name="codemod")
 def tool_pattern(
     pattern: str,
     language: str | None = None,
@@ -6301,14 +6331,19 @@ def tool_pattern(
     limit: int = 20,
     dry_run: bool = True,
 ) -> dict[str, Any]:
-    """Structural (AST) search and optional rewrite via ast-grep.
+    """Structural code search and safe rewrite (codemod) by AST shape, via ast-grep.
 
-    Prefer over `grep` when you want to match code *shape* rather than text:
-    e.g. `$X == None`, `if ($C) { $$$ }`, a call with specific argument forms.
-    Pass `rewrite` to transform matches; `dry_run=True` (default) previews
-    changes without writing. Use `language` (e.g. 'python') and `file_glob` to
-    scope the search.
-    Returns: matches (snippet, file_path, line) -- or, with rewrite and dry_run=False, {files_changed, total_rewrites}.
+    Use over `grep` when matching code *shape*, not text: it is formatting-
+    independent and never matches inside strings or comments. Metavariables:
+    `$X` binds one node, `$$$` binds a list -- e.g. `isinstance($X, $Y)`,
+    `$X == None`, `requests.get($URL)`.
+
+    Pass `rewrite` to transform every match (the codemod); captured metavariables
+    are reusable in the replacement, e.g. pattern `$X == None`, rewrite `$X is None`.
+    `dry_run=True` (default) returns a unified-diff preview and writes nothing;
+    `dry_run=False` applies the rewrite across all matched files. Scope with
+    `language` (e.g. 'python') and `file_glob`.
+    Returns: matches (snippet, file_path, line); with `rewrite`, a diff and `files_changed`.
     """
     return _tool_symbols_alias_handler(
         {
@@ -6745,7 +6780,7 @@ def tool_grep(
         "Search code and docs by ranked query. Use this for relevance-ranked snippets, "
         "full-file ranked reads, or repo maps seeded from known files. Use `grep` for "
         "regex, glob, type-filter, or context-line search, then escalate with `node`, "
-        "`callers`, `callees`, `usages`, `impact`, or `explore` once grounded."
+        "`callers`, `callees`, `usages`, or `explore` once grounded."
     ),
     input_schema={
         "type": "object",
@@ -6847,7 +6882,7 @@ def tool_smart_search(
     - Use `mode='chunks'` for snippets.
     - Use `mode='map'` with `seed_files` to build a repo map.
     - Use `grep` instead when you need regex, glob, type filters, summaries, or incremental reruns.
-    - Once grounded, use `node`, `callers`, `callees`, `usages`, `impact`, or `explore` for exact code-intel follow-up.
+    - Once grounded, use `node`, `callers`, `callees`, `usages`, or `explore` for exact code-intel follow-up.
     """
     if mode == "map":
         if not seed_files:
@@ -7909,6 +7944,12 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 _args = args if isinstance(args, dict) else {}
                 rendered_text = render_tool_result_text(name, result)
 
+                # Per-call savings accounting (read baseline de-dup + deferred
+                # code-intel credit). Runs BEFORE budget recording so a zeroed
+                # read saving flows into both the recorder and the `saved` field.
+                # Local-handler path only; never touches the response bytes.
+                _process_tool_accounting(name, _args, result, rid)
+
                 _record_context_budget_for_tool(
                     name,
                     _args,
@@ -7982,22 +8023,32 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         dedup_stubbed = True
                         if dedup_chars_saved > 0:
                             _append_workspace_savings(name, dedup_chars_saved // 4, 0, rid=str(rid))
-            # Embed real savings on the content item itself so the values
-            # land in the Claude transcript JSONL. Statusline / analytics /
-            # frontends read the transcript and sum these — no side files,
-            # no session-id filter, no model-resolution dance.
+            # Embed per-call savings on the content item so they also ride into
+            # the Claude transcript JSONL. NOTE: this is a secondary record —
+            # the live statusline/analytics source today is the session_stats
+            # sidecar written by _append_workspace_savings below, not the
+            # transcript. The dispatcher writes the same event to two sidecars
+            # (session_stats + runs/*_context_savings); read ONE, never sum both.
             # Shape: {"tokens": int, "calls": int}. Either may be 0 but the
             # object is omitted entirely when both are 0.
             content_item: dict[str, Any] = {
                 "type": "text",
                 "text": response_text,
             }
-            # Mark large responses for ephemeral caching. Claude Code forwards
-            # cache_control from MCP tool results to the Anthropic API, turning
-            # repeated large context reads into cheap cache hits. Anthropic
-            # requires ≥1024 tokens (~4096 chars) for a cache checkpoint to be
-            # eligible; smaller responses are not worth the write overhead.
-            if len(response_text) >= 4096:
+            # Best-effort cache hint, NOT a measured saving. Tag large results
+            # so a host that honors MCP cache_control can checkpoint them for
+            # prompt caching. Caveats kept honest on purpose: (1) we do not
+            # verify the host actually forwards this; (2) the conversation
+            # prefix is already auto-cached by the host, so the marginal gain
+            # is small; (3) a cache *write* costs ~25% over input, so a one-off
+            # large result that is never re-read pays the write premium for
+            # nothing. The ≥4096-char floor (~1024 tokens) is Anthropic's
+            # minimum cacheable size.
+            # ...and skip it entirely for dedup-eligible tools (read): an exact
+            # re-read is elided by the dedup pass below, so the marker can never
+            # earn its cache-read payoff there and only risks a redundant
+            # breakpoint on top of the host's automatic prefix caching.
+            if len(response_text) >= 4096 and name not in _DEDUP_TOOLS:
                 content_item["cache_control"] = {"type": "ephemeral"}
             # When deduped, skip the original per-call savings (they'd otherwise be
             # credited against bytes we just elided).

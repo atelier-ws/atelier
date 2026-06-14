@@ -602,8 +602,7 @@ def _render_hosts_footer_rich(rows: list[dict[str, Any]], since_label: str) -> N
     if total_subagents > 0:
         sub_pct = 100 * total_sub_cost / total_cost if total_cost > 0 else 0.0
         usage_lines.append(
-            f"  [dim]Subagents     [/]  [white]{total_subagents}[/]"
-            f"  [dim]≈${total_sub_cost:,.4f}  ({sub_pct:.1f}%)[/]"
+            f"  [dim]Subagents     [/]  [white]{total_subagents}[/]  [dim]≈${total_sub_cost:,.4f}  ({sub_pct:.1f}%)[/]"
         )
 
     savings_lines = [

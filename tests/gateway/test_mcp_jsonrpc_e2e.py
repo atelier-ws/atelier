@@ -36,6 +36,7 @@ EXPECTED_TOOLS = {
     "shell",
     "usages",
     "web_fetch",
+    "codemod",
 }
 
 

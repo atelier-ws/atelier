@@ -3,7 +3,7 @@
 Quick-reference invocation patterns
 ------------------------------------
 
-All examples use ``atelier benchmark atelierbench``
+All examples use ``atelier benchmark codebench``
 (default task = all, default model = sonnet).
 
 
@@ -11,19 +11,19 @@ Atelier vs Baseline on Claude CLI (default transport)
 ......................................................
 
   # Atelier arm (latent + swarm), local Claude CLI:
-  atelier benchmark atelierbench --arm atelier
+  atelier benchmark codebench --arm atelier
 
   # Baseline arm (no Atelier, vanilla Claude CLI):
-  atelier benchmark atelierbench --arm baseline
+  atelier benchmark codebench --arm baseline
 
   # Compare both in one run:
-  atelier benchmark atelierbench --arm baseline --arm atelier
+  atelier benchmark codebench --arm baseline --arm atelier
 
   # With a specific model:
-  atelier benchmark atelierbench --arm atelier --model claude-sonnet-4-20250514
+  atelier benchmark codebench --arm atelier --model claude-sonnet-4-20250514
 
   # Limit to a single task for fast iteration:
-  atelier benchmark atelierbench --task codegen_hello_world --arm atelier
+  atelier benchmark codebench --task codegen_hello_world --arm atelier
 
 
 
@@ -31,10 +31,10 @@ OpenCode as the CLI driver (--cli-driver opencode)
 ...................................................
 
   # Atelier arm, but the sub-task prompt is handed to `opencode run`:
-  atelier benchmark atelierbench --arm atelier --cli-driver opencode
+  atelier benchmark codebench --arm atelier --cli-driver opencode
 
   # Compare atelier vs baseline on OpenCode driver:
-  atelier benchmark atelierbench --arm baseline --arm atelier --cli-driver opencode
+  atelier benchmark codebench --arm baseline --arm atelier --cli-driver opencode
 
 
 Atelier on Bedrock (AWS) with rate limiting
@@ -42,49 +42,49 @@ Atelier on Bedrock (AWS) with rate limiting
 
   Shorthand via --provider:
 
-    atelier benchmark atelierbench --arm atelier --provider bedrock --rate-limit-rpm 5
-    atelier benchmark atelierbench --arm baseline --arm atelier --provider bedrock --rate-limit-rpm 5
+    atelier benchmark codebench --arm atelier --provider bedrock --rate-limit-rpm 5
+    atelier benchmark codebench --arm baseline --arm atelier --provider bedrock --rate-limit-rpm 5
 
   Explicit preset (same effect):
 
-    atelier benchmark atelierbench --arm atelier --claude-provider-preset aws-claude --rate-limit-rpm 5
+    atelier benchmark codebench --arm atelier --claude-provider-preset aws-claude --rate-limit-rpm 5
 
   With token-level rate limit:
 
-    atelier benchmark atelierbench --arm atelier --provider bedrock --rate-limit-rpm 5 --rate-limit-tpm 50000
+    atelier benchmark codebench --arm atelier --provider bedrock --rate-limit-rpm 5 --rate-limit-tpm 50000
 
 
 Baseline on Bedrock with rate limiting
 .......................................
 
-  atelier benchmark atelierbench --arm baseline --provider bedrock --rate-limit-rpm 5
+  atelier benchmark codebench --arm baseline --provider bedrock --rate-limit-rpm 5
 
 
 Atelier on GCP Vertex with rate limiting
 ........................................
 
-  atelier benchmark atelierbench --arm atelier --provider gcp --rate-limit-rpm 5
-  atelier benchmark atelierbench --arm baseline --arm atelier --provider gcp --rate-limit-rpm 5
+  atelier benchmark codebench --arm atelier --provider gcp --rate-limit-rpm 5
+  atelier benchmark codebench --arm baseline --arm atelier --provider gcp --rate-limit-rpm 5
 
 
 Atelier on Azure with rate limiting
 ....................................
 
-  atelier benchmark atelierbench --arm atelier --provider azure --rate-limit-rpm 5
-  atelier benchmark atelierbench --arm baseline --arm atelier --provider azure --rate-limit-rpm 5
+  atelier benchmark codebench --arm atelier --provider azure --rate-limit-rpm 5
+  atelier benchmark codebench --arm baseline --arm atelier --provider azure --rate-limit-rpm 5
 
 
 Atelier on OpenRouter
 .....................
 
-  atelier benchmark atelierbench --arm atelier --provider openrouter --rate-limit-rpm 10
-  atelier benchmark atelierbench --arm baseline --arm atelier --provider openrouter --rate-limit-rpm 10
+  atelier benchmark codebench --arm atelier --provider openrouter --rate-limit-rpm 10
+  atelier benchmark codebench --arm baseline --arm atelier --provider openrouter --rate-limit-rpm 10
 
 
 All five arms together (compare everything)
 ...........................................
 
-  atelier benchmark atelierbench --arm baseline --arm atelier --arm atelier.raw \
+  atelier benchmark codebench --arm baseline --arm atelier --arm atelier.raw \
       --cli-driver claude --reps 3
 
 
@@ -92,16 +92,16 @@ Atelier-run arm (runs ``atelier run start`` as the driver -- Atelier's own
 owned-agent loop, using YOUR API credentials directly)
 ........................................................
 
-  atelier benchmark atelierbench --arm atelier --cli-driver atelier-run
+  atelier benchmark codebench --arm atelier --cli-driver atelier-run
 
   # Atelier-run on Bedrock with rate limiting (the driver is `atelier run start`,
   # not the `claude` CLI -- `atelier run` uses your own ANTHROPIC_API_KEY or
   # other provider credentials):
-  atelier benchmark atelierbench --arm atelier --cli-driver atelier-run \
+  atelier benchmark codebench --arm atelier --cli-driver atelier-run \
       --model us.anthropic.claude-sonnet-4-6 --rate-limit-rpm 10
 
   # Compare atelier (plugin) vs atelier-run (owned-agent loop) on Bedrock:
-  atelier benchmark atelierbench \
+  atelier benchmark codebench \
       --arm atelier \
       --cli-driver atelier-run \
       --model us.anthropic.claude-sonnet-4-6 \
@@ -113,7 +113,7 @@ Atelier on Bedrock with explicit model + rate limit (copy-paste ready)
 ......................................................................
 
   # Atelier plugin arm via Claude CLI routed through Bedrock:
-  atelier benchmark atelierbench \
+  atelier benchmark codebench \
       --arms atelier \
       --provider bedrock \
       --model us.anthropic.claude-sonnet-4-6 \
@@ -122,7 +122,7 @@ Atelier on Bedrock with explicit model + rate limit (copy-paste ready)
       --reps 1 --tasks all
 
   # Compare atelier vs baseline on Bedrock:
-  atelier benchmark atelierbench \
+  atelier benchmark codebench \
       --arms baseline --arms atelier \
       --provider bedrock \
       --model us.anthropic.claude-sonnet-4-6 \
@@ -141,12 +141,12 @@ Common pitfalls
   # not to the benchmark harness. Use --provider / --agent-env instead.
   #
   # CORRECT: use --provider to set cloud-provider env vars for the claude CLI:
-  atelier benchmark atelierbench --arm atelier --provider bedrock --rate-limit-rpm 5
+  atelier benchmark codebench --arm atelier --provider bedrock --rate-limit-rpm 5
 
 
 Use --help on the sub-command for all available flags:
 
-  atelier benchmark atelierbench --help
+  atelier benchmark codebench --help
 """
 
 from __future__ import annotations
@@ -163,18 +163,18 @@ from shutil import rmtree, which
 import click
 
 from atelier.core.capabilities.benchmark_evidence import (
-    build_atelierbench_evidence,
+    build_codebench_evidence,
     git_state,
     write_benchmark_evidence,
 )
 from atelier.core.capabilities.benchmark_gate import (
-    evaluate_atelierbench_gate,
+    evaluate_codebench_gate,
     load_benchmark_gate,
     require_benchmark_gate_pass,
     write_benchmark_gate,
 )
 from atelier.core.capabilities.benchmark_manifest import (
-    build_atelierbench_manifest,
+    build_codebench_manifest,
     write_benchmark_manifest,
 )
 from atelier.core.capabilities.host_runners import (
@@ -205,36 +205,46 @@ benchmark_group.add_command(benchmark_solver_cmd, name="solver")
 @benchmark_group.command("mcp")
 @click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
 @click.option(
+    "--tool",
+    "tools",
+    multiple=True,
+    metavar="NAME",
+    help="Run only the named tool suite(s), e.g. --tool node --tool read. "
+    "Repeatable or comma-separated; use 'code' for all code-intel tools. Default: all tools.",
+)
+@click.option(
     "--jobs",
     type=int,
     default=0,
     show_default="auto",
     help="Parallel suite shards. Use 0 to auto-size.",
 )
-def benchmark_mcp_cmd(out: Path | None, jobs: int) -> None:
+def benchmark_mcp_cmd(out: Path | None, tools: tuple[str, ...], jobs: int) -> None:
     """Run the public MCP tool benchmark suite and write results."""
     repo_root = Path.cwd().resolve()
+    suite_filter = _mcp_suite_filter(tools)
+    if suite_filter is not None:
+        _validate_mcp_suites(suite_filter, repo_root=repo_root)
     run_dir = _run_dir("mcp", out)
     workspace_dir = _workspace_dir("mcp", repo_root=repo_root, run_id=run_dir.name)
-    resolved_jobs = _resolve_mcp_jobs(jobs, repo_root=repo_root)
+    resolved_jobs = _resolve_mcp_jobs(jobs, repo_root=repo_root, suite_names=suite_filter)
     progress = ProgressReporter("mcp", total=1)
     progress.start("starting benchmark", current=f"reports {run_dir} | jobs {resolved_jobs}")
     bench_root = _bench_source_root()
-    _run(
-        [
-            *_python_cmd(bench_root),
-            "-m",
-            "benchmarks.mcp_tools.export_public_mcp_csv",
-            "--artifact-root",
-            str(workspace_dir),
-            "--csv-out",
-            str(run_dir / "results.csv"),
-            "--jobs",
-            str(resolved_jobs),
-        ],
-        cwd=bench_root,
-        label="MCP benchmark",
-    )
+    cmd = [
+        *_python_cmd(bench_root),
+        "-m",
+        "benchmarks.mcp_tools.export_public_mcp_csv",
+        "--artifact-root",
+        str(workspace_dir),
+        "--csv-out",
+        str(run_dir / "results.csv"),
+        "--jobs",
+        str(resolved_jobs),
+    ]
+    if suite_filter is not None:
+        cmd += ["--suites", ",".join(suite_filter)]
+    _run(cmd, cwd=bench_root, label="MCP benchmark")
     progress.step("benchmark command complete", current="public MCP tools")
     progress.finish("benchmark complete")
     click.echo(f"Results: {run_dir}")
@@ -250,7 +260,13 @@ def benchmark_mcp_cmd(out: Path | None, jobs: int) -> None:
 )
 @click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
 @click.option("--iterations", type=int, default=1, show_default=True)
-@click.option("--max-cases", type=int, default=100, show_default=True)
+@click.option(
+    "--max-cases",
+    type=int,
+    default=100,
+    show_default=True,
+    help="Maximum cases per family (default 100). Use 0 for no cap.",
+)
 @click.option(
     "--jobs",
     type=int,
@@ -260,9 +276,7 @@ def benchmark_mcp_cmd(out: Path | None, jobs: int) -> None:
 )
 @click.option(
     "--providers",
-    default=(
-        "atelier,atelier-zoekt,zoekt,atelier-serena,serena,atelier-codegraph,codegraph,code-index-mcp,jcodemunch-mcp"
-    ),
+    default=("atelier,atelier-zoekt,zoekt,serena,atelier-codegraph,codegraph,code-index-mcp,jcodemunch-mcp"),
     show_default=True,
 )
 @click.option("--families", default="exact_search,substring_search,nohit_search", show_default=True)
@@ -371,14 +385,14 @@ def benchmark_gate_cmd(run_dir: Path, as_json: bool, require_pass: bool) -> None
             raise click.ClickException(str(exc)) from exc
 
 
-@benchmark_group.command("atelierbench")
+@benchmark_group.command("codebench")
 @click.option(
     "--task",
     "tasks",
     multiple=True,
     default=("all",),
     show_default=True,
-    help="AtelierBench task id; repeat for multiple or use 'all'.",
+    help="CodeBench task id; repeat for multiple or use 'all'.",
 )
 @click.option(
     "--arm",
@@ -497,7 +511,7 @@ def benchmark_gate_cmd(run_dir: Path, as_json: bool, require_pass: bool) -> None
 @click.option("--bridge-wait", type=float, default=3.0, show_default=True)
 @click.option(
     "--task-source-dir",
-    "atelierbench_tasks_dir",
+    "codebench_tasks_dir",
     type=click.Path(path_type=Path, file_okay=False),
     default=None,
 )
@@ -517,7 +531,7 @@ def benchmark_gate_cmd(run_dir: Path, as_json: bool, require_pass: bool) -> None
         "Shorthand for --claude-provider-preset; explicit --agent-env takes precedence."
     ),
 )
-def benchmark_atelierbench_cmd(
+def benchmark_codebench_cmd(
     tasks: tuple[str, ...],
     arms: tuple[str, ...],
     reps: int,
@@ -544,15 +558,15 @@ def benchmark_atelierbench_cmd(
     clear_claude_api_key: bool,
     bridge_command: str | None,
     bridge_wait: float,
-    atelierbench_tasks_dir: Path | None,
+    codebench_tasks_dir: Path | None,
     require_pass: bool,
     provider: str | None,
 ) -> None:
     """Run cost/quality comparison (Atelier vs baseline) and write a report."""
     repo_root = Path.cwd().resolve()
-    run_dir = _atelierbench_run_dir(repo_root)
-    resolved_atelierbench_tasks_dir = _ensure_atelierbench_tasks_dir(repo_root, atelierbench_tasks_dir)
-    env = {"ATELIERBENCH_TASKS_DIR": str(resolved_atelierbench_tasks_dir)}
+    run_dir = _codebench_run_dir(repo_root)
+    resolved_codebench_tasks_dir = _ensure_codebench_tasks_dir(repo_root, codebench_tasks_dir)
+    env = {"CODEBENCH_TASKS_DIR": str(resolved_codebench_tasks_dir)}
     bridge_args = []
     if bridge_command:
         bridge_args = ["--bridge-command", bridge_command, "--bridge-wait", str(bridge_wait)]
@@ -600,12 +614,12 @@ def benchmark_atelierbench_cmd(
         agent_env_args.extend(["--agent-env-from-host", item])
     baseline_arm = "baseline" if "baseline" in arms else arms[0]
     candidate_arm = next((arm for arm in arms if arm != baseline_arm), baseline_arm)
-    task_catalog = _load_atelierbench_catalog(repo_root)
+    task_catalog = _load_codebench_catalog(repo_root)
     task_ids = [task["id"] for task in task_catalog] if tasks == ("all",) else list(tasks)
     task_payload = [task for task in task_catalog if task["id"] in task_ids]
     manifest_path = write_benchmark_manifest(
         run_dir,
-        build_atelierbench_manifest(
+        build_codebench_manifest(
             tasks=task_payload,
             arms=list(arms),
             reps=reps,
@@ -614,19 +628,24 @@ def benchmark_atelierbench_cmd(
             timeout=timeout,
             jobs=jobs,
             parallel_scope=parallel_scope,
-            atelierbench_tasks_dir=resolved_atelierbench_tasks_dir,
+            codebench_tasks_dir=resolved_codebench_tasks_dir,
             bridge_command=bridge_command,
         ),
     )
     repo_state = git_state(repo_root)
     forwarded_cli_extra_args = [f"--cli-extra-arg={arg}" for arg in cli_extra_args]
-    progress = ProgressReporter("atelierbench", total=1)
+    # The heavy lifting runs in a subprocess that streams its own per-arm
+    # progress straight to the terminal, so this reporter only brackets the
+    # run. Disable the heartbeat (it would otherwise re-print a static bar
+    # every 30s) and write whole lines (in_place would fight the subprocess
+    # output for the cursor).
+    progress = ProgressReporter("codebench", total=1, heartbeat_seconds=0, in_place=False)
     progress.start("starting benchmark", current=f"{len(tasks)} task selector(s) x {len(arms)} arm(s)")
     _run(
         [
             *_python_cmd(repo_root),
             "-m",
-            "benchmarks.atelierbench.run",
+            "benchmarks.codebench.run",
             *tasks,
             "--arms",
             *arms,
@@ -656,13 +675,13 @@ def benchmark_atelierbench_cmd(
             str(run_dir),
         ],
         cwd=repo_root,
-        label="AtelierBench",
+        label="CodeBench",
         env=env,
     )
     progress.step("benchmark command complete", current=run_dir.name)
     write_benchmark_evidence(
         run_dir,
-        build_atelierbench_evidence(
+        build_codebench_evidence(
             run_dir=run_dir,
             manifest_path=manifest_path,
             repo_state=repo_state,
@@ -670,7 +689,7 @@ def benchmark_atelierbench_cmd(
     )
     write_benchmark_gate(
         run_dir,
-        evaluate_atelierbench_gate(
+        evaluate_codebench_gate(
             run_dir,
             baseline_arm=baseline_arm,
             candidate_arm=candidate_arm,
@@ -685,9 +704,9 @@ def benchmark_atelierbench_cmd(
     click.echo(f"Results: {run_dir}")
 
 
-def _atelierbench_run_dir(repo_root: Path) -> Path:
+def _codebench_run_dir(repo_root: Path) -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    path = repo_root.resolve() / "benchmarks" / "atelierbench" / "results" / timestamp
+    path = repo_root.resolve() / "benchmarks" / "codebench" / "results" / timestamp
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -724,7 +743,7 @@ def _auto_jobs(item_count: int, *, hard_cap: int) -> int:
     return max(1, min(item_count, hard_cap, detected))
 
 
-def _resolve_mcp_jobs(requested_jobs: int, *, repo_root: Path) -> int:
+def _resolve_mcp_jobs(requested_jobs: int, *, repo_root: Path, suite_names: list[str] | None = None) -> int:
     if requested_jobs > 0:
         return requested_jobs
     repo_root = repo_root.resolve()
@@ -732,7 +751,31 @@ def _resolve_mcp_jobs(requested_jobs: int, *, repo_root: Path) -> int:
         sys.path.insert(0, str(repo_root))
     from benchmarks.mcp_tools.export_public_mcp_csv import _select_suite_specs
 
-    return _auto_jobs(len(_select_suite_specs(None)), hard_cap=32)
+    return _auto_jobs(len(_select_suite_specs(suite_names)), hard_cap=32)
+
+
+def _mcp_suite_filter(tools: tuple[str, ...]) -> list[str] | None:
+    requested: list[str] = []
+    for value in tools:
+        requested.extend(_csv_values(value))
+    return requested or None
+
+
+def _validate_mcp_suites(suite_names: list[str], *, repo_root: Path) -> None:
+    repo_root = repo_root.resolve()
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from benchmarks.mcp_tools.export_public_mcp_csv import (
+        _select_suite_specs,
+        _suite_aliases,
+        _suite_specs,
+    )
+
+    try:
+        _select_suite_specs(suite_names)
+    except ValueError as exc:
+        available = sorted({name for name, _size, _runner in _suite_specs()} | set(_suite_aliases()))
+        raise click.ClickException(f"{exc}. Available --tool values: {', '.join(available)}") from exc
 
 
 def _resolve_provider_jobs(requested_jobs: int, providers: list[str]) -> int:
@@ -741,17 +784,17 @@ def _resolve_provider_jobs(requested_jobs: int, providers: list[str]) -> int:
     return _auto_jobs(len(providers), hard_cap=32)
 
 
-def _ensure_atelierbench_tasks_dir(repo_root: Path, configured_dir: Path | None) -> Path:
+def _ensure_codebench_tasks_dir(repo_root: Path, configured_dir: Path | None) -> Path:
     resolved = (
         configured_dir.resolve()
         if configured_dir is not None
-        else repo_root.parent / "benchmarks" / repo_root.name / "atelierbench-tasks"
+        else repo_root.parent / "benchmarks" / repo_root.name / "codebench-tasks"
     )
     tasks_dir = resolved / "tasks"
     if tasks_dir.is_dir():
         return resolved
     raise click.ClickException(
-        f"AtelierBench tasks directory not found: {tasks_dir}\n"
+        f"CodeBench tasks directory not found: {tasks_dir}\n"
         "Pass --task-source-dir pointing to a directory that contains a 'tasks/' subdirectory."
     )
 
@@ -773,18 +816,18 @@ def _bench_source_root() -> Path:
     return Path(__file__).resolve().parents[5]
 
 
-def _load_atelierbench_catalog(repo_root: Path) -> list[dict[str, object]]:
-    tasks_path = repo_root / "benchmarks" / "atelierbench" / "tasks.py"
-    module_name = "_atelierbench_tasks"
+def _load_codebench_catalog(repo_root: Path) -> list[dict[str, object]]:
+    tasks_path = repo_root / "benchmarks" / "codebench" / "tasks.py"
+    module_name = "_codebench_tasks"
     spec = importlib.util.spec_from_file_location(module_name, tasks_path)
     if spec is None or spec.loader is None:
-        raise click.ClickException(f"Unable to load AtelierBench task catalog: {tasks_path}")
+        raise click.ClickException(f"Unable to load CodeBench task catalog: {tasks_path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     tasks = getattr(module, "TASKS", None)
     if not isinstance(tasks, list):
-        raise click.ClickException(f"Invalid AtelierBench task catalog: {tasks_path}")
+        raise click.ClickException(f"Invalid CodeBench task catalog: {tasks_path}")
     catalog: list[dict[str, object]] = []
     for task in tasks:
         task_id = getattr(task, "id", None)
@@ -798,7 +841,7 @@ def _load_atelierbench_catalog(repo_root: Path) -> list[dict[str, object]]:
             or not isinstance(weight, int)
             or not isinstance(task_dir, str)
         ):
-            raise click.ClickException(f"Invalid AtelierBench task metadata: {tasks_path}")
+            raise click.ClickException(f"Invalid CodeBench task metadata: {tasks_path}")
         catalog.append(
             {
                 "id": task_id,

@@ -125,7 +125,7 @@ class AtelierHarborAgent(BaseInstalledAgent):
         """Run Atelier on the task instruction and stream results to the log."""
         escaped = shlex.quote(instruction)
         model_flag = f"--model {shlex.quote(self._model)}" if self._model else ""
-        cmd = f"atelier run {escaped} {model_flag} --format stream-json " f"2>&1 | tee {shlex.quote(_CONTAINER_LOG)}"
+        cmd = f"atelier run {escaped} {model_flag} --format stream-json 2>&1 | tee {shlex.quote(_CONTAINER_LOG)}"
         await self.exec_as_agent(
             environment,
             command=cmd,

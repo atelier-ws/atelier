@@ -148,8 +148,16 @@ class AstGrepAdapter:
             text=True,
             check=False,
         )
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or "ast-grep command failed")
+        stderr = result.stderr.strip()
+        # ast-grep follows grep's exit-code convention: 0 = matches found,
+        # 1 = no matches (NOT an error), >=2 = a real failure (bad lang/args).
+        if result.returncode not in (0, 1):
+            raise RuntimeError(stderr or "ast-grep command failed")
+        # A malformed pattern parses to an ERROR node: ast-grep exits 0, emits no
+        # matches, and only warns on stderr. Surface that instead of a silent empty
+        # result so the caller knows the pattern was wrong, not that nothing matched.
+        if "ERROR node" in stderr:
+            raise RuntimeError(stderr)
         return result
 
     def search(
@@ -208,17 +216,46 @@ class AstGrepAdapter:
             args.extend(["--globs", file_glob])
         result = self._run(args)
         payload = _parse_json_output(result.stdout)
-        raw_rewrites = payload.get("rewrites", [])
-        rewrites = raw_rewrites if isinstance(raw_rewrites, list) else []
-        candidates = [
-            RewriteCandidate(
-                file_path=str(item.get("file") or item.get("file_path") or ""),
-                before=str(item.get("before") or ""),
-                after=str(item.get("after") or ""),
+        raw_matches = payload.get("matches", [])
+        matches = raw_matches if isinstance(raw_matches, list) else []
+        # ast-grep --json emits one object per match carrying `replacement` plus
+        # byte `replacementOffsets`; reconstruct each file's post-rewrite content by
+        # splicing replacements back-to-front so earlier edits don't shift offsets.
+        edits_by_file: dict[str, list[tuple[int, int, str]]] = {}
+        for raw in matches:
+            if not isinstance(raw, dict):
+                continue
+            replacement = raw.get("replacement")
+            if replacement is None:
+                continue
+            file_path = str(raw.get("file") or raw.get("file_path") or "")
+            offsets = raw.get("replacementOffsets")
+            if not isinstance(offsets, dict):
+                byte_range = raw.get("range")
+                offsets = byte_range.get("byteOffset") if isinstance(byte_range, dict) else None
+            if not file_path or not isinstance(offsets, dict):
+                continue
+            start, end = offsets.get("start"), offsets.get("end")
+            if not isinstance(start, int) or not isinstance(end, int):
+                continue
+            edits_by_file.setdefault(file_path, []).append((start, end, str(replacement)))
+        candidates: list[RewriteCandidate] = []
+        for file_path, edits in edits_by_file.items():
+            target = (self.repo_root / file_path).resolve()
+            try:
+                original = target.read_bytes()
+            except OSError:
+                continue
+            updated = original
+            for start, end, replacement in sorted(edits, key=lambda edit: edit[0], reverse=True):
+                updated = updated[:start] + replacement.encode("utf-8") + updated[end:]
+            candidates.append(
+                RewriteCandidate(
+                    file_path=file_path,
+                    before=original.decode("utf-8", errors="replace"),
+                    after=updated.decode("utf-8", errors="replace"),
+                )
             )
-            for item in rewrites
-            if isinstance(item, dict)
-        ]
         outcome: RewriteOutcome = execute_rewrite(self.repo_root, candidates, dry_run=dry_run)
         return PatternRewriteResult(diff=outcome.diff, files_changed=outcome.files_changed)
 
