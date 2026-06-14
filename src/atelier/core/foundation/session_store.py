@@ -92,6 +92,29 @@ def _session_id_of(trace: dict[str, Any]) -> str:
     return str(trace.get("session_id") or trace.get("id") or "unknown")
 
 
+def _dedupe_by_id(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse append-only JSONL lines to one entry per ``id`` (last write wins).
+
+    Writers only ever append, so a file may carry several physical lines for the
+    same id. Readers reconcile here: the newest line for an id replaces earlier
+    ones in place, preserving first-seen order. Entries without a string id pass
+    through untouched.
+    """
+    position: dict[str, int] = {}
+    out: list[dict[str, Any]] = []
+    for item in items:
+        key = item.get("id") if isinstance(item, dict) else None
+        if not isinstance(key, str):
+            out.append(item)
+            continue
+        if key in position:
+            out[position[key]] = item
+        else:
+            position[key] = len(out)
+            out.append(item)
+    return out
+
+
 class SessionStore:
     """Per-session folders + a tiny derivable index."""
 
@@ -190,12 +213,12 @@ class SessionStore:
         return session_id
 
     def _append_trace_line(self, session_id: str, trace: dict[str, Any]) -> None:
-        path = self._traces_path(session_id)
-        existing: list[dict[str, Any]] = []
-        if path.exists():
-            existing = [t for t in self._read_jsonl(path) if t.get("id") != trace["id"]]
-        existing.append(trace)
-        path.write_text("".join(json.dumps(t, ensure_ascii=False) + "\n" for t in existing), encoding="utf-8")
+        # Append-only: never rewrite the file. A full rewrite is O(n) per trace and
+        # loses any trace appended concurrently by another writer. Re-recording an id
+        # just appends a newer line; _read_jsonl -> _dedupe_by_id collapses to last
+        # write wins, and a torn final line is skipped on read.
+        with self._traces_path(session_id).open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(trace, ensure_ascii=False) + "\n")
 
     def _update_meta(self, session_id: str, trace: dict[str, Any]) -> None:
         meta = self.meta(session_id) or {
@@ -229,7 +252,7 @@ class SessionStore:
                 out.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
-        return out
+        return _dedupe_by_id(out)
 
     def meta(self, session_id: str) -> dict[str, Any] | None:
         path = self._meta_path(session_id)
@@ -361,9 +384,9 @@ class SessionStore:
         content_file.write_text(content, encoding="utf-8")
         payload = artifact.model_dump(mode="json")
         meta_path = self._raw_meta_path(session_id)
-        existing = [a for a in self._read_jsonl(meta_path) if a.get("id") != artifact.id]
-        existing.append(payload)
-        meta_path.write_text("".join(json.dumps(a, ensure_ascii=False) + "\n" for a in existing), encoding="utf-8")
+        # Append-only metadata; readers dedupe by id (last write wins).
+        with meta_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
         with closing(self._connect_index()) as conn:
             self._index_raw_artifact(conn, payload, session_id)
             conn.commit()
