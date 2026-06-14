@@ -3967,6 +3967,11 @@ def tool_smart_read(
     BATCH: when reading 2+ independent files, use files=[{path, range?}, ...]
     in a single call rather than separate calls — each extra turn re-reads the
     entire conversation history at ~$0.49/turn on large context windows.
+
+    Cross-tool: after editing a file via `edit`, don't re-read it — the edit
+    response already confirms the change. When you don't yet know which file
+    holds something, use `grep` with output_mode="file_paths_with_content" to
+    discover and read in one step instead of grep-then-read.
     """
     # Batch mode: process each file spec and return aggregated results.
     if files is not None:
@@ -4307,6 +4312,13 @@ def tool_smart_edit(
       - replace:       {path, op: "replace", old_string, new_string, fuzzy?}
       - insert_after:  {path, op: "insert_after", anchor, new_string}
       - replace_range: {path, op: "replace_range", line_start, line_end, new_string}
+
+    Maximise work per call: ``edits`` is the batching surface — fill it with every
+    change in one call (ten edits to one file, or one edit each to ten files). One
+    call with N edit objects beats N calls in both latency and cost. Prefer several
+    small edits over one huge ``new_string``, and identify all target files up-front
+    from your initial read. After editing, don't re-read the file — the response
+    below already confirms the change.
 
     Returns ordinary successful hunks as {applied: ["path:line,start-end", ...]};
     failures and edits carrying special metadata remain structured.
@@ -6143,7 +6155,14 @@ def _run_native_grep(
     name="grep",
     description=(
         "Search files with regex, glob, and type filters. Use this instead of `search` for "
-        "grep-style matching, path listing, context lines, summaries, or incremental reruns."
+        "grep-style matching, path listing, context lines, summaries, or incremental reruns.\n"
+        "Maximise work per call: pass every glob/path you need at once (file_glob_patterns) and "
+        "combine content_regex + type to narrow by scope and content in one call instead of "
+        "chaining narrow calls — tool-side filtering is cheaper than another round-trip. When "
+        "you'll need the matched code, set output_mode='file_paths_with_content' to discover AND "
+        "read matched context in one step rather than grep-then-read. Run independent searches in "
+        "parallel within one response. Pass a prior result's timestamp back as if_modified_since "
+        "to skip files unchanged since then."
     ),
     hidden_params=("include_meta",),
 )
@@ -6373,6 +6392,7 @@ def tool_smart_search(
     - Use `mode='map'` with `seed_files` to build a repo map.
     - Use `grep` instead when you need regex, glob, type filters, summaries, or incremental reruns.
     - Once grounded, use `node`, `callers`, `callees`, `usages`, `impact`, or `explore` for exact code-intel follow-up.
+    - Run independent searches in parallel within a single response; don't chain them serially.
     """
     if mode == "map":
         if not seed_files:
