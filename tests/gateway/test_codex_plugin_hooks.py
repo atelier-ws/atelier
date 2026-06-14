@@ -210,7 +210,43 @@ def test_codex_hooks_manifest_wires_reporter_and_update() -> None:
     assert "user_prompt.py" in rendered
     assert "savings_reporter.py" in rendered
     assert "stop.py" in rendered
+    assert "pre_tool_use.py" in rendered
+    assert "compact.py" in rendered
     assert "${PLUGIN_ROOT}/hooks/" in rendered
     assert "__ATELIER_PYTHON__" in rendered
     assert "__ATELIER_REPO_SRC__" in rendered
     assert "ATELIER_CODEX_PLUGIN_ROOT" not in rendered
+    for event in ("PreToolUse", "PreCompact", "PostCompact"):
+        assert event in data["hooks"]
+
+
+def test_codex_pre_tool_use_is_silent_without_bench_gate(tmp_path: Path) -> None:
+    result = _run_hook(
+        "pre_tool_use.py",
+        tmp_path / ".atelier",
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "apply_patch",
+            "tool_input": {"file_path": "alembic/versions/0001.py"},
+            "cwd": str(tmp_path),
+        },
+    )
+
+    assert result.stdout == ""
+
+
+def test_codex_compact_hook_bumps_epoch(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    cwd = tmp_path / "ws"
+    cwd.mkdir()
+
+    result = _run_hook(
+        "compact.py",
+        root,
+        {"hook_event_name": "PostCompact", "session_id": "c1", "cwd": str(cwd), "trigger": "auto"},
+    )
+
+    assert result.stdout == ""
+    state_files = list((root / "workspaces").glob("*/session_state.json"))
+    assert len(state_files) == 1
+    assert json.loads(state_files[0].read_text(encoding="utf-8"))["compaction_epoch"] == 1
