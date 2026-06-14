@@ -33,6 +33,9 @@ class ReviewerSettings:
     deep_edit_count_interval: int = DEFAULT_DEEP_INTERVAL
     review_model: str = ""
     agentic: bool = True
+    # Not a gate: when the live pass is on, auto-apply high-confidence patch fixes
+    # (baseline parity). Set liveReviewerAutoApply=false for review-only.
+    auto_apply: bool = True
 
     @property
     def enabled(self) -> bool:
@@ -76,6 +79,7 @@ def load_reviewer_settings(root: str | Path) -> ReviewerSettings:
         deep_edit_count_interval=_clamp_interval(raw.get("deepEditCountInterval", DEFAULT_DEEP_INTERVAL)),
         review_model=str(raw.get("reviewModel", "") or ""),
         agentic=bool(raw.get("agenticReviewer", True)),
+        auto_apply=bool(raw.get("liveReviewerAutoApply", True)),
     )
 
 
