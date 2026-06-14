@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +40,7 @@ def call_code_op(request: dict[str, Any]) -> dict[str, Any]:
     """
     from atelier.gateway.adapters import mcp_server
 
-    ops = {
+    ops: dict[str, Callable[..., Any]] = {
         "search": mcp_server._op_search,
         "symbol": mcp_server._op_node,
         "node": mcp_server._op_node,
