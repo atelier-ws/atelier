@@ -1022,7 +1022,13 @@ def _javascript_imports_worker(repo_root: Path, path: Path, source: str) -> list
 class CodeContextEngine:
     """Local code intelligence using tree-sitter tags, SQLite FTS5, rg, and repo-map ranking."""
 
-    def __init__(self, repo_root: str | Path = ".", *, db_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        repo_root: str | Path = ".",
+        *,
+        db_path: str | Path | None = None,
+        nonblocking_reads: bool = False,
+    ) -> None:
         self.repo_root = Path(repo_root).resolve()
         self.repo_id = _repo_id(self.repo_root)
         self.db_path = Path(db_path).resolve() if db_path is not None else _default_db_path(self.repo_root)
@@ -1057,6 +1063,10 @@ class CodeContextEngine:
         self._autosync_stop = threading.Event()
         self._autosync_thread: threading.Thread | None = None
         self._lineage_thread: threading.Thread | None = None
+        self._index_ready_cached = False
+        # MCP transport engines pass nonblocking_reads=True so read tools never
+        # block on a cold index build; direct/SDK callers keep blocking semantics.
+        self._nonblocking_reads = nonblocking_reads
         self._lineage_rebuild_full = False
         self._lineage_score_penalty: float = float(
             os.getenv("ATELIER_LINEAGE_COMMIT_SCORE_PENALTY", str(_LINEAGE_DEFAULT_SCORE_PENALTY))
@@ -4823,7 +4833,44 @@ class CodeContextEngine:
         conn.execute("INSERT OR IGNORE INTO engine_state(key, value) VALUES ('index_version', '0')")
         self._schema_ready = True
 
-    def _ensure_indexed(self) -> None:
+    def index_ready(self) -> bool:
+        """True once the symbol index has at least one indexed file for this repo."""
+        if self._index_ready_cached:
+            return True
+        try:
+            with self._connect() as conn:
+                self._init_schema(conn)
+                row = conn.execute("SELECT 1 FROM files WHERE repo_id = ? LIMIT 1", (self.repo_id,)).fetchone()
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            return False
+        if row is not None:
+            self._index_ready_cached = True
+            return True
+        return False
+
+    def _ensure_autosync_worker_alive(self) -> None:
+        if not self._autosync_enabled or self._autosync_stop.is_set():
+            return
+        t = self._autosync_thread
+        if t is not None and t.is_alive():
+            return
+        self._autosync_thread = None
+        self._start_autosync_worker()
+
+    def _ensure_indexed(self, *, block: bool | None = None) -> None:
+        if block is None:
+            block = not self._nonblocking_reads
+        if not block:
+            if self.index_ready():
+                if self._autosync_enabled:
+                    self._maybe_autosync_reindex()
+                self._ensure_lineage_ready()
+                return
+            if self._autosync_enabled:
+                self._ensure_autosync_worker_alive()
+                return
+            # Autosync disabled: no worker will ever build, so build synchronously.
         with self._db_lock, self._autosync_lock:
             with self._connect() as conn:
                 self._init_schema(conn)
@@ -4831,6 +4878,7 @@ class CodeContextEngine:
                 count = int(row["n"]) if row is not None else 0
             if count == 0:
                 self.index_repo(force=False)
+                self._index_ready_cached = True
                 if self._autosync_enabled:
                     self._autosync_signature = self._source_tree_signature()
                     self._autosync_last_sync_ms = int(time.time() * 1000)
@@ -4838,6 +4886,7 @@ class CodeContextEngine:
                     self._autosync_pending_events = 0
                     self._record_autosync_event(event="initial_index", reason="empty_index_bootstrap", reindexed=True)
                 return
+            self._index_ready_cached = True
             if self._autosync_enabled:
                 self._maybe_autosync_reindex_locked()
         self._ensure_lineage_ready()
@@ -7545,7 +7594,7 @@ class CodeContextEngine:
 
     def _autosync_worker_loop(self) -> None:
         try:
-            self._ensure_indexed()
+            self._ensure_indexed(block=True)
         except Exception as exc:
             logging.exception("Recovered from broad exception handler")
             self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
