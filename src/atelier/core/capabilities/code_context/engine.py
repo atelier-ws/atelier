@@ -52,6 +52,7 @@ from atelier.core.capabilities.code_context.embedding import (
     resolve_search_mode,
     semantic_candidate_limit,
 )
+from atelier.core.capabilities.code_context.generated_files import is_generated_path
 from atelier.core.capabilities.code_context.intel_store import ProviderHealth, SymbolIntelStore
 from atelier.core.capabilities.code_context.models import (
     ContextPack,
@@ -1062,6 +1063,12 @@ class CodeContextEngine:
         self._lineage_score_penalty: float = float(
             os.getenv("ATELIER_LINEAGE_COMMIT_SCORE_PENALTY", str(_LINEAGE_DEFAULT_SCORE_PENALTY))
         )
+        # G7: optional churn provider. When set, it maps a candidate set of
+        # symbols to a per-symbol churn score in [0, 1]. It is consulted ONLY as
+        # a low-priority ranking tiebreaker (see _context_symbol_rank), never as
+        # an override of match quality. It defaults to unset so ranking never
+        # incurs git/blame cost in the hot path; callers/tests may inject one.
+        self._churn_score_provider: Callable[[list[SymbolRecord]], dict[str, float]] | None = None
         self._register_symbol_intel_providers()
         if self._autosync_enabled:
             self._start_autosync_worker()
@@ -3603,7 +3610,12 @@ class CodeContextEngine:
         selected = selected[:bounded_max_symbols]
 
         neighbors = self._import_neighbors(context_seed_files)
-        neighbor_files = self._context_neighbor_files(neighbors)[: context_policy.max_related_symbols]
+        # N9: generated/scaffolding files are dropped from "Related Symbols"
+        # entirely -- they are noise once the hand-written entry points are
+        # surfaced. The cap on related count is applied afterwards.
+        neighbor_files = [path for path in self._context_neighbor_files(neighbors) if not is_generated_path(path)][
+            : context_policy.max_related_symbols
+        ]
         graph_related = self._context_graph_related_symbols(
             selected,
             query=search_query,
@@ -3611,7 +3623,7 @@ class CodeContextEngine:
             max_symbols_per_file=max(1, context_policy.max_symbols_per_file),
         )
         selected_ids = {item.symbol_id for item in selected}
-        related_symbols = list(graph_related)
+        related_symbols = [item for item in graph_related if not is_generated_path(item.file_path)]
         related_ids = {item.symbol_id for item in related_symbols} | selected_ids
         if len(related_symbols) < context_policy.max_related_symbols and neighbor_files:
             neighbor_symbol_limit = max(
@@ -3628,7 +3640,9 @@ class CodeContextEngine:
             related_seed = [
                 symbol
                 for symbol in neighbor_symbols
-                if self._is_context_pack_symbol(symbol) and symbol.symbol_id not in related_ids
+                if self._is_context_pack_symbol(symbol)
+                and symbol.symbol_id not in related_ids
+                and not is_generated_path(symbol.file_path)
             ]
             neighbor_related = self._prioritize_context_symbols(search_query, related_seed)
             related_symbols.extend(neighbor_related)
@@ -4936,9 +4950,85 @@ class CodeContextEngine:
         matched = sum(1 for term in query_terms if term and term in lexical)
         return matched >= min(len(query_terms), 3)
 
+    def _symbol_popularity_scores(self, symbols: list[SymbolRecord]) -> dict[str, float]:
+        """Batch-compute a usage-frequency popularity score per candidate symbol.
+
+        Popularity blends indexed reference counts (the ``references`` table,
+        keyed by ``symbol_name``) with caller counts (``call_edges``, keyed by
+        ``callee_name``). Both lookups hit existing indexes, so this is cheap and
+        always available -- it never requires git. The raw counts are squashed
+        into [0, 1) so a wildly-popular symbol cannot dominate; popularity is
+        only ever consumed as a low-priority ranking tiebreaker.
+        """
+        names = sorted({symbol.symbol_name for symbol in symbols if symbol.symbol_name})
+        if not names:
+            return {}
+        placeholders = ",".join("?" for _ in names)
+        ref_counts: dict[str, int] = {}
+        caller_counts: dict[str, int] = {}
+        try:
+            with self._connect() as conn:
+                self._init_schema(conn)
+                for row in conn.execute(
+                    f'SELECT symbol_name, COUNT(*) AS n FROM "references" '
+                    f"WHERE repo_id = ? AND symbol_name IN ({placeholders}) GROUP BY symbol_name",
+                    (self.repo_id, *names),
+                ).fetchall():
+                    ref_counts[str(row["symbol_name"])] = int(row["n"])
+                for row in conn.execute(
+                    f"SELECT callee_name, COUNT(*) AS n FROM call_edges "
+                    f"WHERE repo_id = ? AND callee_name IN ({placeholders}) GROUP BY callee_name",
+                    (self.repo_id, *names),
+                ).fetchall():
+                    caller_counts[str(row["callee_name"])] = int(row["n"])
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            return {}
+        scores: dict[str, float] = {}
+        for symbol in symbols:
+            raw = ref_counts.get(symbol.symbol_name, 0) + caller_counts.get(symbol.symbol_name, 0)
+            # Diminishing-returns squash into [0, 1): popular-but-correct symbols
+            # rise as a tiebreaker without ever outweighing match quality.
+            scores[symbol.symbol_id] = raw / (raw + 5.0) if raw > 0 else 0.0
+        return scores
+
+    def _symbol_churn_scores(self, symbols: list[SymbolRecord]) -> dict[str, float]:
+        """Per-symbol churn score in [0, 1] from the optional churn provider.
+
+        Returns an empty mapping (no churn signal) unless a provider is injected,
+        keeping ranking free of git/blame cost by default. Churn, like
+        popularity, is consumed only as a low-priority ranking tiebreaker.
+        """
+        provider = self._churn_score_provider
+        if provider is None or not symbols:
+            return {}
+        try:
+            raw = provider(symbols)
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            return {}
+        return {symbol_id: max(0.0, min(1.0, float(value))) for symbol_id, value in raw.items()}
+
+    def _context_symbol_signals(self, symbols: list[SymbolRecord]) -> dict[str, float]:
+        """Combine usage-frequency and churn into a single tiebreaker per symbol."""
+        if not symbols:
+            return {}
+        popularity = self._symbol_popularity_scores(symbols)
+        churn = self._symbol_churn_scores(symbols)
+        if not popularity and not churn:
+            return {}
+        combined: dict[str, float] = {}
+        for symbol in symbols:
+            combined[symbol.symbol_id] = popularity.get(symbol.symbol_id, 0.0) + churn.get(symbol.symbol_id, 0.0)
+        return combined
+
     def _context_symbol_rank(
-        self, query: str, symbol: SymbolRecord
-    ) -> tuple[int, int, int, int, int, float, str, int, str]:
+        self,
+        query: str,
+        symbol: SymbolRecord,
+        *,
+        popularity: float = 0.0,
+    ) -> tuple[int, int, int, int, int, int, float, float, str, int, str]:
         normalized_query = query.strip().lower()
         symbol_name = symbol.symbol_name.lower()
         qualified_name = symbol.qualified_name.lower()
@@ -4961,20 +5051,36 @@ class CodeContextEngine:
                 tool_boost += 2
             if "mcp" in qualified_name:
                 tool_boost += 1
+        # N9: generated/scaffolding files rank last. This demotion sits AFTER the
+        # authoritative exact-hit signal, so an exact symbol that legitimately
+        # lives in a generated file is still surfaced; it only sinks generated
+        # candidates beneath equally- or weaker-matched hand-written code.
+        not_generated = 0 if is_generated_path(symbol.file_path) else 1
+        # G7: popularity/churn is positioned AFTER every match-quality signal
+        # (exact/prefix/compound/term/tool) and after the lexical/semantic score,
+        # so it can only ever break ties among otherwise-equal candidates. An
+        # exact-symbol hit (exact=1) is always ranked above any non-exact symbol
+        # regardless of how popular the non-exact one is.
         return (
             exact,
+            not_generated,
             prefix,
             compound,
             term_prefix_hits,
             tool_boost,
             float(symbol.score or 0.0),
+            float(popularity),
             symbol.file_path,
             symbol.start_line,
             symbol.qualified_name,
         )
 
     def _prioritize_context_symbols(self, query: str, symbols: list[SymbolRecord]) -> list[SymbolRecord]:
-        ranks = {symbol.symbol_id: self._context_symbol_rank(query, symbol) for symbol in symbols}
+        signals = self._context_symbol_signals(symbols)
+        ranks = {
+            symbol.symbol_id: self._context_symbol_rank(query, symbol, popularity=signals.get(symbol.symbol_id, 0.0))
+            for symbol in symbols
+        }
         return sorted(
             symbols,
             key=lambda symbol: (
@@ -4984,9 +5090,11 @@ class CodeContextEngine:
                 -ranks[symbol.symbol_id][3],
                 -ranks[symbol.symbol_id][4],
                 -ranks[symbol.symbol_id][5],
-                ranks[symbol.symbol_id][6],
-                ranks[symbol.symbol_id][7],
+                -ranks[symbol.symbol_id][6],
+                -ranks[symbol.symbol_id][7],
                 ranks[symbol.symbol_id][8],
+                ranks[symbol.symbol_id][9],
+                ranks[symbol.symbol_id][10],
                 symbol.symbol_id,
             ),
         )
@@ -5108,7 +5216,11 @@ class CodeContextEngine:
                         relation_priority[candidate.symbol_id] = priority
         if not candidates_by_id:
             return []
-        ranks = {symbol_id: self._context_symbol_rank(query, symbol) for symbol_id, symbol in candidates_by_id.items()}
+        signals = self._context_symbol_signals(list(candidates_by_id.values()))
+        ranks = {
+            symbol_id: self._context_symbol_rank(query, symbol, popularity=signals.get(symbol_id, 0.0))
+            for symbol_id, symbol in candidates_by_id.items()
+        }
         ordered = sorted(
             candidates_by_id.values(),
             key=lambda symbol: (
@@ -5119,9 +5231,11 @@ class CodeContextEngine:
                 -ranks[symbol.symbol_id][3],
                 -ranks[symbol.symbol_id][4],
                 -ranks[symbol.symbol_id][5],
-                ranks[symbol.symbol_id][6],
-                ranks[symbol.symbol_id][7],
+                -ranks[symbol.symbol_id][6],
+                -ranks[symbol.symbol_id][7],
                 ranks[symbol.symbol_id][8],
+                ranks[symbol.symbol_id][9],
+                ranks[symbol.symbol_id][10],
                 symbol.symbol_id,
             ),
         )
