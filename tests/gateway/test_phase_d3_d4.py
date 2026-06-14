@@ -27,6 +27,7 @@ EXPECTED_TOOLS = {
     "workflow",
     "agent",
     "graph",
+    "scan",
 }
 
 
