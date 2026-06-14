@@ -1,32 +1,25 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime
 from pathlib import Path
 
 from click.testing import CliRunner
 
-from atelier.core.foundation.models import Trace
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.cli import cli
 
 
 def _seed_trace(root: Path) -> None:
-    store = ContextStore(root)
-    store.init()
-    store.record_trace(
-        Trace(
-            id=Trace.make_id("sample task", "gsd-executor"),
-            agent="gsd-executor",
-            domain="coding",
-            task="sample",
-            status="success",
-            files_touched=["a.py"],
-            diff_summary="did a thing",
-            output_summary="done",
-            created_at=datetime.now(UTC),
+    # record_trace now writes the file-based session store, so seed the DB traces
+    # table directly to simulate legacy pre-migration rows that `db vacuum` reclaims.
+    ContextStore(root).init()
+    with sqlite3.connect(str(root / "atelier.db")) as conn:
+        conn.execute(
+            "INSERT INTO traces (id, agent, host, domain, status, task, workspace_path, created_at, payload)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("legacy-1", "gsd-executor", "claude", "coding", "success", "x", "/w", "2026-06-10T00:00:00+00:00", "{}"),
         )
-    )
+        conn.commit()
 
 
 def _trace_count(root: Path) -> int:
