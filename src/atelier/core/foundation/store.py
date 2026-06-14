@@ -878,44 +878,10 @@ class ContextStore:
     # ----- Traces ---------------------------------------------------------- #
 
     def record_trace(self, trace: Trace, *, write_json: bool = True) -> None:
-        jsonable = to_jsonable(trace)
-        payload = json.dumps(jsonable, ensure_ascii=False)
-        with self._connect() as conn, closing(conn.cursor()) as cur:
-            cur.execute(
-                """
-                INSERT INTO traces (id, agent, host, domain, status, task, workspace_path, created_at, payload)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    agent = excluded.agent,
-                    host = excluded.host,
-                    domain = excluded.domain,
-                    status = excluded.status,
-                    task = excluded.task,
-                    workspace_path = excluded.workspace_path,
-                    payload = excluded.payload
-                """,
-                (
-                    trace.id,
-                    trace.agent,
-                    trace.host,
-                    trace.domain,
-                    trace.status,
-                    trace.task,
-                    trace.workspace_path,
-                    trace.created_at.isoformat(),
-                    payload,
-                ),
-            )
-            # Update FTS index
-            self._update_trace_fts(cur, trace)
-
-        # Always persist to the file-based session store — it is the storage going
-        # forward, including bulk host imports (which pass write_json=False).
-        # Best-effort: a session-store hiccup must never drop a trace.
-        try:
-            self.session_store.record(jsonable)
-        except (OSError, sqlite3.Error, ValueError, TypeError):
-            logger.warning("session_store: failed to record trace %s", trace.id, exc_info=True)
+        # Traces are stored in the file-based session store (sessions/<id>/), not
+        # the DB — a session transcript is a file, so the DB copy was the wrong
+        # design. write_json additionally writes the legacy traces_dir mirror.
+        self.session_store.record(to_jsonable(trace))
         if write_json:
             self._write_trace_json(trace)
 
