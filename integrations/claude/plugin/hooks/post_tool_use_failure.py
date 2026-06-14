@@ -71,8 +71,7 @@ def _active_session_id() -> str | None:
 
 def _append_failure_event(session_id: str, command: str, error: str, repeat: int) -> None:
     """Append a note event for the command failure to runs/<session_id>.json."""
-    runs_dir = _atelier_root() / "runs"
-    run_file = runs_dir / f"{session_id}.json"
+    run_file = _atelier_root() / "sessions" / session_id / "run.json"
     if not run_file.exists():
         return
     try:

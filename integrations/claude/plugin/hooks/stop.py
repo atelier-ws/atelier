@@ -105,7 +105,7 @@ def _write_token_event(stats: dict[str, Any]) -> None:
     session_id: str | None = state.get("session_id") or state.get("active_session_id")
     if not session_id:
         return
-    run_file = _atelier_root() / "runs" / f"{session_id}.json"
+    run_file = _atelier_root() / "sessions" / session_id / "run.json"
     if not run_file.exists():
         return
     try:
@@ -386,7 +386,7 @@ def _write_session_enrichment(
     """
     if not session_id:
         return
-    run_file = _atelier_root() / "runs" / f"{session_id}.json"
+    run_file = _atelier_root() / "sessions" / session_id / "run.json"
     if not run_file.exists():
         return
     try:

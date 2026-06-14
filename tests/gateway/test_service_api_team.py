@@ -27,9 +27,9 @@ def _client_for(root: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 def _write_done_session(root: Path, user_id: str, *, cost: float) -> None:
-    runs = root / "runs"
+    runs = root / "sessions" / "run-1"
     runs.mkdir(parents=True, exist_ok=True)
-    (runs / "run-1.json").write_text(
+    (runs / "run.json").write_text(
         json.dumps(
             {
                 "session_id": "run-1",

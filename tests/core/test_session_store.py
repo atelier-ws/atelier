@@ -39,6 +39,17 @@ def test_record_writes_file_meta_and_index(tmp_path: Path) -> None:
     assert store.get("t1")["task"] == "do a thing"
 
 
+def test_meta_records_transcript_path(tmp_path: Path) -> None:
+    store = SessionStore(tmp_path)
+    tpath = "/home/u/.claude/projects/ws/sess1.jsonl"
+    store.record(_trace("t1", "sess1", transcript_path=tpath))
+    meta = store.meta("sess1")
+    assert meta is not None and meta["transcript_path"] == tpath
+    # A later trace without the path must not clobber the recorded one.
+    store.record(_trace("t2", "sess1"))
+    assert store.meta("sess1")["transcript_path"] == tpath
+
+
 def test_record_is_idempotent_per_trace_id(tmp_path: Path) -> None:
     store = SessionStore(tmp_path)
     store.record(_trace("t1", "sess1", status="partial"))
