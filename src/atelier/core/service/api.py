@@ -6809,6 +6809,14 @@ def main(
     from atelier.core.capabilities.providers.config import load_providers_config
 
     load_providers_config().export_env()
+
+    try:
+        from atelier.core.service.code_warm import start_code_warmer
+
+        start_code_warmer()
+    except Exception:
+        logger.exception("failed to start code index warmer")
+
     _host = host or cfg.host
     _port = port or cfg.port
 
