@@ -24,9 +24,26 @@ The live/automated reviewer applies two knowledge layers when it reviews a diff:
 - `boost` — areas to weight more heavily.
 - `suppress` — finding classes the team has decided NOT to flag.
 
+## Auto-extraction from .lessons
+
+`atelier knowledge extract` distils durable review rules from this repo's
+`.lessons/blocks` and merges them into the overlay `notes`. Pick the backend and
+cap the spend:
+
+```bash
+atelier knowledge extract --host auto            # Atelier's owned model/routing
+atelier knowledge extract --host ollama --model llama3.1   # local, free
+atelier knowledge extract --dry-run              # preview without writing
+```
+
+Hosts: `auto` (owned agent-spawn), `claude`, `codex`, `ollama` (needs `--model`).
+`--max-spend <usd>` is a hard cap — the run aborts before spending if the
+estimate exceeds it (`ollama`/`codex` are treated as free). The installer can
+also run this once if you opt in (`ATELIER_KB_EXTRACT=1`).
+
 ## Operating loop
 
-1. To add a rule the reviewer should enforce, append a short sentence to `notes`.
+1. To add a rule the reviewer should enforce, append a short sentence to `notes` (or run `atelier knowledge extract` to populate them automatically).
 2. To stop the reviewer flagging something, append a short phrase to `suppress`.
 3. To emphasise an area, append to `boost`.
 4. Changes apply on the next review (live pass on edit, deep pass every N edits, or on-demand `review`). No restart needed.
