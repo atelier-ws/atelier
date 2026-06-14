@@ -387,6 +387,32 @@ def test_codex_savings_line_is_14_field_parseable(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------
+# Per-role Codex agents
+# --------------------------------------------------------------------------
+def test_write_codex_agents_generates_all_surfaced_roles(tmp_path: Path) -> None:
+    from atelier.core.capabilities.workspace_host_overrides import write_codex_agents
+
+    target = tmp_path / "agents"
+    written = write_codex_agents(target, repo_root=ROOT)
+    assert len(written) == 7
+    names = {p.name for p in written}
+    assert {"atelier.code.toml", "atelier.explore.toml", "atelier.solve.toml"} <= names
+    text = (target / "atelier.code.toml").read_text(encoding="utf-8")
+    assert 'name = "atelier.code"' in text
+    assert "developer_instructions" in text
+
+
+def test_write_codex_agents_prunes_stale_roles(tmp_path: Path) -> None:
+    from atelier.core.capabilities.workspace_host_overrides import write_codex_agents
+
+    target = tmp_path / "agents"
+    target.mkdir()
+    (target / "atelier.removed.toml").write_text('name = "atelier.removed"\n', encoding="utf-8")
+    write_codex_agents(target, repo_root=ROOT)
+    assert not (target / "atelier.removed.toml").exists()
+
+
+# --------------------------------------------------------------------------
 # Manifest wiring
 # --------------------------------------------------------------------------
 def test_codex_hooks_manifest_includes_new_lifecycle_events() -> None:
