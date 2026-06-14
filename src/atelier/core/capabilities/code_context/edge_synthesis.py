@@ -1,7 +1,7 @@
-"""Bounded, provenance-tagged call-edge synthesis (N2/N3 -- first iteration).
+"""Bounded, provenance-tagged call-edge synthesis (N2/N3).
 
 The full dynamic-dispatch + 20+ framework-resolver subsystem is explicitly out
-of scope for one pass. This module does the *additive, separable* minimum:
+of scope. This module does the *additive, separable* part:
 
 * It recognises a SMALL, fixed set of common indirection patterns and emits
   synthesized edges for them.
@@ -13,15 +13,23 @@ of scope for one pass. This module does the *additive, separable* minimum:
   explicitly; default behaviour of every existing tool is byte-for-byte
   unchanged.
 
-Patterns covered in this iteration (deliberately two, one per ecosystem):
+Patterns covered (conservative -- only nameable, identifier handlers; inline
+anonymous functions/lambdas are skipped because they have no nameable target):
 
-1. Flask route -> handler: ``@app.route("/path")`` (or ``@bp.route``) directly
-   above a ``def handler(...)`` synthesizes ``route:/path -> handler``.
-2. JS/TS EventEmitter -> handler: ``emitter.on("event", handlerName)``
-   synthesizes ``on:event -> handlerName`` when the handler is a bare
-   identifier (not an inline lambda, which has no name to point at).
+Python:
+  1. Flask/Blueprint route   ``@app.route("/path")``        -> ``route:/path``
+  2. FastAPI/Flask verb route ``@app.get("/path")``         -> ``GET /path``
+  3. Django URLconf          ``path("x/", view_fn)``        -> ``url:x/``
+  4. Registry dynamic dispatch ``{"k": handler}`` dict      -> ``dispatch:k``
 
-Anything outside these two patterns is intentionally NOT synthesized; a partial
+JS/TS:
+  5. Express verb route      ``app.get("/x", handler)``     -> ``GET /x``
+  6. NestJS controller       ``@Get("x") method()``         -> ``GET x``
+  7. Observer / pub-sub      ``emitter.on("e", h)``,
+                             ``bus.subscribe("e", h)``,
+                             ``el.addEventListener("e", h)`` -> ``on:e``
+
+Anything outside these patterns is intentionally NOT synthesized; a partial
 that never lies is better than a broad one that fabricates edges.
 """
 
@@ -33,11 +41,39 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
-SynthesizedEdgeKind = Literal["flask_route", "event_handler"]
+SynthesizedEdgeKind = Literal[
+    "flask_route",
+    "http_route",
+    "django_route",
+    "dispatch",
+    "event_handler",
+    "nest_route",
+]
 
-# Bare-identifier handler in `emitter.on('evt', handlerName)`. Inline functions
-# (`function (){}` / `() => {}`) are skipped on purpose -- no nameable target.
-_JS_ON_RE = re.compile(r"""\.on\(\s*['"](?P<event>[^'"]+)['"]\s*,\s*(?P<handler>[A-Za-z_$][\w$]*)\s*\)""")
+# HTTP verb methods recognised on Flask/FastAPI decorators and Express calls.
+_HTTP_VERBS: frozenset[str] = frozenset({"get", "post", "put", "patch", "delete", "head", "options"})
+# NestJS controller method decorators map to verbs (subset of the above).
+_NEST_VERBS: frozenset[str] = frozenset({"Get", "Post", "Put", "Patch", "Delete", "Head", "Options", "All"})
+
+# Express verb route: ``app.get('/x', handler)`` / ``router.post("/y", handler)``.
+# Conservative: handler must be a bare identifier (skips inline ``(req,res)=>``).
+_EXPRESS_RE = re.compile(
+    r"""\.(?P<verb>get|post|put|patch|delete|head|options)\(\s*"""
+    r"""['\"](?P<path>[^'\"]+)['\"]\s*,\s*(?P<handler>[A-Za-z_$][\w$.]*)\s*\)"""
+)
+# Observer / pub-sub: ``.on('e', h)`` / ``.subscribe('e', h)`` /
+# ``.addEventListener('e', h)`` / ``.addListener('e', h)`` with a bare handler.
+_OBSERVER_RE = re.compile(
+    r"""\.(?P<method>on|subscribe|addEventListener|addListener)\(\s*"""
+    r"""['\"](?P<event>[^'\"]+)['\"]\s*,\s*(?P<handler>[A-Za-z_$][\w$]*)\s*\)"""
+)
+# NestJS controller: ``@Get('x')`` (or ``@Get()``) immediately above
+# ``methodName(...)``. Conservative: single-line decorator + method name only.
+_NEST_RE = re.compile(
+    r"""@(?P<verb>Get|Post|Put|Patch|Delete|Head|Options|All)\(\s*"""
+    r"""(?:['\"](?P<path>[^'\"]*)['\"])?\s*\)\s*\n\s*"""
+    r"""(?:async\s+)?(?P<handler>[A-Za-z_$][\w$]*)\s*\("""
+)
 
 
 @dataclass(frozen=True)
@@ -65,73 +101,181 @@ class SynthesizedEdge:
 def synthesize_edges(source: str, *, language: str) -> list[SynthesizedEdge]:
     """Return synthesized edges for *source*. Empty list on parse failure.
 
-    Pure and side-effect free. ``language`` selects the resolver; unknown
+    Pure and side-effect free. ``language`` selects the resolver set; unknown
     languages yield no edges.
     """
     if language == "python":
-        return _synthesize_flask_routes(source)
+        return _synthesize_python(source)
     if language in ("javascript", "typescript"):
-        return _synthesize_event_handlers(source)
+        return _synthesize_js(source)
     return []
 
 
-def _synthesize_flask_routes(source: str) -> list[SynthesizedEdge]:
+# --------------------------------------------------------------------------- #
+# Python resolvers (AST-based; never raise on malformed source).
+# --------------------------------------------------------------------------- #
+def _synthesize_python(source: str) -> list[SynthesizedEdge]:
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return []
     edges: list[SynthesizedEdge] = []
+    edges.extend(_python_route_edges(tree))
+    edges.extend(_python_django_edges(tree))
+    edges.extend(_python_dispatch_edges(tree))
+    edges.sort(key=lambda e: (e.line, e.caller, e.callee))
+    return edges
+
+
+def _python_route_edges(tree: ast.AST) -> list[SynthesizedEdge]:
+    """Flask ``@app.route`` and verb decorators ``@app.get`` / FastAPI ``@app.get``."""
+    edges: list[SynthesizedEdge] = []
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         for dec in node.decorator_list:
-            route = _route_path_from_decorator(dec)
-            if route is None:
+            resolved = _route_from_decorator(dec)
+            if resolved is None:
                 continue
-            edges.append(
-                SynthesizedEdge(
-                    caller=f"route:{route}",
-                    callee=node.name,
-                    kind="flask_route",
-                    line=node.lineno,
-                )
-            )
-    edges.sort(key=lambda e: (e.line, e.callee))
+            caller, kind = resolved
+            edges.append(SynthesizedEdge(caller=caller, callee=node.name, kind=kind, line=node.lineno))
     return edges
 
 
-def _route_path_from_decorator(dec: ast.expr) -> str | None:
-    """Return the route path if *dec* is an ``X.route("/path", ...)`` call."""
+def _route_from_decorator(dec: ast.expr) -> tuple[str, SynthesizedEdgeKind] | None:
+    """Return ``(caller, kind)`` for an ``X.route(...)`` or ``X.<verb>(...)`` call."""
     if not isinstance(dec, ast.Call):
         return None
     func = dec.func
-    if not isinstance(func, ast.Attribute) or func.attr != "route":
+    if not isinstance(func, ast.Attribute):
         return None
-    if not dec.args:
+    path = _first_str_arg(dec)
+    if path is None:
         return None
-    first = dec.args[0]
+    if func.attr == "route":
+        return f"route:{path}", "flask_route"
+    if func.attr in _HTTP_VERBS:
+        return f"{func.attr.upper()} {path}", "http_route"
+    return None
+
+
+def _python_django_edges(tree: ast.AST) -> list[SynthesizedEdge]:
+    """Django URLconf: ``path("x/", view)`` / ``re_path(r"^x$", view)``.
+
+    Only a bare callable name (``ast.Name``) view is recorded; class-based view
+    ``.as_view()`` calls and inline lambdas are skipped (no single named target).
+    """
+    edges: list[SynthesizedEdge] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Name) and func.id in ("path", "re_path")):
+            continue
+        if len(node.args) < 2:
+            continue
+        route = node.args[0]
+        view = node.args[1]
+        if not (isinstance(route, ast.Constant) and isinstance(route.value, str)):
+            continue
+        if not isinstance(view, ast.Name):
+            continue
+        edges.append(
+            SynthesizedEdge(
+                caller=f"url:{route.value}",
+                callee=view.id,
+                kind="django_route",
+                line=node.lineno,
+            )
+        )
+    return edges
+
+
+def _python_dispatch_edges(tree: ast.AST) -> list[SynthesizedEdge]:
+    """Registry/dispatch dict ``{"name": handler}`` -> ``dispatch:name -> handler``.
+
+    Conservative: only string-literal keys mapped to a bare callable name
+    (``ast.Name``) are recorded. Lambda/inline values and non-string keys are
+    skipped -- those are not a single nameable callee.
+    """
+    edges: list[SynthesizedEdge] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values, strict=False):
+            if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
+                continue
+            if not isinstance(value, ast.Name):
+                continue
+            line = int(getattr(key, "lineno", getattr(node, "lineno", 1)))
+            edges.append(
+                SynthesizedEdge(
+                    caller=f"dispatch:{key.value}",
+                    callee=value.id,
+                    kind="dispatch",
+                    line=line,
+                    confidence=0.4,
+                )
+            )
+    return edges
+
+
+def _first_str_arg(call: ast.Call) -> str | None:
+    if not call.args:
+        return None
+    first = call.args[0]
     if isinstance(first, ast.Constant) and isinstance(first.value, str):
         return first.value
     return None
 
 
-def _synthesize_event_handlers(source: str) -> list[SynthesizedEdge]:
+# --------------------------------------------------------------------------- #
+# JS/TS resolvers (regex-based; conservative, identifier handlers only).
+# --------------------------------------------------------------------------- #
+def _synthesize_js(source: str) -> list[SynthesizedEdge]:
     edges: list[SynthesizedEdge] = []
     try:
-        for match in _JS_ON_RE.finditer(source):
+        for match in _EXPRESS_RE.finditer(source):
+            verb = match.group("verb").upper()
+            path = match.group("path")
+            handler = match.group("handler")
+            edges.append(
+                SynthesizedEdge(
+                    caller=f"{verb} {path}",
+                    callee=handler,
+                    kind="http_route",
+                    line=_line_at(source, match.start()),
+                )
+            )
+        for match in _OBSERVER_RE.finditer(source):
             event = match.group("event")
             handler = match.group("handler")
-            line = source.count("\n", 0, match.start()) + 1
             edges.append(
                 SynthesizedEdge(
                     caller=f"on:{event}",
                     callee=handler,
                     kind="event_handler",
-                    line=line,
+                    line=_line_at(source, match.start()),
+                )
+            )
+        for match in _NEST_RE.finditer(source):
+            verb = match.group("verb").upper()
+            path = match.group("path") or ""
+            handler = match.group("handler")
+            edges.append(
+                SynthesizedEdge(
+                    caller=f"{verb} {path}".rstrip(),
+                    callee=handler,
+                    kind="nest_route",
+                    line=_line_at(source, match.start()),
                 )
             )
     except Exception:
         logging.exception("Recovered from broad exception handler")
         return []
-    edges.sort(key=lambda e: (e.line, e.callee))
+    edges.sort(key=lambda e: (e.line, e.caller, e.callee))
     return edges
+
+
+def _line_at(source: str, offset: int) -> int:
+    return source.count("\n", 0, offset) + 1
