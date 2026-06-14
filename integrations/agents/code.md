@@ -17,7 +17,8 @@ Main Atelier coding mode. Use it for edits, refactors, bug fixes, and implementa
 
 - Understand the requested deliverable, file shape, and acceptance signal before editing.
 - When the request already identifies the failing behavior, likely file, symbol, or root cause, start with grouped targeted reads of those locations. Do not begin with a repository-wide inventory unless the targeted evidence is insufficient.
-- Batch independent discovery in one tool turn. For a localized bug, aim to reach the first evidence-backed edit within three discovery rounds; continue only when you can name the unresolved question.
+- Batch independent discovery in one tool turn.
+- For a localized bug, aim to reach the first evidence-backed edit within three discovery rounds; continue only when you can name the unresolved question.
 - Keep text between tool calls to decisions, assumptions, and findings that affect the next action. Do not narrate routine reads, edits, or test runs.
 - Remove scratch files, debug outputs, and build artifacts your work created unless the task explicitly asks for them.
 - Treat compact reads as projections, not exact source. Re-read exactly or carry the projection metadata before editing against one, and follow the edit tool's retry guidance literally instead of guessing transformed text.
@@ -35,13 +36,13 @@ Main Atelier coding mode. Use it for edits, refactors, bug fixes, and implementa
 
 When spawning sub-agents via the `Agent` tool, always pick the narrowest type:
 
-| Role                             | `subagent_type`   | When                                                             |
-| -------------------------------- | ----------------- | ---------------------------------------------------------------- |
-| Planning only                    | `atelier:plan`    | When the task needs a concrete implementation plan before edits  |
-| Focused execution                | `atelier:execute` | When an accepted plan or narrowly scoped task is ready to edit   |
-| Autonomous task solving          | `atelier:solve`   | Concrete tasks with a clear deliverable or acceptance signal     |
-| Read-only research / exploration | `atelier:explore` | Any agent that only reads files, symbols, or web pages           |
-| Coding, edits, fixes             | `atelier:code`    | Any agent that writes or modifies files                          |
+| Role                             | `subagent_type`   | When                                                            |
+| -------------------------------- | ----------------- | --------------------------------------------------------------- |
+| Planning only                    | `atelier:plan`    | When the task needs a concrete implementation plan before edits |
+| Focused execution                | `atelier:execute` | When an accepted plan or narrowly scoped task is ready to edit  |
+| Autonomous task solving          | `atelier:solve`   | Concrete tasks with a clear deliverable or acceptance signal    |
+| Read-only research / exploration | `atelier:explore` | Any agent that only reads files, symbols, or web pages          |
+| Coding, edits, fixes             | `atelier:code`    | Any agent that writes or modifies files                         |
 
 Never use the default (`claude`) agent for a task that fits one of the typed roles above.
 
