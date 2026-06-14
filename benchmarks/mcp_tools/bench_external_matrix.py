@@ -67,7 +67,6 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "callees", "family": "callees", "benchmarked": True},
         {"surface": "search:fuzzy", "family": "fuzzy_symbol", "benchmarked": True},
         {"surface": "pattern", "family": "structural_search", "benchmarked": True},
-        {"surface": "search:semantic", "family": "semantic_search", "benchmarked": True},
     ],
     "atelier-zoekt": [
         {"surface": "search:exact", "family": "exact_search", "benchmarked": True},
@@ -75,9 +74,9 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "search:nohit", "family": "nohit_search", "benchmarked": True},
     ],
     "zoekt": [
-        {"surface": "search:exact", "family": "exact_search", "benchmarked": True},
-        {"surface": "search:substring", "family": "substring_search", "benchmarked": True},
-        {"surface": "search:nohit", "family": "nohit_search", "benchmarked": True},
+        {"surface": "raw:exact", "family": "exact_search", "benchmarked": True},
+        {"surface": "raw:substring", "family": "substring_search", "benchmarked": True},
+        {"surface": "raw:nohit", "family": "nohit_search", "benchmarked": True},
     ],
     "serena": [
         {"surface": "find_symbol", "family": "exact_symbol", "benchmarked": True},
@@ -324,7 +323,7 @@ class AtelierRunner(_RunnerBase):
                 "op": "usages",
                 "repo_root": str(self.snapshot_root),
                 "symbol_name": case.symbol_name,
-                "file_path": case.path,
+                "path": case.path,
                 "limit": 50,
                 "budget_tokens": 4000,
             }
@@ -333,7 +332,7 @@ class AtelierRunner(_RunnerBase):
                 "op": case.family,
                 "repo_root": str(self.snapshot_root),
                 "symbol_name": case.symbol_name,
-                "file_path": case.path,
+                "path": case.path,
                 "limit": 50,
                 "budget_tokens": 4000,
             }
@@ -358,20 +357,21 @@ class AtelierRunner(_RunnerBase):
                 "limit": 50,
                 "budget_tokens": 4000,
             }
-        elif case.family == "semantic_search":
-            request = {
-                "op": "search",
-                "repo_root": str(self.snapshot_root),
-                "query": case.query,
-                "mode": "semantic",
-                "limit": 20,
-                "file_glob": "src/atelier/**/*.py",
-                "budget_tokens": 4000,
-            }
         else:
             raise ValueError(f"unsupported family for {self.tool_name}: {case.family}")
+        # Measure the REAL MCP response body the model receives. Code-intel tools
+        # surface the rendered markdown (one compact line per match, set during the
+        # op call) verbatim -- NOT the JSON items, which the model never sees. Fall
+        # back to JSON for ops without a markdown renderer (e.g. pattern).
+        from atelier.gateway.adapters import mcp_server
+
+        mcp_server._tool_call_rendered_text.value = None
         response = self.call_code_op(request)
-        return json.dumps(request, ensure_ascii=False), json.dumps(response, ensure_ascii=False)
+        rendered = getattr(mcp_server._tool_call_rendered_text, "value", None)
+        output = (
+            rendered if isinstance(rendered, str) and rendered.strip() else json.dumps(response, ensure_ascii=False)
+        )
+        return json.dumps(request, ensure_ascii=False), output
 
 
 class ZoektRunner(_RunnerBase):
@@ -420,33 +420,24 @@ class ZoektRunner(_RunnerBase):
             )
 
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
+        # RAW Zoekt baseline: query the Zoekt server directly and return its native
+        # file/line matches with NO Atelier reranking, source-preference, noise
+        # skipping, or compaction. This is the honest baseline that `atelier` and
+        # `atelier-zoekt` are measured against -- it shows Atelier's value-add (or
+        # lack of it) over the underlying search engine.
         assert self.snapshot_root is not None and self.supervisor is not None
-        search_path = self.snapshot_root / "src" / "atelier"
-        request = {
+        client = self.supervisor.ensure_started()
+        results = [result for result in client.search(case.query, num_matches=40) if "src/atelier" in result.path]
+        payload = {
+            "provider": "zoekt-raw",
             "query": case.query,
-            "search_path": str(search_path),
-            "max_files": 20,
-            "max_chars_per_file": 600,
-            "include_outline": False,
-            "result_mode": "expanded",
-            "context_lines": 2,
-            "max_snippets_per_file": 3,
-            "skip_noise": False,
-            "prefer_source": False,
+            "files": [
+                {"path": result.path, "lines": [match.line_text for match in result.matches][:10]}
+                for result in results[:20]
+            ],
         }
-        result = self.supervisor.search(
-            query=case.query,
-            search_path=search_path,
-            max_files=request["max_files"],
-            max_chars_per_file=request["max_chars_per_file"],
-            include_outline=request["include_outline"],
-            result_mode="expanded",
-            context_lines=2,
-            max_snippets_per_file=3,
-            skip_noise=False,
-            prefer_source=False,
-        )
-        return json.dumps(request, ensure_ascii=False), json.dumps(asdict(result), ensure_ascii=False)
+        request = {"query": case.query, "num_matches": 40, "raw": True}
+        return json.dumps(request, ensure_ascii=False), json.dumps(payload, ensure_ascii=False)
 
 
 class AtelierZoektRunner(ZoektRunner):
@@ -480,7 +471,20 @@ class AtelierZoektRunner(ZoektRunner):
             skip_noise=True,
             prefer_source=True,
         )
-        return json.dumps(request, ensure_ascii=False), json.dumps(asdict(result), ensure_ascii=False)
+        # Measure only the LLM-facing content (path + trimmed snippet text), NOT the
+        # internal dataclass metadata (byte offsets, scores, line numbers, per-file
+        # token counters, backend/index fields). asdict(result) serialized all of that
+        # and bloated the payload above the raw provider despite Atelier's compaction;
+        # this reflects what the model actually consumes and what Atelier truly trims.
+        payload = {
+            "provider": "atelier-zoekt",
+            "query": case.query,
+            "files": [
+                {"path": file_match.path, "snippets": [snippet.text for snippet in file_match.snippets]}
+                for file_match in result.matches
+            ],
+        }
+        return json.dumps(request, ensure_ascii=False), json.dumps(payload, ensure_ascii=False)
 
 
 class SerenaMatrixRunner(_RunnerBase):
@@ -1085,6 +1089,7 @@ def _payload_looks_empty(payload: str) -> bool:
         '"items":[]',
         '"results":[]',
         '"matches":[]',
+        '"files":[]',
         '"content":[]',
         '"symbols":[]',
         '"hits":[]',
@@ -1094,6 +1099,8 @@ def _payload_looks_empty(payload: str) -> bool:
         '"total_matches":0',
         "noresultsfound",
         "0matches",
+        "nomatches",  # rendered-markdown empty form: "### search\n- no matches"
+        "nosymbols",
     ]
     return any(marker in compact for marker in empty_markers)
 
@@ -1123,9 +1130,6 @@ def score_case(case: ExternalBenchCase, output: str) -> float:
         # Correct if the provider surfaced at least one file the pattern truly matches.
         lowered = output.lower()
         return 1.0 if any(path.lower() in lowered for path in case.expected_paths) else 0.0
-    if case.family == "semantic_search":
-        expected = [*case.expected_paths[:1], *case.expected_names[:1]]
-        return 1.0 if _payload_contains_all(output, expected) else 0.0
     expected = [*case.expected_paths[:1], *case.expected_names[:1]]
     return 1.0 if _payload_contains_all(output, expected) else 0.0
 

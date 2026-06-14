@@ -565,7 +565,9 @@ def _render_text_result(
         return None, 0
 
     lines = source.splitlines()
-    if spec.start_line is not None:
+    # A "#start-end" suffix with no pattern is a range read via grep: return the
+    # raw slice. With a pattern, the range instead scopes which matches report.
+    if spec.start_line is not None and regex is None and content_regex is None:
         start = spec.start_line
         end = spec.end_line or start
         selected = lines[start - 1 : end]
@@ -576,6 +578,9 @@ def _render_text_result(
     match_lines = _match_line_numbers(
         lines, regex, content_regex, include_all_when_no_regex=include_all, deadline=deadline
     )
+    if spec.start_line is not None:
+        lo, hi = spec.start_line, spec.end_line or spec.start_line
+        match_lines = [n for n in match_lines if lo <= n <= hi]
     if include_all and lines_per_file:
         match_lines = match_lines[: max(0, lines_per_file)]
 
@@ -639,12 +644,6 @@ def search_workspace(
     include_metadata: bool = True,
 ) -> dict[str, Any]:
     """Search and read files in one structured response."""
-    if not (content_regex or file_glob_patterns or type or Path(path).is_file()):
-        return {
-            "isError": True,
-            "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}],
-        }
-
     # Track naive vs rendered bytes to compute tokens_saved. Naive = grep
     # output bytes (matching lines + context, not full file); rendered = what
     # Atelier actually returns after ranking/summarisation. ~4 bytes/token.
@@ -652,6 +651,14 @@ def search_workspace(
     root = _repo_root(repo_root)
     base_spec = _parse_pattern(path)
     base = _safe_resolve(root, base_spec.pattern or ".")
+    # Resolve the base first (which strips any "#start-end" line-range suffix)
+    # so a bare "file.py#60-100" path is accepted as a single-file search rather
+    # than rejected for having no pattern.
+    if not (content_regex or file_glob_patterns or type or base.is_file()):
+        return {
+            "isError": True,
+            "content": [{"type": "text", "text": "Provide content_regex, file_glob_patterns, or type"}],
+        }
     specs = [_parse_pattern(item) for item in (file_glob_patterns or [])]
     if not specs and base.is_file():
         specs = [base_spec]
@@ -730,6 +737,11 @@ def search_workspace(
             line_nos = _match_line_numbers(
                 lines, regex, content_regex, include_all_when_no_regex=regex is None, deadline=deadline
             )
+            if spec.start_line is not None:
+                lo, hi = spec.start_line, spec.end_line or spec.start_line
+                line_nos = [n for n in line_nos if lo <= n <= hi]
+                if not line_nos:
+                    continue
             if regex and not line_nos:
                 continue
             rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
