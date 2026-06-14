@@ -41,6 +41,7 @@ from atelier.core.foundation.models import (
     to_jsonable,
 )
 from atelier.core.foundation.paths import resolve_workspace_store_dir
+from atelier.core.foundation.session_store import SessionStore
 
 logger = logging.getLogger(__name__)
 
@@ -310,6 +311,15 @@ class ContextStore:
 
         self._initialized = False
         self._connection: sqlite3.Connection | None = None
+        # File-based session store (sessions/<id>/). Traces also flow here so the
+        # DB copy can eventually be retired in favor of the per-session files.
+        self._session_store: SessionStore | None = None
+
+    @property
+    def session_store(self) -> SessionStore:
+        if self._session_store is None:
+            self._session_store = SessionStore(self.root)
+        return self._session_store
 
     @contextlib.contextmanager
     def batch_mode(self) -> Iterator[sqlite3.Connection]:
@@ -868,7 +878,8 @@ class ContextStore:
     # ----- Traces ---------------------------------------------------------- #
 
     def record_trace(self, trace: Trace, *, write_json: bool = True) -> None:
-        payload = json.dumps(to_jsonable(trace), ensure_ascii=False)
+        jsonable = to_jsonable(trace)
+        payload = json.dumps(jsonable, ensure_ascii=False)
         with self._connect() as conn, closing(conn.cursor()) as cur:
             cur.execute(
                 """
@@ -900,6 +911,12 @@ class ContextStore:
 
         if write_json:
             self._write_trace_json(trace)
+            # Mirror into the file-based session store (source of truth going
+            # forward). Best-effort: a session-store hiccup must never drop a trace.
+            try:
+                self.session_store.record(jsonable)
+            except (OSError, sqlite3.Error, ValueError, TypeError):
+                logger.warning("session_store: failed to record trace %s", trace.id, exc_info=True)
 
     def _update_trace_fts(self, cur: sqlite3.Cursor, trace: Trace) -> None:
         """Update the FTS5 index for a single trace."""
