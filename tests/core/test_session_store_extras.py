@@ -24,13 +24,12 @@ def _trace(tid: str, session_id: str, **extra: object) -> dict:
     return base
 
 
-def test_list_full_returns_payloads_and_excludes_auto_record(tmp_path: Path) -> None:
+def test_list_full_returns_payloads(tmp_path: Path) -> None:
     store = SessionStore(tmp_path)
     store.record(_trace("t1", "s1", task="real work"))
-    store.record(_trace("t2", "s2", task="session-auto-record"))
     store.record(_trace("t3", "s3", domain="docs"))
     coding = store.list_full(domain="coding")
-    assert [t["id"] for t in coding] == ["t1"]  # t2 excluded (auto-record), t3 is docs
+    assert [t["id"] for t in coding] == ["t1"]  # t3 is docs
     assert coding[0]["output_summary"] == "did it"  # full payload, not just index meta
 
 
@@ -46,7 +45,6 @@ def test_metrics_counts_and_distincts(tmp_path: Path) -> None:
     store = SessionStore(tmp_path)
     store.record(_trace("t1", "s1", status="success"))
     store.record(_trace("t2", "s2", status="failed", host="codex"))
-    store.record(_trace("t3", "s3", task="session-auto-record"))  # excluded
     m = store.metrics()
     assert m["total"] == 2
     assert m["success"] == 1 and m["failed"] == 1

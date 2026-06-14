@@ -446,7 +446,6 @@ class SessionStore:
         agent: str | None,
         host: str | None,
         since: str | None,
-        exclude_tasks: tuple[str, ...],
     ) -> tuple[str, list[Any]]:
         clauses: list[str] = []
         params: list[Any] = []
@@ -457,9 +456,6 @@ class SessionStore:
         if since is not None:
             clauses.append("created_at >= ?")
             params.append(since)
-        for task in exclude_tasks:
-            clauses.append("task IS NOT ?")
-            params.append(task)
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         return where, params
 
@@ -470,11 +466,8 @@ class SessionStore:
         agent: str | None = None,
         host: str | None = None,
         since: str | None = None,
-        exclude_tasks: tuple[str, ...] = ("session-auto-record",),
     ) -> dict[str, Any]:
-        where, params = self._filter_sql(
-            domain=domain, status=None, agent=agent, host=host, since=since, exclude_tasks=exclude_tasks
-        )
+        where, params = self._filter_sql(domain=domain, status=None, agent=agent, host=host, since=since)
         stats: dict[str, Any] = {"total": 0, "success": 0, "failed": 0, "partial": 0}
         with closing(self._connect_index()) as conn:
             for row in conn.execute(f"SELECT status, COUNT(*) AS c FROM trace_index{where} GROUP BY status", params):
@@ -507,12 +500,9 @@ class SessionStore:
         since: str | None = None,
         limit: int = 100,
         offset: int = 0,
-        exclude_tasks: tuple[str, ...] = ("session-auto-record",),
     ) -> list[dict[str, Any]]:
         """Return full trace payloads (from the files) matching the filters."""
-        where, params = self._filter_sql(
-            domain=domain, status=status, agent=agent, host=host, since=since, exclude_tasks=exclude_tasks
-        )
+        where, params = self._filter_sql(domain=domain, status=status, agent=agent, host=host, since=since)
         with closing(self._connect_index()) as conn:
             if query and query.strip():
                 rows = conn.execute(
@@ -543,22 +533,9 @@ class SessionStore:
                     loaded[str(tid)] = trace
         return [loaded[tid] for tid in ordered_ids if tid in loaded]
 
-    def token_rows(
-        self,
-        *,
-        since: str | None = None,
-        exclude_tasks: tuple[str, ...] = ("session-auto-record",),
-    ) -> list[dict[str, Any]]:
-        """Lightweight per-trace token/host/model rows for cost aggregates (index-only).
-
-        Excludes ``session-auto-record`` meta traces by default, matching
-        ``list_full``/``metrics`` so token totals and run counts cover the same
-        population. (The auto-record trace carries no numeric tokens — its token
-        figures live in ``output_summary`` text — so it only inflated run counts.)
-        """
-        where, params = self._filter_sql(
-            domain=None, status=None, agent=None, host=None, since=since, exclude_tasks=exclude_tasks
-        )
+    def token_rows(self, *, since: str | None = None) -> list[dict[str, Any]]:
+        """Lightweight per-trace token/host/model rows for cost aggregates (index-only)."""
+        where, params = self._filter_sql(domain=None, status=None, agent=None, host=None, since=since)
         with closing(self._connect_index()) as conn:
             rows = conn.execute(
                 "SELECT id, host, model, input_tokens, output_tokens, cached_input_tokens, thinking_tokens "
