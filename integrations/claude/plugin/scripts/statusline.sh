@@ -149,7 +149,7 @@ fi
 # Cost = max(transcript-derived, live Claude cost). Both are cumulative; we
 # trust whichever is larger so the very first frame of a resumed session
 TOTAL_COST=$(awk "BEGIN { a=${SESSION_BASE_COST:-0}; b=${COST:-0}; printf \"%.3f\", (a>b?a:b) }" 2>/dev/null || echo "0")
-COST_FMT=$(printf '$%.3f' "$TOTAL_COST" 2>/dev/null || echo "\$0.000")
+COST_FMT=$(printf '↑ $%.3f' "$TOTAL_COST" 2>/dev/null || echo "↑ \$0.000")
 
 if [ "${SAVED_PCT:-0%}" != "0%" ]; then
   SAVED_PCT_SEG=" · ${SAVED_PCT}"
@@ -234,7 +234,7 @@ if [ "$ROUTING_USD" != "\$0.000" ]; then
 # I/C/O buckets, or land under a sibling session's id). Show "↓" only once real
 # usage exists.
 if [ "${EFF_IN:-0}" -gt 0 ] 2>/dev/null || [ "${EFF_CACHE:-0}" -gt 0 ] 2>/dev/null; then
-  SAVED_SEG=" ↓ ${C_GREEN}${SAVED_USD}(${SAVED_CTX})${C_RESET}"
+  SAVED_SEG="${C_GREEN} ↓ ${SAVED_USD}(${SAVED_CTX})${C_RESET}"
   SAVED_SEG_COMPACT=" ${C_GREEN}↓ ${SAVED_USD}${C_RESET}"
 else
   SAVED_SEG=""
@@ -314,22 +314,10 @@ TASKS_SEG=""
 [ "${BG_JOBS:-0}" -gt 0 ] 2>/dev/null && TASKS_SEG=" ${SEP} ${BG_JOBS} bg"
 [ "${BG_AGENTS:-0}" -gt 0 ] 2>/dev/null && TASKS_SEG="${TASKS_SEG} ${SEP} ${BG_AGENTS} agent"
 
-# Compact layout: model, context %, cost, savings, background tasks — no
-# token breakdown. Enable with ATELIER_STATUS_COMPACT=1 in the statusLine
-# command.
-if [ -n "${ATELIER_STATUS_COMPACT:-}" ]; then
-  printf '%s%s%s %s %s %s ctx %s%% %s %s%s%s\n' \
-    "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
-    "$PIPE" "$MODEL" "$SEP" "$PCT_INT" \
-    "$PIPE" "$COST_FMT" \
-    "$SAVED_SEG_COMPACT" \
-    "$TASKS_SEG"
-  exit 0
-fi
 
-printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s)%s%s%s%s\n' \
+printf '%s%s%s %s %s%s ctx %s %s%% %s(%s)%s%s%s%s\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
   "$PIPE" "$MODEL" "$STATUS_SEG" "$ACTUAL_CTX_F" "$PCT_INT" \
-  "$PIPE" "$COST_FMT" "$TOK_DISPLAY" \
+  "$COST_FMT" "$TOK_DISPLAY" \
   "$SAVED_SEG" \
   "$CARRY_SEG" "$ROUTING_SEG" "$TASKS_SEG"
