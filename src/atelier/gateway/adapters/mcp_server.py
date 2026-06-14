@@ -303,6 +303,29 @@ def mcp_tool(
     return decorator
 
 
+# G13 — caller-selectable output encoding shared by read/search/grep/symbols.
+# Defined here (before the tool handlers) so the @mcp_tool decorator can resolve
+# the Annotated default at import time. The handler ignores this arg; the MCP
+# dispatcher reads `args["format"]` and applies the N6-gated N7 columnar
+# encoding. `auto` (default) keeps today's byte-compatible output.
+_FORMAT_SCHEMA_PROPERTY: dict[str, Any] = {
+    "type": "string",
+    "enum": ["auto", "compact", "json"],
+    "default": "auto",
+    "description": (
+        "Output encoding: `auto` (default) keeps current behavior; `json` forces raw JSON; "
+        "`compact` emits a self-describing columnar form when it beats JSON by the savings "
+        "threshold (never inflates small payloads)."
+    ),
+}
+_FORMAT_FIELD = Field(
+    default="auto",
+    description=(
+        "Output encoding: auto (default, unchanged), json (force raw JSON), or compact (N6-gated columnar encoding)."
+    ),
+)
+
+
 # --------------------------------------------------------------------------- #
 # session_state.json helpers                                                  #
 # --------------------------------------------------------------------------- #
@@ -4102,6 +4125,7 @@ def tool_smart_read(
         ),
     ] = None,
     projection_kind: str | None = None,
+    format: Annotated[Literal["auto", "compact", "json"], _FORMAT_FIELD] = "auto",
 ) -> dict[str, Any]:
     """Read a file (or batch of files) with automatic source projection.
 
@@ -5499,6 +5523,7 @@ SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "description": "'external': dependencies; 'deleted': git graveyard.",
         },
         "since": {"type": "string", "description": "ISO date or relative ('7d')."},
+        "format": _FORMAT_SCHEMA_PROPERTY,
     },
 }
 
@@ -5526,6 +5551,7 @@ def tool_symbols(
     repo: str | None = None,
     repo_root: str | None = None,
     render_compact: bool = False,
+    format: Annotated[str, _FORMAT_FIELD] = "auto",
 ) -> dict[str, Any]:
     """Search the SCIP code index for symbols by name or description.
 
@@ -6847,6 +6873,7 @@ def tool_grep(
         bool,
         Field(description="Include response metadata such as file counts and caps."),
     ] = False,
+    format: Annotated[Literal["auto", "compact", "json"], _FORMAT_FIELD] = "auto",
 ) -> dict[str, Any]:
     """Run grep-style search with regex, globs, type filters, and token-budgeted rendering.
 
@@ -6930,6 +6957,7 @@ def tool_grep(
                 "default": False,
                 "description": "Include backend/cache metadata fields in the response.",
             },
+            "format": _FORMAT_SCHEMA_PROPERTY,
         },
         "required": [],
     },
@@ -6980,6 +7008,7 @@ def tool_smart_search(
         bool,
         Field(description="Include backend/cache metadata fields in the response."),
     ] = False,
+    format: Annotated[str, _FORMAT_FIELD] = "auto",
 ) -> dict[str, Any]:
     """Search by ranked query or repo-map construction, then hand off to node/explore-style code intel.
 
@@ -8093,6 +8122,23 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             else:
                 response_text = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
 
+            # G13 — caller-selectable output encoding (auto | compact | json).
+            # Default `auto` returns response_text unchanged (byte-compatible);
+            # `json` forces raw JSON; `compact` applies the N6-gated N7 columnar
+            # form. Reads the selector from the always-defined request args (the
+            # remote path never sets `_args`), with an explicit, non-default
+            # value so today's default bytes are untouched.
+            _fmt = args.get("format") if isinstance(args, dict) else None
+            if isinstance(_fmt, str) and _fmt.strip().lower() in {"compact", "json"}:
+                with contextlib.suppress(Exception):
+                    from atelier.core.capabilities.tool_supervision.output_format import apply_output_format
+
+                    response_text, _ = apply_output_format(
+                        fmt=_fmt,
+                        result=result,
+                        rendered_text=response_text,
+                    )
+
             # Within-session content dedup: if this read-style result is
             # byte-identical to one already returned this session (and the model
             # didn't pass force=true), return a small pointer instead of
@@ -8128,6 +8174,22 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         dedup_stubbed = True
                         if dedup_chars_saved > 0:
                             _append_workspace_savings(name, dedup_chars_saved // 4, 0, rid=str(rid))
+            # N4 — per-tool exact input/output token ledger. Measures the
+            # request args (input) and the final emitted text (output) with the
+            # local tiktoken counter, accumulates per tool name, and persists a
+            # JSON sidecar under the atelier root. Additive only — never touches
+            # the response bytes; best-effort so a write failure can't break the
+            # tool call.
+            with contextlib.suppress(Exception):
+                from atelier.core.capabilities.tool_token_ledger import record_tool_tokens
+
+                record_tool_tokens(
+                    _atelier_root(),
+                    name,
+                    input_payload=args,
+                    output_payload=response_text,
+                )
+
             # Embed per-call savings on the content item so they also ride into
             # the Claude transcript JSONL. NOTE: this is a secondary record —
             # the live statusline/analytics source today is the session_stats

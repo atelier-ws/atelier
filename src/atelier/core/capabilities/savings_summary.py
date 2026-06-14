@@ -582,6 +582,12 @@ class SavingsSummary:
     status_text: str = ""
     saved_pct: float = 0.0
     carry_pct: float = 0.0
+    # N4 — per-tool exact in/out token ledger (additive; not part of the
+    # pipe-delimited savings_line). Keyed by tool name -> {calls, input_tokens,
+    # output_tokens}.
+    tool_token_ledger: dict[str, dict[str, int]] = field(default_factory=dict)
+    tool_ledger_input_tokens: int = 0
+    tool_ledger_output_tokens: int = 0
 
 
 def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[int, int, float, int]:
@@ -883,6 +889,17 @@ def compute_savings_summary(
     if total_baseline > 0:
         result.saved_pct = (result.saved_usd / total_baseline) * 100
         result.carry_pct = (result.carry_usd / total_baseline) * 100
+
+    # --- N4: per-tool exact in/out token ledger (additive surface) ---
+    try:
+        from atelier.core.capabilities.tool_token_ledger import load_tool_token_ledger
+
+        ledger = load_tool_token_ledger(root_path)
+        result.tool_token_ledger = {name: counts.to_dict() for name, counts in ledger.per_tool.items()}
+        result.tool_ledger_input_tokens = ledger.total_input_tokens()
+        result.tool_ledger_output_tokens = ledger.total_output_tokens()
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
 
     return result
 
