@@ -252,6 +252,37 @@ else
   VS_VANILLA_SEG=""
 fi
 
+# Live-reviewer status: surface the latest unconsumed NEEDS_FIX verdict, if any.
+# Read straight from the review log so this stays independent of the savings line.
+REVIEW_SEG=""
+if [ -n "${SESSION_ID:-}" ]; then
+  _ATELIER_REVIEW_LOG="${ATELIER_STATUS_ROOT}/reviews/${SESSION_ID}.jsonl"
+  if [ -s "${_ATELIER_REVIEW_LOG}" ]; then
+    _REVIEW_VERDICT=$("${ATELIER_PY}" -c '
+import json, sys
+verdict = ""
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(row, dict) and not row.get("consumed") and row.get("verdict") == "NEEDS_FIX":
+                verdict = "NEEDS_FIX"
+except Exception:
+    pass
+print(verdict)
+' "${_ATELIER_REVIEW_LOG}" 2>/dev/null)
+    if [ "${_REVIEW_VERDICT:-}" = "NEEDS_FIX" ]; then
+      REVIEW_SEG=" ${SEP} review: NEEDS_FIX"
+    fi
+  fi
+fi
+
 # Background tasks. The statusline JSON carries no task info, so derive it:
 # shell jobs from session transcripts (main + subagents) where launch markers
 # exist without terminal task-notification status, and where the task output
@@ -329,19 +360,20 @@ TASKS_SEG=""
 # token breakdown. Enable with ATELIER_STATUS_COMPACT=1 in the statusLine
 # command.
 if [ -n "${ATELIER_STATUS_COMPACT:-}" ]; then
-  printf '%s%s%s %s %s %s ctx %s%% %s %s%s%s%s\n' \
+  printf '%s%s%s %s %s %s ctx %s%% %s %s%s%s%s%s\n' \
     "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
     "$PIPE" "$MODEL" "$SEP" "$PCT_INT" \
     "$PIPE" "$COST_FMT" \
     "$SAVED_SEG_COMPACT" \
     "$VS_VANILLA_SEG" \
+    "$REVIEW_SEG" \
     "$TASKS_SEG"
   exit 0
 fi
 
-printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s)%s%s%s%s%s\n' \
+printf '%s%s%s %s %s%s ctx %s %s%% %s %s(%s)%s%s%s%s%s%s\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
   "$PIPE" "$MODEL" "$STATUS_SEG" "$ACTUAL_CTX_F" "$PCT_INT" \
   "$PIPE" "$COST_FMT" "$TOK_DISPLAY" \
   "$SAVED_SEG" \
-  "$CARRY_SEG" "$ROUTING_SEG" "$VS_VANILLA_SEG" "$TASKS_SEG"
+  "$CARRY_SEG" "$ROUTING_SEG" "$VS_VANILLA_SEG" "$REVIEW_SEG" "$TASKS_SEG"
