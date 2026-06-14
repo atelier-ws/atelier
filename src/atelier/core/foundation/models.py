@@ -314,6 +314,7 @@ class Trace(BaseModel):
     skills: list[str] = Field(default_factory=list)
     telemetry: dict[str, Any] = Field(default_factory=dict)
     session_title: str | None = None
+    transcript_path: str | None = None
 
     @model_validator(mode="before")
     @classmethod

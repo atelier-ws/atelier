@@ -392,7 +392,10 @@ def _write_run_file(
         },
         "events": events if events is not None else [],
     }
-    (runs_dir / f"{session_id}.json").write_text(json.dumps(snap), encoding="utf-8")
+    # Ledgers live in <root>/sessions/<id>/run.json; callers pass <root>/runs historically.
+    session_dir = runs_dir.parent / "sessions" / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "run.json").write_text(json.dumps(snap), encoding="utf-8")
 
 
 def test_build_insights_empty_window(tmp_path: Path) -> None:
@@ -530,7 +533,7 @@ def test_build_insights_outcomes_summary(tmp_path: Path) -> None:
             {"outcome_score": 0.7, "extra_read_rate": 0.1},
         ],
     }
-    (runs_dir / "s1_outcomes.json").write_text(json.dumps(outcomes_data))
+    (runs_dir.parent / "sessions" / "s1" / "outcomes.json").write_text(json.dumps(outcomes_data))
     window = build_insights(
         tmp_path / "atelier",
         since=_SINCE - timedelta(days=1),
@@ -549,7 +552,7 @@ def test_build_insights_high_extra_reads_flagged(tmp_path: Path) -> None:
         "route_outcomes": [],
         "compact_outcomes": [{"outcome_score": 0.5, "extra_read_rate": 0.35}],
     }
-    (runs_dir / "s1_outcomes.json").write_text(json.dumps(outcomes_data))
+    (runs_dir.parent / "sessions" / "s1" / "outcomes.json").write_text(json.dumps(outcomes_data))
     window = build_insights(
         tmp_path / "atelier",
         since=_SINCE - timedelta(days=1),
