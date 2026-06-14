@@ -541,13 +541,22 @@ class SessionStore:
                     loaded[str(tid)] = trace
         return [loaded[tid] for tid in ordered_ids if tid in loaded]
 
-    def token_rows(self, *, since: str | None = None) -> list[dict[str, Any]]:
-        """Lightweight per-trace token/host/model rows for cost aggregates (index-only)."""
-        params: list[Any] = []
-        where = ""
-        if since is not None:
-            where = " WHERE created_at >= ?"
-            params.append(since)
+    def token_rows(
+        self,
+        *,
+        since: str | None = None,
+        exclude_tasks: tuple[str, ...] = ("session-auto-record",),
+    ) -> list[dict[str, Any]]:
+        """Lightweight per-trace token/host/model rows for cost aggregates (index-only).
+
+        Excludes ``session-auto-record`` meta traces by default, matching
+        ``list_full``/``metrics`` so token totals and run counts cover the same
+        population. (The auto-record trace carries no numeric tokens — its token
+        figures live in ``output_summary`` text — so it only inflated run counts.)
+        """
+        where, params = self._filter_sql(
+            domain=None, status=None, agent=None, host=None, since=since, exclude_tasks=exclude_tasks
+        )
         with closing(self._connect_index()) as conn:
             rows = conn.execute(
                 "SELECT id, host, model, input_tokens, output_tokens, cached_input_tokens, thinking_tokens "
