@@ -60,11 +60,15 @@ def test_content_and_metadata_live_under_session_dir(tmp_path: Path) -> None:
 def test_record_is_idempotent_per_id(tmp_path: Path) -> None:
     store = SessionStore(tmp_path)
     store.record_raw_artifact(_artifact("a1"), "v1")
-    store.record_raw_artifact(_artifact("a1"), "v2")  # same id replaces
+    store.record_raw_artifact(_artifact("a1"), "v2")  # same id; appends a newer line
     assert store.read_raw_artifact_content(store.get_raw_artifact("a1")) == "v2"
-    meta_lines = (tmp_path / "sessions" / "sess1" / "raw_artifacts.jsonl").read_text().splitlines()
-    assert len([line for line in meta_lines if line.strip()]) == 1
-    assert len(store.list_raw_artifacts(source_session_id="sess1")) == 1
+    meta_lines = [
+        line
+        for line in (tmp_path / "sessions" / "sess1" / "raw_artifacts.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    assert len(meta_lines) == 2  # append-only file keeps both physical lines
+    assert len(store.list_raw_artifacts(source_session_id="sess1")) == 1  # reader dedupes by id
 
 
 def test_list_filters_by_source_and_session(tmp_path: Path) -> None:
