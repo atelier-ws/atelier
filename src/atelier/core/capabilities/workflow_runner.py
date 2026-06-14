@@ -4,7 +4,7 @@ import json
 import time
 import uuid
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any
@@ -23,6 +23,12 @@ from atelier.core.capabilities.workflow_schema import (
 )
 from atelier.core.capabilities.workflow_spawn import new_wave_spawn_plan
 from atelier.infra.runtime.run_ledger import RunLedger
+
+# Bound owned-execution fan-out: never spawn more than this many concurrent
+# subprocesses per wave, regardless of wave width.
+MAX_PARALLEL = 8
+# Wall-clock cap for a single step so one hung spawn cannot wedge the whole run.
+STEP_TIMEOUT_SECONDS = 600.0
 
 AgentExecutor = Callable[[WorkflowStepDefinition, str, WorkflowContextState], Any]
 ToolExecutor = Callable[[WorkflowStepDefinition, dict[str, Any], WorkflowContextState], Any]
@@ -481,6 +487,50 @@ class WorkflowRunner:
             f"loop step {step.step_id} exceeded max_iterations={cap} without satisfying its until condition"
         )
 
+    def _run_wave_parallel(
+        self,
+        pending_wave: tuple[str, ...],
+        by_id: dict[str, WorkflowStepDefinition],
+        state: WorkflowContextState,
+        ledger: RunLedger | None,
+    ) -> list[StepResult]:
+        max_workers = min(len(pending_wave), MAX_PARALLEL)
+        deadline = time.monotonic() + STEP_TIMEOUT_SECONDS
+        results: dict[str, StepResult] = {}
+        pool = ThreadPoolExecutor(max_workers=max_workers)
+        try:
+            future_to_step: dict[Future[StepResult], str] = {
+                pool.submit(self._run_step, by_id[step_id], state, ledger): step_id for step_id in pending_wave
+            }
+            pending = set(future_to_step)
+            while pending:
+                timeout = deadline - time.monotonic()
+                done, pending = wait(pending, timeout=max(timeout, 0.0), return_when=FIRST_COMPLETED)
+                if not done:
+                    # Wave-level deadline hit: a step is hung. Stop waiting and let
+                    # the pending steps be marked timed-out below so the run does not wedge.
+                    break
+                for future in done:
+                    # Collect every completed step (including failures) — a failed
+                    # step does not cancel its already-running siblings; only a
+                    # wave-deadline timeout does.
+                    results[future_to_step[future]] = future.result()
+        finally:
+            # wait=False so a hung running step cannot re-wedge the run on shutdown;
+            # cancel_futures drops siblings that have not started yet.
+            pool.shutdown(wait=False, cancel_futures=True)
+        for step_id in pending_wave:
+            if step_id not in results:
+                results[step_id] = StepResult(
+                    step_id=step_id,
+                    kind=by_id[step_id].kind,
+                    status="failed",
+                    output="",
+                    output_json={},
+                    error="step timed out: wave exceeded the per-wave deadline",
+                )
+        return [results[step_id] for step_id in pending_wave]
+
     def run(
         self,
         definition: WorkflowDefinition,
@@ -528,10 +578,7 @@ class WorkflowRunner:
                 )
             results: list[StepResult] = []
             if len(pending_wave) > 1:
-                with ThreadPoolExecutor(max_workers=len(pending_wave)) as pool:
-                    futures = [pool.submit(self._run_step, by_id[step_id], state, ledger) for step_id in pending_wave]
-                    for future in futures:
-                        results.append(future.result())
+                results = self._run_wave_parallel(pending_wave, by_id, state, ledger)
             else:
                 results.append(self._run_step(by_id[pending_wave[0]], state, ledger))
 

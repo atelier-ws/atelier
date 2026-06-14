@@ -189,9 +189,7 @@ These commands manage the reusable knowledge layer and failure review flows.
 | Command                      | Purpose                                         |
 | ---------------------------- | ----------------------------------------------- |
 | `atelier lesson ...`         | Review and promote lesson candidates.           |
-| `atelier failure ...`        | Inspect and manage failure clusters.            |
-| `atelier eval ...`           | Manage and run evaluation cases.                |
-| `atelier eval-from-cluster`  | Draft an eval from an accepted failure cluster. |
+| `atelier eval ...`           | Run mini and harbor evaluation suites.          |
 | `atelier report`             | Generate an engineering governance report.      |
 | `atelier import-style-guide` | Draft lesson candidates from Markdown guidance. |
 | `atelier deprecate`          | Mark a block as deprecated.                     |

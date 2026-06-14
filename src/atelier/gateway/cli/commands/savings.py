@@ -51,11 +51,46 @@ _EXTERNAL_REPORT_ALL_TOOLS = (
 )
 
 
+def _echo_vs_vanilla_block(root: str | Path, *, deep: bool = False) -> None:
+    """Render the comparative \"vs vanilla Claude Code\" replay block.
+
+    Sourced from aggregate_vanilla_baseline (lifetime window + cap). This is an
+    estimate of roundtrips vanilla CC would have spent that Atelier avoided,
+    priced at full-context resend — clearly labelled and kept separate from the
+    measured savings figures above.
+    """
+    try:
+        from atelier.core.capabilities.vanilla_baseline import aggregate_vanilla_baseline
+
+        vs = aggregate_vanilla_baseline(root)
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return
+    calls = int(vs.get("calls_saved", 0) or 0)
+    if calls <= 0:
+        return
+    usd = float(vs.get("cost_saved_usd", 0.0) or 0.0)
+    seconds = int((vs.get("time_saved_ms", 0) or 0) / 1000)
+    click.echo("")
+    click.echo(f"vs vanilla Claude Code: {calls} roundtrips avoided · ${usd:.2f} · ~{seconds}s faster (estimate)")
+    if deep:
+        by_detector = vs.get("by_detector") or {}
+        if by_detector:
+            click.echo("  by pattern (roundtrips avoided):")
+            for label, hits in sorted(by_detector.items(), key=lambda kv: kv[1], reverse=True):
+                click.echo(f"    {label}: {hits}")
+        click.echo(
+            f"  window: {int(vs.get('window_days', 0) or 0)}d · {int(vs.get('sessions', 0) or 0)} sessions"
+            + ("  (lifetime cap hit)" if vs.get("capped") else "")
+        )
+
+
 @click.group("savings", invoke_without_command=True)
 @click.option("--json", "as_json", is_flag=True)
 @click.option("--line", is_flag=True, help="Pipe-delimited one-liner for statusline.sh.")
+@click.option("--deep", is_flag=True, help="Add a per-pattern vs-vanilla breakdown (which workflows save most).")
 @click.pass_context
-def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
+def savings_cmd(ctx: click.Context, as_json: bool, line: bool, deep: bool) -> None:
     """Aggregate savings: cache + reasoning-library + cost-delta vs. baseline."""
     if ctx.invoked_subcommand is not None:
         return
@@ -83,7 +118,7 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
     rescue_events = 0
     rubric_failures = 0
     if runs.is_dir():
-        for p in runs.glob("*.json"):
+        for p in runs.glob("*/run.json"):
             try:
                 snap = json.loads(p.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
@@ -112,6 +147,7 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
                     click.echo(f"  {k2}: {v2}")
             else:
                 click.echo(f"{k}: {v}")
+        _echo_vs_vanilla_block(ctx.obj["root"], deep=deep)
 
 
 @savings_cmd.command("wire")
@@ -944,6 +980,8 @@ def external_report_cmd(ctx: click.Context, tool: str, period: str, persist: boo
 
     if persist:
         click.echo(f"persisted {total_persisted} snapshots")
+
+    _echo_vs_vanilla_block(ctx.obj["root"])
 
 
 @click.command("savings-detail")

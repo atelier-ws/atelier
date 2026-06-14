@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import subprocess
+import threading
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -56,6 +57,8 @@ class InteractiveRuntime:
         self._current_mode: str = "code"
         self._mcp_servers: list[MCPServerProcess] = []
         self._mcp_tools: list[MCPTool] = []
+        self._mcp_lock = threading.Lock()
+        self._mcp_startup_thread: threading.Thread | None = None
         self._background_tasks: list[dict[str, Any]] = []  # {id, name, status, result}
         self._share_tokens: dict[str, str] = {}
 
@@ -74,7 +77,6 @@ class InteractiveRuntime:
 
     def _start_mcp_servers(self) -> None:
         """Start MCP servers in a background thread to avoid blocking session start."""
-        import threading
 
         def _start() -> None:
             try:
@@ -88,19 +90,28 @@ class InteractiveRuntime:
                     proc = MCPServerProcess(cfg)
                     if proc.start():
                         tools = proc.list_tools()
-                        self._mcp_servers.append(proc)
-                        self._mcp_tools.extend(tools)
+                        with self._mcp_lock:
+                            self._mcp_servers.append(proc)
+                            self._mcp_tools.extend(tools)
                         logger.info("Started MCP server %s with %d tools", cfg.name, len(tools))
             except Exception:  # noqa: BLE001
                 logger.debug("MCP server startup failed (non-blocking)", exc_info=True)
 
-        threading.Thread(target=_start, daemon=True).start()
+        thread = threading.Thread(target=_start, daemon=True)
+        self._mcp_startup_thread = thread
+        thread.start()
 
     def shutdown(self) -> None:
-        for server in self._mcp_servers:
+        startup_thread = self._mcp_startup_thread
+        if startup_thread is not None:
+            startup_thread.join(timeout=5)
+            self._mcp_startup_thread = None
+        with self._mcp_lock:
+            servers = list(self._mcp_servers)
+            self._mcp_servers.clear()
+            self._mcp_tools.clear()
+        for server in servers:
             server.stop()
-        self._mcp_servers.clear()
-        self._mcp_tools.clear()
 
     def _messages_with_cache_breakpoint(
         self,

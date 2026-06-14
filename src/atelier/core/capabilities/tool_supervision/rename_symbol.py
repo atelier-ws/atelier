@@ -1,10 +1,17 @@
 """Scope-correct symbol rename — builds a batch of rich-edit descriptors.
 
 Backends (by language, in fallback order):
-  python    -> rope (pip install atelier[rename]) -> ast-grep -> naive
-  typescript/javascript -> ts-morph (node subprocess) -> ast-grep -> naive
-  rust      -> ast-grep -> naive
+  python    -> rope (pip install atelier[rename]) -> naive
+  typescript/javascript -> ts-morph (node subprocess) -> naive
+  rust      -> naive
   unknown   -> naive
+
+The fallback ``naive`` backend rewrites only the exact lines the SCIP index
+resolved to the symbol (its definition + each indexed reference), so it never
+touches unrelated same-named identifiers on other lines. ast-grep is
+deliberately NOT a rename backend: a bare-identifier pattern matches every node
+of that name regardless of binding -- that is the ``codemod`` tool's job
+(structural rewrites), not binding-aware symbol rename.
 
 The returned list of dicts is passed directly to apply_rich_edits, which handles
 atomic writes, rollback, and diff recording.
@@ -12,6 +19,7 @@ atomic writes, rollback, and diff recording.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import tempfile
@@ -22,10 +30,10 @@ from typing import Any
 # -- backend detection --------------------------------------------------------
 
 _LANGUAGE_BACKENDS: dict[str, list[str]] = {
-    "python": ["rope", "ast-grep", "naive"],
-    "typescript": ["ts-morph", "ast-grep", "naive"],
-    "javascript": ["ts-morph", "ast-grep", "naive"],
-    "rust": ["ast-grep", "naive"],
+    "python": ["rope", "naive"],
+    "typescript": ["ts-morph", "naive"],
+    "javascript": ["ts-morph", "naive"],
+    "rust": ["naive"],
 }
 
 
@@ -41,9 +49,6 @@ def _best_backend(language: str) -> str:
         elif backend == "ts-morph":
             if shutil.which("node"):
                 return "ts-morph"
-        elif backend == "ast-grep":
-            if shutil.which("ast-grep") or shutil.which("sg"):
-                return "ast-grep"
         elif backend == "naive":
             return "naive"
     return "naive"
@@ -57,39 +62,46 @@ def _naive_rename(
     usages: list[dict[str, Any]],
     new_name: str,
     old_name: str,
+    repo_root: Path,
 ) -> list[dict[str, Any]]:
-    """Build rich-edit descriptors using old_string/new_string pairs.
+    """Build rich-edit descriptors by rewriting only SCIP-resolved lines.
 
-    Searches for the exact old_name within the snippet of each usage.
-    Not scope-correct for shadowed locals, but safe for public API renames.
+    The symbol index already pins the exact (file, line) of the definition and
+    every reference of this binding, so ``old_name`` is rewritten only on those
+    lines. Unrelated same-named identifiers on other lines are left untouched --
+    unlike a whole-file or bare ast-grep pattern sweep, which over-renames. The
+    one residual ambiguity is two distinct symbols sharing a name on a single
+    line, which a line-level index cannot disambiguate.
     """
-    edits: list[dict[str, Any]] = []
-    # Definition first
-    edits.append(
-        {
-            "file_path": symbol["file_path"],
-            "old_string": old_name,
-            "new_string": new_name,
-        }
-    )
-    seen: set[tuple[str, int]] = set()
+    pattern = re.compile(rf"\b{re.escape(old_name)}\b")
+    # Each file -> the 1-based line numbers the index resolved to this symbol:
+    # the definition line plus every indexed reference line.
+    lines_by_file: dict[str, set[int]] = {}
+    def_file = str(symbol.get("file_path") or "")
+    def_line = int(symbol.get("start_line") or 0)
+    if def_file and def_line:
+        lines_by_file.setdefault(def_file, set()).add(def_line)
     for usage in usages:
         fp = str(usage.get("file_path") or "")
         line = int(usage.get("line") or 0)
-        snippet = str(usage.get("snippet") or "")
-        if not fp or not snippet or old_name not in snippet:
+        if fp and line:
+            lines_by_file.setdefault(fp, set()).add(line)
+    edits: list[dict[str, Any]] = []
+    for fp, line_numbers in lines_by_file.items():
+        try:
+            content = (repo_root / fp).read_text(encoding="utf-8")
+        except OSError:
             continue
-        key = (fp, line)
-        if key in seen:
-            continue
-        seen.add(key)
-        edits.append(
-            {
-                "file_path": fp,
-                "old_string": old_name,
-                "new_string": new_name,
-            }
-        )
+        src_lines = content.splitlines(keepends=True)
+        changed = False
+        for line in line_numbers:
+            if 1 <= line <= len(src_lines):
+                rewritten = pattern.sub(new_name, src_lines[line - 1])
+                if rewritten != src_lines[line - 1]:
+                    src_lines[line - 1] = rewritten
+                    changed = True
+        if changed:
+            edits.append({"file_path": fp, "overwrite": True, "new_string": "".join(src_lines)})
     return edits
 
 
@@ -201,43 +213,6 @@ def _tsmorph_rename(
 # -- ast-grep backend ---------------------------------------------------------
 
 
-def _astgrep_rename(
-    symbol: dict[str, Any],
-    usages: list[dict[str, Any]],
-    new_name: str,
-    old_name: str,
-    language: str,
-    repo_root: Path,
-) -> list[dict[str, Any]]:
-    """ast-grep structural rewrite scoped to files that contain usages."""
-    from atelier.infra.code_intel.astgrep.adapter import (
-        AstGrepAdapter,
-    )
-
-    # Build set of files with usages (including definition file)
-    usage_files = {symbol["file_path"]} | {str(u.get("file_path") or "") for u in usages if u.get("file_path")}
-
-    adapter = AstGrepAdapter(repo_root)
-    edits: list[dict[str, Any]] = []
-
-    for fp in usage_files:
-        if not fp:
-            continue
-        result = adapter.rewrite(
-            pattern=old_name,
-            rewrite=new_name,
-            language=language,
-            file_glob=fp,
-            dry_run=False,
-        )
-        if result.files_changed:
-            # rewrite already wrote the file; record as applied (no edit needed)
-            # Return empty so caller knows files were changed
-            edits.append({"file_path": fp, "_astgrep_applied": True})
-
-    return edits
-
-
 # -- public API ---------------------------------------------------------------
 
 
@@ -298,10 +273,7 @@ def build_rename_edits(
     if chosen == "ts-morph" and language in ("typescript", "javascript"):
         return _tsmorph_rename(symbol, new_name, repo_root)
 
-    if chosen == "ast-grep":
-        return _astgrep_rename(symbol, usages, new_name, old_name, language, repo_root)
-
-    return _naive_rename(symbol, usages, new_name, old_name)
+    return _naive_rename(symbol, usages, new_name, old_name, repo_root)
 
 
 __all__ = ["build_rename_edits"]

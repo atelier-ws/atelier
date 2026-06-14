@@ -45,7 +45,21 @@ PLUGIN_DEFAULT_SETTINGS: dict[str, bool] = {
     "spinnerVerbs": True,
     "alwaysLoadTools": True,
 }
-SPINNER_VERBS = ["reasoning", "searching", "editing", "validating", "recalling"]
+SPINNER_VERBS = [
+    "Reasoning",
+    "Searching",
+    "Editing",
+    "Validating",
+    "Recalling",
+    "Routing",
+    "Compacting",
+    "Forging",
+]
+# Commit/PR co-author identity for the opt-in attribution trailer, installed
+# into a repo via scripts/install_attribution_hook.sh.
+ATTRIBUTION_NAME = "atelier-agent[bot]"
+ATTRIBUTION_EMAIL = "293447754+atelier-agent[bot]@users.noreply.github.com"
+ATTRIBUTION_TRAILER = f"Co-Authored-By: {ATTRIBUTION_NAME} <{ATTRIBUTION_EMAIL}>"
 AUTH_REFRESH_GRACE_SECONDS = 300
 UPDATE_CHECK_THROTTLE_SECONDS = 30 * 60
 
@@ -641,16 +655,15 @@ def apply_status_line_setting(host_settings: dict[str, Any], plugin_root: str, e
 
 
 def apply_spinner_setting(host_settings: dict[str, Any], enabled: bool) -> dict[str, Any]:
+    # Claude Code consumes a top-level ``spinnerVerbs`` object
+    # ({"mode": "replace"|"append", "verbs": [...]}). A namespaced
+    # ``atelier.spinnerVerbs`` array is ignored by the host, so write the
+    # documented top-level key.
     updated = dict(host_settings or {})
-    namespace = dict(updated.get("atelier") or {})
     if enabled:
-        namespace["spinnerVerbs"] = list(SPINNER_VERBS)
+        updated["spinnerVerbs"] = {"mode": "replace", "verbs": list(SPINNER_VERBS)}
     else:
-        namespace.pop("spinnerVerbs", None)
-    if namespace:
-        updated["atelier"] = namespace
-    else:
-        updated.pop("atelier", None)
+        updated.pop("spinnerVerbs", None)
     return updated
 
 
@@ -659,12 +672,58 @@ def apply_attribution_setting(host_settings: dict[str, Any], enabled: bool) -> d
     namespace = dict(updated.get("atelier") or {})
     if enabled:
         namespace["attribution"] = {"enabled": True, "source": "Atelier"}
+        # Suppress Claude Code's default Co-Authored-By trailer so the Atelier
+        # trailer (installed by scripts/install_attribution_hook.sh) is the only
+        # co-author line — but never override a value the user set themselves.
+        if "includeCoAuthoredBy" not in updated:
+            updated["includeCoAuthoredBy"] = False
     else:
         namespace.pop("attribution", None)
+        # Leave includeCoAuthoredBy untouched on disable (respect prior state).
     if namespace:
         updated["atelier"] = namespace
     else:
         updated.pop("atelier", None)
+    return updated
+
+
+def apply_recall_settings(
+    host_settings: dict[str, Any],
+    *,
+    auto_index: bool | None = None,
+    embedder: str | None = None,
+    embed_model: str | None = None,
+) -> dict[str, Any]:
+    """Merge all-sessions Recall settings into a plugin_settings dict.
+
+    Only provided fields are changed (None = leave as-is). Top-level keys:
+    ``recallAutoIndex`` (background SessionStart indexer), ``recallEmbedder``
+    (local|openai|ollama), ``recallEmbedModel`` (e.g. an Ollama model name).
+    """
+    updated = dict(host_settings or {})
+    if auto_index is not None:
+        updated["recallAutoIndex"] = bool(auto_index)
+    if embedder is not None:
+        updated["recallEmbedder"] = str(embedder)
+    if embed_model is not None:
+        updated["recallEmbedModel"] = str(embed_model)
+    return updated
+
+
+def set_recall_settings(
+    root: str | Path,
+    *,
+    auto_index: bool | None = None,
+    embedder: str | None = None,
+    embed_model: str | None = None,
+) -> dict[str, Any]:
+    """Read-merge-write Recall settings into plugin_settings.json."""
+    path = plugin_settings_path(root)
+    settings = _read_json(path, {})
+    if not isinstance(settings, dict):
+        settings = {}
+    updated = apply_recall_settings(settings, auto_index=auto_index, embedder=embedder, embed_model=embed_model)
+    _write_json(path, updated)
     return updated
 
 
@@ -1123,8 +1182,6 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
 
     session_id = str(payload.get("session_id") or "default")
     update_session_stats(root, payload)
-    with suppress(Exception):
-        _codex_auto_record_trace(root, payload)
     report = build_savings_report(root, session_id=session_id)
     session = report.get("session") or {}
     cost = report.get("cost") or {}
@@ -1686,51 +1743,6 @@ def _codex_enrich_user_prompt(root: str | Path, payload: dict[str, Any]) -> None
     )
 
 
-def _codex_auto_record_trace(root: str | Path, payload: dict[str, Any]) -> None:
-    """Auto-record a session trace when code work happened and none was recorded."""
-    session_id = _codex_ledger_session_id(root, payload)
-    if not session_id:
-        return
-    state = _read_codex_session_state(root, payload)
-    sessions = state.get("sessions")
-    session_data = sessions.get(session_id, {}) if isinstance(sessions, dict) else {}
-    if (isinstance(session_data, dict) and session_data.get("trace_recorded")) or state.get("trace_recorded"):
-        return
-    run_file = _codex_run_file(root, session_id)
-    try:
-        data = json.loads(run_file.read_text("utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    if not isinstance(data, dict):
-        return
-    files_touched = data.get("files_touched")
-    edited = bool(files_touched) or any(
-        isinstance(event, dict) and event.get("kind") == "file_edit" for event in (data.get("events") or [])
-    )
-    if not edited:
-        return
-    import subprocess
-
-    trace = {
-        "agent": "codex",
-        "domain": "session",
-        "task": "session-auto-record",
-        "status": "success",
-        "session_id": session_id,
-        "output_summary": f"files touched: {len(files_touched or [])}",
-    }
-    atelier_bin = os.environ.get("ATELIER_BIN") or "atelier"
-    with suppress(Exception):
-        subprocess.run(
-            [atelier_bin, "runs", "record", "--input", "-"],
-            input=json.dumps(trace),
-            text=True,
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
-
-
 def build_codex_savings_line(root: str | Path, session_id: str) -> str:
     """Pipe-delimited savings line for the Codex command-backed statusline.
 
@@ -1904,57 +1916,172 @@ def _tool_uses(turns: list[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
     return [(idx, tool) for idx, turn in enumerate(turns) for tool in (turn.get("tool_uses") or [])]
 
 
-def detect_read_batch(turns: list[dict[str, Any]]) -> dict[str, Any]:
-    for _, turn in enumerate(turns):
-        reads = [tool for tool in turn.get("tool_uses", []) if tool.get("name") == "Read"]
-        if len(reads) >= 2:
-            return {
-                "workflows": 1,
-                "calls_saved": len(reads) - 1,
-                "consumed_tool_use_ids": [r.get("id") for r in reads],
-            }
-    return {"workflows": 0, "calls_saved": 0, "consumed_tool_use_ids": []}
+# Bash commands used as code navigation (one indexed Atelier call replaces them).
+_BASH_NAV_TOKENS = ("grep", "rg", "ast-grep", "sg ", "find ")
 
 
-def detect_edit_batch(turns: list[dict[str, Any]]) -> dict[str, Any]:
+def _consume(tool: dict[str, Any], consumed: set[str] | None) -> bool:
+    """Return True if *tool* is newly consumable; record its id in *consumed*.
+
+    A tool_use whose id is already in *consumed* is skipped so a single Read is
+    never double-credited by two detectors (e.g. grep_read and read_batch).
+    """
+    if consumed is None:
+        return True
+    tid = tool.get("id")
+    if tid is None:
+        return True
+    if tid in consumed:
+        return False
+    consumed.add(tid)
+    return True
+
+
+def detect_read_batch(turns: list[dict[str, Any]], consumed_tool_use_ids: set[str] | None = None) -> dict[str, Any]:
+    """Sum every per-turn run of >=2 Reads; each run of N saves N-1 calls."""
+    calls_saved = 0
+    workflows = 0
+    ids: list[str] = []
     for turn in turns:
-        edits = [tool for tool in turn.get("tool_uses", []) if tool.get("name") in {"Edit", "Write", "MultiEdit"}]
+        reads = [
+            tool
+            for tool in turn.get("tool_uses", [])
+            if tool.get("name") == "Read" and _consume(tool, consumed_tool_use_ids)
+        ]
+        if len(reads) >= 2:
+            workflows += 1
+            calls_saved += len(reads) - 1
+            ids.extend(r.get("id") for r in reads if r.get("id") is not None)
+    return {"workflows": workflows, "calls_saved": calls_saved, "consumed_tool_use_ids": ids}
+
+
+def detect_edit_batch(turns: list[dict[str, Any]], consumed_tool_use_ids: set[str] | None = None) -> dict[str, Any]:
+    """Sum every per-turn run of >=2 Edit/Write/MultiEdit calls."""
+    calls_saved = 0
+    workflows = 0
+    for turn in turns:
+        edits = [
+            tool
+            for tool in turn.get("tool_uses", [])
+            if tool.get("name") in {"Edit", "Write", "MultiEdit"} and _consume(tool, consumed_tool_use_ids)
+        ]
         if len(edits) >= 2:
-            return {"workflows": 1, "calls_saved": len(edits) - 1}
-    return {"workflows": 0, "calls_saved": 0}
+            workflows += 1
+            calls_saved += len(edits) - 1
+    return {"workflows": workflows, "calls_saved": calls_saved}
 
 
-def detect_grep_read(turns: list[dict[str, Any]], max_gap_turns: int = 3) -> dict[str, Any]:
+def detect_grep_read(
+    turns: list[dict[str, Any]], max_gap_turns: int = 3, consumed_tool_use_ids: set[str] | None = None
+) -> dict[str, Any]:
+    """Sum every Grep-then-Read navigation chain (Glob is handled separately)."""
+    calls_saved = 0
+    workflows = 0
     for idx, turn in enumerate(turns):
-        greps = [tool for tool in turn.get("tool_uses", []) if tool.get("name") in {"Grep", "Glob"}]
+        greps = [
+            tool
+            for tool in turn.get("tool_uses", [])
+            if tool.get("name") == "Grep" and _consume(tool, consumed_tool_use_ids)
+        ]
         if not greps:
             continue
         reads: list[dict[str, Any]] = []
         for later in turns[idx + 1 : idx + max_gap_turns + 1]:
-            reads.extend([tool for tool in later.get("tool_uses", []) if tool.get("name") == "Read"])
+            reads.extend(
+                tool
+                for tool in later.get("tool_uses", [])
+                if tool.get("name") == "Read" and _consume(tool, consumed_tool_use_ids)
+            )
         if reads:
-            return {"workflows": 1, "calls_saved": len(greps) + len(reads) - 1}
-    return {"workflows": 0, "calls_saved": 0}
+            workflows += 1
+            calls_saved += len(greps) + len(reads) - 1
+    return {"workflows": workflows, "calls_saved": calls_saved}
 
 
-def detect_failed_edit(turns: list[dict[str, Any]], max_gap_turns: int = 5) -> dict[str, Any]:
+def detect_glob_read(
+    turns: list[dict[str, Any]], max_gap_turns: int = 3, consumed_tool_use_ids: set[str] | None = None
+) -> dict[str, Any]:
+    """Sum every Glob-then-Read navigation chain (split out of grep_read)."""
+    calls_saved = 0
+    workflows = 0
     for idx, turn in enumerate(turns):
-        failed = [tool for tool in turn.get("tool_uses", []) if tool.get("name") == "Edit" and tool.get("is_error")]
+        globs = [
+            tool
+            for tool in turn.get("tool_uses", [])
+            if tool.get("name") == "Glob" and _consume(tool, consumed_tool_use_ids)
+        ]
+        if not globs:
+            continue
+        reads: list[dict[str, Any]] = []
+        for later in turns[idx + 1 : idx + max_gap_turns + 1]:
+            reads.extend(
+                tool
+                for tool in later.get("tool_uses", [])
+                if tool.get("name") == "Read" and _consume(tool, consumed_tool_use_ids)
+            )
+        if reads:
+            workflows += 1
+            calls_saved += len(globs) + len(reads) - 1
+    return {"workflows": workflows, "calls_saved": calls_saved}
+
+
+def detect_failed_edit(
+    turns: list[dict[str, Any]], max_gap_turns: int = 5, consumed_tool_use_ids: set[str] | None = None
+) -> dict[str, Any]:
+    """Sum every failed-Edit recovery chain (a failed Edit + its follow-up Reads/Edits)."""
+    calls_saved = 0
+    workflows = 0
+    for idx, turn in enumerate(turns):
+        failed = [
+            tool
+            for tool in turn.get("tool_uses", [])
+            if tool.get("name") == "Edit" and tool.get("is_error") and _consume(tool, consumed_tool_use_ids)
+        ]
         if not failed:
             continue
         chain = list(failed)
         for later in turns[idx + 1 : idx + max_gap_turns + 1]:
-            chain.extend([tool for tool in later.get("tool_uses", []) if tool.get("name") in {"Read", "Edit"}])
+            chain.extend(
+                tool
+                for tool in later.get("tool_uses", [])
+                if tool.get("name") in {"Read", "Edit"} and _consume(tool, consumed_tool_use_ids)
+            )
         if len(chain) >= 2:
-            return {"workflows": 1, "calls_saved": len(chain) - 1}
-    return {"workflows": 0, "calls_saved": 0}
+            workflows += 1
+            calls_saved += len(chain) - 1
+    return {"workflows": workflows, "calls_saved": calls_saved}
 
 
-def detect_bash_sql(turns: list[dict[str, Any]]) -> dict[str, Any]:
+def detect_bash_sql(turns: list[dict[str, Any]], consumed_tool_use_ids: set[str] | None = None) -> dict[str, Any]:
+    """Sum Bash SQL-client calls (>=2 of them = N-1 indexed-query calls saved)."""
     matches = []
     for _, tool in _tool_uses(turns):
         command = str((tool.get("input") or {}).get("command", ""))
-        if tool.get("name") == "Bash" and any(sql_cmd in command for sql_cmd in _SQL_COMMANDS):
+        if (
+            tool.get("name") == "Bash"
+            and any(sql_cmd in command for sql_cmd in _SQL_COMMANDS)
+            and _consume(tool, consumed_tool_use_ids)
+        ):
+            matches.append(tool)
+    if len(matches) >= 2:
+        return {"workflows": 1, "calls_saved": len(matches) - 1}
+    return {"workflows": 0, "calls_saved": 0}
+
+
+def detect_bash_grep_chain(
+    turns: list[dict[str, Any]], consumed_tool_use_ids: set[str] | None = None
+) -> dict[str, Any]:
+    """Sum Bash commands used for code navigation (grep/rg/ast-grep/find).
+
+    Atelier replaces these ad-hoc shell searches with one indexed call, so a run
+    of >=2 such Bash invocations saves N-1 roundtrips.
+    """
+    matches = []
+    for _, tool in _tool_uses(turns):
+        if tool.get("name") != "Bash":
+            continue
+        command = str((tool.get("input") or {}).get("command", ""))
+        if any(token in command for token in _BASH_NAV_TOKENS) and _consume(tool, consumed_tool_use_ids):
             matches.append(tool)
     if len(matches) >= 2:
         return {"workflows": 1, "calls_saved": len(matches) - 1}
@@ -1983,11 +2110,11 @@ def efficiency_gain(actual_tool_calls: int, equivalent_baseline_calls: int) -> d
 
 
 def session_stats_path(root: str | Path, session_id: str) -> Path:
-    return Path(root) / "session_stats" / f"{session_id}.json"
+    return Path(root) / "sessions" / session_id / "stats.json"
 
 
 def _session_event_path(root: str | Path, session_id: str) -> Path:
-    return Path(root) / "session_events" / f"{session_id}.jsonl"
+    return Path(root) / "sessions" / session_id / "events.jsonl"
 
 
 def _now_ms(payload: dict[str, Any] | None = None) -> int:
@@ -2314,12 +2441,12 @@ def get_session_stats_from_trace(trace: Any) -> dict[str, Any]:
 
 
 def list_session_stats(root: str | Path, limit: int = 100) -> list[dict[str, Any]]:
-    stats_dir = Path(root) / "session_stats"
-    if not stats_dir.exists():
+    sessions_dir = Path(root) / "sessions"
+    if not sessions_dir.exists():
         return []
 
     # Get the newest sessions first
-    files = sorted(stats_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    files = sorted(sessions_dir.glob("*/stats.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     results: list[dict[str, Any]] = []
     for file_path in files[:limit]:
         try:
@@ -2333,11 +2460,11 @@ def list_session_stats(root: str | Path, limit: int = 100) -> list[dict[str, Any
 
 
 def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> dict[str, Any]:
-    stats_dir = Path(root) / "session_stats"
+    sessions_dir = Path(root) / "sessions"
     files = (
         [session_stats_path(root, session_id)]
         if session_id
-        else sorted(stats_dir.glob("*.json")) if stats_dir.exists() else []
+        else sorted(sessions_dir.glob("*/stats.json")) if sessions_dir.exists() else []
     )
     aggregate: dict[str, Any] = {
         "session_count": 0,
@@ -2557,6 +2684,16 @@ def build_savings_report(
     if not isinstance(subscription, dict):
         subscription = {}
     ab_calibration = _summarize_ab_calibration(root_path)
+    # Comparative "vs vanilla Claude Code" replay number. This is a SEPARATE,
+    # counterfactual estimate (roundtrips vanilla CC would have spent that
+    # Atelier's batching/indexing avoided) and is never folded into saved_usd.
+    try:
+        from atelier.core.capabilities.vanilla_baseline import aggregate_vanilla_baseline
+
+        vs_vanilla = aggregate_vanilla_baseline(root_path)
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        vs_vanilla = {"calls_saved": 0, "time_saved_ms": 0, "tokens_saved": 0, "cost_saved_usd": 0.0}
     return {
         "calls_avoided": calls_avoided,
         "tokens_saved": tokens_saved,
@@ -2564,6 +2701,7 @@ def build_savings_report(
         "live": live,
         "session": session,
         "lifetime": lifetime,
+        "vs_vanilla": vs_vanilla,
         "baseline": {
             "available": baseline_gate.get("available", False),
             "estimate": baseline,

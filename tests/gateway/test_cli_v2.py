@@ -1,4 +1,4 @@
-"""CLI tests for V2 commands: ledger, compress, env, failure, eval, read, savings."""
+"""CLI tests for V2 commands: ledger, compress, env, eval, read, savings."""
 
 from __future__ import annotations
 
@@ -108,68 +108,6 @@ def test_ledger_show_and_summarize(tmp_path: Path) -> None:
     res2 = _invoke(root, "ledger", "summarize")
     assert res2.exit_code == 0
     assert "Atelier compact state" in res2.output
-
-
-def test_failure_list_accept_reject(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    init_store_at(str(root))
-    _seed_ledger(root)
-    _seed_ledger(root, session_id="run2")
-
-    res = _invoke(root, "failure", "list", "--json")
-    assert res.exit_code == 0
-    clusters = json.loads(res.output)
-    assert clusters
-    cid = clusters[0]["id"]
-
-    res2 = _invoke(root, "failure", "accept", cid)
-    assert res2.exit_code == 0
-    res3 = _invoke(root, "failure", "list", "--json")
-    payload = json.loads(res3.output)
-    assert any(c["status"] == "accepted" for c in payload)
-
-    res4 = _invoke(root, "failure", "reject", cid)
-    assert res4.exit_code == 0
-
-
-def test_analyze_failures_cli(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    init_store_at(str(root))
-    _seed_ledger(root)
-    res = _invoke(root, "failure", "analyze", "--json")
-    assert res.exit_code == 0
-    assert json.loads(res.output)
-
-
-def test_eval_lifecycle(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    init_store_at(str(root))
-    eval_dir = root / "evals"
-    eval_dir.mkdir(parents=True, exist_ok=True)
-    case = {
-        "id": "case1",
-        "domain": "state.change",
-        "description": "blocks slug-only identity plan",
-        "task": "Fix external state",
-        "plan": ["Resolve target from URL slug alone"],
-        "expected_status": "blocked",
-        "status": "draft",
-    }
-    (eval_dir / "case1.json").write_text(json.dumps(case), encoding="utf-8")
-
-    res = _invoke(root, "eval", "cycle", "list", "--json")
-    assert res.exit_code == 0
-    assert json.loads(res.output)
-
-    res2 = _invoke(root, "eval", "cycle", "run", "--case", "case1", "--json")
-    assert res2.exit_code == 0
-    results = json.loads(res2.output)
-    assert results[0]["passed"] is True
-
-    res3 = _invoke(root, "eval", "cycle", "promote", "case1")
-    assert res3.exit_code == 0
-    promoted = json.loads((eval_dir / "case1.json").read_text(encoding="utf-8"))
-    assert promoted["status"] == "active"
 
 
 def test_tool_mode_show_set(tmp_path: Path) -> None:

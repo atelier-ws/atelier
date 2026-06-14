@@ -27,12 +27,10 @@ import pytest
 
 from atelier.core.foundation.memory_models import ArchivalPassage, MemoryBlock
 from atelier.core.service.jobs import (
-    JOB_ANALYZE_FAILURES,
     JOB_BOOTSTRAP_CONTEXT,
     JOB_COMPUTE_EMBEDDINGS,
     JOB_CONSOLIDATE_BLOCKS,
     JOB_EXTRACT_REASONBLOCK,
-    JOB_GENERATE_EVAL,
     JOB_INGEST_SESSION_DIRECTORY,
     JOB_INGEST_SESSION_FILE,
     JOB_OPTIMIZE,
@@ -453,8 +451,6 @@ def test_all_known_job_types_defined(ctx_root: Path) -> None:
     """Verify all expected job type constants are present in KNOWN_JOB_TYPES."""
     expected = {
         JOB_EXTRACT_REASONBLOCK,
-        JOB_ANALYZE_FAILURES,
-        JOB_GENERATE_EVAL,
         JOB_COMPUTE_EMBEDDINGS,
         JOB_CONSOLIDATE_BLOCKS,
         JOB_OPTIMIZE,

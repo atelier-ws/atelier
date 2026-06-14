@@ -64,7 +64,6 @@ EVENTS: dict[str, EventSpec] = {
             "session_id": STR,
         }
     ),
-    "failure_cluster_matched": EventSpec({"cluster_id_hash": STR, "domain": STR, "session_id": STR}),
     "rescue_offered": EventSpec({"cluster_id_hash": STR, "rescue_type": STR, "session_id": STR}),
     "rescue_accepted": EventSpec({"cluster_id_hash": STR, "session_id": STR}),
     "frustration_signal_behavioral": EventSpec({"signal_type": STR, "session_id": STR}),

@@ -20,8 +20,6 @@ def render_code_payload(op: str, payload: Mapping[str, Any]) -> str | None:
         return _render_search(payload)
     if op in {"symbol", "node"}:
         return _render_symbol(payload)
-    if op == "outline":
-        return _render_outline(payload)
     if op in {"callers", "callees", "usages"}:
         return _render_relations(op, payload)
     if op == "status":
@@ -87,40 +85,6 @@ def _render_symbol(payload: Mapping[str, Any]) -> str:
     if signature:
         lines.append(f"- signature: {signature}")
     return "\n".join(lines)
-
-
-def _render_outline(payload: Mapping[str, Any]) -> str:
-    files = payload.get("files")
-    if not isinstance(files, Mapping):
-        return "### outline\n- no symbols"
-    lines: list[str] = ["### outline"]
-    for file_path in sorted(str(key) for key in files):
-        entries = files.get(file_path)
-        if not isinstance(entries, list):
-            continue
-        lines.append(f"- {file_path}")
-        normalized = sorted(
-            (item for item in entries if isinstance(item, Mapping)),
-            key=lambda item: (
-                int(item.get("line_start") or 0),
-                str(item.get("qualified_name") or item.get("name") or ""),
-                str(item.get("kind") or ""),
-            ),
-        )
-        for item in normalized:
-            name = str(item.get("qualified_name") or item.get("name") or "?")
-            kind = str(item.get("kind") or "?")
-            line = int(item.get("line_start") or 0)
-            end_line = int(item.get("line_end") or 0)
-            signature = str(item.get("signature") or "").strip()
-            line_label = f"{line}"
-            if line > 0 and end_line > line:
-                line_label = f"{line}-{end_line}"
-            summary = f"  - {line_label}: {name} [{kind}]"
-            if signature:
-                summary = f"{summary} — {signature}"
-            lines.append(summary)
-    return "\n".join(lines) if len(lines) > 1 else "### outline\n- no symbols"
 
 
 def _render_relations(op: str, payload: Mapping[str, Any]) -> str:

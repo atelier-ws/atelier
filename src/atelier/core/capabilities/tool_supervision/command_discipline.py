@@ -61,6 +61,54 @@ def _silences_diagnostics(norm: str) -> bool:
     return any(token in _DIAGNOSTIC_HEADS for token in norm.split())
 
 
+# Tool-redirect coaching: shell commands that duplicate Atelier's indexed tools.
+# Surfaced once per class per session as a non-blocking warning so the model
+# switches to the cheaper `grep`/`read`/`sql` tool. Never blocks.
+_redirect_warned: set[str] = set()
+
+_SEARCH_HEADS = frozenset({"grep", "rg", "ag", "ack", "find", "cat", "head", "tail"})
+_SQL_HEADS = frozenset(
+    {"psql", "mysql", "mariadb", "sqlite3", "pg_dump", "mongosh", "mongo", "redis-cli", "clickhouse-client"}
+)
+_HEAD_SKIP = frozenset({"sudo", "command", "time", "nice", "env", "nohup", "stdbuf"})
+
+
+def _first_head(norm: str) -> str:
+    """First real command word, skipping env assignments and wrapper commands."""
+    for token in norm.split():
+        if token in _HEAD_SKIP:
+            continue
+        if "=" in token and not token.startswith(("-", "/")):
+            continue  # FOO=bar env assignment
+        return token.rsplit("/", 1)[-1]  # /usr/bin/grep -> grep
+    return ""
+
+
+def _redirect_hint(norm: str) -> tuple[str, str] | None:
+    """Coaching for a leading shell command that duplicates an Atelier tool.
+
+    Only the *first* command word is inspected, so piped output filters like
+    ``ps aux | grep node`` are left alone — only a top-level code search/read or
+    database command is nudged.
+    """
+    head = _first_head(norm)
+    if head in _SEARCH_HEADS:
+        return (
+            "search",
+            f"Prefer the `grep` tool (regex/glob/type search, token-budgeted output) or `read` "
+            f"(outline/range/batch) over shell `{head}` for finding and reading code — one indexed "
+            "round-trip is far cheaper than piping shell text into context. The command ran; use the "
+            "tool for subsequent searches.",
+        )
+    if head in _SQL_HEADS:
+        return (
+            "sql",
+            f"Prefer the `sql` tool (auto-LIMIT, schema introspection, batched queries) over shell "
+            f"`{head}` for database work. The command ran; use the tool next time.",
+        )
+    return None
+
+
 def pre_run_gate(command: str) -> GateDecision:
     """Decide whether *command* may run, runs with a warning, or is blocked."""
     norm = _normalize(command)
@@ -93,6 +141,12 @@ def pre_run_gate(command: str) -> GateDecision:
                 "this command silences stderr on an install/build step; diagnostics will be "
                 "lost if it fails - prefer running it without the /dev/null redirection",
             )
+        hint = _redirect_hint(norm)
+        if hint is not None:
+            cls, message = hint
+            if cls not in _redirect_warned:
+                _redirect_warned.add(cls)
+                return GateDecision("warn", message)
     return GateDecision("allow")
 
 
@@ -128,3 +182,4 @@ def reset() -> None:
         _failed.clear()
         _retry_warned.clear()
         _silence_warned.clear()
+        _redirect_warned.clear()

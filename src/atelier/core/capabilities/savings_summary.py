@@ -34,7 +34,7 @@ _DISPLAY_NAME_MODEL_MAP: dict[str, str] = {
     "opus 4": "claude-opus-4-0",
     "sonnet 4.7": "claude-sonnet-4-7",
     "sonnet 4.6": "claude-sonnet-4-6",
-    "sonnet 4.5": "claude-sonnet-4-5",
+    "Sonnet 4.6": "claude-sonnet-4-5",
     "sonnet 4": "claude-sonnet-4-0",
     "haiku 4.7": "claude-haiku-4-7",
     "haiku 4.6": "claude-haiku-4-6",
@@ -80,7 +80,7 @@ def estimate_cost_usd(
     is supplied (1h writes bill at a higher rate). ``long_context=True`` prices
     the bucket at the model's >200k per-request premium rates.
 
-    Falls back to Sonnet 4.5 rates when the model is unknown so we never
+    Falls back to Sonnet 4.6 rates when the model is unknown so we never
     silently show $0 for an active session.
     """
     try:
@@ -202,6 +202,10 @@ class TranscriptStats:
     last_model: str = ""
     # ISO timestamps of assistant turns with usage — drives the carry credit.
     turn_timestamps: list[str] = field(default_factory=list)
+    # Per-subagent assistant-turn timestamps (one inner list per subagent
+    # transcript). Drives per-window carry: a token a subagent saved carries
+    # across that subagent's own later turns, not the main thread's.
+    subagent_turn_timestamps: list[list[str]] = field(default_factory=list)
 
     @property
     def total_tokens(self) -> int:
@@ -418,6 +422,7 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
     last_model_id = ""  # tracks most recently seen model (for resumed sessions)
     per_model: dict[str, dict[str, int]] = {}
     turn_timestamps: list[str] = []
+    subagent_turn_timestamps: list[list[str]] = []
     seen_usage_message_ids: set[str] = set()
     seen_tool_use_ids: set[str] = set()
     lc_thresholds: dict[str, int] = {}
@@ -427,6 +432,7 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
 
     try:
         for source, is_main in sources:
+            sub_ts: list[str] = []
             for raw in source.read_text(encoding="utf-8", errors="replace").splitlines():
                 raw = raw.strip()
                 if not raw:
@@ -475,13 +481,18 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
                     output_tokens += out_t
                     cache_read_tokens += cr_t
                     cache_write_tokens += cw_t
+                    # A turn = one assistant message with non-zero usage.
+                    # Dedup on msg_id (same dedup as token accumulation).
+                    ts_raw = str(entry.get("timestamp") or "")
                     if is_main:
-                        # A turn = one assistant message with non-zero usage.
-                        # Dedup on msg_id (same dedup as token accumulation).
                         turns += 1
-                        ts_raw = str(entry.get("timestamp") or "")
                         if ts_raw:
                             turn_timestamps.append(ts_raw)
+                    elif ts_raw:
+                        # Subagent assistant turn — bucketed per subagent so
+                        # carry credit attributes a subagent-saved token to that
+                        # subagent's own context window, not the main thread's.
+                        sub_ts.append(ts_raw)
 
                     turn_model = str(msg.get("model") or entry.get("model") or "").strip()
                     if is_real_model(turn_model):
@@ -522,6 +533,8 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
                         seen_tool_use_ids.add(tool_key)
                     tools_used[name] = tools_used.get(name, 0) + 1
                     tool_calls += 1
+            if not is_main and sub_ts:
+                subagent_turn_timestamps.append(sub_ts)
     except Exception:
         logging.exception("Recovered from broad exception handler")
         return None
@@ -558,6 +571,7 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
         tools_used=tools_used,
         per_model={resolve_model_id(m): b for m, b in per_model.items()} if per_model else {},
         turn_timestamps=turn_timestamps,
+        subagent_turn_timestamps=subagent_turn_timestamps,
     )
 
 
@@ -588,6 +602,12 @@ class SavingsSummary:
     tool_token_ledger: dict[str, dict[str, int]] = field(default_factory=dict)
     tool_ledger_input_tokens: int = 0
     tool_ledger_output_tokens: int = 0
+    # Comparative "vs vanilla Claude Code" replay (roundtrips vanilla CC would
+    # have spent that Atelier avoided, priced at full-context resend). This is a
+    # SEPARATE counterfactual estimate and is intentionally NOT added into
+    # saved_usd or any measured-savings field.
+    vs_vanilla_calls: int = 0
+    vs_vanilla_usd: float = 0.0
 
 
 def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[int, int, float, int]:
@@ -602,7 +622,7 @@ def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[i
     """
     if not session_id:
         return 0, 0, 0.0, 0
-    path = atelier_root / "session_stats" / "claude" / f"{session_id}.jsonl"
+    path = atelier_root / "sessions" / session_id / "savings.jsonl"
     if not path.exists():
         return 0, 0, 0.0, 0
     from atelier.core.capabilities.pricing import get_model_pricing
@@ -684,18 +704,36 @@ def _resolve_workspace_session_id(workspace: str | None, root_path: Path) -> str
         return ""
 
 
-def _carry_credit(session_id: str, atelier_root: Path, turn_timestamps: list[str]) -> tuple[int, float]:
-    """Context-carry credit for saved tokens.
+def _carry_credit(
+    session_id: str,
+    atelier_root: Path,
+    turn_timestamps: list[str],
+    subagent_turn_timestamps: list[list[str]] | None = None,
+) -> tuple[int, float]:
+    """Context-carry credit for saved tokens, attributed per context window.
 
-    A token kept out of context at turn N is also NOT re-read at the
-    cache-read rate on every later assistant turn. Fully measured: row
-    timestamps from the sidecar, turn timestamps from the transcript, rates
-    from the per-row model. Rows with unknown models contribute nothing.
-    Returned separately — never folded into the conservative saved_usd.
+    A token kept out of context at turn N is also NOT re-read at the cache-read
+    rate on every later assistant turn that re-sends that window. Each subagent
+    runs in its *own* context window: a token a subagent saved carries across
+    that subagent's own later turns only — the main thread never re-reads it
+    (the subagent's context is discarded on return) and neither do sibling
+    subagents (fresh contexts). So a savings row is credited against the turns
+    of the window it was generated in: if its timestamp falls inside a
+    subagent's lifetime it carries over that subagent's turns; otherwise over
+    the main thread's turns (until the next compaction drops it).
+
+    Subagent rows land in the *parent* session's savings.jsonl (the shared MCP
+    process keys by the parent session id and cannot tell a subagent call from
+    a main-loop call), so attribution is reconstructed here from the row
+    timestamp and the per-subagent turn windows parsed from the transcript.
+
+    Fully measured: row timestamps from the sidecar, turn timestamps from the
+    transcript, rates from the per-row model. Rows with unknown models
+    contribute nothing. Returned separately — never folded into saved_usd.
     """
-    if not session_id or not turn_timestamps:
+    if not session_id:
         return 0, 0.0
-    path = atelier_root / "session_stats" / "claude" / f"{session_id}.jsonl"
+    path = atelier_root / "sessions" / session_id / "savings.jsonl"
     if not path.exists():
         return 0, 0.0
     import bisect
@@ -708,8 +746,20 @@ def _carry_credit(session_id: str, atelier_root: Path, turn_timestamps: list[str
             return None
         return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
 
-    turns = sorted(t for t in (_parse(x) for x in turn_timestamps) if t is not None)
-    if not turns:
+    main_turns = sorted(t for t in (_parse(x) for x in turn_timestamps) if t is not None)
+
+    # One (start, end, sorted_turns) window per subagent transcript, sorted
+    # latest-start-first so an overlapping row (parallel subagents) is
+    # attributed to the most-recently-spawned containing window — a
+    # deterministic tiebreak.
+    sub_windows: list[tuple[datetime, datetime, list[datetime]]] = []
+    for sub in subagent_turn_timestamps or []:
+        ts_list = sorted(t for t in (_parse(x) for x in sub) if t is not None)
+        if ts_list:
+            sub_windows.append((ts_list[0], ts_list[-1], ts_list))
+    sub_windows.sort(key=lambda w: w[0], reverse=True)
+
+    if not main_turns and not sub_windows:
         return 0, 0.0
     from atelier.core.capabilities.pricing import get_model_pricing
 
@@ -743,14 +793,23 @@ def _carry_credit(session_id: str, atelier_root: Path, turn_timestamps: list[str
             row_dt = _parse(str(ev.get("ts") or ""))
             if row_dt is None:
                 continue
-            first_turn = bisect.bisect_right(turns, row_dt)
-            next_compaction = bisect.bisect_right(compactions, row_dt)
-            last_turn = (
-                bisect.bisect_left(turns, compactions[next_compaction])
-                if next_compaction < len(compactions)
-                else len(turns)
-            )
-            n_after = max(0, last_turn - first_turn)
+            window = next((w for w in sub_windows if w[0] <= row_dt <= w[1]), None)
+            if window is not None:
+                # Subagent-saved token: carries across that subagent's own
+                # later turns (the window bounds the count implicitly).
+                sub_t = window[2]
+                n_after = len(sub_t) - bisect.bisect_right(sub_t, row_dt)
+            else:
+                # Main-thread token: carries across later main turns, until the
+                # next main-session compaction drops it from context.
+                first_turn = bisect.bisect_right(main_turns, row_dt)
+                next_compaction = bisect.bisect_right(compactions, row_dt)
+                last_turn = (
+                    bisect.bisect_left(main_turns, compactions[next_compaction])
+                    if next_compaction < len(compactions)
+                    else len(main_turns)
+                )
+                n_after = max(0, last_turn - first_turn)
             if n_after <= 0:
                 continue
             pricing = get_model_pricing(resolve_model_id(str(ev.get("model") or "").strip()))
@@ -771,7 +830,7 @@ def compute_savings_summary(
 ) -> SavingsSummary:
     """Aggregate savings for a session.
 
-    Token savings come from ``session_stats/claude/<session_id>.jsonl`` —
+    Token savings come from ``sessions/<session_id>/savings.jsonl`` —
     the MCP dispatcher appends one row per tool call there (keyed by the
     Claude session UUID that SessionStart writes to session_state.json).
 
@@ -850,8 +909,10 @@ def compute_savings_summary(
         result.display_cache_tokens = stats.cache_read_tokens
         result.display_output_tokens = stats.output_tokens
     # --- context-carry credit (separate display line; never in saved_usd) ---
-    if stats is not None and stats.turn_timestamps:
-        result.carry_tokens, result.carry_usd = _carry_credit(session_id, root_path, stats.turn_timestamps)
+    if stats is not None and (stats.turn_timestamps or stats.subagent_turn_timestamps):
+        result.carry_tokens, result.carry_usd = _carry_credit(
+            session_id, root_path, stats.turn_timestamps, stats.subagent_turn_timestamps
+        )
 
     # --- price unpriced tokens at the session's weighted input rate ---
     # Per-row prices are exact (model captured at write time).  For rows that
@@ -885,6 +946,17 @@ def compute_savings_summary(
     result.ctx_saved = priced_tokens + extra_tokens
     result.saved_usd = row_usd + extra_usd
 
+    # --- vs vanilla Claude Code (separate counterfactual; never in saved_usd) ---
+    if paths:
+        try:
+            from atelier.core.capabilities.vanilla_baseline import replay_session
+
+            vs = replay_session(paths[0])
+            result.vs_vanilla_calls = int(vs.get("calls_saved", 0) or 0)
+            result.vs_vanilla_usd = float(vs.get("cost_saved_usd", 0.0) or 0.0)
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+
     total_baseline = result.saved_usd + result.carry_usd + result.est_cost_usd
     if total_baseline > 0:
         result.saved_pct = (result.saved_usd / total_baseline) * 100
@@ -904,8 +976,29 @@ def compute_savings_summary(
     return result
 
 
+_STATUS_TIPS: tuple[str, ...] = (
+    "Try `atelier savings` to see tokens, time, and $ saved",
+    "Use `sql` to explore your schema without reading SQL files",
+    "Batch reads: read(files=[...]) — one call, many files",
+    "grep content-mode finds and reads code in one step",
+    "Delegate scans to atelier:explore — cheaper model, fewer tokens",
+    "Use the memory tool to recall past sessions and decisions",
+)
+
+
+def _status_tip() -> str:
+    """A rotating feature tip (changes ~every 90s so it isn't flickery)."""
+    import time
+
+    return _STATUS_TIPS[int(time.time() // 90) % len(_STATUS_TIPS)]
+
+
 def _resolve_status_text(atelier_root: str | Path | None = None) -> str:
-    """Return update / login / subscription warning text for the statusline."""
+    """Return update / login / subscription warning text for the statusline.
+
+    Falls back to a rotating feature tip (when ``statusLineTips`` is enabled)
+    so the lowest-priority slot coaches the user toward Atelier features.
+    """
     root = Path(atelier_root) if atelier_root else None
     if root is None:
         root_env = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or ""
@@ -933,6 +1026,12 @@ def _resolve_status_text(atelier_root: str | Path | None = None) -> str:
     subscription = _read("subscription.json")
     if subscription.get("warning"):
         return str(subscription.get("message") or "subscription")[:40]
+    # Lowest priority: a rotating feature tip, when statusLineTips is enabled.
+    raw = _read("plugin_settings.json")
+    nested = raw.get("atelier")
+    settings = nested if isinstance(nested, dict) else raw
+    if settings.get("statusLineTips", True) is not False:
+        return _status_tip()
     return ""
 
 
@@ -971,18 +1070,16 @@ def load_usage_breakdown(root: str | Path) -> dict[str, Any]:
     try:
         import sqlite3
 
+        from atelier.core.foundation.session_store import SessionStore
+
         with sqlite3.connect(str(db_path)) as conn:
-            # traces table
-            for row in conn.execute(
-                "SELECT json_extract(payload, '$.input_tokens'), json_extract(payload, '$.output_tokens'), "
-                "json_extract(payload, '$.cached_input_tokens'), json_extract(payload, '$.thinking_tokens'), host, "
-                "json_extract(payload, '$.model') FROM traces"
-            ):
-                inp, out, cr, _th, _host, model = row
-                inp = int(inp or 0)
-                out = int(out or 0)
-                cr = int(cr or 0)
-                model_id = resolve_model_id(model) or "claude-sonnet-4-5"
+            # Traces live in the file-based session store; read token/model rows
+            # from its tiny index (atelier.db keeps only context_budget below).
+            for row in SessionStore(root_path).token_rows():
+                inp = int(row["input_tokens"] or 0)
+                out = int(row["output_tokens"] or 0)
+                cr = int(row["cached_input_tokens"] or 0)
+                model_id = resolve_model_id(row["model"]) or "claude-sonnet-4-5"
 
                 input_tokens += inp
                 output_tokens += out
@@ -1002,7 +1099,7 @@ def load_usage_breakdown(root: str | Path) -> dict[str, Any]:
                 inp, out, cr = row
                 if inp is None:
                     continue
-                # Note: context_budget doesn't store model, so we use Sonnet 4.5 as proxy for these aggregates
+                # Note: context_budget doesn't store model, so we use Sonnet 4.6 as proxy for these aggregates
                 # if they weren't already captured in traces (usually they are).
                 # To avoid double counting, we'd need to link them, but context_budget is often
                 # a redundant high-level log. Dashboard uses it as a fallback.
@@ -1030,7 +1127,12 @@ def savings_line(
     """Return the pipe-delimited savings line consumed by statusline.sh.
 
     Format:
-    ``$<saved_usd>|<tokens_saved>|<calls_saved>|<status_text>|$<routing_saved_usd>|<est_cost_usd>|<total_tokens>|<display_input_tokens>|<display_cache_tokens>|<display_output_tokens>|$<carry_usd>|<carry_tokens>|<carry_pct>%|<saved_pct>%``
+    ``$<saved_usd>|<tokens_saved>|<calls_saved>|<status_text>|$<routing_saved_usd>|<est_cost_usd>|<total_tokens>|<display_input_tokens>|<display_cache_tokens>|<display_output_tokens>|$<carry_usd>|<carry_tokens>|<carry_pct>%|<saved_pct>%|<vs_vanilla_calls>|$<vs_vanilla_usd>``
+
+    The two trailing fields are the comparative "vs vanilla Claude Code" replay
+    (roundtrips avoided and their estimated full-context-resend cost). They are
+    separate from the measured savings and are appended last so statusline.sh's
+    positional parsing of the existing fields stays byte-identical.
     """
     summary = compute_savings_summary(session_id, atelier_root=atelier_root, workspace=workspace)
     summary.status_text = _resolve_status_text(atelier_root)
@@ -1041,4 +1143,5 @@ def savings_line(
         f"|{summary.display_input_tokens}|{summary.display_cache_tokens}|{summary.display_output_tokens}"
         f"|${summary.carry_usd:.3f}|{_fmt_tok(summary.carry_tokens)}|{summary.carry_pct:.0f}%"
         f"|{summary.saved_pct:.0f}%"
+        f"|{summary.vs_vanilla_calls}|${summary.vs_vanilla_usd:.3f}"
     )

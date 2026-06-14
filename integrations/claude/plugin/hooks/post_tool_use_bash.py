@@ -102,8 +102,7 @@ def _append_command_result_event(
     return_code: int | None,
 ) -> None:
     """Append a command_result event to runs/<session_id>.json atomically."""
-    runs_dir = _atelier_root() / "runs"
-    run_file = runs_dir / f"{session_id}.json"
+    run_file = _atelier_root() / "sessions" / session_id / "run.json"
     if not run_file.exists():
         return
 

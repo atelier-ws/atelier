@@ -36,7 +36,7 @@ from atelier.core.foundation.retriever import (
 )
 from atelier.core.foundation.routing_models import RouteDecision, StepType, TaskType
 from atelier.core.foundation.store import ContextStore
-from atelier.infra.runtime.run_ledger import RunLedger
+from atelier.infra.runtime.run_ledger import RunLedger, iter_run_files, run_file_path
 
 
 class AtelierRuntimeCore:
@@ -148,7 +148,8 @@ class AtelierRuntimeCore:
             from atelier.infra.storage.factory import make_memory_store
 
             memory_store = make_memory_store(self.root)
-            fact_agent_ids = [agent_id] if agent_id else ["shared"]
+            recall_agent_id = agent_id if agent_id else "shared"
+            fact_agent_ids = [recall_agent_id]
             fact_blocks = []
             for fact_agent_id in fact_agent_ids:
                 for block in memory_store.list_blocks(fact_agent_id, include_tombstoned=False, limit=200):
@@ -166,12 +167,12 @@ class AtelierRuntimeCore:
             fact_blocks = fact_blocks[:5]
 
             capability = ArchivalRecallCapability(memory_store, get_embedder(), redactor=redact)
-            passages, _ = capability.recall(agent_id=agent_id, query=task, top_k=3)
-            scoped_passages = filter_scoped_passages(passages, requested_agent_id=agent_id)[:3]
+            passages, _ = capability.recall(agent_id=recall_agent_id, query=task, top_k=3)
+            scoped_passages = filter_scoped_passages(passages, requested_agent_id=recall_agent_id)[:3]
             if not scoped_passages:
                 scoped_passages = filter_scoped_passages(
-                    memory_store.list_passages(agent_id, limit=3),
-                    requested_agent_id=agent_id,
+                    memory_store.list_passages(recall_agent_id, limit=3),
+                    requested_agent_id=recall_agent_id,
                 )[:3]
             memory_context = render_memory_facts_for_agent(fact_blocks) + render_memory_for_agent(scoped_passages)
             recalled_passages = summarize_memory_facts(fact_blocks) + summarize_recalled_passages(
@@ -495,10 +496,9 @@ class AtelierRuntimeCore:
 
     def summarize_memory(self, session_id: str | None = None) -> dict[str, Any]:
         if session_id:
-            ledger_path = self.root / "runs" / f"{session_id}.json"
+            ledger_path = run_file_path(self.root, session_id)
         else:
-            runs_dir = self.root / "runs"
-            paths = sorted(runs_dir.glob("*.json")) if runs_dir.is_dir() else []
+            paths = iter_run_files(self.root)
             if not paths:
                 raise FileNotFoundError("no run ledgers available")
             ledger_path = paths[-1]
@@ -593,23 +593,6 @@ class AtelierRuntimeCore:
     # ------------------------------------------------------------------ #
     # Failure analysis helpers                                             #
     # ------------------------------------------------------------------ #
-
-    def analyze_failures(
-        self,
-        *,
-        domain: str | None = None,
-        lookback: int = 200,
-        min_cluster_size: int = 2,
-    ) -> dict[str, Any]:
-        """Return clustered failure incidents across recent failed traces."""
-        return cast(
-            dict[str, Any],
-            self.failure_analysis.analyze(
-                domain=domain,
-                lookback=lookback,
-                min_cluster_size=min_cluster_size,
-            ),
-        )
 
     def analyze_failure_for_error(
         self,
@@ -822,10 +805,9 @@ class AtelierRuntimeCore:
 
     def _load_ledger(self, session_id: str | None = None) -> RunLedger:
         if session_id:
-            ledger_path = self.root / "runs" / f"{session_id}.json"
+            ledger_path = run_file_path(self.root, session_id)
         else:
-            runs_dir = self.root / "runs"
-            paths = sorted(runs_dir.glob("*.json")) if runs_dir.is_dir() else []
+            paths = iter_run_files(self.root)
             if not paths:
                 raise FileNotFoundError("no run ledgers available")
             ledger_path = paths[-1]

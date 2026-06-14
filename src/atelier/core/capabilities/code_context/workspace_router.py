@@ -98,7 +98,11 @@ class WorkspaceCodeRouter:
     def _route_symbol(self, targets: list[Path], **kwargs: Any) -> dict[str, Any]:
         last_error: dict[str, Any] | None = None
         for repo_root in targets:
-            payload = self.engine_factory(repo_root).tool_symbol(**kwargs)
+            try:
+                payload = self.engine_factory(repo_root).tool_symbol(**kwargs)
+            except LookupError:
+                last_error = {"error": "symbol_not_found"}
+                continue
             if "error" not in payload:
                 return self._annotate_item(payload, repo_name=self._repo_name_for_root(repo_root))
             last_error = payload

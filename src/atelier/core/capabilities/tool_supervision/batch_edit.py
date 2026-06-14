@@ -106,7 +106,13 @@ def _apply_replace_range(content: str, line_start: int, line_end: int, new_strin
         raise ValueError(
             f"replace_range: line_start={line_start}, line_end={line_end} out of range (file has {len(lines)} lines)"
         )
-    replacement = new_string if new_string.endswith("\n") else new_string + "\n"
+    # Force a trailing newline only when the span is followed by more lines;
+    # replacing the final span must preserve the file's original trailing-newline
+    # state (forcing one would mutate files that end without a newline).
+    if line_end < len(lines):
+        replacement = new_string if new_string.endswith("\n") else new_string + "\n"
+    else:
+        replacement = new_string
     new_lines = [*lines[: line_start - 1], replacement, *lines[line_end:]]
     return "".join(new_lines), line_start, line_end
 
