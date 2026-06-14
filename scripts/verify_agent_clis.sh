@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # verify_agent_clis.sh — Verify Atelier installation across all agent CLIs
 #
-# Runs verification for each host. For hosts where verification is embedded in
-# the install script (codex, copilot, antigravity, opencode), it calls the install
-# script which runs post-install checks. For claude, it uses verify_claude.sh.
+# Runs verification for each host. Each host uses its dedicated verify_<host>.sh
+# wrapper when one exists (verify_claude.sh, verify_codex.sh, verify_copilot.sh,
+# verify_opencode.sh); otherwise it falls back to install_<host>.sh, which runs
+# its own post-install checks (e.g. antigravity).
 # Hosts that were skipped (CLI absent) do not count as failures.
 #
 # Options:
@@ -40,7 +41,15 @@ for host in "${HOSTS[@]}"; do
     echo "──────────────────────────────────────────"
     case "$host" in
         claude) script="${SCRIPT_DIR}/verify_claude.sh" ;;
-        *) script="${SCRIPT_DIR}/install_${host}.sh" ;;
+        *)
+            # Prefer a dedicated verify_<host>.sh wrapper when present (wired the
+            # same way as verify_claude.sh); otherwise fall back to install_<host>.sh.
+            if [ -f "${SCRIPT_DIR}/verify_${host}.sh" ]; then
+                script="${SCRIPT_DIR}/verify_${host}.sh"
+            else
+                script="${SCRIPT_DIR}/install_${host}.sh"
+            fi
+            ;;
     esac
     if [ ! -f "$script" ]; then
         echo "SKIPPED (no script found for $host)"
