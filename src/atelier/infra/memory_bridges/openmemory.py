@@ -23,7 +23,7 @@ from atelier.core.foundation.memory_models import (
 from atelier.gateway.integrations import openmemory as openmemory_bridge
 from atelier.infra.memory_bridges.base import MemorySyncResult
 from atelier.infra.storage.memory_store import MemorySidecarUnavailable
-from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
+from atelier.infra.storage.sqlite_memory_store import MEMORY_DB_NAME, SqliteMemoryStore
 
 _BLOCK_KIND = "atelier_block"
 _PASSAGE_KIND = "atelier_passage"
@@ -279,7 +279,7 @@ class OpenMemoryMemoryStore:
         adapter: OpenMemoryAdapter | None = None,
         client: openmemory_bridge.OpenMemoryClient | None = None,
     ) -> None:
-        self._recall_store = SqliteMemoryStore(root)
+        self._recall_store = SqliteMemoryStore(root, db_name=MEMORY_DB_NAME)
         self._adapter = adapter or OpenMemoryAdapter(client=client)
         self._user_id = getattr(self._adapter.client, "user_id", None) or os.environ.get(
             "ATELIER_OPENMEMORY_USER_ID", ""
