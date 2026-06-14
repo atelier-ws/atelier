@@ -72,6 +72,14 @@ class ArchivalPassage(BaseModel):
     dedup_hash: str
     dedup_hit: bool = False
     created_at: datetime = Field(default_factory=_utcnow)
+    # N13 bi-temporal validity window, DISTINCT from ``created_at`` (ingestion
+    # time). ``valid_at`` is when the captured knowledge became true (defaults to
+    # ingestion); ``invalid_at`` marks when it stopped being true. Both additive
+    # with open-ended defaults (valid since ingestion, never invalidated), so
+    # records persisted before this field -- which the store reconstructs without
+    # passing them -- load unchanged and every existing read is unaffected.
+    valid_at: datetime | None = None
+    invalid_at: datetime | None = None
 
     @field_validator("dedup_hash")
     @classmethod
@@ -93,6 +101,21 @@ class ArchivalPassage(BaseModel):
         passage text itself is never altered or dropped.
         """
         return is_prompt_injection(self.text)
+
+    def is_valid_at(self, when: datetime | None = None) -> bool:
+        """N13: True when this passage's validity window covers ``when``.
+
+        ``when`` defaults to now. A passage is valid when ``when`` is at or after
+        ``valid_at`` (open-ended start when unset -- valid since ingestion) and
+        strictly before ``invalid_at`` (open-ended end when unset -- never
+        invalidated). Pure: it reads only the record's own fields.
+        """
+        moment = when if when is not None else _utcnow()
+        if self.valid_at is not None and moment < self.valid_at:
+            return False
+        if self.invalid_at is not None and moment >= self.invalid_at:
+            return False
+        return True
 
 
 class MemoryRecall(BaseModel):
