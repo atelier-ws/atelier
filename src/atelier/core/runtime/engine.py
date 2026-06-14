@@ -36,7 +36,7 @@ from atelier.core.foundation.retriever import (
 )
 from atelier.core.foundation.routing_models import RouteDecision, StepType, TaskType
 from atelier.core.foundation.store import ContextStore
-from atelier.infra.runtime.run_ledger import RunLedger
+from atelier.infra.runtime.run_ledger import RunLedger, iter_run_files, run_file_path
 
 
 class AtelierRuntimeCore:
@@ -495,10 +495,9 @@ class AtelierRuntimeCore:
 
     def summarize_memory(self, session_id: str | None = None) -> dict[str, Any]:
         if session_id:
-            ledger_path = self.root / "runs" / f"{session_id}.json"
+            ledger_path = run_file_path(self.root, session_id)
         else:
-            runs_dir = self.root / "runs"
-            paths = sorted(runs_dir.glob("*.json")) if runs_dir.is_dir() else []
+            paths = iter_run_files(self.root)
             if not paths:
                 raise FileNotFoundError("no run ledgers available")
             ledger_path = paths[-1]
@@ -822,10 +821,9 @@ class AtelierRuntimeCore:
 
     def _load_ledger(self, session_id: str | None = None) -> RunLedger:
         if session_id:
-            ledger_path = self.root / "runs" / f"{session_id}.json"
+            ledger_path = run_file_path(self.root, session_id)
         else:
-            runs_dir = self.root / "runs"
-            paths = sorted(runs_dir.glob("*.json")) if runs_dir.is_dir() else []
+            paths = iter_run_files(self.root)
             if not paths:
                 raise FileNotFoundError("no run ledgers available")
             ledger_path = paths[-1]
