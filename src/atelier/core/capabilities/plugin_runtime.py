@@ -1182,8 +1182,6 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
 
     session_id = str(payload.get("session_id") or "default")
     update_session_stats(root, payload)
-    with suppress(Exception):
-        _codex_auto_record_trace(root, payload)
     report = build_savings_report(root, session_id=session_id)
     session = report.get("session") or {}
     cost = report.get("cost") or {}
@@ -1743,51 +1741,6 @@ def _codex_enrich_user_prompt(root: str | Path, payload: dict[str, Any]) -> None
             }
         ],
     )
-
-
-def _codex_auto_record_trace(root: str | Path, payload: dict[str, Any]) -> None:
-    """Auto-record a session trace when code work happened and none was recorded."""
-    session_id = _codex_ledger_session_id(root, payload)
-    if not session_id:
-        return
-    state = _read_codex_session_state(root, payload)
-    sessions = state.get("sessions")
-    session_data = sessions.get(session_id, {}) if isinstance(sessions, dict) else {}
-    if (isinstance(session_data, dict) and session_data.get("trace_recorded")) or state.get("trace_recorded"):
-        return
-    run_file = _codex_run_file(root, session_id)
-    try:
-        data = json.loads(run_file.read_text("utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    if not isinstance(data, dict):
-        return
-    files_touched = data.get("files_touched")
-    edited = bool(files_touched) or any(
-        isinstance(event, dict) and event.get("kind") == "file_edit" for event in (data.get("events") or [])
-    )
-    if not edited:
-        return
-    import subprocess
-
-    trace = {
-        "agent": "codex",
-        "domain": "session",
-        "task": "session-auto-record",
-        "status": "success",
-        "session_id": session_id,
-        "output_summary": f"files touched: {len(files_touched or [])}",
-    }
-    atelier_bin = os.environ.get("ATELIER_BIN") or "atelier"
-    with suppress(Exception):
-        subprocess.run(
-            [atelier_bin, "runs", "record", "--input", "-"],
-            input=json.dumps(trace),
-            text=True,
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
 
 
 def build_codex_savings_line(root: str | Path, session_id: str) -> str:

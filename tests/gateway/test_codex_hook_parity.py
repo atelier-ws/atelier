@@ -275,13 +275,6 @@ def test_user_prompt_records_agent_message_and_last_prompt(tmp_path: Path) -> No
     assert messages[0]["payload"]["prompt"] == "Refactor the parser"
 
 
-def test_auto_record_trace_noop_without_run_file(tmp_path: Path) -> None:
-    root = tmp_path / ".atelier"
-    payload = {"hook_event_name": "Stop", "session_id": "missing", "cwd": str(tmp_path)}
-    # No run file exists -> must be a silent no-op (never raises, never shells out).
-    plugin_runtime._codex_auto_record_trace(root, payload)
-
-
 # --------------------------------------------------------------------------
 # PermissionRequest auto-deny (Codex-exclusive)
 # --------------------------------------------------------------------------
