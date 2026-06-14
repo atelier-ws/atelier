@@ -44,7 +44,7 @@ def test_run_review_branch_mode_with_duplications(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(runner_mod, "select_owned_route", fake_select)
     monkeypatch.setattr(runner_mod, "execute_owned_prompt", fake_exec)
-    v = run_review("sid", "deep", [], ReviewerSettings(), tmp_path, base="main")
+    v = run_review("sid", "deep", [], ReviewerSettings(agentic=False), tmp_path, base="main")
     assert v["paths"] == ["a.py"]
     assert v["verdict"] == "NEEDS_FIX"
     assert v["duplications"] == ["dupnote"]
