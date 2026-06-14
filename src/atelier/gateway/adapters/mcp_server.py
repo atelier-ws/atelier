@@ -452,6 +452,13 @@ _MAX_MCP_MAX_WORKERS = 64
 # hard frame ceiling as a backstop so no single message can ever trip the guard.
 _DEFAULT_MAX_RESULT_BYTES = 6 * 1024 * 1024
 _MAX_WIRE_BYTES = 14 * 1024 * 1024
+# Context-hygiene bound (chars). Distinct from the multi-MB wire guards above,
+# which only keep a JSON-RPC frame under the host's stdout limit: this caps a
+# single runaway tool result (huge log, minified file, unbounded grep) that
+# would otherwise flood the host prompt -- and the host re-pays for those bytes
+# on every later turn. ~64k tokens. Set ATELIER_MCP_COMPACT_RESULT_CHARS=0 to
+# disable.
+_DEFAULT_COMPACT_RESULT_CHARS = 256 * 1024
 
 
 def _service_backed_state() -> bool:
@@ -8241,7 +8248,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 "description": _tool_description(s),
                 "inputSchema": s.get("inputSchema", {}),
             }
-            for n, s in TOOLS.items()
+            for n, s in sorted(TOOLS.items())
             if _tool_visible_to_llm(n, s)
         ]
         return _ok(rid, {"tools": tools})
@@ -8372,7 +8379,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             elif isinstance(result, str):
                 response_text = result
             else:
-                response_text = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+                response_text = json.dumps(result, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
             # Within-session content dedup: if this read-style result is
             # byte-identical to one already returned this session (and the model
@@ -8417,6 +8424,11 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # (session_stats + runs/*_context_savings); read ONE, never sum both.
             # Shape: {"tokens": int, "calls": int}. Either may be 0 but the
             # object is omitted entirely when both are 0.
+            # First bound, for context hygiene: head+tail compact a single
+            # runaway result so it can't flood the host prompt (which the host
+            # re-pays for on every later turn). Deterministic, so the compacted
+            # bytes stay prefix-cache stable across identical calls.
+            response_text = _compact_result_text(response_text, name)
             # Bound the result so one oversized frame can't trip the host's
             # stdout guard and disconnect the server (no mid-session reconnect).
             response_text = _truncate_result_text(response_text, _max_result_bytes())
@@ -8581,8 +8593,54 @@ def _truncate_result_text(text: str, limit: int) -> str:
     return head + notice
 
 
+def _compact_result_chars() -> int:
+    """Char threshold above which an oversized tool result is head+tail compacted.
+
+    Distinct from the multi-MB wire guard (``_max_result_bytes``): that one only
+    keeps the JSON-RPC frame under the host's stdout limit. This is a context-
+    hygiene bound -- a single runaway result otherwise floods the host prompt and
+    the host re-pays for it on every later turn. Set
+    ``ATELIER_MCP_COMPACT_RESULT_CHARS=0`` to disable.
+    """
+    raw = os.environ.get("ATELIER_MCP_COMPACT_RESULT_CHARS", str(_DEFAULT_COMPACT_RESULT_CHARS))
+    try:
+        configured = int(raw)
+    except ValueError:
+        _log.warning(
+            "invalid ATELIER_MCP_COMPACT_RESULT_CHARS=%r; using %d",
+            raw,
+            _DEFAULT_COMPACT_RESULT_CHARS,
+        )
+        return _DEFAULT_COMPACT_RESULT_CHARS
+    return max(0, configured)
+
+
+def _compact_result_text(text: str, tool_name: str) -> str:
+    """Head+tail compact a single oversized tool result before it reaches the host.
+
+    Deterministic (no LLM) so identical calls yield identical bytes and never
+    bust the host's prefix cache. Keeps the head (command, first error, initial
+    context) and the tail (final status/return value) with an omission marker in
+    between, then appends a recovery hint. Results within the threshold pass
+    through untouched.
+    """
+    threshold = _compact_result_chars()
+    if threshold <= 0 or len(text) <= threshold:
+        return text
+    from atelier.core.capabilities.tool_supervision.compact_output import compress_tool_output
+
+    target = max(4096, threshold // 4)
+    head = int(target * 0.7)
+    tail = max(1, target - head)
+    compacted = compress_tool_output(text, threshold_chars=target, head_chars=head, tail_chars=tail)
+    return (
+        f"{compacted}\n\n[atelier: result compacted from {len(text)} chars to protect host "
+        f"context; re-request a narrower slice (tighter {tool_name} query/range) for the full output]"
+    )
+
+
 def _write_jsonrpc(message: dict[str, Any]) -> None:
-    payload = json.dumps(message, ensure_ascii=False) + "\n"
+    payload = json.dumps(message, ensure_ascii=False, sort_keys=True) + "\n"
     # Hard backstop: a frame above the host's ~16 MiB stdout guard disconnects
     # the server. Per-result capping should prevent this, but escaping overhead
     # or non-result frames could still exceed it — replace such a frame with
