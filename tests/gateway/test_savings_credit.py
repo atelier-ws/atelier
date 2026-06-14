@@ -20,9 +20,9 @@ MODEL = "claude-sonnet-4-5"
 
 
 def _write_sidecar(root: Path, session_id: str, rows: list[dict[str, Any]]) -> None:
-    d = root / "session_stats" / "claude"
+    d = root / "sessions" / session_id
     d.mkdir(parents=True)
-    (d / f"{session_id}.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    (d / "savings.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
 
 
 def _usage_line(msg_id: str, ts: str) -> dict[str, Any]:
@@ -244,9 +244,9 @@ def test_sidecar_keyed_by_per_process_session_env(tmp_path: Path, monkeypatch: p
     # With the per-process env var set, identity + sidecar follow it, not the bridge.
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "my-sid")
     assert m._claude_session_id() == "my-sid"
-    assert m._get_host_session_sidecar_path() == tmp_path / "session_stats" / "claude" / "my-sid.jsonl"
+    assert m._get_host_session_sidecar_path() == tmp_path / "sessions" / "my-sid" / "savings.jsonl"
 
     # Without it, fall back to the shared bridge (legacy single-session behavior).
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     assert m._claude_session_id() == "sibling-sid"
-    assert m._get_host_session_sidecar_path() == tmp_path / "session_stats" / "claude" / "sibling-sid.jsonl"
+    assert m._get_host_session_sidecar_path() == tmp_path / "sessions" / "sibling-sid" / "savings.jsonl"
