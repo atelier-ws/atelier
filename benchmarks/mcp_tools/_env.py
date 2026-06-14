@@ -47,6 +47,7 @@ def call_code_op(request: dict[str, Any]) -> dict[str, Any]:
         "callers": mcp_server._op_callers,
         "callees": mcp_server._op_callees,
         "usages": mcp_server._op_usages,
+        "outline": mcp_server._op_outline,
         "explore": mcp_server._op_explore,
         "pattern": mcp_server._op_pattern,
         "index": mcp_server._op_index,
