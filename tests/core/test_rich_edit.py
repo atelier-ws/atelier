@@ -158,6 +158,39 @@ def test_rich_edit_peer_level_def_not_indented(tmp_path: Path) -> None:
     assert "    mp.setenv" in text
 
 
+def test_rich_edit_refuses_near_miss_over_duplicate_tail_constants(tmp_path: Path) -> None:
+    """Benchmark incident: a near-miss old_string that matches two identical
+    blocks equally must be refused, not silently anchored onto the first.
+    Exact/normalized/minified all miss (the body has a typo); the fuzzy rung now
+    raises on the tie and apply_rich_edits rolls back, leaving the file intact.
+    """
+    path = tmp_path / "mod.py"
+    body = (
+        '    "alpha shared rule line",\n'
+        '    "beta shared rule line",\n'
+        '    "gamma shared rule line",\n'
+        '    "delta shared rule line",\n'
+    )
+    original = "FIRST = [\n" + body + "]\nSECOND = [\n" + body + "]\n"
+    path.write_text(original, encoding="utf-8")
+
+    # near-miss body (one typo) with no distinguishing name matches both blocks
+    near_miss = (
+        '    "alpha shared rule line",\n'
+        '    "beta shared rule line",\n'
+        '    "gamma shared rule lineX",\n'
+        '    "delta shared rule line",\n'
+    )
+    result = apply_rich_edits(
+        [{"file_path": "mod.py", "old_string": near_miss, "new_string": ""}],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"], "ambiguous near-miss must fail, not silently corrupt"
+    # the whole file must be left untouched (neither block clobbered)
+    assert path.read_text(encoding="utf-8") == original
+
+
 def test_rich_edit_exact_match_indented_anchor_keeps_dedented_constant(tmp_path: Path) -> None:
     """rich_edit incident: an exact match whose anchor starts inside an indented
     block must not re-indent replacement lines that legitimately dedent. Inserting

@@ -1034,7 +1034,62 @@ def test_smart_edit_compacts_hunks_by_path(store_root: Path, tmp_path: Path, mon
     )
 
     assert payload["applied"] == ["first.txt:1,3", "second.txt:1-2"]
-    assert payload["calls_saved"] == 2
+    # 3 hunks but only 2 distinct files: built-in MultiEdit already batches the
+    # two same-file hunks, so the honest cross-file saving is distinct_files - 1.
+    assert payload["calls_saved"] == 1
+
+
+def test_smart_edit_same_file_hunks_credit_no_calls(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Multiple hunks in ONE file are not a saving — MultiEdit already batches them."""
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    target = Path("only.txt")
+    target.write_text("one\ntwo\nthree\n", encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {"path": str(target), "op": "replace", "old_string": "one", "new_string": "ONE"},
+                    {"path": str(target), "op": "replace", "old_string": "two", "new_string": "TWO"},
+                    {"path": str(target), "op": "replace", "old_string": "three", "new_string": "THREE"},
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert payload["applied"] == ["only.txt:1,2,3"]
+    # One distinct file => no honest cross-file saving.
+    assert payload.get("calls_saved", 0) == 0
+
+
+def test_smart_edit_cross_file_credit_matches_distinct_files(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One hunk each across N files => calls_saved == N - 1."""
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    files = [Path(f"f{i}.txt") for i in range(3)]
+    for f in files:
+        f.write_text("target\n", encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {"path": str(f), "op": "replace", "old_string": "target", "new_string": "DONE"} for f in files
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert payload["calls_saved"] == len(files) - 1
 
 
 def test_smart_edit_flags_existing_test_contract_changes(
@@ -2060,64 +2115,93 @@ def test_shell_timeout_terminates_child_process_group(tmp_path: Path, monkeypatc
     assert "timed out after 1s" in result["stderr"]
 
 
-def test_shell_long_timeout_auto_detaches_and_can_be_polled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_shell_run_blocks_until_completion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from atelier.gateway.adapters.mcp_server import _run_shell_tool
 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("ATELIER_MCP_SYNC_SHELL_MAX_SECONDS", "1")
 
-    # Fast command with a long timeout budget: completes inside the sync
-    # window and returns a plain finished result in a single turn — no poll.
-    fast = _run_shell_tool(
-        "python3 -c \"import time; time.sleep(0.1); print('done')\"",
-        timeout=10,
-    )
-    assert fast.get("status") != "running"
-    assert "session_id" not in fast
-    assert fast["exit_code"] == 0
-    assert fast["stdout"] == "done"
-
-    # Slow command: still running at the sync-window edge — detaches into a
-    # managed session that can be polled to completion.
-    started = _run_shell_tool(
+    # Foreground run blocks until the command finishes -- no artificial
+    # window, no detach, no session, no poll -- even for a slow-ish command.
+    result = _run_shell_tool(
         "python3 -c \"import time; time.sleep(2); print('done')\"",
-        timeout=10,
+        timeout=30,
     )
-    assert started["status"] == "running"
-    assert started["session_id"]
-
-    deadline = time.monotonic() + 5
-    completed = started
-    while time.monotonic() < deadline:
-        time.sleep(0.2)
-        completed = _run_shell_tool(session_id=started["session_id"], action="poll")
-        if completed["status"] != "running":
-            break
-    assert completed["status"] == "completed"
-    assert completed["exit_code"] == 0
-    assert completed["stdout"] == "done"
+    assert result.get("status") != "running"
+    assert "session_id" not in result
+    assert result["exit_code"] == 0
+    assert result["stdout"] == "done"
 
 
-def test_shell_sync_wait_runs_long_timeout_synchronously(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_shell_large_timeout_does_not_detach_fast_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from atelier.gateway.adapters.mcp_server import _run_shell_tool
 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
-    # With sync_wait, a long timeout must not detach: completed result, no session.
-    result = _run_shell_tool("echo hi", timeout=1800, sync_wait=True)
+    # A 30-minute timeout budget must not make a fast command detach: it
+    # blocks only as long as the command actually runs, then returns.
+    result = _run_shell_tool("echo hi", timeout=1800)
     assert result.get("status") != "running"
     assert "session_id" not in result
     assert result["exit_code"] == 0
     assert result["stdout"] == "hi"
 
-    # Without sync_wait, a fast command still completes within the sync
-    # window in a single turn (detach only happens when still running at
-    # the window edge).
-    inline = _run_shell_tool("echo hi", timeout=1800)
-    assert inline.get("status") != "running"
-    assert "session_id" not in inline
-    assert inline["exit_code"] == 0
-    assert inline["stdout"] == "hi"
+
+def test_shell_poll_blocks_until_completion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    # Detach immediately, then a SINGLE blocking poll returns the finished
+    # result -- no manual retry loop, no busy-polling.
+    started = _run_shell_tool(
+        "python3 -c \"import time; time.sleep(0.5); print('done')\"",
+        timeout=10,
+        background=True,
+    )
+    assert started["status"] == "running"
+
+    completed = _run_shell_tool(session_id=started["session_id"], action="poll")
+    assert completed["status"] == "completed"
+    assert completed["exit_code"] == 0
+    assert completed["stdout"] == "done"
+
+
+def test_shell_background_return_reports_timeout_remaining(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+
+    # Detaching surfaces an honest upper bound (the timeout), not a fake ETA.
+    started = _run_shell_tool(
+        'python3 -c "import time; time.sleep(5)"',
+        timeout=10,
+        background=True,
+    )
+    try:
+        assert started["status"] == "running"
+        assert started["session_id"]
+        assert started["duration_ms"] >= 0
+        assert 0 < started["timeout_remaining_ms"] <= 10_000
+    finally:
+        _run_shell_tool(session_id=started["session_id"], action="cancel")
+
+
+def test_render_shell_text_running_surfaces_progress_hints() -> None:
+    from atelier.gateway.adapters.mcp_server import _render_shell_text
+
+    text = _render_shell_text(
+        {
+            "status": "running",
+            "session_id": "abc123",
+            "pid": 42,
+            "duration_ms": 95_000,
+            "timeout_remaining_ms": 1_765_000,
+        }
+    )
+    assert "status=running session_id=abc123" in text
+    assert "pid=42" in text
+    assert "elapsed=1m35s" in text
+    assert "timeout_in=29m25s" in text
 
 
 def test_shell_background_session_can_be_cancelled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2156,17 +2240,17 @@ def test_shell_background_session_enforces_timeout(tmp_path: Path, monkeypatch: 
     assert "timed out after 1s" in completed["stderr"]
 
 
-def test_shell_mcp_call_returns_managed_session_for_long_command(
+def test_shell_mcp_call_returns_managed_session_for_background_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("ATELIER_MCP_SYNC_SHELL_MAX_SECONDS", "1")
 
     response = _call(
         "shell",
         {
             "command": 'python3 -c "import time; time.sleep(10)"',
             "timeout": 30,
+            "background": True,
         },
     )
     text = response["result"]["content"][0]["text"]

@@ -94,58 +94,6 @@ install_console_scripts() {
 
 }
 
-stop_existing_atelier_processes() {
-    [[ "$ATELIER_INSTALL_CLEAN_PROCESSES" == "1" ]] || return 0
-
-    local current_pid="$$"
-    local parent_pid="${PPID:-}"
-    local pids=()
-    local pid args
-
-    local ps_out
-    ps_out="$(mktemp "${TMPDIR:-/tmp}/atelier-ps.XXXXXX")"
-    ps -eo pid=,args= 2>/dev/null > "$ps_out" || true
-    while read -r pid args; do
-        [[ -n "${pid:-}" && -n "${args:-}" ]] || continue
-        [[ "$pid" == "$current_pid" || "$pid" == "$parent_pid" ]] && continue
-
-        case "$args" in
-            *"atelier mcp --host"*|\
-            *"/atelier mcp "*|\
-            *" atelier mcp "*|\
-            *"/atelier --root "*servicectl*|\
-            *" atelier --root "*servicectl*|\
-            *"/atelier servicectl "*|\
-            *" atelier servicectl "*|\
-            *"/atelier stack run"*|\
-            *" atelier stack run"*)
-                pids+=("$pid")
-                ;;
-        esac
-    done < "$ps_out"
-    rm -f "$ps_out"
-
-    [[ ${#pids[@]} -gt 0 ]] || return 0
-
-    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-        printf '[dry-run] stop stale Atelier processes: %s\n' "${pids[*]}"
-        return 0
-    fi
-
-    verbose "Stopping stale Atelier processes before reinstall: ${pids[*]}"
-    kill -TERM "${pids[@]}" 2>/dev/null || true
-    sleep 1
-    local alive=()
-    for pid in "${pids[@]}"; do
-        if kill -0 "$pid" 2>/dev/null; then
-            alive+=("$pid")
-        fi
-    done
-    if [[ ${#alive[@]} -gt 0 ]]; then
-        kill -KILL "${alive[@]}" 2>/dev/null || true
-    fi
-}
-
 persist_install_record() {
     local record_dir
     record_dir="$(dirname "$ATELIER_INSTALL_RECORD")"
