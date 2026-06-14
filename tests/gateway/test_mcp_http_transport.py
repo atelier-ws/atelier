@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
 from fastapi.testclient import TestClient
 
 from atelier.gateway.adapters.mcp_http import (
@@ -48,3 +51,50 @@ def test_parse_error_returns_jsonrpc_error() -> None:
     resp = _client().post(MCP_HTTP_PATH, content=b"not json")
     assert resp.status_code == 200
     assert resp.json()["error"]["code"] == -32700
+
+
+def test_tools_call_over_http(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # tools/call flows through the same dispatcher as stdio, so a real tool runs
+    # end-to-end and returns the MCP content envelope over HTTP.
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    (tmp_path / "mod.py").write_text("def alpha() -> int:\n    return 1\n", encoding="utf-8")
+    resp = _client().post(
+        MCP_HTTP_PATH,
+        json={
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "grep", "arguments": {"content_regex": "alpha", "path": "mod.py"}},
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == 3
+    content = body["result"]["content"]
+    assert isinstance(content, list) and content[0]["type"] == "text"
+
+
+def test_tools_call_unknown_tool_returns_error() -> None:
+    resp = _client().post(
+        MCP_HTTP_PATH,
+        json={
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {"name": "nope_not_a_tool", "arguments": {}},
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["error"]["code"] == -32601
+
+
+def test_sse_response_when_accept_event_stream() -> None:
+    resp = _client().post(
+        MCP_HTTP_PATH,
+        headers={"accept": "text/event-stream"},
+        json={"jsonrpc": "2.0", "id": 5, "method": "tools/list", "params": {}},
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    assert "tools/list" not in resp.text  # method echoed only inside the JSON-RPC payload
+    assert '"tools"' in resp.text and resp.text.startswith("data:")
