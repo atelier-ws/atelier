@@ -998,18 +998,16 @@ def load_usage_breakdown(root: str | Path) -> dict[str, Any]:
     try:
         import sqlite3
 
+        from atelier.core.foundation.session_store import SessionStore
+
         with sqlite3.connect(str(db_path)) as conn:
-            # traces table
-            for row in conn.execute(
-                "SELECT json_extract(payload, '$.input_tokens'), json_extract(payload, '$.output_tokens'), "
-                "json_extract(payload, '$.cached_input_tokens'), json_extract(payload, '$.thinking_tokens'), host, "
-                "json_extract(payload, '$.model') FROM traces"
-            ):
-                inp, out, cr, _th, _host, model = row
-                inp = int(inp or 0)
-                out = int(out or 0)
-                cr = int(cr or 0)
-                model_id = resolve_model_id(model) or "claude-sonnet-4-5"
+            # Traces live in the file-based session store; read token/model rows
+            # from its tiny index (atelier.db keeps only context_budget below).
+            for row in SessionStore(root_path).token_rows():
+                inp = int(row["input_tokens"] or 0)
+                out = int(row["output_tokens"] or 0)
+                cr = int(row["cached_input_tokens"] or 0)
+                model_id = resolve_model_id(row["model"]) or "claude-sonnet-4-5"
 
                 input_tokens += inp
                 output_tokens += out
