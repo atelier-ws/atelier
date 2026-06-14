@@ -1731,6 +1731,40 @@ def _codex_auto_record_trace(root: str | Path, payload: dict[str, Any]) -> None:
         )
 
 
+def build_codex_savings_line(root: str | Path, session_id: str) -> str:
+    """Pipe-delimited savings line for the Codex command-backed statusline.
+
+    Mirrors ``savings_summary.savings_line`` field order so a shared statusline
+    parser works, but sources the figures from ``build_savings_report`` (the
+    Codex savings data model) instead of the Claude sidecar. Carry and
+    display-token fields are not tracked for Codex and report 0. Fail-open: any
+    error yields an all-zero line rather than raising into the statusline.
+    """
+    saved_usd = 0.0
+    routing_usd = 0.0
+    tokens_saved = 0
+    calls_saved = 0
+    total_calls = 0
+    # A fresh session has no stats sidecar yet; skip the report build entirely
+    # so the statusline never triggers the missing-file path on every refresh.
+    if session_id and session_stats_path(root, session_id).exists():
+        try:
+            report = build_savings_report(root, session_id=session_id)
+            session = report.get("session") or {}
+            cost = report.get("cost") or {}
+            saved_usd = float(cost.get("saved_usd", 0.0) or 0.0)
+            routing_usd = float(cost.get("routing_saved_usd", 0.0) or 0.0)
+            tokens_saved = int(report.get("tokens_saved", 0) or 0)
+            calls_saved = int(report.get("calls_avoided", 0) or 0)
+            total_calls = int(session.get("total_tool_calls", 0) or 0)
+        except (OSError, KeyError, ValueError, TypeError):
+            pass
+    status_text = f"{total_calls} tool calls" if total_calls else "ready"
+    return (
+        f"${saved_usd:.3f}|{tokens_saved}|{calls_saved}|{status_text}|${routing_usd:.3f}|0.000|0|0|0|0|$0.000|0|0%|0%"
+    )
+
+
 def _tool_uses(turns: list[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
     return [(idx, tool) for idx, turn in enumerate(turns) for tool in (turn.get("tool_uses") or [])]
 

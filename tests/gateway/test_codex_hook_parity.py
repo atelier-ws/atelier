@@ -283,6 +283,21 @@ def test_auto_record_trace_noop_without_run_file(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------
+# Statusline savings line
+# --------------------------------------------------------------------------
+def test_codex_savings_line_is_14_field_parseable(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    root.mkdir()
+    line = plugin_runtime.build_codex_savings_line(root, "missing-session")
+    fields = line.split("|")
+    assert len(fields) == 14, line
+    assert fields[0].startswith("$")  # saved_usd
+    assert fields[10].startswith("$")  # carry_usd
+    assert fields[12].endswith("%")  # carry_pct
+    assert fields[13].endswith("%")  # saved_pct
+
+
+# --------------------------------------------------------------------------
 # Manifest wiring
 # --------------------------------------------------------------------------
 def test_codex_hooks_manifest_includes_new_lifecycle_events() -> None:
