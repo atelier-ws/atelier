@@ -32,6 +32,10 @@ try:
 except ImportError:  # pragma: no cover - non-POSIX platforms
     fcntl = None  # type: ignore[assignment]
 
+from atelier.core.capabilities.code_context.ann_symbol_index import (
+    SymbolAnnIndex,
+    ann_retrieval_enabled,
+)
 from atelier.core.capabilities.code_context.budget import (
     PROTECTED_TOP_RANK,
     BudgetPacker,
@@ -89,6 +93,9 @@ if TYPE_CHECKING:
     from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
 
 _MAX_FILE_BYTES = 1_000_000
+# G4: hard cap on symbols embedded/persisted for the opt-in ANN store per query,
+# bounding embed cost and graph build time on first (cold) use.
+_ANN_SYMBOL_CANDIDATE_CAP = 2000
 logger = logging.getLogger(__name__)
 
 _DB_LOCKS_GUARD = threading.Lock()
@@ -1025,6 +1032,10 @@ class CodeContextEngine:
         self._budget = BudgetPacker()
         self._semantic_ranker = SemanticSearchRanker(self.repo_root, store_root=default_store_root())
         self._search_reranker = SearchReranker()
+        # G4/N5/N16: persistent ANN over per-symbol embeddings. Opt-in via
+        # ATELIER_ANN_RETRIEVAL; with the flag off this object is never
+        # consulted and the semantic path is byte-identical to today.
+        self._ann_symbol_index = SymbolAnnIndex(self.repo_id)
         self.intel_store = SymbolIntelStore(
             cache=self._cache,
             packer=self._budget,
@@ -3381,13 +3392,100 @@ class CodeContextEngine:
         kind: str | None = None,
         language: str | None = None,
     ) -> list[SymbolRecord]:
-        candidates = self._semantic_symbol_candidates(limit=limit, kind=kind, language=language)
-        return self._semantic_ranker.semantic_search(
-            query,
-            candidates=candidates,
+        # Default path (ANN opt-in off): byte-identical to before -- positional
+        # candidate scan + brute-force cosine in SemanticSearchRanker.
+        if not ann_retrieval_enabled():
+            candidates = self._semantic_symbol_candidates(limit=limit, kind=kind, language=language)
+            return self._semantic_ranker.semantic_search(
+                query,
+                candidates=candidates,
+                limit=limit,
+                source_loader=lambda symbol: self._read_file_slice(
+                    symbol.file_path, symbol.start_byte, symbol.end_byte
+                ),
+            )
+        return self._search_symbols_semantic_ann(query, limit=limit, kind=kind, language=language)
+
+    def _search_symbols_semantic_ann(
+        self,
+        query: str,
+        *,
+        limit: int,
+        kind: str | None = None,
+        language: str | None = None,
+    ) -> list[SymbolRecord]:
+        """Opt-in ANN semantic search over the persistent per-symbol vector store.
+
+        Replaces the positional LIMIT scan: candidates are recovered by cosine
+        proximity (HNSW, or exact brute-force as the mandatory fallback) over
+        provenance-stamped vectors. N5 (model-id/dim drift) and N16 (index_version
+        staleness) are enforced via :class:`SymbolAnnIndex`.
+        """
+        embedder = self._semantic_ranker.embedder
+        embedding_dim = embedder.dim
+        if embedding_dim <= 0:
+            return []
+        query_vector = self._semantic_ranker.embed_query(query)
+        if not query_vector:
+            return []
+        index_version = self._current_index_version()
+        # Full filtered candidate set (capped) -- the store, not a positional
+        # slice, decides relevance. Embedding is cached, so warm runs are cheap.
+        candidates = self._semantic_symbol_candidates(limit=_ANN_SYMBOL_CANDIDATE_CAP, kind=kind, language=language)
+        if not candidates:
+            return []
+        candidate_by_id = {symbol.symbol_id: symbol for symbol in candidates}
+        with self._connect() as conn:
+            self._init_schema(conn)
+            # N5: only ids already stored under the *current* model/dim/version
+            # are fresh; everything else is (re-)embedded so a model swap never
+            # leaves stale vectors in play.
+            fresh_ids = self._ann_symbol_index.existing_stamped_ids(
+                conn,
+                embedder_name=embedder.name,
+                embedding_dim=embedding_dim,
+                index_version=index_version,
+            )
+            pending = {symbol_id: symbol for symbol_id, symbol in candidate_by_id.items() if symbol_id not in fresh_ids}
+            new_vectors: dict[str, tuple[str, list[float]]] = {}
+            for symbol_id, symbol in pending.items():
+                source_text = self._read_file_slice(symbol.file_path, symbol.start_byte, symbol.end_byte)
+                vector = self._semantic_ranker.embed_symbol(symbol, source_text=source_text)
+                if vector and len(vector) == embedding_dim:
+                    new_vectors[symbol_id] = (symbol.content_hash, vector)
+            self._ann_symbol_index.upsert_vectors(
+                conn,
+                embedder_name=embedder.name,
+                embedding_dim=embedding_dim,
+                index_version=index_version,
+                vectors=new_vectors,
+            )
+            stored = self._ann_symbol_index.load_current_vectors(
+                conn,
+                embedder_name=embedder.name,
+                embedding_dim=embedding_dim,
+            )
+        # Restrict ranking to the in-scope candidate set so kind/language filters
+        # and the positional cap are honoured even though the store may hold more.
+        stored = [sv for sv in stored if sv.symbol_id in candidate_by_id]
+        ranked_ids = self._ann_symbol_index.query(
+            query_vector,
+            stored,
             limit=limit,
-            source_loader=lambda symbol: self._read_file_slice(symbol.file_path, symbol.start_byte, symbol.end_byte),
+            index_version=index_version,
+            embedder_name=embedder.name,
+            embedding_dim=embedding_dim,
         )
+        from atelier.infra.storage.vector import cosine_similarity
+
+        results: list[SymbolRecord] = []
+        score_by_id = {sv.symbol_id: cosine_similarity(query_vector, sv.vector) for sv in stored}
+        for symbol_id in ranked_ids:
+            hit = candidate_by_id.get(symbol_id)
+            if hit is None:
+                continue
+            results.append(hit.model_copy(update={"score": score_by_id.get(symbol_id, 0.0)}))
+        return results
 
     def _semantic_symbol_candidates(
         self,
@@ -6218,6 +6316,10 @@ class CodeContextEngine:
             """,
             (str(next_version),),
         )
+        # N16: a reindex (this version bump) must not serve stale neighbours.
+        # The cached HNSW graph is keyed to index_version, but drop it eagerly so
+        # the next query rebuilds against the fresh vectors immediately.
+        self._ann_symbol_index.invalidate()
         return next_version
 
     def _payload_tokens(self, payload: Any) -> int:
