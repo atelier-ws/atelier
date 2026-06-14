@@ -50,3 +50,36 @@ def recall_search_cmd(ctx: click.Context, query: str, top_k: int, as_json: bool)
         return
     for item in results:
         click.echo(f"· [{item['session']}] {item['text'][:200]}")
+
+
+@recall_group.command("config")
+@click.option("--auto-index/--no-auto-index", default=None, help="Enable the SessionStart background indexer.")
+@click.option(
+    "--embedder", type=click.Choice(["local", "openai", "ollama"]), default=None, help="Embedder for indexing."
+)
+@click.option("--embed-model", default=None, help="Embedder model (e.g. an Ollama model name).")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def recall_config_cmd(
+    ctx: click.Context,
+    auto_index: bool | None,
+    embedder: str | None,
+    embed_model: str | None,
+    as_json: bool,
+) -> None:
+    """Persist Recall settings (auto-index + embedder) to plugin_settings.json."""
+    from atelier.core.capabilities.plugin_runtime import set_recall_settings
+
+    updated = set_recall_settings(ctx.obj["root"], auto_index=auto_index, embedder=embedder, embed_model=embed_model)
+    summary = {
+        "recallAutoIndex": updated.get("recallAutoIndex", False),
+        "recallEmbedder": updated.get("recallEmbedder", "local"),
+        "recallEmbedModel": updated.get("recallEmbedModel", ""),
+    }
+    if as_json:
+        _emit(summary, as_json=True)
+        return
+    click.echo(
+        f"Recall: auto-index={summary['recallAutoIndex']} "
+        f"embedder={summary['recallEmbedder']} model={summary['recallEmbedModel'] or '(default)'}"
+    )
