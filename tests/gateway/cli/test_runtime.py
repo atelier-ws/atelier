@@ -191,7 +191,7 @@ def test_owned_edit_cannot_self_authorize_existing_test_contract_change(tmp_path
     assert target.read_text(encoding="utf-8") == "assert value == 'old'\n"
 
 
-def test_dispatch_tool_forces_sync_wait_for_foreground_shell(monkeypatch) -> None:
+def test_dispatch_tool_shell_passes_args_through(monkeypatch) -> None:
     from atelier.gateway.adapters.mcp_server import TOOLS
 
     captured: list[dict] = []
@@ -202,16 +202,12 @@ def test_dispatch_tool_forces_sync_wait_for_foreground_shell(monkeypatch) -> Non
 
     monkeypatch.setitem(TOOLS["shell"], "handler", fake_handler)
 
+    # Foreground shell blocks to completion by default -- no injected params.
     foreground_args = {"command": "echo hi", "timeout": 1800}
     assert _dispatch_tool("shell", foreground_args) == "ok"
-    assert captured[-1]["sync_wait"] is True
-    assert "sync_wait" not in foreground_args  # caller args must not be mutated
+    assert captured[-1] == {"command": "echo hi", "timeout": 1800}
 
-    background_args = {"command": "echo hi", "timeout": 1800, "background": True}
-    assert _dispatch_tool("shell", background_args) == "ok"
-    assert "sync_wait" not in captured[-1]
-
-    # sync_wait stays internal: not exposed in the LLM-facing schema.
+    # sync_wait is gone entirely: not a shell parameter anywhere.
     shell_tool = next(tool for tool in _get_litellm_tools() if tool["function"]["name"] == "shell")
     assert "sync_wait" not in shell_tool["function"]["parameters"]["properties"]
 

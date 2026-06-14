@@ -391,7 +391,6 @@ def benchmark_gate_cmd(run_dir: Path, as_json: bool, require_pass: bool) -> None
 @click.option("--reps", type=int, default=1, show_default=True)
 @click.option("--model", default="sonnet", show_default=True)
 @click.option("--timeout", type=int, default=1800, show_default=True)
-@click.option("--max-output-tokens", type=click.IntRange(min=1), default=8192, show_default=True)
 @click.option(
     "--rate-limit-rpm",
     type=click.FloatRange(min=0),
@@ -406,13 +405,12 @@ def benchmark_gate_cmd(run_dir: Path, as_json: bool, require_pass: bool) -> None
     show_default=True,
     help="Maximum reserved output tokens per rolling minute; 0 disables throttling.",
 )
-@click.option("--transport", type=click.Choice(["cli", "api"]), default="cli", show_default=True)
 @click.option(
     "--cli-driver",
     type=click.Choice(["claude", "copilot", "codex", "opencode", "atelier-run"]),
     default="claude",
     show_default=True,
-    help="CLI host to benchmark when --transport cli is used.",
+    help="CLI host to benchmark.",
 )
 @click.option(
     "--jobs",
@@ -428,22 +426,9 @@ def benchmark_gate_cmd(run_dir: Path, as_json: bool, require_pass: bool) -> None
     show_default=True,
     help="Use 'arm' only for throughput experiments; 'task' preserves fair per-task comparisons.",
 )
-@click.option(
-    "--api-provider",
-    type=click.Choice(["openai", "litellm", "ollama"]),
-    default="ollama",
-    show_default=True,
-)
-@click.option("--api-base-url", default=None, help="OpenAI-compatible base URL.")
-@click.option("--api-key-env", default=None, help="Environment variable containing the API key.")
-@click.option("--launch-ollama", is_flag=True, help="Start 'ollama serve' before API runs.")
 @click.option("--judge", is_flag=True, help="Score correctness with an LLM judge.")
-@click.option("--judge-transport", type=click.Choice(["cli", "api"]), default=None)
-@click.option("--judge-provider", type=click.Choice(["openai", "litellm", "ollama"]), default=None)
 @click.option("--judge-model", default=None)
 @click.option("--judge-agent-command", default=None)
-@click.option("--judge-api-base-url", default=None)
-@click.option("--judge-api-key-env", default=None)
 @click.option(
     "--agent-command",
     default="claude",
@@ -538,24 +523,14 @@ def benchmark_atelierbench_cmd(
     reps: int,
     model: str,
     timeout: int,
-    max_output_tokens: int,
     rate_limit_rpm: float,
     rate_limit_tpm: int,
-    transport: str,
     cli_driver: str,
     jobs: int,
     parallel_scope: str,
-    api_provider: str,
-    api_base_url: str | None,
-    api_key_env: str | None,
-    launch_ollama: bool,
     judge: bool,
-    judge_transport: str | None,
-    judge_provider: str | None,
     judge_model: str | None,
     judge_agent_command: str | None,
-    judge_api_base_url: str | None,
-    judge_api_key_env: str | None,
     agent_command: str,
     agent_env: tuple[str, ...],
     agent_env_from_host: tuple[str, ...],
@@ -581,28 +556,13 @@ def benchmark_atelierbench_cmd(
     bridge_args = []
     if bridge_command:
         bridge_args = ["--bridge-command", bridge_command, "--bridge-wait", str(bridge_wait)]
-    api_args = ["--transport", transport, "--api-provider", api_provider]
-    if api_base_url:
-        api_args.extend(["--api-base-url", api_base_url])
-    if api_key_env:
-        api_args.extend(["--api-key-env", api_key_env])
-    if launch_ollama:
-        api_args.append("--launch-ollama")
     judge_args = []
     if judge:
         judge_args.append("--judge")
-    if judge_transport:
-        judge_args.extend(["--judge-transport", judge_transport])
-    if judge_provider:
-        judge_args.extend(["--judge-provider", judge_provider])
     if judge_model:
         judge_args.extend(["--judge-model", judge_model])
     if judge_agent_command:
         judge_args.extend(["--judge-agent-command", judge_agent_command])
-    if judge_api_base_url:
-        judge_args.extend(["--judge-api-base-url", judge_api_base_url])
-    if judge_api_key_env:
-        judge_args.extend(["--judge-api-key-env", judge_api_key_env])
     agent_env_args: list[str] = []
     if provider:
         preset_key = _PROVIDER_ALIASES.get(provider.lower())
@@ -612,13 +572,7 @@ def benchmark_atelierbench_cmd(
             )
         claude_provider_preset = claude_provider_preset or preset_key
     if openrouter_claude:
-        if transport != "cli" or cli_driver != "claude":
-            raise click.ClickException("--openrouter-claude only applies to --transport cli --cli-driver claude.")
         claude_provider_preset = claude_provider_preset or "openrouter-claude"
-    if (transport != "cli" or cli_driver != "claude") and (
-        claude_provider_preset or claude_base_url or claude_auth_token_env or claude_api_key_env or clear_claude_api_key
-    ):
-        raise click.ClickException("Claude CLI provider env flags only apply to --transport cli --cli-driver claude.")
     if claude_provider_preset:
         preset = resolve_claude_provider_preset(
             claude_provider_preset,
@@ -657,8 +611,6 @@ def benchmark_atelierbench_cmd(
             reps=reps,
             model=model,
             cli_driver=cli_driver,
-            transport=transport,
-            api_provider=api_provider,
             timeout=timeout,
             jobs=jobs,
             parallel_scope=parallel_scope,
@@ -675,7 +627,6 @@ def benchmark_atelierbench_cmd(
             *_python_cmd(repo_root),
             "-m",
             "benchmarks.atelierbench.run",
-            "--tasks",
             *tasks,
             "--arms",
             *arms,
@@ -685,8 +636,6 @@ def benchmark_atelierbench_cmd(
             model,
             "--timeout",
             str(timeout),
-            "--max-output-tokens",
-            str(max_output_tokens),
             "--rate-limit-rpm",
             str(rate_limit_rpm),
             "--rate-limit-tpm",
@@ -701,7 +650,6 @@ def benchmark_atelierbench_cmd(
             agent_command,
             *forwarded_cli_extra_args,
             *agent_env_args,
-            *api_args,
             *judge_args,
             *bridge_args,
             "--out",
