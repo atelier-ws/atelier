@@ -7,7 +7,6 @@ from typing import Any, Protocol, cast
 
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import (
-    FailureCluster,
     ReasonBlock,
     RescueResult,
     Rubric,
@@ -22,7 +21,6 @@ from atelier.gateway.sdk.client import (
     AtelierClient,
     ContextResult,
     EvalRunResult,
-    FailureAnalysisResult,
     LessonDecisionResult,
     LessonInboxResult,
     MemoryArchiveResult,
@@ -55,8 +53,6 @@ class _ServiceClient(Protocol):
     def list_rubrics(self, *, domain: str | None = None) -> list[dict[str, Any]]: ...
 
     def get_rubric(self, rubric_id: str) -> dict[str, Any]: ...
-
-    def analyze_failures(self, *, domain: str | None = None, limit: int = 100) -> dict[str, Any]: ...
 
     def get_savings(self) -> dict[str, Any]: ...
 
@@ -198,17 +194,6 @@ class RemoteClient(AtelierClient):
         )
         payload = {"id": str(payload.get("id") or payload.get("trace_id") or payload.get("session_id") or "")}
         return TraceRecordResult.model_validate(payload)
-
-    def analyze_failures(
-        self,
-        *,
-        domain: str | None = None,
-        limit: int = 100,
-    ) -> FailureAnalysisResult:
-        payload = self._ensure_ok(self._client.analyze_failures(domain=domain, limit=limit))
-        return FailureAnalysisResult(
-            clusters=[FailureCluster.model_validate(item) for item in payload.get("clusters", [])]
-        )
 
     def get_savings(self) -> SavingsSummary:
         payload = self._ensure_ok(self._client.get_savings())

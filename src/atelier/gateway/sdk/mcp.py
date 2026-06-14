@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
-from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import (
     RescueResult,
     RubricResult,
@@ -22,9 +21,7 @@ from atelier.gateway.adapters import mcp_server
 from atelier.gateway.sdk.client import (
     ContextResult,
     MCPToolTransport,
-    MemoryArchiveResult,
     MemoryRecallResult,
-    MemoryUpsertBlockResult,
     TraceRecordResult,
 )
 from atelier.gateway.sdk.local import LocalClient
@@ -94,67 +91,6 @@ class MCPClient(LocalClient):
         )
         return ContextResult.model_validate(payload)
 
-    def memory_upsert_block(
-        self,
-        *,
-        agent_id: str,
-        label: str,
-        value: str,
-        limit_chars: int = 8000,
-        description: str = "",
-        read_only: bool = False,
-        pinned: bool = False,
-        metadata: dict[str, Any] | None = None,
-        expected_version: int | None = None,
-        actor: str | None = None,
-    ) -> MemoryUpsertBlockResult:
-        payload = self._transport.call_tool(
-            "memory",
-            {
-                "op": "block_upsert",
-                "agent_id": agent_id,
-                "label": label,
-                "value": value,
-                "limit_chars": limit_chars,
-                "description": description,
-                "read_only": read_only,
-                "pinned": pinned,
-                "metadata": metadata or {},
-                "expected_version": expected_version,
-                "actor": actor,
-            },
-        )
-        return MemoryUpsertBlockResult.model_validate(payload)
-
-    def memory_get_block(self, *, agent_id: str, label: str) -> MemoryBlock | None:
-        payload = self._transport.call_tool(
-            "memory",
-            {"op": "block_get", "agent_id": agent_id, "label": label},
-        )
-        return MemoryBlock.model_validate(payload) if payload is not None else None
-
-    def memory_archive(
-        self,
-        *,
-        agent_id: str,
-        text: str,
-        source: str,
-        source_ref: str = "",
-        tags: list[str] | None = None,
-    ) -> MemoryArchiveResult:
-        payload = self._transport.call_tool(
-            "memory",
-            {
-                "op": "archive",
-                "agent_id": agent_id,
-                "text": text,
-                "source": source,
-                "source_ref": source_ref,
-                "tags": tags or [],
-            },
-        )
-        return MemoryArchiveResult.model_validate(payload)
-
     def memory_recall(
         self,
         *,
@@ -176,9 +112,6 @@ class MCPClient(LocalClient):
             },
         )
         return MemoryRecallResult.model_validate(payload)
-
-    def memory_summary(self, *, session_id: str) -> dict[str, Any]:
-        return self._transport.call_tool("memory", {"op": "summarize", "session_id": session_id})
 
     def route(self, *, op: str, **kwargs: Any) -> dict[str, Any]:
         return self._transport.call_tool("route", {"op": op, **kwargs})

@@ -19,7 +19,7 @@ from atelier.core.environment import HIDDEN_LLM_TOOLS
 from atelier.core.service.bootstrap_context import build_bootstrap_plan, persist_bootstrap_plan
 from atelier.core.service.jobs import JOB_BOOTSTRAP_CONTEXT
 from atelier.gateway.adapters import mcp_server
-from atelier.gateway.adapters.mcp_server import TOOLS, _handle, tool_code, tool_smart_edit
+from atelier.gateway.adapters.mcp_server import TOOLS, _handle, tool_smart_edit
 from atelier.gateway.cli import cli
 from atelier.infra.code_intel.astgrep import (
     AstGrepToolUnavailable,
@@ -70,6 +70,15 @@ def _result(resp: dict[str, Any]) -> Any:
         return json.loads(text)
     except json.JSONDecodeError:
         return text
+
+
+def _op_result(render_name: str, op_fn: Any, **kwargs: Any) -> Any:
+    """Mirror _handle's render path for a direct _op_* call: returns rendered
+    markdown when a code renderer applies, else the raw payload dict."""
+    mcp_server._tool_call_rendered_text.value = None
+    payload = op_fn(**kwargs)
+    rendered = mcp_server.render_tool_result_text(render_name, payload)
+    return rendered if rendered is not None else payload
 
 
 def _mock_client(return_values: dict[str, dict[str, Any]]) -> MagicMock:
@@ -1303,8 +1312,8 @@ def test_code_context_external_scope_surface_returns_external_hits_only(store_ro
         source="def get(url: str) -> str:\n    return url\n",
     )
 
-    repo_payload = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "get"})
-    external_payload = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "get", "scope": "external"})
+    repo_payload = mcp_server._op_search(repo_root=str(tmp_path), query="get")
+    external_payload = mcp_server._op_search(repo_root=str(tmp_path), query="get", scope="external")
 
     assert repo_payload["items"] == []
     assert [item["qualified_name"] for item in external_payload["items"]] == ["requests.get"]
@@ -1354,15 +1363,12 @@ def test_code_context_workspace_search_returns_repo_tagged_hits_and_repo_filter(
     _write_workspace_fixture_repo(billing_root, module_name="billing")
     _write_workspace_fixture_config(tmp_path, billing_root)
 
-    payload = tool_code({"op": "search", "repo_root": str(tmp_path), "query": "SharedConfig", "budget_tokens": 4000})
-    billing_only = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "SharedConfig",
-            "repo": "billing",
-            "budget_tokens": 4000,
-        }
+    payload = mcp_server._op_search(repo_root=str(tmp_path), query="SharedConfig", budget_tokens=4000)
+    billing_only = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="SharedConfig",
+        repo="billing",
+        budget_tokens=4000,
     )
 
     assert [(item["repo_name"], item["path"]) for item in payload["items"]] == [
@@ -1391,23 +1397,17 @@ def test_code_context_workspace_symbol_filter_and_external_origin_metadata(
         source="def get(url: str) -> str:\n    return url\n",
     )
 
-    default_symbol = tool_code({"op": "symbol", "repo_root": str(tmp_path), "symbol_name": "SharedConfig"})
-    billing_symbol = tool_code(
-        {
-            "op": "symbol",
-            "repo_root": str(tmp_path),
-            "symbol_name": "SharedConfig",
-            "repo": "billing",
-        }
+    default_symbol = mcp_server._op_node(repo_root=str(tmp_path), symbol_name="SharedConfig")
+    billing_symbol = mcp_server._op_node(
+        repo_root=str(tmp_path),
+        symbol_name="SharedConfig",
+        repo="billing",
     )
-    external_payload = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "get",
-            "scope": "external",
-            "repo": "billing",
-        }
+    external_payload = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="get",
+        scope="external",
+        repo="billing",
     )
 
     assert default_symbol["repo_name"] == "atelier"
@@ -1436,32 +1436,28 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("from a import alpha\n\ndef beta():\n    return alpha()\n", encoding="utf-8")
 
-    indexed = _result(_call("symbols", {"op": "index", "repo_root": str(tmp_path)}))
+    indexed = _result(_call("index", {"repo_root": str(tmp_path)}))
     _m = re.search(r"symbols=(\d+)", indexed)
     assert _m is not None
     assert int(_m.group(1)) >= 2
     assert "provenance: local" in indexed
 
-    searched = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    searched = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
     assert searched and "no matches" not in searched
     assert "snippet:" not in searched
-    cached_search = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    cached_search = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
     assert "provenance: cached" in cached_search
 
-    symbol = _result(
-        _call(
-            "symbols",
-            {
-                "op": "symbol",
-                "repo_root": str(tmp_path),
-                "qualified_name": "alpha",
-                "file_path": "a.py",
-            },
-        )
+    symbol = _op_result(
+        "node",
+        mcp_server._op_node,
+        repo_root=str(tmp_path),
+        qualified_name="alpha",
+        path="a.py",
     )
     assert "def alpha" in symbol
 
-    outline = _result(_call("symbols", {"op": "outline", "repo_root": str(tmp_path), "file_path": "a.py"}))
+    outline = _result(_call("outline", {"repo_root": str(tmp_path), "path": "a.py"}))
     assert "a.py" in outline
 
     context = _result(
@@ -1484,13 +1480,13 @@ def test_code_context_mcp_routes_scip_and_invalidates_cache(store_root: Path, tm
     (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
     artifact_path = _write_gateway_scip_fixture(tmp_path, symbol_id="scip-alpha-v1")
 
-    first = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
-    cached = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    first = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
+    cached = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
     artifact_path.write_text(
         artifact_path.read_text(encoding="utf-8").replace("scip-alpha-v1", "scip-alpha-v2"),
         encoding="utf-8",
     )
-    fresh = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    fresh = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
 
     assert first["provenance"] == "scip" if isinstance(first, dict) else "provenance: scip" in first
     assert cached["provenance"] == "cached" if isinstance(cached, dict) else "provenance: cached" in cached
@@ -1510,17 +1506,14 @@ def test_code_context_search_surface_supports_snippet_scope_and_glob(store_root:
         encoding="utf-8",
     )
 
-    payload = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "OrderService",
-            "snippet": "head",
-            "snippet_lines": 2,
-            "file_glob": "src/*.py",
-            "scope": "repo",
-            "budget_tokens": 4000,
-        }
+    payload = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="OrderService",
+        snippet="head",
+        snippet_lines=2,
+        file_glob="src/*.py",
+        scope="repo",
+        budget_tokens=4000,
     )
 
     assert "provenance" not in payload
@@ -1548,14 +1541,11 @@ def test_tool_code_search_dispatches_mode_without_gateway_ranking_logic(
         lambda repo_root=".": fake_engine,
     )
 
-    payload = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "create login token for authenticated user",
-            "mode": "semantic",
-            "budget_tokens": 220,
-        }
+    payload = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="create login token for authenticated user",
+        mode="semantic",
+        budget_tokens=220,
     )
 
     assert "mode" not in payload
@@ -1592,14 +1582,11 @@ def test_tool_code_search_dispatches_grounded_seed_files_without_gateway_ranking
         lambda repo_root=".": fake_engine,
     )
 
-    payload = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "OrderService",
-            "seed_files": ["src/orders.py"],
-            "budget_tokens": 220,
-        }
+    payload = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="OrderService",
+        seed_files=["src/orders.py"],
+        budget_tokens=220,
     )
 
     assert "mode" not in payload
@@ -1643,16 +1630,13 @@ def test_tool_code_search_dispatches_deleted_scope_filters_without_gateway_histo
         lambda repo_root=".": fake_engine,
     )
 
-    payload = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "ModernCheckout",
-            "scope": "deleted",
-            "since": "2025-01-01",
-            "touched_by": "history@example.com",
-            "budget_tokens": 220,
-        }
+    payload = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="ModernCheckout",
+        scope="deleted",
+        since="2025-01-01",
+        touched_by="history@example.com",
+        budget_tokens=220,
     )
 
     assert "provenance" not in payload
@@ -1696,14 +1680,11 @@ def test_tool_code_blame_dispatches_additively_without_gateway_aggregation(
         lambda repo_root=".": fake_engine,
     )
 
-    payload = tool_code(
-        {
-            "op": "blame",
-            "repo_root": str(tmp_path),
-            "query": "risk_score",
-            "include_churn": False,
-            "budget_tokens": 220,
-        }
+    payload = mcp_server._op_blame(
+        repo_root=str(tmp_path),
+        query="risk_score",
+        include_churn=False,
+        budget_tokens=220,
     )
 
     assert "provenance" not in payload
@@ -1736,14 +1717,10 @@ def test_tool_code_include_churn_remains_additive_for_non_blame_ops(
         lambda repo_root=".": fake_engine,
     )
 
-    payload = tool_code(
-        {
-            "op": "search",
-            "repo_root": str(tmp_path),
-            "query": "OrderService",
-            "include_churn": False,
-            "budget_tokens": 220,
-        }
+    payload = mcp_server._op_search(
+        repo_root=str(tmp_path),
+        query="OrderService",
+        budget_tokens=220,
     )
 
     assert "provenance" not in payload
@@ -1778,7 +1755,12 @@ def test_code_context_usages_surface_groups_references(store_root: Path, tmp_pat
         encoding="utf-8",
     )
 
-    payload = _result(_call("symbols", {"op": "usages", "repo_root": str(tmp_path), "query": "OrderService"}))
+    payload = _op_result(
+        "usages",
+        mcp_server._op_usages,
+        repo_root=str(tmp_path),
+        query="OrderService",
+    )
 
     assert "group_by: file" in payload
     assert "OrderService" in payload
@@ -1794,7 +1776,7 @@ def test_code_context_mcp_falls_back_when_scip_artifact_is_invalid(store_root: P
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "python.scip").write_text("{invalid json", encoding="utf-8")
 
-    searched = _result(_call("symbols", {"op": "search", "repo_root": str(tmp_path), "query": "alpha"}))
+    searched = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
 
     assert "alpha" in searched
     assert "provenance: scip" not in searched
@@ -1826,27 +1808,19 @@ def test_code_context_pattern_search_surface_is_cached(
         ),
     )
 
-    first = _result(
-        _call(
-            "symbols",
-            {
-                "op": "pattern",
-                "repo_root": str(tmp_path),
-                "pattern": "requests.get($URL)",
-                "budget_tokens": 220,
-            },
-        )
+    first = _op_result(
+        "codemod",
+        mcp_server._op_pattern,
+        repo_root=str(tmp_path),
+        pattern="requests.get($URL)",
+        budget_tokens=220,
     )
-    cached = _result(
-        _call(
-            "symbols",
-            {
-                "op": "pattern",
-                "repo_root": str(tmp_path),
-                "pattern": "requests.get($URL)",
-                "budget_tokens": 220,
-            },
-        )
+    cached = _op_result(
+        "codemod",
+        mcp_server._op_pattern,
+        repo_root=str(tmp_path),
+        pattern="requests.get($URL)",
+        budget_tokens=220,
     )
 
     assert "provenance" not in first
@@ -1864,36 +1838,27 @@ def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tm
         encoding="utf-8",
     )
 
-    _result(
-        _call(
-            "symbols",
-            {
-                "op": "search",
-                "repo_root": str(tmp_path),
-                "query": "OrderService",
-                "budget_tokens": 4000,
-            },
-        )
+    _op_result(
+        "search",
+        mcp_server._op_search,
+        repo_root=str(tmp_path),
+        query="OrderService",
+        budget_tokens=4000,
     )
-    _result(
-        _call(
-            "symbols",
-            {
-                "op": "symbol",
-                "repo_root": str(tmp_path),
-                "qualified_name": "OrderService",
-                "file_path": "src/orders.py",
-                "budget_tokens": 4000,
-            },
-        )
+    _op_result(
+        "node",
+        mcp_server._op_node,
+        repo_root=str(tmp_path),
+        qualified_name="OrderService",
+        path="src/orders.py",
+        budget_tokens=4000,
     )
 
-    status = _result(_call("symbols", {"op": "cache_status", "repo_root": str(tmp_path), "budget_tokens": 200}))
+    status = _result(_call("cache_status", {"repo_root": str(tmp_path), "budget_tokens": 200}))
     invalidated = _result(
         _call(
-            "symbols",
+            "cache_invalidate",
             {
-                "op": "cache_invalidate",
                 "repo_root": str(tmp_path),
                 "cache_tool": "search",
                 "budget_tokens": 200,
@@ -1934,29 +1899,21 @@ def test_code_context_pattern_rewrite_reindexes_changed_files(
         raising=False,
     )
 
-    preview = _result(
-        _call(
-            "symbols",
-            {
-                "op": "pattern",
-                "repo_root": str(tmp_path),
-                "pattern": "requests.get($URL)",
-                "rewrite": "requests.get($URL, timeout=30)",
-                "dry_run": True,
-            },
-        )
+    preview = _op_result(
+        "codemod",
+        mcp_server._op_pattern,
+        repo_root=str(tmp_path),
+        pattern="requests.get($URL)",
+        rewrite="requests.get($URL, timeout=30)",
+        dry_run=True,
     )
-    applied = _result(
-        _call(
-            "symbols",
-            {
-                "op": "pattern",
-                "repo_root": str(tmp_path),
-                "pattern": "requests.get($URL)",
-                "rewrite": "requests.get($URL, timeout=30)",
-                "dry_run": False,
-            },
-        )
+    applied = _op_result(
+        "codemod",
+        mcp_server._op_pattern,
+        repo_root=str(tmp_path),
+        pattern="requests.get($URL)",
+        rewrite="requests.get($URL, timeout=30)",
+        dry_run=False,
     )
 
     assert "--- a/src/app.py" in preview["diff"]
@@ -1987,12 +1944,9 @@ def test_code_context_pattern_returns_structured_tool_unavailable(
         ),
     )
 
-    result = tool_code(
-        {
-            "op": "pattern",
-            "repo_root": str(tmp_path),
-            "pattern": "requests.get($URL)",
-        }
+    result = mcp_server._op_pattern(
+        repo_root=str(tmp_path),
+        pattern="requests.get($URL)",
     )
 
     assert result["error"] == "tool_unavailable"
@@ -2251,3 +2205,69 @@ def test_shell_mcp_call_returns_managed_session_for_background_command(
     assert match is not None
     cancelled = mcp_server._run_shell_tool(session_id=match.group(1), action="cancel")
     assert cancelled["status"] == "cancelled"
+
+
+def test_truncate_result_text_passes_small_through() -> None:
+    small = "hello world"
+    assert mcp_server._truncate_result_text(small, 1024) == small
+
+
+def test_truncate_result_text_caps_oversized_with_notice() -> None:
+    out = mcp_server._truncate_result_text("x" * 5000, 1024)
+    assert len(out.encode("utf-8")) <= 1024
+    assert "truncated" in out
+    assert "5000 bytes total" in out
+
+
+def test_truncate_result_text_keeps_valid_utf8_on_multibyte_boundary() -> None:
+    # 'é' encodes to 2 bytes; an odd byte limit must not yield a partial char.
+    out = mcp_server._truncate_result_text("é" * 1000, 101)
+    out.encode("utf-8")  # raises if the head was split mid-codepoint
+
+
+def test_write_jsonrpc_backstop_replaces_oversized_frame(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(mcp_server, "_MAX_WIRE_BYTES", 256)
+    huge = {"jsonrpc": "2.0", "id": 7, "result": {"content": [{"type": "text", "text": "z" * 4000}]}}
+    mcp_server._write_jsonrpc(huge)
+    line = capsys.readouterr().out.strip()
+    frame = json.loads(line)  # a single valid JSON-RPC line, not a 4 KB blob
+    assert frame["id"] == 7
+    assert "error" in frame
+    assert len(line.encode("utf-8")) < 4000
+
+
+def test_write_jsonrpc_passes_normal_frame_through(capsys: pytest.CaptureFixture[str]) -> None:
+    msg = {"jsonrpc": "2.0", "id": 9, "result": {"content": [{"type": "text", "text": "ok"}]}}
+    mcp_server._write_jsonrpc(msg)
+    assert json.loads(capsys.readouterr().out.strip()) == msg
+
+
+def test_read_oversized_result_is_capped_not_dropped(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression: an exact (expand) read of a large file produced one >16 MiB
+    # JSON-RPC frame, tripping the host stdout guard and disconnecting the
+    # server. The result must be truncated in place, never dropped.
+    _ = store_root
+    monkeypatch.setenv("ATELIER_MCP_MAX_RESULT_BYTES", "70000")
+    big = tmp_path / "big.txt"
+    big.write_text("A" * 200_000, encoding="utf-8")
+    text = _result(_call("read", {"path": str(big), "expand": True}))
+    assert isinstance(text, str)
+    assert len(text.encode("utf-8")) <= 70000
+    assert "truncated" in text
+
+
+def test_smart_read_single_caps_oversized_expand_at_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The source-side guard bounds an exact (expand) read of a huge file before
+    # it is ever fully loaded, returning a truncated payload with the byte count.
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("ATELIER_MCP_MAX_RESULT_BYTES", "70000")
+    big = tmp_path / "big.log"
+    big.write_text("L" * 500_000, encoding="utf-8")
+    payload = mcp_server._smart_read_single(str(big), expand=True)
+    assert payload["truncated"] is True
+    assert payload["bytes_total"] == 500_000
+    assert len(payload["content"].encode("utf-8")) <= 70000

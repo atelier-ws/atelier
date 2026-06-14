@@ -521,28 +521,6 @@ class LedgerEvent(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
-# V2: Failure cluster                                                         #
-# --------------------------------------------------------------------------- #
-
-
-class FailureCluster(BaseModel):
-    """A group of failed traces that share an error fingerprint."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: str
-    domain: str
-    fingerprint: str
-    trace_ids: list[str] = Field(default_factory=list)
-    sample_errors: list[str] = Field(default_factory=list)
-    suggested_block_title: str = ""
-    suggested_rubric_check: str = ""
-    suggested_eval_case: str = ""
-    suggested_prompt: str = ""
-    severity: Severity = "medium"
-
-
-# --------------------------------------------------------------------------- #
 # V2: Eval case                                                               #
 # --------------------------------------------------------------------------- #
 
