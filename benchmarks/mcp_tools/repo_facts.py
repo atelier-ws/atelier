@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import functools
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -93,6 +94,7 @@ def repo_python_files(repo_root: Path) -> list[Path]:
     return files
 
 
+@functools.lru_cache(maxsize=4)
 def collect_symbol_facts(repo_root: Path) -> tuple[list[SymbolFact], list[FileOutlineFact]]:
     symbol_facts: list[SymbolFact] = []
     outline_facts: list[FileOutlineFact] = []
@@ -127,6 +129,7 @@ def collect_symbol_facts(repo_root: Path) -> tuple[list[SymbolFact], list[FileOu
     return symbol_facts, outline_facts
 
 
+@functools.lru_cache(maxsize=4)
 def collect_repo_file_facts(repo_root: Path) -> list[RepoFileFact]:
     symbol_facts, _ = collect_symbol_facts(repo_root)
     symbols_by_path: dict[str, list[SymbolFact]] = defaultdict(list)

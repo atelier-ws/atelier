@@ -101,15 +101,6 @@ def _default_ops() -> list[tuple[str, dict[str, Any], list[str]]]:
             ["run_command"],
         ),
         (
-            "impact",
-            {
-                "op": "impact",
-                "path": "src/atelier/core/capabilities/tool_supervision/bash_exec.py",
-                "budget_tokens": 3000,
-            },
-            ["importers"],
-        ),
-        (
             "context",
             {
                 "op": "context",

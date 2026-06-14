@@ -9,4 +9,4 @@ Use this task file to force an Atelier preflight before implementation:
 5. Record the run with `record`.
 6. Archive key findings with `memory` for future runs.
 
-Default tool posture: start coding tasks with `context`, use `node` / `callers` / `callees` / `impact` / `explore` for code intelligence, `search` / `grep` for discovery, `read` for file reads, and `edit` for changes. Keep native `Read`, shell `rg`, `grep`, and direct file access as fallback only when the Atelier equivalent is hidden, unavailable, or returned `noop`. The kill switch is `ATELIER_CACHE_DISABLED=1`.
+Default tool posture: start coding tasks with `context`, use `node` / `callers` / `callees` / `explore` for code intelligence, `search` / `grep` for discovery, `read` for file reads, and `edit` for changes. Keep native `Read`, shell `rg`, `grep`, and direct file access as fallback only when the Atelier equivalent is hidden, unavailable, or returned `noop`. The kill switch is `ATELIER_CACHE_DISABLED=1`.

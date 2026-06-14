@@ -65,7 +65,6 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "usages", "family": "graph", "benchmarked": False},
         {"surface": "callers", "family": "graph", "benchmarked": False},
         {"surface": "callees", "family": "graph", "benchmarked": False},
-        {"surface": "impact", "family": "graph", "benchmarked": False},
     ],
     "atelier-zoekt": [
         {"surface": "search:exact", "family": "exact_search", "benchmarked": True},
@@ -76,23 +75,6 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "search:exact", "family": "exact_search", "benchmarked": True},
         {"surface": "search:substring", "family": "substring_search", "benchmarked": True},
         {"surface": "search:nohit", "family": "nohit_search", "benchmarked": True},
-    ],
-    "atelier-serena": [
-        {
-            "surface": "search_for_pattern:exact:compact",
-            "family": "exact_search",
-            "benchmarked": True,
-        },
-        {
-            "surface": "search_for_pattern:substring:compact",
-            "family": "substring_search",
-            "benchmarked": True,
-        },
-        {
-            "surface": "search_for_pattern:nohit:compact",
-            "family": "nohit_search",
-            "benchmarked": True,
-        },
     ],
     "serena": [
         {"surface": "find_symbol", "family": "exact_symbol", "benchmarked": True},
@@ -118,7 +100,6 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "query:nohit", "family": "nohit_search", "benchmarked": True},
         {"surface": "callers", "family": "graph", "benchmarked": False},
         {"surface": "callees", "family": "graph", "benchmarked": False},
-        {"surface": "impact", "family": "graph", "benchmarked": False},
     ],
     "code-index-mcp": [
         {"surface": "search_code:exact", "family": "exact_search", "benchmarked": True},
@@ -152,7 +133,6 @@ DEFAULT_PROVIDER_TOOLS = (
     "atelier",
     "atelier-zoekt",
     "zoekt",
-    "atelier-serena",
     "serena",
     "atelier-codegraph",
     "codegraph",
@@ -506,15 +486,6 @@ class SerenaMatrixRunner(_RunnerBase):
             raise ValueError(f"unsupported family for {self.tool_name}: {case.family}")
         response = self.runner.query(tool_name, params)
         return json.dumps({"tool_name": tool_name, "params": params}, ensure_ascii=False), response
-
-
-class AtelierSerenaMatrixRunner(SerenaMatrixRunner):
-    tool_name = "atelier-serena"
-    supported_families = TOOL_SUPPORT[tool_name]
-
-    def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
-        request, output = super().run_case(case)
-        return request, _compact_provider_payload(self.tool_name, case, output)
 
 
 class CodeGraphRunner(_RunnerBase):
@@ -951,25 +922,27 @@ def write_surface_audit(path: Path) -> None:
         path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def _balanced_case_subset(cases: list[ExternalBenchCase], max_cases: int | None) -> list[ExternalBenchCase]:
-    if max_cases is None or max_cases >= len(cases):
+def _balanced_case_subset(cases: list[ExternalBenchCase], max_per_family: int | None) -> list[ExternalBenchCase]:
+    """Return at most ``max_per_family`` cases for EACH family, round-robined.
+
+    The cap is per family, not a global total: with the default of 100 and the
+    three default families this yields 100 exact-search + 100 substring + 100
+    no-hit cases (300 total), instead of ~33 of each. ``None`` or a non-positive
+    cap keeps every case.
+    """
+    if max_per_family is None:
         return cases
     buckets: dict[str, list[ExternalBenchCase]] = defaultdict(list)
     for case in cases:
         buckets[case.family].append(case)
     ordered_families = sorted(buckets)
+    for family in ordered_families:
+        del buckets[family][max_per_family:]
     selected: list[ExternalBenchCase] = []
-    while len(selected) < max_cases:
-        advanced = False
+    while any(buckets[family] for family in ordered_families):
         for family in ordered_families:
-            if not buckets[family]:
-                continue
-            selected.append(buckets[family].pop(0))
-            advanced = True
-            if len(selected) == max_cases:
-                break
-        if not advanced:
-            break
+            if buckets[family]:
+                selected.append(buckets[family].pop(0))
     return selected
 
 
@@ -1174,10 +1147,6 @@ def _runner_specs(
         (
             "zoekt",
             ZoektRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
-        ),
-        (
-            "atelier-serena",
-            AtelierSerenaMatrixRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
         ),
         (
             "serena",
@@ -1769,7 +1738,12 @@ def main() -> None:
         default=workspace_root_default / "bench_external_matrix.latest.csv",
     )
     parser.add_argument("--iterations", type=int, default=1)
-    parser.add_argument("--max-cases", type=int, default=100)
+    parser.add_argument(
+        "--max-cases",
+        type=int,
+        default=100,
+        help="Maximum cases PER FAMILY (default 100). Use 0 for no cap.",
+    )
     parser.add_argument("--jobs", type=int, default=0)
     parser.add_argument(
         "--shard-timeout",

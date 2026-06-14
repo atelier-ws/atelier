@@ -165,7 +165,7 @@ runner path today.
 
 Code retrieval, file reads, grep/search, and symbol lookup are exposed as
 Atelier **MCP tools** (`read`, `grep`, `search`, `symbols`, `node`, `callers`,
-`callees`, `usages`, `impact`, `explore`, `pattern`) rather than standalone CLI
+`callees`, `usages`, `explore`, `pattern`) rather than standalone CLI
 commands. Invoke them through your agent host or via `atelier tools call <name>`.
 
 | Command                 | Purpose                                                |

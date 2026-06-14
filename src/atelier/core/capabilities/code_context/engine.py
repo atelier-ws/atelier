@@ -55,7 +55,6 @@ from atelier.core.capabilities.code_context.intel_store import ProviderHealth, S
 from atelier.core.capabilities.code_context.models import (
     ContextPack,
     CrossLangReference,
-    ImpactResult,
     IndexedFileRecord,
     IndexStats,
     RouteRecord,
@@ -64,7 +63,6 @@ from atelier.core.capabilities.code_context.models import (
     UsageReference,
 )
 from atelier.core.capabilities.code_context.output_policy import (
-    TRUNCATION_MARKER,
     hard_cap_chars,
     resolve_output_policy,
 )
@@ -222,18 +220,7 @@ _EXPLORE_ESSENTIAL_KEYS = [
 ]
 _EXPLORE_OPTIONAL_KEYS = ["relationships", "files", "additional_relevant_files"]
 _EXPLORE_SOURCE_SECTION_MAX_CHARS = resolve_output_policy("context").max_code_block_chars
-_IMPACT_ESSENTIAL_KEYS = [
-    "target",
-    "target_type",
-    "file_path",
-    "affected_files",
-    "direct_importers",
-    "transitive_importers",
-    "affected_tests",
-    "risk_level",
-    "provenance",
-]
-_IMPACT_OPTIONAL_KEYS = ["dead_code_candidates"]
+
 _USAGES_ESSENTIAL_KEYS = ["file_path", "line", "provenance"]
 _USAGES_OPTIONAL_KEYS = ["snippet", "caller", "edge_kind", "confidence"]
 _PATTERN_ESSENTIAL_KEYS = ["snippet"]
@@ -307,7 +294,6 @@ _CACHE_TOOL_ALIASES = {
     "symbol": "code.symbol",
     "outline": "code.outline",
     "context": "code.context",
-    "impact": "code.impact",
     "usages": "code.usages",
     "callers": "code.callers",
     "callees": "code.callees",
@@ -323,7 +309,6 @@ _OPERATION_TOKEN_CAPS = {
     "callers": 700,
     "callees": 300,
     "usages": 700,
-    "impact": 150,
     "context": 2400,
     "blame": 50,
     "hover": 190,
@@ -1764,6 +1749,27 @@ class CodeContextEngine:
         self._cache_set("code.blame", cache_args, payload)
         return payload
 
+    def _symbol_at_line(self, file_path: str, line: int) -> dict[str, Any]:
+        """Resolve the innermost symbol whose span contains `line` in `file_path`."""
+        normalized = self._normalize_file_arg(file_path)
+        with self._connect() as conn:
+            self._init_schema(conn)
+            row = conn.execute(
+                """
+                SELECT *, NULL AS score FROM symbols
+                WHERE repo_id = ? AND file_path = ? AND start_line <= ? AND end_line >= ?
+                ORDER BY start_line DESC
+                LIMIT 1
+                """,
+                (self.repo_id, normalized, line, line),
+            ).fetchone()
+        if row is None:
+            raise LookupError("no symbol at that position")
+        symbol_rec = _row_to_symbol(row)
+        path = self.repo_root / symbol_rec.file_path
+        source = path.read_bytes()[symbol_rec.start_byte : symbol_rec.end_byte].decode("utf-8", errors="replace")
+        return {**symbol_rec.model_dump(mode="json"), "source": source}
+
     def tool_hover(
         self,
         *,
@@ -1792,24 +1798,7 @@ class CodeContextEngine:
             file_path is not None and line is not None and not symbol_id and not qualified_name and not symbol_name
         )
         if positional_lookup:
-            normalized = self._normalize_file_arg(file_path)  # type: ignore[arg-type]
-            with self._connect() as conn:
-                self._init_schema(conn)
-                row = conn.execute(
-                    """
-                    SELECT *, NULL AS score FROM symbols
-                    WHERE repo_id = ? AND file_path = ? AND start_line <= ? AND end_line >= ?
-                    ORDER BY start_line DESC
-                    LIMIT 1
-                    """,
-                    (self.repo_id, normalized, line, line),
-                ).fetchone()
-            if row is None:
-                raise LookupError("no symbol at that position")
-            symbol_rec = _row_to_symbol(row)
-            path = self.repo_root / symbol_rec.file_path
-            source = path.read_bytes()[symbol_rec.start_byte : symbol_rec.end_byte].decode("utf-8", errors="replace")
-            sym = {**symbol_rec.model_dump(mode="json"), "source": source}
+            sym = self._symbol_at_line(file_path, line)  # type: ignore[arg-type]
         else:
             sym = self.get_symbol(
                 symbol_id=symbol_id,
@@ -1837,6 +1826,7 @@ class CodeContextEngine:
         qualified_name: str | None = None,
         file_path: str | None = None,
         symbol_name: str | None = None,
+        line: int | None = None,
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
@@ -1845,27 +1835,34 @@ class CodeContextEngine:
             self._ensure_indexed()
         self._sync_symbol_intel()
         normalized_file_path = self._normalize_file_arg(file_path) if file_path else None
+        positional_lookup = (
+            file_path is not None and line is not None and not symbol_id and not qualified_name and not symbol_name
+        )
         cache_args = {
             "symbol_id": symbol_id,
             "qualified_name": qualified_name,
             "symbol_name": symbol_name,
             "file_path": normalized_file_path,
+            "line": line if positional_lookup else None,
             "budget_tokens": effective_budget_tokens,
         }
         hit, cached = self._cache_get("code.symbol", cache_args)
         if hit and cached is not None:
             return self._mark_cache_hit(cached)
 
+        raw_symbol = (
+            self._symbol_at_line(file_path, line)  # type: ignore[arg-type]
+            if positional_lookup
+            else self.get_symbol(
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=normalized_file_path,
+                auto_index=False,
+            )
+        )
         payload = self._pack_single_payload(
-            self._hydrate_symbol_cross_lang(
-                self.get_symbol(
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    symbol_name=symbol_name,
-                    file_path=normalized_file_path,
-                    auto_index=False,
-                )
-            ),
+            self._hydrate_symbol_cross_lang(raw_symbol),
             budget_tokens=effective_budget_tokens,
             essential_keys=_SYMBOL_ESSENTIAL_KEYS,
             optional_keys_in_drop_order=_SYMBOL_OPTIONAL_KEYS,
@@ -2402,127 +2399,6 @@ class CodeContextEngine:
         )
         self._cache_set("code.context", cache_args, payload)
         return payload
-
-    def tool_impact(
-        self,
-        target: str | None = None,
-        *,
-        query: str | None = None,
-        symbol_id: str | None = None,
-        qualified_name: str | None = None,
-        symbol_name: str | None = None,
-        file_path: str | None = None,
-        kind: str | None = None,
-        language: str | None = None,
-        file_glob: str | None = None,
-        budget_tokens: int = 4000,
-        auto_index: bool = True,
-    ) -> dict[str, Any]:
-        effective_budget_tokens = self._effective_budget_tokens("impact", budget_tokens)
-        if auto_index:
-            self._ensure_indexed()
-        self._sync_symbol_intel()
-        candidate_file_path = file_path if file_path is not None else target
-        normalized_file_path = (
-            self._normalize_file_arg(candidate_file_path) if candidate_file_path is not None else None
-        )
-        cache_args = {
-            "target": target,
-            "query": query,
-            "symbol_id": symbol_id,
-            "qualified_name": qualified_name,
-            "symbol_name": symbol_name,
-            "file_path": normalized_file_path,
-            "kind": kind,
-            "language": language,
-            "file_glob": file_glob,
-            "budget_tokens": effective_budget_tokens,
-            "file_mtime_ns": self._file_mtime_ns(normalized_file_path) if normalized_file_path else None,
-        }
-        hit, cached = self._cache_get("code.impact", cache_args)
-        if hit and cached is not None:
-            return self._mark_cache_hit(cached)
-
-        raw_payload = self.impact(
-            target,
-            query=query,
-            symbol_id=symbol_id,
-            qualified_name=qualified_name,
-            symbol_name=symbol_name,
-            file_path=file_path,
-            kind=kind,
-            language=language,
-            file_glob=file_glob,
-            auto_index=False,
-        ).model_dump(mode="json")
-        compact_payload = self._compact_impact_payload(raw_payload, budget_tokens=effective_budget_tokens)
-        payload = self._pack_single_payload(
-            compact_payload,
-            budget_tokens=effective_budget_tokens,
-            essential_keys=_IMPACT_ESSENTIAL_KEYS,
-            optional_keys_in_drop_order=_IMPACT_OPTIONAL_KEYS,
-        )
-        self._cache_set("code.impact", cache_args, payload)
-        return payload
-
-    def _compact_impact_payload(self, payload: dict[str, Any], *, budget_tokens: int) -> dict[str, Any]:
-        compact = dict(payload)
-        compact["affected_files"] = [
-            {key: value for key, value in dict(item).items() if key != "symbols"}
-            for item in cast(list[dict[str, Any]], compact.get("affected_files", []))
-            if isinstance(item, dict)
-        ]
-        compact["direct_importers"] = [str(item) for item in cast(list[Any], compact.get("direct_importers", []))]
-        compact["affected_tests"] = [str(item) for item in cast(list[Any], compact.get("affected_tests", []))]
-        minimum_items = {
-            "affected_files": 1 if compact["affected_files"] else 0,
-            "direct_importers": 1 if compact["direct_importers"] else 0,
-            "affected_tests": 1 if compact["affected_tests"] else 0,
-        }
-
-        def measured_total() -> int:
-            return self._compute_total_tokens({**compact, "cache_hit": False, "tokens_saved": 0})
-
-        if measured_total() <= budget_tokens:
-            return compact
-
-        truncated = False
-        for list_key in ("affected_files", "direct_importers", "affected_tests"):
-            rows = cast(list[Any], compact.get(list_key, []))
-            while len(rows) > int(minimum_items.get(list_key, 0)) and measured_total() > budget_tokens:
-                rows.pop()
-                truncated = True
-            compact[list_key] = rows
-
-        target = compact.get("target")
-        if isinstance(target, dict):
-            match_rows = target.get("matches")
-            if isinstance(match_rows, list):
-                normalized_matches = [
-                    {
-                        "symbol_name": str(item.get("symbol_name") or ""),
-                        "qualified_name": str(item.get("qualified_name") or ""),
-                        "file_path": str(item.get("file_path") or ""),
-                        "start_line": int(item.get("start_line") or 0),
-                    }
-                    for item in match_rows
-                    if isinstance(item, dict)
-                ]
-                min_matches = 1 if normalized_matches else 0
-                while len(normalized_matches) > min_matches and measured_total() > budget_tokens:
-                    normalized_matches.pop()
-                    truncated = True
-                target["matches"] = normalized_matches
-                target["match_count"] = len(normalized_matches)
-                compact["target"] = target
-
-        if measured_total() > budget_tokens:
-            compact["file_path"] = hard_cap_chars(str(compact.get("file_path") or ""), 160)
-            truncated = True
-        if truncated:
-            compact["truncated"] = True
-            compact["message"] = TRUNCATION_MARKER
-        return compact
 
     def tool_usages(
         self,
@@ -3952,6 +3828,18 @@ class CodeContextEngine:
             scope="repo",
             auto_index=False,
         )
+        # SymbolIntelStore.search_symbols short-circuits on the first non-empty provider
+        # (e.g. SCIP returns methods via qualified_name match). Symbols whose query token
+        # appears only as a name suffix in a non-adapter-named file (e.g.
+        # _deleted_history_adapter in engine.py) are then never found. Supplement with
+        # an explicit SQLite LIKE search so the full name-contains pool is considered.
+        local_hits = self._search_symbols_local(query, limit=max(limit * 40, 200))
+        if local_hits:
+            seen_ids = {h.symbol_id for h in symbol_hits}
+            extra = [h for h in local_hits if h.symbol_id not in seen_ids]
+            if file_glob:
+                extra = [h for h in extra if _matches_file_glob(h.file_path, file_glob)]
+            symbol_hits = symbol_hits + extra
         ranked_symbol_hits = sorted(
             (
                 item
@@ -3961,7 +3849,12 @@ class CodeContextEngine:
             key=lambda item: self._text_substring_symbol_score(query_lower, item),
             reverse=True,
         )
-        symbol_items = [item.model_dump(mode="json", exclude_none=True) for item in ranked_symbol_hits[:limit]]
+        # Use 2x the request limit so that symbols ranking just below the primary adapter
+        # class definitions still make it into the payload; _pack_items_payload trims by
+        # token budget anyway.
+        symbol_items = [
+            item.model_dump(mode="json", exclude_none=True) for item in ranked_symbol_hits[: max(limit * 2, 40)]
+        ]
         raw_limit = max(limit * 50, 500)
         matches = self.search_text(query, path=search_path, limit=raw_limit, ignore_case=True)
         if file_glob:
@@ -4009,14 +3902,21 @@ class CodeContextEngine:
         path_hit = int(query_lower in lowered_path)
         return (definition, symbolish, path_hit, -len(match.file_path))
 
-    def _text_substring_symbol_score(self, query_lower: str, symbol: SymbolRecord) -> tuple[int, int, int, int, int]:
+    def _text_substring_symbol_score(
+        self, query_lower: str, symbol: SymbolRecord
+    ) -> tuple[int, int, int, int, int, int]:
         symbol_name_lower = symbol.symbol_name.lower()
         qualified_name_lower = symbol.qualified_name.lower()
         preferred_kind = int(symbol.kind in {"class", "method", "function"})
         startswith = int(symbol_name_lower.startswith(query_lower) or qualified_name_lower.startswith(query_lower))
         bare_startswith = int(symbol_name_lower.lstrip("_").startswith(query_lower))
+        # Reward symbols where the query appears in the SHORT symbol name (not just the
+        # file path or the class-name prefix of a qualified_name). This ensures e.g.
+        # _deleted_history_adapter ranks above _run in astgrep/adapter.py when searching
+        # for "adapter", because the latter only matches via path_hit.
+        name_contains = int(query_lower in symbol_name_lower)
         path_hit = int(query_lower in symbol.file_path.lower())
-        return (preferred_kind, startswith, bare_startswith, path_hit, -len(symbol.symbol_name))
+        return (preferred_kind, startswith, bare_startswith, name_contains, path_hit, -len(symbol.symbol_name))
 
     def _text_match_search_item(self, query: str, match: TextMatch) -> dict[str, Any]:
         name = self._text_match_name(query, match.text)
@@ -4444,252 +4344,6 @@ class CodeContextEngine:
         if "error" not in packed:
             self._cache_set(f"code.{direction}", cache_args, packed)
         return packed
-
-    def impact(
-        self,
-        target: str | None = None,
-        *,
-        query: str | None = None,
-        symbol_id: str | None = None,
-        qualified_name: str | None = None,
-        symbol_name: str | None = None,
-        file_path: str | None = None,
-        kind: str | None = None,
-        language: str | None = None,
-        file_glob: str | None = None,
-        auto_index: bool = True,
-    ) -> ImpactResult:
-        """Approximate impact for a file path or symbol target."""
-        if auto_index:
-            self._ensure_indexed()
-        effective_path = file_path or target
-        uses_symbol_target = bool(query or symbol_id or qualified_name or symbol_name)
-        if not uses_symbol_target and effective_path is None:
-            raise ValueError("path or symbol identifier is required for code impact")
-        if effective_path is not None and not uses_symbol_target:
-            normalized_path = self._normalize_file_arg(effective_path)
-            direct, transitive, _ = self._import_blast_radius(normalized_path)
-            affected_tests = sorted(item for item in {*direct, *transitive} if self._is_test_path(item))
-            reasons_by_file: dict[str, dict[str, set[str]]] = {}
-            for file_path in direct:
-                self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="direct_import")
-            for file_path in transitive:
-                self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="transitive_import")
-            for file_path in affected_tests:
-                self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="test")
-            file_symbols = self._symbols_for_files([normalized_path], limit=20)
-            for target_symbol in file_symbols:
-                symbol_display = str(
-                    target_symbol.qualified_name or target_symbol.symbol_name or target_symbol.symbol_id or "?"
-                )
-                refs = self.intel_store.find_references(
-                    symbol_id=target_symbol.symbol_id,
-                    qualified_name=target_symbol.qualified_name,
-                    file_path=target_symbol.file_path,
-                    symbol_name=target_symbol.symbol_name,
-                )
-                for ref in refs:
-                    self._record_affected_file_reason(
-                        reasons_by_file,
-                        file_path=str(ref.file_path),
-                        reason="reference",
-                        symbol=str(ref.caller or symbol_display),
-                    )
-                callers = (
-                    self.intel_store.find_callers(
-                        symbol_id=target_symbol.symbol_id,
-                        qualified_name=target_symbol.qualified_name,
-                        file_path=target_symbol.file_path,
-                        symbol_name=target_symbol.symbol_name,
-                    )
-                    or []
-                )
-                for caller in callers:
-                    self._record_affected_file_reason(
-                        reasons_by_file,
-                        file_path=str(caller.file_path),
-                        reason="caller",
-                        symbol=str(caller.qualified_name or caller.symbol_name),
-                    )
-                callees = (
-                    self.intel_store.find_callees(
-                        symbol_id=target_symbol.symbol_id,
-                        qualified_name=target_symbol.qualified_name,
-                        file_path=target_symbol.file_path,
-                        symbol_name=target_symbol.symbol_name,
-                    )
-                    or []
-                )
-                for callee in callees:
-                    self._record_affected_file_reason(
-                        reasons_by_file,
-                        file_path=str(callee.file_path),
-                        reason="callee",
-                        symbol=str(callee.qualified_name or callee.symbol_name),
-                    )
-            affected_files = self._serialize_affected_files(reasons_by_file)
-            return ImpactResult(
-                target={"type": "file", "path": normalized_path},
-                target_type="file",
-                file_path=normalized_path,
-                affected_files=affected_files,
-                direct_importers=direct,
-                transitive_importers=transitive,
-                affected_tests=affected_tests,
-                risk_level=self._impact_risk_level(len(direct) + len(transitive)),
-                dead_code_candidates=self._dead_code_candidates(normalized_path),
-                provenance=_LOCAL_PROVENANCE,
-            )
-
-        resolved = self._resolve_symbol_targets(
-            operation_name="impact",
-            query=query or (target if uses_symbol_target else None),
-            symbol_id=symbol_id,
-            qualified_name=qualified_name,
-            symbol_name=symbol_name,
-            file_path=file_path,
-            kind=kind,
-            language=language,
-            file_glob=file_glob,
-        )
-        targets = cast(list[dict[str, Any]], resolved.get("targets") or [])
-        if not targets:
-            raise LookupError("no matching symbol was found")
-        return self._impact_for_symbol_targets(
-            targets=targets,
-            query=query or target,
-            ambiguity=cast(dict[str, Any] | None, resolved.get("ambiguity")),
-        )
-
-    def _impact_for_symbol_targets(
-        self,
-        *,
-        targets: list[dict[str, Any]],
-        query: str | None,
-        ambiguity: dict[str, Any] | None,
-    ) -> ImpactResult:
-        direct_importers: set[str] = set()
-        transitive_importers: set[str] = set()
-        affected_tests: set[str] = set()
-        dead_code_candidates: set[str] = set()
-        reasons_by_file: dict[str, dict[str, set[str]]] = {}
-        file_targets = sorted(
-            {str(target.get("file_path") or "") for target in targets if str(target.get("file_path") or "")}
-        )
-        for target in sorted(
-            targets,
-            key=lambda item: (str(item.get("file_path") or ""), int(item.get("start_line") or 0)),
-        ):
-            target_file = str(target["file_path"])
-            symbol_display = str(
-                target.get("qualified_name") or target.get("symbol_name") or target.get("symbol_id") or "?"
-            )
-            self._record_affected_file_reason(
-                reasons_by_file,
-                file_path=target_file,
-                reason="definition",
-                symbol=symbol_display,
-            )
-            direct, transitive, _ = self._import_blast_radius(target_file)
-            direct_importers.update(direct)
-            transitive_importers.update(transitive)
-
-            refs = self.intel_store.find_references(
-                symbol_id=cast(str | None, target.get("symbol_id")),
-                qualified_name=cast(str | None, target.get("qualified_name")),
-                file_path=target_file,
-                symbol_name=cast(str | None, target.get("symbol_name")),
-            )
-            for ref in refs:
-                self._record_affected_file_reason(
-                    reasons_by_file,
-                    file_path=str(ref.file_path),
-                    reason="reference",
-                    symbol=str(ref.caller or symbol_display),
-                )
-
-            callers = (
-                self.intel_store.find_callers(
-                    symbol_id=cast(str | None, target.get("symbol_id")),
-                    qualified_name=cast(str | None, target.get("qualified_name")),
-                    file_path=target_file,
-                    symbol_name=cast(str | None, target.get("symbol_name")),
-                )
-                or []
-            )
-            for caller in callers:
-                self._record_affected_file_reason(
-                    reasons_by_file,
-                    file_path=str(caller.file_path),
-                    reason="caller",
-                    symbol=str(caller.qualified_name or caller.symbol_name),
-                )
-
-            callees = (
-                self.intel_store.find_callees(
-                    symbol_id=cast(str | None, target.get("symbol_id")),
-                    qualified_name=cast(str | None, target.get("qualified_name")),
-                    file_path=target_file,
-                    symbol_name=cast(str | None, target.get("symbol_name")),
-                )
-                or []
-            )
-            for callee in callees:
-                self._record_affected_file_reason(
-                    reasons_by_file,
-                    file_path=str(callee.file_path),
-                    reason="callee",
-                    symbol=str(callee.qualified_name or callee.symbol_name),
-                )
-            dead_code_candidates.update(self._dead_code_candidates(target_file))
-
-        for importer in direct_importers:
-            self._record_affected_file_reason(reasons_by_file, file_path=importer, reason="direct_import")
-        for importer in transitive_importers:
-            self._record_affected_file_reason(reasons_by_file, file_path=importer, reason="transitive_import")
-        for file_path in reasons_by_file:
-            if self._is_test_path(file_path):
-                affected_tests.add(file_path)
-                self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="test")
-
-        grouped = self._serialize_affected_files(reasons_by_file)
-        primary_file = file_targets[0] if len(file_targets) == 1 else "<multiple>"
-        impacted_file_count = len(
-            [item for item in grouped if "definition" not in item["reasons"] or len(item["reasons"]) > 1]
-        )
-        return ImpactResult(
-            target={
-                "type": "symbol",
-                "query": query,
-                "match_count": len(targets),
-                "matches": [
-                    {
-                        "symbol_id": str(target.get("symbol_id") or ""),
-                        "qualified_name": str(target.get("qualified_name") or ""),
-                        "symbol_name": str(target.get("symbol_name") or ""),
-                        "file_path": str(target.get("file_path") or ""),
-                        "start_line": int(target.get("start_line") or 0),
-                    }
-                    for target in sorted(
-                        targets,
-                        key=lambda item: (
-                            str(item.get("file_path") or ""),
-                            int(item.get("start_line") or 0),
-                        ),
-                    )[:10]
-                ],
-                "ambiguity": ambiguity,
-            },
-            target_type="symbol",
-            file_path=primary_file,
-            affected_files=grouped,
-            direct_importers=sorted(direct_importers),
-            transitive_importers=sorted(transitive_importers),
-            affected_tests=sorted(affected_tests),
-            risk_level=self._impact_risk_level(impacted_file_count),
-            dead_code_candidates=sorted(dead_code_candidates),
-            provenance=_LOCAL_PROVENANCE,
-        )
 
     def changed_symbols(self, *, base_ref: str = "HEAD") -> list[SymbolRecord]:
         """Return indexed symbols whose files changed relative to a git ref."""
@@ -5502,112 +5156,6 @@ class CodeContextEngine:
                 tuple([self.repo_id, *seed_files, self.repo_id, *seed_files]),
             ).fetchall()
         return [str(row["neighbor"]) for row in rows if row["neighbor"]]
-
-    def _direct_importers(self, rel: str) -> list[str]:
-        with self._connect() as conn:
-            self._init_schema(conn)
-            rows = conn.execute(
-                """
-                SELECT DISTINCT source_file FROM imports
-                WHERE repo_id = ? AND target_file = ?
-                ORDER BY source_file
-                """,
-                (self.repo_id, rel),
-            ).fetchall()
-        return [str(row["source_file"]) for row in rows]
-
-    def _import_blast_radius(self, rel: str) -> tuple[list[str], list[str], set[str]]:
-        direct = self._direct_importers(rel)
-        transitive: list[str] = []
-        seen = set(direct)
-        frontier = set(direct)
-        for _ in range(3):
-            next_frontier: set[str] = set()
-            for item in sorted(frontier):
-                for importer in self._direct_importers(item):
-                    if importer not in seen:
-                        seen.add(importer)
-                        next_frontier.add(importer)
-                        transitive.append(importer)
-            frontier = next_frontier
-            if not frontier:
-                break
-        return direct, transitive, seen
-
-    def _impact_risk_level(self, total: int) -> Literal["low", "medium", "high", "critical"]:
-        if total <= 0:
-            return "low"
-        if total <= 3:
-            return "medium"
-        if total <= 10:
-            return "high"
-        return "critical"
-
-    def _is_test_path(self, file_path: str) -> bool:
-        return "/test" in file_path or Path(file_path).name.startswith("test_")
-
-    def _record_affected_file_reason(
-        self,
-        reasons_by_file: dict[str, dict[str, set[str]]],
-        *,
-        file_path: str,
-        reason: str,
-        symbol: str | None = None,
-    ) -> None:
-        bucket = reasons_by_file.setdefault(file_path, {"reasons": set(), "symbols": set()})
-        bucket["reasons"].add(reason)
-        if symbol:
-            bucket["symbols"].add(symbol)
-
-    def _serialize_affected_files(self, reasons_by_file: dict[str, dict[str, set[str]]]) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]] = []
-        for file_path in sorted(reasons_by_file.keys()):
-            item = reasons_by_file[file_path]
-            rows.append(
-                {
-                    "file_path": file_path,
-                    "reasons": sorted(item["reasons"]),
-                    "symbols": sorted(item["symbols"])[:8],
-                    "symbol_count": len(item["symbols"]),
-                }
-            )
-        return rows
-
-    def _group_affected_files(
-        self,
-        *,
-        direct_importers: list[str],
-        transitive_importers: list[str],
-        affected_tests: list[str],
-    ) -> list[dict[str, Any]]:
-        reasons_by_file: dict[str, dict[str, set[str]]] = {}
-        for file_path in direct_importers:
-            self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="direct_import")
-        for file_path in transitive_importers:
-            self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="transitive_import")
-        for file_path in affected_tests:
-            self._record_affected_file_reason(reasons_by_file, file_path=file_path, reason="test")
-        return self._serialize_affected_files(reasons_by_file)
-
-    def _dead_code_candidates(self, rel: str) -> list[str]:
-        with self._connect() as conn:
-            self._init_schema(conn)
-            rows = conn.execute(
-                """
-                SELECT symbol_name FROM symbols
-                WHERE repo_id = ? AND file_path = ? AND kind IN ('function', 'class', 'async_function')
-                ORDER BY start_line
-                LIMIT 50
-                """,
-                (self.repo_id, rel),
-            ).fetchall()
-        candidates: list[str] = []
-        haystack = "\n".join(self._read_file(path) for path in self._indexed_files() if path != rel)
-        for row in rows:
-            name = str(row["symbol_name"])
-            if not name.startswith("_") and re.search(rf"\b{re.escape(name)}\b", haystack) is None:
-                candidates.append(name)
-        return candidates
 
     def _indexed_files(self) -> list[str]:
         with self._connect() as conn:
