@@ -72,6 +72,36 @@ def write_overlay(path: Path, overlay: dict[str, list[str]]) -> bool:
         return False
 
 
+# Managed allow-list so the team overlay is committable even though projects
+# typically gitignore the whole .atelier/ directory. We never touch the repo's
+# top-level .gitignore — only this nested one inside .atelier/.
+_REPO_SHARE_GITIGNORE = (
+    "# Managed by Atelier. Keep per-user/cache files out of git but SHARE the\n"
+    "# team review knowledge. Add more '!name' lines to share other files.\n"
+    "*\n"
+    "!.gitignore\n"
+    "!review.json\n"
+)
+
+
+def ensure_repo_share_gitignore(repo_root: str | Path) -> None:
+    """Write <repo>/.atelier/.gitignore allow-listing the team overlay.
+
+    Idempotent and non-destructive: only created when absent, so a user's own
+    customised allow-list is never clobbered. (Note: for the re-include to take
+    effect the project's top-level ignore must target ``.atelier/*`` contents,
+    not the bare ``.atelier/`` directory — git cannot re-include under a fully
+    ignored directory.)
+    """
+    path = Path(repo_root) / ".atelier" / ".gitignore"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            path.write_text(_REPO_SHARE_GITIGNORE, encoding="utf-8")
+    except OSError:
+        pass
+
+
 def _repo_lessons(repo_root: str | Path) -> list[str]:
     blocks = Path(repo_root) / ".lessons" / "blocks"
     if not blocks.is_dir():
