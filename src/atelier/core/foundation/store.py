@@ -40,7 +40,7 @@ from atelier.core.foundation.models import (
     coerce_trace_json,
     to_jsonable,
 )
-from atelier.core.foundation.paths import resolve_lessons_root
+from atelier.core.foundation.paths import resolve_workspace_store_dir
 
 logger = logging.getLogger(__name__)
 
@@ -289,9 +289,15 @@ class ContextStore:
         self.root = Path(root).resolve()
         self.db_path = self.root / "atelier.db"
 
-        # Lessons (blocks/rubrics) are project-local by default for Git tracking.
-        # History (traces/raw) stays in the primary root.
-        _k_root = resolve_lessons_root(self.root, lessons_root)
+        # Blocks/rubrics are runtime *mirrors* of DB content, kept per-project under
+        # the global store root (NOT in .lessons, which is reserved for the user's
+        # real knowledge consumed by the knowledge-extraction KB). Per-project
+        # isolation prevents one project's mirror from polluting another's. An
+        # explicit lessons_root still overrides for backward compatibility.
+        if lessons_root is not None:
+            _k_root = Path(lessons_root).expanduser().resolve()
+        else:
+            _k_root = resolve_workspace_store_dir(self.root)
         self.blocks_dir = _k_root / "blocks"
         self.rubrics_dir = _k_root / "rubrics"
 

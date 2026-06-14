@@ -12,6 +12,7 @@ from atelier.core.foundation.models import (
     TraceLearning,
     ValidationResult,
 )
+from atelier.core.foundation.paths import resolve_workspace_store_dir
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
 
@@ -132,7 +133,7 @@ def test_trace_search_reindexes_existing_traces(tmp_path: Path) -> None:
 
 def test_init_syncs_template_blocks_without_warning(tmp_path: Path, caplog) -> None:
     root = tmp_path / ".atelier"
-    lessons_dir = tmp_path / ".lessons" / "blocks"
+    lessons_dir = resolve_workspace_store_dir(root) / "blocks"
     lessons_dir.mkdir(parents=True)
     (lessons_dir / "template_python-fastapi-api-boundaries.md").write_text(
         """---

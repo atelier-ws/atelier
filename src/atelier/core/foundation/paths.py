@@ -100,6 +100,23 @@ def _derive_workspace_root(root: Path | str | None) -> Path | None:
     return candidate
 
 
+def resolve_workspace_store_dir(root: Path | str | None = None, workspace_root: Path | str | None = None) -> Path:
+    """Return the per-project runtime subdir under the global store root.
+
+    Mirrors the convention already used by ``code_context.sqlite`` and
+    ``session_state.json``: ``<store_root>/workspaces/<sha256(workspace)[:12]>``.
+    Keeps per-project runtime artifacts (blocks/rubrics mirrors, etc.) isolated so
+    one project cannot pollute another, while living in the global store rather
+    than the Git-tracked ``.lessons`` (which is reserved for real knowledge).
+    """
+    from hashlib import sha256
+
+    store_root = Path(root).expanduser().resolve() if root is not None else default_store_root()
+    ws = resolve_workspace_root(workspace_root if workspace_root is not None else root)
+    digest = sha256(str(ws).encode("utf-8")).hexdigest()[:12]
+    return store_root / "workspaces" / digest
+
+
 __all__ = [
     "DEFAULT_LESSONS_DIRNAME",
     "DEFAULT_STORE_DIRNAME",
@@ -107,4 +124,5 @@ __all__ = [
     "resolve_lessons_root",
     "resolve_session_state_path",
     "resolve_workspace_root",
+    "resolve_workspace_store_dir",
 ]
