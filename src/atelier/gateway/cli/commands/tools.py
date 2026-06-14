@@ -188,6 +188,16 @@ def tools_call_cmd(
                 payload = json.loads(text)
             except json.JSONDecodeError:
                 payload = text
+        if as_json and not isinstance(payload, (dict, list)):
+            # Tools whose host-facing content is rendered text (read, grep, search,
+            # shell, ...) leave only a string here. For --json, recover the full
+            # structured result the dispatcher stashed in-process so the caller gets
+            # the real dict. CLI-side only -- the MCP host's main model never receives it.
+            from atelier.gateway.adapters.mcp_server import _tool_call_raw_result
+
+            raw = getattr(_tool_call_raw_result, "value", None)
+            if isinstance(raw, (dict, list)):
+                payload = raw
         if as_json:
             _emit(payload, as_json=True)
             return
