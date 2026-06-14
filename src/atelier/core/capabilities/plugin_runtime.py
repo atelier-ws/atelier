@@ -1765,6 +1765,137 @@ def build_codex_savings_line(root: str | Path, session_id: str) -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# Codex-exclusive surfaces (no Claude analog)
+# ---------------------------------------------------------------------------
+# PermissionRequest fires before Codex shows an approval prompt for an escalated
+# tool; a hook may return ``behavior: "deny"`` to block it outright. We use it
+# as defense-in-depth: auto-deny a small set of catastrophic command patterns
+# even when the approval policy would otherwise allow them. We deliberately do
+# NOT auto-*allow* here (trusted-tool approval is config.toml's job) so the hook
+# can only ever make the session safer, never looser.
+
+_CODEX_DANGEROUS_COMMAND_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+/\s*(\*\s*)?$",  # rm -rf /   or  rm -rf /*
+        r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+/\*",  # rm -rf /* (mid-line)
+        r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+~",  # rm -rf ~  /  ~/...
+        r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+\$HOME\b",
+        r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+\*",  # rm -rf *
+        r"\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+\.\.?\s*$",  # rm -rf .  /  ..
+        r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:",  # fork bomb
+        r"\bmkfs\.[a-z0-9]+\b",
+        r"\bdd\b[^\n]*\bof=/dev/(sd|nvme|disk)",
+        r">\s*/dev/(sd|nvme|disk)",
+        r"\bgit\s+push\b[^\n]*--force(?!-with-lease)",
+        r"\bchmod\s+-R\s+0?777\s+/(\s|$)",
+    )
+)
+
+
+def build_codex_permission_request_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """Auto-deny catastrophic shell commands at Codex's approval prompt.
+
+    Codex-only: there is no Claude analog for PermissionRequest. Returns a
+    ``behavior: "deny"`` decision for a small denylist of irreversible command
+    patterns; otherwise stays silent so the normal approval flow runs. Never
+    auto-approves.
+    """
+    del root  # reserved for symmetry with other build_codex_* entry points
+    if str(payload.get("hook_event_name") or "") != "PermissionRequest":
+        return {"no_output": True}
+    if _normalize_codex_tool(str(payload.get("tool_name") or "")) != "bash":
+        return {"no_output": True}
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return {"no_output": True}
+    command = _codex_command_text(tool_input)
+    if not command:
+        return {"no_output": True}
+    if not any(pattern.search(command) for pattern in _CODEX_DANGEROUS_COMMAND_PATTERNS):
+        return {"no_output": True}
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PermissionRequest",
+            "behavior": "deny",
+            "message": f"Atelier blocked an irreversible command pattern: {command[:120]}",
+        }
+    }
+
+
+def ingest_codex_exec_events(root: str | Path, session_id: str, lines: list[str]) -> int:
+    """Record ``codex exec --json`` item events into the run ledger.
+
+    Backfills telemetry for headless/CI runs and for tools that do not fire
+    interactive PostToolUse hooks. Parses the JSON-Lines event stream and
+    appends ``command_result`` / ``file_edit`` ledger events. Returns the number
+    of ledger events written. Fail-open and schema-defensive: unrecognized lines
+    are skipped. The exec item schema is Codex-version-dependent.
+    """
+    if not session_id:
+        return 0
+    events_to_add: list[dict[str, Any]] = []
+    for raw in lines:
+        try:
+            obj = json.loads(raw) if isinstance(raw, str) else raw
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(obj, dict) or obj.get("type") != "item.completed":
+            continue
+        item = obj.get("item")
+        if not isinstance(item, dict):
+            continue
+        item_type = str(item.get("type") or "")
+        if item_type == "command_execution":
+            command = str(item.get("command") or "")
+            if not command:
+                continue
+            rc = item.get("exit_code")
+            rc_int = rc if isinstance(rc, int) and not isinstance(rc, bool) else None
+            ok = rc_int == 0 if rc_int is not None else True
+            output = str(item.get("aggregated_output") or item.get("output") or "")
+            short = command[:80] + ("…" if len(command) > 80 else "")
+            events_to_add.append(
+                {
+                    "kind": "command_result",
+                    "at": _iso_now(),
+                    "summary": f"{'✓' if ok else '✗'} {short}",
+                    "payload": {
+                        "command": command,
+                        "stdout": output[:_CODEX_MAX_LEDGER_BYTES],
+                        "return_code": rc_int,
+                        "ok": ok,
+                        "event": "codex_exec",
+                    },
+                }
+            )
+        elif item_type == "file_change":
+            changes = item.get("changes")
+            paths: list[str] = []
+            if isinstance(changes, list):
+                for change in changes:
+                    candidate = change.get("path") if isinstance(change, dict) else None
+                    if isinstance(candidate, str) and candidate:
+                        paths.append(candidate)
+            single = item.get("path")
+            if isinstance(single, str) and single:
+                paths.append(single)
+            for path in paths:
+                events_to_add.append(
+                    {
+                        "kind": "file_edit",
+                        "at": _iso_now(),
+                        "summary": f"edited {Path(path).name}",
+                        "payload": {"path": path, "event": "codex_exec"},
+                    }
+                )
+    if not events_to_add:
+        return 0
+    _codex_append_ledger_events(root, session_id, events_to_add)
+    return len(events_to_add)
+
+
 def _tool_uses(turns: list[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
     return [(idx, tool) for idx, turn in enumerate(turns) for tool in (turn.get("tool_uses") or [])]
 

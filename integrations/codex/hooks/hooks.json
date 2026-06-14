@@ -32,6 +32,16 @@
         ]
       }
     ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"__ATELIER_REPO_SRC__${PYTHONPATH:+:${PYTHONPATH}}\" \"__ATELIER_PYTHON__\" \"${PLUGIN_ROOT}/hooks/permission_request.py\""
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "hooks": [
