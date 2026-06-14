@@ -687,6 +687,46 @@ def apply_attribution_setting(host_settings: dict[str, Any], enabled: bool) -> d
     return updated
 
 
+def apply_recall_settings(
+    host_settings: dict[str, Any],
+    *,
+    auto_index: bool | None = None,
+    embedder: str | None = None,
+    embed_model: str | None = None,
+) -> dict[str, Any]:
+    """Merge all-sessions Recall settings into a plugin_settings dict.
+
+    Only provided fields are changed (None = leave as-is). Top-level keys:
+    ``recallAutoIndex`` (background SessionStart indexer), ``recallEmbedder``
+    (local|openai|ollama), ``recallEmbedModel`` (e.g. an Ollama model name).
+    """
+    updated = dict(host_settings or {})
+    if auto_index is not None:
+        updated["recallAutoIndex"] = bool(auto_index)
+    if embedder is not None:
+        updated["recallEmbedder"] = str(embedder)
+    if embed_model is not None:
+        updated["recallEmbedModel"] = str(embed_model)
+    return updated
+
+
+def set_recall_settings(
+    root: str | Path,
+    *,
+    auto_index: bool | None = None,
+    embedder: str | None = None,
+    embed_model: str | None = None,
+) -> dict[str, Any]:
+    """Read-merge-write Recall settings into plugin_settings.json."""
+    path = plugin_settings_path(root)
+    settings = _read_json(path, {})
+    if not isinstance(settings, dict):
+        settings = {}
+    updated = apply_recall_settings(settings, auto_index=auto_index, embedder=embedder, embed_model=embed_model)
+    _write_json(path, updated)
+    return updated
+
+
 def rewrite_mcp_always_load(
     mcp_json: dict[str, Any] | None,
     enabled: bool,
