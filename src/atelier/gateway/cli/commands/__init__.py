@@ -149,6 +149,13 @@ def register(cli: click.Group) -> None:
         _IMPORT_FAILED = True
 
     try:
+        from .router import router_daemon_group
+
+        cli.add_command(router_daemon_group)
+    except (ModuleNotFoundError, ImportError):
+        _IMPORT_FAILED = True
+
+    try:
         from .defaults import defaults_group
 
         _h(defaults_group)
