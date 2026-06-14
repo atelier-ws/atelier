@@ -59,6 +59,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+import yaml
 from atelier.core.capabilities.host_runners import (
     CLAUDE_PROVIDER_PRESETS,
     build_driver_command,
@@ -366,19 +367,110 @@ class ArmResult:
     thinking_tokens: int = 0
     model_usage: dict[str, dict[str, int]] = field(default_factory=dict)
     timed_out: bool = False
+    workspace: str = ""
 
 
-def _calculate_savings(flow_path: Path) -> tuple[float, int]:
-    if not flow_path.exists():
-        return 0.0, 0
+def _result_total_tokens(result: ArmResult) -> int:
+    """Total billed tokens for one run (same basis the cost is charged on)."""
+    return result.input_tokens + result.cache_read_tokens + result.cache_creation_tokens + result.output_tokens
+
+
+def _apply_savings(results: list[ArmResult]) -> None:
+    """Backfill real cross-arm savings in place.
+
+    Each non-baseline run is compared against the baseline run of the *same task
+    and rep*: ``saved_usd``/``saved_tokens`` is how much less (positive) or more
+    (negative) it spent than that baseline. Baseline rows are the reference and
+    stay zero; runs with no matching baseline also stay zero (savings undefined).
+    """
+    baseline_by_key = {(r.task, r.rep): r for r in results if r.arm == "baseline"}
+    for r in results:
+        base = None if r.arm == "baseline" else baseline_by_key.get((r.task, r.rep))
+        if base is None:
+            r.saved_usd = 0.0
+            r.saved_tokens = 0
+        else:
+            r.saved_usd = round(base.cost_usd - r.cost_usd, 4)
+            r.saved_tokens = _result_total_tokens(base) - _result_total_tokens(r)
+
+
+def _task_verify(task: Task) -> tuple[str | None, str]:
+    """Read the objective grading command + mode from the task's config.yaml.
+
+    Returns ``(command, mode)``. ``mode`` is ``"binary"`` (the gate IS the grade)
+    or ``"floor"`` (the gate must pass, then the LLM judge scores conformance).
+    Returns ``(None, "binary")`` when the task defines no verify block.
+    """
+    config_path = task.prompt_path().parent / "config.yaml"
+    if not config_path.exists():
+        return None, "binary"
     try:
-        # Use wire_savings to aggregate usage from the flow file
-        stats = aggregate("flow", flow_records(str(flow_path)))
-        # Simplified assumption: savings are compared against a baseline if available.
-        # Here we just return the captured usage.
-        return 0.0, stats.usage.total
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     except Exception:
-        return 0.0, 0
+        return None, "binary"
+    verify = data.get("verify") if isinstance(data, dict) else None
+    if isinstance(verify, dict) and verify.get("command"):
+        mode = "floor" if verify.get("mode") == "floor" else "binary"
+        return str(verify["command"]), mode
+    return None, "binary"
+
+
+def _run_verify(task: Task, command: str, workspace: str) -> tuple[bool, str]:
+    """Run a task's verify command in its workspace; pass == exit code 0."""
+    ws = Path(workspace)
+    env = dict(os.environ)
+    venv = ws / ".venv"
+    if task.language == "python" and venv.is_dir():
+        env["VIRTUAL_ENV"] = str(venv)
+        env["PATH"] = str(venv / "bin") + os.pathsep + env.get("PATH", "")
+    try:
+        proc = subprocess.run(
+            command,
+            shell=True,
+            cwd=str(ws),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "verify command timed out (600s)"
+    lines = (proc.stderr or proc.stdout or "").strip().splitlines()
+    tail = lines[-1][:200] if lines else ""
+    return proc.returncode == 0, f"verify exit={proc.returncode}: {tail}"
+
+
+def _apply_verify(results: list[ArmResult]) -> None:
+    """Objectively grade results whose task defines a `verify` command.
+
+    Runs the command in the produced workspace and sets correct/score from the
+    exit code (1.0 pass / 0.0 fail), marking ``judge_model='verify'`` so the LLM
+    judge skips the row. Tasks with no verify command -- or whose workspace is
+    no longer on disk -- are left untouched for the judge.
+    """
+    for r in results:
+        task = BY_ID.get(r.task)
+        if task is None or not r.ok or not r.workspace:
+            continue
+        if not Path(r.workspace).is_dir():
+            continue
+        command, mode = _task_verify(task)
+        if not command:
+            continue
+        ok, detail = _run_verify(task, command, r.workspace)
+        if ok:
+            # Ground truth: a passing gate proves the run genuinely did the task,
+            # so override any soft keyword-overlap validity false-negative.
+            r.valid = True
+            r.validity_reason = ""
+        if mode == "floor" and ok:
+            # Floor passed: leave correct/score for the LLM judge to score conformance.
+            r.judge_reason = f"floor passed ({detail})"[:300]
+            continue
+        r.correct = ok
+        r.score = 1.0 if ok else 0.0
+        r.judge_model = "verify"
+        r.judge_reason = (detail if mode == "binary" else f"floor failed ({detail})")[:300]
 
 
 def _fmt_hms(seconds: float) -> str:
@@ -459,9 +551,6 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
     except json.JSONDecodeError:
         return ArmResult(task, arm, rep, False, 0.0, 0, 0, 0, 0, 0, 0, 0, [], True, stdout[:200], str(flow_path))
 
-    # Calculate savings from flow file if available
-    saved_usd, saved_tokens = _calculate_savings(flow_path)
-
     u = d.get("usage", {}) or {}
     model_usage = d.get("modelUsage", {}) or {}
     cost_usd = float(d.get("total_cost_usd", 0.0) or 0.0)
@@ -484,8 +573,6 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
         rep=rep,
         ok=not d.get("is_error", False),
         cost_usd=cost_usd,
-        saved_usd=saved_usd,
-        saved_tokens=saved_tokens,
         duration_ms=int(d.get("duration_ms", 0) or 0),
         duration_api_ms=int(d.get("duration_api_ms", 0) or 0),
         num_turns=int(d.get("num_turns", 0) or 0),
@@ -645,6 +732,21 @@ def _extract_keywords(text: str, *, limit: int = 24) -> set[str]:
     return {token for token, _count in ranked[:limit]}
 
 
+def _extract_identifiers(text: str) -> set[str]:
+    """Code identifiers (CamelCase, snake_case, `backticked` symbols) from text.
+
+    A response that names the task's real symbols or filenames is engaging with
+    it even when prose-word overlap is low -- a stronger on-topic signal than
+    plain words, which the keyword heuristic alone misses on terse summaries.
+    """
+    ids: set[str] = set()
+    for span in re.findall(r"`([^`]+)`", text):
+        ids.update(re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", span))
+    ids.update(re.findall(r"\b[A-Z][a-z]+[A-Z][A-Za-z0-9]+\b", text))  # CamelCase
+    ids.update(re.findall(r"\b[a-z][a-z0-9]*_[a-z0-9_]+\b", text))  # snake_case
+    return {i.lower() for i in ids if i.lower() not in STOPWORDS}
+
+
 def _validate_result_excerpt(task: Task, excerpt: str) -> tuple[bool, str, bool]:
     """Return ``(valid, reason, hard)``.
 
@@ -671,14 +773,18 @@ def _validate_result_excerpt(task: Task, excerpt: str) -> tuple[bool, str, bool]
         return False, "generic placeholder response", True
     if text.lstrip().startswith('{"title"'):
         return False, "session-title payload instead of task response", True
-    task_keywords = _extract_keywords(f"{task.prompt()}\n{_task_description(task)}")
+    task_text = f"{task.prompt()}\n{_task_description(task)}"
+    task_keywords = _extract_keywords(task_text)
     # Match task keywords against ALL response tokens, not the response's own
     # top-N frequency ranking: long structured summaries (tables, test rosters)
     # rank repeated table words above task terms and false-positive as off-topic.
     response_keywords = {
         token for token in re.findall(r"[A-Za-z][A-Za-z0-9_+-]{3,}", lowered) if token not in STOPWORDS
     }
-    overlap = task_keywords & response_keywords
+    # Fold in code identifiers (symbols/filenames) the response names: a stronger
+    # on-topic signal than prose words, so a terse summary that cites the right
+    # symbols is not flagged off-topic for low word overlap.
+    overlap = (task_keywords & response_keywords) | (_extract_identifiers(task_text) & response_keywords)
     list_item_count = sum(
         1 for line in text.splitlines() if line.lstrip().startswith("- ") or re.match(r"^\s*\d+\.\s", line) is not None
     )
@@ -965,6 +1071,7 @@ def run_arm(
             if stderr_text.strip():
                 excerpt = f"{excerpt}\n\n[stderr]\n{stderr_text.strip()}"
             res = _recover_flow_result(flow_path, task.id, arm, rep, model, wall_duration_ms, excerpt, timed_out=True)
+            res.workspace = str(ws)
             return _apply_result_validity(task, res)
         wall_duration_ms = int((time.time() - started) * 1000)
         res = _parse_cli_result(proc.stdout, flow_path, task.id, arm, rep, cli_driver, wall_duration_ms)
@@ -974,6 +1081,7 @@ def run_arm(
                 res.result_excerpt = f"{res.result_excerpt}\n\n[stderr]\n{diagnostics}"[-4000:]
             else:
                 res.result_excerpt = diagnostics[-4000:]
+        res.workspace = str(ws)
         return _apply_result_validity(task, res)
     finally:
         if mitm is not None:
@@ -1027,6 +1135,8 @@ def judge_results(
     agent_env: dict[str, str] | None = None,
 ) -> None:
     for result in results:
+        if result.judge_model == "verify":
+            continue  # already graded by an objective per-task verify command
         if not result.ok:
             result.correct = False
             result.score = 0.0
@@ -1258,6 +1368,7 @@ def _detail_rows(results: list[ArmResult]) -> list[dict[str, object]]:
     rows = [asdict(result) for result in results]
     for row in rows:
         row.pop("model_usage", None)
+        row.pop("workspace", None)
     return rows
 
 
@@ -1385,6 +1496,13 @@ def _load_existing_results(run_dir: Path) -> list[ArmResult]:
     return [
         ArmResult(**json.loads(line)) for line in results_path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
+
+
+def _write_results_jsonl(run_dir: Path, results: list[ArmResult]) -> None:
+    (run_dir / "results.jsonl").write_text(
+        "".join(json.dumps(asdict(result)) + "\n" for result in results),
+        encoding="utf-8",
+    )
 
 
 def write_csv_artifacts(run_dir: Path, results: list[ArmResult]) -> None:
@@ -1585,6 +1703,11 @@ def main() -> int:
         help="Use 'arm' only for throughput experiments; 'task' preserves fair per-task comparisons.",
     )
     p.add_argument("--judge", action="store_true", help="Score correctness with an LLM judge")
+    p.add_argument(
+        "--no-verify",
+        action="store_true",
+        help="Skip objective per-task verify gates (cargo test/pytest/...); they run by default",
+    )
     p.add_argument("--judge-model", default=None)
     p.add_argument("--judge-agent-command", default=None)
     p.add_argument("--agent-command", default="claude", help="Claude-compatible command to run each arm")
@@ -1654,6 +1777,8 @@ def main() -> int:
     if args.report:
         rdir = Path(args.report)
         report_results = _load_existing_results(rdir)
+        if not args.no_verify:
+            _apply_verify(report_results)
         if args.judge:
             judge_results(
                 report_results,
@@ -1662,10 +1787,8 @@ def main() -> int:
                 timeout=args.timeout,
                 agent_env=agent_env,
             )
-            (rdir / "results.jsonl").write_text(
-                "".join(json.dumps(asdict(result)) + "\n" for result in report_results),
-                encoding="utf-8",
-            )
+        _apply_savings(report_results)
+        _write_results_jsonl(rdir, report_results)
         write_csv_artifacts(rdir, report_results)
         rep_txt = report(report_results)
         (rdir / "report.txt").write_text(rep_txt)
@@ -1816,6 +1939,8 @@ def main() -> int:
             bridge.terminate()
             with contextlib.suppress(Exception):
                 bridge.wait(timeout=10)
+    if not args.no_verify:
+        _apply_verify(results)
     if args.judge:
         judge_results(
             results,
@@ -1824,10 +1949,8 @@ def main() -> int:
             timeout=args.timeout,
             agent_env=agent_env,
         )
-        (run_dir / "results.jsonl").write_text(
-            "".join(json.dumps(asdict(result)) + "\n" for result in results),
-            encoding="utf-8",
-        )
+    _apply_savings(results)
+    _write_results_jsonl(run_dir, results)
     write_csv_artifacts(run_dir, results)
     rep_txt = report(results)
     (run_dir / "report.txt").write_text(rep_txt)
