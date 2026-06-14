@@ -1,7 +1,7 @@
 """Atelier Gateway — connectors and interfaces.
 
 This tier enables external access:
-- integrations: Host integrations (Claude, Codex, Copilot, Gemini, OpenCode)
+- integrations: Host integrations (Claude, Codex, Copilot, OpenCode)
 - hosts: Session environment parsers
 - adapters: Generic adapter patterns
 - cli: Terminal interface
