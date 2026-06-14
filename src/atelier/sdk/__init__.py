@@ -20,7 +20,6 @@ from __future__ import annotations
 from atelier.gateway.sdk import (
     AtelierClient,
     ContextResult,
-    FailureAnalysisResult,
     LessonDecisionResult,
     LessonInboxResult,
     LocalClient,
@@ -35,7 +34,6 @@ __all__ = [
     "AtelierClient",
     "AtelierMiddleware",
     "ContextResult",
-    "FailureAnalysisResult",
     "GeminiADKMiddleware",
     "LessonDecisionResult",
     "LessonInboxResult",

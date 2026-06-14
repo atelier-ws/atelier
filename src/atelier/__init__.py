@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from atelier.core.foundation.models import (
-        FailureCluster,
         PlanCheckResult,
         ReasonBlock,
         RescueResult,
@@ -29,7 +28,6 @@ if TYPE_CHECKING:
 
 
 _LAZY_EXPORTS = {
-    "FailureCluster": ("atelier.core.foundation.models", "FailureCluster"),
     "PlanCheckResult": ("atelier.core.foundation.models", "PlanCheckResult"),
     "ReasonBlock": ("atelier.core.foundation.models", "ReasonBlock"),
     "RescueResult": ("atelier.core.foundation.models", "RescueResult"),
@@ -79,7 +77,6 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
     "AtelierClient",
-    "FailureCluster",
     "LocalClient",
     "MCPClient",
     "PlanCheckResult",

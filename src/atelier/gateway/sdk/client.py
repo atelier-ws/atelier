@@ -11,7 +11,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromotion
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import (
-    FailureCluster,
     ReasonBlock,
     RescueResult,
     Rubric,
@@ -90,12 +89,6 @@ class MemoryRecallResult(BaseModel):
 
     passages: builtins.list[MemoryRecallPassage] = Field(default_factory=list)
     recall_id: str
-
-
-class FailureAnalysisResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    clusters: builtins.list[FailureCluster] = Field(default_factory=list)
 
 
 class LessonInboxResult(BaseModel):
@@ -213,14 +206,6 @@ class TraceClient:
         return self._client._list_traces(domain=domain, status=status, limit=limit)
 
 
-class FailureAnalyzerClient:
-    def __init__(self, client: AtelierClient) -> None:
-        self._client = client
-
-    def analyze(self, *, domain: str | None = None, limit: int = 100) -> FailureAnalysisResult:
-        return self._client.analyze_failures(domain=domain, limit=limit)
-
-
 class EvalClient:
     def __init__(self, client: AtelierClient) -> None:
         self._client = client
@@ -333,7 +318,6 @@ class AtelierClient(ABC):
         self.blocks = self.reasonblocks
         self.rubrics = RubricClient(self)
         self.traces = TraceClient(self)
-        self.failures = FailureAnalyzerClient(self)
         self.evals = EvalClient(self)
         self.savings = SavingsClient(self)
         self.memory = MemoryClient(self)
@@ -424,10 +408,6 @@ class AtelierClient(ABC):
         validation_results: builtins.list[ValidationResult] | None = None,
         learnings: builtins.list[str | dict[str, Any] | TraceLearning] | None = None,
     ) -> TraceRecordResult:
-        raise NotImplementedError
-
-    @abstractmethod
-    def analyze_failures(self, *, domain: str | None = None, limit: int = 100) -> FailureAnalysisResult:
         raise NotImplementedError
 
     @abstractmethod

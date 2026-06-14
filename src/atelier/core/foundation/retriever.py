@@ -509,11 +509,19 @@ def retrieve(
     scored.sort(key=lambda s: s.score, reverse=True)
     if dedup:
         scored = deduplicate_scored_blocks(scored)
+
+    # E3 blocks are always injected, so they consume the budget first; pack
+    # E2/E1 against the remaining budget (clamped at 0) rather than ignoring
+    # the E3 cost entirely.
+    e2_e1_budget = token_budget
+    if token_budget is not None and token_budget >= 0:
+        e3_tokens = sum(count_reasonblock_tokens(b) for b in e3_blocks)
+        e2_e1_budget = max(0, token_budget - e3_tokens)
     e2_e1_results = pack_by_reasonblock_token_budget(
         scored,
         lambda item: item.block,
         limit=limit,
-        token_budget=token_budget,
+        token_budget=e2_e1_budget,
     )
 
     # Prepend E3 blocks (always injected, not subject to limit or min_score).

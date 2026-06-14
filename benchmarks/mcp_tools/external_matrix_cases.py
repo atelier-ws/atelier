@@ -15,8 +15,18 @@ DEFAULT_CASE_QUOTAS: dict[str, int] = {
     "exact_search": 100,
     "substring_search": 100,
     "file_outline": 100,
+    "references": 100,
+    "callers": 100,
+    "callees": 100,
+    "fuzzy_symbol": 100,
+    "structural_search": 100,
+    "semantic_search": 100,
     "nohit_search": 100,
 }
+
+# Families whose corpus is opportunistic: generate up to the quota, but do not
+# fail if the repository yields fewer well-posed cases.
+_BEST_EFFORT_FAMILIES = frozenset({"nohit_search", "structural_search", "semantic_search"})
 
 
 @dataclass(frozen=True)
@@ -68,13 +78,16 @@ class _SymbolCollector(ast.NodeVisitor):
         kind = "method" if self.class_stack else "function"
         qualified_name = ".".join((*self.class_stack, node.name))
         self.symbols.append((node.name, node.lineno, kind, qualified_name))
-        self.generic_visit(node)
+        # Do NOT descend into the function body: function-local closures (e.g.
+        # a `consider_rows` defined inside another function) are not navigable
+        # symbols and code-intel providers do not reliably index them, so they
+        # make unfair retrieval ground truth. Methods are still captured because
+        # visit_ClassDef descends into class bodies.
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         kind = "method" if self.class_stack else "function"
         qualified_name = ".".join((*self.class_stack, node.name))
         self.symbols.append((node.name, node.lineno, kind, qualified_name))
-        self.generic_visit(node)
 
 
 def _repo_python_files(repo_root: Path) -> list[Path]:
@@ -125,7 +138,22 @@ def _unique_symbol_facts(symbol_facts: Iterable[SymbolFact]) -> list[SymbolFact]
     return [symbol for symbol in symbol_facts if counts[symbol.name] == 1]
 
 
-def _unique_substring_queries(symbol_facts: Iterable[SymbolFact]) -> list[tuple[str, SymbolFact]]:
+def _unique_substring_queries(
+    symbol_facts: Iterable[SymbolFact],
+    *,
+    all_symbol_names: Iterable[str],
+) -> list[tuple[str, SymbolFact]]:
+    """(token, symbol) pairs where *token* (>=5 chars) identifies exactly one symbol.
+
+    Uniqueness is enforced under true substring matching -- the semantics a
+    substring search actually uses -- not merely underscore-token splitting. A
+    token like ``adapter`` splits out of only ``_deleted_history_adapter`` yet is a
+    substring of ~19 camelCase ``*Adapter`` names; querying it would match all of
+    them, so the expected symbol cannot be uniquely retrieved and the token is
+    rejected. This keeps every substring case well-posed: the query maps to a
+    single expected symbol, so any competent provider can score it.
+    """
+    names = [name.lower() for name in all_symbol_names]
     token_to_symbols: dict[str, list[SymbolFact]] = defaultdict(list)
     for symbol in symbol_facts:
         tokens = [part for part in symbol.name.split("_") if len(part) >= 5]
@@ -138,7 +166,236 @@ def _unique_substring_queries(symbol_facts: Iterable[SymbolFact]) -> list[tuple[
         symbol = symbols[0]
         if token == symbol.name.lower():
             continue
+        # Reject tokens that are a substring of any OTHER symbol name: the query
+        # would match multiple symbols and the expected answer is not unique.
+        if sum(1 for name in names if token in name) != 1:
+            continue
         pairs.append((token, symbol))
+    return pairs
+
+
+def _collect_reference_facts(
+    repo_root: Path,
+    unique_symbols: list[SymbolFact],
+) -> list[tuple[SymbolFact, tuple[str, ...]]]:
+    """For each uniquely-named symbol, the other files that reference its name.
+
+    Ground truth is built by neutral AST identifier analysis (every ``Name``/
+    ``Attribute`` occurrence), NOT any provider's index -- otherwise the
+    provider under test would define its own answer key. Because the symbols are
+    globally name-unique, an identifier occurrence is a sound proxy for a
+    reference. Symbols with no external references are skipped (nothing to find).
+    """
+    name_to_files: dict[str, set[str]] = defaultdict(set)
+    for path in _repo_python_files(repo_root):
+        relative_path = path.relative_to(repo_root).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name):
+                names.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                names.add(node.attr)
+        for name in names:
+            name_to_files[name].add(relative_path)
+    facts: list[tuple[SymbolFact, tuple[str, ...]]] = []
+    for symbol in unique_symbols:
+        referencing = tuple(sorted(name_to_files.get(symbol.name, set()) - {symbol.path}))
+        if referencing:
+            facts.append((symbol, referencing))
+    return facts
+
+
+class _CallEdgeCollector(ast.NodeVisitor):
+    """Collect (enclosing-function-qualname, callee-name) edges from one module."""
+
+    def __init__(self) -> None:
+        self.name_stack: list[str] = []
+        self.func_qual_stack: list[str] = []
+        self.edges: list[tuple[str, str]] = []
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.name_stack.append(node.name)
+        self.generic_visit(node)
+        self.name_stack.pop()
+
+    def _enter_func(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        qualified_name = ".".join((*self.name_stack, node.name))
+        self.name_stack.append(node.name)
+        self.func_qual_stack.append(qualified_name)
+        self.generic_visit(node)
+        self.func_qual_stack.pop()
+        self.name_stack.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._enter_func(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._enter_func(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        target = node.func
+        callee = (
+            target.id if isinstance(target, ast.Name) else target.attr if isinstance(target, ast.Attribute) else None
+        )
+        if callee and self.func_qual_stack:
+            self.edges.append((self.func_qual_stack[-1], callee))
+        self.generic_visit(node)
+
+
+def _collect_call_facts(
+    repo_root: Path,
+    unique_symbols: list[SymbolFact],
+) -> tuple[list[tuple[SymbolFact, tuple[str, ...]]], list[tuple[SymbolFact, tuple[str, ...], tuple[str, ...]]]]:
+    """Neutral AST call graph: returns (callers_facts, callees_facts).
+
+    callers_facts: (symbol, files that call it) for uniquely-named functions/methods
+    with at least one external caller. callees_facts: (symbol, callee def files,
+    callee names) for functions that call other uniquely-named repo symbols.
+    Built from ``ast.Call`` edges, NOT a provider index, so it is a fair answer key.
+    """
+    name_to_symbol = {symbol.name: symbol for symbol in unique_symbols}
+    caller_files_by_callee: dict[str, set[str]] = defaultdict(set)
+    callee_names_by_caller: dict[str, set[str]] = defaultdict(set)
+    for path in _repo_python_files(repo_root):
+        relative_path = path.relative_to(repo_root).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        collector = _CallEdgeCollector()
+        collector.visit(tree)
+        for caller_qualified_name, callee_name in collector.edges:
+            caller_files_by_callee[callee_name].add(relative_path)
+            callee_names_by_caller[caller_qualified_name].add(callee_name)
+    callable_kinds = {"function", "method"}
+    callers_facts: list[tuple[SymbolFact, tuple[str, ...]]] = []
+    callees_facts: list[tuple[SymbolFact, tuple[str, ...], tuple[str, ...]]] = []
+    for symbol in unique_symbols:
+        if symbol.kind not in callable_kinds:
+            continue
+        caller_files = tuple(sorted(caller_files_by_callee.get(symbol.name, set()) - {symbol.path}))
+        if caller_files:
+            callers_facts.append((symbol, caller_files))
+        callee_names = tuple(
+            sorted(
+                name
+                for name in callee_names_by_caller.get(symbol.qualified_name, set())
+                if name in name_to_symbol and name != symbol.name
+            )
+        )
+        if callee_names:
+            callee_files = tuple(dict.fromkeys(name_to_symbol[name].path for name in callee_names))
+            callees_facts.append((symbol, callee_files, callee_names))
+    return callers_facts, callees_facts
+
+
+def _fuzzy_symbol_queries(
+    unique_symbols: list[SymbolFact],
+    *,
+    all_symbol_names: Iterable[str],
+) -> list[tuple[str, SymbolFact]]:
+    """(typo, symbol) pairs: a single adjacent-character transposition of the name.
+
+    The typo must not collide with any real symbol name, so it stays a well-posed
+    fuzzy query (one intended target). Tests typo-tolerant symbol lookup.
+    """
+    existing = {name.lower() for name in all_symbol_names}
+    pairs: list[tuple[str, SymbolFact]] = []
+    for symbol in unique_symbols:
+        name = symbol.name
+        if len(name) < 6:
+            continue
+        pivot = len(name) // 2 - 1
+        if name[pivot] == name[pivot + 1]:
+            continue
+        typo = name[:pivot] + name[pivot + 1] + name[pivot] + name[pivot + 2 :]
+        lowered = typo.lower()
+        if lowered == name.lower() or lowered in existing:
+            continue
+        pairs.append((typo, symbol))
+    return pairs
+
+
+def _decorator_name(node: ast.expr) -> str | None:
+    """Bare decorator name for ``@foo`` / ``@foo(...)``; skip attribute decorators."""
+    target = node.func if isinstance(node, ast.Call) else node
+    return target.id if isinstance(target, ast.Name) else None
+
+
+def _collect_structural_facts(repo_root: Path) -> list[tuple[str, tuple[str, ...]]]:
+    """(ast-grep pattern, files matching it) for decorator-usage patterns.
+
+    Structural search differs from name lookup: ``@foo`` finds every definition
+    decorated with ``foo``. Ground truth is the neutral AST set of files that
+    actually apply the decorator. Decorators applied in too many files are
+    dropped to keep the answer key checkable.
+    """
+    decorator_to_files: dict[str, set[str]] = defaultdict(set)
+    for path in _repo_python_files(repo_root):
+        relative_path = path.relative_to(repo_root).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+                for decorator in node.decorator_list:
+                    name = _decorator_name(decorator)
+                    if name and len(name) >= 4:
+                        decorator_to_files[name].add(relative_path)
+    facts: list[tuple[str, tuple[str, ...]]] = []
+    for name, files in sorted(decorator_to_files.items()):
+        if 1 <= len(files) <= 6:
+            facts.append((f"@{name}", tuple(sorted(files))))
+    return facts
+
+
+def _first_docstring_sentence(docstring: str) -> str:
+    paragraph = docstring.strip().split("\n\n", 1)[0].replace("\n", " ").strip()
+    for terminator in (". ", ".\n", "; "):
+        index = paragraph.find(terminator)
+        if index > 0:
+            paragraph = paragraph[:index]
+            break
+    return " ".join(paragraph.split())[:160].rstrip(".")
+
+
+def _collect_semantic_facts(
+    repo_root: Path,
+    unique_symbols: list[SymbolFact],
+) -> list[tuple[str, SymbolFact]]:
+    """(natural-language query, symbol) from each symbol's docstring first sentence.
+
+    Ground truth is the documenting symbol itself. Only embedding-backed providers
+    can answer this, so it mostly profiles Atelier's semantic mode rather than
+    comparing across the matrix.
+    """
+    by_key = {(symbol.path, symbol.name): symbol for symbol in unique_symbols}
+    pairs: list[tuple[str, SymbolFact]] = []
+    for path in _repo_python_files(repo_root):
+        relative_path = path.relative_to(repo_root).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+                continue
+            symbol = by_key.get((relative_path, node.name))
+            if symbol is None:
+                continue
+            docstring = ast.get_docstring(node)
+            if not docstring:
+                continue
+            sentence = _first_docstring_sentence(docstring)
+            # Skip queries that just echo the symbol name (not a semantic test).
+            if len(sentence) < 24 or symbol.name.lower() in sentence.lower():
+                continue
+            pairs.append((sentence, symbol))
     return pairs
 
 
@@ -153,16 +410,28 @@ def generate_case_manifest(
 ) -> list[ExternalBenchCase]:
     symbol_facts, outline_facts = _collect_symbol_facts(repo_root)
     unique_symbols = _unique_symbol_facts(symbol_facts)
-    substring_pairs = _unique_substring_queries(unique_symbols)
+    substring_pairs = _unique_substring_queries(
+        unique_symbols,
+        all_symbol_names=[symbol.name for symbol in symbol_facts],
+    )
+    reference_facts = _collect_reference_facts(repo_root, unique_symbols)
+    callers_facts, callees_facts = _collect_call_facts(repo_root, unique_symbols)
+    fuzzy_pairs = _fuzzy_symbol_queries(unique_symbols, all_symbol_names=[symbol.name for symbol in symbol_facts])
+    structural_facts = _collect_structural_facts(repo_root)
+    semantic_pairs = _collect_semantic_facts(repo_root, unique_symbols)
 
     required = {
         "exact_symbol": len(unique_symbols),
         "exact_search": len(unique_symbols),
         "substring_search": len(substring_pairs),
         "file_outline": len(outline_facts),
+        "references": len(reference_facts),
+        "callers": len(callers_facts),
+        "callees": len(callees_facts),
+        "fuzzy_symbol": len(fuzzy_pairs),
     }
     for family, quota in case_quotas.items():
-        if family == "nohit_search":
+        if family in _BEST_EFFORT_FAMILIES:
             continue
         if required.get(family, quota) < quota:
             raise ValueError(
@@ -230,6 +499,109 @@ def generate_case_manifest(
             )
         )
 
+    for index, (symbol, referencing) in enumerate(
+        reference_facts[: case_quotas.get("references", 0)],
+        start=1,
+    ):
+        cases.append(
+            ExternalBenchCase(
+                case_id=f"references-{index:04d}",
+                family="references",
+                query=symbol.name,
+                path=symbol.path,
+                symbol_name=symbol.name,
+                expected_paths=referencing,
+                expected_names=(symbol.name,),
+                metadata={
+                    "qualified_name": symbol.qualified_name,
+                    "kind": symbol.kind,
+                    "def_line": str(symbol.line),
+                },
+            )
+        )
+
+    for index, (symbol, caller_files) in enumerate(
+        callers_facts[: case_quotas.get("callers", 0)],
+        start=1,
+    ):
+        cases.append(
+            ExternalBenchCase(
+                case_id=f"callers-{index:04d}",
+                family="callers",
+                query=symbol.name,
+                path=symbol.path,
+                symbol_name=symbol.name,
+                expected_paths=caller_files,
+                expected_names=(symbol.name,),
+                metadata={"qualified_name": symbol.qualified_name, "kind": symbol.kind},
+            )
+        )
+
+    for index, (symbol, callee_files, callee_names) in enumerate(
+        callees_facts[: case_quotas.get("callees", 0)],
+        start=1,
+    ):
+        cases.append(
+            ExternalBenchCase(
+                case_id=f"callees-{index:04d}",
+                family="callees",
+                query=symbol.name,
+                path=symbol.path,
+                symbol_name=symbol.name,
+                expected_paths=callee_files,
+                expected_names=callee_names,
+                metadata={"qualified_name": symbol.qualified_name, "kind": symbol.kind},
+            )
+        )
+
+    for index, (typo, symbol) in enumerate(
+        fuzzy_pairs[: case_quotas.get("fuzzy_symbol", 0)],
+        start=1,
+    ):
+        cases.append(
+            ExternalBenchCase(
+                case_id=f"fuzzy-symbol-{index:04d}",
+                family="fuzzy_symbol",
+                query=typo,
+                path=symbol.path,
+                symbol_name=symbol.name,
+                expected_paths=(symbol.path,),
+                expected_names=(symbol.name,),
+                metadata={"qualified_name": symbol.qualified_name, "kind": symbol.kind},
+            )
+        )
+
+    for index, (pattern, matching_files) in enumerate(
+        structural_facts[: case_quotas.get("structural_search", 0)],
+        start=1,
+    ):
+        cases.append(
+            ExternalBenchCase(
+                case_id=f"structural-search-{index:04d}",
+                family="structural_search",
+                query=pattern,
+                expected_paths=matching_files,
+                expected_names=(pattern,),
+            )
+        )
+
+    for index, (sentence, symbol) in enumerate(
+        semantic_pairs[: case_quotas.get("semantic_search", 0)],
+        start=1,
+    ):
+        cases.append(
+            ExternalBenchCase(
+                case_id=f"semantic-search-{index:04d}",
+                family="semantic_search",
+                query=sentence,
+                path=symbol.path,
+                symbol_name=symbol.name,
+                expected_paths=(symbol.path,),
+                expected_names=(symbol.name,),
+                metadata={"qualified_name": symbol.qualified_name, "kind": symbol.kind},
+            )
+        )
+
     for index in range(1, case_quotas["nohit_search"] + 1):
         query = _make_nohit_query(index)
         cases.append(
@@ -242,7 +614,16 @@ def generate_case_manifest(
             )
         )
 
-    expected_total = sum(case_quotas.values())
+    # Strict families must hit their quota exactly; best-effort families
+    # (no-hit/structural/semantic) contribute however many well-posed cases the
+    # repository yields, up to the quota.
+    available = {
+        "structural_search": len(structural_facts),
+        "semantic_search": len(semantic_pairs),
+    }
+    expected_total = sum(
+        min(quota, available[family]) if family in available else quota for family, quota in case_quotas.items()
+    )
     if len(cases) != expected_total:
         raise AssertionError(f"expected {expected_total} cases, got {len(cases)}")
     return cases

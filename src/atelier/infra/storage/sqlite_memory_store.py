@@ -344,11 +344,8 @@ class SqliteMemoryStore:
         since: datetime | None = None,
         limit: int = 200,
     ) -> list[ArchivalPassage]:
-        params: list[Any] = []
-        agent_sql = "1=1"
-        if agent_id is not None:
-            agent_sql = "(agent_id = ? OR tags LIKE '%\"agent:any\"%')"
-            params.append(agent_id)
+        params: list[Any] = [agent_id if agent_id is not None else "shared"]
+        agent_sql = "(agent_id = ? OR tags LIKE '%\"agent:any\"%')"
 
         since_sql = ""
         if since is not None:
@@ -476,11 +473,8 @@ class SqliteMemoryStore:
         top_k: int,
         since: datetime | None,
     ) -> list[sqlite3.Row]:
-        params: list[Any] = []
-        agent_sql = "1=1"
-        if agent_id is not None:
-            agent_sql = "(p.agent_id = ? OR p.tags LIKE '%\"agent:any\"%')"
-            params.append(agent_id)
+        params: list[Any] = [agent_id if agent_id is not None else "shared"]
+        agent_sql = "(p.agent_id = ? OR p.tags LIKE '%\"agent:any\"%')"
 
         since_sql = ""
         if since is not None:

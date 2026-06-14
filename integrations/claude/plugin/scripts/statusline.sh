@@ -227,6 +227,23 @@ if [ "$ROUTING_USD" != "\$0.000" ]; then
     CARRY_SEG=""
   fi
 
+# Last tool call's tokens saved, surfaced inline as (SAVED_CTX+N). Reads the most
+# recent positive tokens_saved from this session's per-call savings ledger
+# (runs/<session>_context_savings.jsonl, written one row per tool call).
+LAST_CALL_SEG=""
+_CTX_SAVINGS="${ATELIER_STATUS_ROOT}/runs/${SESSION_ID}_context_savings.jsonl"
+if [ -n "${SESSION_ID:-}" ] && [ -f "${_CTX_SAVINGS}" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    _LAST_SAVED_TOK=$(tail -n 40 "${_CTX_SAVINGS}" 2>/dev/null | jq -rs 'map(.tokens_saved // 0) | map(select(. > 0)) | last // 0' 2>/dev/null)
+  else
+    _LAST_SAVED_TOK=$(tail -n 40 "${_CTX_SAVINGS}" 2>/dev/null | grep -o '"tokens_saved":[ ]*[0-9]*' | sed 's/[^0-9]//g' | awk 'NF{ if($1>0) v=$1 } END{ print v+0 }')
+  fi
+  [ -z "${_LAST_SAVED_TOK:-}" ] && _LAST_SAVED_TOK=0
+  if [ "${_LAST_SAVED_TOK}" -gt 0 ] 2>/dev/null; then
+    LAST_CALL_SEG="+${_LAST_SAVED_TOK}"
+  fi
+fi
+
 # Hide the savings figure until the session registers real token usage. A frame
 # with zero input AND zero cache tokens has done no billable work, so any "saved"
 # value there is stale or cross-attributed from another session sharing this
@@ -234,7 +251,7 @@ if [ "$ROUTING_USD" != "\$0.000" ]; then
 # I/C/O buckets, or land under a sibling session's id). Show "↓" only once real
 # usage exists.
 if [ "${EFF_IN:-0}" -gt 0 ] 2>/dev/null || [ "${EFF_CACHE:-0}" -gt 0 ] 2>/dev/null; then
-  SAVED_SEG="${C_GREEN} ↓ ${SAVED_USD}(${SAVED_CTX})${C_RESET}"
+  SAVED_SEG="${C_GREEN} ↓ ${SAVED_USD}(${SAVED_CTX}${LAST_CALL_SEG})${C_RESET}"
   SAVED_SEG_COMPACT=" ${C_GREEN}↓ ${SAVED_USD}${C_RESET}"
 else
   SAVED_SEG=""

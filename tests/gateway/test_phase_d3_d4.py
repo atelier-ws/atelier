@@ -26,6 +26,14 @@ EXPECTED_TOOLS = {
     "web_fetch",
     "workflow",
     "agent",
+    # Repo/admin code-intel ops registered hidden (full split: no multiplexer).
+    "index",
+    "outline",
+    "hover",
+    "blame",
+    "rename",
+    "cache_status",
+    "cache_invalidate",
 }
 
 
