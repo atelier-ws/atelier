@@ -18,7 +18,7 @@ from atelier.core.foundation.memory_models import (
     RunMemoryFrame,
 )
 from atelier.infra.storage.memory_store import MemorySidecarUnavailable
-from atelier.infra.storage.sqlite_memory_store import SqliteMemoryStore
+from atelier.infra.storage.sqlite_memory_store import MEMORY_DB_NAME, SqliteMemoryStore
 
 logger = logging.getLogger(__name__)
 
@@ -472,7 +472,7 @@ class LettaMemoryStore:
         adapter: LettaAdapter | None = None,
         client: Any | None = None,
     ) -> None:
-        self._recall_store = SqliteMemoryStore(root)
+        self._recall_store = SqliteMemoryStore(root, db_name=MEMORY_DB_NAME)
         self._adapter = adapter or LettaAdapter(client=client)
 
     def upsert_block(self, block: MemoryBlock, *, actor: str, reason: str = "") -> MemoryBlock:

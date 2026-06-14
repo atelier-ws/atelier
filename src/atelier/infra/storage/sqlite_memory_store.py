@@ -46,11 +46,16 @@ def _validate_embedding(vector: list[float] | None) -> None:
         raise ValueError("32-dimensional legacy stub embeddings are not accepted")
 
 
-class SqliteMemoryStore:
-    """SQLite memory store backed by the existing Atelier database file."""
+# Curated memory (memory_block, archival_passage, ...) lives in its own SQLite
+# file so its writes never contend with the large trace history in atelier.db.
+MEMORY_DB_NAME = "memory.db"
 
-    def __init__(self, root: str | Path) -> None:
-        self._store = SQLiteStore(Path(root))
+
+class SqliteMemoryStore:
+    """SQLite memory store backed by a dedicated Atelier memory database file."""
+
+    def __init__(self, root: str | Path, *, db_name: str = MEMORY_DB_NAME) -> None:
+        self._store = SQLiteStore(Path(root), db_name=db_name)
         self._store.init()
 
     @property
