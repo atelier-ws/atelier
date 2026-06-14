@@ -131,9 +131,11 @@ def _json_args(raw: Any) -> dict[str, Any]:
 
 
 def _litellm_completion(*, model: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> Any:
-    import litellm
+    # Route through the infra litellm boundary (keeps the litellm import out of
+    # core/capabilities per the provider-confinement architecture test).
+    from atelier.infra.internal_llm.litellm_client import tool_completion
 
-    return litellm.completion(model=model, messages=messages, tools=tools, tool_choice="auto")
+    return tool_completion(model=model, messages=messages, tools=tools)
 
 
 def run_agentic_review(
