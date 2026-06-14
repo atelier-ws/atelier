@@ -285,9 +285,13 @@ class ContextStore:
     so they can be reviewed in PRs without running tools.
     """
 
-    def __init__(self, root: Path | str, lessons_root: Path | str | None = None) -> None:
+    def __init__(
+        self, root: Path | str, lessons_root: Path | str | None = None, *, db_name: str = "atelier.db"
+    ) -> None:
         self.root = Path(root).resolve()
-        self.db_path = self.root / "atelier.db"
+        # db_name lets callers route a store to a dedicated SQLite file (e.g.
+        # memory.db, recall.db) so high-write use-cases don't contend on one file.
+        self.db_path = self.root / db_name
 
         # Blocks/rubrics are runtime *mirrors* of DB content, kept per-project under
         # the global store root (NOT in .lessons, which is reserved for the user's

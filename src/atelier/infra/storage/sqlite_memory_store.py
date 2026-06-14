@@ -49,8 +49,8 @@ def _validate_embedding(vector: list[float] | None) -> None:
 class SqliteMemoryStore:
     """SQLite memory store backed by the existing Atelier database file."""
 
-    def __init__(self, root: str | Path) -> None:
-        self._store = SQLiteStore(Path(root))
+    def __init__(self, root: str | Path, *, db_name: str = "atelier.db") -> None:
+        self._store = SQLiteStore(Path(root), db_name=db_name)
         self._store.init()
 
     @property
