@@ -7,7 +7,7 @@ this protocol.
 Resources covered:
   reasonblocks, rubrics, traces            (core runtime)
   run_ledgers, monitor_events              (observability)
-  failure_clusters, eval_cases             (improvement pipeline)
+  eval_cases                               (improvement pipeline)
   audit_log, savings_events, jobs          (ops / billing)
   projects, environments, trace_events,
   block_applications, eval_runs            (extended schema)

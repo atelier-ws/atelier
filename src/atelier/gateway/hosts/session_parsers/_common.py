@@ -426,8 +426,8 @@ def persist_imported_run_snapshot(
     started_at: datetime,
     ended_at: datetime,
 ) -> Path:
-    runs_dir = store.root / "runs"
-    runs_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = store.root / "sessions" / (trace.session_id or trace.id)
+    run_dir.mkdir(parents=True, exist_ok=True)
 
     calls: list[dict[str, Any]] = []
     total_cost_usd = 0.0
@@ -487,7 +487,7 @@ def persist_imported_run_snapshot(
         "events": [],
     }
 
-    path = runs_dir / f"{trace.session_id or trace.id}.json"
+    path = run_dir / "run.json"
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return path
 
@@ -760,6 +760,7 @@ def _build_trace_from_normalized_content(
         skills=unique_strings(skills),
         telemetry=telemetry,
         created_at=created_at,
+        transcript_path=artifact.source_path,
     )
     return trace
 

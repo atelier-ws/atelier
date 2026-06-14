@@ -73,10 +73,6 @@ def _parse_dt(value: str | None) -> datetime | None:
         return None
 
 
-def _runs_dir(root: Path) -> Path:
-    return root / "runs"
-
-
 def _live_savings_path(root: Path) -> Path:
     return root / "live_savings_events.jsonl"
 
@@ -163,10 +159,10 @@ def _read_context_compression_savings(session_id: str, root: Path) -> tuple[int,
     """Read per-tool context-compression savings for *session_id*.
 
     Two sources, in priority order:
-      1. ``runs/<session_id>_context_savings.jsonl`` — written by the MCP
+      1. ``sessions/<session_id>/context_savings.jsonl`` — written by the MCP
          server keyed by the internal ledger session id; carries a
          pre-computed ``cost_saved_usd`` per row.
-      2. ``session_stats/<host>/<session_id>.jsonl`` (the host sidecar) —
+      2. ``sessions/<session_id>/savings.jsonl`` (the host sidecar) —
          written keyed by the host session id (Claude UUID, Codex id, etc.).
          No pre-priced cost field, so we price each row here at the model
          captured at write time. This is what the statusline reads, so
@@ -177,7 +173,7 @@ def _read_context_compression_savings(session_id: str, root: Path) -> tuple[int,
     the run-ledger ``context_savings.jsonl`` shape
     (tool, tokens_saved, calls_saved, model, cost_saved_usd, at).
     """
-    path = _runs_dir(root) / f"{session_id}_context_savings.jsonl"
+    path = root / "sessions" / session_id / "context_savings.jsonl"
     if path.exists():
         count = 0
         total_saved = 0.0
@@ -204,7 +200,7 @@ def _read_context_compression_savings(session_id: str, root: Path) -> tuple[int,
 
 
 def _read_host_sidecar_savings(session_id: str, root: Path) -> tuple[int, float, list[dict[str, Any]]]:
-    """Aggregate savings from ``session_stats/<host>/<session_id>.jsonl``.
+    """Aggregate savings from ``sessions/<session_id>/savings.jsonl``.
 
     Each sidecar row is ``{tool, tokens, calls, model, ts, rid?}``. We price
     ``tokens`` at the row's model input rate (same logic the statusline
@@ -215,8 +211,8 @@ def _read_host_sidecar_savings(session_id: str, root: Path) -> tuple[int, float,
     from atelier.core.capabilities.pricing import get_model_pricing
     from atelier.core.capabilities.savings_summary import resolve_model_id
 
-    stats_dir = root / "session_stats"
-    if not stats_dir.is_dir():
+    sidecar = root / "sessions" / session_id / "savings.jsonl"
+    if not sidecar.is_file():
         return 0, 0.0, []
 
     # Per-row sanity cap: a single tool call cannot legitimately save more
@@ -227,48 +223,42 @@ def _read_host_sidecar_savings(session_id: str, root: Path) -> tuple[int, float,
     count = 0
     total_saved = 0.0
     rows: list[dict[str, Any]] = []
-    for host_dir in sorted(stats_dir.iterdir()):
-        if not host_dir.is_dir():
-            continue
-        sidecar = host_dir / f"{session_id}.jsonl"
-        if not sidecar.is_file():
-            continue
-        try:
-            for line in sidecar.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    ev = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                tokens = max(0, int(ev.get("tokens") or ev.get("tokens_saved") or 0))
-                calls = max(0, int(ev.get("calls") or ev.get("calls_saved") or 0))
-                if tokens <= 0 and calls <= 0:
-                    continue
-                if tokens > PER_ROW_CAP:
-                    continue
-                model = str(ev.get("model") or "").strip()
-                cost = 0.0
-                if tokens > 0 and model:
-                    pricing = get_model_pricing(resolve_model_id(model))
-                    if pricing is not None and pricing.known and pricing.input > 0:
-                        cost = pricing.input / 1_000_000 * tokens
-                count += 1
-                total_saved += cost
-                rows.append(
-                    {
-                        "at": ev.get("ts"),
-                        "tool": ev.get("tool"),
-                        "model": model,
-                        "tokens_saved": tokens,
-                        "calls_saved": calls,
-                        "cost_saved_usd": round(cost, 6),
-                        "rid": ev.get("rid"),
-                    }
-                )
-        except OSError:
-            continue
+    try:
+        for line in sidecar.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            tokens = max(0, int(ev.get("tokens") or ev.get("tokens_saved") or 0))
+            calls = max(0, int(ev.get("calls") or ev.get("calls_saved") or 0))
+            if tokens <= 0 and calls <= 0:
+                continue
+            if tokens > PER_ROW_CAP:
+                continue
+            model = str(ev.get("model") or "").strip()
+            cost = 0.0
+            if tokens > 0 and model:
+                pricing = get_model_pricing(resolve_model_id(model))
+                if pricing is not None and pricing.known and pricing.input > 0:
+                    cost = pricing.input / 1_000_000 * tokens
+            count += 1
+            total_saved += cost
+            rows.append(
+                {
+                    "at": ev.get("ts"),
+                    "tool": ev.get("tool"),
+                    "model": model,
+                    "tokens_saved": tokens,
+                    "calls_saved": calls,
+                    "cost_saved_usd": round(cost, 6),
+                    "rid": ev.get("rid"),
+                }
+            )
+    except OSError:
+        return 0, 0.0, []
     return count, round(total_saved, 6), rows
 
 
@@ -280,9 +270,9 @@ def read_total_savings_from_events(session_id: str, root: Path) -> float:
 
       1. ``live_savings_events.jsonl`` (routing/compaction savings keyed by
          internal Atelier session id)
-      2. ``runs/<session_id>_context_savings.jsonl`` (context-compression
+      2. ``sessions/<session_id>/context_savings.jsonl`` (context-compression
          savings keyed by ledger session id)
-      3. ``session_stats/<host>/<session_id>.jsonl`` (host sidecar keyed by
+      3. ``sessions/<session_id>/savings.jsonl`` (host sidecar keyed by
          host UUID — the source the statusline reads)
 
     The first source matches when the trace was recorded with an internal
@@ -576,7 +566,7 @@ def build_report_from_ledger(ledger: RunLedger, root: Path) -> SessionReport:
 
 def load_report(session_id: str, root: Path) -> SessionReport | None:
     """Load and build a report from a persisted run file, or *None* if not found."""
-    run_path = _runs_dir(root) / f"{session_id}.json"
+    run_path = root / "sessions" / session_id / "run.json"
     if not run_path.exists():
         return None
     try:
@@ -588,10 +578,10 @@ def load_report(session_id: str, root: Path) -> SessionReport | None:
 
 def list_run_files(root: Path, *, since: datetime | None = None) -> list[Path]:
     """Return run JSON files sorted newest-first, optionally filtered by *since*."""
-    runs_dir = _runs_dir(root)
+    runs_dir = root / "sessions"
     if not runs_dir.exists():
         return []
-    files = sorted(runs_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    files = sorted(runs_dir.glob("*/run.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     if since is None:
         return files
     cutoff = since.timestamp()

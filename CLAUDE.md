@@ -113,4 +113,4 @@ The atelier:code persona carries the role table. `/code-review` specifics: Phase
 
 ## Code Intelligence
 
-Prefer the focused SCIP-backed tools (`symbols`, `node`, `callers`/`callees`, `usages`, `codemod`, `explore`) over grep. There is no `mcp__atelier__code` tool — the multiplexer is registered as `mcp__atelier__symbols` (its `op=` parameter is an internal detail).
+Prefer the focused SCIP-backed tools (`symbols`, `node`, `callers`/`callees`, `usages`, `codemod`, `explore`) over grep. Each is a dedicated tool that calls the code-intel engine directly — there is no `op=` multiplexer and no `mcp__atelier__code` tool. `symbols` is search-only; the repo/admin ops (`index`, `outline`, `hover`, `blame`, `rename`, `cache_status`, `cache_invalidate`) are registered as hidden internal tools, callable by name but not surfaced to agents.

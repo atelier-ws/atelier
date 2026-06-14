@@ -58,6 +58,32 @@ def test_native_search_type_alias_line_suffix_and_modified_since(tmp_path: Path)
     assert "unchanged" in "\n".join(_texts(skipped))
 
 
+def test_native_search_path_range_suffix_scopes_matches(tmp_path: Path) -> None:
+    path = tmp_path / "store.py"
+    path.write_text("needle\nplain\nneedle\nplain\nplain\nneedle\n", encoding="utf-8")
+
+    # A bare "path#start-end" with no pattern is accepted (guard) as a slice read.
+    sliced = search_workspace(path="store.py#1-2", output_mode="file_paths_with_content", repo_root=tmp_path)
+    assert "store.py#1-2" in "\n".join(_texts(sliced))
+
+    # With a regex, the range scopes which matches report: lines 1 and 3 match
+    # inside the window; line 6 is outside it and excluded.
+    counted = search_workspace(
+        path="store.py#1-3",
+        content_regex="needle",
+        output_mode="file_paths_with_match_count",
+        repo_root=tmp_path,
+    )
+    assert "store.py\t2" in "\n".join(_texts(counted))
+
+    # ranked_file_map honors the window too.
+    ranked = search_workspace(
+        path="store.py#6-6", content_regex="needle", output_mode="ranked_file_map", repo_root=tmp_path
+    )
+    assert ranked["matches"]
+    assert ranked["matches"][0]["match_count"] == 1
+
+
 def test_native_search_notebook_and_image_blocks(tmp_path: Path) -> None:
     notebook = tmp_path / "work.ipynb"
     notebook.write_text(

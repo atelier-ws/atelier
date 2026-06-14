@@ -394,10 +394,10 @@ def test_load_report_missing_returns_none(tmp_path: Path) -> None:
 
 
 def test_load_report_reads_run_file(tmp_path: Path) -> None:
-    runs_dir = tmp_path / "runs"
-    runs_dir.mkdir()
+    runs_dir = tmp_path / "sessions" / "mysession"
+    runs_dir.mkdir(parents=True)
     snap = _make_snapshot(session_id="mysession")
-    (runs_dir / "mysession.json").write_text(json.dumps(snap), encoding="utf-8")
+    (runs_dir / "run.json").write_text(json.dumps(snap), encoding="utf-8")
 
     report = load_report("mysession", tmp_path)
     assert report is not None
@@ -415,10 +415,10 @@ def test_list_run_files_empty_dir(tmp_path: Path) -> None:
 
 
 def test_list_run_files_since_filter(tmp_path: Path) -> None:
-    runs_dir = tmp_path / "runs"
-    runs_dir.mkdir()
-    old_file = runs_dir / "old.json"
-    new_file = runs_dir / "new.json"
+    (tmp_path / "sessions" / "old").mkdir(parents=True)
+    (tmp_path / "sessions" / "new").mkdir(parents=True)
+    old_file = tmp_path / "sessions" / "old" / "run.json"
+    new_file = tmp_path / "sessions" / "new" / "run.json"
     old_file.write_text("{}", encoding="utf-8")
     new_file.write_text("{}", encoding="utf-8")
 

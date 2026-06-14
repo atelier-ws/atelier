@@ -30,9 +30,9 @@ HIDDEN_LLM_TOOLS = frozenset(
         "rescue",
         "verify",
         "callees",
-        "route",
         "trace",
         "workflow",
+        "agent",
         "compact",
         "context",
         # WS4 graph analytics (blast radius / dead code / cycles / coupling /
@@ -46,17 +46,22 @@ HIDDEN_LLM_TOOLS = frozenset(
         # orientation guidance lives in one fetch, but kept off the advertised
         # surface to preserve the lean public tool set.
         "orient",
+        # Repo/admin code-intel ops: callable by name (tests, CLI, power use)
+        # but not surfaced to agents.
+        "index",
+        "blame",
+        "rename",
+        "cache_status",
+        "cache_invalidate",
     }
 )
 HIDDEN_SKILLS = frozenset(
     {
         "analyze-failures",
-        "benchmark",
         "context",
         "evals",
         "rescue",
         "savings",
-        "settings",
         "status",
         "record",
     }

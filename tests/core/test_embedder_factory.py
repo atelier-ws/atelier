@@ -71,11 +71,26 @@ def test_null_embedder_dim_and_name() -> None:
     assert e.name == "null"
 
 
-def test_make_code_embedder_falls_back_to_local_when_ollama_unavailable(
+def test_make_code_embedder_defaults_to_null_without_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    # By default no embedding backend is configured: semantic code search is OFF and
+    # no external LLM (ollama) is contacted. Callers surface "semantic unavailable".
+    make_code_embedder.cache_clear()
+    monkeypatch.delenv("ATELIER_CODE_EMBEDDER", raising=False)
+    monkeypatch.delenv("ATELIER_EMBEDDER", raising=False)
+    monkeypatch.delenv("ATELIER_OFFLINE", raising=False)
+    monkeypatch.setattr(OllamaEmbedder, "is_available", lambda self: True)
+
+    embedder = make_code_embedder()
+
+    assert isinstance(embedder, NullEmbedder)
+    make_code_embedder.cache_clear()
+
+
+def test_make_code_embedder_falls_back_to_local_when_pinned_ollama_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     make_code_embedder.cache_clear()
-    monkeypatch.delenv("ATELIER_CODE_EMBEDDER", raising=False)
+    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "ollama")
     monkeypatch.delenv("ATELIER_OFFLINE", raising=False)
     monkeypatch.setattr(OllamaEmbedder, "is_available", lambda self: False)
 
@@ -85,9 +100,9 @@ def test_make_code_embedder_falls_back_to_local_when_ollama_unavailable(
     make_code_embedder.cache_clear()
 
 
-def test_make_code_embedder_prefers_ollama_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_make_code_embedder_uses_ollama_when_pinned_and_available(monkeypatch: pytest.MonkeyPatch) -> None:
     make_code_embedder.cache_clear()
-    monkeypatch.delenv("ATELIER_CODE_EMBEDDER", raising=False)
+    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "ollama")
     monkeypatch.delenv("ATELIER_OFFLINE", raising=False)
     monkeypatch.setattr(OllamaEmbedder, "is_available", lambda self: True)
 

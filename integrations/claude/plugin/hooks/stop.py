@@ -105,7 +105,7 @@ def _write_token_event(stats: dict[str, Any]) -> None:
     session_id: str | None = state.get("session_id") or state.get("active_session_id")
     if not session_id:
         return
-    run_file = _atelier_root() / "runs" / f"{session_id}.json"
+    run_file = _atelier_root() / "sessions" / session_id / "run.json"
     if not run_file.exists():
         return
     try:
@@ -386,7 +386,7 @@ def _write_session_enrichment(
     """
     if not session_id:
         return
-    run_file = _atelier_root() / "runs" / f"{session_id}.json"
+    run_file = _atelier_root() / "sessions" / session_id / "run.json"
     if not run_file.exists():
         return
     try:
@@ -507,7 +507,7 @@ def _load_session_savings(session_id: str) -> dict[str, Any]:
     Delegates to ``compute_savings_summary`` — the same function the
     statusline calls via ``atelier savings --line`` — so the statusline
     figure and this stop-hook summary are always derived from the same
-    source (``session_stats/claude/<session_id>.jsonl``, priced per-row
+    source (``sessions/<session_id>/savings.jsonl``, priced per-row
     at the model captured when each row was written).
     """
     zero = {
@@ -612,40 +612,35 @@ def _format_stats(
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Auto-record helper
-# ---------------------------------------------------------------------------
+def _format_review_findings(session_id: str) -> str:
+    """Surface unconsumed NEEDS_FIX live-reviewer verdicts; mark them consumed.
 
-
-def _auto_record(session_id: str, stats: dict[str, Any] | None) -> None:
-    """Call `atelier runs record` silently so the ledger stays complete."""
-    import subprocess
-
+    Advisory only — returns a short suffix appended to the session message.
+    Fail-open: any problem yields an empty suffix.
+    """
     if not session_id:
-        return
-    total_in = (stats or {}).get("input_tokens", 0)
-    total_out = (stats or {}).get("output_tokens", 0)
-    cost = (stats or {}).get("est_cost_usd", 0.0)
-    tool_calls = (stats or {}).get("tool_calls", 0)
-    trace = {
-        "agent": "claude-code",
-        "domain": "session",
-        "task": "session-auto-record",
-        "status": "success",
-        "session_id": session_id,
-        "output_summary": f"tokens: {total_in}in/{total_out}out  cost: ~${cost:.4f}  tools: {tool_calls}",
-    }
-
-    atelier_bin = os.environ.get("ATELIER_BIN") or str(Path.home() / ".local" / "bin" / "atelier")
-    with contextlib.suppress(Exception):
-        subprocess.run(
-            [atelier_bin, "runs", "record", "--input", "-"],
-            input=json.dumps(trace),
-            text=True,
-            capture_output=True,
-            timeout=10,
-            check=False,
+        return ""
+    try:
+        from atelier.core.capabilities.live_reviewer.sink import (
+            latest_unconsumed,
+            mark_consumed,
         )
+    except ImportError:
+        return ""
+    root = _atelier_root()
+    pending = latest_unconsumed(root, session_id)
+    if not pending:
+        return ""
+    mark_consumed(root, session_id)
+    needs_fix = [row for row in pending if row.get("verdict") == "NEEDS_FIX"]
+    if not needs_fix:
+        return ""
+    lines = ["", "Code review (atelier) — NEEDS_FIX:"]
+    for row in needs_fix[:5]:
+        paths = ", ".join(str(p) for p in (row.get("paths") or []))
+        missing = str(row.get("missing") or "").strip().replace("\n", " ")
+        lines.append(f"  • {paths}: {missing[:300]}" if missing else f"  • {paths}")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -690,6 +685,11 @@ def main() -> int:
     with contextlib.suppress(Exception):
         savings = _load_session_savings(session_id)
 
+    # ── Surface unconsumed live-reviewer findings (advisory) ─────────────────
+    review_suffix = ""
+    with contextlib.suppress(Exception):
+        review_suffix = _format_review_findings(session_id)
+
     # Transcript JSONL stays as the source of truth even after stop —
     # cost, tokens, and savings are all derivable from it. No snapshot needed.
 
@@ -698,7 +698,7 @@ def main() -> int:
     if not _is_task_session(stats, session_aggregate):
         if stats and stats["total_tokens"] > 0:
             summary = _format_stats(stats, savings, real_cost=real_cost)
-            print(json.dumps({"systemMessage": f"Session stats:\n{summary}"}))
+            print(json.dumps({"systemMessage": f"Session stats:\n{summary}{review_suffix}"}))
         return 0
 
     # ── Code work happened: check if trace was recorded ──────────────────────
@@ -708,14 +708,13 @@ def main() -> int:
         # PostToolUse, UserPromptSubmit, PostToolBatch support it).
         if stats and stats["total_tokens"] > 0:
             summary = _format_stats(stats, savings, real_cost=real_cost)
-            print(json.dumps({"systemMessage": f"Atelier session complete.\n{summary}"}))
+            print(json.dumps({"systemMessage": f"Atelier session complete.\n{summary}{review_suffix}"}))
         return 0
 
-    # ── Code work done but no trace — auto-record and show stats ─────────────
-    _auto_record(session_id, stats)
+    # ── Code work done but no trace — show stats ─────────────
     if stats and stats["total_tokens"] > 0:
         summary = _format_stats(stats, savings, real_cost=real_cost)
-        print(json.dumps({"systemMessage": f"Atelier: session auto-recorded.\n{summary}"}))
+        print(json.dumps({"systemMessage": f"Atelier session complete.\n{summary}{review_suffix}"}))
     return 0
 
 

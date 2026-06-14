@@ -46,11 +46,16 @@ def _validate_embedding(vector: list[float] | None) -> None:
         raise ValueError("32-dimensional legacy stub embeddings are not accepted")
 
 
-class SqliteMemoryStore:
-    """SQLite memory store backed by the existing Atelier database file."""
+# Curated memory (memory_block, archival_passage, ...) lives in its own SQLite
+# file so its writes never contend with the large trace history in atelier.db.
+MEMORY_DB_NAME = "memory.db"
 
-    def __init__(self, root: str | Path) -> None:
-        self._store = SQLiteStore(Path(root))
+
+class SqliteMemoryStore:
+    """SQLite memory store backed by a dedicated Atelier memory database file."""
+
+    def __init__(self, root: str | Path, *, db_name: str = MEMORY_DB_NAME) -> None:
+        self._store = SQLiteStore(Path(root), db_name=db_name)
         self._store.init()
 
     @property
@@ -344,11 +349,8 @@ class SqliteMemoryStore:
         since: datetime | None = None,
         limit: int = 200,
     ) -> list[ArchivalPassage]:
-        params: list[Any] = []
-        agent_sql = "1=1"
-        if agent_id is not None:
-            agent_sql = "(agent_id = ? OR tags LIKE '%\"agent:any\"%')"
-            params.append(agent_id)
+        params: list[Any] = [agent_id if agent_id is not None else "shared"]
+        agent_sql = "(agent_id = ? OR tags LIKE '%\"agent:any\"%')"
 
         since_sql = ""
         if since is not None:
@@ -476,11 +478,8 @@ class SqliteMemoryStore:
         top_k: int,
         since: datetime | None,
     ) -> list[sqlite3.Row]:
-        params: list[Any] = []
-        agent_sql = "1=1"
-        if agent_id is not None:
-            agent_sql = "(p.agent_id = ? OR p.tags LIKE '%\"agent:any\"%')"
-            params.append(agent_id)
+        params: list[Any] = [agent_id if agent_id is not None else "shared"]
+        agent_sql = "(p.agent_id = ? OR p.tags LIKE '%\"agent:any\"%')"
 
         since_sql = ""
         if since is not None:

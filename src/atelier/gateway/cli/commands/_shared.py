@@ -112,20 +112,21 @@ def _parse_duration(value: str) -> timedelta:
 
 
 def _ledger_dir(root: Path) -> Path:
-    return Path(root) / "runs"
+    # Run ledgers now live in sessions/<id>/run.json alongside the trace files.
+    return Path(root) / "sessions"
 
 
 def _latest_ledger_path(root: Path) -> Path | None:
     runs = _ledger_dir(root)
     if not runs.is_dir():
         return None
-    paths = sorted(runs.glob("*.json"))
+    paths = sorted(runs.glob("*/run.json"))
     return paths[-1] if paths else None
 
 
 def _ledger_path(root: Path, session_id: str | None) -> Path:
     if session_id:
-        return _ledger_dir(root) / f"{session_id}.json"
+        return _ledger_dir(root) / session_id / "run.json"
     latest = _latest_ledger_path(root)
     if latest is None:
         raise click.ClickException("no run ledger found. Pass --session-id or record one first.")

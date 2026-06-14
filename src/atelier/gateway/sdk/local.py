@@ -18,18 +18,15 @@ from atelier.core.foundation.models import (
     TraceLearning,
     TraceStatus,
     ValidationResult,
-    to_jsonable,
 )
 from atelier.core.foundation.redaction import redact
 from atelier.core.foundation.rubric_gate import run_rubric
-from atelier.core.improvement.failure_analyzer import analyze_failures
 from atelier.gateway.adapters.runtime import ContextRuntime
 from atelier.gateway.sdk.client import (
     AtelierClient,
     ContextResult,
     EvalRecord,
     EvalRunResult,
-    FailureAnalysisResult,
     LessonDecisionResult,
     LessonInboxResult,
     MemoryArchiveResult,
@@ -157,15 +154,6 @@ class LocalClient(AtelierClient):
         )
         self.store.record_trace(trace)
         return TraceRecordResult(id=trace.id)
-
-    def analyze_failures(
-        self,
-        *,
-        domain: str | None = None,
-        limit: int = 100,
-    ) -> FailureAnalysisResult:
-        traces = self.store.list_traces(domain=domain, status="failed", limit=limit)
-        return FailureAnalysisResult(clusters=analyze_failures([to_jsonable(t) for t in traces]))
 
     def get_savings(self) -> SavingsSummary:
         return SavingsSummary.model_validate(CostTracker(self.root).total_savings())

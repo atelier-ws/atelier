@@ -171,7 +171,7 @@ def _write_context_budget(
 
 def _write_run_ledger_snapshot(root: Path, *, session_id: str, tool_name: str) -> None:
     now = datetime.now(UTC).isoformat()
-    runs_dir = root / "runs"
+    runs_dir = root / "sessions" / session_id
     runs_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "session_id": session_id,
@@ -191,7 +191,7 @@ def _write_run_ledger_snapshot(root: Path, *, session_id: str, tool_name: str) -
             }
         ],
     }
-    (runs_dir / f"{session_id}.json").write_text(json.dumps(payload), encoding="utf-8")
+    (runs_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
 def _write_run_ledger_snapshot_with_events(
@@ -202,7 +202,7 @@ def _write_run_ledger_snapshot_with_events(
     tools_called: list[str] | None = None,
 ) -> None:
     now = datetime.now(UTC).isoformat()
-    runs_dir = root / "runs"
+    runs_dir = root / "sessions" / session_id
     runs_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "session_id": session_id,
@@ -213,7 +213,7 @@ def _write_run_ledger_snapshot_with_events(
         "tools_called": tools_called or [],
         "events": events,
     }
-    (runs_dir / f"{session_id}.json").write_text(json.dumps(payload), encoding="utf-8")
+    (runs_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_savings_summary_returns_per_lever_and_by_day(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
