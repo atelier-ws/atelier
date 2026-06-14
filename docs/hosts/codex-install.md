@@ -24,6 +24,8 @@ bash scripts/install_codex.sh --workspace /path/to/workspace
 | ------------------------ | ------------------------------------ | ---------------------------------------------- |
 | Codex plugin source      | `~/.codex/plugins/atelier/`          | `<workspace>/.codex/plugins/atelier/`          |
 | Lifecycle hooks          | `~/.codex/plugins/atelier/hooks/`    | `<workspace>/.codex/plugins/atelier/hooks/`    |
+| Statusline + collector   | `~/.codex/plugins/atelier/scripts/`  | `<workspace>/.codex/plugins/atelier/scripts/`  |
+| Per-role agents          | `~/.codex/agents/atelier.*.toml`     | `<workspace>/.codex/agents/atelier.*.toml`     |
 | Marketplace file         | `~/.agents/plugins/marketplace.json` | `<workspace>/.agents/plugins/marketplace.json` |
 | AGENTS instruction block | `~/.codex/AGENTS.md`                 | `<workspace>/AGENTS.md`                        |
 | Codex MCP config         | `~/.codex/config.toml`               | `<workspace>/.codex/config.toml`               |
@@ -64,8 +66,16 @@ Or run the Atelier preflight wrapper:
 - Codex has a real MCP server entry for `atelier` in `config.toml`
 - The installed Atelier plugin MCP config sets `alwaysLoad: true` so Codex eagerly loads the Atelier MCP server
 - Codex loads `atelier@atelier-local` from the personal marketplace with its bundled mode skills and lifecycle hooks
-- On the first session after install or whenever hooks change, Codex asks you to review and trust the Atelier hooks; `/hooks` should show active `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` handlers
-- `UserPromptSubmit` emits a one-shot high-context compaction notice from Codex session telemetry and grounds uninspected multi-file edit prompts before tools run
+- On the first session after install or whenever hooks change, Codex asks you to review and trust the Atelier hooks; `/hooks` should show active `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `PreCompact`, `PostCompact`, and `Stop` handlers
+- `UserPromptSubmit` emits a one-shot high-context compaction notice and records the prompt into the run ledger
+- `PreToolUse` runs the grounding/proof gate (under an active benchmark gate it denies ungrounded edits to risky paths via `permissionDecision`)
+- `PostToolUse` captures `apply_patch` diffs and `shell` commands into the run ledger, feeds the tool-supervision cache, and surfaces a `rescue` nudge on the second identical command failure (Codex has no separate failure event)
+- `PermissionRequest` auto-denies a denylist of irreversible commands (`rm -rf /`, fork bomb, `mkfs`, `dd` to a disk, `git push --force`, `chmod -R 777 /`) before the approval prompt — defense only, never auto-approves
+- `PreCompact`/`PostCompact` snapshot pre-compaction occupancy and bump the compaction epoch so MCP content-dedup resets
+- A command-backed statusline (`scripts/statusline.sh`, wired into `tui.status_line`) shows model, context, cost, and Atelier savings; the `tui.status_line` schema is Codex-version-dependent (see `docs/hosts/codex-capabilities.md`) and the script falls back to host-only context if savings/jq are unavailable
+- Per-role subagents are projected as `atelier.<role>.toml` under `~/.codex/agents/` (global) or `<workspace>/.codex/agents/` (workspace)
+- For headless runs, pipe `codex exec --json "..." | python ~/.codex/plugins/atelier/scripts/exec_collector.py --session <id>` to backfill command/file telemetry into the run ledger
+- Coverage note: Codex fires tool hooks only for `shell`/`apply_patch`/`mcp` tools, so `web_search`/`plan`/`multi_agents` telemetry is not captured by the interactive hooks (the `exec --json` collector backfills headless runs)
 - The Codex MCP entry runs `atelier mcp --host codex` and defaults to `ATELIER_DEV_MODE=0` (stable surface)
 - Atelier persists Codex session imports and savings data under `~/.atelier/`
 - The optional `atelier-codex` preflight wrapper records task context before handing off to Codex
