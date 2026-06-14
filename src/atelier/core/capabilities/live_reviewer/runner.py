@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from atelier.core.capabilities.live_reviewer.knowledge import collect_review_context
 from atelier.core.capabilities.live_reviewer.settings import (
     ReviewerSettings,
     split_provider_model,
@@ -47,8 +49,11 @@ def _git_diff(path: str) -> str:
         return ""
 
 
-def _build_prompt(diffs: Mapping[str, str]) -> str:
-    parts = [_REVIEW_CONTRACT, "## Diffs under review\n"]
+def _build_prompt(diffs: Mapping[str, str], kb: str = "") -> str:
+    parts = [_REVIEW_CONTRACT]
+    if kb:
+        parts.append(kb)
+    parts.append("## Diffs under review\n")
     for path, diff in diffs.items():
         parts.append(f"### {path}\n```diff\n{diff}\n```\n")
     return "\n".join(parts)
@@ -87,7 +92,8 @@ def run_review(
     if not diffs:
         return {**base, "verdict": "DONE", "checklist": "no diff to review", "missing": ""}
 
-    prompt = _build_prompt(diffs)
+    repo_root = os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()
+    prompt = _build_prompt(diffs, collect_review_context(root, repo_root))
     provider, model_id = split_provider_model(settings.model_for(mode))
     if provider and model_id:
         request = OwnedRouteRequest(
