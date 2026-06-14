@@ -31,6 +31,10 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
     # AWS-style access keys.
     (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), "<redacted-aws-key>"),
+    # Email addresses — the most common PII in transcripts indexed into the
+    # cross-session recall store. High-precision pattern; IP/phone are deliberately
+    # omitted so version numbers and digit literals in code stay searchable.
+    (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"), "<redacted-email>"),
 ]
 
 # Phrases that signal hidden chain-of-thought.
