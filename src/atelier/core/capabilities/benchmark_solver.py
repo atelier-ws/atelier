@@ -919,7 +919,7 @@ def _native_solver_execution_receipt(
     compiled = compiled_prompt if hasattr(compiled_prompt, "stable_prefix_hash") else None
     envelope = dict(spawn_envelope or {})
     requested_fields = tuple(str(field) for field in envelope.get("requested_fields", ()))
-    honored_fields = ("prompt",)
+    honored_fields = observed_fields or ("prompt",)
     dropped_fields = tuple(field for field in requested_fields if field not in honored_fields)
     return {
         "status": status,
@@ -955,7 +955,7 @@ def _native_solver_execution_receipt(
         "reuse_observed": False,
         "spawn_latency_ms": int(duration_seconds * 1000),
         "requested_fields": list(requested_fields),
-        "honored_fields": list(observed_fields or honored_fields),
+        "honored_fields": list(honored_fields),
         "dropped_fields": list(dropped_fields),
         "observed_fields": list(observed_fields),
         "unverified_fields": list(unverified_fields),

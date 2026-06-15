@@ -438,6 +438,40 @@ def test_background_install_writes_openmemory_unit(tmp_path: Path, monkeypatch: 
     assert any(cmd[:3] == ["systemctl", "--user", "restart"] for cmd in commands)
 
 
+def test_background_install_macos_xml_escapes_plist_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import xml.dom.minidom as minidom
+
+    # A root path with XML-special characters would corrupt the launchd plist
+    # unless every interpolated value is escaped. launchd refuses to load a
+    # malformed plist, so this must round-trip through an XML parser.
+    root = tmp_path / "R&D<proj>"
+    launchd_dir = tmp_path / "launch-agents"
+
+    def _which(name: str) -> str | None:
+        return {"atelier": "/usr/bin/atelier"}.get(name)
+
+    monkeypatch.setattr("atelier.gateway.cli.commands.background._is_linux", lambda: False)
+    monkeypatch.setattr("atelier.gateway.cli.commands.background._is_macos", lambda: True)
+    monkeypatch.setattr("atelier.gateway.cli.commands.background.LAUNCHD_USER_DIR", launchd_dir)
+    monkeypatch.setattr("atelier.gateway.cli.commands.background.shutil.which", _which)
+    monkeypatch.setattr(
+        "atelier.gateway.cli.commands.background.subprocess.run",
+        lambda args, **kwargs: None,
+    )
+
+    res = _invoke(root, "background", "install", "--with-stack")
+    assert res.exit_code == 0, res.output
+
+    for label in ("com.atelier.controller", "com.atelier.stack"):
+        plist_text = (launchd_dir / f"{label}.plist").read_text(encoding="utf-8")
+        # The raw special characters must NOT appear inside an interpolated
+        # value; they must be escaped entities instead.
+        assert "R&amp;D&lt;proj&gt;" in plist_text
+        assert "R&D<proj>" not in plist_text
+        # And the generated XML must parse cleanly.
+        minidom.parseString(plist_text)
+
+
 def test_stop_stack_processes_kills_process_groups(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "a"
     stack_dir = root / "stack"

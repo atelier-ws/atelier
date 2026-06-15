@@ -62,8 +62,10 @@ class _Window:
 
     async def acquire(self, estimated_tokens: int = 0) -> None:
         """Block until a slot is available, then reserve it."""
-        async with self._lock:
-            while True:
+        while True:
+            # Hold the lock only for the check-and-reserve, never across the
+            # sleep, so waiters don't serialize behind each other.
+            async with self._lock:
                 now = time.monotonic()
                 self._prune(now)
                 rpm = self.limit.requests_per_minute
@@ -75,8 +77,8 @@ class _Window:
                     if estimated_tokens and tpm is not None:
                         self._token_counts.append((now, estimated_tokens))
                     return
-                # Sleep a short time then retry
-                await asyncio.sleep(0.2)
+            # Sleep a short time then retry
+            await asyncio.sleep(0.2)
 
     def record_tokens(self, tokens: int) -> None:
         """Record actual token usage after a response completes."""

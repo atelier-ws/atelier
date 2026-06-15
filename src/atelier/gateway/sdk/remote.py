@@ -152,8 +152,10 @@ class RemoteClient(AtelierClient):
                 }
             )
         )
-        payload = {"id": str(payload.get("id") or payload.get("trace_id") or payload.get("session_id") or "")}
-        return TraceRecordResult.model_validate(payload)
+        trace_id = str(payload.get("id") or payload.get("trace_id") or payload.get("session_id") or "")
+        if not trace_id:
+            raise RuntimeError("remote record_trace returned no trace id")
+        return TraceRecordResult.model_validate({"id": trace_id})
 
     def get_savings(self) -> SavingsSummary:
         payload = self._ensure_ok(self._client._get("/v1/savings/summary"))

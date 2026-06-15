@@ -31,6 +31,7 @@ EXPECTED_TOOLS = {
     "symbols",
     "node",
     "callers",
+    "callees",
     "explore",
     "shell",
     "usages",

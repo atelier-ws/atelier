@@ -48,12 +48,30 @@ def register(cli: click.Group) -> None:
         _IMPORT_FAILED = True
 
     try:
-        from .playbooks import domain_group, report_cmd
+        from .playbooks import (
+            add_playbook,
+            domain_group,
+            import_style_guide_cmd,
+            list_blocks_cmd,
+            playbook_group,
+            reembed,
+            report_cmd,
+        )
 
         _h(domain_group)
         cli.add_command(domain_group)
         _h(report_cmd)
         cli.add_command(report_cmd)
+        _h(playbook_group)
+        cli.add_command(playbook_group)
+        _h(list_blocks_cmd)
+        cli.add_command(list_blocks_cmd)
+        _h(add_playbook)
+        cli.add_command(cast("click.Command", add_playbook))
+        _h(import_style_guide_cmd)
+        cli.add_command(import_style_guide_cmd)
+        _h(reembed)
+        cli.add_command(cast("click.Command", reembed))
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
 

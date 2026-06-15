@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.foundation.paths import default_store_root
-from atelier.core.service.ingest_session_directory import ingest_session_file
+from atelier.core.service.ingest_session import ingest_session_file
 from atelier.core.service.jobs import (
     JOB_BOOTSTRAP_CONTEXT,
     JOB_CONSOLIDATE_BLOCKS,

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from atelier.infra.runtime.run_ledger import RunLedger
 
 
@@ -52,6 +54,20 @@ def test_ledger_persist_and_load_roundtrip(tmp_path: Path) -> None:
     assert "pytest" in loaded.commands_run
     assert "sig1" in loaded.errors_seen
     assert any(e.kind == "watchdog_alert" for e in loaded.events)
+
+
+def test_ledger_persist_is_atomic_and_load_rejects_corrupt(tmp_path: Path) -> None:
+    led = RunLedger(agent="codex", task="t", domain="d", root=tmp_path)
+    led.record_command("pytest", ok=True)
+    path = led.persist()
+
+    # No temp files survive a successful persist.
+    assert list(path.parent.glob("*.tmp")) == []
+
+    # A truncated run.json yields a clear ValueError, not a raw JSONDecodeError.
+    path.write_text('{"session_id": "abc", "events": [', encoding="utf-8")
+    with pytest.raises(ValueError, match="corrupt run ledger"):
+        RunLedger.load(path)
 
 
 def test_ledger_close_marks_status(tmp_path: Path) -> None:

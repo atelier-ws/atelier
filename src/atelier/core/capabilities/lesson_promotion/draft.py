@@ -10,6 +10,9 @@ from atelier.core.foundation.lesson_models import LessonCandidate
 from atelier.core.foundation.models import Playbook, Trace
 
 _COMMON_WORD_RE = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]{2,}")
+# Cap the contiguous word-span search so a huge multi-line stack trace cannot
+# turn the O(words^2) candidate enumeration into a hot-path bottleneck.
+_MAX_SHARED_WORDS = 40
 
 
 def _command_text(command: str | Any) -> str:
@@ -29,7 +32,7 @@ def _shared_error_substring(errors: list[str], min_len: int = 12) -> str | None:
     if len(base) < min_len:
         return None
 
-    words = [word for word in re.split(r"\s+", base.strip()) if word]
+    words = [word for word in re.split(r"\s+", base.strip()) if word][:_MAX_SHARED_WORDS]
     for span in range(len(words), 0, -1):
         for start in range(0, len(words) - span + 1):
             sub = " ".join(words[start : start + span]).strip(" ,.:;!()[]{}\"'")

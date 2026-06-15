@@ -248,11 +248,11 @@ class ProofGateCapability:
         if routing_regression_rate > config.routing_regression_rate_max:
             failed.append("routing_regression_rate")
 
-        if cheap_success_rate < config.min_cheap_success_rate:
+        if cheap_cases and cheap_success_rate < config.min_cheap_success_rate:
             failed.append("cheap_success_rate")
 
         # --- every benchmark case must link to trace evidence ---
-        missing_trace = [c.case_id for c in benchmark_cases if c.trace_id is None]
+        missing_trace = [c.case_id for c in benchmark_cases if not (c.trace_id or "").strip()]
         if missing_trace:
             failed.append("missing_trace_evidence")
 

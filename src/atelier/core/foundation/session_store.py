@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.foundation.models import RawArtifact
+from atelier.core.foundation.paths import confine_to_root
 
 _INDEX_SCHEMA = """
 CREATE TABLE IF NOT EXISTS trace_index (
@@ -330,19 +331,31 @@ class SessionStore:
             conn.commit()
         if row is None:
             return
-        path = self._traces_path(str(row["session_id"]))
+        session_id = str(row["session_id"])
+        path = self._traces_path(session_id)
         if path.exists():
             kept = [t for t in self._read_jsonl(path) if t.get("id") != trace_id]
             path.write_text("".join(json.dumps(t, ensure_ascii=False) + "\n" for t in kept), encoding="utf-8")
+        meta = self.meta(session_id)
+        if meta is not None and trace_id in meta.get("trace_ids", []):
+            meta["trace_ids"] = [tid for tid in meta["trace_ids"] if tid != trace_id]
+            self._meta_path(session_id).write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # ----- raw artifacts ---------------------------------------------------
     def _raw_meta_path(self, session_id: str) -> Path:
         return self.session_dir(session_id) / "raw_artifacts.jsonl"
 
     def _artifact_content_path(self, artifact: RawArtifact) -> Path:
-        base = self.session_dir(artifact.source_session_id).resolve()
-        path = (base / artifact.content_path).resolve()
-        if base not in path.parents and path != base:
+        # ``source_session_id`` and ``content_path`` are untrusted; a dot-dot in
+        # either would escape the sessions tree. Confine the fully resolved path
+        # to ``sessions_dir`` (follows symlinks, raises ValueError on escape)
+        # rather than to the per-session base, which is itself attacker-built.
+        candidate = self.session_dir(artifact.source_session_id) / artifact.content_path
+        try:
+            path = confine_to_root(candidate, self.sessions_dir)
+        except ValueError as exc:
+            raise ValueError(f"raw artifact path escapes session dir: {artifact.content_path}") from exc
+        if path == self.sessions_dir.expanduser().resolve():
             raise ValueError(f"raw artifact path escapes session dir: {artifact.content_path}")
         return path
 
@@ -380,12 +393,19 @@ class SessionStore:
         of truth for the record); a derivable row is upserted into the index.
         """
         session_id = artifact.source_session_id or "unknown"
-        self.session_dir(session_id).mkdir(parents=True, exist_ok=True)
+        # ``session_id`` is untrusted; confine the per-session dir to
+        # ``sessions_dir`` BEFORE creating it so a dot-dot/absolute session id
+        # cannot mkdir or write metadata outside the sessions tree.
+        try:
+            session_path = confine_to_root(self.session_dir(session_id), self.sessions_dir)
+        except ValueError as exc:
+            raise ValueError(f"raw artifact session id escapes session dir: {session_id}") from exc
+        session_path.mkdir(parents=True, exist_ok=True)
         content_file = self._artifact_content_path(artifact)
         content_file.parent.mkdir(parents=True, exist_ok=True)
         content_file.write_text(content, encoding="utf-8")
         payload = artifact.model_dump(mode="json")
-        meta_path = self._raw_meta_path(session_id)
+        meta_path = session_path / "raw_artifacts.jsonl"
         # Append-only metadata; readers dedupe by id (last write wins).
         with meta_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
