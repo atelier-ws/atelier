@@ -7526,13 +7526,58 @@ def tool_smart_search(
 
 @mcp_tool(name="compact")
 def tool_compact(
+    op: Annotated[
+        str,
+        Field(
+            description=(
+                'Operation: "compact" (default) compresses the run ledger into a compact '
+                'session-state block; "consolidate" (T6) distills recent findings AND prunes '
+                "stale history via the same compaction entrypoint — call it as an autonomous "
+                'compaction lever when context is heavy; "retrieve" (T7/T8) reads a spilled '
+                "tool-output payload back by ref_id (use slice_start/slice_length to window it)."
+            )
+        ),
+    ] = "compact",
     session_id: Annotated[
         str | None,
         Field(description="Optional run-ledger session ID override. Usually omit."),
     ] = None,
+    ref_id: Annotated[
+        str | None,
+        Field(description='For op="retrieve": the spill ref id ("spill:...") to read back.'),
+    ] = None,
+    slice_start: Annotated[
+        int,
+        Field(description='For op="retrieve": start character offset into the spilled content.'),
+    ] = 0,
+    slice_length: Annotated[
+        int,
+        Field(description='For op="retrieve": chars to return from slice_start; <=0 means to the end.'),
+    ] = 0,
 ) -> dict[str, Any]:
-    """Compress the full run ledger into a compact session state block."""
-    return cast(dict[str, Any], _compress_context(session_id=session_id))
+    """Compress the full run ledger into a compact session state block.
+
+    Ops: "compact" (default, unchanged behavior), "consolidate" (distill + prune,
+    reusing the same compaction entrypoint), and "retrieve" (read a spilled
+    oversized tool output back by ref id).
+    """
+    normalized = (op or "compact").strip().lower()
+    if normalized == "retrieve":
+        if not ref_id:
+            return {"error": 'op="retrieve" requires ref_id'}
+        from atelier.core.capabilities.tool_supervision import tool_output_spill
+
+        window = (slice_start, slice_length) if (slice_start or slice_length) else None
+        return tool_output_spill.retrieve(ref_id, slice=window)
+    # "compact" and "consolidate" share the existing compaction entrypoint
+    # (ContextCompressor().compress, via _compress_context) — do NOT reimplement
+    # compression here. consolidate distills recent findings AND prunes history;
+    # _compress_context already preserves recent turns + decisions and drops
+    # stale history, so the lever is the same call surfaced as an agent op.
+    result = cast(dict[str, Any], _compress_context(session_id=session_id))
+    if normalized == "consolidate":
+        result["op"] = "consolidate"
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -8629,7 +8674,19 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # runaway result so it can't flood the host prompt (which the host
             # re-pays for on every later turn). Deterministic, so the compacted
             # bytes stay prefix-cache stable across identical calls.
+            # T8 (ATELIER_AUTO_COMPACT_OUTPUT, default off): auto-compact an
+            # oversized result (AST-aware for code) while preserving the
+            # untransformed original in the T7 spill store so it stays
+            # reversible. Off -> returns response_text unchanged.
+            _spill_args = args if isinstance(args, dict) else {}
+            response_text = _auto_compact_result_text(response_text, name, _spill_args)
             response_text = _compact_result_text(response_text, name)
+            # T7 (ATELIER_TOOL_OUTPUT_SPILL, default off): for spill-worthy tools
+            # whose result still exceeds the wire budget, spill the full payload
+            # and return a summary + ref id + retrieve hint INSTEAD of discarding
+            # the overflow. Off / other tools -> no-op, so the truncation below
+            # runs exactly as before.
+            response_text = _spill_oversized_result_text(response_text, name, _spill_args, _max_result_bytes())
             # Bound the result so one oversized frame can't trip the host's
             # stdout guard and disconnect the server (no mid-session reconnect).
             response_text = _truncate_result_text(response_text, _max_result_bytes())
@@ -8865,6 +8922,143 @@ def _compact_result_text(text: str, tool_name: str) -> str:
         f"{compacted}\n\n[atelier: result compacted from {len(text)} chars to protect host "
         f"context; re-request a narrower slice (tighter {tool_name} query/range) for the full output]"
     )
+
+
+# T7/T8 — tools whose oversized output is worth spilling/compacting reversibly.
+# These produce expensive or non-idempotent output (shell side effects, sql
+# query cost, large file reads, network fetches) where re-running to recover a
+# truncated tail is wasteful or unsafe.
+_SPILL_TOOLS = frozenset({"shell", "sql", "read", "web_fetch"})
+
+_CODE_CONTENT_TOOLS = frozenset({"read"})
+
+
+def _tool_output_spill_enabled() -> bool:
+    """T7 flag: spill oversized output instead of discarding the overflow."""
+    return os.environ.get("ATELIER_TOOL_OUTPUT_SPILL", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _auto_compact_output_enabled() -> bool:
+    """T8 flag: auto-apply compact_output.compact() to oversized results."""
+    return os.environ.get("ATELIER_AUTO_COMPACT_OUTPUT", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _read_path_arg(args: dict[str, Any]) -> str:
+    """Best-effort extraction of the path a read-style call targeted."""
+    raw = args.get("path") if isinstance(args, dict) else None
+    if isinstance(raw, str) and raw:
+        # A read path may carry a '#start-end' line-range suffix; strip it.
+        return raw.split("#", 1)[0]
+    return ""
+
+
+def _auto_compact_result_text(text: str, tool_name: str, args: dict[str, Any]) -> str:
+    """T8 — auto-apply compaction to an oversized result, reversibly.
+
+    AST/structure-aware for code (uses the read-side source-projection compact so
+    the projected view stays line-diffable); falls back to the deterministic
+    head+tail compaction (``compact_output.compact``) for everything else.
+
+    REVERSIBLE: the untransformed original is written to the T7 spill store and a
+    recovery hint naming the ``compact`` retrieve op is appended, so the dropped
+    detail is never lost. Flag-gated by ``ATELIER_AUTO_COMPACT_OUTPUT`` (off ->
+    returns ``text`` unchanged).
+    """
+    if not _auto_compact_output_enabled():
+        return text
+    threshold = _compact_result_chars()
+    if threshold <= 0 or len(text) <= threshold:
+        return text
+
+    from atelier.core.capabilities.tool_supervision import compact_output, tool_output_spill
+
+    budget_tokens = max(256, threshold // 4 // 4)  # ~chars/4 tokens, then headroom
+    compacted_text = text
+    method = "compact_output"
+
+    # AST-aware path for code reads: project the source to its compact view.
+    lang = ""
+    if tool_name in _CODE_CONTENT_TOOLS:
+        with contextlib.suppress(Exception):
+            from atelier.core.capabilities.source_projection import build_compact_projection
+            from atelier.infra.code_intel.languages import language_for_path
+
+            lang_record = language_for_path(_read_path_arg(args))
+            if lang_record is not None:
+                lang = lang_record.name
+                projection = build_compact_projection(text, lang)
+                # Char-based gate (we budget in chars here): the projection is
+                # token-neutral on pure whitespace but still trims bytes, which
+                # is what shrinks the host-prompt footprint.
+                if len(projection.content) < len(text):
+                    compacted_text = projection.content
+                    method = f"source_projection:{lang}"
+
+    if compacted_text is text:
+        compacted = compact_output.compact(
+            text,
+            content_type="file" if tool_name in _CODE_CONTENT_TOOLS else "tool_output",
+            budget_tokens=budget_tokens,
+        )
+        compacted_text = compacted.compacted
+
+    if len(compacted_text) >= len(text):
+        return text  # compaction did not help — leave the original untouched.
+
+    record = tool_output_spill.spill(
+        text,
+        tool_name=tool_name,
+        kind="original",
+        meta={"method": method, "path": _read_path_arg(args), "lang": lang},
+    )
+    if record is None:
+        # Could not preserve the original -> do NOT lossily compact; return as-is
+        # so the downstream wire guard handles it rather than dropping detail
+        # irreversibly.
+        return text
+    return (
+        f"{compacted_text}\n\n[atelier: result auto-compacted ({method}) from {len(text)} to "
+        f"{len(compacted_text)} chars; ORIGINAL preserved at ref {record.ref_id}. Recover it "
+        f'with the `compact` tool (op="retrieve", ref_id="{record.ref_id}").]'
+    )
+
+
+def _spill_oversized_result_text(text: str, tool_name: str, args: dict[str, Any], limit: int) -> str:
+    """T7 — spill an over-budget result instead of discarding the overflow.
+
+    When a ``shell``/``sql``/``read``/``web_fetch`` result still exceeds the wire
+    byte ceiling after compaction, the legacy path truncates and the tail is
+    *lost*. Here the full payload is written to the spill store and the
+    host-facing text becomes a head/tail summary + the spill ref id + a retrieve
+    hint, so the agent can pull the rest back without re-running the tool.
+
+    Flag-gated by ``ATELIER_TOOL_OUTPUT_SPILL`` and limited to ``_SPILL_TOOLS``
+    (off / other tools -> returns ``text`` unchanged so the caller's existing
+    ``_truncate_result_text`` runs exactly as before).
+    """
+    if not _tool_output_spill_enabled() or tool_name not in _SPILL_TOOLS:
+        return text
+    if len(text.encode("utf-8")) <= limit:
+        return text
+
+    from atelier.core.capabilities.tool_supervision import tool_output_spill
+    from atelier.core.capabilities.tool_supervision.compact_output import compress_tool_output
+
+    record = tool_output_spill.spill(
+        text,
+        tool_name=tool_name,
+        kind="tool_output",
+        meta={"path": _read_path_arg(args), "limit_bytes": limit},
+    )
+    if record is None:
+        return text  # spill failed -> fall back to the legacy byte truncation.
+
+    # A compact head+tail summary that comfortably fits the budget.
+    target = max(4096, min(limit // 8, 16384))
+    head = int(target * 0.7)
+    tail = max(1, target - head)
+    summary = compress_tool_output(text, threshold_chars=target, head_chars=head, tail_chars=tail)
+    return tool_output_spill.summary_with_ref(summary, record, tool_name=tool_name, retrieve_op="compact")
 
 
 def _write_jsonrpc(message: dict[str, Any]) -> None:

@@ -22,6 +22,22 @@ from atelier.infra.internal_llm.exceptions import (
     LiteLLMUnavailable,
     OllamaUnavailable,
 )
+from atelier.infra.internal_llm.logprobs import (
+    chunk_entropy,
+    logprobs,
+    token_surprisals,
+)
+
+__all__ = [
+    "InternalLLMError",
+    "LiteLLMUnavailable",
+    "OllamaUnavailable",
+    "chat",
+    "chunk_entropy",
+    "logprobs",
+    "summarize",
+    "token_surprisals",
+]
 
 
 def _backend() -> str:

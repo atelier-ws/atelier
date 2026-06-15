@@ -7,13 +7,16 @@ with a keyword/affected-path boost, and packs within the subtask budget.
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from typing import Any
 
 from atelier.core.capabilities.code_context.budget import BudgetPacker
 from atelier.core.capabilities.context_reuse.dead_ends import DeadEndTracker
+from atelier.core.capabilities.repo_map.budget import count_tokens
 
+from .line_skimmer import build_goal_text, is_line_skim_enabled, skim_chunks
 from .models import ContextChunk, ScopedContext
 from .prune import apply_exclusions
 
@@ -193,12 +196,34 @@ def pull(
     )
     chunks = [ContextChunk.from_dict(item) for item in packed]
 
+    # T12: goal-conditioned per-line skim (default-off via ATELIER_LINE_SKIM).
+    # Runs after candidate chunks are assembled; prunes each chunk body to its
+    # goal-relevant lines + anchors, then recomputes the reported token count.
+    # With the flag off this block is a no-op and chunk output is unchanged.
+    skim_note = ""
+    if chunks and is_line_skim_enabled():
+        goal = build_goal_text(subtask)
+        if goal:
+            before = tokens
+            chunks = skim_chunks(chunks, goal=goal, ranker=getattr(engine, "_semantic_ranker", None))
+            tokens = count_tokens(
+                json.dumps(
+                    [c.to_dict() for c in chunks],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    default=str,
+                )
+            )
+            if tokens < before:
+                skim_note = f" line-skim: {before}->{tokens} tokens."
+
     if chunks:
         top = chunks[0]
         rationale = (
             f"{len(chunks)} chunk(s) for subtask; top: {top.symbol or top.path} "
             f"({top.path}) score={top.score:.3f}; {len(excluded)} excluded, "
-            f"{dropped} field/item drops for budget {subtask.budget_tokens}."
+            f"{dropped} field/item drops for budget {subtask.budget_tokens}.{skim_note}"
         )
     else:
         rationale = f"no chunks matched subtask within budget {subtask.budget_tokens}; {len(excluded)} excluded."

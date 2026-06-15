@@ -50,6 +50,15 @@ class CompactionPolicy:
         }
 
 
+def should_compact(fill_fraction: float, policy: CompactionPolicy) -> bool:
+    """Return True when live context fill has reached the compaction trigger.
+
+    Pure decision function: history compaction should fire once the measured
+    fill fraction meets or exceeds the policy's ``trigger_at_context_fraction``.
+    """
+    return fill_fraction >= policy.trigger_at_context_fraction
+
+
 @dataclass(frozen=True)
 class RoutingPolicy:
     policy: str
