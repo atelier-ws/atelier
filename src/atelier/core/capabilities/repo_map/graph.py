@@ -8,6 +8,7 @@ from pathlib import Path
 
 import networkx as nx
 
+from atelier.core.capabilities.repo_map.tag_cache import TagCache
 from atelier.infra.tree_sitter.tags import Tag, detect_language, extract_tags
 
 # In-process cache: building the reference graph parses every source file with
@@ -129,16 +130,29 @@ def build_reference_graph(
     paths = [root / file for file in files] if files else iter_source_files(root)
     tags_by_file: dict[str, list[Tag]] = {}
     definitions: dict[str, set[str]] = {}
-    for path in paths:
-        try:
-            tags = extract_tags(path)
-        except OSError:
-            tags = []
-        rel = str(path.relative_to(root)) if path.is_absolute() or path.exists() else str(path)
-        tags_by_file[rel] = tags
-        for tag in tags:
-            if tag.kind == "definition":
-                definitions.setdefault(tag.name, set()).add(rel)
+    # Persistent, mtime-keyed tag cache (default-on; ATELIER_REPOMAP_TAG_CACHE
+    # disables). extract_tags() is the dominant cost; the cache lets fresh
+    # processes skip re-parsing files whose (mtime, size) are unchanged. The
+    # cache is correctness-preserving via mtime invalidation and degrades to
+    # in-memory on any DB failure, so graph building behaves identically.
+    cache = TagCache.for_repo(root)
+    try:
+        for path in paths:
+            tags = cache.get(path)
+            if tags is None:
+                try:
+                    tags = extract_tags(path)
+                except OSError:
+                    tags = []
+                else:
+                    cache.put(path, tags)
+            rel = str(path.relative_to(root)) if path.is_absolute() or path.exists() else str(path)
+            tags_by_file[rel] = tags
+            for tag in tags:
+                if tag.kind == "definition":
+                    definitions.setdefault(tag.name, set()).add(rel)
+    finally:
+        cache.close()
 
     graph = nx.DiGraph()
     for rel in tags_by_file:
