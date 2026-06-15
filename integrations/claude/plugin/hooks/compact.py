@@ -147,7 +147,7 @@ def _ensure_compact_manifest(session_id: str) -> Path:
             "utilisation_pct": 0.0,
             "turn_count": 0,
             "task_boundary_detected": False,
-            "preserve_blocks": [],
+            "preserve_playbooks": [],
             "pin_memory": [],
             "open_files": [],
             "recent_turns": [],
@@ -263,7 +263,7 @@ def _handle_post_compact(session_id: str, trigger: str) -> None:
     payload: dict[str, Any] = {}
     if manifest:
         payload = {
-            "preserve_blocks": manifest.get("preserve_blocks", []),
+            "preserve_playbooks": manifest.get("preserve_playbooks", []),
             "pin_memory": manifest.get("pin_memory", []),
             "utilisation_pct": manifest.get("utilisation_pct", 0.0),
             "should_handover": manifest.get("should_handover", False),
@@ -303,11 +303,16 @@ def main() -> int:
         if not session_id:
             return 0
 
+        from atelier.core.capabilities.plugin_runtime import update_session_stats
+
+        root = _atelier_root()
+        update_session_stats(root, payload)
+
         if hook_event == "PreCompact":
             _handle_pre_compact(session_id, trigger, payload.get("transcript_path", "") or "")
         elif hook_event == "PostCompact":
             _handle_post_compact(session_id, trigger)
-    except (OSError, ValueError, TypeError):
+    except (ImportError, OSError, ValueError, TypeError):
         pass  # Fail-open
 
     return 0

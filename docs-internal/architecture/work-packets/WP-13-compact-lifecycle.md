@@ -13,7 +13,7 @@ status: done
 ## Why
 
 Host-native compaction often fires only after useful state is already under pressure. Atelier
-inserts itself earlier and ensures the post-compact session gets the right ReasonBlocks and pinned
+inserts itself earlier and ensures the post-compact session gets the right Playbooks and pinned
 memory blocks re-injected.
 
 ## Implementation boundary
@@ -21,7 +21,7 @@ memory blocks re-injected.
 - **Host-native:** conversation compaction, context-window management, and `/compact` execution stay
   owned by the host CLI.
 - **Atelier augmentation:** Atelier advises when to compact and persists a deterministic manifest of
-  ReasonBlocks, pinned memory, and recently touched files to restore after host compaction.
+  Playbooks, pinned memory, and recently touched files to restore after host compaction.
 - **Not in scope:** do not implement a parallel chat compactor or try to replace the host's
   summarization behavior.
 
@@ -44,7 +44,7 @@ memory blocks re-injected.
    &#123;
      "should_compact": true,
      "utilisation_pct": 62.4,
-     "preserve_blocks": ["block_id1", "block_id2"],
+     "preserve_playbooks": ["block_id1", "block_id2"],
      "pin_memory": ["mem_id1"],
      "open_files": ["src/foo.py", "src/bar.ts"],
      "suggested_prompt": "Compact this conversation. Preserve: ..."
@@ -53,7 +53,7 @@ memory blocks re-injected.
 
    Logic:
    - `should_compact = utilisation_pct >= 60`
-   - `preserve_blocks` = top-3 ReasonBlocks active in the run
+   - `preserve_playbooks` = top-3 Playbooks active in the run
    - `pin_memory` = MemoryBlocks with `pinned=True` for the run's `agent_id`
    - `open_files` = last 5 files modified in the run ledger
 
@@ -73,7 +73,7 @@ memory blocks re-injected.
 4. Test:
    - Unit: compact_advise returns sane defaults at 50 %, 65 %, 90 %.
    - Integration: simulate a compact event; assert manifest written; simulate post-compact; assert
-     ReasonBlocks + memory re-injected into the session log.
+     Playbooks + memory re-injected into the session log.
 
 ## Acceptance tests
 

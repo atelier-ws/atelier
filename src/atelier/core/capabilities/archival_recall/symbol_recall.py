@@ -284,7 +284,7 @@ class SymbolRecallCapability:
                         {
                             "file_path": file_path,
                             "name": str(candidate["name"]),
-                            "qualified_name": str(candidate["qualified_name"]),
+                            "qualified_name": str(candidate.get("qualified_name", candidate["name"])),
                             "kind": str(candidate["kind"]),
                             "signature": str(candidate["signature"]),
                             "start_line": int(candidate["line_start"]),

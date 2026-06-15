@@ -1,4 +1,4 @@
-"""LLMReflector — tiered ReasonBlock extraction from a trace.
+"""LLMReflector — tiered Playbook extraction from a trace.
 
 The tier is selected by the same ``ATELIER_LLM_BACKEND`` switch the internal
 LLM subsystem already uses:
@@ -22,7 +22,7 @@ import os
 from typing import Any
 
 from atelier.core.foundation.extractor import CandidateBlock, extract_candidate
-from atelier.core.foundation.models import ReasonBlock, Trace
+from atelier.core.foundation.models import Playbook, Trace
 from atelier.infra.internal_llm import InternalLLMError, chat
 
 _LLM_REFLECT_BONUS = 0.10
@@ -35,7 +35,7 @@ def _backend() -> str:
 
 
 def reflect(trace: Trace, *, backend: str | None = None) -> CandidateBlock:
-    """Produce a candidate ReasonBlock from *trace*, LLM-enriched when enabled.
+    """Produce a candidate Playbook from *trace*, LLM-enriched when enabled.
 
     ``backend`` overrides the ``ATELIER_LLM_BACKEND`` env switch (mainly for
     tests). ``none``/unset keeps the pure heuristic path.
@@ -55,14 +55,14 @@ def reflect(trace: Trace, *, backend: str | None = None) -> CandidateBlock:
     return CandidateBlock(block=enriched, confidence=confidence, reasons=reasons)
 
 
-def _llm_enrich(trace: Trace, base: ReasonBlock) -> ReasonBlock | None:
+def _llm_enrich(trace: Trace, base: Playbook) -> Playbook | None:
     raw = chat(_build_messages(trace, base), json_schema=_REFLECT_SCHEMA)
     if not isinstance(raw, dict):
         return None
     return _merge_llm_fields(base, raw)
 
 
-def _build_messages(trace: Trace, base: ReasonBlock) -> list[dict[str, str]]:
+def _build_messages(trace: Trace, base: Playbook) -> list[dict[str, str]]:
     errors = "\n".join(f"- {e}" for e in trace.errors_seen[:10]) or "(none recorded)"
     repeated = "\n".join(f"- {rf.signature} (x{rf.count})" for rf in trace.repeated_failures[:10]) or "(none)"
     passed = [v.name for v in trace.validation_results if v.passed]
@@ -92,7 +92,7 @@ def _build_messages(trace: Trace, base: ReasonBlock) -> list[dict[str, str]]:
     ]
 
 
-def _merge_llm_fields(base: ReasonBlock, raw: dict[str, Any]) -> ReasonBlock:
+def _merge_llm_fields(base: Playbook, raw: dict[str, Any]) -> Playbook:
     situation = _clean_str(raw.get("situation")) or base.situation
     when_not = _clean_str(raw.get("when_not_to_apply")) or base.when_not_to_apply
     return base.model_copy(

@@ -28,12 +28,12 @@ the contract every other packet links back to.
 1. Read `docs/architecture/IMPLEMENTATION_PLAN_V2.md` end-to-end.
 2. Draft the ADR with these sections:
    - **Status:** Accepted (you may set Accepted because the user is the project owner)
-   - **Context:** What problem V2 solves; cite the ReasonBlock + Trace gap that motivated it
+   - **Context:** What problem V2 solves; cite the Playbook + Trace gap that motivated it
    - **Decision:** The three pillars; the vendoring posture for Letta; the context-savings plan
    - **Alternatives considered:**
      1. Fork Letta — rejected (forever-divergence risk)
      2. Build memory ground-up — rejected (we'd recreate Letta's mistakes)
-     3. Replace ReasonBlocks with Letta blocks — rejected (different semantics: procedure vs fact)
+     3. Replace Playbooks with Letta blocks — rejected (different semantics: procedure vs fact)
    - **Consequences:** (a) extra optional dependency; (b) two stores in the codebase; (c) need to
      keep the Embedder interface stable; (d) lesson promotion requires a human reviewer
    - **References:** link to the plan + data-model docs; link to the Letta repo
@@ -48,7 +48,7 @@ test -s docs/internal/engineering/decisions/001-v2-stateful-memory-and-context-s
 
 # 2. ADR mentions all three pillars by exact name
 grep -q "Stateful memory" docs/internal/engineering/decisions/001-v2-stateful-memory-and-context-savings.md
-grep -q "ReasonBlocks evolution" docs/internal/engineering/decisions/001-v2-stateful-memory-and-context-savings.md
+grep -q "Playbooks evolution" docs/internal/engineering/decisions/001-v2-stateful-memory-and-context-savings.md
 grep -q "Context savings" docs/internal/engineering/decisions/001-v2-stateful-memory-and-context-savings.md
 
 # 3. ADR cites Letta as Apache 2.0 and vendored, not forked

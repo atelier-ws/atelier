@@ -70,7 +70,7 @@ JSON
 
 Expected: the command prints a trace id and stores the observable record.
 
-### Scenario 5: Extract a Candidate ReasonBlock from a Trace
+### Scenario 5: Extract a Candidate Playbook from a Trace
 
 ```bash
 TRACE_ID=$(atelier trace list --json | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['id'])")

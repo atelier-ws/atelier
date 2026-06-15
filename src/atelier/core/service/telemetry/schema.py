@@ -37,7 +37,7 @@ EVENTS: dict[str, EventSpec] = {
     "cli_command_completed": EventSpec({"command_name": STR, "session_id": STR, "duration_ms_bucket": STR, "ok": BOOL}),
     "mcp_tool_called": EventSpec({"tool_name": STR, "session_id": STR, "duration_ms_bucket": STR, "ok": BOOL}),
     "api_request": EventSpec({"endpoint": STR, "method": STR, "status_code": INT, "duration_ms_bucket": STR}),
-    "reasonblock_retrieved": EventSpec(
+    "playbook_retrieved": EventSpec(
         {
             "block_id_hash": STR,
             "domain": STR,
@@ -46,10 +46,10 @@ EVENTS: dict[str, EventSpec] = {
             "session_id": STR,
         }
     ),
-    "reasonblock_applied": EventSpec(
+    "playbook_applied": EventSpec(
         {"block_id_hash": STR, "domain": STR, "retrieval_score": FLOAT, "session_id": STR}
     ),
-    "reasonblock_rejected": EventSpec(
+    "playbook_rejected": EventSpec(
         {"block_id_hash": STR, "domain": STR, "rejection_reason": STR, "session_id": STR}
     ),
     "plan_check_passed": EventSpec({"domain": STR, "rule_count": INT, "session_id": STR}),

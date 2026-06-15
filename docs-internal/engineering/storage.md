@@ -26,7 +26,7 @@ The SQLite backend is intentionally the default. Zero infrastructure, zero confi
 ├── blocks/
 │   ├── concrete-anchor-before-edit.md
 │   ├── read-after-write-verification.md
-│   └── ...             # One .md per ReasonBlock
+│   └── ...             # One .md per Playbook
 └── rubrics/
   ├── rubric_state_change_safety.yaml
   └── ...             # One .yaml per Rubric
@@ -38,8 +38,8 @@ Tables in `atelier.db`:
 
 | Table               | Description                                  |
 | ------------------- | -------------------------------------------- |
-| `reason_blocks`     | Block metadata + procedure text              |
-| `reason_blocks_fts` | FTS5 virtual table over title+procedure      |
+| `playbooks`     | Block metadata + procedure text              |
+| `playbooks_fts` | FTS5 virtual table over title+procedure      |
 | `rubrics`           | Rubric definitions with check lists          |
 | `traces`            | Execution traces (observable only)           |
 | `audit_log`         | Immutable append-only audit of all mutations |
@@ -49,7 +49,7 @@ Tables in `atelier.db`:
 
 ### Markdown Mirrors
 
-Every ReasonBlock is mirrored to `./.lessons/blocks/<id>.md` on upsert (when `write_markdown=True`, which is the default via CLI/MCP). This means blocks can be reviewed in git diffs like any other file.
+Every Playbook is mirrored to `./.lessons/blocks/<id>.md` on upsert (when `write_markdown=True`, which is the default via CLI/MCP). This means blocks can be reviewed in git diffs like any other file.
 
 Similarly, rubrics are mirrored to `./.lessons/rubrics/<id>.yaml` and traces to `~/.atelier/traces/<id>.json`.
 

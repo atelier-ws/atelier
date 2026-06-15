@@ -7,6 +7,7 @@ from typing import Any
 
 from atelier.core.capabilities.tool_supervision.native_search import (
     MAX_STRUCTURED_OUTPUT_CHARS,
+    _match_line_numbers,
     search_workspace,
 )
 
@@ -156,6 +157,27 @@ def test_native_search_ranked_file_map_baseline_is_path_list(tmp_path: Path) -> 
 
     assert result["_meta"]["fileMatchCount"] == 1
     assert result["tokens_saved"] == 0
+
+
+def test_match_line_numbers_bails_on_expired_deadline_every_iteration() -> None:
+    # Regression: the deadline must be honored on every iteration, not only every
+    # 256th, so a ReDoS-prone regex cannot keep scanning lines past the budget.
+    import re
+    import time
+
+    regex = re.compile("needle")
+    lines = ["needle"] * 1000
+    expired = time.monotonic() - 1.0
+
+    out = _match_line_numbers(
+        lines,
+        regex,
+        None,
+        include_all_when_no_regex=False,
+        deadline=expired,
+    )
+
+    assert out == []
 
 
 def test_native_search_file_content_mode_spills_large_payload(tmp_path: Path, monkeypatch: Any) -> None:

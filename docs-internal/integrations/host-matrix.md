@@ -12,7 +12,7 @@
 
 ## What Atelier Owns
 
-- Procedural reasoning reuse (ReasonBlocks)
+- Procedural reasoning reuse (Playbooks)
 - Runtime loop monitoring
 - Session budget optimization guardrails
 - Rubric gate verification

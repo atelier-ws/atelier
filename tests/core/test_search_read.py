@@ -41,7 +41,7 @@ def test_detect_lang_fallback() -> None:
 
 
 def test_safe_args_accepts_plain_query() -> None:
-    _assert_safe_args("ReasonBlock", "src/")  # must not raise
+    _assert_safe_args("Playbook", "src/")  # must not raise
 
 
 def test_safe_args_rejects_semicolons() -> None:
@@ -133,15 +133,15 @@ def test_cluster_snippets_score_higher_for_dense() -> None:
 def test_search_read_finds_matches_in_fixture_dir(tmp_path: Path) -> None:
     # Write a small corpus
     (tmp_path / "alpha.py").write_text(
-        "class ReasonBlock:\n    def __init__(self):\n        self.data = {}\n",
+        "class Playbook:\n    def __init__(self):\n        self.data = {}\n",
         encoding="utf-8",
     )
     (tmp_path / "beta.py").write_text(
-        "from alpha import ReasonBlock\n\ndef use():\n    rb = ReasonBlock()\n    return rb\n",
+        "from alpha import Playbook\n\ndef use():\n    rb = Playbook()\n    return rb\n",
         encoding="utf-8",
     )
 
-    result = search_read(query="ReasonBlock", path=str(tmp_path))
+    result = search_read(query="Playbook", path=str(tmp_path))
 
     assert isinstance(result, SearchReadResult)
     assert len(result.matches) >= 1

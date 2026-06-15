@@ -4,11 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from atelier.core.capabilities.code_context.call_graph import CallGraphNode
-from atelier.core.capabilities.code_context.intel_store import ProviderHealth
-from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
 from atelier.infra.code_intel.scip.indexer import ScipIndexer
 from atelier.infra.code_intel.scip.reader import (
     LoadedScipArtifact,
@@ -16,6 +13,11 @@ from atelier.infra.code_intel.scip.reader import (
     ScipArtifactReader,
 )
 from atelier.infra.code_intel.scip.watcher import ScipArtifactWatcher
+
+if TYPE_CHECKING:
+    from atelier.core.capabilities.code_context.call_graph import CallGraphNode
+    from atelier.core.capabilities.code_context.intel_store import ProviderHealth
+    from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
 
 
 class ScipSymbolIntelProvider:
@@ -41,10 +43,14 @@ class ScipSymbolIntelProvider:
             cache_root=lambda: self._indexer.cache_root,
             state_sync=state_sync,
         )
+        from atelier.core.capabilities.code_context.intel_store import ProviderHealth
+
         self._artifacts: list[LoadedScipArtifact] = []
         self._health = ProviderHealth(status="unhealthy", reason="no SCIP artifacts")
 
     def refresh(self) -> bool:
+        from atelier.core.capabilities.code_context.intel_store import ProviderHealth
+
         discovered_artifacts = self._indexer.discover_artifacts()
         changed = self._watcher.refresh([artifact.path for artifact in discovered_artifacts])
         loaded: list[LoadedScipArtifact] = []

@@ -101,7 +101,7 @@ orchestrator and pluggable capability modules.
 
 - Purpose: Persistence and external integrations.
 - Location: `src/atelier/infra/`
-- Contains: `storage/` (base/factory/sqlite_store/postgres_store/vector/memory_store/migrations), `runtime/` (run_ledger, cost_tracker, realtime_context, checkpoint, session_state, swarm_worktree, lifecycle), `code_intel/` (scip, astgrep, zoekt, cross_lang, git_history), `embeddings/` (local/ollama/openai/letta/null), `memory_bridges/` (letta_adapter, openmemory), `internal_llm/` (litellm/ollama/openai clients), `seed_blocks/` (YAML reason blocks), `tree_sitter/`.
+- Contains: `storage/` (base/factory/sqlite_store/postgres_store/vector/memory_store/migrations), `runtime/` (run_ledger, cost_tracker, realtime_context, checkpoint, session_state, swarm_worktree, lifecycle), `code_intel/` (scip, astgrep, zoekt, cross_lang, git_history), `embeddings/` (local/ollama/openai/letta/null), `memory_bridges/` (letta_adapter, openmemory), `internal_llm/` (litellm/ollama/openai clients), `seed_playbooks/` (YAML reason blocks), `tree_sitter/`.
 - Depends on: external services, filesystem.
 - Used by: `core/`
 
@@ -142,10 +142,10 @@ orchestrator and pluggable capability modules.
 - Examples: `src/atelier/core/capabilities/context_reuse/`, `.../proof_gate/`, `.../quality_router/`, `.../semantic_file_memory/`, `.../tool_supervision/`.
 - Pattern: Capability class imported into `engine.AtelierRuntimeCore` (see `CAPABILITIES` class var) and composed at construction; a `CapabilityRegistry`/`CapabilityNode` graph exists at `core/capabilities/registry/graph.py`.
 
-**ReasonBlock / Reason Block seeds:**
+**Playbook / Reason Block seeds:**
 
 - Purpose: Reusable procedural reasoning fragments.
-- Examples: `src/atelier/infra/seed_blocks/*.yaml`, `core/foundation/models.py` (`ReasonBlock`).
+- Examples: `src/atelier/infra/seed_playbooks/*.yaml`, `core/foundation/models.py` (`Playbook`).
 - Pattern: Seeded from YAML, extracted from runs by `core/foundation/extractor.py`.
 
 **Storage backend:**

@@ -32,7 +32,6 @@ make typecheck     # mypy strict
 make test          # pytest (all tests)
 make test-fast     # pytest -x, skipping slow/Postgres-gated tests
 make test-cov      # pytest with coverage report
-make security-test # Security-focused test cases only
 ```
 
 ## Test Suite

@@ -27,7 +27,7 @@ context({
 })
 ```
 
-Read every returned ReasonBlock. Note their `dead_ends`.
+Read every returned Playbook. Note their `dead_ends`.
 
 ### 2. Draft a plan
 
@@ -106,4 +106,4 @@ record({
    `verify`.
 3. Never record secrets, tokens, API keys, customer PII, or hidden
    chain-of-thought.
-4. Never invent plan steps that contradict matched ReasonBlocks.
+4. Never invent plan steps that contradict matched Playbooks.

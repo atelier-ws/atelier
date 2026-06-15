@@ -47,7 +47,7 @@ or opencode already provide part of the workflow.
 | [WP-01](WP-01-decision-record.md)    | Author ADR-001 explaining the V2 architecture                  | atelier:code |        —         | —          | done   |
 | [WP-02](WP-02-data-model.md)         | Implement foundational V2 Pydantic models + DDL                | atelier:code | 1, 2, 3, routing | WP-01      | done   |
 | [WP-03](WP-03-letta-extra.md)        | Add `letta-client` optional extra + `letta_adapter` stub       | atelier:code |        1         | WP-02      | done   |
-| [WP-04](WP-04-reasonblock-tuning.md) | Tune ReasonBlock retrieval (dedup + budget) for ≥30% reduction | atelier:code |       2, 3       | —          | done   |
+| [WP-04](WP-04-playbook-tuning.md) | Tune Playbook retrieval (dedup + budget) for ≥30% reduction | atelier:code |       2, 3       | —          | done   |
 | [WP-05](WP-05-embedder.md)           | Implement Embedder protocol + 4 backends                       | atelier:code |     1, 2, 3      | WP-02      | done   |
 
 ## Phase B — Memory subsystem core

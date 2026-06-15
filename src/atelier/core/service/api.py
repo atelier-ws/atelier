@@ -419,8 +419,8 @@ def _normalize_lever(operation: str) -> str:
         return "scoped_recall"
     if "compact" in op:
         return "compact_lifecycle"
-    if "reasonblock" in op or "reason_block" in op or "inject" in op:
-        return "reasonblock_inject"
+    if "playbook" in op or "playbook" in op or "inject" in op:
+        return "playbook_inject"
     return op
 
 
@@ -1251,7 +1251,7 @@ _OBSERVED_OPTIMIZATION_TITLES = {
     "session_compaction": "Session compaction",
     "model_routing": "Model routing (tier downgrade)",
     "scoped_recall": "Scoped recall",
-    "reasonblock_inject": "ReasonBlock injection",
+    "playbook_inject": "Playbook injection",
     "cached_read": "Cached reuse",
     "delta_read": "Delta read",
     "structure_map": "Structure map",
@@ -2751,15 +2751,15 @@ def _implemented_optimization_catalog(
             "examples": _optimization_lever_examples(top_sources, exact=("scoped_recall",)),
         },
         {
-            "id": "reasonblock_inject",
-            "title": "ReasonBlock injection",
+            "id": "playbook_inject",
+            "title": "Playbook injection",
             "category": "context_reuse",
             "automation": "Automatic when matching reasoning blocks are selected",
             "status": "active",
-            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("reasonblock_inject",)),
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("playbook_inject",)),
             "applies_to": supported_hosts,
             "notes": "Reuses prior solved procedures instead of re-deriving them from scratch.",
-            "examples": _optimization_lever_examples(top_sources, exact=("reasonblock_inject",)),
+            "examples": _optimization_lever_examples(top_sources, exact=("playbook_inject",)),
         },
         {
             "id": "ast_truncation",

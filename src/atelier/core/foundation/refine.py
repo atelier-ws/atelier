@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.retriever import _dedup_text, _dedup_tokens, _jaccard_tokens
 from atelier.infra.embeddings.base import Embedder
 
@@ -35,15 +35,15 @@ class GrowResult:
     (``target_id`` set); False when ``block`` is the unchanged new candidate.
     """
 
-    block: ReasonBlock
+    block: Playbook
     merged: bool
     target_id: str | None
     score: float
 
 
 def grow_or_create(
-    incoming: ReasonBlock,
-    existing: Sequence[ReasonBlock],
+    incoming: Playbook,
+    existing: Sequence[Playbook],
     *,
     embedder: Embedder | None = None,
 ) -> GrowResult:
@@ -54,7 +54,7 @@ def grow_or_create(
     return GrowResult(block=merge_blocks(target, incoming), merged=True, target_id=target.id, score=score)
 
 
-def merge_blocks(target: ReasonBlock, incoming: ReasonBlock) -> ReasonBlock:
+def merge_blocks(target: Playbook, incoming: Playbook) -> Playbook:
     """Fold *incoming*'s knowledge into *target*, preserving target identity."""
     return target.model_copy(
         update={
@@ -72,10 +72,10 @@ def merge_blocks(target: ReasonBlock, incoming: ReasonBlock) -> ReasonBlock:
 
 
 def _best_match(
-    incoming: ReasonBlock,
-    existing: Sequence[ReasonBlock],
+    incoming: Playbook,
+    existing: Sequence[Playbook],
     embedder: Embedder | None,
-) -> tuple[ReasonBlock | None, float]:
+) -> tuple[Playbook | None, float]:
     pool = [b for b in existing if b.domain == incoming.domain and b.id != incoming.id]
     if not pool:
         return None, 0.0
@@ -94,8 +94,8 @@ def _best_match(
 
 
 def _embed_scores(
-    incoming: ReasonBlock,
-    pool: Sequence[ReasonBlock],
+    incoming: Playbook,
+    pool: Sequence[Playbook],
     embedder: Embedder,
 ) -> list[float] | None:
     texts = [_dedup_text(incoming), *[_dedup_text(b) for b in pool]]

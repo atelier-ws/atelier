@@ -166,6 +166,11 @@ main() {
         spin_tail "Installing packages" install_console_scripts
     fi
     persist_install_record
+    # Mark as a dev install so the MCP server enables debug logging automatically.
+    # Production installs (bundle.sh / install.sh) never create this file.
+    if [[ "$ATELIER_DRY_RUN" != "1" ]]; then
+        mkdir -p "${HOME}/.atelier" && touch "${HOME}/.atelier/.dev_mode" 2>/dev/null || true
+    fi
     step_done
 
     run_setup

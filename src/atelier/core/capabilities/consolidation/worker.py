@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from atelier.core.foundation.curator import MIN_EVIDENCE, REMOVE_MIN_FAILURES, REMOVE_SUCCESS_RATE
-from atelier.core.foundation.models import ConsolidationCandidate, ReasonBlock
+from atelier.core.foundation.models import ConsolidationCandidate, Playbook
 from atelier.core.foundation.store import ContextStore
 from atelier.infra.internal_llm import InternalLLMError, chat
 
@@ -37,8 +37,8 @@ def _tokens(text: str) -> set[str]:
     return {token.lower() for token in re.findall(r"[a-zA-Z0-9_]+", text)}
 
 
-def _block_tokens(b: ReasonBlock) -> set[str]:
-    """Pre-compute the token set for a ReasonBlock."""
+def _block_tokens(b: Playbook) -> set[str]:
+    """Pre-compute the token set for a Playbook."""
     return _tokens(" ".join([b.title, b.situation, *b.procedure, *b.failure_signals]))
 
 
@@ -49,7 +49,7 @@ def _token_set_similarity(left: set[str], right: set[str]) -> float:
     return len(left & right) / len(left | right)
 
 
-def _draft_merge(blocks: list[ReasonBlock]) -> tuple[str | None, bool]:
+def _draft_merge(blocks: list[Playbook]) -> tuple[str | None, bool]:
     payload = [block.model_dump(mode="json") for block in blocks]
     try:
         response = chat(
@@ -72,7 +72,7 @@ def _draft_merge(blocks: list[ReasonBlock]) -> tuple[str | None, bool]:
     return None, True
 
 
-def _should_quarantine(block: ReasonBlock) -> bool:
+def _should_quarantine(block: Playbook) -> bool:
     total = block.success_count + block.failure_count
     return (
         block.status == "active"
@@ -139,7 +139,7 @@ def consolidate(
                 evidence={
                     "block_id": block.id,
                     "method": "deterministic_only",
-                    "source": "reasonblock",
+                    "source": "playbook",
                 },
             )
         )

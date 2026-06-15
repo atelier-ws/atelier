@@ -361,7 +361,7 @@ def _write_copilot_vscode_settings(workspace_root: Path) -> Path:
 def _toml_basic_escape(value: str) -> str:
     """Escape a string for a TOML basic string (single- or multi-line).
 
-    Backslashes first (so literal ``\d``/Windows paths survive instead of being
+    Backslashes first (so literal ``\\d``/Windows paths survive instead of being
     read as TOML escapes), then double-quotes (so a ``"`` or ``\"\"\"`` run can
     never terminate the string early). Safe inside both ``"..."`` and
     ``\"\"\"...\"\"\"`` forms.

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from atelier.core.capabilities.lesson_promotion.draft import draft_lesson_candidate
-from atelier.core.foundation.models import ReasonBlock, Trace, ValidationResult
+from atelier.core.foundation.models import Playbook, Trace, ValidationResult
 
 
 def _trace(
@@ -82,7 +82,7 @@ def test_draft_falls_back_to_edit_block_with_overlap_target() -> None:
         _trace("t3", errors=["oops", "permission denied writing lockfile"]),
     ]
     existing = [
-        ReasonBlock(
+        Playbook(
             id="rb-cache",
             title="Cache write precheck",
             domain="coding",

@@ -18,7 +18,7 @@ Gated by `ATELIER_DEV_MODE` (off by default). Off = stable; On = dev.
 |-----------|--------|-------------|
 | `code`    | active | SCIP-indexed code intelligence (search/node/explore/callers/callees/impact/files/context/status/routes) |
 | `compact` | active | Compress full run ledger into a compact session state |
-| `context` | active | Retrieve relevant ReasonBlocks for current task |
+| `context` | active | Retrieve relevant Playbooks for current task |
 | `edit`    | active | Atomic multi-file edits with diff snapshots |
 | `grep`    | active | Token-budgeted regex/glob/type search |
 | `memory`  | active | Memory recall + fact storage/voting |

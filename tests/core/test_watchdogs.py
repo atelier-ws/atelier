@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.watchdogs import (
     ContextBloat,
     HighRiskAction,
@@ -15,8 +15,8 @@ from atelier.core.foundation.watchdogs import (
 )
 
 
-def _block(dead: tuple[str, ...] | list[str] = ()) -> ReasonBlock:
-    return ReasonBlock(
+def _block(dead: tuple[str, ...] | list[str] = ()) -> Playbook:
+    return Playbook(
         id="b",
         title="T",
         domain="coding",

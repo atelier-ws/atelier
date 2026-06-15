@@ -30,7 +30,7 @@ decision surface. Host adapters should not implement their own routing logic.
 1. Implement a deterministic first-pass router that uses WP-25 policy functions to map request
    risk, step type, memory confidence, verifier coverage, and previous failures to
    `deterministic`, `cheap`, `mid`, or `premium`.
-2. Use existing runtime evidence: ReasonBlocks retrieved, files touched, errors seen, ledger loop
+2. Use existing runtime evidence: Playbooks retrieved, files touched, errors seen, ledger loop
    signals, and context budget data.
 3. Return a structured `RouteDecision`; do not call external model providers in this packet.
 4. Add runtime methods that expose the router through MCP/CLI without host-specific routing logic.

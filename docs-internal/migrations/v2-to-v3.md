@@ -21,7 +21,7 @@ measured replay benchmark.
 - The default memory backend is SQLite — users without a Letta sidecar see no
   change in behaviour.
 - Trace schema is a strict superset: no fields removed, no required fields added.
-- ReasonBlock store, rubric gates, plan-check, and rescue surfaces are unchanged.
+- Playbook store, rubric gates, plan-check, and rescue surfaces are unchanged.
 - The host CLI owns the agent loop, model invocation, billing, and API keys —
   exactly as in V2.
 

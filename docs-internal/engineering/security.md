@@ -103,8 +103,4 @@ the default configuration.
 
 ## Security Testing
 
-```bash
-cd atelier && make security-test
-```
-
-This runs security-focused test cases including redaction validation and injection guard tests.
+Security tests live in `tests/gateway/test_security.py` and are included in `make test` / `make test-full`. They cover redaction validation and injection guard tests.

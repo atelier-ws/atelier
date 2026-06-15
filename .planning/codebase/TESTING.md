@@ -36,7 +36,6 @@ make test           # Full suite, parallel via xdist if available, --durations=0
 make test-fast      # -x stop-on-first-failure, skips postgres/worker + slow tests
 make test-cov       # --cov=atelier --cov-report=term-missing --cov-report=html
 make test-full      # FULL suite incl. slow, --timeout=300, --cov-fail-under=$(COV_FAIL_UNDER)
-make security-test  # pytest tests/gateway/test_security.py -v
 make verify         # lint + format-check + typecheck + docs-check + test
 ```
 Direct: `uv run pytest -q -ra`, target a file with `uv run pytest tests/core/test_x.py -v`.
@@ -142,7 +141,7 @@ make test-cov   # term-missing + HTML report (htmlcov/)
 
 **Integration tests:** `tests/integrations/`, plus DB-backed suites (`tests/test_postgres_store.py`, `tests/test_worker_jobs.py`) that `test-fast` deliberately ignores (need Postgres).
 
-**Security tests:** `tests/gateway/test_security.py` — `make security-test`.
+**Security tests:** `tests/gateway/test_security.py` — included in `make test` / `make test-full`.
 
 **Docs/contract tests:** `tests/docs/` asserts docs/README don't publish forbidden or unmeasured claims (e.g. `test_readme_no_unmeasured_claims`) — guardrails on documentation honesty.
 

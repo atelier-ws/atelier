@@ -144,9 +144,9 @@ prompt_templates:
     Domain: {pack.domain}
 
 
-    Structured reasoning patterns ({pack.reasonblocks_count}):
+    Structured reasoning patterns ({pack.playbooks_count}):
 
-    {pack.reasonblocks}
+    {pack.playbooks}
 
 
     Community quality standards ({pack.rubrics_count}):

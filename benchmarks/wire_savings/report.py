@@ -23,9 +23,12 @@ List the baseline capture FIRST: the delta row is computed as
 
 from __future__ import annotations
 
+import logging
 import sys
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 from benchmarks.wire_savings.usage_parser import Usage, extract_usage
 
@@ -86,7 +89,19 @@ def flow_records(path: str) -> Iterator[tuple[str, bytes]]:
         ) from exc
 
     with open(path, "rb") as fh:
-        for flow in FlowReader(fh).stream():
+        try:
+            flows = FlowReader(fh).stream()
+        except Exception:
+            logger.warning("flow_records: unable to open %s", path, exc_info=True)
+            return
+        while True:
+            try:
+                flow = next(flows)
+            except StopIteration:
+                return
+            except Exception:
+                logger.warning("flow_records: skipping corrupted flow entry in %s", path, exc_info=True)
+                return
             req = getattr(flow, "request", None)
             resp = getattr(flow, "response", None)
             if req is None or resp is None:

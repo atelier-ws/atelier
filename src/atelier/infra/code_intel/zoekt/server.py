@@ -154,6 +154,10 @@ class ZoektServer:
         inspect = _run_command(["docker", "image", "inspect", resolution.image_ref], check=False, timeout=30)
         if inspect.returncode != 0:
             _run_command(["docker", "pull", resolution.image_ref], timeout=300)
+        # A previous bridge timeout kills the bridge Popen but leaves the
+        # named container running; remove any leftover so this start is
+        # idempotent and `docker run --name` does not collide.
+        _run_command(["docker", "rm", "-f", self._container_name], check=False, timeout=30)
         command = (
             "set -eu\n"
             "zoekt-index -index /data/index /input >/dev/null\n"
@@ -251,17 +255,39 @@ class ZoektServer:
         with self._request_lock:
             bridge.stdin.write(encoded + "\n")
             bridge.stdin.flush()
+            # readline() can block forever if Docker or the webserver stalls.
+            # A threading.Timer kills the bridge after 30 s, which makes
+            # readline() return "" (EOF) so the loop exits cleanly.
+            # We can't use select.select() here: Python's TextIOWrapper may
+            # have already pulled the sentinel line into its internal buffer
+            # from the same OS read as the JSON body, leaving the fd empty
+            # and causing a spurious select timeout.
+            timed_out = threading.Event()
+
+            def _kill_bridge() -> None:
+                timed_out.set()
+                with suppress(Exception):
+                    bridge.kill()
+
             response_lines: list[str] = []
-            while True:
-                line = bridge.stdout.readline()
-                if line == "":
-                    stderr = ""
-                    if bridge.stderr is not None:
-                        stderr = bridge.stderr.read().strip()
-                    raise RuntimeError(stderr or "zoekt bridge exited unexpectedly")
-                if line.rstrip("\n") == _BRIDGE_SENTINEL:
-                    break
-                response_lines.append(line)
+            timer = threading.Timer(30.0, _kill_bridge)
+            timer.start()
+            try:
+                while True:
+                    line = bridge.stdout.readline()
+                    if line == "":
+                        if timed_out.is_set():
+                            raise TimeoutError("zoekt bridge did not respond within 30 s")
+                        stderr = ""
+                        if bridge.stderr is not None:
+                            with suppress(Exception):
+                                stderr = bridge.stderr.read().strip()
+                        raise RuntimeError(stderr or "zoekt bridge exited unexpectedly")
+                    if line.rstrip("\n") == _BRIDGE_SENTINEL:
+                        break
+                    response_lines.append(line)
+            finally:
+                timer.cancel()
         body = "".join(response_lines).strip()
         if not body:
             raise RuntimeError("zoekt bridge returned an empty response")

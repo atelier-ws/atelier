@@ -30,7 +30,7 @@ leak across agents.
 1. Extend `reasoning` to accept an optional `agent_id` and an optional
    `recall=true|false` (default `true`).
 
-2. When `recall=true` and `agent_id` is provided, after gathering ReasonBlocks call
+2. When `recall=true` and `agent_id` is provided, after gathering Playbooks call
    `ArchivalRecallCapability.recall(agent_id, query=<task>, top_k=3)` and append the results to
    the rendered context under a clearly-labelled `<memory>` section.
 
@@ -42,7 +42,7 @@ leak across agents.
 
 4. Output additions:
    - `recalled_passages: [&#123;id, source, score&#125;]`
-   - `tokens_breakdown: &#123; reasonblocks, memory, total &#125;`
+   - `tokens_breakdown: &#123; playbooks, memory, total &#125;`
 
 5. Tests:
    - With seeded passages tagged for `atelier:code`, calling with that agent_id surfaces them

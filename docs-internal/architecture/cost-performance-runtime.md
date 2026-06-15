@@ -43,7 +43,7 @@ Memory runtime
         |
         v
 Procedure memory bank
-  - ReasonBlocks
+  - Playbooks
   - failure clusters
   - promoted lessons
         |
@@ -132,7 +132,7 @@ Atelier keeps fact memory and procedure memory separate:
 | Layer                 | Stores                                                      | Runtime use         |
 | --------------------- | ----------------------------------------------------------- | ------------------- |
 | Memory runtime        | project facts, preferences, active state, archival passages | recall what is true |
-| Procedure memory bank | ReasonBlocks, failure patterns, prevention rules            | decide what to do   |
+| Procedure memory bank | Playbooks, failure patterns, prevention rules            | decide what to do   |
 
 ReasoningBank-style lessons belong in the procedure bank, not in raw hidden reasoning. A useful
 lesson is structured and observable:
@@ -176,7 +176,7 @@ Start cheap when all of these hold:
 
 - risk is low or medium;
 - the expected diff is small;
-- relevant ReasonBlocks or procedure memories exist;
+- relevant Playbooks or procedure memories exist;
 - verification is deterministic and cheap;
 - the task is mechanical or well-scoped.
 

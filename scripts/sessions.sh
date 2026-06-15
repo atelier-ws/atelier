@@ -37,6 +37,44 @@ ensure_uv() {
     command -v uv >/dev/null 2>&1 || { echo "uv install completed but uv is not on PATH." >&2; exit 1; }
 }
 
+# verify_checksum <archive> <url>
+# Verifies <archive> against a published <url>.sha256 sidecar. Fails closed:
+# if the checksum cannot be fetched or does not match, the run aborts unless
+# ATELIER_ALLOW_UNVERIFIED=1 is set to explicitly opt out.
+# TODO: publish atelier-distribution-*.tar.gz.sha256 sidecars in
+# .github/workflows/release.yml so this verification is enforced by default.
+verify_checksum() {
+    local archive="$1" url="$2" expected=""
+    if command -v curl >/dev/null 2>&1; then
+        expected="$(curl -fsSL "${url}.sha256" 2>/dev/null || true)"
+    elif command -v wget >/dev/null 2>&1; then
+        expected="$(wget -qO- "${url}.sha256" 2>/dev/null || true)"
+    fi
+    # Accept both `<hash>  file` and `SHA256 (file) = <hash>` formats.
+    expected="$(printf '%s' "$expected" | grep -oE '[0-9a-fA-F]{64}' | head -1 | tr 'A-F' 'a-f')"
+    if [[ -z "$expected" ]]; then
+        if [[ "${ATELIER_ALLOW_UNVERIFIED:-0}" == "1" ]]; then
+            echo "⛆ No published checksum at ${url}.sha256 — proceeding unverified (ATELIER_ALLOW_UNVERIFIED=1)." >&2
+            return 0
+        fi
+        echo "No published checksum at ${url}.sha256 to verify the download. Refusing to use an unverified archive. Set ATELIER_ALLOW_UNVERIFIED=1 to override." >&2
+        exit 1
+    fi
+    local actual
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual="$(sha256sum "$archive" | awk '{print $1}')"
+    elif command -v shasum >/dev/null 2>&1; then
+        actual="$(shasum -a 256 "$archive" | awk '{print $1}')"
+    else
+        echo "Cannot verify checksum: neither sha256sum nor shasum is available." >&2
+        exit 1
+    fi
+    if [[ "$actual" != "$expected" ]]; then
+        echo "Checksum mismatch for ${archive}: expected ${expected}, got ${actual}. Aborting." >&2
+        exit 1
+    fi
+}
+
 # install_wheel_to_venv <wheel> <venv_dir> [constraints]
 # Installs the wheel into a fresh venv at <venv_dir>; resolution is pinned by the
 # bundled constraints file when present (avoids re-resolving unbounded deps).
@@ -144,6 +182,8 @@ else
             echo "Missing downloader: install curl or wget." >&2
             exit 1
         fi
+
+        verify_checksum "${ARCHIVE}" "${URL}"
 
         tar -xzf "${ARCHIVE}" -C "${TMP_BASE}"
         WHEEL="$(ls "${TMP_BASE}"/bin/atelier-*.whl 2>/dev/null | head -1 || true)"

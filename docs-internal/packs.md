@@ -7,7 +7,7 @@ That is no longer the current top-level CLI surface.
 
 Atelier currently ships knowledge content through three main paths:
 
-- built-in seed ReasonBlocks loaded from `src/atelier/infra/seed_blocks/`
+- built-in seed Playbooks loaded from `src/atelier/infra/seed_playbooks/`
 - built-in rubrics loaded from `src/atelier/core/rubrics/`
 - internal domain bundle metadata exposed through `atelier domain list` and `atelier domain info`
 
@@ -25,7 +25,7 @@ For contributor-managed knowledge changes:
 
 Helpful references:
 
-- [authoring/reasonblock-authoring.md](authoring/reasonblock-authoring.md)
+- [authoring/playbook-authoring.md](authoring/playbook-authoring.md)
 - [authoring/rubric-authoring.md](authoring/rubric-authoring.md)
 - [authoring/failure-cluster-authoring.md](authoring/failure-cluster-authoring.md)
 

@@ -63,7 +63,7 @@ Loads blocks, compiles, lints, and prints either:
   Stable prefix: 8,420 tokens
   Volatile tokens before prefix end: 0
   Estimated OpenAI cached-token eligibility: yes
-  Estimated Anthropic breakpoint: after block reasonblocks/team-rules
+  Estimated Anthropic breakpoint: after block playbooks/team-rules
 
   Findings:
     [ERROR] ordering.volatile-before-stable (block scratchpad/main)

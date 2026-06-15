@@ -9,7 +9,7 @@ work-packet at a time. Read the [work-packets index](work-packets/INDEX.md) for 
 
 ## 1. Vision
 
-Today Atelier is a **reasoning runtime** for coding/operational agents: it ships ReasonBlocks, plan
+Today Atelier is a **reasoning runtime** for coding/operational agents: it ships Playbooks, plan
 checks, rubric gates, failure rescue, and an observable trace store. It is not a general memory OS,
 an agent framework, or an IDE. V2 adds a narrow memory subsystem only where it directly supports
 agent continuity, context savings, and auditability.
@@ -19,7 +19,7 @@ V2 keeps that posture but closes three gaps that block adoption against best-in-
 | #   | Pillar                     | Inspired by                                                                                                               | Goal                                                                                                                                                                                                                                                                                                                                                                  |
 | --- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | **Stateful memory**        | [Letta](https://github.com/letta-ai/letta)                                                                                | First-class long-term memory for agents that survive across sessions: editable core memory blocks, archival passages with semantic search, sleeptime summarization.                                                                                                                                                                                                   |
-| 2   | **ReasonBlocks evolution** | [reasonblocks.com](https://reasonblocks.com/) + Letta                                                                     | Ship a versioned, reviewable, retrievable corpus of reasoning procedures (already started) and add automated promotion / deprecation from production traces.                                                                                                                                                                                                          |
+| 2   | **Playbooks evolution** | Letta                                                                     | Ship a versioned, reviewable, retrievable corpus of reasoning procedures (already started) and add automated promotion / deprecation from production traces.                                                                                                                                                                                                          |
 | 3   | **Context savings ≥ 50 %** | [Lemma](https://www.uselemma.ai/) + [Claude `/compact`](https://platform.claude.com/docs/en/build-with-claude/compaction) | Demonstrate ≥ 50 % reduction in tokens shipped to the model per task on the SWE-bench-style harness. The design adopts the stable tool-level ideas that have shown up across coding-agent optimization systems: combined search/read, batched edits, outline-first reads, deterministic SQL inspection, fuzzy edit matching, scoped recall, and lifecycle compaction. |
 
 Each pillar is a separate work-stream. Subagents may execute packets in parallel as long as they
@@ -39,7 +39,7 @@ premium model tier.
 - ❌ Replacing Letta. We **vendor `letta-client`** as an optional dependency and run a Letta server
   out-of-process when configured. We do not fork or copy Letta source. This keeps us on Letta's
   upgrade train forever.
-- ❌ Replacing ReasonBlocks. The existing `ReasonBlock` Pydantic model in
+- ❌ Replacing Playbooks. The existing `Playbook` Pydantic model in
   `src/atelier/core/foundation/models.py` is the canonical schema and stays. V2 adds adjacent
   artifacts (memory blocks, archival passages, lessons), not a rewrite.
 - ❌ Tying Atelier to a specific embedding provider. The embedding client is an interface; defaults
@@ -48,9 +48,9 @@ premium model tier.
 - ❌ Storing chain-of-thought, secrets, or PII anywhere. The redaction filter in
   `src/atelier/core/foundation/redaction.py` extends to memory blocks and archival passages.
 - ❌ Hidden-state memory. **Every memory block is reviewable, addressable, and editable** by humans
-  and by the agent — the same contract ReasonBlocks already honor.
+  and by the agent — the same contract Playbooks already honor.
 - ❌ Provider-only routing. V2 may use provider routers as execution backends, but the coding-risk
-  policy lives in Atelier because it depends on ReasonBlocks, rubrics, traces, repo retrieval, and
+  policy lives in Atelier because it depends on Playbooks, rubrics, traces, repo retrieval, and
   verifier outcomes.
 
 ---
@@ -68,7 +68,7 @@ premium model tier.
                     └──┬──────────────────┬─────────────────────┬─────────┘
                        │                  │                     │
         ┌──────────────▼──────┐   ┌───────▼─────────┐   ┌───────▼─────────┐
-        │ ReasonBlock Store   │   │ Memory Subsystem│   │ Lesson Pipeline │
+        │ Playbook Store   │   │ Memory Subsystem│   │ Lesson Pipeline │
         │ (existing FTS5 +    │   │ (NEW — Pillar 1)│   │ (NEW — Pillar 2)│
         │  pgvector optional) │   │                 │   │                 │
         │                     │   │ ┌─────────────┐ │   │ trace ingest →  │
@@ -100,10 +100,10 @@ premium model tier.
 
 | Store           | What it holds                                                   | Authority      | Mirrored on disk?                         |
 | --------------- | --------------------------------------------------------------- | -------------- | ----------------------------------------- |
-| **ReasonBlock** | "**what to do**" — procedures, dead ends, rubrics, environments | reviewable PR  | Yes — `./.lessons/blocks/*.md`            |
+| **Playbook** | "**what to do**" — procedures, dead ends, rubrics, environments | reviewable PR  | Yes — `./.lessons/blocks/*.md`            |
 | **Memory**      | "**what is true**" — agent state, project facts, session recall | editable in UI | Yes — `.atelier/memory/blocks/*.md` (NEW) |
 
-**They never overlap.** A ReasonBlock can reference a memory block (via `requires_memory: [<id>]`),
+**They never overlap.** A Playbook can reference a memory block (via `requires_memory: [<id>]`),
 but a memory block never carries procedure semantics.
 
 ### 3.2 Memory subsystem — Letta-derived schema, Atelier ownership
@@ -122,10 +122,10 @@ When the sidecar is configured (`ATELIER_LETTA_URL`), we proxy to it through
 `src/atelier/infra/memory_bridges/letta_adapter.py` (NEW). When it is absent, the same MCP tools
 work against the in-process `MemoryStore` (NEW).
 
-### 3.3 Lesson pipeline — Lemma-style continuous learning
+### 3.3 Lesson pipeline — continuous learning
 
 Atelier already records traces and detects failure clusters. V2 wires those into a **lesson
-pipeline** that proposes ReasonBlock additions / edits and surfaces them in the dashboard for
+pipeline** that proposes Playbook additions / edits and surfaces them in the dashboard for
 human review:
 
 ```
@@ -152,7 +152,7 @@ new trace ──► fingerprint ─┬─► matches existing failure cluster �
    surfaces in /learnings page (NEW)  ◄── human reviewer (one-click promote)
               │
               ▼
-   atelier_extract_reasonblock + atelier_block_add  →  active ReasonBlock
+   atelier_extract_playbook + atelier_block_add  →  active Playbook
 ```
 
 This is a strict superset of the existing `failure_analyzer.py`. We keep that module and add a new
@@ -176,8 +176,8 @@ summarization and native compaction lifecycle support on top.
 | Sleeptime ledger summarization                       | WP-09    | Letta-style summarizer condenses tool outputs older than N events                                                                                    | ~10 %          |
 | Cached tool results (`smart_read` everywhere)        | WP-10    | Existing capability promoted from optional to default; hit-rate raised via content hash                                                              | ~5 %           |
 | Scoped recall from archival memory                   | WP-12    | Agent calls `memory_recall(query)` to retrieve top-3 passages instead of dumping prior trace                                                         | ~5 %           |
-| **Native `/compact` lifecycle integration**          | WP-13    | At 60 % context utilisation, emit `compactd` event with preservation manifest derived from active ReasonBlocks + memory blocks                       | ~5 %           |
-| Reduced ReasonBlock duplication on repeated retrieve | WP-04    | Already shipped; tuned by limit + dedup                                                                                                              | ~3 %           |
+| **Native `/compact` lifecycle integration**          | WP-13    | At 60 % context utilisation, emit `compactd` event with preservation manifest derived from active Playbooks + memory blocks                       | ~5 %           |
+| Reduced Playbook duplication on repeated retrieve | WP-04    | Already shipped; tuned by limit + dedup                                                                                                              | ~3 %           |
 | **Total measured savings (target)**                  | —        | `benchmark-runtime --measure-context-savings` (WP-19) on Atelier's deterministic 11-prompt suite                                                     | **≥ 50 %**     |
 
 > **Note on attribution.** These techniques are _concepts_ — we implement analogous
@@ -202,7 +202,7 @@ itself earlier:
 @ post-compact → hook fires (integrations/claude/plugin/hooks/compact.py) and
                  re-injects the preservation manifest, plus runs
                  reasoning with the active task to seed
-                 the new turn with the right ReasonBlocks
+                 the new turn with the right Playbooks
 ```
 
 The hook already exists as a stub (`integrations/claude/plugin/hooks/compact.py`); WP-13 fills in
@@ -354,6 +354,6 @@ under-specified, raise it as a comment in the packet and stop — do not improvi
 
 - [Letta architecture overview (DeepWiki)](https://deepwiki.com/letta-ai/letta) — read sections 2.3, 2.4, 3, 10.2
 - [Letta GitHub (Apache 2.0)](https://github.com/letta-ai/letta) — vendored via `letta-client` only; no source copied
-- [ReasonBlocks](https://reasonblocks.com/) — naming + procedure schema inspiration; existing Atelier ReasonBlock model is the authoritative implementation
+- Atelier Playbook model — versioned, reviewable procedure corpus (authoritative implementation).
 - [Lemma](https://www.uselemma.ai/) — continuous-learning pipeline + automatic root-cause loop inspiration
 - Existing Atelier docs: [docs/architecture/runtime.md](runtime.md), [docs/engineering/storage.md](../engineering/storage.md), [docs/engineering/architecture.md](../engineering/architecture.md)

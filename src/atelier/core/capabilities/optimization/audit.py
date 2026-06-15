@@ -23,7 +23,7 @@ from atelier.core.foundation.models import Trace
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 _HOST_CONFIG_DIR = _PACKAGE_ROOT / "gateway" / "hosts" / "configs"
-_BUNDLED_BLOCKS_DIR = _PACKAGE_ROOT / "infra" / "seed_blocks"
+_BUNDLED_BLOCKS_DIR = _PACKAGE_ROOT / "infra" / "seed_playbooks"
 _BUNDLED_RUBRICS_DIR = _PACKAGE_ROOT / "core" / "rubrics"
 
 _MODEL_CONTEXT_WINDOWS: dict[str, int] = {
@@ -135,7 +135,7 @@ def build_context_audit(
         mode="retrieval_backed",
         optimizable=True,
         paths=_knowledge_paths(blocks_dir, _BUNDLED_BLOCKS_DIR, ("*.md", "*.yaml", "*.yml")),
-        notes="ReasonBlocks and seed procedures are selectively recalled. Keep triggers narrow so retrieval stays targeted.",
+        notes="Playbooks and seed procedures are selectively recalled. Keep triggers narrow so retrieval stays targeted.",
     )
     if reasoning_procedures:
         components.append(reasoning_procedures)

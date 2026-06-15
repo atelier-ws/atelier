@@ -64,8 +64,8 @@ The catalog ships hand-curated YAML in-repo. Live source adapters (MCPMarket, Gl
 ### 3.3 Categorical recommendations, not float scores
 The output of the recommender is one of `{recommended, candidate, blocked}` plus a structured reason list. No `atelier_fit_score: 0.83`. This matches the existing rubric / lint pattern (`ok / warn / blocked`) and avoids inventing a number that nothing else in Atelier consumes.
 
-### 3.4 Skills do not auto-promote into ReasonBlocks
-ReasonBlocks encode domain judgment ("don't parse handle from URL"). Skills are reusable capability bundles. They are different shapes. Imported skills land in a quarantined namespace and surface as candidates in the existing `lesson inbox` flow. They never silently become ReasonBlocks.
+### 3.4 Skills do not auto-promote into Playbooks
+Playbooks encode domain judgment ("don't parse handle from URL"). Skills are reusable capability bundles. They are different shapes. Imported skills land in a quarantined namespace and surface as candidates in the existing `lesson inbox` flow. They never silently become Playbooks.
 
 ### 3.5 Capability-first, not catalog-first
 The win is making existing Atelier capabilities better. The catalog is plumbing. Pick a capability + tool pair, prove the adapter contract, then backfill catalog and scoring around real demand. Do not build a catalog and hope integrations follow.
@@ -320,11 +320,11 @@ Rules:
 - Resources are copied into a quarantined namespace `~/.atelier/skills/imported/<id>/`.
 - Tool instructions are stored verbatim and surfaced for human review.
 - Hidden / chain-of-thought-style prompts are rejected.
-- `convert-to-procedure` produces a *draft ReasonBlock* that lands in the existing `lesson inbox`. A human still has to promote it. This is a hard line: no silent promotion.
+- `convert-to-procedure` produces a *draft Playbook* that lands in the existing `lesson inbox`. A human still has to promote it. This is a hard line: no silent promotion.
 
 Acceptance:
 - An Anthropic-style skill folder validates.
-- A skill can be converted to a candidate ReasonBlock that requires human approval.
+- A skill can be converted to a candidate Playbook that requires human approval.
 - Scripts and resources are flagged for review with file paths and hashes.
 
 ### Phase 8 — Documentation
@@ -363,7 +363,7 @@ Coverage:
 - High-risk tool hidden by default; appears only with `--include-blocked`.
 - Recommendations deterministic across runs.
 - Skill folder validates.
-- Skill converts to a candidate ReasonBlock that lands in the inbox, not the live store.
+- Skill converts to a candidate Playbook that lands in the inbox, not the live store.
 - No network required for the default test suite.
 
 ### Phase 10 — Final gates

@@ -83,7 +83,7 @@ Returns:
 &#123;
   "context": "<context_procedures>...</context_procedures>\n<memory>...</memory>\n",
   "recalled_passages": [&#123;"id": "pas-...", "source": "trace", "score": 0.4&#125;],
-  "tokens_breakdown": &#123;"reasonblocks": 180, "memory": 42, "total": 222&#125;
+  "tokens_breakdown": &#123;"playbooks": 180, "memory": 42, "total": 222&#125;
 &#125;
 ```
 

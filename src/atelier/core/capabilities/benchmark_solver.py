@@ -817,21 +817,44 @@ def _default_step_executor(
         selected_model = str(observed_lane.get("model") or model)
         if lane_key and not observed_lane:
             context.record_host_lane(lane_key, {"runner": selected_runner, "model": selected_model})
-        command = resolve_swarm_runner_command(
-            runner=selected_runner,
-            runner_model=selected_model,
-            runner_args=(),
-            child_command=(),
-            prompt_template=prompt,
-        )
         started = time.perf_counter()
-        completed = subprocess.run(
-            command,
-            cwd=repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        try:
+            command = resolve_swarm_runner_command(
+                runner=selected_runner,
+                runner_model=selected_model,
+                runner_args=(),
+                child_command=(),
+                prompt_template=prompt,
+            )
+            completed = subprocess.run(
+                command,
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except (FileNotFoundError, ValueError, OSError, subprocess.SubprocessError) as exc:
+            duration_seconds = time.perf_counter() - started
+            error = str(exc) or f"{selected_runner} runner unavailable"
+            return {
+                "status": "failed",
+                "output": "",
+                "output_json": {},
+                "execution_receipt": _native_solver_execution_receipt(
+                    runner=selected_runner,
+                    model=selected_model,
+                    status="failed",
+                    duration_seconds=duration_seconds,
+                    observed_fields=_observed_host_fields(
+                        spawn_envelope=spawn_envelope.to_dict(),
+                        selected_runner=selected_runner,
+                        selected_model=selected_model,
+                    ),
+                    unverified_fields=_unverified_host_fields(selected_model=selected_model),
+                    error=error,
+                ),
+                "error": error,
+            }
         duration_seconds = time.perf_counter() - started
         output = (completed.stdout or "").strip()
         if completed.returncode != 0:

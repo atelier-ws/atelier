@@ -300,7 +300,7 @@ WantedBy=default.target
 
         LAUNCHD_USER_DIR.mkdir(parents=True, exist_ok=True)
 
-        controller_plist = f"""<?xml version="1.0" encoding="UTF-8"?
+        controller_plist = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>

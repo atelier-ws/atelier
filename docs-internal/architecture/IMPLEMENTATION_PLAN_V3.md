@@ -29,7 +29,7 @@ The host CLI (Claude Code, Codex, opencode, Gemini, or a user's own agent) owns:
 
 Atelier owns:
 
-- ReasonBlocks (procedure store) and rubric gates — surfaced as MCP tools;
+- Playbooks (procedure store) and rubric gates — surfaced as MCP tools;
 - the `memory_*` MCP tools (upsert/get/list/recall/archive);
 - the deterministic context-savings tools: `search`, `edit`,
   `atelier sql inspect`, AST-outline-first reads;
@@ -92,7 +92,7 @@ The 2026-05-04 internal audit ([summary in this commit's PR description]) found:
 | Sleeptime "summarizer" is template `groupby` + truncation; counts as a savings lever in V2 docs but compresses no meaning.                                                                   | `core/capabilities/context_compression/sleeptime.py`                                                                      | **WP-36**                                                               |
 | `LessonPromoter` clusters via SHA-hash fingerprint; precision target `≥ 0.7` was filed but never met.                                                                                        | `core/capabilities/lesson_promotion/capability.py`                                                                        | **WP-47**                                                               |
 
-Everything else V2 shipped — ReasonBlocks, rubric gates, plan-check, rescue, trace recording,
+Everything else V2 shipped — Playbooks, rubric gates, plan-check, rescue, trace recording,
 `search_read`, `batch_edit`, `sql_inspect`, AST outline, MCP gateway, frontend pages — is real,
 in-scope, and **kept verbatim** by V3. The audit was a quality check on specific subsystems, not
 a wholesale verdict.
@@ -118,7 +118,7 @@ a wholesale verdict.
                     └──┬──────────────────┬─────────────────────┬─────────┘
                        │                  │                     │
         ┌──────────────▼──────┐   ┌───────▼─────────┐   ┌───────▼─────────┐
-        │ ReasonBlock store   │   │ Memory tools    │   │ Lesson pipeline │
+        │ Playbook store   │   │ Memory tools    │   │ Lesson pipeline │
         │ + rubric gates      │   │ (memory_*)      │   │ (background)    │
         │ + plan-check        │   │                 │   │                 │
         │ + rescue + trace    │   │ Backend, picked │   │ Reads recorded  │

@@ -59,7 +59,7 @@ fi
 
 info()  { [[ "${ATELIER_VERBOSE:-0}" == "1" ]] && echo "[atelier:agents] $*" || true; }
 warn()  { echo "[atelier:agents] WARN: $*" >&2; }
-run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
+run()   { $DRY_RUN && echo "  [dry-run] $*" || "$@"; }
 
 if $PRINT_ONLY; then
     echo ""

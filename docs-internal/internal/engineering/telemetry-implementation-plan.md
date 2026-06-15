@@ -109,7 +109,7 @@ Single entry point. Capabilities and adapters call only this:
 from atelier.core.service.telemetry import emit_product
 
 emit_product(
-    "reasonblock_applied",
+    "playbook_applied",
     block_id_hash="sha256:abcd1234",
     domain="swe.general",
     retrieval_score=0.82,
@@ -159,14 +159,14 @@ EVENTS = &#123;
     "api_request": &#123;
         "props": ["endpoint", "method", "status_code", "duration_ms_bucket"],
     &#125;,
-    "reasonblock_retrieved": &#123;
+    "playbook_retrieved": &#123;
         "props": ["block_id_hash", "domain", "retrieval_score",
                   "rank", "session_id"],
     &#125;,
-    "reasonblock_applied": &#123;
+    "playbook_applied": &#123;
         "props": ["block_id_hash", "domain", "retrieval_score", "session_id"],
     &#125;,
-    "reasonblock_rejected": &#123;
+    "playbook_rejected": &#123;
         "props": ["block_id_hash", "domain", "rejection_reason", "session_id"],
     &#125;,
     "plan_check_passed": &#123;
@@ -316,7 +316,7 @@ CREATE INDEX events_session ON events(session_id);
 **Read API** (for Insights tab):
 
 - `GET /telemetry/local?since=<ts>&event=<name>&limit=500` → paged events
-- `GET /telemetry/summary` → derived rollups (commands/day, top reasonblocks, frustration over time, value estimate)
+- `GET /telemetry/summary` → derived rollups (commands/day, top playbooks, frustration over time, value estimate)
 - `GET /telemetry/schema` → registry dump for the privacy-audit view
 
 ---
@@ -367,7 +367,7 @@ categories:
 
 Matcher (`frustration.py`):
 
-- Runs only on user-typed inputs to CLI/MCP/API (NOT on code, commit messages, ReasonBlocks, or model outputs).
+- Runs only on user-typed inputs to CLI/MCP/API (NOT on code, commit messages, Playbooks, or model outputs).
 - Lowercased substring match against the YAML patterns.
 - Emits `frustration_signal_lexical&#123;category, surface&#125;`. Nothing else.
 - Off by default? **No, on by default** since user opted in. But has its own kill switch in `telemetry.toml` and CLI: `atelier telemetry lexical off`.
@@ -384,7 +384,7 @@ New route at `/insights`. Reads from local API endpoints (§8). Sections:
 1. **Status banner** — "Remote telemetry: ON / OFF" with toggle. Same toggle for "Lexical frustration detection: ON / OFF".
 2. **Live event stream** — last 100 events, displayed as the exact JSON that would be sent. Refresh every 5s.
 3. **Usage** — line chart of commands/day; bar chart of top commands; agent-host pie.
-4. **Reasoning value** — top reasonblocks applied (by hash + domain), retrieval-score distribution, plan-block effectiveness.
+4. **Reasoning value** — top playbooks applied (by hash + domain), retrieval-score distribution, plan-block effectiveness.
 5. **Frustration trends** — stacked area chart of behavioral signal types over time; bar chart of lexical categories.
 6. **Estimated value** — running totals of tokens saved, cache hit rate, plans gated.
 7. **Privacy audit** — table of every event in the registry with its allowlisted properties and an example payload. This is the user-facing version of `schema.py`.
@@ -559,7 +559,7 @@ No `posthog` Python SDK — we go through OTel.
 
 ## 14. Hard Rules (do not violate)
 
-1. **Never** include in any emitted event: prompts, code, ReasonBlock bodies, file paths, repo names/URLs, commit messages, model outputs, user input text, hashes of any of those.
+1. **Never** include in any emitted event: prompts, code, Playbook bodies, file paths, repo names/URLs, commit messages, model outputs, user input text, hashes of any of those.
 2. **Never** parse user input text outside the lexical-frustration matcher, and even there, never emit anything beyond category + surface.
 3. **Never** copy leaked Claude Code prompt content into the lexicon. Build it from open sources or first principles.
 4. **Always** allow opt-out to take effect immediately (no batched-flush leak after toggle to OFF).

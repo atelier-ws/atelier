@@ -48,11 +48,11 @@ Atelier provides the layer that all of those tools fail at when an AI agent is i
 
 | Existing tool      | Why it fails for AI-driven coding          | Atelier's role                              |
 | ------------------ | ------------------------------------------ | ------------------------------------------- |
-| Style guide / wiki | Agent doesn't read them                    | ReasonBlocks: agent retrieves on every task |
+| Style guide / wiki | Agent doesn't read them                    | Playbooks: agent retrieves on every task |
 | Lint / format      | Catches syntax, not procedure              | Rubric gates catch procedural decisions     |
 | CI rules           | Post-hoc, agent already committed          | `lint` validates before code is written     |
 | Code review        | Doesn't scale to high-volume agent commits | Per-task trace + rubric verdict per change  |
-| ADRs               | Static, not retrieved at decision time     | ReasonBlocks are retrieved at decision time |
+| ADRs               | Static, not retrieved at decision time     | Playbooks are retrieved at decision time |
 
 ### One-line pitch
 
@@ -89,7 +89,7 @@ boundary-safe.
 Per the V3 audit on 2026-05-05, all 8 V3 packets and 4 V3.1 packets are implemented in
 code. Specifically, these surfaces are live:
 
-- ReasonBlock store with versioned, retrievable blocks (`./.lessons/blocks/*.md`).
+- Playbook store with versioned, retrievable blocks (`./.lessons/blocks/*.md`).
 - MCP tools: `task`, `route`, `verify`, `rescue`, `trace`, `memory`,
   `read`, `search`, `edit`, `sql`, `compact`, `code`, and `shell`.
 - Governance workflows such as lesson and consolidation review remain CLI surfaces.
@@ -124,7 +124,7 @@ These are inherited from V3 and apply to every change in this doc.
 5. **No marketing language without measurement.** Any percentage in README, docs, or
    commit messages must link to a `BenchmarkRun` row or be qualified as "design target"
    with a footnote.
-6. **Human review gates remain.** Any change that auto-mutates ReasonBlocks, lessons, or
+6. **Human review gates remain.** Any change that auto-mutates Playbooks, lessons, or
    memory blocks without human approval is out of scope.
 
 ---
@@ -150,7 +150,7 @@ single command that answers "is the team using Atelier and is it working?"
   store and computes:
   - **Rubric pass rate** overall and per `domain` (e.g., `state.change`,
     `source.truth`).
-  - **Top 5 ReasonBlocks** retrieved (by `reasoning` count).
+  - **Top 5 Playbooks** retrieved (by `reasoning` count).
   - **Top 5 rubric failures** with affected file paths and a one-line failure summary
     extracted from the trace's `output_summary`.
   - **New lesson candidates** pending review (count + top 3 by cluster size).
@@ -184,7 +184,7 @@ aggregation.
 
 **Why.** The single biggest adoption blocker. Companies have `STYLE.md`,
 `CONTRIBUTING.md`, exported Confluence pages, ADRs in folders. None of them are in a form
-Atelier uses. Manually re-authoring as ReasonBlocks is nobody's priority.
+Atelier uses. Manually re-authoring as Playbooks is nobody's priority.
 
 **What to build.**
 
@@ -194,7 +194,7 @@ Atelier uses. Manually re-authoring as ReasonBlocks is nobody's priority.
   - Uses local Ollama (already in scope per V3 WP-36) to extract procedural rules from the
     text and draft `LessonCandidate` rows.
   - Each candidate is surfaced via the existing `lesson_inbox` workflow for human review;
-    nothing is auto-promoted to a ReasonBlock.
+    nothing is auto-promoted to a Playbook.
   - `--dry-run` prints proposed candidates without writing.
   - `--limit N` caps candidates produced (avoids generating 200 candidates from a giant
     `STYLE.md`).
@@ -206,10 +206,10 @@ Atelier uses. Manually re-authoring as ReasonBlocks is nobody's priority.
     2. Chunk each file at H2/H3 boundaries (or every ~800 tokens if no headings).
     3. For each chunk, call `internal_llm.ollama_client.chat` with a fixed prompt that
        extracts: (a) is this procedural? (b) if yes, draft a one-paragraph block body in
-       the project's existing ReasonBlock style.
+       the project's existing Playbook style.
     4. Skip chunks the LLM marks non-procedural.
     5. Embed each draft (already deterministic via `Embedder`) and check against existing
-       ReasonBlocks — flag near-duplicates so reviewer can merge instead of accept.
+       Playbooks — flag near-duplicates so reviewer can merge instead of accept.
     6. Write surviving drafts as `LessonCandidate` rows with
        `source = "style-guide-import"` and `evidence = &#123;file_path, chunk_range&#125;`.
 - **Prompt template:** `src/atelier/core/capabilities/style_import/prompts.py` — single
@@ -232,21 +232,21 @@ Atelier uses. Manually re-authoring as ReasonBlocks is nobody's priority.
 - `--dry-run` produces a stable, deterministic-given-fixed-Ollama-temperature output.
 
 **Boundary.** Internal Ollama only. Output goes through the V2/V3 lesson-review human gate.
-No autonomous mutation of the ReasonBlock store.
+No autonomous mutation of the Playbook store.
 
 **Effort.** 2-3 dev-days.
 
 ---
 
-### 5.3 — Starter ReasonBlock packs (`atelier init --stack`)
+### 5.3 — Starter Playbook packs (`atelier init --stack`)
 
 **Why.** New users staring at an empty `./.lessons/blocks/` directory don't know what a
-ReasonBlock looks like for their stack. Templates remove the blank-page problem.
+Playbook looks like for their stack. Templates remove the blank-page problem.
 
 **What to build.**
 
-- **Templates directory:** `templates/reasonblocks/<stack>/` — one folder per supported
-  stack. Each contains 8-15 `.md` ReasonBlocks following the existing schema. Initial
+- **Templates directory:** `templates/playbooks/<stack>/` — one folder per supported
+  stack. Each contains 8-15 `.md` Playbooks following the existing schema. Initial
   stacks (ship one to start, add more as feedback arrives):
   - `python-fastapi/` — Pydantic models, dependency injection, Alembic migrations,
     pytest layout, secret handling, structured logging, Ruff/Black config, request
@@ -265,13 +265,13 @@ ReasonBlock looks like for their stack. Templates remove the blank-page problem.
   - `tests/gateway/test_init_with_stack.py` — `atelier init --stack python-fastapi`
     copies the expected files to the right place.
   - `tests/infra/test_template_blocks_valid.py` — every template in `templates/` parses as
-    a valid ReasonBlock per the existing Pydantic model.
+    a valid Playbook per the existing Pydantic model.
 
 **Acceptance.**
 
 - `atelier init --stack python-fastapi` produces a populated `./.lessons/blocks/` in under a
   second.
-- Every shipped template parses cleanly under V3's ReasonBlock validation.
+- Every shipped template parses cleanly under V3's Playbook validation.
 - Templates are commented to make their adaptation obvious (TODO markers where users will
   want to customize for their company).
 
@@ -288,7 +288,7 @@ itself is < 200 LOC.
 ```text
 Step 1 — atelier report         (5.1)   ~3 days   no new deps
 Step 2 — atelier import-style-guide  (5.2)   ~3 days   uses existing internal_llm
-Step 3 — starter ReasonBlock packs   (5.3)   ~3 days   first stack only; ongoing curation
+Step 3 — starter Playbook packs   (5.3)   ~3 days   first stack only; ongoing curation
 ```
 
 Reasons for this order:
@@ -319,13 +319,13 @@ product Atelier deliberately doesn't build.
   rubric gate; Atelier does not need its own GitHub integration.
 - ❌ **Slack bot.** Direct Slack-API integration. The `atelier report` Markdown output
   pastes cleanly into Slack via the user's existing tooling; we don't build a bot.
-- ❌ **Web UI for ReasonBlock authoring.** Blocks are Markdown files in git. Authoring
+- ❌ **Web UI for Playbook authoring.** Blocks are Markdown files in git. Authoring
   happens in the user's IDE. We do not build a web editor.
 - ❌ **Real-time enforcement on every keystroke.** Atelier is per-task, not per-keystroke.
   Continuous-review tools like Cursor's tab-completion are a different product.
 - ❌ **Auto-apply lesson candidates.** Even high-confidence Ollama-extracted candidates
   go through human review. The gate is non-negotiable.
-- ❌ **Cross-team ReasonBlock marketplace.** "Buy/sell ReasonBlocks". Out of scope; users
+- ❌ **Cross-team Playbook marketplace.** "Buy/sell Playbooks". Out of scope; users
   share via git like any other code.
 - ❌ **Multi-tenant SaaS.** Atelier is local + self-hosted. The Letta integration is
   self-hosted via Docker. Adding a multi-tenant cloud is a different product.
@@ -371,7 +371,7 @@ people's time.
 After all three additions are implemented, the following should be true:
 
 - [ ] A new user can run `atelier init --stack python-fastapi` and have a starter
-      ReasonBlock library in their repo within seconds.
+      Playbook library in their repo within seconds.
 - [ ] A user with an existing `CONTRIBUTING.md` can run
       `atelier import-style-guide CONTRIBUTING.md` and have ≥ 5 review-ready lesson
       candidates in the inbox within a minute (with Ollama running).

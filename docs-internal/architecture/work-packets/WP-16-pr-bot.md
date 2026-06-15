@@ -12,7 +12,7 @@ status: done
 
 ## Why
 
-Lemma's pitch is auto-PR for proposed fixes. We mirror that for ReasonBlock changes: when a
+Lemma's pitch is auto-PR for proposed fixes. We mirror that for Playbook changes: when a
 `LessonCandidate` is approved, an opt-in bot opens a PR adding the new block markdown under
 `./.lessons/blocks/` so the team can review on GitHub.
 
@@ -24,7 +24,7 @@ is present. CI must pass in both modes.
 - **Host-native:** Git operations, GitHub authentication, PR creation, CI, and review workflows stay
   owned by `git`, `gh`, GitHub, and the host CLI's existing GitHub tooling.
 - **Atelier augmentation:** Atelier only converts an approved `LessonCandidate` into a reviewable
-  ReasonBlock patch and invokes `gh` through a narrow, disabled-by-default wrapper.
+  Playbook patch and invokes `gh` through a narrow, disabled-by-default wrapper.
 - **Not in scope:** do not build a general PR bot platform, CI orchestrator, review agent, or GitHub
   client library inside Atelier.
 
@@ -42,7 +42,7 @@ is present. CI must pass in both modes.
 1. PR bot uses `gh` CLI (already required for the project; do **not** add new Python deps).
 2. On approval:
 
-- Write the new/updated block to `./.lessons/blocks/<id>.md` exactly as `extract_reasonblock`
+- Write the new/updated block to `./.lessons/blocks/<id>.md` exactly as `extract_playbook`
   would.
 - `git add` only that file.
 - Create a branch `atelier/lesson/<lesson_id>`.

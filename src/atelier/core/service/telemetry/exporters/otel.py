@@ -41,8 +41,15 @@ _sdk_noise_filter = _OtelNoiseFilter()
 
 
 def _apply_silence() -> None:
-    """Apply the noise filter to every existing (and future discoverable)
-    logger whose name matches OTel / HTTP-client namespaces."""
+    """Apply the noise filter so OTel / HTTP-client messages are silenced.
+
+    Idempotent: re-running never stacks duplicate filters. The filter is
+    attached to every existing matching logger (covering loggers that carry
+    their own handlers or disable propagation) and to the root logger's
+    handlers (covering current and future loggers that propagate to root) —
+    so no global ``logging.getLogger`` monkeypatch is needed to catch loggers
+    created later by the SDK.
+    """
     for _ln, _lv in list(logging.Logger.manager.loggerDict.items()):
         if (
             isinstance(_lv, logging.Logger)
@@ -51,21 +58,12 @@ def _apply_silence() -> None:
         ):
             _lv.addFilter(_sdk_noise_filter)
 
-    # Also catch NEW loggers by wrapping getLogger — all OTel SDK loggers
-    # are created via logging.getLogger, so our wrapper injects the filter
-    # before any handler can emit them.
-    _orig_get_logger = logging.getLogger
-
-    def _silencing_get_logger(name: str | None = None) -> logging.Logger:
-        logger = _orig_get_logger(name)
-        if not any(f is _sdk_noise_filter for f in logger.filters) and (
-            isinstance(name, str)
-            and (name.startswith("opentelemetry") or name in ("urllib3.connectionpool", "requests"))
-        ):
-            logger.addFilter(_sdk_noise_filter)
-        return logger
-
-    logging.getLogger = _silencing_get_logger
+    # Records from loggers created later (the SDK creates its loggers lazily)
+    # propagate to the root logger, so filtering at the root handlers catches
+    # them by name without re-wrapping every new logger.
+    for _handler in logging.getLogger().handlers:
+        if not any(f is _sdk_noise_filter for f in _handler.filters):
+            _handler.addFilter(_sdk_noise_filter)
 
 
 _apply_silence()

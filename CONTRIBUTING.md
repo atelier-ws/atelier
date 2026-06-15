@@ -18,7 +18,7 @@ Good areas to help:
 
 ## Scope boundaries
 
-Atelier is governance for AI-assisted coding. It does not own the agent loop, replace CI, replace linting, become a Slack/GitHub bot, auto-apply lesson candidates, or add a web editor for ReasonBlocks. Before proposing adoption tooling, read [docs/architecture/POSITIONING_AND_ADOPTION.md](docs/architecture/POSITIONING_AND_ADOPTION.md), especially the "What NOT to build" list.
+Atelier is governance for AI-assisted coding. It does not own the agent loop, replace CI, replace linting, become a Slack/GitHub bot, auto-apply lesson candidates, or add a web editor for Playbooks. Before proposing adoption tooling, read [docs/architecture/POSITIONING_AND_ADOPTION.md](docs/architecture/POSITIONING_AND_ADOPTION.md), especially the "What NOT to build" list.
 
 Before opening a pull request, please run:
 

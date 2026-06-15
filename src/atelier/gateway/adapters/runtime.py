@@ -27,7 +27,7 @@ from atelier.core.foundation.extractor import CandidateBlock
 from atelier.core.foundation.models import (
     CommandRecord,
     FileEditRecord,
-    ReasonBlock,
+    Playbook,
     RescueResult,
     RubricResult,
     ToolCall,
@@ -41,7 +41,7 @@ from atelier.core.foundation.retriever import (
     ScoredBlock,
     TaskContext,
     deduplicate_scored_blocks,
-    pack_by_reasonblock_token_budget,
+    pack_by_playbook_token_budget,
     retrieve,
     score_block,
 )
@@ -60,14 +60,14 @@ from atelier.core.foundation.watchdogs import (
 from atelier.core.runtime import AtelierRuntimeCore
 
 
-def _load_domain_reasonblocks(store_root: Path) -> list[ReasonBlock]:
+def _load_domain_playbooks(store_root: Path) -> list[Playbook]:
     from atelier.core.domains import DomainManager
 
     manager = DomainManager(store_root)
-    blocks: list[ReasonBlock] = []
+    blocks: list[Playbook] = []
     seen_ids: set[str] = set()
 
-    for block in manager.all_reasonblocks():
+    for block in manager.all_playbooks():
         if block.id in seen_ids or block.status in ("quarantined",):
             continue
         seen_ids.add(block.id)
@@ -94,7 +94,7 @@ def _retrieve_with_pack_context(
     )
     merged: dict[str, ScoredBlock] = {entry.block.id: entry for entry in learned}
 
-    for block in _load_domain_reasonblocks(store.root):
+    for block in _load_domain_playbooks(store.root):
         if block.status == "deprecated":
             continue
         scored = score_block(block, ctx)
@@ -107,7 +107,7 @@ def _retrieve_with_pack_context(
     ranked = sorted(merged.values(), key=lambda entry: entry.score, reverse=True)
     if dedup:
         ranked = deduplicate_scored_blocks(ranked)
-    return pack_by_reasonblock_token_budget(
+    return pack_by_playbook_token_budget(
         ranked,
         lambda item: item.block,
         limit=limit,
@@ -165,7 +165,7 @@ class RuntimeSession:
 
         for rank, item in enumerate(scored, start=1):
             emit_product(
-                "reasonblock_retrieved",
+                "playbook_retrieved",
                 block_id_hash=hash_identifier(item.block.id),
                 domain=item.block.domain,
                 retrieval_score=float(item.score),
@@ -416,7 +416,7 @@ class ContextRuntime:
         )
 
     # Minimum raw-bm25 evidence before rescue claims a procedure match.
-    # Calibrated on the seed ReasonBlocks: true matches score 13-22, unrelated
+    # Calibrated on the seed Playbooks: true matches score 13-22, unrelated
     # errors top out at ~4.3. See rescue_failure below.
     _RESCUE_MIN_BM25 = 8.0
 
@@ -443,7 +443,7 @@ class ContextRuntime:
         if not scored:
             return RescueResult(
                 rescue=(
-                    "No matching ReasonBlock found. Stop and summarize: "
+                    "No matching Playbook found. Stop and summarize: "
                     "files changed, errors seen, assumptions tested, current "
                     "blocker. Then ask for guidance."
                 ),

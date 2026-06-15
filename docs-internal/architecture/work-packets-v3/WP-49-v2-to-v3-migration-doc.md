@@ -54,7 +54,7 @@ catches it.
 3. **Write the migration doc.** Structure:
    - **Quick summary** — "Most users do nothing." (Because the MCP surface is preserved.)
    - **What stays the same** — Atelier is still a tool/data provider; the host CLI still owns
-     the loop; every V2 MCP tool name, signature, return shape, ReasonBlock schema, trace
+     the loop; every V2 MCP tool name, signature, return shape, Playbook schema, trace
      shape are preserved.
    - **What changes** — three items: memory backend config knob, embedding back-fill,
      sleeptime telemetry, savings headline.

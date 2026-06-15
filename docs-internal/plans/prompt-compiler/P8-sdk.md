@@ -65,7 +65,7 @@ from atelier.prompt_compiler.helpers import (
     system_prompt_block,
     coding_policy_block,
     repo_summary_block,       # accepts the Atelier repo-summary dict
-    reasonblock,              # accepts a ReasonBlock from the memory store
+    playbook,              # accepts a Playbook from the memory store
     file_summary_block,       # accepts an outline from CodeContextEngine
     user_task_block,
     git_diff_block,
@@ -84,7 +84,7 @@ examples/prompt_compiler/
     minimal.py               # 30 lines: blocks → compile → render → print
     anthropic_loop.py        # full Anthropic turn loop with cache_control
     openai_loop.py           # OpenAI Responses API with prompt_cache_key
-    reasonblock_integration.py  # pulls ReasonBlocks from `mcp__atelier__context`
+    playbook_integration.py  # pulls Playbooks from `mcp__atelier__context`
 ```
 
 The Anthropic / OpenAI examples are the ones we link from the README.

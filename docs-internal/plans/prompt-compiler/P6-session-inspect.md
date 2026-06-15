@@ -55,7 +55,7 @@ Cache diagnosis for session abc123 (claude_code, 27 turns)
 Stable prefix candidates (per-turn average):
   - Tool schemas: 3,200 tokens
   - System prompt: 1,100 tokens
-  - ReasonBlocks: 2,400 tokens
+  - Playbooks: 2,400 tokens
   - Repo summary: 1,700 tokens
 
 Cache breakers found across the session:
@@ -65,7 +65,7 @@ Cache breakers found across the session:
   4. content.raw-log-in-turn         9 turns
 
 Recommended layout (one-line summary):
-  [tools] [system] [coding policy] [repo summary] [ReasonBlocks] [task] [diff] [tool results]
+  [tools] [system] [coding policy] [repo summary] [Playbooks] [task] [diff] [tool results]
 
 Estimated improvement:
   Current cacheable prefix:   1,100 tokens  (only system survives breakers)

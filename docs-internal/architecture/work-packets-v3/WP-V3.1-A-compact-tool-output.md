@@ -23,7 +23,7 @@ they reach the main LLM, with explicit recovery hints so nothing is lost forever
 
 This packet absorbs three earlier candidates that are all special cases of the same idea:
 
-- **Stale-output sweeper** (ReasonBlocks-style): becomes the deterministic "drop or stub
+- **Stale-output sweeper** (Playbooks-style): becomes the deterministic "drop or stub
   rarely-cited outputs" path.
 - **SR2 compaction rule DSL + recovery hints**: becomes the per-content-type deterministic
   truncation strategy.

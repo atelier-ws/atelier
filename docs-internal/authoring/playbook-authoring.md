@@ -1,12 +1,12 @@
-# ReasonBlock Authoring
+# Playbook Authoring
 
-ReasonBlocks are the reusable procedure documents Atelier retrieves for risky or
+Playbooks are the reusable procedure documents Atelier retrieves for risky or
 repetitive work. The current runtime validates them as YAML against the
-`ReasonBlock` model in `src/atelier/core/foundation/models.py`.
+`Playbook` model in `src/atelier/core/foundation/models.py`.
 
 ## Current File Format
 
-Atelier's built-in seed blocks live under `src/atelier/infra/seed_blocks/` and
+Atelier's built-in seed blocks live under `src/atelier/infra/seed_playbooks/` and
 look like this:
 
 ```yaml
@@ -55,7 +55,7 @@ when_not_to_apply: >
 
 ## Current Contributor Workflow
 
-1. Add or edit a YAML block under `src/atelier/infra/seed_blocks/`.
+1. Add or edit a YAML block under `src/atelier/infra/seed_playbooks/`.
 1. Validate the bundle with a fresh store import:
 
 ```bash
@@ -65,7 +65,7 @@ ATELIER_ROOT=/tmp/atelier-docs-check uv run atelier init
 1. Inspect the loaded content with the runtime:
 
 ```bash
-uv run atelier list-blocks
+uv run atelier list-playbooks
 ATELIER_DEV_MODE=1 uv run atelier context --task "Your task" --domain coding
 ```
 

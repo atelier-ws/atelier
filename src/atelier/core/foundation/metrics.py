@@ -1,7 +1,7 @@
 """Lightweight metrics for the reasoning runtime.
 
 Intentionally minimal: we count things, not collect telemetry. Useful
-for the `atelier list-blocks` summary and tests.
+for the `atelier list-playbooks` summary and tests.
 """
 
 from __future__ import annotations

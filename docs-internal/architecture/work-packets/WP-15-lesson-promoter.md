@@ -14,7 +14,7 @@ status: done
 
 Pillar 2's continuous-learning loop. Today, `core/improvement/failure_analyzer.py` clusters failed
 traces. We extend it into an end-to-end pipeline: failed-trace → embed → cluster → draft a
-ReasonBlock-or-rubric-edit candidate → surface to a human reviewer.
+Playbook-or-rubric-edit candidate → surface to a human reviewer.
 
 ## Files touched
 
@@ -65,7 +65,7 @@ ReasonBlock-or-rubric-edit candidate → surface to a human reviewer.
 3. MCP tools:
    - `atelier lesson inbox(domain?, limit?)` → `[LessonCandidate]`
    - `atelier lesson decide(lesson_id, decision, reviewer, reason)` → on approve, calls existing
-     `atelier_extract_reasonblock` for `new_block` / mutates the target block for `edit_block` /
+     `atelier_extract_playbook` for `new_block` / mutates the target block for `edit_block` /
      adds the rubric check for `new_rubric_check`. Writes a `LessonPromotion` row.
 
 4. Integration test loads the 200-trace fixture (you'll need to create it from the existing
@@ -91,6 +91,6 @@ make verify
 - [ ] Pipeline implemented end-to-end
 - [ ] Precision ≥ 0.7 on the 200-trace fixture
 - [ ] MCP tools + CLI mirrors land
-- [ ] Promotion writes a `ReasonBlock` row through the existing `extract_reasonblock` path
+- [ ] Promotion writes a `Playbook` row through the existing `extract_playbook` path
 - [x] `make verify` green
 - [ ] `INDEX.md` updated; trace recorded

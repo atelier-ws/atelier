@@ -11,13 +11,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.renderer import render_block_for_agent
 from atelier.core.foundation.retriever import (
     ScoredBlock,
     TaskContext,
-    deduplicate_by_reasonblock,
-    pack_by_reasonblock_token_budget,
+    deduplicate_by_playbook,
+    pack_by_playbook_token_budget,
     retrieve,
     score_block,
 )
@@ -115,7 +115,7 @@ def _retrieval_query_text(
     return " ".join(part.strip() for part in parts if part and part.strip())
 
 
-def _bm25_document_text(block: ReasonBlock) -> str:
+def _bm25_document_text(block: Playbook) -> str:
     return " ".join(
         [
             block.title,
@@ -178,7 +178,7 @@ def _bm25(
     return score
 
 
-def _recency_score(block: ReasonBlock) -> float:
+def _recency_score(block: Playbook) -> float:
     try:
         updated = block.updated_at
         if isinstance(updated, str):
@@ -191,7 +191,7 @@ def _recency_score(block: ReasonBlock) -> float:
     return max(0.1, math.exp(-age_days / 86.6))
 
 
-def _bayesian_success(block: ReasonBlock) -> float:
+def _bayesian_success(block: Playbook) -> float:
     """Laplace-smoothed success rate: (S + alpha) / (S + F + alpha + beta).
 
     Avoids 0.0 extremes for untested blocks and 1.0 for single-success blocks.
@@ -291,13 +291,13 @@ class ContextReuseCapability:
     # Internal block collection
     # ------------------------------------------------------------------
 
-    def _domain_blocks(self) -> list[ReasonBlock]:
+    def _domain_blocks(self) -> list[Playbook]:
         from atelier.core.domains import DomainManager
 
         manager = DomainManager(self._root)
-        blocks: list[ReasonBlock] = []
+        blocks: list[Playbook] = []
         seen: set[str] = set()
-        for block in manager.all_reasonblocks():
+        for block in manager.all_playbooks():
             if block.status in ("quarantined", "deprecated"):
                 continue
             if block.id in seen:
@@ -306,7 +306,7 @@ class ContextReuseCapability:
             blocks.append(block)
         return blocks
 
-    def _all_active_blocks(self) -> list[ReasonBlock]:
+    def _all_active_blocks(self) -> list[Playbook]:
         learned = self._store.list_blocks()
         active = [b for b in learned if b.status not in ("quarantined", "deprecated")]
         domain_seen = {b.id for b in active}
@@ -344,10 +344,10 @@ class ContextReuseCapability:
             return vectors[0]
         return _hash_vector(_tokenise(query_text))
 
-    def _block_vectors(self, blocks: list[ReasonBlock]) -> dict[str, list[float]]:
+    def _block_vectors(self, blocks: list[Playbook]) -> dict[str, list[float]]:
         embedder_name = getattr(self._embedder, "name", self._embedder.__class__.__name__)
         vectors_by_id: dict[str, list[float]] = {}
-        uncached: list[tuple[ReasonBlock, str, str]] = []
+        uncached: list[tuple[Playbook, str, str]] = []
 
         for block in blocks:
             rendered = render_block_for_agent(block)
@@ -430,10 +430,10 @@ class ContextReuseCapability:
         vector_scores = {
             block_id: cosine_similarity(query_vector, vector)
             for block_id, vector in block_vectors.items()
-            if query_vector and vector
+            if query_vector and vector and len(vector) == len(query_vector)
         }
 
-        trace_blocks: dict[str, ReasonBlock] = {}
+        trace_blocks: dict[str, Playbook] = {}
         trace_reasons: dict[str, set[str]] = {}
         base_probe_scores: dict[str, float] = {}
         bm25_score_lookup: dict[str, float] = {}
@@ -451,14 +451,14 @@ class ContextReuseCapability:
                     trace_reasons[block_id].add("quarantined")
 
             base_query = query_text
-            base_candidates: list[ReasonBlock] = []
+            base_candidates: list[Playbook] = []
             if base_query:
                 base_candidates.extend(self._store.search_blocks(base_query, limit=50))
             if ctx.domain:
                 base_candidates.extend(self._store.list_blocks(domain=ctx.domain))
 
             seen_probe: set[str] = set()
-            unique_probe: list[ReasonBlock] = []
+            unique_probe: list[Playbook] = []
             for block in base_candidates:
                 if block.id in seen_probe:
                     continue
@@ -517,7 +517,7 @@ class ContextReuseCapability:
         base_rank: dict[str, int] = {bid: rank for rank, (bid, _) in enumerate(base_ranked)}
         base_rank_trace: dict[str, int] = {bid: rank for rank, (bid, _) in enumerate(base_ranked, start=1)}
         # RRF fusion — merge three rank lists
-        block_map: dict[str, ReasonBlock] = {b.id: b for b in all_blocks}
+        block_map: dict[str, Playbook] = {b.id: b for b in all_blocks}
         rrf_scores: dict[str, float] = {}
         for rank, (bid, _) in enumerate(bm25_scored):
             rrf_scores[bid] = rrf_scores.get(bid, 0.0) + 1.0 / (_RRF_K + rank)
@@ -573,7 +573,7 @@ class ContextReuseCapability:
         effective_limit = min(limit, _MAX_CONTEXT_BLOCKS)
 
         if dedup:
-            results = deduplicate_by_reasonblock(results, lambda item: item.block)
+            results = deduplicate_by_playbook(results, lambda item: item.block)
 
         # MMR diversity selection — covers different procedures after exact near-dup filtering.
         selected: list[_HybridResult] = []
@@ -602,7 +602,7 @@ class ContextReuseCapability:
             selected.append(best)
 
         mmr_selected = list(selected)
-        selected = pack_by_reasonblock_token_budget(
+        selected = pack_by_playbook_token_budget(
             selected,
             lambda item: item.block,
             limit=effective_limit,
@@ -1007,7 +1007,7 @@ class _HybridResult:
     def __init__(
         self,
         *,
-        block: ReasonBlock,
+        block: Playbook,
         fts_score: float,
         bm25_score: float,
         recency_score: float,

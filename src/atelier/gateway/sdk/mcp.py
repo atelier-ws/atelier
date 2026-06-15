@@ -1,7 +1,7 @@
 """MCP-backed SDK client.
 
 This client supports the MCP-standard task tools directly. For richer read
-operations like listing ReasonBlocks it falls back to a local store at
+operations like listing Playbooks it falls back to a local store at
 ``root`` so external hosts can embed Atelier without shelling out.
 """
 

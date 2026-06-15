@@ -32,7 +32,7 @@ from atelier.core.capabilities.workspace_host_overrides import (
     write_workspace_cursor_rules,
     write_workspace_opencode_agents,
 )
-from atelier.core.foundation.models import ReasonBlock, Rubric
+from atelier.core.foundation.models import Playbook, Rubric
 from atelier.gateway.cli.commands._dev import dev_command as _dev_command
 from atelier.gateway.cli.commands._shared import (
     _core_runtime,
@@ -611,7 +611,7 @@ def _index_stats_pretty(repo_root: Path) -> list[str]:
 
 def _seed_resources() -> tuple[list[Path], list[Path]]:
     """Return (block_files, rubric_files) bundled with the package."""
-    blocks_dir = resources.files("atelier") / "infra" / "seed_blocks"
+    blocks_dir = resources.files("atelier") / "infra" / "seed_playbooks"
     rubrics_dir = resources.files("atelier") / "core" / "rubrics"
     block_files = sorted(Path(str(p)) for p in blocks_dir.iterdir() if p.name.endswith(".yaml"))
     rubric_files = sorted(Path(str(p)) for p in rubrics_dir.iterdir() if p.name.endswith(".yaml"))
@@ -660,7 +660,7 @@ def _parse_since_arg(value: str) -> datetime:
 
 @click.command()
 @click.option("--seed/--no-seed", default=True, help="Import bundled seed blocks and rubrics.")
-@click.option("--stack", default=None, help="Copy starter ReasonBlock templates for a stack.")
+@click.option("--stack", default=None, help="Copy starter Playbook templates for a stack.")
 @click.option("--list-stacks", "show_stacks", is_flag=True, help="List available starter stacks.")
 @click.option(
     "--index/--no-index",
@@ -711,14 +711,14 @@ def init(
     click.echo(f"initialized atelier store at {store.root}")
     if seed:
         block_files, rubric_files = _seed_resources()
-        seeded_blocks: dict[str, ReasonBlock] = {}
+        seeded_blocks: dict[str, Playbook] = {}
         for path in block_files:
             data = _load_yaml(path)
             if "id" not in data:
-                data["id"] = ReasonBlock.make_id(data["title"], data["domain"])
-            block = ReasonBlock.model_validate(data)
+                data["id"] = Playbook.make_id(data["title"], data["domain"])
+            block = Playbook.model_validate(data)
             seeded_blocks[block.id] = block
-        for block in _load_domain_manager(root).all_reasonblocks():
+        for block in _load_domain_manager(root).all_playbooks():
             seeded_blocks[block.id] = block
         n_b = 0
         for block in seeded_blocks.values():
@@ -730,7 +730,7 @@ def init(
             rubric = Rubric.model_validate(data)
             store.upsert_rubric(rubric)
             n_r += 1
-        click.echo(f"seeded {n_b} reasonblocks and {n_r} rubrics")
+        click.echo(f"seeded {n_b} playbooks and {n_r} rubrics")
     if stack:
         from atelier.core.capabilities.starter_packs import copy_stack_templates
 
@@ -739,7 +739,7 @@ def init(
         except ValueError as exc:
             raise click.ClickException(str(exc)) from exc
         suffix = f", skipped {skipped} existing" if skipped else ""
-        click.echo(f"copied {copied} starter reasonblocks for stack {stack}{suffix}")
+        click.echo(f"copied {copied} starter playbooks for stack {stack}{suffix}")
     if index:
         git_root = _detect_git_root(Path.cwd())
         if git_root is not None:

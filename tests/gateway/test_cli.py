@@ -11,7 +11,7 @@ from click.testing import CliRunner, Result
 
 # Must set dev mode before importing cli for @_dev_command registration
 from atelier.core.capabilities.plugin_runtime import update_session_stats
-from atelier.core.foundation.models import ReasonBlock, Rubric
+from atelier.core.foundation.models import Playbook, Rubric
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
 from atelier.gateway.adapters import mcp_server
@@ -53,7 +53,7 @@ def _seed_state_change_rubric(root: Path) -> None:
 
 def _seed_rescue_block(root: Path) -> None:
     ContextStore(root).upsert_block(
-        ReasonBlock(
+        Playbook(
             id="state-change-rescue",
             title="Recover from wrong target update",
             domain="state.change",
@@ -74,7 +74,7 @@ def test_init_seeds_blocks_and_rubrics(tmp_path: Path) -> None:
     res = _invoke(tmp_path / "a", "init")
     assert res.exit_code == 0, res.output
     assert "seeded" in res.output
-    assert "reasonblocks and" in res.output
+    assert "playbooks and" in res.output
     assert "rubrics" in res.output
 
 
@@ -270,7 +270,7 @@ def test_worker_runs_consolidation_job_on_sqlite(
 
     store = ContextStore(root)
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-one",
             title="Checkout retry timeout",
             domain="testing",
@@ -282,7 +282,7 @@ def test_worker_runs_consolidation_job_on_sqlite(
         write_markdown=False,
     )
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-two",
             title="Checkout retry webhook timeout",
             domain="testing",
@@ -486,7 +486,7 @@ def test_servicectl_tick_enqueues_and_processes_periodic_consolidation(
 
     store = ContextStore(root)
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-one",
             title="Checkout retry timeout",
             domain="testing",
@@ -498,7 +498,7 @@ def test_servicectl_tick_enqueues_and_processes_periodic_consolidation(
         write_markdown=False,
     )
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-two",
             title="Checkout retry webhook timeout",
             domain="testing",
