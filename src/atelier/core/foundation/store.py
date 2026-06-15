@@ -1,12 +1,12 @@
-"""Persistent storage for ReasonBlocks, traces, and rubrics.
+"""Persistent storage for Playbooks, traces, and rubrics.
 
 Backend: SQLite + FTS5 (no external services).
 
 Design:
 - One table per entity, JSON column for the full payload.
-- A contentless FTS5 mirror table for ReasonBlocks for fast lookup by
+- A contentless FTS5 mirror table for Playbooks for fast lookup by
   title / triggers / situation / dead_ends / procedure.
-- Markdown copies of blocks live under <root>/blocks/ for human review
+- Markdown copies of playbooks live under <root>/blocks/ for human review
   and version control. Traces are mirrored under <root>/traces/.
 - Redacted raw artifacts live under <root>/raw/ and are linked from traces
   when a host import preserves more detail than the curated Trace schema.
@@ -31,10 +31,10 @@ import yaml
 
 from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromotion
 from atelier.core.foundation.models import (
-    BlockStatus,
     ConsolidationCandidate,
+    Playbook,
+    PlaybookStatus,
     RawArtifact,
-    ReasonBlock,
     Rubric,
     Trace,
     to_jsonable,
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS reasonblocks (
+CREATE TABLE IF NOT EXISTS playbooks (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     domain TEXT NOT NULL,
@@ -61,10 +61,10 @@ CREATE TABLE IF NOT EXISTS reasonblocks (
     updated_at TEXT NOT NULL,
     payload TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_reasonblocks_domain ON reasonblocks(domain);
-CREATE INDEX IF NOT EXISTS idx_reasonblocks_status ON reasonblocks(status);
+CREATE INDEX IF NOT EXISTS idx_playbooks_domain ON playbooks(domain);
+CREATE INDEX IF NOT EXISTS idx_playbooks_status ON playbooks(status);
 
-CREATE VIRTUAL TABLE IF NOT EXISTS reasonblocks_fts USING fts5(
+CREATE VIRTUAL TABLE IF NOT EXISTS playbooks_fts USING fts5(
     id UNINDEXED,
     title,
     triggers,
@@ -337,14 +337,14 @@ class ContextStore:
             if owns_connection:
                 active_conn.close()
 
-    # ----- ReasonBlocks ---------------------------------------------------- #
+    # ----- Playbooks ---------------------------------------------------- #
 
-    def upsert_block(self, block: ReasonBlock, *, write_markdown: bool = True) -> None:
+    def upsert_block(self, block: Playbook, *, write_markdown: bool = True) -> None:
         payload = json.dumps(to_jsonable(block), ensure_ascii=False)
         with self._connect() as conn, closing(conn.cursor()) as cur:
             cur.execute(
                 """
-                INSERT INTO reasonblocks (
+                INSERT INTO playbooks (
                     id, title, domain, status,
                     usage_count, success_count, failure_count,
                     created_at, updated_at, payload
@@ -373,10 +373,10 @@ class ContextStore:
                     payload,
                 ),
             )
-            cur.execute("DELETE FROM reasonblocks_fts WHERE id = ?", (block.id,))
+            cur.execute("DELETE FROM playbooks_fts WHERE id = ?", (block.id,))
             cur.execute(
                 """
-                INSERT INTO reasonblocks_fts (
+                INSERT INTO playbooks_fts (
                     id, title, triggers, situation, dead_ends, procedure, failure_signals
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -392,23 +392,23 @@ class ContextStore:
                 ),
             )
         if write_markdown:
-            self._write_block_markdown(block)
+            self._write_playbook_markdown(block)
 
-    def get_block(self, block_id: str) -> ReasonBlock | None:
+    def get_block(self, block_id: str) -> Playbook | None:
         with self._connect() as conn:
-            row = conn.execute("SELECT payload FROM reasonblocks WHERE id = ?", (block_id,)).fetchone()
+            row = conn.execute("SELECT payload FROM playbooks WHERE id = ?", (block_id,)).fetchone()
         if row is None:
             return None
-        return ReasonBlock.model_validate_json(row["payload"])
+        return Playbook.model_validate_json(row["payload"])
 
     def list_blocks(
         self,
         *,
         domain: str | None = None,
-        status: BlockStatus | None = "active",
+        status: PlaybookStatus | None = "active",
         include_deprecated: bool = False,
-    ) -> list[ReasonBlock]:
-        sql = "SELECT payload FROM reasonblocks WHERE 1=1"
+    ) -> list[Playbook]:
+        sql = "SELECT payload FROM playbooks WHERE 1=1"
         params: list[Any] = []
         if domain:
             sql += " AND domain = ?"
@@ -421,27 +421,27 @@ class ContextStore:
         sql += " ORDER BY updated_at DESC"
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
-        return [ReasonBlock.model_validate_json(r["payload"]) for r in rows]
+        return [Playbook.model_validate_json(r["payload"]) for r in rows]
 
-    def search_blocks(self, query: str, *, limit: int = 20) -> list[ReasonBlock]:
+    def search_blocks(self, query: str, *, limit: int = 20) -> list[Playbook]:
         if not query.strip():
             return self.list_blocks()[:limit]
-        fts_query = self._build_reasonblock_search_query(query)
+        fts_query = self._build_playbook_search_query(query)
         sql = (
-            "SELECT r.payload FROM reasonblocks_fts f "
-            "JOIN reasonblocks r ON r.id = f.id "
-            "WHERE reasonblocks_fts MATCH ? "
+            "SELECT r.payload FROM playbooks_fts f "
+            "JOIN playbooks r ON r.id = f.id "
+            "WHERE playbooks_fts MATCH ? "
             "AND r.status != 'quarantined' "
             "ORDER BY rank LIMIT ?"
         )
         with self._connect() as conn:
             rows = conn.execute(sql, (fts_query, limit)).fetchall()
-        return [ReasonBlock.model_validate_json(r["payload"]) for r in rows]
+        return [Playbook.model_validate_json(r["payload"]) for r in rows]
 
-    def _build_reasonblock_search_query(self, query: str) -> str:
-        """Build a robust FTS5 query for reasonblocks.
+    def _build_playbook_search_query(self, query: str) -> str:
+        """Build a robust FTS5 query for playbooks.
 
-        ReasonBlock retrieval should prefer recall over overly strict phrase
+        Playbook retrieval should prefer recall over overly strict phrase
         matching, so this expands input into prefix terms joined by AND.
         """
         clauses: list[str] = []
@@ -460,25 +460,25 @@ class ContextStore:
         escaped = query.strip().replace('"', '""')
         return f'"{escaped}"'
 
-    def update_block_status(self, block_id: str, status: BlockStatus) -> bool:
+    def update_block_status(self, block_id: str, status: PlaybookStatus) -> bool:
         with self._connect() as conn, closing(conn.cursor()) as cur:
             cur.execute(
-                "UPDATE reasonblocks SET status = ?, updated_at = ? WHERE id = ?",
+                "UPDATE playbooks SET status = ?, updated_at = ? WHERE id = ?",
                 (status, datetime.now(UTC).isoformat(), block_id),
             )
             changed = cur.rowcount > 0
         if changed:
             block = self.get_block(block_id)
             if block:
-                self._write_block_markdown(block)
+                self._write_playbook_markdown(block)
         return changed
 
     def delete_block(self, block_id: str) -> bool:
-        """Hard-delete a ReasonBlock from the DB, FTS index, and markdown."""
+        """Hard-delete a Playbook from the DB, FTS index, and markdown."""
         with self._connect() as conn, closing(conn.cursor()) as cur:
-            cur.execute("DELETE FROM reasonblocks WHERE id = ?", (block_id,))
+            cur.execute("DELETE FROM playbooks WHERE id = ?", (block_id,))
             deleted = cur.rowcount > 0
-            cur.execute("DELETE FROM reasonblocks_fts WHERE id = ?", (block_id,))
+            cur.execute("DELETE FROM playbooks_fts WHERE id = ?", (block_id,))
         markdown = self.blocks_dir / f"{block_id}.md"
         if markdown.exists():
             markdown.unlink()
@@ -492,17 +492,17 @@ class ContextStore:
     ) -> None:
         with self._connect() as conn, closing(conn.cursor()) as cur:
             cur.execute(
-                "UPDATE reasonblocks SET usage_count = usage_count + 1 WHERE id = ?",
+                "UPDATE playbooks SET usage_count = usage_count + 1 WHERE id = ?",
                 (block_id,),
             )
             if success is True:
                 cur.execute(
-                    "UPDATE reasonblocks SET success_count = success_count + 1 WHERE id = ?",
+                    "UPDATE playbooks SET success_count = success_count + 1 WHERE id = ?",
                     (block_id,),
                 )
             elif success is False:
                 cur.execute(
-                    "UPDATE reasonblocks SET failure_count = failure_count + 1 WHERE id = ?",
+                    "UPDATE playbooks SET failure_count = failure_count + 1 WHERE id = ?",
                     (block_id,),
                 )
 
@@ -1247,7 +1247,7 @@ class ContextStore:
         row_keys = set(row.keys())
         proposed_block = None
         if row["proposed_block_json"]:
-            proposed_block = ReasonBlock.model_validate_json(row["proposed_block_json"])
+            proposed_block = Playbook.model_validate_json(row["proposed_block_json"])
         embedding = None
         if row["embedding"]:
             raw_embedding = row["embedding"]
@@ -1278,11 +1278,11 @@ class ContextStore:
 
     # ----- File mirrors ---------------------------------------------------- #
 
-    def _write_block_markdown(self, block: ReasonBlock) -> None:
+    def _write_playbook_markdown(self, block: Playbook) -> None:
         path = self.blocks_dir / f"{block.id}.md"
-        from atelier.core.foundation.renderer import render_block_markdown
+        from atelier.core.foundation.renderer import render_playbook_markdown
 
-        path.write_text(render_block_markdown(block), encoding="utf-8")
+        path.write_text(render_playbook_markdown(block), encoding="utf-8")
 
     def _write_trace_json(self, trace: Trace) -> None:
         path = self.traces_dir / f"{trace.id}.json"
@@ -1300,7 +1300,7 @@ class ContextStore:
 
     # ----- Bulk import ---------------------------------------------------- #
 
-    def import_blocks(self, blocks: Iterable[ReasonBlock]) -> int:
+    def import_blocks(self, blocks: Iterable[Playbook]) -> int:
         n = 0
         for b in blocks:
             self.upsert_block(b)

@@ -6,12 +6,17 @@ Opt-in via environment variables:
   LANGFUSE_SECRET_KEY=sk-lf-...
   LANGFUSE_HOST=https://cloud.langfuse.com   # optional, defaults to cloud
 
+Install the SDK with the optional extra:  uv sync --extra langfuse
+(or  pip install 'atelier[langfuse]').
+
 Fail-open design: any Langfuse error is silently swallowed so the core
 agent loop is never interrupted by an observability outage.
 
-Usage (called automatically by atelier_record_trace):
-    from atelier.gateway.integrations.langfuse import emit_trace
-    emit_trace(trace_payload_dict)
+Targets the Langfuse v3+ SDK (OpenTelemetry-based). The removed v2
+``client.trace()`` / ``trace.span()`` API is no longer used.
+
+Usage:
+    from atelier.gateway.integrations.langfuse import emit_trace, emit_tool_call
 """
 
 from __future__ import annotations
@@ -22,77 +27,93 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Process-wide singleton. Building a client per call (the old behaviour) both
+# wasted work and, with a per-call flush(), forced a synchronous network export
+# on every tool call's critical path. The v3+ client batches on a background
+# thread and flushes at exit, so we build once and reuse, then flush on shutdown.
+_CLIENT: Any = None
+
 
 def _enabled() -> bool:
     return os.environ.get("ATELIER_LANGFUSE_ENABLED", "").lower() in ("1", "true", "yes")
 
 
-def _make_client() -> Any:
-    """Return a Langfuse client or None if the SDK is not installed / not configured."""
+def _client() -> Any:
+    """Return a cached Langfuse client, or None if unavailable/unconfigured."""
+    global _CLIENT
+    if _CLIENT is not None:
+        return _CLIENT
+    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
+    secret_key = os.environ.get("LANGFUSE_SECRET_KEY", "")
+    if not public_key or not secret_key:
+        return None
     try:
         from langfuse import Langfuse
 
-        public_key = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
-        secret_key = os.environ.get("LANGFUSE_SECRET_KEY", "")
         host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com")
-        if not public_key or not secret_key:
-            return None
-        return Langfuse(public_key=public_key, secret_key=secret_key, host=host)
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
+        _CLIENT = Langfuse(public_key=public_key, secret_key=secret_key, host=host)
+        return _CLIENT
+    except Exception:  # noqa: BLE001
+        logger.warning("langfuse client init failed", exc_info=True)
         return None
 
 
+def _scrub(args: dict[str, Any]) -> dict[str, Any]:
+    """Replace long string arg values with a ``<N chars>`` placeholder.
+
+    Keeps large file contents / patches out of the observability backend.
+    """
+    return {k: (f"<{len(str(v))} chars>" if isinstance(v, str) and len(v) > 300 else v) for k, v in args.items()}
+
+
 def emit_trace(payload: dict[str, Any]) -> None:
-    """Send a completed agent trace to Langfuse. Silently no-ops on any error.
+    """Record a completed agent trace as one Langfuse event. No-ops on any error.
 
     Args:
-        payload: The dict that was passed to Trace.model_validate() in record_trace.
-                 Expected keys: agent, domain, task, status, session_id, files_touched,
-                 tools_called, commands_run, errors_seen, diff_summary, output_summary,
-                 validation_results, id.
+        payload: The dict passed to Trace.model_validate() in record_trace.
+                 Expected keys: agent, domain, task, status, session_id,
+                 files_touched, tools_called, commands_run, errors_seen,
+                 diff_summary, output_summary, validation_results, id.
     """
     if not _enabled():
         return
     try:
-        client = _make_client()
+        client = _client()
         if client is None:
             return
 
-        status = payload.get("status", "unknown")
-        domain = payload.get("domain", "unknown")
-        agent = payload.get("agent", "unknown")
-        session_id = str(payload.get("session_id", ""))
-        trace_id = str(payload.get("id", ""))
+        status = str(payload.get("status", "unknown"))
+        domain = str(payload.get("domain", "unknown"))
+        agent = str(payload.get("agent", "unknown"))
+        session_id = str(payload.get("session_id", "")) or None
 
-        client.trace(
-            id=trace_id or None,
-            name=f"atelier.{domain}",
-            input={"task": payload.get("task", "")},
-            output={
-                "status": status,
-                "output_summary": payload.get("output_summary", ""),
-                "diff_summary": payload.get("diff_summary", ""),
-            },
-            metadata={
-                "agent": agent,
-                "session_id": session_id,
-                "files_touched": payload.get("files_touched", []),
-                "tools_called": payload.get("tools_called", []),
-                "commands_run": payload.get("commands_run", []),
-                "errors_seen": payload.get("errors_seen", []),
-                "validation_results": payload.get("validation_results", []),
-            },
+        from langfuse import propagate_attributes
+
+        with propagate_attributes(
+            session_id=session_id,
             tags=[status, domain, agent],
-            session_id=session_id or None,
-        )
-        client.flush()
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        logger.warning(
-            "Suppressed exception at langfuse.py:86",
-            exc_info=True,
-        )
+            trace_name=f"atelier.{domain}",
+        ):
+            client.create_event(
+                name=f"atelier.{domain}",
+                input={"task": payload.get("task", "")},
+                output={
+                    "status": status,
+                    "output_summary": payload.get("output_summary", ""),
+                    "diff_summary": payload.get("diff_summary", ""),
+                },
+                metadata={
+                    "agent": agent,
+                    "session_id": session_id or "",
+                    "files_touched": payload.get("files_touched", []),
+                    "tools_called": payload.get("tools_called", []),
+                    "commands_run": payload.get("commands_run", []),
+                    "errors_seen": payload.get("errors_seen", []),
+                    "validation_results": payload.get("validation_results", []),
+                },
+            )
+    except Exception:  # noqa: BLE001
+        logger.warning("Suppressed exception in emit_trace", exc_info=True)
 
 
 def emit_tool_call(
@@ -105,49 +126,55 @@ def emit_tool_call(
     error: str | None = None,
     session_id: str = "",
 ) -> None:
-    """Emit one Langfuse span per MCP tool invocation. Silently no-ops on any error.
+    """Emit one Langfuse event per MCP tool invocation. No-ops on any error.
 
     Enabled only when ATELIER_LANGFUSE_ENABLED=true and keys are configured.
-    Args are scrubbed before sending: string values longer than 300 chars are
-    replaced with a ``<N chars>`` placeholder to avoid leaking large file contents.
+    String arg values longer than 300 chars are scrubbed to ``<N chars>``.
     """
     if not _enabled():
         return
     try:
-        client = _make_client()
+        client = _client()
         if client is None:
             return
 
-        scrubbed: dict[str, Any] = {
-            k: (f"<{len(str(v))} chars>" if isinstance(v, str) and len(v) > 300 else v) for k, v in args.items()
-        }
+        from langfuse import propagate_attributes
 
-        trace = client.trace(
-            name=f"mcp.{tool}",
-            session_id=session_id or None,
-            metadata={"tool": tool, "status": status},
-            tags=["mcp_tool", tool, status],
-        )
-        span = trace.span(
-            name=f"mcp.{tool}",
-            input=scrubbed,
-            output=(
-                {"status": status, "response_size_bytes": response_size}
-                if not error
-                else {"status": status, "error": error}
-            ),
-            metadata={
-                "duration_ms": duration_ms,
-                "response_size_bytes": response_size,
-                "session_id": session_id,
-            },
-            level="ERROR" if error else "DEFAULT",
-            status_message=error or "",
-        )
-        span.end()
-        client.flush()
+        with propagate_attributes(session_id=session_id or None, tags=["mcp_tool", tool, status]):
+            client.create_event(
+                name=f"mcp.{tool}",
+                input=_scrub(args),
+                output=(
+                    {"status": status, "response_size_bytes": response_size}
+                    if not error
+                    else {"status": status, "error": error}
+                ),
+                metadata={
+                    "duration_ms": duration_ms,
+                    "response_size_bytes": response_size,
+                    "session_id": session_id,
+                    "tool": tool,
+                },
+                level="ERROR" if error else "DEFAULT",
+                status_message=error or None,
+            )
     except Exception:  # noqa: BLE001
         logger.warning("Suppressed exception in emit_tool_call", exc_info=True)
+
+
+def shutdown() -> None:
+    """Flush and shut down the Langfuse client at process exit. No-ops if unused."""
+    global _CLIENT
+    client = _CLIENT
+    if client is None:
+        return
+    try:
+        client.flush()
+        client.shutdown()
+    except Exception:  # noqa: BLE001
+        logger.warning("langfuse shutdown failed", exc_info=True)
+    finally:
+        _CLIENT = None
 
 
 def health_check() -> dict[str, Any]:
@@ -175,5 +202,5 @@ def health_check() -> dict[str, Any]:
         return {
             "enabled": True,
             "configured": False,
-            "reason": "langfuse package not installed — run: uv add langfuse",
+            "reason": "langfuse SDK not installed — run: uv sync --extra langfuse",
         }

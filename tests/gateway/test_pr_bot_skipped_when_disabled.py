@@ -6,7 +6,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from atelier.core.foundation.lesson_models import LessonCandidate
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.cli import cli
 
@@ -19,7 +19,7 @@ def test_pr_bot_skips_when_disabled_without_side_effects(tmp_path: Path) -> None
     assert init.exit_code == 0, init.output
 
     store = ContextStore(root)
-    block = ReasonBlock(
+    block = Playbook(
         id="rb.lesson.disabled",
         title="Disabled path block",
         domain="coding",

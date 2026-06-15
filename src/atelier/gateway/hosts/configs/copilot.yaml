@@ -142,7 +142,7 @@ prompt_templates:
     Language/Domain: {pack.domain}
 
 
-    Reasoning patterns available: {pack.reasonblocks_count}
+    Reasoning patterns available: {pack.playbooks_count}
 
     Quality gates available: {pack.rubrics_count}
 
@@ -156,7 +156,7 @@ prompt_templates:
 
     Available patterns from pack:
 
-    {pack.reasonblocks_preview}
+    {pack.playbooks_preview}
 
 
     Apply these quality checks after completion:

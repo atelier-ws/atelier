@@ -8,9 +8,14 @@ from atelier.gateway.adapters import mcp_server
 def test_symbols_schema_documents_search_view() -> None:
     props = mcp_server.SYMBOLS_TOOL_INPUT_SCHEMA["properties"]
 
-    assert props["view"]["enum"] == ["target", "graph", "context", "explain"]
+    assert props["view"]["enum"] == ["target", "context"]
     assert props["view"]["default"] == "target"
-    assert "relationships" in props["view"]["description"]
+    assert "context pack" in props["view"]["description"]
+    # Redundant axes are no longer published (the handler still accepts them):
+    # they duplicate the dedicated callers/callees/explore/usages/blame tools.
+    assert "intent" not in props
+    assert "scope" not in props
+    assert "since" not in props
 
 
 def test_code_search_target_view_is_pointer_first() -> None:

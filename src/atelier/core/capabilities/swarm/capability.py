@@ -2041,7 +2041,12 @@ def _run_wave_children(root: Path, state_path: Path, wave_index: int) -> SwarmRu
 
 def _write_child_patch(child: SwarmChildState) -> Path | None:
     patch_path = Path(child.patch_path)
-    completed = _git("diff", "--binary", cwd=Path(child.worktree_path))
+    worktree = Path(child.worktree_path)
+    # Record intent-to-add for untracked files so `git diff` emits them as
+    # additions; without this, children that only create new files produce an
+    # empty diff and are falsely rejected as "No diff to apply."
+    _git("add", "-N", "--", ".", cwd=worktree)
+    completed = _git("diff", "--binary", cwd=worktree)
     if completed.returncode != 0:
         child.acceptance_note = completed.stderr.strip() or "Failed to build patch."
         return None
@@ -2432,6 +2437,23 @@ def launch_swarm_children(root: Path, state_path: Path) -> SwarmRunState:
         state.stop_reason = "Interrupted."
         save_swarm_state(state_path, state)
         raise
+    except Exception as exc:  # noqa: BLE001
+        # Git/worktree failures must not leave the run wedged in "running" with
+        # leaked worktrees. Finalize state and reclaim worktrees instead.
+        state = load_swarm_state(state_path)
+        for child in state.children:
+            if child.status == "running":
+                _kill_pid(child.pid)
+                child.status = "failed"
+                child.finished_at = _utcnow()
+        state.status = "failed"
+        state.stop_reason = f"Coordinator failed: {exc}"
+        save_swarm_state(state_path, state)
+        with contextlib.suppress(Exception):
+            cleanup_swarm_run(state)
+        state.ranking_notes.append("Removed swarm worktrees after coordinator failure.")
+        save_swarm_state(state_path, state)
+        return state
 
 
 def stop_swarm_run(*, root: Path, state_path: Path, cleanup: bool) -> SwarmRunState:

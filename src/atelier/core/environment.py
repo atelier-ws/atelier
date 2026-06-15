@@ -29,7 +29,6 @@ HIDDEN_LLM_TOOLS = frozenset(
     {
         "rescue",
         "verify",
-        "callees",
         "trace",
         "workflow",
         "agent",

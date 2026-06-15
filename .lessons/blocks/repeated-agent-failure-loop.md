@@ -26,7 +26,7 @@ An agent has tried the same command or the same fix twice and seen the same fail
 1. Stop. Do not run the failing command again.
 2. Summarize the invariant being fought in one sentence.
 3. List the assumptions that were tested and the assumptions that were not.
-4. Search ReasonBlocks for the failure signature.
+4. Search Playbooks for the failure signature.
 5. If no match exists, open the smallest reproducer and inspect it.
 6. Form one new hypothesis before any further command.
 

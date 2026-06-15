@@ -74,11 +74,11 @@ This checklist is the release gate for Atelier Phase D hardening.
 
 ## Knowledge Bundle Governance
 
-- Built-in seed blocks under `src/atelier/infra/seed_blocks/` and built-in rubrics under `src/atelier/core/rubrics/` remain source-controlled artifacts.
+- Built-in seed blocks under `src/atelier/infra/seed_playbooks/` and built-in rubrics under `src/atelier/core/rubrics/` remain source-controlled artifacts.
 - Domain bundle metadata exposed through `atelier domain list` and `atelier domain info` should match the shipped content.
 - New or updated knowledge artifacts require a clean `atelier init` against a fresh store plus targeted benchmark or eval evidence when they affect routing, retrieval, or savings claims.
 - `atelier benchmark packs` remains the benchmark-only coverage surface; there is no public `atelier pack install` workflow on the current CLI.
-- Runtime-learned ReasonBlocks are review/promote candidates, not auto-published governance records.
+- Runtime-learned Playbooks are review/promote candidates, not auto-published governance records.
 
 ## Release Sign-Off
 

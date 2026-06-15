@@ -108,9 +108,9 @@ prompt_templates:
   template: 'You have access to Atelier pack: {pack.name}
 
 
-    Available ReasonBlocks ({pack.reasonblocks_count}):
+    Available Playbooks ({pack.playbooks_count}):
 
-    {pack.reasonblocks}
+    {pack.playbooks}
 
 
     Available Rubrics ({pack.rubrics_count}):
@@ -125,12 +125,12 @@ prompt_templates:
   template: 'Based on the task, I recommend using pack ''{pack.recommended_pack}''
     which specializes in {pack.domain}.
 
-    The pack includes {pack.reasonblocks_count} reasoning patterns and {pack.rubrics_count}
+    The pack includes {pack.playbooks_count} reasoning patterns and {pack.rubrics_count}
     quality checks.
 
     '
 - name: error-recovery
-  template: 'When encountering errors, consult the ReasonBlock ''{block.name}'' from
+  template: 'When encountering errors, consult the Playbook ''{block.name}'' from
     pack ''{pack.name}''.
 
 

@@ -57,7 +57,7 @@ def get_embedding_model() -> str:
 
 
 def vector_cache_key(block_id: str, rendered_content: str) -> str:
-    """Return a stable cache key for a rendered ReasonBlock payload."""
+    """Return a stable cache key for a rendered Playbook payload."""
     digest = sha256(rendered_content.encode("utf-8")).hexdigest()
     return f"{block_id}:{digest}"
 
@@ -68,7 +68,7 @@ def _vector_cache_path(root: str | Path) -> Path:
 
 def _ensure_vector_cache(conn: sqlite3.Connection) -> None:
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS reasonblock_embedding_cache (
+        CREATE TABLE IF NOT EXISTS playbook_embedding_cache (
             cache_key TEXT NOT NULL,
             embedder_name TEXT NOT NULL,
             vector_json TEXT NOT NULL,
@@ -86,7 +86,7 @@ def get_cached_embedding(root: str | Path, *, cache_key: str, embedder_name: str
     with sqlite3.connect(path) as conn:
         _ensure_vector_cache(conn)
         row = conn.execute(
-            "SELECT vector_json FROM reasonblock_embedding_cache WHERE cache_key = ? AND embedder_name = ?",
+            "SELECT vector_json FROM playbook_embedding_cache WHERE cache_key = ? AND embedder_name = ?",
             (cache_key, embedder_name),
         ).fetchone()
 
@@ -108,7 +108,7 @@ def put_cached_embedding(root: str | Path, *, cache_key: str, embedder_name: str
         _ensure_vector_cache(conn)
         conn.execute(
             """
-            INSERT INTO reasonblock_embedding_cache (cache_key, embedder_name, vector_json)
+            INSERT INTO playbook_embedding_cache (cache_key, embedder_name, vector_json)
             VALUES (?, ?, ?)
             ON CONFLICT(cache_key, embedder_name) DO UPDATE SET vector_json = excluded.vector_json
             """,

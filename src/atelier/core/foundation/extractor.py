@@ -1,4 +1,4 @@
-"""Extractor — produce a candidate ReasonBlock from a recorded trace.
+"""Extractor — produce a candidate Playbook from a recorded trace.
 
 Heuristic, not LLM-based. The output is always a *candidate* — humans (or
 a future auto-rule) decide whether to accept it.
@@ -20,7 +20,7 @@ from pathlib import Path
 from atelier.core.foundation.models import (
     CommandRecord,
     FileEditRecord,
-    ReasonBlock,
+    Playbook,
     ToolCall,
     Trace,
     ValidationResult,
@@ -30,7 +30,7 @@ from atelier.core.foundation.models import (
 
 @dataclass
 class CandidateBlock:
-    block: ReasonBlock
+    block: Playbook
     confidence: float
     reasons: list[str]
 
@@ -67,7 +67,7 @@ _COMMAND_WRAPPER_TOKENS = {
 def extract_candidate(trace: Trace) -> CandidateBlock:
     title = _derive_title(trace)
     domain = trace.domain or "coding"
-    block_id = ReasonBlock.make_id(title, domain)
+    block_id = Playbook.make_id(title, domain)
 
     dead_ends = _derive_dead_ends(trace)
     procedure = _derive_procedure(trace)
@@ -76,7 +76,7 @@ def extract_candidate(trace: Trace) -> CandidateBlock:
 
     confidence, reasons = _score_confidence(trace)
 
-    block = ReasonBlock(
+    block = Playbook(
         id=block_id,
         title=title,
         domain=domain,

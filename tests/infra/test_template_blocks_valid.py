@@ -5,8 +5,8 @@ from pathlib import Path
 from atelier.core.capabilities.starter_packs import load_template_block
 
 
-def test_all_reasonblock_templates_parse() -> None:
-    template_root = Path("templates") / "reasonblocks"
+def test_all_playbook_templates_parse() -> None:
+    template_root = Path("templates") / "playbooks"
     templates = sorted(template_root.glob("*/*.md"))
     assert templates
     for path in templates:

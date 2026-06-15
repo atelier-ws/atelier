@@ -365,6 +365,30 @@ def test_default_step_executor_native_receipt_tracks_spawn_cache_projection(monk
     assert receipt["observation_mode"] == "runtime-observed"
 
 
+def test_default_step_executor_native_records_failed_receipt_on_missing_runner(monkeypatch, tmp_path: Path) -> None:
+    def _raise(**kwargs: object) -> list[str]:
+        raise FileNotFoundError("fake-runner: command not found")
+
+    monkeypatch.setattr(benchmark_solver_module, "resolve_swarm_runner_command", _raise)
+
+    executor = _default_step_executor(
+        repo_root=tmp_path,
+        route_decision=None,
+        runner="claude",
+        model="claude-opus-4.8",
+    )
+    result = executor(
+        SimpleNamespace(step_id="plan", role_id="plan", context_mode="inherit"),
+        "Implement the fix.",
+        WorkflowContextState(),
+        1,
+    )
+
+    assert result["status"] == "failed"
+    assert "command not found" in result["error"]
+    assert result["execution_receipt"]["status"] == "failed"
+
+
 def test_run_benchmark_solver_records_execution_receipts_and_transport(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         benchmark_solver_module,

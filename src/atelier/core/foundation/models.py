@@ -2,7 +2,7 @@
 
 These types are the contract between every layer (store, retriever, plan
 checker, rubric gate, CLI, MCP). Field names are kept stable and explicit
-so traces and ReasonBlocks remain forward-compatible.
+so traces and Playbooks remain forward-compatible.
 """
 
 from __future__ import annotations
@@ -19,17 +19,17 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # Helpers                                                                     #
 # --------------------------------------------------------------------------- #
 
-BlockStatus = Literal["active", "deprecated", "quarantined"]
+PlaybookStatus = Literal["active", "deprecated", "quarantined"]
 TraceStatus = Literal["success", "failed", "partial"]
 TraceConfidence = Literal["full_live", "mcp_live", "wrapper_live", "imported", "manual"]
 TraceLearningKind = Literal["worked", "did_not_work", "next_rule", "risk", "note"]
-TraceLearningPromotion = Literal["memory", "reasonblock", "rubric", "none"]
+TraceLearningPromotion = Literal["memory", "playbook", "rubric", "none"]
 PlanStatus = Literal["pass", "warn", "blocked"]
 Severity = Literal["low", "medium", "high"]
 ConsolidationKind = Literal["duplicate_cluster", "stale_candidate", "low_confidence"]
 ConsolidationAction = Literal["merge", "deprecate", "delete"]
 
-# E-trace tier: mirrors the ReasonBlocks.com three-tier injection model.
+# E-trace tier: three-tier injection model.
 #   e3 — universal standing rules, always injected first, independent of score
 #   e2 — failure-mode patterns, retrieved by relevance (default for all blocks)
 #   e1 — instance-level procedures, only injected when errors/failure signals present
@@ -53,14 +53,14 @@ def short_hash(text: str, length: int = 8) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# ReasonBlock                                                                 #
+# Playbook                                                                 #
 # --------------------------------------------------------------------------- #
 
 
-class ReasonBlock(BaseModel):
+class Playbook(BaseModel):
     """A reusable engineering / product procedure.
 
-    A ReasonBlock is **not** memory and **not** hidden chain-of-thought.
+    A Playbook is **not** memory and **not** hidden chain-of-thought.
     It is an explicit, reviewable procedure that any agent can read.
     """
 
@@ -82,7 +82,7 @@ class ReasonBlock(BaseModel):
     required_rubrics: list[str] = Field(default_factory=list)
     when_not_to_apply: str = ""
 
-    status: BlockStatus = "active"
+    status: PlaybookStatus = "active"
     tier: BlockTier = "e2"
     usage_count: int = 0
     success_count: int = 0
@@ -161,7 +161,7 @@ class TraceLearning(BaseModel):
     """A concise observable lesson from one agent session.
 
     These are raw session observations. Durable procedures still belong in
-    ReasonBlocks/Rubrics after review or repeated evidence.
+    Playbooks/Rubrics after review or repeated evidence.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -221,9 +221,9 @@ class TraceLearning(BaseModel):
         if value is None:
             return None
         normalized = str(value).strip().lower().replace("-", "_").replace(" ", "_")
-        aliases = {"reason_block": "reasonblock", "reason": "reasonblock", "rubric_check": "rubric"}
+        aliases = {"playbook": "playbook", "reason": "playbook", "rubric_check": "rubric"}
         normalized = aliases.get(normalized, normalized)
-        if normalized not in {"memory", "reasonblock", "rubric", "none"}:
+        if normalized not in {"memory", "playbook", "rubric", "none"}:
             return None
         return normalized  # type: ignore[return-value]
 
@@ -415,7 +415,7 @@ class ConsolidationCandidate(BaseModel):
 class PlanWarning(BaseModel):
     model_config = ConfigDict(extra="forbid")
     severity: Severity
-    reason_block: str
+    playbook: str
     message: str
 
 

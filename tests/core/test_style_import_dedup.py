@@ -4,14 +4,14 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.capabilities.style_import.importer import import_files
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.store import ContextStore
 from atelier.infra.embeddings.null_embedder import NullEmbedder
 
 
 def test_style_import_flags_near_duplicates(store: ContextStore, tmp_path: Path) -> None:
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-existing",
             title="Use Schemas At Boundaries",
             domain="coding",

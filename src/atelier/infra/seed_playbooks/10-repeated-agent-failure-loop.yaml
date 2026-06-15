@@ -23,7 +23,7 @@ procedure:
   - Stop. Do not run the failing command again.
   - Summarize the invariant being fought in one sentence.
   - List the assumptions that were tested and the assumptions that were not.
-  - Search ReasonBlocks for the failure signature.
+  - Search Playbooks for the failure signature.
   - If no match exists, open the smallest reproducer and inspect it.
   - Form one new hypothesis before any further command.
 verification:

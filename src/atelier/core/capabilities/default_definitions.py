@@ -524,15 +524,6 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
                 "class of action. Rerun the checks tied to each gap, then stop for review."
             ),
         ),
-        "solver-retry": PromptDefinition(
-            prompt_id="solver-retry",
-            body=(
-                "=== PIVOT: YOU ARE NOW IN THE SOLVER RETRY PHASE ===\n"
-                "Start from the prior attempt transcript. Read harness feedback first. Do not repeat a failed "
-                "command verbatim; change the input, scope, timeout, or approach before retrying. Fix the "
-                "smallest proven cause and keep the workspace clean."
-            ),
-        ),
     }
 
 
@@ -650,14 +641,6 @@ def _default_workflows() -> dict[str, DefaultWorkflow]:
                     effort="medium",
                     read_mode_hint="exact",
                     fork_from="refine",
-                ),
-                DefaultWorkflowStep(
-                    step_id="retry",
-                    role_id="solve",
-                    phase_prompt_id="solver-retry",
-                    effort="high",
-                    read_mode_hint="exact",
-                    fork_from="review",
                 ),
             ),
         ),
@@ -862,6 +845,12 @@ def _role_read_hint(role_id: str) -> str:
 # read-only roles still need shell to run checks and probes (``git diff``,
 # ``pytest``, ``ls``), and read-only is enforced by denying the write tools, not
 # by removing shell.
+#
+# Native ``WebFetch`` is denied so URL retrieval flows through the supervised
+# ``mcp__atelier__web_fetch`` (telemetry, redaction, savings) instead of the
+# always-present native fetch. Native ``WebSearch`` stays enabled because
+# Atelier has no web-search equivalent -- denying it would leave research with
+# no way to discover sources.
 _NATIVE_MCP_OVERRIDDEN: list[str] = [
     "Read",
     "Edit",
@@ -869,6 +858,7 @@ _NATIVE_MCP_OVERRIDDEN: list[str] = [
     "Grep",
     "Glob",
     "Bash",
+    "WebFetch",
 ]
 
 
@@ -883,8 +873,9 @@ def _denies_spawn(policy: ToolPolicy) -> bool:
 def _claude_disallowed_tools(policy: ToolPolicy) -> list[str]:
     """Render a Claude ``disallowedTools`` deny-list from the host-neutral policy.
 
-    Every host-projected role forces MCP file I/O (native read/edit/write/grep/glob
-    are denied so the Atelier equivalents are used). Read-only roles additionally
+    Every host-projected role forces MCP file I/O (native
+    read/edit/write/grep/glob/webfetch are denied so the Atelier equivalents are
+    used). Read-only roles additionally
     lose sub-agent spawning and the MCP write path. Shell is never denied.
     """
     denied = list(_NATIVE_MCP_OVERRIDDEN)

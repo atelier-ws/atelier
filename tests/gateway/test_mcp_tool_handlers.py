@@ -44,6 +44,7 @@ EXPECTED_TOOLS = {
     # Dedicated code-intel tools (split from `code` op for LLM discoverability)
     "node",
     "callers",
+    "callees",
     "usages",
     "explore",
     "codemod",
@@ -1465,7 +1466,11 @@ def test_repo_map_surface(store_root: Path, tmp_path: Path) -> None:
             {"query": "", "seed_files": [str(target)], "mode": "map", "budget_tokens": 200},
         )
     )
-    assert "ranked_files" in payload
+    # map mode now renders compact markdown (repo_map heading + file list)
+    # instead of the raw JSON payload.
+    assert isinstance(payload, str)
+    assert "### repo_map" in payload
+    assert "sample.py" in payload
 
 
 def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
@@ -1796,7 +1801,7 @@ def test_code_context_usages_surface_groups_references(store_root: Path, tmp_pat
         query="OrderService",
     )
 
-    assert "group_by: file" in payload
+    assert "### usages" in payload
     assert "OrderService" in payload
     assert "src/checkout.py" in payload
     assert "local_index" in payload
@@ -1857,10 +1862,15 @@ def test_code_context_pattern_search_surface_is_cached(
         budget_tokens=220,
     )
 
+    # Pattern search now surfaces the compact markdown the agent receives, not
+    # the raw JSON payload (path emitted once, snippet preserved).
+    assert isinstance(first, str)
+    assert first.startswith("### pattern")
+    assert "src/app.py" in first
+    assert "requests.get(url)" in first
     assert "provenance" not in first
-    assert first["matches"][0]["captures"] == {"URL": "url"}
     # Cache state is internal bookkeeping; the cached response must be identical.
-    assert cached["matches"] == first["matches"]
+    assert cached == first
 
 
 def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tmp_path: Path) -> None:
@@ -2029,9 +2039,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert (
-        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
-    ), f"'trace_id' missing or empty in trace receipt: {payload}"
+    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
+        f"'trace_id' missing or empty in trace receipt: {payload}"
+    )
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2278,3 +2288,53 @@ def test_smart_read_single_caps_oversized_expand_at_source(tmp_path: Path, monke
     assert payload["truncated"] is True
     assert payload["bytes_total"] == 500_000
     assert len(payload["content"].encode("utf-8")) <= 70000
+
+
+def test_render_memory_md_compact_recall() -> None:
+    out = mcp_server._render_memory_md(
+        {
+            "passages": [
+                {"id": "pas-1", "text": "Prefer atelier memory.", "source_ref": "sess#1", "tags": ["pref"]},
+                {"id": "pas-2", "text": "Use uv run.", "source_ref": "sess#2", "tags": []},
+            ]
+        }
+    )
+    assert out is not None
+    assert out.startswith("### memory (2 passage(s))")
+    assert "- sess#1 [pref]" in out
+    assert "Prefer atelier memory." in out
+    # repeated JSON field keys are dropped
+    assert "source_ref" not in out
+
+
+def test_render_memory_md_non_recall_falls_back_to_json() -> None:
+    # store_fact/vote_fact responses have no `passages` list -> keep JSON.
+    assert mcp_server._render_memory_md({"id": "mem-1", "fact": "x"}) is None
+
+
+def test_render_search_map_md_is_compact() -> None:
+    out = mcp_server._render_search_md(
+        {"mode": "map", "outline": "pkg/\n  mod.py", "ranked_files": ["pkg/mod.py"], "token_count": 10}
+    )
+    assert out is not None
+    assert out.startswith("### repo_map")
+    assert "pkg/mod.py" in out
+    # the JSON wrapper / bookkeeping keys are gone
+    assert "token_count" not in out
+    assert "ranked_files" not in out
+
+
+def test_check_auto_update_is_opt_in_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Supply-chain guard (HIGH #8): startup auto-update must NOT run git/install
+    # automatically. With ATELIER_AUTO_UPDATE unset it must short-circuit before
+    # spawning any subprocess.
+    monkeypatch.delenv("ATELIER_AUTO_UPDATE", raising=False)
+
+    def _boom(*args: Any, **kwargs: Any) -> Any:  # pragma: no cover - must not run
+        raise AssertionError("auto-update ran a subprocess while opt-in env var was unset")
+
+    import subprocess as _subprocess
+
+    monkeypatch.setattr(_subprocess, "run", _boom)
+    # Returns without touching subprocess.run.
+    mcp_server._check_auto_update()

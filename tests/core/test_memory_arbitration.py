@@ -94,3 +94,24 @@ def test_arbitration_uses_ollama_json_for_similar_blocks(
         sort_keys=True,
         separators=(",", ":"),
     )
+
+
+def test_arbitration_degrades_when_base_llm_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.infra.internal_llm.exceptions import InternalLLMError
+
+    existing = MemoryBlock(agent_id="atelier:code", label="style", value="prefer compact scoped patches")
+    new_fact = MemoryBlock(agent_id="atelier:code", label="style", value="prefer compact scoped edits")
+
+    def fake_chat(messages: list[dict[str, str]], json_schema: object | None = None) -> dict[str, str]:
+        _ = (messages, json_schema)
+        raise InternalLLMError("Internal LLM disabled")
+
+    monkeypatch.setattr(
+        "atelier.core.capabilities.memory_arbitration.arbiter.chat",
+        fake_chat,
+    )
+
+    decision = arbitrate(new_fact, _MemoryStore([existing]), NullEmbedder())
+
+    assert decision.op == "ADD"
+    assert decision.reason == "arbitration unavailable"

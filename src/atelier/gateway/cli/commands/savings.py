@@ -87,12 +87,38 @@ def _echo_vs_vanilla_block(root: str | Path, *, deep: bool = False) -> None:
 
 @click.group("savings", invoke_without_command=True)
 @click.option("--json", "as_json", is_flag=True)
-@click.option("--line", is_flag=True, help="Pipe-delimited one-liner for statusline.sh.")
+@click.option("--line", is_flag=True, help="Pipe-delimited one-liner for statusline.sh (legacy).")
+@click.option("--segment", is_flag=True, help="Pre-formatted rotating segment for statusline.sh.")
 @click.option("--deep", is_flag=True, help="Add a per-pattern vs-vanilla breakdown (which workflows save most).")
 @click.pass_context
-def savings_cmd(ctx: click.Context, as_json: bool, line: bool, deep: bool) -> None:
+def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, deep: bool) -> None:
     """Aggregate savings: cache + reasoning-library + cost-delta vs. baseline."""
     if ctx.invoked_subcommand is not None:
+        return
+    if segment:
+        from atelier.core.capabilities.savings_summary import savings_segment
+
+        session_id = os.environ.get("ATELIER_STATUS_SESSION_ID", "")
+        live_cost = float(os.environ.get("ATELIER_STATUSLINE_COST_USD") or 0)
+        live_in = int(os.environ.get("ATELIER_STATUSLINE_LIVE_IN_TOK") or 0)
+        live_cache = int(os.environ.get("ATELIER_STATUSLINE_LIVE_CACHE_TOK") or 0)
+        live_out = int(os.environ.get("ATELIER_STATUSLINE_LIVE_OUT_TOK") or 0)
+        no_color = bool(os.environ.get("ATELIER_STATUSLINE_NO_COLOR") or os.environ.get("ATELIER_NO_COLOR"))
+        # Write directly — click.echo strips ANSI when stdout is not a TTY
+        # (which is always the case when captured via $() in statusline.sh).
+        import sys
+
+        sys.stdout.write(
+            savings_segment(
+                session_id,
+                live_cost_usd=live_cost,
+                live_in_tok=live_in,
+                live_cache_tok=live_cache,
+                live_out_tok=live_out,
+                no_color=no_color,
+            )
+        )
+        sys.stdout.flush()
         return
     if line:
         from atelier.core.capabilities.savings_summary import savings_line

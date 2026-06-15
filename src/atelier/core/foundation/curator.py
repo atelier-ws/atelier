@@ -1,4 +1,4 @@
-"""Explicit ReasonBlock lifecycle curation.
+"""Explicit Playbook lifecycle curation.
 
 Drives block tier and removal off observed performance (success_rate + usage)
 so the store self-prunes instead of accumulating stale or harmful procedures.
@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal, Protocol
 
-from atelier.core.foundation.models import BlockTier, ReasonBlock
+from atelier.core.foundation.models import BlockTier, Playbook
 
 CurationAction = Literal["promote", "demote", "remove", "keep"]
 
@@ -42,7 +42,7 @@ class CurationDecision:
     reason: str
     tier_from: BlockTier
     tier_to: BlockTier
-    block: ReasonBlock
+    block: Playbook
 
 
 @dataclass
@@ -55,11 +55,11 @@ class CurationReport:
 
 
 class _CuratorStore(Protocol):
-    def upsert_block(self, block: ReasonBlock, *, write_markdown: bool = True) -> None: ...
+    def upsert_block(self, block: Playbook, *, write_markdown: bool = True) -> None: ...
     def delete_block(self, block_id: str) -> bool: ...
 
 
-def curate(blocks: Sequence[ReasonBlock]) -> CurationReport:
+def curate(blocks: Sequence[Playbook]) -> CurationReport:
     """Decide promote/demote/remove/keep for each block. Pure, no I/O."""
     return CurationReport(decisions=[_decide(block) for block in blocks])
 
@@ -78,7 +78,7 @@ def apply_curation(store: _CuratorStore, report: CurationReport) -> dict[str, in
     return counts
 
 
-def _decide(block: ReasonBlock) -> CurationDecision:
+def _decide(block: Playbook) -> CurationDecision:
     total = block.success_count + block.failure_count
     rate = block.success_rate()
     tier: BlockTier = block.tier if block.tier in _TIER_ORDER else "e2"
@@ -125,7 +125,7 @@ def _decide(block: ReasonBlock) -> CurationDecision:
     return _keep(block, tier, f"healthy (success_rate {rate:.0%})")
 
 
-def _keep(block: ReasonBlock, tier: BlockTier, reason: str) -> CurationDecision:
+def _keep(block: Playbook, tier: BlockTier, reason: str) -> CurationDecision:
     return CurationDecision(block.id, "keep", reason, tier, tier, block)
 
 

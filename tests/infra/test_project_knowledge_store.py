@@ -5,21 +5,21 @@ from pathlib import Path
 import pytest
 import yaml
 
-from atelier.core.foundation.models import ReasonBlock, Rubric, to_jsonable
+from atelier.core.foundation.models import Playbook, Rubric, to_jsonable
 from atelier.core.foundation.paths import resolve_workspace_store_dir
-from atelier.core.foundation.renderer import render_block_markdown
+from atelier.core.foundation.renderer import render_playbook_markdown
 from atelier.core.foundation.store import ContextStore
 from atelier.infra.storage.factory import create_store
 
 
-def _sample_block() -> ReasonBlock:
-    return ReasonBlock(
+def _sample_block() -> Playbook:
+    return Playbook(
         id="rb-project-lessons-sync",
         title="Project lessons sync",
         domain="coding",
         task_types=["implementation"],
         triggers=["workspace lessons present"],
-        situation="Load a tracked ReasonBlock from project lessons.",
+        situation="Load a tracked Playbook from project lessons.",
         procedure=["Read markdown from the project lessons directory", "Index it into SQLite"],
         verification=["The block is retrievable by id after init"],
     )
@@ -71,7 +71,7 @@ def test_store_init_syncs_project_lessons_into_sqlite(tmp_path: Path, monkeypatc
 
     block = _sample_block()
     rubric = _sample_rubric()
-    (blocks_dir / f"{block.id}.md").write_text(render_block_markdown(block), encoding="utf-8")
+    (blocks_dir / f"{block.id}.md").write_text(render_playbook_markdown(block), encoding="utf-8")
     (rubrics_dir / f"{rubric.id}.yaml").write_text(
         yaml.safe_dump(to_jsonable(rubric), sort_keys=False),
         encoding="utf-8",
@@ -113,7 +113,7 @@ def test_sync_lessons_skips_unchanged_files_on_repeat_call(tmp_path: Path, monke
     blocks_dir.mkdir(parents=True)
 
     block = _sample_block()
-    (blocks_dir / f"{block.id}.md").write_text(render_block_markdown(block), encoding="utf-8")
+    (blocks_dir / f"{block.id}.md").write_text(render_playbook_markdown(block), encoding="utf-8")
 
     store = create_store(store_root)
     store.init()
@@ -131,19 +131,19 @@ def test_sync_lessons_skips_unchanged_files_on_repeat_call(tmp_path: Path, monke
     assert result2["blocks"] == 0
 
     # Touch the file to change its mtime
-    (blocks_dir / f"{block.id}.md").write_text(render_block_markdown(block), encoding="utf-8")
+    (blocks_dir / f"{block.id}.md").write_text(render_playbook_markdown(block), encoding="utf-8")
     result3 = store.sync_lessons()
     assert result3["blocks"] == 1  # re-synced because mtime changed
 
     # New file is synced
-    block2 = ReasonBlock(
+    block2 = Playbook(
         id="rb-second-block",
         title="Second block",
         domain="coding",
         situation="A second test block.",
         procedure=["step 1"],
     )
-    (blocks_dir / f"{block2.id}.md").write_text(render_block_markdown(block2), encoding="utf-8")
+    (blocks_dir / f"{block2.id}.md").write_text(render_playbook_markdown(block2), encoding="utf-8")
     result4 = store.sync_lessons()
     assert result4["blocks"] == 1  # only the new one
 

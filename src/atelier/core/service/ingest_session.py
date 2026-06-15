@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.foundation.paths import default_store_root
-from atelier.gateway.integrations.ledger_reconstructor import LedgerReconstructor
 from atelier.infra.runtime.run_ledger import RunLedger
 from atelier.infra.storage.factory import make_memory_store
 
@@ -48,6 +47,8 @@ def ingest_session_file(file_path: str, store: Any = None) -> dict[str, Any]:
     if first_line and 16 <= len(first_line) <= 64 and all(c in "0123456789abcdef" for c in first_line.lower()):
         # Looks like a hex ID, use it if it's reasonable length.
         session_id = first_line
+
+    from atelier.gateway.integrations.ledger_reconstructor import LedgerReconstructor
 
     reconstructor = LedgerReconstructor(root=store_root)
     try:

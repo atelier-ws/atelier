@@ -7,7 +7,7 @@ or ``~/.hermes/config.yaml``).
 This adapter wraps Atelier's reasoning context and rubric gates so Hermes
 agents can:
 
-- Retrieve relevant ReasonBlocks before tackling a task
+- Retrieve relevant Playbooks before tackling a task
 - Run rubric gates to validate results
 - Rescue from failures with recovery hints
 - Record traces for post-run analysis and pattern mining

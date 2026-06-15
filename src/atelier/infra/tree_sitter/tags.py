@@ -10,12 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from atelier.core.capabilities.semantic_file_memory.treesitter_ast import (
-    definition_node_kinds,
-    supported_tree_sitter_languages,
-    transparent_node_kinds,
-    tree_sitter_parser,
-)
 from atelier.infra.code_intel.languages import language_for_path
 
 TagKind = Literal["definition", "reference"]
@@ -136,6 +130,8 @@ def _definition_name_node(node: Any, language: str) -> Any | None:
 
 
 def _definition_candidates(root: Any, language: str, definition_kinds: frozenset[str]) -> list[Any]:
+    from atelier.core.capabilities.semantic_file_memory.treesitter_ast import transparent_node_kinds
+
     if language in {"json", "yaml"}:
         unwrap = transparent_node_kinds(language)
         candidates: list[Any] = []
@@ -154,6 +150,11 @@ def _definition_candidates(root: Any, language: str, definition_kinds: frozenset
 
 
 def _treesitter_tags(path: Path, text: str, language: str) -> list[Tag] | None:
+    from atelier.core.capabilities.semantic_file_memory.treesitter_ast import (
+        definition_node_kinds,
+        tree_sitter_parser,
+    )
+
     parser = tree_sitter_parser(language)
     if parser is None:
         return None
@@ -262,6 +263,10 @@ def detect_language(path: Path) -> str | None:
 
 def extract_tags_from_text(text: str, file_path: str | Path, language: str | None = None) -> list[Tag]:
     """Extract definition/reference tags from source text without reading from disk."""
+
+    from atelier.core.capabilities.semantic_file_memory.treesitter_ast import (
+        supported_tree_sitter_languages,
+    )
 
     path = Path(file_path)
     resolved_language = language or detect_language(path)

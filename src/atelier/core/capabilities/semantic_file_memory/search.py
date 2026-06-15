@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from typing import Any
@@ -118,7 +119,7 @@ class SymbolIndex:
     def __init__(self, index: FileIndex) -> None:
         self._index = index
         # Lazily-built IDF cache: (idf_dict, avg_dl, snapshot_key)
-        self._idf_cache: tuple[dict[str, float], float, int] | None = None
+        self._idf_cache: tuple[dict[str, float], float, str] | None = None
 
     # ------------------------------------------------------------------
     # IDF precomputation
@@ -129,10 +130,13 @@ class SymbolIndex:
     ) -> tuple[dict[str, float], float, list[tuple[str, dict[str, Any], list[str]]]]:
         """
         Return (idf, avg_dl, docs) — building from scratch only when the index
-        has changed.  Uses entry count as a lightweight staleness signal.
+        has changed.  Staleness is keyed on each entry's content hash, so an
+        edit that leaves the entry count unchanged still rebuilds the IDF.
         """
         entries = self._index.all_entries()
-        snapshot_key = len(entries)  # cheap change detector
+        snapshot_key = hashlib.sha1(
+            "\n".join(f"{path}\x00{entry.get('content_hash', '')}" for path, entry in sorted(entries.items())).encode()
+        ).hexdigest()  # content-aware change detector
 
         if self._idf_cache is not None and self._idf_cache[2] == snapshot_key:
             idf, avg_dl, _ = self._idf_cache

@@ -17,7 +17,7 @@ def test_context_budget_rejects_extra_fields() -> None:
             cache_write_tokens=5,
             output_tokens=20,
             naive_input_tokens=200,
-            lever_savings={"reasonblock_inject": 80},
+            lever_savings={"playbook_inject": 80},
             tool_calls=1,
             unexpected=True,  # type: ignore[call-arg]
         )
@@ -33,7 +33,7 @@ def test_context_budget_instantiates_with_default_uuid7_id() -> None:
         cache_write_tokens=5,
         output_tokens=20,
         naive_input_tokens=200,
-        lever_savings={"reasonblock_inject": 80},
+        lever_savings={"playbook_inject": 80},
         tool_calls=1,
     )
     assert budget.id.startswith("cb-")

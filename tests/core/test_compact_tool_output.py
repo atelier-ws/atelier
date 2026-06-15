@@ -76,7 +76,7 @@ def test_compact_large_output_falls_back_when_llm_unavailable(
 
 
 def test_compress_tool_output_standalone() -> None:
-    """compress_tool_output() standalone helper matches RB API."""
+    """compress_tool_output() standalone helper."""
     from atelier.core.capabilities.tool_supervision.compact_output import compress_tool_output
 
     short = "hello world"

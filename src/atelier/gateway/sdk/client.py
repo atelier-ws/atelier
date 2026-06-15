@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromotion
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.core.foundation.models import (
-    ReasonBlock,
+    Playbook,
     RescueResult,
     Rubric,
     RubricResult,
@@ -38,7 +38,7 @@ class ReasoningContextRecalledPassage(BaseModel):
 class ReasoningContextTokenBreakdown(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    reasonblocks: int
+    playbooks: int
     memory: int
     total: int
 
@@ -136,18 +136,18 @@ class SavingsSummary(BaseModel):
     note: str = ""
 
 
-class ReasonBlockClient:
+class PlaybookClient:
     def __init__(self, client: AtelierClient) -> None:
         self._client = client
 
-    def list(self, *, domain: str | None = None, include_deprecated: bool = False) -> builtins.list[ReasonBlock]:
-        return self._client._list_reasonblocks(domain=domain, include_deprecated=include_deprecated)
+    def list(self, *, domain: str | None = None, include_deprecated: bool = False) -> builtins.list[Playbook]:
+        return self._client._list_playbooks(domain=domain, include_deprecated=include_deprecated)
 
-    def search(self, query: str, *, limit: int = 20) -> builtins.list[ReasonBlock]:
-        return self._client._search_reasonblocks(query=query, limit=limit)
+    def search(self, query: str, *, limit: int = 20) -> builtins.list[Playbook]:
+        return self._client._search_playbooks(query=query, limit=limit)
 
-    def get(self, block_id: str) -> ReasonBlock | None:
-        return self._client._get_reasonblock(block_id)
+    def get(self, block_id: str) -> Playbook | None:
+        return self._client._get_playbook(block_id)
 
 
 class RubricClient:
@@ -314,8 +314,8 @@ class AtelierClient(ABC):
     """Stable SDK facade over Atelier's local, remote, and MCP modes."""
 
     def __init__(self) -> None:
-        self.reasonblocks = ReasonBlockClient(self)
-        self.blocks = self.reasonblocks
+        self.playbooks = PlaybookClient(self)
+        self.blocks = self.playbooks
         self.rubrics = RubricClient(self)
         self.traces = TraceClient(self)
         self.evals = EvalClient(self)
@@ -475,20 +475,20 @@ class AtelierClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def _list_reasonblocks(
+    def _list_playbooks(
         self,
         *,
         domain: str | None = None,
         include_deprecated: bool = False,
-    ) -> builtins.list[ReasonBlock]:
+    ) -> builtins.list[Playbook]:
         raise NotImplementedError
 
     @abstractmethod
-    def _search_reasonblocks(self, *, query: str, limit: int = 20) -> builtins.list[ReasonBlock]:
+    def _search_playbooks(self, *, query: str, limit: int = 20) -> builtins.list[Playbook]:
         raise NotImplementedError
 
     @abstractmethod
-    def _get_reasonblock(self, block_id: str) -> ReasonBlock | None:
+    def _get_playbook(self, block_id: str) -> Playbook | None:
         raise NotImplementedError
 
     @abstractmethod

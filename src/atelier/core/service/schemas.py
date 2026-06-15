@@ -94,10 +94,10 @@ class RecordTraceResponse(_Strict):
     id: str
 
 
-# ---- /v1/extract/reasonblock -----------------------------------------------
+# ---- /v1/extract/playbook -----------------------------------------------
 
 
-class ExtractReasonBlockRequest(_Strict):
+class ExtractPlaybookRequest(_Strict):
     trace_id: str
     save: bool = False
 
@@ -110,7 +110,7 @@ class AnalyzeFailuresRequest(_Strict):
     limit: int = 100
 
 
-# ---- /v1/reasonblocks ------------------------------------------------------
+# ---- /v1/playbooks ------------------------------------------------------
 
 
 class UpsertBlockRequest(_Strict):

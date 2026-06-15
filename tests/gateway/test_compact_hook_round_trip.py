@@ -21,7 +21,7 @@ class TestCompactHookRoundTrip:
             "session_id": session_id,
             "should_compact": False,
             "utilisation_pct": 0.0,
-            "preserve_blocks": [],
+            "preserve_playbooks": [],
             "pin_memory": [],
             "open_files": [],
             "suggested_prompt": "Compact this conversation.",
@@ -56,7 +56,7 @@ class TestCompactHookRoundTrip:
             "session_id": session_id,
             "should_compact": True,
             "utilisation_pct": 65.3,
-            "preserve_blocks": ["block_reasoning_1", "block_reasoning_2"],
+            "preserve_playbooks": ["block_reasoning_1", "block_reasoning_2"],
             "pin_memory": ["mem_pinned_1"],
             "open_files": ["src/main.py", "src/utils.py"],
             "suggested_prompt": "Compact this conversation. Preserve blocks: block_reasoning_1, block_reasoning_2.",
@@ -70,7 +70,7 @@ class TestCompactHookRoundTrip:
 
         assert read_manifest["should_compact"] is True
         assert read_manifest["utilisation_pct"] == 65.3
-        assert "block_reasoning_1" in read_manifest["preserve_blocks"]
+        assert "block_reasoning_1" in read_manifest["preserve_playbooks"]
         assert "mem_pinned_1" in read_manifest["pin_memory"]
         assert len(read_manifest["open_files"]) == 2
 
@@ -149,7 +149,7 @@ class TestCompactHookRoundTrip:
         # Simulate post-compact
         data = json.loads(run_file.read_text("utf-8"))
         post_payload = {
-            "preserve_blocks": ["block_a"],
+            "preserve_playbooks": ["block_a"],
             "pin_memory": ["mem_1"],
             "manifest_found": True,
         }
@@ -193,7 +193,7 @@ class TestCompactHookRoundTrip:
             "session_id": session_id,
             "should_compact": True,
             "utilisation_pct": 72.3,
-            "preserve_blocks": ["rb_001", "rb_002", "rb_003"],
+            "preserve_playbooks": ["rb_001", "rb_002", "rb_003"],
             "pin_memory": ["mb_pin_001", "mb_pin_002"],
             "open_files": ["a.py", "b.py", "c.py"],
             "suggested_prompt": "Test prompt",
@@ -209,7 +209,7 @@ class TestCompactHookRoundTrip:
         assert read_data["session_id"] == original["session_id"]
         assert read_data["should_compact"] == original["should_compact"]
         assert read_data["utilisation_pct"] == original["utilisation_pct"]
-        assert read_data["preserve_blocks"] == original["preserve_blocks"]
+        assert read_data["preserve_playbooks"] == original["preserve_playbooks"]
         assert read_data["pin_memory"] == original["pin_memory"]
         assert read_data["open_files"] == original["open_files"]
 
@@ -226,7 +226,7 @@ class TestManifestStructure:
             "session_id": "test",
             "should_compact": True,
             "utilisation_pct": 60.0,
-            "preserve_blocks": [],
+            "preserve_playbooks": [],
             "pin_memory": [],
             "open_files": [],
             "suggested_prompt": "Compact",
@@ -247,7 +247,7 @@ class TestManifestStructure:
             "session_id",
             "should_compact",
             "utilisation_pct",
-            "preserve_blocks",
+            "preserve_playbooks",
             "pin_memory",
             "open_files",
             "suggested_prompt",
@@ -258,7 +258,7 @@ class TestManifestStructure:
         manifest_data["session_id"] = "test"
         manifest_data["should_compact"] = False
         manifest_data["utilisation_pct"] = 0.0
-        manifest_data["preserve_blocks"] = []
+        manifest_data["preserve_playbooks"] = []
         manifest_data["pin_memory"] = []
         manifest_data["open_files"] = []
         manifest_data["suggested_prompt"] = ""

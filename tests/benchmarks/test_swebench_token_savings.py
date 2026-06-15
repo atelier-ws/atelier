@@ -1,8 +1,7 @@
 """SWE-bench-style token savings benchmark.
 
-Validates our ReasonBlocks implementation against the published -51.8% input
-token reduction target from the RB SWE-bench Pro paired runs (n=75,
-claude-sonnet-4-6, real Docker grading).
+Validates Atelier's head+tail compaction achieves a substantial input-token
+reduction on oversized tool outputs.
 
 Benchmark design
 ----------------
@@ -14,8 +13,8 @@ Benchmark design
 - Each "arm" is a trajectory of ~10 messages simulating one agent run.
 - We measure: original tokens, compressed tokens, per-content-type breakdown.
 
-Pass/fail criteria (matching RB published numbers):
-- Overall token reduction ≥ 45%  (target -51.8%; 45% is conservative floor)
+Pass/fail criteria:
+- Overall token reduction ≥ 45%  (conservative floor)
 - At least 80% of oversized messages compressed
 - No message under threshold compressed
 - Monitor composite correctly ≥ 0.15 for trajectories with looping behavior
@@ -230,7 +229,7 @@ def _compress_run(arm: RunArm, keep_recent: int = 2) -> tuple[int, int, TokenSav
 
 
 class TestTokenSavingsBenchmark:
-    """SWE-bench Pro token savings benchmark — target: ≥45% overall reduction."""
+    """Token savings benchmark — target: ≥45% overall reduction."""
 
     @pytest.fixture(scope="class")
     def benchmark_results(self) -> dict[str, Any]:
@@ -267,9 +266,9 @@ class TestTokenSavingsBenchmark:
         }
 
     def test_overall_token_reduction_above_floor(self, benchmark_results: dict[str, Any]) -> None:
-        """Overall token reduction must be ≥ 45% (RB target: -51.8%)."""
+        """Overall token reduction must be ≥ 45%."""
         pct = benchmark_results["overall_savings_pct"]
-        assert pct >= 45.0, f"Token reduction {pct:.1f}% is below the 45% floor. RB target is 51.8%."
+        assert pct >= 45.0, f"Token reduction {pct:.1f}% is below the 45% floor."
 
     def test_compressions_fired(self, benchmark_results: dict[str, Any]) -> None:
         """At least 200 compression events across 75 runs."""
@@ -291,9 +290,9 @@ class TestTokenSavingsBenchmark:
         """Short-only runs (all messages under threshold) should save 0 tokens."""
         short_only = [a for a in benchmark_results["per_arm"] if "short-only" in a["name"]]
         for arm_result in short_only:
-            assert (
-                arm_result["compressions"] == 0
-            ), f"Short-only run {arm_result['name']} got compressed — threshold bug."
+            assert arm_result["compressions"] == 0, (
+                f"Short-only run {arm_result['name']} got compressed — threshold bug."
+            )
 
     @pytest.mark.slow
     def test_recent_messages_exempt(self) -> None:
@@ -367,17 +366,17 @@ class TestMonitorBenchmark:
         """Looping trajectories must produce composite ≥ 0.15."""
         steps = self._make_looping_steps(8)
         result = evaluate_all(steps, task="Fix the auth null pointer bug")
-        assert (
-            result.composite >= 0.15
-        ), f"Looping trajectory composite={result.composite:.3f} — expected ≥0.15. Fired: {result.fired}"
+        assert result.composite >= 0.15, (
+            f"Looping trajectory composite={result.composite:.3f} — expected ≥0.15. Fired: {result.fired}"
+        )
 
     def test_healthy_trajectory_below_threshold(self) -> None:
         """Healthy resolved trajectory should produce composite < 0.35."""
         steps = self._make_healthy_steps(5)
         result = evaluate_all(steps, task="Fix the auth null pointer bug")
-        assert (
-            result.composite < 0.35
-        ), f"Healthy trajectory composite={result.composite:.3f} — expected <0.35. Fired: {result.fired}"
+        assert result.composite < 0.35, (
+            f"Healthy trajectory composite={result.composite:.3f} — expected <0.35. Fired: {result.fired}"
+        )
 
     def test_semantic_loop_fires_on_repeating_steps(self) -> None:
         """Near-duplicate steps (same word bigrams, minor variation) must fire semantic_loop."""
@@ -442,9 +441,9 @@ class TestFSMBenchmark:
         ]
         sigs = signals_fn(looping_steps)
         # At least one signal should be elevated for a looping run
-        assert (
-            sigs["streak"] > 0.3 or sigs["hedge"] > 0.3 or sigs["diversity"] < 0.5
-        ), f"signals_fn did not detect looping: {sigs}"
+        assert sigs["streak"] > 0.3 or sigs["hedge"] > 0.3 or sigs["diversity"] < 0.5, (
+            f"signals_fn did not detect looping: {sigs}"
+        )
 
     def test_signals_fn_healthy_run(self) -> None:
         """make_signals_fn must NOT fire early-exit on a clean run."""
