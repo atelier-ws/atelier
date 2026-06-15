@@ -98,6 +98,17 @@ def test_orphan_session_id_falls_back_to_trace_id(tmp_path: Path) -> None:
     assert (tmp_path / "sessions" / "loose" / "traces.jsonl").exists()
 
 
+def test_delete_prunes_meta_trace_ids(tmp_path: Path) -> None:
+    store = SessionStore(tmp_path)
+    store.record(_trace("t1", "sess1"))
+    store.record(_trace("t2", "sess1"))
+    store.delete("t1")
+    # files-as-source-of-truth must stay internally consistent after a delete
+    assert [t["id"] for t in store.traces_for("sess1")] == ["t2"]
+    assert store.meta("sess1")["trace_ids"] == ["t2"]
+    assert store.get("t1") is None
+
+
 def test_traces_jsonl_is_valid_jsonl(tmp_path: Path) -> None:
     store = SessionStore(tmp_path)
     store.record(_trace("t1", "s1"))

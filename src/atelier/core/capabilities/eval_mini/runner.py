@@ -239,6 +239,10 @@ def run_case(case: MiniEvalCase, *, root: Path, git_repo: Path) -> MiniEvalCaseR
             _git(["reset", "--hard", started_head], git_repo)
         else:
             _git(["checkout", "--", "."], git_repo)
+        # Remove agent-created untracked files before restoring the stash so they
+        # are not left as cruft and cannot collide with the user's stashed
+        # untracked files (which would make ``stash pop`` abort and strand it).
+        _git(["clean", "-fd"], git_repo)
         if stashed:
             _git(["stash", "pop"], git_repo)
 

@@ -573,7 +573,11 @@ class OpenMemoryMemoryStore:
         if isinstance(raw_created_at, (int, float)):
             created_at = datetime.fromtimestamp(float(raw_created_at), tz=UTC)
         elif isinstance(raw_created_at, str) and raw_created_at:
-            created_at = datetime.fromisoformat(raw_created_at)
+            try:
+                created_at = datetime.fromisoformat(raw_created_at)
+            except ValueError:
+                logging.warning("Ignoring malformed OpenMemory created_at: %r", raw_created_at)
+                created_at = datetime.now(UTC)
         else:
             created_at = datetime.now(UTC)
         tags: list[str] = []

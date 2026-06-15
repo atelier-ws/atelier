@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import sqlite3
+import tempfile
 from collections.abc import Iterable, Iterator
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
@@ -224,24 +225,24 @@ class ContextStore:
 
     @contextlib.contextmanager
     def batch_mode(self) -> Iterator[sqlite3.Connection]:
-        """Wrap multiple operations in a single connection and transaction.
+        """Run multiple operations over one shared connection.
 
-        Optimized for bulk imports with high-performance PRAGMAs.
+        Optimized for bulk imports with high-performance PRAGMAs. This is NOT
+        an atomic unit of work: the store's write helpers each use ``with
+        conn:`` and therefore commit piece-by-piece, so a mid-batch failure
+        leaves already-committed rows in place. Use this only for performance
+        (connection reuse + bulk PRAGMAs), not for all-or-nothing semantics.
         """
         conn = self._connect()
         # High-performance settings for bulk import (must be outside transaction)
         conn.execute("PRAGMA synchronous = OFF")
         conn.execute(f"PRAGMA cache_size = -{512 * 1024}")  # 512MB cache
 
-        conn.execute("BEGIN TRANSACTION")
         old_conn = self._connection
         self._connection = conn
         try:
             yield conn
             conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
         finally:
             self._connection = old_conn
             with contextlib.suppress(sqlite3.Error):
@@ -427,11 +428,14 @@ class ContextStore:
         if not query.strip():
             return self.list_blocks()[:limit]
         fts_query = self._build_playbook_search_query(query)
+        # Match the blank-query branch (list_blocks defaults to active-only):
+        # deprecated and quarantined blocks must not reappear just because the
+        # caller supplied search terms.
         sql = (
             "SELECT r.payload FROM playbooks_fts f "
             "JOIN playbooks r ON r.id = f.id "
             "WHERE playbooks_fts MATCH ? "
-            "AND r.status != 'quarantined' "
+            "AND r.status = 'active' "
             "ORDER BY rank LIMIT ?"
         )
         with self._connect() as conn:
@@ -525,9 +529,9 @@ class ContextStore:
             for path in sorted(self.blocks_dir.rglob("*.md")):
                 key = str(path)
                 mtime = path.stat().st_mtime_ns
-                fresh[key] = mtime
                 if prev.get(key) == mtime:
-                    continue  # unchanged — skip read/parse/upsert
+                    fresh[key] = mtime  # unchanged — keep seen, skip read/parse/upsert
+                    continue
 
                 try:
                     if path.name.startswith("template_"):
@@ -540,7 +544,9 @@ class ContextStore:
                 except Exception as exc:
                     logging.exception("Recovered from broad exception handler")
                     logger.warning("failed to sync lessons block from %s: %s", path, exc)
-                    continue
+                    continue  # leave out of manifest so a transient failure retries
+                # Only record the mtime once the upsert actually succeeded.
+                fresh[key] = mtime
 
             self._save_sync_manifest("blocks", fresh)
 
@@ -552,9 +558,9 @@ class ContextStore:
             for path in rubric_paths:
                 key = str(path)
                 mtime = path.stat().st_mtime_ns
-                fresh_rubrics[key] = mtime
                 if prev.get(key) == mtime:
-                    continue  # unchanged
+                    fresh_rubrics[key] = mtime  # unchanged — keep seen
+                    continue
 
                 try:
                     content = path.read_text(encoding="utf-8")
@@ -565,7 +571,9 @@ class ContextStore:
                 except Exception as exc:
                     logging.exception("Recovered from broad exception handler")
                     logger.warning("failed to sync lessons rubric from %s: %s", path, exc)
-                    continue
+                    continue  # leave out of manifest so a transient failure retries
+                # Only record the mtime once the upsert actually succeeded.
+                fresh_rubrics[key] = mtime
 
             self._save_sync_manifest("rubrics", fresh_rubrics)
 
@@ -605,7 +613,17 @@ class ContextStore:
 
     def _save_sync_manifest(self, kind: str, manifest: dict[str, int]) -> None:
         path = self._sync_manifest_path(kind)
-        path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+        # Write to a sibling temp file then atomically replace so a crash
+        # mid-write can never leave a partially written (corrupt) manifest.
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".~lessons_sync_")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(manifest, indent=2, sort_keys=True))
+            os.replace(tmp, path)
+        except Exception:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
 
     # ----- Traces ---------------------------------------------------------- #
 
@@ -779,7 +797,11 @@ class ContextStore:
         lease_seconds = int(lease_raw) if lease_raw.isdigit() and int(lease_raw) > 0 else 900
         lease_cutoff = (datetime.now(UTC) - timedelta(seconds=lease_seconds)).isoformat()
         with self._connect() as conn:
-            conn.execute("BEGIN IMMEDIATE")
+            # A shared connection (e.g. inside batch_mode) may already be in a
+            # transaction; BEGIN IMMEDIATE would then raise "cannot start a
+            # transaction within a transaction". Only begin our own.
+            if not conn.in_transaction:
+                conn.execute("BEGIN IMMEDIATE")
             # Reap orphaned jobs before claiming. A worker that crashes mid-job
             # leaves its row stuck in 'running' forever (the lease is never
             # released), and because the servicectl enqueue guard treats
@@ -1252,7 +1274,10 @@ class ContextStore:
         if row["embedding"]:
             raw_embedding = row["embedding"]
             if isinstance(raw_embedding, bytes):
-                raw_embedding = raw_embedding.decode("utf-8", errors="replace")
+                # Decode strictly: a corrupt/non-UTF-8 BLOB should fail loudly
+                # here rather than be silently coerced into replacement chars
+                # that yield a confusing JSON error or a wrong embedding vector.
+                raw_embedding = raw_embedding.decode("utf-8")
             embedding = json.loads(raw_embedding)
         decision_at = datetime.fromisoformat(row["decision_at"]) if row["decision_at"] else None
         return LessonCandidate(

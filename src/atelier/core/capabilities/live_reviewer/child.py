@@ -3,7 +3,7 @@
 Spawned by the ``live_review`` PostToolUse hook via ``python -m``. Must never
 raise — a detached reviewer that crashes would be invisible and useless.
 
-baseline parity: the live pass auto-applies high-confidence (``type:patch``) fixes;
+The live pass auto-applies high-confidence (``type:patch``) fixes;
 the deep pass stays read-only. A single-flight lock ensures one review per
 (session, repo) at a time, so a burst of edits cannot fan out N concurrent
 reviewers (and N concurrent auto-applies to the same files).
@@ -91,8 +91,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             settings = load_reviewer_settings(root)
             verdict = run_review(args.session, args.mode, args.path, settings, root)
-            # baseline parity: the live pass auto-applies high-confidence (type:patch)
-            # fixes; the deep pass stays read-only. ATELIER_IN_REVIEW is set and the
+            # Live pass auto-applies high-confidence (type:patch) fixes;
+            # deep pass stays read-only. ATELIER_IN_REVIEW is set and the
             # in-process edit never re-enters the PostToolUse hook, so no review loop.
             if settings.auto_apply and args.mode == "live":
                 from atelier.core.capabilities.live_reviewer.apply import apply_review_patches

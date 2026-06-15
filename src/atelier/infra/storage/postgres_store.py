@@ -315,6 +315,68 @@ CREATE INDEX IF NOT EXISTS idx_playbook_embedding ON playbooks
 
 
 # --------------------------------------------------------------------------- #
+# Upsert SQL (shared by single-row upsert_* and batched import_*)             #
+# --------------------------------------------------------------------------- #
+
+_BLOCK_UPSERT_SQL = """
+    INSERT INTO playbooks (
+        slug, title, domain, situation, status,
+        task_types, triggers, file_patterns, tool_patterns,
+        dead_ends, procedure, verification, failure_signals,
+        when_not_to_apply, usage_count, success_count, failure_count,
+        metadata, created_at, updated_at
+    )
+    VALUES (
+        %(slug)s, %(title)s, %(domain)s, %(situation)s, %(status)s,
+        %(task_types)s, %(triggers)s, %(file_patterns)s, %(tool_patterns)s,
+        %(dead_ends)s, %(procedure)s, %(verification)s, %(failure_signals)s,
+        %(when_not_to_apply)s, %(usage_count)s, %(success_count)s,
+        %(failure_count)s, %(metadata)s, %(created_at)s, %(updated_at)s
+    )
+    ON CONFLICT(slug) DO UPDATE SET
+        title = EXCLUDED.title,
+        domain = EXCLUDED.domain,
+        situation = EXCLUDED.situation,
+        status = EXCLUDED.status,
+        task_types = EXCLUDED.task_types,
+        triggers = EXCLUDED.triggers,
+        file_patterns = EXCLUDED.file_patterns,
+        tool_patterns = EXCLUDED.tool_patterns,
+        dead_ends = EXCLUDED.dead_ends,
+        procedure = EXCLUDED.procedure,
+        verification = EXCLUDED.verification,
+        failure_signals = EXCLUDED.failure_signals,
+        when_not_to_apply = EXCLUDED.when_not_to_apply,
+        usage_count = EXCLUDED.usage_count,
+        success_count = EXCLUDED.success_count,
+        failure_count = EXCLUDED.failure_count,
+        updated_at = EXCLUDED.updated_at
+"""
+
+_RUBRIC_UPSERT_SQL = """
+    INSERT INTO rubrics (
+        slug, title, domain,
+        required_checks, block_if_missing, warning_checks,
+        escalation_conditions, check_definitions,
+        metadata, created_at, updated_at
+    )
+    VALUES (
+        %(slug)s, %(title)s, %(domain)s,
+        %(required_checks)s, %(block_if_missing)s, %(warning_checks)s,
+        %(escalation_conditions)s, %(check_definitions)s,
+        %(metadata)s, %(created_at)s, %(updated_at)s
+    )
+    ON CONFLICT(slug) DO UPDATE SET
+        domain = EXCLUDED.domain,
+        required_checks = EXCLUDED.required_checks,
+        block_if_missing = EXCLUDED.block_if_missing,
+        warning_checks = EXCLUDED.warning_checks,
+        escalation_conditions = EXCLUDED.escalation_conditions,
+        updated_at = EXCLUDED.updated_at
+"""
+
+
+# --------------------------------------------------------------------------- #
 # PostgresStore                                                               #
 # --------------------------------------------------------------------------- #
 
@@ -445,68 +507,36 @@ class PostgresStore:
 
     # ----- playbooks ---------------------------------------------------- #
 
-    def upsert_block(self, block: Playbook, *, write_markdown: bool = False) -> None:
+    @staticmethod
+    def _block_params(block: Playbook) -> dict[str, Any]:
         payload = to_jsonable(block)
         now = datetime.now(UTC).isoformat()
+        return {
+            "slug": block.id,
+            "title": block.title,
+            "domain": block.domain,
+            "situation": block.situation,
+            "status": block.status,
+            "task_types": json.dumps(payload.get("task_types", [])),
+            "triggers": json.dumps(payload.get("triggers", [])),
+            "file_patterns": json.dumps(payload.get("file_patterns", [])),
+            "tool_patterns": json.dumps(payload.get("tool_patterns", [])),
+            "dead_ends": json.dumps(payload.get("dead_ends", [])),
+            "procedure": json.dumps(payload.get("procedure", [])),
+            "verification": json.dumps(payload.get("verification", [])),
+            "failure_signals": json.dumps(payload.get("failure_signals", [])),
+            "when_not_to_apply": block.when_not_to_apply or None,
+            "usage_count": block.usage_count,
+            "success_count": block.success_count,
+            "failure_count": block.failure_count,
+            "metadata": json.dumps({"tier": block.tier}),
+            "created_at": now,
+            "updated_at": now,
+        }
+
+    def upsert_block(self, block: Playbook, *, write_markdown: bool = False) -> None:
         with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO playbooks (
-                    slug, title, domain, situation, status,
-                    task_types, triggers, file_patterns, tool_patterns,
-                    dead_ends, procedure, verification, failure_signals,
-                    when_not_to_apply, usage_count, success_count, failure_count,
-                    metadata, created_at, updated_at
-                )
-                VALUES (
-                    %(slug)s, %(title)s, %(domain)s, %(situation)s, %(status)s,
-                    %(task_types)s, %(triggers)s, %(file_patterns)s, %(tool_patterns)s,
-                    %(dead_ends)s, %(procedure)s, %(verification)s, %(failure_signals)s,
-                    %(when_not_to_apply)s, %(usage_count)s, %(success_count)s,
-                    %(failure_count)s, %(metadata)s, %(created_at)s, %(updated_at)s
-                )
-                ON CONFLICT(slug) DO UPDATE SET
-                    title = EXCLUDED.title,
-                    domain = EXCLUDED.domain,
-                    situation = EXCLUDED.situation,
-                    status = EXCLUDED.status,
-                    task_types = EXCLUDED.task_types,
-                    triggers = EXCLUDED.triggers,
-                    file_patterns = EXCLUDED.file_patterns,
-                    tool_patterns = EXCLUDED.tool_patterns,
-                    dead_ends = EXCLUDED.dead_ends,
-                    procedure = EXCLUDED.procedure,
-                    verification = EXCLUDED.verification,
-                    failure_signals = EXCLUDED.failure_signals,
-                    when_not_to_apply = EXCLUDED.when_not_to_apply,
-                    usage_count = EXCLUDED.usage_count,
-                    success_count = EXCLUDED.success_count,
-                    failure_count = EXCLUDED.failure_count,
-                    updated_at = EXCLUDED.updated_at
-                """,
-                {
-                    "slug": block.id,
-                    "title": block.title,
-                    "domain": block.domain,
-                    "situation": block.situation,
-                    "status": block.status,
-                    "task_types": json.dumps(payload.get("task_types", [])),
-                    "triggers": json.dumps(payload.get("triggers", [])),
-                    "file_patterns": json.dumps(payload.get("file_patterns", [])),
-                    "tool_patterns": json.dumps(payload.get("tool_patterns", [])),
-                    "dead_ends": json.dumps(payload.get("dead_ends", [])),
-                    "procedure": json.dumps(payload.get("procedure", [])),
-                    "verification": json.dumps(payload.get("verification", [])),
-                    "failure_signals": json.dumps(payload.get("failure_signals", [])),
-                    "when_not_to_apply": block.when_not_to_apply or None,
-                    "usage_count": block.usage_count,
-                    "success_count": block.success_count,
-                    "failure_count": block.failure_count,
-                    "metadata": json.dumps({"tier": block.tier}),
-                    "created_at": now,
-                    "updated_at": now,
-                },
-            )
+            conn.execute(_BLOCK_UPSERT_SQL, self._block_params(block))
             conn.commit()
 
     def get_block(self, block_id: str) -> Playbook | None:
@@ -666,46 +696,27 @@ class PostgresStore:
 
     # ----- rubrics --------------------------------------------------------- #
 
-    def upsert_rubric(self, rubric: Rubric, *, write_yaml: bool = False) -> None:
+    @staticmethod
+    def _rubric_params(rubric: Rubric) -> dict[str, Any]:
         payload = to_jsonable(rubric)
         now = datetime.now(UTC).isoformat()
+        return {
+            "slug": rubric.id,
+            "title": rubric.id,
+            "domain": rubric.domain,
+            "required_checks": json.dumps(payload.get("required_checks", [])),
+            "block_if_missing": json.dumps(payload.get("block_if_missing", [])),
+            "warning_checks": json.dumps(payload.get("warning_checks", [])),
+            "escalation_conditions": json.dumps(payload.get("escalation_conditions", [])),
+            "check_definitions": "{}",
+            "metadata": "{}",
+            "created_at": now,
+            "updated_at": now,
+        }
+
+    def upsert_rubric(self, rubric: Rubric, *, write_yaml: bool = False) -> None:
         with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO rubrics (
-                    slug, title, domain,
-                    required_checks, block_if_missing, warning_checks,
-                    escalation_conditions, check_definitions,
-                    metadata, created_at, updated_at
-                )
-                VALUES (
-                    %(slug)s, %(title)s, %(domain)s,
-                    %(required_checks)s, %(block_if_missing)s, %(warning_checks)s,
-                    %(escalation_conditions)s, %(check_definitions)s,
-                    %(metadata)s, %(created_at)s, %(updated_at)s
-                )
-                ON CONFLICT(slug) DO UPDATE SET
-                    domain = EXCLUDED.domain,
-                    required_checks = EXCLUDED.required_checks,
-                    block_if_missing = EXCLUDED.block_if_missing,
-                    warning_checks = EXCLUDED.warning_checks,
-                    escalation_conditions = EXCLUDED.escalation_conditions,
-                    updated_at = EXCLUDED.updated_at
-                """,
-                {
-                    "slug": rubric.id,
-                    "title": rubric.id,
-                    "domain": rubric.domain,
-                    "required_checks": json.dumps(payload.get("required_checks", [])),
-                    "block_if_missing": json.dumps(payload.get("block_if_missing", [])),
-                    "warning_checks": json.dumps(payload.get("warning_checks", [])),
-                    "escalation_conditions": json.dumps(payload.get("escalation_conditions", [])),
-                    "check_definitions": "{}",
-                    "metadata": "{}",
-                    "created_at": now,
-                    "updated_at": now,
-                },
-            )
+            conn.execute(_RUBRIC_UPSERT_SQL, self._rubric_params(rubric))
             conn.commit()
 
     def get_rubric(self, rubric_id: str) -> Rubric | None:
@@ -970,18 +981,22 @@ class PostgresStore:
     # ----- bulk import ----------------------------------------------------- #
 
     def import_blocks(self, blocks: Iterable[Playbook]) -> int:
-        n = 0
-        for b in blocks:
-            self.upsert_block(b)
-            n += 1
-        return n
+        params = [self._block_params(b) for b in blocks]
+        if not params:
+            return 0
+        with self._connect() as conn:
+            conn.cursor().executemany(_BLOCK_UPSERT_SQL, params)
+            conn.commit()
+        return len(params)
 
     def import_rubrics(self, rubrics: Iterable[Rubric]) -> int:
-        n = 0
-        for r in rubrics:
-            self.upsert_rubric(r)
-            n += 1
-        return n
+        params = [self._rubric_params(r) for r in rubrics]
+        if not params:
+            return 0
+        with self._connect() as conn:
+            conn.cursor().executemany(_RUBRIC_UPSERT_SQL, params)
+            conn.commit()
+        return len(params)
 
     # ----- vector helpers -------------------------------------------------- #
 

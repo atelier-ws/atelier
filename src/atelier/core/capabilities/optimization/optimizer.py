@@ -160,6 +160,7 @@ def _candidate_for_policy(
     candidate_id: str,
     policy: Policy,
     traces: list[Trace],
+    labels: list[ComplexityLabel],
     weekly_scale: float,
     baseline_quality: float,
     baseline_weekly_cost_usd: float,
@@ -167,12 +168,11 @@ def _candidate_for_policy(
     total_cost = 0.0
     total_quality_penalty = 0.0
     routing_counts: Counter[str] = Counter()
-    for trace in traces:
-        complexity = score_trace_complexity(trace)
-        tier = _route_tier(policy, complexity.label)
+    for trace, label in zip(traces, labels, strict=True):
+        tier = _route_tier(policy, label)
         routing_counts[tier] += 1
         total_cost += _trace_cost(trace) * _TIER_COST_FACTOR[tier]
-        total_quality_penalty += _TIER_QUALITY_PENALTY[(tier, complexity.label)]
+        total_quality_penalty += _TIER_QUALITY_PENALTY[(tier, label)]
 
     enabled = _compaction_enabled(policy)
     compaction_fraction = sum(_COMPACTION_SAVINGS[key] for key, value in enabled.items() if value)
@@ -327,6 +327,7 @@ def optimize_from_traces(
                     candidate_id=candidate_id,
                     policy=policy,
                     traces=replayable,
+                    labels=complexities,
                     weekly_scale=weekly_scale,
                     baseline_quality=baseline_quality,
                     baseline_weekly_cost_usd=baseline_weekly,

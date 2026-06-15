@@ -97,9 +97,12 @@ def _fetch_google(cfg: Any) -> list[str]:
     api_key = cfg.get("google", "api_key")
     if not api_key:
         return []
-    url = f"https://generativelanguage.googleapis.com/v1/models?key={api_key}"
+    # Send the key via header, not the URL query string (URLs land in proxy/
+    # server logs and redirect headers).
+    url = "https://generativelanguage.googleapis.com/v1/models"
+    req = urllib.request.Request(url, headers={"x-goog-api-key": api_key})
     try:
-        with urllib.request.urlopen(url, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data: dict[str, Any] = json.loads(resp.read())
         models = []
         for item in data.get("models") or []:
@@ -181,7 +184,7 @@ def _fetch_vertex(cfg: Any) -> list[str]:
             import base64
             import time
 
-            sa_data = json.loads(open(sa_file).read())
+            sa_data = json.loads(Path(sa_file).read_text())
             email = sa_data["client_email"]
             key_pem = sa_data["private_key"]
             scope = "https://www.googleapis.com/auth/cloud-platform"

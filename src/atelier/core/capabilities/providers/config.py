@@ -108,7 +108,7 @@ class ProviderConfig:
         for field_name, env_var in provider_env.items():
             if os.environ.get(env_var, "").strip():
                 return True
-            if (self._raw.get(provider) or {}).get(field_name, "").strip():
+            if ((self._raw.get(provider) or {}).get(field_name) or "").strip():
                 return True
         if provider == "ollama":
             return bool(self.get("ollama", "base_url"))

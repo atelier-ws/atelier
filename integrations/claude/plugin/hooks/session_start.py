@@ -59,7 +59,22 @@ def _write_session_state(updates: dict[str, Any]) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     state = _read_session_state()
     state.update(updates)
-    p.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    tmp_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=p.parent,
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8",
+        ) as tmp:
+            json.dump(state, tmp, indent=2)
+            tmp_path = tmp.name
+        Path(tmp_path).replace(p)
+    except OSError:
+        if tmp_path:
+            with suppress(Exception):
+                Path(tmp_path).unlink(missing_ok=True)
 
 
 def _atelier_root() -> Path:
