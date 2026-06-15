@@ -22,6 +22,22 @@ _log = logging.getLogger(__name__)
 # can write thousands of passages per run, so a small window silently excludes
 # strong older matches; raise via env for very large stores.
 _RECALL_CANDIDATE_LIMIT = int(os.environ.get("ATELIER_RECALL_CANDIDATE_LIMIT", "2000"))
+_window_saturation_warned = False
+
+
+def _warn_window_saturated() -> None:
+    """Warn at most once per process that the recall candidate window saturated.
+    recall() is the shared path for memory.db, recall.db and get_context, so an
+    unthrottled warning would repeat on every call against a saturated store."""
+    global _window_saturation_warned
+    if _window_saturation_warned:
+        return
+    _window_saturation_warned = True
+    _log.warning(
+        "recall candidate window saturated at %d passages; older matches are excluded from "
+        "ranking (raise ATELIER_RECALL_CANDIDATE_LIMIT)",
+        _RECALL_CANDIDATE_LIMIT,
+    )
 
 
 class ArchivalRecallCapability:
@@ -87,11 +103,7 @@ class ArchivalRecallCapability:
         embedding_model = self._embedder.name if query_embedding else None
         passages = self._store.list_passages(agent_id, tags=tags, since=since, limit=_RECALL_CANDIDATE_LIMIT)
         if len(passages) >= _RECALL_CANDIDATE_LIMIT:
-            _log.warning(
-                "recall candidate window saturated at %d passages; older matches are excluded from "
-                "ranking (raise ATELIER_RECALL_CANDIDATE_LIMIT)",
-                _RECALL_CANDIDATE_LIMIT,
-            )
+            _warn_window_saturated()
         ranked = rank_archival_passages(
             query=clean_query,
             passages=passages,
