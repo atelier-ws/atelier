@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -41,15 +42,16 @@ class RetrievalCache:
             ).fetchone()
             if row is None:
                 return False, None
-            conn.execute(
-                """
-                UPDATE retrieval_cache
-                SET hit_count = hit_count + 1,
-                    last_hit_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-                WHERE query_hash = ?
-                """,
-                (query_hash,),
-            )
+            with suppress(sqlite3.OperationalError):
+                conn.execute(
+                    """
+                    UPDATE retrieval_cache
+                    SET hit_count = hit_count + 1,
+                        last_hit_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                    WHERE query_hash = ?
+                    """,
+                    (query_hash,),
+                )
         return True, json.loads(str(row["payload_json"]))
 
     def set(
@@ -170,8 +172,9 @@ class RetrievalCache:
 
     def _connect(self) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 30000")
         return conn
 
     def _init_schema(self, conn: sqlite3.Connection) -> None:

@@ -31,13 +31,18 @@ def _isolate_workspace_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> I
     isolated_root = tmp_path / ".atelier"
     monkeypatch.setenv("ATELIER_ROOT", str(isolated_root))
     monkeypatch.setenv("ATELIER_STORE_ROOT", str(isolated_root))
+    # Complete the isolation: point the workspace root at tmp_path too. Without
+    # this, _workspace_root() falls through to os.getcwd() (the real repo), so
+    # the new read/projection workspace-confinement rejects files tests create
+    # under tmp_path. Tests that need a specific workspace set it themselves.
+    monkeypatch.setenv("ATELIER_WORKSPACE_ROOT", str(tmp_path))
     yield
 
 
 @pytest.fixture(autouse=True)
 def _no_network_sync() -> Iterator[None]:
     """Block all outbound sync_usage calls so no test ever hits atelier.beseam.com."""
-    with patch("atelier.core.service.usage_sync.sync_usage", return_value=True):
+    with patch("atelier.core.service.sync.sync_usage", return_value=True):
         yield
 
 

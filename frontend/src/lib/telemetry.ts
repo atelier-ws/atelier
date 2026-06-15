@@ -23,8 +23,8 @@ export async function initTelemetry() {
       autocapture: true,
       capture_pageview: true,
       persistence: "localStorage",
-      mask_all_text: false,
-      mask_all_element_attributes: false,
+      mask_all_text: true,
+      mask_all_element_attributes: true,
       sanitize_properties: (props: Record<string, unknown>) =>
         scrubFrontend(props),
     } as any);

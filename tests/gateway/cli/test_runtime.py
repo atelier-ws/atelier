@@ -257,3 +257,31 @@ def test_completion_retries_provider_rate_limits(tmp_path, monkeypatch) -> None:
 
     assert result == ["ok"]
     assert calls == 2
+
+
+def test_compact_keeps_system_and_does_not_orphan_tool_result(tmp_path) -> None:
+    runtime = InteractiveRuntime(root=tmp_path / ".atelier", model="test/model")
+    # Tail where a naive messages[-4:] would start on a `tool` message, leaving
+    # a tool_result with no preceding tool_use (providers 400 on this).
+    runtime._sessions["s"] = [
+        {"role": "system", "content": "stable"},
+        {"role": "user", "content": "do it"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "c1"}]},
+        {"role": "tool", "tool_call_id": "c1", "content": "out"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "c2"}]},
+        {"role": "tool", "tool_call_id": "c2", "content": "out2"},
+        {"role": "assistant", "content": "done"},
+    ]
+
+    async def run():
+        return [event async for event in runtime.handle_slash_command("s", "compact", [])]
+
+    asyncio.run(run())
+    kept = runtime._sessions["s"]
+
+    assert kept[0]["role"] == "system"
+    # No retained message after the system prompt may be an orphaned tool_result
+    # or a dangling assistant tool_call at the head of the tail.
+    assert kept[1]["role"] not in ("tool",)
+    assert not kept[1].get("tool_calls")
+    assert kept[-1]["content"] == "done"

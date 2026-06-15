@@ -208,6 +208,8 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
         try:
             import sqlite3
 
+            from atelier.core.capabilities.pricing import usage_cost_usd
+            from atelier.core.capabilities.savings_summary import resolve_model_id
             from atelier.core.foundation.session_store import SessionStore
 
             sessions = SessionStore(root)
@@ -220,20 +222,37 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
                     trow["cached_input_tokens"],
                     trow["thinking_tokens"],
                 )
-                cost_map[rid] = ((inp or 0) * 3 + (cr or 0) * 0.3 + (out or 0) * 15) / 1_000_000.0
+                cost_map[rid] = usage_cost_usd(
+                    resolve_model_id(trow.get("model")),
+                    input_tokens=inp or 0,
+                    output_tokens=out or 0,
+                    cache_read_tokens=cr or 0,
+                    thinking_tokens=th or 0,
+                )
                 tokens_map[rid] = (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
             total_runs_in_db = len(token_rows)
             db_runs = sessions.list_full(limit=1000)
 
             # context_budget remains in atelier.db (separate table, not traces).
+            # Group by model so each row is priced with its own rate, then
+            # overwrite the trace-derived totals (one session can span models).
+            budget_cost: dict[str, float] = {}
+            budget_tokens: dict[str, int] = {}
             with sqlite3.connect(str(db_path)) as conn:
                 for row in conn.execute(
-                    "SELECT session_id, SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens) FROM context_budget GROUP BY session_id"
+                    "SELECT session_id, model, SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens) "
+                    "FROM context_budget GROUP BY session_id, model"
                 ):
-                    rid, inp, out, cr = row
-                    cost = ((inp or 0) * 3 + (cr or 0) * 0.3 + (out or 0) * 15) / 1_000_000.0
-                    cost_map[rid] = cost
-                    tokens_map[rid] = (inp or 0) + (out or 0) + (cr or 0)
+                    rid, model, inp, out, cr = row
+                    budget_cost[rid] = budget_cost.get(rid, 0.0) + usage_cost_usd(
+                        resolve_model_id(model),
+                        input_tokens=inp or 0,
+                        output_tokens=out or 0,
+                        cache_read_tokens=cr or 0,
+                    )
+                    budget_tokens[rid] = budget_tokens.get(rid, 0) + (inp or 0) + (out or 0) + (cr or 0)
+            cost_map.update(budget_cost)
+            tokens_map.update(budget_tokens)
         except Exception:
             logging.exception("dashboard trace read failed")
             # Best-effort SQLite trace read; dashboard still renders without DB data.

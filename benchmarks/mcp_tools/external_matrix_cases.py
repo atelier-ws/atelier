@@ -278,12 +278,22 @@ def _collect_call_facts(
             caller_files_by_callee[callee_name].add(relative_path)
             callee_names_by_caller[caller_qualified_name].add(callee_name)
     callable_kinds = {"function", "method"}
+    # Names that appear as callees in more than this many files are builtins or
+    # stdlib methods (e.g. 'append', 'get', 'read_text'). Their expected_paths
+    # become unreliable because AST-only matching can't distinguish
+    # list.append() from MemoryAuditLog.append() -- any SCIP-based tool that
+    # correctly resolves to the specific method will return different callers.
+    _MAX_CALLEE_POPULARITY = 50
     callers_facts: list[tuple[SymbolFact, tuple[str, ...]]] = []
     callees_facts: list[tuple[SymbolFact, tuple[str, ...], tuple[str, ...]]] = []
     for symbol in unique_symbols:
         if symbol.kind not in callable_kinds:
             continue
-        caller_files = tuple(sorted(caller_files_by_callee.get(symbol.name, set()) - {symbol.path}))
+        all_caller_files = caller_files_by_callee.get(symbol.name, set())
+        if len(all_caller_files) > _MAX_CALLEE_POPULARITY:
+            # Too common a name -- ground truth is unreliable; skip this case.
+            continue
+        caller_files = tuple(sorted(all_caller_files - {symbol.path}))
         if caller_files:
             callers_facts.append((symbol, caller_files))
         callee_names = tuple(
@@ -333,14 +343,27 @@ def _decorator_name(node: ast.expr) -> str | None:
 
 
 def _collect_structural_facts(repo_root: Path) -> list[tuple[str, tuple[str, ...]]]:
-    """(ast-grep pattern, files matching it) for decorator-usage patterns.
+    """(pattern, files matching it) for structural-search cases.
 
-    Structural search differs from name lookup: ``@foo`` finds every definition
-    decorated with ``foo``. Ground truth is the neutral AST set of files that
-    actually apply the decorator. Decorators applied in too many files are
-    dropped to keep the answer key checkable.
+    Covers two pattern families, both valid in Atelier's native pattern engine
+    and in ast-grep:
+
+    1. Decorator patterns — ``@foo`` (bare) or ``@foo($$$)`` (called with args).
+       Ground truth: files containing any definition decorated with ``foo``.
+       Decorators used in too many files are dropped to keep the answer key
+       checkable (max 6 files).
+
+    2. Function-definition patterns — ``def func_name($$$):``.
+       Ground truth: files containing a public function/method with that name.
+       Functions defined in too many files are also dropped (max 6 files).
+
+    Decorator facts come first so the original 15 cases stay stable; function
+    facts fill the remaining quota slots up to 100.
+
     """
+    # --- decorator patterns ---
     decorator_to_files: dict[str, set[str]] = defaultdict(set)
+    decorator_has_args: dict[str, bool] = {}
     for path in _repo_python_files(repo_root):
         relative_path = path.relative_to(repo_root).as_posix()
         try:
@@ -353,10 +376,43 @@ def _collect_structural_facts(repo_root: Path) -> list[tuple[str, tuple[str, ...
                     name = _decorator_name(decorator)
                     if name and len(name) >= 4:
                         decorator_to_files[name].add(relative_path)
+                        # Track whether this decorator is always-called vs bare.
+                        # Once seen as a call, mark it; never reset to False.
+                        if name not in decorator_has_args or not decorator_has_args[name]:
+                            decorator_has_args[name] = isinstance(decorator, ast.Call)
     facts: list[tuple[str, tuple[str, ...]]] = []
     for name, files in sorted(decorator_to_files.items()):
         if 1 <= len(files) <= 6:
-            facts.append((f"@{name}", tuple(sorted(files))))
+            # Use @name($$$) for decorators always invoked with arguments so
+            # that ast-grep's structural matcher finds them too (bare @name only
+            # matches the no-parens form in ast-grep).
+            pattern = f"@{name}($$$)" if decorator_has_args.get(name) else f"@{name}"
+            facts.append((pattern, tuple(sorted(files))))
+
+    # --- function-definition patterns ---
+    # ``def func_name($$$):`` works in both Atelier (mode='def') and ast-grep.
+    # Only public names (no leading underscore) of length >= 6 that appear in
+    # exactly 1-6 files are included, sorted by (file_count, name) for
+    # stability and diversity.
+    func_to_files: dict[str, set[str]] = defaultdict(set)
+    for path in _repo_python_files(repo_root):
+        relative_path = path.relative_to(repo_root).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                n = node.name
+                if not n.startswith("_") and len(n) >= 6:
+                    func_to_files[n].add(relative_path)
+    func_facts: list[tuple[str, tuple[str, ...]]] = []
+    for name, files in func_to_files.items():
+        if 1 <= len(files) <= 6:
+            func_facts.append((f"def {name}($$$):", tuple(sorted(files))))
+    # Sort by file count ascending then name for determinism.
+    func_facts.sort(key=lambda t: (len(t[1]), t[0]))
+    facts.extend(func_facts)
     return facts
 
 

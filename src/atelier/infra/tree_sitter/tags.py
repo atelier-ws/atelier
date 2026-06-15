@@ -93,9 +93,15 @@ def _child_by_field_name(node: Any, field_name: str) -> Any | None:
 
 
 def _walk(node: Any) -> list[Any]:
-    nodes = [node]
-    for child in _children(node):
-        nodes.extend(_walk(child))
+    # Iterative pre-order traversal: a generated/minified or pathologically
+    # nested file can exceed Python's recursion limit, and callers in
+    # _treesitter_tags do not wrap _walk in a try/except.
+    nodes: list[Any] = []
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        nodes.append(current)
+        stack.extend(reversed(_children(current)))
     return nodes
 
 

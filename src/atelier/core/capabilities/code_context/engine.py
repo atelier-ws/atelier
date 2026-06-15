@@ -18,7 +18,6 @@ import subprocess
 import threading
 import time
 import weakref
-from bisect import bisect_right
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -353,8 +352,8 @@ _PY_CALLEE_NOISE: frozenset[str] = frozenset(
 
 _USAGES_ESSENTIAL_KEYS = ["file_path", "line", "provenance"]
 _USAGES_OPTIONAL_KEYS = ["snippet", "caller", "edge_kind", "confidence"]
-_PATTERN_ESSENTIAL_KEYS = ["snippet"]
-_PATTERN_OPTIONAL_KEYS = ["file_path", "line", "captures", "column", "end_line", "end_column"]
+_PATTERN_ESSENTIAL_KEYS = ["file_path", "line", "snippet"]
+_PATTERN_OPTIONAL_KEYS = ["captures", "column", "end_line", "end_column"]
 _STATUS_ESSENTIAL_KEYS = [
     "repo_id",
     "repo_root",
@@ -585,10 +584,6 @@ def _line_offsets(text: str) -> list[int]:
     if not text.endswith(("\n", "\r")):
         offsets.append(total)
     return offsets
-
-
-def _byte_to_line(offsets: list[int], byte_offset: int) -> int:
-    return max(1, bisect_right(offsets, byte_offset))
 
 
 def _safe_relpath(repo_root: Path, path: Path) -> str:
@@ -1196,6 +1191,7 @@ class CodeContextEngine:
         self._autosync_stop = threading.Event()
         self._autosync_thread: threading.Thread | None = None
         self._lineage_thread: threading.Thread | None = None
+        self._lineage_lock = threading.Lock()
         self._index_ready_cached = False
         # G6/N16: symbol-level call-graph centrality cache, keyed to the index
         # version so a graph mutation (any reindex bumps index_version) forces a
@@ -1884,16 +1880,45 @@ class CodeContextEngine:
         from atelier.infra.code_intel.git_history.blame import BlameAnnotator
         from atelier.infra.code_intel.git_history.models import BlameRequest
 
-        annotation = BlameAnnotator(self.repo_root).annotate(
-            BlameRequest(
-                file_path=normalized_file_path,
-                line_start=int(target["start_line"]),
-                line_end=int(target["end_line"]),
-                index_sha=index_sha,
-                head_sha=head_sha,
-                include_churn=include_churn,
+        try:
+            annotation = BlameAnnotator(self.repo_root).annotate(
+                BlameRequest(
+                    file_path=normalized_file_path,
+                    line_start=int(target["start_line"]),
+                    line_end=int(target["end_line"]),
+                    index_sha=index_sha,
+                    head_sha=head_sha,
+                    include_churn=include_churn,
+                )
             )
-        )
+        except ValueError:
+            # The symbol's recorded line span does not map onto a committed HEAD
+            # blob (uncommitted/working-tree region or a dirty re-index). Return a
+            # structured payload instead of crashing the MCP handler with -32603.
+            payload = self._pack_single_payload(
+                {
+                    "error": "blame_unavailable",
+                    "hint": "symbol range is not yet committed; commit then re-index",
+                    "symbol_name": str(target["symbol_name"]),
+                    "qualified_name": str(target["qualified_name"]),
+                    "file_path": normalized_file_path,
+                    "line_start": int(target["start_line"]),
+                    "line_end": int(target["end_line"]),
+                    "provenance": "blame",
+                },
+                budget_tokens=budget_tokens,
+                essential_keys=[
+                    "error",
+                    "hint",
+                    "symbol_name",
+                    "qualified_name",
+                    "file_path",
+                    "provenance",
+                ],
+                optional_keys_in_drop_order=["line_start", "line_end"],
+            )
+            self._cache_set("code.blame", cache_args, payload)
+            return payload
         latest_commit_ts = max(hunk.commit_time for hunk in annotation.hunks)
         payload_data: dict[str, Any] = {
             "symbol_name": str(target["symbol_name"]),
@@ -3814,11 +3839,20 @@ class CodeContextEngine:
         naive_tokens = 0
         max_code_blocks = max(1, context_policy.max_code_blocks)
         code_block_candidates = self._dedupe_symbols([*selected, *graph_related])
+        naive_file_tokens: dict[str, int] = {}
         for symbol in code_block_candidates:
             if len(packed_symbols) >= max_code_blocks:
                 break
-            full_file = self._read_file(symbol.file_path)
-            naive_tokens += count_tokens(full_file)
+            file_tokens = naive_file_tokens.get(symbol.file_path)
+            if file_tokens is None:
+                # A concurrent autosync reindex may delete the file out from under
+                # us; skip its naive-baseline contribution instead of aborting the
+                # whole pack. Cache per file so multiple symbols sharing a file do
+                # not re-read it.
+                with contextlib.suppress(OSError):
+                    file_tokens = count_tokens(self._read_file(symbol.file_path))
+                naive_file_tokens[symbol.file_path] = file_tokens or 0
+            naive_tokens += naive_file_tokens[symbol.file_path]
             symbol_payload = self.get_symbol(symbol_id=symbol.symbol_id, auto_index=False)
             source_block = self._fit_context_code_block_source(
                 lines=lines,
@@ -4402,9 +4436,7 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found"
-                if merged_status == "empty"
-                else None
+                else "no related call edges were found" if merged_status == "empty" else None
             )
             merged_snapshot = None
             if snapshot:
@@ -4435,7 +4467,10 @@ class CodeContextEngine:
             payload["ambiguity"] = ambiguity
         relation_policy = resolve_output_policy("relation")
         if relation_policy.max_related_symbols > 0:
-            max_related = relation_policy.max_related_symbols
+            # Respect the caller's explicit limit when it exceeds the compact-policy
+            # default (12). Without this, passing limit=50 still silently truncates
+            # to 12 because the compact policy runs after the traversal.
+            max_related = max(limit, relation_policy.max_related_symbols)
             related_before = len(cast(list[dict[str, Any]], payload.get("related", [])))
             edges_before = len(cast(list[dict[str, Any]], payload.get("edges", [])))
             payload["related"] = cast(list[dict[str, Any]], payload.get("related", []))[:max_related]
@@ -7483,8 +7518,9 @@ class CodeContextEngine:
         """
         if os.getenv("ATELIER_LINEAGE_DISABLED") == "1":
             return
-        if self._lineage_thread is not None:
-            return
+        with self._lineage_lock:
+            if self._lineage_thread is not None:
+                return
         current_head = self._safe_current_head_sha()
         if current_head is None:
             return
@@ -7521,12 +7557,17 @@ class CodeContextEngine:
                 needs_update = True
         if not needs_update:
             return
-        self._lineage_rebuild_full = full_rebuild
-        self._lineage_thread = threading.Thread(
-            target=self._lineage_bootstrap_worker,
-            name=f"atelier-lineage-{self.repo_id[:8]}",
-            daemon=True,
-        )
+        with self._lineage_lock:
+            # Re-check under the lock so two concurrent read tools cannot both pass
+            # the initial guard and each spawn a bootstrap thread.
+            if self._lineage_thread is not None:
+                return
+            self._lineage_rebuild_full = full_rebuild
+            self._lineage_thread = threading.Thread(
+                target=self._lineage_bootstrap_worker,
+                name=f"atelier-lineage-{self.repo_id[:8]}",
+                daemon=True,
+            )
         self._lineage_thread.start()
 
     def _lineage_bootstrap_worker(self) -> None:

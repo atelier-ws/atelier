@@ -64,6 +64,7 @@ class RunResult:
     policy_reason: str = ""
     rewrite_target: str | None = None
     rewrite_payload: dict[str, Any] | None = None
+    discipline: str = ""
 
 
 @dataclass(frozen=True)
@@ -597,6 +598,23 @@ def run_command(
             rewrite_payload=policy.rewrite_payload,
         )
 
+    gate = command_discipline.pre_run_gate(command)
+    if gate.action == "block":
+        return RunResult(
+            stdout="",
+            stderr=gate.reason,
+            exit_code=-1,
+            duration_ms=0,
+            truncated=False,
+            lines_omitted=0,
+            command=command,
+            policy_category=policy.category,
+            policy_action=policy.action,
+            policy_reason=policy.reason,
+            rewrite_target=policy.rewrite_target,
+            rewrite_payload=policy.rewrite_payload,
+        )
+
     started = time.perf_counter()
     proc: subprocess.Popen[str] | None = None
     try:
@@ -627,6 +645,12 @@ def run_command(
 
     duration_ms = int((time.perf_counter() - started) * 1000)
 
+    command_discipline.note_result(
+        command,
+        exit_code=exit_code,
+        timed_out=raw_stderr.startswith("Command timed out after "),
+    )
+
     result = _compact_result(
         command=command,
         raw_stdout=raw_stdout,
@@ -640,6 +664,7 @@ def run_command(
     result.policy_reason = policy.reason
     result.rewrite_target = policy.rewrite_target
     result.rewrite_payload = policy.rewrite_payload
+    result.discipline = gate.reason if gate.action == "warn" else ""
     return result
 
 

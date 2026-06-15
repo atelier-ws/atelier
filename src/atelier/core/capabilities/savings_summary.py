@@ -36,7 +36,6 @@ _DISPLAY_NAME_MODEL_MAP: dict[str, str] = {
     "opus 4": "claude-opus-4-0",
     "sonnet 4.7": "claude-sonnet-4-7",
     "sonnet 4.6": "claude-sonnet-4-6",
-    "Sonnet 4.6": "claude-sonnet-4-5",
     "sonnet 4": "claude-sonnet-4-0",
     "haiku 4.7": "claude-haiku-4-7",
     "haiku 4.6": "claude-haiku-4-6",
@@ -1084,42 +1083,26 @@ def load_usage_breakdown(root: str | Path) -> dict[str, Any]:
     breakdown = {"input": 0.0, "output": 0.0, "cache_read": 0.0, "cache_write": 0.0}
 
     try:
-        import sqlite3
-
         from atelier.core.foundation.session_store import SessionStore
 
-        with sqlite3.connect(str(db_path)) as conn:
-            # Traces live in the file-based session store; read token/model rows
-            # from its tiny index (atelier.db keeps only context_budget below).
-            for row in SessionStore(root_path).token_rows():
-                inp = int(row["input_tokens"] or 0)
-                out = int(row["output_tokens"] or 0)
-                cr = int(row["cached_input_tokens"] or 0)
-                model_id = resolve_model_id(row["model"]) or "claude-sonnet-4-5"
+        # Traces live in the file-based session store; read token/model rows
+        # from its tiny index.
+        for row in SessionStore(root_path).token_rows():
+            inp = int(row["input_tokens"] or 0)
+            out = int(row["output_tokens"] or 0)
+            cr = int(row["cached_input_tokens"] or 0)
+            model_id = resolve_model_id(row["model"]) or "claude-sonnet-4-5"
 
-                input_tokens += inp
-                output_tokens += out
-                cache_read_tokens += cr
+            input_tokens += inp
+            output_tokens += out
+            cache_read_tokens += cr
 
-                total_cost += usage_cost_usd(model_id, input_tokens=inp, output_tokens=out, cache_read_tokens=cr)
-                b = usage_cost_breakdown_usd(model_id, input_tokens=inp, output_tokens=out, cache_read_tokens=cr)
-                breakdown["input"] += b["input"]
-                breakdown["output"] += b["output"]
-                breakdown["cache_read"] += b["cache_read"]
-                breakdown["cache_write"] += b["cache_write"]
-
-            # context_budget table (aggregates for sessions)
-            for row in conn.execute(
-                "SELECT SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens) FROM context_budget"
-            ):
-                inp, out, cr = row
-                if inp is None:
-                    continue
-                # Note: context_budget doesn't store model, so we use Sonnet 4.6 as proxy for these aggregates
-                # if they weren't already captured in traces (usually they are).
-                # To avoid double counting, we'd need to link them, but context_budget is often
-                # a redundant high-level log. Dashboard uses it as a fallback.
-                pass
+            total_cost += usage_cost_usd(model_id, input_tokens=inp, output_tokens=out, cache_read_tokens=cr)
+            b = usage_cost_breakdown_usd(model_id, input_tokens=inp, output_tokens=out, cache_read_tokens=cr)
+            breakdown["input"] += b["input"]
+            breakdown["output"] += b["output"]
+            breakdown["cache_read"] += b["cache_read"]
+            breakdown["cache_write"] += b["cache_write"]
 
     except Exception:
         logging.exception("Failed to load usage breakdown from DB")

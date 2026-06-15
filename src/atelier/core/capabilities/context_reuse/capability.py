@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import os
@@ -214,7 +215,11 @@ def _jaccard(a: list[str], b: list[str]) -> float:
 def _hash_vector(tokens: list[str], *, dim: int = _VECTOR_DIM) -> list[float]:
     vec = [0.0] * dim
     for tok in tokens:
-        bucket = hash(tok) % dim
+        # Stable cross-process hash — Python's built-in hash() is salted per
+        # process, but these vectors are persisted to disk and compared across
+        # later processes, so bucketing must be deterministic.
+        digest = hashlib.blake2b(tok.encode("utf-8"), digest_size=8).digest()
+        bucket = int.from_bytes(digest, "big") % dim
         vec[bucket] += 1.0
     norm = math.sqrt(sum(v * v for v in vec)) or 1.0
     return [v / norm for v in vec]
@@ -553,7 +558,7 @@ class ContextReuseCapability:
                 _HybridResult(
                     block=matched_block,
                     fts_score=1.0 / (_RRF_K + fts_rank.get(bid, len(all_blocks))),
-                    bm25_score=_bm25(query_tokens, doc_tokens_map.get(bid, []), idf, avg_len=avg_len),
+                    bm25_score=bm25_score_lookup.get(bid, 0.0),
                     recency_score=_recency_score(matched_block),
                     success_score=_bayesian_success(matched_block),
                     final_score=final,
@@ -885,7 +890,7 @@ class ContextReuseCapability:
             procedures.append(proc)
             dead_ends.extend(r.dead_ends)
             if r.rescue and r.block.procedure:
-                rescue_strategies.append(r.block.procedure)
+                rescue_strategies.extend(r.block.procedure)
             if r.block.required_rubrics:
                 required_validations.extend(r.block.required_rubrics)
 

@@ -4,7 +4,7 @@
 
 **Atelier**
 
-Atelier is a brownfield agent runtime being reset into a benchmark-first terminal coding agent: a slimmer execution core that preserves Atelier's strongest context, memory, code-intel, tracing, and host-enforcement capabilities while maximizing solved-rate on hard terminal tasks. The target shape is a hybrid of Eval and Augment, with WOZ-style host/tool ergonomics layered in: Eval-grade execution discipline, Augment-grade context quality pressure, and Atelier's own code-intel/memory strengths, built as a retrofit rather than a rewrite.
+Atelier is a brownfield agent runtime being reset into a benchmark-first terminal coding agent: a slimmer execution core that preserves Atelier's strongest context, memory, code-intel, tracing, and host-enforcement capabilities while maximizing solved-rate on hard terminal tasks. The target shape is a hybrid of Eval and Augment: Eval-grade execution discipline, Augment-grade context quality pressure, and Atelier's own code-intel/memory strengths, built as a retrofit rather than a rewrite.
 
 **Core Value:** Achieve the highest solved-rate on frozen terminal-bench-style coding tasks, with non-inferior quality and lower cost where possible.
 

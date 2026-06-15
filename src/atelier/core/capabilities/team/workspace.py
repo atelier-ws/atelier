@@ -158,19 +158,24 @@ class TeamWorkspaceManager:
             raise TeamWorkspaceError("invite code has already been used")
         if invite.expires_at < now:
             raise TeamWorkspaceError("invite code has expired")
-        member_user_id = (user_id or invite.email).strip().lower()
-        member = self.get_member(member_user_id, workspace=workspace)
-        if member is None:
-            member = TeamMember(
-                user_id=member_user_id,
-                email=invite.email,
-                role=invite.role,
-                auth_provider=auth_provider,
-            )
-            workspace.members.append(member)
-        else:
-            member = member.model_copy(update={"role": invite.role, "auth_provider": auth_provider})
-            workspace.members = [member if item.user_id == member.user_id else item for item in workspace.members]
+        # The member identity is bound to the invite's email; the optional
+        # user_id may only re-state that binding, never select a different one.
+        invite_user_id = invite.email.strip().lower()
+        requested_user_id = (user_id or invite.email).strip().lower()
+        if requested_user_id != invite_user_id:
+            raise TeamWorkspaceError("user_id does not match the invited email")
+        member_user_id = invite_user_id
+        if self.get_member(member_user_id, workspace=workspace) is not None:
+            # A join may only create the invited member, never overwrite an
+            # existing one (which would let an invite hijack another account).
+            raise TeamWorkspaceError("a member with this identity already exists")
+        member = TeamMember(
+            user_id=member_user_id,
+            email=invite.email,
+            role=invite.role,
+            auth_provider=auth_provider,
+        )
+        workspace.members.append(member)
         updated_invite = invite.model_copy(update={"used_by_user_id": member.user_id, "used_at": now})
         workspace.invites = [updated_invite if item.id == invite.id else item for item in workspace.invites]
         workspace.current_user_id = member.user_id

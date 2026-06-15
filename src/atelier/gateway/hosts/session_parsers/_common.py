@@ -63,22 +63,6 @@ def sanitize_id(value: str) -> str:
     return value.replace("/", "-").replace("\\", "-")
 
 
-def get_newest(items: list[Any], n: int | None) -> list[Any]:
-    """Sort items by mtime (extracting Path from nested structure) descending and take top N."""
-
-    def get_path(item: Any) -> Path:
-        # Recursively find the first Path object in the item
-        if isinstance(item, Path):
-            return item
-        if isinstance(item, (tuple, list)):
-            for sub in item:
-                return get_path(sub)
-        raise TypeError(f"Could not extract Path from {type(item)}: {item}")
-
-    sorted_items = sorted(items, key=lambda item: get_path(item).stat().st_mtime, reverse=True)
-    return sorted_items[:n] if n is not None else sorted_items
-
-
 def parse_datetime(value: Any, *, default: datetime | None = None) -> datetime:
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=UTC)
@@ -876,8 +860,7 @@ def snapshot_edited_files(
             store.record_raw_artifact(artifact, file_content)
             saved += 1
         except Exception:
-            logging.exception("Recovered from broad exception handler")
-            logger.debug("snapshot_edited_files: failed to save %s", fpath, exc_info=True)
+            logger.warning("snapshot_edited_files: failed to save %s", fpath, exc_info=True)
 
     return saved
 

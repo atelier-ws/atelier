@@ -77,6 +77,54 @@ SKIP_DIRS: frozenset[str] = frozenset(
 _SKIP_DIRS = SKIP_DIRS  # backwards-compat alias
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 _PDF_SUFFIXES = {".pdf"}
+_BINARY_SUFFIXES = {
+    ".zip",
+    ".tar",
+    ".gz",
+    ".tgz",
+    ".bz2",
+    ".xz",
+    ".7z",
+    ".rar",
+    ".jar",
+    ".so",
+    ".o",
+    ".a",
+    ".dll",
+    ".dylib",
+    ".exe",
+    ".bin",
+    ".class",
+    ".wasm",
+    ".pyc",
+    ".pyd",
+    ".obj",
+    ".lib",
+    ".mp3",
+    ".mp4",
+    ".mov",
+    ".avi",
+    ".mkv",
+    ".wav",
+    ".flac",
+    ".ogg",
+    ".m4a",
+    ".ttf",
+    ".otf",
+    ".woff",
+    ".woff2",
+    ".eot",
+    ".db",
+    ".sqlite",
+    ".sqlite3",
+    ".parquet",
+    ".npy",
+    ".npz",
+    ".pkl",
+    ".ico",
+    ".tiff",
+    ".heic",
+}
 _TEXT_SUFFIXES = {
     ".py",
     ".ts",
@@ -205,8 +253,12 @@ def _iter_files(
         fallback_spec = PatternSpec(pattern=".")
         found: dict[Path, PatternSpec] = {}
         for item in base.rglob("*"):
-            if item.is_file() and not any(part in _SKIP_DIRS for part in item.parts):
-                found.setdefault(item.resolve(), fallback_spec)
+            if not item.is_file() or any(part in _SKIP_DIRS for part in item.parts):
+                continue
+            resolved = item.resolve()
+            if not resolved.is_relative_to(root):
+                continue
+            found.setdefault(resolved, fallback_spec)
         return sorted(found.items(), key=lambda pair: str(pair[0]))
 
     candidates: dict[Path, PatternSpec] = {}
@@ -235,14 +287,23 @@ def _iter_files(
             continue
         if candidate.is_dir():
             for item in candidate.rglob("*"):
-                if item.is_file() and not any(part in _SKIP_DIRS for part in item.parts):
-                    candidates.setdefault(item.resolve(), spec)
+                if not item.is_file() or any(part in _SKIP_DIRS for part in item.parts):
+                    continue
+                resolved = item.resolve()
+                if not resolved.is_relative_to(root):
+                    continue
+                candidates.setdefault(resolved, spec)
 
     return sorted(candidates.items(), key=lambda pair: str(pair[0]))
 
 
 def _is_text_file(path: Path) -> bool:
-    return path.suffix.lower() in _TEXT_SUFFIXES or path.suffix.lower() not in _IMAGE_SUFFIXES | _PDF_SUFFIXES
+    suffix = path.suffix.lower()
+    if suffix in _TEXT_SUFFIXES:
+        return True
+    # Search anything that is not a known binary type: covers code files like
+    # .rs/.go/.java/.c and extensionless files (Dockerfile, Makefile, LICENSE).
+    return suffix not in _IMAGE_SUFFIXES and suffix not in _PDF_SUFFIXES and suffix not in _BINARY_SUFFIXES
 
 
 def _line_window(lines: list[str], line_no: int, before: int, after: int) -> tuple[int, int, list[str]]:

@@ -1,7 +1,7 @@
 """All-sessions Recall — index past Claude transcripts for semantic recall.
 
-baseline-style: index turns from every past session into the archival vector
-store, then semantic-search across ALL sessions (not just the current one).
+Indexes turns from every past session into the archival vector
+store, then semantic-searches across ALL sessions (not just the current one).
 Reuses Atelier's embedder + archival store via ``ArchivalRecallCapability`` and
 indexes incrementally (sessions unchanged since the last run are skipped).
 Improvement over a naive re-index: per-session mtime state + bounded caps so a

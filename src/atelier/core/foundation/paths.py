@@ -100,6 +100,24 @@ def _derive_workspace_root(root: Path | str | None) -> Path | None:
     return candidate
 
 
+def confine_to_root(candidate: str | Path, root: str | Path) -> Path:
+    """Resolve *candidate* and ensure it stays within *root*.
+
+    Both paths are ``expanduser()``-ed and ``resolve()``-d, which means symlinks
+    are followed; a symlink that points outside *root* therefore resolves to an
+    out-of-root target and is rejected. The resolved candidate is returned only
+    when it is *root* itself or lives beneath it.
+
+    Raises:
+        ValueError: if the resolved candidate escapes *root*.
+    """
+    resolved_root = Path(root).expanduser().resolve()
+    resolved_candidate = Path(candidate).expanduser().resolve()
+    if resolved_candidate != resolved_root and not resolved_candidate.is_relative_to(resolved_root):
+        raise ValueError("path escapes the allowed root")
+    return resolved_candidate
+
+
 def resolve_workspace_store_dir(root: Path | str | None = None, workspace_root: Path | str | None = None) -> Path:
     """Return the per-project runtime subdir under the global store root.
 
@@ -120,6 +138,7 @@ def resolve_workspace_store_dir(root: Path | str | None = None, workspace_root: 
 __all__ = [
     "DEFAULT_LESSONS_DIRNAME",
     "DEFAULT_STORE_DIRNAME",
+    "confine_to_root",
     "default_store_root",
     "resolve_lessons_root",
     "resolve_session_state_path",
