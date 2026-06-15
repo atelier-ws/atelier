@@ -146,12 +146,18 @@ def merge_into_overlay(
     added = [rule for rule in rules if rule.lower() not in existing]
     if not added:
         return 0
+    prior_count = len(overlay["notes"])
     overlay["notes"] = (overlay["notes"] + added)[:_OVERLAY_NOTES_CAP]
+    # Report what actually persisted: notes past the cap are dropped, so
+    # len(added) over-reports near the cap.
+    persisted = max(0, len(overlay["notes"]) - prior_count)
+    if persisted == 0:
+        return 0
     if not write_overlay(overlay_target(root, repo_root, scope), overlay):
         return 0
     if scope == "repo" and repo_root is not None:
         ensure_repo_share_gitignore(repo_root)
-    return len(added)
+    return persisted
 
 
 def _run_owned(prompt: str, *, root: str | Path, model: str) -> str:

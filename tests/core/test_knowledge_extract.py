@@ -57,6 +57,24 @@ def test_merge_into_overlay_dedups(tmp_path: Path) -> None:
     assert data["notes"].count("existing") == 1
 
 
+def test_merge_into_overlay_reports_zero_persisted_at_cap(tmp_path: Path) -> None:
+    full = [f"rule {i}" for i in range(60)]  # at the 60-note cap
+    (tmp_path / "review_overlay.json").write_text(
+        json.dumps({"notes": full, "boost": [], "suppress": []}), encoding="utf-8"
+    )
+    # Nothing new can persist, so the reported count must be 0 (not len(added)).
+    assert merge_into_overlay(tmp_path, ["overflow rule"]) == 0
+
+
+def test_merge_into_overlay_reports_partial_persisted_count(tmp_path: Path) -> None:
+    near = [f"rule {i}" for i in range(59)]  # one slot left under the cap
+    (tmp_path / "review_overlay.json").write_text(
+        json.dumps({"notes": near, "boost": [], "suppress": []}), encoding="utf-8"
+    )
+    # Two new rules, one slot: only one persists.
+    assert merge_into_overlay(tmp_path, ["new a", "new b"]) == 1
+
+
 def test_extract_rules_applies_with_stub_runner(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _lessons(repo, "# Always validate inputs at boundaries")
