@@ -318,6 +318,9 @@ class RuntimeSession:
             validation_results=validation_results or [],
         )
         self.store.record_trace(trace)
+        from atelier.core.capabilities.lesson_promotion import ingest_failed_trace
+
+        ingest_failed_trace(self.store, trace)
         self.trace_id = trace.id
         return trace
 
