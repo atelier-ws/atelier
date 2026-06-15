@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,8 @@ from atelier.gateway.sdk.client import (
 from atelier.infra.embeddings.factory import make_embedder
 from atelier.infra.runtime.cost_tracker import CostTracker
 from atelier.infra.storage.factory import make_memory_store
+
+logger = logging.getLogger(__name__)
 
 
 def _evaluate_eval_payload(item: dict[str, Any]) -> EvalRecord:
@@ -153,6 +156,13 @@ class LocalClient(AtelierClient):
             }
         )
         self.store.record_trace(trace)
+        if trace.status == "failed" and trace.errors_seen:
+            # Feed the lesson inbox: cluster recurring failures into candidates.
+            # Best-effort and store-backed; must never break trace recording.
+            try:
+                LessonPromoterCapability(self.store).ingest_trace(trace)
+            except Exception:  # noqa: BLE001 - lesson ingest is best-effort
+                logger.debug("lesson ingest skipped for trace %s", trace.id, exc_info=True)
         return TraceRecordResult(id=trace.id)
 
     def get_savings(self) -> SavingsSummary:
