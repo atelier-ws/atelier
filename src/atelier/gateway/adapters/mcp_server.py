@@ -885,10 +885,14 @@ def _spawn_worker_if_idle(root: Path) -> None:
     import time
 
     global _last_worker_spawn_time
-    now = time.monotonic()
-    if now - _last_worker_spawn_time < _WORKER_SPAWN_THROTTLE_SECS:
-        return
-    _last_worker_spawn_time = now
+    # Serialize the check-and-set so two concurrent light-pool callers can't both
+    # pass the throttle window and spawn redundant workers. Spawn the thread
+    # OUTSIDE the lock so thread creation doesn't run under _STATE_LOCK.
+    with _STATE_LOCK:
+        now = time.monotonic()
+        if now - _last_worker_spawn_time < _WORKER_SPAWN_THROTTLE_SECS:
+            return
+        _last_worker_spawn_time = now
     threading.Thread(
         target=_run_worker_tick_safe,
         args=(root,),
@@ -4792,10 +4796,30 @@ def _edit_verify_enabled(verify_flag: bool) -> bool:
     return val in ("1", "true", "yes", "on")
 
 
-def _restore_snapshots(snapshots: dict[str, tuple[Path, str | None]]) -> None:
-    """Restore files to their pre-edit content (used when the verify gate fails)."""
-    for _display, (fp, old_content) in snapshots.items():
+def _restore_snapshots(
+    snapshots: dict[str, tuple[Path, str | None]],
+    applied_content: dict[str, str | None] | None = None,
+) -> list[str]:
+    """Restore files to their pre-edit content (used when the verify gate fails).
+
+    Must run under this call's per-path edit locks. When *applied_content* is
+    given (this call's post-apply content per display path), a path is restored
+    ONLY if its current on-disk content still equals what this call wrote;
+    otherwise a concurrent edit committed in the window after this call released
+    its lock, so we skip the restore to avoid clobbering that committed write
+    (lost update). Returns the display paths skipped due to such a conflict.
+    """
+    conflicts: list[str] = []
+    for display, (fp, old_content) in snapshots.items():
         try:
+            if applied_content is not None and display in applied_content:
+                current = fp.read_text(encoding="utf-8") if fp.exists() else None
+                if current != applied_content[display]:
+                    # A concurrent edit moved this file on after we applied; the
+                    # pre-edit content is stale, so restoring it would lose that
+                    # update. Leave the concurrent write in place.
+                    conflicts.append(display)
+                    continue
             if old_content is None:
                 if fp.exists():
                     fp.unlink()
@@ -4803,6 +4827,7 @@ def _restore_snapshots(snapshots: dict[str, tuple[Path, str | None]]) -> None:
                 fp.write_text(old_content, encoding="utf-8")
         except Exception:
             logging.exception("Recovered from broad exception handler")
+    return conflicts
 
 
 def _apply_edit_verify_gate(
@@ -4810,6 +4835,7 @@ def _apply_edit_verify_gate(
     *,
     touched: list[Path],
     snapshots: dict[str, tuple[Path, str | None]],
+    applied_content: dict[str, str | None] | None = None,
     checks: list[str] | None,
     rollback: bool,
     timeout_ms: int,
@@ -4842,7 +4868,9 @@ def _apply_edit_verify_gate(
             with contextlib.ExitStack() as _rb_locks:
                 for _lock in _edit_path_locks(touched):
                     _rb_locks.enter_context(_lock)
-                _restore_snapshots(snapshots)
+                conflicts = _restore_snapshots(snapshots, applied_content)
+            if conflicts:
+                result["rollback_conflicts"] = conflicts
             result["rolled_back"] = True
             result["applied"] = []
             result["writes"] = 0
@@ -5149,6 +5177,10 @@ def tool_smart_edit(
     # concurrent edit calls cannot read-modify-write the same file and lose one
     # update. Locks are ordered by path (inside _edit_path_locks) to avoid
     # deadlock and release on every return below via the ExitStack.
+    # This call's post-apply content per display path, captured under the edit
+    # lock. The verify gate (which runs after the lock releases) uses it to skip
+    # restoring any file a concurrent edit moved on, avoiding a lost update.
+    applied_content: dict[str, str | None] = {}
     with contextlib.ExitStack() as _edit_locks:
         for _lock in _edit_path_locks(list(paths.values())):
             _edit_locks.enter_context(_lock)
@@ -5230,6 +5262,12 @@ def tool_smart_edit(
             # old->new and the `applied` line ranges, so an inline diff is pure
             # redundancy.
             diffs = _compute_and_record_diffs(snapshots)
+            for _disp, _fp in paths.items():
+                try:
+                    applied_content[_disp] = _fp.read_text(encoding="utf-8") if _fp.exists() else None
+                except Exception:
+                    logging.exception("Recovered from broad exception handler")
+                    applied_content[_disp] = None
             _applied = result.get("applied") or []
             if diffs and any(
                 isinstance(e, dict) and e.get("match_mode") in ("normalized", "placeholder", "fuzzy")
@@ -5258,6 +5296,7 @@ def tool_smart_edit(
             result,
             touched=list(paths.values()),
             snapshots=snapshots,
+            applied_content=applied_content,
             checks=verify_checks,
             rollback=verify_rollback,
             timeout_ms=verify_timeout_ms,
@@ -5522,6 +5561,7 @@ def _write_handover_packet(led: RunLedger, state: Any) -> Path:
 
 
 _COMPACT_ADVISE_CACHE: dict[str, tuple[int, Any]] = {}
+_MAX_COMPACT_ADVISE_CACHE = 64
 
 
 def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
@@ -5554,6 +5594,14 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
         else:
             state = ContextCompressor().compress(led, preserve_last_n_turns=10, workspace_root=_workspace_root())
             _COMPACT_ADVISE_CACHE[_ca_key] = (len(led.events), state)
+            if len(_COMPACT_ADVISE_CACHE) > _MAX_COMPACT_ADVISE_CACHE:
+                # Bound the cache: a marathon process seeing many session ids must
+                # not leak compressed states. Evict oldest (skip current).
+                for _stale in list(_COMPACT_ADVISE_CACHE)[
+                    : len(_COMPACT_ADVISE_CACHE) - _MAX_COMPACT_ADVISE_CACHE
+                ]:
+                    if _stale != _ca_key:
+                        _COMPACT_ADVISE_CACHE.pop(_stale, None)
         compaction_savings = _session_compaction_savings_payload(
             led,
             state,
@@ -6767,6 +6815,35 @@ def _op_rename(
     )
     if not edits:
         raise ValueError(f"no occurrences renamed: symbol not found or no references for new_name {new_name!r}")
+    truncated = bool(getattr(edits, "truncated", False))
+    total_references = int(getattr(edits, "total_references", 0))
+    # A truncated edit set covers only the first _RENAME_USAGE_LIMIT (500) sites,
+    # so applying it would rewrite some references and leave the rest dangling --
+    # silent symbol corruption. Refuse rather than apply a partial rename.
+    if truncated:
+        return _finish_code_result(
+            _maybe_attach_code_rendered(
+                "rename",
+                {
+                    "op": "rename",
+                    "new_name": new_name,
+                    "backend": rename_backend,
+                    "failed": [
+                        {
+                            "error": (
+                                f"rename aborted: symbol has {total_references} references, exceeding the "
+                                "500-site cap. The naive backend would rewrite only the first 500 and leave the "
+                                "rest dangling, corrupting the symbol. Use a semantic backend (rope/ts-morph) or "
+                                "reduce scope."
+                            ),
+                        }
+                    ],
+                    "truncated": True,
+                    "total_references": total_references,
+                },
+                render_compact=render_compact,
+            )
+        )
     from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
 
     touched = _collect_touched_paths(edits, repo_root=root)
@@ -6777,6 +6854,8 @@ def _op_rename(
     result["op"] = "rename"
     result["new_name"] = new_name
     result["backend"] = rename_backend
+    result["truncated"] = truncated
+    result["total_references"] = total_references
     return _finish_code_result(_maybe_attach_code_rendered("rename", result, render_compact=render_compact))
 
 

@@ -513,6 +513,46 @@ def find_notebook_match(
     return {"cell_index": matches[0], "matched": True}
 
 
+_AUTO_LIMIT_WRITE_VERBS = frozenset({"insert", "update", "delete", "replace"})
+
+
+def _cte_trailing_verb_is_write(sql: str) -> bool:
+    """True if a leading `WITH ...` resolves to a top-level write verb.
+
+    Mirrors the trailing-verb scan used by the SQL tool's path-confinement
+    layer: skip the parenthesized CTE bodies and string literals, then read the
+    first depth-0 verb after the CTE list. INSERT/UPDATE/DELETE/REPLACE there
+    mean the statement modifies data and must not be wrapped/auto-limited.
+    """
+    depth = 0
+    in_single = in_double = False
+    for match in re.finditer(r"[()'\"]|[A-Za-z_][A-Za-z_]*", sql):
+        token = match.group(0)
+        if in_single:
+            if token == "'":
+                in_single = False
+            continue
+        if in_double:
+            if token == '"':
+                in_double = False
+            continue
+        if token == "'":
+            in_single = True
+        elif token == '"':
+            in_double = True
+        elif token == "(":
+            depth += 1
+        elif token == ")":
+            depth -= 1
+        elif depth == 0:
+            lowered_token = token.lower()
+            if lowered_token in _AUTO_LIMIT_WRITE_VERBS:
+                return True
+            if lowered_token == "select":
+                return False
+    return False
+
+
 def sql_auto_limit(sql: str, max_rows: int, auto_limit: bool = True) -> dict[str, Any]:
     if not auto_limit:
         return {"sql": sql, "changed": False}
@@ -522,6 +562,13 @@ def sql_auto_limit(sql: str, max_rows: int, auto_limit: bool = True) -> dict[str
     is_cte = lowered.startswith("with")
     if not (is_select or is_cte):
         return {"sql": sql, "changed": False, "reason": "only select statements are auto-limited"}
+    # A `WITH ...` prefix is not necessarily a read: a write-CTE
+    # (`WITH x AS (...) DELETE FROM t ...`) starts with WITH but its effective
+    # top-level verb is a write. Wrapping such a statement as
+    # `SELECT * FROM (... DELETE ...)` produces invalid SQL, so detect the
+    # trailing top-level verb and skip auto-limit when it modifies data.
+    if is_cte and _cte_trailing_verb_is_write(stripped):
+        return {"sql": sql, "changed": False, "reason": "write CTEs are not auto-limited"}
     if re.search(r"\blimit\b", lowered):
         return {"sql": sql, "changed": False}
     has_set_op = bool(re.search(r"\b(union|intersect|except)\b", lowered))

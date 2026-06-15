@@ -13,7 +13,8 @@ import tempfile
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from atelier.core.capabilities.tool_supervision import command_discipline
@@ -54,6 +55,21 @@ _MAX_OUTPUT_BYTES = max(
     int(os.environ.get("ATELIER_SHELL_MAX_OUTPUT_BYTES", str(4 * 1024 * 1024))),
 )
 
+# On-disk ceiling for a managed command's temp spool. `subprocess.Popen` writes
+# the child's output straight to the temp file's fd, so the read-time
+# `_MAX_OUTPUT_BYTES` cap cannot bound it -- `cat /dev/zero` would fill the disk
+# before any poll runs. The spool pump (`_pump_capped`) stops appending once
+# this ceiling is reached. Defaults to the output cap (read side then catches
+# every truncated spool); a larger value retains more for later inspection.
+_MAX_SPOOL_BYTES = max(
+    _MAX_OUTPUT_BYTES,
+    int(os.environ.get("ATELIER_SHELL_MAX_SPOOL_BYTES", str(_MAX_OUTPUT_BYTES))),
+)
+
+# Read granularity for `_pump_capped`; large enough to keep the drain loop cheap
+# without buffering an unbounded amount per iteration.
+_PUMP_CHUNK_CHARS = 64 * 1024
+
 
 def _cap_text(text: str) -> tuple[str, bool]:
     """Bound *text* to the output-byte ceiling, returning (text, truncated).
@@ -81,9 +97,40 @@ def _read_capped(handle: Any) -> tuple[str, bool]:
     return chunk[:_MAX_OUTPUT_BYTES], True
 
 
+def _pump_capped(src: Any, write: Callable[[str], Any], cap: int) -> bool:
+    """Copy text from *src* into *write*, appending at most *cap* UTF-8 bytes.
+
+    Reads in fixed chunks until EOF. Once the running byte count reaches *cap*
+    the overflow is read and discarded rather than written, so the source pipe
+    keeps draining (no deadlock when both stdout and stderr are large) while the
+    in-memory or on-disk sink stays bounded. Byte accounting mirrors `_cap_text`,
+    cutting a straddling chunk on a character boundary at or just under the cap.
+    Returns True if the stream exceeded the cap.
+    """
+    written = 0
+    truncated = False
+    while True:
+        chunk = src.read(_PUMP_CHUNK_CHARS)
+        if not chunk:
+            break
+        if written >= cap:
+            truncated = True
+            continue
+        encoded = chunk.encode("utf-8", "replace")
+        if written + len(encoded) <= cap:
+            write(chunk)
+            written += len(encoded)
+            continue
+        prefix = encoded[: cap - written].decode("utf-8", "ignore")
+        if prefix:
+            write(prefix)
+        written = cap
+        truncated = True
+    return truncated
+
+
 _OUTPUT_CAP_NOTICE = (
-    "\n... (output exceeded {cap} bytes and was truncated by Atelier; "
-    "narrow the command or redirect to a file) ..."
+    "\n... (output exceeded {cap} bytes and was truncated by Atelier; narrow the command or redirect to a file) ..."
 )
 
 
@@ -136,6 +183,11 @@ class _ManagedCommand:
     state: str = "running"
     discipline_warning: str = ""
     reaped: bool = False
+    # Drain threads spooling the child's piped output into the temp files, and a
+    # flag set when either spool hit the on-disk ceiling. Joining the threads
+    # before a read guarantees all surviving bytes are flushed to disk.
+    readers: list[threading.Thread] = field(default_factory=list)
+    spool_truncated: bool = False
 
 
 _MANAGED_COMMANDS: dict[str, _ManagedCommand] = {}
@@ -486,10 +538,29 @@ def _watch_managed_command(session_id: str) -> None:
             return
         managed.reaped = True
         _MANAGED_COMMANDS.pop(session_id, None)
+    # Let the spool drains finish before closing their temp files; the process
+    # has already exited, so the pipes are at EOF and the joins return at once.
+    for reader in managed.readers:
+        reader.join()
     with contextlib.suppress(Exception):
         managed.stdout_file.close()
     with contextlib.suppress(Exception):
         managed.stderr_file.close()
+
+
+def _spool_managed_stream(stream: Any, dst_file: Any, managed: _ManagedCommand) -> None:
+    """Drain *stream* into *dst_file*, capped at the on-disk spool ceiling.
+
+    Runs for the command's lifetime in a daemon thread; `_pump_capped` stops
+    appending once `_MAX_SPOOL_BYTES` is reached but keeps reading to EOF so the
+    child never blocks on a full pipe. Flags the session as spool-truncated when
+    either stream overflows.
+    """
+    with contextlib.suppress(Exception):
+        truncated = _pump_capped(stream, dst_file.write, _MAX_SPOOL_BYTES)
+        if truncated:
+            with _MANAGED_COMMANDS_LOCK:
+                managed.spool_truncated = True
 
 
 def start_managed_command(
@@ -523,10 +594,14 @@ def start_managed_command(
     stdout_file = tempfile.TemporaryFile(mode="w+", encoding="utf-8")
     stderr_file = tempfile.TemporaryFile(mode="w+", encoding="utf-8")
     try:
+        # Pipe the child's output through drain threads rather than handing the
+        # temp-file fds straight to the kernel. A direct fd lets a runaway
+        # producer (`cat /dev/zero`) fill the disk before any poll reads it; the
+        # spool pump caps each temp file at `_MAX_SPOOL_BYTES` instead.
         proc = subprocess.Popen(
             ["bash", "-c", command],
-            stdout=stdout_file,
-            stderr=stderr_file,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             cwd=cwd,
             start_new_session=True,
@@ -547,6 +622,12 @@ def start_managed_command(
         max_lines=max_lines,
         discipline_warning=gate.reason if gate.action == "warn" else "",
     )
+    managed.readers = [
+        threading.Thread(target=_spool_managed_stream, args=(proc.stdout, stdout_file, managed), daemon=True),
+        threading.Thread(target=_spool_managed_stream, args=(proc.stderr, stderr_file, managed), daemon=True),
+    ]
+    for reader in managed.readers:
+        reader.start()
     with _MANAGED_COMMANDS_LOCK:
         _MANAGED_COMMANDS[session_id] = managed
     threading.Thread(
@@ -589,6 +670,12 @@ def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, 
             "timeout_remaining_ms": timeout_remaining_ms,
         }
 
+    # Join the spool drains before reading -- the process is done, so the pipes
+    # have EOF'd and the threads exit promptly, leaving every surviving byte on
+    # disk. Join outside the lock: a drain takes the lock to flag truncation.
+    for reader in managed.readers:
+        reader.join()
+
     with _MANAGED_COMMANDS_LOCK:
         if managed.reaped:
             # The watcher already reaped this finished session; its temp files are
@@ -606,7 +693,7 @@ def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, 
         raw_stderr, stderr_capped = _read_capped(managed.stderr_file)
         managed.stdout_file.close()
         managed.stderr_file.close()
-    output_byte_capped = stdout_capped or stderr_capped
+    output_byte_capped = stdout_capped or stderr_capped or managed.spool_truncated
     if stdout_capped:
         raw_stdout += _OUTPUT_CAP_NOTICE.format(cap=_MAX_OUTPUT_BYTES)
     if stderr_capped:
@@ -711,19 +798,48 @@ def run_command(
             cwd=cwd,
             start_new_session=True,
         )
-        stdout, stderr = proc.communicate(timeout=timeout)
+        # Drain both pipes concurrently into bounded in-memory buffers. A plain
+        # `communicate()` slurps the child's *entire* output into RAM before any
+        # cap runs, so a runaway producer (`yes`, `cat /dev/zero`) OOMs the host.
+        # `_pump_capped` stops accumulating at `_MAX_OUTPUT_BYTES` per stream but
+        # keeps reading to EOF, and running one thread per stream avoids the
+        # pipe-buffer deadlock when both stdout and stderr are large.
+        stdout_buf: list[str] = []
+        stderr_buf: list[str] = []
+        capped = {"stdout": False, "stderr": False}
+
+        def _drain(stream: Any, buf: list[str], key: str) -> None:
+            with contextlib.suppress(Exception):
+                capped[key] = _pump_capped(stream, buf.append, _MAX_OUTPUT_BYTES)
+
+        readers = [
+            threading.Thread(target=_drain, args=(proc.stdout, stdout_buf, "stdout"), daemon=True),
+            threading.Thread(target=_drain, args=(proc.stderr, stderr_buf, "stderr"), daemon=True),
+        ]
+        for reader in readers:
+            reader.start()
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # Kill the group first so the child's pipes close; otherwise the
+            # reader joins below would block forever on a still-open pipe.
+            _terminate_process_group(proc)
+            for reader in readers:
+                reader.join()
+            raise
+        for reader in readers:
+            reader.join()
         exit_code = proc.returncode
-        raw_stdout, stdout_capped = _cap_text(_strip_ansi(stdout))
-        raw_stderr, stderr_capped = _cap_text(_strip_ansi(stderr))
+        raw_stdout = _strip_ansi("".join(stdout_buf))
+        raw_stderr = _strip_ansi("".join(stderr_buf))
+        stdout_capped = capped["stdout"]
+        stderr_capped = capped["stderr"]
         output_byte_capped = stdout_capped or stderr_capped
         if stdout_capped:
             raw_stdout += _OUTPUT_CAP_NOTICE.format(cap=_MAX_OUTPUT_BYTES)
         if stderr_capped:
             raw_stderr += _OUTPUT_CAP_NOTICE.format(cap=_MAX_OUTPUT_BYTES)
     except subprocess.TimeoutExpired:
-        if proc is not None:
-            _terminate_process_group(proc)
-            proc.communicate()
         exit_code = -1
         raw_stdout = ""
         raw_stderr = f"Command timed out after {timeout}s"

@@ -378,6 +378,30 @@ def _read_search_text(path: Path) -> str | None:
         return None
 
 
+def _over_cap_size(path: Path) -> int | None:
+    """Return the file's size in bytes when it exceeds the per-file read cap.
+
+    Lets callers distinguish an oversized-skip (so the omission can be surfaced)
+    from a no-match or read error, both of which also yield no rendered output.
+    """
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return None
+    return size if size > _MAX_SEARCH_FILE_BYTES else None
+
+
+def _skipped_oversized_footer(skipped: list[str]) -> str:
+    """One-line footer naming files dropped for exceeding the per-file cap."""
+    cap_mb = _MAX_SEARCH_FILE_BYTES / (1024 * 1024)
+    shown = skipped[:10]
+    listed = ", ".join(shown)
+    overflow = len(skipped) - len(shown)
+    if overflow > 0:
+        listed += f", and {overflow} more"
+    return f"[{len(skipped)} file(s) skipped (over {cap_mb:g}MB cap): {listed}]"
+
+
 def _line_window(lines: list[str], line_no: int, before: int, after: int) -> tuple[int, int, list[str]]:
     start = max(1, line_no - before)
     end = min(len(lines), line_no + after)
@@ -812,6 +836,9 @@ def search_workspace(
     # output bytes (matching lines + context, not full file); rendered = what
     # Atelier actually returns after ranking/summarisation. ~4 bytes/token.
     naive_bytes = 0
+    # Files dropped for exceeding the per-file read cap, surfaced in the result
+    # so a present-but-skipped match is not reported as a false "no match".
+    skipped_oversized: list[str] = []
     root = _repo_root(repo_root)
     base_spec = _parse_pattern(path)
     base = _safe_resolve(root, base_spec.pattern or ".")
@@ -870,6 +897,13 @@ def search_workspace(
             else:
                 read = _read_search_text(candidate)
                 if read is None:
+                    if _over_cap_size(candidate) is not None:
+                        rel = (
+                            str(candidate.relative_to(root))
+                            if candidate.is_relative_to(root)
+                            else str(candidate)
+                        )
+                        skipped_oversized.append(rel)
                     continue
                 source = read
             lines = source.splitlines()
@@ -946,6 +980,8 @@ def search_workspace(
                 "next": [],
                 "tokens_saved": naive_bytes // 4,
             }
+            if skipped_oversized:
+                payload["skipped"] = _skipped_oversized_footer(skipped_oversized)
             if include_metadata:
                 payload["_meta"] = {"fileMatchCount": 0, "capChars": cap_chars}
             return payload
@@ -1004,6 +1040,8 @@ def search_workspace(
             },
             "tokens_saved": max(0, (naive_bytes - rendered_bytes) // 4),
         }
+        if skipped_oversized:
+            payload["skipped"] = _skipped_oversized_footer(skipped_oversized)
         if include_metadata:
             payload["_meta"] = {"fileMatchCount": len(matches_payload), "capChars": cap_chars}
         return payload
@@ -1061,6 +1099,9 @@ def search_workspace(
             deadline=deadline,
         )
         if _file_rendered is None:
+            if _over_cap_size(candidate) is not None:
+                rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
+                skipped_oversized.append(rel)
             continue
         # Naive = grep output = _file_rendered (matched lines + context).
         # Savings = Atelier's post-processing reduction (summarisation, cap truncation).
@@ -1118,6 +1159,13 @@ def search_workspace(
         text = "\n".join(agg_parts)
         total_chars = len(text)
         blocks.append({"type": "text", "text": text})
+
+    if skipped_oversized:
+        # Surface the omission so a present-but-skipped match is not read as a
+        # false "no match". Counts toward total_chars like any rendered block.
+        footer = _skipped_oversized_footer(skipped_oversized)
+        total_chars += len(footer)
+        blocks.append({"type": "text", "text": footer})
 
     response: dict[str, Any] = {
         "content": blocks,

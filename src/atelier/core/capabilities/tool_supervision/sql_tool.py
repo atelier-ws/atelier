@@ -6,6 +6,7 @@ import os
 import re
 import sqlite3
 import time
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -108,8 +109,15 @@ def _filesystem_path(dsn: str) -> tuple[str, bool, str]:
         # file:path?mode=ro ... ; the on-disk path is everything between the
         # `file:` scheme and the first query separator. `file::memory:` and
         # any `mode=memory` URI stay in RAM and have no disk path to check.
+        # sqlite3.connect(..., uri=True) percent-decodes the path per the
+        # SQLite URI spec, so the sandbox check must run on the DECODED path
+        # (otherwise `file:..%2F..%2Ftmp%2Fpwn.db` escapes the sandbox while
+        # passing an encoded-path check). A NUL byte truncates the C string
+        # SQLite opens, so reject it outright.
         body = dsn[len("file:") :]
-        fs_part = body.split("?", 1)[0]
+        fs_part = urllib.parse.unquote(body.split("?", 1)[0])
+        if "\x00" in fs_part:
+            raise SqlPathError("sqlite file path contains a NUL byte")
         if fs_part.startswith(":memory:") or "mode=memory" in dsn:
             return dsn, True, ""
         return dsn, True, fs_part
