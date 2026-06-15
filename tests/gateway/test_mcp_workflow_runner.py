@@ -140,6 +140,7 @@ def test_workflow_tool_status_pause_resume_and_stop(workflow_env: Path, monkeypa
         text: bool,
         capture_output: bool,
         check: bool,
+        **_kwargs: Any,
     ) -> subprocess.CompletedProcess[str]:
         prompt = command[-1]
         calls.append(prompt)
@@ -205,6 +206,7 @@ def test_workflow_run_executes_agent_steps_by_default(workflow_env: Path, monkey
         text: bool,
         capture_output: bool,
         check: bool,
+        **_kwargs: Any,
     ) -> subprocess.CompletedProcess[str]:
         seen["command"] = command
         seen["cwd"] = cwd
@@ -447,6 +449,7 @@ def test_workflow_run_pauses_for_plan_review_and_resumes_on_approval(
         text: bool,
         capture_output: bool,
         check: bool,
+        **_kwargs: Any,
     ) -> subprocess.CompletedProcess[str]:
         prompt = command[-1]
         calls.append(prompt)

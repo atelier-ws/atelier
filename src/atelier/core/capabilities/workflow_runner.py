@@ -5,6 +5,7 @@ import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any
@@ -13,6 +14,7 @@ from atelier.core.capabilities.workflow_context import StepResult, WorkflowConte
 from atelier.core.capabilities.workflow_schema import (
     CONTROL_FLOW_STEP_KINDS,
     LOOP_ITERATION_HARD_CAP,
+    MAP_ITEM_HARD_CAP,
     WorkflowDefinition,
     WorkflowPredicate,
     WorkflowStepDefinition,
@@ -47,6 +49,10 @@ class WorkflowRunResult:
 
 class WorkflowLoopGuardError(RuntimeError):
     """Raised when a `loop` step exceeds its (capped) max-iterations budget."""
+
+
+class WorkflowMapGuardError(RuntimeError):
+    """Raised when a `map` step's resolved item count exceeds its hard cap."""
 
 
 def _resolve_operand(value: Any, state: WorkflowContextState) -> Any:
@@ -258,7 +264,7 @@ class WorkflowRunner:
                 result = self._normalize_executor_result(step, raw_result, duration_seconds=time.perf_counter() - start)
             else:
                 raise ValueError(f"unsupported step kind: {step.kind}")
-        except WorkflowLoopGuardError:
+        except (WorkflowLoopGuardError, WorkflowMapGuardError):
             raise
         except (RuntimeError, ValueError, OSError, KeyError, TypeError) as exc:
             result = StepResult(
@@ -379,6 +385,12 @@ class WorkflowRunner:
         start: float,
     ) -> StepResult:
         items = self._coerce_over_items(context_state.render_value(step.over))
+        if len(items) > MAP_ITEM_HARD_CAP:
+            # `over` is rendered from prior step output: trip the fan-out guard
+            # rather than spawning an unbounded number of sub-bodies.
+            raise WorkflowMapGuardError(
+                f"map step {step.step_id} resolved {len(items)} items, exceeding the hard cap of {MAP_ITEM_HARD_CAP}"
+            )
         item_outputs: list[Any] = []
         iterations: list[dict[str, Any]] = []
         for index, item in enumerate(items):
@@ -487,6 +499,36 @@ class WorkflowRunner:
             f"loop step {step.step_id} exceeded max_iterations={cap} without satisfying its until condition"
         )
 
+    def _run_step_bounded(
+        self,
+        step: WorkflowStepDefinition,
+        state: WorkflowContextState,
+        ledger: RunLedger | None,
+    ) -> StepResult:
+        """Run a single step under the same wall-clock cap as the parallel path.
+
+        A linear agent chain (and the whole body of a map/loop step, which is
+        itself one step) would otherwise run with no deadline; mirror
+        `_run_wave_parallel` so one hung spawn cannot wedge the run.
+        """
+        pool = ThreadPoolExecutor(max_workers=1)
+        try:
+            future = pool.submit(self._run_step, step, state, ledger)
+            try:
+                return future.result(timeout=STEP_TIMEOUT_SECONDS)
+            except FutureTimeoutError:
+                return StepResult(
+                    step_id=step.step_id,
+                    kind=step.kind,
+                    status="failed",
+                    output="",
+                    output_json={},
+                    error="step timed out: exceeded the per-step deadline",
+                )
+        finally:
+            # wait=False so a hung running step cannot re-wedge the run on shutdown.
+            pool.shutdown(wait=False, cancel_futures=True)
+
     def _run_wave_parallel(
         self,
         pending_wave: tuple[str, ...],
@@ -580,7 +622,7 @@ class WorkflowRunner:
             if len(pending_wave) > 1:
                 results = self._run_wave_parallel(pending_wave, by_id, state, ledger)
             else:
-                results.append(self._run_step(by_id[pending_wave[0]], state, ledger))
+                results.append(self._run_step_bounded(by_id[pending_wave[0]], state, ledger))
 
             results_by_id = {result.step_id: result for result in results}
             ordered_results = [results_by_id[step_id] for step_id in pending_wave]

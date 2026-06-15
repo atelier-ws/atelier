@@ -723,6 +723,159 @@ def benchmark_codebench_cmd(
     click.echo(f"Results: {run_dir}")
 
 
+@benchmark_group.command("local")
+@click.option(
+    "--repo",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=Path("."),
+    show_default=True,
+    help="Your repo to benchmark against (copied per run; never mutated).",
+)
+@click.option(
+    "--prompt",
+    "prompts",
+    multiple=True,
+    required=True,
+    metavar="TEXT",
+    help="A real coding prompt to run on the repo; repeat for up to 10.",
+)
+@click.option("--model", default="sonnet", show_default=True)
+@click.option("--reps", type=int, default=1, show_default=True)
+@click.option("--max-turns", type=int, default=15, show_default=True, help="Turn cap per run.")
+@click.option(
+    "--arm",
+    "arms",
+    multiple=True,
+    default=("baseline", "atelier"),
+    show_default=True,
+    type=click.Choice(["baseline", "atelier"]),
+)
+@click.option(
+    "--cli-driver",
+    type=click.Choice(["claude", "copilot", "codex", "opencode", "atelier-run"]),
+    default="claude",
+    show_default=True,
+    help="CLI host to benchmark.",
+)
+@click.option(
+    "--setup",
+    "setup",
+    multiple=True,
+    metavar="CMD",
+    help="Setup command run inside each workspace before the agent; repeatable.",
+)
+@click.option(
+    "--provider",
+    default=None,
+    metavar="PROVIDER",
+    help=(
+        "Cloud provider shorthand: aws/bedrock, gcp/vertex, azure, openrouter. "
+        "Reads credentials from .env or the current environment."
+    ),
+)
+@click.option("--estimate-only", is_flag=True, help="Print the cost estimate and exit without spending.")
+@click.option(
+    "--capture/--no-capture",
+    default=False,
+    show_default=True,
+    help=(
+        "Capture model traffic via mitmproxy for wire-level cost verification "
+        "(requires mitmproxy). Off by default — cost comes from CLI receipts."
+    ),
+)
+@click.option("--yes", "-y", is_flag=True, help="Skip the confirmation prompt and run.")
+def benchmark_local_cmd(
+    repo: Path,
+    prompts: tuple[str, ...],
+    model: str,
+    reps: int,
+    max_turns: int,
+    arms: tuple[str, ...],
+    cli_driver: str,
+    setup: tuple[str, ...],
+    provider: str | None,
+    estimate_only: bool,
+    capture: bool,
+    yes: bool,
+) -> None:
+    """Benchmark Atelier vs vanilla on YOUR repo with YOUR prompts (real spend).
+
+    Runs each prompt for both arms on the same model and driver, then reports
+    cost / turn / time deltas. Prints an up-front cost estimate and asks to
+    confirm before spending. Uses provider API credentials, not a Claude
+    subscription.
+    """
+    repo_abs = repo.expanduser().resolve()
+    if not repo_abs.is_dir():
+        raise click.ClickException(f"--repo is not a directory: {repo_abs}")
+    git_check = subprocess.run(
+        ["git", "-C", str(repo_abs), "rev-parse", "--git-dir"],
+        capture_output=True,
+        check=False,
+    )
+    if git_check.returncode != 0:
+        raise click.ClickException(f"--repo is not a git repository: {repo_abs}")
+    if not 1 <= len(prompts) <= 10:
+        raise click.ClickException("provide between 1 and 10 --prompt values")
+
+    agent_env_args: list[str] = []
+    if provider:
+        preset_key = _PROVIDER_ALIASES.get(provider.lower())
+        if preset_key is None:
+            raise click.ClickException(
+                f"unknown --provider {provider!r}; choices: {', '.join(sorted(_PROVIDER_ALIASES))}"
+            )
+        preset = resolve_claude_provider_preset(preset_key)
+        if cli_driver not in preset.supported_drivers:
+            raise click.ClickException(f"{preset_key} only supports CLI drivers: {', '.join(preset.supported_drivers)}")
+        for key, value in preset.env.items():
+            agent_env_args.extend(["--agent-env", f"{key}={value}"])
+        for dest, source in preset.env_from_host.items():
+            agent_env_args.extend(["--agent-env-from-host", f"{dest}={source}"])
+
+    run_dir = _run_dir("local", None)
+    bench_root = _bench_source_root()
+
+    def _bench_cmd(*, estimate: bool) -> list[str]:
+        cmd = [
+            *_python_cmd(bench_root),
+            "-m",
+            "benchmarks.codebench.run",
+            "--repo",
+            str(repo_abs),
+            "--arm",
+            *arms,
+            "--reps",
+            str(reps),
+            "--model",
+            model,
+            "--max-turns",
+            str(max_turns),
+            "--cli-driver",
+            cli_driver,
+            "--out",
+            str(run_dir),
+        ]
+        for prompt in prompts:
+            cmd.extend(["--prompt", prompt])
+        for cmd_str in setup:
+            cmd.extend(["--setup", cmd_str])
+        cmd.extend(agent_env_args)
+        cmd.append("--capture" if capture else "--no-capture")
+        if estimate:
+            cmd.append("--estimate-only")
+        return cmd
+
+    # Always show the estimate first.
+    _run(_bench_cmd(estimate=True), cwd=bench_root, label="benchmark local estimate", check=False)
+    if estimate_only:
+        return
+    if not yes and not click.confirm("Proceed and spend real tokens?"):
+        raise click.ClickException("Aborted; no tokens spent.")
+    _run(_bench_cmd(estimate=False), cwd=bench_root, label="benchmark local", check=False)
+    click.echo(f"Results: {run_dir}")
+
+
 def _codebench_run_dir(repo_root: Path) -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     path = repo_root.resolve() / "benchmarks" / "codebench" / "results" / timestamp

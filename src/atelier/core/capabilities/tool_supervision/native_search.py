@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import base64
-import contextlib
 import json
 import logging
 import mimetypes
@@ -17,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from atelier.core.capabilities.native_read_baseline import claude_read_baseline_text
 from atelier.core.foundation.redaction import redact_tool_output
 
 try:  # Third-party engine supporting a per-call wall-clock `timeout=` on search.
@@ -31,7 +31,6 @@ SearchOutputMode = Literal[
     "file_paths_with_match_count",
 ]
 
-CLAUDE_READ_LINE_LIMIT = 2000
 MAX_STRUCTURED_OUTPUT_CHARS = 80_000
 DEFAULT_CONTEXT_BUDGET_TOKENS = 6_000
 INLINE_CHARS_PER_TOKEN = 2
@@ -43,6 +42,22 @@ _REGEX_DEADLINE_SECONDS = 5.0
 # Per-line input cap fed to the user regex — a single pathological line cannot
 # drive backtracking time superlinearly past this bound.
 _REGEX_MAX_LINE_CHARS = 20_000
+# Tighter per-line cap used only on the stdlib `re` fallback path. `re` has no
+# per-call wall-clock hook, so a single catastrophic-backtracking match (e.g.
+# `(a+)+$`) runs to completion in C with only a between-lines deadline check.
+# Capping the input chars fed to `re` bounds that superlinear blowup; the
+# `regex` engine keeps the wider bound because its `timeout=` aborts mid-match.
+_REGEX_MAX_LINE_CHARS_RE_FALLBACK = 2_000
+# Per-file byte ceiling for reading a candidate's contents during search. Files
+# larger than this are skipped (and logged) rather than read in full — a few
+# hundred-MB tracked `.log`/`.json`/`.csv`/extensionless dumps must not be
+# slurped into memory per search. Env-overridable for repos that need it.
+_MAX_SEARCH_FILE_BYTES = int(os.environ.get("ATELIER_SEARCH_MAX_FILE_BYTES", str(5 * 1024 * 1024)))
+# Upper bound on candidate paths materialized by `_iter_files`. Stops walking a
+# pathological subtree once enough candidates are gathered to satisfy any
+# caller `file_limit` (default 100) with margin. Skipped for graph modes that
+# need the full candidate set (e.g. `#imported-by`).
+_MAX_SEARCH_CANDIDATES = int(os.environ.get("ATELIER_SEARCH_MAX_CANDIDATES", str(20_000)))
 SKIP_DIRS: frozenset[str] = frozenset(
     {
         # VCS
@@ -189,13 +204,19 @@ def _safe_resolve(root: Path, raw_path: str | Path) -> Path:
     path = Path(raw_path)
     resolved = path if path.is_absolute() else root / path
     resolved = resolved.resolve()
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
-        raise ValueError(
-            f"path escape denied: {raw_path} is outside the workspace root {root} — "
-            "atelier tools only operate inside the workspace; use the host's native shell/read for system paths"
-        ) from exc
+    # Reads are not confined to the workspace root — an absolute path to a
+    # config file, sibling repo, or system path is legitimate for read tools.
+    # Only block relative paths that escape via ".." traversal (almost always
+    # unintentional).  Writes remain strictly confined (rich_edit._resolve
+    # keeps its own unconditional out-of-workspace check).
+    if not path.is_absolute():
+        try:
+            resolved.relative_to(root)
+        except ValueError as exc:
+            raise ValueError(
+                f"path escape denied: {raw_path} is outside the workspace root {root} — "
+                "use an absolute path to read files outside the workspace"
+            ) from exc
     return resolved
 
 
@@ -246,6 +267,24 @@ def _iter_files(
     expanded = list(patterns)
     if type_alias:
         expanded.extend(PatternSpec(pattern=item) for item in _TYPE_ALIASES.get(type_alias.lower(), []))
+    # `#imported-by` resolves which files import a target, so it must scan the
+    # whole candidate set — the walk cap would silently drop importers. Every
+    # other mode is bounded so a pathological subtree cannot be materialized in
+    # full. The cap is generous (default 20k) so normal repos are unaffected.
+    capped = not any(spec.graph_mode == "imported_by" for spec in expanded)
+    cap = _MAX_SEARCH_CANDIDATES if capped else None
+
+    def _capped(count: int) -> bool:
+        if cap is not None and count >= cap:
+            logging.info(
+                "search candidate walk capped at %d files; some files under %s are "
+                "not searched (raise ATELIER_SEARCH_MAX_CANDIDATES or narrow the path/glob)",
+                cap,
+                base,
+            )
+            return True
+        return False
+
     if not expanded and base.is_file():
         expanded.append(PatternSpec(pattern=str(base.relative_to(root))))
     elif not expanded and base.is_dir():
@@ -259,6 +298,8 @@ def _iter_files(
             if not resolved.is_relative_to(root):
                 continue
             found.setdefault(resolved, fallback_spec)
+            if _capped(len(found)):
+                break
         return sorted(found.items(), key=lambda pair: str(pair[0]))
 
     candidates: dict[Path, PatternSpec] = {}
@@ -279,6 +320,8 @@ def _iter_files(
                 if any(part in _SKIP_DIRS for part in resolved.parts):
                     continue
                 candidates.setdefault(resolved, spec)
+                if _capped(len(candidates)):
+                    break
             continue
 
         candidate = _safe_resolve(root, raw)
@@ -293,6 +336,8 @@ def _iter_files(
                 if not resolved.is_relative_to(root):
                     continue
                 candidates.setdefault(resolved, spec)
+                if _capped(len(candidates)):
+                    break
 
     return sorted(candidates.items(), key=lambda pair: str(pair[0]))
 
@@ -304,6 +349,33 @@ def _is_text_file(path: Path) -> bool:
     # Search anything that is not a known binary type: covers code files like
     # .rs/.go/.java/.c and extensionless files (Dockerfile, Makefile, LICENSE).
     return suffix not in _IMAGE_SUFFIXES and suffix not in _PDF_SUFFIXES and suffix not in _BINARY_SUFFIXES
+
+
+def _read_search_text(path: Path) -> str | None:
+    """Read a candidate's text for matching, skipping oversized files.
+
+    `_is_text_file` admits large `.log`/`.json`/`.csv`/extensionless dumps, and
+    reading a few hundred-MB tracked file in full per search is a DoS surface.
+    Files over ``_MAX_SEARCH_FILE_BYTES`` are skipped (logged so coverage isn't
+    silently truncated); returns ``None`` for a skip and on read errors.
+    """
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return None
+    if size > _MAX_SEARCH_FILE_BYTES:
+        logging.info(
+            "search skipped %s: %d bytes exceeds the %d-byte per-file cap "
+            "(raise ATELIER_SEARCH_MAX_FILE_BYTES to include it)",
+            path,
+            size,
+            _MAX_SEARCH_FILE_BYTES,
+        )
+        return None
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
 
 
 def _line_window(lines: list[str], line_no: int, before: int, after: int) -> tuple[int, int, list[str]]:
@@ -323,10 +395,7 @@ def _claude_grep_path_baseline_bytes(rel_path: str) -> int:
 
 
 def _claude_read_baseline_bytes(source: str) -> int:
-    lines = source.splitlines()
-    if len(lines) <= CLAUDE_READ_LINE_LIMIT:
-        return len(source)
-    return len("\n".join(lines[:CLAUDE_READ_LINE_LIMIT]))
+    return len(claude_read_baseline_text(source))
 
 
 def _spill_dir() -> Path:
@@ -433,9 +502,8 @@ def _imported_by_for(root: Path, target: Path, candidates: list[tuple[Path, Patt
     for candidate, _spec in candidates:
         if candidate == target or not candidate.is_file():
             continue
-        try:
-            source = candidate.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        source = _read_search_text(candidate)
+        if source is None:
             continue
         imports = _imports_for(candidate, source)
         hit = False
@@ -526,10 +594,14 @@ def _match_line_numbers(
         # backtracking search. Stdlib `re` has no such hook, so it relies only
         # on the between-iteration deadline check below.
         timed_pattern: Any = regex if _regex_module is not None and isinstance(regex, _regex_module.Pattern) else None
+        # On the stdlib `re` fallback (no per-call wall-clock hook) feed each
+        # line through a tighter char cap so one catastrophic-backtracking match
+        # cannot run to completion in C past a bounded input length.
+        max_line_chars = _REGEX_MAX_LINE_CHARS if timed_pattern is not None else _REGEX_MAX_LINE_CHARS_RE_FALLBACK
         for idx, line in enumerate(lines, start=1):
             if deadline is not None and time.monotonic() > deadline:
                 break
-            window = line[:_REGEX_MAX_LINE_CHARS]
+            window = line[:max_line_chars]
             if timed_pattern is not None and deadline is not None:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -638,11 +710,14 @@ def _render_text_result(
         if output_mode == "file_paths_with_content":
             return f"{rel} (unchanged)", 0
 
-    source = (
-        _extract_pdf(path)
-        if path.suffix.lower() in _PDF_SUFFIXES
-        else path.read_text(encoding="utf-8", errors="replace")
-    )
+    if path.suffix.lower() in _PDF_SUFFIXES:
+        source = _extract_pdf(path)
+    else:
+        read = _read_search_text(path)
+        if read is None:
+            # Oversized or unreadable: skip rather than slurp the file in full.
+            return None, 0
+        source = read
     if path.suffix.lower() == ".ipynb":
         source = _compact_notebook(source)
 
@@ -790,11 +865,13 @@ def search_workspace(
                 continue
             if since is not None and datetime.fromtimestamp(candidate.stat().st_mtime) <= since:
                 continue
-            source = (
-                _extract_pdf(candidate)
-                if candidate.suffix.lower() in _PDF_SUFFIXES
-                else candidate.read_text(encoding="utf-8", errors="replace")
-            )
+            if candidate.suffix.lower() in _PDF_SUFFIXES:
+                source = _extract_pdf(candidate)
+            else:
+                read = _read_search_text(candidate)
+                if read is None:
+                    continue
+                source = read
             lines = source.splitlines()
             if spec.graph_mode == "imports":
                 imports = _imports_for(candidate, source)
@@ -954,9 +1031,9 @@ def search_workspace(
             imported = _imported_by_for(root, candidate, candidates)
             rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
             rendered = f"{rel}\nimported-by:\n" + "\n".join(f"- {item}" for item in imported)
-            with contextlib.suppress(OSError):
-                source = candidate.read_text(encoding="utf-8", errors="replace")
-                naive_bytes += _claude_read_baseline_bytes(source)
+            target_source = _read_search_text(candidate)
+            if target_source is not None:
+                naive_bytes += _claude_read_baseline_bytes(target_source)
             file_match_count += 1
             remaining = effective_cap_chars - total_chars
             if remaining <= 0:

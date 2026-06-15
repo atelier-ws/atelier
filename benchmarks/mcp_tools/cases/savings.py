@@ -26,6 +26,10 @@ from pathlib import Path
 from typing import Any
 
 import tiktoken
+from atelier.core.capabilities.native_read_baseline import (
+    CLAUDE_NATIVE_READ_LINE_LIMIT,
+    claude_read_baseline_text,
+)
 
 from benchmarks.mcp_tools.harness import BaselineMeasurement, BenchCase
 
@@ -315,24 +319,24 @@ def _ensure_fixtures() -> dict[str, Path]:
 # Baseline builders
 # ---------------------------------------------------------------------------
 
-_CLAUDE_NATIVE_LINE_LIMIT = 2000  # Claude Code's built-in Read caps here
-
 
 def _baseline_claude_read(case: BenchCase) -> BaselineMeasurement:
-    """Baseline = Claude's built-in Read (capped at 2000 lines).
+    """Baseline = Claude's built-in Read (capped at the native line limit).
 
     This is the honest baseline: what would an agent receive if they called
     the native Read tool instead of Atelier's ``read``?  Claude Code truncates
-    at 2000 lines, so any file longer than that only exposes a partial view.
+    at a fixed line cap, so any file longer than that only exposes a partial
+    view. The cap and truncation come from the shared runtime estimator, so this
+    benchmark and the live savings numbers can never silently diverge.
     """
     path = Path(str(case.args["path"]))
     text = path.read_text(encoding="utf-8", errors="replace")
-    lines = text.splitlines()
-    native = "\n".join(lines[:_CLAUDE_NATIVE_LINE_LIMIT])
+    native = claude_read_baseline_text(text)
+    line_count = min(len(text.splitlines()), CLAUDE_NATIVE_READ_LINE_LIMIT)
     return BaselineMeasurement(
         payload=native,
         input_file_tokens=_tok(native),
-        commands=[f"Read({path.name})  # native, {min(len(lines), _CLAUDE_NATIVE_LINE_LIMIT)} lines"],
+        commands=[f"Read({path.name})  # native, {line_count} lines"],
     )
 
 
@@ -429,9 +433,9 @@ def _assert_outline(result: dict[str, Any]) -> None:
     if isinstance(outline, dict):
         symbols = outline.get("symbols") or []
         text = outline.get("text") or ""
-        assert (
-            len(symbols) > 0 or len(text) > 10
-        ), f"outline appears empty: symbols={len(symbols)}, text_len={len(text)} — likely a silent parse failure"
+        assert len(symbols) > 0 or len(text) > 10, (
+            f"outline appears empty: symbols={len(symbols)}, text_len={len(text)} — likely a silent parse failure"
+        )
 
 
 def _assert_range(result: dict[str, Any]) -> None:
@@ -464,9 +468,9 @@ def _assert_scip_callers(result: dict[str, Any]) -> None:
 
 
 def _assert_scip_search(result: dict[str, Any]) -> None:
-    assert (
-        "items" in result or "symbols" in result or "rendered" in result
-    ), f"symbols search must return items/symbols/rendered, got keys: {list(result.keys())}"
+    assert "items" in result or "symbols" in result or "rendered" in result, (
+        f"symbols search must return items/symbols/rendered, got keys: {list(result.keys())}"
+    )
 
 
 # ---------------------------------------------------------------------------

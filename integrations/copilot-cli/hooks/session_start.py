@@ -16,8 +16,21 @@ def _atelier_root() -> Path:
     return Path(os.environ.get("ATELIER_ROOT", "") or Path.home() / ".atelier")
 
 
-def _workspace_savings_path(workspace: str) -> Path:
-    h = hashlib.sha256(str(Path(workspace).resolve()).encode()).hexdigest()[:12]
+def _session_savings_path(workspace: str) -> Path:
+    """Resolve the per-session savings path, mirroring the MCP writer.
+
+    Must match stop.py's reader and mcp_server.py's writer:
+    1. If a host session-id env var is set (GITHUB_COPILOT_SESSION_ID, plus
+       CLAUDE_CODE_SESSION_ID for parity) -> sessions/<sid>/savings.jsonl.
+    2. Else workspaces/<sha256(resolve(ATELIER_WORKSPACE_ROOT or cwd))[:12]>/
+       session_savings.jsonl.
+    """
+    for env_var in ("GITHUB_COPILOT_SESSION_ID", "CLAUDE_CODE_SESSION_ID"):
+        sid = os.environ.get(env_var, "").strip()
+        if sid:
+            return _atelier_root() / "sessions" / sid / "savings.jsonl"
+    workspace = str(Path(os.environ.get("ATELIER_WORKSPACE_ROOT") or workspace).resolve())
+    h = hashlib.sha256(workspace.encode()).hexdigest()[:12]
     return _atelier_root() / "workspaces" / h / "session_savings.jsonl"
 
 
@@ -34,7 +47,7 @@ def main() -> None:
         or os.getcwd()
     )
 
-    path = _workspace_savings_path(workspace)
+    path = _session_savings_path(workspace)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("")

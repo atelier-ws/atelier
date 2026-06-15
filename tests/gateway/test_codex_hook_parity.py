@@ -275,6 +275,111 @@ def test_user_prompt_records_agent_message_and_last_prompt(tmp_path: Path) -> No
     assert messages[0]["payload"]["prompt"] == "Refactor the parser"
 
 
+def test_user_prompt_banks_pending_compaction_credit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """After /compact, the next user prompt banks the one-time cache-read saving.
+
+    PreCompact stored the pre-compaction occupancy; once a turn runs on the
+    compacted window the prompt path reads the smaller occupancy and appends a
+    ``kind:"compaction"`` row priced at the cache-read rate, then clears the
+    precompact_* keys. Parity with the Claude UserPromptSubmit hook.
+    """
+    root = tmp_path / ".atelier"
+    session_id = "run1"
+    _seed_run_file(root, session_id)
+    payload = {
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": session_id,
+        "prompt": "Continue",
+        "cwd": str(tmp_path),
+    }
+    # PreCompact snapshot: 180k tokens were in the window before compaction.
+    _write_session_state(
+        root,
+        payload,
+        {
+            "precompact_pending": True,
+            "precompact_occupancy": 180_000,
+            "precompact_model": "gpt-5",
+            "precompact_attempts": 0,
+        },
+    )
+    # Post-compaction the window now holds 60k tokens.
+    monkeypatch.setattr(
+        "atelier.gateway.hosts.context_state.host_context_state",
+        lambda host, session_id: (60_000, "gpt-5"),
+    )
+
+    plugin_runtime._codex_enrich_user_prompt(root, payload)
+
+    rows = [
+        json.loads(line)
+        for line in (root / "sessions" / session_id / "savings.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    comp = [r for r in rows if r.get("kind") == "compaction"]
+    assert len(comp) == 1
+    assert comp[0]["tokens"] == 120_000
+    assert comp[0]["calls"] == 0
+    assert comp[0]["model"] == "gpt-5"
+    # gpt-5 cache-read = $0.125/1M, no long-context premium: 120k -> $0.015.
+    assert comp[0]["usd"] == pytest.approx(0.015, abs=1e-9)
+
+    # precompact_* keys are cleared so the credit is one-shot per compaction.
+    state = json.loads(plugin_runtime._codex_session_state_path(root, payload).read_text(encoding="utf-8"))
+    assert "precompact_pending" not in state
+    assert "precompact_occupancy" not in state
+    assert "precompact_model" not in state
+    assert "precompact_attempts" not in state
+
+    # A second prompt does not double-credit (no pending compaction left).
+    plugin_runtime._codex_enrich_user_prompt(root, payload)
+    rows2 = [
+        json.loads(line)
+        for line in (root / "sessions" / session_id / "savings.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len([r for r in rows2 if r.get("kind") == "compaction"]) == 1
+
+
+def test_user_prompt_skips_compaction_credit_when_delta_not_visible(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No credit while the post-compaction window hasn't shrunk yet; give up after 3."""
+    root = tmp_path / ".atelier"
+    session_id = "run1"
+    _seed_run_file(root, session_id)
+    payload = {
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": session_id,
+        "prompt": "Continue",
+        "cwd": str(tmp_path),
+    }
+    _write_session_state(
+        root,
+        payload,
+        {
+            "precompact_pending": True,
+            "precompact_occupancy": 180_000,
+            "precompact_model": "gpt-5",
+            "precompact_attempts": 0,
+        },
+    )
+    # Occupancy has NOT dropped (delta <= 0) -> no credit, attempts increments.
+    monkeypatch.setattr(
+        "atelier.gateway.hosts.context_state.host_context_state",
+        lambda host, session_id: (185_000, "gpt-5"),
+    )
+
+    for _ in range(3):
+        plugin_runtime._codex_enrich_user_prompt(root, payload)
+
+    savings = root / "sessions" / session_id / "savings.jsonl"
+    assert not savings.exists()
+    # After 3 unresolved attempts the pending state is cleared (stop trying).
+    state = json.loads(plugin_runtime._codex_session_state_path(root, payload).read_text(encoding="utf-8"))
+    assert "precompact_pending" not in state
+
+
 # --------------------------------------------------------------------------
 # PermissionRequest auto-deny (Codex-exclusive)
 # --------------------------------------------------------------------------

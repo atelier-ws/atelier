@@ -12,11 +12,7 @@
 #   --all          Force attempt all hosts (same as default in non-TTY)
 #   --claude       Only install Claude Code
 #   --codex        Only install Codex
-#   --cursor       Only install Cursor
 #   --opencode     Only install opencode
-#   --copilot      Only install Copilot
-#   --hermes       Only install Hermes Agent
-#   --antigravity  Only install Antigravity / agy
 #   --dry-run      Pass through to all install scripts
 #   --print-only   Pass through to all install scripts
 #   --strict       Pass through; scripts exit nonzero if CLI absent
@@ -95,11 +91,7 @@ host_is_detected() {
     case "$host" in
         claude) command -v claude >/dev/null 2>&1 ;;
         codex) command -v codex >/dev/null 2>&1 ;;
-        cursor) [[ -d "${HOME}/.cursor" ]] ;;
         opencode) command -v opencode >/dev/null 2>&1 ;;
-        copilot) command -v code >/dev/null 2>&1 ;;
-        hermes) [[ -n "${HERMES_HOME:-}" ]] || [[ -n "${HERMES_SESSION_ID:-}" ]] || command -v hermes >/dev/null 2>&1 ;;
-        antigravity) command -v antigravity >/dev/null 2>&1 || command -v agy >/dev/null 2>&1 ;;
         *) return 1 ;;
     esac
 }
@@ -107,11 +99,7 @@ host_is_detected() {
 enable_detected_hosts_by_default() {
     host_is_detected claude && DO_CLAUDE=true
     host_is_detected codex && DO_CODEX=true
-    host_is_detected cursor && DO_CURSOR=true
     host_is_detected opencode && DO_OPENCODE=true
-    host_is_detected copilot && DO_COPILOT=true
-    host_is_detected hermes && DO_HERMES=true
-    host_is_detected antigravity && DO_ANTIGRAVITY=true
 }
 
 run_host_installer() {
@@ -214,25 +202,17 @@ spinner_finish() {
 
 DO_CLAUDE=false
 DO_CODEX=false
-DO_CURSOR=false
 DO_OPENCODE=false
-DO_COPILOT=false
-DO_HERMES=false
-DO_ANTIGRAVITY=false
 EXPLICIT=false
 PASSTHROUGH=()
 CLAUDE_EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --all)       EXPLICIT=true; DO_CLAUDE=true; DO_CODEX=true; DO_CURSOR=true; DO_OPENCODE=true; DO_COPILOT=true; DO_HERMES=true; DO_ANTIGRAVITY=true ;;
+        --all)       EXPLICIT=true; DO_CLAUDE=true; DO_CODEX=true; DO_OPENCODE=true ;;
         --claude)    EXPLICIT=true; DO_CLAUDE=true ;;
         --codex)     EXPLICIT=true; DO_CODEX=true ;;
-        --cursor)    EXPLICIT=true; DO_CURSOR=true ;;
         --opencode)  EXPLICIT=true; DO_OPENCODE=true ;;
-        --copilot)   EXPLICIT=true; DO_COPILOT=true ;;
-        --hermes)    EXPLICIT=true; DO_HERMES=true ;;
-        --antigravity) EXPLICIT=true; DO_ANTIGRAVITY=true ;;
         --dry-run|--print-only|--strict) PASSTHROUGH+=("$1") ;;
         --workspace)
             if [ $# -lt 2 ]; then
@@ -269,10 +249,6 @@ if ! $EXPLICIT && has_interactive_input && [[ -t 1 ]]; then
     echo "  ${C_PURPLE}1${C_RESET}) Claude Code"
     echo "  ${C_PURPLE}2${C_RESET}) OpenCode"
     echo "  ${C_PURPLE}3${C_RESET}) Codex CLI"
-    echo "  ${C_PURPLE}4${C_RESET}) Cursor"
-    echo "  ${C_PURPLE}5${C_RESET}) GitHub Copilot"
-    echo "  ${C_PURPLE}6${C_RESET}) Hermes Agent"
-    echo "  ${C_PURPLE}7${C_RESET}) Antigravity / agy"
     echo "  ${C_PURPLE}a${C_RESET}) All"
     echo "  ${C_PURPLE}n${C_RESET}) None (skip agent installs)"
     echo ""
@@ -281,10 +257,10 @@ if ! $EXPLICIT && has_interactive_input && [[ -t 1 ]]; then
     runtime_answer="${runtime_answer:-a}"
 
     # Reset all to false — user picks explicitly
-    DO_CLAUDE=false; DO_CODEX=false; DO_CURSOR=false; DO_OPENCODE=false; DO_COPILOT=false; DO_HERMES=false; DO_ANTIGRAVITY=false 
+    DO_CLAUDE=false; DO_CODEX=false; DO_OPENCODE=false
     case "$runtime_answer" in
         a|A|all|ALL)
-            DO_CLAUDE=true; DO_CODEX=true; DO_CURSOR=true; DO_OPENCODE=true; DO_COPILOT=true; DO_HERMES=true; DO_ANTIGRAVITY=true
+            DO_CLAUDE=true; DO_CODEX=true; DO_OPENCODE=true
             echo "  → All agents"
             ;;
         n|N|none|NONE|skip|SKIP|0)
@@ -298,10 +274,6 @@ if ! $EXPLICIT && has_interactive_input && [[ -t 1 ]]; then
                     1) DO_CLAUDE=true ;;
                     2) DO_OPENCODE=true ;;
                     3) DO_CODEX=true ;;
-                    4) DO_CURSOR=true ;;
-                    5) DO_COPILOT=true ;;
-                    6) DO_HERMES=true ;;
-                    7) DO_ANTIGRAVITY=true ;;
                     *) echo "  ${C_YELLOW}Unknown choice: $choice${C_RESET}" ;;
                 esac
             done
@@ -309,10 +281,6 @@ if ! $EXPLICIT && has_interactive_input && [[ -t 1 ]]; then
             $DO_CLAUDE    && selected="$selected claude"
             $DO_OPENCODE  && selected="$selected opencode"
             $DO_CODEX     && selected="$selected codex"
-            $DO_CURSOR    && selected="$selected cursor"
-            $DO_COPILOT   && selected="$selected copilot"
-            $DO_HERMES    && selected="$selected hermes"
-            $DO_ANTIGRAVITY && selected="$selected antigravity"
             echo "  → Selected:${selected:- none}"
             ;;
     esac
@@ -321,7 +289,7 @@ if ! $EXPLICIT && has_interactive_input && [[ -t 1 ]]; then
 
     # ── Scope selection ────────────────────────────────────────────────────
     # Only prompt for scope if at least one runtime was selected
-    if $DO_CLAUDE || $DO_CODEX || $DO_CURSOR || $DO_OPENCODE || $DO_COPILOT || $DO_HERMES || $DO_ANTIGRAVITY; then
+    if $DO_CLAUDE || $DO_CODEX || $DO_OPENCODE; then
         echo "  ${C_YELLOW}Install scope:${C_RESET}"
         echo ""
         echo "  ${C_PURPLE}1${C_RESET}) Global — available in all projects"
@@ -555,11 +523,7 @@ fi
 
 $DO_CLAUDE    && run_installer claude
 $DO_CODEX     && run_installer codex
-$DO_CURSOR    && run_installer cursor
 $DO_OPENCODE  && run_installer opencode
-$DO_COPILOT   && run_installer copilot
-$DO_HERMES    && run_installer hermes
-$DO_ANTIGRAVITY && run_installer antigravity
 
 echo ""
 print_message "$C_PURPLE" "══════════════════════════════════════════════"
