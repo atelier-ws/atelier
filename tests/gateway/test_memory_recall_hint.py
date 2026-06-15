@@ -77,3 +77,29 @@ def test_recall_folds_in_session_passages(monkeypatch: pytest.MonkeyPatch) -> No
             "tags": ["session-recall", "agent:any"],
         }
     ]
+
+
+def test_recall_caps_merged_passages_to_top_k(monkeypatch: pytest.MonkeyPatch) -> None:
+    """RF#1: merged memory+session passages must not exceed top_k, and session
+    hits must stay visible within that budget."""
+    monkeypatch.setattr(
+        mcp_server,
+        "_memory_service",
+        lambda: _FakeService([{"text": f"m{i}", "source_ref": f"m{i}"} for i in range(5)]),
+    )
+    monkeypatch.setattr(mcp_server, "_atelier_root", lambda: "/tmp/does-not-matter")
+    from atelier.core.capabilities import session_recall
+
+    monkeypatch.setattr(
+        session_recall,
+        "recall",
+        lambda *a, **k: [
+            {"text": f"s{i}", "session": f"s{i}", "tags": [], "created_at": "2026-01-01T00:00:00+00:00"}
+            for i in range(3)
+        ],
+    )
+    out = mcp_server._memory_recall(None, "q", top_k=5)
+    assert len(out["passages"]) <= 5
+    assert any(
+        str(p.get("source_ref", "")).startswith("s") for p in out["passages"]
+    ), "past-session hits should remain visible within the top_k budget"

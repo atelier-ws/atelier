@@ -42,6 +42,28 @@ def test_failed_traces_populate_lesson_inbox(tmp_path: Path, monkeypatch: pytest
     assert inbox.lessons, "3 similar failed traces should yield a clustered lesson candidate"
 
 
+def test_recurring_failures_dedup_to_single_candidate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression for the review's Blocker: recurring failures must refresh one
+    # cluster candidate, not insert a near-duplicate per recurrence.
+    monkeypatch.setenv("ATELIER_LESSON_CLUSTER_THRESHOLD", "0.0")
+    monkeypatch.setattr(
+        "atelier.core.capabilities.lesson_promotion.capability.draft_lesson_body",
+        lambda traces: "clustered failure lesson",
+    )
+    client = LocalClient(root=tmp_path / ".atelier")
+    for i in range(5):
+        client.record_trace(
+            agent="atelier:code",
+            domain="coding",
+            task=f"write fails on locked path {i}",
+            status="failed",
+            errors_seen=["PermissionError: permission denied"],
+            output_summary="write failed: permission denied",
+        )
+    inbox = client.lesson_inbox(domain="coding")
+    assert len(inbox.lessons) == 1, f"recurring failures should dedup to one candidate, got {len(inbox.lessons)}"
+
+
 def test_failed_traces_without_errors_do_not_populate_inbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_LESSON_CLUSTER_THRESHOLD", "0.0")
     client = LocalClient(root=tmp_path / ".atelier")
