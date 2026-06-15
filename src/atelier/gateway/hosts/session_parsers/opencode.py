@@ -158,8 +158,11 @@ class OpenCodeImporter:
         seen_event_ids: set[str] = set()
         previous_unidentified_event = ""
 
-        for line in redacted.splitlines():
-            line = line.strip()
+        # Redact per line, not whole-file (see the claude reader): a cross-record
+        # DOTALL match would merge JSONL records and silently drop turns. The
+        # stored artifact above stays whole-file redacted.
+        for raw_line in raw_content.splitlines():
+            line = redact(raw_line.strip())
             if not line:
                 continue
             try:
