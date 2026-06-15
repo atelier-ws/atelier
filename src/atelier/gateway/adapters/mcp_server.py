@@ -3581,7 +3581,14 @@ def _memory_recall(
     tags: list[str] | None = None,
     since: str | None = None,
 ) -> dict[str, Any]:
-    """Recall relevant archival memory passages."""
+    """Recall relevant archival memory passages.
+
+    The recall surface spans two stores: durable memory (``memory.db`` via
+    ``MemoryService``) and past-session transcripts (``recall.db``, populated by
+    the SessionStart indexer in ``session_recall``). They are separate SQLite
+    files with independently scaled scores, so memory passages are listed first,
+    then past-session hits are appended.
+    """
     result = (
         _memory_service()
         .recall(
@@ -3593,7 +3600,12 @@ def _memory_recall(
         )
         .model_dump(mode="json")
     )
-    if not result.get("passages"):
+    passages = result.get("passages")
+    if not isinstance(passages, list):
+        passages = []
+        result["passages"] = passages
+    passages.extend(_session_recall_passages(query, top_k))
+    if not passages:
         # Helpful state hint instead of a bare empty result, so the model knows
         # memory is working and how to seed it.
         result["hint"] = (
@@ -3601,6 +3613,24 @@ def _memory_recall(
             "memory(op=store_fact); past-session recall improves as sessions are indexed."
         )
     return result
+
+
+def _session_recall_passages(query: str, top_k: int) -> list[dict[str, Any]]:
+    """Past-session recall hits from ``recall.db``, shaped like
+    ``MemoryRecallPassage`` so ``memory(op=recall)`` renders them next to
+    ``memory.db`` passages. Best-effort: ``session_recall.recall`` returns ``[]``
+    when the index is missing or the embedder is unavailable."""
+    from atelier.core.capabilities import session_recall
+
+    return [
+        {
+            "id": str(hit.get("session") or ""),
+            "text": str(hit.get("text") or ""),
+            "source_ref": str(hit.get("session") or ""),
+            "tags": list(hit.get("tags") or []),
+        }
+        for hit in session_recall.recall(_atelier_root(), query, top_k=top_k)
+    ]
 
 
 def _memory_service() -> MemoryService:
