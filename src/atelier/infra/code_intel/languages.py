@@ -59,6 +59,9 @@ LANGUAGES: tuple[Language, ...] = (
     Language("yaml", frozenset({".yaml", ".yml"}), "yaml", None),
     Language("toml", frozenset({".toml"}), "toml", None),
     Language("json", frozenset({".json"}), "json", None),
+    Language("html", frozenset({".html", ".htm"}), "html", None),
+    Language("css", frozenset({".css"}), "css", None),
+    Language("lua", frozenset({".lua"}), "lua", None),
 )
 
 

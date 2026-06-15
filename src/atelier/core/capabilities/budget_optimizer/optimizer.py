@@ -32,8 +32,42 @@ Usage::
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import os
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field, replace
 from typing import Any
+
+# External utility source: maps a ContextBlock to a replacement utility in
+# [0, 1], or a plain mapping of block id -> utility. Used to drive selection
+# from perplexity/entropy signals (T10) instead of the static block utility.
+UtilitySource = Callable[["ContextBlock"], float] | Mapping[str, float]
+
+_PERPLEXITY_FLAG = "ATELIER_PERPLEXITY_COMPRESSION"
+
+
+def _perplexity_compression_enabled() -> bool:
+    """True when the default-off ``ATELIER_PERPLEXITY_COMPRESSION`` flag is set."""
+    raw = os.environ.get(_PERPLEXITY_FLAG)
+    if raw is None:
+        return False
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_utility(block: ContextBlock, source: UtilitySource) -> float:
+    """Look up *block*'s external utility, clamped to ``[0, 1]``.
+
+    Falls back to the block's own static utility when the source has no value
+    for it (callable returning ``None`` or a mapping missing the id).
+    """
+    value: float | None
+    if callable(source):
+        value = source(block)
+    else:
+        value = source.get(block.id)
+    if value is None:
+        return block.utility
+    return max(0.0, min(1.0, float(value)))
+
 
 # ---------------------------------------------------------------------------
 # Optional deps (import-guarded)
@@ -197,6 +231,7 @@ class PromptBudgetOptimizer:
         token_budget: int,
         *,
         diversity_bonus: float | None = None,
+        utility_source: UtilitySource | None = None,
     ) -> BudgetPlan:
         """Return a :class:`BudgetPlan` maximising utility within *token_budget*.
 
@@ -204,6 +239,12 @@ class PromptBudgetOptimizer:
             blocks:          Candidate context blocks.
             token_budget:    Maximum total token count to include.
             diversity_bonus: Override instance default.
+            utility_source:  Optional external per-block utility source
+                (callable ``block -> float`` or ``{id: utility}`` mapping),
+                e.g. perplexity/entropy scores from T10. Applied **only** when
+                the default-off ``ATELIER_PERPLEXITY_COMPRESSION`` flag is set;
+                when the flag is off the static ``block.utility`` is used and
+                behavior is identical to before.
 
         Returns:
             A :class:`BudgetPlan` with the selected / dropped blocks.
@@ -218,6 +259,11 @@ class PromptBudgetOptimizer:
                 total_utility=0.0,
                 solver_used="greedy",
             )
+
+        # External utility override (T10) is gated behind the default-off flag
+        # so existing callers keep their exact static-utility behavior.
+        if utility_source is not None and _perplexity_compression_enabled():
+            blocks = [replace(b, utility=_resolve_utility(b, utility_source)) for b in blocks]
 
         feasible = [b for b in blocks if b.token_cost <= token_budget]
         infeasible = [b for b in blocks if b.token_cost > token_budget]
