@@ -268,7 +268,7 @@ class ClaudeImporter:
                 return None
 
         try:
-            root_raw_content = jsonl_path.read_text(encoding="utf-8")
+            root_raw_content = jsonl_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             root_raw_content = ""
         inferred_session_id = _extract_session_id_from_jsonl(root_raw_content)
@@ -318,7 +318,7 @@ class ClaudeImporter:
 
         for f_path in all_files:
             try:
-                raw_content = f_path.read_text(encoding="utf-8")
+                raw_content = f_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
             redacted = redact(raw_content)

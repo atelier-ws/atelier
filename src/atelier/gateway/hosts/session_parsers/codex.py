@@ -392,7 +392,7 @@ class CodexImporter:
             rel = Path(jsonl_path.name)
         content_path = f"raw/codex/{rel}"
 
-        raw_content = jsonl_path.read_text(encoding="utf-8")
+        raw_content = jsonl_path.read_text(encoding="utf-8", errors="replace")
         redacted = redact(raw_content)
 
         # ── Step 1: write redacted raw artifact ──────────────────────────────

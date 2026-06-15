@@ -64,7 +64,7 @@ def _save_state(root: str | Path, state: dict[str, float]) -> None:
 def _session_snippets(path: str | Path) -> list[str]:
     """Extract user/assistant text snippets from a transcript JSONL."""
     try:
-        text = Path(path).read_text("utf-8")
+        text = Path(path).read_text("utf-8", errors="replace")
     except OSError:
         return []
     out: list[str] = []
