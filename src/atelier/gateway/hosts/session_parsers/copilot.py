@@ -831,7 +831,7 @@ class CopilotImporter:
         # ── Step 1: write redacted raw artifacts ─────────────────────────────
         artifact_ids: list[str] = []
 
-        events_raw = events_path.read_text(encoding="utf-8")
+        events_raw = events_path.read_text(encoding="utf-8", errors="replace")
         redacted_events = redact(events_raw)
         workspace_raw = workspace_path.read_text(encoding="utf-8")
         redacted_workspace = redact(workspace_raw)
@@ -990,7 +990,7 @@ class CopilotImporter:
             if not transcript_path.exists():
                 return None
 
-            events_raw = transcript_path.read_text(encoding="utf-8")
+            events_raw = transcript_path.read_text(encoding="utf-8", errors="replace")
             redacted_events = redact(events_raw)
             raw_bytes = events_raw.encode("utf-8")
             redacted_bytes = redacted_events.encode("utf-8")
