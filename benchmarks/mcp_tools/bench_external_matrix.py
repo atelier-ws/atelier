@@ -1938,6 +1938,16 @@ def _run_parallel_tool_matrix(
             encoding="utf-8",
         )
         if completed.returncode != 0:
+            # Non-zero exit — check whether the shard still produced usable output.
+            # A crash after results are flushed (e.g. Python shutdown deadlock or
+            # an unexpected signal) should not silently drop hundreds of results.
+            if json_path.is_file():
+                print(
+                    f"[providers] WARNING: shard {tool_name} exited {completed.returncode} "
+                    f"but produced {json_path.name} — salvaging results\n"
+                    f"Log: {log_path}"
+                )
+                return tool_name, json_path
             raise RuntimeError(
                 f"Provider shard {tool_name} failed with exit code {completed.returncode}\n"
                 f"Log: {log_path}\n"
@@ -2140,6 +2150,14 @@ def main() -> None:
     write_case_csv(results, csv_out)
     write_summary_csv(summary, csv_out.with_name("summary.csv"))
     print(render_summary_table(summary))
+    # Shard subprocesses skip Python's shutdown sequence: Python waits for all
+    # non-daemon threads and atexit handlers, which include module-level cleanup
+    # (zoekt server teardown, ProcessPoolExecutor management threads, etc.) that
+    # can block for 10+ minutes after all cases are done and results are written.
+    # The shard has already flushed every output it will ever produce, so a hard
+    # exit is safe and correct.
+    if args.shard_name:
+        os._exit(0)
 
 
 if __name__ == "__main__":

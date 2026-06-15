@@ -92,40 +92,66 @@ class TestApplySilence:
         _apply_silence()
         assert logging.getLogger is orig_get_logger
 
-    def test_filters_future_loggers_via_root_handlers(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_filters_future_loggers_via_named_parents(self) -> None:
         from atelier.core.service.telemetry.exporters.otel import (
             _apply_silence,
             _sdk_noise_filter,
         )
 
-        # Give the root logger a clean handler and ensure the filter lands on it.
-        root = logging.getLogger()
-        handler = logging.Handler()
-        monkeypatch.setattr(root, "handlers", [handler])
+        # Clean baseline: drop the filter from the named parents and lastResort.
+        for name in ("opentelemetry", "urllib3.connectionpool", "requests"):
+            parent = logging.getLogger(name)
+            for f in list(parent.filters):
+                if f is _sdk_noise_filter:
+                    parent.removeFilter(f)
+        assert logging.lastResort is not None
+        for f in list(logging.lastResort.filters):
+            if f is _sdk_noise_filter:
+                logging.lastResort.removeFilter(f)
 
         _apply_silence()
 
-        assert _sdk_noise_filter in handler.filters
+        # The named parents carry the filter (records logged directly through
+        # them — e.g. urllib3.connectionpool — are dropped at source).
+        for name in ("opentelemetry", "urllib3.connectionpool", "requests"):
+            assert _sdk_noise_filter in logging.getLogger(name).filters, f"{name} parent should carry the filter"
 
-    def test_idempotent_no_filter_stacking(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # An opentelemetry.* child logger created lazily *after* init must be
+        # covered. Logger-level filters do not cascade to children, so with no
+        # root handlers the child's record falls back to ``logging.lastResort``
+        # (the implicit stderr handler) — where the filter is installed. Verify
+        # lastResort carries the filter and that it rejects the lazily-created
+        # child's record while passing a non-OTel record.
+        assert _sdk_noise_filter in logging.lastResort.filters
+        lazy_child = logging.getLogger("opentelemetry.sdk._logs._internal.export.lazy_child")
+        otel_record = lazy_child.makeRecord(
+            lazy_child.name, logging.WARNING, "", 0, "Exception while exporting logs.", (), None
+        )
+        keep_record = logging.LogRecord("atelier.keep.me", logging.WARNING, "", 0, "visible", (), None)
+        # Handler.filter returns False to reject, or the record itself to accept.
+        assert logging.lastResort.filter(otel_record) is False
+        assert logging.lastResort.filter(keep_record)
+
+    def test_idempotent_no_filter_stacking(self) -> None:
         from atelier.core.service.telemetry.exporters.otel import (
             _apply_silence,
             _sdk_noise_filter,
         )
 
-        root = logging.getLogger()
-        handler = logging.Handler()
-        monkeypatch.setattr(root, "handlers", [handler])
-        otel_logger = logging.getLogger("opentelemetry.sdk._logs.stacking")
-        for f in list(otel_logger.filters):
+        parent = logging.getLogger("opentelemetry")
+        for f in list(parent.filters):
             if f is _sdk_noise_filter:
-                otel_logger.removeFilter(f)
+                parent.removeFilter(f)
+        assert logging.lastResort is not None
+        for f in list(logging.lastResort.filters):
+            if f is _sdk_noise_filter:
+                logging.lastResort.removeFilter(f)
 
         _apply_silence()
         _apply_silence()  # re-init must not stack duplicate filters
 
-        assert [f for f in handler.filters if f is _sdk_noise_filter] == [_sdk_noise_filter]
-        assert [f for f in otel_logger.filters if f is _sdk_noise_filter] == [_sdk_noise_filter]
+        assert [f for f in parent.filters if f is _sdk_noise_filter] == [_sdk_noise_filter]
+        assert [f for f in logging.lastResort.filters if f is _sdk_noise_filter] == [_sdk_noise_filter]
 
 
 # --------------------------------------------------------------------------- #

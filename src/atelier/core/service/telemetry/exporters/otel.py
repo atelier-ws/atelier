@@ -45,8 +45,10 @@ def _apply_silence() -> None:
 
     Idempotent: re-running never stacks duplicate filters. The filter is
     attached to every existing matching logger (covering loggers that carry
-    their own handlers or disable propagation) and to the root logger's
-    handlers (covering current and future loggers that propagate to root) —
+    their own handlers or disable propagation), to the named parent loggers
+    (covering records logged directly through them), and to
+    ``logging.lastResort`` (covering the lazily-created SDK child loggers
+    whose records fall back to stderr when no root handler is configured) —
     so no global ``logging.getLogger`` monkeypatch is needed to catch loggers
     created later by the SDK.
     """
@@ -58,12 +60,21 @@ def _apply_silence() -> None:
         ):
             _lv.addFilter(_sdk_noise_filter)
 
-    # Records from loggers created later (the SDK creates its loggers lazily)
-    # propagate to the root logger, so filtering at the root handlers catches
-    # them by name without re-wrapping every new logger.
-    for _handler in logging.getLogger().handlers:
-        if not any(f is _sdk_noise_filter for f in _handler.filters):
-            _handler.addFilter(_sdk_noise_filter)
+    # Attach to the named parent loggers so records logged directly through
+    # them (e.g. "urllib3.connectionpool", "requests") are dropped at source.
+    for nm in ("opentelemetry", "urllib3.connectionpool", "requests"):
+        lg = logging.getLogger(nm)
+        if not any(f is _sdk_noise_filter for f in lg.filters):
+            lg.addFilter(_sdk_noise_filter)
+
+    # Logger-level filters do NOT cascade to child loggers, and the SDK creates
+    # its emitting loggers (opentelemetry.sdk._logs.*) lazily after init. With
+    # no root handlers, their records fall back to ``logging.lastResort`` (the
+    # implicit stderr handler). Filtering there suppresses those tracebacks for
+    # all current + future descendants by name — no root handler, no getLogger
+    # monkeypatch.
+    if logging.lastResort is not None and not any(f is _sdk_noise_filter for f in logging.lastResort.filters):
+        logging.lastResort.addFilter(_sdk_noise_filter)
 
 
 _apply_silence()
@@ -109,7 +120,7 @@ def init_otel(
         # Limit OTLP exporter retries to avoid long hangs during shutdown.
         # Default is 64s, which can lead to > 2 minutes of total backoff.
         # Setting this to 2 limits it to one attempt plus minimal backoff.
-        OTLPLogExporter._MAX_RETRY_TIMEOUT = 2
+        OTLPLogExporter._MAX_RETRY_TIMEOUT = 2  # type: ignore[attr-defined]
     except Exception:
         logging.exception("Recovered from broad exception handler")
         return False
@@ -180,7 +191,7 @@ def emit_product_log(event_name: str, props: dict[str, Any]) -> bool:
         return False
     try:
         from opentelemetry._logs.severity import SeverityNumber
-        from opentelemetry.sdk._logs import LogRecord
+        from opentelemetry.sdk._logs import LogRecord  # type: ignore[attr-defined]
         from opentelemetry.trace import TraceFlags, get_current_span
 
         # Flatten dict values to OTel-compatible types (str, int, float, bool)

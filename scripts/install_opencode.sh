@@ -85,7 +85,7 @@ backup_file() {
     fi
     if [ -f "$f" ]; then
         local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
-        run "cp '$f' '$bk'"
+        run "cp $(printf %q "$f") $(printf %q "$bk")"
         info "backed up $f -> $bk"
     fi
 }
@@ -174,7 +174,7 @@ fi
 info "Found opencode: $(opencode --version 2>/dev/null || echo 'version unknown')"
 
 # ---- merge opencode config --------------------------------------------------
-run "mkdir -p '$(dirname "$OC_FILE")'"
+run "mkdir -p $(printf %q "$(dirname "$OC_FILE")")"
 
 if [ -f "$OC_FILE" ]; then
     backup_file "$OC_FILE"
@@ -226,7 +226,7 @@ else
     AGENT_SRC="${ATELIER_REPO}/integrations/opencode/agents/atelier.md"
 
     STAGING_DIR="${HOME}/.atelier/opencode"
-    run "mkdir -p '$STAGING_DIR'"
+    run "mkdir -p $(printf %q "$STAGING_DIR")"
     info "Staging opencode agent instructions"
     atelier_write_managed_copy "${AGENT_SRC}" "$STAGING_DIR/atelier.md" "$DRY_RUN"
     AGENT_SRC="$STAGING_DIR/atelier.md"
@@ -234,8 +234,8 @@ else
     if $DRY_RUN; then
         echo "  [dry-run] copy '$AGENT_SRC' to '$AGENT_DEST_DIR/atelier.md'"
     elif [ -f "$AGENT_SRC" ]; then
-        run "mkdir -p '$AGENT_DEST_DIR'"
-        run "cp -f '$AGENT_SRC' '$AGENT_DEST_DIR/atelier.md'"
+        run "mkdir -p $(printf %q "$AGENT_DEST_DIR")"
+        run "cp -f $(printf %q "$AGENT_SRC") $(printf %q "$AGENT_DEST_DIR/atelier.md")"
         info "atelier agent installed -> $AGENT_DEST_DIR/atelier.md"
     else
         warn "agent source missing: $AGENT_SRC"
@@ -249,7 +249,7 @@ else
             if $DRY_RUN; then
                 echo "  [dry-run] copy '$STAGING_DIR/${agent_name}.md' to '$AGENT_DEST_DIR/${agent_name}.md'"
             else
-                run "cp -f '$STAGING_DIR/${agent_name}.md' '$AGENT_DEST_DIR/${agent_name}.md'"
+                run "cp -f $(printf %q "$STAGING_DIR/${agent_name}.md") $(printf %q "$AGENT_DEST_DIR/${agent_name}.md")"
             fi
             info "${agent_name} agent installed -> $AGENT_DEST_DIR/${agent_name}.md"
         fi
@@ -261,9 +261,9 @@ PLUGIN_SRC_DIR="${ATELIER_REPO}/integrations/opencode/plugins"
 if $DRY_RUN; then
     echo "  [dry-run] copy Atelier nudge plugin to '$PLUGIN_DEST_DIR'"
 else
-    run "mkdir -p '$PLUGIN_DEST_DIR'"
-    run "cp -f '$PLUGIN_SRC_DIR/atelier-nudge.js' '$PLUGIN_DEST_DIR/atelier-nudge.js'"
-    run "cp -f '$PLUGIN_SRC_DIR/atelier_nudge.py' '$PLUGIN_DEST_DIR/atelier_nudge.py'"
+    run "mkdir -p $(printf %q "$PLUGIN_DEST_DIR")"
+    run "cp -f $(printf %q "$PLUGIN_SRC_DIR/atelier-nudge.js") $(printf %q "$PLUGIN_DEST_DIR/atelier-nudge.js")"
+    run "cp -f $(printf %q "$PLUGIN_SRC_DIR/atelier_nudge.py") $(printf %q "$PLUGIN_DEST_DIR/atelier_nudge.py")"
     info "Atelier nudge plugin installed -> $PLUGIN_DEST_DIR/atelier-nudge.js"
 fi
 

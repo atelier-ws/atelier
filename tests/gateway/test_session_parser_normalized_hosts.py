@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import pytest
 
@@ -10,11 +11,20 @@ from atelier.gateway.hosts.session_parsers._common import (
     make_session_line,
     make_tool_call,
     make_user_message,
+    parse_datetime,
 )
 from atelier.gateway.hosts.session_parsers._session_parser import (
     extract_session_usage_summary,
     parse_session_turns,
 )
+
+
+@pytest.mark.parametrize("value", [10**400, "1" * 30])
+def test_parse_datetime_returns_default_for_out_of_range_numeric(value: object) -> None:
+    default = datetime(2026, 1, 1)
+    # float(10**400) raises OverflowError and a 30-digit ms timestamp overflows
+    # datetime.fromtimestamp; both must fall back to the default, not raise.
+    assert parse_datetime(value, default=default) == default
 
 
 @pytest.mark.parametrize("host", ["qwen", "kiro", "roo-code", "antigravity", "goose", "cursor-agent"])

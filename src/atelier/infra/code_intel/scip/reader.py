@@ -6,13 +6,15 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-from atelier.core.capabilities.code_context.call_graph import CallGraphNode
-from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
 from atelier.infra.code_intel.scip.external_artifacts import ScipArtifactOrigin
+
+if TYPE_CHECKING:
+    from atelier.core.capabilities.code_context.call_graph import CallGraphNode
+    from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
 
 _MAX_SCIP_ARTIFACT_BYTES = 10 * 1024 * 1024
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -87,7 +89,9 @@ class LoadedScipArtifact:
             rank = (
                 0
                 if symbol.symbol_name.lower() == query_lower
-                else 1 if symbol.qualified_name.lower() == query_lower else 2
+                else 1
+                if symbol.qualified_name.lower() == query_lower
+                else 2
             )
             ranked.append((rank, symbol.file_path, symbol))
         ranked.sort(key=lambda item: (item[0], item[1], item[2].start_line))
@@ -207,6 +211,8 @@ class ScipArtifactReader:
         self.allowed_roots = [root.resolve() for root in allowed_roots]
 
     def load(self, artifact_path: Path, *, origin: ScipArtifactOrigin = "internal") -> LoadedScipArtifact:
+        from atelier.core.capabilities.code_context.models import SymbolRecord, UsageReference
+
         path = artifact_path.resolve()
         self._validate_path(path)
         try:
@@ -330,6 +336,8 @@ class ScipArtifactReader:
         symbol_payloads: dict[str, dict[str, Any]],
         artifact_path: Path,
     ) -> dict[str, tuple[CallGraphNode, ...]]:
+        from atelier.core.capabilities.code_context.call_graph import CallGraphNode
+
         parsed: dict[str, tuple[CallGraphNode, ...]] = {}
         for raw_symbol_id, raw_neighbors in raw_payload.items():
             if not isinstance(raw_symbol_id, str) or not isinstance(raw_neighbors, list):

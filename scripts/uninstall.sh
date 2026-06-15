@@ -81,7 +81,7 @@ run()  { [[ "$ATELIER_DRY_RUN" == "1" ]] && echo "[dry-run] $*" || eval "$*"; }
 remove_path() {
     local path="$1"
     if [ -e "$path" ] || [ -L "$path" ]; then
-        run "rm -rf '$path'"
+        run "rm -rf $(printf %q "$path")"
         info "Removed ${path}"
     fi
 }
@@ -157,7 +157,7 @@ purge_leftovers() {
     remove_path "${HOME}/.codex/plugins/cache/atelier"
     remove_path "${HOME}/.codex/plugins/cache/openai-curated/atelier"
     if [ -f "${HOME}/.copilot/hooks/hooks.json" ] && grep -q "atelier" "${HOME}/.copilot/hooks/hooks.json" 2>/dev/null; then
-        run "rm -f '${HOME}/.copilot/hooks/hooks.json'"
+        run "rm -f $(printf %q "${HOME}/.copilot/hooks/hooks.json")"
         info "Removed Atelier Copilot CLI hooks config"
     fi
 
@@ -175,7 +175,7 @@ purge_leftovers() {
             info "Removing Letta Docker container and volumes..."
             local letta_compose="${install_dir}/deploy/letta/docker-compose.yml"
             if [[ -f "$letta_compose" ]] && command -v docker >/dev/null 2>&1; then
-                run "docker compose -f '$letta_compose' down -v --remove-orphans 2>/dev/null || true"
+                run "docker compose -f $(printf %q "$letta_compose") down -v --remove-orphans 2>/dev/null || true"
             else
                 warn "Letta compose file not found or docker unavailable — Docker volumes may need manual removal"
                 warn "  docker volume ls | grep letta"
@@ -185,7 +185,7 @@ purge_leftovers() {
             info "Removing OpenMemory Docker state and checkout..."
             local om_workdir="${HOME}/.atelier/openmemory/mem0/openmemory"
             if [[ -d "$om_workdir" ]] && command -v docker >/dev/null 2>&1; then
-                run "docker compose -C '$om_workdir' down -v --remove-orphans 2>/dev/null || true"
+                run "docker compose -C $(printf %q "$om_workdir") down -v --remove-orphans 2>/dev/null || true"
             fi
             remove_path "${HOME}/.atelier/openmemory"
             ;;
@@ -293,7 +293,7 @@ info "Removing Atelier bin commands from ${ATELIER_BIN_DIR}..."
 for cmd in atelier; do
     target="${ATELIER_BIN_DIR}/${cmd}"
     if [ -f "$target" ] || [ -L "$target" ]; then
-        run "rm -f '$target'"
+        run "rm -f $(printf %q "$target")"
         info "Removed ${target}"
     fi
 done
@@ -347,7 +347,7 @@ if [[ "$PURGE" == "1" ]]; then
             info "Removing Letta Docker container and volumes..."
             letta_compose="${local_install_dir}/deploy/letta/docker-compose.yml"
             if [[ -f "$letta_compose" ]] && command -v docker >/dev/null 2>&1; then
-                run "docker compose -f '$letta_compose' down -v --remove-orphans 2>/dev/null || true"
+                run "docker compose -f $(printf %q "$letta_compose") down -v --remove-orphans 2>/dev/null || true"
             else
                 warn "Letta compose file not found or docker unavailable - Docker volumes may need manual removal"
             fi
@@ -356,7 +356,7 @@ if [[ "$PURGE" == "1" ]]; then
             info "Removing OpenMemory Docker state and checkout..."
             om_workdir="${HOME}/.atelier/openmemory/mem0/openmemory"
             if [[ -d "$om_workdir" ]] && command -v docker >/dev/null 2>&1; then
-                run "docker compose --project-directory '$om_workdir' down -v --remove-orphans 2>/dev/null || true"
+                run "docker compose --project-directory $(printf %q "$om_workdir") down -v --remove-orphans 2>/dev/null || true"
             fi
             remove_path "${HOME}/.atelier/openmemory"
             ;;

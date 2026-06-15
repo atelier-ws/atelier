@@ -303,16 +303,11 @@ def main() -> int:
         if not session_id:
             return 0
 
-        from atelier.core.capabilities.plugin_runtime import update_session_stats
-
-        root = _atelier_root()
-        update_session_stats(root, payload)
-
         if hook_event == "PreCompact":
             _handle_pre_compact(session_id, trigger, payload.get("transcript_path", "") or "")
         elif hook_event == "PostCompact":
             _handle_post_compact(session_id, trigger)
-    except (ImportError, OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError):
         pass  # Fail-open
 
     return 0
