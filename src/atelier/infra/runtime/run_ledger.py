@@ -32,19 +32,46 @@ except ValueError:
     _MAX_PAYLOAD_STR_BYTES = 65536
 
 
+# Depth cap on recursive payload bounding. Real payloads nest a few levels
+# (args -> content, lessons_used -> entries); this guards against pathological
+# or cyclic-looking structures without rejecting legitimate ones.
+_MAX_PAYLOAD_DEPTH = 8
+
+
+def _bound_value(value: Any, depth: int) -> Any:
+    """Return a bounded copy of ``value``, truncating oversized string leaves.
+
+    Recurses into nested dicts and lists (up to ``_MAX_PAYLOAD_DEPTH``) so the
+    big bloat carriers -- a tool's ``args`` dict or a ``lessons_used`` list with
+    giant strings nested inside -- are bounded too. Never mutates the input: a
+    new structure is built and returned.
+    """
+    if isinstance(value, str):
+        if len(value) > _MAX_PAYLOAD_STR_BYTES:
+            dropped = len(value) - _MAX_PAYLOAD_STR_BYTES
+            return value[:_MAX_PAYLOAD_STR_BYTES] + f"\n...[truncated {dropped} chars]"
+        return value
+    if depth >= _MAX_PAYLOAD_DEPTH:
+        return value
+    if isinstance(value, dict):
+        return {k: _bound_value(v, depth + 1) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_bound_value(v, depth + 1) for v in value]
+    return value
+
+
 def _bound_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """Truncate oversized string values in an event payload in place.
+    """Return a bounded copy of an event payload, truncating oversized strings.
 
     Bounds per-event payload bytes so a single event's arbitrary output can't
-    bloat run.json. Only string fields are touched; structure is preserved.
+    bloat run.json. String leaves at any depth (inside nested dicts and lists)
+    are truncated with a clear marker; other structure is preserved. The input
+    is never mutated -- a fresh structure is returned -- so a public ``record``
+    caller that retains its dict won't see its strings silently truncated.
     """
     if _MAX_PAYLOAD_STR_BYTES <= 0:
         return payload
-    for key, value in payload.items():
-        if isinstance(value, str) and len(value) > _MAX_PAYLOAD_STR_BYTES:
-            dropped = len(value) - _MAX_PAYLOAD_STR_BYTES
-            payload[key] = value[:_MAX_PAYLOAD_STR_BYTES] + f"\n...[truncated {dropped} chars]"
-    return payload
+    return {key: _bound_value(value, 1) for key, value in payload.items()}
 
 
 # --------------------------------------------------------------------------- #

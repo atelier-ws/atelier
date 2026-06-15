@@ -290,20 +290,24 @@ def build_rename_edits(
             if isinstance(items, list):
                 usages.extend(r for r in items if isinstance(r, dict))
 
-    # Surface partial-rename scope: a rename is truncated when usage resolution
-    # hit the reference cap (the engine reports it, or we resolved the full
-    # limit's worth of sites). The apply behavior is unchanged.
+    # Whether usage resolution hit the reference cap. Whether that makes the
+    # rename PARTIAL depends on the backend chosen below: rope/ts-morph do a
+    # complete semantic rename that ignores this capped list, so only the naive
+    # path (which consumes `usages`) can be truncated.
     total_references = len(usages)
-    truncated = bool(usages_payload.get("truncated")) or total_references >= _RENAME_USAGE_LIMIT
+    usage_resolution_capped = bool(usages_payload.get("truncated")) or total_references >= _RENAME_USAGE_LIMIT
 
     chosen = backend if backend != "auto" else _best_backend(language)
 
     if chosen == "rope" and language == "python":
         edits = _rope_rename(symbol, new_name, repo_root)
+        truncated = False
     elif chosen == "ts-morph" and language in ("typescript", "javascript"):
         edits = _tsmorph_rename(symbol, new_name, repo_root)
+        truncated = False
     else:
         edits = _naive_rename(symbol, usages, new_name, old_name, repo_root)
+        truncated = usage_resolution_capped
 
     result = RenameEdits(edits)
     result.total_references = total_references

@@ -1400,6 +1400,18 @@ class ContextStore:
             self._context_budget_conn = conn
         return self._context_budget_conn
 
+    def close(self) -> None:
+        """Close the long-lived context-budget connection if open.
+
+        Idempotent -- safe to call more than once. Scoped to the dedicated
+        budget connection; the bulk-import ``self._connection`` is managed by
+        its own callers and is not touched here.
+        """
+        with self._context_budget_lock:
+            if self._context_budget_conn is not None:
+                self._context_budget_conn.close()
+                self._context_budget_conn = None
+
     def persist_context_budget(self, record: Any) -> None:
         """Persist a ContextBudget record to the store.
 

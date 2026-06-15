@@ -4215,6 +4215,7 @@ class CodeContextEngine:
         )
         collection_ceiling = max(collection_ceiling * 4, 100)
         references: list[UsageReference] = []
+        ceiling_truncated = False
         for target in targets:
             local_refs = self.intel_store.find_references(
                 symbol_id=str(target["symbol_id"]),
@@ -4226,6 +4227,10 @@ class CodeContextEngine:
             references.extend(local_refs[: max(collection_ceiling - len(references), 0)])
             references.extend(cross_lang_refs[: max(collection_ceiling - len(references), 0)])
             if len(references) >= collection_ceiling:
+                # Source-level ceiling fired: the pre-sort set was capped before
+                # the downstream policy cap could weigh in, so the result is
+                # genuinely incomplete regardless of relation_policy.
+                ceiling_truncated = True
                 break
         ordered_references = sorted(
             references,
@@ -4282,7 +4287,7 @@ class CodeContextEngine:
             target=primary_target,
             items=items,
             group_by=group_by,
-            truncated=truncated_by_policy,
+            truncated=truncated_by_policy or ceiling_truncated,
             ambiguity=cast(dict[str, Any] | None, resolved.get("ambiguity")),
         )
         full_total_tokens = self._compute_total_tokens({**full_payload, "tokens_saved": 0})
@@ -4293,7 +4298,7 @@ class CodeContextEngine:
                     target=primary_target,
                     items=packed_items,
                     group_by=group_by,
-                    truncated=truncated_by_policy or len(packed_items) < len(items),
+                    truncated=truncated_by_policy or ceiling_truncated or len(packed_items) < len(items),
                     ambiguity=cast(dict[str, Any] | None, resolved.get("ambiguity")),
                 ),
                 full_total_tokens=full_total_tokens,

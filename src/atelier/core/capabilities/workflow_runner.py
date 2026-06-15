@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 from collections.abc import Callable
@@ -25,6 +26,8 @@ from atelier.core.capabilities.workflow_schema import (
 )
 from atelier.core.capabilities.workflow_spawn import new_wave_spawn_plan
 from atelier.infra.runtime.run_ledger import RunLedger
+
+logger = logging.getLogger(__name__)
 
 # Bound owned-execution fan-out: never spawn more than this many concurrent
 # subprocesses per wave, regardless of wave width.
@@ -510,6 +513,16 @@ class WorkflowRunner:
         A linear agent chain (and the whole body of a map/loop step, which is
         itself one step) would otherwise run with no deadline; mirror
         `_run_wave_parallel` so one hung spawn cannot wedge the run.
+
+        The deadline is advisory: the submitted work is an opaque executor
+        callable (`_agent_executor`/`_tool_executor`/`_shell_executor`) with no
+        cancellation handle, so on timeout we abandon the worker thread and let
+        the run proceed. The underlying spawn/subprocess may keep running until
+        it finishes on its own; we emit a warning so that leak is not silent.
+
+        Map/loop bodies run their sub-steps via `_run_sub_body`->`_run_step`
+        directly (not through this method), so the whole body shares this single
+        outer deadline and per-iteration work is itself unbounded.
         """
         pool = ThreadPoolExecutor(max_workers=1)
         try:
@@ -517,6 +530,12 @@ class WorkflowRunner:
             try:
                 return future.result(timeout=STEP_TIMEOUT_SECONDS)
             except FutureTimeoutError:
+                logger.warning(
+                    "workflow step %s exceeded the %.0fs per-step deadline; "
+                    "abandoning the worker thread — its underlying spawn may still be running",
+                    step.step_id,
+                    STEP_TIMEOUT_SECONDS,
+                )
                 return StepResult(
                     step_id=step.step_id,
                     kind=step.kind,
@@ -527,6 +546,9 @@ class WorkflowRunner:
                 )
         finally:
             # wait=False so a hung running step cannot re-wedge the run on shutdown.
+            # cancel_futures only drops not-yet-started futures; an already-running
+            # executor callable is non-cancellable and keeps running in a leaked
+            # thread until it returns (see the timeout warning above).
             pool.shutdown(wait=False, cancel_futures=True)
 
     def _run_wave_parallel(
