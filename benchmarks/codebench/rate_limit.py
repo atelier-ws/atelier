@@ -72,5 +72,21 @@ class ModelRequestRateLimiter:
         # upstream connection after a prior streamed response.
         flow.request.headers["Connection"] = "close"
 
+    def responseheaders(self, flow: http.HTTPFlow) -> None:
+        # Stream model responses straight through instead of buffering the whole
+        # body. mitmproxy buffers each response fully by default; on Bedrock
+        # ``invoke-with-response-stream`` that buffering stalls under sustained
+        # load -- the event-stream body never completes, the CLI hangs for the
+        # entire --timeout, and the run is recorded as a stall/timeout. Streaming
+        # forwards bytes as they arrive, keeping every run live.
+        #
+        # Trade-off: a streamed body is not retained in the .flow capture, so
+        # flow-based token recovery is unavailable for these responses. Completed
+        # runs read cost/tokens from the CLI receipt (total_cost_usd /
+        # modelUsage), so the head-to-head is unaffected; only post-timeout flow
+        # recovery loses fidelity.
+        if _is_model_request(flow):
+            flow.response.stream = True
+
 
 addons = [ModelRequestRateLimiter()]

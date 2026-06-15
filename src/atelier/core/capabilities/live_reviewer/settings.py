@@ -33,8 +33,8 @@ class ReviewerSettings:
     deep_edit_count_interval: int = DEFAULT_DEEP_INTERVAL
     review_model: str = ""
     agentic: bool = True
-    # Not a gate: when the live pass is on, auto-apply high-confidence patch fixes
-    # (wozcode parity). Set liveReviewerAutoApply=false for review-only.
+    # Not a gate: when the live pass is on, auto-apply high-confidence patch fixes.
+    # Set liveReviewerAutoApply=false for review-only.
     auto_apply: bool = True
 
     @property

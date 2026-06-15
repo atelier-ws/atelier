@@ -1427,23 +1427,54 @@ prompt_knowledge_extraction() {
     [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && return 0
     has_interactive_input || return 0
 
-    local ans=""
-    printf "  ◇  Enable automatic knowledge extraction from .lessons into the reviewer? [y/N] "
-    IFS= read -r ans </dev/tty 2>/dev/null || ans=""
-    case "$ans" in
-        y | Y | yes | YES) ATELIER_KB_EXTRACT=1 ;;
-        *) ATELIER_KB_EXTRACT=0; return 0 ;;
-    esac
+    if supports_interactive_selector; then
+        local kb_yn=1
+        interactive_single_select \
+            "Auto-extract review rules from .lessons files?" \
+            kb_yn \
+            1 \
+            "Yes – populate reviewer knowledge base" \
+            "No"
+        if [[ "$kb_yn" != "0" ]]; then
+            ATELIER_KB_EXTRACT=0
+            return 0
+        fi
+        ATELIER_KB_EXTRACT=1
 
-    local choice=""
-    printf "  ◇  Backend  1) auto (Atelier model)  2) claude  3) codex  4) ollama  [1] "
-    IFS= read -r choice </dev/tty 2>/dev/null || choice=""
-    case "$choice" in
-        2) ATELIER_KB_HOST=claude ;;
-        3) ATELIER_KB_HOST=codex ;;
-        4) ATELIER_KB_HOST=ollama ;;
-        *) ATELIER_KB_HOST=auto ;;
-    esac
+        local backend_idx=0
+        interactive_single_select \
+            "Knowledge extraction backend?" \
+            backend_idx \
+            0 \
+            "auto (Atelier model)" \
+            "claude" \
+            "codex" \
+            "ollama"
+        case "$backend_idx" in
+            1) ATELIER_KB_HOST=claude ;;
+            2) ATELIER_KB_HOST=codex ;;
+            3) ATELIER_KB_HOST=ollama ;;
+            *) ATELIER_KB_HOST=auto ;;
+        esac
+    else
+        local ans=""
+        printf "  ◇  Auto-extract review rules from .lessons files? [y/N] "
+        IFS= read -r ans </dev/tty 2>/dev/null || ans=""
+        case "$ans" in
+            y | Y | yes | YES) ATELIER_KB_EXTRACT=1 ;;
+            *) ATELIER_KB_EXTRACT=0; return 0 ;;
+        esac
+
+        local choice=""
+        printf "  ◇  Backend  1) auto (Atelier model)  2) claude  3) codex  4) ollama  [1] "
+        IFS= read -r choice </dev/tty 2>/dev/null || choice=""
+        case "$choice" in
+            2) ATELIER_KB_HOST=claude ;;
+            3) ATELIER_KB_HOST=codex ;;
+            4) ATELIER_KB_HOST=ollama ;;
+            *) ATELIER_KB_HOST=auto ;;
+        esac
+    fi
 
     if [[ "$ATELIER_KB_HOST" == "ollama" ]]; then
         local model=""
@@ -1452,10 +1483,12 @@ prompt_knowledge_extraction() {
         ATELIER_KB_MODEL="${model:-llama3.1}"
     fi
 
-    local cap=""
-    printf "  ◇  Max spend per run in USD (auto/claude only) [%s]: " "$ATELIER_KB_MAX_SPEND"
-    IFS= read -r cap </dev/tty 2>/dev/null || cap=""
-    [[ -n "$cap" ]] && ATELIER_KB_MAX_SPEND="$cap"
+    if [[ "$ATELIER_KB_HOST" == "auto" || "$ATELIER_KB_HOST" == "claude" ]]; then
+        local cap=""
+        printf "  ◇  Max spend per run in USD [%s]: " "$ATELIER_KB_MAX_SPEND"
+        IFS= read -r cap </dev/tty 2>/dev/null || cap=""
+        [[ -n "$cap" ]] && ATELIER_KB_MAX_SPEND="$cap"
+    fi
 }
 
 run_knowledge_extraction_if_selected() {
@@ -1482,22 +1515,51 @@ prompt_recall_indexing() {
     has_interactive_input || return 0
     ATELIER_RECALL_PROMPTED=1
 
-    local ans=""
-    printf "  ◇  Enable all-sessions Recall (background-index past sessions for semantic recall)? [Y/n] "
-    IFS= read -r ans </dev/tty 2>/dev/null || ans=""
-    case "$ans" in
-        n | N | no | NO) ATELIER_RECALL_INDEX=0 ;;
-        *) ATELIER_RECALL_INDEX=1 ;;
-    esac
+    if supports_interactive_selector; then
+        local recall_yn=0
+        interactive_single_select \
+            "Enable Recall? (index past sessions for semantic search)" \
+            recall_yn \
+            0 \
+            "Yes – index all sessions" \
+            "No"
+        if [[ "$recall_yn" == "1" ]]; then
+            ATELIER_RECALL_INDEX=0
+            return 0
+        fi
+        ATELIER_RECALL_INDEX=1
 
-    local choice=""
-    printf "  ◇  Recall embedder  1) local (offline)  2) openai (codex)  3) ollama  [1] "
-    IFS= read -r choice </dev/tty 2>/dev/null || choice=""
-    case "$choice" in
-        2) ATELIER_RECALL_EMBEDDER=openai ;;
-        3) ATELIER_RECALL_EMBEDDER=ollama ;;
-        *) ATELIER_RECALL_EMBEDDER=local ;;
-    esac
+        local embedder_idx=0
+        interactive_single_select \
+            "Recall embedder?" \
+            embedder_idx \
+            0 \
+            "local (offline)" \
+            "openai (codex)" \
+            "ollama"
+        case "$embedder_idx" in
+            1) ATELIER_RECALL_EMBEDDER=openai ;;
+            2) ATELIER_RECALL_EMBEDDER=ollama ;;
+            *) ATELIER_RECALL_EMBEDDER=local ;;
+        esac
+    else
+        local ans=""
+        printf "  ◇  Enable all-sessions Recall (index past sessions for semantic search)? [Y/n] "
+        IFS= read -r ans </dev/tty 2>/dev/null || ans=""
+        case "$ans" in
+            n | N | no | NO) ATELIER_RECALL_INDEX=0 ;;
+            *) ATELIER_RECALL_INDEX=1 ;;
+        esac
+
+        local choice=""
+        printf "  ◇  Recall embedder  1) local (offline)  2) openai (codex)  3) ollama  [1] "
+        IFS= read -r choice </dev/tty 2>/dev/null || choice=""
+        case "$choice" in
+            2) ATELIER_RECALL_EMBEDDER=openai ;;
+            3) ATELIER_RECALL_EMBEDDER=ollama ;;
+            *) ATELIER_RECALL_EMBEDDER=local ;;
+        esac
+    fi
 
     if [[ "$ATELIER_RECALL_EMBEDDER" == "ollama" ]]; then
         local model=""

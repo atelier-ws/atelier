@@ -87,7 +87,7 @@ def _path_string(item: str | FileEditRecord) -> str:
 
 def _command_failed(command: str | CommandRecord) -> bool:
     if isinstance(command, CommandRecord):
-        return bool(command.exit_code and command.exit_code != 0)
+        return command.exit_code is not None and command.exit_code != 0
     lowered = str(command).lower()
     return "failed" in lowered or "traceback" in lowered or "error" in lowered
 

@@ -135,7 +135,7 @@ TASKS: list[Task] = [
         "task7_FixCompileBugCodex",
         # Pre-fetch deps but intentionally do NOT install libcap — its absence
         # is the CI bug this task is designed to diagnose and fix.
-        setup_cmds=("cargo fetch --quiet 2>/dev/null || true",),
+        setup_cmds=("cd codex-rs && cargo fetch --quiet 2>/dev/null || true",),
     ),
     Task(
         "task8",

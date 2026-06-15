@@ -26,8 +26,8 @@ def test_generate_config_with_route_map(tmp_path: Path) -> None:
 
 def test_to_yaml_shape() -> None:
     out = rd._to_yaml({"model_list": [{"model_name": "*sonnet*", "litellm_params": {"model": "openai/gpt"}}]})
-    assert 'model_name: "*sonnet*"' in out
-    assert 'model: "openai/gpt"' in out
+    assert "model_name: '*sonnet*'" in out
+    assert "model: openai/gpt" in out
 
 
 def test_lifecycle_start_status_stop(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

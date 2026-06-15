@@ -46,7 +46,22 @@ def _read_session_state() -> dict:  # type: ignore[type-arg]
 def _save_state(state: dict) -> None:  # type: ignore[type-arg]
     sp = _session_state_path()
     sp.parent.mkdir(parents=True, exist_ok=True)
-    sp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    tmp_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=sp.parent,
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8",
+        ) as tmp:
+            json.dump(state, tmp, indent=2)
+            tmp_path = tmp.name
+        Path(tmp_path).replace(sp)
+    except OSError:
+        if tmp_path:
+            with contextlib.suppress(Exception):
+                Path(tmp_path).unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------

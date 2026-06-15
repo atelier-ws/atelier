@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -67,8 +68,14 @@ class FileIndex:
     def _save(self, state: dict[str, Any]) -> None:
         files = state.get("files", {})
         if len(files) > _MAX_CACHE_ENTRIES:
-            # Evict oldest entries (those without recent access key, keep newest)
-            sorted_keys = sorted(files.keys())
+            # Evict by write recency (oldest ``cached_at`` first); legacy
+            # entries without the field are treated as oldest. This keeps
+            # actively re-analyzed files cached regardless of path ordering.
+            def _recency(k: str) -> float:
+                entry = files[k]
+                return float(entry.get("cached_at", 0.0)) if isinstance(entry, dict) else 0.0
+
+            sorted_keys = sorted(files, key=_recency)
             to_evict = sorted_keys[: len(files) - _MAX_CACHE_ENTRIES]
             for k in to_evict:
                 del files[k]
@@ -99,7 +106,7 @@ class FileIndex:
         """Store payload for path, keyed by current content hash."""
         ch = self.content_hash(path)
         state = self._load()
-        state.setdefault("files", {})[str(path)] = {**payload, "content_hash": ch}
+        state.setdefault("files", {})[str(path)] = {**payload, "content_hash": ch, "cached_at": time.time()}
         self._save(state)
 
     def invalidate(self, path: Path) -> None:

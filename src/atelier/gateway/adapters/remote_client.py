@@ -58,7 +58,7 @@ class RemoteClient:
         method: str,
         path: str,
         body: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> Any:
         url = f"{self._base}{path}"
         data = json.dumps(body).encode() if body is not None else None
         headers: dict[str, str] = {"Content-Type": "application/json"}
@@ -69,7 +69,7 @@ class RemoteClient:
         try:
             with urllib.request.urlopen(req, timeout=self._timeout, context=self._ssl_ctx) as resp:
                 raw = resp.read(_MAX_BODY_BYTES)
-                return json.loads(raw)  # type: ignore[no-any-return]
+                return json.loads(raw)
         except urllib.error.HTTPError as exc:
             try:
                 err_body = exc.read(_MAX_BODY_BYTES).decode(errors="replace")
@@ -88,7 +88,7 @@ class RemoteClient:
     def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", path, body)
 
-    def _get(self, path: str) -> dict[str, Any]:
+    def _get(self, path: str) -> Any:
         return self._request("GET", path)
 
     # ------------------------------------------------------------------ #
@@ -162,7 +162,8 @@ class RemoteClient:
                 raise ValueError("vote_fact requires fact and reason")
             if direction not in {"upvote", "downvote"}:
                 raise ValueError("direction must be one of: upvote, downvote")
-            blocks = self._get(f"/v1/memory/blocks?agent_id={urllib.parse.quote(agent_id)}&limit=500")
+            list_limit = 500
+            blocks = self._get(f"/v1/memory/blocks?agent_id={urllib.parse.quote(agent_id)}&limit={list_limit}")
             if not isinstance(blocks, list):
                 raise ValueError("unable to list memory blocks for vote_fact")
             target = None
@@ -177,6 +178,11 @@ class RemoteClient:
                 target = block
                 break
             if target is None:
+                if len(blocks) >= list_limit:
+                    raise ValueError(
+                        f"no matching stored fact found for vote_fact within the first {list_limit} blocks; "
+                        "the fact may exist beyond the listing limit"
+                    )
                 raise ValueError("no matching stored fact found for vote_fact")
             metadata = dict(target.get("metadata") or {})
             votes = dict(metadata.get("votes") or {})
@@ -205,7 +211,7 @@ class RemoteClient:
         limit = args.get("limit")
         query: list[str] = []
         if domain:
-            query.append(f"domain={domain}")
+            query.append(f"domain={urllib.parse.quote(str(domain))}")
         if limit is not None:
             query.append(f"limit={int(limit)}")
         suffix = f"?{'&'.join(query)}" if query else ""

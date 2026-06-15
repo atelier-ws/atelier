@@ -113,17 +113,21 @@ def _evaluate_proposal(
     elif not has_evidence:
         reason = "missing_non_inferiority_evidence"
     else:
-        runs = load_terminalbench_records(Path(str(evidence.runs_path)))
-        verdict = evaluate_non_inferiority(
-            runs,
-            baseline_cost_usd=float(evidence.baseline_cost_usd or 0.0),
-            candidate_cost_usd=float(evidence.candidate_cost_usd or 0.0),
-            confidence=evidence.confidence,
-            margin=evidence.margin,
-        )
-        verdict_dict = verdict.to_dict()
-        passed = verdict.passed
-        reason = "passed" if passed else "non_inferior_failed"
+        try:
+            runs = load_terminalbench_records(Path(str(evidence.runs_path)))
+            verdict = evaluate_non_inferiority(
+                runs,
+                baseline_cost_usd=float(evidence.baseline_cost_usd or 0.0),
+                candidate_cost_usd=float(evidence.candidate_cost_usd or 0.0),
+                confidence=evidence.confidence,
+                margin=evidence.margin,
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            reason = "invalid_non_inferiority_evidence"
+        else:
+            verdict_dict = verdict.to_dict()
+            passed = verdict.passed
+            reason = "passed" if passed else "non_inferior_failed"
 
     emit_product_local(
         "optimization_proposal_evaluated",
@@ -298,31 +302,42 @@ class OptimizationProposalPrBot:
         if dry_run:
             return {"branch": branch, "title": title, "body": body}
         self._ensure_clean_worktree()
+        original_ref = self._run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
         self._run(["git", "switch", "-c", branch])
-        self._run(["git", "add", str(artifact_path.relative_to(self.repo_root))])
-        self._run(
-            [
-                "git",
-                "commit",
-                "-m",
-                title,
-                "--",
-                str(artifact_path.relative_to(self.repo_root)),
-            ]
-        )
-        created = self._run(
-            [
-                "gh",
-                "pr",
-                "create",
-                "--draft",
-                "--title",
-                title,
-                "--body",
-                body,
-            ]
-        )
+        try:
+            self._run(["git", "add", str(artifact_path.relative_to(self.repo_root))])
+            self._run(
+                [
+                    "git",
+                    "commit",
+                    "-m",
+                    title,
+                    "--",
+                    str(artifact_path.relative_to(self.repo_root)),
+                ]
+            )
+            created = self._run(
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--draft",
+                    "--title",
+                    title,
+                    "--body",
+                    body,
+                ]
+            )
+        except RuntimeError:
+            self._rollback(branch=branch, original_ref=original_ref)
+            raise
         return {"branch": branch, "title": title, "url": created.stdout.strip()}
+
+    def _rollback(self, *, branch: str, original_ref: str) -> None:
+        # Best-effort restore: return to the original ref and drop the work branch.
+        if original_ref and original_ref != "HEAD":
+            self._run_cmd(["git", "switch", "--force", original_ref], self.repo_root)
+        self._run_cmd(["git", "branch", "-D", branch], self.repo_root)
 
     def _body(self, *, artifact_path: Path, advisor: dict[str, Any], verdict: dict[str, Any]) -> str:
         return "\n".join(

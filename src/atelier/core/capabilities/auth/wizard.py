@@ -153,16 +153,32 @@ def load_saved_credentials() -> dict[str, str]:
 
 
 def save_credentials(credentials: dict[str, str]) -> None:
-    """Save credentials to ~/.atelier/.env"""
+    """Save credentials to ~/.atelier/.env with owner-only permissions."""
     path = credentials_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    parent = path.parent
+    parent_existed = parent.exists()
+    parent.mkdir(parents=True, exist_ok=True)
+    # The directory holds secret credentials; restrict it to the owner. Only
+    # tighten permissions on a directory we just created so we never relax or
+    # silently override an operator's deliberate setup on a pre-existing dir.
+    if not parent_existed:
+        os.chmod(parent, 0o700)
     # Merge with existing
     existing = load_saved_credentials()
     existing.update(credentials)
     lines = ["# Atelier provider credentials — managed by `atelier auth`", ""]
     for k, v in sorted(existing.items()):
         lines.append(f'{k}="{v}"')
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Create (or truncate) the file with owner-only permissions before writing
+    # any secrets, so the keys are never briefly world-readable on disk.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+    finally:
+        # If the file already existed its mode is unchanged by os.open, so
+        # enforce owner-only perms explicitly to repair any prior loose state.
+        os.chmod(path, 0o600)
     # Set in current process env
     for k, v in credentials.items():
         os.environ[k] = v

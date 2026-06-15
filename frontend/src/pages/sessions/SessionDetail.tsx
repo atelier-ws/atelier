@@ -590,13 +590,29 @@ export function SessionExplorerDetail({ sessionId }: { sessionId: string }) {
 
                 <div className="space-y-12">
                   {enrichedConversations.length > 0 ? (
-                    groupTurns(enrichedConversations).map((turn, i) => (
-                      <ConversationTurn
-                        key={i}
-                        turn={turn}
-                        forceExpand={allExpanded}
-                      />
-                    ))
+                    (() => {
+                      const seen = new Map<string, number>();
+                      return groupTurns(enrichedConversations).map((turn) => {
+                        // Stable per-turn key so React preserves each
+                        // ConversationTurn's expand state when the list is
+                        // re-enriched (savings reattachment) or turns are
+                        // inserted/prepended. tool_use_id is unique when
+                        // present; otherwise disambiguate same-(kind, at)
+                        // turns by occurrence order.
+                        const base =
+                          turn.tool_use_id || `${turn.kind}:${turn.at}`;
+                        const n = seen.get(base) ?? 0;
+                        seen.set(base, n + 1);
+                        const key = n === 0 ? base : `${base}#${n}`;
+                        return (
+                          <ConversationTurn
+                            key={key}
+                            turn={turn}
+                            forceExpand={allExpanded}
+                          />
+                        );
+                      });
+                    })()
                   ) : (
                     <div className="space-y-8">
                       {trace?.reasoning && trace.reasoning.length > 0 && (

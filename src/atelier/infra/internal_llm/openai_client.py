@@ -34,7 +34,15 @@ def _openai_module() -> Any:
 def _resolve_client() -> Any:
     openai = _openai_module()
     base_url = os.environ.get("ATELIER_OPENAI_BASE_URL") or None
-    api_key = os.environ.get("ATELIER_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY") or "no-key"
+    api_key = os.environ.get("ATELIER_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        if base_url is None:
+            raise OpenAIClientUnavailable(
+                "no OpenAI API key found; set ATELIER_OPENAI_API_KEY or OPENAI_API_KEY "
+                "(or ATELIER_OPENAI_BASE_URL for a keyless local server)"
+            )
+        # Keyless local OpenAI-compatible servers accept any placeholder key.
+        api_key = "no-key"
     return openai.OpenAI(api_key=api_key, base_url=base_url)
 
 

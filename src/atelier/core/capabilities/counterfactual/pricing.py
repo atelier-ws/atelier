@@ -13,7 +13,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from atelier.core.capabilities.pricing import ModelPricing, get_model_pricing
+from atelier.core.capabilities.pricing import (
+    ModelPricing,
+    _load_pricing_table,
+    get_model_pricing,
+)
 
 
 @dataclass(frozen=True)
@@ -119,13 +123,22 @@ def _build_candidates() -> tuple[CandidateModel, ...]:
 
 
 _cached_table: PricingTable | None = None
+_cached_source_id: int | None = None
 
 
 def load_pricing_table(_version: str | None = None) -> PricingTable:
-    """Return the pricing table, building it lazily from the main pricing module."""
-    global _cached_table
-    if _cached_table is None:
+    """Return the pricing table, building it lazily from the main pricing module.
+
+    The cache is keyed off the identity of the main module's pricing table so
+    that ``override_pricing()`` and ``pricing.yaml`` edits (which clear that
+    table's cache and produce a fresh dict) force a rebuild here too, instead
+    of routing off stale rates for the process lifetime.
+    """
+    global _cached_table, _cached_source_id
+    source_id = id(_load_pricing_table())
+    if _cached_table is None or source_id != _cached_source_id:
         _cached_table = PricingTable(version="live", candidates=_build_candidates())
+        _cached_source_id = source_id
     return _cached_table
 
 

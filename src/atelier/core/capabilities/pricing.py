@@ -312,8 +312,16 @@ class ModelPricing:
         rate_cr = _premium(self.cache_read, self.cache_read_tiers)
         rate_cw = _premium(self.cache_write, self.cache_write_tiers)
         base_1h = self.cache_write_1h or self.cache_write
-        # Premium 1h rate scales with the same multiplier as 5m writes.
-        rate_cw1 = base_1h * (rate_cw / self.cache_write) if self.cache_write > 0 else base_1h
+        # 1h writes scale by the 5m write long-context multiplier. When only the
+        # 1h rate is configured (no 5m base to derive the ratio from), fall back
+        # to the input-side premium multiplier so long_context still applies.
+        if self.cache_write > 0:
+            cw_multiplier = rate_cw / self.cache_write
+        elif long_context and self.input > 0:
+            cw_multiplier = rate_in / self.input
+        else:
+            cw_multiplier = 1.0
+        rate_cw1 = base_1h * cw_multiplier
         return round(
             (
                 input_tokens * rate_in

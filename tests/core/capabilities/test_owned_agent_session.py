@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from atelier.core.capabilities.owned_agent_session import (
-    KeepaliveThread,
     OwnedAgentSession,
     PhaseTokens,
     SessionReceipt,
@@ -84,14 +83,6 @@ def test_savings_usd_nonnegative() -> None:
     assert savings >= 0.0
     # naive treats cache_read as fresh input -> should cost more than cached
     assert receipt.naive_cost_usd() >= receipt.cost_usd()
-
-
-def test_keepalive_start_stop() -> None:
-    ka = KeepaliveThread(model="anthropic/claude-opus-4-8", provider="anthropic")
-    ka.start()
-    ka.stop()
-    ka._worker.join(timeout=2.0)
-    assert not ka._worker.is_alive()
 
 
 def test_format_receipt_nonempty() -> None:

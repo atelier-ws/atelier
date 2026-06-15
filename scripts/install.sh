@@ -222,7 +222,7 @@ fi
 
 # ---- done --------------------------------------------------------------------
 echo ""
-if command -v atelier >/dev/null 2>&1 || command -v uv >/dev/null 2>&1 && uv tool list 2>/dev/null | grep -q "^atelier"; then
+if command -v atelier >/dev/null 2>&1 || ( command -v uv >/dev/null 2>&1 && uv tool list 2>/dev/null | grep -q "^atelier" ); then
     info "Atelier $(atelier --version 2>/dev/null || echo '') ready!"
     echo ""
     echo "  Quick start:  atelier --help"

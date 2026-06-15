@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import threading
 import time
@@ -10,69 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.foundation.paths import default_store_root
-from atelier.gateway.integrations.ledger_reconstructor import LedgerReconstructor
-from atelier.infra.runtime.run_ledger import RunLedger
+from atelier.core.service.ingest_session import ingest_session_file
 from atelier.infra.storage.factory import make_memory_store
 
 logger = logging.getLogger(__name__)
-
-
-def _hash_content(content: str) -> str:
-    """Generate a short hash for content."""
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
-
-
-def _get_session_id(file_path: Path, content: str) -> str:
-    """Extract or generate a session ID for a file."""
-    # Try to get session ID from filename (without extension)
-    stem = file_path.stem
-    if stem and len(stem) >= 16 and all(c in "0123456789abcdefABCDEF" for c in stem):
-        return stem
-
-    # Fall back to content hash
-    return f"session_{_hash_content(content)}"
-
-
-def ingest_session_file(file_path: str, store: Any = None) -> dict[str, Any]:
-    """Ingest a single session file."""
-    if store is None:
-        store_root = default_store_root()
-        store = make_memory_store(store_root)
-    else:
-        store_root = Path(getattr(store, "root", default_store_root())).resolve()
-
-    path = Path(file_path)
-    if not path.exists():
-        return {"status": "error", "message": f"File not found: {file_path}"}
-
-    try:
-        raw_content = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        return {"status": "error", "message": f"Failed to read file: {exc}"}
-
-    session_id = _get_session_id(path, raw_content)
-    reconstructor = LedgerReconstructor(root=store_root)
-    try:
-        ledger: RunLedger = reconstructor.reconstruct(
-            source="unknown",
-            session_id=session_id,
-            raw_content=raw_content,
-        )
-    except Exception as exc:  # pylint: disable=broad-except
-        logging.exception("Recovered from broad exception handler")
-        return {
-            "status": "error",
-            "message": f"Failed to reconstruct ledger from session file: {exc}",
-        }
-
-    # TODO: Store the ledger events as traces in the store.
-    # For now, we just return a success message with metadata.
-    return {
-        "status": "success",
-        "session_id": session_id,
-        "event_count": len(ledger.events),
-        "ledger": ledger,  # For debugging; remove in production.
-    }
 
 
 class SessionDirectoryWatcher:
@@ -84,7 +24,7 @@ class SessionDirectoryWatcher:
         self.poll_interval = poll_interval
         self._stop_event = threading.Event()
         self._worker: threading.Thread | None = None
-        self._seen_files: dict[Path, float] = {}
+        self._seen_files: dict[Path, tuple[float, int]] = {}
 
         if self.store is None:
             store_root = default_store_root()
@@ -127,9 +67,12 @@ class SessionDirectoryWatcher:
                     # Scan for .jsonl files in the directory
                     for file_path in self.directory.glob("*.jsonl"):
                         try:
-                            mtime = file_path.stat().st_mtime
-                            # If we haven't seen this file or it's been modified
-                            if file_path not in self._seen_files or self._seen_files[file_path] < mtime:
+                            stat = file_path.stat()
+                            signature = (stat.st_mtime, stat.st_size)
+                            # If we haven't seen this file or its (mtime, size) changed.
+                            # Comparing size as well as mtime catches same-second
+                            # rewrites that coarse mtime granularity would miss.
+                            if self._seen_files.get(file_path) != signature:
                                 logger.info("Detected new or modified session file: %s", file_path)
                                 result = ingest_session_file(str(file_path), self.store)
                                 if result.get("status") == "success":
@@ -145,12 +88,15 @@ class SessionDirectoryWatcher:
                                         file_path,
                                         result.get("message", "Unknown error"),
                                     )
-                                self._seen_files[file_path] = mtime
+                                # Re-stat after ingest so a write that landed mid-ingest
+                                # produces a different signature and is re-detected next poll.
+                                post = file_path.stat()
+                                self._seen_files[file_path] = (post.st_mtime, post.st_size)
                         except OSError as exc:
                             logger.error("Error accessing file %s: %s", file_path, exc)
 
                     # Remove entries for files that no longer exist
-                    self._seen_files = {path: mtime for path, mtime in self._seen_files.items() if path.exists()}
+                    self._seen_files = {path: sig for path, sig in self._seen_files.items() if path.exists()}
 
                     # Wait for the next poll interval or until stopped
                     self._stop_event.wait(self.poll_interval)
