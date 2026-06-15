@@ -17,6 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from atelier.core.foundation.redaction import redact_tool_output
+
 try:  # Third-party engine supporting a per-call wall-clock `timeout=` on search.
     import regex as _regex_module
 except ImportError:  # pragma: no cover - fallback path when `regex` is absent.
@@ -597,7 +599,7 @@ def _render_text_result(
         start = spec.start_line
         end = spec.end_line or start
         selected = lines[start - 1 : end]
-        body = "\n".join(_truncate_line(line, max_line_length) for line in selected)
+        body = redact_tool_output("\n".join(_truncate_line(line, max_line_length) for line in selected))
         return f"{rel}#{start}-{end}\n{body}", len(selected)
 
     include_all = regex is None and content_regex is None
@@ -630,7 +632,7 @@ def _render_text_result(
     if use_summary:
         outline = _summarize(path, source)
         if outline:
-            return f"{rel}\n{outline}", len(match_lines)
+            return f"{rel}\n{redact_tool_output(outline)}", len(match_lines)
 
     rendered: list[str] = [rel]
     emitted = 0
@@ -645,7 +647,7 @@ def _render_text_result(
         rendered.append(f"@@ {start}-{end}")
         rendered.extend(_truncate_line(line, max_line_length) for line in window)
         emitted += len(window)
-    return "\n".join(rendered), len(match_lines)
+    return redact_tool_output("\n".join(rendered)), len(match_lines)
 
 
 def search_workspace(

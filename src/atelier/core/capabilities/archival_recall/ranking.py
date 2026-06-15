@@ -8,8 +8,13 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 
+from atelier.core.capabilities.archival_recall.ann import ArchivalAnnIndex, ann_retrieval_enabled
 from atelier.core.foundation.memory_models import ArchivalPassage
 from atelier.infra.storage.vector import cosine_similarity
+
+# Process-wide ANN cache for archival recall. Reused across calls so the HNSW
+# graph is built once per passage-set signature (N16) instead of per query.
+_ARCHIVAL_ANN_INDEX = ArchivalAnnIndex()
 
 
 @dataclass(frozen=True)
@@ -59,14 +64,31 @@ def rank_archival_passages(
     tags: list[str] | None = None,
     since: datetime | None = None,
     top_k: int = 5,
+    embedding_model: str | None = None,
+    valid_as_of: datetime | None = None,
 ) -> list[RankedPassage]:
-    """Rank archival passages with hybrid BM25 and cosine scoring."""
+    """Rank archival passages with hybrid BM25 and cosine scoring.
+
+    G5: when ``ATELIER_ANN_RETRIEVAL`` is enabled and a ``query_embedding`` is
+    supplied, an opt-in ANN (datasketch HNSW) accelerates the *vector* side --
+    cosine is computed only for ANN neighbours plus the most-recent-N passages.
+    Lexical (BM25) recall is unchanged (every filtered passage still scores), so
+    no lexically-relevant passage is dropped. With the flag off, or whenever the
+    set is small / the lib is missing, behaviour is byte-identical to the
+    brute-force path. N5 (model-id/dim drift) is enforced inside the ANN.
+    """
     filtered = passages
     if tags:
         required = set(tags)
         filtered = [p for p in filtered if required.issubset(set(p.tags))]
     if since is not None:
         filtered = [p for p in filtered if p.created_at >= since]
+    # N13: opt-in bi-temporal recall filter. Default ``valid_as_of=None`` skips
+    # this entirely, so existing recall behaviour is byte-identical; when a
+    # moment is supplied, passages whose validity window does not cover it
+    # (e.g. invalidated by a calibrated code change) are excluded from recall.
+    if valid_as_of is not None:
+        filtered = [p for p in filtered if p.is_valid_at(valid_as_of)]
     if not filtered:
         return []
 
@@ -75,10 +97,24 @@ def rank_archival_passages(
     bm25_norm = {pid: (score / max_bm25 if max_bm25 > 0 else 0.0) for pid, score in bm25.items()}
 
     vector_enabled = bool(query_embedding)
+    # G5: ANN-narrowed set of passages eligible for cosine scoring. ``None`` means
+    # "score every passage" (brute-force fallback / flag off / small set), which
+    # reproduces today's results exactly.
+    cosine_candidate_ids: set[str] | None = None
+    if vector_enabled and embedding_model and ann_retrieval_enabled():
+        cosine_candidate_ids = _ARCHIVAL_ANN_INDEX.candidate_ids(
+            query_embedding or [],
+            filtered,
+            model_id=embedding_model,
+            dim=len(query_embedding or []),
+            top_k=top_k,
+        )
+
     ranked: list[RankedPassage] = []
     for passage in filtered:
         cosine = 0.0
-        if vector_enabled and passage.embedding and passage.embedding_provenance != "legacy_stub":
+        score_cosine = cosine_candidate_ids is None or passage.id in cosine_candidate_ids
+        if vector_enabled and score_cosine and passage.embedding and passage.embedding_provenance != "legacy_stub":
             try:
                 cosine = max(0.0, min(1.0, cosine_similarity(query_embedding or [], passage.embedding)))
             except ValueError:

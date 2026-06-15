@@ -135,16 +135,14 @@ class _SummaryStore:
         return conn
 
     def _init_schema(self, conn: sqlite3.Connection) -> None:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS internal_llm_summary_cache (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 hit_count INTEGER NOT NULL DEFAULT 0,
                 last_hit_at TEXT NOT NULL
             )
-            """
-        )
+            """)
 
     def _evict(self, conn: sqlite3.Connection) -> None:
         row = conn.execute("SELECT COUNT(*) AS n FROM internal_llm_summary_cache").fetchone()
