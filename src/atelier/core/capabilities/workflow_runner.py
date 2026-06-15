@@ -11,8 +11,12 @@ from typing import Any
 
 from atelier.core.capabilities.workflow_context import StepResult, WorkflowContextState
 from atelier.core.capabilities.workflow_schema import (
+    CONTROL_FLOW_STEP_KINDS,
+    LOOP_ITERATION_HARD_CAP,
     WorkflowDefinition,
+    WorkflowPredicate,
     WorkflowStepDefinition,
+    referenced_step_ids,
     step_dependencies,
     step_is_safe_parallel,
     validate_workflow_definition,
@@ -39,6 +43,74 @@ class WorkflowRunResult:
     step_results: dict[str, StepResult]
     failed_step_id: str | None = None
     paused_step_id: str | None = None
+
+
+class WorkflowLoopGuardError(RuntimeError):
+    """Raised when a `loop` step exceeds its (capped) max-iterations budget."""
+
+
+def _resolve_operand(value: Any, state: WorkflowContextState) -> Any:
+    """Resolve a predicate operand: a full step/item reference or a literal."""
+    if isinstance(value, str) and referenced_step_ids(value):
+        return state.render_value(value)
+    if isinstance(value, str):
+        # May still be a `{{item...}}` reference inside an active map scope.
+        try:
+            return state.render_value(value)
+        except ValueError:
+            return value
+    return value
+
+
+def evaluate_predicate(predicate: WorkflowPredicate, state: WorkflowContextState) -> bool:
+    """Deterministically evaluate a predicate against the current context.
+
+    No code eval: a fixed allow-list of comparison ops over a resolved left
+    operand (`ref`) and, for binary ops, a resolved right operand (`value`).
+    """
+    left = _resolve_operand(predicate.ref, state) if predicate.ref else None
+    op = predicate.op
+    if op == "truthy":
+        return bool(left)
+    if op == "falsy":
+        return not bool(left)
+    right = _resolve_operand(predicate.value, state)
+    if op == "eq":
+        return bool(left == right)
+    if op == "ne":
+        return bool(left != right)
+    if op == "contains":
+        return _safe_contains(left, right)
+    if op == "not_contains":
+        return not _safe_contains(left, right)
+    if op == "in":
+        return _safe_contains(right, left)
+    if op in {"gt", "gte", "lt", "lte"}:
+        return _safe_compare(op, left, right)
+    raise ValueError(f"unsupported predicate op: {op}")
+
+
+def _safe_contains(container: Any, member: Any) -> bool:
+    if isinstance(container, str):
+        return isinstance(member, str) and member in container
+    if isinstance(container, list | tuple | set | frozenset | dict):
+        try:
+            return member in container
+        except TypeError:
+            return False
+    return False
+
+
+def _safe_compare(op: str, left: Any, right: Any) -> bool:
+    if not isinstance(left, int | float) or not isinstance(right, int | float):
+        raise ValueError(f"predicate {op} requires numeric operands")
+    if op == "gt":
+        return left > right
+    if op == "gte":
+        return left >= right
+    if op == "lt":
+        return left < right
+    return left <= right
 
 
 def build_execution_waves(definition: WorkflowDefinition) -> list[tuple[str, ...]]:
@@ -75,31 +147,43 @@ class WorkflowRunner:
         self._tool_executor = tool_executor
         self._shell_executor = shell_executor
 
+    def _step_hash_payload(self, step: WorkflowStepDefinition) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "step_id": step.step_id,
+            "kind": step.kind,
+            "role_id": step.role_id,
+            "next_steps": list(step.next_steps),
+            "fork_from": step.fork_from,
+            "context_mode": step.context_mode,
+            "parallel_safe": step.parallel_safe,
+            "requires_plan_review": step.requires_plan_review,
+            "prompt": step.prompt,
+            "tool": step.tool,
+            "args": step.args,
+            "command": step.command,
+            "output_name": step.output_name,
+            "json_output": step.json_output,
+            "interactive": step.interactive,
+        }
+        if step.kind in CONTROL_FLOW_STEP_KINDS:
+            payload["over"] = step.over
+            payload["item_var"] = step.item_var
+            payload["max_iterations"] = step.max_iterations
+            payload["predicate"] = (
+                {"op": step.predicate.op, "ref": step.predicate.ref, "value": step.predicate.value}
+                if step.predicate is not None
+                else None
+            )
+            payload["body"] = [self._step_hash_payload(sub) for sub in step.body]
+            payload["else_body"] = [self._step_hash_payload(sub) for sub in step.else_body]
+        return payload
+
     def _definition_hash(self, definition: WorkflowDefinition) -> str:
         payload = {
             "workflow_id": definition.workflow_id,
-            "steps": [
-                {
-                    "step_id": step.step_id,
-                    "kind": step.kind,
-                    "role_id": step.role_id,
-                    "next_steps": list(step.next_steps),
-                    "fork_from": step.fork_from,
-                    "context_mode": step.context_mode,
-                    "parallel_safe": step.parallel_safe,
-                    "requires_plan_review": step.requires_plan_review,
-                    "prompt": step.prompt,
-                    "tool": step.tool,
-                    "args": step.args,
-                    "command": step.command,
-                    "output_name": step.output_name,
-                    "json_output": step.json_output,
-                    "interactive": step.interactive,
-                }
-                for step in definition.steps
-            ],
+            "steps": [self._step_hash_payload(step) for step in definition.steps],
         }
-        return sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+        return sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 
     def _normalize_executor_result(
         self, step: WorkflowStepDefinition, raw: Any, *, duration_seconds: float
@@ -157,19 +241,25 @@ class WorkflowRunner:
         if ledger is not None:
             ledger.record_workflow_step_event(step_id=step.step_id, event="start", kind=step.kind, status="running")
         try:
-            if step.kind == "agent":
+            if step.kind in CONTROL_FLOW_STEP_KINDS:
+                result = self._run_control_flow(step, context_state, ledger, start)
+            elif step.kind == "agent":
                 rendered_prompt = context_state.render_value(step.prompt)
                 raw_result = self._agent_executor(step, str(rendered_prompt), context_state)
+                result = self._normalize_executor_result(step, raw_result, duration_seconds=time.perf_counter() - start)
             elif step.kind == "tool":
                 rendered_args = context_state.render_value(step.args)
                 raw_result = self._tool_executor(step, dict(rendered_args), context_state)
+                result = self._normalize_executor_result(step, raw_result, duration_seconds=time.perf_counter() - start)
             elif step.kind == "shell":
                 rendered_command = context_state.render_value(step.command)
                 forked = context_state.fork_step_context(step.fork_from) if step.fork_from else {}
                 raw_result = self._shell_executor(step, str(rendered_command), forked)
+                result = self._normalize_executor_result(step, raw_result, duration_seconds=time.perf_counter() - start)
             else:
                 raise ValueError(f"unsupported step kind: {step.kind}")
-            result = self._normalize_executor_result(step, raw_result, duration_seconds=time.perf_counter() - start)
+        except WorkflowLoopGuardError:
+            raise
         except (RuntimeError, ValueError, OSError, KeyError, TypeError) as exc:
             result = StepResult(
                 step_id=step.step_id,
@@ -184,6 +274,218 @@ class WorkflowRunner:
             event = "done" if result.status == "done" else "fail"
             ledger.record_workflow_step_event(step_id=step.step_id, event=event, kind=step.kind, status=result.status)
         return result
+
+    # ------------------------------------------------------------------
+    # G19 control flow: map / conditional / loop
+    # ------------------------------------------------------------------
+    def _child_state(
+        self, parent: WorkflowContextState, item_bindings: dict[str, Any] | None = None
+    ) -> WorkflowContextState:
+        """A scoped context that inherits parent results but isolates sub-results.
+
+        Outer-scope references resolve because parent step results are seeded in;
+        sub-step results land only in the child, so repeated map/loop iterations
+        never collide on step ids and the parent DAG stays clean.
+        """
+        child = WorkflowContextState(run_id=parent.run_id, definition_hash=parent.definition_hash)
+        child.step_results = dict(parent.step_results)
+        child.status = "running"
+        if item_bindings:
+            child.set_item_bindings(item_bindings)
+        return child
+
+    def _ordered_sub_steps(self, sub_steps: tuple[WorkflowStepDefinition, ...]) -> list[WorkflowStepDefinition]:
+        """Topologically order sub-steps by intra-body dependencies (siblings only).
+
+        Outer-scope and item references are already satisfied in the child state,
+        so only sibling next_steps/refs constrain ordering.
+        """
+        by_id = {sub.step_id: sub for sub in sub_steps}
+        deps: dict[str, set[str]] = {sub.step_id: set() for sub in sub_steps}
+        for sub in sub_steps:
+            refs = set()
+            refs.update(referenced_step_ids(sub.prompt))
+            refs.update(referenced_step_ids(sub.args))
+            refs.update(referenced_step_ids(sub.command))
+            refs.update(referenced_step_ids(sub.over))
+            if sub.predicate is not None:
+                refs.update(referenced_step_ids(sub.predicate.ref))
+                refs.update(referenced_step_ids(sub.predicate.value))
+            if sub.fork_from in by_id:
+                refs.add(sub.fork_from)
+            deps[sub.step_id].update(ref for ref in refs if ref in by_id)
+            for nxt in sub.next_steps:
+                if nxt in by_id:
+                    deps[nxt].add(sub.step_id)
+        ordered: list[WorkflowStepDefinition] = []
+        done: set[str] = set()
+        order_ids = [sub.step_id for sub in sub_steps]
+        while len(done) < len(order_ids):
+            ready = [sid for sid in order_ids if sid not in done and deps[sid].issubset(done)]
+            if not ready:
+                raise ValueError("control-flow body contains unresolved dependencies")
+            for sid in ready:
+                ordered.append(by_id[sid])
+                done.add(sid)
+        return ordered
+
+    def _run_sub_body(
+        self,
+        sub_steps: tuple[WorkflowStepDefinition, ...],
+        child: WorkflowContextState,
+        ledger: RunLedger | None,
+    ) -> tuple[bool, dict[str, StepResult]]:
+        """Run a body sequentially. Returns (ok, results-by-id).
+
+        Stops at the first failing sub-step (ok=False), mirroring top-level fail
+        propagation. Sub-steps may themselves be control-flow steps (recursion).
+        """
+        results: dict[str, StepResult] = {}
+        for sub in self._ordered_sub_steps(sub_steps):
+            sub_result = self._run_step(sub, child, ledger)
+            child.record_step_result(sub_result)
+            results[sub.step_id] = sub_result
+            if sub_result.status != "done":
+                return False, results
+        return True, results
+
+    def _coerce_over_items(self, value: Any) -> list[Any]:
+        if isinstance(value, list):
+            return list(value)
+        if isinstance(value, tuple):
+            return list(value)
+        raise ValueError("map step `over` must resolve to a list")
+
+    def _run_control_flow(
+        self,
+        step: WorkflowStepDefinition,
+        context_state: WorkflowContextState,
+        ledger: RunLedger | None,
+        start: float,
+    ) -> StepResult:
+        if step.kind == "map":
+            return self._run_map(step, context_state, ledger, start)
+        if step.kind == "conditional":
+            return self._run_conditional(step, context_state, ledger, start)
+        if step.kind == "loop":
+            return self._run_loop(step, context_state, ledger, start)
+        raise ValueError(f"unsupported control-flow kind: {step.kind}")
+
+    def _run_map(
+        self,
+        step: WorkflowStepDefinition,
+        context_state: WorkflowContextState,
+        ledger: RunLedger | None,
+        start: float,
+    ) -> StepResult:
+        items = self._coerce_over_items(context_state.render_value(step.over))
+        item_outputs: list[Any] = []
+        iterations: list[dict[str, Any]] = []
+        for index, item in enumerate(items):
+            child = self._child_state(context_state, {step.item_var: item, "index": index})
+            ok, results = self._run_sub_body(step.body, child, ledger)
+            terminal = results[self._ordered_sub_steps(step.body)[-1].step_id] if results else None
+            iterations.append({rid: r.to_dict() for rid, r in results.items()})
+            if not ok:
+                return StepResult(
+                    step_id=step.step_id,
+                    kind=step.kind,
+                    status="failed",
+                    output="",
+                    output_json={"items": item_outputs, "iterations": iterations, "failed_index": index},
+                    duration_seconds=time.perf_counter() - start,
+                    error=f"map iteration {index} failed",
+                )
+            item_outputs.append(terminal.output if terminal is not None else None)
+        return StepResult(
+            step_id=step.step_id,
+            kind=step.kind,
+            status="done",
+            output=item_outputs,
+            output_json={"items": item_outputs, "count": len(item_outputs), "iterations": iterations},
+            duration_seconds=time.perf_counter() - start,
+        )
+
+    def _run_conditional(
+        self,
+        step: WorkflowStepDefinition,
+        context_state: WorkflowContextState,
+        ledger: RunLedger | None,
+        start: float,
+    ) -> StepResult:
+        assert step.predicate is not None  # guaranteed by validation
+        branch_taken = evaluate_predicate(step.predicate, context_state)
+        body = step.body if branch_taken else step.else_body
+        if not body:
+            return StepResult(
+                step_id=step.step_id,
+                kind=step.kind,
+                status="done",
+                output="",
+                output_json={"branch": "then" if branch_taken else "else", "skipped": True},
+                duration_seconds=time.perf_counter() - start,
+            )
+        child = self._child_state(context_state)
+        ok, results = self._run_sub_body(body, child, ledger)
+        terminal = results[self._ordered_sub_steps(body)[-1].step_id] if results else None
+        status = "done" if ok else "failed"
+        return StepResult(
+            step_id=step.step_id,
+            kind=step.kind,
+            status=status,
+            output=terminal.output if terminal is not None else "",
+            output_json={
+                "branch": "then" if branch_taken else "else",
+                "results": {rid: r.to_dict() for rid, r in results.items()},
+            },
+            duration_seconds=time.perf_counter() - start,
+            error="" if ok else "conditional branch failed",
+        )
+
+    def _run_loop(
+        self,
+        step: WorkflowStepDefinition,
+        context_state: WorkflowContextState,
+        ledger: RunLedger | None,
+        start: float,
+    ) -> StepResult:
+        assert step.predicate is not None  # guaranteed by validation
+        cap = min(step.max_iterations, LOOP_ITERATION_HARD_CAP)
+        iterations: list[dict[str, Any]] = []
+        last_output: Any = ""
+        completed = 0
+        for index in range(cap):
+            child = self._child_state(context_state, {"index": index})
+            ok, results = self._run_sub_body(step.body, child, ledger)
+            terminal = results[self._ordered_sub_steps(step.body)[-1].step_id] if results else None
+            iterations.append({rid: r.to_dict() for rid, r in results.items()})
+            completed = index + 1
+            if not ok:
+                return StepResult(
+                    step_id=step.step_id,
+                    kind=step.kind,
+                    status="failed",
+                    output="",
+                    output_json={"iterations": iterations, "completed": completed, "failed_index": index},
+                    duration_seconds=time.perf_counter() - start,
+                    error=f"loop iteration {index} failed",
+                )
+            last_output = terminal.output if terminal is not None else ""
+            # `predicate` is the until-condition: stop once it holds.
+            if evaluate_predicate(step.predicate, child):
+                return StepResult(
+                    step_id=step.step_id,
+                    kind=step.kind,
+                    status="done",
+                    output=last_output,
+                    output_json={"iterations": iterations, "completed": completed, "converged": True},
+                    duration_seconds=time.perf_counter() - start,
+                )
+        # Exhausted the (capped) iteration budget without the until-condition
+        # holding: trip the infinite-loop guard rather than silently succeeding.
+        raise WorkflowLoopGuardError(
+            f"loop step {step.step_id} exceeded max_iterations={cap} without satisfying its until condition"
+        )
 
     def _run_wave_parallel(
         self,

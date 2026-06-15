@@ -7,8 +7,9 @@ operations like listing Playbooks it falls back to a local store at
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 from atelier.core.foundation.models import (
     RescueResult,
@@ -29,21 +30,22 @@ from atelier.gateway.trace_payloads import serialize_trace_learnings, serialize_
 
 
 class _LoopbackTransport(MCPToolTransport):
+    # Aliases the in-process SDK accepts in addition to canonical tool names.
+    # ``record`` is a historical synonym for the ``trace`` recorder.
+    _ALIASES: ClassVar[dict[str, str]] = {"record": "trace"}
+
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        tools = {
-            "context": mcp_server.tool_get_context,
-            "rescue": mcp_server.tool_rescue_failure,
-            "trace": mcp_server.tool_record_trace,
-            "record": mcp_server.tool_record_trace,
-            "verify": mcp_server.tool_run_rubric_gate,
-            "memory": mcp_server.tool_memory,
-            "read": mcp_server.tool_smart_read,
-            "search": mcp_server.tool_smart_search,
-            "edit": mcp_server.tool_smart_edit,
-            "compact": mcp_server.tool_compact,
-            "symbols": mcp_server.tool_symbols,
-        }
-        return cast(dict[str, Any], tools[name](arguments))
+        # Expose the full registered MCP tool surface to in-process/SDK callers
+        # so loopback parity tracks the stdio/HTTP transports automatically as
+        # tools are added (workflow, codemod, rename-via-codemod, shell, grep,
+        # graph, scan, ...). Each entry is the same dict-accepting handler the
+        # MCP dispatcher invokes, so behavior is identical across transports.
+        canonical = self._ALIASES.get(name, name)
+        spec = mcp_server.TOOLS.get(canonical)
+        if spec is None:
+            raise KeyError(name)
+        handler = cast(Callable[[dict[str, Any]], Any], spec["handler"])
+        return cast(dict[str, Any], handler(arguments))
 
 
 class MCPClient(LocalClient):

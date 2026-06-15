@@ -123,6 +123,59 @@ class _CodeWarmer:
                 logger.exception("code warmer: warm pass failed")
 
 
+# --- stdio MCP single-workspace warmer (Workstream 6 / G10) ----------------
+#
+# The SERVICE path warms every active workspace via ``_CodeWarmer`` above. The
+# stdio MCP server (``mcp_server.serve``) instead owns exactly one workspace and
+# is not warmed, so it pays cold-start on Zoekt/scip/ast-grep subprocesses at
+# the first code-context tool call. ``warm_stdio_workspace`` warms that single
+# workspace once on startup, reusing the same lazy-engine-construct + retain
+# pattern as ``_CodeWarmer._warm_once``. It is idempotent and fail-open.
+
+_stdio_engine: object | None = None
+_stdio_warmed: Path | None = None
+_stdio_lock = threading.Lock()
+
+
+def warm_stdio_workspace(workspace: str | Path) -> bool:
+    """Warm the code-context engine for a single stdio workspace (idempotent).
+
+    Returns ``True`` when an engine was constructed and retained, ``False`` when
+    warming was skipped (disabled, missing dir, already warm) or failed. Never
+    raises -- stdio server startup must not break if warming fails.
+    """
+    global _stdio_engine, _stdio_warmed
+    if not _warm_enabled():
+        logger.info("stdio code warmer disabled via ATELIER_SERVICE_CODE_WARM")
+        return False
+    try:
+        resolved = Path(workspace).expanduser().resolve()
+    except OSError:
+        logger.exception("stdio code warmer: cannot resolve workspace %s", workspace)
+        return False
+    if not resolved.is_dir():
+        logger.debug("stdio code warmer: workspace is not a directory: %s", resolved)
+        return False
+    with _stdio_lock:
+        if _stdio_warmed == resolved:
+            return False
+        try:
+            # Lazy import keeps stdio startup cheap and avoids a hard import
+            # cycle on the heavy code-intel engine.
+            from atelier.core.capabilities.code_context.engine import CodeContextEngine
+
+            engine = CodeContextEngine(resolved)
+            # Retain the ref so the engine's autosync thread keeps the shared
+            # SQLite index warm for the lifetime of the stdio process.
+            _stdio_engine = engine
+            _stdio_warmed = resolved
+            logger.info("stdio code warmer: warmed workspace %s", resolved)
+            return True
+        except Exception:
+            logger.exception("stdio code warmer: failed to warm workspace %s", resolved)
+            return False
+
+
 _warmer: _CodeWarmer | None = None
 _warmer_lock = threading.Lock()
 
