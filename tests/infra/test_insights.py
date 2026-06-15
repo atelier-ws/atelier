@@ -259,7 +259,7 @@ def test_rule_compact_aggression_fires() -> None:
     outcomes: dict[str, dict[str, Any]] = {
         f"s{i}": {
             "route_outcomes": [],
-            "compact_outcomes": [{"extra_read_rate": 0.25, "outcome_score": 0.8}],
+            "compact_outcomes": [{"outcome_window": {"extra_read_rate": 0.25, "outcome_score": 0.8}}],
         }
         for i in range(5)
     }
@@ -274,7 +274,7 @@ def test_rule_compact_aggression_does_not_fire_below_threshold() -> None:
     outcomes: dict[str, dict[str, Any]] = {
         f"s{i}": {
             "route_outcomes": [],
-            "compact_outcomes": [{"extra_read_rate": 0.10, "outcome_score": 0.9}],
+            "compact_outcomes": [{"outcome_window": {"extra_read_rate": 0.10, "outcome_score": 0.9}}],
         }
         for i in range(5)
     }
@@ -526,11 +526,11 @@ def test_build_insights_outcomes_summary(tmp_path: Path) -> None:
     # Write an outcomes file.
     outcomes_data = {
         "route_outcomes": [
-            {"outcome_score": 0.9, "tool_name": "Edit"},
-            {"outcome_score": 0.8, "tool_name": "Bash"},
+            {"outcome_window": {"outcome_score": 0.9}, "tool": "Edit"},
+            {"outcome_window": {"outcome_score": 0.8}, "tool": "Bash"},
         ],
         "compact_outcomes": [
-            {"outcome_score": 0.7, "extra_read_rate": 0.1},
+            {"outcome_window": {"outcome_score": 0.7, "extra_read_rate": 0.1}},
         ],
     }
     (runs_dir.parent / "sessions" / "s1" / "outcomes.json").write_text(json.dumps(outcomes_data))
@@ -550,7 +550,7 @@ def test_build_insights_high_extra_reads_flagged(tmp_path: Path) -> None:
     _write_run_file(runs_dir, "s1", cost_usd=1.0)
     outcomes_data = {
         "route_outcomes": [],
-        "compact_outcomes": [{"outcome_score": 0.5, "extra_read_rate": 0.35}],
+        "compact_outcomes": [{"outcome_window": {"outcome_score": 0.5, "extra_read_rate": 0.35}}],
     }
     (runs_dir.parent / "sessions" / "s1" / "outcomes.json").write_text(json.dumps(outcomes_data))
     window = build_insights(

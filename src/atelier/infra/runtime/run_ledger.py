@@ -20,6 +20,33 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+# Hard cap on the bytes of any single string value inside an event payload.
+# Per-event payloads carry arbitrary tool/command output, and ``snapshot``
+# re-serializes the entire events list on every ``persist`` -- so one oversized
+# payload string can bloat run.json without bound. We truncate individual
+# payload string fields at record time (with a clear marker) rather than
+# dropping events or changing the events-list contract. Generous, env-overridable.
+try:
+    _MAX_PAYLOAD_STR_BYTES = max(0, int(os.environ.get("ATELIER_MAX_PAYLOAD_STR_BYTES", "65536")))
+except ValueError:
+    _MAX_PAYLOAD_STR_BYTES = 65536
+
+
+def _bound_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Truncate oversized string values in an event payload in place.
+
+    Bounds per-event payload bytes so a single event's arbitrary output can't
+    bloat run.json. Only string fields are touched; structure is preserved.
+    """
+    if _MAX_PAYLOAD_STR_BYTES <= 0:
+        return payload
+    for key, value in payload.items():
+        if isinstance(value, str) and len(value) > _MAX_PAYLOAD_STR_BYTES:
+            dropped = len(value) - _MAX_PAYLOAD_STR_BYTES
+            payload[key] = value[:_MAX_PAYLOAD_STR_BYTES] + f"\n...[truncated {dropped} chars]"
+    return payload
+
+
 # --------------------------------------------------------------------------- #
 # Per-session paths — the run ledger and its sidecars live in sessions/<id>/  #
 # alongside the trace files, so a session is one self-contained folder.       #
@@ -39,11 +66,6 @@ def run_file_path(root: str | Path, session_id: str) -> Path:
 def outcomes_path(root: str | Path, session_id: str) -> Path:
     """Captured route/compact outcomes: ``sessions/<session_id>/outcomes.json``."""
     return session_run_dir(root, session_id) / "outcomes.json"
-
-
-def context_savings_path(root: str | Path, session_id: str) -> Path:
-    """Context-compression savings: ``sessions/<session_id>/context_savings.jsonl``."""
-    return session_run_dir(root, session_id) / "context_savings.jsonl"
 
 
 def iter_run_files(root: str | Path) -> list[Path]:
@@ -230,7 +252,7 @@ class RunLedger:
         event = LedgerEvent(
             kind=kind,  # type: ignore[arg-type]
             summary=summary,
-            payload=payload or {},
+            payload=_bound_payload(payload or {}),
         )
         self.events.append(event)
         self.updated_at = _utcnow()

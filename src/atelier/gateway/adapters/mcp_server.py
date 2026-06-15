@@ -407,6 +407,7 @@ class _MonitorSession:
 
 _monitor_sessions: dict[str, _MonitorSession] = {}
 _MAX_MONITOR_STEPS = 25
+_MAX_MONITOR_SESSIONS = 64
 
 
 def _advance_monitors(session_id: str, task: str, original_task: str) -> tuple[float, bool]:
@@ -426,6 +427,12 @@ def _advance_monitors(session_id: str, task: str, original_task: str) -> tuple[f
         from atelier.core.capabilities.monitors.fsm import score_step
 
         ms = _monitor_sessions.setdefault(session_id, _MonitorSession())
+        if len(_monitor_sessions) > _MAX_MONITOR_SESSIONS:
+            # Bound the session map: a marathon process seeing many session ids
+            # must not leak _MonitorSession objects. Evict oldest (skip current).
+            for _stale in list(_monitor_sessions)[: len(_monitor_sessions) - _MAX_MONITOR_SESSIONS]:
+                if _stale != session_id:
+                    _monitor_sessions.pop(_stale, None)
         ms.steps.append(task)
         if len(ms.steps) > _MAX_MONITOR_STEPS:
             ms.steps = ms.steps[-20:]
@@ -449,6 +456,11 @@ def _advance_monitors(session_id: str, task: str, original_task: str) -> tuple[f
 _MCP_ID: str = f"atelier-{_uuid_mod.uuid4().hex[:16]}"
 _cached_claude_session_id: str = ""
 _cached_mcp_model: str = ""
+# _current_context_state cache: session id -> (stat-signature, (ctx, model)).
+# That probe runs on every savings-bearing tool call; without this it re-tails
+# and JSON-parses a 64 KB transcript window every time. Keyed on the candidate
+# transcripts' (path, mtime_ns, size) so any new turn / rewrite invalidates it.
+_CONTEXT_STATE_CACHE: dict[str, tuple[tuple[tuple[str, int, int], ...], tuple[int, str]]] = {}
 _STDOUT_LOCK = threading.Lock()
 _STATE_LOCK = threading.RLock()
 # Per-file edit locks: concurrent edit calls (the MCP dispatcher runs a thread
@@ -534,10 +546,17 @@ def _detect_agent() -> str:
 
 def _get_ledger() -> RunLedger:
     global _current_ledger
+    if _current_ledger is not None:
+        return _current_ledger
+    # Bind the ledger to the host session id (Claude Code UUID, etc.) so
+    # run.json lands at sessions/<host-id>/run.json — the same folder the
+    # plugin hooks read and the savings sidecar writes. Computed outside the
+    # lock since _get_claude_session_id touches shared state; non-host runs
+    # fall back to RunLedger's own random uuid4.
+    host_sid = _get_claude_session_id() or None
     with _STATE_LOCK:
         if _current_ledger is None:
-            root = _atelier_root()
-            _current_ledger = RunLedger(root=root, agent=_detect_agent())
+            _current_ledger = RunLedger(root=_atelier_root(), agent=_detect_agent(), session_id=host_sid)
     return _current_ledger
 
 
@@ -903,6 +922,8 @@ def _reset_runtime_cache_for_testing() -> None:
     _last_worker_spawn_time = 0.0
     _last_plan_hash_by_session.clear()
     _last_plan_by_session.clear()
+    _CONTEXT_STATE_CACHE.clear()
+    _COMPACT_ADVISE_CACHE.clear()
     _last_blocked_plan_hash_by_session.clear()
     _code_engine_cache.clear()
     _scoped_context_cache.clear()
@@ -1283,13 +1304,42 @@ def _default_workflow_agent_executor(
         prompt_template=spawn_envelope.prompt,
     )
     started = time.perf_counter()
-    completed = subprocess.run(
-        command,
-        cwd=workspace,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=48 * 60 * 60,  # 48h hard ceiling so a hung host CLI can't wedge the run forever
+        )
+    except subprocess.TimeoutExpired:
+        duration_seconds = time.perf_counter() - started
+        error = f"native workflow spawn ({selected_runner}) timed out after 48h"
+        return {
+            "status": "failed",
+            "output": "",
+            "output_json": {},
+            "execution_receipt": _native_workflow_execution_receipt(
+                defaults=defaults,
+                runner=selected_runner,
+                model=selected_model,
+                role_id=str(getattr(step, "role_id", "") or "general"),
+                compiled_prompt=compiled_prompt,
+                spawn_envelope=spawn_envelope.to_dict(),
+                status="failed",
+                duration_seconds=duration_seconds,
+                observed_fields=_observed_host_fields(
+                    spawn_envelope=spawn_envelope.to_dict(),
+                    selected_runner=selected_runner,
+                    selected_model=selected_model,
+                ),
+                unverified_fields=_unverified_host_fields(selected_model=selected_model),
+                error=error,
+                route_mode=route_mode,
+            ),
+            "error": error,
+        }
     duration_seconds = time.perf_counter() - started
     output = (completed.stdout or "").strip()
     if completed.returncode != 0:
@@ -2225,6 +2275,10 @@ def _current_context_state() -> tuple[int, str]:
     switches models mid-session via /model. Returns (0, "") when no
     transcript/usage is available. Callers must treat 0/"" as "unknown" and
     skip pricing — never synthesize values.
+
+    Cached on the candidate transcripts' (path, mtime_ns, size) signature: this
+    runs on every savings-bearing tool call, so we re-tail and JSON-parse the
+    64 KB window only when a transcript actually changed.
     """
     try:
         from atelier.core.capabilities.savings_summary import (
@@ -2235,9 +2289,26 @@ def _current_context_state() -> tuple[int, str]:
         sid = _claude_session_id()
         if not sid:
             return 0, ""
+
+        candidates = list(claude_transcript_candidates(sid))
+        sig_parts: list[tuple[str, int, int]] = []
+        for cand in candidates:
+            try:
+                st = os.stat(cand)
+            except OSError:
+                continue
+            sig_parts.append((str(cand), st.st_mtime_ns, st.st_size))
+        sig = tuple(sig_parts)
+
+        with _STATE_LOCK:
+            cached = _CONTEXT_STATE_CACHE.get(sid)
+        if cached is not None and cached[0] == sig:
+            return cached[1]
+
         from atelier.gateway.hosts.context_state import _tail_lines
 
-        for cand in claude_transcript_candidates(sid):
+        result: tuple[int, str] = (0, "")
+        for cand in candidates:
             try:
                 tail_lines = _tail_lines(cand)
             except OSError:
@@ -2267,7 +2338,12 @@ def _current_context_state() -> tuple[int, str]:
                     if is_real_model(candidate):
                         best_model = candidate
             if best > 0:
-                return best, best_model
+                result = (best, best_model)
+                break
+
+        with _STATE_LOCK:
+            _CONTEXT_STATE_CACHE[sid] = (sig, result)
+        return result
     except Exception:
         logging.exception("Recovered from broad exception handler")
         _log.debug("context state probe failed", exc_info=True)
@@ -2297,7 +2373,7 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
     This single sidecar is the source of truth read by the live statusline,
     the stop hook, and the session report. Each row carries the raw
     ``tokens``/``calls`` plus the pre-priced ``cost_saved_usd`` /
-    ``calls_cost_saved_usd`` so analytics readers need not re-price.
+    ``calls_usd`` so analytics readers need not re-price.
     """
     if tokens_saved <= 0 and calls_saved <= 0:
         return
@@ -2330,7 +2406,6 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
             entry["cost_saved_usd"] = cost_saved
         if calls_usd > 0:
             entry["calls_usd"] = calls_usd
-            entry["calls_cost_saved_usd"] = calls_usd
             entry["ctx_tokens"] = ctx_tokens
         if rid:
             entry["rid"] = rid
@@ -2705,6 +2780,47 @@ def _workspace_root() -> Path:
     return Path(workspace)
 
 
+def _claude_additional_dirs(workspace_root: Path) -> list[Path]:
+    """Extra directories allowed for edits beyond *workspace_root*.
+
+    Merges two sources in order:
+    1. ``ATELIER_ADDITIONAL_DIRS`` — colon-separated env var (highest priority).
+    2. ``additionalDirectories`` array in ``~/.claude/settings.json`` and
+       ``<workspace>/.claude/settings.json`` (mirrors what Claude Code's
+       ``--add-dir`` flag persists).
+
+    Read-only tools (grep/search/read) already accept any absolute path, so
+    this only affects write operations (edit, batch-edit).
+    """
+    dirs: list[Path] = []
+
+    env_raw = os.environ.get("ATELIER_ADDITIONAL_DIRS", "").strip()
+    for raw in env_raw.split(":"):
+        raw = raw.strip()
+        if raw:
+            try:
+                dirs.append(Path(raw).expanduser().resolve())
+            except (OSError, ValueError):
+                pass
+
+    for sp in (
+        Path.home() / ".claude" / "settings.json",
+        workspace_root / ".claude" / "settings.json",
+    ):
+        try:
+            data = json.loads(sp.read_text(encoding="utf-8"))
+            for raw in data.get("additionalDirectories", []):
+                if isinstance(raw, str) and raw.strip():
+                    try:
+                        dirs.append(Path(raw).expanduser().resolve())
+                    except (OSError, ValueError):
+                        pass
+        except (OSError, json.JSONDecodeError, ValueError):
+            pass
+
+    return dirs
+
+
 # Thread-local slot for passing real tokens_saved from tool handlers to the
 # budget recorder without polluting the LLM-facing response dict.
 _tool_call_tokens_saved: threading.local = threading.local()
@@ -3054,6 +3170,10 @@ def tool_rescue_failure(
     return payload
 
 
+_MAX_TRACE_FILES = int(os.environ.get("ATELIER_TRACE_MAX_FILES", "50"))
+_MAX_TRACE_FILE_BYTES = int(os.environ.get("ATELIER_TRACE_MAX_FILE_BYTES", str(1024 * 1024)))
+
+
 @mcp_tool(name="trace")
 def tool_record_trace(
     agent: str,
@@ -3333,10 +3453,18 @@ def tool_record_trace(
             or os.environ.get("OPENCODE_SESSION_ID")
             or "unknown"
         )
-        for fpath in capture_files:
+        for fpath in capture_files[:_MAX_TRACE_FILES]:
             try:
                 p = Path(fpath)
                 if not p.is_file():
+                    continue
+                if p.stat().st_size > _MAX_TRACE_FILE_BYTES:
+                    logging.info(
+                        "trace capture: skipping %s (%d bytes > cap %d; raise ATELIER_TRACE_MAX_FILE_BYTES)",
+                        fpath,
+                        p.stat().st_size,
+                        _MAX_TRACE_FILE_BYTES,
+                    )
                     continue
                 content = p.read_text(encoding="utf-8", errors="replace")
                 # We redact secrets from files before capture for safety
@@ -3417,13 +3545,10 @@ def tool_record_trace(
 
     _lf_emit(payload)
 
-    # Kick off an immediate background consolidation tick so knowledge blocks
-    # are extracted from this trace without waiting for the daemon's next cycle.
-    threading.Thread(
-        target=_run_worker_tick_safe,
-        args=(_atelier_root(),),
-        daemon=True,
-    ).start()
+    # Kick off a background consolidation tick so knowledge blocks are extracted
+    # from this trace without waiting for the daemon's next cycle. Throttled
+    # (>=30s) so a burst of trace calls can't spawn a thread storm.
+    _spawn_worker_if_idle(_atelier_root())
 
     # Stable compact receipt.
     return {
@@ -4711,7 +4836,13 @@ def _apply_edit_verify_gate(
         result["verify"] = {"passed": False, "checks": list(checks_seq)}
         result["counterexamples"] = [c.to_dict() for c in errors]
         if rollback:
-            _restore_snapshots(snapshots)
+            # The gate runs outside the per-file edit locks (so verify can't
+            # serialize concurrent edits); re-acquire them just for the rollback
+            # restore-write so it can't race a concurrent edit to the same file.
+            with contextlib.ExitStack() as _rb_locks:
+                for _lock in _edit_path_locks(touched):
+                    _rb_locks.enter_context(_lock)
+                _restore_snapshots(snapshots)
             result["rolled_back"] = True
             result["applied"] = []
             result["writes"] = 0
@@ -4989,24 +5120,26 @@ def tool_smart_edit(
     family = _validate_edit_descriptor_families(edits)
 
     paths = _collect_touched_paths(edits, repo_root=repo_root)
-    # Confine writes to the workspace: unlike read (which may read anywhere the
-    # host permits), edits/creates that resolve outside the workspace root are
-    # refused so a poisoned instruction cannot modify files outside the project.
-    from atelier.core.foundation.paths import confine_to_root
+    # Confine writes to the workspace root plus any additional directories from
+    # Claude Code's additionalDirectories setting or ATELIER_ADDITIONAL_DIRS env.
+    # Read tools accept any absolute path; writes need explicit opt-in.
+    _extra_roots = _claude_additional_dirs(repo_root)
+    _allowed_edit_roots = [repo_root, *_extra_roots]
 
-    _escaped_edit_paths = []
-    for _p in paths.values():
-        try:
-            confine_to_root(_p, repo_root)
-        except ValueError:
-            _escaped_edit_paths.append(str(_p))
+    _escaped_edit_paths = [
+        str(_p) for _p in paths.values() if not any(_p == _r or _p.is_relative_to(_r) for _r in _allowed_edit_roots)
+    ]
     if _escaped_edit_paths:
         return {
             "applied": [],
             "failed": [
                 {
                     "paths": _escaped_edit_paths,
-                    "error": "edit path escapes the workspace root; edits are confined to the workspace",
+                    "error": (
+                        "edit path escapes the workspace root; add the directory via "
+                        "additionalDirectories in ~/.claude/settings.json or "
+                        "ATELIER_ADDITIONAL_DIRS env to allow edits there"
+                    ),
                 }
             ],
             "rolled_back": True,
@@ -5044,11 +5177,11 @@ def tool_smart_edit(
         if family == "rich":
             from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
 
-            result = apply_rich_edits(edits, atomic=atomic, repo_root=repo_root)
+            result = apply_rich_edits(edits, atomic=atomic, repo_root=repo_root, allowed_roots=_extra_roots)
         else:
             from atelier.core.capabilities.tool_supervision.batch_edit import apply_batch_edit
 
-            result = apply_batch_edit(edits, atomic=atomic, repo_root=repo_root)
+            result = apply_batch_edit(edits, atomic=atomic, repo_root=repo_root, allowed_roots=_extra_roots)
 
         if not result.get("failed") and not result.get("rolled_back"):
             if post_edit_hooks:
@@ -5087,23 +5220,24 @@ def tool_smart_edit(
             # WS1 edit-loop correctness gate: optional executing parse + scoped
             # mypy/pytest verification with rollback. Opt-in via the `verify` arg or
             # the ATELIER_EDIT_VERIFY env var; fully fail-open.
-            if _edit_verify_enabled(verify):
-                _apply_edit_verify_gate(
-                    result,
-                    touched=list(paths.values()),
-                    snapshots=snapshots,
-                    checks=verify_checks,
-                    rollback=verify_rollback,
-                    timeout_ms=verify_timeout_ms,
-                    repo_root=repo_root,
-                )
-            # Diffs are recorded for telemetry and echoed inline so the caller
-            # sees exactly what changed without a follow-up read.
+            # Diffs are always recorded to the ledger (audit/undo), computed
+            # inside the lock so a concurrent edit can't race the post-apply
+            # read. They are surfaced inline ONLY when an edit landed via a
+            # non-exact match (normalized/placeholder/fuzzy): there the applied
+            # text may diverge from what the caller asked for, so the diff is
+            # the sole signal of that divergence and earns its tokens by saving
+            # a verifying re-read. For exact matches the caller already knows
+            # old->new and the `applied` line ranges, so an inline diff is pure
+            # redundancy.
             diffs = _compute_and_record_diffs(snapshots)
-            if diffs:
+            _applied = result.get("applied") or []
+            if diffs and any(
+                isinstance(e, dict) and e.get("match_mode") in ("normalized", "placeholder", "fuzzy")
+                for e in _applied
+            ):
                 result["diff"] = diffs
             # match_mode is only informative when it is not the default exact match.
-            for entry in result.get("applied") or []:
+            for entry in _applied:
                 if isinstance(entry, dict) and entry.get("match_mode") == "exact":
                     entry.pop("match_mode", None)
             if contract_paths:
@@ -5112,6 +5246,26 @@ def tool_smart_edit(
                     "paths": contract_paths,
                     "evidence": evidence,
                 }
+
+    # WS1 edit-loop correctness gate: optional executing parse + scoped mypy/pytest
+    # verification with rollback. Run OUTSIDE the per-file edit locks (released at
+    # the end of the with-block above) so a slow verify (up to verify_timeout_ms)
+    # can't serialize concurrent edits to the same file; the gate re-acquires the
+    # locks only for its rollback restore-write. Opt-in via `verify` or
+    # ATELIER_EDIT_VERIFY; fully fail-open.
+    if not result.get("failed") and not result.get("rolled_back") and _edit_verify_enabled(verify):
+        _apply_edit_verify_gate(
+            result,
+            touched=list(paths.values()),
+            snapshots=snapshots,
+            checks=verify_checks,
+            rollback=verify_rollback,
+            timeout_ms=verify_timeout_ms,
+            repo_root=repo_root,
+        )
+        if result.get("rolled_back"):
+            # Files were restored to pre-edit state; the inline diff no longer applies.
+            result.pop("diff", None)
 
     # Include diagnostics inline: this IS the lint-after-edit turn.
     # Filter to errors/warnings only — informational notes add noise.
@@ -5367,6 +5521,9 @@ def _write_handover_packet(led: RunLedger, state: Any) -> Path:
     return handover_path
 
 
+_COMPACT_ADVISE_CACHE: dict[str, tuple[int, Any]] = {}
+
+
 def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
     """Advise when to compact and what context to preserve.
 
@@ -5386,7 +5543,17 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
         utilisation_pct = float(lifecycle["utilisation_pct"])
         should_compact = bool(lifecycle["should_compact"])
         should_handover = bool(lifecycle["should_handover"])
-        state = ContextCompressor().compress(led, preserve_last_n_turns=10, workspace_root=_workspace_root())
+        # Memoize the full-ledger compression by (session, event count): this
+        # advisory entrypoint may be polled repeatedly without the ledger
+        # changing, and compress() walks every event each call. compress() is
+        # pure (reads events, returns a fresh CompactState), so reuse is safe.
+        _ca_key = led.session_id or ""
+        _ca_cached = _COMPACT_ADVISE_CACHE.get(_ca_key)
+        if _ca_cached is not None and _ca_cached[0] == len(led.events):
+            state = _ca_cached[1]
+        else:
+            state = ContextCompressor().compress(led, preserve_last_n_turns=10, workspace_root=_workspace_root())
+            _COMPACT_ADVISE_CACHE[_ca_key] = (len(led.events), state)
         compaction_savings = _session_compaction_savings_payload(
             led,
             state,
@@ -8126,10 +8293,13 @@ def _workflow_state_from_workspace() -> dict[str, Any]:
     return workflow if isinstance(workflow, dict) else {}
 
 
-def _route_outcome_calibration(tool_name: str, session_state: Mapping[str, Any]) -> dict[str, Any]:
+def _route_outcome_calibration(tool_name: str, session_state: Mapping[str, Any], led: RunLedger) -> dict[str, Any]:
     from atelier.infra.runtime.outcome_capture import load_outcomes_from_state
 
-    outcomes = load_outcomes_from_state(_workspace_session_state_file())
+    root = led._root
+    if root is None:
+        return {}
+    outcomes = load_outcomes_from_state(outcomes_path(root, led.session_id))
     session_phase = str(session_state.get("session_phase") or "").strip()
     followed: list[float] = []
     unfollowed: list[float] = []
@@ -8279,7 +8449,7 @@ def _prepare_model_recommendation(
     from atelier.core.capabilities.pricing import get_model_pricing
 
     session_state = _model_recommendation_state(led, args)
-    session_state.update(_route_outcome_calibration(tool_name, session_state))
+    session_state.update(_route_outcome_calibration(tool_name, session_state, led))
     workflow = _workflow_state_from_workspace()
     current_step = str(session_state.get("workflow_step") or "")
     prior_route, stickiness_remaining = _restore_legacy_route(workflow, current_step)
@@ -8425,6 +8595,28 @@ def _finalize_model_recommendation(
                 if key in finalized
             }
         )
+    # Mirror the routing saving into the per-session sidecar so the live
+    # statusline / stop hook can show it cheaply: sessions/<id>/savings.jsonl is
+    # read per render, while live_savings_events.jsonl is too large to scan there.
+    # kind="routing" keeps it out of the context-savings tally (never double-counted).
+    _routing_usd = float(finalized.get("cost_saved_usd") or 0.0)
+    if _routing_usd > 0:
+        with contextlib.suppress(Exception):
+            _sidecar = _get_host_session_sidecar_path()
+            _sidecar.parent.mkdir(parents=True, exist_ok=True)
+            with _sidecar.open("a", encoding="utf-8") as _fh:
+                _fh.write(
+                    json.dumps(
+                        {
+                            "kind": "routing",
+                            "usd": round(_routing_usd, 6),
+                            "tool": tool_name,
+                            "model": str(finalized.get("model") or ""),
+                            "ts": str(finalized.get("at") or ""),
+                        }
+                    )
+                    + "\n"
+                )
     _persist_legacy_route(workflow, finalized, current_step)
 
     if finalized.get("configured") is not False:
@@ -8737,7 +8929,12 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             else:
                 response_text = json.dumps(result, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
-            _ok_response_size = len(response_text.encode("utf-8", errors="replace"))
+            # Only pay the full-payload UTF-8 encode when a telemetry sink will
+            # consume the byte count; otherwise approximate with the O(1) char len.
+            if _mcp_debug_enabled():
+                _ok_response_size = len(response_text.encode("utf-8", errors="replace"))
+            else:
+                _ok_response_size = len(response_text)
             _ok_sid = _ok_session_id if not remote_routed else (getattr(_get_ledger(), "session_id", "") or "")
             with contextlib.suppress(Exception):
                 _append_mcp_debug_event(
@@ -8818,22 +9015,31 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # JSON sidecar under the atelier root. Additive only — never touches
             # the response bytes; best-effort so a write failure can't break the
             # tool call.
-            with contextlib.suppress(Exception):
-                from atelier.core.capabilities.tool_token_ledger import record_tool_tokens
-
-                record_tool_tokens(
-                    _atelier_root(),
-                    name,
-                    input_payload=args,
-                    output_payload=response_text,
+            # N4 ledger records ONLY savings-bearing calls: skip the full-output
+            # tiktoken encode + sidecar rewrite entirely when nothing was saved.
+            _n4_should_record = dedup_stubbed or (
+                isinstance(result, dict)
+                and (
+                    _extract_tokens_saved(result) > 0
+                    or _coerce_saved_tokens(result.get("calls_saved")) > 0
                 )
+            )
+            if _n4_should_record:
+                with contextlib.suppress(Exception):
+                    from atelier.core.capabilities.tool_token_ledger import record_tool_tokens
+
+                    record_tool_tokens(
+                        _atelier_root(),
+                        name,
+                        input_payload=args,
+                        output_payload=response_text,
+                    )
 
             # Embed per-call savings on the content item so they also ride into
             # the Claude transcript JSONL. NOTE: this is a secondary record —
-            # the live statusline/analytics source today is the session_stats
-            # sidecar written by _append_workspace_savings below, not the
-            # transcript. The dispatcher writes the same event to two sidecars
-            # (session_stats + runs/*_context_savings); read ONE, never sum both.
+            # the live statusline/analytics source is the per-session sidecar
+            # sessions/<id>/savings.jsonl written by _append_workspace_savings
+            # below, not the transcript.
             # Shape: {"tokens": int, "calls": int}. Either may be 0 but the
             # object is omitted entirely when both are 0.
             # First bound, for context hygiene: head+tail compact a single
@@ -8962,7 +9168,14 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
     return _err(rid, -32601, f"unknown method: {method}")
 
 
-def _strip_nulls(value: Any) -> Any:
+# Depth cap for _strip_nulls: deeply nested adversarial JSON (e.g. from web_fetch
+# or a sql JSON column) could otherwise blow Python's recursion limit and turn
+# benign data into a -32000 error. Beyond this depth we stop recursing and return
+# the subtree untouched.
+_STRIP_NULLS_MAX_DEPTH = 200
+
+
+def _strip_nulls(value: Any, _depth: int = 0) -> Any:
     """Recursively remove None and "" values from response values.
 
     Strips:
@@ -8974,10 +9187,12 @@ def _strip_nulls(value: Any) -> Any:
       - numeric 0 / 0.0 (meaningful)
       - False (meaningful)
     """
+    if _depth >= _STRIP_NULLS_MAX_DEPTH:
+        return value
     if isinstance(value, dict):
-        return {k: _strip_nulls(v) for k, v in value.items() if v is not None and v != ""}
+        return {k: _strip_nulls(v, _depth + 1) for k, v in value.items() if v is not None and v != ""}
     if isinstance(value, list):
-        return [_strip_nulls(item) for item in value]
+        return [_strip_nulls(item, _depth + 1) for item in value]
     return value
 
 
@@ -9016,6 +9231,33 @@ def _mcp_max_workers() -> int:
         )
         return _DEFAULT_MCP_MAX_WORKERS
     return max(1, min(configured, _MAX_MCP_MAX_WORKERS))
+
+
+_DEFAULT_MCP_HEAVY_WORKERS = 6
+_MAX_MCP_HEAVY_WORKERS = 32
+# Tools that can run for a long time (subprocess, network, mypy/pytest verify, or
+# a workflow/agent spawn up to the 48h ceiling). They get a separate small
+# executor lane so a burst can't evict cheap, frequent reads/searches from the
+# main pool.
+_HEAVY_TOOLS = frozenset({"shell", "run", "edit", "web_fetch", "workflow", "agent"})
+
+
+def _mcp_heavy_max_workers() -> int:
+    raw = os.environ.get("ATELIER_MCP_HEAVY_WORKERS", str(_DEFAULT_MCP_HEAVY_WORKERS))
+    try:
+        configured = int(raw)
+    except ValueError:
+        return _DEFAULT_MCP_HEAVY_WORKERS
+    return max(1, min(configured, _MAX_MCP_HEAVY_WORKERS))
+
+
+def _is_heavy_request(req: dict[str, Any]) -> bool:
+    """True if this JSON-RPC request targets a long-running tool (heavy lane)."""
+    if req.get("method") != "tools/call":
+        return False
+    params = req.get("params") or {}
+    name = params.get("name") if isinstance(params, dict) else ""
+    return name in _HEAVY_TOOLS
 
 
 def _max_result_bytes() -> int:
@@ -9105,7 +9347,16 @@ def _compact_result_text(text: str, tool_name: str) -> str:
     through untouched.
     """
     threshold = _compact_result_chars()
-    if threshold <= 0 or len(text) <= threshold:
+    if threshold <= 0:
+        return text
+    # Gate on bytes, not just chars: a multibyte/CJK result can sit under the
+    # char threshold while its UTF-8 footprint is several times larger and would
+    # still flood the host prompt. len(text) is a lower bound on bytes, so only
+    # pay the full encode when chars are under but bytes might exceed (x4 worst case).
+    _over = len(text) > threshold
+    if not _over and len(text) * 4 > threshold:
+        _over = len(text.encode("utf-8")) > threshold
+    if not _over:
         return text
     from atelier.core.capabilities.tool_supervision.compact_output import compress_tool_output
 
@@ -9307,9 +9558,16 @@ def _handle_and_write(request: dict[str, Any]) -> None:
 
 
 def serve() -> None:
-    executor = ThreadPoolExecutor(
+    light_executor = ThreadPoolExecutor(
         max_workers=_mcp_max_workers(),
         thread_name_prefix="atelier",
+    )
+    # Separate small lane for genuinely long-running tools (shell, edit-with-verify,
+    # web_fetch, and workflow/agent spawns up to the 48h ceiling) so a burst of them
+    # can't saturate the pool and starve cheap, frequent reads/searches.
+    heavy_executor = ThreadPoolExecutor(
+        max_workers=_mcp_heavy_max_workers(),
+        thread_name_prefix="atelier-heavy",
     )
     try:
         for line in sys.stdin:
@@ -9326,9 +9584,11 @@ def serve() -> None:
             if req.get("method") in {"initialize", "notifications/initialized"}:
                 _handle_and_write(req)
                 continue
+            executor = heavy_executor if _is_heavy_request(req) else light_executor
             executor.submit(_handle_and_write, req)
     finally:
-        executor.shutdown(wait=True, cancel_futures=False)
+        light_executor.shutdown(wait=True, cancel_futures=False)
+        heavy_executor.shutdown(wait=True, cancel_futures=False)
         _emit_mcp_session_end()
         from atelier.core.service.telemetry import shutdown_otel
 

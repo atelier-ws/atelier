@@ -85,6 +85,20 @@ def test_run_blocks_shell_interpreter(tmp_path: Path) -> None:
     assert result.policy_category == "shell-interpreter"
 
 
+def test_classify_allows_shell_noexec_syntax_check() -> None:
+    for cmd in ("bash -n script.sh", "sh -n script.sh", "bash -o noexec script.sh", "bash -nx script.sh"):
+        decision = classify_command(cmd)
+        assert decision.action != "block", cmd
+        assert decision.category != "shell-interpreter", cmd
+
+
+def test_classify_still_blocks_executing_shell() -> None:
+    for cmd in ("bash -c 'echo hi'", "sh script.sh", "bash script.sh -n"):
+        decision = classify_command(cmd)
+        assert decision.action == "block", cmd
+        assert decision.category == "shell-interpreter", cmd
+
+
 def test_run_via_mcp_handle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     from atelier.gateway.adapters.mcp_server import _handle

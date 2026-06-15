@@ -25,7 +25,7 @@
 #   ATELIER_NO_STACK   If set to 1, skip starting the visualization stack (service + frontend)
 #   ATELIER_ADVANCED   If set to 1, enable Docker sidecar install (requires --memory)
 #   ATELIER_MEMORY_BACKEND  Memory sidecar to install: letta | openmemory (default: none)
-#   ATELIER_ZOEKT      Install the persistent Zoekt code-search sidecar (default: 0)
+#   ATELIER_ZOEKT      Install the persistent Zoekt code-search sidecar (default: 1; set 0 to skip)
 #   ATELIER_VERBOSE    If set to 1, show verbose installation logs (default: 0)
 #   ATELIER_STRICT     If set to 1, treat selected post-install degradations as errors
 #   ATELIER_NON_INTERACTIVE If set to 1, disable all interactive prompts
@@ -93,11 +93,10 @@ ATELIER_KB_MAX_SPEND="${ATELIER_KB_MAX_SPEND:-0.50}"  # hard USD cap per run (au
 # session. On by default (the local embedder is free; set to 0 to disable).
 # Claude has no embeddings API, so it is not an embedder choice.
 [[ -n "${ATELIER_RECALL_INDEX+x}" ]] && ATELIER_RECALL_PRESET=1 || ATELIER_RECALL_PRESET=0
-ATELIER_RECALL_PROMPTED=0
 ATELIER_RECALL_INDEX="${ATELIER_RECALL_INDEX:-1}"            # 1 = enable SessionStart background indexer (default)
 ATELIER_RECALL_EMBEDDER="${ATELIER_RECALL_EMBEDDER:-local}"  # local | openai (codex) | ollama
 ATELIER_RECALL_EMBED_MODEL="${ATELIER_RECALL_EMBED_MODEL:-}" # embed model (e.g. an ollama model name)
-ATELIER_ZOEKT="${ATELIER_ZOEKT:-0}"                    # 1 = install persistent Zoekt sidecar
+ATELIER_ZOEKT="${ATELIER_ZOEKT:-1}"                    # default on; 0 = skip the persistent Zoekt sidecar
 OS_NAME="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 BINARY_SUFFIX="${OS_NAME}-${ARCH}"
@@ -112,6 +111,13 @@ ATELIER_ZOEKT_AUTO_INSTALL="${ATELIER_ZOEKT_AUTO_INSTALL:-1}"
 ATELIER_INSTALL_LOG_FILE="${ATELIER_INSTALL_LOG_FILE:-}"
 INSTALL_ZOEKT_LOCAL=0
 STACK_STARTED=0
+
+# Companion-binary version pins for this release (Node/Go/Zoekt). Kept in a
+# sibling file so a release bump is a single edit; the reconcile in
+# prompt_local_zoekt_selection / install_node_if_needed acts only on pin changes.
+# Falls back to in-usage defaults if the file is absent.
+# shellcheck source=versions.sh
+[[ -r "${BASH_SOURCE[0]%/*}/versions.sh" ]] && source "${BASH_SOURCE[0]%/*}/versions.sh"
 PASSTHROUGH=()
 WARNINGS=()
 ERRORS=()
@@ -795,6 +801,28 @@ prompt_auto_optimize_selection() {
     esac
 }
 
+# --- Companion-binary version reconcile -------------------------------------
+# Versions are pinned per release in versions.sh; what we last installed is
+# recorded in ~/.atelier/companion_versions. A binary is (re)provisioned only
+# when its pin changes (or it is missing) — an unchanged pin is a no-op.
+_companion_versions_file() { printf '%s' "${HOME}/.atelier/companion_versions"; }
+
+_companion_recorded_version() {  # $1=key -> prints recorded value (empty if none)
+    local f; f="$(_companion_versions_file)"
+    [[ -r "$f" ]] || return 0
+    sed -n "s/^$1=//p" "$f" | head -n1
+}
+
+_companion_record_version() {  # $1=key $2=value
+    local f tmp
+    f="$(_companion_versions_file)"
+    mkdir -p "${HOME}/.atelier" 2>/dev/null || true
+    tmp="$(mktemp "${TMPDIR:-/tmp}/atelier-cv.XXXXXX")" || return 0
+    [[ -r "$f" ]] && grep -v "^$1=" "$f" > "$tmp" 2>/dev/null || true
+    printf '%s=%s\n' "$1" "$2" >> "$tmp"
+    mv "$tmp" "$f" 2>/dev/null || rm -f "$tmp"
+}
+
 prompt_local_zoekt_selection() {
     if [[ "$ATELIER_ZOEKT" != "1" ]]; then
         INSTALL_ZOEKT_LOCAL=0
@@ -807,8 +835,11 @@ prompt_local_zoekt_selection() {
         command -v "$_z" >/dev/null 2>&1 || zoekt_all_present=0
     done
 
-    # Auto-install if selected, missing, and ATELIER_ZOEKT_AUTO_INSTALL is on.
-    if [[ "$zoekt_all_present" == "0" && "$ATELIER_ZOEKT_AUTO_INSTALL" == "1" ]]; then
+    # Reconcile to the release-pinned ref: (re)build when the binaries are missing
+    # OR the pinned ref differs from the one last installed. Unchanged pin = no-op.
+    if [[ "$ATELIER_ZOEKT_AUTO_INSTALL" == "1" ]] \
+        && { [[ "$zoekt_all_present" == "0" ]] \
+          || [[ "$(_companion_recorded_version zoekt)" != "${ATELIER_PIN_ZOEKT:-latest}" ]]; }; then
         INSTALL_ZOEKT_LOCAL=1
     else
         INSTALL_ZOEKT_LOCAL=0
@@ -837,11 +868,7 @@ contains_any_host_flag() {
     has_flag "--all" && return 0
     has_flag "--claude" && return 0
     has_flag "--codex" && return 0
-    has_flag "--cursor" && return 0
     has_flag "--opencode" && return 0
-    has_flag "--copilot" && return 0
-    has_flag "--hermes" && return 0
-    has_flag "--antigravity" && return 0
     return 1
 }
 
@@ -878,46 +905,6 @@ detect_hosts() {
     else
         HOST_SUMMARY+=("OpenCode (Ink Atelier provider) (not found)")
         HOST_CHOICES+=("OpenCode (Ink Atelier provider)|not found")
-        HOST_DEFAULT_SELECTION+=(0)
-    fi
-
-    if command -v code >/dev/null 2>&1; then
-        HOST_SUMMARY+=("Copilot/VS Code (detected)")
-        HOST_CHOICES+=("Copilot/VS Code|detected")
-        HOST_DEFAULT_SELECTION+=(1)
-    else
-        HOST_SUMMARY+=("Copilot/VS Code (not found)")
-        HOST_CHOICES+=("Copilot/VS Code|not found")
-        HOST_DEFAULT_SELECTION+=(0)
-    fi
-
-    if command -v antigravity >/dev/null 2>&1 || command -v agy >/dev/null 2>&1; then
-        HOST_SUMMARY+=("Antigravity (detected)")
-        HOST_CHOICES+=("Antigravity|detected")
-        HOST_DEFAULT_SELECTION+=(1)
-    else
-        HOST_SUMMARY+=("Antigravity (not found)")
-        HOST_CHOICES+=("Antigravity|not found")
-        HOST_DEFAULT_SELECTION+=(0)
-    fi
-
-    if [[ -d "${HOME}/.cursor" ]]; then
-        HOST_SUMMARY+=("Cursor IDE (detected)")
-        HOST_CHOICES+=("Cursor IDE|detected")
-        HOST_DEFAULT_SELECTION+=(1)
-    else
-        HOST_SUMMARY+=("Cursor IDE (not found — ~/.cursor/ missing)")
-        HOST_CHOICES+=("Cursor IDE|not found")
-        HOST_DEFAULT_SELECTION+=(0)
-    fi
-
-    if [[ -n "${HERMES_HOME:-}" ]] || [[ -n "${HERMES_SESSION_ID:-}" ]] || command -v hermes >/dev/null 2>&1; then
-        HOST_SUMMARY+=("Hermes Agent (global-only, detected)")
-        HOST_CHOICES+=("Hermes Agent (global-only)|detected")
-        HOST_DEFAULT_SELECTION+=(1)
-    else
-        HOST_SUMMARY+=("Hermes Agent (global-only, not found)")
-        HOST_CHOICES+=("Hermes Agent (global-only)|not found")
         HOST_DEFAULT_SELECTION+=(0)
     fi
 
@@ -966,10 +953,6 @@ host_wizard() {
                     0) HOST_FLAGS+=(--claude) ;;
                     1) HOST_FLAGS+=(--codex) ;;
                     2) HOST_FLAGS+=(--opencode) ;;
-                    3) HOST_FLAGS+=(--copilot) ;;
-                    4) HOST_FLAGS+=(--antigravity) ;;
-                    5) HOST_FLAGS+=(--cursor) ;;
-                    6) HOST_FLAGS+=(--hermes) ;;
                 esac
             done
             [[ ${#HOST_FLAGS[@]} -gt 0 ]] || ATELIER_NO_HOSTS=1
@@ -979,11 +962,6 @@ host_wizard() {
         printf "│  1) %s\n" "${HOST_SUMMARY[0]}"
         printf "│  2) %s\n" "${HOST_SUMMARY[1]}"
         printf "│  3) %s\n" "${HOST_SUMMARY[2]}"
-        printf "│  4) %s\n" "${HOST_SUMMARY[3]}"
-        printf "│  5) %s\n" "${HOST_SUMMARY[4]}"
-        printf "│  6) %s\n" "${HOST_SUMMARY[5]}"
-        printf "│  7) %s\n" "${HOST_SUMMARY[6]}"
-        printf "│  8) %s\n" "${HOST_SUMMARY[7]}"
         printf "│  a) All (default)\n"
         printf "│\n"
         printf "Choice [a]: "
@@ -1006,10 +984,6 @@ host_wizard() {
                         1) HOST_FLAGS+=(--claude) ;;
                         2) HOST_FLAGS+=(--codex) ;;
                         3) HOST_FLAGS+=(--opencode) ;;
-                        4) HOST_FLAGS+=(--copilot) ;;
-                        5) HOST_FLAGS+=(--antigravity) ;;
-                        6) HOST_FLAGS+=(--cursor) ;;
-                        7) HOST_FLAGS+=(--hermes) ;;
                     esac
                 done
                 [[ ${#HOST_FLAGS[@]} -gt 0 ]] || ATELIER_NO_HOSTS=1
@@ -1083,11 +1057,7 @@ host_target_for_name() {
     case "$host_name" in
         claude)      printf "%s" "~/.claude" ;;
         codex)       printf "%s" "~/.codex" ;;
-        cursor)      printf "%s" "~/.cursor" ;;
         opencode)    printf "%s" "~/.config/opencode" ;;
-        copilot)     printf "%s" "~/.config/Code" ;;
-        hermes)      printf "%s" "~/.hermes" ;;
-        antigravity) printf "%s" "~/.config/Antigravity" ;;
         *)           printf "%s" "~/.config" ;;
     esac
 }
@@ -1138,6 +1108,16 @@ stop_existing_atelier_processes() {
         [[ -n "${pid:-}" && -n "${args:-}" ]] || continue
         [[ "$pid" == "$current_pid" || "$pid" == "$parent_pid" ]] && continue
 
+        # Dev/source installs (local.sh sets ATELIER_LOCAL=1) reuse the live
+        # editable source, so a running MCP server is never a stale binary —
+        # skip it so `make dev` never kills the developer's running server.
+        # servicectl/stack are still cleaned.
+        if [[ "${ATELIER_LOCAL:-0}" == "1" ]]; then
+            case "$args" in
+                *"atelier mcp --host"*|*"/atelier mcp "*|*" atelier mcp "*) continue ;;
+            esac
+        fi
+
         case "$args" in
             *"atelier mcp --host"*|\
             *"/atelier mcp "*|\
@@ -1177,7 +1157,7 @@ stop_existing_atelier_processes() {
 
 # Install Node.js to ~/.local/node via official tarball (self-contained, no sudo)
 _install_node() {
-    local node_ver="v20.12.2"
+    local node_ver="${ATELIER_PIN_NODE:-v20.12.2}"
     local arch os_low tarball os_name
     case "$(uname -m)" in
         x86_64)        arch="x64" ;;
@@ -1218,6 +1198,17 @@ install_node_if_needed() {
     fi
 
     if command -v npm >/dev/null 2>&1; then
+        # Reconcile only an Atelier-managed Node (under ATELIER_NODE_DIR) to the
+        # release-pinned version when the pin changed from what we recorded. A
+        # user/system Node is left untouched.
+        local _node_path
+        _node_path="$(command -v node 2>/dev/null || true)"
+        if [[ -n "$_node_path" && "$_node_path" == "${ATELIER_NODE_DIR}/"* \
+              && "$(_companion_recorded_version node)" != "${ATELIER_PIN_NODE:-v20.12.2}" \
+              && "$ATELIER_DRY_RUN" != "1" ]]; then
+            spin "Updating Node.js to ${ATELIER_PIN_NODE:-v20.12.2}" _install_node \
+                && _companion_record_version node "${ATELIER_PIN_NODE:-v20.12.2}" || true
+        fi
         verbose "Found npm: $(npm --version 2>/dev/null || echo unknown)"
         return
     fi
@@ -1229,9 +1220,10 @@ install_node_if_needed() {
     need_cmd curl
     verbose "npm not found — attempting local Node.js installation..."
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-        echo "[dry-run] install node"
+        echo "[dry-run] install node ${ATELIER_PIN_NODE:-v20.12.2}"
     else
-        spin "Installing Node.js" _install_node || true
+        spin "Installing Node.js" _install_node \
+            && _companion_record_version node "${ATELIER_PIN_NODE:-v20.12.2}" || true
     fi
     
     if [[ -x "${node_user_bin}/node" && ":$PATH:" != *":${node_user_bin}:"* ]]; then
@@ -1241,8 +1233,12 @@ install_node_if_needed() {
 
 # Install Go to ~/.local/go via official tarball (self-contained, no sudo)
 _install_go() {
-    local go_ver arch os_low tarball
-    go_ver="$(curl -sSL 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1)" || return 1
+    local go_ver arch os_low tarball pin="${ATELIER_PIN_GO:-latest}"
+    if [[ "$pin" == "latest" || -z "$pin" ]]; then
+        go_ver="$(curl -sSL 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1)" || return 1
+    else
+        go_ver="$pin"
+    fi
     [[ -z "$go_ver" ]] && return 1
     case "$(uname -m)" in
         x86_64)        arch="amd64" ;;
@@ -1258,57 +1254,61 @@ _install_go() {
 }
 
 _install_zoekt_binaries() {
-    go install github.com/sourcegraph/zoekt/cmd/zoekt-git-index@latest &&
-        go install github.com/sourcegraph/zoekt/cmd/zoekt-index@latest &&
-        go install github.com/sourcegraph/zoekt/cmd/zoekt@latest &&
-        go install github.com/sourcegraph/zoekt/cmd/zoekt-webserver@latest
+    local ref="${ATELIER_PIN_ZOEKT:-latest}"
+    go install "github.com/sourcegraph/zoekt/cmd/zoekt-git-index@${ref}" &&
+        go install "github.com/sourcegraph/zoekt/cmd/zoekt-index@${ref}" &&
+        go install "github.com/sourcegraph/zoekt/cmd/zoekt@${ref}" &&
+        go install "github.com/sourcegraph/zoekt/cmd/zoekt-webserver@${ref}"
 }
 
-install_local_zoekt_if_selected() {
-    [[ "$INSTALL_ZOEKT_LOCAL" != "1" ]] && return 0
-    local atelier_cli="$1"
+# Provision Go (if needed) and build the four Zoekt binaries. Runs DETACHED from
+# the installer (see install_local_zoekt_if_selected) so it never blocks; all
+# output goes to a log. No spin()/terminal UI here — it runs in the background.
+_zoekt_provision_background() {
     local go_user_bin="${HOME}/.local/go/bin"
-    local go_path_bin=""
-
-    # Check/install Go first
     if ! command -v go >/dev/null 2>&1; then
-        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-            echo "[dry-run] install go"
-        else
-            spin "Installing Go" _install_go || {
-                # Tarball may have set PATH in subshell; try the known path
-                if [[ -x "${go_user_bin}/go" ]]; then
-                    export PATH="${go_user_bin}:${PATH}"
-                else
-                    warn "Go install failed — skipping Zoekt binary install"
-                    return 0
-                fi
-            }
-        fi
+        _install_go || { echo "Go install failed — Zoekt skipped; search stays on ripgrep."; return 0; }
     fi
-
-    # spin() runs in a subshell, so always re-apply user-local Go path in parent shell.
     if [[ -x "${go_user_bin}/go" && ":$PATH:" != *":${go_user_bin}:"* ]]; then
         export PATH="${go_user_bin}:${PATH}"
     fi
     if ! command -v go >/dev/null 2>&1; then
-        warn "Go is still not on PATH — skipping Zoekt binary install"
+        echo "Go not on PATH — Zoekt skipped; search stays on ripgrep."
         return 0
     fi
+    local go_path_bin
     go_path_bin="$(go env GOPATH 2>/dev/null)/bin"
     if [[ -n "$go_path_bin" && ":$PATH:" != *":${go_path_bin}:"* ]]; then
         export PATH="${go_path_bin}:${PATH}"
     fi
+    if _install_zoekt_binaries; then
+        _companion_record_version zoekt "${ATELIER_PIN_ZOEKT:-latest}"
+        echo "Zoekt ${ATELIER_PIN_ZOEKT:-latest} installed — indexed search activates on the next search."
+    else
+        echo "Zoekt build failed — search stays on ripgrep. Re-run the installer to retry."
+    fi
+}
+
+install_local_zoekt_if_selected() {
+    [[ "$INSTALL_ZOEKT_LOCAL" != "1" ]] && return 0
 
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-        echo "[dry-run] go install github.com/sourcegraph/zoekt/cmd/zoekt-git-index@latest"
-        echo "[dry-run] go install github.com/sourcegraph/zoekt/cmd/zoekt-index@latest"
-        echo "[dry-run] go install github.com/sourcegraph/zoekt/cmd/zoekt@latest"
-        echo "[dry-run] go install github.com/sourcegraph/zoekt/cmd/zoekt-webserver@latest"
-    else
-        spin "Installing Zoekt" _install_zoekt_binaries \
-            || warn "Zoekt install failed. Ensure Go is working, then rerun the installer with ATELIER_ZOEKT_AUTO_INSTALL=1"
+        echo "[dry-run] background: install Go (if needed) + go install zoekt-{git-index,index,zoekt,webserver}@${ATELIER_PIN_ZOEKT:-latest}"
+        return 0
     fi
+
+    local log="${HOME}/.atelier/zoekt_install.log"
+    mkdir -p "${HOME}/.atelier"
+
+    # Fire-and-forget: a first-time build pulls Go (~150MB) and compiles four
+    # binaries — minutes of work. Detach it so the installer never blocks. Search
+    # uses ripgrep meanwhile, and the in-process Zoekt supervisor starts the
+    # webserver lazily on the first search once the binaries exist. Progress and
+    # any failure land in $log.
+    ( _zoekt_provision_background ) >"$log" 2>&1 </dev/null &
+    disown 2>/dev/null || true
+
+    info "Zoekt: building in the background"
 }
 
 run() {
@@ -1508,71 +1508,11 @@ run_knowledge_extraction_if_selected() {
     step_done
 }
 
-prompt_recall_indexing() {
-    # Opt-in. Honor an explicit env preset; only ask when interactive.
-    [[ "$ATELIER_RECALL_PRESET" == "1" ]] && return 0
-    [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && return 0
-    has_interactive_input || return 0
-    ATELIER_RECALL_PROMPTED=1
-
-    if supports_interactive_selector; then
-        local recall_yn=0
-        interactive_single_select \
-            "Enable Recall? (index past sessions for semantic search)" \
-            recall_yn \
-            0 \
-            "Yes – index all sessions" \
-            "No"
-        if [[ "$recall_yn" == "1" ]]; then
-            ATELIER_RECALL_INDEX=0
-            return 0
-        fi
-        ATELIER_RECALL_INDEX=1
-
-        local embedder_idx=0
-        interactive_single_select \
-            "Recall embedder?" \
-            embedder_idx \
-            0 \
-            "local (offline)" \
-            "openai (codex)" \
-            "ollama"
-        case "$embedder_idx" in
-            1) ATELIER_RECALL_EMBEDDER=openai ;;
-            2) ATELIER_RECALL_EMBEDDER=ollama ;;
-            *) ATELIER_RECALL_EMBEDDER=local ;;
-        esac
-    else
-        local ans=""
-        printf "  ◇  Enable all-sessions Recall (index past sessions for semantic search)? [Y/n] "
-        IFS= read -r ans </dev/tty 2>/dev/null || ans=""
-        case "$ans" in
-            n | N | no | NO) ATELIER_RECALL_INDEX=0 ;;
-            *) ATELIER_RECALL_INDEX=1 ;;
-        esac
-
-        local choice=""
-        printf "  ◇  Recall embedder  1) local (offline)  2) openai (codex)  3) ollama  [1] "
-        IFS= read -r choice </dev/tty 2>/dev/null || choice=""
-        case "$choice" in
-            2) ATELIER_RECALL_EMBEDDER=openai ;;
-            3) ATELIER_RECALL_EMBEDDER=ollama ;;
-            *) ATELIER_RECALL_EMBEDDER=local ;;
-        esac
-    fi
-
-    if [[ "$ATELIER_RECALL_EMBEDDER" == "ollama" ]]; then
-        local model=""
-        printf "  ◇  Ollama embed model [nomic-embed-text]: "
-        IFS= read -r model </dev/tty 2>/dev/null || model=""
-        ATELIER_RECALL_EMBED_MODEL="${model:-nomic-embed-text}"
-    fi
-}
-
 configure_recall_if_selected() {
-    # Persist the choice only when the user opted in (preset or interactive),
-    # so a non-interactive re-install never resets a prior recall config.
-    [[ "$ATELIER_RECALL_PRESET" == "1" || "$ATELIER_RECALL_PROMPTED" == "1" ]] || return 0
+    # Persist only when an explicit env preset was given, so a re-install never
+    # resets a prior recall config. Without a preset, Recall stays on by default
+    # (local embedder) via the runtime — no install-time prompt, no persistence.
+    [[ "$ATELIER_RECALL_PRESET" == "1" ]] || return 0
     local atelier_bin="$ATELIER_BIN_DIR/atelier"
     [[ -x "$atelier_bin" ]] || atelier_bin="atelier"
     local auto_flag="--no-auto-index"
@@ -1604,9 +1544,6 @@ run_setup() {
     step_start "Installing code tools"
     install_code_tools
     step_done
-
-    prompt_knowledge_extraction
-    prompt_recall_indexing
 
     local selected_memory=""
     if [[ "$ATELIER_ADVANCED" == "1" ]]; then
@@ -1686,9 +1623,7 @@ run_setup() {
     local atelier_cli="$ATELIER_BIN_DIR/atelier"
 
     if [[ "$INSTALL_ZOEKT_LOCAL" == "1" ]]; then
-        step_start "Installing Zoekt"
-        install_local_zoekt_if_selected "$atelier_cli"
-        step_done
+        install_local_zoekt_if_selected
     fi
 
     if [[ "$ATELIER_NO_HOSTS" != "1" ]]; then

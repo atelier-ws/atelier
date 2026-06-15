@@ -144,31 +144,50 @@ codex_cmd() {
     fi
 }
 
+resolve_atelier_runtime_python() {
+    local atelier_launcher atelier_python
+    atelier_launcher="$(command -v atelier)"
+
+    if [[ "${ATELIER_BINARY_MODE:-0}" == "1" ]]; then
+        printf '%s\n' "python3"
+        return
+    fi
+
+    atelier_python="$(head -n 1 "$(readlink -f "$atelier_launcher")")"
+    atelier_python="${atelier_python#\#!}"
+    if [[ "$atelier_python" != /* ]] || [ ! -x "$atelier_python" ]; then
+        echo "[atelier:codex] ERROR: cannot resolve Atelier Python interpreter from $atelier_launcher" >&2
+        exit 1
+    fi
+    printf '%s\n' "$atelier_python"
+}
+
+resolve_atelier_hook_python() {
+    local atelier_launcher
+    if [[ "${ATELIER_BINARY_MODE:-0}" == "1" ]]; then
+        atelier_launcher="$(command -v atelier)"
+        readlink -f "$atelier_launcher"
+        return
+    fi
+    resolve_atelier_runtime_python
+}
+
 patch_plugin_hooks() {
     if $DRY_RUN; then
         echo "  [dry-run] patch ${PLUGIN_DIR}/hooks/hooks.json with absolute plugin path"
         return
     fi
 
-    local atelier_launcher atelier_python
-    atelier_launcher="$(command -v atelier)"
-
-    # Binary bundle: the wrapper is a bash script, not a Python shebang.
-    # hooks.json __ATELIER_PYTHON__ tokens are replaced with the binary path directly.
-    if [[ "${ATELIER_BINARY_MODE:-0}" == "1" ]]; then
-        atelier_python="$(readlink -f "$atelier_launcher")"
-    else
-        atelier_python="$(head -n 1 "$(readlink -f "$atelier_launcher")")"
-        atelier_python="${atelier_python#\#!}"
-    fi
+    local atelier_python
+    atelier_python="$(resolve_atelier_hook_python)"
 
     if [[ "$atelier_python" != /* ]] || [ ! -x "$atelier_python" ]; then
-        echo "[atelier:codex] ERROR: cannot resolve Atelier Python interpreter from $atelier_launcher" >&2
+        echo "[atelier:codex] ERROR: cannot resolve Atelier Python interpreter from $atelier_python" >&2
         exit 1
     fi
 
     HOOKS_PATH="${PLUGIN_DIR}/hooks/hooks.json" ATELIER_PYTHON="$atelier_python" ATELIER_REPO_SRC="${ATELIER_REPO}/src" python3 -c 'import json, os; from pathlib import Path; path = Path(os.environ["HOOKS_PATH"]); data = json.loads(path.read_text(encoding="utf-8")); replacements = {"__ATELIER_PYTHON__": os.environ["ATELIER_PYTHON"], "__ATELIER_REPO_SRC__": os.environ["ATELIER_REPO_SRC"]}; [(hook.__setitem__("command", hook["command"].replace("__ATELIER_PYTHON__", replacements["__ATELIER_PYTHON__"]).replace("__ATELIER_REPO_SRC__", replacements["__ATELIER_REPO_SRC__"]))) for groups in data.get("hooks", {}).values() for group in groups for hook in group.get("hooks", []) if isinstance(hook.get("command"), str)]; path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")'
-    }
+}
 
 patch_plugin_mcp() {
     local workspace_mode="0"
@@ -354,21 +373,12 @@ fi
 # ---- statusline (command-backed; tui.status_line schema is version-dependent)
 STATUSLINE_SCRIPT="${PLUGIN_DIR}/scripts/statusline.sh"
 if $DRY_RUN; then
-    echo "  [dry-run] configure tui.status_line → ${STATUSLINE_SCRIPT} in ${CODEX_CONFIG}"
-elif [ -f "$CODEX_CONFIG" ] && grep -qE '^\[tui\]' "$CODEX_CONFIG" 2>/dev/null; then
-    info "existing [tui] section in ${CODEX_CONFIG}; add manually to enable the Atelier statusline:"
-    info "  status_line = { type = \"command\", command = \"${STATUSLINE_SCRIPT}\" }"
+    echo "  [dry-run] leave Codex tui.status_line unchanged; script installed at ${STATUSLINE_SCRIPT}"
 elif grep -q 'status_line' "${CODEX_CONFIG}" 2>/dev/null; then
     info "status_line already configured in ${CODEX_CONFIG}; leaving as-is"
 else
-    {
-        echo ""
-        echo "[tui]"
-        echo "# Atelier command-backed statusline. The tui.status_line schema is"
-        echo "# Codex-version-dependent; if your build ignores it, run /statusline in Codex."
-        echo "status_line = { type = \"command\", command = \"${STATUSLINE_SCRIPT}\" }"
-    } >> "${CODEX_CONFIG}"
-    info "configured Atelier statusline in ${CODEX_CONFIG}"
+    info "Codex tui.status_line schema is version-dependent; script installed at ${STATUSLINE_SCRIPT}"
+    info "Use Codex /statusline if your build supports command-backed status lines."
 fi
 
 # ---- AGENTS.md --------------------------------------------------------------
@@ -388,7 +398,8 @@ if $WORKSPACE_SET; then
     if $DRY_RUN; then
         echo "  [dry-run] project workspace-local Codex agents into '${WORKSPACE}/.codex/agents'"
     else
-        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+        ATELIER_RUNTIME_PYTHON="$(resolve_atelier_runtime_python)"
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" "$ATELIER_RUNTIME_PYTHON" - <<PYEOF
 from pathlib import Path
 from atelier.core.capabilities.workspace_host_overrides import write_workspace_codex_agents
 
@@ -400,7 +411,8 @@ else
     if $DRY_RUN; then
         echo "  [dry-run] project global Codex agents into '${CODEX_HOME}/agents'"
     else
-        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<PYEOF
+        ATELIER_RUNTIME_PYTHON="$(resolve_atelier_runtime_python)"
+        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" "$ATELIER_RUNTIME_PYTHON" - <<PYEOF
 from pathlib import Path
 from atelier.core.capabilities.workspace_host_overrides import write_codex_agents
 

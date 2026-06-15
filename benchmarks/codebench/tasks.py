@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Literal, TypeAlias
 
 TaskSource: TypeAlias = (  # noqa: UP040
-    tuple[Literal["empty"]] | tuple[Literal["repo"], str, str | None] | tuple[Literal["workspace"], str]
+    tuple[Literal["empty"]]
+    | tuple[Literal["repo"], str, str | None]
+    | tuple[Literal["workspace"], str]
+    | tuple[Literal["path"], str]
 )
 
 
@@ -143,6 +146,25 @@ TASKS: list[Task] = [
         ("workspace", "workspace"),
         1,
         "task8_RenameAcrossCallSites",
+    ),
+    Task(
+        "task9",
+        "python",
+        ("workspace", "workspace"),
+        1,
+        "task9_UpdateAllCallers",
+        setup_cmds=(
+            "uv venv .venv --python 3.13 --quiet",
+            "uv pip install --quiet pytest --python .venv/bin/python",
+        ),
+    ),
+    Task(
+        "task10",
+        "rust",
+        ("repo", "https://github.com/serde-rs/json", "a1ae73ac6a6940a4a57c673aebaa13ed4dfe3e8c"),
+        2,
+        "task10_RenameWhitespaceSerde",
+        setup_cmds=("cargo fetch --quiet",),
     ),
 ]
 

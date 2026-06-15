@@ -33,10 +33,58 @@ _INTERP_WRITE_RE = re.compile(
     )""",
     re.IGNORECASE | re.VERBOSE | re.DOTALL,
 )
+# A shell short-option cluster requesting no-exec parse mode (``-n``, ``-nx``).
+# Among bash/sh/zsh/fish single-char invocation options only ``-n`` contains an
+# 'n', so a single-dash cluster containing 'n' implies syntax-check-only.
+_SHELL_NOEXEC_SHORT_RE = re.compile(r"^-[a-zA-Z]*n[a-zA-Z]*$")
 
 
 def _strip_ansi(text: str) -> str:
     return _ANSI_ESCAPE.sub("", text)
+
+
+# Hard ceiling on how many bytes of stdout/stderr are materialized into memory
+# from a single command. A runaway child (`cat /dev/zero`, `yes`, `gzip -dc`,
+# a chatty build) would otherwise fill the temp file to disk and OOM on a full
+# `.read()`. `max_lines` truncation only runs *after* materialization, so the
+# cap must happen at read time. Configurable via env, with a 64KiB floor so it
+# can never be set so low that ordinary output is mangled.
+_MAX_OUTPUT_BYTES = max(
+    64 * 1024,
+    int(os.environ.get("ATELIER_SHELL_MAX_OUTPUT_BYTES", str(4 * 1024 * 1024))),
+)
+
+
+def _cap_text(text: str) -> tuple[str, bool]:
+    """Bound *text* to the output-byte ceiling, returning (text, truncated).
+
+    Truncation is measured in UTF-8 bytes to mirror on-disk size; the returned
+    string is cut on a character boundary at or just under the cap.
+    """
+    encoded = text.encode("utf-8", "replace")
+    if len(encoded) <= _MAX_OUTPUT_BYTES:
+        return text, False
+    capped = encoded[:_MAX_OUTPUT_BYTES].decode("utf-8", "ignore")
+    return capped, True
+
+
+def _read_capped(handle: Any) -> tuple[str, bool]:
+    """Read at most the output-byte ceiling from a seeked temp-file *handle*.
+
+    Reads one character past the cap to detect a larger file without slurping
+    it whole, so memory stays bounded regardless of on-disk size. Returns
+    (text, truncated).
+    """
+    chunk = handle.read(_MAX_OUTPUT_BYTES + 1)
+    if len(chunk) <= _MAX_OUTPUT_BYTES:
+        return chunk, False
+    return chunk[:_MAX_OUTPUT_BYTES], True
+
+
+_OUTPUT_CAP_NOTICE = (
+    "\n... (output exceeded {cap} bytes and was truncated by Atelier; "
+    "narrow the command or redirect to a file) ..."
+)
 
 
 def _head_tail_lines(lines: list[str], head: int, tail: int) -> tuple[str, int, int]:
@@ -271,16 +319,47 @@ def _split_command_segments(command: str) -> list[list[str]]:
     return segments
 
 
+def _is_noexec_shell(tokens: list[str]) -> bool:
+    """True if a shell interpreter is invoked purely to syntax-check, not run.
+
+    ``bash -n file`` / ``sh -n`` parse the script and exit without executing any
+    command, so unlike ``bash -c '...'`` they cannot smuggle a destructive
+    command past the per-segment blocklist. Detects ``-n`` standalone or bundled
+    (``-nx``) and the ``-o noexec`` long form. Scans options only up to the first
+    non-option token (the script path), so ``bash script.sh -n`` — where ``-n``
+    belongs to the script, not the shell — is correctly NOT treated as no-exec.
+    """
+    i = 1
+    while i < len(tokens):
+        tok = tokens[i]
+        if not tok.startswith("-") or tok == "--":
+            break
+        if tok == "-o":
+            if i + 1 < len(tokens) and tokens[i + 1] == "noexec":
+                return True
+            i += 2
+            continue
+        if not tok.startswith("--") and _SHELL_NOEXEC_SHORT_RE.match(tok):
+            return True
+        i += 1
+    return False
+
+
 def _block_check_segment(tokens: list[str]) -> CommandPolicyDecision | None:
     """Return a block decision if *tokens* (one segment) is dangerous, else None."""
     if not tokens:
         return None
     head = tokens[0].lower()
     if head in {"bash", "sh", "zsh", "fish"}:
+        if _is_noexec_shell(tokens):
+            return None  # `bash -n` / `-o noexec`: parse-only, runs nothing
         return CommandPolicyDecision(
             category="shell-interpreter",
             action="block",
-            reason=f"Direct {head} execution is blocked; use Atelier tools instead",
+            reason=(
+                f"Direct {head} execution is blocked; use Atelier tools instead "
+                f"(non-executing syntax checks like `{head} -n` are allowed)"
+            ),
         )
     if _is_rm_family(tokens):
         return CommandPolicyDecision(
@@ -523,10 +602,15 @@ def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, 
         managed.stderr_file.flush()
         managed.stdout_file.seek(0)
         managed.stderr_file.seek(0)
-        raw_stdout = managed.stdout_file.read()
-        raw_stderr = managed.stderr_file.read()
+        raw_stdout, stdout_capped = _read_capped(managed.stdout_file)
+        raw_stderr, stderr_capped = _read_capped(managed.stderr_file)
         managed.stdout_file.close()
         managed.stderr_file.close()
+    output_byte_capped = stdout_capped or stderr_capped
+    if stdout_capped:
+        raw_stdout += _OUTPUT_CAP_NOTICE.format(cap=_MAX_OUTPUT_BYTES)
+    if stderr_capped:
+        raw_stderr += _OUTPUT_CAP_NOTICE.format(cap=_MAX_OUTPUT_BYTES)
 
     if managed.state == "timed_out":
         exit_code = -1
@@ -557,7 +641,7 @@ def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, 
         "stderr": result.stderr,
         "exit_code": result.exit_code,
         "duration_ms": result.duration_ms,
-        "truncated": result.truncated,
+        "truncated": result.truncated or output_byte_capped,
         "lines_omitted": result.lines_omitted,
         "chars_omitted": result.chars_omitted,
     }
@@ -617,6 +701,7 @@ def run_command(
 
     started = time.perf_counter()
     proc: subprocess.Popen[str] | None = None
+    output_byte_capped = False
     try:
         proc = subprocess.Popen(
             ["bash", "-c", command],
@@ -628,8 +713,13 @@ def run_command(
         )
         stdout, stderr = proc.communicate(timeout=timeout)
         exit_code = proc.returncode
-        raw_stdout = _strip_ansi(stdout)
-        raw_stderr = _strip_ansi(stderr)
+        raw_stdout, stdout_capped = _cap_text(_strip_ansi(stdout))
+        raw_stderr, stderr_capped = _cap_text(_strip_ansi(stderr))
+        output_byte_capped = stdout_capped or stderr_capped
+        if stdout_capped:
+            raw_stdout += _OUTPUT_CAP_NOTICE.format(cap=_MAX_OUTPUT_BYTES)
+        if stderr_capped:
+            raw_stderr += _OUTPUT_CAP_NOTICE.format(cap=_MAX_OUTPUT_BYTES)
     except subprocess.TimeoutExpired:
         if proc is not None:
             _terminate_process_group(proc)
@@ -659,6 +749,7 @@ def run_command(
         duration_ms=duration_ms,
         max_lines=max_lines,
     )
+    result.truncated = result.truncated or output_byte_capped
     result.policy_category = policy.category
     result.policy_action = policy.action
     result.policy_reason = policy.reason

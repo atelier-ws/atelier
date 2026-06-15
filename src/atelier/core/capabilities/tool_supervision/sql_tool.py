@@ -27,6 +27,10 @@ _WRITE_PREFIXES = {
     "attach",
     "detach",
 }
+# Verbs that are never allowed from the model-facing SQL surface, regardless of
+# allow_writes or the server env flag: they touch other files (ATTACH/DETACH),
+# change permissions (GRANT/REVOKE), or rewrite the whole DB file (VACUUM).
+_ALWAYS_FORBIDDEN_VERBS = {"attach", "detach", "grant", "revoke", "vacuum"}
 
 
 def mask_connection_string(dsn: str) -> str:
@@ -84,17 +88,52 @@ def discover_connection(repo_root: str | Path | None = None, env: dict[str, str]
     return {"connection_string": None, "source": None, "dialect": None}
 
 
-def _sqlite_path(dsn: str, repo_root: Path) -> tuple[str, bool]:
+class SqlPathError(Exception):
+    """Raised when a sqlite DSN resolves outside the repo sandbox."""
+
+
+def _filesystem_path(dsn: str) -> tuple[str, bool, str]:
+    """Map a sqlite DSN to (raw_path_for_connect, uri_flag, filesystem_path).
+
+    ``filesystem_path`` is the on-disk path to sandbox-check; it is empty for
+    pure in-memory databases, which never touch disk.
+    """
     if dsn.startswith("sqlite:///"):
-        return dsn[len("sqlite:///") :], False
+        raw = dsn[len("sqlite:///") :]
+        return raw, False, raw
     if dsn.startswith("sqlite://"):
-        return dsn[len("sqlite://") :], False
+        raw = dsn[len("sqlite://") :]
+        return raw, False, raw
     if dsn.startswith("file:"):
-        return dsn, True
-    path = Path(dsn)
-    if not path.is_absolute():
-        path = repo_root / path
-    return str(path), False
+        # file:path?mode=ro ... ; the on-disk path is everything between the
+        # `file:` scheme and the first query separator. `file::memory:` and
+        # any `mode=memory` URI stay in RAM and have no disk path to check.
+        body = dsn[len("file:") :]
+        fs_part = body.split("?", 1)[0]
+        if fs_part.startswith(":memory:") or "mode=memory" in dsn:
+            return dsn, True, ""
+        return dsn, True, fs_part
+    if dsn == ":memory:":
+        return dsn, False, ""
+    return dsn, False, dsn
+
+
+def _sqlite_path(dsn: str, repo_root: Path) -> tuple[str, bool]:
+    raw, uri, fs_path = _filesystem_path(dsn)
+    if not fs_path:
+        return raw, uri
+    candidate = Path(fs_path)
+    if not candidate.is_absolute():
+        candidate = repo_root / candidate
+    resolved = os.path.realpath(candidate)
+    root_resolved = os.path.realpath(repo_root)
+    if resolved != root_resolved and not resolved.startswith(root_resolved + os.sep):
+        if not os.environ.get("ATELIER_SQL_ALLOW_EXTERNAL_DB"):
+            raise SqlPathError(
+                f"sqlite path resolves outside the repo sandbox ({resolved}); "
+                "set ATELIER_SQL_ALLOW_EXTERNAL_DB=1 to allow external database files"
+            )
+    return raw, uri
 
 
 def _strip_comments(sql: str) -> str:
@@ -181,6 +220,16 @@ def _has_data_modifying_cte(sql: str) -> bool:
     return False
 
 
+def _writes_enabled(allow_writes: bool) -> bool:
+    """Effective write permission: the caller arg AND the server env flag.
+
+    Writes proceed only when the caller opts in *and* the operator has set
+    ``ATELIER_SQL_ALLOW_WRITES`` on the server. A model-settable arg alone is
+    never sufficient to mutate the database.
+    """
+    return allow_writes and bool(os.environ.get("ATELIER_SQL_ALLOW_WRITES"))
+
+
 def lint_sql(sql: str, *, allow_writes: bool = True) -> dict[str, Any]:
     normalized = _strip_comments(sql)
     if not normalized:
@@ -190,7 +239,10 @@ def lint_sql(sql: str, *, allow_writes: bool = True) -> dict[str, Any]:
             "ok": False,
             "message": "multiple statements are not allowed in one sql string; use queries[] for batching",
         }
-    if not allow_writes and (_top_level_verb(normalized) in _WRITE_PREFIXES or _has_data_modifying_cte(normalized)):
+    verb = _top_level_verb(normalized)
+    if verb in _ALWAYS_FORBIDDEN_VERBS:
+        return {"ok": False, "message": f"{verb.upper()} is not permitted from the SQL tool"}
+    if not _writes_enabled(allow_writes) and (verb in _WRITE_PREFIXES or _has_data_modifying_cte(normalized)):
         return {"ok": False, "message": "write SQL rejected for read-only execution"}
     return {"ok": True, "message": "ok"}
 
@@ -346,7 +398,10 @@ def sql_tool(
             "message": "Optional live driver not installed for this dialect.",
         }
 
-    db_path, uri = _sqlite_path(str(dsn), root)
+    try:
+        db_path, uri = _sqlite_path(str(dsn), root)
+    except SqlPathError as exc:
+        return {"isError": True, "message": str(exc)}
     started = time.perf_counter()
     conn = sqlite3.connect(db_path, uri=uri, timeout=max(1.0, timeout_ms / 1000.0))
     try:

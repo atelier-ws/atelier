@@ -34,8 +34,9 @@ def _write_codex_session(root: Path, session_id: str, lines: list[dict[str, Any]
     p.write_text("\n".join(json.dumps(x) for x in lines) + "\n", encoding="utf-8")
 
 
-def test_codex_probe_openai_style_usage(tmp_path: Path) -> None:
-    # OpenAI semantics: input_tokens already includes the cached subset.
+def test_codex_probe_openai_style_usage_uses_live_used_tokens(tmp_path: Path) -> None:
+    # OpenAI semantics: input_tokens is cumulative billing data and includes
+    # cached_input_tokens. Codex's UI "used" value is the uncached remainder.
     _write_codex_session(
         tmp_path,
         "abc-1234",
@@ -52,8 +53,27 @@ def test_codex_probe_openai_style_usage(tmp_path: Path) -> None:
         ],
     )
     ctx, model = cs._codex_probe("abc-1234", root=tmp_path)
-    assert ctx == 120_000
+    assert ctx == 20_000
     assert model == "gpt-5-codex"
+
+
+def test_codex_probe_openai_style_usage_includes_cache_writes(tmp_path: Path) -> None:
+    _write_codex_session(
+        tmp_path,
+        "abc-write",
+        [
+            {
+                "usage": {
+                    "input_tokens": 120_000,
+                    "cached_input_tokens": 100_000,
+                    "cache_write_tokens": 2_000,
+                },
+            },
+        ],
+    )
+
+    ctx, _model = cs._codex_probe("abc-write", root=tmp_path)
+    assert ctx == 22_000
 
 
 def test_codex_probe_split_cache_usage(tmp_path: Path) -> None:
