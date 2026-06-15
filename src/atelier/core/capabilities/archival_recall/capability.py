@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import re
 from collections.abc import Callable
 from datetime import datetime
@@ -13,6 +15,13 @@ from atelier.core.capabilities.archival_recall.ranking import rank_archival_pass
 from atelier.core.foundation.memory_models import ArchivalPassage, ArchivalSource, MemoryRecall
 from atelier.infra.embeddings.base import Embedder
 from atelier.infra.storage.memory_store import MemoryStore
+
+_log = logging.getLogger(__name__)
+
+# Candidate window pulled from the store before in-Python ranking. Session-recall
+# can write thousands of passages per run, so a small window silently excludes
+# strong older matches; raise via env for very large stores.
+_RECALL_CANDIDATE_LIMIT = int(os.environ.get("ATELIER_RECALL_CANDIDATE_LIMIT", "2000"))
 
 
 class ArchivalRecallCapability:
@@ -76,7 +85,13 @@ class ArchivalRecallCapability:
         # G5: pass the live embedder model-id so the opt-in ANN can N5-gate
         # passages to the current vector space (no-op when the flag is off).
         embedding_model = self._embedder.name if query_embedding else None
-        passages = self._store.list_passages(agent_id, tags=tags, since=since, limit=500)
+        passages = self._store.list_passages(agent_id, tags=tags, since=since, limit=_RECALL_CANDIDATE_LIMIT)
+        if len(passages) >= _RECALL_CANDIDATE_LIMIT:
+            _log.warning(
+                "recall candidate window saturated at %d passages; older matches are excluded from "
+                "ranking (raise ATELIER_RECALL_CANDIDATE_LIMIT)",
+                _RECALL_CANDIDATE_LIMIT,
+            )
         ranked = rank_archival_passages(
             query=clean_query,
             passages=passages,
