@@ -282,6 +282,7 @@ class ClaudeImporter:
             all_files.extend(sorted(subagent_dir.glob("*.jsonl")))
 
         artifact_ids: list[str] = []
+        dropped_lines = 0
         model_seen = ""
         user_prompt_tokens = 0
 
@@ -341,13 +342,20 @@ class ClaudeImporter:
             self.store.record_raw_artifact(art, redacted)
             artifact_ids.append(art.id)
 
-            for line in redacted.splitlines():
-                line = line.strip()
-                if not line:
+            # Redact per line, not whole-file: a DOTALL pattern (private key,
+            # <think>) spanning two JSONL records would otherwise merge them and
+            # silently drop both turns. Per-line redaction keeps identical
+            # coverage for real single-line records without corrupting record
+            # boundaries; the stored artifact above stays whole-file redacted.
+            for raw_line in raw_content.splitlines():
+                stripped = raw_line.strip()
+                if not stripped:
                     continue
+                line = redact(stripped)
                 try:
                     ev = json.loads(line)
                 except json.JSONDecodeError:
+                    dropped_lines += 1
                     continue
 
                 ev_type = ev.get("type", "")
@@ -582,6 +590,12 @@ class ClaudeImporter:
             telemetry=telemetry,
             created_at=created_at,
         )
+        if dropped_lines:
+            logger.warning(
+                "claude reader: dropped %d unparseable line(s) while importing session %s",
+                dropped_lines,
+                actual_session_id,
+            )
         self.store.record_trace(trace, write_json=False)
         persist_imported_run_snapshot(self.store, trace, started_at=created_at, ended_at=updated_at)
 
