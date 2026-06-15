@@ -22,10 +22,13 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncIterator
+import os
+import uuid
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from atelier.gateway.adapters import mcp_server
@@ -34,6 +37,20 @@ logger = logging.getLogger(__name__)
 
 MCP_HTTP_PATH = "/mcp"
 MCP_DISCOVERY_PATH = "/.well-known/mcp.json"
+
+# H2 — cap the request body BEFORE parsing so a hostile/oversized payload can't
+# blow up memory or the event loop. Override with ATELIER_MCP_HTTP_MAX_BODY_BYTES.
+_DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024
+
+
+def _max_body_bytes() -> int:
+    raw = os.environ.get("ATELIER_MCP_HTTP_MAX_BODY_BYTES", str(_DEFAULT_MAX_BODY_BYTES))
+    try:
+        configured = int(raw)
+    except ValueError:
+        logger.warning("invalid ATELIER_MCP_HTTP_MAX_BODY_BYTES=%r; using %d", raw, _DEFAULT_MAX_BODY_BYTES)
+        return _DEFAULT_MAX_BODY_BYTES
+    return max(64 * 1024, configured)
 
 
 def _public_tools() -> list[dict[str, Any]]:
@@ -71,38 +88,91 @@ def discovery_manifest(*, endpoint: str = MCP_HTTP_PATH) -> dict[str, Any]:
 
 
 def _dispatch(request_obj: dict[str, Any]) -> dict[str, Any] | None:
-    """Run one JSON-RPC request through the shared dispatcher (fail-safe)."""
+    """Run one JSON-RPC request through the shared dispatcher (fail-safe).
+
+    M2 — a raw ``str(exc)`` leaks internals (paths, types, partial state) to the
+    client. Log the full traceback server-side and return a generic message with
+    a correlation id so an operator can still tie the client report to the log.
+    """
     try:
         return mcp_server._handle(request_obj)
-    except Exception as exc:
-        logging.exception("Recovered from broad exception handler")
-        return mcp_server._err(request_obj.get("id"), -32603, f"internal error: {exc}")
+    except Exception:
+        correlation_id = uuid.uuid4().hex
+        logger.exception("MCP HTTP dispatch failed (correlation_id=%s)", correlation_id)
+        return mcp_server._err(
+            request_obj.get("id"),
+            -32603,
+            f"internal error (correlation_id={correlation_id})",
+        )
 
 
 def _sse_event(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def register_mcp_http(app: FastAPI, *, path: str = MCP_HTTP_PATH) -> FastAPI:
+async def _read_capped_body(request: Request, limit: int) -> bytes | None:
+    """Read the request body, rejecting anything over ``limit`` bytes.
+
+    H2 — check the declared ``Content-Length`` first (cheap reject), then cap the
+    streamed read so a lying/absent header can't smuggle an oversized payload.
+    Returns ``None`` when the body exceeds the cap.
+    """
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > limit:
+                return None
+        except ValueError:
+            pass
+    chunks: list[bytes] = []
+    received = 0
+    async for chunk in request.stream():
+        received += len(chunk)
+        if received > limit:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def register_mcp_http(
+    app: FastAPI,
+    *,
+    path: str = MCP_HTTP_PATH,
+    auth_dependency: Callable[..., Any] | None = None,
+) -> FastAPI:
     """Mount the MCP HTTP/SSE transport and discovery manifest onto ``app``.
 
     Additive: registers new routes only; existing routes are untouched.
+
+    C1 — ``auth_dependency`` (when provided) gates the POST/GET ``/mcp`` routes
+    with the same FastAPI dependency the ``/v1/*`` routes use, so the tool surface
+    is not reachable unauthenticated while the rest of the gateway is locked down.
+    The discovery manifest stays public (it advertises only public tool names).
     """
+    route_deps = [Depends(auth_dependency)] if auth_dependency is not None else []
 
     @app.get(MCP_DISCOVERY_PATH)
     async def mcp_discovery() -> dict[str, Any]:
         return discovery_manifest(endpoint=path)
 
-    @app.post(path)
+    @app.post(path, dependencies=route_deps)
     async def mcp_post(request: Request) -> Any:
+        raw = await _read_capped_body(request, _max_body_bytes())
+        if raw is None:
+            return JSONResponse(
+                mcp_server._err(None, -32600, "request body too large"),
+                status_code=413,
+            )
         try:
-            body = await request.json()
+            body = json.loads(raw)
         except (json.JSONDecodeError, ValueError) as exc:
             return JSONResponse(mcp_server._err(None, -32700, f"parse error: {exc}"))
         if not isinstance(body, dict):
             return JSONResponse(mcp_server._err(None, -32600, "invalid request: expected a JSON object"))
 
-        response = _dispatch(body)
+        # H2 — _dispatch runs the synchronous shared handler; offload it to a
+        # worker thread so a slow tool call cannot block the event loop.
+        response = await run_in_threadpool(_dispatch, body)
         accept = request.headers.get("accept", "")
         wants_sse = "text/event-stream" in accept.lower()
 
@@ -118,7 +188,7 @@ def register_mcp_http(app: FastAPI, *, path: str = MCP_HTTP_PATH) -> FastAPI:
 
         return StreamingResponse(_one_shot(), media_type="text/event-stream")
 
-    @app.get(path)
+    @app.get(path, dependencies=route_deps)
     async def mcp_get() -> StreamingResponse:
         async def _open_stream() -> AsyncIterator[str]:
             # Minimal keep-alive SSE channel. Server-initiated messages are not

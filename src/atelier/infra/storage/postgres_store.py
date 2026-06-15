@@ -38,6 +38,7 @@ from atelier.core.foundation.models import (
 from atelier.infra.storage.migrations import (
     V2_REQUIRED_TABLES,
     postgres_migration_scripts,
+    postgres_pre_schema_scripts,
     postgres_vector_script,
 )
 
@@ -375,6 +376,13 @@ class PostgresStore:
     def init(self) -> None:
         """Create tables and (optionally) enable pgvector."""
         with self._connect() as conn:
+            # Guarded legacy-rename migrations run BEFORE the greenfield schema
+            # so that ``reasonblocks``/``block_applications`` are renamed in
+            # place before ``CREATE TABLE IF NOT EXISTS`` would create empty
+            # ``playbooks``/``playbook_applications`` alongside them. No-op on a
+            # fresh or already-migrated database.
+            for sql in postgres_pre_schema_scripts():
+                conn.execute(sql)
             conn.execute(SCHEMA_DDL)
             for sql in postgres_migration_scripts():
                 conn.execute(sql)
