@@ -130,8 +130,15 @@ class ZoektServer:
                         bridge.stdin.close()
                 with suppress(Exception):
                     bridge.terminate()
-                with suppress(Exception):
+                try:
                     bridge.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    # SIGTERM did not land; escalate to SIGKILL and reap so the
+                    # docker exec child is not left defunct.
+                    with suppress(Exception):
+                        bridge.kill()
+                    with suppress(Exception):
+                        bridge.wait(timeout=5)
             if self._container_id is not None:
                 container_id = self._container_id
                 self._container_id = None
@@ -170,6 +177,8 @@ class ZoektServer:
                 "run",
                 "-d",
                 "--rm",
+                "--user",
+                f"{os.getuid()}:{os.getgid()}",
                 "--ulimit",
                 f"nofile={_DOCKER_NOFILE}",
                 "--name",
@@ -203,11 +212,11 @@ class ZoektServer:
         self.index_root.mkdir(parents=True, exist_ok=True)
         self.input_root.mkdir(parents=True, exist_ok=True)
         with suppress(OSError):
-            self.runtime_root.chmod(0o777)
+            self.runtime_root.chmod(0o700)
         with suppress(OSError):
-            self.index_root.chmod(0o777)
+            self.index_root.chmod(0o700)
         with suppress(OSError):
-            self.input_root.chmod(0o777)
+            self.input_root.chmod(0o700)
 
     def _refresh_input_links(self) -> None:
         shutil.rmtree(self.input_root, ignore_errors=True)

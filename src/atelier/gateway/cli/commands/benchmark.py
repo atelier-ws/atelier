@@ -651,7 +651,7 @@ def benchmark_codebench_cmd(
     # output for the cursor).
     progress = ProgressReporter("codebench", total=1, heartbeat_seconds=0, in_place=False)
     progress.start("starting benchmark", current=f"{len(tasks)} task selector(s) x {len(arms)} arm(s)")
-    _run(
+    returncode = _run(
         [
             *_python_cmd(repo_root),
             "-m",
@@ -687,7 +687,16 @@ def benchmark_codebench_cmd(
         cwd=repo_root,
         label="CodeBench",
         env=env,
+        check=False,
     )
+    results_path = run_dir / "results.jsonl"
+    if returncode != 0:
+        if not results_path.is_file() or results_path.stat().st_size == 0:
+            raise click.ClickException(f"CodeBench failed with exit {returncode} before producing results")
+        click.echo(
+            f"Note: CodeBench exited {returncode} -- some runs failed, timed out, or were off-topic; "
+            "per-task detail is in report.txt. Writing evidence + gate from the runs that completed."
+        )
     progress.step("benchmark command complete", current=run_dir.name)
     write_benchmark_evidence(
         run_dir,
@@ -864,15 +873,16 @@ def _load_codebench_catalog(repo_root: Path) -> list[dict[str, object]]:
     return catalog
 
 
-def _run(cmd: list[str], *, cwd: Path, label: str, env: dict[str, str] | None = None) -> None:
+def _run(cmd: list[str], *, cwd: Path, label: str, env: dict[str, str] | None = None, check: bool = True) -> int:
     click.echo("Running: " + _display_cmd(cmd))
     run_env = None
     if env is not None:
         run_env = dict(environ)
         run_env.update(env)
     completed = subprocess.run(cmd, check=False, cwd=cwd, env=run_env)
-    if completed.returncode != 0:
+    if check and completed.returncode != 0:
         raise click.ClickException(f"{label} failed with exit {completed.returncode}")
+    return completed.returncode
 
 
 def _display_cmd(cmd: list[str]) -> str:

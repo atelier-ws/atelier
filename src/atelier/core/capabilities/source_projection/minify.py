@@ -234,10 +234,13 @@ def resolve_minified_span(
     dropped segment (removed comment) lies strictly inside the span — callers
     must treat that as fail-closed.
     """
-    if projected_start < 0 or projected_end <= projected_start or projected_end > mapping.projected_length:
+    if projected_start < 0 or projected_end < projected_start or projected_end > mapping.projected_length:
         return None
     if _dropped_inside(mapping, projected_start, projected_end):
         return None
+
+    if projected_start == projected_end:
+        return _resolve_minified_insertion(mapping, projected_start)
 
     source_start: int | None = None
     for segment in mapping.segments:
@@ -264,6 +267,27 @@ def resolve_minified_span(
         start_line=_line_for_offset(line_offsets, source_start),
         end_line=_line_for_offset(line_offsets, max(source_start, source_end - 1)),
     )
+
+
+def _resolve_minified_insertion(mapping: ProjectionMapping, projected_point: int) -> SourceRange | None:
+    """Map a zero-length projected point to a zero-length source insertion span.
+
+    A point that touches a lossy (whitespace/dropped) segment is rejected: the
+    source location is then ambiguous between the dropped/collapsed bytes. Only
+    points anchored inside an exact segment yield an unambiguous insertion.
+    """
+    for segment in mapping.segments:
+        if segment.kind != "exact" and segment.projected_start <= projected_point <= segment.projected_end:
+            return None
+    for segment in mapping.segments:
+        if segment.kind != "exact":
+            continue
+        if segment.projected_start <= projected_point <= segment.projected_end:
+            offset = segment.source.start_offset + (projected_point - segment.projected_start)
+            line_offsets = mapping.source_line_offsets or (0,)
+            line = _line_for_offset(line_offsets, offset)
+            return SourceRange(start_offset=offset, end_offset=offset, start_line=line, end_line=line)
+    return None
 
 
 def apply_minified_edit(
@@ -327,7 +351,11 @@ def apply_minified_edit(
             after_ok = not parser.parse(updated.encode("utf-8")).root_node.has_error
         except Exception:
             logging.exception("Recovered from broad exception handler")
-            before_ok = after_ok = True
+            raise MinifiedEditError(
+                "could not revalidate the edited file; refusing to apply unchecked",
+                code="revalidate_failed",
+                hint="Re-read with expand=true and edit using the exact text.",
+            ) from None
         if before_ok and not after_ok:
             raise MinifiedEditError(
                 "edit would introduce syntax errors in the original file",
@@ -335,8 +363,7 @@ def apply_minified_edit(
                 hint="Re-read with expand=true and edit using the exact text.",
             )
 
-    line_end = span.start_line + max(0, len(replacement.splitlines()) - 1)
-    return updated, span.start_line, line_end
+    return updated, span.start_line, span.end_line
 
 
 # --------------------------------------------------------------------------- #

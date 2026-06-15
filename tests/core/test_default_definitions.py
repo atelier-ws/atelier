@@ -252,3 +252,45 @@ def test_bootstrap_default_definitions_reports_changed_and_invalid_targets(tmp_p
     invalid_root.write_text("x", encoding="utf-8")
     invalid = bootstrap_default_definitions(invalid_root, repo_root=ROOT)
     assert any(entry.status == "invalid" for entry in invalid.entries)
+
+
+def _seed_mode_docs(repo_root: Path, *, malformed: str) -> None:
+    modes_dir = repo_root / "integrations" / "agents"
+    modes_dir.mkdir(parents=True, exist_ok=True)
+    for role_id in sorted(HOST_FACING_ROLES):
+        title = role_id.replace("-", " ").title()
+        (modes_dir / f"{role_id}.md").write_text(
+            "---\n"
+            f"mode: {role_id}\n"
+            f'skill_description: "{title} skill"\n'
+            f'agent_description: "{title} agent"\n'
+            "---\n"
+            f"# {title} mode\n\nBody.\n",
+            encoding="utf-8",
+        )
+    (modes_dir / f"{malformed}.md").write_text("no frontmatter here\n", encoding="utf-8")
+
+
+def test_build_default_registry_survives_malformed_mode_doc(tmp_path: Path) -> None:
+    _seed_mode_docs(tmp_path, malformed="code")
+
+    registry = build_default_registry(tmp_path)
+
+    # The malformed "code" doc must not crash the build; the role falls back
+    # to built-in metadata instead.
+    assert REQUIRED_ROLES <= set(registry.roles)
+    assert registry.roles["code"].skill_description
+    assert registry.roles["code"].agent_description
+
+
+def test_load_mode_docs_strict_raises_on_malformed_doc(tmp_path: Path) -> None:
+    from atelier.core.capabilities.default_definitions import load_mode_docs
+
+    _seed_mode_docs(tmp_path, malformed="code")
+
+    try:
+        load_mode_docs(tmp_path)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("strict load_mode_docs must raise on a malformed doc")

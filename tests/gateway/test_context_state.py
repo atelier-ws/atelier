@@ -77,6 +77,24 @@ def test_codex_probe_split_cache_usage(tmp_path: Path) -> None:
     assert ctx == 153_000
 
 
+def test_codex_probe_model_couples_to_returned_context(tmp_path: Path) -> None:
+    # Codex carries the model on a `turn_context` entry preceding the usage.
+    # A later model-bearing entry without usage must not overwrite the model
+    # that produced the returned context (mismatched-pricing regression).
+    _write_codex_session(
+        tmp_path,
+        "ghi-9012",
+        [
+            {"type": "turn_context", "payload": {"model": "gpt-5-codex"}},
+            {"usage": {"input_tokens": 80_000, "output_tokens": 10}},
+            {"type": "turn_context", "payload": {"model": "gpt-4o-mini"}},
+        ],
+    )
+    ctx, model = cs._codex_probe("ghi-9012", root=tmp_path)
+    assert ctx == 80_000
+    assert model == "gpt-5-codex"
+
+
 def test_codex_probe_missing_session(tmp_path: Path) -> None:
     assert cs._codex_probe("nope", root=tmp_path) == (0, "")
 

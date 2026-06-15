@@ -157,17 +157,18 @@ if [ -f "$MCP_JSON" ]; then
     if $DRY_RUN; then
         echo "  [dry-run] merge atelier into $MCP_JSON"
     else
-        python3 - <<PYEOF
+        MCP_JSON="$MCP_JSON" NEW_ENTRY="$NEW_ENTRY" python3 - <<'PYEOF'
 import json
+import os
 from pathlib import Path
 
-path = Path("$MCP_JSON")
+path = Path(os.environ["MCP_JSON"])
 existing = json.loads(path.read_text(encoding="utf-8") or "{}")
-new_entry = json.loads('''$NEW_ENTRY''')
+new_entry = json.loads(os.environ["NEW_ENTRY"])
 server_key = "servers" if "servers" in existing or "mcpServers" not in existing else "mcpServers"
 existing.setdefault(server_key, {}).update(new_entry["servers"])
 path.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
-print("[atelier:antigravity] merged atelier into $MCP_JSON")
+print(f"[atelier:antigravity] merged atelier into {path}")
 PYEOF
     fi
 else

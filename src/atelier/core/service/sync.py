@@ -93,7 +93,7 @@ def _send_chunk(url: str, sessions: list[dict[str, Any]]) -> bool:
     """Send a single chunk of sessions to the sync endpoint."""
     payload = {
         "machine_id": get_anon_id(),
-        "timestamp": datetime.now(UTC).isoformat() + "Z",
+        "timestamp": datetime.now(UTC).isoformat(),
         "atelier_version": atelier_version,
         "sessions": sessions,
         "metadata": platform_payload(),
