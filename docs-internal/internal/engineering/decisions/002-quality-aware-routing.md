@@ -4,7 +4,7 @@
 
 Accepted.
 
-ADR-001 established the V2 memory, ReasonBlock, and context-savings architecture. This ADR adds the
+ADR-001 established the V2 memory, Playbook, and context-savings architecture. This ADR adds the
 missing routing decision: routing must preserve coding-agent quality, not merely minimize provider
 price.
 
@@ -36,7 +36,7 @@ escalate to a premium model when risk rises, evidence conflicts, tests fail repe
 verifier cannot establish success.
 
 Atelier may integrate with provider-routing tools later, but those tools are execution backends.
-The coding-specific policy lives in Atelier because it depends on ReasonBlocks, run ledgers,
+The coding-specific policy lives in Atelier because it depends on Playbooks, run ledgers,
 rubrics, repo retrieval, and trace outcomes.
 
 Provider prices and model identifiers are configuration data. They must not be embedded in policy

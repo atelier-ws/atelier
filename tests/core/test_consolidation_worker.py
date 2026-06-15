@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from atelier.core.capabilities.consolidation import consolidate
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.store import ContextStore
 from atelier.infra.internal_llm import InternalLLMError
 
@@ -20,9 +20,9 @@ def _block(
     updated_at: datetime | None = None,
     success_count: int = 0,
     failure_count: int = 0,
-) -> ReasonBlock:
+) -> Playbook:
     timestamp = created_at or datetime.now(UTC)
-    return ReasonBlock(
+    return Playbook(
         id=block_id,
         title=title,
         domain="testing",
@@ -104,7 +104,7 @@ def test_consolidate_writes_stale_active_block_candidate(tmp_path: Path) -> None
     assert len(candidates) == 1
     assert candidates[0].kind == "stale_candidate"
     assert candidates[0].affected_block_ids == ["rb-stale"]
-    assert candidates[0].evidence["source"] == "reasonblock"
+    assert candidates[0].evidence["source"] == "playbook"
 
 
 def test_consolidate_honors_since_for_stale_active_blocks(tmp_path: Path) -> None:

@@ -33,7 +33,7 @@
    constant** (engine.py:155). The bootstrap worker already re-walks rows whose
    `index_version < _LINEAGE_INDEX_VERSION`.
 2. **Symbol / code-search query+symbol vectors** live in the
-   `reasonblock_embedding_cache`, keyed by `embedder.name`. Giving the new
+   `playbook_embedding_cache`, keyed by `embedder.name`. Giving the new
    embedder a distinct `.name` (e.g. `ollama:nomic-embed-text`) makes old
    `local:hashing` entries cache-miss → recompute. The code-search `index_version`
    in `engine_state` (bumped via `_bump_index_version`) governs the symbol index
@@ -98,7 +98,7 @@ Independently confirmed by reading the code + re-fetching primary sources:
   stale; the bootstrap worker rebuilds in background. For a clean wipe in tests:
   `DELETE FROM commit_chunks;` then reset `engine_state` key
   `commit_lineage_watermark`.
-- **`reasonblock_embedding_cache`** (symbol/query vectors): no manual wipe needed
+- **`playbook_embedding_cache`** (symbol/query vectors): no manual wipe needed
   — the new `embedder.name` causes cache misses → recompute. (Optional: prune old
   rows to reclaim space.)
 - **Env vars (new, code-path only — keep separate from the memory path's

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.foundation.models import (
-    ReasonBlock,
+    Playbook,
     Rubric,
     Trace,
     TraceLearning,
@@ -17,7 +17,7 @@ from atelier.core.foundation.store import ContextStore
 from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
 
 
-def _block(bid: str = "b1", domain: str = "coding", title: str = "Title", **kw: object) -> ReasonBlock:
+def _block(bid: str = "b1", domain: str = "coding", title: str = "Title", **kw: object) -> Playbook:
     base: dict[str, Any] = dict(
         id=bid,
         title=title,
@@ -28,7 +28,7 @@ def _block(bid: str = "b1", domain: str = "coding", title: str = "Title", **kw: 
         dead_ends=["never do bar"],
     )
     base.update(kw)
-    return ReasonBlock(**base)
+    return Playbook(**base)
 
 
 def test_upsert_and_get_block_roundtrip(store: ContextStore) -> None:

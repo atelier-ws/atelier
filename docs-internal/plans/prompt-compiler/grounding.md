@@ -39,7 +39,7 @@ Source: `src/atelier/gateway/adapters/mcp_server.py`.
 
 | Tool | Why it matters here |
 |---|---|
-| `context` | Already retrieves ReasonBlocks for a task. **We will read from this**, not duplicate it. The compiler asks `context` for the relevant ReasonBlocks, marks them `Stability.BRANCH`, and includes them in the stable prefix. |
+| `context` | Already retrieves Playbooks for a task. **We will read from this**, not duplicate it. The compiler asks `context` for the relevant Playbooks, marks them `Stability.BRANCH`, and includes them in the stable prefix. |
 | `memory` (`recall`, `block_get`) | Source of stable team rules / governance blocks that belong in `Stability.STATIC` or `Stability.SESSION`. |
 | `code` (`outline`, `context`) | Produces outline-first file summaries — perfect input for `file_summary` blocks at `Stability.BRANCH`. |
 | `compact` | Closest existing tool to "rewrite my context for cache friendliness". P7 will decide whether to extend `compact` with a `mode="prompt-compile"` op or register a new `prompt` tool. |

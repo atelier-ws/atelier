@@ -11,11 +11,11 @@ from __future__ import annotations
 import pytest
 
 from atelier.core.capabilities.context_reuse.capability import ContextReuseCapability
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 
 
-def _block(block_id: str, title: str, *, situation: str, procedure: list[str], triggers: list[str]) -> ReasonBlock:
-    return ReasonBlock(
+def _block(block_id: str, title: str, *, situation: str, procedure: list[str], triggers: list[str]) -> Playbook:
+    return Playbook(
         id=block_id,
         title=title,
         domain="debugging",

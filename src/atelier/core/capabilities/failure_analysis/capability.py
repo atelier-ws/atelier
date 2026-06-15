@@ -1,9 +1,9 @@
 """FailureAnalysisCapability - cluster failures and suggest fixes.
 
-Implements a lightweight Lemma-style loop:
+Implements a lightweight failure-analysis loop:
 - cluster similar failures from historical traces
 - derive root-cause hypotheses from shared error and command patterns
-- suggest fixes using matched ReasonBlocks
+- suggest fixes using matched Playbooks
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ class FailureIncident:
     common_commands: list[str]
     root_cause_hypothesis: str
     confidence: float
-    suggested_reasonblocks: list[str]
+    suggested_playbooks: list[str]
     suggested_fixes: list[str]
 
     def to_dict(self) -> dict[str, Any]:
@@ -38,7 +38,7 @@ class FailureIncident:
             "common_commands": self.common_commands,
             "root_cause_hypothesis": self.root_cause_hypothesis,
             "confidence": self.confidence,
-            "suggested_reasonblocks": self.suggested_reasonblocks,
+            "suggested_playbooks": self.suggested_playbooks,
             "suggested_fixes": self.suggested_fixes,
         }
 
@@ -208,7 +208,7 @@ class FailureAnalysisCapability:
             errors=rep.errors_seen[:3],
             limit=3,
         )
-        reasonblock_ids = [entry.block.id for entry in suggested_blocks]
+        playbook_ids = [entry.block.id for entry in suggested_blocks]
         suggested_fixes = self._incident_fixes(suggested_blocks, common_commands)
 
         confidence = min(0.95, 0.45 + (len(traces) * 0.08))
@@ -220,7 +220,7 @@ class FailureAnalysisCapability:
             common_commands=common_commands,
             root_cause_hypothesis=root_cause,
             confidence=round(confidence, 3),
-            suggested_reasonblocks=reasonblock_ids,
+            suggested_playbooks=playbook_ids,
             suggested_fixes=suggested_fixes,
         )
 
@@ -247,7 +247,7 @@ class FailureAnalysisCapability:
         for entry in suggested_blocks:
             block = entry.block
             if block.procedure:
-                fixes.append(f"Apply ReasonBlock '{block.title}': {block.procedure[0]}")
+                fixes.append(f"Apply Playbook '{block.title}': {block.procedure[0]}")
             if block.verification:
                 fixes.append(f"Add verification gate: {block.verification[0]}")
         if commands:
@@ -271,7 +271,7 @@ class FailureAnalysisCapability:
         for entry in scored:
             block = entry.block
             if block.procedure:
-                fixes.append(f"Apply ReasonBlock '{block.title}': {block.procedure[0]}")
+                fixes.append(f"Apply Playbook '{block.title}': {block.procedure[0]}")
         fixes.append("Stop retries after 2 repeats and run explicit rescue path")
         fixes.append("Persist normalized error fingerprint and include it in next prompt context")
         return fixes[:6]

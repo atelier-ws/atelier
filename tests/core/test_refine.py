@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.refine import grow_or_create, merge_blocks
 
 
@@ -12,8 +12,8 @@ def _block(
     domain: str = "coding",
     procedure: list[str] | None = None,
     dead_ends: list[str] | None = None,
-) -> ReasonBlock:
-    return ReasonBlock(
+) -> Playbook:
+    return Playbook(
         id=block_id,
         title=block_id,
         domain=domain,

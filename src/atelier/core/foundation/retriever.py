@@ -1,4 +1,4 @@
-"""Retriever — score and rank ReasonBlocks against a task context.
+"""Retriever — score and rank Playbooks against a task context.
 
 Scoring (deterministic, no LLM):
 
@@ -39,7 +39,7 @@ except ImportError:
 
 from atelier.core.capabilities.archival_recall.ranking import rank_archival_passages
 from atelier.core.foundation.memory_models import ArchivalPassage, MemoryBlock
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.renderer import render_block_for_agent
 from atelier.core.foundation.store import ContextStore
 
@@ -72,7 +72,7 @@ class TaskContext:
 
 @dataclass
 class ScoredBlock:
-    block: ReasonBlock
+    block: Playbook
     score: float
     breakdown: dict[str, float]
 
@@ -94,8 +94,8 @@ def count_tokens(text: str) -> int:
     return len(_encoding().encode(text))
 
 
-def count_reasonblock_tokens(block: ReasonBlock) -> int:
-    """Count tokens for the compact injected representation of one ReasonBlock."""
+def count_playbook_tokens(block: Playbook) -> int:
+    """Count tokens for the compact injected representation of one Playbook."""
     return count_tokens(render_block_for_agent(block))
 
 
@@ -185,11 +185,11 @@ def summarize_memory_facts(blocks: Sequence[MemoryBlock]) -> list[dict[str, str 
     return summaries
 
 
-def _dedup_text(block: ReasonBlock) -> str:
+def _dedup_text(block: Playbook) -> str:
     return " ".join([*block.dead_ends, *block.procedure])
 
 
-def _dedup_tokens(block: ReasonBlock) -> set[str]:
+def _dedup_tokens(block: Playbook) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", _dedup_text(block).lower()))
 
 
@@ -208,13 +208,13 @@ def _jaccard_tokens(left: set[str], right: set[str]) -> float:
     return len(left & right) / len(left | right)
 
 
-def deduplicate_by_reasonblock[T](
+def deduplicate_by_playbook[T](
     items: Sequence[T],
-    block_getter: Callable[[T], ReasonBlock],
+    block_getter: Callable[[T], Playbook],
     *,
     threshold: float = _DEDUP_THRESHOLD,
 ) -> list[T]:
-    """Drop near-duplicate ReasonBlocks, keeping the first/highest-ranked item."""
+    """Drop near-duplicate Playbooks, keeping the first/highest-ranked item."""
     if len(items) < 2:
         return list(items)
 
@@ -244,21 +244,21 @@ def deduplicate_by_reasonblock[T](
     return kept
 
 
-def pack_by_reasonblock_token_budget[T](
+def pack_by_playbook_token_budget[T](
     items: Sequence[T],
-    block_getter: Callable[[T], ReasonBlock],
+    block_getter: Callable[[T], Playbook],
     *,
     limit: int,
     token_budget: int | None,
 ) -> list[T]:
-    """Greedily pack highest-ranked ReasonBlocks until the token budget is reached."""
+    """Greedily pack highest-ranked Playbooks until the token budget is reached."""
     packed: list[T] = []
     tokens_used = 0
 
     for item in items:
         if len(packed) >= limit:
             break
-        block_tokens = count_reasonblock_tokens(block_getter(item))
+        block_tokens = count_playbook_tokens(block_getter(item))
         if token_budget is not None and token_budget >= 0:
             if tokens_used + block_tokens > token_budget and packed:
                 continue
@@ -275,7 +275,7 @@ def deduplicate_scored_blocks(
     *,
     threshold: float = _DEDUP_THRESHOLD,
 ) -> list[ScoredBlock]:
-    return deduplicate_by_reasonblock(scored, lambda item: item.block, threshold=threshold)
+    return deduplicate_by_playbook(scored, lambda item: item.block, threshold=threshold)
 
 
 # --------------------------------------------------------------------------- #
@@ -283,7 +283,7 @@ def deduplicate_scored_blocks(
 # --------------------------------------------------------------------------- #
 
 
-def _domain_score(block: ReasonBlock, ctx: TaskContext) -> float:
+def _domain_score(block: Playbook, ctx: TaskContext) -> float:
     if ctx.domain and block.domain == ctx.domain:
         return 1.0
     if ctx.domain and block.domain.startswith(ctx.domain.split(".")[0]):
@@ -305,7 +305,7 @@ def _pattern_overlap(patterns: list[str], items: list[str]) -> float:
     return matched / len(items)
 
 
-def _scope_score(block: ReasonBlock, ctx: TaskContext) -> float:
+def _scope_score(block: Playbook, ctx: TaskContext) -> float:
     f = _pattern_overlap(block.file_patterns, ctx.files)
     t = _pattern_overlap(block.tool_patterns, ctx.tools)
     if not block.file_patterns and not block.tool_patterns:
@@ -314,7 +314,7 @@ def _scope_score(block: ReasonBlock, ctx: TaskContext) -> float:
     return (f + t) / n
 
 
-def _trigger_score(block: ReasonBlock, ctx: TaskContext) -> float:
+def _trigger_score(block: Playbook, ctx: TaskContext) -> float:
     if not block.triggers:
         return 0.0
     blob = ctx.text_blob()
@@ -322,7 +322,7 @@ def _trigger_score(block: ReasonBlock, ctx: TaskContext) -> float:
     return min(1.0, matched / max(1, len(block.triggers)))
 
 
-def _failure_signal_score(block: ReasonBlock, ctx: TaskContext) -> float:
+def _failure_signal_score(block: Playbook, ctx: TaskContext) -> float:
     if not block.failure_signals or not ctx.errors:
         return 0.0
     err_blob = " ".join(ctx.errors).lower()
@@ -330,7 +330,7 @@ def _failure_signal_score(block: ReasonBlock, ctx: TaskContext) -> float:
     return min(1.0, matched / max(1, len(block.failure_signals)))
 
 
-def _success_history_score(block: ReasonBlock) -> float:
+def _success_history_score(block: Playbook) -> float:
     total = block.success_count + block.failure_count
     if total == 0:
         return 0.5  # neutral prior
@@ -362,16 +362,16 @@ WEIGHTS_WITH_VECTOR: dict[str, float] = {
 
 
 def score_block(
-    block: ReasonBlock,
+    block: Playbook,
     ctx: TaskContext,
     *,
     vector_score: float | None = None,
     use_vector_weights: bool | None = None,
 ) -> ScoredBlock:
-    """Score a ReasonBlock against a task context.
+    """Score a Playbook against a task context.
 
     Args:
-        block: The candidate ReasonBlock.
+        block: The candidate Playbook.
         ctx: The current task context.
         vector_score: Pre-computed cosine similarity in [0, 1].  When
             provided and ``use_vector_weights`` is True (or auto-detected
@@ -413,15 +413,15 @@ def retrieve(
     monitor_composite: float = 0.0,
     fsm_skip_etraces: bool = False,
 ) -> list[ScoredBlock]:
-    """Return top-N relevant ReasonBlocks for a task context.
+    """Return top-N relevant Playbooks for a task context.
 
-    Applies three-tier injection order modelled on the ReasonBlocks.com E-trace
+    Applies three-tier injection order over the E-trace
     system:
       E3 (tier="e3") — universal standing rules always prepended first.
       E2 (tier="e2") — relevance-scored failure-mode patterns (default tier).
       E1 (tier="e1") — instance-level procedures only injected when the
                         monitor composite score exceeds 0.15 or ctx.errors
-                        are present (mirrors the RB two-condition E1 gate).
+                        are present (the two-condition E1 gate).
 
     The entire E-trace pipeline (E1/E2) is skipped when ``fsm_skip_etraces``
     is True (FSM FAST state) — only E3 universal blocks are returned.
@@ -442,12 +442,12 @@ def retrieve(
             budget. Pass None to disable budget packing.
         monitor_composite: Weighted composite from trajectory monitor evaluation
             (0-1). E1 is allowed when this exceeds 0.15 even if ctx.errors is
-            empty. Mirrors the ReasonBlocks.com E1 gate threshold.
+            empty. The E1 gate threshold.
         fsm_skip_etraces: When True (FSM FAST state) skip the entire E-trace
             pipeline — only E3 universal blocks are returned. Monitor evaluation
             still runs on the caller side; this flag only gates retrieval.
     """
-    candidates: list[ReasonBlock] = []
+    candidates: list[Playbook] = []
 
     # 1. FTS5 keyword pre-filter using the task + errors as the query.
     query = " ".join([ctx.task, *ctx.errors]).strip()
@@ -465,7 +465,7 @@ def retrieve(
 
     # Deduplicate by id while preserving order.
     seen: set[str] = set()
-    unique: list[ReasonBlock] = []
+    unique: list[Playbook] = []
     for b in candidates:
         if b.id in seen:
             continue
@@ -477,7 +477,7 @@ def retrieve(
         unique.append(b)
 
     # Partition E3 blocks first (always injected).
-    e3_blocks: list[ReasonBlock] = [b for b in unique if b.tier == "e3"]
+    e3_blocks: list[Playbook] = [b for b in unique if b.tier == "e3"]
     e3_scored = [ScoredBlock(block=b, score=1.0, breakdown={"tier": 1.0}) for b in e3_blocks]
 
     # When FSM is in FAST state, skip the entire E-trace pipeline (E1/E2).
@@ -485,10 +485,10 @@ def retrieve(
     if fsm_skip_etraces:
         return e3_scored
 
-    # Gate E1 blocks: allow when monitor composite > 0.15 (RB gate threshold)
-    # OR when ctx.errors are present — same two-condition gate as RB.
+    # Gate E1 blocks: allow when monitor composite > 0.15
+    # OR when ctx.errors are present — two-condition E1 gate.
     e1_allowed = monitor_composite > 0.15 or bool(ctx.errors)
-    filtered: list[ReasonBlock] = []
+    filtered: list[Playbook] = []
     for b in unique:
         if b.tier == "e3":
             continue  # already handled above
@@ -515,9 +515,9 @@ def retrieve(
     # the E3 cost entirely.
     e2_e1_budget = token_budget
     if token_budget is not None and token_budget >= 0:
-        e3_tokens = sum(count_reasonblock_tokens(b) for b in e3_blocks)
+        e3_tokens = sum(count_playbook_tokens(b) for b in e3_blocks)
         e2_e1_budget = max(0, token_budget - e3_tokens)
-    e2_e1_results = pack_by_reasonblock_token_budget(
+    e2_e1_results = pack_by_playbook_token_budget(
         scored,
         lambda item: item.block,
         limit=limit,

@@ -26,7 +26,7 @@ Everything else stays as V2 specified it.
 
 | Concern                                                                                                               | V2                                      | V3                                                                                     |
 | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------- |
-| `MemoryBlock`, `ArchivalPassage`, `MemoryRecall`, `RunMemoryFrame`, `Trace`, `LessonCandidate`, `ReasonBlock` schemas | as V2                                   | **same as V2 — no field changes**                                                      |
+| `MemoryBlock`, `ArchivalPassage`, `MemoryRecall`, `RunMemoryFrame`, `Trace`, `LessonCandidate`, `Playbook` schemas | as V2                                   | **same as V2 — no field changes**                                                      |
 | `archival_passage.embedding`, `lesson_candidate.embedding` columns                                                    | sometimes populated by `stub_embedding` | **must be from `Embedder.embed()`**; V3 fails closed if a SHA-hash artifact is written |
 | New optional column `embedding_provenance` on `archival_passage` and `lesson_candidate`                               | n/a                                     | added; legacy rows flagged `legacy_stub`                                               |
 | New `BenchmarkRun` table                                                                                              | n/a                                     | added in WP-50 to record measured savings results                                      |
@@ -129,10 +129,10 @@ rewritten in WP-39 to be a single-primary path (no dual-write).
 
 ---
 
-## 5. ReasonBlock schema — unchanged
+## 5. Playbook schema — unchanged
 
-V3 makes zero changes to the `ReasonBlock` Pydantic model. The store, retrieval, and review
-surfaces are kept verbatim. ReasonBlocks are the part of Atelier with the highest correctness
+V3 makes zero changes to the `Playbook` Pydantic model. The store, retrieval, and review
+surfaces are kept verbatim. Playbooks are the part of Atelier with the highest correctness
 requirements, and V3 introduces no churn on them.
 
 ---

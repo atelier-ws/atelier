@@ -23,7 +23,7 @@ This codebase is a Python 3.12+ runtime (`src/atelier/`) plus a React/TypeScript
 - Classes: `PascalCase` — `DomainLoader`, `ContextStore`, `HermesAdapter`, `AdapterDecision`.
 - Adapter/config pairs follow a `XxxConfig` / `XxxAdapter` naming convention (`HermesConfig`/`HermesAdapter`, `CursorConfig`/`CursorAdapter`).
 - Custom exceptions end in `Error` (or domain-specific `Unavailable`) — `SymbolEditError`, `RouteConfigError`, `OllamaUnavailable`, `SleeptimeUnavailable`.
-- `Literal[...]` type aliases for closed enumerations — `BlockStatus = Literal["active", "deprecated", "quarantined"]` in `src/atelier/core/foundation/models.py`.
+- `Literal[...]` type aliases for closed enumerations — `PlaybookStatus = Literal["active", "deprecated", "quarantined"]` in `src/atelier/core/foundation/models.py`.
 
 ## Code Style
 

@@ -25,7 +25,7 @@ class SQLiteStore(ContextStore):
         """Return basic health information."""
         try:
             with self._connect() as conn:
-                count = conn.execute("SELECT COUNT(*) AS n FROM reasonblocks").fetchone()
+                count = conn.execute("SELECT COUNT(*) AS n FROM playbooks").fetchone()
                 block_count = count["n"] if count else 0
             return {
                 "ok": True,

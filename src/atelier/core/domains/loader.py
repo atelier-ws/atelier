@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 
 from atelier.core.domains.models import DomainBundle, bundle_manifest_path
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 
 log = logging.getLogger(__name__)
 
@@ -74,23 +74,23 @@ class DomainLoader:
                     log.warning("skipping malformed bundle %s: %s", candidate.name, exc)
         return bundles
 
-    def load_reasonblocks(self, bundle_path: Path, bundle: DomainBundle) -> list[ReasonBlock]:
-        """Load all ReasonBlocks declared in the bundle's reasonblocks list."""
-        blocks: list[ReasonBlock] = []
-        for rel_path in bundle.reasonblocks:
+    def load_playbooks(self, bundle_path: Path, bundle: DomainBundle) -> list[Playbook]:
+        """Load all Playbooks declared in the bundle's playbooks list."""
+        blocks: list[Playbook] = []
+        for rel_path in bundle.playbooks:
             candidate = bundle_path / rel_path
             if not candidate.exists():
-                log.warning("reasonblock file not found: %s", candidate)
+                log.warning("playbook file not found: %s", candidate)
                 continue
             try:
                 raw = yaml.safe_load(candidate.read_text(encoding="utf-8"))
                 if isinstance(raw, list):
                     for item in raw:
                         if isinstance(item, dict):
-                            blocks.append(ReasonBlock(**item))
+                            blocks.append(Playbook(**item))
                 elif isinstance(raw, dict):
-                    blocks.append(ReasonBlock(**raw))
+                    blocks.append(Playbook(**raw))
             except Exception as exc:
                 logging.exception("Recovered from broad exception handler")
-                log.warning("failed to load reasonblock %s: %s", candidate, exc)
+                log.warning("failed to load playbook %s: %s", candidate, exc)
         return blocks

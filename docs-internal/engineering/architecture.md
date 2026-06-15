@@ -4,7 +4,7 @@
 
 Atelier is a **reasoning/procedure/runtime layer**. It sits between an AI agent host (Claude Code, Codex, Copilot, opencode, Gemini CLI) and the actual codebase operations. Its job is to make agent runs more reliable by:
 
-1. Injecting known-good procedures before runs (ReasonBlocks)
+1. Injecting known-good procedures before runs (Playbooks)
 2. Blocking known-bad plans before execution (dead end detection)
 3. Verifying outputs against domain requirements (Rubric gates)
 4. Recording observable traces for failure analysis and block extraction
@@ -59,12 +59,12 @@ Atelier is a **reasoning/procedure/runtime layer**. It sits between an AI agent 
 
 ## Core Data Models
 
-### ReasonBlock
+### Playbook
 
 A named, reviewable procedure that an agent should follow in a specific domain context.
 
 ```python
-class ReasonBlock:
+class Playbook:
     id: str              # e.g. "read-after-write-verification"
     title: str           # Human-readable name
     domain: str          # e.g. "state.change"
@@ -190,7 +190,7 @@ reads and writes.
 
 | Concept                    | Source               | Atelier equivalent        |
 | -------------------------- | -------------------- | ------------------------- |
-| Reusable code blocks       | External inspiration | ReasonBlocks              |
+| Reusable code blocks       | External inspiration | Playbooks              |
 | Failure cluster analysis   | Lemma                | FailureAnalyzer           |
 | Rubric-based verification  | Educational rubrics  | Rubric gates              |
 | Plugin UX / agent personas | Claude Code plugins  | Claude Code plugin agents |

@@ -83,7 +83,7 @@ class CompactState:
     tool_call_count: int = 0
     total_tool_output_chars: int = 0
     recent_turns: list[str] = field(default_factory=list)
-    pinned_reasonblocks: list[str] = field(default_factory=list)
+    pinned_playbooks: list[str] = field(default_factory=list)
     claude_md_hash: str | None = None
 
     def to_prompt_block(self) -> str:
@@ -102,9 +102,9 @@ class CompactState:
                 lines.append(f"  - {msg}")
         if self.current_blocker:
             lines.append(f"Current blocker: {self.current_blocker}")
-        if self.pinned_reasonblocks:
-            lines.append("Pinned ReasonBlocks:")
-            for block_id in self.pinned_reasonblocks:
+        if self.pinned_playbooks:
+            lines.append("Pinned Playbooks:")
+            for block_id in self.pinned_playbooks:
                 lines.append(f"  - {block_id}")
         if self.claude_md_hash:
             lines.append(f"CLAUDE.md sha256: {self.claude_md_hash}")
@@ -231,7 +231,7 @@ class ContextCompressor:
             tool_call_count=len(tool_calls),
             total_tool_output_chars=total_chars,
             recent_turns=_recent_raw_turns(ledger, preserve_last_n_turns),
-            pinned_reasonblocks=list(dict.fromkeys(ledger.active_reasonblocks)),
+            pinned_playbooks=list(dict.fromkeys(ledger.active_playbooks)),
             claude_md_hash=_claude_md_hash(workspace_root),
         )
 

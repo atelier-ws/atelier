@@ -393,7 +393,7 @@ export interface TraceLearning {
   kind: "worked" | "did_not_work" | "next_rule" | "risk" | "note";
   text: string;
   evidence?: string;
-  promote_to?: "memory" | "reasonblock" | "rubric" | "none" | null;
+  promote_to?: "memory" | "playbook" | "rubric" | "none" | null;
 }
 
 export interface Trace {
@@ -571,7 +571,7 @@ export interface NestedTrace {
   created_at: string;
 }
 
-export interface ReasonBlock {
+export interface Playbook {
   id: string;
   domain: string;
   title: string;
@@ -1661,7 +1661,7 @@ export interface TelemetrySummary {
   commands_by_day: { day: string; count: number }[];
   top_commands: { name: string; count: number }[];
   agent_hosts: { name: string; count: number }[];
-  top_reasonblocks: { block_id_hash: string; count: number; domain: string }[];
+  top_playbooks: { block_id_hash: string; count: number; domain: string }[];
   retrieval_score_distribution: { name: string; count: number }[];
   plan_checks: Record<string, number>;
   frustration_behavioral: { name: string; count: number }[];
@@ -1810,8 +1810,8 @@ export const api = {
   trace: (id: string) => get<Trace>(`/v1/traces/${id}`),
   ledger: (session_id: string) => get<any>(`/ledgers/${session_id}`),
   clusters: () => get<Cluster[]>("/clusters"),
-  blocks: () => get<ReasonBlock[]>("/blocks"),
-  block: (id: string) => get<ReasonBlock>(`/blocks/${id}`),
+  blocks: () => get<Playbook[]>("/blocks"),
+  block: (id: string) => get<Playbook>(`/blocks/${id}`),
   savings: () => get<SavingsSummary>("/savings"),
   savingsSummary: (windowDays = 14) =>
     get<SavingsSummaryV2>(`/v1/savings/summary?window_days=${windowDays}`),

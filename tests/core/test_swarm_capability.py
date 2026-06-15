@@ -20,6 +20,7 @@ from atelier.core.capabilities.swarm.capability import (
     _fallback_wave_evaluation,
     _plan_wave_runs,
     _score_child,
+    _write_child_patch,
 )
 from atelier.core.capabilities.swarm.models import (
     SwarmAcceptedCommit,
@@ -917,3 +918,30 @@ def test_launch_swarm_children_continues_after_deferred_wave(
     assert call_count["count"] == 2
     assert completed.current_wave == 2
     assert completed.accepted_child_ids == ["wave-02-run-01"]
+
+
+def test_write_child_patch_includes_untracked_files(tmp_path: Path) -> None:
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    _git(worktree, "init")
+    _git(worktree, "config", "user.email", "swarm@test")
+    _git(worktree, "config", "user.name", "swarm")
+    (worktree / "existing.txt").write_text("base\n", encoding="utf-8")
+    _git(worktree, "add", ".")
+    _git(worktree, "commit", "-m", "base")
+    # Child only creates a brand-new, untracked file.
+    (worktree / "created.py").write_text("print('hi')\n", encoding="utf-8")
+
+    child = _make_child(
+        tmp_path,
+        child_id="run-01",
+        worktree_path=worktree,
+        changed_file="created.py",
+    )
+
+    patch_path = _write_child_patch(child)
+
+    assert patch_path is not None, child.acceptance_note
+    patch_text = patch_path.read_text(encoding="utf-8")
+    assert "created.py" in patch_text
+    assert "print('hi')" in patch_text

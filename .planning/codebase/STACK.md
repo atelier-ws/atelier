@@ -9,7 +9,7 @@
 - TypeScript 5.5 - Frontend SPA in `frontend/src/` (React app, `tsconfig.json`).
 
 **Secondary:**
-- YAML - Config and data (`frustration_lexicon.yaml`, `docker-compose.yml`, `deploy/*.yaml`, reasonblock templates).
+- YAML - Config and data (`frustration_lexicon.yaml`, `docker-compose.yml`, `deploy/*.yaml`, playbook templates).
 - Shell - Git hooks (`.githooks/pre-commit`, `.githooks/pre-push`), installer scripts (`scripts/install_claude.sh`).
 
 ## Runtime

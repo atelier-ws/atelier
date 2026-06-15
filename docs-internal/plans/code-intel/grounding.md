@@ -12,7 +12,7 @@ Source: `src/atelier/gateway/adapters/mcp_server.py`. Registrations are
 
 | Tool name (`mcp__atelier__…`) | Function | Line | Already exposes |
 |---|---|---|---|
-| `context` | `tool_get_context` | 663 | ReasonBlock recall, task framing |
+| `context` | `tool_get_context` | 663 | Playbook recall, task framing |
 | `route` | `tool_route` | 737 | Routing decisions |
 | `rescue` | `tool_rescue_failure` | 845 | Failure recovery |
 | `trace` | `tool_record_trace` | 927 | Trace recording |

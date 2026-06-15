@@ -12,5 +12,5 @@ class MemorySyncResult(BaseModel):
     source: str
     skipped: bool = False
     context: str = ""
-    accepted_reasonblocks: list[str] = Field(default_factory=list)
+    accepted_playbooks: list[str] = Field(default_factory=list)
     detail: str = ""

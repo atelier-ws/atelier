@@ -75,7 +75,7 @@ Each provider module exports a pure `render(compiled, **opts) -> RenderedPrompt`
   breakpoints total (the documented Anthropic limit).
 - Tool schemas go in the `tools=[...]` array; system blocks go in
   `system=[...]`; user task + diff + tool results become user messages.
-  All other stable blocks (repo summary, ReasonBlocks, file summaries)
+  All other stable blocks (repo summary, Playbooks, file summaries)
   become a single concatenated `system` block at the end of `system=`
   so the breakpoint can land cleanly on it.
 - `parse_usage(response)` returns `(cache_creation_input_tokens,

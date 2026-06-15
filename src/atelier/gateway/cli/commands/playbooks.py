@@ -7,8 +7,8 @@ from typing import Any
 import click
 import yaml
 
-from atelier.core.foundation.models import ReasonBlock, to_jsonable
-from atelier.core.foundation.renderer import render_block_markdown
+from atelier.core.foundation.models import Playbook, to_jsonable
+from atelier.core.foundation.renderer import render_playbook_markdown
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.cli.commands._dev import dev_command as _dev_command
 from atelier.gateway.cli.commands._dev import dev_group as _dev_group
@@ -95,16 +95,16 @@ def reembed(ctx: click.Context, dry_run: bool, batch_size: int, as_json: bool) -
     _emit(counts, as_json=as_json)
 
 
-@_dev_command("add-block")  # type: ignore[untyped-decorator]
+@_dev_command("add-playbook")  # type: ignore[untyped-decorator]
 @click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.pass_context
-def add_block(ctx: click.Context, path: Path) -> None:
-    """Add or update a ReasonBlock from a YAML file."""
+def add_playbook(ctx: click.Context, path: Path) -> None:
+    """Add or update a Playbook from a YAML file."""
     store = _load_store(ctx.obj["root"])
     data = _load_yaml(path)
     if "id" not in data:
-        data["id"] = ReasonBlock.make_id(data["title"], data["domain"])
-    block = ReasonBlock.model_validate(data)
+        data["id"] = Playbook.make_id(data["title"], data["domain"])
+    block = Playbook.model_validate(data)
     store.upsert_block(block)
     click.echo(f"upserted {block.id}")
 
@@ -213,52 +213,52 @@ def import_style_guide_cmd(
         click.echo(candidate.id)
 
 
-@_dev_group("block")  # type: ignore[untyped-decorator]
-def block_group() -> None:
-    """ReasonBlock curation commands."""
+@_dev_group("playbook")  # type: ignore[untyped-decorator]
+def playbook_group() -> None:
+    """Playbook curation commands."""
 
 
-@block_group.command("list")  # type: ignore[untyped-decorator]
+@playbook_group.command("list")  # type: ignore[untyped-decorator]
 @click.option("--domain", default=None)
 @click.option("--include-deprecated", is_flag=True)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def block_list(ctx: click.Context, domain: str | None, include_deprecated: bool, as_json: bool) -> None:
-    """List ReasonBlocks."""
+    """List Playbooks."""
     store = _load_store(ctx.obj["root"])
     blocks = store.list_blocks(domain=domain, include_deprecated=include_deprecated)
     if as_json:
         _emit([to_jsonable(b) for b in blocks], as_json=True)
         return
     if not blocks:
-        click.echo("(no blocks)")
+        click.echo("(no playbooks)")
         return
-    click.echo(f"{len(blocks)} blocks shown")
+    click.echo(f"{len(blocks)} playbooks shown")
     for b in blocks:
         click.echo(f"{b.id}\t{b.domain}\t{b.title}")
 
 
-@block_group.command("add")  # type: ignore[untyped-decorator]
+@playbook_group.command("add")  # type: ignore[untyped-decorator]
 @click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.pass_context
 def block_add(ctx: click.Context, path: Path) -> None:
-    """Import a ReasonBlock from a YAML file."""
+    """Import a Playbook from a YAML file."""
     store = _load_store(ctx.obj["root"])
     data = _load_yaml(path)
     if "id" not in data:
-        data["id"] = ReasonBlock.make_id(data["title"], data["domain"])
-    block = ReasonBlock.model_validate(data)
+        data["id"] = Playbook.make_id(data["title"], data["domain"])
+    block = Playbook.model_validate(data)
     store.upsert_block(block)
     click.echo(f"upserted {block.id}")
 
 
-@block_group.command("extract")  # type: ignore[untyped-decorator]
+@playbook_group.command("extract")  # type: ignore[untyped-decorator]
 @click.argument("trace_id")
 @click.option("--save", is_flag=True, help="Persist the candidate block.")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
-def block_extract(ctx: click.Context, trace_id: str, save: bool, as_json: bool) -> None:
-    """Extract a candidate ReasonBlock from a trace."""
+def playbook_extract(ctx: click.Context, trace_id: str, save: bool, as_json: bool) -> None:
+    """Extract a candidate Playbook from a trace."""
     store = _load_store(ctx.obj["root"])
     trace = store.get_trace(trace_id)
     if trace is None:
@@ -280,16 +280,16 @@ def block_extract(ctx: click.Context, trace_id: str, save: bool, as_json: bool) 
     click.echo(f"candidate: {candidate.block.id} (confidence={candidate.confidence:.2f})")
     for r in candidate.reasons:
         click.echo(f"  - {r}")
-    click.echo(render_block_markdown(candidate.block))
+    click.echo(render_playbook_markdown(candidate.block))
 
 
-@click.command("list-blocks")
+@click.command("list-playbooks")
 @click.option("--domain", default=None)
 @click.option("--include-deprecated", is_flag=True)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def list_blocks_cmd(ctx: click.Context, domain: str | None, include_deprecated: bool, as_json: bool) -> None:
-    """List ReasonBlocks."""
+    """List Playbooks."""
     store = _load_store(ctx.obj["root"])
     blocks = store.list_blocks(domain=domain, include_deprecated=include_deprecated)
     if as_json:
@@ -299,7 +299,7 @@ def list_blocks_cmd(ctx: click.Context, domain: str | None, include_deprecated: 
 
     summary = summarize(store)
     click.echo(
-        f"# {len(blocks)} blocks shown "
+        f"# {len(blocks)} playbooks shown "
         f"(active={summary.blocks_active}, "
         f"deprecated={summary.blocks_deprecated}, "
         f"quarantined={summary.blocks_quarantined})"
@@ -309,11 +309,11 @@ def list_blocks_cmd(ctx: click.Context, domain: str | None, include_deprecated: 
 
 
 __all__ = [
-    "add_block",
-    "block_group",
+    "add_playbook",
     "domain_group",
     "import_style_guide_cmd",
     "list_blocks_cmd",
+    "playbook_group",
     "reembed",
     "report_cmd",
 ]

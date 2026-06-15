@@ -40,7 +40,7 @@ KIND_ORDER = {
     # Session
     BlockKind.REPO_SUMMARY:  10,
     # Branch
-    BlockKind.REASONBLOCK:   20,
+    BlockKind.PLAYBOOK:   20,
     BlockKind.FILE_SUMMARY:  21,
     # Turn
     BlockKind.USER_TASK:     30,

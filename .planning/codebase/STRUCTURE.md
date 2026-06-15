@@ -45,7 +45,7 @@ atelier/
 **`src/atelier/infra/`:**
 
 - Purpose: Persistence and external integrations.
-- Contains: `storage/`, `runtime/` (run ledger, cost tracker), `code_intel/` (scip/astgrep/zoekt), `embeddings/`, `memory_bridges/`, `internal_llm/`, `seed_blocks/`, `tree_sitter/`.
+- Contains: `storage/`, `runtime/` (run ledger, cost tracker), `code_intel/` (scip/astgrep/zoekt), `embeddings/`, `memory_bridges/`, `internal_llm/`, `seed_playbooks/`, `tree_sitter/`.
 - Key files: `storage/factory.py`, `runtime/run_ledger.py`, `internal_llm/litellm_client.py`.
 
 **`frontend/`:**
@@ -150,7 +150,7 @@ atelier/
 - Purpose: Per-host instructions generated from `integrations/agents/` + `integrations/shared/`.
 - Generated: Yes (via `make sync-agent-context`). Committed: Yes, but never hand-edit.
 
-**`src/atelier/infra/seed_blocks/`:**
+**`src/atelier/infra/seed_playbooks/`:**
 
 - Purpose: YAML seed reason blocks bundled into the wheel.
 - Generated: No. Committed: Yes.

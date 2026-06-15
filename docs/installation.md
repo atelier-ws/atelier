@@ -184,7 +184,7 @@ atelier background logs
 Manual job control is available too:
 
 ```bash
-atelier worker enqueue consolidate_reasonblocks
+atelier worker enqueue consolidate_playbooks
 atelier worker run-once
 atelier worker list
 ```
@@ -213,7 +213,7 @@ Store layout:
 ```text
 .atelier/
 ├── atelier.db          # SQLite store (blocks, traces, rubrics, jobs)
-├── blocks/             # Markdown mirrors of ReasonBlocks
+├── blocks/             # Markdown mirrors of Playbooks
 ├── rubrics/            # YAML mirrors of rubrics
 └── traces/             # JSON mirrors of recorded traces
 ```

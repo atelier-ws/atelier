@@ -88,7 +88,7 @@ const MENU_SECTIONS: MenuSection[] = [
 
 function TelemetryDisclosure() {
   const [config, setConfig] = useState<TelemetryConfig | null>(null);
-  const [dismissed, setDismissed] = useState(true);
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     getTelemetryConfig()

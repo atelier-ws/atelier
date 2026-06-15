@@ -10,7 +10,7 @@ atelier init
 
 ## Config
 
-Use the Shopify publish reasonblocks, rubrics, and traces under the `Agent.shopify.publish` domain.
+Use the Shopify publish playbooks, rubrics, and traces under the `Agent.shopify.publish` domain.
 
 ## Commands
 

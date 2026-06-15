@@ -8,7 +8,7 @@ def test_trace_serializers_drop_default_fields() -> None:
     learnings = serialize_trace_learnings(
         [
             TraceLearning(text="Observed fix"),
-            TraceLearning(text="Promote this", promote_to="reasonblock"),
+            TraceLearning(text="Promote this", promote_to="playbook"),
             {"text": "already serialized", "kind": "risk"},
         ]
     )
@@ -21,7 +21,7 @@ def test_trace_serializers_drop_default_fields() -> None:
 
     assert learnings == [
         {"text": "Observed fix"},
-        {"text": "Promote this", "promote_to": "reasonblock"},
+        {"text": "Promote this", "promote_to": "playbook"},
         {"text": "already serialized", "kind": "risk"},
     ]
     assert validations == [

@@ -41,7 +41,7 @@ in any one lever.
        "cached_read": 11000,
        "scoped_recall": 9000,
        "compact_lifecycle": 8500,
-       "reasonblock_inject": 5500
+       "playbook_inject": 5500
      &#125;,
      "by_day": [&#123; "day": "2026-04-26", "naive": 60000, "actual": 28000 &#125;, ...]
    &#125;

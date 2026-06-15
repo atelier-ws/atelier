@@ -5,7 +5,7 @@
 **Audience:** Subagents implementing the schema-touching work-packets (WP-02, WP-06, WP-08, WP-15, WP-25..28).
 
 This document defines every new Pydantic model V2 introduces, every new SQLite/PostgreSQL table,
-and every adapter to the existing `ReasonBlock` / `Trace` models in
+and every adapter to the existing `Playbook` / `Trace` models in
 `src/atelier/core/foundation/models.py`. **Subagents must not invent fields outside this document.**
 If a packet needs a new field, raise it as a comment and stop.
 
@@ -15,7 +15,7 @@ If a packet needs a new field, raise it as a comment and stop.
 
 | Model            | File                        | Notes                                  |
 | ---------------- | --------------------------- | -------------------------------------- |
-| `ReasonBlock`    | `core/foundation/models.py` | Stays the canonical procedure schema   |
+| `Playbook`    | `core/foundation/models.py` | Stays the canonical procedure schema   |
 | `Trace`          | `core/foundation/models.py` | Stays the canonical observation schema |
 | `RawArtifact`    | `core/foundation/models.py` | Unchanged                              |
 | `Rubric`         | `core/foundation/models.py` | Unchanged                              |
@@ -136,7 +136,7 @@ Lives in `src/atelier/core/foundation/lesson_models.py` (NEW).
 
 ### 3.1 `LessonCandidate`
 
-A draft ReasonBlock-or-rubric-edit waiting for human review.
+A draft Playbook-or-rubric-edit waiting for human review.
 
 | Field                   | Type                                                   | Required | Notes                                                    |
 | ----------------------- | ------------------------------------------------------ | -------- | -------------------------------------------------------- |
@@ -145,7 +145,7 @@ A draft ReasonBlock-or-rubric-edit waiting for human review.
 | `cluster_fingerprint`   | `str`                                                  | yes      | Same as `FailureCluster.fingerprint` if derived from one |
 | `kind`                  | `Literal["new_block","edit_block","new_rubric_check"]` | yes      |                                                          |
 | `target_id`             | `str \| None`                                          | no       | Existing block/rubric ID if `edit_*`                     |
-| `proposed_block`        | `ReasonBlock \| None`                                  | no       | Full draft if `kind="new_block"`                         |
+| `proposed_block`        | `Playbook \| None`                                  | no       | Full draft if `kind="new_block"`                         |
 | `proposed_rubric_check` | `str \| None`                                          | no       | Single check name if `new_rubric_check`                  |
 | `evidence_trace_ids`    | `list[str]`                                            | yes      | Traces backing the proposal                              |
 | `embedding`             | `list[float] \| None`                                  | no       |                                                          |
@@ -160,14 +160,14 @@ A draft ReasonBlock-or-rubric-edit waiting for human review.
 
 ### 3.2 `LessonPromotion`
 
-Audit row written when a `LessonCandidate` is approved → ReasonBlock published.
+Audit row written when a `LessonCandidate` is approved → Playbook published.
 
 | Field                | Type          | Required | Notes                         |
 | -------------------- | ------------- | -------- | ----------------------------- |
 | `id`                 | `str`         | yes      | `lp-<uuid7>`                  |
 | `lesson_id`          | `str`         | yes      | FK `LessonCandidate.id`       |
-| `published_block_id` | `str \| None` | no       | FK `ReasonBlock.id` (if new)  |
-| `edited_block_id`    | `str \| None` | no       | FK `ReasonBlock.id` (if edit) |
+| `published_block_id` | `str \| None` | no       | FK `Playbook.id` (if new)  |
+| `edited_block_id`    | `str \| None` | no       | FK `Playbook.id` (if edit) |
 | `pr_url`             | `str`         | no       | Optional GitHub PR URL        |
 | `created_at`         | `datetime`    | no       | UTC                           |
 
@@ -193,7 +193,7 @@ Per-turn snapshot, written by the MCP gateway after every tool call.
 | `cache_write_tokens` | `int`            | yes      |                                                                                  |
 | `output_tokens`      | `int`            | yes      |                                                                                  |
 | `naive_input_tokens` | `int`            | yes      | What the prompt would have been **without** Atelier — required for savings claim |
-| `lever_savings`      | `dict[str, int]` | yes      | E.g. `\&#123;"reasonblock_inject": 420, "search_read": 1850, …\&#125;`           |
+| `lever_savings`      | `dict[str, int]` | yes      | E.g. `\&#123;"playbook_inject": 420, "search_read": 1850, …\&#125;`           |
 | `tool_calls`         | `int`            | yes      | Per-turn                                                                         |
 | `created_at`         | `datetime`       | no       | UTC                                                                              |
 
@@ -256,7 +256,7 @@ One route decision for one agent step.
 | `protected_file_match` | `bool`                                                                                                  | no       | `false` | True when file policy elevated risk        |
 | `verifier_required`    | `list[str]`                                                                                             | no       | `[]`    | e.g. `["pytest","ruff","rubric"]`          |
 | `escalation_trigger`   | `str \| None`                                                                                           | no       | `null`  | Set when decision escalates                |
-| `evidence_refs`        | `list[str]`                                                                                             | no       | `[]`    | Trace, file, test, or ReasonBlock pointers |
+| `evidence_refs`        | `list[str]`                                                                                             | no       | `[]`    | Trace, file, test, or Playbook pointers |
 | `created_at`           | `datetime`                                                                                              | no       | UTC now |                                            |
 
 ### 5.4 `VerificationEnvelope`
@@ -548,7 +548,7 @@ hygiene.
 | `search`                | 3       | WP-21    | `query, [path, max_files, max_chars_per_file]`                        | `\&#123; matches: [\&#123;path, line_start, line_end, snippet, lang_outline?\&#125;], total_chars, cache_hit \&#125;` |
 | `edit`                  | 3       | WP-22    | `edits: [\&#123;path, old_string                                      | range, new_string, fuzzy?: bool\&#125;]`                                                                              | `\&#123; applied: [\&#123;path, hunk\&#125;], failed: [\&#123;path, error\&#125;] \&#125;` |
 | `atelier sql inspect`   | 3       | WP-23    | `connection_alias, sql`                                               | `\&#123; rows: [...], columns: [...], affected: int, truncated: bool \&#125;`                                         |
-| `compact`               | 3       | WP-13    | `session_id`                                                          | `\&#123; should_compact: bool, preserve_blocks, pin_memory, suggested_prompt \&#125;`                                 |
+| `compact`               | 3       | WP-13    | `session_id`                                                          | `\&#123; should_compact: bool, preserve_playbooks, pin_memory, suggested_prompt \&#125;`                                 |
 | `route`                 | routing | WP-26    | `AgentRequest, ContextBudgetPolicy`                                   | `RouteDecision`                                                                                                       |
 | `route`                 | routing | WP-27    | `route_decision_id, validation_results, changed_files, rubric_status` | `VerificationEnvelope`                                                                                                |
 

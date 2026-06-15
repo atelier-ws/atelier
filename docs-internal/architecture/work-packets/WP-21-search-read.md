@@ -80,7 +80,7 @@ cd /home/pankaj/Projects/leanchain/atelier
 LOCAL=1 uv run pytest tests/core/test_search_read.py \
                      tests/infra/test_search_read_token_savings.py -v
 
-LOCAL=1 atelier search-read --query "ReasonBlock" --path src --json | head -50
+LOCAL=1 atelier search-read --query "Playbook" --path src --json | head -50
 
 make verify
 ```

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.renderer import render_block_for_agent
 from atelier.core.foundation.retriever import TaskContext, count_tokens, retrieve
 from atelier.core.foundation.store import ContextStore
@@ -17,13 +17,13 @@ def _block(
     files: Sequence[str] = (),
     success_count: int = 0,
     failure_count: int = 0,
-) -> ReasonBlock:
-    return ReasonBlock(
+) -> Playbook:
+    return Playbook(
         id=bid,
         title=title,
         domain="coding",
-        situation="Changing retrieval logic for ReasonBlocks.",
-        triggers=["retriever", "reasonblock"],
+        situation="Changing retrieval logic for Playbooks.",
+        triggers=["retriever", "playbook"],
         file_patterns=list(files),
         dead_ends=list(dead_ends),
         procedure=list(procedure),
@@ -39,7 +39,7 @@ def test_dedup_collapses_near_duplicate_pair(store: ContextStore) -> None:
         files=["src/**"],
         dead_ends=["Returning duplicate procedures to the agent"],
         procedure=[
-            "Score candidate ReasonBlocks before filtering",
+            "Score candidate Playbooks before filtering",
             "Remove near-duplicate dead-end and procedure text",
             "Keep the higher-ranked candidate",
         ],
@@ -64,7 +64,7 @@ def test_dedup_collapses_near_duplicate_pair(store: ContextStore) -> None:
     store.upsert_block(distinct)
 
     ctx = TaskContext(
-        task="retriever reasonblock dedup",
+        task="retriever playbook dedup",
         domain="coding",
         files=["src/atelier/core/foundation/retriever.py"],
     )
@@ -100,7 +100,7 @@ def test_token_budget_greedy_packs_highest_scoring_blocks(store: ContextStore) -
     store.upsert_block(small)
 
     ctx = TaskContext(
-        task="retriever reasonblock budget",
+        task="retriever playbook budget",
         domain="coding",
         files=["src/atelier/core/foundation/retriever.py"],
     )

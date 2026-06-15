@@ -768,14 +768,25 @@ def _run_json_command(
     timeout_s: int = 120,
     parser: Any | None = None,
 ) -> dict[str, Any]:
-    proc = subprocess.run(
-        command,
-        cwd=str(cwd) if cwd else None,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=timeout_s,
-    )
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=str(cwd) if cwd else None,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_s,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        logging.warning("External analytics command failed: %s", exc)
+        return {
+            "ok": False,
+            "returncode": None,
+            "stdout": "",
+            "stderr": "",
+            "payload": None,
+            "parse_error": str(exc),
+        }
     stdout = proc.stdout.strip()
     stderr = proc.stderr.strip()
     payload: Any = None

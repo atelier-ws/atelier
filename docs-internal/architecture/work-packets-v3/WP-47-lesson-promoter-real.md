@@ -14,7 +14,7 @@ status: done
 ## Why
 
 V2 `LessonPromoter` ingests failed traces, embeds them, clusters them, and proposes
-ReasonBlock additions. The pipeline shape is good. Two things are broken:
+Playbook additions. The pipeline shape is good. Two things are broken:
 
 1. **Clustering signal:** V2 embeds via `stub_embedding` (SHA-256 feature hash), so "semantic
    clustering" is actually string-prefix-fingerprint clustering with hash collisions. The V2

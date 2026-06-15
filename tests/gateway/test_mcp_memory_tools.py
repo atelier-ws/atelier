@@ -48,12 +48,12 @@ def test_memory_tools_are_registered() -> None:
     assert "memory" in TOOLS
 
 
-def test_memory_schema_exposes_only_recall_store_vote_ops() -> None:
+def test_memory_schema_exposes_recall_store_vote_and_symbol_ops() -> None:
     memory_tool = TOOLS["memory"]
     props = memory_tool["inputSchema"]["properties"]
     ops = set(props["op"]["enum"])
 
-    assert ops == {"recall", "store_fact", "vote_fact"}
+    assert ops == {"recall", "recall_symbol", "store_fact", "vote_fact"}
     assert "block_upsert" not in props["op"]["description"]
     assert "transcript_recall" not in props["op"]["description"]
     assert "summarize" not in props["op"]["description"]
@@ -126,19 +126,37 @@ def test_memory_store_fact_and_vote_fact_round_trip(mcp_root: Path) -> None:
     assert "votes" not in stored_again
 
 
-def test_memory_recall_returns_passage_list_shape(mcp_root: Path) -> None:
+def test_memory_recall_renders_compact_markdown(mcp_root: Path) -> None:
     _ = mcp_root
-    recalled = _payload(_call("memory", _memory_args("recall", query="nonexistent-query", top_k=2)))
-    assert "passages" in recalled
-    assert isinstance(recalled["passages"], list)
+    response = _call("memory", _memory_args("recall", query="nonexistent-query", top_k=2))
+    text = response["result"]["content"][0]["text"]
+    # recall now renders compact markdown (header + per-passage blocks) instead
+    # of a JSON passage list; an empty recall shows the seeding hint.
+    assert text.startswith("### memory")
+    assert "no passages" in text
 
 
 def test_memory_rejects_removed_ops(mcp_root: Path) -> None:
     _ = mcp_root
-    for op in ("block_upsert", "block_get", "archive", "recall_symbol", "transcript_recall", "summarize"):
+    for op in ("block_upsert", "block_get", "archive", "transcript_recall", "summarize"):
         response = _call("memory", _memory_args(op, query="x"))
         assert "error" in response
         assert response["error"]["code"] in {-32602, -32000}
+
+
+def test_memory_recall_symbol_dispatches_to_local_capability(monkeypatch: pytest.MonkeyPatch, mcp_root: Path) -> None:
+    _ = mcp_root
+    captured: dict[str, Any] = {}
+
+    class FakeRecall:
+        def recall_symbol(self, *, query: str, agent_id: str | None, top_k: int) -> dict[str, Any]:
+            captured.update(query=query, agent_id=agent_id, top_k=top_k)
+            return {"query": query, "definition": {"qualified_name": query}, "included": ["definition", "memory"]}
+
+    monkeypatch.setattr(mcp_server, "_symbol_recall", lambda: FakeRecall())
+    response = _call("memory", _memory_args("recall_symbol", query="AuthService.verify_session", top_k=3))
+    assert "result" in response, response
+    assert captured == {"query": "AuthService.verify_session", "agent_id": None, "top_k": 3}
 
 
 def test_memory_sidecar_unavailable_maps_to_503(monkeypatch: pytest.MonkeyPatch, mcp_root: Path) -> None:

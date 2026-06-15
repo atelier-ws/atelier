@@ -30,7 +30,7 @@ from atelier.core.service.jobs import (
     JOB_BOOTSTRAP_CONTEXT,
     JOB_COMPUTE_EMBEDDINGS,
     JOB_CONSOLIDATE_BLOCKS,
-    JOB_EXTRACT_REASONBLOCK,
+    JOB_EXTRACT_PLAYBOOK,
     JOB_INGEST_SESSION_DIRECTORY,
     JOB_INGEST_SESSION_FILE,
     JOB_OPTIMIZE,
@@ -450,7 +450,7 @@ def test_worker_run_once_handler_exception_marks_failed(ctx_root: Path) -> None:
 def test_all_known_job_types_defined(ctx_root: Path) -> None:
     """Verify all expected job type constants are present in KNOWN_JOB_TYPES."""
     expected = {
-        JOB_EXTRACT_REASONBLOCK,
+        JOB_EXTRACT_PLAYBOOK,
         JOB_COMPUTE_EMBEDDINGS,
         JOB_CONSOLIDATE_BLOCKS,
         JOB_OPTIMIZE,

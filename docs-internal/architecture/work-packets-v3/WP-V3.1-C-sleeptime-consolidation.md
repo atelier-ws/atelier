@@ -13,7 +13,7 @@ status: done
 
 ## Why
 
-Atelier's ReasonBlock store, lesson candidates, and memory blocks accumulate over time. V2
+Atelier's Playbook store, lesson candidates, and memory blocks accumulate over time. V2
 had no consolidation: stale lessons stay stale, near-duplicates accumulate, low-confidence
 entries hang around forever, and the store gradually becomes a junkyard a reviewer
 can't keep up with.
@@ -32,13 +32,13 @@ Ollama-powered-where-helpful background process.
   - `consolidate(*, since: timedelta, dry_run: bool = False) -> ConsolidationReport` —
     main entry point.
   - Pipeline:
-    1. Load recent traces, lesson candidates, ReasonBlocks (filtered by `since`).
-    2. **Deterministic pass:** find near-duplicate ReasonBlocks via cosine similarity ≥
+    1. Load recent traces, lesson candidates, Playbooks (filtered by `since`).
+    2. **Deterministic pass:** find near-duplicate Playbooks via cosine similarity ≥
        0.95 on their embedded body. Group as duplicate clusters.
     3. **Deterministic pass:** flag lesson candidates whose `last_seen_at` is older than
        180 days AND whose cluster has not grown in 90 days as `stale_candidate`.
     4. **Internal-LLM pass (Ollama):** for each duplicate cluster, ask Ollama:
-       _"These N ReasonBlocks describe similar procedures. Are they truly duplicates? If
+       _"These N Playbooks describe similar procedures. Are they truly duplicates? If
        so, draft a consolidated version that subsumes all. If not, list which are
        distinct."_
     5. Write everything as `ConsolidationCandidate` rows for human review (same gate as
@@ -64,7 +64,7 @@ Ollama-powered-where-helpful background process.
 ### Tests + frontend hook
 
 - **NEW:** `tests/core/test_consolidation_dedup_pass.py` — fixture with 3 near-duplicate
-  ReasonBlocks; deterministic pass groups them.
+  Playbooks; deterministic pass groups them.
 - **NEW:** `tests/core/test_consolidation_stale_pass.py` — fixture with old/new candidates;
   stale pass flags correctly.
 - **NEW:** `tests/core/test_consolidation_ollama_pass.py` — with mocked Ollama; cluster
@@ -100,7 +100,7 @@ work without explicit user invocation.
 
 The Ollama call is background-only — invoked exclusively from the `atelier consolidate`
 CLI subcommand or from a cron the user wires up. **Never on the user's hot path.**
-Consolidation candidates require human review before they affect the ReasonBlock /
+Consolidation candidates require human review before they affect the Playbook /
 LessonCandidate stores. No autonomous mutation.
 
 ## Acceptance tests

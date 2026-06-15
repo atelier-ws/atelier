@@ -504,7 +504,11 @@ def test_code_context_outline_and_context_pack(tmp_path: Path) -> None:
 
     outline = engine.file_outline(file_path="src/orders.py")
     assert "src/orders.py" in outline["files"]
-    assert any(item["qualified_name"] == "OrderService.calculate_total" for item in outline["files"]["src/orders.py"])
+    # qualified_name is dropped when it equals name; the method's differs, so it
+    # is retained. Use .get() because sibling module/class entries omit the key.
+    assert any(
+        item.get("qualified_name") == "OrderService.calculate_total" for item in outline["files"]["src/orders.py"]
+    )
 
     pack = engine.context_pack(
         task="change OrderService calculate_total",

@@ -792,6 +792,10 @@ class SemanticFileMemoryCapability:
                 return "", ""
             commit = commits[0]
             return str(commit.hexsha), commit.authored_datetime.isoformat()
-        except Exception:
+        except Exception as exc:
+            # InvalidGitRepositoryError is expected when the file is not inside
+            # a git repo (e.g. a benchmark snapshot copy). Return empty silently.
+            if type(exc).__name__ == "InvalidGitRepositoryError":
+                return "", ""
             logging.exception("Recovered from broad exception handler")
             return "", ""

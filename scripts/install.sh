@@ -48,6 +48,7 @@ ATELIER_VERBOSE="${ATELIER_VERBOSE:-0}"
 ATELIER_NON_INTERACTIVE="${ATELIER_NON_INTERACTIVE:-0}"
 ATELIER_NO_PATH="${ATELIER_NO_PATH:-0}"
 ATELIER_NO_HOSTS="${ATELIER_NO_HOSTS:-0}"
+ATELIER_ALLOW_UNVERIFIED="${ATELIER_ALLOW_UNVERIFIED:-0}"
 
 if [[ "$ATELIER_RELEASE_TAG" == "latest" ]]; then
     RELEASE_BASE_URL="https://github.com/atelier-ws/atelier/releases/latest/download"
@@ -66,6 +67,41 @@ verbose() { [[ "$ATELIER_VERBOSE" == "1" ]] && info "$*" || true; }
 
 need_cmd() {
     command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
+}
+
+# verify_checksum <archive> <url>
+# Verifies <archive> against a published <url>.sha256 sidecar. Fails closed:
+# if the checksum cannot be fetched or does not match, the install aborts
+# unless ATELIER_ALLOW_UNVERIFIED=1 is set to explicitly opt out.
+# TODO: publish atelier-distribution-*.tar.gz.sha256 sidecars in
+# .github/workflows/release.yml so this verification is enforced by default.
+verify_checksum() {
+    local archive="$1" url="$2"
+    local expected
+    if ! expected="$("${DOWNLOAD_CMD[@]}" "${url}.sha256" 2>/dev/null)"; then
+        expected=""
+    fi
+    # Accept both `<hash>  file` and `SHA256 (file) = <hash>` formats.
+    expected="$(printf '%s' "$expected" | grep -oE '[0-9a-fA-F]{64}' | head -1 | tr 'A-F' 'a-f')"
+    if [[ -z "$expected" ]]; then
+        if [[ "$ATELIER_ALLOW_UNVERIFIED" == "1" ]]; then
+            warn "No published checksum at ${url}.sha256 — proceeding unverified (ATELIER_ALLOW_UNVERIFIED=1)."
+            return 0
+        fi
+        fail "No published checksum at ${url}.sha256 to verify the download. Refusing to install an unverified archive. Set ATELIER_ALLOW_UNVERIFIED=1 to override."
+    fi
+    local actual
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual="$(sha256sum "$archive" | awk '{print $1}')"
+    elif command -v shasum >/dev/null 2>&1; then
+        actual="$(shasum -a 256 "$archive" | awk '{print $1}')"
+    else
+        fail "Cannot verify checksum: neither sha256sum nor shasum is available."
+    fi
+    if [[ "$actual" != "$expected" ]]; then
+        fail "Checksum mismatch for ${archive}: expected ${expected}, got ${actual}. Aborting."
+    fi
+    verbose "Checksum verified: ${actual}"
 }
 
 run() {
@@ -127,6 +163,8 @@ fi
 if [[ ! -s "$TMP_ARCHIVE" ]]; then
     fail "Downloaded archive is empty: ${RELEASE_URL}"
 fi
+
+verify_checksum "$TMP_ARCHIVE" "$RELEASE_URL"
 
 tar -xzf "$TMP_ARCHIVE" -C "$ATELIER_INSTALL_DIR"
 

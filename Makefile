@@ -15,7 +15,7 @@ FORCE_ARG := $(if $(f),--force,)
 EXTERNAL_PERIODS ?= today week month
 .PHONY: help install uninstall dev build prod status start restart build-host-skills sync-agent-context \
 	check-agent-context docs-check worktree-env runtime-evidence \
-	test test-fast test-cov test-full security-test lint format-check format typecheck launch-gate verify pre-commit \
+	test test-fast test-cov test-full lint format-check format typecheck launch-gate verify pre-commit \
 	proof-cost-quality demo import clean \
 	_ensure_hooks
 
@@ -110,9 +110,6 @@ test-cov: ## Run tests with terminal and HTML coverage reports
 
 test-full: ## Run the FULL suite (incl. slow) with measured coverage floor
 	uv run pytest -m "" --timeout=300 --cov=atelier --cov-report=term-missing --cov-fail-under=$(COV_FAIL_UNDER)
-
-security-test: ## Run security-focused test cases
-	uv run pytest tests/gateway/test_security.py -v
 
 lint: | _ensure_hooks ## Run ruff lint checks
 	uv run ruff check $(PY_PATHS)

@@ -146,7 +146,7 @@ The host CLI (Claude Code, Codex, opencode, Gemini, or a user's own agent) owns:
 
 Atelier owns:
 
-- ReasonBlocks (procedure store) and rubric gates — surfaced as MCP tools;
+- Playbooks (procedure store) and rubric gates — surfaced as MCP tools;
 - the `memory_*` MCP tools (upsert/get/list/recall/archive);
 - the deterministic context-savings tools: `search`, `edit`,
   `atelier sql inspect`, AST-outline-first reads;
@@ -209,7 +209,7 @@ The 2026-05-04 internal audit ([summary in this commit's PR description]) found:
 | Sleeptime "summarizer" is template `groupby` + truncation; counts as a savings lever in V2 docs but compresses no meaning.                                                                   | `core/capabilities/context_compression/sleeptime.py`                                                                      | **WP-36**                                                               |
 | `LessonPromoter` clusters via SHA-hash fingerprint; precision target `≥ 0.7` was filed but never met.                                                                                        | `core/capabilities/lesson_promotion/capability.py`                                                                        | **WP-47**                                                               |
 
-Everything else V2 shipped — ReasonBlocks, rubric gates, plan-check, rescue, trace recording,
+Everything else V2 shipped — Playbooks, rubric gates, plan-check, rescue, trace recording,
 `search_read`, `batch_edit`, `sql_inspect`, AST outline, MCP gateway, frontend pages — is real,
 in-scope, and **kept verbatim** by V3. The audit was a quality check on specific subsystems, not
 a wholesale verdict.
@@ -235,7 +235,7 @@ a wholesale verdict.
                     └──┬──────────────────┬─────────────────────┬─────────┘
                        │                  │                     │
         ┌──────────────▼──────┐   ┌───────▼─────────┐   ┌───────▼─────────┐
-        │ ReasonBlock store   │   │ Memory tools    │   │ Lesson pipeline │
+        │ Playbook store   │   │ Memory tools    │   │ Lesson pipeline │
         │ + rubric gates      │   │ (memory_*)      │   │ (background)    │
         │ + plan-check        │   │                 │   │                 │
         │ + rescue + trace    │   │ Backend, picked │   │ Reads recorded  │
@@ -451,7 +451,7 @@ Everything else stays as V2 specified it.
 
 | Concern                                                                                                               | V2                                      | V3                                                                                     |
 | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------- |
-| `MemoryBlock`, `ArchivalPassage`, `MemoryRecall`, `RunMemoryFrame`, `Trace`, `LessonCandidate`, `ReasonBlock` schemas | as V2                                   | **same as V2 — no field changes**                                                      |
+| `MemoryBlock`, `ArchivalPassage`, `MemoryRecall`, `RunMemoryFrame`, `Trace`, `LessonCandidate`, `Playbook` schemas | as V2                                   | **same as V2 — no field changes**                                                      |
 | `archival_passage.embedding`, `lesson_candidate.embedding` columns                                                    | sometimes populated by `stub_embedding` | **must be from `Embedder.embed()`**; V3 fails closed if a SHA-hash artifact is written |
 | New optional column `embedding_provenance` on `archival_passage` and `lesson_candidate`                               | n/a                                     | added; legacy rows flagged `legacy_stub`                                               |
 | New `BenchmarkRun` table                                                                                              | n/a                                     | added in WP-50 to record measured savings results                                      |
@@ -554,10 +554,10 @@ rewritten in WP-39 to be a single-primary path (no dual-write).
 
 ---
 
-## 5. ReasonBlock schema — unchanged
+## 5. Playbook schema — unchanged
 
-V3 makes zero changes to the `ReasonBlock` Pydantic model. The store, retrieval, and review
-surfaces are kept verbatim. ReasonBlocks are the part of Atelier with the highest correctness
+V3 makes zero changes to the `Playbook` Pydantic model. The store, retrieval, and review
+surfaces are kept verbatim. Playbooks are the part of Atelier with the highest correctness
 requirements, and V3 introduces no churn on them.
 
 ---
@@ -1316,7 +1316,7 @@ status: done
 ## Why
 
 V2 `LessonPromoter` ingests failed traces, embeds them, clusters them, and proposes
-ReasonBlock additions. The pipeline shape is good. Two things are broken:
+Playbook additions. The pipeline shape is good. Two things are broken:
 
 1. **Clustering signal:** V2 embeds via `stub_embedding` (SHA-256 feature hash), so "semantic
    clustering" is actually string-prefix-fingerprint clustering with hash collisions. The V2
@@ -1512,7 +1512,7 @@ catches it.
 3. **Write the migration doc.** Structure:
    - **Quick summary** — "Most users do nothing." (Because the MCP surface is preserved.)
    - **What stays the same** — Atelier is still a tool/data provider; the host CLI still owns
-     the loop; every V2 MCP tool name, signature, return shape, ReasonBlock schema, trace
+     the loop; every V2 MCP tool name, signature, return shape, Playbook schema, trace
      shape are preserved.
    - **What changes** — three items: memory backend config knob, embedding back-fill,
      sleeptime telemetry, savings headline.
@@ -1718,7 +1718,7 @@ they reach the main LLM, with explicit recovery hints so nothing is lost forever
 
 This packet absorbs three earlier candidates that are all special cases of the same idea:
 
-- **Stale-output sweeper** (ReasonBlocks-style): becomes the deterministic "drop or stub
+- **Stale-output sweeper** (Playbooks-style): becomes the deterministic "drop or stub
   rarely-cited outputs" path.
 - **SR2 compaction rule DSL + recovery hints**: becomes the per-content-type deterministic
   truncation strategy.
@@ -2033,7 +2033,7 @@ status: done
 
 ## Why
 
-Atelier's ReasonBlock store, lesson candidates, and memory blocks accumulate over time. V2
+Atelier's Playbook store, lesson candidates, and memory blocks accumulate over time. V2
 had no consolidation: stale lessons stay stale, near-duplicates accumulate, low-confidence
 entries hang around forever, and the store gradually becomes a junkyard a reviewer
 can't keep up with.
@@ -2052,13 +2052,13 @@ Ollama-powered-where-helpful background process.
   - `consolidate(*, since: timedelta, dry_run: bool = False) -> ConsolidationReport` —
     main entry point.
   - Pipeline:
-    1. Load recent traces, lesson candidates, ReasonBlocks (filtered by `since`).
-    2. **Deterministic pass:** find near-duplicate ReasonBlocks via cosine similarity ≥
+    1. Load recent traces, lesson candidates, Playbooks (filtered by `since`).
+    2. **Deterministic pass:** find near-duplicate Playbooks via cosine similarity ≥
        0.95 on their embedded body. Group as duplicate clusters.
     3. **Deterministic pass:** flag lesson candidates whose `last_seen_at` is older than
        180 days AND whose cluster has not grown in 90 days as `stale_candidate`.
     4. **Internal-LLM pass (Ollama):** for each duplicate cluster, ask Ollama:
-       _"These N ReasonBlocks describe similar procedures. Are they truly duplicates? If
+       _"These N Playbooks describe similar procedures. Are they truly duplicates? If
        so, draft a consolidated version that subsumes all. If not, list which are
        distinct."_
     5. Write everything as `ConsolidationCandidate` rows for human review (same gate as
@@ -2084,7 +2084,7 @@ Ollama-powered-where-helpful background process.
 ### Tests + frontend hook
 
 - **NEW:** `tests/core/test_consolidation_dedup_pass.py` — fixture with 3 near-duplicate
-  ReasonBlocks; deterministic pass groups them.
+  Playbooks; deterministic pass groups them.
 - **NEW:** `tests/core/test_consolidation_stale_pass.py` — fixture with old/new candidates;
   stale pass flags correctly.
 - **NEW:** `tests/core/test_consolidation_ollama_pass.py` — with mocked Ollama; cluster
@@ -2119,7 +2119,7 @@ work without explicit user invocation.
 
 The Ollama call is background-only — invoked exclusively from the `atelier consolidate`
 CLI subcommand or from a cron the user wires up. **Never on the user's hot path.**
-Consolidation candidates require human review before they affect the ReasonBlock /
+Consolidation candidates require human review before they affect the Playbook /
 LessonCandidate stores. No autonomous mutation.
 
 ## Acceptance tests

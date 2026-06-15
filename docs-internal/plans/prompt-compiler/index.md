@@ -57,7 +57,7 @@ After the compiler, the prompt looks like this (the **good** layout):
 │ system prompt                 (static) │
 │ coding policy                 (static) │  ← cache prefix ends here
 │ repo architecture summary    (session) │
-│ ReasonBlocks                  (branch) │
+│ Playbooks                  (branch) │
 │ stable file summaries         (branch) │
 │ ──── CACHE PREFIX BOUNDARY ────        │
 │ user task                       (turn) │
@@ -101,14 +101,14 @@ explicit caches re-use it.
 class Stability(str, Enum):
     STATIC   = "static"    # tool schemas, system prompt, coding policy
     SESSION  = "session"   # repo summary, project conventions
-    BRANCH   = "branch"    # ReasonBlocks, file summaries for this task
+    BRANCH   = "branch"    # Playbooks, file summaries for this task
     TURN     = "turn"      # user task, current diff, last tool result
     VOLATILE = "volatile"  # timestamps, request IDs, raw logs
 
 class PromptBlock:
     id: str
     kind: BlockKind          # tool_schema | system | coding_policy |
-                             # repo_summary | reasonblock | file_summary |
+                             # repo_summary | playbook | file_summary |
                              # user_task | git_diff | tool_result | scratchpad
     content: str
     stability: Stability
@@ -168,7 +168,7 @@ Recommended build order: **P0 → P1 → P2 → P3 → P5 → P4 → P6 → P7 �
    preserves the boundary that's already documented in `CLAUDE.md`
    ("MCP provider, not agent executor") and the M0 / commercial-wedge
    plans.
-3. ReasonBlocks already are first-class governance objects. Promoting
+3. Playbooks already are first-class governance objects. Promoting
    them into the **stable prefix** of every prompt is the natural next
    step — they were designed to be retrieved, verified, and audited per
    task.
@@ -220,7 +220,7 @@ Before any milestone is marked `completed`:
   `core/capabilities/cross_vendor_routing/` and `quality_router/`. The
   compiler hands off compiled blocks; routing decides which provider to
   send them to.
-- **Not a memory store.** ReasonBlocks and semantic memory remain in
+- **Not a memory store.** Playbooks and semantic memory remain in
   their existing modules. The compiler reads, never writes.
 - **Not the gateway/runtime venture.** The "Atelier Gateway" idea (LLM
   proxy with prompt compiler + router + guardrails + loop detector

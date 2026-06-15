@@ -15,4 +15,4 @@ Unlike SWE-bench which focuses on isolated issue resolution in Python codebases,
 3. **External API Compliance**: e.g., Adhering to strict third-party rate limits.
 
 ## Why Beseam?
-Beseam proves that an agent can follow organizational *procedures* (ReasonBlocks) rather than just writing syntactically valid code. It heavily utilizes Atelier's Rubric Gates.
+Beseam proves that an agent can follow organizational *procedures* (Playbooks) rather than just writing syntactically valid code. It heavily utilizes Atelier's Rubric Gates.

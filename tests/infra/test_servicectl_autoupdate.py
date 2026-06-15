@@ -35,9 +35,25 @@ def test_detect_git_when_checkout(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
 # --------------------------------------------------------------------------- #
 
 
+def test_update_via_release_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The unverified release installer is OPT-IN; without the opt-in env var it
+    must never download or launch anything (no RCE-by-default)."""
+    import shutil
+
+    monkeypatch.delenv("ATELIER_AUTO_UPDATE_RELEASE", raising=False)
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/bash")
+
+    def _boom(*_a: object, **_k: object) -> object:
+        raise AssertionError("must not launch installer when release update is opt-out")
+
+    monkeypatch.setattr(svc.subprocess, "Popen", _boom)
+    assert svc._update_via_release() is False
+
+
 def test_update_via_release_noop_when_current(monkeypatch: pytest.MonkeyPatch) -> None:
     import shutil
 
+    monkeypatch.setenv("ATELIER_AUTO_UPDATE_RELEASE", "1")
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/bash")
     monkeypatch.setattr(svc, "_github_latest_version", lambda: "1.0.0")
     monkeypatch.setattr(svc, "_atelier_version", lambda: "1.0.0")
@@ -53,6 +69,7 @@ def test_update_via_release_launches_detached_installer(monkeypatch: pytest.Monk
     import shutil
     import urllib.request
 
+    monkeypatch.setenv("ATELIER_AUTO_UPDATE_RELEASE", "1")
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/bash")
     monkeypatch.setattr(shutil, "copyfileobj", lambda _src, _dst: None)
     monkeypatch.setattr(svc, "_github_latest_version", lambda: "2.0.0")

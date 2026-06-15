@@ -39,7 +39,7 @@ def _assert_matched_rescue(
 def _assert_unmatched_rescue(result: dict[str, Any]) -> None:
     rescue = str(result.get("rescue") or "")
     assert rescue.startswith(
-        "No matching ReasonBlock found."
+        "No matching Playbook found."
     ), f"unmatched rescue must return fallback text, got: {rescue[:200]!r}"
     assert (
         result.get("matched_blocks") == []
@@ -76,7 +76,7 @@ def _build_rescue_cases() -> list[BenchCase]:
                     "domain": "coding",
                     "files": [symbol.path],
                     "recent_actions": [f"ran pytest for {symbol.name}", f"read {symbol.path}"],
-                    "_seed_reasonblocks": [
+                    "_seed_playbooks": [
                         {
                             "id": block_id,
                             "title": f"Fix {symbol.name} failure",

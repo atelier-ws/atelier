@@ -7,7 +7,7 @@ from collections import Counter
 from typing import Any
 
 from atelier.core.foundation.lesson_models import LessonCandidate
-from atelier.core.foundation.models import ReasonBlock, Trace
+from atelier.core.foundation.models import Playbook, Trace
 
 _COMMON_WORD_RE = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]{2,}")
 
@@ -58,7 +58,7 @@ def _synthesized_rubric_name(domain: str, check: str) -> str:
     return f"lesson_{dom}_{clean}"
 
 
-def _overlap_score(block: ReasonBlock, errors: list[str]) -> float:
+def _overlap_score(block: Playbook, errors: list[str]) -> float:
     block_text = " ".join(block.dead_ends + block.failure_signals + [block.situation])
     block_tokens = _tokenize(block_text)
     err_tokens = _tokenize(" ".join(errors))
@@ -89,7 +89,7 @@ def draft_lesson_candidate(
     domain: str,
     cluster_fingerprint: str,
     embedding: list[float] | None,
-    existing_blocks: list[ReasonBlock],
+    existing_blocks: list[Playbook],
 ) -> LessonCandidate:
     """Draft a lesson candidate for a cluster of related failed traces."""
     evidence = [t.id for t in traces]
@@ -109,12 +109,12 @@ def draft_lesson_candidate(
             confidence=0.82,
         )
 
-    shared_error = cluster_fingerprint if len(cluster_fingerprint.strip()) >= 12 else None
-    if shared_error is None:
-        shared_error = _shared_error_substring(errors)
+    shared_error = _shared_error_substring(errors)
+    if not shared_error and len(cluster_fingerprint.strip()) >= 12:
+        shared_error = cluster_fingerprint
     if shared_error:
-        block = ReasonBlock(
-            id=ReasonBlock.make_id(f"lesson {shared_error[:32]}", domain),
+        block = Playbook(
+            id=Playbook.make_id(f"lesson {shared_error[:32]}", domain),
             title=f"Investigate recurring failure: {shared_error[:48]}",
             domain=domain,
             triggers=["recurring_failure", domain],

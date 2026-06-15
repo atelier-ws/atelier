@@ -26,10 +26,10 @@ from typing import Any, cast
 from uuid import uuid4
 
 from atelier.core.foundation.models import (
-    BlockStatus,
     CommandRecord,
     FileEditRecord,
-    ReasonBlock,
+    Playbook,
+    PlaybookStatus,
     Rubric,
     ToolCall,
     Trace,
@@ -48,11 +48,14 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 
 _psycopg: Any = None  # will be set to the psycopg module on successful import
+_dict_row: Any = None  # will be set to psycopg.rows.dict_row on successful import
 
 try:
     import psycopg as _psycopg_module
+    from psycopg.rows import dict_row as _dict_row_factory
 
     _psycopg = _psycopg_module
+    _dict_row = _dict_row_factory
 except ImportError:
     logger.warning(
         "Suppressed exception at postgres_store.py:53",
@@ -75,8 +78,8 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 2. reasonblocks
-CREATE TABLE IF NOT EXISTS reasonblocks (
+-- 2. playbooks
+CREATE TABLE IF NOT EXISTS playbooks (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id      UUID REFERENCES projects(id) ON DELETE SET NULL,
     slug            TEXT UNIQUE NOT NULL,
@@ -104,9 +107,9 @@ CREATE TABLE IF NOT EXISTS reasonblocks (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_rb_domain_status ON reasonblocks(project_id, domain, status);
-CREATE INDEX IF NOT EXISTS idx_rb_slug ON reasonblocks(slug);
-CREATE INDEX IF NOT EXISTS idx_rb_metadata ON reasonblocks USING gin(metadata);
+CREATE INDEX IF NOT EXISTS idx_playbook_domain_status ON playbooks(project_id, domain, status);
+CREATE INDEX IF NOT EXISTS idx_playbook_slug ON playbooks(slug);
+CREATE INDEX IF NOT EXISTS idx_playbook_metadata ON playbooks USING gin(metadata);
 
 -- 3. rubrics
 CREATE TABLE IF NOT EXISTS rubrics (
@@ -133,7 +136,7 @@ CREATE TABLE IF NOT EXISTS environments (
     slug                   TEXT UNIQUE NOT NULL,
     domain                 TEXT NOT NULL,
     description            TEXT NOT NULL DEFAULT '',
-    required_reasonblocks  JSONB NOT NULL DEFAULT '[]',
+    required_playbooks  JSONB NOT NULL DEFAULT '[]',
     default_rubrics        JSONB NOT NULL DEFAULT '[]',
     tool_policy            JSONB NOT NULL DEFAULT '{}',
     escalation_rules       JSONB NOT NULL DEFAULT '[]',
@@ -187,10 +190,10 @@ CREATE TABLE IF NOT EXISTS trace_events (
 CREATE INDEX IF NOT EXISTS idx_te_trace_idx ON trace_events(trace_id, event_index);
 CREATE INDEX IF NOT EXISTS idx_te_error_sig ON trace_events(error_signature);
 
--- 7. block_applications
-CREATE TABLE IF NOT EXISTS block_applications (
+-- 7. playbook_applications
+CREATE TABLE IF NOT EXISTS playbook_applications (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    reasonblock_id   UUID NOT NULL,
+    playbook_id   UUID NOT NULL,
     trace_id         UUID NOT NULL,
     project_id       UUID REFERENCES projects(id) ON DELETE SET NULL,
     injection_point  TEXT NOT NULL DEFAULT '',
@@ -304,9 +307,9 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, created_at);
 # DDL to enable pgvector (applied only when ATELIER_VECTOR_SEARCH_ENABLED=true)
 VECTOR_EXTENSION_DDL = """
 CREATE EXTENSION IF NOT EXISTS vector;
-ALTER TABLE reasonblocks
+ALTER TABLE playbooks
     ALTER COLUMN embedding TYPE vector({dim});
-CREATE INDEX IF NOT EXISTS idx_rb_embedding ON reasonblocks
+CREATE INDEX IF NOT EXISTS idx_playbook_embedding ON playbooks
     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 """
 
@@ -361,8 +364,13 @@ class PostgresStore:
     # ----- lifecycle ------------------------------------------------------- #
 
     def _connect(self) -> Any:
-        """Return a new psycopg connection (autocommit=False)."""
-        return _psycopg.connect(self._url)
+        """Return a new psycopg connection (autocommit=False).
+
+        ``dict_row`` is used so callers can read columns by name
+        (``row["id"]`` / ``dict(row)``); without it psycopg returns tuple
+        rows and every name-keyed read path raises.
+        """
+        return _psycopg.connect(self._url, row_factory=_dict_row)
 
     def init(self) -> None:
         """Create tables and (optionally) enable pgvector."""
@@ -410,7 +418,7 @@ class PostgresStore:
                 """,
                 (list(V2_REQUIRED_TABLES),),
             ).fetchall()
-            found = {row[0] for row in rows}
+            found = {row["table_name"] for row in rows}
             missing = set(V2_REQUIRED_TABLES) - found
             if missing:
                 raise RuntimeError(f"missing V2 tables: {', '.join(sorted(missing))}")
@@ -423,8 +431,8 @@ class PostgresStore:
         """Return basic health information."""
         try:
             with self._connect() as conn:
-                row = conn.execute("SELECT COUNT(*) FROM reasonblocks").fetchone()
-                block_count = row[0] if row else 0
+                row = conn.execute("SELECT COUNT(*) AS count FROM playbooks").fetchone()
+                block_count = row["count"] if row else 0
             return {
                 "ok": True,
                 "backend": "postgres",
@@ -435,15 +443,15 @@ class PostgresStore:
             logging.exception("Recovered from broad exception handler")
             return {"ok": False, "backend": "postgres", "error": str(exc)}
 
-    # ----- reasonblocks ---------------------------------------------------- #
+    # ----- playbooks ---------------------------------------------------- #
 
-    def upsert_block(self, block: ReasonBlock, *, write_markdown: bool = False) -> None:
+    def upsert_block(self, block: Playbook, *, write_markdown: bool = False) -> None:
         payload = to_jsonable(block)
         now = datetime.now(UTC).isoformat()
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO reasonblocks (
+                INSERT INTO playbooks (
                     slug, title, domain, situation, status,
                     task_types, triggers, file_patterns, tool_patterns,
                     dead_ends, procedure, verification, failure_signals,
@@ -501,9 +509,9 @@ class PostgresStore:
             )
             conn.commit()
 
-    def get_block(self, block_id: str) -> ReasonBlock | None:
+    def get_block(self, block_id: str) -> Playbook | None:
         with self._connect() as conn:
-            row = conn.execute("SELECT * FROM reasonblocks WHERE slug = %s", (block_id,)).fetchone()
+            row = conn.execute("SELECT * FROM playbooks WHERE slug = %s", (block_id,)).fetchone()
         if row is None:
             return None
         return self._row_to_block(row)
@@ -512,10 +520,10 @@ class PostgresStore:
         self,
         *,
         domain: str | None = None,
-        status: BlockStatus | None = "active",
+        status: PlaybookStatus | None = "active",
         include_deprecated: bool = False,
-    ) -> list[ReasonBlock]:
-        sql = "SELECT * FROM reasonblocks WHERE 1=1"
+    ) -> list[Playbook]:
+        sql = "SELECT * FROM playbooks WHERE 1=1"
         params: list[Any] = []
         if domain:
             sql += " AND domain = %s"
@@ -530,12 +538,12 @@ class PostgresStore:
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_block(r) for r in rows]
 
-    def search_blocks(self, query: str, *, limit: int = 20) -> list[ReasonBlock]:
+    def search_blocks(self, query: str, *, limit: int = 20) -> list[Playbook]:
         """Full-text search via Postgres tsvector."""
         if not query.strip():
             return self.list_blocks()[:limit]
         sql = """
-            SELECT * FROM reasonblocks
+            SELECT * FROM playbooks
             WHERE to_tsvector('english', title || ' ' || situation) @@ plainto_tsquery(%s)
               AND status != 'quarantined'
             LIMIT %s
@@ -544,37 +552,37 @@ class PostgresStore:
             rows = conn.execute(sql, (query, limit)).fetchall()
         return [self._row_to_block(r) for r in rows]
 
-    def update_block_status(self, block_id: str, status: BlockStatus) -> bool:
+    def update_block_status(self, block_id: str, status: PlaybookStatus) -> bool:
         now = datetime.now(UTC).isoformat()
         with self._connect() as conn:
             result = conn.execute(
-                "UPDATE reasonblocks SET status = %s, updated_at = %s WHERE slug = %s",
+                "UPDATE playbooks SET status = %s, updated_at = %s WHERE slug = %s",
                 (status, now, block_id),
             )
             conn.commit()
         return (result.rowcount or 0) > 0
 
     def delete_block(self, block_id: str) -> bool:
-        """Hard-delete a ReasonBlock; return True if a row was removed."""
+        """Hard-delete a Playbook; return True if a row was removed."""
         with self._connect() as conn:
-            result = conn.execute("DELETE FROM reasonblocks WHERE slug = %s", (block_id,))
+            result = conn.execute("DELETE FROM playbooks WHERE slug = %s", (block_id,))
             conn.commit()
         return (result.rowcount or 0) > 0
 
     def increment_usage(self, block_id: str, *, success: bool | None = None) -> None:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE reasonblocks SET usage_count = usage_count + 1 WHERE slug = %s",
+                "UPDATE playbooks SET usage_count = usage_count + 1 WHERE slug = %s",
                 (block_id,),
             )
             if success is True:
                 conn.execute(
-                    "UPDATE reasonblocks SET success_count = success_count + 1 WHERE slug = %s",
+                    "UPDATE playbooks SET success_count = success_count + 1 WHERE slug = %s",
                     (block_id,),
                 )
             elif success is False:
                 conn.execute(
-                    "UPDATE reasonblocks SET failure_count = failure_count + 1 WHERE slug = %s",
+                    "UPDATE playbooks SET failure_count = failure_count + 1 WHERE slug = %s",
                     (block_id,),
                 )
             conn.commit()
@@ -961,7 +969,7 @@ class PostgresStore:
 
     # ----- bulk import ----------------------------------------------------- #
 
-    def import_blocks(self, blocks: Iterable[ReasonBlock]) -> int:
+    def import_blocks(self, blocks: Iterable[Playbook]) -> int:
         n = 0
         for b in blocks:
             self.upsert_block(b)
@@ -978,11 +986,11 @@ class PostgresStore:
     # ----- vector helpers -------------------------------------------------- #
 
     def store_embedding(self, block_id: str, embedding: list[float]) -> None:
-        """Store a vector embedding for a ReasonBlock (requires pgvector)."""
+        """Store a vector embedding for a Playbook (requires pgvector)."""
         vector_str = "[" + ",".join(str(x) for x in embedding) + "]"
         with self._connect() as conn:
             conn.execute(
-                "UPDATE reasonblocks SET embedding = %s WHERE slug = %s",
+                "UPDATE playbooks SET embedding = %s WHERE slug = %s",
                 (vector_str, block_id),
             )
             conn.commit()
@@ -993,14 +1001,14 @@ class PostgresStore:
         *,
         domain: str | None = None,
         limit: int = 10,
-    ) -> list[tuple[ReasonBlock, float]]:
+    ) -> list[tuple[Playbook, float]]:
         """Cosine-similarity search (requires pgvector)."""
         if not self._vector_search:
             return []
         vector_str = "[" + ",".join(str(x) for x in embedding) + "]"
         sql = """
             SELECT *, 1 - (embedding <=> %(vec)s::vector) AS similarity
-            FROM reasonblocks
+            FROM playbooks
             WHERE embedding IS NOT NULL
               AND status != 'quarantined'
         """
@@ -1028,10 +1036,10 @@ class PostgresStore:
                 return {}
         return {}
 
-    def _row_to_block(self, row: Any) -> ReasonBlock:
-        """Convert a Postgres row dict/RealDictRow to a ReasonBlock."""
+    def _row_to_block(self, row: Any) -> Playbook:
+        """Convert a Postgres row dict/RealDictRow to a Playbook."""
         d = dict(row)
-        return ReasonBlock(
+        return Playbook(
             id=d["slug"],
             title=d["title"],
             domain=d["domain"],

@@ -59,7 +59,7 @@ final ✅/🟡/🔴 · list what testing/benchmarking it needs. Detailed verdict
 - [ ] WS1.6 **Routing** (`quality_router/`, `model_routing/`, `cross_vendor_routing/`, `providers/`) — verify decisions
 - [x] WS1.7 **Swarm** — 🟡 works (9 test files); confirmed 2× `shell=True` on interpolated `command` (`capability.py:2112,2608` + `cli/swarm.py:381`). Power-user feature; harden before launch (→WS4.5).
 - [ ] WS1.10 **Team / auth / governance / audit** — confirm v1 scope or descope
-- [x] WS1.11 **Context reuse / ReasonBlocks** — ✅ core value prop, engine-wired, **32 test files** (bm25/ranking/dead_ends). Needs the aggregate savings benchmark to quantify (D1).
+- [x] WS1.11 **Context reuse / Playbooks** — ✅ core value prop, engine-wired, **32 test files** (bm25/ranking/dead_ends). Needs the aggregate savings benchmark to quantify (D1).
 - [x] WS1.12 **Tool supervision** — ✅ **backbone of the agent-facing MCP tools** (bash_exec, batch_edit, rich_edit, symbol_edit, smart_search, read_discipline, path_safety, command_discipline, sql_tool...). 23 modules, **27 test files**. Central + well-covered.
 - [ ] WS1.13 **Proof / verification / eval** (`proof_gate/`, `verification/`, `eval_mini/`, rubrics) — `env validate` rubric gap
 - [ ] WS1.14 **Optimization advisor** (`optimization/` 2.4k) — `atelier optimize`; verify

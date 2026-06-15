@@ -17,7 +17,7 @@ flowchart TD
     subgraph Atelier ["Atelier Reasoning Runtime"]
         mcp[MCP stdio / CLI / SDK]
         runtime[Reasoning Runtime]
-        blocks[ReasonBlock Store]
+        blocks[Playbook Store]
         rubrics[Rubric Gates]
         ledger[Run Ledger]
         monitors[Loop Monitors]
@@ -50,7 +50,7 @@ flowchart TD
 | Component              | Role                                                                                       |
 | ---------------------- | ------------------------------------------------------------------------------------------ |
 | **MCP Server**         | Stdio JSON-RPC bridge; exposes 14 tools to agent hosts                                     |
-| **ReasonBlock Store**  | FTS5-indexed library of procedures, dead ends, and reuse patterns                          |
+| **Playbook Store**  | FTS5-indexed library of procedures, dead ends, and reuse patterns                          |
 | **Rubric Gates**       | Domain-specific YAML-defined verification checks run against agent plans/outputs           |
 | **Run Ledger**         | Per-session execution state: steps taken, tools used, cost accumulators                    |
 | **Loop Monitors**      | Detect thrashing (same step repeated), second-guessing, and budget exhaustion              |

@@ -57,7 +57,7 @@ trace = client.traces.record(
 
 ## Namespaces
 
-- `client.reasonblocks` / `client.blocks` — list, search, and fetch ReasonBlocks.
+- `client.playbooks` / `client.blocks` — list, search, and fetch Playbooks.
 - `client.rubrics` — list, fetch, and run rubric gates.
 - `client.traces` — record, list, and inspect traces.
 - `client.failures` — analyze failure clusters.
