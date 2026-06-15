@@ -28,6 +28,7 @@ from typing import Any
 # Map display names (as returned by Claude Code's context_window.model.display_name)
 # to canonical model IDs (as used by the Anthropic API / LiteLLM catalog).
 _DISPLAY_NAME_MODEL_MAP: dict[str, str] = {
+    "opus 4.8": "claude-opus-4-8",
     "opus 4.7": "claude-opus-4-7",
     "opus 4.6": "claude-opus-4-6",
     "opus 4.5": "claude-opus-4-5",
@@ -60,6 +61,9 @@ def resolve_model_id(raw: str | None) -> str:
     if not raw:
         return ""
     key = raw.strip().lower()
+    # Strip a trailing descriptor like " (1m context)" so display variants
+    # ("Opus 4.8 (1M context)") still resolve to the canonical id.
+    key = re.sub(r"\s*\([^)]*\)\s*$", "", key).strip()
     if key in _DISPLAY_NAME_MODEL_MAP:
         return _DISPLAY_NAME_MODEL_MAP[key]
     return raw.strip()
@@ -1146,21 +1150,25 @@ def savings_line(
 # Rotating statusline segment  (replaces the multi-field --line parse in bash)
 # ---------------------------------------------------------------------------
 
-_SEGMENT_INTERVAL_S: int = 8  # seconds before advancing to the next frame
+_SEGMENT_INTERVAL_S: int = 5  # seconds before advancing to the next frame
 
 
-def _read_historical_savings(days: int, root: Path) -> tuple[float, int]:
-    """Sum cost_saved_usd and tokens_saved from runs/*_context_savings.jsonl for the last N days.
+def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, int]:
+    """Sum cost_saved_usd, tokens_saved, calls_saved and turns_saved from runs/*_context_savings.jsonl.
 
     Uses file mtime as a cheap pre-filter so we skip files that are entirely
     outside the window before reading a single byte.
+
+    Returns (cost_usd, tokens_saved, calls_saved, turns_saved).
     """
     runs_dir = root / "runs"
     if not runs_dir.exists():
-        return 0.0, 0
+        return 0.0, 0, 0, 0
     cutoff = time.time() - days * 86_400
     total_usd = 0.0
     total_tok = 0
+    total_calls = 0
+    total_turns = 0
     try:
         from datetime import datetime
 
@@ -1179,24 +1187,30 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int]:
                             continue
                         try:
                             row = json.loads(raw)
-                        except Exception:
+                        except json.JSONDecodeError:
                             continue
                         at_str = row.get("at", "")
                         if not at_str:
                             continue
                         try:
                             ts = datetime.fromisoformat(at_str).timestamp()
-                        except Exception:
+                        except (ValueError, TypeError, OSError, OverflowError):
                             continue
                         if ts < cutoff:
                             continue
-                        total_usd += float(row.get("cost_saved_usd") or 0)
-                        total_tok += int(row.get("tokens_saved") or 0)
+                        usd = float(row.get("cost_saved_usd") or 0)
+                        tok = int(row.get("tokens_saved") or 0)
+                        calls = int(row.get("calls_saved") or 0)
+                        total_usd += usd
+                        total_tok += tok
+                        total_calls += calls
+                        if usd > 0 or tok > 0:
+                            total_turns += 1
             except OSError:
                 continue
     except Exception:
         logging.exception("Recovered reading historical savings")
-    return total_usd, total_tok
+    return total_usd, total_tok, total_calls, total_turns
 
 
 def _read_review_verdict(session_id: str, root: Path) -> str:
@@ -1212,11 +1226,11 @@ def _read_review_verdict(session_id: str, root: Path) -> str:
                     continue
                 try:
                     row = json.loads(raw)
-                except Exception:
+                except json.JSONDecodeError:
                     continue
                 if isinstance(row, dict) and not row.get("consumed") and row.get("verdict") == "NEEDS_FIX":
                     return "NEEDS_FIX"
-    except Exception:
+    except OSError:
         pass
     return ""
 
@@ -1237,10 +1251,10 @@ def _read_last_saved_tok(session_id: str, root: Path) -> int:
                 v = int(json.loads(raw).get("tokens_saved") or 0)
                 if v > 0:
                     last_val = v
-            except Exception:
+            except (json.JSONDecodeError, AttributeError, ValueError, TypeError):
                 continue
         return last_val
-    except Exception:
+    except OSError:
         return 0
 
 
@@ -1253,7 +1267,7 @@ def _get_frame_index(state_path: Path, num_frames: int) -> int:
             state = json.loads(state_path.read_text(encoding="utf-8"))
             counter = int(state.get("counter", 0))
             last_ts = float(state.get("ts", 0))
-    except Exception:
+    except (OSError, json.JSONDecodeError, ValueError, TypeError):
         pass
     now = time.time()
     if now - last_ts >= _SEGMENT_INTERVAL_S:
@@ -1261,7 +1275,7 @@ def _get_frame_index(state_path: Path, num_frames: int) -> int:
         try:
             state_path.parent.mkdir(parents=True, exist_ok=True)
             state_path.write_text(json.dumps({"counter": counter, "ts": now}), encoding="utf-8")
-        except Exception:
+        except OSError:
             pass
     return counter % max(1, num_frames)
 
@@ -1313,7 +1327,7 @@ def savings_segment(
         C_RED = "\033[1;38;2;255;99;71m"  # red     — NEEDS_FIX
         C_RESET = "\033[0m"
     # Dim / used between label-value pairs on text-only frames.
-    SEP = f"{C_DIM}/{C_RESET}"
+    SEP = f"{C_DIM}|{C_RESET}"
 
     summary = compute_savings_summary(session_id, atelier_root=root)
     summary.status_text = _resolve_status_text(root)
@@ -1334,8 +1348,8 @@ def savings_segment(
     display_cost = max(summary.est_cost_usd, live_cost_usd)
 
     # Historical savings (scanned once per segment call — fast file scan).
-    usd_7d, tok_7d = _read_historical_savings(7, root)
-    usd_30d, tok_30d = _read_historical_savings(30, root)
+    usd_7d, tok_7d, calls_7d, turns_7d = _read_historical_savings(7, root)
+    usd_30d, tok_30d, calls_30d, turns_30d = _read_historical_savings(30, root)
 
     last_saved_tok = _read_last_saved_tok(session_id, root) if session_id else 0
 
@@ -1347,13 +1361,16 @@ def savings_segment(
     # Frame 0: cost (I C O) + savings (tok+N) + carry (tok) all inline.
     in_f, cache_f, out_f = _fmt_tok(eff_in), _fmt_tok(eff_cache), _fmt_tok(eff_out)
     combined = f"{C_COST}↑ ${display_cost:.3f}{C_RESET} {C_DIM}(I:{in_f} C:{cache_f} O:{out_f}){C_RESET}"
-    if has_usage and summary.saved_usd > 0:
+    # Always render the savings indicator when the session has usage, even at
+    # $0 — so the row never silently drops to cost-only and you can see savings
+    # are being tracked (the "always show ↓" statusline policy).
+    if has_usage:
         last_seg = f"+{last_saved_tok}" if last_saved_tok > 0 else ""
-        combined += f"  {C_GREEN}↓ ${summary.saved_usd:.3f}{C_DIM}({_fmt_tok(summary.ctx_saved)}{last_seg}){C_RESET}"
+        combined += f" {C_GREEN}↓ ${summary.saved_usd:.3f}{C_DIM}({_fmt_tok(summary.ctx_saved)}{last_seg}){C_RESET}"
     if summary.carry_usd > 0:
-        combined += f"  {C_BRAND}♻ ${summary.carry_usd:.3f}{C_DIM}({_fmt_tok(summary.carry_tokens)}){C_RESET}"
+        combined += f" {C_BRAND}♻ ${summary.carry_usd:.3f}{C_DIM}({_fmt_tok(summary.carry_tokens)}){C_RESET}"
     if summary.routing_saved_usd > 0:
-        combined += f"  {C_DIM}routing:{C_RESET} {C_GREEN}${summary.routing_saved_usd:.3f}{C_RESET}"
+        combined += f" {C_DIM}routing:{C_RESET} {C_GREEN}${summary.routing_saved_usd:.3f}{C_RESET}"
     frames.append((True, combined))
 
     # Frame 1: vs vanilla Claude Code (text-only — no icon)
@@ -1366,23 +1383,23 @@ def savings_segment(
             )
         )
 
-    # Frame 2: 7-day historical savings  — $(tok)
+    # Frame 2: 7-day historical savings
     if usd_7d > 0:
-        frames.append(
-            (
-                True,
-                f"{C_GREEN}↓ 7d: ${usd_7d:.2f}{C_DIM}({_fmt_tok(tok_7d)}){C_RESET}",
-            )
-        )
+        detail_7d = _fmt_tok(tok_7d)
+        if calls_7d > 0:
+            detail_7d += f" · {_fmt_tok(calls_7d)} calls"
+        if turns_7d > 0:
+            detail_7d += f" · {_fmt_tok(turns_7d)} turns"
+        frames.append((True, f"{C_GREEN}↓ 7d: ${usd_7d:.2f}{C_DIM}({detail_7d}){C_RESET}"))
 
-    # Frame 3: 30-day historical savings  — $(tok)
+    # Frame 3: 30-day historical savings
     if usd_30d > 0:
-        frames.append(
-            (
-                True,
-                f"{C_GREEN}↓ 30d: ${usd_30d:.2f}{C_DIM}({_fmt_tok(tok_30d)}){C_RESET}",
-            )
-        )
+        detail_30d = _fmt_tok(tok_30d)
+        if calls_30d > 0:
+            detail_30d += f" · {_fmt_tok(calls_30d)} calls"
+        if turns_30d > 0:
+            detail_30d += f" · {_fmt_tok(turns_30d)} turns"
+        frames.append((True, f"{C_GREEN}↓ 30d: ${usd_30d:.2f}{C_DIM}({detail_30d}){C_RESET}"))
 
     # Frame 6: status tip / update notice (text-only)
     # Backtick-wrapped tool names are highlighted in brand purple; rest is dim.
@@ -1390,9 +1407,11 @@ def savings_segment(
         frames.append((False, _colorize_tip(summary.status_text, C_DIM, C_BRAND, C_RESET)))
 
     # Advance the rolling counter and select current frame.
+    # Frame 0 (cost+savings+carry) gets 6 slots at 5s each = ~30s; others get 5s each.
+    weighted = [frames[0]] * 6 + frames[1:] if frames else frames
     state_path = root / "statusline_frame_state.json"
-    idx = _get_frame_index(state_path, len(frames))
-    has_icon, segment = frames[idx]
+    idx = _get_frame_index(state_path, len(weighted))
+    has_icon, segment = weighted[idx]
 
     # Review verdict: pinned — appended to every frame, never rotated away.
     if session_id:

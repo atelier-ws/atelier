@@ -48,25 +48,25 @@ run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 if $WORKSPACE_SET; then
     if [ -f "$MCP_JSON" ] && grep -q "atelier" "$MCP_JSON" 2>/dev/null; then
         run "python3 -c '
-import json
+import json, sys
 from pathlib import Path
-path = Path(\"$MCP_JSON\")
+path = Path(sys.argv[1])
 data = json.loads(path.read_text(encoding=\"utf-8\") or \"{}\")
 data.get(\"mcpServers\", {}).pop(\"atelier\", None)
 path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
-'"
+' $(printf %q "$MCP_JSON")"
         info "Removed atelier MCP entry from $MCP_JSON"
     fi
 
     if [ -f "$CLAUDE_LOCAL_SETTINGS" ] && grep -q "CLAUDE_WORKSPACE_ROOT" "$CLAUDE_LOCAL_SETTINGS" 2>/dev/null; then
         run "python3 -c '
-import json
+import json, sys
 from pathlib import Path
-path = Path(\"$CLAUDE_LOCAL_SETTINGS\")
+path = Path(sys.argv[1])
 data = json.loads(path.read_text(encoding=\"utf-8\") or \"{}\")
 data.get(\"env\", {}).pop(\"CLAUDE_WORKSPACE_ROOT\", None)
 path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
-'"
+' $(printf %q "$CLAUDE_LOCAL_SETTINGS")"
         info "Removed CLAUDE_WORKSPACE_ROOT from $CLAUDE_LOCAL_SETTINGS"
     fi
 elif command -v claude &>/dev/null; then
@@ -147,7 +147,7 @@ for agents_dir in ".claude/agents" "${HOME}/.claude/agents"; do
     if [ -d "$agents_dir" ]; then
         for f in "$agents_dir"/atelier-*.md "$agents_dir"/atelier_*.md "$agents_dir"/atelier.*.md; do
             [ -f "$f" ] || continue
-            run "rm -f '$f'"
+            run "rm -f $(printf %q "$f")"
             info "Removed agent file: $f"
         done
     fi

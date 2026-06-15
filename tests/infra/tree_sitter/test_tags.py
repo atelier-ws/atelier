@@ -112,7 +112,10 @@ def test_data_language_parser_missing_returns_empty(
         assert language == "json"
         return None
 
-    monkeypatch.setattr("atelier.infra.tree_sitter.tags.tree_sitter_parser", missing_parser)
+    monkeypatch.setattr(
+        "atelier.core.capabilities.semantic_file_memory.treesitter_ast.tree_sitter_parser",
+        missing_parser,
+    )
 
     assert extract_tags_from_text('{"name":"demo"}\n', Path("package.json")) == []
 
