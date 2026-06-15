@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from atelier.core.capabilities.tool_supervision import command_discipline
+from atelier.core.foundation.redaction import redact_tool_output
 
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _SEARCH_REGEX_METACHARS = re.compile(r"[][{}()|^$*+?\\]")
@@ -364,9 +365,12 @@ def _compact_result(
     stderr_compact, stderr_omitted, stderr_chars = _head_tail_lines(_strip_ansi(raw_stderr).splitlines(), 100, 100)
     lines_omitted = stdout_omitted + stderr_omitted
     chars_omitted = stdout_chars + stderr_chars
+    # Live tool-output redaction (G8): scrub secrets from command output
+    # before it reaches the model. Honors the ATELIER_OUTPUT_REDACTION
+    # kill-switch and is a no-op on already-clean text.
     return RunResult(
-        stdout=stdout_compact,
-        stderr=stderr_compact,
+        stdout=redact_tool_output(stdout_compact),
+        stderr=redact_tool_output(stderr_compact),
         exit_code=exit_code,
         duration_ms=duration_ms,
         truncated=lines_omitted > 0,

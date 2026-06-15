@@ -12,6 +12,7 @@ from typing import Any
 
 from atelier.infra.code_intel.languages import language_for_path
 
+from .graph_analytics import GraphAnalytics
 from .indexer import FileIndex
 from .models import FileOutline, SemanticSummary
 from .python_ast import analyze_python, stub_function_bodies
@@ -756,6 +757,10 @@ class SemanticFileMemoryCapability:
         if fp.is_file() and not self._index.get(fp):
             self.summarize_file(fp)
         return self._symbol_index.change_impact(str(path))
+
+    def graph_analytics(self) -> GraphAnalytics:
+        """Return file-graph analytics (blast_radius/dead_code/cycles/coupling)."""
+        return GraphAnalytics(self._symbol_index)
 
     # ------------------------------------------------------------------
     # Internal helpers
