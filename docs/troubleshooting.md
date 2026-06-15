@@ -127,7 +127,7 @@ atelier worker list
 
 **Symptom:** Atelier tools do not appear in Antigravity or are unavailable from `agy`.
 
-**Cause:** Gemini requires absolute paths in its MCP configuration.
+**Cause:** Antigravity requires absolute paths in its MCP configuration.
 
 Use the install guide here:
 

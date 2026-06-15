@@ -208,7 +208,6 @@ Atelier ships import and integration commands for supported agent hosts.
 | `atelier claude ...`   | Claude Code import and session workflows.             |
 | `atelier codex ...`    | Codex session workflows.                              |
 | `atelier copilot ...`  | Copilot session workflows.                            |
-| `atelier gemini ...`   | Gemini CLI session workflows.                         |
 | `atelier opencode ...` | OpenCode session workflows.                           |
 | `atelier bash ...`     | Shell interception helpers.                           |
 
