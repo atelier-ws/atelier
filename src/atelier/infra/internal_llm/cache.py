@@ -183,8 +183,25 @@ def _reset_store_for_tests() -> None:
         _SUMMARY_STORE = None
 
 
+def _endpoint_fingerprint(backend: str) -> str:
+    """Identity of the endpoint a summary was produced against.
+
+    The OpenAI-compatible backend resolves its base URL and API key from env at
+    call time, so the same ``(text, model, max_tokens, backend)`` can route to
+    different providers (OpenAI direct, OpenRouter, a local vllm). Folding the
+    base URL and an API-key *fingerprint* (a hash -- never the raw secret) into
+    the cache key prevents one endpoint's summary from being served for another.
+    """
+    if backend not in ("openai", "openai_compatible"):
+        return ""
+    base_url = os.environ.get("ATELIER_OPENAI_BASE_URL") or ""
+    api_key = os.environ.get("ATELIER_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY") or ""
+    key_fp = hashlib.sha256(api_key.encode("utf-8")).hexdigest() if api_key else ""
+    return f"{base_url}\x00{key_fp}"
+
+
 def summary_key(text: str, *, model: str | None, max_tokens: int, backend: str) -> str:
-    payload = f"{backend}\x00{model or ''}\x00{max_tokens}\x00{text}"
+    payload = f"{backend}\x00{_endpoint_fingerprint(backend)}\x00{model or ''}\x00{max_tokens}\x00{text}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 

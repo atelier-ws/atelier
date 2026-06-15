@@ -67,8 +67,8 @@ class BudgetPacker:
             return working, dropped_count, token_count
 
         while len(working) > keep_top and token_count > budget_tokens:
-            removed = working.pop()
-            dropped_count += len(removed)
+            working.pop()
+            dropped_count += 1
             token_count = _token_count(working)
         if token_count <= budget_tokens:
             return working, dropped_count, token_count

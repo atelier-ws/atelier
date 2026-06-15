@@ -310,10 +310,14 @@ export default function Swarm() {
     }
   };
 
-  const loadRunDetail = async (runId: string) => {
+  const loadRunDetail = async (
+    runId: string,
+    isCancelled: () => boolean = () => false
+  ) => {
     setLoadingDetail(true);
     try {
       const payload = await api.swarmRun(runId);
+      if (isCancelled()) return;
       setDetail(payload);
       const defaultChild =
         payload.run.children.find((child) => child.status === "running")
@@ -331,30 +335,37 @@ export default function Swarm() {
       });
       setError(null);
     } catch (err) {
+      if (isCancelled()) return;
       setError(
         err instanceof Error ? err.message : "Failed to load swarm detail"
       );
       setDetail(null);
       setLogs("");
     } finally {
-      setLoadingDetail(false);
+      if (!isCancelled()) setLoadingDetail(false);
     }
   };
 
-  const loadLogs = async (runId: string, childId: string) => {
+  const loadLogs = async (
+    runId: string,
+    childId: string,
+    isCancelled: () => boolean = () => false
+  ) => {
     setRefreshingLogs(true);
     try {
       const payload = await api.swarmLogs(runId, childId || undefined);
+      if (isCancelled()) return;
       setLogs(payload.content || "");
       setError(null);
     } catch (err) {
+      if (isCancelled()) return;
       if (err instanceof ApiError && err.status === 404) {
         setLogs("No logs captured yet for this run.");
       } else {
         setError(err instanceof Error ? err.message : "Failed to load logs");
       }
     } finally {
-      setRefreshingLogs(false);
+      if (!isCancelled()) setRefreshingLogs(false);
     }
   };
 
@@ -375,12 +386,20 @@ export default function Swarm() {
 
   useEffect(() => {
     if (!selectedRunId) return;
-    void loadRunDetail(selectedRunId);
+    let cancelled = false;
+    void loadRunDetail(selectedRunId, () => cancelled);
+    return () => {
+      cancelled = true;
+    };
   }, [selectedRunId]);
 
   useEffect(() => {
     if (!selectedRunId || !detail) return;
-    void loadLogs(selectedRunId, selectedChildId);
+    let cancelled = false;
+    void loadLogs(selectedRunId, selectedChildId, () => cancelled);
+    return () => {
+      cancelled = true;
+    };
   }, [selectedRunId, selectedChildId, detail]);
 
   const selectedRun = useMemo(

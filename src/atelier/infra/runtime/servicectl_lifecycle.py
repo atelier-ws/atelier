@@ -22,6 +22,7 @@ from typing import Any
 
 from atelier.core.foundation.store import ContextStore
 from atelier.infra.runtime.daemon_units import (
+    CONTROLLER_LABEL,
     DEFAULT_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS,
     LAUNCHD_USER_DIR,
     STACK_LABEL,
@@ -116,7 +117,6 @@ def _kill_orphan_servicectl_processes(current_root: Path) -> None:
     import glob as _glob
 
     my_pid = os.getpid()
-    current_root_str = str(current_root.resolve())
     for cmdline_file in _glob.glob("/proc/*/cmdline"):
         try:
             pid = int(cmdline_file.split("/")[2])
@@ -128,13 +128,19 @@ def _kill_orphan_servicectl_processes(current_root: Path) -> None:
             raw = Path(cmdline_file).read_bytes()
         except OSError:
             continue
-        cmdline = raw.replace(b"\x00", b" ").decode("utf-8", errors="replace")
-        if (
-            "atelier.gateway.cli" in cmdline
-            and "servicectl" in cmdline
-            and " run " in cmdline
-            and current_root_str not in cmdline
-        ):
+        argv = raw.decode("utf-8", errors="replace").split("\x00")
+        cmdline = " ".join(argv)
+        if not ("atelier.gateway.cli" in cmdline and "servicectl" in cmdline and "run" in argv):
+            continue
+        # Compare the parsed --root argument as a resolved path: a naive substring
+        # match leaks stale daemons when one root is a path prefix of another
+        # (e.g. "~/.atelier" vs "~/.atelier-old").
+        try:
+            root_idx = argv.index("--root")
+            other_root = Path(argv[root_idx + 1]).resolve()
+        except (ValueError, IndexError):
+            continue
+        if other_root != current_root.resolve():
             with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.kill(pid, signal.SIGTERM)
 
@@ -244,10 +250,6 @@ def _servicectl_import_sessions(store: ContextStore) -> dict[str, int]:
         sync_usage(store.root, session_ids=all_imported_ids)
     except Exception:
         logging.exception("Recovered from broad exception handler")
-        logger.warning(
-            "Suppressed exception at cli.py:534",
-            exc_info=True,
-        )
 
     return counts
 
@@ -422,8 +424,10 @@ def _update_via_release() -> bool:
     logger.info(f"Auto-update: launching detached installer ({current} -> {latest})")
     # Fully detached: new session so the installer survives this daemon being
     # stopped by the installer's own process-cleanup, plus its later restart.
+    # The wrapper deletes the downloaded script once the installer finishes so it
+    # does not accumulate in the temp dir across auto-update cycles.
     subprocess.Popen(
-        ["bash", tmp_path],
+        ["bash", "-c", 'bash "$0"; rm -f "$0"', tmp_path],
         env={**os.environ, "ATELIER_NON_INTERACTIVE": "1"},
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
@@ -442,6 +446,19 @@ def _stack_restart() -> None:
     elif _is_macos() and (LAUNCHD_USER_DIR / f"{STACK_LABEL}.plist").exists():
         logger.info("Auto-update: triggering launchd stack restart...")
         subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{STACK_LABEL}"], check=False)
+
+
+def _controller_has_supervisor() -> bool:
+    """True when this daemon runs under a supervisor that restarts it on exit.
+
+    systemd sets ``INVOCATION_ID`` for its unit (``Restart=always``); launchd
+    keeps the controller alive via its installed plist (``KeepAlive``). A bare
+    ``servicectl start`` has neither, so exiting there would stop the daemon for
+    good instead of restarting it on new code.
+    """
+    if os.environ.get("INVOCATION_ID"):
+        return True
+    return _is_macos() and (LAUNCHD_USER_DIR / f"{CONTROLLER_LABEL}.plist").exists()
 
 
 def _servicectl_check_and_apply_updates(root: Path) -> bool:
@@ -551,8 +568,25 @@ def _servicectl_tick(
 
         if last_update_at is None or (now - last_update_at).total_seconds() >= auto_update_interval_seconds:
             if _servicectl_check_and_apply_updates(root):
-                # Process will exit if update was applied (Restart=always will pick it up)
-                sys.exit(0)
+                # Update applied; the process must restart to run the new code.
+                if _controller_has_supervisor():
+                    # systemd Restart=always / launchd KeepAlive relaunches us.
+                    sys.exit(0)
+                # Bare `servicectl start` has no supervisor: re-exec in place so a
+                # standalone daemon picks up the new code instead of dying.
+                _write_servicectl_state(root, {**state, "periodic_jobs": periodic})
+                # Re-exec preserving the original launch form: the daemon starts
+                # via `python -m atelier.gateway.cli ...`, so a bare
+                # [python, sys.argv[0], ...] would run the resolved file path and
+                # lose the package/module context. Reconstruct the `-m` form.
+                _main_spec = getattr(sys.modules.get("__main__"), "__spec__", None)
+                if _main_spec is not None and _main_spec.name:
+                    _mod = _main_spec.name
+                    if _mod.endswith(".__main__"):
+                        _mod = _mod[: -len(".__main__")]
+                    os.execv(sys.executable, [sys.executable, "-m", _mod, *sys.argv[1:]])
+                else:
+                    os.execv(sys.executable, [sys.executable, *sys.argv])
             periodic[AUTO_UPDATE_KEY] = now.isoformat()
 
     def _periodic_timestamp(key: str) -> datetime | None:

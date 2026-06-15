@@ -125,13 +125,36 @@ class FileStats:
 
 
 def _count_lines(text: str, comment_prefix: str) -> tuple[int, int, int]:
-    """Returns (code, comment, blank)."""
+    """Returns (code, comment, blank).
+
+    Handles block comments (``/* ... */`` for C-family/CSS, ``<!-- ... -->`` for
+    HTML) so interior and closing lines aren't miscounted as code. Block
+    delimiters are inferred from the line-comment prefix the language defines.
+    """
     code = comment = blank = 0
     cp = comment_prefix.strip()
+    if cp == "<!--":
+        block_open, block_close = "<!--", "-->"
+    elif cp in ("//", "/*"):
+        block_open, block_close = "/*", "*/"
+    else:
+        block_open = block_close = ""
+    in_block = False
     for line in text.splitlines():
         s = line.strip()
+        if in_block:
+            comment += 1 if s else 0
+            blank += 0 if s else 1
+            if block_close in s:
+                in_block = False
+            continue
         if not s:
             blank += 1
+        elif block_open and s.startswith(block_open):
+            comment += 1
+            # Block stays open only if it isn't closed on the same line.
+            if block_close not in s[len(block_open) :]:
+                in_block = True
         elif cp and s.startswith(cp):
             comment += 1
         else:

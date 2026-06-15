@@ -140,7 +140,6 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
     from atelier.core.capabilities.session_optimizer import build_trace_optimization_report
 
     runs = _ledger_dir(ctx.obj["root"])
-    bad_plans_blocked = 0
     rescue_events = 0
     rubric_failures = 0
     if runs.is_dir():
@@ -160,7 +159,6 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
     payload = build_savings_report(ctx.obj["root"])
     store = _load_store(ctx.obj["root"])
     payload["optimization"] = build_trace_optimization_report(store.list_traces(limit=5000), days=7)
-    payload["bad_plans_blocked"] = bad_plans_blocked
     payload["rescue_events"] = rescue_events
     payload["rubric_failures_caught"] = rubric_failures
     if as_json:

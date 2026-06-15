@@ -114,8 +114,33 @@ def test_validate_url_rejects_bad_scheme() -> None:
 
 def test_validate_url_accepts_loopback_url_format_only() -> None:
     """Format check alone should accept loopback — IP validation happens at connect time."""
-    result = web_fetch._validate_public_url("http://127.0.0.1:8080")
-    assert result == "http://127.0.0.1:8080"
+    result = web_fetch._validate_public_url("http://127.0.0.1")
+    assert result == "http://127.0.0.1"
+
+
+def test_validate_url_accepts_standard_ports() -> None:
+    """Explicit standard ports (80, 443) are on the allowlist."""
+    assert web_fetch._validate_public_url("http://example.com:80/path") == "http://example.com:80/path"
+    assert web_fetch._validate_public_url("https://example.com:443/path") == "https://example.com:443/path"
+
+
+def test_validate_url_accepts_default_port() -> None:
+    """No explicit port is allowed — the scheme default is used at connect time."""
+    assert web_fetch._validate_public_url("http://example.com/path") == "http://example.com/path"
+
+
+def test_validate_url_rejects_non_standard_port() -> None:
+    """Non-standard destination ports (e.g. internal services) are blocked."""
+    with pytest.raises(ValueError, match="non-standard destination port"):
+        web_fetch._validate_public_url("http://example.com:8080/path")
+    with pytest.raises(ValueError, match="non-standard destination port"):
+        web_fetch._validate_public_url("http://example.com:6379")
+
+
+def test_validate_url_rejects_malformed_port() -> None:
+    """A malformed (non-numeric / out-of-range) port is rejected."""
+    with pytest.raises(ValueError, match="malformed port"):
+        web_fetch._validate_public_url("http://example.com:notaport/path")
 
 
 # --------------------------------------------------------------------------- #

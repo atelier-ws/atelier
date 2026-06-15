@@ -171,6 +171,56 @@ def _assert_safe_args(pattern: str, path: str) -> None:
         raise ValueError("search_read rejected: shell metacharacters not allowed in path")
 
 
+def _workspace_root() -> Path:
+    """Resolve the active workspace root (env-aware, matches the rest of Atelier)."""
+    workspace = (
+        os.environ.get("CLAUDE_WORKSPACE_ROOT")
+        or os.environ.get("ATELIER_WORKSPACE_ROOT")
+        or os.environ.get("VSCODE_CWD")
+        or os.getcwd()
+    )
+    return Path(workspace).resolve()
+
+
+def _resolve_search_base(path: str, workspace_root: Path) -> Path:
+    """Resolve the agent-supplied search *path* into a confined search base.
+
+    A *relative* path is anchored to *workspace_root* and confined to it, so
+    dot-dot traversal (``../../etc``) and symlinks that escape the workspace are
+    rejected. An *absolute* path is taken as an explicitly-named search base
+    (this is how ``smart_search`` feeds an already workspace-confined path in);
+    every file rg reports under it is re-confined to this base by the caller, so
+    symlinked results cannot escape the searched tree.
+
+    Raises ValueError on escape.
+    """
+    from atelier.core.foundation.paths import confine_to_root
+
+    raw = Path(path)
+    if raw.is_absolute():
+        return raw.expanduser().resolve()
+    candidate = workspace_root / raw
+    try:
+        return confine_to_root(candidate, workspace_root)
+    except ValueError as exc:
+        raise ValueError("search_read rejected: path escapes the workspace") from exc
+
+
+def _confine_path(candidate: str | Path, base: Path) -> Path:
+    """Resolve *candidate* and ensure it stays within *base*.
+
+    Rejects dot-dot traversal and symlinks that escape *base*. Raises ValueError
+    on escape (caught at the call site and surfaced as a ``search_read
+    rejected`` error).
+    """
+    from atelier.core.foundation.paths import confine_to_root
+
+    try:
+        return confine_to_root(candidate, base)
+    except ValueError as exc:
+        raise ValueError("search_read rejected: path escapes the workspace") from exc
+
+
 def _run_grep(pattern: str, search_path: str) -> str:
     """Run rg and return raw stdout (capped at 256 KB)."""
     try:
@@ -356,18 +406,23 @@ def search_read(
 
     # ---- run cached grep ----
     repo_root = Path.cwd().resolve()
-    resolved_path = Path(path).resolve()
-    cache_key = f"grep:{query}:{resolved_path}:{_fingerprint_path(resolved_path)}"
+    # Enforce workspace containment: a relative path that uses dot-dot to escape
+    # the workspace (or a symlink that does) is rejected before anything reaches
+    # rg. The resolved base is also used to re-confine every file rg reports.
+    workspace_root = _workspace_root()
+    search_base = _resolve_search_base(path, workspace_root)
+    search_target = str(search_base)
+    cache_key = f"grep:{query}:{search_base}:{_fingerprint_path(search_base)}"
     cache_hit = False
     if _cache_disabled():
-        grep_output = _run_grep(query, path)
+        grep_output = _run_grep(query, search_target)
     else:
         cache = _load_cache(repo_root)
         cache_hit = cache_key in cache and isinstance(cache[cache_key], str)
         if cache_hit:
             grep_output = str(cache[cache_key])
         else:
-            grep_output = _run_grep(query, path)
+            grep_output = _run_grep(query, search_target)
             cache[cache_key] = grep_output
             # Keep recent entries only to bound file size.
             if len(cache) > 100:
@@ -382,11 +437,17 @@ def search_read(
     sorted_files = sorted(hits_per_file.keys())[:max_files]
 
     # ---- read files and build result snippets ----
+    # rg returns paths relative to its CWD when given a relative search target;
+    # we pass an absolute base, so its results are absolute. Confine each one to
+    # the resolved search base before reading so a symlinked result cannot pull
+    # in a file outside the searched tree.
+    read_root = search_base if search_base.is_dir() else search_base.parent
     file_contents: dict[str, str] = {}
     for fpath in sorted_files:
         try:
-            file_contents[fpath] = Path(fpath).read_text(encoding="utf-8", errors="replace")
-        except OSError:
+            safe_fpath = _confine_path(fpath, read_root)
+            file_contents[fpath] = safe_fpath.read_text(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
             file_contents[fpath] = ""
 
     naive_tokens = _naive_token_count(grep_output, file_contents)

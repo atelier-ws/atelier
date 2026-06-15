@@ -804,7 +804,11 @@ def _run_json_command(
             except json.JSONDecodeError as exc:
                 parse_error = str(exc)
     return {
-        "ok": proc.returncode == 0 and payload is not None,
+        # A clean exit with no parse error is a valid snapshot even when stdout
+        # is empty (e.g. ccusage with no rows for the period). Requiring a
+        # non-None payload would drop those, so gate only on returncode and
+        # parse success.
+        "ok": proc.returncode == 0 and parse_error is None,
         "returncode": proc.returncode,
         "stdout": stdout,
         "stderr": stderr,

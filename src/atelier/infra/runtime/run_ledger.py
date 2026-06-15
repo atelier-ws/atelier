@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -562,12 +563,24 @@ class RunLedger:
             raise ValueError("RunLedger.persist requires a root directory.")
         path = run_file_path(target_root, self.session_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.snapshot(), indent=2), encoding="utf-8")
+        # Write to a sibling temp file then atomically rename, so a crash
+        # mid-write can never leave a truncated run.json behind.
+        tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            tmp.write_text(json.dumps(self.snapshot(), indent=2), encoding="utf-8")
+            os.replace(tmp, path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
         return path
 
     @classmethod
     def load(cls, path: Path) -> RunLedger:
-        snap: dict[str, Any] = json.loads(Path(path).read_text(encoding="utf-8"))
+        path = Path(path)
+        try:
+            snap: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"corrupt run ledger at {path}: {exc}") from exc
         led = cls(
             session_id=snap.get("session_id"),
             agent=snap.get("agent"),

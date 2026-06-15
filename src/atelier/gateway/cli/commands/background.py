@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from xml.sax.saxutils import escape as _xml_escape
 
 import click
 
@@ -300,17 +301,34 @@ WantedBy=default.target
 
         LAUNCHD_USER_DIR.mkdir(parents=True, exist_ok=True)
 
+        # XML-escape every value interpolated into the plist <string> blocks.
+        # launchd plists are XML, so a path or label containing '&', '<' or
+        # '>' (e.g. '~/R&D/proj') would otherwise corrupt the file and launchd
+        # would refuse to load it. (The Linux systemd units above are INI, not
+        # XML, and must NOT be escaped.)
+        xb = _xml_escape(str(atelier_bin))
+        xroot = _xml_escape(str(root))
+        xproject = _xml_escape(str(project_root))
+        x_controller_label = _xml_escape(str(CONTROLLER_LABEL))
+        x_stack_label = _xml_escape(str(STACK_LABEL))
+        x_letta_label = _xml_escape(str(LETTA_LABEL))
+        x_zoekt_label = _xml_escape(str(ZOEKT_LABEL))
+        x_openmemory_label = _xml_escape(str(OPENMEMORY_LABEL))
+        x_stack_log = _xml_escape(str(_stack_log_path(root)))
+        x_letta_log = _xml_escape(str(Path(root) / "letta" / "letta.log"))
+        x_openmemory_log = _xml_escape(str(_openmemory_log_path(root)))
+
         controller_plist = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{CONTROLLER_LABEL}</string>
+    <string>{x_controller_label}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{atelier_bin}</string>
+        <string>{xb}</string>
         <string>--root</string>
-        <string>{root}</string>
+        <string>{xroot}</string>
         <string>servicectl</string>
         <string>run</string>
         <string>--auto-update</string>
@@ -320,11 +338,11 @@ WantedBy=default.target
     <key>KeepAlive</key>
     <true/>
     <key>WorkingDirectory</key>
-    <string>{project_root}</string>
+    <string>{xproject}</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>ATELIER_ROOT</key>
-        <string>{root}</string>
+        <string>{xroot}</string>
         <key>PYTHONUNBUFFERED</key>
         <string>1</string>
     </dict>
@@ -340,12 +358,12 @@ WantedBy=default.target
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{STACK_LABEL}</string>
+    <string>{x_stack_label}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{atelier_bin}</string>
+        <string>{xb}</string>
         <string>--root</string>
-        <string>{root}</string>
+        <string>{xroot}</string>
         <string>stack</string>
         <string>run</string>
     </array>
@@ -354,17 +372,17 @@ WantedBy=default.target
     <key>KeepAlive</key>
     <true/>
     <key>WorkingDirectory</key>
-    <string>{project_root}</string>
+    <string>{xproject}</string>
     <key>StandardOutPath</key>
-    <string>{_stack_log_path(root)}</string>
+    <string>{x_stack_log}</string>
     <key>StandardErrorPath</key>
-    <string>{_stack_log_path(root)}</string>
+    <string>{x_stack_log}</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>ATELIER_ROOT</key>
-        <string>{root}</string>
+        <string>{xroot}</string>
         <key>ATELIER_STACK_ROOT</key>
-        <string>{root}</string>
+        <string>{xroot}</string>
         <key>PYTHONUNBUFFERED</key>
         <string>1</string>
     </dict>
@@ -380,12 +398,12 @@ WantedBy=default.target
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{LETTA_LABEL}</string>
+    <string>{x_letta_label}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{atelier_bin}</string>
+        <string>{xb}</string>
         <string>--root</string>
-        <string>{root}</string>
+        <string>{xroot}</string>
         <string>letta</string>
         <string>up</string>
     </array>
@@ -394,15 +412,15 @@ WantedBy=default.target
     <key>KeepAlive</key>
     <false/>
     <key>WorkingDirectory</key>
-    <string>{project_root}</string>
+    <string>{xproject}</string>
     <key>StandardOutPath</key>
-    <string>{Path(root) / "letta" / "letta.log"}</string>
+    <string>{x_letta_log}</string>
     <key>StandardErrorPath</key>
-    <string>{Path(root) / "letta" / "letta.log"}</string>
+    <string>{x_letta_log}</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>ATELIER_ROOT</key>
-        <string>{root}</string>
+        <string>{xroot}</string>
         <key>PYTHONUNBUFFERED</key>
         <string>1</string>
     </dict>
@@ -418,12 +436,12 @@ WantedBy=default.target
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{ZOEKT_LABEL}</string>
+    <string>{x_zoekt_label}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{atelier_bin}</string>
+        <string>{xb}</string>
         <string>--root</string>
-        <string>{root}</string>
+        <string>{xroot}</string>
         <string>zoekt</string>
         <string>up</string>
     </array>
@@ -432,11 +450,11 @@ WantedBy=default.target
     <key>KeepAlive</key>
     <false/>
     <key>WorkingDirectory</key>
-    <string>{project_root}</string>
+    <string>{xproject}</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>ATELIER_ROOT</key>
-        <string>{root}</string>
+        <string>{xroot}</string>
         <key>PYTHONUNBUFFERED</key>
         <string>1</string>
     </dict>
@@ -447,17 +465,28 @@ WantedBy=default.target
             click.echo(f"Installed {ZOEKT_LABEL}.plist")
 
         if with_openmemory:
+            # XML-escape every interpolated value before it lands in the plist.
+            # The OpenAI key especially can contain XML-special characters; an
+            # unescaped '&', '<' or '>' would corrupt the plist (launchd would
+            # refuse to load it) or allow markup injection into the file.
+            openmemory_api_key = _xml_escape(
+                os.environ.get("ATELIER_OPENMEMORY_OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
+            )
+            openmemory_user_id = _xml_escape(
+                os.environ.get("ATELIER_OPENMEMORY_USER_ID", os.environ.get("USER", "atelier"))
+            )
+            openmemory_url = _xml_escape(os.environ.get("ATELIER_OPENMEMORY_URL", "http://127.0.0.1:8765"))
             openmemory_plist = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{OPENMEMORY_LABEL}</string>
+    <string>{x_openmemory_label}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{atelier_bin}</string>
+        <string>{xb}</string>
         <string>--root</string>
-        <string>{root}</string>
+        <string>{xroot}</string>
         <string>openmemory</string>
         <string>up</string>
     </array>
@@ -466,19 +495,19 @@ WantedBy=default.target
     <key>KeepAlive</key>
     <false/>
     <key>WorkingDirectory</key>
-    <string>{project_root}</string>
+    <string>{xproject}</string>
     <key>StandardOutPath</key>
-    <string>{_openmemory_log_path(root)}</string>
+    <string>{x_openmemory_log}</string>
     <key>StandardErrorPath</key>
-    <string>{_openmemory_log_path(root)}</string>
+    <string>{x_openmemory_log}</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>OPENAI_API_KEY</key>
-        <string>{os.environ.get("ATELIER_OPENMEMORY_OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", ""))}</string>
+        <string>{openmemory_api_key}</string>
         <key>ATELIER_OPENMEMORY_USER_ID</key>
-        <string>{os.environ.get("ATELIER_OPENMEMORY_USER_ID", os.environ.get("USER", "atelier"))}</string>
+        <string>{openmemory_user_id}</string>
         <key>ATELIER_OPENMEMORY_URL</key>
-        <string>{os.environ.get("ATELIER_OPENMEMORY_URL", "http://127.0.0.1:8765")}</string>
+        <string>{openmemory_url}</string>
     </dict>
 </dict>
 </plist>
