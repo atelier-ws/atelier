@@ -62,11 +62,12 @@ class LessonPromoterCapability:
         text = self._trace_text(trace)
         try:
             vectors = self._embedder.embed([text])
-        except Exception as exc:
-            logging.exception("Recovered from broad exception handler")
-            _log.warning("lesson embedding unavailable, using NullEmbedder: %s", exc)
-            self._embedder = NullEmbedder()
-            vectors = self._embedder.embed([text])
+        except Exception as exc:  # noqa: BLE001 - an embedder failure must not abort ingest
+            # Fall back to an empty vector for THIS trace only. Reassigning
+            # self._embedder would permanently disable embeddings for the rest of
+            # the instance's life on a single transient failure.
+            _log.warning("lesson embedding unavailable for trace %s, using empty vector: %s", trace.id, exc)
+            vectors = NullEmbedder().embed([text])
         embedding = vectors[0] if vectors and vectors[0] else []
         self._trace_embedding_cache[trace.id] = embedding
         return embedding
@@ -213,17 +214,24 @@ class LessonPromoterCapability:
         candidate.reviewer = reviewer
         candidate.decision_reason = reason
         candidate.decision_at = now
-        candidate.status = "approved" if decision == "approve" else "rejected"
-        self.store.upsert_lesson_candidate(candidate)
 
         if decision == "reject":
+            candidate.status = "rejected"
+            self.store.upsert_lesson_candidate(candidate)
             return {"lesson": candidate.model_dump(mode="json"), "promotion": None}
 
+        # Build everything that can fail (promotion, typed lesson) BEFORE
+        # persisting approval, so a raise can't leave a candidate marked
+        # approved with no promotion or typed lesson.
         promotion = self._promote(candidate)
-        self.store.upsert_lesson_promotion(promotion)
         typed_lesson: TypedLesson | None = None
         if candidate.kind in {"route-preference", "cost-cap"}:
             typed_lesson = self._typed_lesson_from_candidate(candidate)
+
+        candidate.status = "approved"
+        self.store.upsert_lesson_candidate(candidate)
+        self.store.upsert_lesson_promotion(promotion)
+        if typed_lesson is not None:
             TypedLessonStore(self.store.root).upsert_lesson(typed_lesson)
         return {
             "lesson": candidate.model_dump(mode="json"),
