@@ -24,15 +24,18 @@ def test_default_workspace_when_no_override(monkeypatch: pytest.MonkeyPatch, tmp
 
 
 def test_override_wins_over_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # H1 — a wire override must opt in AND stay inside the workspace root, so the
+    # accepted override here is a subdirectory of the configured workspace.
+    monkeypatch.setenv("ATELIER_HTTP_ALLOW_PROJECT_OVERRIDE", "1")
     env_ws = tmp_path / "env_ws"
-    other = tmp_path / "other_repo"
+    nested = env_ws / "sub_repo"
     env_ws.mkdir()
-    other.mkdir()
+    nested.mkdir()
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(env_ws))
 
-    prior = mcp_server._set_request_project(str(other))
+    prior = mcp_server._set_request_project(str(nested))
     try:
-        assert mcp_server._workspace_root().resolve() == other.resolve()
+        assert mcp_server._workspace_root().resolve() == nested.resolve()
     finally:
         mcp_server._clear_request_project(prior)
 
@@ -68,7 +71,54 @@ def test_set_rejects_empty_string() -> None:
     assert mcp_server._request_project.value is None
 
 
-def test_set_returns_prior_for_nesting(tmp_path: Path) -> None:
+def test_set_rejects_out_of_root_even_with_opt_in(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # H1 — a real directory OUTSIDE the workspace root must be rejected even when
+    # the opt-in flag is set, so a wire override can never pivot out of bounds.
+    monkeypatch.setenv("ATELIER_HTTP_ALLOW_PROJECT_OVERRIDE", "1")
+    root = tmp_path / "workspace"
+    outside = tmp_path / "elsewhere"
+    root.mkdir()
+    outside.mkdir()
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(root))
+
+    mcp_server._set_request_project(str(outside))
+    assert mcp_server._request_project.value is None  # rejected -> no pivot
+    assert mcp_server._workspace_root() == Path(str(root))  # still the configured root
+
+
+def test_set_rejects_in_root_when_opt_in_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # H1 — default (flag off) rejects even an in-root override; acceptance is
+    # strictly opt-in.
+    monkeypatch.delenv("ATELIER_HTTP_ALLOW_PROJECT_OVERRIDE", raising=False)
+    root = tmp_path / "workspace"
+    nested = root / "sub"
+    root.mkdir()
+    nested.mkdir()
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(root))
+
+    mcp_server._set_request_project(str(nested))
+    assert mcp_server._request_project.value is None  # flag off -> not honored
+
+
+def test_set_accepts_in_root_with_opt_in(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # H1 — an in-root directory with the opt-in flag set is honored.
+    monkeypatch.setenv("ATELIER_HTTP_ALLOW_PROJECT_OVERRIDE", "1")
+    root = tmp_path / "workspace"
+    nested = root / "sub"
+    root.mkdir()
+    nested.mkdir()
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(root))
+
+    mcp_server._set_request_project(str(nested))
+    assert mcp_server._request_project.value == str(nested.resolve())
+    assert mcp_server._workspace_root().resolve() == nested.resolve()
+
+
+def test_set_returns_prior_for_nesting(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # H1 — opt in and keep both candidates inside the workspace root so they are
+    # accepted; this test only exercises the prior-value nesting contract.
+    monkeypatch.setenv("ATELIER_HTTP_ALLOW_PROJECT_OVERRIDE", "1")
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     a = tmp_path / "a"
     b = tmp_path / "b"
     a.mkdir()

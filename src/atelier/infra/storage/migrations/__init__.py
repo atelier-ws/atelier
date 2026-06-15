@@ -12,6 +12,14 @@ SQLITE_MIGRATIONS = (
     "v2_006_external_analytics.sql",
 )
 POSTGRES_VECTOR_MIGRATION = "v2_005_postgres_pgvector.sql"
+
+# Postgres-only migrations that MUST run before the greenfield SCHEMA_DDL
+# (``CREATE TABLE IF NOT EXISTS``) so their rename targets are still free.
+# Each is internally guarded (no-op on a fresh or already-migrated DB) and is
+# therefore safe to run on every ``init()``. SQLite handles the equivalent
+# rename via a guarded Python helper in ``ContextStore`` because SQLite cannot
+# express the catalog guards in plain SQL.
+POSTGRES_PRE_SCHEMA_MIGRATIONS = ("v2_008_playbook_rename.sql",)
 V2_REQUIRED_TABLES = (
     "memory_block",
     "memory_block_history",
@@ -49,6 +57,11 @@ def postgres_vector_script(*, dim: int) -> str:
     return read_migration(POSTGRES_VECTOR_MIGRATION).format(dim=dim)
 
 
+def postgres_pre_schema_scripts() -> list[str]:
+    """Guarded Postgres migrations applied before the greenfield schema."""
+    return [read_migration(name) for name in POSTGRES_PRE_SCHEMA_MIGRATIONS]
+
+
 def _replace_sqlite_fts_with_postgres_table(sql: str) -> str:
     start = sql.find("CREATE VIRTUAL TABLE IF NOT EXISTS archival_passage_fts")
     if start == -1:
@@ -64,10 +77,12 @@ def _replace_sqlite_fts_with_postgres_table(sql: str) -> str:
 
 
 __all__ = [
+    "POSTGRES_PRE_SCHEMA_MIGRATIONS",
     "POSTGRES_VECTOR_MIGRATION",
     "SQLITE_MIGRATIONS",
     "V2_REQUIRED_TABLES",
     "postgres_migration_scripts",
+    "postgres_pre_schema_scripts",
     "postgres_vector_script",
     "read_migration",
     "sqlite_migration_scripts",
