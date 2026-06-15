@@ -2,7 +2,7 @@
 
 Welcome to [Atelier](https://atelier.ws) — the open-source runtime engineering platform for AI agents.
 
-Atelier is an MCP server + SDK middleware that gives every agent shared procedures, failure rescue, loop detection, cost tracking, and cross-vendor routing — across Claude Code, Codex, Copilot, LangChain, OpenAI SDK, Gemini ADK, and any MCP host.
+Atelier is an MCP server + SDK middleware that gives every agent shared procedures, failure rescue, loop detection, cost tracking, and cross-vendor routing — across Claude Code, Codex, Copilot, LangChain, and any MCP host.
 
 ## Quick Links
 
@@ -26,7 +26,7 @@ Atelier is an MCP server + SDK middleware that gives every agent shared procedur
 | [Antigravity](./hosts/antigravity-install.md)            | Antigravity setup                       |
 | [Cursor](./hosts/cursor-install.md)                      | Cursor setup                            |
 | [Hermes Agent](./hosts/hermes-install.md)                | Hermes Agent setup                      |
-| [Integration Matrix](./integrations/host-matrix.md)      | Install-path and enforcement matrix     |
+| [Host Capability Matrix](./hosts/host-capability-matrix.md) | Install-path and enforcement matrix     |
 
 ## SDK & API
 
