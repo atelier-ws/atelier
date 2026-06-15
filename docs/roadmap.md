@@ -1,95 +1,73 @@
 # Atelier Roadmap
 
-> Last revised 2026-05-28. Cadence: review every 2 weeks.
+> Last revised 2026-06-15. Cadence: reviewed every 2 weeks.
 
-This roadmap is **execution-ordered**, not aspirational. Detailed execution specs live in the internal archive (`docs-archive/specs/`).
+This roadmap tracks shipped capabilities against what's in active development. Detailed execution specs are maintained internally.
 
-## Phase 0 — Already shipped (May 2026)
+## Shipped capabilities
 
-- Per-turn model routing (`ModelRouter`) with 5 scoring axes including session phase
+### Model routing
+- Per-turn model routing (`ModelRouter`) with session-phase awareness
+- Cross-vendor routing — scores across available providers per turn
+- Complexity scoring, cache-cost awareness, stickiness, success prediction
+- Quality-aware routing with execution contracts
+
+### Context & memory
 - Dynamic context compaction with LLM hints (task type, risk level, must-keep)
-- Workspace state (`~/.atelier/workspaces/`) with session_state.json
-- Benchmarks for routing savings, routing quality, compact quality
-- Routing replay benchmark using `claude -p` (real haiku counterfactual)
-- Telemetry stack: OTel → PostHog + GCP, local-first, opt-out
+- Sleeptime summarization and deduplication
+- Persistent memory store (SQLite/PostgreSQL) with archival recall
+- Cross-vendor memory adapters (Claude, Codex, Gemini)
+- Memory arbitration with staleness detection
+- Symbol-based memory recall
 
-## Phase 1 — 2-week MVP (ship by 2026-06-04)
+### Cost tracking
+- Per-session cost reports with actual vs counterfactual costs
+- `atelier savings` and `atelier savings-detail` commands
+- Aggregate cost and token savings with reset support
+- Counterfactual pricing engine
 
-The minimum to launch with defensible differentiation. **Everything below ships in one binary, free, open source.**
+### Code intelligence
+- Symbol-first code index (SCIP) with multi-language support
+- AST pattern matching (ast-grep) with rewrite support
+- Call graph (callers/callees) with centrality scoring
+- Usages and reference resolution
+- Cross-language edge resolution (ctypes, subprocess, dynamic import)
+- Git history analysis (blame, graveyard, renames, walker)
+- Zoekt backend for large repos
+- Repo-map with PageRank
 
-| # | Feature | Acceptance |
-|   |---------|------------|
-| 1 | Outcome capture (feedback loop foundation) | Route + compact decisions write outcome windows 5–10 turns later |
-| 2 | Honest per-session cost report | `atelier session report <id>` prints actual vs counterfactual costs |
-| 3 | Memory adapter — read Claude / Codex / Gemini | `atelier memory list` shows facts from all three vendors |
-| 4 | `atelier insights` weekly summary | Terminal dashboard of spend trends + counterfactuals |
-| 5 | Public benchmark publication pipeline | One-command export to publishable JSON + markdown |
+### CLI & service surface
+- MCP server (local and remote modes)
+- OpenAI-compatible `/v1/chat/completions` gateway
+- Runtime commands: runs, ledger, swarm, lessons, benchmarks
+- Outcome capture (feedback loop for routing decisions)
+- `atelier insights` weekly summary with spend trends and opportunities
+- Lesson promotion with PR bot
+- Live reviewer agent
+- Loop detection and rescue
+- Background services with auto-update
 
-**Definition of done for Phase 1:**
-- Launch HN post drafted with screenshots
-- `atelier --help` mentions the three pillars
-- README has 30-second demo gif
-- All five specs have automated tests
+### Host integrations
+- Claude Code, Codex, Copilot, OpenCode, Cursor, Antigravity, Hermes
+- SDK adapters (Anthropic tools, OpenAI SDK hooks, Gemini ADK, LangChain middleware)
 
-## Phase 2 — 30-day wedge (ship by 2026-06-25)
+### Storage & telemetry
+- SQLite and PostgreSQL storage backends
+- pgvector for embedding similarity search
+- OpenTelemetry → PostHog + GCP, local-first, opt-out
 
-Convert installers into paying users. Sync is the wedge.
+## Active development
 
-| # | Feature | Acceptance |
-|   |---------|------------|
-| 6 | Cross-machine sync (encrypted) | `atelier sync up` / `sync down` works across 2 machines |
-| 7 | Counterfactual per-session report | Per-session "what each vendor would have cost" output |
-| 8 | Memory audit viewer + rollback | `atelier memory diff` + `atelier memory rollback` |
-| 9 | Cross-vendor live routing | Router scores Claude vs GPT vs Gemini per turn, not just within Claude |
-| 10 | Web dashboard MVP | atelier.dev/dashboard shows spend trends |
-
-## Phase 3 — 90-day moat-deepening (ship by 2026-08-26)
-
-Build the things natives structurally can't.
-
-| # | Feature | Acceptance |
-|   |---------|------------|
-| 11 | Federated outcome learning (opt-in) | Anonymised outcomes feed into community routing multipliers |
-| 12 | Public benchmark leaderboard | Weekly auto-refreshed cross-vendor scoreboard |
-| 13 | Integration API for tool builders | Documented public API, 1 partner integration live |
-
-## Cross-phase: Optimization Advisor
-
-Tracked on its own branch (`feat/optimization-autopilot`). The feature spans Phase 2 (advisory mode + presets) and Phase 3 (continuous tuning + web Pareto UI).
-
-See the optimization autopilot spec in `docs-archive/specs/` for the full spec. Key idea: based on the last 7 days of real sessions, recommend the cheapest policy that preserves the quality floor. Splits compaction into 4 types (prompt-cache reorder, dedup, retrieval filter, lossy summary) and exposes them as separate savings. Always advisory, never silent.
-
-Phased delivery within the spec:
-
-- **PR-1**: 4-type compaction taxonomy (low-risk refactor, useful standalone)
-- **PR-2 → PR-5**: complexity scorer, golden tests, policy presets, `atelier optimize` advisor
-- **PR-6**: shadow runner
-- **PR-7**: web Pareto UI (depends on Spec 10)
-
-## Phase 4 — Post-90-day options (not committed)
-
-- IDE plugins (VSCode, Cursor, Zed) — only if CLI adoption proves the wedge
-- Self-hosted sync server — only after the wedge is repeating
-- Mobile companion app — far off, only if user behaviour demands it
-
-## What we explicitly defer
-
-| Idea | Why we wait |
+| Area | Description |
 |------|-------------|
-| Embedding-based verb classification in router | Speculative, no measurement scaffolding yet |
-| New scoring axes for routing beyond session phase | Diminishing returns until feedback loop is live |
-| Beating native compact on compact alone | Wrong axis to compete on |
-| Custom models or fine-tuning | Need outcome data first |
-| Marketplace / app store | Premature; ecosystem first needs an API |
+| Optimization advisor | `atelier optimize` with compaction type taxonomy, golden tests, policy presets, shadow runner |
+| Cross-machine sync | Encrypted workspace sync across machines |
+| Web dashboard | Browser-based spend trends and management |
+| Benchmark publication | One-command export to publishable JSON + markdown |
 
-## Risks and contingencies
+## Not planned
 
-| If this happens | We do this |
-|---|---|
-| Anthropic ships a "Claude-and-Codex" memory bridge | Pivot harder into audit + cost (pillars 1, 3) |
-| Codex ships cross-machine sync | Lean into vendor-neutral audit + federated learning |
-| One native cuts price 50% | Cost pillar weakens; double down on memory + audit |
-
-## Out-of-roadmap requests
-
-Anything not in Phase 1–3 needs explicit strategic justification. Default answer is **no**; bandwidth-bound and the moat is finite-time.
+- Custom models, fine-tuning, or in-house embeddings
+- IDE plugins
+- Enterprise sales motion before Team tier is repeating
+- Mobile companion
