@@ -11,9 +11,12 @@ background run stays cheap.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 _AGENT_ID = "session-recall"
 _TAG = "session-recall"
@@ -199,6 +202,8 @@ def recall(
     try:
         passages, _ = cap.recall(agent_id=_AGENT_ID, query=query, top_k=top_k, tags=[_TAG])
     except Exception:  # noqa: BLE001 - recall is best-effort
+        # Log so a backend failure is distinguishable from a genuine no-match.
+        _log.warning("session recall failed for query %r; returning no matches", query, exc_info=True)
         return []
     return [
         {

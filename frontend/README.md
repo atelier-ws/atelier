@@ -27,7 +27,7 @@ VITE_API_URL=http://localhost:8787 npm run dev
 - **Traces** — full observable trace list + detail view
 - **Failures** — failure clusters from `FailureAnalyzer`
 - **Environments** — Beseam environments + linked rubrics
-- **Reason Blocks** — reusable procedures (the "memory")
+- **Playbooks** — reusable procedures (the "memory")
 
 All numbers under "tokens" and "cost" are **estimates** computed from
 observable trace content (4 chars ≈ 1 token, $/1K rate via
