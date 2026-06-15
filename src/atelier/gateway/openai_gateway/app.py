@@ -40,11 +40,16 @@ def _is_loopback(request: Request) -> bool:
 
 
 def _require_auth(request: Request) -> None:
-    """Gate /v1/* routes behind a bearer token.
+    """Gate /v1/* (and, when wired, /mcp) routes behind a bearer token.
 
     When ``ATELIER_GATEWAY_TOKEN`` is set, every request must present a matching
     ``Authorization: Bearer <token>`` header. When unset, only loopback clients
     are allowed so the yolo runtime is never reachable from the network.
+
+    L1 — NOTE: this gateway authenticates with ``ATELIER_GATEWAY_TOKEN``, which is
+    DISTINCT from the service API's auth knobs (``ATELIER_REQUIRE_AUTH`` /
+    ``ATELIER_API_KEY``). They are separate surfaces; setting one does not affect
+    the other, so both must be configured independently when both are exposed.
     """
     token = os.environ.get("ATELIER_GATEWAY_TOKEN")
     if not token:
@@ -137,6 +142,8 @@ def create_app(
     if bool_env("ATELIER_MCP_HTTP"):
         from atelier.gateway.adapters.mcp_http import register_mcp_http
 
-        register_mcp_http(app)
+        # C1 — gate /mcp with the same auth dependency as /v1/*; the tool surface
+        # must not be reachable unauthenticated while the rest is locked down.
+        register_mcp_http(app, auth_dependency=_require_auth)
 
     return app

@@ -98,3 +98,108 @@ def test_sse_response_when_accept_event_stream() -> None:
     assert resp.headers["content-type"].startswith("text/event-stream")
     assert "tools/list" not in resp.text  # method echoed only inside the JSON-RPC payload
     assert '"tools"' in resp.text and resp.text.startswith("data:")
+
+
+# --------------------------------------------------------------------------- #
+# C1 — /mcp is gated by the same auth dependency as /v1/*                        #
+# --------------------------------------------------------------------------- #
+
+
+def _authed_client() -> TestClient:
+    """An app that mounts /mcp behind the real gateway auth dependency, exactly
+    as production wires it via register_mcp_http(app, auth_dependency=...)."""
+    from fastapi import FastAPI
+
+    from atelier.gateway.adapters.mcp_http import register_mcp_http
+    from atelier.gateway.openai_gateway.app import _require_auth
+
+    app = FastAPI()
+    register_mcp_http(app, auth_dependency=_require_auth)
+    return TestClient(app)
+
+
+def test_mcp_post_without_token_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_GATEWAY_TOKEN", "s3cret")
+    resp = _authed_client().post(
+        MCP_HTTP_PATH,
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+    )
+    assert resp.status_code in (401, 403)  # no bearer token -> not reachable
+
+
+def test_mcp_get_without_token_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_GATEWAY_TOKEN", "s3cret")
+    resp = _authed_client().get(MCP_HTTP_PATH, headers={"accept": "text/event-stream"})
+    assert resp.status_code in (401, 403)
+
+
+def test_mcp_post_with_valid_token_still_works(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_GATEWAY_TOKEN", "s3cret")
+    resp = _authed_client().post(
+        MCP_HTTP_PATH,
+        headers={"Authorization": "Bearer s3cret"},
+        json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+    )
+    assert resp.status_code == 200
+    assert "read" in {t["name"] for t in resp.json()["result"]["tools"]}
+
+
+def test_mcp_discovery_stays_public_even_when_gated(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_GATEWAY_TOKEN", "s3cret")
+    resp = _authed_client().get(MCP_DISCOVERY_PATH)  # no token at all
+    assert resp.status_code == 200
+    assert resp.json()["transport"]["type"] == "streamable-http"
+
+
+# --------------------------------------------------------------------------- #
+# H2 — request body is size-capped before parsing; dispatch runs off-loop       #
+# --------------------------------------------------------------------------- #
+
+
+def test_oversized_body_returns_413(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_MCP_HTTP_MAX_BODY_BYTES", "65536")  # 64 KiB floor
+    big = "x" * 200_000
+    payload = ('{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {"pad": "' + big + '"}}').encode("utf-8")
+    resp = _client().post(
+        MCP_HTTP_PATH,
+        content=payload,
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 413
+    assert "too large" in resp.text
+
+
+def test_normal_body_still_dispatches_under_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_MCP_HTTP_MAX_BODY_BYTES", "65536")
+    resp = _client().post(
+        MCP_HTTP_PATH,
+        json={"jsonrpc": "2.0", "id": 7, "method": "tools/list", "params": {}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["id"] == 7
+
+
+# --------------------------------------------------------------------------- #
+# M2 — internal errors return a generic message, never the raw exception text   #
+# --------------------------------------------------------------------------- #
+
+
+def test_internal_error_does_not_leak_exception_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters import mcp_server
+
+    secret = "SECRET-PATH-/etc/atelier/should-not-leak"
+
+    def _boom(_request: object) -> dict[str, object]:
+        raise RuntimeError(secret)
+
+    monkeypatch.setattr(mcp_server, "_handle", _boom)
+    resp = _client().post(
+        MCP_HTTP_PATH,
+        json={"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "read"}},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["error"]["code"] == -32603
+    assert secret not in resp.text  # raw exception text must not reach the client
+    assert "RuntimeError" not in resp.text
+    assert "correlation_id=" in body["error"]["message"]  # operator can still trace it
