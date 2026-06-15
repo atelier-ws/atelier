@@ -249,6 +249,14 @@ def execute_owned_prompt(
     max_tokens: int | None = None,
     timeout_s: float | None = None,
 ) -> OwnedExecutionResult:
+    """Execute an owned prompt with up to two attempts (primary + one fallback).
+
+    ``timeout_s`` is applied PER ATTEMPT, not as a total deadline: each of the
+    up to two attempts gets the full ``timeout_s`` (defaulting to
+    ``_DEFAULT_OWNED_TIMEOUT_S``), so worst-case wall-clock is
+    ``attempts x timeout_s`` (~2x). This is by design; there is intentionally no
+    aggregate deadline across attempts.
+    """
     base_state = dict(session_state or {})
     compiled = dict(compiled_prompt) if isinstance(compiled_prompt, Mapping) else compile_prompt_text(prompt).to_dict()
     spawn = dict(spawn_metadata) if isinstance(spawn_metadata, Mapping) else {}
@@ -258,6 +266,8 @@ def execute_owned_prompt(
     current = decision
     attempts: list[OwnedExecutionAttempt] = []
 
+    # Up to two attempts (primary, then one fallback). timeout_s is per attempt,
+    # so total wall-clock can reach attempts x timeout_s (~2x) before giving up.
     for attempt_index in range(1, 3):
         started = time.perf_counter()
         try:

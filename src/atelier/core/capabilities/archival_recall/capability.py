@@ -32,16 +32,29 @@ _window_saturation_warned = False
 # no-op for it beyond the timeout itself.
 _EMBED_TIMEOUT_S = float(os.environ.get("ATELIER_EMBED_TIMEOUT_S", "10"))
 
+# Cap concurrent in-flight embeds. Each embed still runs on its own daemon thread
+# (so a hung provider call dies with the process and never blocks shutdown), but a
+# bounded semaphore caps how many such threads can exist at once. Under a sustained
+# outage the first _EMBED_MAX_INFLIGHT calls leak their hung daemon threads and
+# every later call fails the acquire and falls straight back to lexical/no-vector
+# without spawning a thread, so leaked threads can never grow past the cap.
+_EMBED_MAX_INFLIGHT = int(os.environ.get("ATELIER_EMBED_MAX_INFLIGHT", "3"))
+_embed_inflight = threading.Semaphore(_EMBED_MAX_INFLIGHT)
+
 
 def _embed_with_timeout(embedder: Embedder, texts: list[str]) -> list[list[float]]:
-    """Embed under a hard timeout; return [] on timeout/error.
+    """Embed under a hard timeout; return [] on timeout/error or when saturated.
 
-    Used by the recall path, which needs the vector synchronously to rank. On
-    failure the caller falls back to lexical/recency ranking rather than blocking
-    on a slow or unreachable provider. The embed runs on a daemon thread joined
-    with a timeout: a hung provider call is abandoned (the daemon thread dies
-    with the process) instead of stalling recall, since a pooled worker would
-    otherwise block shutdown until the slow call returned."""
+    The embed runs on a daemon thread joined with a timeout: a hung provider call
+    is abandoned (the daemon thread dies with the process) instead of stalling
+    the caller, which falls back to lexical/recency ranking (recall) or persists
+    the passage without a vector (archive). A module-level semaphore caps how many
+    embed threads are in flight at once; when the cap is already held by abandoned
+    hung calls the acquire fails immediately and we fall back without spawning, so
+    a sustained provider outage can never leak unbounded threads."""
+    if not _embed_inflight.acquire(blocking=False):
+        _log.warning("embedder %s at in-flight cap (%d); falling back to lexical ranking", embedder.name, _EMBED_MAX_INFLIGHT)
+        return []
     result: list[list[float]] = []
     error: list[BaseException] = []
 
@@ -50,6 +63,8 @@ def _embed_with_timeout(embedder: Embedder, texts: list[str]) -> list[list[float
             result.extend(embedder.embed(texts))
         except BaseException as exc:  # noqa: BLE001 - surfaced via `error`, never raised here
             error.append(exc)
+        finally:
+            _embed_inflight.release()
 
     worker = threading.Thread(target=_run, daemon=True)
     worker.start()
@@ -109,28 +124,17 @@ class ArchivalRecallCapability:
         if not passages:  # pragma: no cover - _chunk_text always returns one item
             raise ValueError("archive text produced no passages")
 
-        # Fire-and-forget: the embed is the only slow step (a blocking network
-        # round-trip for remote backends) and its vector is needed solely to
-        # persist the passage, never for this call's return value. Dispatch the
-        # embed + insert on a background daemon thread so the tool returns
-        # immediately; bound the work with a timeout and drop on failure.
-        threading.Thread(
-            target=self._embed_and_persist,
-            args=(passages, chunks),
-            daemon=True,
-        ).start()
-        return passages[0]
-
-    def _embed_and_persist(self, passages: list[ArchivalPassage], chunks: list[str]) -> None:
-        """Background worker: embed chunks then persist passages. Best-effort.
-
-        Runs off the caller's thread. Any embed timeout/error is logged and the
-        passages are still persisted without a vector so the text stays
-        lexically recallable; a persist failure is logged and dropped so a
-        background failure never surfaces to the original caller."""
+        # insert_passage does the dedup_hash lookup + insert and returns the
+        # authoritative passage (existing id + dedup_hit=True on a duplicate),
+        # which the caller reads as passage.id / passage.dedup_hit. That decision
+        # must be synchronous, so the persist stays inline. Only the embed is a
+        # slow remote round-trip: _embed_with_timeout bounds it so an unreachable
+        # provider can't stall the call -- on timeout/failure it returns [] and
+        # the passage persists without a vector (still lexically recallable).
         embeddings: list[list[float]] = []
         if self._embedder.dim > 0:
             embeddings = _embed_with_timeout(self._embedder, chunks)
+        stored: list[ArchivalPassage] = []
         for idx, passage in enumerate(passages):
             embedding = embeddings[idx] if idx < len(embeddings) and embeddings[idx] else None
             to_store = passage.model_copy(
@@ -140,10 +144,8 @@ class ArchivalRecallCapability:
                     "embedding_provenance": self._embedder.__class__.__name__,
                 }
             )
-            try:
-                self._store.insert_passage(to_store)
-            except Exception:  # noqa: BLE001 - best-effort background persist
-                _log.warning("background archive persist failed for passage %s", passage.id, exc_info=True)
+            stored.append(self._store.insert_passage(to_store))
+        return stored[0]
 
     def recall(
         self,
