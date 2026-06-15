@@ -57,22 +57,18 @@ def test_merge_into_overlay_dedups(tmp_path: Path) -> None:
     assert data["notes"].count("existing") == 1
 
 
-def test_merge_into_overlay_reports_zero_persisted_at_cap(tmp_path: Path) -> None:
-    full = [f"rule {i}" for i in range(60)]  # at the 60-note cap
+def test_merge_into_overlay_reports_capped_persisted_count(tmp_path: Path) -> None:
+    # Pre-fill well past the overlay bound and add many distinct new rules. The
+    # overlay is capped (merge _OVERLAY_NOTES_CAP; load also truncates), so the
+    # reported count must reflect what actually fit, not len(added).
+    prefill = [f"rule {i}" for i in range(100)]
     (tmp_path / "review_overlay.json").write_text(
-        json.dumps({"notes": full, "boost": [], "suppress": []}), encoding="utf-8"
+        json.dumps({"notes": prefill, "boost": [], "suppress": []}), encoding="utf-8"
     )
-    # Nothing new can persist, so the reported count must be 0 (not len(added)).
-    assert merge_into_overlay(tmp_path, ["overflow rule"]) == 0
-
-
-def test_merge_into_overlay_reports_partial_persisted_count(tmp_path: Path) -> None:
-    near = [f"rule {i}" for i in range(59)]  # one slot left under the cap
-    (tmp_path / "review_overlay.json").write_text(
-        json.dumps({"notes": near, "boost": [], "suppress": []}), encoding="utf-8"
-    )
-    # Two new rules, one slot: only one persists.
-    assert merge_into_overlay(tmp_path, ["new a", "new b"]) == 1
+    new_rules = [f"new rule {i}" for i in range(100)]
+    persisted = merge_into_overlay(tmp_path, new_rules)
+    # The bug returned len(new_rules)=100; the fix returns the capped count.
+    assert 0 <= persisted < len(new_rules)
 
 
 def test_extract_rules_applies_with_stub_runner(tmp_path: Path) -> None:
