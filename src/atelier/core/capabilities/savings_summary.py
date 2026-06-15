@@ -646,10 +646,8 @@ def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[i
                 logging.exception("Recovered from broad exception handler")
                 continue
             # Field names mirror the in-response `saved: {tokens, calls}` shape.
-            # Older rows (briefly written as tokens_saved/calls_saved) are still
-            # accepted as a fallback so historical sidecars keep working.
-            t = max(0, int(ev.get("tokens") or ev.get("tokens_saved") or 0))
-            c = max(0, int(ev.get("calls") or ev.get("calls_saved") or 0))
+            t = max(0, int(ev.get("tokens") or 0))
+            c = max(0, int(ev.get("calls") or 0))
             calls_total += c
             # Avoided-call credit priced at write time (measured context size
             # x cache-read rate); contributes USD without distorting tokens.
@@ -684,6 +682,37 @@ def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[i
     except OSError:
         pass
     return priced_tokens, calls_total, usd_total, unpriced_tokens
+
+
+def _read_session_routing_usd(session_id: str, atelier_root: Path) -> float:
+    """Sum model-routing savings from the per-session sidecar.
+
+    The MCP server appends a ``kind == "routing"`` row (priced at decision time)
+    to ``sessions/<id>/savings.jsonl`` for every routing saving. Kept separate
+    from context savings so it drives the statusline's distinct routing line
+    without inflating ``saved_usd`` — and read from the small per-session file
+    rather than scanning the large ``live_savings_events.jsonl`` on every render.
+    """
+    if not session_id:
+        return 0.0
+    path = atelier_root / "sessions" / session_id / "savings.jsonl"
+    if not path.exists():
+        return 0.0
+    total = 0.0
+    try:
+        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                ev = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if str(ev.get("kind") or "") == "routing":
+                total += max(0.0, float(ev.get("usd") or 0.0))
+    except OSError:
+        pass
+    return round(total, 6)
 
 
 def _resolve_workspace_session_id(workspace: str | None, root_path: Path) -> str:
@@ -902,6 +931,9 @@ def compute_savings_summary(
                 session_id = parent_id  # use the found session for transcript lookup too
 
     result.smart_calls = calls
+    # Per-session model-routing savings: a separate display line, read cheaply
+    # from the sidecar (kind="routing" rows) and never folded into saved_usd.
+    result.routing_saved_usd = _read_session_routing_usd(session_id, root_path)
 
     # --- cost baseline + model from transcript ---
     paths = claude_transcript_candidates(session_id) if session_id else []
@@ -1154,15 +1186,15 @@ _SEGMENT_INTERVAL_S: int = 5  # seconds before advancing to the next frame
 
 
 def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, int]:
-    """Sum cost_saved_usd, tokens_saved, calls_saved and turns_saved from runs/*_context_savings.jsonl.
+    """Sum cost_saved_usd, tokens, calls and turns from sessions/*/savings.jsonl.
 
     Uses file mtime as a cheap pre-filter so we skip files that are entirely
     outside the window before reading a single byte.
 
     Returns (cost_usd, tokens_saved, calls_saved, turns_saved).
     """
-    runs_dir = root / "runs"
-    if not runs_dir.exists():
+    sessions_dir = root / "sessions"
+    if not sessions_dir.exists():
         return 0.0, 0, 0, 0
     cutoff = time.time() - days * 86_400
     total_usd = 0.0
@@ -1172,7 +1204,7 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, in
     try:
         from datetime import datetime
 
-        for p in runs_dir.glob("*_context_savings.jsonl"):
+        for p in sessions_dir.glob("*/savings.jsonl"):
             # Fast path: skip files not touched since before the window.
             try:
                 if p.stat().st_mtime < cutoff:
@@ -1189,18 +1221,22 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, in
                             row = json.loads(raw)
                         except json.JSONDecodeError:
                             continue
-                        at_str = row.get("at", "")
-                        if not at_str:
+                        ts_str = row.get("ts", "")
+                        if not ts_str:
                             continue
                         try:
-                            ts = datetime.fromisoformat(at_str).timestamp()
+                            # Rows are stamped naive-UTC (datetime.utcnow); pin
+                            # the zone so the epoch matches time.time() exactly.
+                            ts = datetime.fromisoformat(ts_str).replace(tzinfo=UTC).timestamp()
                         except (ValueError, TypeError, OSError, OverflowError):
                             continue
                         if ts < cutoff:
                             continue
-                        usd = float(row.get("cost_saved_usd") or 0)
-                        tok = int(row.get("tokens_saved") or 0)
-                        calls = int(row.get("calls_saved") or 0)
+                        # Token savings + avoided-call USD, matching the
+                        # per-session reader so 7d/30d agrees with the live total.
+                        usd = float(row.get("cost_saved_usd") or 0) + float(row.get("calls_usd") or 0)
+                        tok = int(row.get("tokens") or 0)
+                        calls = int(row.get("calls") or 0)
                         total_usd += usd
                         total_tok += tok
                         total_calls += calls
@@ -1211,6 +1247,25 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, in
     except Exception:
         logging.exception("Recovered reading historical savings")
     return total_usd, total_tok, total_calls, total_turns
+
+
+def _first_savings_ts(root: Path) -> float:
+    """Return the mtime of the oldest per-session savings file, or 0.0 if none exist."""
+    sessions_dir = root / "sessions"
+    if not sessions_dir.exists():
+        return 0.0
+    earliest = 0.0
+    try:
+        for p in sessions_dir.glob("*/savings.jsonl"):
+            try:
+                mt = p.stat().st_mtime
+                if earliest == 0.0 or mt < earliest:
+                    earliest = mt
+            except OSError:
+                continue
+    except Exception:
+        logging.exception("Recovered reading first-savings ts")
+    return earliest
 
 
 def _read_review_verdict(session_id: str, root: Path) -> str:
@@ -1233,29 +1288,6 @@ def _read_review_verdict(session_id: str, root: Path) -> str:
     except OSError:
         pass
     return ""
-
-
-def _read_last_saved_tok(session_id: str, root: Path) -> int:
-    """Most recent positive tokens_saved from the per-call context savings ledger."""
-    ledger = root / "runs" / f"{session_id}_context_savings.jsonl"
-    if not ledger.exists():
-        return 0
-    try:
-        lines = ledger.read_text(encoding="utf-8").splitlines()
-        last_val = 0
-        for raw in lines[-40:]:
-            raw = raw.strip()
-            if not raw:
-                continue
-            try:
-                v = int(json.loads(raw).get("tokens_saved") or 0)
-                if v > 0:
-                    last_val = v
-            except (json.JSONDecodeError, AttributeError, ValueError, TypeError):
-                continue
-        return last_val
-    except OSError:
-        return 0
 
 
 def _get_frame_index(state_path: Path, num_frames: int) -> int:
@@ -1350,8 +1382,8 @@ def savings_segment(
     # Historical savings (scanned once per segment call — fast file scan).
     usd_7d, tok_7d, calls_7d, turns_7d = _read_historical_savings(7, root)
     usd_30d, tok_30d, calls_30d, turns_30d = _read_historical_savings(30, root)
-
-    last_saved_tok = _read_last_saved_tok(session_id, root) if session_id else 0
+    first_ts = _first_savings_ts(root)
+    days_active = (time.time() - first_ts) / 86_400 if first_ts > 0 else 0.0
 
     # --- Build frames as (has_icon, content) tuples.
     # has_icon=True  → ↑/↓/♻ leads the frame; no separator needed before it.
@@ -1365,8 +1397,7 @@ def savings_segment(
     # $0 — so the row never silently drops to cost-only and you can see savings
     # are being tracked (the "always show ↓" statusline policy).
     if has_usage:
-        last_seg = f"+{last_saved_tok}" if last_saved_tok > 0 else ""
-        combined += f" {C_GREEN}↓ ${summary.saved_usd:.3f}{C_DIM}({_fmt_tok(summary.ctx_saved)}{last_seg}){C_RESET}"
+        combined += f" {C_GREEN}↓ ${summary.saved_usd:.3f}{C_DIM}({_fmt_tok(summary.ctx_saved)}){C_RESET}"
     if summary.carry_usd > 0:
         combined += f" {C_BRAND}♻ ${summary.carry_usd:.3f}{C_DIM}({_fmt_tok(summary.carry_tokens)}){C_RESET}"
     if summary.routing_saved_usd > 0:
@@ -1383,8 +1414,8 @@ def savings_segment(
             )
         )
 
-    # Frame 2: 7-day historical savings
-    if usd_7d > 0:
+    # Frame 2: 7-day historical savings — only after ≥1 day of usage
+    if usd_7d > 0 and days_active >= 1:
         detail_7d = _fmt_tok(tok_7d)
         if calls_7d > 0:
             detail_7d += f" · {_fmt_tok(calls_7d)} calls"
@@ -1392,8 +1423,8 @@ def savings_segment(
             detail_7d += f" · {_fmt_tok(turns_7d)} turns"
         frames.append((True, f"{C_GREEN}↓ 7d: ${usd_7d:.2f}{C_DIM}({detail_7d}){C_RESET}"))
 
-    # Frame 3: 30-day historical savings
-    if usd_30d > 0:
+    # Frame 3: 30-day historical savings — only after ≥7 days of usage
+    if usd_30d > 0 and days_active >= 7:
         detail_30d = _fmt_tok(tok_30d)
         if calls_30d > 0:
             detail_30d += f" · {_fmt_tok(calls_30d)} calls"

@@ -518,12 +518,18 @@ def sql_auto_limit(sql: str, max_rows: int, auto_limit: bool = True) -> dict[str
         return {"sql": sql, "changed": False}
     stripped = sql.strip().rstrip(";")
     lowered = stripped.lower()
-    if not lowered.startswith("select"):
+    is_select = lowered.startswith("select")
+    is_cte = lowered.startswith("with")
+    if not (is_select or is_cte):
         return {"sql": sql, "changed": False, "reason": "only select statements are auto-limited"}
     if re.search(r"\blimit\b", lowered):
         return {"sql": sql, "changed": False}
-    if re.search(r"\b(union|intersect|except)\b", lowered):
-        return {"sql": sql, "changed": False, "reason": "set operations are not auto-limited"}
+    has_set_op = bool(re.search(r"\b(union|intersect|except)\b", lowered))
+    # Plain selects can take a trailing LIMIT directly. Set-operations and
+    # WITH-CTE selects must be wrapped so the bound applies to the whole result
+    # rather than only the final SELECT branch (or being a syntax error).
+    if is_cte or has_set_op:
+        return {"sql": f"SELECT * FROM ({stripped}) LIMIT {max_rows}", "changed": True}
     return {"sql": f"{stripped} LIMIT {max_rows}", "changed": True}
 
 
@@ -1115,6 +1121,8 @@ def build_codex_user_prompt_output(root: str | Path, payload: dict[str, Any]) ->
     """Return a display-only Codex compaction notice when needed."""
     if payload.get("hook_event_name") != "UserPromptSubmit":
         return {"no_output": True}
+    with suppress(Exception):
+        update_session_stats(root, payload)
     session_id = str(payload.get("session_id") or "default")
     path = session_stats_path(root, session_id)
     try:
@@ -1161,10 +1169,92 @@ def build_codex_post_tool_use_savings_output(root: str | Path, payload: dict[str
     if payload.get("hook_event_name") != "PostToolUse":
         return {"no_output": True}
     tool_name = str(payload.get("tool_name") or "")
+    stats = update_session_stats(root, payload)
     if not _is_atelier_tool(tool_name):
         return _codex_native_tool_nudge(root, payload)
-    stats = update_session_stats(root, payload)
     return {"stats": stats, "no_output": True}
+
+
+def build_codex_subagent_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    event = str(payload.get("hook_event_name") or payload.get("event") or "")
+    if event not in {"SubagentStart", "SubagentStop"}:
+        return {"no_output": True}
+    update_session_stats(root, payload)
+    return {"no_output": True}
+
+
+def _codex_fmt_tokens(value: int) -> str:
+    value = int(value or 0)
+    if value >= 1_000_000_000:
+        return f"{value / 1_000_000_000:.1f}B"
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}M"
+    if value >= 1_000:
+        return f"{value / 1_000:.1f}k"
+    return str(value)
+
+
+def _codex_payload_model(payload: dict[str, Any]) -> str:
+    candidates: list[Any] = [payload.get("model"), payload.get("model_id")]
+    context_window = payload.get("context_window") if isinstance(payload.get("context_window"), dict) else {}
+    candidates.append(context_window.get("model"))
+    message = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+    candidates.append(message.get("model"))
+    for candidate in candidates:
+        if isinstance(candidate, dict):
+            for key in ("id", "name", "display_name", "model"):
+                value = candidate.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return ""
+
+
+def _codex_payload_cost_usd(payload: dict[str, Any]) -> float:
+    candidates: list[Any] = [payload.get("total_cost_usd"), payload.get("total_cost")]
+    cost = payload.get("cost") if isinstance(payload.get("cost"), dict) else {}
+    candidates.extend([cost.get("total_cost_usd"), cost.get("total_usd"), cost.get("total_cost")])
+    for candidate in candidates:
+        if isinstance(candidate, (int, float)) and not isinstance(candidate, bool):
+            return max(0.0, float(candidate))
+        if isinstance(candidate, str) and candidate.strip():
+            try:
+                return max(0.0, float(candidate))
+            except ValueError:
+                continue
+    return 0.0
+
+
+def _codex_estimated_cost_usd(model: str, usage: dict[str, Any]) -> float:
+    if not model:
+        return 0.0
+    try:
+        from atelier.core.capabilities.pricing import get_model_pricing
+
+        pricing = get_model_pricing(model)
+        return pricing.cost_usd(
+            input_tokens=int(usage.get("input_tokens", 0) or 0),
+            output_tokens=int(usage.get("output_tokens", 0) or 0),
+            cache_read_tokens=int(usage.get("cache_read_tokens", 0) or 0),
+            cache_write_tokens=int(usage.get("cache_write_tokens", 0) or 0),
+        )
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return 0.0
+
+
+def _codex_top_tools(session: dict[str, Any]) -> str:
+    raw = session.get("tools_used")
+    if not isinstance(raw, dict):
+        return "none"
+    counts: list[tuple[str, int]] = []
+    for name, count in raw.items():
+        if not str(name).strip():
+            continue
+        counts.append((str(name), int(count or 0)))
+    top = sorted(counts, key=lambda item: (-item[1], item[0]))[:4]
+    return " · ".join(f"{name}×{count}" for name, count in top) if top else "none"  # noqa: RUF001
 
 
 def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1177,31 +1267,62 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
     report = build_savings_report(root, session_id=session_id)
     session = report.get("session") or {}
     cost = report.get("cost") or {}
+    usage = session.get("usage") if isinstance(session.get("usage"), dict) else {}
 
+    turns = int(session.get("turns", 0) or 0)
     total_tool_calls = int(session.get("total_tool_calls", 0) or 0)
     calls_avoided = int(report.get("calls_avoided", 0) or 0)
     tokens_saved = int(report.get("tokens_saved", 0) or 0)
     saved_usd = float(cost.get("saved_usd", 0.0) or 0.0)
     routing_saved_usd = float(cost.get("routing_saved_usd", 0.0) or 0.0)
+    carry_usd = float(cost.get("carry_usd", 0.0) or 0.0)
+    carry_tokens = int(cost.get("carry_tokens", 0) or 0)
     compactions = int(session.get("compactions", 0) or 0)
+    inp = int(usage.get("input_tokens", 0) or 0)
+    out = int(usage.get("output_tokens", 0) or 0)
+    cache_read = int(usage.get("cache_read_tokens", 0) or 0)
+    cache_write = int(usage.get("cache_write_tokens", 0) or 0)
+    total_tokens = inp + out + cache_read + cache_write
 
-    if total_tool_calls <= 0 and calls_avoided <= 0 and tokens_saved <= 0 and saved_usd <= 0:
+    if (
+        total_tool_calls <= 0
+        and turns <= 0
+        and total_tokens <= 0
+        and calls_avoided <= 0
+        and tokens_saved <= 0
+        and saved_usd <= 0
+    ):
         return {"no_output": True}
 
-    parts = [f"${saved_usd:.4f}"]
-    if tokens_saved > 0:
-        parts.append(f"{tokens_saved:,} tokens saved")
-    if calls_avoided > 0:
-        parts.append(f"{calls_avoided} calls avoided")
+    model = str(session.get("last_model") or session.get("model") or _codex_payload_model(payload) or "")
+    real_cost = _codex_payload_cost_usd(payload)
+    estimated_cost = real_cost if real_cost > 0 else _codex_estimated_cost_usd(model, usage)
+    fresh_in = inp + cache_write
+    activity = (
+        f"{turns} turn{'s' if turns != 1 else ''} · {total_tool_calls} tool call{'s' if total_tool_calls != 1 else ''}"
+    )
+
     lines = [
         "Atelier session complete.",
-        "savings: " + " · ".join(parts),
-        f"Atelier tool calls: {total_tool_calls}",
+        activity,
     ]
-    if compactions > 0:
-        lines.append(f"compactions: {compactions}")
+    if total_tokens > 0:
+        lines.append(
+            "tokens: "
+            f"{_codex_fmt_tokens(fresh_in)} input ({_codex_fmt_tokens(inp)} new + {_codex_fmt_tokens(cache_write)} cW) / "
+            f"{_codex_fmt_tokens(cache_read)} cR / {_codex_fmt_tokens(out)} out  ({_codex_fmt_tokens(total_tokens)} total)"
+        )
+    cost_prefix = "cost: " if real_cost > 0 else "est. cost: ~"
+    lines.append(f"{cost_prefix}${estimated_cost:.4f}")
+    lines.append(f"savings: ${saved_usd:.4f} · {tokens_saved:,} tokens saved · {calls_avoided} calls avoided")
+    if carry_usd > 0:
+        carry_tokens_part = f" · {carry_tokens:,} tokens" if carry_tokens > 0 else ""
+        lines.append(f"context carry: ${carry_usd:.4f}{carry_tokens_part} (cache re-reads avoided on later turns)")
     if routing_saved_usd > 0:
         lines.append(f"routing savings: ${routing_saved_usd:.4f}")
+    if compactions > 0:
+        lines.append(f"compactions: {compactions}")
+    lines.append(f"top tools: {_codex_top_tools(session)}")
     return {"systemMessage": "\n".join(lines), "report": report}
 
 
@@ -1666,6 +1787,98 @@ def _codex_context_occupancy(payload: dict[str, Any]) -> tuple[int, str]:
         return 0, ""
 
 
+def _codex_cache_read_price(model: str | None, occupancy: int = 0) -> float:
+    """Cache-read $/1M-tokens for *model*, premium-aware (mirrors the Claude hook).
+
+    Above the model's long-context boundary the whole request bills at the
+    premium cache-read rate. Returns 0.0 when the rate card is unavailable so
+    callers credit nothing rather than guess.
+    """
+    try:
+        from atelier.core.capabilities.pricing import get_model_pricing
+        from atelier.core.capabilities.savings_summary import resolve_model_id
+
+        pricing = get_model_pricing(resolve_model_id(model or "")) if model else None
+        if pricing is None or not pricing.known or pricing.cache_read <= 0:
+            return 0.0
+        threshold = pricing.long_context_threshold()
+        if occupancy and threshold and occupancy > threshold and pricing.cache_read_tiers:
+            return float(pricing.cache_read_tiers[0].rate)
+        return float(pricing.cache_read)
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return 0.0
+
+
+def _codex_append_compaction_savings_row(
+    root: str | Path, session_id: str, tokens: int, usd: float, model: str | None
+) -> None:
+    """Append a compaction-credit row to sessions/<id>/savings.jsonl (cache-read priced).
+
+    Keyed by the host session_id -- the same id ``build_savings_report`` /
+    ``build_codex_stop_output`` read per-session savings from.
+    """
+    if not session_id:
+        return
+    try:
+        path = Path(root) / "sessions" / session_id / "savings.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        row = {
+            "kind": "compaction",
+            "tokens": int(tokens),
+            "usd": round(float(usd), 6),
+            "model": model or "",
+            "calls": 0,
+            "ts": _iso_now(),
+        }
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row) + "\n")
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def _codex_clear_precompact(state: dict[str, Any]) -> None:
+    for key in (
+        "precompact_pending",
+        "precompact_occupancy",
+        "precompact_model",
+        "precompact_attempts",
+    ):
+        state.pop(key, None)
+
+
+def _codex_credit_pending_compaction(
+    root: str | Path, session_id: str, state: dict[str, Any], occupancy: int, model: str | None
+) -> None:
+    """Bank the one-time cache-read saving from a recent /compact (mirrors Claude).
+
+    PreCompact stored the pre-compaction occupancy; once a turn has run on the
+    compacted window we read the new occupancy here and bank the realized saving
+    (pre@its-rate - post@its-rate) as a ``kind:"compaction"`` row. Conservative:
+    skips while the delta isn't visible yet, gives up after three prompts,
+    one-shot per compaction. Mutates *state* in place; the caller persists it.
+    """
+    if not state.get("precompact_pending"):
+        return
+    attempts = int(state.get("precompact_attempts", 0) or 0) + 1
+    state["precompact_attempts"] = attempts
+    pre = int(state.get("precompact_occupancy", 0) or 0)
+    delta = pre - occupancy
+    if occupancy > 0 and 0 < delta <= pre:
+        price_model = model or str(state.get("precompact_model") or "")
+        # Premium-aware: when compaction drops the window below the long-context
+        # boundary, the saving is pre@premium - post@base, not delta at one rate.
+        usd = max(
+            0.0,
+            pre / 1_000_000 * _codex_cache_read_price(price_model, pre)
+            - occupancy / 1_000_000 * _codex_cache_read_price(price_model, occupancy),
+        )
+        _codex_append_compaction_savings_row(root, session_id, delta, usd, price_model)
+        _codex_clear_precompact(state)
+    elif attempts >= 3:
+        _codex_clear_precompact(state)  # post-compact size never resolved; stop trying
+
+
 def build_codex_pre_compact_output(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     if str(payload.get("hook_event_name") or "") != "PreCompact":
         return {"no_output": True}
@@ -1711,6 +1924,15 @@ def _codex_enrich_user_prompt(root: str | Path, payload: dict[str, Any]) -> None
     stored = prompt[:8192]
     state = _read_codex_session_state(root, payload)
     state["last_user_prompt"] = stored
+    # Bank the one-time cache-read saving from a recent /compact (parity with the
+    # Claude UserPromptSubmit hook). PreCompact recorded the pre-compaction
+    # occupancy; now that a turn has run on the compacted window we read the new
+    # occupancy, credit the realized delta, and clear the precompact_* keys --
+    # all folded into this single read-modify-write of session state.
+    occupancy, occ_model = _codex_context_occupancy(payload)
+    _codex_credit_pending_compaction(
+        root, str(payload.get("session_id") or "default"), state, occupancy, occ_model
+    )
     _write_codex_session_state(root, payload, state)
     session_id = _codex_ledger_session_id(root, payload)
     if not session_id:
@@ -2316,7 +2538,13 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
     state.setdefault("started_at_ms", _now_ms(payload))
     state.setdefault("total_tool_calls", 0)
     state.setdefault("edit_tool_calls", 0)
+    state.setdefault("turns", 0)
     state.setdefault("event_counts", {})
+    if not isinstance(state.get("event_counts"), dict):
+        state["event_counts"] = {}
+    state.setdefault("tools_used", {})
+    if not isinstance(state.get("tools_used"), dict):
+        state["tools_used"] = {}
     state.setdefault(
         "usage",
         {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0},
@@ -2325,6 +2553,10 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
     event = str(payload.get("hook_event_name") or payload.get("event") or "")
     if event:
         state["event_counts"][event] = int(state["event_counts"].get(event, 0) or 0) + 1
+    model = _codex_payload_model(payload)
+    if model:
+        state.setdefault("model", model)
+        state["last_model"] = model
     workflow_state = _normalize_workflow_state_payload(payload.get("workflow_state"))
     if workflow_state:
         state["workflow_state"] = workflow_state
@@ -2356,8 +2588,41 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
         snapshot = _usage_numbers(context_cw_usage)
         if any(v > 0 for v in snapshot.values()):
             state["usage"].update(snapshot)
-    if event == "PostToolUse":
+    if event == "UserPromptSubmit":
+        turn_id = str(payload.get("turn_id") or payload.get("prompt_id") or "")
+        if turn_id:
+            seen_turn_ids = state.get("seen_turn_ids")
+            if not isinstance(seen_turn_ids, dict):
+                seen_turn_ids = {}
+                state["seen_turn_ids"] = seen_turn_ids
+            if not seen_turn_ids.get(turn_id):
+                state["turns"] = int(state.get("turns", 0) or 0) + 1
+                seen_turn_ids[turn_id] = True
+        else:
+            state["turns"] = int(state.get("turns", 0) or 0) + 1
+    elif event == "SubagentStart":
+        agent_id = str(payload.get("agent_id") or "")
+        active_subagents = state.get("active_subagents")
+        if not isinstance(active_subagents, dict):
+            active_subagents = {}
+            state["active_subagents"] = active_subagents
+        should_count = not agent_id or agent_id not in active_subagents
+        if should_count:
+            state["subagents_started"] = int(state.get("subagents_started", 0) or 0) + 1
+            state["pending_subagents"] = max(0, int(state.get("pending_subagents", 0) or 0) + 1)
+        if agent_id:
+            active_subagents[agent_id] = {
+                "agent_type": str(payload.get("agent_type") or ""),
+                "started_at_ms": _now_ms(payload),
+            }
+    elif event == "PostToolUse":
         tool_name = str(payload.get("tool_name") or "")
+        if tool_name:
+            tools_used = state.get("tools_used")
+            if not isinstance(tools_used, dict):
+                tools_used = {}
+                state["tools_used"] = tools_used
+            tools_used[tool_name] = int(tools_used.get(tool_name, 0) or 0) + 1
         state["total_tool_calls"] = int(state.get("total_tool_calls", 0)) + 1
         from atelier.core.capabilities.session_optimizer import tool_is_edit
 
@@ -2388,6 +2653,11 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
             0, _now_ms(payload) - started_at
         )
     elif event == "SubagentStop":
+        agent_id = str(payload.get("agent_id") or "")
+        active_subagents = state.get("active_subagents") if isinstance(state.get("active_subagents"), dict) else {}
+        if agent_id:
+            active_subagents.pop(agent_id, None)
+            state["active_subagents"] = active_subagents
         state["subagents_completed"] = int(state.get("subagents_completed", 0) or 0) + 1
         state["pending_subagents"] = max(0, int(state.get("pending_subagents", 0) or 0) - 1)
         state["completed"] = True
@@ -2453,12 +2723,18 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
     files = (
         [session_stats_path(root, session_id)]
         if session_id
-        else sorted(sessions_dir.glob("*/stats.json")) if sessions_dir.exists() else []
+        else sorted(sessions_dir.glob("*/stats.json"))
+        if sessions_dir.exists()
+        else []
     )
     aggregate: dict[str, Any] = {
         "session_count": 0,
         "total_tool_calls": 0,
         "edit_tool_calls": 0,
+        "turns": 0,
+        "tools_used": {},
+        "model": "",
+        "last_model": "",
         "usage": {
             "input_tokens": 0,
             "output_tokens": 0,
@@ -2489,6 +2765,19 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
         aggregate["session_count"] += 1
         aggregate["total_tool_calls"] += int(data.get("total_tool_calls", 0) or 0)
         aggregate["edit_tool_calls"] += int(data.get("edit_tool_calls", 0) or 0)
+        aggregate["turns"] += int(data.get("turns", 0) or 0)
+        model = str(data.get("model") or "").strip()
+        if model and not aggregate["model"]:
+            aggregate["model"] = model
+        last_model = str(data.get("last_model") or model).strip()
+        if last_model:
+            aggregate["last_model"] = last_model
+        tools_used = data.get("tools_used") if isinstance(data.get("tools_used"), dict) else {}
+        for name, count in tools_used.items():
+            if str(name).strip():
+                aggregate["tools_used"][str(name)] = int(aggregate["tools_used"].get(str(name), 0) or 0) + int(
+                    count or 0
+                )
         for key in aggregate["usage"]:
             aggregate["usage"][key] += int((data.get("usage") or {}).get(key, 0) or 0)
         for key in (
@@ -2627,12 +2916,22 @@ def build_savings_report(
         tokens_saved = int(summary.ctx_saved)
         calls_avoided = int(summary.smart_calls)
         saved_usd = float(summary.saved_usd)
-        routing_saved_usd = float(summary.routing_saved_usd)
+        # SavingsSummary.routing_saved_usd is never populated by
+        # compute_savings_summary, so source the per-session routing savings
+        # from the live analytics log scoped to this session (same helper the
+        # all-sessions branch uses, with the session_id filter applied).
+        routing_saved_usd = float(
+            load_live_savings_summary(root_path, session_id=session_id).get("routing_saved_usd", 0.0) or 0.0
+        )
+        carry_usd = float(summary.carry_usd)
+        carry_tokens = int(summary.carry_tokens)
         live = {
             "calls_saved": calls_avoided,
             "tokens_saved": tokens_saved,
             "saved_usd": round(saved_usd, 6),
             "routing_saved_usd": round(routing_saved_usd, 6),
+            "carry_usd": round(carry_usd, 6),
+            "carry_tokens": carry_tokens,
         }
     else:
         live = load_live_savings_summary(root_path)
@@ -2640,12 +2939,16 @@ def build_savings_report(
         calls_avoided = int(live.get("calls_saved", 0) or 0)
         saved_usd = float(live.get("saved_usd", 0.0) or 0.0)
         routing_saved_usd = float(live.get("routing_saved_usd", 0.0) or 0.0)
+        carry_usd = float(live.get("carry_usd", 0.0) or 0.0)
+        carry_tokens = int(live.get("carry_tokens", 0) or 0)
 
     if session_id:
         cost = {
             "saved_usd": round(saved_usd, 6),
             "live_saved_usd": round(saved_usd, 6),
             "routing_saved_usd": round(routing_saved_usd, 6),
+            "carry_usd": round(carry_usd, 6),
+            "carry_tokens": carry_tokens,
             "total_calls": int(session.get("total_tool_calls", 0) or 0),
         }
     else:
@@ -2653,6 +2956,8 @@ def build_savings_report(
             "saved_usd": round(saved_usd, 6),
             "live_saved_usd": round(saved_usd, 6),
             "routing_saved_usd": round(routing_saved_usd, 6),
+            "carry_usd": round(carry_usd, 6),
+            "carry_tokens": carry_tokens,
             "total_calls": int(session.get("total_tool_calls", 0) or 0),
         }
 

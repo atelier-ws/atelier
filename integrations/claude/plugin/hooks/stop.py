@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""Stop hook — session summary + trace reminder.
+"""Stop hook — session summary.
 
 Reads the hook payload (stdin: JSON with session_id, transcript_path).
 
-Decision tree:
-1. If this was a discussion-only session (no code-editing tools used in the
-   transcript) → silent exit.  No trace required.
-2. If code work happened AND trace was already called for
-   this session → show stats and exit silently.
-3. If code work happened but no trace was recorded → surface a system
-   message asking Claude to call trace.
+Behavior:
+1. Discussion-only session (no code-editing tools used in the transcript) →
+   show plain stats under a "Session stats:" header.
+2. Code work happened → show stats under an "Atelier session complete." header.
 
 Token and tool-call counts are read directly from the Claude Code
 transcript JSONL at `transcript_path`.
@@ -154,25 +151,6 @@ def _write_token_event(stats: dict[str, Any]) -> None:
         if tmp_path:
             with contextlib.suppress(Exception):
                 Path(tmp_path).unlink(missing_ok=True)
-
-
-def _trace_recorded(session_id: str) -> bool:
-    """Return True if trace was called in this session.
-
-    Checks session-scoped state first (keyed by *session_id*), then falls
-    back to the legacy global ``trace_recorded`` flag for older MCP versions
-    that do not write per-session state.
-    """
-    state = _load_state()
-
-    if session_id:
-        sessions: dict[str, dict[str, Any]] = state.get("sessions", {})
-        session_data = sessions.get(session_id, {})
-        if "trace_recorded" in session_data:
-            return bool(session_data["trace_recorded"])
-
-    # Legacy fallback — mcp_server.py < 2.x wrote a flat `trace_recorded` key
-    return bool(state.get("trace_recorded"))
 
 
 # ---------------------------------------------------------------------------
@@ -694,24 +672,16 @@ def main() -> int:
     # cost, tokens, and savings are all derivable from it. No snapshot needed.
 
     # ── Always show stats (discussion and task sessions alike) ───────────────
-    # If no code-editing tools were used, show stats but skip the trace reminder.
+    # If no code-editing tools were used, show plain session stats.
     if not _is_task_session(stats, session_aggregate):
         if stats and stats["total_tokens"] > 0:
             summary = _format_stats(stats, savings, real_cost=real_cost)
             print(json.dumps({"systemMessage": f"Session stats:\n{summary}{review_suffix}"}))
         return 0
 
-    # ── Code work happened: check if trace was recorded ──────────────────────
-    if _trace_recorded(session_id):
-        # Trace already recorded — show stats via systemMessage and allow exit.
-        # Note: hookSpecificOutput is NOT valid for Stop hooks (only PreToolUse,
-        # PostToolUse, UserPromptSubmit, PostToolBatch support it).
-        if stats and stats["total_tokens"] > 0:
-            summary = _format_stats(stats, savings, real_cost=real_cost)
-            print(json.dumps({"systemMessage": f"Atelier session complete.\n{summary}{review_suffix}"}))
-        return 0
-
-    # ── Code work done but no trace — show stats ─────────────
+    # ── Code work happened: show the session-complete summary ────────────────
+    # (Stop hooks can only emit a systemMessage — hookSpecificOutput is not
+    # valid here, unlike PreToolUse/PostToolUse/UserPromptSubmit/PostToolBatch.)
     if stats and stats["total_tokens"] > 0:
         summary = _format_stats(stats, savings, real_cost=real_cost)
         print(json.dumps({"systemMessage": f"Atelier session complete.\n{summary}{review_suffix}"}))

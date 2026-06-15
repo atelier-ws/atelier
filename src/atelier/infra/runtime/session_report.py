@@ -156,21 +156,16 @@ def _read_compact_savings(session_id: str, root: Path) -> tuple[int, float]:
 
 
 def _read_context_compression_savings(session_id: str, root: Path) -> tuple[int, float, list[dict[str, Any]]]:
-    """Read per-tool context-compression savings for *session_id*.
+    """Read per-tool savings for *session_id* from the host sidecar.
 
-    Two sources, in priority order:
-      1. ``sessions/<session_id>/context_savings.jsonl`` — written by the MCP
-         server keyed by the internal ledger session id; carries a
-         pre-computed ``cost_saved_usd`` per row.
-      2. ``sessions/<session_id>/savings.jsonl`` (the host sidecar) —
-         written keyed by the host session id (Claude UUID, Codex id, etc.).
-         No pre-priced cost field, so we price each row here at the model
-         captured at write time. This is what the statusline reads, so
-         falling back to it guarantees the frontend's session-detail
-         ``total_atelier_savings_usd`` matches what users see live.
+    Source: ``sessions/<session_id>/savings.jsonl`` — written keyed by the
+    host session id (Claude UUID, Codex id, etc.). Rows that predate the
+    pre-priced ``cost_saved_usd`` field are priced here at the model captured
+    at write time. This is what the statusline reads, so the frontend's
+    session-detail ``total_atelier_savings_usd`` matches the live figure.
 
-    Returns ``(call_count, total_cost_saved_usd, rows)`` where rows mirror
-    the run-ledger ``context_savings.jsonl`` shape
+    Returns ``(call_count, total_cost_saved_usd, rows)`` where rows are the
+    synthesised context_savings shape
     (tool, tokens_saved, calls_saved, model, cost_saved_usd, at).
     """
     return _read_host_sidecar_savings(session_id, root)
@@ -249,14 +244,12 @@ def read_total_savings_from_events(session_id: str, root: Path) -> float:
 
       1. ``live_savings_events.jsonl`` (routing/compaction savings keyed by
          internal Atelier session id)
-      2. ``sessions/<session_id>/context_savings.jsonl`` (context-compression
-         savings keyed by ledger session id)
-      3. ``sessions/<session_id>/savings.jsonl`` (host sidecar keyed by
+      2. ``sessions/<session_id>/savings.jsonl`` (host sidecar keyed by
          host UUID — the source the statusline reads)
 
     The first source matches when the trace was recorded with an internal
-    Atelier id; the second and third match when the trace UUID is the
-    ledger/host id that the MCP server wrote at the time.
+    Atelier id; the second matches when the trace UUID is the host id that
+    the MCP server wrote at the time.
     """
     total = 0.0
 
@@ -277,7 +270,7 @@ def read_total_savings_from_events(session_id: str, root: Path) -> float:
         except OSError:
             pass
 
-    # 2 + 3. context compression / host sidecar (function chooses internally)
+    # 2. host sidecar savings (priced per-row by the helper)
     _, compression_saved, _ = _read_context_compression_savings(session_id, root)
     total += compression_saved
 

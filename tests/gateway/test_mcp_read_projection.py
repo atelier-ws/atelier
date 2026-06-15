@@ -381,20 +381,45 @@ def test_read_single_path_still_works_without_files(tmp_path: Path, monkeypatch:
     assert "solo content" in payload["content"]
 
 
-def test_edit_returns_inline_diff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_edit_surfaces_inline_diff_only_for_nonexact_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
-    target = tmp_path / "mod.py"
-    target.write_text("value = 1\n", encoding="utf-8")
 
-    payload = tool_smart_edit(
+    # Exact match: the caller already knows old->new and gets the `applied`
+    # line ranges, so an inline diff is pure redundancy and is omitted.
+    exact_target = tmp_path / "exact.py"
+    exact_target.write_text("value = 1\n", encoding="utf-8")
+    exact = tool_smart_edit(
         {
-            "edits": [{"file_path": str(target), "old_string": "value = 1", "new_string": "value = 2"}],
+            "edits": [{"file_path": str(exact_target), "old_string": "value = 1", "new_string": "value = 2"}],
             "post_edit_hooks": False,
         }
     )
+    assert exact["failed"] == []
+    assert exact["applied"], "exact edit must still apply"
+    assert "diff" not in exact, "exact edits must not surface a redundant inline diff"
+    assert exact_target.read_text(encoding="utf-8") == "value = 2\n"
 
-    assert payload["failed"] == []
-    diff = payload.get("diff")
-    assert diff, "edit result must carry the inline unified diff"
+    # Non-exact match (placeholder via `...`): the applied text may diverge from
+    # what the caller asked for, so the diff is the sole divergence signal and
+    # is surfaced inline to save a verifying re-read.
+    fuzzy_target = tmp_path / "fuzzy.py"
+    fuzzy_target.write_text("start = 1\nmiddle = 2\nend = 3\n", encoding="utf-8")
+    fuzzy = tool_smart_edit(
+        {
+            "edits": [
+                {
+                    "file_path": str(fuzzy_target),
+                    "old_string": "start = 1\n...\nend = 3",
+                    "new_string": "start = 10\nend = 30",
+                }
+            ],
+            "post_edit_hooks": False,
+        }
+    )
+    assert fuzzy["failed"] == []
+    diff = fuzzy.get("diff")
+    assert diff, "non-exact edits must surface the inline unified diff"
     diff_text = "".join(diff.values())
-    assert "-value = 1" in diff_text and "+value = 2" in diff_text
+    assert "-start = 1" in diff_text and "+start = 10" in diff_text

@@ -226,6 +226,7 @@ docs-site/.docusaurus/
 docs-site/build/
 docs-site/docs/
 landing/
+jobs/
 
 # -----------------------
 # Start Master Aggregated Rules (Global Union)

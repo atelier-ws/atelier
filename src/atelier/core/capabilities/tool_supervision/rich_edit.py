@@ -62,18 +62,17 @@ def _parse_target(raw_path: str) -> TargetSpec:
     return TargetSpec(path=raw_path)
 
 
-def _resolve(root: Path, raw_path: str) -> Path:
+def _resolve(root: Path, raw_path: str, allowed_roots: list[Path] | None = None) -> Path:
     spec = _parse_target(raw_path)
     path = Path(spec.path)
     resolved = path if path.is_absolute() else root / path
     resolved = resolved.resolve()
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
+    roots = [root, *(allowed_roots or [])]
+    if not any(resolved == r or resolved.is_relative_to(r) for r in roots):
         raise ValueError(
             f"path escape denied: {raw_path} is outside the workspace root {root} — "
             "use the host's native tools for files outside the workspace"
-        ) from exc
+        )
     if any(part in PROTECTED_PARTS for part in resolved.parts):
         raise ValueError(f"protected path denied: {raw_path}")
     return resolved
@@ -442,7 +441,11 @@ def _parse_gate_message(
 
 
 def apply_rich_edits(
-    edits: list[dict[str, Any]], *, repo_root: str | Path | None = None, atomic: bool = True
+    edits: list[dict[str, Any]],
+    *,
+    repo_root: str | Path | None = None,
+    atomic: bool = True,
+    allowed_roots: list[Path] | None = None,
 ) -> dict[str, Any]:
     """Apply rich Atelier edits in memory, writing each touched file once."""
     root = _repo_root(repo_root)
@@ -470,7 +473,7 @@ def apply_rich_edits(
             if not raw_path:
                 raise ValueError("file_path is required")
             spec = _parse_target(raw_path)
-            path = _resolve(root, raw_path)
+            path = _resolve(root, raw_path, allowed_roots=allowed_roots)
             if path not in backups:
                 backups[path] = path.read_bytes() if path.exists() else None
             content = file_state.get(path)

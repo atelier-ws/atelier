@@ -66,6 +66,7 @@ from atelier.core.capabilities.host_runners import (
 )
 from atelier.core.capabilities.pricing import usage_cost_breakdown_usd, usage_cost_usd
 
+from benchmarks.codebench import local as local_mode
 from benchmarks.codebench.tasks import BY_ID, TASKS, Task
 from benchmarks.wire_savings.report import aggregate, flow_records
 
@@ -185,7 +186,10 @@ STOPWORDS = frozenset(
         "your",
     }
 )
-ATELIER_CLAUDE_PLUGIN_ROOT = REPO_ROOT / "integrations" / "claude" / "plugin"
+ATELIER_CLAUDE_PLUGIN_ROOT = Path(
+    os.environ.get("ATELIER_BENCH_PLUGIN_ROOT")
+    or (REPO_ROOT / "integrations" / "claude" / "plugin")
+)
 
 
 def _atelier_claude_agent_args() -> list[str]:
@@ -217,7 +221,7 @@ def _wait_port(port: int, timeout: float = 15.0) -> bool:
     return False
 
 
-def _make_baseline_config(dest: Path | None = None) -> Path:
+def _make_baseline_config(dest: Path | None = None, *, copy_creds: bool = True) -> Path:
     """Isolated CLAUDE_CONFIG_DIR: real auth, no plugins/hooks/MCP.
 
     Idempotent when *dest* is given: an already-populated config dir is reused
@@ -236,9 +240,14 @@ def _make_baseline_config(dest: Path | None = None) -> Path:
             for k in ("mcpServers", "enabledPlugins", "hooks"):
                 proj.pop(k, None)
     (cfg / ".claude.json").write_text(json.dumps(data))
-    creds = Path.home() / ".claude" / ".credentials.json"
-    if creds.exists():
-        shutil.copy(creds, cfg / ".credentials.json")
+    # When a long-lived headless token (CLAUDE_CODE_OAUTH_TOKEN) authenticates the
+    # subprocess, copying the rotating ~/.claude OAuth creds is harmful: the
+    # short-lived refresh token is single-use, so any concurrent session (or a
+    # prior arm) that rotates it leaves this snapshot stale -> 401. Skip it.
+    if copy_creds:
+        creds = Path.home() / ".claude" / ".credentials.json"
+        if creds.exists():
+            shutil.copy(creds, cfg / ".credentials.json")
     return cfg
 
 
@@ -256,6 +265,11 @@ def prepare_workspace(task: Task, workspace: Path | None = None) -> Path:
     kind = task.source[0]
     if kind == "empty":
         pass
+    elif kind == "path":
+        src = Path(task.source[1])
+        if not src.is_dir():
+            raise FileNotFoundError(f"repo path missing for {task.id}: {src}")
+        shutil.copytree(src, ws, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git"))
     elif kind == "workspace":
         src = task.workspace_src()
         if not src or not src.exists():
@@ -951,6 +965,7 @@ def run_arm(
     agent_env: dict[str, str] | None = None,
     cli_extra_args: list[str] | tuple[str, ...] = (),
     resume_state: bool = False,
+    capture: bool = True,
 ) -> ArmResult:
     assert arm in VALID_ARMS
     row_state: dict[str, object] = {}
@@ -974,7 +989,7 @@ def run_arm(
     if cli_driver not in CLI_DRIVERS:
         raise ValueError(f"unsupported cli driver: {cli_driver}")
     flow_path = out_dir / f"{task.id}_{arm}_rep{rep}.flow"
-    proxy_supported = cli_driver in {"claude", "atelier-run"}
+    proxy_supported = capture and cli_driver in {"claude", "atelier-run"}
     port = _free_port() if proxy_supported else 0
     mitm = (
         subprocess.Popen(
@@ -1038,7 +1053,8 @@ def run_arm(
                 # state. Persisted next to the workspace so --resume still finds
                 # the prior session transcript.
                 config_dir = _make_baseline_config(
-                    Path(str(row_state["workspace"])).parent / f"claude-config-{arm}" if row_state else None
+                    Path(str(row_state["workspace"])).parent / f"claude-config-{arm}" if row_state else None,
+                    copy_creds=not env.get("CLAUDE_CODE_OAUTH_TOKEN"),
                 )
                 env["CLAUDE_CONFIG_DIR"] = str(config_dir)
             if row_state:
@@ -1626,6 +1642,7 @@ def _run_task_rep(
     agent_env: dict[str, str] | None,
     cli_extra_args: list[str] | tuple[str, ...],
     resume_state: bool,
+    capture: bool = True,
     on_result: Callable[[ArmResult], None] | None = None,
 ) -> list[ArmResult]:
     task = BY_ID[task_id]
@@ -1646,6 +1663,7 @@ def _run_task_rep(
                 agent_env,
                 cli_extra_args,
                 resume_state=resume_state,
+                capture=capture,
             )
         except Exception as exc:
             result = ArmResult(
@@ -1704,6 +1722,7 @@ def _run_single_arm(
     agent_env: dict[str, str] | None,
     cli_extra_args: list[str] | tuple[str, ...],
     resume_state: bool,
+    capture: bool = True,
     on_result: Callable[[ArmResult], None] | None = None,
 ) -> ArmResult:
     return _run_task_rep(
@@ -1718,6 +1737,7 @@ def _run_single_arm(
         agent_env=agent_env,
         cli_extra_args=cli_extra_args,
         resume_state=resume_state,
+        capture=capture,
         on_result=on_result,
     )[0]
 
@@ -1798,6 +1818,34 @@ def main() -> int:
         help="with --resume, rerun rows where ok is false",
     )
     p.add_argument("--report", default=None, help="path to a results dir to re-report")
+    p.add_argument(
+        "--prompt",
+        action="append",
+        default=[],
+        help="Ad-hoc BYO-repo coding prompt; repeatable. Enables local A/B mode.",
+    )
+    p.add_argument("--repo", default=".", help="Repo path to copy per run in ad-hoc mode (default: cwd).")
+    p.add_argument(
+        "--setup",
+        action="append",
+        default=[],
+        help="Setup command run inside each ad-hoc workspace; repeatable.",
+    )
+    p.add_argument("--max-turns", type=int, default=15, help="Turn cap for the claude driver in ad-hoc mode.")
+    p.add_argument(
+        "--estimate-only",
+        action="store_true",
+        help="In ad-hoc mode, print the cost estimate and exit without spending.",
+    )
+    p.add_argument(
+        "--capture",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Capture model traffic via mitmproxy to .flow files for wire-level cost "
+            "verification. Default: on for the suite, off for ad-hoc --prompt runs."
+        ),
+    )
     args = p.parse_args()
     if args.rate_limit_rpm < 0:
         p.error("--rate-limit must be >= 0")
@@ -1843,7 +1891,56 @@ def main() -> int:
         (rdir / "report.txt").write_text(rep_txt)
         print(rep_txt)
         return 0
-    task_ids = [t.id for t in TASKS] if args.tasks == ["all"] else args.tasks
+    ad_hoc = bool(args.prompt)
+    capture = args.capture if args.capture is not None else (not ad_hoc)
+    if ad_hoc:
+        if len(args.prompt) > 10:
+            p.error("ad-hoc mode supports at most 10 --prompt values")
+        local_tasks = local_mode.build_local_tasks(Path(args.repo), args.prompt, args.setup)
+        for task in local_tasks:
+            BY_ID[task.id] = task
+            TASKS.append(task)
+        task_ids = [task.id for task in local_tasks]
+        estimate = local_mode.estimate_cost(
+            n_prompts=len(args.prompt),
+            arms=len(args.arms),
+            reps=args.reps,
+            model=args.model,
+            max_turns=args.max_turns,
+        )
+        print("", flush=True)
+        print("=== Cost ESTIMATE (not a charge) ===", flush=True)
+        print(f"  runs:        {estimate['n_runs']} ({len(args.prompt)} prompt(s) x {len(args.arms)} arm(s) x {args.reps} rep(s))", flush=True)
+        print(f"  per run:     ${estimate['per_run_usd']:.4f}", flush=True)
+        print(f"  total:       ${estimate['total_usd']:.4f}  (range ${estimate['low_usd']:.4f}-${estimate['high_usd']:.4f})", flush=True)
+        print(f"  basis:       {estimate['basis']}", flush=True)
+        print(f"  assumption:  {estimate['assumption']}", flush=True)
+        print("  NOTE: an estimate only; real spend depends on the agent's actual token use.", flush=True)
+        print("", flush=True)
+        if args.estimate_only:
+            return 0
+        if capture:
+            if shutil.which("mitmdump") is None or not CA_CERT.exists():
+                print(
+                    "--capture needs mitmproxy. Install it (pip install mitmproxy or "
+                    "brew install mitmproxy) and run `mitmdump` once to generate "
+                    "~/.mitmproxy/mitmproxy-ca-cert.pem, or rerun without --capture.",
+                    flush=True,
+                )
+                return 1
+        else:
+            print(
+                "wire capture off — cost from CLI receipts (pass --capture for "
+                "mitmproxy wire-level verification).",
+                flush=True,
+            )
+        # Ad-hoc repos have no per-task verify command and a generic language;
+        # skip objective verify gates and the language prereq check.
+        args.no_verify = True
+        if args.cli_driver == "claude":
+            args.cli_extra_arg = [*args.cli_extra_arg, "--max-turns", str(args.max_turns)]
+    else:
+        task_ids = [t.id for t in TASKS] if args.tasks == ["all"] else args.tasks
     run_dir = args.out if args.out is not None else RESULTS_ROOT / time.strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
     print(f"Results: {run_dir.resolve()}", flush=True)
@@ -1856,9 +1953,10 @@ def main() -> int:
         p.error("--retry-failed requires --resume")
 
     # Verify required binaries are present for the selected tasks before
-    # spending time on workspace setup or model API calls.
+    # spending time on workspace setup or model API calls. Ad-hoc BYO repos
+    # are language-agnostic, so the per-language prereq check does not apply.
     selected_tasks = [BY_ID[tid] for tid in task_ids if tid in BY_ID]
-    if not check_prereqs(selected_tasks):
+    if not ad_hoc and not check_prereqs(selected_tasks):
         print("Aborting: install the missing prerequisites and rerun.", flush=True)
         return 1
     bridge_command = args.bridge_command
@@ -1920,6 +2018,7 @@ def main() -> int:
                     agent_env=agent_env,
                     cli_extra_args=args.cli_extra_arg,
                     resume_state=args.resume,
+                    capture=capture,
                     on_result=record_result,
                 )
         elif args.parallel_scope == "task":
@@ -1938,6 +2037,7 @@ def main() -> int:
                         agent_env=agent_env,
                         cli_extra_args=args.cli_extra_arg,
                         resume_state=args.resume,
+                        capture=capture,
                         on_result=record_result,
                     ): (tid, rep)
                     for tid, rep, pending_arms in pending_trials
@@ -1958,6 +2058,7 @@ def main() -> int:
                     agent_env=agent_env,
                     cli_extra_args=args.cli_extra_arg,
                     resume_state=args.resume,
+                    capture=capture,
                     on_result=record_result,
                 )
         else:
@@ -1976,6 +2077,7 @@ def main() -> int:
                         agent_env=agent_env,
                         cli_extra_args=args.cli_extra_arg,
                         resume_state=args.resume,
+                        capture=capture,
                         on_result=record_result,
                     ): (tid, rep, arm)
                     for tid, rep, arm in pending_arms

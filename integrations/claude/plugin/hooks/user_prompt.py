@@ -194,12 +194,34 @@ _COMPACT_BANDS: tuple[tuple[int, int], ...] = ((400_000, 1), (150_000, 2), (50_0
 # Drift detection: TF-IDF cosine similarity between the new prompt and a
 # recency-weighted view of recent prompts. Low similarity ⇒ the loaded history
 # is now off-topic and is just inflating cache-read cost. Cooldown-gated.
-_DRIFT_SIM_THRESHOLD = 0.18  # cosine below this == drifted
+_DRIFT_SIM_THRESHOLD = 0.18  # cosine below this == a divergent prompt
+# Word-overlap similarity cannot reliably tell a real topic switch from ordinary
+# continuous work: consecutive coding turns on the SAME project routinely score
+# ~0 cosine because each turn names different files/symbols, so a short streak is
+# not enough signal. Require this many *consecutive* divergent prompts before the
+# early (>=25k) stale-context nudge may fire, and the nudge itself never claims
+# the conversation is "unrelated" — it only flags that older context may be stale
+# (see _compaction_advice_msg). Together these keep false early nudges rare and
+# non-accusatory while still catching genuinely abandoned context.
+_DRIFT_CONSECUTIVE_REQUIRED = 4
 _DRIFT_MIN_EARLIER_PROMPTS = 4
+_DRIFT_MIN_CURRENT_TOKENS = 8  # short prompts are continuations, not drifts — skip classification
 _DRIFT_HISTORY_CAP = 8
 _DRIFT_STOPWORDS = frozenset(
     "the a an and or but to of in on for with at by from is are be this that it as we i you "
     "can could would should do does did please now then make add fix update change use let".split()
+)
+
+# Working-set veto for drift: identifier tokens from the files under active
+# edit. A divergent-looking prompt that names a file/dir/symbol the session is
+# editing is in-context (coding turns share little prose but the same repo
+# region), so it must not count toward the drift streak. This is the semantic
+# signal that word-overlap cosine fundamentally cannot see.
+_WORKING_SET_RECENT_EDITS = 12  # scan back this many file_edit events
+_WORKING_SET_MIN_OVERLAP = 2  # shared identifier tokens that veto a drift
+_PATH_STOPWORDS = frozenset(
+    "src lib app core common base util utils helper helpers main index init mod "
+    "test tests spec specs py js ts tsx jsx go rs java".split()
 )
 
 
@@ -305,7 +327,7 @@ def _cosine_drift(current: list[str], history: list[list[str]]) -> float | None:
     More accurate than raw term-overlap: rare/topical terms dominate via IDF,
     recent prompts weigh more than old ones, and cosine normalises for length.
     """
-    if len(history) < _DRIFT_MIN_EARLIER_PROMPTS or len(current) < 4:
+    if len(history) < _DRIFT_MIN_EARLIER_PROMPTS or len(current) < _DRIFT_MIN_CURRENT_TOKENS:
         return None
     docs = [*history, current]
     n = len(docs)
@@ -336,7 +358,65 @@ def _cosine_drift(current: list[str], history: list[list[str]]) -> float | None:
     norm_hist = math.sqrt(sum(v * v for v in hist.values()))
     if norm_cur == 0 or norm_hist == 0:
         return None
-    return dot / (norm_cur * norm_hist)
+    sim_history = dot / (norm_cur * norm_hist)
+
+    # Also check against the most recent prompt alone.  A follow-up question
+    # often has low cosine vs. the full history (diverse earlier turns dilute
+    # the signal) but is clearly in-context relative to the preceding message.
+    last_vec = _vec(history[-1])
+    norm_last = math.sqrt(sum(v * v for v in last_vec.values()))
+    if norm_last > 0:
+        dot_last = sum(weight * last_vec.get(term, 0.0) for term, weight in cur.items())
+        return max(sim_history, dot_last / (norm_cur * norm_last))
+    return sim_history
+
+
+def _path_tokens(path: str) -> set[str]:
+    """Identifier tokens from a file path: immediate dir + basename, split on
+    snake_case/camelCase and stripped of generic structural names."""
+    p = Path(path)
+    base = re.sub(r"\.[A-Za-z0-9]+$", "", p.name)  # drop extension
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", f"{p.parent.name} {base}")
+    return {t for t in _topic_tokens(spaced) if t not in _PATH_STOPWORDS}
+
+
+def _recent_working_set(session_id: str | None) -> set[str]:
+    """Identifier tokens for the files most recently edited this session.
+
+    Reads the last few ``file_edit`` events (paths only) from the run ledger —
+    the live "working set". Returns an empty set on any error, in which case the
+    veto simply does not apply. Only consulted for divergent prompts, so the
+    ledger read stays off the hot path for ordinary in-topic turns.
+    """
+    if not session_id:
+        return set()
+    try:
+        run_file = _atelier_root() / "sessions" / session_id / "run.json"
+        data = json.loads(run_file.read_text("utf-8"))
+    except (OSError, ValueError, TypeError):
+        return set()
+    tokens: set[str] = set()
+    seen = 0
+    events = data.get("events", []) if isinstance(data, dict) else []
+    for event in reversed(events):
+        if not isinstance(event, dict) or event.get("kind") != "file_edit":
+            continue
+        path = (event.get("payload") or {}).get("path")
+        if isinstance(path, str) and path:
+            tokens |= _path_tokens(path)
+            seen += 1
+            if seen >= _WORKING_SET_RECENT_EDITS:
+                break
+    return tokens
+
+
+def _prompt_in_working_set(prompt: str, working_set: set[str]) -> bool:
+    """True when *prompt* shares >= _WORKING_SET_MIN_OVERLAP identifier tokens
+    with the files under active edit — i.e. it is on-topic for current work."""
+    if not working_set:
+        return False
+    overlap = set(_topic_tokens(prompt)) & working_set
+    return len(overlap) >= _WORKING_SET_MIN_OVERLAP
 
 
 def _compact_cooldown(occupancy: int) -> int:
@@ -353,8 +433,8 @@ def _compaction_advice_msg(occupancy: int, window: int, model: str | None, drift
     pct_part = f" (~{min(100, round(occupancy * 100 / window))}% of the window)" if window > 0 else ""
     if drifted:
         head = (
-            f"This prompt looks unrelated to the earlier conversation, yet ~{tok} tokens"
-            f"{pct_part} of now-stale history are still loaded"
+            f"~{tok} tokens{pct_part} of earlier context may now be stale "
+            f"and are still loaded"
         )
     else:
         head = f"Context is ~{tok} tokens{pct_part}"
@@ -429,8 +509,9 @@ def _maybe_emit_compaction_advice(prompt: str, transcript_path: str, last_user_p
     """Decide whether to nudge for compaction. Fail-open.
 
     Fires on absolute occupancy (>=100k tokens) so it works the same at 200k or
-    1M windows, earlier (>=25k) when the topic has drifted, and re-nudges more
-    often as occupancy grows. Cooldown + rolling topic history live in session
+    1M windows, earlier (>=25k) only after the topic has drifted across several
+    consecutive prompts, and re-nudges more often as occupancy grows. Cooldown +
+    rolling topic history live in session
     state. Returns the nudge text when one should be shown, else None.
 
     The ``last_user_prompt`` persist is folded into this function's single
@@ -450,10 +531,27 @@ def _maybe_emit_compaction_advice(prompt: str, transcript_path: str, last_user_p
         if state.get("precompact_pending") or sharp_drop:
             state["prompt_topic_history"] = []
             state.pop("last_compact_notice_count", None)
+            state.pop("drift_streak", None)
         history_raw = [h for h in state.get("prompt_topic_history", []) if isinstance(h, str)]
         history_tok = [_topic_tokens(h) for h in history_raw]
         sim = _cosine_drift(_topic_tokens(prompt), history_tok)
-        drifted = sim is not None and sim < _DRIFT_SIM_THRESHOLD
+        # Sustained-drift gate: track consecutive divergent prompts. A single
+        # low-similarity prompt mid-task is almost always a continuation that
+        # reuses few earlier terms, so one divergent turn must NOT fire the
+        # "unrelated" nudge. Any in-context prompt (short, high-overlap, or too
+        # little history to judge) breaks the streak and resets it to zero.
+        diverges = sim is not None and sim < _DRIFT_SIM_THRESHOLD
+        # Working-set veto: a divergent-looking prompt that still names files,
+        # dirs, or symbols under active edit is in-context, not a topic switch.
+        # Word-overlap cosine misses this because coding turns reuse little
+        # prose; the files being edited are the real topic signal.
+        if diverges and _prompt_in_working_set(
+            prompt, _recent_working_set(state.get("session_id") or state.get("active_session_id"))
+        ):
+            diverges = False
+        streak = (int(state.get("drift_streak", 0) or 0) + 1) if diverges else 0
+        state["drift_streak"] = streak
+        drifted = streak >= _DRIFT_CONSECUTIVE_REQUIRED
         count = int(state.get("prompt_count", 0) or 0)
         # Persist rolling history + counter regardless of whether we nudge.
         history_raw.append(prompt[:500])

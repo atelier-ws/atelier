@@ -222,6 +222,7 @@ These commands support performance validation and cost-accounting workflows.
 | Command                   | Purpose                                        |
 | ------------------------- | ---------------------------------------------- |
 | `atelier benchmark ...`   | Run benchmark suites and benchmark reports.    |
+| `atelier benchmark local` | BYO-repo A/B: Atelier vs vanilla on your repo. |
 | `atelier savings`         | Aggregate cost and token savings.              |
 | `atelier savings-detail`  | Show per-operation savings breakdowns.         |
 | `atelier savings-reset`   | Reset persisted savings state.                 |
@@ -236,6 +237,22 @@ atelier benchmark full --json
 atelier savings --json
 atelier loop-report --help
 ```
+
+`atelier benchmark local` is the user-facing BYO benchmark, also surfaced as the
+`/benchmark` skill: point it at your own git repo and supply your own coding
+prompts to compare Atelier against a vanilla Claude Code baseline on the same
+model. It prints an up-front cost estimate and asks to confirm before any spend.
+
+```bash
+atelier benchmark local --repo . --prompt "add a docstring to the entry point"
+atelier benchmark local --repo . --prompt "x" --estimate-only
+```
+
+Wire capture is off by default — cost comes from the CLI receipts, so no
+mitmproxy or MITM CA cert is needed. Pass `--capture` to opt into mitmproxy
+wire-level cost verification (requires `mitmproxy` and its CA cert).
+
+The internal/dev suites are `atelier benchmark {codebench,atelierbench,mcp,providers}`.
 
 ## Configuration and Account State
 

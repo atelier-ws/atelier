@@ -92,14 +92,15 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "get_symbols_overview", "family": "file_outline", "benchmarked": True},
         {"surface": "search_for_pattern:nohit", "family": "nohit_search", "benchmarked": True},
         {"surface": "find_referencing_symbols", "family": "references", "benchmarked": True},
+        {"surface": "find_referencing_symbols:callers", "family": "callers", "benchmarked": True},
     ],
     "codegraph": [
         {"surface": "query:exact", "family": "exact_symbol", "benchmarked": True},
         {"surface": "query:search", "family": "exact_search", "benchmarked": True},
         {"surface": "query:substring", "family": "substring_search", "benchmarked": True},
         {"surface": "query:nohit", "family": "nohit_search", "benchmarked": True},
-        {"surface": "callers", "family": "graph", "benchmarked": False},
-        {"surface": "callees", "family": "graph", "benchmarked": False},
+        {"surface": "callers", "family": "callers", "benchmarked": True},
+        {"surface": "callees", "family": "callees", "benchmarked": True},
     ],
     "code-index-mcp": [
         {"surface": "search_code:exact", "family": "exact_search", "benchmarked": True},
@@ -119,17 +120,20 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "get_file_outline", "family": "file_outline", "benchmarked": True},
         {"surface": "search_text:nohit", "family": "nohit_search", "benchmarked": True},
         {"surface": "find_references", "family": "references", "benchmarked": True},
-        {"surface": "get_call_hierarchy", "family": "callers", "benchmarked": True},
+        {"surface": "get_call_hierarchy:callers", "family": "callers", "benchmarked": True},
+        {"surface": "get_call_hierarchy:callees", "family": "callees", "benchmarked": True},
         {"surface": "search_symbols:fuzzy", "family": "fuzzy_symbol", "benchmarked": True},
         {"surface": "get_blast_radius", "family": "graph", "benchmarked": False},
     ],
     "ast-grep": [
         {"surface": "run:pattern", "family": "structural_search", "benchmarked": True},
+        {"surface": "run:callers", "family": "callers", "benchmarked": True},
     ],
     "scip-python": [
         {"surface": "scip:definition", "family": "exact_symbol", "benchmarked": True},
         {"surface": "scip:outline", "family": "file_outline", "benchmarked": True},
         {"surface": "scip:references", "family": "references", "benchmarked": True},
+        {"surface": "scip:callers", "family": "callers", "benchmarked": True},
     ],
     "universal-ctags": [
         {"surface": "readtags:exact", "family": "exact_symbol", "benchmarked": True},
@@ -324,6 +328,9 @@ class AtelierRunner(_RunnerBase):
                 "op": "symbol",
                 "repo_root": str(self.snapshot_root),
                 "symbol_name": case.symbol_name,
+                # Pass the definition file so Atelier picks the right symbol
+                # when the same name exists in multiple files or languages.
+                "path": case.path,
                 "budget_tokens": 4000,
             }
         elif case.family in {"exact_search", "substring_search", "nohit_search"}:
@@ -368,6 +375,10 @@ class AtelierRunner(_RunnerBase):
                 "repo_root": str(self.snapshot_root),
                 "symbol_name": case.symbol_name,
                 "path": case.path,
+                # Scope to src/atelier/ to match the ground-truth corpus;
+                # without this the op surfaces refs in examples/ and
+                # integrations/ that are not in expected_paths.
+                "file_glob": "src/atelier/**/*.py",
                 "limit": 50,
                 "budget_tokens": 4000,
             }
@@ -581,7 +592,10 @@ class SerenaMatrixRunner(_RunnerBase):
         elif case.family == "file_outline":
             tool_name = "get_symbols_overview"
             params = {"relative_path": case.path, "depth": 0}
-        elif case.family == "references":
+        elif case.family in {"references", "callers"}:
+            # Callers are the call-site subset of a symbol's references, so
+            # find_referencing_symbols (LSP find-references) surfaces the caller
+            # files the path-based scorer checks.
             tool_name = "find_referencing_symbols"
             params = {
                 "name_path": case.symbol_name,
@@ -625,16 +639,35 @@ class CodeGraphRunner(_RunnerBase):
 
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
         assert self.snapshot_root is not None
-        command = [
-            "codegraph",
-            "query",
-            "-p",
-            str(self.snapshot_root),
-            "-l",
-            "20",
-            "-j",
-            case.query,
-        ]
+        if case.family in {"callers", "callees"}:
+            # CodeGraph ships dedicated `callers`/`callees` subcommands backed by
+            # the resolved call-edge graph: `callers` yields call-site files and
+            # `callees` resolves each call to its definition file, so both contain
+            # the paths the path-based scorer checks. Flags mirror the `query`
+            # subcommand (-p project, -l limit, -j json); they are not
+            # independently verified against the installed CLI, so a flag mismatch
+            # surfaces as an honest case failure rather than a silently wrong score.
+            command = [
+                "codegraph",
+                case.family,
+                "-p",
+                str(self.snapshot_root),
+                "-l",
+                "20",
+                "-j",
+                case.symbol_name or case.query,
+            ]
+        else:
+            command = [
+                "codegraph",
+                "query",
+                "-p",
+                str(self.snapshot_root),
+                "-l",
+                "20",
+                "-j",
+                case.query,
+            ]
         proc = run_cmd(command, timeout=300)
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
@@ -644,7 +677,7 @@ class CodeGraphRunner(_RunnerBase):
 class AstGrepRunner(_RunnerBase):
     """Raw ast-grep CLI as a structural-search comparator for Atelier's pattern op.
 
-    Uses ``npx @ast-grep/cli`` so it works wherever Node is available; if the CLI
+    Uses ``npx -p @ast-grep/cli sg`` so it works wherever Node is available; if the CLI
     cannot be fetched the shard is recorded as startup/case failed (honest).
     """
 
@@ -669,22 +702,35 @@ class AstGrepRunner(_RunnerBase):
 
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
         assert self.snapshot_root is not None
+        # For callers, synthesize a structural call-site pattern `name($$$)` so the
+        # match files are the caller files the scorer checks. This matches bare
+        # calls (`name(...)`); method-style `obj.name(...)` calls are not captured,
+        # so recall is a lower bound -- but the scorer only needs one true caller
+        # file present, and ast-grep's name-based matching aligns with the
+        # AST-name-based ground truth. Callees are intentionally NOT claimed:
+        # ast-grep returns the call-SITE file, not the callee's DEFINITION file the
+        # callees scorer checks, because it cannot resolve a call to its definition
+        # -- so a callees arm would score ~0 and misrepresent the tool.
+        pattern = f"{case.symbol_name}($$$)" if case.family == "callers" else case.query
         command = [
             "npx",
             "--yes",
+            "-p",
             "@ast-grep/cli",
+            "sg",
             "run",
             "--pattern",
-            case.query,
+            pattern,
             "--lang",
             "python",
             "--json",
             str(self.snapshot_root / "src" / "atelier"),
         ]
         proc = run_cmd(command, timeout=300)
-        if proc.returncode != 0:
+        # sg exits 0 on matches, 1 on no matches (valid empty []); anything >1 is a real error.
+        if proc.returncode > 1 or (proc.returncode == 1 and not proc.stdout.strip().startswith("[")):
             raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
-        return json.dumps({"command": command}, ensure_ascii=False), proc.stdout
+        return json.dumps({"command": command}, ensure_ascii=False), proc.stdout or "[]"
 
 
 class CtagsRunner(_RunnerBase):
@@ -849,6 +895,18 @@ class ScipPythonRunner(_RunnerBase):
                 # (name-based) granularity as the reference ground truth, so a
                 # precise tool is not penalised for distinguishing same-named
                 # symbols the AST-derived expected set conflates.
+                #
+                # KNOWN RECALL CEILING (references~0.06, callers~0.13 -- verified
+                # against the real index, not a parser bug): this leaf-name index is
+                # already the MOST permissive recovery this index supports.
+                # @sourcegraph/scip-python (Pyright) records in-file uses of imported
+                # names as document-scoped `local ...` symbols and emits only
+                # `is_implementation` relationships -- never `is_reference` -- so a
+                # cross-module call site carries no link back to the canonical symbol
+                # and is unrecoverable here. Keying by full canonical symbol id
+                # instead measures strictly WORSE (references 0.05 vs 0.06). Lifting
+                # these scores would require a different indexer/index, not a change
+                # to this parser.
                 self._docs_by_leaf.setdefault(leaf, set()).add(full)
                 if int(occ.get("symbol_roles", 0) or 0) & 1:  # Definition bit
                     bucket = self._defs_by_name.setdefault(leaf, [])
@@ -875,10 +933,13 @@ class ScipPythonRunner(_RunnerBase):
                 "path": case.path,
                 "symbols": self._defs_by_doc.get(case.path or "", []),
             }
-        elif case.family == "references":
+        elif case.family in {"references", "callers"}:
+            # SCIP resolves occurrences type-accurately; callers are the call-site
+            # subset of a symbol's references, so the reference-file set surfaces
+            # the caller files the path-based scorer checks.
             payload = {
                 "provider": "scip-python",
-                "op": "references",
+                "op": case.family,
                 "symbol": name,
                 "files": sorted(self._docs_by_leaf.get(name, set()))[:50],
             }
@@ -965,6 +1026,8 @@ from mcp.server.fastmcp import Context
 lifespan = CodeIndexerContext(base_path="", settings=ProjectSettings("", skip_load=True))
 ctx = Context(request_context=_BootstrapRequestContext(lifespan), fastmcp=mcp)
 ProjectManagementService(ctx).initialize_project(str(repo_root))
+from code_index_mcp.indexing import get_index_manager as _get_deep_mgr
+_get_deep_mgr().set_project_path(str(repo_root))
 {rebuild_block}
 
 if payload["kind"] == "search":
@@ -1261,18 +1324,22 @@ class JCodeMunchRunner(_RunnerBase):
         elif case.family == "references":
             arguments = {
                 "repo": self.repo_id,
-                "symbol": case.symbol_name,
-                "file_path": case.path,
+                "identifier": case.symbol_name,
                 "max_results": 50,
             }
             result = self._tool_call("find_references", arguments)
         elif case.family == "callers":
             arguments = {
                 "repo": self.repo_id,
-                "symbol": case.symbol_name,
-                "file_path": case.path,
+                "symbol_id": case.symbol_name,
                 "direction": "callers",
-                "max_results": 50,
+            }
+            result = self._tool_call("get_call_hierarchy", arguments)
+        elif case.family == "callees":
+            arguments = {
+                "repo": self.repo_id,
+                "symbol_id": case.symbol_name,
+                "direction": "callees",
             }
             result = self._tool_call("get_call_hierarchy", arguments)
         elif case.family == "fuzzy_symbol":
