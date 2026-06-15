@@ -815,7 +815,9 @@ class CopilotImporter:
         if not workspace_path.exists():
             return None
         try:
-            workspace_data: dict[str, Any] = yaml.safe_load(workspace_path.read_text(encoding="utf-8")) or {}
+            workspace_data: dict[str, Any] = (
+                yaml.safe_load(workspace_path.read_text(encoding="utf-8", errors="replace")) or {}
+            )
         except (OSError, yaml.YAMLError):
             return None
 
@@ -833,7 +835,7 @@ class CopilotImporter:
 
         events_raw = events_path.read_text(encoding="utf-8", errors="replace")
         redacted_events = redact(events_raw)
-        workspace_raw = workspace_path.read_text(encoding="utf-8")
+        workspace_raw = workspace_path.read_text(encoding="utf-8", errors="replace")
         redacted_workspace = redact(workspace_raw)
 
         for filename, raw_content, redacted_content in (
@@ -1062,7 +1064,7 @@ class CopilotImporter:
         chunks: list[tuple[str, str]] = []  # (source_kind, content)
         for jsonl_path in sorted(debug_log_dir.glob("*.jsonl")):
             try:
-                content = jsonl_path.read_text(encoding="utf-8")
+                content = jsonl_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
             chunks.append((jsonl_path.name, content))
