@@ -541,31 +541,50 @@ class AtelierRuntimeCore:
     def _live_context_fill(self, ledger: RunLedger) -> float:
         """Estimate the live context fill fraction for a ledger.
 
-        Mirrors the audit fill formula ``(effective_input + always_on) /
-        max(window, 1)`` using the ledger's own LLM-call token totals and the
-        context window of its dominant model. ``always_on`` defaults to 0
-        (matching the audit module when no context audit is supplied).
+        Mirrors ``optimization/audit.py``'s per-trace fill formula
+        ``(effective_input + always_on) / max(window, 1)``: the audit computes
+        fill from a *single* trace's input occupancy, not a running total. So
+        this estimates the live window occupancy from the MOST-RECENT LLM call
+        for the dominant model rather than summing every historical call -- a
+        cumulative sum monotonically inflates the fraction over a long session
+        and contradicts the "live fill" the gate needs. ``always_on`` defaults
+        to 0 (matching the audit module when no context audit is supplied).
         """
         from atelier.core.capabilities.optimization.audit import context_window_for_model
 
-        effective_input = 0
+        def _occupancy(payload: dict[str, Any]) -> int:
+            return (
+                int(payload.get("input_tokens", 0) or 0)
+                + int(payload.get("cache_read_tokens", 0) or 0)
+                + int(payload.get("cache_write_tokens", 0) or 0)
+            )
+
+        # Tally per-model totals only to pick the dominant model; the fill
+        # itself comes from that model's most-recent call, not the sum.
         token_by_model: dict[str, int] = {}
         for event in ledger.events:
             payload = event.payload
             if payload.get("kind") != "llm_call":
                 continue
-            tokens = (
-                int(payload.get("input_tokens", 0) or 0)
-                + int(payload.get("cache_read_tokens", 0) or 0)
-                + int(payload.get("cache_write_tokens", 0) or 0)
-            )
-            effective_input += tokens
             model = str(payload.get("model", "") or "")
-            token_by_model[model] = token_by_model.get(model, 0) + tokens
+            token_by_model[model] = token_by_model.get(model, 0) + _occupancy(payload)
 
-        dominant_model = max(token_by_model, key=lambda m: token_by_model[m]) if token_by_model else ""
+        if not token_by_model:
+            return 0.0
+        dominant_model = max(token_by_model, key=lambda m: token_by_model[m])
+
+        recent_occupancy = 0
+        for event in reversed(ledger.events):
+            payload = event.payload
+            if payload.get("kind") != "llm_call":
+                continue
+            if str(payload.get("model", "") or "") != dominant_model:
+                continue
+            recent_occupancy = _occupancy(payload)
+            break
+
         window = context_window_for_model(dominant_model)
-        return effective_input / max(window, 1)
+        return recent_occupancy / max(window, 1)
 
     def benchmark_runtime_metrics(self) -> dict[str, Any]:
         supervision = self.tool_supervision.status()

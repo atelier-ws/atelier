@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
 from dataclasses import dataclass
@@ -156,7 +157,16 @@ def _parse_json_output(stdout: str) -> dict[str, Any]:
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
-        return {"matches": [json.loads(line) for line in text.splitlines() if line.strip()]}
+        # Tolerant fallback for newline-delimited (`--json=stream`) output. Guard
+        # each line's parse: a single malformed line must not crash the parser,
+        # so unparseable lines are skipped rather than propagating the error.
+        matches: list[Any] = []
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            with contextlib.suppress(json.JSONDecodeError):
+                matches.append(json.loads(line))
+        return {"matches": matches}
     if isinstance(parsed, list):
         return {"matches": parsed}
     if isinstance(parsed, dict):
@@ -172,9 +182,14 @@ class AstGrepAdapter:
         repo_root: str | Path,
         *,
         binary_path: Path | None = None,
+        timeout: float = 120.0,
     ) -> None:
         self.repo_root = Path(repo_root).resolve()
         self.binary_path = binary_path
+        # Bounded wall-clock per ast-grep invocation. A stalled child is not an
+        # exception, so without this a full-repo scan can hang forever and the
+        # caller's `except Exception` never fires.
+        self.timeout = timeout
 
     def _resolve_binary(self) -> Path:
         if self.binary_path is not None:
@@ -187,13 +202,20 @@ class AstGrepAdapter:
 
     def _run(self, args: list[str]) -> subprocess.CompletedProcess[str]:
         command = [str(self._resolve_binary()), *args]
-        result = subprocess.run(
-            command,
-            cwd=self.repo_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                command,
+                cwd=self.repo_root,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=self.timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # A hang is not an exception subprocess raises on its own; surface it
+            # as a domain error so callers (whose guard is `except Exception`) see
+            # a failure instead of blocking indefinitely.
+            raise RuntimeError(f"ast-grep command timed out after {self.timeout:g}s") from exc
         stderr = result.stderr.strip()
         # ast-grep follows grep's exit-code convention: 0 = matches found,
         # 1 = no matches (NOT an error), >=2 = a real failure (bad lang/args).
@@ -338,7 +360,13 @@ class AstGrepAdapter:
         if no_ignore:
             # Temp dirs, dotfiles, and worktrees are frequently gitignored;
             # without this a scan silently returns nothing on hidden/VCS paths.
-            args.extend(["--no-ignore", "hidden", "--no-ignore", "vcs"])
+            args.extend(["--no-ignore", "hidden"])
+            # Only override VCS ignores when explicit paths are supplied (e.g. a
+            # caller targeting a worktree or VCS-hidden file). A default
+            # whole-repo scan must NOT walk .git: it is huge, irrelevant to
+            # source rules, and a frequent source of stalls.
+            if paths:
+                args.extend(["--no-ignore", "vcs"])
         scan_paths = paths if paths else [str(self.repo_root)]
         args.extend(scan_paths)
         result = self._run(args)

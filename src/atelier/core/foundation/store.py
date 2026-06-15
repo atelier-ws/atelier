@@ -256,6 +256,7 @@ class ContextStore:
         self.traces_dir.mkdir(parents=True, exist_ok=True)
         self.rubrics_dir.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
+            self._migrate_playbook_rename(conn)
             conn.executescript(SCHEMA)
             import contextlib
 
@@ -287,6 +288,41 @@ class ContextStore:
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
         return conn
+
+    @staticmethod
+    def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type IN ('table','virtual table') AND name = ?",
+            (name,),
+        ).fetchone()
+        return row is not None
+
+    def _migrate_playbook_rename(self, conn: sqlite3.Connection) -> None:
+        """Rename the legacy ``reasonblocks`` schema to ``playbooks`` in place.
+
+        Pre-v3 SQLite databases stored playbooks in a table named
+        ``reasonblocks`` (with ``reasonblocks_fts`` and ``idx_reasonblocks_*``).
+        The v3 :data:`SCHEMA` creates ``playbooks`` with
+        ``CREATE TABLE IF NOT EXISTS``; without this migration an upgraded DB
+        would keep the populated ``reasonblocks`` table and gain a *second*,
+        empty ``playbooks`` table -- orphaning every existing row.
+
+        This runs BEFORE :data:`SCHEMA` so the rename target is still free, and
+        is guarded so it is a safe no-op on a fresh DB (no ``reasonblocks``) and
+        on an already-migrated DB (``playbooks`` already present), making it
+        idempotent.
+        """
+        if self._table_exists(conn, "playbooks") or not self._table_exists(conn, "reasonblocks"):
+            return
+        conn.execute("ALTER TABLE reasonblocks RENAME TO playbooks")
+        # SQLite has no ALTER INDEX RENAME; drop the legacy indexes and let
+        # SCHEMA recreate them under their new names (CREATE INDEX IF NOT EXISTS).
+        conn.execute("DROP INDEX IF EXISTS idx_reasonblocks_domain")
+        conn.execute("DROP INDEX IF EXISTS idx_reasonblocks_status")
+        # The contentless FTS mirror keeps its indexed rows across the rename.
+        if self._table_exists(conn, "reasonblocks_fts") and not self._table_exists(conn, "playbooks_fts"):
+            conn.execute("ALTER TABLE reasonblocks_fts RENAME TO playbooks_fts")
+        conn.commit()
 
     def _apply_v2_migrations(self, conn: sqlite3.Connection) -> None:
         from atelier.infra.storage.migrations import SQLITE_MIGRATIONS, read_migration
