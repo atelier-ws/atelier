@@ -28,8 +28,40 @@ def test_compact_groups_grep_output_deterministically() -> None:
     content = "\n".join(f"src/app.py:{i}: hit" for i in range(800))
     result = compact(content, content_type="grep", budget_tokens=80)
     assert result.method == "deterministic_truncate"
-    assert "and 797 more" in result.compacted
+    # A single file's overflow is summarized once, not scattered.
+    assert result.compacted.count("more in src/app.py") == 1
+    assert "more in src/app.py" in result.compacted
     assert result.compacted_tokens < result.original_tokens
+
+
+def test_compact_grep_keeps_more_hits_when_budget_allows() -> None:
+    # The 4th+ hit must not be silently dropped: a larger budget keeps more.
+    content = "\n".join(f"src/app.py:{i}: hit" for i in range(800))
+    small = compact(content, content_type="grep", budget_tokens=40)
+    large = compact(content, content_type="grep", budget_tokens=4000)
+    small_hits = small.compacted.count(": hit")
+    large_hits = large.compacted.count(": hit")
+    assert large_hits > small_hits
+    assert large_hits > 3
+
+
+def test_compact_grep_does_not_scatter_context_lines() -> None:
+    # Group separators and context lines stay attached to their file instead of
+    # spawning pseudo-file buckets that fragment a single file's matches.
+    content = "\n".join(
+        [
+            "src/app.py:1: alpha",
+            "src/app.py-2- context",
+            "--",
+            "src/app.py:3: beta",
+        ]
+        + [f"src/app.py:{i}: more match line {i}" for i in range(4, 200)]
+    )
+    result = compact(content, content_type="grep", budget_tokens=40)
+    # Only the real file is summarized — no "unknown" pseudo-file from the
+    # separator / context lines.
+    assert "more in unknown" not in result.compacted
+    assert "more in src/app.py" in result.compacted
 
 
 def test_compact_uses_llm_when_enable_llm_set(monkeypatch: pytest.MonkeyPatch) -> None:

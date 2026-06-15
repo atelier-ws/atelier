@@ -1488,11 +1488,8 @@ def _parse_codex_format_a(content: str) -> list[dict[str, Any]]:
                 )
                 turns.append(last_turn)
         elif pt == "exec_command_end":
-            cmd = str(
-                payload.get("command", "")[-1]
-                if isinstance(payload.get("command"), list)
-                else payload.get("command", "")
-            )
+            _cmd_val = payload.get("command", "")
+            cmd = str((_cmd_val[-1] if _cmd_val else "") if isinstance(_cmd_val, list) else _cmd_val)
             if cmd:
                 last_turn = _turn("shell_command", cmd[:100], cmd, at=at, raw=ev)
                 turns.append(last_turn)

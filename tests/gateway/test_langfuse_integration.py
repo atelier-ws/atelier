@@ -57,6 +57,37 @@ def test_emit_tool_call_records_and_scrubs(monkeypatch: pytest.MonkeyPatch) -> N
     assert ev["level"] == "DEFAULT"
 
 
+def test_emit_tool_call_redacts_nested_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_LANGFUSE_ENABLED", "true")
+    fake = _fake(monkeypatch)
+    lf.emit_tool_call(
+        tool="sql",
+        args={
+            "sql": "SELECT 1",
+            "connection_string": "postgresql://u:p@host/db",
+            "api_key": "sk-short",
+            "nested": {"DSN": "x", "AuthToken": "y", "ok": 1},
+            "items": ["plain", {"Authorization": "Bearer z", "password": "p"}],
+        },
+        duration_ms=5,
+        response_size=1,
+        status="ok",
+    )
+    sent = fake.events[0]["input"]
+    # Secret-bearing keys are redacted at every nesting level, case-insensitively,
+    # regardless of value length.
+    assert sent["connection_string"] == "<redacted>"
+    assert sent["api_key"] == "<redacted>"
+    assert sent["nested"]["DSN"] == "<redacted>"
+    assert sent["nested"]["AuthToken"] == "<redacted>"
+    assert sent["items"][1]["Authorization"] == "<redacted>"
+    assert sent["items"][1]["password"] == "<redacted>"
+    # Non-secret telemetry is preserved intact.
+    assert sent["sql"] == "SELECT 1"
+    assert sent["nested"]["ok"] == 1
+    assert sent["items"][0] == "plain"
+
+
 def test_emit_tool_call_error_level(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_LANGFUSE_ENABLED", "true")
     fake = _fake(monkeypatch)

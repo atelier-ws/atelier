@@ -170,8 +170,17 @@ def save_swarm_state(path: Path, state: SwarmRunState) -> None:
     _write_json(path, state.model_dump(mode="json"))
 
 
+_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _validate_run_id(run_id: str) -> str:
+    if not isinstance(run_id, str) or not _RUN_ID_PATTERN.match(run_id):
+        raise ValueError(f"Invalid swarm run_id: {run_id!r}")
+    return run_id
+
+
 def swarm_run_dir(root: Path, run_id: str) -> Path:
-    return Path(root).resolve() / "swarm" / "runs" / run_id
+    return Path(root).resolve() / "swarm" / "runs" / _validate_run_id(run_id)
 
 
 def resolve_state_path(root: Path, run_id: str) -> Path:
@@ -671,15 +680,12 @@ def _evaluate_wave(
             json_schema=_SWARM_EVALUATION_SCHEMA,
         )
     except internal_llm.InternalLLMError as exc:
+        return _fallback_wave_evaluation(state, children, error=str(exc))
+    finally:
         if previous_backend is None:
             os.environ.pop(env_key, None)
         else:
             os.environ[env_key] = previous_backend
-        return _fallback_wave_evaluation(state, children, error=str(exc))
-    if previous_backend is None:
-        os.environ.pop(env_key, None)
-    else:
-        os.environ[env_key] = previous_backend
 
     if not isinstance(response, dict):
         return _fallback_wave_evaluation(state, children, error="Evaluator returned a non-object response.")
@@ -2142,6 +2148,10 @@ def apply_wave_candidates(
 ) -> bool:
     integration = Path(state.integration_worktree)
     ranked = rank_children(wave_children)
+    # Write candidate patches before evaluation so the evaluator evidence
+    # (patch_preview, digest-based duplicate hints) and the deterministic
+    # fallback evaluator can read real diffs instead of nonexistent files.
+    patch_paths: dict[str, Path | None] = {child.child_id: _write_child_patch(child) for child in ranked}
     evaluation = _evaluate_wave(state, wave, ranked)
     wave.evaluation = evaluation
     accepted: list[str] = []
@@ -2217,7 +2227,7 @@ def apply_wave_candidates(
             rejected.append(child.child_id)
             wave.rejected_child_notes[child.child_id] = child.acceptance_note
             continue
-        patch_path = _write_child_patch(child)
+        patch_path = patch_paths.get(child.child_id)
         if patch_path is None:
             child.accepted = False
             rejected.append(child.child_id)
@@ -2349,6 +2359,12 @@ def launch_swarm_children(root: Path, state_path: Path) -> SwarmRunState:
     state.status = "running"
     state.coordinator_pid = os.getpid()
     save_swarm_state(state_path, state)
+
+    def _terminate(_signum: int, _frame: object) -> None:
+        raise KeyboardInterrupt
+
+    old_term = signal.getsignal(signal.SIGTERM)
+    signal.signal(signal.SIGTERM, _terminate)
     try:
         while True:
             state = load_swarm_state(state_path)
@@ -2454,6 +2470,8 @@ def launch_swarm_children(root: Path, state_path: Path) -> SwarmRunState:
         state.ranking_notes.append("Removed swarm worktrees after coordinator failure.")
         save_swarm_state(state_path, state)
         return state
+    finally:
+        signal.signal(signal.SIGTERM, old_term)
 
 
 def stop_swarm_run(*, root: Path, state_path: Path, cleanup: bool) -> SwarmRunState:
@@ -2482,10 +2500,14 @@ def cleanup_swarm_run(state: SwarmRunState) -> None:
         repo_root=Path(state.repo_root),
         pool_root=Path(state.worktree_pool),
     )
+    # A single locked or contended worktree makes `git worktree remove --force`
+    # exit non-zero; suppress per-worktree so one failure does not leak the rest.
     for child in state.children:
-        manager.remove_worktree(Path(child.worktree_path))
+        with contextlib.suppress(Exception):
+            manager.remove_worktree(Path(child.worktree_path))
     if state.integration_worktree:
-        manager.remove_worktree(Path(state.integration_worktree))
+        with contextlib.suppress(Exception):
+            manager.remove_worktree(Path(state.integration_worktree))
 
 
 def run_child_once(state_path: Path, child_id: str) -> SwarmChildState:

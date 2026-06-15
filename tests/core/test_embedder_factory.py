@@ -112,6 +112,27 @@ def test_make_code_embedder_uses_ollama_when_pinned_and_available(monkeypatch: p
     make_code_embedder.cache_clear()
 
 
+def test_make_code_embedder_revalidates_ollama_after_mid_session_outage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cached Ollama embedder must not be returned once Ollama goes down mid-session."""
+    make_code_embedder.cache_clear()
+    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "ollama")
+    monkeypatch.delenv("ATELIER_OFFLINE", raising=False)
+
+    availability = {"up": True}
+    monkeypatch.setattr(OllamaEmbedder, "is_available", lambda self: availability["up"])
+
+    first = make_code_embedder()
+    assert isinstance(first, OllamaEmbedder)
+
+    availability["up"] = False
+    second = make_code_embedder()
+    assert isinstance(second, LocalEmbedder)
+
+    make_code_embedder.cache_clear()
+
+
 def test_ollama_embedder_query_prefixes_and_normalizes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1,9 +1,9 @@
 """Find new top-level declarations in a diff that may duplicate existing code.
 
 Heuristic and name-based: parse the symbols a diff ADDS, then search the repo for
-other definitions of the same name outside the changed files. This is Atelier's
-local analog of baseline's findDuplications — it catches the choice-level bug of
-re-implementing something that already exists. Reuses ripgrep when present; fully
+other definitions of the same name outside the changed files — it catches the
+choice-level bug of re-implementing something that already exists. Reuses ripgrep
+when present; fully
 fail-open (returns an empty list on any problem).
 """
 

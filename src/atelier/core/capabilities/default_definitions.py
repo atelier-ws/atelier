@@ -295,19 +295,24 @@ def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     return meta, body
 
 
-def load_mode_docs(repo_root: Path | None = None) -> dict[str, ModeDoc]:
+def load_mode_docs(repo_root: Path | None = None, *, strict: bool = True) -> dict[str, ModeDoc]:
     root = _resolve_repo_root(repo_root)
     docs: dict[str, ModeDoc] = {}
     for path in sorted((root / MODES_DIR).glob("*.md")):
-        meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
-        name = meta["mode"]
-        docs[name] = ModeDoc(
-            name=name,
-            skill_description=meta["skill_description"],
-            agent_description=meta["agent_description"],
-            body=body.rstrip() + "\n",
-            source_path=path.relative_to(root),
-        )
+        try:
+            meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
+            doc = ModeDoc(
+                name=meta["mode"],
+                skill_description=meta["skill_description"],
+                agent_description=meta["agent_description"],
+                body=body.rstrip() + "\n",
+                source_path=path.relative_to(root),
+            )
+        except (ValueError, KeyError):
+            if strict:
+                raise
+            continue
+        docs[doc.name] = doc
     return docs
 
 
@@ -696,7 +701,7 @@ def _mcp_templates() -> dict[str, McpTemplate]:
 
 
 def build_default_registry(repo_root: Path | None = None) -> DefaultRegistry:
-    mode_docs = load_mode_docs(repo_root)
+    mode_docs = load_mode_docs(repo_root, strict=False)
     projections = _role_projections()
     policies = _tool_policies()
     roles: dict[str, DefaultRole] = {}

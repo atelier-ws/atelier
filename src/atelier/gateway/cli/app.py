@@ -242,11 +242,17 @@ def main() -> None:
                 project_root = None
             if project_root and shutil.which("uv"):
                 click.echo("Missing dependencies detected. Running `uv sync` to install them…", err=True)
-                subprocess.run(["uv", "sync"], cwd=str(project_root), check=False)
-                os.execv(
-                    sys.executable,
-                    [sys.executable, "-m", "atelier.gateway.cli", *sys.argv[1:]],
-                )
+                result = subprocess.run(["uv", "sync"], cwd=str(project_root), check=False)
+                if result.returncode == 0:
+                    os.execv(
+                        sys.executable,
+                        [sys.executable, "-m", "atelier.gateway.cli", *sys.argv[1:]],
+                    )
+                else:
+                    click.echo(
+                        f"`uv sync` failed (exit code {result.returncode}); cannot auto-install dependencies.",
+                        err=True,
+                    )
 
     command_name = _cli_command_name(argv)
     session_id, started_at = _begin_cli_telemetry(command_name)

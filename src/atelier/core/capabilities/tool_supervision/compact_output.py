@@ -126,15 +126,39 @@ def _head_tail(text: str, *, max_chars: int) -> str:
     return f"{text[:head]}\n... ({elided} chars elided) ...\n{text[-tail:]}"
 
 
-def _compact_grep(content: str) -> str:
+# Matches `path:lineno:` grep prefixes (filename then a numeric line number),
+# so only real match lines start a new file bucket — separators, blank lines,
+# and context lines stay attached to the file they belong to.
+_GREP_PREFIX = re.compile(r"^(?P<path>.+?):\d+:")
+
+
+def _compact_grep(content: str, budget_tokens: int = 80) -> str:
+    """Group grep output by file, keeping a budget-scaled number of hits each.
+
+    Lines are bucketed by the `path:lineno:` prefix; lines without it (group
+    separators, context lines) attach to the current file instead of scattering
+    into pseudo-files. The per-file keep count scales with the token budget so a
+    file's 4th+ hit is only elided when the budget is genuinely exhausted.
+    """
     grouped: dict[str, list[str]] = {}
+    order: list[str] = []
+    current = "unknown"
     for line in content.splitlines():
-        file_name = line.split(":", 1)[0] if ":" in line else "unknown"
-        grouped.setdefault(file_name, []).append(line)
+        match = _GREP_PREFIX.match(line)
+        if match:
+            current = match.group("path")
+        if current not in grouped:
+            grouped[current] = []
+            order.append(current)
+        grouped[current].append(line)
+    # Budget ~= budget_tokens*4 chars; keep at least 3 hits per file so small
+    # budgets still show real signal, and more when the budget allows.
+    per_file_keep = max(3, (budget_tokens * 4) // max(1, len(order)) // 80)
     parts: list[str] = []
-    for file_name, lines in grouped.items():
-        parts.extend(lines[:3])
-        remaining = len(lines) - 3
+    for file_name in order:
+        lines = grouped[file_name]
+        parts.extend(lines[:per_file_keep])
+        remaining = len(lines) - per_file_keep
         if remaining > 0:
             parts.append(f"... and {remaining} more in {file_name}")
     return "\n".join(parts)
@@ -193,7 +217,7 @@ def _compact_json(content: str) -> str | None:
 
 def deterministic_truncate(content: str, content_type: str, budget_tokens: int) -> str:
     if content_type == "grep":
-        return _compact_grep(content)
+        return _compact_grep(content, budget_tokens=budget_tokens)
     if content_type == "bash":
         return _compact_bash(content, budget_chars=max(200, budget_tokens * 4))
     if content_type == "tool_output":

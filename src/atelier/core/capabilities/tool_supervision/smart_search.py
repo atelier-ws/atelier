@@ -21,6 +21,7 @@ from atelier.core.capabilities.repo_map.graph import (
 )
 from atelier.core.capabilities.repo_map.pagerank import personalized_pagerank
 from atelier.core.capabilities.tool_supervision.search_read import search_read, search_read_to_dict
+from atelier.core.foundation.paths import confine_to_root
 from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
 from atelier.infra.embeddings.factory import get_embedder
 from atelier.infra.storage.vector import cosine_similarity
@@ -67,7 +68,10 @@ def _repo_root() -> Path:
 def _resolve_path(repo_root: Path, path: str) -> Path:
     raw = Path(path)
     resolved = raw if raw.is_absolute() else repo_root / raw
-    return resolved.resolve()
+    # Confine the agent-controlled path to the workspace root so smart_search
+    # cannot be coerced into reading files outside it. Raises ValueError on
+    # escape (including via symlinks, which confine_to_root resolves).
+    return confine_to_root(resolved, repo_root)
 
 
 def _iter_text_files(root: Path, *, limit: int = 500) -> list[Path]:

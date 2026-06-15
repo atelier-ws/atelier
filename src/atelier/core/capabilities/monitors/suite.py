@@ -85,8 +85,6 @@ def _bigrams(tokens: list[str]) -> set[tuple[str, str]]:
 
 
 def _jaccard(a: set[tuple[str, str]], b: set[tuple[str, str]]) -> float:
-    if not a and not b:
-        return 1.0
     union = a | b
     if not union:
         return 0.0

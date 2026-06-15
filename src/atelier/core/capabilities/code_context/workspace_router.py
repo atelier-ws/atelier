@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -65,8 +66,7 @@ class WorkspaceCodeRouter:
         provenance = "local"
         provenance_breakdown: dict[str, int] = {}
         mode: str | None = None
-        for repo_root in targets:
-            payload = self.engine_factory(repo_root).tool_search(**kwargs)
+        for repo_root, payload in self._search_payloads(targets, **kwargs):
             repo_name = self._repo_name_for_root(repo_root)
             merged_items.extend(self._annotate_items(list(payload.get("items", [])), repo_name=repo_name))
             total_tokens += int(payload.get("total_tokens", 0))
@@ -95,12 +95,34 @@ class WorkspaceCodeRouter:
             result["provenance_breakdown"] = provenance_breakdown
         return result
 
+    def _search_payloads(self, targets: list[Path], **kwargs: Any) -> list[tuple[Path, dict[str, Any]]]:
+        """Run ``tool_search`` per repo, concurrently for multi-repo workspaces.
+
+        Results are returned in the original ``targets`` order so the merged
+        union stays deterministic regardless of completion order.
+        """
+        if len(targets) <= 1:
+            return [(repo_root, self.engine_factory(repo_root).tool_search(**kwargs)) for repo_root in targets]
+        with ThreadPoolExecutor(max_workers=len(targets)) as executor:
+            payloads = list(
+                executor.map(lambda repo_root: self.engine_factory(repo_root).tool_search(**kwargs), targets)
+            )
+        return list(zip(targets, payloads, strict=True))
+
     def _route_symbol(self, targets: list[Path], **kwargs: Any) -> dict[str, Any]:
+        isolate_failures = len(targets) > 1
         last_error: dict[str, Any] | None = None
         for repo_root in targets:
             try:
                 payload = self.engine_factory(repo_root).tool_symbol(**kwargs)
             except LookupError:
+                last_error = {"error": "symbol_not_found"}
+                continue
+            except Exception:
+                # One repo's engine failing (bad index, IO error, ...) must not
+                # abort the multi-repo lookup; a later repo may still resolve it.
+                if not isolate_failures:
+                    raise
                 last_error = {"error": "symbol_not_found"}
                 continue
             if "error" not in payload:

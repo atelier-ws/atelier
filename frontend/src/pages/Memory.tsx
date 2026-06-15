@@ -39,6 +39,18 @@ function hostTag(agentId: string): string {
   return raw;
 }
 
+function safeHref(ref: string): string | null {
+  try {
+    const url = new URL(ref, window.location.origin);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.href;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function dedupeById<T extends { id: string }>(items: T[]): T[] {
   const seen = new Map<string, T>();
   for (const item of items) {
@@ -535,9 +547,10 @@ export default function Memory() {
                         {passage.text}
                       </p>
                       <div className="mt-1">
-                        {passage.source_ref ? (
+                        {passage.source_ref &&
+                        safeHref(passage.source_ref) ? (
                           <a
-                            href={passage.source_ref}
+                            href={safeHref(passage.source_ref) ?? undefined}
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs text-amber-300 underline"
