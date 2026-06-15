@@ -69,7 +69,7 @@ backup_file() {
     fi
     if [ -f "$f" ]; then
         local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
-        run "cp '$f' '$bk'"
+        run "cp $(printf %q "$f") $(printf %q "$bk")"
         info "backed up $f -> $bk"
     fi
 }
@@ -151,7 +151,7 @@ if $PRINT_ONLY; then
     exit 0
 fi
 
-run "mkdir -p '$(dirname "$MCP_JSON")'"
+run "mkdir -p $(printf %q "$(dirname "$MCP_JSON")")"
 if [ -f "$MCP_JSON" ]; then
     backup_file "$MCP_JSON"
     if $DRY_RUN; then
@@ -206,8 +206,8 @@ if ! $WORKSPACE_SET && [[ -d "$PLUGIN_SRC" ]]; then
     if $DRY_RUN; then
         echo "  [dry-run] install plugin -> $AGY_PLUGIN_DIR"
     else
-        run "mkdir -p '$AGY_PLUGIN_DIR'"
-        run "cp -r '${PLUGIN_SRC}/.' '$AGY_PLUGIN_DIR/'"
+        run "mkdir -p $(printf %q "$AGY_PLUGIN_DIR")"
+        run "cp -r $(printf %q "${PLUGIN_SRC}/.") $(printf %q "$AGY_PLUGIN_DIR/")"
         info "installed plugin -> $AGY_PLUGIN_DIR"
     fi
 fi
@@ -220,12 +220,12 @@ if ! $WORKSPACE_SET; then
         if $DRY_RUN; then
             echo "  [dry-run] install skills -> $AGY_SKILLS_DIR"
         else
-            run "mkdir -p '$AGY_SKILLS_DIR'"
+            run "mkdir -p $(printf %q "$AGY_SKILLS_DIR")"
             for skill_dir in "${SKILLS_STAGING}"/*/; do
                 [[ -f "${skill_dir}SKILL.md" ]] || continue
                 skill_name="$(basename "$skill_dir")"
-                run "mkdir -p '${AGY_SKILLS_DIR}/${skill_name}'"
-                run "cp '${skill_dir}SKILL.md' '${AGY_SKILLS_DIR}/${skill_name}/SKILL.md'"
+                run "mkdir -p $(printf %q "${AGY_SKILLS_DIR}/${skill_name}")"
+                run "cp $(printf %q "${skill_dir}SKILL.md") $(printf %q "${AGY_SKILLS_DIR}/${skill_name}/SKILL.md")"
             done
             info "installed skills -> $AGY_SKILLS_DIR"
         fi

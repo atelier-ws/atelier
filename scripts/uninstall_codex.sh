@@ -78,9 +78,9 @@ fi
 
 if [ -f "$MARKETPLACE_JSON" ]; then
     run "python3 -c '
-import json
+import json, sys
 from pathlib import Path
-path = Path(\"$MARKETPLACE_JSON\")
+path = Path(sys.argv[1])
 data = json.loads(path.read_text(encoding=\"utf-8\") or \"{}\")
 plugins = [plugin for plugin in data.get(\"plugins\", []) if plugin.get(\"name\") != \"atelier\"]
 if plugins:
@@ -88,31 +88,32 @@ if plugins:
     path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
 else:
     path.unlink()
-'"
+' $(printf %q "$MARKETPLACE_JSON")"
     info "Removed atelier marketplace entry from $MARKETPLACE_JSON"
 fi
 
 if [ -d "$PLUGIN_DIR" ]; then
-    run "rm -rf '$PLUGIN_DIR'"
+    run "rm -rf $(printf %q "$PLUGIN_DIR")"
     info "Removed $PLUGIN_DIR"
 fi
 
 if [ -d "$PLUGIN_CACHE_DIR" ]; then
-    run "rm -rf '$PLUGIN_CACHE_DIR'"
+    run "rm -rf $(printf %q "$PLUGIN_CACHE_DIR")"
     info "Removed $PLUGIN_CACHE_DIR"
 fi
 
 if [ -d "$OPENAI_CURATED_PLUGIN_CACHE_DIR" ]; then
-    run "rm -rf '$OPENAI_CURATED_PLUGIN_CACHE_DIR'"
+    run "rm -rf $(printf %q "$OPENAI_CURATED_PLUGIN_CACHE_DIR")"
     info "Removed $OPENAI_CURATED_PLUGIN_CACHE_DIR"
 fi
 
 CODEX_CONFIG="${CODEX_HOME}/config.toml"
 if [ -f "$CODEX_CONFIG" ] && grep -q 'plugins."atelier@openai-curated"' "$CODEX_CONFIG" 2>/dev/null; then
     run "python3 -c '
+import sys
 from pathlib import Path
 
-path = Path(\"$CODEX_CONFIG\")
+path = Path(sys.argv[1])
 lines = path.read_text(encoding=\"utf-8\").splitlines()
 out = []
 skip = False
@@ -126,13 +127,13 @@ for line in lines:
     if not skip:
         out.append(line)
 path.write_text(\"\\n\".join(out).rstrip() + \"\\n\", encoding=\"utf-8\")
-'"
+' $(printf %q "$CODEX_CONFIG")"
     info "Removed atelier@openai-curated plugin config from $CODEX_CONFIG"
 fi
 
 for staging_dir in "${STAGING_DIRS[@]}"; do
     if [ -d "$staging_dir" ]; then
-        run "rm -rf '$staging_dir'"
+        run "rm -rf $(printf %q "$staging_dir")"
         info "Removed $staging_dir"
     fi
 done
@@ -180,7 +181,7 @@ PYEOF
 fi
 
 if [ -n "$TASKS_DIR" ] && [ -d "$TASKS_DIR" ]; then
-    run "rm -rf '$TASKS_DIR'"
+    run "rm -rf $(printf %q "$TASKS_DIR")"
     info "Removed $TASKS_DIR"
 fi
 

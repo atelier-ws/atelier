@@ -63,7 +63,7 @@ def test_frame_wraps_when_few_frames(atelier_root: Path) -> None:
 def test_historical_savings_empty(atelier_root: Path) -> None:
     from atelier.core.capabilities.savings_summary import _read_historical_savings
 
-    usd, tok = _read_historical_savings(7, atelier_root)
+    usd, tok, _calls, _turns = _read_historical_savings(7, atelier_root)
     assert usd == 0.0
     assert tok == 0
 
@@ -87,7 +87,7 @@ def test_historical_savings_reads_recent_rows(atelier_root: Path, monkeypatch: p
     target_ts = 1781524800.0  # approx 2026-06-15T10:00:00 UTC
     monkeypatch.setattr(time_mod, "time", lambda: target_ts)
 
-    usd7, tok7 = _read_historical_savings(7, atelier_root)
+    usd7, tok7, _calls7, _turns7 = _read_historical_savings(7, atelier_root)
     assert tok7 == 1000
     assert abs(usd7 - 0.5) < 1e-6
 

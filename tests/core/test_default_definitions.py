@@ -139,10 +139,8 @@ def test_registry_exposes_owned_workflows_and_solver_contracts() -> None:
         "refine",
         "execute",
         "review",
-        "retry",
     ]
-    assert solver_loop.steps[6].fork_from == "review"
-    assert solver_loop.steps[6].phase_prompt_id == "solver-retry"
+    assert solver_loop.steps[5].fork_from == "refine"
 
     profile = registry.benchmark_profiles["terminalbench-owned-solver"]
     assert profile.role_id == "solve"
@@ -212,10 +210,6 @@ def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
     assert "FIX PHASE" in fix
     assert "Fix only cited gaps" in fix
     assert "local, reversible reads, edits, and tests" in fix
-
-    retry = registry.render_named_prompt("solver-retry", ROOT)
-    assert "Do not repeat a failed command verbatim" in retry
-    assert "keep the workspace clean" in retry
 
 
 def test_registry_host_projections_match_current_surface_set() -> None:
