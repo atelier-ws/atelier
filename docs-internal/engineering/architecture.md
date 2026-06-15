@@ -2,7 +2,7 @@
 
 ## What Atelier Is
 
-Atelier is a **reasoning/procedure/runtime layer**. It sits between an AI agent host (Claude Code, Codex, Copilot, opencode, Gemini CLI) and the actual codebase operations. Its job is to make agent runs more reliable by:
+Atelier is a **reasoning/procedure/runtime layer**. It sits between an AI agent host (Claude Code, Codex, Copilot, opencode) and the actual codebase operations. Its job is to make agent runs more reliable by:
 
 1. Injecting known-good procedures before runs (Playbooks)
 2. Blocking known-bad plans before execution (dead end detection)
@@ -17,14 +17,14 @@ Atelier is a **reasoning/procedure/runtime layer**. It sits between an AI agent 
 | Semantic memory / RAG | No hidden chain-of-thought stored, no vector DB required       |
 | Chatbot history       | No conversation storage                                        |
 | Test replacement      | Rubric gates are agent guards, not unit tests                  |
-| OpenMemory wrapper    | OpenMemory bridge is an optional stub, disabled by default     |
+
 
 ## System Components
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                    Agent Host Layer                          │
-│  Claude Code  │  Codex  │  Copilot  │  opencode  │  Gemini  │
+│  Claude Code  │  Codex  │  Copilot  │  opencode  │
 └────────────────────────┬─────────────────────────────────────┘
                          │ MCP (stdio) / CLI / Python SDK
 ┌────────────────────────▼─────────────────────────────────────┐

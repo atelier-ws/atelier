@@ -11,7 +11,6 @@ It is not the IDE, not the agent, and not the memory system.
 | **Codex CLI**   | MCP + AGENTS.md       | MCP stdio | [codex-install.md](../hosts/codex-install.md)             |
 | **Copilot**     | MCP + instructions    | MCP stdio | [copilot-install.md](../hosts/copilot-install.md)         |
 | \*_opencode_    | `opencode.json`       | MCP stdio | [opencode-install.md](../hosts/opencode-install.md)       |
-| **Gemini CLI**  | settings + MCP        | MCP stdio | [gemini-cli-install.md](../hosts/gemini-cli-install.md)   |
 
 ## Memory Systems
 

@@ -23,7 +23,6 @@ provides.
 | Codex CLI   | `mcp_live` + `wrapper_live` | `manual`            | `mcp`, `wrapper`                     | `bash_outputs`, `file_edits`, `native_shell` |
 | Copilot     | `mcp_live`                  | `manual`            | `mcp`                                | `native_chat_edits`, `file_edits`            |
 | opencode    | `mcp_live` + `imported`     | `manual`            | `mcp`, `session_import`              | `native_events`                              |
-| Gemini CLI  | `mcp_live`                  | `manual`            | `mcp`                                | `native_events`, `bash_outputs`              |
 | Antigravity | `mcp_live`                  | `manual`            | `mcp`                                | `native_events`, `bash_outputs`              |
 
 ## Metadata Fields
@@ -31,7 +30,7 @@ provides.
 Every trace carries four evidence fields:
 
 - `host` — Derived from the `agent` string. One of `claude`, `codex`, `copilot`, `opencode`,
-  `gemini`, `antigravity`, or raw agent name if unrecognised.
+  `antigravity`, or raw agent name if unrecognised.
 - `trace_confidence` — One of the five levels above.
 - `capture_sources` — List of active evidence channels for this trace
   (e.g. `["mcp", "hooks", "session_import"]`).
