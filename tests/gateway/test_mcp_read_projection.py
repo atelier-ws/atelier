@@ -55,6 +55,49 @@ def test_expand_true_keeps_untransformed_text_and_skips_projection_delta(
     assert "projection_delta" not in payload
 
 
+def test_expand_large_file_returns_line_aligned_prefix_with_continuation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A whole-file expand larger than the inline budget must return a line-aligned
+    # prefix + an EXACT continuation range, NOT the full body (which the host would
+    # otherwise dump to a temp file and force the agent to re-read in blind ranges).
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    # Budget above the 8KB floor; file comfortably larger than the budget.
+    monkeypatch.setenv("ATELIER_READ_INLINE_BUDGET_BYTES", "10240")
+    target = tmp_path / "big.py"
+    source = "".join(f"line_{i:04d} = {i}\n" for i in range(1000))
+    target.write_text(source, encoding="utf-8")
+
+    payload = tool_smart_read({"path": str(target), "expand": True, "include_meta": True})
+
+    assert payload["truncated"] is True
+    assert payload["lines_total"] == 1000
+    assert 0 < payload["lines_shown"] < 1000
+    content = payload["content"]
+    # line-aligned prefix: first line kept, a late line dropped
+    assert "line_0000 = 0" in content
+    assert "line_0999 = 999" not in content
+    # exact continuation range points at the next unread line
+    assert f'range="L{payload["lines_shown"] + 1}-"' in content
+    # the kept body (before the notice) stays within budget
+    body = content.split("[atelier:")[0]
+    assert len(body.encode("utf-8")) <= 10240 + 16
+
+
+def test_expand_inline_budget_disabled_returns_full_content(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # ATELIER_READ_INLINE_BUDGET_BYTES=0 opts out: full exact body, no truncation.
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("ATELIER_READ_INLINE_BUDGET_BYTES", "0")
+    target = tmp_path / "big.py"
+    source = "".join(f"line_{i:04d} = {i}\n" for i in range(1000))
+    target.write_text(source, encoding="utf-8")
+
+    payload = tool_smart_read({"path": str(target), "expand": True, "include_meta": True})
+
+    assert payload.get("truncated") is not True
+    assert "line_0999 = 999" in payload["content"]
+
+
 def test_explicit_range_keeps_untransformed_slice_and_skips_projection_delta(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
