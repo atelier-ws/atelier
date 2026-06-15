@@ -3,10 +3,11 @@
 Tracks the gated (opt-in / kill-switchable) capabilities so they can be enabled,
 tested, and measured one at a time.
 
-> **State note (update as you go):** the `parity-closure` -> `bench` merge was
-> **reset/undone** (reflog `HEAD@{0}: reset`). Group A features live on the
-> `parity-closure` branch and are **NOT in `bench`** until that merge is re-applied.
-> Group B features are already in `bench` today.
+> **State note:** the `parity-closure` -> `bench` merge is **applied** (merge commit
+> `d828e5ca`). This branch (`feat/token-efficiency-additions`) builds on it with the
+> additional token-efficiency features (T3/T5/T9-T12) and review-hardening flags listed
+> below. Group A + these additions are all present on this branch; Group B was already
+> in `bench`.
 
 Legend: status = `[ ]` not started / `[~]` enabled+testing / `[x]` rolled out (default flipped or accepted).
 
@@ -24,6 +25,11 @@ Legend: status = `[ ]` not started / `[~]` enabled+testing / `[x]` rolled out (d
 | [ ] | Tool-output spill (T7) | `ATELIER_TOOL_OUTPUT_SPILL` env | OFF (`0`) | `ATELIER_TOOL_OUTPUT_SPILL=1` | Overflow of shell/sql/read/web_fetch results is spilled (full payload to the spill dir) + a summary + ref id + retrieve hint, instead of being discarded by the byte ceiling. Recover via `compact` tool `op="retrieve"`. Spill dir = `ATELIER_MCP_SPILL_DIR` (shared with native_search). Gate: `mcp_server.py::_spill_oversized_result_text`, `tool_supervision/tool_output_spill.py`. |
 | [ ] | Reversible auto-compaction (T8) | `ATELIER_AUTO_COMPACT_OUTPUT` env | OFF (`0`) | `ATELIER_AUTO_COMPACT_OUTPUT=1` | Oversized assembly-path results are auto-compacted (AST-aware via source_projection for code, else compact_output.compact). REVERSIBLE: the untransformed original is written to the T7 spill store and recoverable via `compact` `op="retrieve"`. Threshold reuses `ATELIER_MCP_COMPACT_RESULT_CHARS`. Gate: `mcp_server.py::_auto_compact_result_text`. |
 | [ ] | Autonomous-compaction lever (T6) | none (agent-callable `compact` tool `op="consolidate"`) | n/a (op default `"compact"` = current behavior) | call `compact` with `op="consolidate"` | Agent distills recent findings + prunes stale history on demand, reusing the existing compaction entrypoint (`ContextCompressor().compress` via `_compress_context`). Gate: `mcp_server.py::tool_compact`. |
+| [ ] | History-compaction trigger (T5) | `ATELIER_AUTO_COMPACT` env | OFF (`0`) | `ATELIER_AUTO_COMPACT=1` | Gates the (previously unconditional) `summarize_memory` compress on live context fill >= `policy.trigger_at_context_fraction`. Fail-open. Gate: `core/runtime/engine.py::_should_auto_compact`/`_live_context_fill`, `optimization/policy.py::should_compact`. |
+| [ ] | Learned model routing (T9) | `ATELIER_LEARNED_ROUTING` env (+ `_THRESHOLD` def 0.9, `_MIN_SAMPLES` def 20) | OFF (`0`) | `ATELIER_LEARNED_ROUTING=1` | Gates the heuristic tier step-down on a calibrated P(weak succeeds) over logged `verify_route`/ab_calibration outcomes; None/below-threshold holds baseline (safety floor preserved). Gate: `model_routing/success_predictor.py`, `router.py::_apply_complexity_tier`. |
+| [ ] | Perplexity/entropy compression (T10/T11) | `ATELIER_PERPLEXITY_COMPRESSION` env | OFF (`0`) | `ATELIER_PERPLEXITY_COMPRESSION=1` | Feeds perplexity/entropy utilities into the budget knapsack + token-level pruning; headless structural-entropy fallback when `ATELIER_LLM_BACKEND=none`. Gate: `code_context/ppl_rank.py`, `context_compression/perplexity_pruning.py`, `infra/internal_llm/logprobs.py`. |
+| [ ] | Goal-conditioned line skimmer (T12) | `ATELIER_LINE_SKIM` env | OFF (`0`) | `ATELIER_LINE_SKIM=1` | Prunes scoped-context chunks to goal-relevant lines (keeps structural anchors); reuses the reranker with lexical fallback. Gate: `scoped_context/line_skimmer.py`, `pull.py`. |
+| [ ] | HTTP project-override (review H1, security) | `ATELIER_HTTP_ALLOW_PROJECT_OVERRIDE` env | OFF (`0`) | `ATELIER_HTTP_ALLOW_PROJECT_OVERRIDE=1` | Allows a wire-supplied `project_path` override, CONFINED to the workspace root; default off rejects out-of-root pivots. Gate: `mcp_server.py::_set_request_project`. |
 
 ### Default-ON (shipped; rollout = "verify, has kill switch")
 
@@ -32,6 +38,20 @@ Legend: status = `[ ]` not started / `[~]` enabled+testing / `[x]` rolled out (d
 | [x] | Per-tool token ledger (N4) | none (additive) | ON | n/a | Measurement backbone. Read via the savings summary. Turn this on FIRST to judge everything else. |
 | [x] | Savings gate (N6) | none | ON | n/a | Only engages under `format=compact`; cannot inflate. |
 | [x] | Warm stdio code-index (G10) | `ATELIER_SERVICE_CODE_WARM` | ON (`1`) | `0`/`false`/`no`/`off` | `service/code_warm.py`. |
+| [x] | Repo-map tag cache (T3) | `ATELIER_REPOMAP_TAG_CACHE` | ON (`1`) | `0`/`false`/`off`/`no` | Persistent mtime+size-keyed SQLite tag cache; warm starts skip full-repo re-parse. Correctness-preserving via invalidation; in-memory fallback on DB error. Gate: `repo_map/tag_cache.py`, `graph.py::build_reference_graph`. |
+| [x] | MCP HTTP body cap (review H2, security) | `ATELIER_MCP_HTTP_MAX_BODY_BYTES` | ON (`4194304`) | (byte count) | Caps `POST /mcp` request body (413 over the limit); dispatch runs via threadpool so a slow tool can't block the event loop. Gate: `mcp_http.py`. |
+
+### Review-hardening fixes (unconditional — no flag, always on)
+
+_From the adversarial review of `a1f63f54..tip`; security/correctness fixes that are not gated._
+
+| Fix | What | Where |
+|-----|------|-------|
+| C1 (security) | `POST/GET /mcp` now require `_require_auth` (was an unauthenticated tool surface) | `gateway/adapters/mcp_http.py`, `openai_gateway/app.py` |
+| H3 | per-tool token-ledger RMW now locked (no lost updates under the 16-worker dispatch) | `core/capabilities/tool_token_ledger.py` |
+| H4 | ast-grep subprocess timeout -> domain error; default scan no longer walks `.git` | `infra/code_intel/astgrep/adapter.py` |
+| M4 (security) | redaction no longer leaks multi-word secret values (`\S+` -> `\S[^\r\n]*`) | `core/foundation/redaction.py` |
+| M2 | gateway returns a correlation-id error instead of raw `str(exc)` | `gateway/adapters/mcp_http.py` |
 
 ---
 
