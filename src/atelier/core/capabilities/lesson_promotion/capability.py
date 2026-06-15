@@ -28,6 +28,19 @@ from atelier.infra.storage.vector import cosine_similarity
 _log = logging.getLogger(__name__)
 
 
+def ingest_failed_trace(store: ContextStore, trace: Trace) -> None:
+    """Best-effort: feed a failed trace into the lesson inbox from any trace-record
+    path (SDK, MCP tool, runtime session). Never raises -- lesson extraction must
+    not break trace recording. Call after the trace is persisted so the
+    store-backed cluster lookup can see it."""
+    if trace.status != "failed" or not trace.errors_seen:
+        return
+    try:
+        LessonPromoterCapability(store).ingest_trace(trace)
+    except Exception:  # noqa: BLE001 - lesson ingest is best-effort
+        _log.debug("lesson ingest skipped for trace %s", trace.id, exc_info=True)
+
+
 class LessonPromoterCapability:
     """Create and review lesson candidates from failed traces."""
 
@@ -148,18 +161,24 @@ class LessonPromoterCapability:
 
         embedding = self._embed_trace(trace)
         cluster_fingerprint = self._cluster_key(trace, embedding)
-        neighbors = self._nearest_cluster(
-            domain=trace.domain,
-            embedding=embedding,
-        )
-        trace_neighbors = self._recent_trace_cluster(
-            domain=trace.domain,
-            current_trace_id=trace.id,
-            embedding=embedding,
-        )
-
-        if len(neighbors) + len(trace_neighbors) + 1 < 3:
-            return None
+        # Cheap: scores stored candidate vectors only (no re-embedding).
+        neighbors = self._nearest_cluster(domain=trace.domain, embedding=embedding)
+        if neighbors:
+            # An inbox candidate already represents this cluster -> refresh it in
+            # place rather than inserting a near-duplicate per recurrence, and
+            # skip the expensive recent-trace scan (it re-embeds up to 500 traces
+            # and would only re-derive an already-formed cluster).
+            existing_id: str | None = neighbors[0].id
+            trace_neighbors: list[Trace] = []
+        else:
+            existing_id = None
+            trace_neighbors = self._recent_trace_cluster(
+                domain=trace.domain,
+                current_trace_id=trace.id,
+                embedding=embedding,
+            )
+            if len(trace_neighbors) + 1 < 3:
+                return None
 
         traces = [trace, *trace_neighbors]
         seen_trace_ids = {item.id for item in traces}
@@ -189,6 +208,10 @@ class LessonPromoterCapability:
             "cluster_threshold": self._cluster_threshold,
         }
         candidate.embedding_provenance = self._embedder.__class__.__name__
+        if existing_id is not None:
+            # Refresh the existing cluster candidate in place (ON CONFLICT(id) DO
+            # UPDATE) instead of inserting a near-duplicate for every recurrence.
+            candidate.id = existing_id
         self.store.upsert_lesson_candidate(candidate)
         return candidate
 
