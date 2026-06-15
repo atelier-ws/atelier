@@ -17,6 +17,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from atelier.core.capabilities.owned_agent_session.keepalive import KeepaliveThread
 from atelier.core.capabilities.owned_agent_session.receipt import PhaseTokens, SessionReceipt
 from atelier.core.capabilities.owned_agent_session.session import OwnedAgentSession
 from atelier.core.capabilities.owned_agent_session.stem_prompt import STEM_SYSTEM_PROMPT
@@ -218,42 +219,47 @@ def run_phase_linear(
     working: list[dict[str, Any]] = [_system_message(session.provider, session.model)]
     phases = ["survey", "plan"] + ([] if dry_run else ["implement"])
 
-    for phase in phases:
-        prompt = _phase_user_message(phase, task, mode=session.current_mode)
-        working.append({"role": "user", "content": prompt})
-        session.add_user_turn(prompt)
-        session.current_phase = phase
+    keepalive = KeepaliveThread(model=session.model, provider=session.provider)
+    keepalive.start()
+    try:
+        for phase in phases:
+            prompt = _phase_user_message(phase, task, mode=session.current_mode)
+            working.append({"role": "user", "content": prompt})
+            session.add_user_turn(prompt)
+            session.current_phase = phase
 
-        logger.debug("phase=%s provider=%s model=%s msgs=%d", phase, session.provider, session.model, len(working))
+            logger.debug("phase=%s provider=%s model=%s msgs=%d", phase, session.provider, session.model, len(working))
 
-        content, inp, out, cr, cw = _call_llm(
-            working,
-            model=session.model,
-            provider=session.provider,
-            gemini_cached_content=gemini_cached_content,
-        )
-
-        # After Survey: mark assistant response with breakpoint (Anthropic) or plain
-        mark = phase == "survey" and session.phase_linear
-        if mark:
-            turn = _assistant_with_breakpoint(content, provider=session.provider, model=session.model)
-            working.append(turn)
-            session.add_assistant_turn(
-                content, mark_breakpoint=_provider_cache_style(session.provider, session.model) == "anthropic"
+            content, inp, out, cr, cw = _call_llm(
+                working,
+                model=session.model,
+                provider=session.provider,
+                gemini_cached_content=gemini_cached_content,
             )
-        else:
-            working.append({"role": "assistant", "content": content})
-            session.add_assistant_turn(content, mark_breakpoint=False)
 
-        receipt.phases.append(
-            PhaseTokens(
-                phase=phase,
-                input_tokens=inp,
-                output_tokens=out,
-                cache_read_tokens=cr,
-                cache_write_tokens=cw,
+            # After Survey: mark assistant response with breakpoint (Anthropic) or plain
+            mark = phase == "survey" and session.phase_linear
+            if mark:
+                turn = _assistant_with_breakpoint(content, provider=session.provider, model=session.model)
+                working.append(turn)
+                session.add_assistant_turn(
+                    content, mark_breakpoint=_provider_cache_style(session.provider, session.model) == "anthropic"
+                )
+            else:
+                working.append({"role": "assistant", "content": content})
+                session.add_assistant_turn(content, mark_breakpoint=False)
+
+            receipt.phases.append(
+                PhaseTokens(
+                    phase=phase,
+                    input_tokens=inp,
+                    output_tokens=out,
+                    cache_read_tokens=cr,
+                    cache_write_tokens=cw,
+                )
             )
-        )
+    finally:
+        keepalive.stop()
 
     return receipt
 
@@ -281,12 +287,17 @@ def run_single_shot(
         receipt.phases.append(PhaseTokens(phase="dry_run"))
         return receipt
 
-    content, inp, out, cr, cw = _call_llm(
-        messages,
-        model=session.model,
-        provider=session.provider,
-        gemini_cached_content=gemini_cached_content,
-    )
+    keepalive = KeepaliveThread(model=session.model, provider=session.provider)
+    keepalive.start()
+    try:
+        content, inp, out, cr, cw = _call_llm(
+            messages,
+            model=session.model,
+            provider=session.provider,
+            gemini_cached_content=gemini_cached_content,
+        )
+    finally:
+        keepalive.stop()
     session.add_assistant_turn(content)
     receipt.phases.append(
         PhaseTokens(

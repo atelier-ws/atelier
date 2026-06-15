@@ -59,6 +59,29 @@ def test_read_claude_session_savings_includes_calls_usd(tmp_path: Path) -> None:
     assert usd == pytest.approx(0.12 + pricing.input / 1_000_000 * 1000)
 
 
+def test_routing_rows_summed_separately_from_context(tmp_path: Path) -> None:
+    from atelier.core.capabilities.savings_summary import _read_session_routing_usd
+
+    _write_sidecar(
+        tmp_path,
+        "s1",
+        [
+            {"kind": "routing", "usd": 0.012, "tool": "edit", "model": MODEL, "ts": "2026-06-16T10:00:00+00:00"},
+            {"kind": "routing", "usd": 0.008, "tool": "read", "model": MODEL, "ts": "2026-06-16T10:01:00+00:00"},
+            {"tool": "read", "tokens": 5000, "calls": 0, "model": MODEL, "ts": "2026-06-16T10:02:00+00:00"},
+        ],
+    )
+    # Routing rows are summed by the dedicated reader (0.012 + 0.008).
+    assert _read_session_routing_usd("s1", tmp_path) == pytest.approx(0.02)
+    # ...and ignored by the context-savings reader (no token or usd leak).
+    priced, calls, usd, _unpriced = _read_claude_session_savings("s1", tmp_path)
+    assert priced == 5000
+    assert calls == 0
+    pricing = get_model_pricing(MODEL)
+    assert pricing is not None and pricing.known
+    assert usd == pytest.approx(pricing.input / 1_000_000 * 5000)
+
+
 def test_carry_credit_counts_only_later_turns(tmp_path: Path) -> None:
     base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
     row_ts = (base + timedelta(minutes=1)).isoformat()

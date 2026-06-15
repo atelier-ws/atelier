@@ -215,21 +215,21 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
             sessions = SessionStore(root)
             token_rows = sessions.token_rows()
             for trow in token_rows:
-                rid = trow["id"]
+                sid = trow["session_id"]
                 inp, out, cr, th = (
                     trow["input_tokens"],
                     trow["output_tokens"],
                     trow["cached_input_tokens"],
                     trow["thinking_tokens"],
                 )
-                cost_map[rid] = usage_cost_usd(
+                cost_map[sid] = cost_map.get(sid, 0.0) + usage_cost_usd(
                     resolve_model_id(trow.get("model")),
                     input_tokens=inp or 0,
                     output_tokens=out or 0,
                     cache_read_tokens=cr or 0,
                     thinking_tokens=th or 0,
                 )
-                tokens_map[rid] = (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
+                tokens_map[sid] = tokens_map.get(sid, 0) + (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
             total_runs_in_db = len(token_rows)
             db_runs = sessions.list_full(limit=1000)
 

@@ -69,7 +69,7 @@ Hook scripts run on Claude Code events:
 - `hooks/pre_tool_use.py`, `post_tool_use.py` — tool-level savings tracking
 - `hooks/session_telemetry.py` — per-tool event emission to `~/.atelier/live_savings_events.jsonl`
 
-Session state is persisted to `~/.atelier/workspaces/<hash>/session_state.json`. Savings for the stop hook come from `~/.atelier/session_stats/<claude-session-uuid>.json`.
+Session state is persisted to `~/.atelier/workspaces/<hash>/session_state.json`. Savings for the stop hook come from `~/.atelier/sessions/<claude-session-uuid>/savings.jsonl`.
 
 ## Data / State Layout
 
@@ -77,8 +77,9 @@ All runtime state lives under `~/.atelier/` (or `$ATELIER_ROOT`):
 
 | Path                                   | Contents                                                                                    |
 | -------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `runs/<session_id>.json`               | Run ledger — events, traces, token stats                                                    |
-| `session_stats/<uuid>.json`            | Per-session savings keyed by Claude Code UUID                                               |
+| `sessions/<session_id>/run.json`       | Run ledger — events, traces, token stats                                                    |
+| `sessions/<uuid>/stats.json`           | Per-session stats keyed by Claude Code UUID                                                  |
+| `sessions/<uuid>/savings.jsonl`        | Per-session savings sidecar keyed by Claude Code UUID                                        |
 | `live_savings_events.jsonl`            | Append-only savings event log (uses internal Atelier session IDs,**not** Claude Code UUIDs) |
 | `workspaces/<hash>/session_state.json` | Hook-to-hook state for a workspace                                                          |
 | `smart_state.json`                     | Cumulative savings counters                                                                 |

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 from collections.abc import Callable
 from datetime import datetime
 
@@ -23,6 +24,43 @@ _log = logging.getLogger(__name__)
 # strong older matches; raise via env for very large stores.
 _RECALL_CANDIDATE_LIMIT = int(os.environ.get("ATELIER_RECALL_CANDIDATE_LIMIT", "2000"))
 _window_saturation_warned = False
+
+# Embedding is a blocking network round-trip for remote backends (openai/ollama/
+# letta) with no provider-side timeout, so an unreachable provider would otherwise
+# stall every memory(op=recall|store_fact|archive) call. Bound it. The default
+# LocalEmbedder returns in-process and well under this ceiling, so the guard is a
+# no-op for it beyond the timeout itself.
+_EMBED_TIMEOUT_S = float(os.environ.get("ATELIER_EMBED_TIMEOUT_S", "10"))
+
+
+def _embed_with_timeout(embedder: Embedder, texts: list[str]) -> list[list[float]]:
+    """Embed under a hard timeout; return [] on timeout/error.
+
+    Used by the recall path, which needs the vector synchronously to rank. On
+    failure the caller falls back to lexical/recency ranking rather than blocking
+    on a slow or unreachable provider. The embed runs on a daemon thread joined
+    with a timeout: a hung provider call is abandoned (the daemon thread dies
+    with the process) instead of stalling recall, since a pooled worker would
+    otherwise block shutdown until the slow call returned."""
+    result: list[list[float]] = []
+    error: list[BaseException] = []
+
+    def _run() -> None:
+        try:
+            result.extend(embedder.embed(texts))
+        except BaseException as exc:  # noqa: BLE001 - surfaced via `error`, never raised here
+            error.append(exc)
+
+    worker = threading.Thread(target=_run, daemon=True)
+    worker.start()
+    worker.join(timeout=_EMBED_TIMEOUT_S)
+    if worker.is_alive():
+        _log.warning("embedder %s timed out after %.1fs; falling back to lexical ranking", embedder.name, _EMBED_TIMEOUT_S)
+        return []
+    if error:
+        _log.warning("embedder %s failed; falling back to lexical ranking", embedder.name, exc_info=error[0])
+        return []
+    return result
 
 
 def _warn_window_saturated() -> None:
@@ -57,30 +95,55 @@ class ArchivalRecallCapability:
     ) -> ArchivalPassage:
         clean = self._redactor(text)
         chunks = _chunk_text(clean)
-        embeddings: list[list[float]] = []
-        if self._embedder.dim > 0:
-            embeddings = self._embedder.embed(chunks)
-
-        first: ArchivalPassage | None = None
-        for idx, chunk in enumerate(chunks):
-            embedding = embeddings[idx] if idx < len(embeddings) and embeddings[idx] else None
-            passage = ArchivalPassage(
+        passages = [
+            ArchivalPassage(
                 agent_id=agent_id or "shared",
                 text=chunk,
-                embedding=embedding,
-                embedding_model=self._embedder.name if embedding is not None else "",
-                embedding_provenance=self._embedder.__class__.__name__,
                 tags=tags or [],
                 source=source,
                 source_ref=source_ref,
                 dedup_hash=blake3(chunk.encode("utf-8")).hexdigest(),
             )
-            stored = self._store.insert_passage(passage)
-            if first is None:
-                first = stored
-        if first is None:  # pragma: no cover - _chunk_text always returns one item
+            for chunk in chunks
+        ]
+        if not passages:  # pragma: no cover - _chunk_text always returns one item
             raise ValueError("archive text produced no passages")
-        return first
+
+        # Fire-and-forget: the embed is the only slow step (a blocking network
+        # round-trip for remote backends) and its vector is needed solely to
+        # persist the passage, never for this call's return value. Dispatch the
+        # embed + insert on a background daemon thread so the tool returns
+        # immediately; bound the work with a timeout and drop on failure.
+        threading.Thread(
+            target=self._embed_and_persist,
+            args=(passages, chunks),
+            daemon=True,
+        ).start()
+        return passages[0]
+
+    def _embed_and_persist(self, passages: list[ArchivalPassage], chunks: list[str]) -> None:
+        """Background worker: embed chunks then persist passages. Best-effort.
+
+        Runs off the caller's thread. Any embed timeout/error is logged and the
+        passages are still persisted without a vector so the text stays
+        lexically recallable; a persist failure is logged and dropped so a
+        background failure never surfaces to the original caller."""
+        embeddings: list[list[float]] = []
+        if self._embedder.dim > 0:
+            embeddings = _embed_with_timeout(self._embedder, chunks)
+        for idx, passage in enumerate(passages):
+            embedding = embeddings[idx] if idx < len(embeddings) and embeddings[idx] else None
+            to_store = passage.model_copy(
+                update={
+                    "embedding": embedding,
+                    "embedding_model": self._embedder.name if embedding is not None else "",
+                    "embedding_provenance": self._embedder.__class__.__name__,
+                }
+            )
+            try:
+                self._store.insert_passage(to_store)
+            except Exception:  # noqa: BLE001 - best-effort background persist
+                _log.warning("background archive persist failed for passage %s", passage.id, exc_info=True)
 
     def recall(
         self,
@@ -94,7 +157,11 @@ class ArchivalRecallCapability:
         clean_query = self._redactor(query)
         query_embedding: list[float] | None = None
         if self._embedder.dim > 0:
-            vectors = self._embedder.embed([clean_query])
+            # Timeout-guarded: recall needs the vector to rank, so it can't be
+            # fire-and-forget, but a slow/unreachable provider must not stall the
+            # call. On timeout/failure _embed_with_timeout returns [] and we fall
+            # back to lexical/recency ranking below (query_embedding stays None).
+            vectors = _embed_with_timeout(self._embedder, [clean_query])
             if vectors and vectors[0]:
                 query_embedding = vectors[0]
 

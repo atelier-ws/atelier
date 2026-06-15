@@ -224,6 +224,30 @@ def _update_via_release() -> bool:
         Path(tmp_path).unlink(missing_ok=True)
 
 
+def _reconcile_companions(project_root: str) -> None:
+    """Reconcile companion binaries (Node/Go/Zoekt) to the release pins.
+
+    Reuses the installer's reconcile (``scripts/reconcile.sh``) so the drift
+    logic lives in one place: a binary is rebuilt only when its pin in
+    ``scripts/lib/versions.sh`` changed from what was last installed. The Zoekt
+    build is detached by the installer, so this returns quickly. Best-effort —
+    a failure here never fails the update.
+    """
+    script = Path(project_root) / "scripts" / "reconcile.sh"
+    if not script.is_file() or shutil.which("bash") is None:
+        return
+    click.echo("  ◇ Reconciling companion binaries (Node/Go/Zoekt) to release pins...")
+    try:
+        subprocess.run(
+            ["bash", str(script)],
+            cwd=project_root,
+            env={**os.environ, "ATELIER_NON_INTERACTIVE": "1"},
+            timeout=300,
+        )
+    except (subprocess.SubprocessError, OSError):
+        pass
+
+
 # ---------------------------------------------------------------------------
 # CLI command
 # ---------------------------------------------------------------------------
@@ -286,6 +310,8 @@ def update_cmd(ctx: click.Context, check_only: bool, force_update: bool) -> None
             method=method,
             root=root,
         )
+        if method == "git" and project_root:
+            _reconcile_companions(project_root)
         click.echo(f"\n  ◆ Updated from {previous} → {remote_version}")
         click.echo("  ◆ Restart the MCP server or hooks to pick up changes.")
     else:

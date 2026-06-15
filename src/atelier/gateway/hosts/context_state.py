@@ -1,11 +1,10 @@
 """Host-aware (context tokens, model) probe for live sessions.
 
 Each probe tail-reads its host's session file and returns the most recent
-turn's context size (input + cache reads + cache writes) plus the model that
-produced it - per-turn ground truth feeding savings pricing, avoided-call
-credit, and context nudges. Unknown hosts and missing sessions return
-``(0, "")``; callers must treat that as unknown and skip pricing rather than
-synthesize a value.
+turn's live context size plus the model that produced it - per-turn ground
+truth feeding savings pricing, avoided-call credit, and context nudges. Unknown
+hosts and missing sessions return ``(0, "")``; callers must treat that as
+unknown and skip pricing rather than synthesize a value.
 
 Extension point: implement a ``(session_id) -> tuple[int, str]`` probe that
 reuses the ``session_parsers`` usage extractors for the host's line format,
@@ -137,10 +136,12 @@ def _codex_probe(session_id: str, root: Path | None = None) -> tuple[int, str]:
         if usage is None:
             continue
         input_tokens, _out, _reasoning, _, cached, cache_write = _extract_codex_usage(usage)
-        # OpenAI-style usage counts cached reads inside input_tokens; an
-        # Anthropic-style split reports them separately (cached > input).
+        # OpenAI-style Codex usage is cumulative billing data: input_tokens
+        # already includes cached_input_tokens, while the Codex UI's live
+        # "used" value is the uncached remainder. Split-cache hosts report
+        # cached reads separately, so those still add to the live window.
         if cached <= input_tokens:
-            ctx = input_tokens + cache_write
+            ctx = max(0, input_tokens - cached) + cache_write
         else:
             ctx = input_tokens + cached + cache_write
         if ctx > 0:

@@ -27,6 +27,27 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
+# Maximum reference sites resolved per rename. If a symbol has more usages than
+# this, the rename covers only the first _RENAME_USAGE_LIMIT and the returned
+# RenameEdits.truncated flag is set so the caller can see the rename is partial.
+_RENAME_USAGE_LIMIT = 500
+
+
+class RenameEdits(list):  # type: ignore[type-arg]
+    """List of rich-edit descriptors that also carries rename-scope signals.
+
+    Behaves exactly like the ``list[dict[str, Any]]`` callers already iterate /
+    truth-test / measure, so the apply path is unchanged. The extra attributes
+    surface whether usage resolution hit the reference cap:
+
+      total_references: usages resolved for the symbol (capped at the limit).
+      truncated:        True if the cap was hit and the rename is partial.
+    """
+
+    total_references: int = 0
+    truncated: bool = False
+
+
 # -- backend detection --------------------------------------------------------
 
 _LANGUAGE_BACKENDS: dict[str, list[str]] = {
@@ -226,8 +247,12 @@ def build_rename_edits(
     symbol_name: str | None = None,
     file_path: str | None = None,
     backend: str = "auto",
-) -> list[dict[str, Any]]:
+) -> RenameEdits:
     """Resolve symbol, collect usages, return rich-edit descriptors for atomic rename.
+
+    Returns a ``RenameEdits`` list (a plain ``list`` for the apply path) whose
+    ``total_references`` / ``truncated`` attributes signal whether usage
+    resolution hit ``_RENAME_USAGE_LIMIT`` and the rename is therefore partial.
 
     Raises:
         ValueError: if new_name is empty or symbol cannot be resolved.
@@ -252,7 +277,7 @@ def build_rename_edits(
         symbol_name=old_name,
         file_path=str(symbol["file_path"]),
         snippet_lines=1,
-        limit=500,
+        limit=_RENAME_USAGE_LIMIT,
         budget_tokens=8000,
     )
     # Flatten usages from grouped or flat payload
@@ -265,15 +290,25 @@ def build_rename_edits(
             if isinstance(items, list):
                 usages.extend(r for r in items if isinstance(r, dict))
 
+    # Surface partial-rename scope: a rename is truncated when usage resolution
+    # hit the reference cap (the engine reports it, or we resolved the full
+    # limit's worth of sites). The apply behavior is unchanged.
+    total_references = len(usages)
+    truncated = bool(usages_payload.get("truncated")) or total_references >= _RENAME_USAGE_LIMIT
+
     chosen = backend if backend != "auto" else _best_backend(language)
 
     if chosen == "rope" and language == "python":
-        return _rope_rename(symbol, new_name, repo_root)
+        edits = _rope_rename(symbol, new_name, repo_root)
+    elif chosen == "ts-morph" and language in ("typescript", "javascript"):
+        edits = _tsmorph_rename(symbol, new_name, repo_root)
+    else:
+        edits = _naive_rename(symbol, usages, new_name, old_name, repo_root)
 
-    if chosen == "ts-morph" and language in ("typescript", "javascript"):
-        return _tsmorph_rename(symbol, new_name, repo_root)
+    result = RenameEdits(edits)
+    result.total_references = total_references
+    result.truncated = truncated
+    return result
 
-    return _naive_rename(symbol, usages, new_name, old_name, repo_root)
 
-
-__all__ = ["build_rename_edits"]
+__all__ = ["RenameEdits", "build_rename_edits"]

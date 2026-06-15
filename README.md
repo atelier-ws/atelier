@@ -65,7 +65,7 @@ Atelier reduces token spend at every layer of the agent loop — context loading
 | **Lesson Promotion & cost-cap bindings** | Promotes recurrent patterns into cost-capped routing policies tuned from observed behaviour.                                                                            | Continuous spend reduction as the runtime learns.                                                                                       |
 | **Savings dashboard**                    | The frontend's Savings page (and `atelier background status`) reports token and dollar savings per session and cumulatively.                                            | Makes the savings measurable, per session and total.                                                                                    |
 
-All savings are recorded into the run ledger and exposed via `atelier` CLI, MCP, and the optional UI — so cost reduction is observable, not just claimed.
+All savings are recorded into the run ledger and inspectable per session via `atelier` CLI, MCP, and the optional UI — measured token usage alongside clearly-labelled counterfactual estimates, not unverified marketing numbers.
 
 ## Capabilities
 

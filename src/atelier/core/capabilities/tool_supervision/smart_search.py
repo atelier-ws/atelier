@@ -14,6 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
+from atelier.core.capabilities.native_read_baseline import claude_read_baseline_text
 from atelier.core.capabilities.repo_map import build_repo_map
 from atelier.core.capabilities.repo_map.graph import (
     build_reference_graph,
@@ -30,7 +31,6 @@ SearchMode = Literal["chunks", "full", "map"]
 IndexedSearch = Callable[..., dict[str, Any]]
 
 _CLAUDE_GREP_FILE_LIMIT = 100
-_CLAUDE_READ_LINE_LIMIT = 2000
 _SHELL_METACHARS_RE = re.compile(r"[;&|`$<>()\n\r]")
 _LEADING_DASH_RE = re.compile(r"^-")
 _TEXT_SUFFIXES = {
@@ -276,13 +276,6 @@ def _search_with_backend(
     return payload
 
 
-def _claude_read_baseline_text(text: str) -> str:
-    lines = text.splitlines()
-    if len(lines) <= _CLAUDE_READ_LINE_LIMIT:
-        return text
-    return "\n".join(lines[:_CLAUDE_READ_LINE_LIMIT])
-
-
 def _naive_bytes_for_matches(matches: list[dict[str, Any]], *, mode: SearchMode = "chunks") -> int:
     """Bytes in the closest Claude Code built-in baseline for these matches."""
     if mode != "full":
@@ -294,7 +287,7 @@ def _naive_bytes_for_matches(matches: list[dict[str, Any]], *, mode: SearchMode 
         raw = str(match.get("path", ""))
         content = match.get("content")
         if isinstance(content, str) and content:
-            total += len(_claude_read_baseline_text(content))
+            total += len(claude_read_baseline_text(content))
             continue
         if not raw:
             continue
@@ -302,7 +295,7 @@ def _naive_bytes_for_matches(matches: list[dict[str, Any]], *, mode: SearchMode 
             source = Path(raw).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        total += len(_claude_read_baseline_text(source))
+        total += len(claude_read_baseline_text(source))
     return total
 
 

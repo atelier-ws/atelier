@@ -16,6 +16,10 @@ SUPPORTED_CONTEXT_MODES = frozenset({"inherit", "fresh"})
 # Hard ceiling so a mis-specified `loop` (or a never-satisfied `until`) can never
 # spin forever; per-step `max_iterations` is clamped to this absolute cap.
 LOOP_ITERATION_HARD_CAP = 1000
+# Hard ceiling on `map` fan-out: `over` is rendered from prior step output, so a
+# step emitting a huge list could otherwise spawn an unbounded number of
+# sub-bodies. A map whose resolved item count exceeds this cap is rejected.
+MAP_ITEM_HARD_CAP = 1000
 SUPPORTED_PREDICATE_OPS = frozenset(
     {"eq", "ne", "truthy", "falsy", "contains", "not_contains", "gt", "gte", "lt", "lte", "in"}
 )

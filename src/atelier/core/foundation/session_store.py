@@ -558,7 +558,7 @@ class SessionStore:
         where, params = self._filter_sql(domain=None, status=None, agent=None, host=None, since=since)
         with closing(self._connect_index()) as conn:
             rows = conn.execute(
-                "SELECT id, host, model, input_tokens, output_tokens, cached_input_tokens, thinking_tokens "
+                "SELECT id, session_id, host, model, input_tokens, output_tokens, cached_input_tokens, thinking_tokens "
                 f"FROM trace_index{where}",
                 params,
             ).fetchall()
