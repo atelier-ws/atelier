@@ -71,13 +71,14 @@ def test_historical_savings_empty(atelier_root: Path) -> None:
 def test_historical_savings_reads_recent_rows(atelier_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from atelier.core.capabilities.savings_summary import _read_historical_savings
 
-    runs = atelier_root / "runs"
-    ledger = runs / "abc123_context_savings.jsonl"
+    sidecar = atelier_root / "sessions" / "abc123"
+    sidecar.mkdir(parents=True)
+    ledger = sidecar / "savings.jsonl"
     now_iso = "2026-06-15T10:00:00"
     old_iso = "2020-01-01T00:00:00"  # definitely outside any window
     rows = [
-        json.dumps({"at": now_iso, "tokens_saved": 1000, "cost_saved_usd": 0.5}),
-        json.dumps({"at": old_iso, "tokens_saved": 9999, "cost_saved_usd": 99.0}),
+        json.dumps({"ts": now_iso, "tokens": 1000, "cost_saved_usd": 0.5}),
+        json.dumps({"ts": old_iso, "tokens": 9999, "cost_saved_usd": 99.0}),
     ]
     ledger.write_text("\n".join(rows))
 

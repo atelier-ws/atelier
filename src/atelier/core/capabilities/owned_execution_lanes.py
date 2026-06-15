@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import inspect
+import os
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,65 @@ from atelier.infra.internal_llm.exceptions import InternalLLMError
 from atelier.infra.internal_llm.litellm_client import chat_with_result as litellm_chat_with_result
 from atelier.infra.internal_llm.openai_client import chat_with_result as openai_chat_with_result
 from atelier.infra.internal_llm.result import InternalLLMChatResult
+
+# Per-attempt output and latency bounds for owned execution. A verbose model can
+# otherwise return unbounded billed output, and a slow provider can hang the
+# synchronous MCP call. Defaults are conservative and env-overridable.
+_DEFAULT_OWNED_MAX_TOKENS = 4096
+_DEFAULT_OWNED_TIMEOUT_S = 180.0
+# Hard cap on returned output length (characters) so a runaway generation cannot
+# balloon downstream even if the provider ignores max_tokens. Derived from the
+# token budget (~4 chars/token) with headroom; env-overridable.
+_OUTPUT_TRUNCATION_MARKER = "\n\n[owned-execution: output truncated at bound]"
+
+
+def _resolved_max_tokens(max_tokens: int | None) -> int:
+    if max_tokens is not None and max_tokens > 0:
+        return max_tokens
+    return _positive_int_env("ATELIER_OWNED_MAX_TOKENS", _DEFAULT_OWNED_MAX_TOKENS)
+
+
+def _resolved_timeout_s(timeout_s: float | None) -> float:
+    if timeout_s is not None and timeout_s > 0:
+        return timeout_s
+    return _positive_float_env("ATELIER_OWNED_TIMEOUT_S", _DEFAULT_OWNED_TIMEOUT_S)
+
+
+def _resolved_max_output_chars(max_tokens: int) -> int:
+    override = _positive_int_env("ATELIER_OWNED_MAX_OUTPUT_CHARS", 0)
+    if override > 0:
+        return override
+    # ~4 chars/token with 4x headroom so the char cap only trips on genuine runaways.
+    return max(max_tokens, 1) * 16
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(str(os.environ.get(name, "")).strip())
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+def _positive_float_env(name: str, default: float) -> float:
+    try:
+        value = float(str(os.environ.get(name, "")).strip())
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+def _supports_kwarg(func: Any, name: str) -> bool:
+    try:
+        return name in inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _bound_output(content: str, max_output_chars: int) -> str:
+    if max_output_chars > 0 and len(content) > max_output_chars:
+        return content[:max_output_chars] + _OUTPUT_TRUNCATION_MARKER
+    return content
 
 
 @dataclass(frozen=True)
@@ -186,6 +246,8 @@ def execute_owned_prompt(
     cache_policy: OwnedCachePolicy = "inherit",
     compiled_prompt: Mapping[str, Any] | None = None,
     spawn_metadata: Mapping[str, Any] | None = None,
+    max_tokens: int | None = None,
+    timeout_s: float | None = None,
 ) -> OwnedExecutionResult:
     base_state = dict(session_state or {})
     compiled = dict(compiled_prompt) if isinstance(compiled_prompt, Mapping) else compile_prompt_text(prompt).to_dict()
@@ -205,6 +267,8 @@ def execute_owned_prompt(
                 provider=current.provider,
                 model=current.model,
                 transport=current.transport,
+                max_tokens=max_tokens,
+                timeout_s=timeout_s,
             )
         except InternalLLMError as exc:
             attempts.append(
@@ -366,19 +430,62 @@ def _execute_transport(
     model: str,
     transport: str,
     compiled_prompt: Mapping[str, Any] | None = None,
+    max_tokens: int | None = None,
+    timeout_s: float | None = None,
 ) -> InternalLLMChatResult:
     messages, cache_metadata = _transport_payload(
         prompt, compiled_prompt=compiled_prompt, transport=transport, provider=provider
     )
+    bounded_max_tokens = _resolved_max_tokens(max_tokens)
+    bounded_timeout_s = _resolved_timeout_s(timeout_s)
+    max_output_chars = _resolved_max_output_chars(bounded_max_tokens)
     if transport == "openai":
-        if _supports_cache_metadata(openai_chat_with_result):
-            return openai_chat_with_result(messages, model=model, cache_metadata=cache_metadata)
-        return openai_chat_with_result(messages, model=model)
+        result = _call_transport(
+            openai_chat_with_result,
+            messages,
+            model=model,
+            cache_metadata=cache_metadata,
+            max_tokens=bounded_max_tokens,
+            timeout_s=bounded_timeout_s,
+        )
+        return replace(result, content=_bound_output(result.content, max_output_chars))
     if transport == "litellm":
-        if _supports_cache_metadata(litellm_chat_with_result):
-            return litellm_chat_with_result(messages, model=model, cache_metadata=cache_metadata)
-        return litellm_chat_with_result(messages, model=model)
+        result = _call_transport(
+            litellm_chat_with_result,
+            messages,
+            model=model,
+            cache_metadata=cache_metadata,
+            max_tokens=bounded_max_tokens,
+            timeout_s=bounded_timeout_s,
+        )
+        return replace(result, content=_bound_output(result.content, max_output_chars))
     raise InternalLLMError(f"provider {provider!r} has no owned execution transport for model {model!r}")
+
+
+def _call_transport(
+    func: Any,
+    messages: list[dict[str, Any]],
+    *,
+    model: str,
+    cache_metadata: dict[str, Any],
+    max_tokens: int,
+    timeout_s: float,
+) -> InternalLLMChatResult:
+    # Only forward kwargs the target callable actually accepts. This keeps the
+    # output/latency bounds working where the wrapper supports them while
+    # remaining compatible with leaner wrapper or test-double signatures.
+    kwargs: dict[str, Any] = {"model": model}
+    if _supports_cache_metadata(func):
+        kwargs["cache_metadata"] = cache_metadata
+    if _supports_kwarg(func, "max_tokens"):
+        kwargs["max_tokens"] = max_tokens
+    if _supports_kwarg(func, "timeout"):
+        kwargs["timeout"] = timeout_s
+    if _supports_kwarg(func, "extra_kwargs"):
+        extra: dict[str, Any] = {"max_tokens": max_tokens, "timeout": timeout_s}
+        kwargs["extra_kwargs"] = extra
+    result: InternalLLMChatResult = func(messages, **kwargs)
+    return result
 
 
 def _fallback_route(

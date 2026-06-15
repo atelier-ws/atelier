@@ -34,6 +34,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -60,6 +61,7 @@ class ContextDedup:
 
     def __init__(self) -> None:
         self._sessions: dict[str, _SessionDedup] = {}
+        self._lock = threading.Lock()
 
     def _session(self, session_id: str, epoch: int) -> _SessionDedup:
         st = self._sessions.get(session_id)
@@ -92,12 +94,13 @@ class ContextDedup:
         """
         if not session_id or len(content) < _MIN_DEDUP_CHARS:
             return None
-        st = self._session(session_id, epoch)
         content_hash = _hash(content)
-        seen_ordinal = st.seen.get(content_hash)
-        if force or seen_ordinal is None:
-            self._record(st, content_hash)
-            return None
+        with self._lock:
+            st = self._session(session_id, epoch)
+            seen_ordinal = st.seen.get(content_hash)
+            if force or seen_ordinal is None:
+                self._record(st, content_hash)
+                return None
         stub = (
             f"[atelier dedup] identical to read #{seen_ordinal} earlier this session "
             f"({len(content)} chars omitted). If not in your context, re-read with force=true."
@@ -121,15 +124,16 @@ class ContextDedup:
         """
         if not session_id or not resource:
             return None
-        st = self._session(session_id, epoch)
-        previous = st.last_read.get(resource)
-        if len(content) <= _MAX_TRACKED_CONTENT_CHARS:
-            st.last_read.pop(resource, None)  # re-insert for LRU ordering
-            st.last_read[resource] = content
-            while len(st.last_read) > _MAX_TRACKED_RESOURCES:
-                st.last_read.pop(next(iter(st.last_read)))
-        else:
-            st.last_read.pop(resource, None)
+        with self._lock:
+            st = self._session(session_id, epoch)
+            previous = st.last_read.get(resource)
+            if len(content) <= _MAX_TRACKED_CONTENT_CHARS:
+                st.last_read.pop(resource, None)  # re-insert for LRU ordering
+                st.last_read[resource] = content
+                while len(st.last_read) > _MAX_TRACKED_RESOURCES:
+                    st.last_read.pop(next(iter(st.last_read)))
+            else:
+                st.last_read.pop(resource, None)
         if force or previous is None or previous == content or len(content) < _MIN_DEDUP_CHARS:
             return None
         import difflib

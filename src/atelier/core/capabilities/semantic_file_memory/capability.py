@@ -7,10 +7,12 @@ import json
 import logging
 import os
 import re
+import stat
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from atelier.core.capabilities.native_read_baseline import claude_read_baseline_text
 from atelier.infra.code_intel.languages import language_for_path
 
 from .graph_analytics import GraphAnalytics
@@ -23,8 +25,61 @@ from .typescript_ast import analyze_typescript
 from .typescript_ast import outline as typescript_outline
 
 _logger = logging.getLogger(__name__)
-_CLAUDE_READ_LINE_LIMIT = 2000
 _DEFAULT_OUTLINE_THRESHOLD = 0
+
+# Hard cap on how many bytes ``smart_read`` will pull into memory for a single
+# file. Without it an unconditional ``read_text`` of a multi-GB log, or a read
+# of a special file (``/dev/zero``, a FIFO — ``st_size == 0`` so no size signal),
+# would OOM or block forever. Regular files under the cap are read whole, so
+# normal source files behave exactly as before.
+_MAX_READ_BYTES = int(os.environ.get("ATELIER_READ_MAX_BYTES", str(8 * 1024 * 1024)))
+
+
+def _read_source_bounded(file_path: Path) -> tuple[str, bool]:
+    """Read *file_path* as text, never materializing more than ``_MAX_READ_BYTES``.
+
+    Returns ``(source, truncated)``. ``truncated`` is True when only a byte
+    prefix was read — either the regular file exceeds the cap, or the path is a
+    special file (char-special, FIFO, ...) whose size is unknown and must not be
+    read unbounded. Decode always uses ``errors="replace"`` so binary/non-UTF-8
+    bytes survive. A regular file at or under the cap is read whole, preserving
+    identical behavior for normal-sized files.
+    """
+    try:
+        st = file_path.stat()
+        is_regular = stat.S_ISREG(st.st_mode)
+        size = st.st_size
+    except OSError:
+        # Stat failed — treat size as unknown and apply the prefix cap.
+        is_regular = False
+        size = 0
+
+    # A non-regular file reports st_size == 0 even though it may stream forever;
+    # treat "unknown size" as oversized and read only a bounded prefix. A regular
+    # file at or below the cap is safe to read whole.
+    if is_regular and size <= _MAX_READ_BYTES:
+        return file_path.read_text(encoding="utf-8", errors="replace"), False
+
+    # Oversized regular file or special file: read at most _MAX_READ_BYTES from
+    # the raw fd so gigabytes / endless streams are never pulled into memory.
+    chunks: list[bytes] = []
+    remaining = _MAX_READ_BYTES
+    fd = os.open(file_path, os.O_RDONLY)
+    try:
+        while remaining > 0:
+            chunk = os.read(fd, min(remaining, 1024 * 1024))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+    finally:
+        os.close(fd)
+    raw = b"".join(chunks)
+    # A regular file whose stat said it was small but that we read fully (e.g.
+    # special file that happened to end) is only "truncated" if we actually hit
+    # the cap with bytes still pending.
+    truncated = len(raw) >= _MAX_READ_BYTES and (not is_regular or size > _MAX_READ_BYTES)
+    return raw.decode("utf-8", errors="replace"), truncated
 
 
 def default_outline_threshold() -> int:
@@ -87,14 +142,6 @@ def _count_tokens(text: str) -> int:
     if enc is None:
         return len(text) // 4
     return len(enc.encode(text, disallowed_special=()))
-
-
-def _claude_read_baseline_text(source: str) -> str:
-    """Approximate the text Claude Code's built-in Read would return."""
-    lines = source.splitlines()
-    if len(lines) <= _CLAUDE_READ_LINE_LIMIT:
-        return source
-    return "\n".join(lines[:_CLAUDE_READ_LINE_LIMIT])
 
 
 try:
@@ -331,16 +378,23 @@ class SemanticFileMemoryCapability:
         if outline_threshold is None:
             outline_threshold = default_outline_threshold()
         file_path = Path(path)
-        if not file_path.is_file():
+        # Accept any existing non-directory path. Special files (FIFO,
+        # char-special like /dev/zero) report is_file() == False but are valid
+        # read targets here — _read_source_bounded reads them with a hard byte
+        # cap so they never block forever or OOM.
+        if not file_path.exists() or file_path.is_dir():
             raise FileNotFoundError(f"file not found: {file_path}")
 
-        source = file_path.read_text(encoding="utf-8", errors="replace")
+        source, truncated = _read_source_bounded(file_path)
         lines = source.splitlines()
         language = self._language_for(file_path)
         effective_loc = self._effective_loc(source, language)
 
+        # summarize_file does its own unbounded read_text; skip it when the
+        # source was capped so an oversized/special file never gets read whole
+        # through the cache-miss path.
         cache_hit = self._index.get(file_path) is not None
-        if not cache_hit:
+        if not cache_hit and not truncated:
             self.summarize_file(file_path, cache_enabled=True)
 
         result: dict[str, Any] = {
@@ -349,11 +403,18 @@ class SemanticFileMemoryCapability:
             "loc": effective_loc,
             "cache_hit": cache_hit,
         }
+        if truncated:
+            result["truncated"] = True
+            result["truncation_notice"] = (
+                f"[atelier: only the first {_MAX_READ_BYTES} bytes were read — "
+                "file is oversized or a special/streaming file. Request a narrower "
+                'slice, e.g. read with range="L1-L400".]'
+            )
 
         if range_spec:
             start, end = self._parse_range_spec(range_spec, len(lines))
             content = "\n".join(lines[start - 1 : end])
-            baseline = _claude_read_baseline_text(source)
+            baseline = claude_read_baseline_text(source)
             result.update(
                 {
                     "mode": "range",
@@ -372,7 +433,7 @@ class SemanticFileMemoryCapability:
             expand=expand,
             outline_threshold=outline_threshold,
         )
-        baseline = _claude_read_baseline_text(source)
+        baseline = claude_read_baseline_text(source)
         if mode == "outline":
             result.update(
                 {
@@ -491,7 +552,7 @@ class SemanticFileMemoryCapability:
                 compact = build_compact_projection(source, language)
                 if compact.applied:
                     mode, payload = "compact", compact.content
-        baseline = _claude_read_baseline_text(source)
+        baseline = claude_read_baseline_text(source)
         raw_tokens = _count_tokens(baseline)
         tokens = raw_tokens if payload == baseline else _count_tokens(payload)
         return {
@@ -532,7 +593,7 @@ class SemanticFileMemoryCapability:
             source = file_path.read_text(encoding="utf-8", errors="replace")
         language = cls._language_for(file_path)
         effective_loc = cls._effective_loc(source, language)
-        raw_tokens = _count_tokens(_claude_read_baseline_text(source))
+        raw_tokens = _count_tokens(claude_read_baseline_text(source))
 
         # Outline forced eligible (threshold=-1) so its savings show even when
         # the real threshold skips it; o_mode != "outline" means it can't earn 25%.

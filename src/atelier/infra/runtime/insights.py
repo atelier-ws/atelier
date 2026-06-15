@@ -176,7 +176,7 @@ def _rule_compact_aggression(
     rates: list[float] = []
     for data in outcomes_by_session.values():
         for evt in data.get("compact_outcomes") or []:
-            rate = float(evt.get("extra_read_rate") or 0.0)
+            rate = float((evt.get("outcome_window") or {}).get("extra_read_rate") or 0.0)
             rates.append(rate)
 
     if not rates:
@@ -189,7 +189,10 @@ def _rule_compact_aggression(
     sessions_affected = sum(
         1
         for data in outcomes_by_session.values()
-        if any(float(e.get("extra_read_rate") or 0.0) > 0.15 for e in (data.get("compact_outcomes") or []))
+        if any(
+            float((e.get("outcome_window") or {}).get("extra_read_rate") or 0.0) > 0.15
+            for e in (data.get("compact_outcomes") or [])
+        )
     )
 
     return Opportunity(
@@ -384,13 +387,16 @@ def build_insights(
         all_route.extend(data.get("route_outcomes") or [])
         all_compact.extend(data.get("compact_outcomes") or [])
 
-    route_scores = [float(e.get("outcome_score") or 0.0) for e in all_route]
-    compact_scores = [float(e.get("outcome_score") or 0.0) for e in all_compact]
+    route_scores = [float((e.get("outcome_window") or {}).get("outcome_score") or 0.0) for e in all_route]
+    compact_scores = [float((e.get("outcome_window") or {}).get("outcome_score") or 0.0) for e in all_compact]
 
     high_extra_read_sessions = [
         sid
         for sid, data in outcomes_by_session.items()
-        if any(float(e.get("extra_read_rate") or 0.0) > 0.20 for e in (data.get("compact_outcomes") or []))
+        if any(
+            float((e.get("outcome_window") or {}).get("extra_read_rate") or 0.0) > 0.20
+            for e in (data.get("compact_outcomes") or [])
+        )
     ]
 
     outcomes_summary = OutcomesSummary(

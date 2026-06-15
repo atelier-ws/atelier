@@ -198,4 +198,7 @@ def _record_timestamp(record: dict[str, Any]) -> datetime | None:
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=UTC)
         return parsed.astimezone(UTC)
+    ts = record.get("ts")
+    if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+        return datetime.fromtimestamp(float(ts), tz=UTC)
     return None

@@ -25,6 +25,12 @@ from typing import Any
 # may be credited at most once per file per session.
 _BASELINE_MODES = frozenset({"outline", "range"})
 _CREDITED_KEY = "read_baseline_credited"
+# Hard cap on the credited set so the per-read hot path (which rewrites this
+# list into session_state.json every read) can't grow unbounded between
+# compactions. Mirrors the bounded ``context_dedup`` sibling. At the cap we
+# evict oldest (FIFO), so the de-dup guarantee degrades gracefully -- worst
+# case an occasional re-credit -- instead of growing without limit.
+_MAX_CREDITED = 512
 
 
 def _normalize_path(raw: Any) -> str:
@@ -73,6 +79,8 @@ def should_credit(state: dict[str, Any], path: Any, mode: Any) -> tuple[dict[str
     if norm in credited:
         return state, False
     credited.append(norm)
+    if len(credited) > _MAX_CREDITED:
+        del credited[: len(credited) - _MAX_CREDITED]
     state[_CREDITED_KEY] = credited
     return state, True
 

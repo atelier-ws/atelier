@@ -519,9 +519,9 @@ def eval_mini(
     "--agent",
     "agent_arm",
     default="atelier",
-    type=click.Choice(["atelier", "atelier-bedrock"]),
+    type=click.Choice(["atelier", "atelier-bedrock", "atelier-claude-code"]),
     show_default=True,
-    help="Agent arm: direct API or via Bedrock.",
+    help="Agent arm: direct API, Bedrock, or Claude Code CLI + Atelier plugin.",
 )
 @click.option("--model", default=None, help="Model to use inside the container.")
 @click.option("--parallel", default=1, show_default=True, type=int, help="Number of parallel trials.")
@@ -566,6 +566,7 @@ def eval_harbor(
     _agent_import_paths = {
         "atelier": "benchmarks.harbor.atelier_agent:AtelierHarborAgent",
         "atelier-bedrock": "benchmarks.harbor.atelier_agent:AtelierBedrockHarborAgent",
+        "atelier-claude-code": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
     }
     agent_import_path = _agent_import_paths[agent_arm]
 
@@ -578,7 +579,10 @@ def eval_harbor(
 
     tasks_yaml = _Path(__file__).parents[5] / "benchmarks" / "harbor" / "tasks.yaml"
     selected_tasks: list[str] = []
-    if tasks_yaml.exists():
+    # tasks.yaml is pinned for terminal-bench-core only; for other datasets
+    # (TB2.0, TB2.1, etc.) use -l to let harbor pick the first N tasks.
+    core_dataset = "terminal-bench-core" in dataset
+    if tasks_yaml.exists() and core_dataset:
         import yaml as _yaml  # type: ignore[import-untyped]
 
         raw = _yaml.safe_load(tasks_yaml.read_text()) or {}
@@ -602,6 +606,38 @@ def eval_harbor(
             "Make sure the harbor binary is on your PATH after install."
         )
 
+    # Ensure the repo root is on PYTHONPATH so harbor can import
+    # benchmarks.harbor.atelier_agent regardless of working directory.
+    import os as _os
+
+    repo_root = str(_Path(__file__).parents[5])
+    existing_pythonpath = _os.environ.get("PYTHONPATH", "")
+    pythonpath = f"{repo_root}:{existing_pythonpath}" if existing_pythonpath else repo_root
+    harbor_env = {**_os.environ, "PYTHONPATH": pythonpath}
+
+    def _read_token_from_env_files(key: str) -> str:
+        """Read a token from shell env or .env files in known locations."""
+        val = _os.environ.get(key, "")
+        if val:
+            return val
+        for env_file in (
+            _Path(repo_root) / ".env",
+            _Path(repo_root) / "benchmarks" / ".env",
+            _Path(repo_root) / "benchmarks" / "codebench" / ".env",
+        ):
+            if not env_file.is_file():
+                continue
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip().lstrip("export ").strip()
+                if stripped.startswith("#") or "=" not in stripped:
+                    continue
+                k, _, v = stripped.partition("=")
+                if k.strip() == key:
+                    return v.strip().strip("'\"")
+        return ""
+
+    import json as _json
+
     base_cmd = [
         harbor_bin,
         "run",
@@ -611,31 +647,42 @@ def eval_harbor(
         agent_import_path,
         "--jobs-dir",
         out_dir,
+        # Mount the repo into the container so atelier can be installed from
+        # source (it is not published to PyPI).
+        "--mounts",
+        _json.dumps([{"type": "bind", "source": repo_root, "target": "/atelier"}]),
+        # Collect the claude CLI output log for debugging.
+        "--artifact",
+        "/logs/claude-run.json",
     ]
     if model:
         base_cmd += ["--model", model]
     if parallel > 1:
         base_cmd += ["--n-concurrent", str(parallel)]
+    # Forward CLAUDE_CODE_OAUTH_TOKEN for the claude-code arm
+    if agent_arm == "atelier-claude-code":
+        token = _read_token_from_env_files("CLAUDE_CODE_OAUTH_TOKEN")
+        if token:
+            base_cmd += ["--ae", f"CLAUDE_CODE_OAUTH_TOKEN={token}"]
+        else:
+            click.echo(
+                "WARNING: CLAUDE_CODE_OAUTH_TOKEN not set. "
+                "Set it in your shell or in benchmarks/codebench/.env.",
+                err=True,
+            )
 
     if selected_tasks:
-        # Run each selected task individually (-t task_id per invocation)
-        failed = 0
+        # terminal-bench-core: use -i filters (task names match exactly)
+        cmd = [*base_cmd]
         for task_id in selected_tasks:
-            cmd = [*base_cmd, "--task", task_id]
-            click.echo(f"  → {task_id}")
-            ret = subprocess.call(cmd)
-            if ret != 0:
-                click.echo(f"  ✗ {task_id} failed (exit {ret})", err=True)
-                failed += 1
-        if failed:
-            raise click.ClickException(f"{failed}/{len(selected_tasks)} tasks failed")
+            cmd += ["--include-task-name", task_id]
     else:
-        # No pre-registered task list; run full dataset
-        cmd = [*base_cmd, "--n-concurrent", str(parallel or 1)]
-        click.echo(f"  Command: {' '.join(cmd)}\n")
-        ret = subprocess.call(cmd)
-        if ret != 0:
-            raise click.ClickException(f"harbor run exited with code {ret}")
+        # All other datasets: use -l to cap tasks, let harbor pick the first N
+        cmd = [*base_cmd, "--n-tasks", str(limit)]
+    click.echo(f"  Command: {' '.join(cmd)}\n")
+    ret = subprocess.call(cmd, env=harbor_env)
+    if ret != 0:
+        raise click.ClickException(f"harbor run exited with code {ret}")
 
     click.echo(f"\n✓ Harbor eval complete. Results in: {out_dir}")
 

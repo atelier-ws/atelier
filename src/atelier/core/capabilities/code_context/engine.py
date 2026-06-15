@@ -4203,6 +4203,17 @@ class CodeContextEngine:
             )
         targets = cast(list[dict[str, Any]], resolved["targets"])
         primary_target = targets[0]
+        relation_policy = resolve_output_policy("relation")
+        # Bound the intermediate reference set at the source so a very common
+        # identifier cannot inflate the pre-sort collection without limit. The
+        # final policy/limit caps below still apply as a backstop; this ceiling
+        # keeps headroom for dedup + sort while truncating each provider's
+        # contribution as it is collected.
+        collection_ceiling = max(
+            limit,
+            relation_policy.max_related_symbols if relation_policy.max_related_symbols > 0 else 0,
+        )
+        collection_ceiling = max(collection_ceiling * 4, 100)
         references: list[UsageReference] = []
         for target in targets:
             local_refs = self.intel_store.find_references(
@@ -4212,8 +4223,10 @@ class CodeContextEngine:
                 symbol_name=str(target["symbol_name"]),
             )
             cross_lang_refs = self._cross_lang_usage_references(target)
-            references.extend(local_refs)
-            references.extend(cross_lang_refs)
+            references.extend(local_refs[: max(collection_ceiling - len(references), 0)])
+            references.extend(cross_lang_refs[: max(collection_ceiling - len(references), 0)])
+            if len(references) >= collection_ceiling:
+                break
         ordered_references = sorted(
             references,
             key=lambda item: (
@@ -4234,12 +4247,12 @@ class CodeContextEngine:
                 fallback_provenance = "zoekt_text"
                 text_hits = self._zoekt_text_matches(
                     fallback_query,
-                    limit=max(limit * 4, 100),
+                    limit=collection_ceiling,
                     file_glob=file_glob,
                 )
                 if not text_hits:
                     fallback_provenance = "text"
-                    text_hits = self.search_text(fallback_query, path=".", limit=max(limit * 4, 100), ignore_case=False)
+                    text_hits = self.search_text(fallback_query, path=".", limit=collection_ceiling, ignore_case=False)
                 items = [
                     {
                         "file_path": match.file_path,
@@ -4258,7 +4271,6 @@ class CodeContextEngine:
                 items = self._dedupe_usage_items(items)
         if file_glob:
             items = [item for item in items if _matches_file_glob(str(item["file_path"]), file_glob)]
-        relation_policy = resolve_output_policy("relation")
         if not relation_policy.include_snippet:
             for item in items:
                 item.pop("snippet", None)
@@ -4436,7 +4448,9 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found" if merged_status == "empty" else None
+                else "no related call edges were found"
+                if merged_status == "empty"
+                else None
             )
             merged_snapshot = None
             if snapshot:

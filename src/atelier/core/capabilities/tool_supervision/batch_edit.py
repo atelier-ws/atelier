@@ -43,19 +43,18 @@ def _repo_root() -> Path:
     return Path.cwd()
 
 
-def _resolve_path(path: str, repo_root: Path) -> Path:
-    """Resolve *path* to an absolute Path, enforcing it stays inside *repo_root*."""
+def _resolve_path(path: str, repo_root: Path, allowed_roots: list[Path] | None = None) -> Path:
+    """Resolve *path* to an absolute Path, enforcing it stays inside *repo_root* or *allowed_roots*."""
     p = Path(path)
     if not p.is_absolute():
         p = repo_root / p
     p = p.resolve()
-    try:
-        p.relative_to(repo_root.resolve())
-    except ValueError as exc:
+    roots = [repo_root.resolve(), *(allowed_roots or [])]
+    if not any(p == r or p.is_relative_to(r) for r in roots):
         raise ValueError(
             f"Path escape denied: {path!r} is outside the repo root — "
             "use the host's native tools for files outside the workspace"
-        ) from exc
+        )
     if any(part in PROTECTED_PARTS for part in p.parts):
         raise ValueError(f"Protected path denied: {path!r}")
     return p
@@ -128,6 +127,7 @@ def apply_batch_edit(
     atomic: bool = True,
     backup_base: Path | None = None,
     repo_root: Path | None = None,
+    allowed_roots: list[Path] | None = None,
 ) -> dict[str, Any]:
     """Apply *edits* and return a result envelope.
 
@@ -144,6 +144,9 @@ def apply_batch_edit(
         ``.atelier/run/<session_id>/batch_edit_backup/`` relative to *repo_root*.
     repo_root:
         Repository root.  Defaults to the process cwd.
+    allowed_roots:
+        Additional directories outside *repo_root* that edits may target.
+        Populated from Claude Code’s ``additionalDirectories`` setting.
 
     Returns
     -------
@@ -168,7 +171,7 @@ def apply_batch_edit(
     for edit in edits:
         raw_path = edit.get("path", "")
         try:
-            resolved = _resolve_path(str(raw_path), repo_root)
+            resolved = _resolve_path(str(raw_path), repo_root, allowed_roots=allowed_roots)
         except Exception as exc:
             logging.exception("Recovered from broad exception handler")
             failed.append({"path": str(raw_path), "error": str(exc)})

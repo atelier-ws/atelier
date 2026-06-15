@@ -21,6 +21,7 @@ import os
 import re
 import sqlite3
 import tempfile
+import threading
 from collections.abc import Iterable, Iterator
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
@@ -213,6 +214,12 @@ class ContextStore:
 
         self._initialized = False
         self._connection: sqlite3.Connection | None = None
+        # Long-lived connection dedicated to the high-frequency context-budget
+        # write path (one INSERT per non-error tool call). Lazily opened with
+        # check_same_thread=False because record() runs on the MCP dispatcher's
+        # thread pool; every use is serialized by _context_budget_lock.
+        self._context_budget_conn: sqlite3.Connection | None = None
+        self._context_budget_lock = threading.Lock()
         # File-based session store (sessions/<id>/). Traces also flow here so the
         # DB copy can eventually be retired in favor of the per-session files.
         self._session_store: SessionStore | None = None
@@ -1377,6 +1384,22 @@ class ContextStore:
 
     # ----- Context Budget -------------------------------------------------- #
 
+    def _context_budget_connection(self) -> sqlite3.Connection:
+        """Return the long-lived connection for context-budget writes.
+
+        Opened once and reused across calls to avoid per-call connection churn.
+        Created with ``check_same_thread=False`` so it can be shared across the
+        MCP dispatcher's threads; callers MUST hold ``_context_budget_lock``
+        while using the returned connection.
+        """
+        if self._context_budget_conn is None:
+            conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute("PRAGMA journal_mode = WAL")
+            self._context_budget_conn = conn
+        return self._context_budget_conn
+
     def persist_context_budget(self, record: Any) -> None:
         """Persist a ContextBudget record to the store.
 
@@ -1384,30 +1407,37 @@ class ContextStore:
             record: A ContextBudget instance with session_id, turn_index, model,
                     token counts, lever_savings dict, and tool_calls count.
         """
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO context_budget (
-                    id, session_id, turn_index, model, input_tokens,
-                    cache_read_tokens, cache_write_tokens, output_tokens,
-                    naive_input_tokens, lever_savings_json, tool_calls, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    record.id,
-                    record.session_id,
-                    record.turn_index,
-                    record.model,
-                    record.input_tokens,
-                    record.cache_read_tokens,
-                    record.cache_write_tokens,
-                    record.output_tokens,
-                    record.naive_input_tokens,
-                    json.dumps(record.lever_savings),
-                    record.tool_calls,
-                    record.created_at.isoformat(),
-                ),
-            )
+        params = (
+            record.id,
+            record.session_id,
+            record.turn_index,
+            record.model,
+            record.input_tokens,
+            record.cache_read_tokens,
+            record.cache_write_tokens,
+            record.output_tokens,
+            record.naive_input_tokens,
+            json.dumps(record.lever_savings),
+            record.tool_calls,
+            record.created_at.isoformat(),
+        )
+        sql = """
+            INSERT OR REPLACE INTO context_budget (
+                id, session_id, turn_index, model, input_tokens,
+                cache_read_tokens, cache_write_tokens, output_tokens,
+                naive_input_tokens, lever_savings_json, tool_calls, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        # Prefer the transiently-shared bulk-import connection when batch_mode
+        # has set it; otherwise use the dedicated long-lived connection guarded
+        # by _context_budget_lock to serialize concurrent dispatcher threads.
+        if self._connection is not None:
+            self._connection.execute(sql, params)
+            self._connection.commit()
+            return
+        with self._context_budget_lock:
+            conn = self._context_budget_connection()
+            conn.execute(sql, params)
             conn.commit()
 
     def list_context_budgets(self, session_id: str) -> list[Any]:

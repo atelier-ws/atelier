@@ -11,7 +11,7 @@ from atelier.gateway.adapters.mcp_server import (
     _route_outcome_calibration,
     _workspace_session_state_file,
 )
-from atelier.infra.runtime.run_ledger import RunLedger
+from atelier.infra.runtime.run_ledger import RunLedger, outcomes_path
 
 
 @pytest.fixture()
@@ -101,13 +101,13 @@ def test_owned_route_tier_tracks_task_weight_across_workflow_steps(workflow_env:
         assert third["mode"] == "auto"
 
 
-def test_route_outcome_calibration_uses_workspace_outcomes(workflow_env: Path) -> None:
-    path = _workspace_session_state_file()
+def test_route_outcome_calibration_uses_session_outcomes(workflow_env: Path) -> None:
+    led = RunLedger(root=workflow_env)
+    path = outcomes_path(workflow_env, led.session_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
             {
-                "workflow": {"current_step": "planning", "session_phase": "transition", "sticky_window": 1},
                 "route_outcomes": [
                     {
                         "tool": "read",
@@ -127,7 +127,7 @@ def test_route_outcome_calibration_uses_workspace_outcomes(workflow_env: Path) -
         encoding="utf-8",
     )
 
-    payload = _route_outcome_calibration("read", {"session_phase": "transition"})
+    payload = _route_outcome_calibration("read", {"session_phase": "transition"}, led)
 
     assert payload["route_outcome_score_delta"] == 0.5
     assert payload["route_outcome_samples"] == 2

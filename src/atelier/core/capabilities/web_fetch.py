@@ -118,7 +118,10 @@ class _ValidatingHTTPConnection(HTTPConnection):
         timeout = self.timeout if isinstance(self.timeout, (int, float)) else DNS_TIMEOUT_S
         if not _is_ip_address(host):
             host = _resolve_host_safe(host, timeout=timeout)
-        self._dns_host = host
+        # Connect the socket to the validated IP via a local variable only. Do NOT
+        # assign self._dns_host: urllib3 backs the self.host property (used for the
+        # outgoing Host header) with _dns_host, so overwriting it with the IP would
+        # send `Host: <ip>` and break name-based virtual hosting.
         conn = socket.create_connection(
             (host, self.port),
             self.timeout,
@@ -136,7 +139,12 @@ class _ValidatingHTTPSConnection(HTTPSConnection):
         timeout = self.timeout if isinstance(self.timeout, (int, float)) else DNS_TIMEOUT_S
         if not _is_ip_address(host):
             host = _resolve_host_safe(host, timeout=timeout)
-        self._dns_host = host
+        # Connect the socket to the validated IP via a local variable only. Do NOT
+        # assign self._dns_host: urllib3 derives the TLS server_hostname from
+        # self.host (HTTPSConnection.connect: `server_hostname = self.host`), and the
+        # self.host property is backed by _dns_host. Overwriting it with the IP makes
+        # TLS verify the certificate against the IP -> CERTIFICATE_VERIFY_FAILED
+        # (IP address mismatch). Keep the hostname so SNI + cert matching are correct.
         conn = socket.create_connection(
             (host, self.port),
             self.timeout,
