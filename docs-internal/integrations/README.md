@@ -15,16 +15,13 @@ It is not the IDE, not the agent, and not the memory system.
 
 ## Memory Systems
 
-| System          | Module                                                     | Notes                                                                                                                                                                                                        |
-| --------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --- |
-| SQLite (native) | `src/atelier/infra/storage/sqlite_memory_store.py`         | Default. Local file, zero-server, fastest. WAL mode for concurrency.                                                                                                                                         |
-| OpenMemory      | `src/atelier/gateway/integrations/openmemory.py`           | SQLite-backed bridge for trace-to-context pointers. Always-active when `ATELIER_MEMORY_BACKEND=openmemory`.                                                                                                  |
-| Letta           | `src/atelier/infra/memory_bridges/letta_adapter.py`        | Client-server memory via `letta-client` SDK. Requires PostgreSQL + `letta server` (systemd unit: `atelier-letta.service`). Supports pgvector embeddings, agent-scoped memory, auto-compaction via sleeptime. |     |
-| Generic vector  | `src/atelier/integrations/memory/generic_vector_memory.py` | OpenAI-compatible embedding endpoint.                                                                                                                                                                        |
+| System          | Module                                                     | Notes                                                                    |
+| --------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------ |
+| SQLite (native) | `src/atelier/infra/storage/sqlite_memory_store.py`         | Default. Local file, zero-server, fastest. WAL mode for concurrency.     |
+| External bridge | `src/atelier/gateway/integrations/`                        | Optional adapters for external memory systems (configured via env vars). |
+| Generic vector  | `src/atelier/integrations/memory/generic_vector_memory.py` | Embedding-compatible endpoint for vector similarity search.              |
 
 Memory is facts. Atelier handles procedural reasoning. They complement, not duplicate, each other.
-
-The Letta server runs as a **systemd user service** on Linux (`systemctl --user enable --now atelier-letta.service`), exposed on `http://127.0.0.1:8283`. Configure via `ATELIER_LETTA_URL` and `ATELIER_LETTA_API_KEY`. Install the client dependency with `pip install 'letta-client>=1.7.12'` or `atelier[memory]`.
 
 ## Safe Modes
 

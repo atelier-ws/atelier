@@ -91,9 +91,9 @@ Example output:
 
 ```text
 eval suite: 12 active cases
-  ✓ eval_shopify_handle_deadend
-  ✓ eval_pdp_schema_gid_required
-  ✓ eval_shopify_gid_plan_passes
+  ✓ eval_api_handle_deadend
+  ✓ eval_schema_field_required
+  ✓ eval_api_plan_passes
   ...
 
 12/12 passed

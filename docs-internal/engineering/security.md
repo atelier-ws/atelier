@@ -43,10 +43,6 @@ The `integrations/claude/plugin/hooks/` directory contains lifecycle hooks that 
 
 Hook state is persisted at `$&#123;workspace&#125;/.atelier/session_state.json`. It contains operational session metadata such as active session identifiers and loop-detection state. No hidden reasoning content is stored.
 
-### OpenMemory Stub
-
-The OpenMemory bridge (`src/atelier/integrations/openmemory.py`) is a no-op stub by default.
-
 ### Cached-Grep Injection Guard
 
 `search` and `cached-grep` CLI validate grep patterns before execution:
@@ -69,7 +65,7 @@ The service binds to `127.0.0.1` by default (not `0.0.0.0`). Change only when ex
 
 ### No Secret Storage
 
-Atelier never writes `ATELIER_API_KEY`, OpenAI keys, Shopify tokens, or any other credentials to the store. Environment variables are read at startup only.
+Atelier never writes `ATELIER_API_KEY`, provider API keys, service tokens, or any other credentials to the store. Environment variables are read at startup only.
 
 ### SQL Inspect Alias Allowlist + Read-only Gate
 

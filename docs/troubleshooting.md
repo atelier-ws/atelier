@@ -145,7 +145,7 @@ pgvector is optional. Atelier works normally without it. Only enable it when you
 
 ## Atelier Spend Differs From External Analytics
 
-If Atelier and an external tool such as CodeBurn disagree on spend, check the
+If Atelier and an external analytics tool disagree on spend, check the
 trace pricing source before comparing totals.
 
 Atelier now prices imported sessions from persisted raw `usage_entries` on each
