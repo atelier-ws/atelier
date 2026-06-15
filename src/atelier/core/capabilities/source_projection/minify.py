@@ -91,6 +91,22 @@ _ATOMIC_TYPES: frozenset[str] = frozenset(
     }
 )
 
+# Per-language node types treated as atomic leaves *in addition to*
+# ``_ATOMIC_TYPES``. Scoped per language because these names carry whitespace
+# (or unnamed grammar content) that is syntactically load-bearing only here:
+#
+# * html ``doctype`` wraps unnamed content (``<!DOCTYPE html>``) the named-leaf
+#   walk would drop, leaving non-whitespace in the inter-token gap;
+# * bash ``command`` nodes embed ``\``-newline line continuations between word
+#   children, which must stay verbatim (collapsing them would change meaning).
+#
+# Keyed by canonical language name (``language_by_name(...).name``) so the type
+# names are never made atomic globally.
+_LANG_EXTRA_ATOMIC: dict[str, frozenset[str]] = {
+    "html": frozenset({"doctype"}),
+    "bash": frozenset({"command"}),
+}
+
 
 @dataclass(frozen=True)
 class MinifiedProjectionResult:
@@ -163,7 +179,9 @@ def build_minified_projection(
     if root is None or root.has_error:
         return _skip("original source has parse errors")
 
-    tokens = _collect_tokens(root)
+    record = language_by_name(normalized)
+    extra_atomic = _LANG_EXTRA_ATOMIC.get(record.name if record else normalized, frozenset())
+    tokens = _collect_tokens(root, extra_atomic=extra_atomic)
     if not tokens:
         return _skip("no tokens")
 
@@ -363,20 +381,35 @@ def _parser_for(normalized_lang: str) -> Any | None:
         return None
 
 
-def _collect_tokens(root: Any) -> list[tuple[int, int, bool]]:
+def _collect_tokens(
+    root: Any,
+    *,
+    extra_atomic: frozenset[str] = frozenset(),
+) -> list[tuple[int, int, bool]]:
     """DFS over the CST yielding ``(start_byte, end_byte, is_comment)`` leaves.
 
-    Atomic string-like containers are treated as single leaves so their
-    interior whitespace is never touched.
+    Atomic containers are treated as single leaves so their interior bytes are
+    never touched:
+
+    * ``_COMMENT_TYPES`` nodes are captured whole (``is_comment=True``) without
+      descending, so structured doc comments (rust/scala) never leak their
+      inner markers into the inter-token gap as non-whitespace;
+    * ``_ATOMIC_TYPES`` string-like containers keep their interior whitespace;
+    * ``extra_atomic`` adds per-language container types (e.g. html ``doctype``,
+      bash ``command``) whose interior bytes are syntactically load-bearing.
     """
     tokens: list[tuple[int, int, bool]] = []
     stack: list[Any] = [root]
     while stack:
         node = stack.pop()
         node_type = node.type
-        if node_type in _ATOMIC_TYPES or node.child_count == 0:
+        if node_type in _COMMENT_TYPES:
             if node.end_byte > node.start_byte:
-                tokens.append((node.start_byte, node.end_byte, node_type in _COMMENT_TYPES))
+                tokens.append((node.start_byte, node.end_byte, True))
+            continue
+        if node_type in _ATOMIC_TYPES or node_type in extra_atomic or node.child_count == 0:
+            if node.end_byte > node.start_byte:
+                tokens.append((node.start_byte, node.end_byte, False))
             continue
         for i in range(node.child_count - 1, -1, -1):
             child = node.children[i]

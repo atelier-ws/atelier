@@ -9,6 +9,7 @@ from __future__ import annotations
 import difflib
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -504,11 +505,67 @@ class AtelierRuntimeCore:
             ledger_path = paths[-1]
 
         ledger = RunLedger.load(ledger_path)
-        compressed = self.context_compression.compress(ledger)
+        if self._should_auto_compact(ledger):
+            compressed = self.context_compression.compress(ledger)
+        else:
+            compressed = {"compacted": False}
         loops = self.loop_detection.from_ledger(ledger)
         compressed["loop_alerts"] = loops
         compressed["session_id"] = ledger.session_id
         return cast(dict[str, Any], compressed)
+
+    def _should_auto_compact(self, ledger: RunLedger) -> bool:
+        """Decide whether history compaction should run for this ledger.
+
+        DEFAULT-OFF behind ``ATELIER_AUTO_COMPACT``. When the flag is off the
+        method always returns ``True`` so ``summarize_memory`` behaves exactly
+        as it did before (unconditional compress). When the flag is on,
+        compaction only fires once live context fill reaches the policy's
+        ``trigger_at_context_fraction``.
+
+        Fail-open and headless: any error while evaluating the gate falls
+        through to the prior behavior (compress) and never crashes the turn.
+        """
+        if os.environ.get("ATELIER_AUTO_COMPACT", "").strip().lower() not in {"1", "true", "yes", "on"}:
+            return True
+        try:
+            from atelier.core.capabilities.optimization.policy import load_current_policy, should_compact
+
+            policy = load_current_policy(self.root)
+            fill = self._live_context_fill(ledger)
+            return should_compact(fill, policy.compaction)
+        except Exception:  # noqa: BLE001 - fail-open: never crash the turn on gating errors
+            logging.getLogger(__name__).debug("auto-compact gate failed; falling back to compress", exc_info=True)
+            return True
+
+    def _live_context_fill(self, ledger: RunLedger) -> float:
+        """Estimate the live context fill fraction for a ledger.
+
+        Mirrors the audit fill formula ``(effective_input + always_on) /
+        max(window, 1)`` using the ledger's own LLM-call token totals and the
+        context window of its dominant model. ``always_on`` defaults to 0
+        (matching the audit module when no context audit is supplied).
+        """
+        from atelier.core.capabilities.optimization.audit import context_window_for_model
+
+        effective_input = 0
+        token_by_model: dict[str, int] = {}
+        for event in ledger.events:
+            payload = event.payload
+            if payload.get("kind") != "llm_call":
+                continue
+            tokens = (
+                int(payload.get("input_tokens", 0) or 0)
+                + int(payload.get("cache_read_tokens", 0) or 0)
+                + int(payload.get("cache_write_tokens", 0) or 0)
+            )
+            effective_input += tokens
+            model = str(payload.get("model", "") or "")
+            token_by_model[model] = token_by_model.get(model, 0) + tokens
+
+        dominant_model = max(token_by_model, key=lambda m: token_by_model[m]) if token_by_model else ""
+        window = context_window_for_model(dominant_model)
+        return effective_input / max(window, 1)
 
     def benchmark_runtime_metrics(self) -> dict[str, Any]:
         supervision = self.tool_supervision.status()
