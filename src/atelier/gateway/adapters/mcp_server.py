@@ -3376,6 +3376,9 @@ def tool_record_trace(
 
     trace = Trace.model_validate(payload)
     rt.store.record_trace(trace)
+    from atelier.core.capabilities.lesson_promotion import ingest_failed_trace
+
+    ingest_failed_trace(rt.store, trace)
 
     # Write learnings to archival memory (not Playbooks - those are curated).
     # Each learning is a short sentence the agent synthesises; stored deduped so
@@ -3600,11 +3603,19 @@ def _memory_recall(
         )
         .model_dump(mode="json")
     )
-    passages = result.get("passages")
-    if not isinstance(passages, list):
-        passages = []
-        result["passages"] = passages
-    passages.extend(_session_recall_passages(query, top_k))
+    mem_passages = result.get("passages")
+    if not isinstance(mem_passages, list):
+        mem_passages = []
+    session = _session_recall_passages(query, top_k)
+    if session:
+        # Honor the top_k contract (the field promises "max results") while keeping
+        # past-session recall visible: reserve up to a third of the budget for
+        # session hits and fill the rest from durable memory.
+        reserve = min(len(session), max(1, top_k // 3))
+        passages = mem_passages[: max(0, top_k - reserve)] + session[:reserve]
+    else:
+        passages = mem_passages[:top_k]
+    result["passages"] = passages
     if not passages:
         # Helpful state hint instead of a bare empty result, so the model knows
         # memory is working and how to seed it.
