@@ -16,7 +16,7 @@ This roadmap tracks shipped capabilities against what's in active development. D
 - Dynamic context compaction with LLM hints (task type, risk level, must-keep)
 - Sleeptime summarization and deduplication
 - Persistent memory store (SQLite/PostgreSQL) with archival recall
-- Cross-vendor memory adapters (Claude, Codex, Gemini)
+- Cross-vendor memory adapters (Claude, Codex)
 - Memory arbitration with staleness detection
 - Symbol-based memory recall
 
@@ -49,7 +49,7 @@ This roadmap tracks shipped capabilities against what's in active development. D
 
 ### Host integrations
 - Claude Code, Codex, Copilot, OpenCode, Cursor, Antigravity, Hermes
-- SDK adapters (Anthropic tools, OpenAI SDK hooks, Gemini ADK, LangChain middleware)
+- SDK adapters (Anthropic tools, OpenAI SDK hooks, LangChain middleware)
 
 ### Storage & telemetry
 - SQLite and PostgreSQL storage backends
