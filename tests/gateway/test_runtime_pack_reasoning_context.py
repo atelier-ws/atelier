@@ -1,4 +1,4 @@
-"""Runtime context retrieval should merge learned and domain bundle ReasonBlocks."""
+"""Runtime context retrieval should merge learned and domain bundle Playbooks."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.gateway.adapters.runtime import ContextRuntime
 
 
@@ -15,7 +15,7 @@ def test_runtime_get_context_merges_learned_and_domain_blocks(tmp_path: Path) ->
     runtime = ContextRuntime(root=root)
 
     runtime.store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-runtime-learned",
             title="Runtime Learned Recovery",
             domain="Agent.shopify.publish",
@@ -28,7 +28,7 @@ def test_runtime_get_context_merges_learned_and_domain_blocks(tmp_path: Path) ->
 
     # Create a user domain bundle directly in <root>/domains/<bundle_id>/
     bundle_dir = root / "domains" / "shopify.publish"
-    (bundle_dir / "reasonblocks").mkdir(parents=True)
+    (bundle_dir / "playbooks").mkdir(parents=True)
 
     (bundle_dir / "bundle.yaml").write_text(
         yaml.safe_dump(
@@ -37,14 +37,14 @@ def test_runtime_get_context_merges_learned_and_domain_blocks(tmp_path: Path) ->
                 "domain": "Agent.shopify.publish",
                 "description": "Shopify publish domain bundle",
                 "author": "Atelier Test",
-                "reasonblocks": ["reasonblocks/publish_guard.yaml"],
+                "playbooks": ["playbooks/publish_guard.yaml"],
             },
             sort_keys=False,
         ),
         encoding="utf-8",
     )
 
-    (bundle_dir / "reasonblocks" / "publish_guard.yaml").write_text(
+    (bundle_dir / "playbooks" / "publish_guard.yaml").write_text(
         yaml.safe_dump(
             {
                 "id": "rb-domain-guard",

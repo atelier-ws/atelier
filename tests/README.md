@@ -181,7 +181,7 @@ infra/                   tests/infra/
   runtime/                 ├ test_runtime_benchmarking.py
   storage/                 ├ test_store.py
   memory_bridges/          ├ test_memory_adapters.py
-  seed_blocks/             └ ...
+  seed_playbooks/             └ ...
 
 gateway/                 tests/gateway/
   cli/                     ├ test_cli.py

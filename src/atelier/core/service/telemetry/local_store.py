@@ -104,8 +104,8 @@ class LocalTelemetryStore:
         commands_by_day: Counter[str] = Counter()
         top_commands: Counter[str] = Counter()
         agent_hosts: Counter[str] = Counter()
-        top_reasonblocks: Counter[str] = Counter()
-        reasonblock_domains: dict[str, str] = {}
+        top_playbooks: Counter[str] = Counter()
+        playbook_domains: dict[str, str] = {}
         retrieval_scores: Counter[str] = Counter()
         plan_checks: Counter[str] = Counter()
         frustration_behavioral: Counter[str] = Counter()
@@ -144,14 +144,14 @@ class LocalTelemetryStore:
                 host_name = session_hosts.get(session_id or "")
             if isinstance(host_name, str) and host_name:
                 agent_hosts[host_name] += 1
-            if item["event"] == "reasonblock_applied":
+            if item["event"] == "playbook_applied":
                 block_hash = props.get("block_id_hash")
                 if isinstance(block_hash, str):
-                    top_reasonblocks[block_hash] += 1
+                    top_playbooks[block_hash] += 1
                     domain = props.get("domain")
                     if isinstance(domain, str):
-                        reasonblock_domains[block_hash] = domain
-            if item["event"] in {"reasonblock_applied", "reasonblock_retrieved"}:
+                        playbook_domains[block_hash] = domain
+            if item["event"] in {"playbook_applied", "playbook_retrieved"}:
                 score = props.get("retrieval_score")
                 if isinstance(score, (int, float)):
                     retrieval_scores[_score_bucket(float(score))] += 1
@@ -185,9 +185,9 @@ class LocalTelemetryStore:
             "commands_by_day": _counter_series(commands_by_day),
             "top_commands": _counter_items(top_commands),
             "agent_hosts": _counter_items(agent_hosts),
-            "top_reasonblocks": [
-                {"block_id_hash": key, "count": count, "domain": reasonblock_domains.get(key, "")}
-                for key, count in top_reasonblocks.most_common(10)
+            "top_playbooks": [
+                {"block_id_hash": key, "count": count, "domain": playbook_domains.get(key, "")}
+                for key, count in top_playbooks.most_common(10)
             ],
             "retrieval_score_distribution": _counter_items(retrieval_scores),
             "plan_checks": dict(plan_checks),

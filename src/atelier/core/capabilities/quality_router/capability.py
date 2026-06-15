@@ -176,8 +176,8 @@ class QualityRouterCapability:
             token_budget=2000,
             dedup=True,
         )
-        reasonblock_refs = [f"block:{entry.block.id}" for entry in scored]
-        refs.extend(reasonblock_refs)
+        playbook_refs = [f"block:{entry.block.id}" for entry in scored]
+        refs.extend(playbook_refs)
 
         errors_seen = list(ledger.errors_seen) if ledger else []
         repeated_failures = len(ledger.repeated_failures) if ledger else 0
@@ -196,11 +196,11 @@ class QualityRouterCapability:
         estimated_tokens = summary.get("estimated_input_tokens")
         if not isinstance(estimated_tokens, int):
             estimated_tokens = self._latest_input_tokens(request.session_id) or self._estimate_input_tokens(
-                request, len(reasonblock_refs)
+                request, len(playbook_refs)
             )
 
         base_confidence = self._confidence_from_runtime(
-            reasonblock_count=len(reasonblock_refs),
+            playbook_count=len(playbook_refs),
             errors_seen=len(errors_seen),
             repeated_failures=repeated_failures,
             loop_risk=loop_risk,
@@ -223,7 +223,7 @@ class QualityRouterCapability:
 
         summary["confidence"] = max(0.05, min(1.0, confidence))
         summary["estimated_input_tokens"] = int(estimated_tokens)
-        summary["reasonblock_count"] = len(reasonblock_refs)
+        summary["playbook_count"] = len(playbook_refs)
         summary["errors_seen"] = len(errors_seen)
         summary["repeated_failures"] = repeated_failures
         summary["loop_detected"] = loop_detected
@@ -312,22 +312,22 @@ class QualityRouterCapability:
         return int(getattr(latest, "input_tokens", 0))
 
     @staticmethod
-    def _estimate_input_tokens(request: AgentRequest, reasonblock_count: int) -> int:
+    def _estimate_input_tokens(request: AgentRequest, playbook_count: int) -> int:
         goal_tokens = max(128, len(request.user_goal) // 4)
         file_tokens = 400 * max(0, len(request.changed_files))
-        reason_tokens = 200 * max(0, reasonblock_count)
+        reason_tokens = 200 * max(0, playbook_count)
         return goal_tokens + file_tokens + reason_tokens
 
     @staticmethod
     def _confidence_from_runtime(
         *,
-        reasonblock_count: int,
+        playbook_count: int,
         errors_seen: int,
         repeated_failures: int,
         loop_risk: float,
     ) -> float:
         confidence = 1.0
-        if reasonblock_count == 0:
+        if playbook_count == 0:
             confidence -= 0.15
         confidence -= min(0.30, errors_seen * 0.10)
         confidence -= min(0.30, repeated_failures * 0.15)

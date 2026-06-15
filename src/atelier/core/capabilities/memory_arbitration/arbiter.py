@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.infra.embeddings.base import Embedder
 from atelier.infra.internal_llm import chat
-from atelier.infra.internal_llm.ollama_client import OllamaUnavailable as InternalLLMError
+from atelier.infra.internal_llm.exceptions import InternalLLMError
 from atelier.infra.storage.memory_store import MemoryStore
 
 logger = logging.getLogger(__name__)

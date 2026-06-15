@@ -7,21 +7,15 @@ import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
-
-from atelier.core.capabilities.tool_supervision.search_read import (
-    FileMatch,
-    SearchReadResult,
-    Snippet,
-    _count_tokens,
-    _detect_lang,
-    _file_outline,
-)
+from typing import TYPE_CHECKING, Literal
 
 from .binary import ZoektBinaryResolution, discover_zoekt_binary, zoekt_mode
 from .client import ZoektClient, ZoektFileResult
 from .indexer import ZoektIndexer
 from .server import ZoektServer, get_zoekt_server, reset_zoekt_servers
+
+if TYPE_CHECKING:
+    from atelier.core.capabilities.tool_supervision.search_read import SearchReadResult
 
 _DEFAULT_LOC_THRESHOLD = 500_000
 _NOISE_PATH_PARTS = frozenset(
@@ -156,6 +150,15 @@ class ZoektSupervisor:
         skip_noise: bool = True,
         prefer_source: bool = True,
     ) -> SearchReadResult:
+        from atelier.core.capabilities.tool_supervision.search_read import (
+            FileMatch,
+            SearchReadResult,
+            Snippet,
+            _count_tokens,
+            _detect_lang,
+            _file_outline,
+        )
+
         client = self.ensure_started()
         rel_glob = _path_to_glob(self.repo_root, Path(search_path).resolve())
         raw_limit = max(max_files * 4, max_files, 20)

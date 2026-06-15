@@ -1,4 +1,4 @@
-"""Render ReasonBlocks and runtime artifacts to human-readable formats.
+"""Render Playbooks and runtime artifacts to human-readable formats.
 
 Markdown is the canonical reviewable format. The injection format
 (used by `get_context`) is a compact text block tuned for LLM
@@ -7,11 +7,11 @@ context windows.
 
 from __future__ import annotations
 
-from atelier.core.foundation.models import ReasonBlock, RubricResult
+from atelier.core.foundation.models import Playbook, RubricResult
 
 
-def render_block_markdown(block: ReasonBlock) -> str:
-    """Render a ReasonBlock as a self-contained markdown document."""
+def render_playbook_markdown(block: Playbook) -> str:
+    """Render a Playbook as a self-contained markdown document."""
     lines: list[str] = []
     lines.append(f"# {block.title}")
     lines.append("")
@@ -61,8 +61,8 @@ def render_block_markdown(block: ReasonBlock) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_block_for_agent(block: ReasonBlock) -> str:
-    """Render one compact ReasonBlock for agent-context injection."""
+def render_block_for_agent(block: Playbook) -> str:
+    """Render one compact Playbook for agent-context injection."""
     out: list[str] = []
     out.append(f"Procedure: {block.title}  [{block.id}]")
     out.append(f"Use when: {block.situation}")
@@ -82,7 +82,7 @@ def render_block_for_agent(block: ReasonBlock) -> str:
     return "\n".join(out)
 
 
-def render_context_for_agent(blocks: list[ReasonBlock], *, max_blocks: int = 5) -> str:
+def render_context_for_agent(blocks: list[Playbook], *, max_blocks: int = 5) -> str:
     """Compact context block for injection into agent prompts.
 
     Format is deliberately small: title, situation, dead-ends, procedure,

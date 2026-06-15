@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.runtime import AtelierRuntimeCore
 from atelier.gateway.cli import cli
 
@@ -87,7 +87,7 @@ def _ensure_eval_blocks_exist(runtime: AtelierRuntimeCore) -> set[str]:
         tool_patterns = [str(item) for case in block_cases for item in case.get("tools", [])][:5]
 
         runtime.store.upsert_block(
-            ReasonBlock(
+            Playbook(
                 id=block_id,
                 title=block_id.replace("-", " ").title(),
                 domain=domain,
@@ -188,7 +188,7 @@ def _cold_start_block_in_top_five(tmp_path: Path) -> bool:
     now = datetime.now(UTC)
 
     runtime.store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="eval-cold-start-trace-playbook",
             title="Cold Start Retrieval Trace Playbook",
             domain="coding",
@@ -212,7 +212,7 @@ def _cold_start_block_in_top_five(tmp_path: Path) -> bool:
 
     for idx in range(6):
         runtime.store.upsert_block(
-            ReasonBlock(
+            Playbook(
                 id=f"eval-legacy-trace-playbook-{idx}",
                 title=f"Legacy Retrieval Trace Playbook {idx}",
                 domain="coding",

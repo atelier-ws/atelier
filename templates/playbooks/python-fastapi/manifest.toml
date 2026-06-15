@@ -1,5 +1,5 @@
 name = "Python FastAPI"
-description = "Starter ReasonBlocks for FastAPI services using Pydantic, pytest, Alembic, and Ruff/Black."
+description = "Starter Playbooks for FastAPI services using Pydantic, pytest, Alembic, and Ruff/Black."
 version = "0.1.0"
 
 [[blocks]]

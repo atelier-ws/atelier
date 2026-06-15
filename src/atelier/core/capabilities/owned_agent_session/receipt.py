@@ -122,7 +122,7 @@ class SessionReceipt:
             )
         lines += [
             "",
-            f"Cache efficiency: {self.cache_efficiency_pct:.1f}%  (target: >60%, Vix benchmark: 60-80%)",
+            f"Cache efficiency: {self.cache_efficiency_pct:.1f}%  (target: >60%)",
             f"Cost:     ${self.cost_usd():.4f}",
             f"Naive:    ${self.naive_cost_usd():.4f}  (no cache, per-phase-cold baseline)",
             f"Saved:    ${self.savings_usd():.4f}",

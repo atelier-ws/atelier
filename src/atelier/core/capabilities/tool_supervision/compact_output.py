@@ -1,15 +1,16 @@
 """Threshold-triggered tool-output compaction.
 
-Head+tail compression strategy validated at -51.8% input tokens on SWE-bench Pro
-(n=75 paired runs, Claude Sonnet 4.6) — ReasonBlocks TokenSavingMiddleware approach.
+Head+tail compression keeps the high-signal start and end of an oversized tool
+output and elides the repetitive middle, substantially cutting input tokens on
+long tool results.
 
 Key design choices:
 - Char-based threshold (1800 chars) instead of token-based — predictable and fast
 - Asymmetric head/tail split: head gets more budget (start has command, first error,
   context; tail has final result/status — middle is usually repetitive output)
-- LLM summarization is opt-in only; head+tail alone achieves the benchmark savings
-- keep_recent_tool_messages exempts the last N messages from compression, matching
-  the RB spec (agent must see its active step at full fidelity)
+- LLM summarization is opt-in only; head+tail alone achieves the savings
+- keep_recent_tool_messages exempts the last N messages from compression, so the
+  agent always sees its active step at full fidelity
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from atelier.infra.internal_llm import InternalLLMError, summarize
 CompactMethod = Literal["passthrough", "deterministic_truncate", "llm_summary"]
 ContentType = Literal["file", "grep", "bash", "tool_output", "unknown"]
 
-# Validated threshold from ReasonBlocks SWE-bench benchmark
+# Char-based compaction threshold: outputs longer than this get head+tail elided.
 DEFAULT_COMPRESS_THRESHOLD_CHARS = 1800
 DEFAULT_HEAD_KEEP_CHARS = 900  # ~56% of budget — head has more signal
 DEFAULT_TAIL_KEEP_CHARS = 700  # ~44% of budget — tail has final result/status
@@ -40,10 +41,7 @@ DEFAULT_TAIL_KEEP_CHARS = 700  # ~44% of budget — tail has final result/status
 
 @dataclass
 class TokenSavingStats:
-    """Aggregate token-saving counters for a session or benchmark run.
-
-    Matches the ReasonBlocks TokenSavingMiddleware.stats surface.
-    """
+    """Aggregate token-saving counters for a session or benchmark run."""
 
     compressions: int = 0
     chars_saved: int = 0
@@ -99,8 +97,7 @@ def compress_tool_output(
     Returns the content unchanged when it is within the threshold.
     When above the threshold, returns head + omission notice + tail.
 
-    This is a standalone helper matching the ReasonBlocks compress_tool_output()
-    API, usable outside the compact MCP tool lifecycle.
+    This is a standalone helper usable outside the compact MCP tool lifecycle.
 
     Args:
         content:         The tool output string.
@@ -218,8 +215,8 @@ def compact(
     """Compact tool output using char-based threshold + head/tail compression.
 
     Uses a char-based threshold (1800 chars by default) rather than token-based
-    for consistency with the validated ReasonBlocks approach. LLM summarization
-    is opt-in only — head+tail alone achieves the benchmark -51.8% token savings.
+    for predictability. LLM summarization is opt-in only — head+tail alone
+    achieves the bulk of the token savings.
 
     Args:
         content:       Tool output to compact.
@@ -277,8 +274,7 @@ def compress_history(
     """Head+tail compress stale tool-output messages in a history list.
 
     The most recent ``keep_recent`` tool messages are exempt — the agent must
-    see its active step at full fidelity (matches RB ``keep_recent_tool_messages``
-    default of 2).
+    see its active step at full fidelity (default of 2).
 
     Each message is expected to be a dict with at least a ``"role"`` key and
     a ``"content"`` key (LangChain / OpenAI message shape). Only messages with

@@ -31,7 +31,7 @@ export interface TelemetrySummary {
   commands_by_day: Array<{ day: string; count: number }>;
   top_commands: Array<{ name: string; count: number }>;
   agent_hosts: Array<{ name: string; count: number }>;
-  top_reasonblocks: Array<{
+  top_playbooks: Array<{
     block_id_hash: string;
     count: number;
     domain: string;

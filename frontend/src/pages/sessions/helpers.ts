@@ -260,8 +260,8 @@ export function parseInspectorData(
 
   return {
     session_id: sessionId,
-    pinned_blocks: Array.isArray(ledger?.active_reasonblocks)
-      ? ledger.active_reasonblocks
+    pinned_blocks: Array.isArray(ledger?.active_playbooks)
+      ? ledger.active_playbooks
       : [],
     recalled_passages: recalled,
     summarized_events_count: summarizedEventsCount,

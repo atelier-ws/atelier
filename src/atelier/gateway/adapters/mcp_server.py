@@ -14,7 +14,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import sys
 import tempfile
 import threading
@@ -98,7 +97,6 @@ from atelier.infra.embeddings.factory import make_embedder
 from atelier.infra.runtime.realtime_context import RealtimeContextManager
 from atelier.infra.runtime.run_ledger import (
     RunLedger,
-    context_savings_path,
     outcomes_path,
     session_run_dir,
 )
@@ -362,8 +360,6 @@ _product_session_started_at: float | None = None
 _last_plan_hash_by_session: dict[str, str] = {}
 _last_plan_by_session: dict[str, dict[str, Any]] = {}
 _last_blocked_plan_hash_by_session: dict[str, str] = {}
-_client_sampling_supported: bool = False
-_sampling_seq: int = 0
 
 # --------------------------------------------------------------------------- #
 # Trajectory monitor state (per session)                                      #
@@ -584,14 +580,14 @@ def _match_mcp_lexical(args: dict[str, Any]) -> None:
             match_frustration(value, surface="mcp_prompt", session_id=_get_product_session_id())
 
 
-def _emit_reasonblock_retrieved(scored: list[Any], domain: str | None) -> None:
+def _emit_playbook_retrieved(scored: list[Any], domain: str | None) -> None:
     from atelier.core.service.telemetry import emit_product
     from atelier.core.service.telemetry.schema import hash_identifier
 
     for rank, item in enumerate(scored, start=1):
         block = getattr(item, "block", None)
         emit_product(
-            "reasonblock_retrieved",
+            "playbook_retrieved",
             block_id_hash=hash_identifier(str(getattr(block, "id", ""))),
             domain=str(getattr(block, "domain", domain or "")),
             retrieval_score=float(getattr(item, "score", 0.0)),
@@ -680,13 +676,15 @@ def _check_auto_update() -> None:
     the install script.  Logs errors and emits telemetry on failure but
     never blocks the MCP server.
 
-    Disabled by setting ``ATELIER_NO_AUTO_UPDATE=1`` in the environment.
+    Opt-in only: does nothing unless ``ATELIER_AUTO_UPDATE=1`` is set in the
+    environment. Running ``git pull`` + the install script from origin on every
+    startup is a supply-chain/RCE risk, so it must be explicitly enabled.
     """
     import re
     import subprocess
 
-    if os.environ.get("ATELIER_NO_AUTO_UPDATE") == "1":
-        _log.info("auto-update disabled via ATELIER_NO_AUTO_UPDATE=1")
+    if os.environ.get("ATELIER_AUTO_UPDATE") != "1":
+        _log.debug("auto-update disabled (set ATELIER_AUTO_UPDATE=1 to enable)")
         return
 
     _log.info("checking for auto-update...")
@@ -1571,146 +1569,153 @@ def _default_workflow_shell_executor(step: Any, command: str, forked_context: di
 
 def _run_owned_workflow(arguments: dict[str, Any]) -> dict[str, Any]:
     resume = bool(arguments.get("resume", False))
-    session_state = _read_workspace_session_state()
-    runtime_state = _workflow_runtime_state(session_state)
+    # Hold _STATE_LOCK across the whole read-modify-write: atomic os.replace
+    # prevents a torn file but not a lost update when a concurrent handler
+    # interleaves its own session_state RMW. _STATE_LOCK is an RLock, so the
+    # reentrant helper calls below are safe.
+    with _STATE_LOCK:
+        session_state = _read_workspace_session_state()
+        runtime_state = _workflow_runtime_state(session_state)
 
-    workflow_raw = arguments.get("workflow")
-    if resume and not isinstance(workflow_raw, Mapping):
-        workflow_raw = runtime_state.get("workflow")
-    if not isinstance(workflow_raw, Mapping):
-        raise ValueError("workflow run requires workflow mapping")
-    route_raw = arguments.get("route")
-    if resume and not isinstance(route_raw, Mapping):
-        route_raw = runtime_state.get("route")
-    route = dict(route_raw) if isinstance(route_raw, Mapping) else {}
-    review_raw = arguments.get("plan_review")
-    plan_review = dict(review_raw) if isinstance(review_raw, Mapping) else {}
-    review_decision = _coerce_workflow_review_decision(plan_review)
-    definition = workflow_definition_from_mapping(workflow_raw)
-    workflow_state = (
-        dict(session_state.get("workflow") or {}) if isinstance(session_state.get("workflow"), dict) else {}
-    )
-    runner_state = WorkflowContextState.from_mapping(runtime_state.get("runner")) if resume else WorkflowContextState()
-    runner = WorkflowRunner(
-        agent_executor=lambda step, prompt, context_state: _default_workflow_agent_executor(
-            step,
-            prompt,
-            context_state,
-            route=route,
-        ),
-        tool_executor=_default_workflow_tool_executor,
-        shell_executor=_default_workflow_shell_executor,
-    )
-    ledger = _get_ledger()
-    result = runner.run(
-        definition,
-        context_state=runner_state,
-        ledger=ledger,
-        plan_review_decision=review_decision,
-    )
-    spawn_summary = _workflow_spawn_summary(result.step_results)
-    created_at = str(runtime_state.get("created_at") or "").strip() if resume else ""
-    runtime_state = {
-        "run_id": result.run_id,
-        "workflow_id": definition.workflow_id,
-        "workflow": dict(workflow_raw),
-        "route": dict(route),
-        "status": result.status,
-        "step_order": list(result.step_order),
-        "current_step": result.paused_step_id
-        or result.failed_step_id
-        or (result.step_order[-1] if result.step_order else ""),
-        "failed_step_id": result.failed_step_id or "",
-        "paused_step_id": result.paused_step_id or "",
-        "artifact_ids": [],
-        "created_at": created_at or datetime.now(UTC).isoformat(),
-        "updated_at": datetime.now(UTC).isoformat(),
-        "runner": runner_state.to_dict(),
-    }
-    if spawn_summary:
-        runtime_state["spawn_summary"] = dict(spawn_summary)
-    if result.status == "awaiting_review":
-        workflow_state["current_step"] = "review"
-        workflow_state["session_phase"] = "review"
-        runtime_state["plan_review"] = {
-            "decision": review_decision or "pending",
-            "paused_step_id": result.paused_step_id or "",
-            "workflow_id": definition.workflow_id,
-        }
-        ledger.record_workflow_event(
-            "plan_review",
-            {
-                "workflow_step": "review",
-                "review_decision": "pending",
-                "workflow_id": definition.workflow_id,
-                "step_id": result.paused_step_id or "",
-            },
+        workflow_raw = arguments.get("workflow")
+        if resume and not isinstance(workflow_raw, Mapping):
+            workflow_raw = runtime_state.get("workflow")
+        if not isinstance(workflow_raw, Mapping):
+            raise ValueError("workflow run requires workflow mapping")
+        route_raw = arguments.get("route")
+        if resume and not isinstance(route_raw, Mapping):
+            route_raw = runtime_state.get("route")
+        route = dict(route_raw) if isinstance(route_raw, Mapping) else {}
+        review_raw = arguments.get("plan_review")
+        plan_review = dict(review_raw) if isinstance(review_raw, Mapping) else {}
+        review_decision = _coerce_workflow_review_decision(plan_review)
+        definition = workflow_definition_from_mapping(workflow_raw)
+        workflow_state = (
+            dict(session_state.get("workflow") or {}) if isinstance(session_state.get("workflow"), dict) else {}
         )
-    elif result.status == "review_rejected":
-        workflow_state["current_step"] = "review"
-        workflow_state["session_phase"] = "review"
-        runtime_state["plan_review"] = {
-            "decision": review_decision or "revise",
-            "paused_step_id": result.paused_step_id or "",
-            "workflow_id": definition.workflow_id,
-        }
-        ledger.record_workflow_event(
-            "plan_review",
-            {
-                "workflow_step": "review",
-                "review_decision": review_decision or "revise",
-                "workflow_id": definition.workflow_id,
-                "step_id": result.paused_step_id or "",
-            },
+        runner_state = (
+            WorkflowContextState.from_mapping(runtime_state.get("runner")) if resume else WorkflowContextState()
         )
-    else:
-        workflow_state["current_step"] = "execution"
-        workflow_state["session_phase"] = "execute"
-        if review_decision:
+        runner = WorkflowRunner(
+            agent_executor=lambda step, prompt, context_state: _default_workflow_agent_executor(
+                step,
+                prompt,
+                context_state,
+                route=route,
+            ),
+            tool_executor=_default_workflow_tool_executor,
+            shell_executor=_default_workflow_shell_executor,
+        )
+        ledger = _get_ledger()
+        result = runner.run(
+            definition,
+            context_state=runner_state,
+            ledger=ledger,
+            plan_review_decision=review_decision,
+        )
+        spawn_summary = _workflow_spawn_summary(result.step_results)
+        created_at = str(runtime_state.get("created_at") or "").strip() if resume else ""
+        runtime_state = {
+            "run_id": result.run_id,
+            "workflow_id": definition.workflow_id,
+            "workflow": dict(workflow_raw),
+            "route": dict(route),
+            "status": result.status,
+            "step_order": list(result.step_order),
+            "current_step": result.paused_step_id
+            or result.failed_step_id
+            or (result.step_order[-1] if result.step_order else ""),
+            "failed_step_id": result.failed_step_id or "",
+            "paused_step_id": result.paused_step_id or "",
+            "artifact_ids": [],
+            "created_at": created_at or datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
+            "runner": runner_state.to_dict(),
+        }
+        if spawn_summary:
+            runtime_state["spawn_summary"] = dict(spawn_summary)
+        if result.status == "awaiting_review":
+            workflow_state["current_step"] = "review"
+            workflow_state["session_phase"] = "review"
             runtime_state["plan_review"] = {
-                "decision": review_decision,
+                "decision": review_decision or "pending",
+                "paused_step_id": result.paused_step_id or "",
                 "workflow_id": definition.workflow_id,
             }
-        if review_decision:
             ledger.record_workflow_event(
                 "plan_review",
                 {
                     "workflow_step": "review",
-                    "review_decision": review_decision,
+                    "review_decision": "pending",
                     "workflow_id": definition.workflow_id,
+                    "step_id": result.paused_step_id or "",
                 },
             )
-    workflow_state["current_task"] = {
-        "workflow_id": definition.workflow_id,
-        "run_id": result.run_id,
-        "step_id": result.paused_step_id
-        or result.failed_step_id
-        or (result.step_order[-1] if result.step_order else ""),
-    }
-    workflow_state["task_outputs"] = {
-        step_id: step_result.to_dict() for step_id, step_result in result.step_results.items()
-    }
-    if spawn_summary:
-        workflow_state["spawn_summary"] = dict(spawn_summary)
-        ledger.record_workflow_event("spawn_summary", dict(spawn_summary))
-    if result.status in {"awaiting_review", "review_rejected"}:
-        workflow_state["plan_review"] = {
-            "decision": review_decision or "pending",
-            "paused_step_id": result.paused_step_id or "",
+        elif result.status == "review_rejected":
+            workflow_state["current_step"] = "review"
+            workflow_state["session_phase"] = "review"
+            runtime_state["plan_review"] = {
+                "decision": review_decision or "revise",
+                "paused_step_id": result.paused_step_id or "",
+                "workflow_id": definition.workflow_id,
+            }
+            ledger.record_workflow_event(
+                "plan_review",
+                {
+                    "workflow_step": "review",
+                    "review_decision": review_decision or "revise",
+                    "workflow_id": definition.workflow_id,
+                    "step_id": result.paused_step_id or "",
+                },
+            )
+        else:
+            workflow_state["current_step"] = "execution"
+            workflow_state["session_phase"] = "execute"
+            if review_decision:
+                runtime_state["plan_review"] = {
+                    "decision": review_decision,
+                    "workflow_id": definition.workflow_id,
+                }
+            if review_decision:
+                ledger.record_workflow_event(
+                    "plan_review",
+                    {
+                        "workflow_step": "review",
+                        "review_decision": review_decision,
+                        "workflow_id": definition.workflow_id,
+                    },
+                )
+        workflow_state["current_task"] = {
             "workflow_id": definition.workflow_id,
+            "run_id": result.run_id,
+            "step_id": result.paused_step_id
+            or result.failed_step_id
+            or (result.step_order[-1] if result.step_order else ""),
         }
-    elif review_decision:
-        workflow_state["plan_review"] = {
-            "decision": review_decision,
-            "workflow_id": definition.workflow_id,
+        workflow_state["task_outputs"] = {
+            step_id: step_result.to_dict() for step_id, step_result in result.step_results.items()
         }
-    else:
-        workflow_state.pop("plan_review", None)
-    workflow_state["updated_at"] = datetime.now(UTC).isoformat()
-    session_state["workflow"] = workflow_state
-    _write_workflow_runtime_state(session_state, runtime_state)
-    _write_workspace_session_state(session_state)
-    ledger.persist()
+        if spawn_summary:
+            workflow_state["spawn_summary"] = dict(spawn_summary)
+            ledger.record_workflow_event("spawn_summary", dict(spawn_summary))
+        if result.status in {"awaiting_review", "review_rejected"}:
+            workflow_state["plan_review"] = {
+                "decision": review_decision or "pending",
+                "paused_step_id": result.paused_step_id or "",
+                "workflow_id": definition.workflow_id,
+            }
+        elif review_decision:
+            workflow_state["plan_review"] = {
+                "decision": review_decision,
+                "workflow_id": definition.workflow_id,
+            }
+        else:
+            workflow_state.pop("plan_review", None)
+        workflow_state["updated_at"] = datetime.now(UTC).isoformat()
+        session_state["workflow"] = workflow_state
+        _write_workflow_runtime_state(session_state, runtime_state)
+        _write_workspace_session_state(session_state)
+        ledger.persist()
     receipt = {
         "run_id": result.run_id,
         "status": result.status,
@@ -1884,41 +1889,45 @@ def tool_workflow(
     normalized_op = op.strip().lower()
     if normalized_op == "run":
         return _run_owned_workflow({"workflow": workflow or {}, "route": route or {}, "plan_review": plan_review or {}})
-    session_state = _read_workspace_session_state()
-    if normalized_op == "status":
-        return _coerce_workflow_runtime_status(session_state)
-    if normalized_op == "inspect":
-        return _inspect_workflow_runtime(session_state)
-    if normalized_op not in {"pause", "resume", "stop"}:
-        return {
-            "isError": True,
-            "status": "unsupported_op",
-            "message": f"unsupported workflow op: {op}",
-        }
-    _require_active_workflow_runtime(session_state, run_id or "")
-    if normalized_op == "resume":
-        arguments: dict[str, Any] = {"resume": True, "plan_review": plan_review or {}}
-        if workflow is not None:
-            arguments["workflow"] = workflow
-        if route is not None:
-            arguments["route"] = route
-        return _run_owned_workflow(arguments)
-    if normalized_op == "pause":
-        _pause_workflow_runtime(
-            session_state,
-            run_id=run_id or "",
-            pause_reason=str(pause_reason or ""),
-        )
-        _write_workspace_session_state(session_state)
-        return _coerce_workflow_runtime_status(session_state)
-    if normalized_op == "stop":
-        _stop_workflow_runtime(
-            session_state,
-            run_id=run_id or "",
-            stop_reason=str(stop_reason or ""),
-        )
-        _write_workspace_session_state(session_state)
-        return _coerce_workflow_runtime_status(session_state)
+    # Hold _STATE_LOCK across the read so the pause/stop read-modify-write below
+    # cannot lose a concurrent handler's session_state update. _STATE_LOCK is an
+    # RLock; the resume branch reacquires it reentrantly via _run_owned_workflow.
+    with _STATE_LOCK:
+        session_state = _read_workspace_session_state()
+        if normalized_op == "status":
+            return _coerce_workflow_runtime_status(session_state)
+        if normalized_op == "inspect":
+            return _inspect_workflow_runtime(session_state)
+        if normalized_op not in {"pause", "resume", "stop"}:
+            return {
+                "isError": True,
+                "status": "unsupported_op",
+                "message": f"unsupported workflow op: {op}",
+            }
+        _require_active_workflow_runtime(session_state, run_id or "")
+        if normalized_op == "resume":
+            arguments: dict[str, Any] = {"resume": True, "plan_review": plan_review or {}}
+            if workflow is not None:
+                arguments["workflow"] = workflow
+            if route is not None:
+                arguments["route"] = route
+            return _run_owned_workflow(arguments)
+        if normalized_op == "pause":
+            _pause_workflow_runtime(
+                session_state,
+                run_id=run_id or "",
+                pause_reason=str(pause_reason or ""),
+            )
+            _write_workspace_session_state(session_state)
+            return _coerce_workflow_runtime_status(session_state)
+        if normalized_op == "stop":
+            _stop_workflow_runtime(
+                session_state,
+                run_id=run_id or "",
+                stop_reason=str(stop_reason or ""),
+            )
+            _write_workspace_session_state(session_state)
+            return _coerce_workflow_runtime_status(session_state)
     raise AssertionError(f"unreachable workflow op: {op!r}")  # op is guaranteed pause/resume/stop above
 
 
@@ -1994,19 +2003,22 @@ def _record_grounding_evidence_if_available(tool_name: str, args: dict[str, Any]
     )
     if not targets:
         return
-    state = _read_workspace_session_state()
-    session_id = _workspace_session_id(state)
-    if not session_id:
-        return
-    updated = record_grounding_evidence(
-        state,
-        session_id=session_id,
-        tool_name=tool_name,
-        targets=targets,
-        workspace_root=os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd(),
-    )
-    if updated != state:
-        _write_workspace_session_state(updated)
+    # Hold _STATE_LOCK across the read-modify-write so a concurrent handler's
+    # session_state update is not lost. _STATE_LOCK is an RLock.
+    with _STATE_LOCK:
+        state = _read_workspace_session_state()
+        session_id = _workspace_session_id(state)
+        if not session_id:
+            return
+        updated = record_grounding_evidence(
+            state,
+            session_id=session_id,
+            tool_name=tool_name,
+            targets=targets,
+            workspace_root=os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd(),
+        )
+        if updated != state:
+            _write_workspace_session_state(updated)
 
 
 def _benchmark_edit_block_message(args: dict[str, Any]) -> str | None:
@@ -2175,11 +2187,6 @@ def _get_host_session_sidecar_path() -> Path:
     return _workspace_savings_path()
 
 
-def _context_savings_path(session_id: str) -> Path:
-    """Per-session context-compression savings file, alongside the run ledger."""
-    return context_savings_path(_atelier_root(), session_id)
-
-
 def _current_context_state() -> tuple[int, str]:
     """Measured (context size, model) from the host transcript's last usage entry.
 
@@ -2256,10 +2263,12 @@ def _price_avoided_calls_usd(model: str, calls_saved: int, ctx_tokens: int) -> f
 
 
 def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: str = "") -> None:
-    """Write per-call savings to two places:
+    """Append one per-call savings row to ``sessions/<id>/savings.jsonl``.
 
-    1. sessions/<id>/savings.jsonl  — per-session, read by statusline/stop hook
-    2. sessions/<id>/context_savings.jsonl — per-session, read by session report
+    This single sidecar is the source of truth read by the live statusline,
+    the stop hook, and the session report. Each row carries the raw
+    ``tokens``/``calls`` plus the pre-priced ``cost_saved_usd`` /
+    ``calls_cost_saved_usd`` so analytics readers need not re-price.
     """
     if tokens_saved <= 0 and calls_saved <= 0:
         return
@@ -2272,7 +2281,7 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
     calls_usd = 0.0
     if calls_saved > 0 and ctx_tokens > 0:
         calls_usd = round(_price_avoided_calls_usd(model, calls_saved, ctx_tokens), 6)
-    # --- sidecar for statusline / stop hook ---
+    cost_saved = round(_price_tokens_saved_usd(model, tokens_saved), 6)
     try:
         path = _get_host_session_sidecar_path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -2286,8 +2295,13 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
             "model": model,
             "ts": ts,
         }
+        # Pre-priced USD so the session report / analytics need not re-price.
+        # Omitted when zero to keep rows lean; readers treat missing as 0.
+        if cost_saved > 0:
+            entry["cost_saved_usd"] = cost_saved
         if calls_usd > 0:
             entry["calls_usd"] = calls_usd
+            entry["calls_cost_saved_usd"] = calls_usd
             entry["ctx_tokens"] = ctx_tokens
         if rid:
             entry["rid"] = rid
@@ -2295,36 +2309,8 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
             fh.write(json.dumps(entry) + "\n")
     except Exception:
         logging.exception("Recovered from broad exception handler")
-        # Best-effort statusline sidecar; a failed write must not break the tool call.
+        # Best-effort savings sidecar; a failed write must not break the tool call.
         _log.debug("savings sidecar append failed", exc_info=True)
-    # --- per-session context savings for session report / analytics ---
-    try:
-        led = _get_ledger()
-        cost_saved = round(_price_tokens_saved_usd(model, tokens_saved), 6)
-        event: dict[str, Any] = {
-            "at": ts,
-            "tool": tool_name,
-            "model": model,
-            "tokens_saved": int(tokens_saved),
-            "calls_saved": int(calls_saved),
-            "cost_saved_usd": cost_saved,
-            "calls_cost_saved_usd": calls_usd,
-        }
-        if rid:
-            event["rid"] = rid
-        # Key the file by the Claude host session UUID (workspace bridge) when
-        # available so that session_report.py can find savings via
-        # sessions/<uuid>/context_savings.jsonl — matching the UUID-keyed run ledger
-        # files. Falls back to the MCP ledger hex session_id for non-Claude hosts.
-        host_sid = _claude_session_id()
-        cpath = _context_savings_path(host_sid or led.session_id)
-        cpath.parent.mkdir(parents=True, exist_ok=True)
-        with cpath.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(event) + "\n")
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        # Best-effort per-session savings ledger; a failed write must not break the tool call.
-        _log.debug("context savings ledger append failed", exc_info=True)
 
 
 def _append_workspace_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: str = "") -> None:
@@ -2333,7 +2319,13 @@ def _append_workspace_savings(tool_name: str, tokens_saved: int, calls_saved: in
 
 
 def _mcp_debug_enabled() -> bool:
-    return os.environ.get("ATELIER_MCP_DEBUG", "0") not in ("0", "", "false", "no")
+    if os.environ.get("ATELIER_MCP_DEBUG", "0") not in ("0", "", "false", "no"):
+        return True
+    # Auto-enable in dev installations (marker written by make dev / scripts/local.sh).
+    try:
+        return (_atelier_root() / ".dev_mode").exists()
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _mcp_debug_path() -> Path:
@@ -2636,7 +2628,7 @@ def tool_get_context(
     recall: bool = True,
     mode: Literal["procedures", "symbols", "pull"] = "procedures",
 ) -> dict[str, Any]:
-    """Record task context and retrieve relevant ReasonBlocks for the task.
+    """Record task context and retrieve relevant Playbooks for the task.
 
     Call at task start to seed context with prior procedures, repo bootstrap
     knowledge, and per-agent memory. mode="symbols" returns the most relevant
@@ -2764,7 +2756,7 @@ def tool_get_context(
             blocks.append(
                 PromptBlock(
                     id="context",
-                    kind=BlockKind.REASONBLOCK,
+                    kind=BlockKind.PLAYBOOK,
                     stability=Stability.BRANCH,
                     content=context_text,
                 )
@@ -2845,143 +2837,6 @@ def _prefix_cache_diagnostics_from_ledger(led: Any) -> dict[str, Any]:
     }
 
 
-def _sampling_invoke(prompt: str, model_hint: str, max_tokens: int) -> dict[str, Any]:
-    """Send a sampling/createMessage request to the MCP client and return its response."""
-    global _sampling_seq
-    if not _client_sampling_supported:
-        return {
-            "sampling_supported": False,
-            "error": (
-                "Host does not support MCP sampling. Use the host agent's native sub-agent "
-                "mechanism (e.g. Claude Code's Task tool) with model='" + model_hint + "'."
-            ),
-            "prompt": prompt,
-            "model_hint": model_hint,
-        }
-    _sampling_seq += 1
-    req_id = f"samp-{_sampling_seq}"
-    request = {
-        "jsonrpc": "2.0",
-        "id": req_id,
-        "method": "sampling/createMessage",
-        "params": {
-            "messages": [{"role": "user", "content": {"type": "text", "text": prompt}}],
-            "modelPreferences": {
-                "hints": [{"name": model_hint}] if model_hint else [],
-                "costPriority": 0.3,
-                "speedPriority": 0.3,
-                "intelligencePriority": 0.4,
-            },
-            "maxTokens": max_tokens,
-            "includeContext": "none",
-        },
-    }
-    sys.stdout.write(json.dumps(request, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
-    for raw_line in sys.stdin:
-        raw_line = raw_line.strip()
-        if not raw_line:
-            continue
-        try:
-            msg = json.loads(raw_line)
-        except json.JSONDecodeError:
-            return {
-                "sampling_supported": True,
-                "error": "invalid sampling response from host",
-                "model_used": None,
-            }
-        if msg.get("id") != req_id:
-            # Unexpected message — process inline and keep waiting
-            inline_resp = _handle(msg)
-            if inline_resp is not None:
-                sys.stdout.write(json.dumps(inline_resp, ensure_ascii=False) + "\n")
-                sys.stdout.flush()
-            continue
-        if "error" in msg:
-            return {
-                "sampling_supported": True,
-                "error": msg["error"].get("message", "sampling failed"),
-                "model_used": None,
-            }
-        result = msg.get("result", {})
-        content = result.get("content", {})
-        text = content.get("text", "") if isinstance(content, dict) else str(content)
-        return {
-            "sampling_supported": True,
-            "model_used": result.get("model", model_hint),
-            "response": text,
-            "stop_reason": result.get("stopReason", "end_turn"),
-        }
-    return {
-        "sampling_supported": True,
-        "error": "stdin closed before sampling response",
-        "model_used": None,
-    }
-
-
-def _spawn_subprocess(prompt: str, model: str) -> dict[str, Any] | None:
-    """Run a real agentic task via claude/codex CLI subprocess.
-
-    Returns a result dict on success/error, or None if no supported CLI is found.
-    The spawned process is a full agentic loop with tool access — not a single LLM call.
-    """
-    import subprocess as _sp
-
-    for cli_name in ("claude", "codex"):
-        cli = shutil.which(cli_name)
-        if not cli:
-            continue
-        # -p (print mode): full agentic loop, exits when done; json output for structured parsing
-        cmd = [
-            cli,
-            "-p",
-            prompt,
-            "--model",
-            model,
-            "--output-format",
-            "json",
-            "--no-session-persistence",
-        ]
-        try:
-            result = _sp.run(cmd, capture_output=True, text=True, timeout=300)
-        except _sp.TimeoutExpired:
-            return {
-                "spawn_method": "cli_subprocess",
-                "error": "timeout: subprocess exceeded 300s",
-                "model_used": model,
-            }
-        except Exception as exc:
-            logging.exception("Recovered from broad exception handler")
-            return {"spawn_method": "cli_subprocess", "error": str(exc), "model_used": model}
-
-        if result.returncode == 0:
-            try:
-                data = json.loads(result.stdout)
-                return {
-                    "spawn_method": "cli_subprocess",
-                    "model_used": data.get("model", model),
-                    "response": data.get("result", result.stdout),
-                    "stop_reason": data.get("stop_reason", "end_turn"),
-                    "cost_usd": data.get("cost_usd"),
-                    "num_turns": data.get("num_turns", 1),
-                }
-            except json.JSONDecodeError:
-                return {
-                    "spawn_method": "cli_subprocess",
-                    "model_used": model,
-                    "response": result.stdout.strip(),
-                    "stop_reason": "end_turn",
-                }
-        else:
-            return {
-                "spawn_method": "cli_subprocess",
-                "error": f"CLI exited {result.returncode}: {result.stderr[:500]}",
-                "model_used": model,
-            }
-
-    return None  # No supported CLI available
-
-
 @mcp_tool(name="rescue")
 def tool_rescue_failure(
     task: str,
@@ -3028,11 +2883,11 @@ def tool_rescue_failure(
         emit_product(
             "rescue_offered",
             cluster_id_hash=hash_identifier(str(matched[0] if matched else "unmatched_rescue")),
-            rescue_type="reasonblock" if matched else "summary",
+            rescue_type="playbook" if matched else "summary",
             session_id=_get_product_session_id(),
         )
 
-    # Lemma-style failure incident analysis from prior failed traces.
+    # Failure incident analysis from prior failed traces.
     with contextlib.suppress(Exception):
         analysis = rt.core_runtime.analyze_failure_for_error(
             task=task,
@@ -3387,7 +3242,7 @@ def tool_record_trace(
     trace = Trace.model_validate(payload)
     rt.store.record_trace(trace)
 
-    # Write learnings to archival memory (not ReasonBlocks - those are curated).
+    # Write learnings to archival memory (not Playbooks - those are curated).
     # Each learning is a short sentence the agent synthesises; stored deduped so
     # repeated identical insights across sessions don't accumulate noise.
     if trace.learnings:
@@ -3483,7 +3338,7 @@ def _compress_context(session_id: str | None = None) -> Any:
             trigger="compact_session",
             tokens_before=int(compaction_savings["tokens_before"]),
             tokens_after=int(compaction_savings["tokens_after_estimate"]),
-            must_keep_keywords=list(led.active_reasonblocks),
+            must_keep_keywords=list(led.active_playbooks),
             errors_before=len(led.errors_seen) + len(led.repeated_failures),
             writer=_make_outcome_writer(led),
         )
@@ -3671,12 +3526,14 @@ def tool_memory(
     op: Annotated[
         Literal[
             "recall",
+            "recall_symbol",
             "store_fact",
             "vote_fact",
         ],
         Field(
             description=(
                 "Operation to execute. recall requires query; "
+                "recall_symbol requires query (returns a symbol-linked recall bundle); "
                 "store_fact requires subject+fact+citations+reason+scope; "
                 "vote_fact requires fact+direction+reason."
             )
@@ -3707,15 +3564,15 @@ def tool_memory(
         Field(description="Detailed rationale for store_fact and vote_fact."),
     ] = None,
     scope: Annotated[
-        str | None,
-        Field(description="Scope for store_fact/vote_fact: repository or user."),
+        Literal["repository", "user"] | None,
+        Field(description="Fact scope for store_fact/vote_fact."),
     ] = None,
     direction: Annotated[
-        str | None,
-        Field(description="Vote direction for vote_fact: upvote or downvote."),
+        Literal["upvote", "downvote"] | None,
+        Field(description="Vote direction for vote_fact."),
     ] = None,
 ) -> dict[str, Any] | None:
-    """Memory op-dispatch: recall, store_fact, or vote_fact."""
+    """Memory op-dispatch: recall, recall_symbol, store_fact, or vote_fact."""
 
     def require(name: str, current: str | None) -> str:
         if not current:
@@ -3744,6 +3601,15 @@ def tool_memory(
             direction=require("direction", direction),
             reason=require("reason", reason),
             scope=scope,
+        )
+    if op == "recall_symbol":
+        return cast(
+            dict[str, Any],
+            _symbol_recall().recall_symbol(
+                query=require("query", query),
+                agent_id=agent_id,
+                top_k=top_k,
+            ),
         )
     raise ValueError(f"unsupported memory op: {op}")
 
@@ -3848,7 +3714,25 @@ def _render_grep_md(result: dict[str, Any]) -> str | None:
 def _render_search_md(result: dict[str, Any]) -> str | None:
     mode = str(result.get("mode") or "chunks")
     if mode == "map":
-        return json.dumps(result, ensure_ascii=False)
+        outline = str(result.get("outline") or "").strip()
+        ranked_raw = result.get("ranked_files")
+        ranked = ranked_raw if isinstance(ranked_raw, list) else []
+        if not outline and not ranked:
+            return None
+        # The repo-map `outline` is already plain text; emitting it directly
+        # (instead of json.dumps of the whole payload) drops the JSON wrapper and
+        # the \n-escaping of every outline line.
+        map_lines = ["### repo_map"]
+        if outline:
+            map_lines.append(outline)
+        if ranked:
+            map_lines.append("files:")
+            for entry in ranked:
+                if isinstance(entry, dict):
+                    map_lines.append(f"- {entry.get('path') or entry.get('file') or '?'}")
+                else:
+                    map_lines.append(f"- {entry}")
+        return "\n".join(map_lines)
     matches = result.get("matches")
     if not isinstance(matches, list) or not matches:
         return "### search\n- no matches"
@@ -3869,6 +3753,32 @@ def _render_search_md(result: dict[str, Any]) -> str | None:
                         snip_content = str(snip.get("content") or "").strip()
                         if snip_content:
                             lines.append(snip_content)
+    return "\n".join(lines)
+
+
+def _render_memory_md(result: dict[str, Any]) -> str | None:
+    """Compact recall rendering: one header line per passage (source/tags) plus
+    its text body, instead of a JSON list that repeats the field keys on every
+    entry and escapes every newline in the passage text. Only recall (which has
+    a ``passages`` list) is rendered; store_fact/vote_fact fall back to JSON.
+    """
+    passages = result.get("passages")
+    if not isinstance(passages, list):
+        return None
+    hint = str(result.get("hint") or "").strip()
+    if not passages:
+        return "### memory\n- no passages" + (f"\n{hint}" if hint else "")
+    lines = [f"### memory ({len(passages)} passage(s))"]
+    for passage in passages:
+        if not isinstance(passage, dict):
+            continue
+        ref = (str(passage.get("source_ref") or passage.get("id") or "?").strip()) or "?"
+        tags = passage.get("tags")
+        tag_str = f" [{', '.join(str(tag) for tag in tags)}]" if isinstance(tags, list) and tags else ""
+        lines.append(f"- {ref}{tag_str}")
+        text = str(passage.get("text") or "").strip()
+        if text:
+            lines.append(text)
     return "\n".join(lines)
 
 
@@ -4016,6 +3926,9 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
     elif name == "sql":
         with contextlib.suppress(Exception):
             text = _render_sql_md(payload)
+    elif name == "memory":
+        with contextlib.suppress(Exception):
+            text = _render_memory_md(payload)
     return text or None
 
 
@@ -4147,8 +4060,8 @@ def _smart_read_single(
             "entries": [(e + "/" if (target / e).is_dir() else e) for e in entries],
             "message": (
                 "This is a directory, not a file. "
-                "Use `atelier_code op=files` to list indexed code files, "
-                "or `atelier_grep` with `file_glob_patterns` to list non-code files."
+                "Use `symbols` to find indexed code by name, "
+                "or `grep` with `file_glob_patterns` to list/search files."
             ),
         }
 
@@ -4269,7 +4182,17 @@ def _smart_read_single(
     return response
 
 
-@mcp_tool(name="read", hidden_params=("projection_kind",))
+@mcp_tool(
+    name="read",
+    hidden_params=("projection_kind",),
+    description=(
+        "Read a file (or batch) with automatic source projection. Modes: outline "
+        "(structure only; default for files >200 LOC), range (range='L42-L118' or "
+        "open-ended 'L42-'), full (small files or expand=true), and compact. Re-read "
+        "with expand=true or a range before editing against an outline/compact view. "
+        "Batch 2+ files via files=[{path, range?}, ...] in one call."
+    ),
+)
 def tool_smart_read(
     path: Annotated[
         str,
@@ -4695,7 +4618,19 @@ def _compact_applied_entries(entries: list[dict[str, Any]]) -> list[str | dict[s
     return [*compact, *special]
 
 
-@mcp_tool(name="edit", input_schema=EDIT_TOOL_INPUT_SCHEMA)
+@mcp_tool(
+    name="edit",
+    input_schema=EDIT_TOOL_INPUT_SCHEMA,
+    description=(
+        "Apply many mechanical edits across files in one deterministic call. Each edit is "
+        "one descriptor and all must share a family. Families (exact shapes in inputSchema): "
+        "file replace {file_path, old_string, new_string}; create {file_path, new_string, "
+        "overwrite:true}; line-scoped via file_path='foo.py#10-20'; notebook cell; symbol "
+        "{kind:'symbol', qualified_name|name, mode, new_body}; projection {kind:'projection', "
+        "...}. Maximise work per call: put every change in `edits`. Returns "
+        "{applied:[...]}; failures stay structured."
+    ),
+)
 def tool_smart_edit(
     edits: list[dict[str, Any]],
     atomic: bool = True,
@@ -4894,7 +4829,11 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "description": "DSN (sqlite:///path, postgresql://...). Auto-discovered from DATABASE_URL/.env if omitted.",
         },
         "max_rows": {"type": "integer", "default": 500},
-        "allow_writes": {"type": "boolean", "default": True},
+        "allow_writes": {
+            "type": "boolean",
+            "default": False,
+            "description": "Permit INSERT/UPDATE/DELETE/DDL on action=query/lint. Off by default; reads always allowed.",
+        },
         "auto_limit": {
             "type": "boolean",
             "default": True,
@@ -4916,7 +4855,7 @@ def tool_sql(
     max_rows: int = 500,
     timeout_ms: int = 30_000,
     auto_limit: bool = True,
-    allow_writes: bool = True,
+    allow_writes: bool = False,
 ) -> dict[str, Any]:
     """SQL op-dispatch for connect, lint, and bounded query batching.
 
@@ -5103,8 +5042,8 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
             utilisation_pct=utilisation_pct,
         )
 
-        # Collect preserve_blocks: top active ReasonBlocks from ledger
-        preserve_blocks = list(set(led.active_reasonblocks))[:3]
+        # Collect preserve_playbooks: top active Playbooks from ledger
+        preserve_playbooks = list(set(led.active_playbooks))[:3]
 
         # Collect pin_memory: pinned MemoryBlocks for this run's agent
         pin_memory: list[str] = []
@@ -5135,7 +5074,7 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
         else:
             suggested_prompt = (
                 f"Compact this conversation. Context utilisation: {utilisation_pct}%. "
-                f"Please preserve these ReasonBlocks: {', '.join(preserve_blocks) or '(none yet)'}. "
+                f"Please preserve these Playbooks: {', '.join(preserve_playbooks) or '(none yet)'}. "
                 f"Recently edited files: {', '.join(open_files) or '(none)'}. "
                 "Preserve the last 10 raw turns, active errors, and current CLAUDE.md hash."
             )
@@ -5158,7 +5097,7 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
                 "task_boundary_detected": bool(lifecycle["task_boundary_detected"]),
                 "reason": str(lifecycle["reason"]),
                 "thresholds": lifecycle["thresholds"],
-                "preserve_blocks": preserve_blocks,
+                "preserve_playbooks": preserve_playbooks,
                 "pin_memory": pin_memory,
                 "open_files": open_files,
                 "recent_turns": state.recent_turns,
@@ -5188,7 +5127,7 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
             "task_boundary_detected": bool(lifecycle["task_boundary_detected"]),
             "reason": str(lifecycle["reason"]),
             "thresholds": lifecycle["thresholds"],
-            "preserve_blocks": preserve_blocks,
+            "preserve_playbooks": preserve_playbooks,
             "pin_memory": pin_memory,
             "open_files": open_files,
             "recent_turns": state.recent_turns,
@@ -5219,7 +5158,7 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
                 "handover_pct": HANDOVER_THRESHOLD,
                 "auto_compact_min_turns": AUTO_COMPACT_MIN_TURNS,
             },
-            "preserve_blocks": [],
+            "preserve_playbooks": [],
             "pin_memory": [],
             "open_files": [],
             "recent_turns": [],
@@ -5588,6 +5527,11 @@ def _code_search_graph_view(
     return payload
 
 
+# The published schema is intentionally slimmer than the handler signature: the
+# handler still accepts intent/scope/since/touched_by/provenance and view=graph|explain
+# (exercised by tests, the CLI, and power callers), but those axes duplicate the
+# dedicated callers/callees/explore/usages/grep/blame tools, so they are not
+# surfaced to LLM clients where they would cost schema tokens on every request.
 SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "required": ["query"],
@@ -5600,18 +5544,13 @@ SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "type": "string",
             "enum": ["auto", "lexical", "semantic", "hybrid"],
             "default": "auto",
-        },
-        "intent": {
-            "type": "string",
-            "enum": ["auto", "symbol", "text", "semantic"],
-            "default": "auto",
-            "description": "'symbol': definitions; 'text': substring search; 'semantic': by meaning.",
+            "description": "Match strategy: lexical | semantic | hybrid; 'auto' chooses per query.",
         },
         "view": {
             "type": "string",
-            "enum": ["target", "graph", "context", "explain"],
+            "enum": ["target", "context"],
             "default": "target",
-            "description": "'target': matches only; 'graph': relationships of best match; 'context': context pack.",
+            "description": "'target': matching symbols only; 'context': a budgeted symbol+source context pack.",
         },
         "kind": {"type": "string", "description": "Filter: 'function', 'method', 'class', ..."},
         "language": {"type": "string"},
@@ -5620,13 +5559,6 @@ SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         "snippet_lines": {"type": "integer", "default": 8},
         "file_glob": {"type": "string", "description": "e.g. 'src/api/**/*.py'"},
         "repo_root": {"type": "string"},
-        "scope": {
-            "type": "string",
-            "enum": ["repo", "external", "deleted"],
-            "default": "repo",
-            "description": "'external': dependencies; 'deleted': git graveyard.",
-        },
-        "since": {"type": "string", "description": "ISO date or relative ('7d')."},
     },
 }
 
@@ -7124,49 +7056,6 @@ def tool_smart_search(
     return payload
 
 
-def _compact_tool_output(
-    content: str,
-    content_type: str = "unknown",
-    budget_tokens: int = 500,
-    recovery_hint: str | None = None,
-) -> dict[str, Any]:
-    """Compact large tool output with deterministic or Ollama-backed methods."""
-    from atelier.core.capabilities.tool_supervision.compact_output import compact
-
-    result = compact(
-        content=content,
-        content_type=content_type,
-        budget_tokens=budget_tokens,
-        recovery_hint=recovery_hint,
-    )
-    return result.model_dump(mode="json")
-
-
-def _compact_score(
-    complexity: float,
-    must_keep: list[str],
-) -> dict[str, Any]:
-    """Record the model's self-assessed complexity and must-keep keywords.
-
-    Parameters
-    ----------
-    complexity:
-        Float 0.0-1.0. 0 = trivial/read-only, 1.0 = deep debugging or
-        large refactor with many interdependencies.
-    must_keep:
-        Keywords or short phrases the model needs preserved verbatim.
-    """
-    complexity = max(0.0, min(1.0, float(complexity)))
-    return {
-        "complexity": complexity,
-        "must_keep_count": len(must_keep),
-        "message": (
-            f"Complexity {complexity:.2f} scored with {len(must_keep)} must-keep hints; "
-            "persisted to ledger for advise and session compaction."
-        ),
-    }
-
-
 @mcp_tool(name="compact")
 def tool_compact(
     session_id: Annotated[
@@ -7404,7 +7293,7 @@ def _lever_for_tool(tool_name: str) -> str:
     if lowered == "memory" or lowered.endswith("_memory"):
         return "scoped_recall"
     if lowered == "context" or lowered.endswith("_context"):
-        return "reasonblock_inject"
+        return "playbook_inject"
     return lowered or "unknown"
 
 
@@ -7692,9 +7581,12 @@ def _persist_legacy_route(workflow: dict[str, Any], payload: dict[str, Any], cur
             "sticky_until_tool_calls": remaining,
         },
     }
-    state = _read_workspace_session_state()
-    state["workflow"] = workflow
-    _write_workspace_session_state(state)
+    # Hold _STATE_LOCK across the read-modify-write so a concurrent handler's
+    # session_state update is not lost. _STATE_LOCK is an RLock.
+    with _STATE_LOCK:
+        state = _read_workspace_session_state()
+        state["workflow"] = workflow
+        _write_workspace_session_state(state)
 
 
 def _prepare_model_recommendation(
@@ -8006,8 +7898,6 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
     if method == "initialize":
         _emit_mcp_session_start()
-        global _client_sampling_supported
-        _client_sampling_supported = "sampling" in (params.get("capabilities") or {})
         return _ok(
             rid,
             {
@@ -8060,6 +7950,10 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         remote_routed = name in _REMOTE_TOOLS
         # mode="symbols" must always run locally (SCIP engine); bypass remote routing
         if name == "context" and isinstance(args, dict) and args.get("mode") == "symbols":
+            remote_routed = False
+        # recall_symbol fuses the local SCIP engine with memory and has no remote
+        # equivalent, so always run it against the local handler.
+        if name == "memory" and isinstance(args, dict) and args.get("op") == "recall_symbol":
             remote_routed = False
         rendered_text: str | None = None
         _call_duration_ms: int = 0
@@ -8530,6 +8424,10 @@ def serve() -> None:
         from atelier.core.service.telemetry import shutdown_otel
 
         shutdown_otel()
+        with contextlib.suppress(Exception):
+            from atelier.gateway.integrations.langfuse import shutdown as _lf_shutdown
+
+            _lf_shutdown()
 
 
 def _setup_file_logging(root: str | Path) -> None:

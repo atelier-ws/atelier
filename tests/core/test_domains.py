@@ -40,7 +40,7 @@ def test_domain_manager_loads_user_bundle(tmp_path: Path) -> None:
                 "domain": "custom.test",
                 "description": "Custom test bundle",
                 "author": "tester",
-                "reasonblocks": [],
+                "playbooks": [],
             }
         ),
         encoding="utf-8",
@@ -63,7 +63,7 @@ def test_domain_manager_user_bundle_overrides_builtin(tmp_path: Path) -> None:
                 "domain": "swe.general",
                 "description": "Custom override",
                 "author": "tester",
-                "reasonblocks": [],
+                "playbooks": [],
             }
         ),
         encoding="utf-8",
@@ -80,18 +80,18 @@ def test_domain_manager_info_returns_none_for_unknown(tmp_path: Path) -> None:
     assert manager.info("does.not.exist") is None
 
 
-def test_domain_manager_all_reasonblocks_returns_list(tmp_path: Path) -> None:
+def test_domain_manager_all_playbooks_returns_list(tmp_path: Path) -> None:
     manager = DomainManager(tmp_path / ".atelier")
-    blocks = manager.all_reasonblocks()
+    blocks = manager.all_playbooks()
     assert isinstance(blocks, list)
     assert blocks == []
 
 
-def test_domain_manager_load_reasonblocks_for_bundle(tmp_path: Path) -> None:
+def test_domain_manager_load_playbooks_for_bundle(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     bundle_dir = root / "domains" / "custom.test"
-    reasonblocks_dir = bundle_dir / "reasonblocks"
-    reasonblocks_dir.mkdir(parents=True)
+    playbooks_dir = bundle_dir / "playbooks"
+    playbooks_dir.mkdir(parents=True)
     (bundle_dir / "bundle.yaml").write_text(
         yaml.safe_dump(
             {
@@ -99,18 +99,18 @@ def test_domain_manager_load_reasonblocks_for_bundle(tmp_path: Path) -> None:
                 "domain": "custom.test",
                 "description": "Custom test bundle",
                 "author": "tester",
-                "reasonblocks": ["reasonblocks/example.yaml"],
+                "playbooks": ["playbooks/example.yaml"],
             }
         ),
         encoding="utf-8",
     )
-    (reasonblocks_dir / "example.yaml").write_text(
+    (playbooks_dir / "example.yaml").write_text(
         yaml.safe_dump(
             {
                 "id": "example-block",
                 "title": "Example Block",
                 "domain": "custom.test",
-                "situation": "A test bundle needs a reasonblock.",
+                "situation": "A test bundle needs a playbook.",
                 "procedure": ["Do the thing"],
             }
         ),
@@ -118,7 +118,7 @@ def test_domain_manager_load_reasonblocks_for_bundle(tmp_path: Path) -> None:
     )
 
     manager = DomainManager(root)
-    blocks = manager.load_reasonblocks("custom.test")
+    blocks = manager.load_playbooks("custom.test")
     assert isinstance(blocks, list)
     ids = {b.id for b in blocks}
     assert "example-block" in ids

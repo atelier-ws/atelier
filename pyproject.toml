@@ -1,5 +1,11 @@
 [tool.uv]
 workspace = { members = ["benchmarks", "integrations"] }
+# langfuse>=3 needs opentelemetry-api>=1.33 while letta (memory-server) pins
+# ==1.30; they are mutually exclusive optional extras, so declare the conflict
+# to keep `uv lock` resolvable. Install at most one of them.
+conflicts = [
+    [{ extra = "langfuse" }, { extra = "memory-server" }],
+]
 
 [project]
 name = "atelier"
@@ -64,6 +70,7 @@ parsers = [
     "tree-sitter-languages>=1.10; python_version < '3.13'",
 ]
 rename = ["rope>=0.23"]
+langfuse = ["langfuse>=3"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
@@ -87,7 +94,7 @@ packages = ["src/atelier"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/atelier/core/service/telemetry/frustration_lexicon.yaml" = "atelier/core/service/telemetry/frustration_lexicon.yaml"
-"templates/reasonblocks" = "atelier/templates/reasonblocks"
+"templates/playbooks" = "atelier/templates/playbooks"
 "integrations" = "atelier/integrations"
 
 [tool.hatch.build.targets.wheel.hooks.custom]

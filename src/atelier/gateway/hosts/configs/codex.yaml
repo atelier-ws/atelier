@@ -110,9 +110,9 @@ prompt_templates:
     Domain: {pack.domain}
 
 
-    Reasoning patterns ({pack.reasonblocks_count}):
+    Reasoning patterns ({pack.playbooks_count}):
 
-    {pack.reasonblocks_list}
+    {pack.playbooks_list}
 
 
     Quality checks ({pack.rubrics_count}):
@@ -138,7 +138,7 @@ prompt_templates:
     Recommended pack: {pack.name}
 
 
-    This pack contains {pack.reasonblocks_count} patterns for {pack.domain} tasks.
+    This pack contains {pack.playbooks_count} patterns for {pack.domain} tasks.
 
     Apply rubric checks: {pack.rubrics_list}
 

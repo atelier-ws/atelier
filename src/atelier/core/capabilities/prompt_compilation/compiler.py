@@ -23,7 +23,7 @@ KIND_ORDER: dict[BlockKind, int] = {
     BlockKind.SYSTEM: 1,
     BlockKind.CODING_POLICY: 2,
     BlockKind.REPO_SUMMARY: 10,
-    BlockKind.REASONBLOCK: 20,
+    BlockKind.PLAYBOOK: 20,
     BlockKind.FILE_SUMMARY: 21,
     BlockKind.USER_TASK: 30,
     BlockKind.GIT_DIFF: 31,

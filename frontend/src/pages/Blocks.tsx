@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { api, type ReasonBlock } from "../api";
+import { api, type Playbook } from "../api";
 import {
   Alert,
   Chip,
@@ -13,7 +13,7 @@ import {
 } from "../components/WorkbenchUI";
 
 export default function Blocks() {
-  const [items, setItems] = useState<ReasonBlock[] | null>(null);
+  const [items, setItems] = useState<Playbook[] | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<
@@ -62,7 +62,7 @@ export default function Blocks() {
     <div className="space-y-6">
       <FeaturePanel
         icon="🧠"
-        title="ReasonBlocks"
+        title="Playbooks"
         subtitle="Reusable Reasoning Procedures"
         description={
           <>
@@ -152,7 +152,7 @@ function BlockCard({
   isExpanded,
   onToggle,
 }: {
-  block: ReasonBlock;
+  block: Playbook;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
@@ -213,7 +213,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <FieldLabel className="mb-2">{children}</FieldLabel>;
 }
 
-function BlockDetail({ block }: { block: ReasonBlock }) {
+function BlockDetail({ block }: { block: Playbook }) {
   const total = block.usage_count;
   const successRate =
     total > 0 ? Math.round((block.success_count / total) * 100) : null;
@@ -398,7 +398,7 @@ function Stat({
   );
 }
 
-function MatchHints({ block }: { block: ReasonBlock }) {
+function MatchHints({ block }: { block: Playbook }) {
   const [open, setOpen] = useState(false);
   return (
     <section>

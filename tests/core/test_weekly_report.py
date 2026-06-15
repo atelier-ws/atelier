@@ -8,13 +8,13 @@ from atelier.core.capabilities.reporting.weekly_report import (
     render_markdown,
 )
 from atelier.core.foundation.lesson_models import LessonCandidate
-from atelier.core.foundation.models import ReasonBlock, ToolCall, Trace, ValidationResult
+from atelier.core.foundation.models import Playbook, ToolCall, Trace, ValidationResult
 from atelier.core.foundation.savings_models import ContextBudget
 from atelier.core.foundation.store import ContextStore
 
 
-def _block(block_id: str, title: str = "Plan Discipline") -> ReasonBlock:
-    return ReasonBlock(
+def _block(block_id: str, title: str = "Plan Discipline") -> Playbook:
+    return Playbook(
         id=block_id,
         title=title,
         domain="coding",
@@ -133,8 +133,8 @@ def test_generate_report_aggregates_weekly_governance(store: ContextStore) -> No
     assert report.rubric_pass_rate.total == 2
     assert report.rubric_pass_rate.pass_rate == 0.5
     assert report.rubric_pass_rate_by_domain[0].domain == "coding"
-    assert report.top_reasonblocks[0].id == "rb-plan"
-    assert report.top_reasonblocks[0].count == 2
+    assert report.top_playbooks[0].id == "rb-plan"
+    assert report.top_playbooks[0].count == 2
     assert report.top_rubric_failures[0].file_paths == ["src/app.py"]
     assert report.pending_lesson_candidates_count == 1
     assert report.top_lesson_candidates[0].cluster_size == 3

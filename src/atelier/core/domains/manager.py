@@ -13,7 +13,7 @@ from typing import Any
 
 from atelier.core.domains.loader import DomainLoader
 from atelier.core.domains.models import DomainBundle, DomainBundleRef, bundle_manifest_path
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class DomainManager:
             "description": bundle.description,
             "author": bundle.author,
             "path": str(path),
-            "reasonblocks": bundle.reasonblocks,
+            "playbooks": bundle.playbooks,
             "rubrics": bundle.rubrics,
             "environments": bundle.environments,
             "evals": bundle.evals,
@@ -76,23 +76,23 @@ class DomainManager:
         }
 
     # ------------------------------------------------------------------
-    # Reasonblock access (used by runtime adapter)
+    # Playbook access (used by runtime adapter)
     # ------------------------------------------------------------------
 
-    def load_reasonblocks(self, bundle_id: str) -> list[ReasonBlock]:
-        """Load all ReasonBlocks declared by the given bundle."""
+    def load_playbooks(self, bundle_id: str) -> list[Playbook]:
+        """Load all Playbooks declared by the given bundle."""
         bundle, path = self._resolve(bundle_id)
         if bundle is None or path is None:
             return []
-        return self.loader.load_reasonblocks(path, bundle)
+        return self.loader.load_playbooks(path, bundle)
 
-    def all_reasonblocks(self) -> list[ReasonBlock]:
-        """Load ReasonBlocks from all available bundles."""
-        blocks: list[ReasonBlock] = []
+    def all_playbooks(self) -> list[Playbook]:
+        """Load Playbooks from all available bundles."""
+        blocks: list[Playbook] = []
         for ref in self.list_bundles():
             bundle, path = self._resolve(ref.bundle_id)
             if bundle is not None and path is not None:
-                blocks.extend(self.loader.load_reasonblocks(path, bundle))
+                blocks.extend(self.loader.load_playbooks(path, bundle))
         return blocks
 
     # ------------------------------------------------------------------

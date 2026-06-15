@@ -92,7 +92,7 @@ class RunLedger:
         self.hypotheses_rejected: list[str] = []
         self.verified_facts: list[str] = []
         self.open_questions: list[str] = []
-        self.active_reasonblocks: list[str] = []
+        self.active_playbooks: list[str] = []
         self.active_rubrics: list[str] = []
         self.current_blockers: list[str] = []
         self.next_required_validation: str | None = None
@@ -539,7 +539,7 @@ class RunLedger:
             "hypotheses_rejected": list(self.hypotheses_rejected),
             "verified_facts": list(self.verified_facts),
             "open_questions": list(self.open_questions),
-            "active_reasonblocks": list(self.active_reasonblocks),
+            "active_playbooks": list(self.active_playbooks),
             "active_rubrics": list(self.active_rubrics),
             "current_blockers": list(self.current_blockers),
             "next_required_validation": self.next_required_validation,
@@ -594,7 +594,7 @@ class RunLedger:
         led.hypotheses_rejected = list(snap.get("hypotheses_rejected") or [])
         led.verified_facts = list(snap.get("verified_facts") or [])
         led.open_questions = list(snap.get("open_questions") or [])
-        led.active_reasonblocks = list(snap.get("active_reasonblocks") or [])
+        led.active_playbooks = list(snap.get("active_playbooks") or [])
         led.active_rubrics = list(snap.get("active_rubrics") or [])
         led.current_blockers = list(snap.get("current_blockers") or [])
         led.next_required_validation = snap.get("next_required_validation")

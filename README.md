@@ -9,7 +9,7 @@
 
 **MCP server + SDK middleware that gives every coding agent shared procedures, failure rescue, loop detection, cost tracking, and cross-vendor routing — across Claude Code, Codex, Copilot, LangChain, OpenAI SDK, Gemini ADK, and any MCP host.**
 
-Atelier ships the same context runtime everywhere: CLI, MCP (for all major agent hosts), and background services. It captures what your best engineers know as reusable procedures (ReasonBlocks), learns from recurring failures, validates outputs against domain-specific rubrics, and plugs into any agent host through MCP.
+Atelier ships the same context runtime everywhere: CLI, MCP (for all major agent hosts), and background services. It captures what your best engineers know as reusable procedures (Playbooks), learns from recurring failures, validates outputs against domain-specific rubrics, and plugs into any agent host through MCP.
 
 ## Install in One Command
 
@@ -50,7 +50,7 @@ Atelier reduces token spend at every layer of the agent loop — context loading
 
 | Mechanism                                | What it does                                                                                                                                                            | Typical savings                                                                                                                         |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| **Context Reuse (ReasonBlocks)**         | Retrieves known procedures instead of letting the agent rediscover them from scratch each session.                                                                      | Avoids 1–3 rounds of exploration per repeat task.                                                                                       |
+| **Context Reuse (Playbooks)**         | Retrieves known procedures instead of letting the agent rediscover them from scratch each session.                                                                      | Avoids 1–3 rounds of exploration per repeat task.                                                                                       |
 | **Context Compression**                  | Summarises long-running ledgers into compact reusable state so the context window stays small.                                                                          | Cuts session prompt size as conversations grow.                                                                                         |
 | **Failure Rescue**                       | Surfaces targeted procedures the moment a known error pattern reappears — no retry-and-discover loop.                                                                   | Eliminates duplicate debugging cycles.                                                                                                  |
 | **Loop Detection & Watchdogs**           | Detects thrashing, second-guessing, and repeated failures, then halts or rescues before the agent burns context.                                                        | Stops runaway loops that quietly drain budget.                                                                                          |
@@ -71,7 +71,7 @@ All savings are recorded into the run ledger and exposed via `atelier` CLI, MCP,
 
 ### Context Reuse
 
-Retrieve known procedures (ReasonBlocks) before or during a task. Blocks are ranked by BM25 + optional vector similarity against the task description, domain, and error context.
+Retrieve known procedures (Playbooks) before or during a task. Blocks are ranked by BM25 + optional vector similarity against the task description, domain, and error context.
 
 ```bash
 atelier tools call context --dev --args '{
@@ -185,7 +185,7 @@ Surface recurrent patterns as actionable lessons. Supports automated PR creation
 ### Background Processing
 
 - **Session import** — parse agent host sessions from 18 supported hosts: antigravity, claude, codex, copilot, crush, cursor, cursor-agent, droid, gemini, goose, kilo-code, kiro, omp, openclaw, opencode, pi, qwen, roo-code
-- **ReasonBlock consolidation** — deduplicate and merge related procedures
+- **Playbook consolidation** — deduplicate and merge related procedures
 - **Auto-update** — periodic git pull + dependency sync, with automatic service restart
 - **External analytics** — cost and efficiency reporting across periods (today, week, month)
 
@@ -276,7 +276,7 @@ Agent Host (Claude Code / Codex / Copilot / opencode / Antigravity / Cursor / He
         |  MCP stdio  (or CLI / Python SDK)
         v
 Atelier Runtime
-|- Context Reuse        (ReasonBlock store — SQLite + FTS5, optional pgvector)
+|- Context Reuse        (Playbook store — SQLite + FTS5, optional pgvector)
 |- Failure Rescue       (trace recording → failure clustering → rescue procedures)
 |- Rubric Verification  (domain-specific gate rules)
 |- Run Ledger           (per-session execution state)
@@ -298,7 +298,7 @@ Atelier Runtime
 | Path                                  | Contents                                               |
 | ------------------------------------- | ------------------------------------------------------ |
 | `~/.atelier/atelier.db`               | SQLite store for blocks, traces, rubrics, jobs, memory |
-| `<workspace>/.lessons/blocks/*.md`    | Markdown mirror of ReasonBlocks                        |
+| `<workspace>/.lessons/blocks/*.md`    | Markdown mirror of Playbooks                        |
 | `~/.atelier/traces/*.json`            | JSON mirror of recorded traces                         |
 | `<workspace>/.lessons/rubrics/*.yaml` | YAML mirror of rubrics                                 |
 

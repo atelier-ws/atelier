@@ -10,8 +10,7 @@ transitions between six states:
     SKIP   → Extended SLOW; same routing as SLOW; signals prolonged stall.
     END    → Reserved for future use; unreachable through built-in transitions.
 
-Modelled on the ReasonBlocks.com DifficultyFSM. The heuristic step score
-(a float in [0, 1]) is computed from four signals:
+The heuristic step score (a float in [0, 1]) is computed from four signals:
     - hedging_density:  fraction of tokens that are hedging words
     - response_length:  length relative to a reference length
     - error_language:   presence of error-related words
@@ -282,7 +281,7 @@ def advance_many(
 def make_signals_fn(
     fsm: DifficultyFSM,
 ) -> Callable[[Sequence[str]], dict[str, float]]:
-    """Build a ``signals_fn`` compatible with ReasonBlocks TokenSavingMiddleware.
+    """Build a ``signals_fn`` for trajectory early-exit signalling.
 
     Returns ``{streak, hedge, diversity}`` in [0, 1] for the early-exit condition:
 

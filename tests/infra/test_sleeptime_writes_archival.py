@@ -20,7 +20,7 @@ class _FakeLedger:
     session_id = "test-run-sleeptime"
     token_count = 0
     files_touched: ClassVar[list[str]] = []
-    active_reasonblocks: ClassVar[list[str]] = []
+    active_playbooks: ClassVar[list[str]] = []
     agent = "atelier"
 
     def __init__(self, n_events: int = 200) -> None:

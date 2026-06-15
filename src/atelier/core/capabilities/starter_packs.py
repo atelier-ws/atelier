@@ -1,4 +1,4 @@
-"""Static starter ReasonBlock pack support."""
+"""Static starter Playbook pack support."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Any
 
 import yaml
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 
 
 @dataclass(frozen=True)
@@ -74,10 +74,10 @@ def copy_stack_templates(stack: str, blocks_dir: Path) -> tuple[int, int]:
     return copied, skipped
 
 
-def load_template_block(path: Path) -> ReasonBlock:
+def load_template_block(path: Path) -> Playbook:
     raw = path.read_text(encoding="utf-8")
     data = _frontmatter(raw)
-    return ReasonBlock.model_validate(data)
+    return Playbook.model_validate(data)
 
 
 def _load_manifest(slug: str, root: Path) -> StackManifest:
@@ -95,25 +95,25 @@ def _load_manifest(slug: str, root: Path) -> StackManifest:
 
 def _frontmatter(raw: str) -> dict[str, Any]:
     if not raw.startswith("---\n"):
-        raise ValueError("template ReasonBlock must start with YAML frontmatter")
+        raise ValueError("template Playbook must start with YAML frontmatter")
     try:
         _, frontmatter, _body = raw.split("---\n", 2)
     except ValueError as exc:
-        raise ValueError("template ReasonBlock frontmatter is not closed") from exc
+        raise ValueError("template Playbook frontmatter is not closed") from exc
     data = yaml.safe_load(frontmatter)
     if not isinstance(data, dict):
-        raise ValueError("template ReasonBlock frontmatter must be a mapping")
+        raise ValueError("template Playbook frontmatter must be a mapping")
     return data
 
 
 def _template_roots() -> list[Path]:
     roots: list[Path] = []
-    cwd_root = Path.cwd() / "templates" / "reasonblocks"
-    source_root = Path(__file__).resolve().parents[4] / "templates" / "reasonblocks"
+    cwd_root = Path.cwd() / "templates" / "playbooks"
+    source_root = Path(__file__).resolve().parents[4] / "templates" / "playbooks"
     roots.extend([cwd_root, source_root])
     with (
         suppress(FileNotFoundError, ModuleNotFoundError),
-        resources.as_file(resources.files("atelier") / "templates" / "reasonblocks") as package_root,
+        resources.as_file(resources.files("atelier") / "templates" / "playbooks") as package_root,
     ):
         roots.append(package_root)
     return list(dict.fromkeys(roots))

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.renderer import render_block_for_agent
 from atelier.core.foundation.retriever import TaskContext, count_tokens, retrieve
 from atelier.core.foundation.store import ContextStore
@@ -16,7 +16,7 @@ TASK = "live state change resolved from url slug verification drift"
 def seeded_store(tmp_path: Path) -> ContextStore:
     store = ContextStore(tmp_path / "atelier")
     store.init()
-    source = ReasonBlock(
+    source = Playbook(
         id="canonical-identifier-over-display-name",
         title="Canonical Identifier Over Display Name",
         domain="state.change",
@@ -59,7 +59,7 @@ def seeded_store(tmp_path: Path) -> ContextStore:
     return store
 
 
-def _tokens(blocks: list[ReasonBlock]) -> int:
+def _tokens(blocks: list[Playbook]) -> int:
     return sum(count_tokens(render_block_for_agent(block)) for block in blocks)
 
 

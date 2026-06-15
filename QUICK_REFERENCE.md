@@ -94,7 +94,7 @@ atelier:review     Verifier/gatekeeper
 ```
 CORE WORKFLOW
 ─────────────────────────────────────────────────
-context           Fetch ReasonBlocks, memory, ledger, and environment context
+context           Fetch Playbooks, memory, ledger, and environment context
 route              Dispatch route decide/verify operations
 rescue             Get recovery procedure
 record      Save observable outcome for learning
@@ -143,7 +143,7 @@ catalog_fix:      data_integrity ✓ ingest_record ✓ pdp_consistency ✓
 ai_referral:      accuracy ✓ event_routing ✓ schema ✓
 ```
 
-## 📦 Seed ReasonBlocks (10 hand-written)
+## 📦 Seed Playbooks (10 hand-written)
 
 ```
 ID  Title                              Domain
@@ -192,7 +192,7 @@ open_questions          Questions still unanswered
 current_blockers        Blocking issues
 hypotheses_tried        Tested theories (with results)
 hypotheses_rejected     Theories that failed (with reasons)
-active_reasonblocks     [block_id, ...] from matched ReasonBlocks
+active_playbooks     [block_id, ...] from matched Playbooks
 tool_calls              [{name, timestamp, result}, ...]
 watchdog_alerts          [{type, severity, message}, ...]
 ```
@@ -238,7 +238,7 @@ AGENTS.md (agent entrypoint)
 ├─ Section 13: Agents (4) + roles + loops + hard rules
 ├─ Section 14: CLI Commands (30+)
 ├─ Section 15: Environment Contexts (domains + rubrics)
-├─ Section 16: Seed ReasonBlocks (10 blocks)
+├─ Section 16: Seed Playbooks (10 blocks)
 ├─ Section 17: Rubrics (6 gates)
 ├─ Section 18: Run Ledger (JSON schema)
 ├─ Section 19: Smart Tools (shadow mode)
@@ -253,7 +253,7 @@ AGENTS.md (agent entrypoint)
 ```
 DO NOT:
 ❌ Ignore high-severity Atelier warnings
-❌ Invent plan steps that contradict ReasonBlocks
+❌ Invent plan steps that contradict Playbooks
 ❌ Store secrets, API keys, tokens in traces
 ❌ Call record without observable facts
 ❌ Edit code after review agent reports "block"

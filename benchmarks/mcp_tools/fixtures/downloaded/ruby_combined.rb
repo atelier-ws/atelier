@@ -1,4 +1,4 @@
-// --- rb_ar_base.rb ---
+# --- rb_ar_base.rb ---
 # frozen_string_literal: true
 
 require "active_support/benchmarkable"
@@ -340,7 +340,7 @@ module ActiveRecord # :nodoc:
 end
 
 
-// --- rb_routing_mapper.rb ---
+# --- rb_routing_mapper.rb ---
 # frozen_string_literal: true
 
 require "active_support/core_ext/hash/slice"
@@ -2672,7 +2672,7 @@ module ActionDispatch
 end
 
 
-// --- rb_form_helper.rb ---
+# --- rb_form_helper.rb ---
 # frozen_string_literal: true
 
 require "cgi"
@@ -5436,7 +5436,7 @@ module ActionView
 end
 
 
-// --- rb_query_methods.rb ---
+# --- rb_query_methods.rb ---
 # frozen_string_literal: true
 
 require "active_record/relation/from_clause"
@@ -7488,7 +7488,7 @@ module ActiveRecord
 end
 
 
-// --- rb_sinatra_base.rb ---
+# --- rb_sinatra_base.rb ---
 # frozen_string_literal: true
 
 # external dependencies
@@ -9664,7 +9664,7 @@ module Sinatra
 end
 
 
-// --- rb_dependencies.rb ---
+# --- rb_dependencies.rb ---
 # frozen_string_literal: true
 
 require "set"
@@ -9765,7 +9765,7 @@ module ActiveSupport # :nodoc:
 end
 
 
-// --- rb_action_mailer_base.rb ---
+# --- rb_action_mailer_base.rb ---
 # frozen_string_literal: true
 
 require "mail"
@@ -10845,7 +10845,7 @@ module ActionMailer
 end
 
 
-// --- rb_url_helper.rb ---
+# --- rb_url_helper.rb ---
 # frozen_string_literal: true
 
 require "active_support/core_ext/array/access"
@@ -11734,7 +11734,7 @@ module ActionView
 end
 
 
-// --- rb_form_tag_helper.rb ---
+# --- rb_form_tag_helper.rb ---
 # frozen_string_literal: true
 
 require "cgi"
@@ -12790,7 +12790,7 @@ module ActionView
 end
 
 
-// --- rb_railties_app.rb ---
+# --- rb_railties_app.rb ---
 # frozen_string_literal: true
 
 require "yaml"

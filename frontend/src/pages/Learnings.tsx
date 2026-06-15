@@ -14,7 +14,7 @@ import {
   Scale,
   X,
 } from "lucide-react";
-import { api, type ReasonBlock, type PlanRecord, type Cluster } from "../api";
+import { api, type Playbook, type PlanRecord, type Cluster } from "../api";
 import {
   Chip,
   MetricCard,
@@ -103,7 +103,7 @@ export default function Learnings() {
 // ─── Blocks ───────────────────────────────────────────────────────────────────
 
 function BlocksSection() {
-  const [items, setItems] = useState<ReasonBlock[] | null>(null);
+  const [items, setItems] = useState<Playbook[] | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<
@@ -501,7 +501,7 @@ function PlansSection() {
 
 // ─── Block components (copied from Blocks.tsx) ────────────────────────────────
 
-function blockTier(block: ReasonBlock): string {
+function blockTier(block: Playbook): string {
   if (block.domain === "universal" || block.task_types.length >= 3) {
     return "standing rule";
   }
@@ -511,7 +511,7 @@ function blockTier(block: ReasonBlock): string {
   return "task pattern";
 }
 
-function blockSeverity(block: ReasonBlock): "high" | "medium" | "low" {
+function blockSeverity(block: Playbook): "high" | "medium" | "low" {
   if (block.failure_signals.length > 0 || block.dead_ends.length > 1) {
     return "high";
   }
@@ -526,7 +526,7 @@ function BlockCard({
   isExpanded,
   onToggle,
 }: {
-  block: ReasonBlock;
+  block: Playbook;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
@@ -602,7 +602,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function BlockDetail({ block }: { block: ReasonBlock }) {
+function BlockDetail({ block }: { block: Playbook }) {
   const total = block.usage_count;
   const successRate =
     total > 0 ? Math.round((block.success_count / total) * 100) : null;
@@ -870,7 +870,7 @@ function Stat({
   );
 }
 
-function MatchHints({ block }: { block: ReasonBlock }) {
+function MatchHints({ block }: { block: Playbook }) {
   const [open, setOpen] = useState(false);
   return (
     <section>

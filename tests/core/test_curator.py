@@ -1,9 +1,9 @@
-"""Tests for explicit ReasonBlock lifecycle curation."""
+"""Tests for explicit Playbook lifecycle curation."""
 
 from __future__ import annotations
 
 from atelier.core.foundation.curator import apply_curation, curate
-from atelier.core.foundation.models import BlockTier, ReasonBlock
+from atelier.core.foundation.models import BlockTier, Playbook
 
 
 def _block(
@@ -13,8 +13,8 @@ def _block(
     usage: int = 0,
     success: int = 0,
     failure: int = 0,
-) -> ReasonBlock:
-    return ReasonBlock(
+) -> Playbook:
+    return Playbook(
         id=block_id,
         title=block_id,
         domain="coding",
@@ -70,10 +70,10 @@ def test_mediocre_block_is_demoted() -> None:
 
 class _FakeStore:
     def __init__(self) -> None:
-        self.upserts: list[ReasonBlock] = []
+        self.upserts: list[Playbook] = []
         self.deletes: list[str] = []
 
-    def upsert_block(self, block: ReasonBlock, *, write_markdown: bool = True) -> None:
+    def upsert_block(self, block: Playbook, *, write_markdown: bool = True) -> None:
         self.upserts.append(block)
 
     def delete_block(self, block_id: str) -> bool:

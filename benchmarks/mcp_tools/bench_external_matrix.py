@@ -18,11 +18,11 @@ import csv
 import json
 import os
 import re
-import select
 import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections import defaultdict
 from dataclasses import asdict, dataclass
@@ -289,9 +289,11 @@ class AtelierRunner(_RunnerBase):
         from benchmarks.mcp_tools._env import call_code_op
 
         self.call_code_op = call_code_op
-        # Pre-warm: the first search on a fresh snapshot triggers a full index
-        # build (tens of seconds). Do it here so measured cases reflect steady
-        # state instead of folding a one-time build into one case's latency.
+        # Pre-warm: the first search on a fresh snapshot triggers a full lexical
+        # index build (tens of seconds). The first callers/callees/usages op
+        # triggers a SCIP index build (also tens of seconds). Both happen here
+        # so measured cases reflect steady-state latency instead of folding a
+        # one-time build cost into the first timed case.
         with contextlib.suppress(Exception):
             call_code_op(
                 {
@@ -299,6 +301,17 @@ class AtelierRunner(_RunnerBase):
                     "repo_root": str(self.snapshot_root),
                     "query": "warmup_index_build",
                     "mode": "lexical",
+                    "limit": 1,
+                    "budget_tokens": 200,
+                }
+            )
+        with contextlib.suppress(Exception):
+            call_code_op(
+                {
+                    "op": "callers",
+                    "repo_root": str(self.snapshot_root),
+                    "symbol_name": "warmup_scip_index",
+                    "path": "src/atelier/gateway/adapters/mcp_server.py",
                     "limit": 1,
                     "budget_tokens": 200,
                 }
@@ -328,20 +341,27 @@ class AtelierRunner(_RunnerBase):
         elif case.family == "file_outline":
             # Atelier's agent-facing outline is `read mode=outline` (the smart-read
             # outline projection), NOT a code-intel op. Force outline regardless of
-            # file size with outline_threshold=0; the serialized payload carries the
-            # symbol names that score_case checks for. Other families still dispatch
-            # through call_code_op below.
+            # file size with outline_threshold=0, then measure the EXACT markdown the
+            # model receives (mcp_server._render_read_outline_md) -- NOT the raw JSON
+            # payload, which over-counts fields the model never sees. Other families
+            # still dispatch through call_code_op below.
             from atelier.core.capabilities.semantic_file_memory import SemanticFileMemoryCapability
             from atelier.gateway.adapters import mcp_server
 
             target = self.snapshot_root / case.path
             cap = SemanticFileMemoryCapability(mcp_server._atelier_root())
-            outline_payload = cap.smart_read(target, outline_threshold=0)
+            result = cap.smart_read(target, outline_threshold=0)
             request_repr = {"tool": "read", "mode": "outline", "path": case.path}
-            return (
-                json.dumps(request_repr, ensure_ascii=False),
-                json.dumps(outline_payload, ensure_ascii=False),
-            )
+            if result.get("mode") == "outline" and isinstance(result.get("outline"), dict):
+                output = mcp_server._render_read_outline_md(
+                    str(result.get("path") or case.path),
+                    result["outline"],
+                    str(result.get("language") or ""),
+                )
+            else:
+                # Small file fell back to full/compact; measure the delivered body.
+                output = str(result.get("content") or "")
+            return (json.dumps(request_repr, ensure_ascii=False), output)
         elif case.family == "references":
             request = {
                 "op": "usages",
@@ -1083,22 +1103,34 @@ class _JsonRpcLineClient:
 
     def _read_message(self, *, timeout: float) -> dict[str, Any]:
         assert self.proc is not None and self.proc.stdout is not None
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            ready, _, _ = select.select([self.proc.stdout], [], [], 0.25)
-            if not ready:
-                continue
-            line = self.proc.stdout.readline()
-            if not line:
-                break
-            return cast(dict[str, Any], json.loads(line))
-        stderr = ""
-        if self.proc is not None and self.proc.stderr is not None:
-            try:
-                stderr = self.proc.stderr.read(2000)
-            except Exception:
-                stderr = ""
-        raise TimeoutError(f"timed out waiting for JSON-RPC response: {stderr[:400]}")
+        # Use a threading.Timer to impose the deadline instead of
+        # select.select.  select.select polls the raw OS fd, but
+        # Python's TextIOWrapper may have already consumed data from
+        # the fd into its internal buffer, leaving the fd empty and
+        # causing spurious 0.25 s not-ready spins even when a full
+        # line is waiting in the Python buffer.
+        proc = self.proc
+        timed_out = threading.Event()
+
+        def _kill_on_timeout() -> None:
+            timed_out.set()
+            with contextlib.suppress(Exception):
+                proc.kill()
+
+        timer = threading.Timer(timeout, _kill_on_timeout)
+        timer.start()
+        try:
+            line = proc.stdout.readline()
+        finally:
+            timer.cancel()
+
+        if timed_out.is_set() or not line:
+            stderr = ""
+            with contextlib.suppress(Exception):
+                if proc.stderr is not None:
+                    stderr = proc.stderr.read(2000)
+            raise TimeoutError(f"timed out waiting for JSON-RPC response: {stderr[:400]}")
+        return cast(dict[str, Any], json.loads(line))
 
     def notify(self, method: str, params: dict[str, Any]) -> None:
         assert self.proc is not None and self.proc.stdin is not None
@@ -1503,7 +1535,24 @@ def run_case_matrix(
                             current=(f"{tool_name} {case.family}/{case.case_id} iter {iteration + 1}/{iterations}"),
                         )
                         t0 = time.perf_counter()
-                        last_input, last_output = runner.run_case(case)
+                        # Don't use `with` — ThreadPoolExecutor.__exit__ calls
+                        # shutdown(wait=True), which blocks until the background
+                        # thread finishes even after the future times out.
+                        _case_ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                        _fut = _case_ex.submit(runner.run_case, case)
+                        try:
+                            last_input, last_output = _fut.result(timeout=60)
+                            _case_ex.shutdown(wait=False)
+                        except concurrent.futures.TimeoutError:
+                            # Kill the runner so the background thread unblocks
+                            # (broken pipe / EOF), then restart it so the next
+                            # case can still run against a fresh process.
+                            with contextlib.suppress(Exception):
+                                runner.stop()
+                            _case_ex.shutdown(wait=False)
+                            with contextlib.suppress(Exception):
+                                runner.start()
+                            raise TimeoutError("case timed out after 60 s") from None
                         times.append((time.perf_counter() - t0) * 1000)
                         tokens.append(token_count(last_output))
                         scores.append(score_case(case, last_output))

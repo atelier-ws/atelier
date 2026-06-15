@@ -15,7 +15,7 @@ class DomainBundle(BaseModel):
     """Manifest for an internal domain bundle.
 
     A domain bundle is a directory containing curated reasoning assets
-    (reasonblocks, rubrics, environments, evals, benchmarks) for a specific
+    (playbooks, rubrics, environments, evals, benchmarks) for a specific
     engineering domain. Bundles are internal only — no versioning, no registry,
     no external distribution.
     """
@@ -27,7 +27,7 @@ class DomainBundle(BaseModel):
     description: str
     author: str = "Beseam"
 
-    reasonblocks: list[str] = Field(default_factory=list)
+    playbooks: list[str] = Field(default_factory=list)
     rubrics: list[str] = Field(default_factory=list)
     environments: list[str] = Field(default_factory=list)
     evals: list[str] = Field(default_factory=list)
@@ -36,7 +36,7 @@ class DomainBundle(BaseModel):
     @property
     def asset_files(self) -> list[str]:
         """All asset file paths declared by this bundle."""
-        return self.reasonblocks + self.rubrics + self.environments + self.evals + self.benchmarks
+        return self.playbooks + self.rubrics + self.environments + self.evals + self.benchmarks
 
 
 class DomainBundleRef(BaseModel):
@@ -48,7 +48,7 @@ class DomainBundleRef(BaseModel):
     domain: str
     description: str
     path: str
-    reasonblocks_count: int = 0
+    playbooks_count: int = 0
     rubrics_count: int = 0
     environments_count: int = 0
     evals_count: int = 0
@@ -61,7 +61,7 @@ class DomainBundleRef(BaseModel):
             domain=bundle.domain,
             description=bundle.description,
             path=str(path),
-            reasonblocks_count=len(bundle.reasonblocks),
+            playbooks_count=len(bundle.playbooks),
             rubrics_count=len(bundle.rubrics),
             environments_count=len(bundle.environments),
             evals_count=len(bundle.evals),
