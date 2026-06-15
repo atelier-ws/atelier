@@ -9,7 +9,6 @@ Atelier interoperates with memory systems but does not replace them.
 
 ## Adapters
 
-- `src/atelier/integrations/memory/openmemory.py`
 - `src/atelier/integrations/memory/mem0.py`
 - `src/atelier/integrations/memory/generic_vector_memory.py`
 

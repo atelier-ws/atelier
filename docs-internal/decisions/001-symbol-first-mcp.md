@@ -53,7 +53,7 @@ Atelier's code intelligence layer is built on:
    (`mcp__atelier__pattern`). Search and rewrite.
 3. **A `SymbolIntelStore` composite** with content-addressed retrieval cache
    and token-budget enforcement. Routes by query shape; caches everything;
-   packs the smallest sufficient payload. Mirrors the `OpenMemoryMemoryStore`
+   packs the smallest sufficient payload. Mirrors the content-addressed store
    pattern from `infra/memory_bridges/`.
 4. **Function-level embeddings** layered over SCIP symbols for natural-
    language queries ("find auth functions") — something SCIP and LSP both
