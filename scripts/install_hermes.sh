@@ -45,7 +45,7 @@ backup_file() {
     local f="$1"
     if [ -f "$f" ]; then
         local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
-        run "cp '$f' '$bk'"
+        run "cp $(printf %q "$f") $(printf %q "$bk")"
         info "backed up $f -> $bk"
     fi
 }
@@ -83,7 +83,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
         exit 1
     fi
     warn "Hermes config not found at $CONFIG_FILE - creating default config"
-    run "mkdir -p '$HERMES_HOME'"
+    run "mkdir -p $(printf %q "$HERMES_HOME")"
     if ! $DRY_RUN; then
         cat > "$CONFIG_FILE" <<YAML
 # Hermes Agent configuration

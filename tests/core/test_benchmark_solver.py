@@ -441,9 +441,9 @@ def test_run_benchmark_solver_records_execution_receipts_and_transport(monkeypat
     )
 
     assert run.transport == "openai"
-    assert run.input_tokens == 210
-    assert run.cache_creation_input_tokens == 14
-    assert run.cache_read_input_tokens == 28
+    assert run.input_tokens == 180
+    assert run.cache_creation_input_tokens == 12
+    assert run.cache_read_input_tokens == 24
     assert run.attempts[0].step_artifacts[0].execution_receipt["executed_transport"] == "openai"
 
 

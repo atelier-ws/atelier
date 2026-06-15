@@ -49,8 +49,9 @@ clean_config() {
         run "python3 -c '
 import json
 import re
+import sys
 from pathlib import Path
-path = Path(\"$path\")
+path = Path(sys.argv[1])
 content = path.read_text(encoding=\"utf-8\")
 stripped = re.sub(r\"^\\s*//.*\", \"\", content, flags=re.M)
 data = json.loads(stripped) if stripped.strip() else {}
@@ -63,7 +64,7 @@ if not data:
     path.unlink()
 else:
     path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")
-'"
+' $(printf %q "$path")"
         info "Removed atelier from $path"
     fi
 }
@@ -74,7 +75,7 @@ clean_config "$LEGACY_OC_FILE"
 if [ -d "$AGENTS_DIR" ]; then
     for f in "$AGENTS_DIR"/atelier.md "$AGENTS_DIR"/atelier.*.md; do
         [ -f "$f" ] || continue
-        run "rm -f '$f'"
+        run "rm -f $(printf %q "$f")"
         info "Removed $f"
     done
 fi

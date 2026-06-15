@@ -69,16 +69,16 @@ warn()  { echo "[atelier:codex] WARN: $*" >&2; }
 run()   { $DRY_RUN && echo "  [dry-run] $*" || eval "$@"; }
 
 STAGING_DIR="${HOME}/.atelier/codex-plugin"
-run "mkdir -p '$STAGING_DIR/.codex-plugin'"
-run "cp '${PLUGIN_TEMPLATE}/.codex-plugin/plugin.json' '$STAGING_DIR/.codex-plugin/'"
-run "cp '${PLUGIN_TEMPLATE}/.mcp.json' '$STAGING_DIR/'"
-run "cp -R '${ATELIER_REPO}/integrations/codex/hooks' '$STAGING_DIR/'"
-run "cp -R '${ATELIER_REPO}/integrations/codex/plugin/scripts' '$STAGING_DIR/'"
-run "mkdir -p '$STAGING_DIR/agents'"
+run "mkdir -p $(printf %q "$STAGING_DIR/.codex-plugin")"
+run "cp $(printf %q "${PLUGIN_TEMPLATE}/.codex-plugin/plugin.json") $(printf %q "$STAGING_DIR/.codex-plugin/")"
+run "cp $(printf %q "${PLUGIN_TEMPLATE}/.mcp.json") $(printf %q "$STAGING_DIR/")"
+run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/hooks") $(printf %q "$STAGING_DIR/")"
+run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/plugin/scripts") $(printf %q "$STAGING_DIR/")"
+run "mkdir -p $(printf %q "$STAGING_DIR/agents")"
 AGENT_SRC="${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md"
 info "Staging Codex agent instructions"
-run "cp '${AGENT_SRC}' '$STAGING_DIR/agents/atelier.md'"
-run "bash '$SKILL_BUILDER' --host codex --dest '$STAGING_DIR/skills'"
+run "cp $(printf %q "${AGENT_SRC}") $(printf %q "$STAGING_DIR/agents/atelier.md")"
+run "bash $(printf %q "$SKILL_BUILDER") --host codex --dest $(printf %q "$STAGING_DIR/skills")"
 PLUGIN_TEMPLATE="$STAGING_DIR"
 backup_file() {
     local f="$1"
@@ -87,7 +87,7 @@ backup_file() {
     fi
     if [ -f "$f" ]; then
         local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
-        run "cp '$f' '$bk'"
+        run "cp $(printf %q "$f") $(printf %q "$bk")"
         info "backed up $f → $bk"
     fi
 }
@@ -100,9 +100,9 @@ backup_path() {
     if [ -e "$path" ]; then
         local bk="${path}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
         if [ -d "$path" ]; then
-            run "cp -R '$path' '$bk'"
+            run "cp -R $(printf %q "$path") $(printf %q "$bk")"
         else
-            run "cp '$path' '$bk'"
+            run "cp $(printf %q "$path") $(printf %q "$bk")"
         fi
         info "backed up $path → $bk"
     fi
@@ -130,10 +130,10 @@ merge_agents_file() {
 install_plugin_bundle() {
     if [ -e "$PLUGIN_DIR" ]; then
         backup_path "$PLUGIN_DIR"
-        run "rm -rf '$PLUGIN_DIR'"
+        run "rm -rf $(printf %q "$PLUGIN_DIR")"
     fi
-    run "mkdir -p '$PLUGIN_DIR'"
-    run "cp -R '$PLUGIN_TEMPLATE/.' '$PLUGIN_DIR/'"
+    run "mkdir -p $(printf %q "$PLUGIN_DIR")"
+    run "cp -R $(printf %q "$PLUGIN_TEMPLATE/.") $(printf %q "$PLUGIN_DIR/")"
 }
 
 codex_cmd() {
@@ -201,7 +201,7 @@ path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PYEOF
 }
 ensure_codex_mcp() {
-    run "mkdir -p '$CODEX_HOME'"
+    run "mkdir -p $(printf %q "$CODEX_HOME")"
     if $DRY_RUN; then
         if $WORKSPACE_SET; then
             echo "  [dry-run] CODEX_HOME='$CODEX_HOME' codex mcp add atelier --env ATELIER_WORKSPACE_ROOT='$WORKSPACE' -- atelier mcp --host codex"
@@ -307,7 +307,7 @@ fi
 # ---- install plugin bundle + marketplace ------------------------------------
 info "Installing Codex plugin source → $PLUGIN_DIR"
 install_plugin_bundle
-run "chmod +x '${PLUGIN_DIR}/scripts/'*.sh 2>/dev/null || true"
+run "chmod +x $(printf %q "${PLUGIN_DIR}/scripts/")*.sh 2>/dev/null || true"
 patch_plugin_hooks
 patch_plugin_mcp
 ensure_codex_mcp
@@ -377,8 +377,8 @@ merge_agents_file "${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md" "$AGENT
 # ---- task templates ----------------------------------------------------------
 TASKS_SRC_DIR="${ATELIER_REPO}/integrations/codex/tasks"
 if $WORKSPACE_SET && [ -d "$TASKS_SRC_DIR" ]; then
-    run "mkdir -p '$TASKS_DEST_DIR'"
-    run "cp '$TASKS_SRC_DIR'/*.md '$TASKS_DEST_DIR/'"
+    run "mkdir -p $(printf %q "$TASKS_DEST_DIR")"
+    run "cp $(printf %q "$TASKS_SRC_DIR")/*.md $(printf %q "$TASKS_DEST_DIR/")"
     info "installed task templates: $TASKS_DEST_DIR"
 elif $WORKSPACE_SET; then
     warn "task template directory missing: $TASKS_SRC_DIR"

@@ -17,6 +17,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+try:  # Third-party engine supporting a per-call wall-clock `timeout=` on search.
+    import regex as _regex_module
+except ImportError:  # pragma: no cover - fallback path when `regex` is absent.
+    _regex_module = None
+
 SearchOutputMode = Literal[
     "ranked_file_map",
     "file_paths_with_content",
@@ -453,10 +458,31 @@ def _match_line_numbers(
 ) -> list[int]:
     if regex is not None:
         out: list[int] = []
+        # The `regex` engine accepts a per-call `timeout=` that raises
+        # TimeoutError, giving a true wall-clock bound on a single catastrophic
+        # backtracking search. Stdlib `re` has no such hook, so it relies only
+        # on the between-iteration deadline check below.
+        timed_pattern: Any = regex if _regex_module is not None and isinstance(regex, _regex_module.Pattern) else None
         for idx, line in enumerate(lines, start=1):
             if deadline is not None and time.monotonic() > deadline:
                 break
-            if regex.search(line[:_REGEX_MAX_LINE_CHARS]):
+            window = line[:_REGEX_MAX_LINE_CHARS]
+            if timed_pattern is not None and deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    matched = timed_pattern.search(window, timeout=remaining)
+                except TimeoutError:
+                    logging.warning(
+                        "content_regex search hit the %.1fs wall-clock budget; "
+                        "returning partial matches (possible catastrophic backtracking)",
+                        _REGEX_DEADLINE_SECONDS,
+                    )
+                    break
+            else:
+                matched = regex.search(window)
+            if matched:
                 out.append(idx)
         return out
     if include_all_when_no_regex:
@@ -667,9 +693,13 @@ def search_workspace(
     if multiline:
         flags |= re.S | re.M
     if content_regex:
+        # Prefer the `regex` engine so `_match_line_numbers` can impose a true
+        # per-call wall-clock bound via `.search(text, timeout=...)`; fall back
+        # to stdlib `re` (between-iteration deadline only) when it is absent.
+        compile_engine = _regex_module or re
         try:
-            regex = re.compile(content_regex, flags)
-        except re.error as exc:
+            regex = compile_engine.compile(content_regex, flags)
+        except compile_engine.error as exc:
             return {
                 "isError": True,
                 "content": [{"type": "text", "text": f"Invalid content_regex: {exc}"}],

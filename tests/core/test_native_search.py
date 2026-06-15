@@ -180,6 +180,39 @@ def test_match_line_numbers_bails_on_expired_deadline_every_iteration() -> None:
     assert out == []
 
 
+def test_match_line_numbers_hard_bounds_catastrophic_single_line() -> None:
+    # Regression for #13: a catastrophic-backtracking pattern against one very
+    # long line must be bounded by a hard wall-clock timeout *inside* the search
+    # call, not just between iterations. Use the `regex` engine (which the search
+    # path prefers) and a tiny deadline so the test stays fast.
+    import time
+
+    from atelier.core.capabilities.tool_supervision.native_search import _regex_module
+
+    assert _regex_module is not None, "the `regex` engine is a declared dependency"
+
+    pattern = _regex_module.compile(r"(a|a)*$")
+    # A run of "a"s ending in a non-"a": `(a|a)*` consumes every "a", `$` then
+    # fails, forcing the engine to backtrack catastrophically over every split.
+    long_line = "a" * 40 + "b"
+    budget = 0.5
+    deadline = time.monotonic() + budget
+
+    start = time.monotonic()
+    out = _match_line_numbers(
+        [long_line],
+        pattern,
+        None,
+        include_all_when_no_regex=False,
+        deadline=deadline,
+    )
+    elapsed = time.monotonic() - start
+
+    # Must bail out (no match recorded) within ~2x the budget rather than hang.
+    assert out == []
+    assert elapsed < budget * 2
+
+
 def test_native_search_file_content_mode_spills_large_payload(tmp_path: Path, monkeypatch: Any) -> None:
     spill_dir = tmp_path / "spill"
     monkeypatch.setenv("ATELIER_MCP_SPILL_DIR", str(spill_dir))
