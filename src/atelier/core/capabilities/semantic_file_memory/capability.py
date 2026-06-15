@@ -230,6 +230,19 @@ class SemanticFileMemoryCapability:
         return sum(1 for line in source.splitlines() if line.strip())
 
     @staticmethod
+    def _range_starts_past(range_spec: str, total_lines: int) -> bool:
+        """True if *range_spec*'s start line is beyond *total_lines*.
+
+        Used on truncated reads to detect requests that fall entirely past the
+        byte-capped prefix without letting ``_parse_range_spec`` raise a
+        misleading "exceeds file length" error against the prefix length.
+        """
+        start_match = re.match(r"L?(\d+)", range_spec.strip(), flags=re.IGNORECASE)
+        if start_match is None:
+            return False
+        return int(start_match.group(1)) > total_lines
+
+    @staticmethod
     def _parse_range_spec(range_spec: str, total_lines: int) -> tuple[int, int]:
         """Parse ranges like 42-118/L42-L118/42,118, plus tolerant open-ended forms."""
         s = range_spec.strip()
@@ -378,12 +391,18 @@ class SemanticFileMemoryCapability:
         if outline_threshold is None:
             outline_threshold = default_outline_threshold()
         file_path = Path(path)
-        # Accept any existing non-directory path. Special files (FIFO,
-        # char-special like /dev/zero) report is_file() == False but are valid
-        # read targets here — _read_source_bounded reads them with a hard byte
-        # cap so they never block forever or OOM.
-        if not file_path.exists() or file_path.is_dir():
-            raise FileNotFoundError(f"file not found: {file_path}")
+        # Only regular files are valid read targets. Rejecting non-regular paths
+        # up front keeps FIFOs/named pipes, sockets, and char/block-special files
+        # away from _read_source_bounded — os.open() on a FIFO with no writer
+        # blocks the syscall itself forever, before the byte cap can apply.
+        try:
+            st = file_path.stat()
+        except OSError as exc:
+            raise FileNotFoundError(f"file not found: {file_path}") from exc
+        if stat.S_ISDIR(st.st_mode):
+            raise FileNotFoundError(f"path is a directory, not a file: {file_path}")
+        if not stat.S_ISREG(st.st_mode):
+            raise FileNotFoundError(f"not a regular file (FIFO/socket/special files are unreadable): {file_path}")
 
         source, truncated = _read_source_bounded(file_path)
         lines = source.splitlines()
@@ -405,6 +424,10 @@ class SemanticFileMemoryCapability:
         }
         if truncated:
             result["truncated"] = True
+            # loc was computed over the byte-capped prefix only, so it is a lower
+            # bound on the file's true line count, not an exact value.
+            result["loc"] = f">={effective_loc}"
+            result["loc_is_lower_bound"] = True
             result["truncation_notice"] = (
                 f"[atelier: only the first {_MAX_READ_BYTES} bytes were read — "
                 "file is oversized or a special/streaming file. Request a narrower "
@@ -412,6 +435,22 @@ class SemanticFileMemoryCapability:
             )
 
         if range_spec:
+            if truncated and self._range_starts_past(range_spec, len(lines)):
+                result.update(
+                    {
+                        "mode": "range",
+                        "range": range_spec,
+                        "content": "",
+                        "truncation_notice": (
+                            f"[atelier: requested range starts past the {len(lines)} "
+                            f"lines read from the byte-capped prefix ({_MAX_READ_BYTES} "
+                            "bytes); the true line count is unknown. Request an earlier "
+                            "slice.]"
+                        ),
+                        "tokens_saved": 0,
+                    }
+                )
+                return result
             start, end = self._parse_range_spec(range_spec, len(lines))
             content = "\n".join(lines[start - 1 : end])
             baseline = claude_read_baseline_text(source)
