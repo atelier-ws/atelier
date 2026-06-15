@@ -349,6 +349,29 @@ def mcp_tool(
     return decorator
 
 
+# G13 — caller-selectable output encoding shared by read/search/grep/symbols.
+# Defined here (before the tool handlers) so the @mcp_tool decorator can resolve
+# the Annotated default at import time. The handler ignores this arg; the MCP
+# dispatcher reads `args["format"]` and applies the N6-gated N7 columnar
+# encoding. `auto` (default) keeps today's byte-compatible output.
+_FORMAT_SCHEMA_PROPERTY: dict[str, Any] = {
+    "type": "string",
+    "enum": ["auto", "compact", "json"],
+    "default": "auto",
+    "description": (
+        "Output encoding: `auto` (default) keeps current behavior; `json` forces raw JSON; "
+        "`compact` emits a self-describing columnar form when it beats JSON by the savings "
+        "threshold (never inflates small payloads)."
+    ),
+}
+_FORMAT_FIELD = Field(
+    default="auto",
+    description=(
+        "Output encoding: auto (default, unchanged), json (force raw JSON), or compact (N6-gated columnar encoding)."
+    ),
+)
+
+
 # --------------------------------------------------------------------------- #
 # session_state.json helpers                                                  #
 # --------------------------------------------------------------------------- #
@@ -2554,7 +2577,66 @@ def _workspace_path(file_path: str) -> Path:
     return Path(workspace) / p
 
 
+# N10 — per-request project isolation. The stdio MCP server normally serves a
+# single workspace resolved from env/cwd. A request may instead carry an
+# ``Mcp-Project-Path``-style override (via ``params._meta`` or a reserved
+# ``project_path`` arg); when present we serve that repo for the duration of the
+# request only. The executor runs each request on its own worker thread, so a
+# thread-local override is naturally request-scoped and keeps per-repo isolation.
+# Absent override -> today's single-workspace behavior is unchanged.
+_request_project: threading.local = threading.local()
+
+
+def _set_request_project(path: str | None) -> str | None:
+    """Set the request-scoped project override; return the prior value.
+
+    Only an existing directory is accepted; anything else clears the override so
+    a bad header can never silently mis-route to a non-repo path.
+    """
+    prior = getattr(_request_project, "value", None)
+    resolved: str | None = None
+    if isinstance(path, str) and path.strip():
+        try:
+            candidate = Path(path).expanduser().resolve()
+            if candidate.is_dir():
+                resolved = str(candidate)
+        except OSError:
+            resolved = None
+    _request_project.value = resolved
+    return prior
+
+
+def _clear_request_project(prior: str | None) -> None:
+    _request_project.value = prior
+
+
+def _extract_request_project(params: dict[str, Any], args: dict[str, Any]) -> str | None:
+    """Pull an ``Mcp-Project-Path``-style override from a tools/call request.
+
+    Checks, in order: ``params._meta`` (the MCP metadata channel) under any of
+    the conventional keys, then a reserved ``project_path`` argument. The arg is
+    popped so it never reaches the tool handler. Returns ``None`` when absent so
+    the default single-workspace path is preserved.
+    """
+    meta = params.get("_meta")
+    if isinstance(meta, dict):
+        for key in ("mcp-project-path", "projectPath", "project_path", "projectRoot", "project_root"):
+            value = meta.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    if isinstance(args, dict):
+        value = args.pop("project_path", None)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
 def _workspace_root() -> Path:
+    # A request-scoped project override (N10) wins for the lifetime of the
+    # request; everything else falls back to the single-workspace resolution.
+    override = getattr(_request_project, "value", None)
+    if isinstance(override, str) and override:
+        return Path(override)
     workspace = (
         os.environ.get("CLAUDE_WORKSPACE_ROOT")
         or os.environ.get("ATELIER_WORKSPACE_ROOT")
@@ -4226,6 +4308,7 @@ def tool_smart_read(
         ),
     ] = None,
     projection_kind: str | None = None,
+    format: Annotated[Literal["auto", "compact", "json"], _FORMAT_FIELD] = "auto",
 ) -> dict[str, Any]:
     """Read a file (or batch of files) with automatic source projection.
 
@@ -4435,6 +4518,68 @@ def _validate_edit_descriptor_families(edits: list[dict[str, Any]]) -> str:
     return families.pop()
 
 
+def _edit_verify_enabled(verify_flag: bool) -> bool:
+    """Whether the WS1 executing edit gate should run for this call."""
+    if verify_flag:
+        return True
+    val = os.environ.get("ATELIER_EDIT_VERIFY", "").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
+def _restore_snapshots(snapshots: dict[str, tuple[Path, str | None]]) -> None:
+    """Restore files to their pre-edit content (used when the verify gate fails)."""
+    for _display, (fp, old_content) in snapshots.items():
+        try:
+            if old_content is None:
+                if fp.exists():
+                    fp.unlink()
+            else:
+                fp.write_text(old_content, encoding="utf-8")
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+
+
+def _apply_edit_verify_gate(
+    result: dict[str, Any],
+    *,
+    touched: list[Path],
+    snapshots: dict[str, tuple[Path, str | None]],
+    checks: list[str] | None,
+    rollback: bool,
+    timeout_ms: int,
+    repo_root: Path,
+) -> None:
+    """Run the executing parse + mypy/pytest gate; attach counterexamples and roll back on failure.
+
+    Fully fail-open: a gate crash never blocks a legitimate edit.
+    """
+    try:
+        from atelier.core.capabilities.verification.edit_gate import run_edit_gate
+
+        checks_seq = tuple(checks) if checks else ("typecheck", "tests")
+        counterexamples = run_edit_gate(
+            touched,
+            repo_root=repo_root,
+            checks=checks_seq,
+            timeout_s=max(1.0, timeout_ms / 1000),
+        )
+        errors = [c for c in counterexamples if c.severity == "error"]
+        if not errors:
+            result["verify"] = {"passed": True, "checks": list(checks_seq)}
+            return
+        result["verify"] = {"passed": False, "checks": list(checks_seq)}
+        result["counterexamples"] = [c.to_dict() for c in errors]
+        if rollback:
+            _restore_snapshots(snapshots)
+            result["rolled_back"] = True
+            result["applied"] = []
+            result["writes"] = 0
+            result["verify"]["rolled_back"] = True
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        result["verify"] = {"passed": None, "error": "verify gate failed open"}
+
+
 EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -4548,6 +4693,32 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "Required with allow_test_contract_change=true: cite the user request or source of truth requiring the contract change.",
         },
+        "verify": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Run an executing correctness gate after the edit: a tree-sitter parse check "
+                "(TS/JS/Rust/Go), scoped mypy over touched Python source, and pytest over touched "
+                "test files. On an error-severity failure the edit is rolled back (see verify_rollback). "
+                "Fail-open. Also enabled globally via ATELIER_EDIT_VERIFY=1."
+            ),
+        },
+        "verify_checks": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["typecheck", "tests", "lint"]},
+            "description": "Which executing checks the verify gate runs (default: typecheck + tests). The parse gate always runs when verify is enabled.",
+        },
+        "verify_rollback": {
+            "type": "boolean",
+            "default": True,
+            "description": "When the verify gate finds an error-severity counterexample, restore all touched files to their pre-edit state.",
+        },
+        "verify_timeout_ms": {
+            "type": "integer",
+            "default": 60000,
+            "minimum": 0,
+            "description": "Maximum per-subprocess timeout for the verify gate's mypy/pytest runs.",
+        },
     },
     "required": ["edits"],
     "additionalProperties": False,
@@ -4638,6 +4809,10 @@ def tool_smart_edit(
     post_edit_timeout_ms: int = 30_000,
     allow_test_contract_change: bool = False,
     contract_change_evidence: str | None = None,
+    verify: bool = False,
+    verify_checks: list[str] | None = None,
+    verify_rollback: bool = True,
+    verify_timeout_ms: int = 60_000,
 ) -> dict[str, Any]:
     """Apply many mechanical edits across files in one deterministic call.
 
@@ -4743,6 +4918,19 @@ def tool_smart_edit(
                 except Exception as hook_exc:
                     logging.exception("Recovered from broad exception handler")
                     result["hooks"] = {"error": str(hook_exc)}
+            # WS1 edit-loop correctness gate: optional executing parse + scoped
+            # mypy/pytest verification with rollback. Opt-in via the `verify` arg or
+            # the ATELIER_EDIT_VERIFY env var; fully fail-open.
+            if _edit_verify_enabled(verify):
+                _apply_edit_verify_gate(
+                    result,
+                    touched=list(paths.values()),
+                    snapshots=snapshots,
+                    checks=verify_checks,
+                    rollback=verify_rollback,
+                    timeout_ms=verify_timeout_ms,
+                    repo_root=repo_root,
+                )
             # Diffs are recorded for telemetry and echoed inline so the caller
             # sees exactly what changed without a follow-up read.
             diffs = _compute_and_record_diffs(snapshots)
@@ -5559,6 +5747,14 @@ SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         "snippet_lines": {"type": "integer", "default": 8},
         "file_glob": {"type": "string", "description": "e.g. 'src/api/**/*.py'"},
         "repo_root": {"type": "string"},
+        "scope": {
+            "type": "string",
+            "enum": ["repo", "external", "deleted"],
+            "default": "repo",
+            "description": "'external': dependencies; 'deleted': git graveyard.",
+        },
+        "since": {"type": "string", "description": "ISO date or relative ('7d')."},
+        "format": _FORMAT_SCHEMA_PROPERTY,
     },
 }
 
@@ -5586,6 +5782,7 @@ def tool_symbols(
     repo: str | None = None,
     repo_root: str | None = None,
     render_compact: bool = False,
+    format: Annotated[str, _FORMAT_FIELD] = "auto",
 ) -> dict[str, Any]:
     """Search the SCIP code index for symbols by name or description.
 
@@ -5671,6 +5868,162 @@ def _code_engine_at(repo_root: str | None) -> Any:
     engine = _code_context_engine(repo_root or ".")
     _code_engine_for_current_call.value = engine
     return engine
+
+
+_GRAPH_KINDS: frozenset[str] = frozenset(
+    {
+        "blast_radius",
+        "dead_code",
+        "cycles",
+        "coupling",
+        "centrality",
+        # WS10 code health & history (G15/G16/N17): additive, read-only, fail-open.
+        "design_gaps",
+        "verify_design",
+        "pr_risk",
+        "commit_provenance",
+        "index_docs",
+        "recall_docs",
+        # WS11 (G17): module-boundary / god-module topology discovery.
+        "topology",
+    }
+)
+
+
+def _synthesize_edges_for_paths(paths: list[str]) -> list[dict[str, Any]]:
+    """Run the bounded N2/N3 edge synthesizer over *paths*; clearly-labelled output.
+
+    Returns a flat list of heuristic edge dicts (provenance="heuristic"). Never
+    touches the static call graph -- this is a separate, opt-in addendum.
+    """
+    from atelier.core.capabilities.code_context.edge_synthesis import synthesize_edges
+    from atelier.infra.code_intel.languages import language_for_path
+
+    out: list[dict[str, Any]] = []
+    for raw in paths:
+        candidate = Path(raw)
+        if not candidate.is_file():
+            continue
+        lang = language_for_path(candidate)
+        language = lang.name if lang is not None else ""
+        source = candidate.read_text(encoding="utf-8", errors="replace")
+        for edge in synthesize_edges(source, language=language):
+            out.append({"file": str(candidate), **edge.to_dict()})
+    return out
+
+
+def _op_graph(
+    *,
+    kind: str = "blast_radius",
+    path: str | None = None,
+    paths: list[str] | None = None,
+    limit: int = 50,
+    synthesize: bool = False,
+    query: str | None = None,
+    enable: bool | None = None,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    """Agent-facing graph analytics (G3/G6) dispatched by ``kind``.
+
+    * ``blast_radius`` (default) -- reverse-dependency closure + affected tests +
+      risk tier for ``path`` (file-level; uses the existing change_impact).
+    * ``dead_code`` / ``cycles`` / ``coupling`` -- repo-wide file-graph analytics
+      over the semantic file index. Pass ``paths`` to fold those files into the
+      index first; otherwise analyses whatever the index already holds.
+    * ``centrality`` -- symbol-level call-graph centrality from the SCIP engine.
+      Pass ``synthesize=true`` with ``paths`` to additionally return
+      heuristic (route/event) edges as a SEPARATE ``synthesized_edges`` list
+      (N2/N3); they are never merged into the static call graph.
+    """
+    if kind not in _GRAPH_KINDS:
+        raise ValueError(f"unknown graph kind: {kind!r}; expected one of {sorted(_GRAPH_KINDS)}")
+
+    # WS10 code health & history kinds (G15/G16/N17). Each is additive, read-only
+    # analytics that fails open inside its own module; dispatched before the
+    # file-graph kinds because they have distinct argument shapes.
+    if kind in {"design_gaps", "verify_design", "pr_risk", "commit_provenance", "index_docs", "recall_docs"}:
+        return _op_graph_code_health(
+            kind=kind, path=path, paths=paths, limit=limit, query=query, enable=enable, repo_root=repo_root
+        )
+
+    if kind == "centrality":
+        engine = _code_engine_at(repo_root)
+        result = cast(dict[str, Any], engine.call_graph_centrality(limit=limit))
+        result["kind"] = "centrality"
+        if synthesize and paths:
+            result["synthesized_edges"] = _synthesize_edges_for_paths(paths)
+        return _finish_code_result(result)
+
+    cap = SemanticFileMemoryCapability(_atelier_root())
+    if paths:
+        for raw in paths:
+            candidate = Path(raw)
+            if candidate.is_file():
+                cap.summarize_file(candidate)
+    analytics = cap.graph_analytics()
+    if kind == "blast_radius":
+        if not path:
+            raise ValueError("path is required for kind='blast_radius'")
+        result = analytics.blast_radius(str(Path(path)))
+    elif kind == "dead_code":
+        result = analytics.dead_code(limit=limit)
+    elif kind == "cycles":
+        result = analytics.cycles(limit=limit)
+    elif kind == "topology":
+        result = analytics.topology(limit=limit)
+    else:  # coupling
+        result = analytics.coupling(limit=limit)
+    result["kind"] = kind
+    _ = render_compact  # file-graph analytics render as JSON; no markdown view
+    return result
+
+
+def _op_graph_code_health(
+    *,
+    kind: str,
+    path: str | None,
+    paths: list[str] | None,
+    limit: int,
+    query: str | None,
+    enable: bool | None,
+    repo_root: str | None,
+) -> dict[str, Any]:
+    """Dispatch the WS10 code health & history graph kinds (G15/G16/N17).
+
+    Each delegated function is independently fail-open; this seam only resolves
+    the repo/atelier roots and routes by ``kind``.
+    """
+    from atelier.core.capabilities.code_health import (
+        commit_provenance,
+        design_gaps,
+        index_design_docs,
+        pr_risk,
+        recall_design_docs,
+        verify_design,
+    )
+
+    workspace = _workspace_root()
+    repo = (Path(repo_root) if repo_root else workspace).resolve()
+    atelier_root = _atelier_root()
+
+    if kind == "design_gaps":
+        return design_gaps(repo_root=repo, atelier_root=atelier_root, paths=paths)
+    if kind == "verify_design":
+        return verify_design(repo_root=repo, atelier_root=atelier_root, paths=paths)
+    if kind == "pr_risk":
+        targets = paths or ([path] if path else [])
+        if not targets:
+            raise ValueError("pr_risk requires 'paths' (or 'path') -- the changed files")
+        return pr_risk(repo_root=repo, atelier_root=atelier_root, paths=targets)
+    if kind == "commit_provenance":
+        return commit_provenance(repo_root=repo, path=path, limit=limit)
+    if kind == "index_docs":
+        return index_design_docs(repo_root=repo, atelier_root=atelier_root, paths=paths, enable=enable)
+    # recall_docs
+    if not query:
+        raise ValueError("recall_docs requires 'query'")
+    return recall_design_docs(atelier_root=atelier_root, query=query, limit=limit)
 
 
 def _op_callers(
@@ -6254,6 +6607,50 @@ def tool_usages(
     return _op_usages(**_parse_symbol(symbol), limit=limit)
 
 
+@mcp_tool(name="graph")
+def tool_graph(
+    kind: str = "blast_radius",
+    path: str | None = None,
+    paths: list[str] | None = None,
+    limit: int = 50,
+    synthesize: bool = False,
+    query: str | None = None,
+    enable: bool | None = None,
+) -> dict[str, Any]:
+    """Repo graph analytics + code health & history: blast radius, dead code, cycles,
+    coupling, centrality, doc/code drift, PR risk, commit provenance, design-doc recall.
+
+    kind:
+      - blast_radius (default): reverse-dependency closure + affected tests + risk tier for `path`.
+      - dead_code: indexed files with no inbound importers (likely removable), ranked by complexity.
+      - cycles: import dependency cycles (strongly-connected components, size >= 2).
+      - coupling: per-file afferent/efferent coupling + Martin's instability metric.
+      - centrality: most important symbols by call-graph centrality (degree + eigenvector).
+      - design_gaps (G15): doc-referenced symbols absent from the index (stale/aspirational refs).
+      - verify_design (G15): doc-referenced symbols whose signature drifted from the index.
+      - pr_risk (G16): fuse blast-radius + complexity + churn + test-gap into a 0..1 risk score
+        and tier for the changed `paths` (or `path`).
+      - commit_provenance (G16): heuristic bugfix/refactor/feature/perf/rename/revert/docs/test
+        classification of commits touching `path` (or the repo), with tagged confidence.
+      - index_docs (N17): opt-in heading-tree indexing of Markdown design docs into a SEPARATE
+        retrieval store (pass `enable=true`, or set ATELIER_DOC_INDEXING=1; off by default).
+      - recall_docs (N17): recall design-doc chunks for `query` from the separate doc store.
+    Pass `paths` to fold specific files into the index first (dead_code/cycles/coupling/pr_risk);
+    for design_gaps/verify_design/index_docs `paths` selects the docs/dirs to scan.
+    `synthesize=true` (with `paths`, kind=centrality) also returns heuristic route/event
+    edges as a SEPARATE `synthesized_edges` list (never merged into the static call graph).
+    """
+    return _op_graph(
+        kind=kind,
+        path=path,
+        paths=paths,
+        limit=limit,
+        synthesize=synthesize,
+        query=query,
+        enable=enable,
+    )
+
+
 @mcp_tool(name="codemod")
 def tool_pattern(
     pattern: str,
@@ -6394,6 +6791,74 @@ def tool_cache_invalidate(
         repo_root=repo_root,
         render_compact=render_compact,
     )
+
+
+@mcp_tool(name="scan")
+def tool_scan(
+    path: str | None = None,
+    include_taint: bool = True,
+    include_rules: bool = True,
+    repo_root: str | None = None,
+) -> dict[str, Any]:
+    """Security scan (SAST, first iteration) over the repo or a sub-path.
+
+    Runs a small bundled pack of high-signal OWASP/CWE ast-grep rules
+    (eval/exec, subprocess shell=True with interpolation, SQL string
+    concatenation, hardcoded secrets) plus a BOUNDED intra-procedural Python
+    taint check (request/argv/env/input sources reaching exec/subprocess/SQL
+    sinks). Scope to a file or directory with `path`; toggle the rule pack or
+    taint pass with `include_rules`/`include_taint`.
+
+    This is a first iteration, NOT a full SAST engine: every finding carries a
+    `rule_id`, `severity`, and `confidence`, and heuristic findings are flagged
+    (`heuristic: true`). It does not claim exhaustiveness.
+    Returns: findings (path, line, rule_id, cwe, severity, confidence, message,
+    source, heuristic) and a summary count.
+    """
+    from atelier.core.capabilities.security import scan_repository
+
+    workspace = _workspace_root()
+    root_arg = repo_root or "."
+    root_path = Path(root_arg)
+    resolved_root = (root_path if root_path.is_absolute() else workspace / root_path).resolve()
+    paths = [path] if path else None
+    findings = scan_repository(
+        resolved_root,
+        paths=paths,
+        include_taint=include_taint,
+        include_rules=include_rules,
+    )
+    severity_counts: dict[str, int] = {}
+    for finding in findings:
+        sev = str(finding.get("severity", "info"))
+        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+    return {
+        "findings": findings,
+        "summary": {
+            "total": len(findings),
+            "by_severity": severity_counts,
+            "heuristic": True,
+            "note": "First-iteration SAST: bounded coverage, not exhaustive.",
+        },
+    }
+
+
+@mcp_tool(name="orient")
+def tool_orient(topic: str | None = None) -> dict[str, Any]:
+    """Return Atelier's tool-usage playbook on demand (N8).
+
+    One fetch for the optimal tool sequencing -- explore -> navigate -> edit ->
+    verify -- and which tool to reach for in each phase, so this guidance need
+    not be duplicated in every system prompt. Static and deterministic.
+
+    Pass an optional `topic` (explore, navigate, edit, verify, selection) for a
+    single focused section instead of the whole playbook. An unknown topic is
+    not an error: it returns the overview plus the list of valid topics.
+    Returns: sequence, sections (title/body), topics, and rendered `text`.
+    """
+    from atelier.core.capabilities.orientation import orientation_playbook
+
+    return orientation_playbook(topic)
 
 
 def _run_shell_tool(
@@ -6790,6 +7255,7 @@ def tool_grep(
         bool,
         Field(description="Include response metadata such as file counts and caps."),
     ] = False,
+    format: Annotated[Literal["auto", "compact", "json"], _FORMAT_FIELD] = "auto",
 ) -> dict[str, Any]:
     """Run grep-style search with regex, globs, type filters, and token-budgeted rendering.
 
@@ -6909,6 +7375,7 @@ def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[in
                 "default": False,
                 "description": "Include backend/cache metadata fields in the response.",
             },
+            "format": _FORMAT_SCHEMA_PROPERTY,
         },
         "required": [],
     },
@@ -6962,6 +7429,7 @@ def tool_smart_search(
         bool,
         Field(description="Include backend/cache metadata fields in the response."),
     ] = False,
+    format: Annotated[str, _FORMAT_FIELD] = "auto",
 ) -> dict[str, Any]:
     """Search by ranked query or repo-map construction, then hand off to node/explore-style code intel.
 
@@ -7951,10 +8419,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         # mode="symbols" must always run locally (SCIP engine); bypass remote routing
         if name == "context" and isinstance(args, dict) and args.get("mode") == "symbols":
             remote_routed = False
-        # recall_symbol fuses the local SCIP engine with memory and has no remote
-        # equivalent, so always run it against the local handler.
-        if name == "memory" and isinstance(args, dict) and args.get("op") == "recall_symbol":
-            remote_routed = False
+        # N10 — request-scoped project isolation. Honor an Mcp-Project-Path-style
+        # override for the lifetime of this request only; absent -> unchanged.
+        _prior_project = _set_request_project(_extract_request_project(params, args if isinstance(args, dict) else {}))
         rendered_text: str | None = None
         _call_duration_ms: int = 0
         try:
@@ -8082,6 +8549,23 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     session_id=_ok_sid,
                 )
 
+            # G13 — caller-selectable output encoding (auto | compact | json).
+            # Default `auto` returns response_text unchanged (byte-compatible);
+            # `json` forces raw JSON; `compact` applies the N6-gated N7 columnar
+            # form. Reads the selector from the always-defined request args (the
+            # remote path never sets `_args`), with an explicit, non-default
+            # value so today's default bytes are untouched.
+            _fmt = args.get("format") if isinstance(args, dict) else None
+            if isinstance(_fmt, str) and _fmt.strip().lower() in {"compact", "json"}:
+                with contextlib.suppress(Exception):
+                    from atelier.core.capabilities.tool_supervision.output_format import apply_output_format
+
+                    response_text, _ = apply_output_format(
+                        fmt=_fmt,
+                        result=result,
+                        rendered_text=response_text,
+                    )
+
             # Within-session content dedup: if this read-style result is
             # byte-identical to one already returned this session (and the model
             # didn't pass force=true), return a small pointer instead of
@@ -8117,6 +8601,22 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         dedup_stubbed = True
                         if dedup_chars_saved > 0:
                             _append_workspace_savings(name, dedup_chars_saved // 4, 0, rid=str(rid))
+            # N4 — per-tool exact input/output token ledger. Measures the
+            # request args (input) and the final emitted text (output) with the
+            # local tiktoken counter, accumulates per tool name, and persists a
+            # JSON sidecar under the atelier root. Additive only — never touches
+            # the response bytes; best-effort so a write failure can't break the
+            # tool call.
+            with contextlib.suppress(Exception):
+                from atelier.core.capabilities.tool_token_ledger import record_tool_tokens
+
+                record_tool_tokens(
+                    _atelier_root(),
+                    name,
+                    input_payload=args,
+                    output_payload=response_text,
+                )
+
             # Embed per-call savings on the content item so they also ride into
             # the Claude transcript JSONL. NOTE: this is a secondary record —
             # the live statusline/analytics source today is the session_stats
@@ -8222,6 +8722,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         session_id=_err_session_id,
                     )
             return _err(rid, _tool_error_code(exc), str(exc))
+        finally:
+            # Always drop the request-scoped project override (N10).
+            _clear_request_project(_prior_project)
 
     return _err(rid, -32601, f"unknown method: {method}")
 
@@ -8453,6 +8956,20 @@ def _setup_file_logging(root: str | Path) -> None:
     mcp_logger.setLevel(logging.DEBUG)
 
 
+def _warm_stdio_code_index() -> None:
+    """Warm the single-workspace code-context engine for the stdio MCP path.
+
+    Reuses the service ``_CodeWarmer`` patterns via ``warm_stdio_workspace``.
+    Fail-open: any failure is swallowed so stdio server startup is unaffected.
+    """
+    try:
+        from atelier.core.service.code_warm import warm_stdio_workspace
+
+        warm_stdio_workspace(_workspace_root())
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+
+
 def main() -> None:
     # Phase 1: Absorb wrapper logic into `atelier mcp` (zero-config)
     os.environ.setdefault("ATELIER_SERVICE_URL", "http://127.0.0.1:8787")
@@ -8496,6 +9013,12 @@ def main() -> None:
     # Register before serve() so the SessionStart hook can find this process
     # and write the Claude session UUID before the first tool call arrives.
     _register_mcp_session()
+
+    # Warm the code-context engine/index once on stdio startup (G10) so the
+    # first code-context tool call does not pay cold-start on Zoekt/scip/
+    # ast-grep subprocesses. Off the hot path in a daemon thread; fail-open so
+    # warming failure never breaks server startup.
+    threading.Thread(target=_warm_stdio_code_index, daemon=True).start()
 
     threading.Thread(target=_check_auto_update, daemon=True).start()
     serve()

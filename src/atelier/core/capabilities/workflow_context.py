@@ -8,6 +8,9 @@ from typing import Any
 
 _FULL_REF_PATTERN = re.compile(r"^\{\{\s*steps\.([A-Za-z0-9_\-]+)\.(output|output_json(?:\.[A-Za-z0-9_\-]+)*)\s*\}\}$")
 _ANY_REF_PATTERN = re.compile(r"\{\{\s*steps\.[A-Za-z0-9_\-]+\.(?:output|output_json(?:\.[A-Za-z0-9_\-]+)*)\s*\}\}")
+# G19: per-item binding references for map bodies, e.g. ``{{item}}`` or
+# ``{{item.field}}``. The leading name must match an active binding var.
+_FULL_ITEM_REF_PATTERN = re.compile(r"^\{\{\s*([A-Za-z_][A-Za-z0-9_]*)((?:\.[A-Za-z0-9_\-]+)*)\s*\}\}$")
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,9 @@ class WorkflowContextState:
     step_order: list[str] = field(default_factory=list)
     wave_spawn_plans: dict[str, dict[str, Any]] = field(default_factory=dict)
     host_lane_observations: dict[str, dict[str, str]] = field(default_factory=dict)
+    # Transient per-item bindings for an active `map` body scope (G19). Not
+    # serialized — only meaningful while a map iteration is executing.
+    item_bindings: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -148,10 +154,32 @@ class WorkflowContextState:
     def record_host_lane(self, lane_key: str, lane: Mapping[str, str]) -> None:
         self.host_lane_observations[lane_key] = {str(key): str(value) for key, value in lane.items()}
 
+    def set_item_bindings(self, bindings: Mapping[str, Any]) -> None:
+        self.item_bindings = {str(key): copy.deepcopy(value) for key, value in bindings.items()}
+
+    def clear_item_bindings(self) -> None:
+        self.item_bindings = {}
+
+    def _resolve_item_reference(self, reference: str) -> Any:
+        match = _FULL_ITEM_REF_PATTERN.fullmatch(reference.strip())
+        if match is None:
+            raise ValueError(f"unsupported step reference: {reference}")
+        name, path = match.groups()
+        if name not in self.item_bindings:
+            raise ValueError(f"unsupported step reference: {reference}")
+        current: Any = copy.deepcopy(self.item_bindings[name])
+        for part in path.split(".")[1:]:
+            if part == "":
+                continue
+            if not isinstance(current, Mapping) or part not in current:
+                raise ValueError(f"missing item path: {reference}")
+            current = current[part]
+        return copy.deepcopy(current)
+
     def resolve_reference(self, reference: str) -> Any:
         match = _FULL_REF_PATTERN.fullmatch(reference.strip())
         if match is None:
-            raise ValueError(f"unsupported step reference: {reference}")
+            return self._resolve_item_reference(reference)
         step_id, path = match.groups()
         result = self.step_results.get(step_id)
         if result is None or result.status != "done":
@@ -165,10 +193,14 @@ class WorkflowContextState:
             current = current[part]
         return copy.deepcopy(current)
 
+    def _is_active_item_ref(self, stripped: str) -> bool:
+        match = _FULL_ITEM_REF_PATTERN.fullmatch(stripped)
+        return match is not None and match.group(1) in self.item_bindings
+
     def render_value(self, value: Any) -> Any:
         if isinstance(value, str):
             stripped = value.strip()
-            if _FULL_REF_PATTERN.fullmatch(stripped):
+            if _FULL_REF_PATTERN.fullmatch(stripped) or self._is_active_item_ref(stripped):
                 return self.resolve_reference(stripped)
             if _ANY_REF_PATTERN.search(value):
                 raise ValueError("workflow templates only support full-value substitutions")
