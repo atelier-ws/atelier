@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
 from atelier.core.capabilities.memory_arbitration import arbitrate
+from atelier.core.capabilities.memory_arbitration.arbiter import _similar_blocks
 from atelier.core.foundation.memory_models import MemoryBlock
 from atelier.infra.embeddings.base import Embedder
 from atelier.infra.storage.memory_store import MemoryStore
@@ -329,13 +330,11 @@ class MemoryService:
         )
 
     def _upsert_block(self, block: MemoryBlock) -> MemoryBlock:
+        candidates = {item.id: item for item in _similar_blocks(block, self._store, k=5)}
         decision = arbitrate(block, self._store, self._embedder)
         target = None
         if decision.target_block_id:
-            for item in self._store.list_blocks(block.agent_id, include_tombstoned=True, limit=500):
-                if item.id == decision.target_block_id:
-                    target = item
-                    break
+            target = candidates.get(decision.target_block_id)
 
         actor = f"agent:{block.agent_id}"
         if decision.op == "NOOP" and target is not None:

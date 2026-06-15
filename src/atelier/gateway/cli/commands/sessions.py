@@ -192,7 +192,7 @@ def session_report_cmd(
 
     report = load_report(session_id, root)
     if report is None:
-        click.echo(f"Session '{session_id}' not found in {root / 'runs'}.", err=True)
+        click.echo(f"Session '{session_id}' not found in {root / 'sessions'}.", err=True)
         raise SystemExit(1)
 
     if as_json:
@@ -1676,29 +1676,30 @@ def session_list_cmd(
             store = _load_store(root)
 
         grouped: dict[str, list[dict[str, Any]]] = {}
-        for host_name in selected_hosts:
-            traces = store.list_traces(host=host_name, since=cutoff, limit=scan)
-            rows: list[dict[str, Any]] = []
-            for trace in traces:
-                sid = (trace.session_id or trace.id or "").strip()
-                if session_filter and session_filter not in sid.lower():
-                    continue
-                rows.append(_build_session_row(trace, store, host_name))
-                if len(rows) >= limit:
-                    break
-            if rows:
-                grouped[host_name] = rows
+        try:
+            for host_name in selected_hosts:
+                traces = store.list_traces(host=host_name, since=cutoff, limit=scan)
+                rows: list[dict[str, Any]] = []
+                for trace in traces:
+                    sid = (trace.session_id or trace.id or "").strip()
+                    if session_filter and session_filter not in sid.lower():
+                        continue
+                    rows.append(_build_session_row(trace, store, host_name))
+                    if len(rows) >= limit:
+                        break
+                if rows:
+                    grouped[host_name] = rows
 
-        if temp_handle is not None:
-            temp_handle.cleanup()
-
-        click.echo(
-            json.dumps(
-                {"source": source_mode, "scan_counts": sync_counts, "hosts": grouped},
-                indent=2,
-                default=str,
+            click.echo(
+                json.dumps(
+                    {"source": source_mode, "scan_counts": sync_counts, "hosts": grouped},
+                    indent=2,
+                    default=str,
+                )
             )
-        )
+        finally:
+            if temp_handle is not None:
+                temp_handle.cleanup()
         return
 
     # Text display: stream per-host so each host's sessions appear immediately.

@@ -15,6 +15,13 @@ def _bool_env(name: str, default: bool) -> bool:
     return bool_env(name, default)
 
 
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _is_loopback_host(host: str) -> bool:
+    return host.strip().lower() in _LOOPBACK_HOSTS
+
+
 class ServiceConfig:
     """Live view of service configuration from environment variables."""
 
@@ -24,7 +31,18 @@ class ServiceConfig:
 
     @property
     def require_auth(self) -> bool:
-        return _bool_env("ATELIER_REQUIRE_AUTH", False)
+        """Whether Bearer auth is enforced on protected routes.
+
+        Secure default: auth is REQUIRED unless the service binds to a
+        loopback host (127.0.0.1/localhost/::1) for local dev. Binding a
+        non-loopback host exposes memory, traces, and config to the network,
+        so it fails closed (auth on) by default.
+
+        An explicit ``ATELIER_REQUIRE_AUTH`` always wins, in either direction.
+        """
+        if "ATELIER_REQUIRE_AUTH" in os.environ:
+            return _bool_env("ATELIER_REQUIRE_AUTH", False)
+        return not _is_loopback_host(self.host)
 
     @property
     def api_key(self) -> str:

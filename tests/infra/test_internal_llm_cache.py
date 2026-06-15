@@ -51,6 +51,24 @@ def test_cached_summarize_distinct_keys_recompute() -> None:
     assert calls["n"] == 3
 
 
+def test_summary_key_distinguishes_openai_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Same (text, model, max_tokens, backend) routed at two different OpenAI-
+    # compatible endpoints must not collide on the same cache key, or one
+    # provider's summary gets served for another (cross-endpoint poisoning).
+    monkeypatch.setenv("ATELIER_OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("ATELIER_OPENAI_API_KEY", "key-one")
+    first = llm_cache.summary_key("text", model="m", max_tokens=64, backend="openai")
+
+    monkeypatch.setenv("ATELIER_OPENAI_BASE_URL", "http://localhost:8000/v1")
+    second = llm_cache.summary_key("text", model="m", max_tokens=64, backend="openai")
+    assert first != second  # different base_url
+
+    monkeypatch.setenv("ATELIER_OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("ATELIER_OPENAI_API_KEY", "key-two")
+    third = llm_cache.summary_key("text", model="m", max_tokens=64, backend="openai")
+    assert first != third  # same base_url, different api key
+
+
 def test_cached_summarize_disabled_recomputes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ATELIER_INTERNAL_LLM_CACHE", "0")
     calls = {"n": 0}

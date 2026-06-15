@@ -137,6 +137,11 @@ RUNTIME_ERROR_MARKERS = (
     "permission denied",
     "timed out",
 )
+
+
+# Sentinel reason set when a trial never produced gradeable content (subprocess
+# crash or timeout). Distinct from off-topic / placeholder *content* invalidity.
+EXECUTION_FAILED_REASON = "trial execution failed (ok=False)"
 STOPWORDS = frozenset(
     {
         "about",
@@ -818,7 +823,7 @@ def _apply_result_validity(task: Task, result: ArmResult) -> ArmResult:
     # to avoid false positives in validity reporting.
     if not result.ok:
         result.valid = False
-        result.validity_reason = result.validity_reason or "trial execution failed (ok=False)"
+        result.validity_reason = result.validity_reason or EXECUTION_FAILED_REASON
         return result
 
     valid, reason, hard = _validate_result_excerpt(task, result.result_excerpt)
@@ -829,6 +834,20 @@ def _apply_result_validity(task: Task, result: ArmResult) -> ArmResult:
     if not valid and hard:
         result.ok = False
     return result
+
+
+def _is_content_invalid(result: ArmResult) -> bool:
+    """True only when a run completed but produced off-topic / placeholder /
+    empty *content* -- the case that makes a cost/token comparison meaningless.
+
+    Timeouts and transport/execution failures are recorded benchmark outcomes
+    (surfaced on the ``Timeouts`` / ``Runs ok`` lines and via exit code 1), not
+    content contamination, so they are excluded here: a lone timeout must not
+    trip the "comparisons are not meaningful" alarm or the exit-2 path.
+    """
+    if result.valid or result.timed_out:
+        return False
+    return result.validity_reason != EXECUTION_FAILED_REASON
 
 
 def _parse_agent_env(entries: list[str] | None) -> dict[str, str]:
@@ -1200,6 +1219,36 @@ def _parse_judge_json(text: str) -> dict[str, object]:
     return parsed
 
 
+def _normalize_model_usage(usage: dict[str, object]) -> dict[str, int]:
+    """Map one model's usage dict onto canonical token-component keys.
+
+    Claude's ``modelUsage`` block spells the components in camelCase
+    (``inputTokens``, ``cacheReadInputTokens`` ...); already-normalized dicts use
+    snake_case (``input``, ``cache_read`` ...). Read both spellings so the
+    per-component cost breakdown is never silently zeroed by a key mismatch
+    (the bug that printed ``- input: $0.0000`` while total cost was non-zero).
+    """
+    aliases: dict[str, tuple[str, ...]] = {
+        "input": ("input", "inputTokens", "input_tokens"),
+        "output": ("output", "outputTokens", "output_tokens"),
+        "cache_read": ("cache_read", "cacheReadInputTokens", "cache_read_input_tokens"),
+        "cache_write": ("cache_write", "cacheCreationInputTokens", "cache_creation_input_tokens"),
+        "thinking": ("thinking", "thinkingTokens", "thinking_tokens"),
+    }
+    normalized: dict[str, int] = {}
+    for canon, keys in aliases.items():
+        value = 0
+        for key in keys:
+            raw = usage.get(key)
+            if isinstance(raw, bool):
+                continue
+            if isinstance(raw, (int, float)):
+                value = int(raw)
+                break
+        normalized[canon] = value
+    return normalized
+
+
 def _agg(results: list[ArmResult], arm: str) -> dict[str, Any]:
     rs = [r for r in results if r.arm == arm]
     judged = [r for r in rs if r.score is not None]
@@ -1215,9 +1264,9 @@ def _agg(results: list[ArmResult], arm: str) -> dict[str, Any]:
                     "cache_write": 0,
                     "thinking": 0,
                 }
-            # Handle both list and dict-based usage parsing in results
+            normalized = _normalize_model_usage(usage)
             for k in ["input", "output", "cache_read", "cache_write", "thinking"]:
-                aggregated_model_usage[model][k] += usage.get(k, 0)
+                aggregated_model_usage[model][k] += normalized[k]
 
     return {
         "runs": len(rs),
@@ -1353,7 +1402,7 @@ def report(results: list[ArmResult]) -> str:
     if any(aggregates[arm]["timed_out"] for arm in arms):
         timeout_parts = [f"{arm} {aggregates[arm]['timed_out']}/{aggregates[arm]['runs']}" for arm in arms]
         lines.append(f"Timeouts    : {'  '.join(timeout_parts)}")
-    if any(result.valid is False for result in results):
+    if any(_is_content_invalid(result) for result in results):
         lines.append("Validity    : invalid/off-topic runs detected; cost/token comparisons are not meaningful.")
     if any(result.score is not None for result in results):
         score_parts = [
@@ -1956,7 +2005,7 @@ def main() -> int:
     (run_dir / "report.txt").write_text(rep_txt)
     print(rep_txt)
     print(f"\nResults: {run_dir}")
-    if any(result.valid is False for result in results):
+    if any(_is_content_invalid(result) for result in results):
         return 2
     if any(not result.ok for result in results):
         return 1

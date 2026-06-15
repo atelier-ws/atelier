@@ -32,14 +32,18 @@ class DeadEndTracker:
         normalised = _normalise_approach(approach)
         if normalised in self._dead_ends:
             return True
-        # Fuzzy check: if > 60% of tokens overlap with a known dead-end
+        # Fuzzy check: Jaccard overlap with a known dead-end. Single-token
+        # dead-ends require an exact match (handled above) so they cannot
+        # poison every approach that happens to share that one token.
         tokens = set(normalised.split())
         for de in self._dead_ends:
             de_tokens = set(de.split())
-            if not de_tokens:
+            if len(de_tokens) < 2:
                 continue
-            overlap = len(tokens & de_tokens)
-            if overlap / len(de_tokens) >= 0.6:
+            union = tokens | de_tokens
+            if not union:
+                continue
+            if len(tokens & de_tokens) / len(union) >= 0.6:
                 return True
         return False
 

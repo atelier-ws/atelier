@@ -41,7 +41,7 @@ def default_policy() -> GovernancePolicy:
     return GovernancePolicy(
         redaction_rules=[
             RedactionRule(pattern=r"sk-[A-Za-z0-9]+"),
-            RedactionRule(pattern=r"(?i)api[_-]?key\\s*[:=]\\s*\\S+"),
+            RedactionRule(pattern=r"(?i)api[_-]?key\s*[:=]\s*\S+"),
         ]
     )
 

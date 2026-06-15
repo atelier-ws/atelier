@@ -1254,6 +1254,24 @@ def test_file_content_endpoint_serves_local_file(
     assert resp.headers["content-type"].startswith("text/plain")
 
 
+def test_file_content_endpoint_rejects_path_traversal(app_no_auth: TestClient) -> None:
+    """A path outside the allowed roots must be refused (no arbitrary read)."""
+    resp = app_no_auth.get("/v1/files/content", params={"path": "/etc/passwd"})
+    assert resp.status_code == 403
+
+
+def test_chat_completions_requires_auth_when_enabled(app_with_auth: TestClient) -> None:
+    """OpenAI-gateway route must reject unauthenticated callers."""
+    resp = app_with_auth.post("/v1/chat/completions", json={"model": "gpt-4o", "messages": []})
+    assert resp.status_code in (401, 403)
+
+
+def test_models_route_requires_auth_when_enabled(app_with_auth: TestClient) -> None:
+    """OpenAI-gateway model listing must reject unauthenticated callers."""
+    resp = app_with_auth.get("/v1/models")
+    assert resp.status_code in (401, 403)
+
+
 def test_file_projection_endpoint_returns_compact_projection_metadata(
     app_no_auth: TestClient,
     tmp_path: Path,

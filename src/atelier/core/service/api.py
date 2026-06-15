@@ -59,7 +59,11 @@ from atelier.core.capabilities.workflow_runtime_state import (
     workflow_runtime_detail,
 )
 from atelier.core.foundation.models import Trace, to_jsonable
-from atelier.core.foundation.paths import resolve_session_state_path, resolve_workspace_root
+from atelier.core.foundation.paths import (
+    confine_to_root,
+    resolve_session_state_path,
+    resolve_workspace_root,
+)
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.auth import verify_api_key
 from atelier.core.service.config import cfg
@@ -3000,10 +3004,19 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         docs_url="/docs",
     )
 
-    # CORS for local dev
+    # CORS: never combine a wildcard origin with credentials. Default to the
+    # loopback origins for the configured host/port (local dev); operators can
+    # add explicit origins via ATELIER_CORS_ORIGINS (comma-separated).
+    _cors_origins: list[str] = []
+    for _scheme in ("http", "https"):
+        for _h in ("127.0.0.1", "localhost", "[::1]"):
+            _cors_origins.append(f"{_scheme}://{_h}:{cfg.port}")
+    _extra_origins = os.environ.get("ATELIER_CORS_ORIGINS", "").strip()
+    if _extra_origins:
+        _cors_origins.extend(o.strip() for o in _extra_origins.split(",") if o.strip())
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=_cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -3381,6 +3394,17 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         if "id" not in payload:
             payload["id"] = Trace.make_id(payload.get("task", "untitled"), payload.get("agent", "agent"))
         normalized_payload, event_recorded = _normalize_trace_payload(payload)
+        for _field in (
+            "input_tokens",
+            "output_tokens",
+            "reasoning_output_tokens",
+            "cached_input_tokens",
+            "cache_creation_input_tokens",
+            "thinking_tokens",
+        ):
+            _raw = normalized_payload.get(_field)
+            if isinstance(_raw, (int, float)) and _raw < 0:
+                raise HTTPException(status_code=400, detail=f"{_field} must be non-negative")
         trace = Trace.model_validate(normalized_payload)
         get_store().record_trace(trace)
         response: dict[str, Any] = {"id": trace.id, "event_recorded": event_recorded}
@@ -3492,6 +3516,10 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             else:
                 update["metadata"] = metadata
             block = existing.model_copy(update=update)
+            try:
+                block = MemoryBlock.model_validate(block.model_dump())
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         actor = str(payload.get("actor") or f"api:{agent_id}")
         try:
             return mem.upsert_block(block, actor=actor)
@@ -4775,12 +4803,26 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
         return PlainTextResponse(content, media_type="text/plain")
 
+    def _confine_local_path(path: str) -> Path:
+        """Resolve *path* and confine it to the workspace or store root.
+
+        Rejects path-traversal / arbitrary-read escapes (including via
+        symlinks, since ``confine_to_root`` resolves before comparing).
+        """
+        allowed_roots = (resolve_workspace_root(store_path), store_path)
+        for allowed_root in allowed_roots:
+            try:
+                return confine_to_root(path, allowed_root)
+            except ValueError:
+                continue
+        raise HTTPException(status_code=403, detail="Path is outside the allowed roots.")
+
     @app.get("/v1/files/content", tags=["files"], dependencies=[Depends(verify_api_key)])
     def get_file_content(path: str) -> Any:
         """Return local file content with a browser-appropriate media type."""
         from fastapi.responses import FileResponse
 
-        file_path = Path(path).expanduser()
+        file_path = _confine_local_path(path)
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=f"File not found: {path}")
         if not file_path.is_file():
@@ -4798,7 +4840,8 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         """Return structured projection metadata for a file read."""
         from atelier.gateway.adapters.mcp_server import tool_smart_read
 
-        payload: dict[str, Any] = {"path": path, "include_meta": True}
+        confined_path = _confine_local_path(path)
+        payload: dict[str, Any] = {"path": str(confined_path), "include_meta": True}
         if view == "compact":
             # The HTTP surface pins the conservative compact projection; the
             # tree-sitter "minified" view is an MCP-layer default only.
@@ -4834,7 +4877,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 snap = ledger.snapshot()
             except Exception as e:
                 logging.exception("Recovered from broad exception handler")
-                return {"session_id": session_id, "error": str(e)}
+                raise HTTPException(status_code=500, detail="failed to load run ledger") from e
 
         # Always check for a trace to fetch the full conversation history.
         # Imported sessions from Claude/Codex/OpenCode/Copilot use the Trace as source of truth.
@@ -6635,19 +6678,29 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         nonlocal _gw_runtime
         async with _gw_runtime_lock:
             if _gw_runtime is None:
-                _gw_runtime = _Runtime(root=store_path, yolo=True)
+                # Secure default: do NOT auto-approve destructive file/shell/edit
+                # ops for the unattended gateway runtime. Opt in explicitly with
+                # ATELIER_GATEWAY_YOLO=1 (defaults OFF).
+                from atelier.core.environment import bool_env
+
+                _gw_yolo = bool_env("ATELIER_GATEWAY_YOLO", False)
+                _gw_runtime = _Runtime(root=store_path, yolo=_gw_yolo)
                 await _gw_runtime.start_session()
                 await _ensure_rl_init()
         return _gw_runtime
 
-    @app.get("/v1/models", tags=["openai-gateway"])
+    @app.get("/v1/models", tags=["openai-gateway"], dependencies=[Depends(verify_api_key)])
     async def gw_list_models() -> dict[str, Any]:
         from atelier.core.capabilities.providers.discovery import discover_models
 
         model_ids = await discover_models(store_path)
         return _ModResp(data=[_ModObj(id=m, created=0) for m in model_ids]).model_dump(mode="json")
 
-    @app.get("/v1/models/refresh", tags=["openai-gateway"])
+    @app.get(
+        "/v1/models/refresh",
+        tags=["openai-gateway"],
+        dependencies=[Depends(verify_api_key)],
+    )
     async def gw_refresh_models() -> dict[str, Any]:
         from atelier.core.capabilities.providers.discovery import discover_models, invalidate_cache
 
@@ -6655,13 +6708,17 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         model_ids = await discover_models(store_path)
         return _ModResp(data=[_ModObj(id=m, created=0) for m in model_ids]).model_dump(mode="json")
 
-    @app.get("/v1/rate-limits", tags=["openai-gateway"])
+    @app.get("/v1/rate-limits", tags=["openai-gateway"], dependencies=[Depends(verify_api_key)])
     async def gw_rate_limits() -> dict[str, Any]:
         from atelier.core.capabilities.providers.ratelimit import get_status
 
         return get_status()
 
-    @app.post("/v1/chat/completions", tags=["openai-gateway"])
+    @app.post(
+        "/v1/chat/completions",
+        tags=["openai-gateway"],
+        dependencies=[Depends(verify_api_key)],
+    )
     async def gw_chat_completions(payload: dict[str, Any]) -> Any:
         try:
             req = _CCReq.model_validate(payload)

@@ -173,7 +173,11 @@ main() {
     fi
     step_done
 
-    run_setup
+    # run_setup sets FINAL_EXIT_CODE on partial failures and prints a full
+    # report via print_final_report before returning. Prevent set -e from
+    # killing the script early so the report always reaches the user.
+    run_setup || true
+    exit "${FINAL_EXIT_CODE:-0}"
 }
 
 main "$@"

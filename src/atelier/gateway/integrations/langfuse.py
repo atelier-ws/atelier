@@ -58,12 +58,50 @@ def _client() -> Any:
         return None
 
 
-def _scrub(args: dict[str, Any]) -> dict[str, Any]:
-    """Replace long string arg values with a ``<N chars>`` placeholder.
+# Substrings (case-insensitive) marking a key whose value carries a credential
+# or other secret. Matched anywhere in the key so variants like
+# ``LANGFUSE_SECRET_KEY``, ``db_password``, ``auth_token`` and ``apiKey`` are
+# all caught. Values under these keys are redacted regardless of length.
+_SECRET_KEY_SUBSTRINGS: tuple[str, ...] = (
+    "connection_string",
+    "dsn",
+    "api_key",
+    "apikey",
+    "token",
+    "secret",
+    "password",
+    "authorization",
+)
 
-    Keeps large file contents / patches out of the observability backend.
+_REDACTED = "<redacted>"
+
+
+def _is_secret_key(key: object) -> bool:
+    if not isinstance(key, str):
+        return False
+    lowered = key.lower()
+    return any(needle in lowered for needle in _SECRET_KEY_SUBSTRINGS)
+
+
+def _scrub(value: Any) -> Any:
+    """Redact secret-bearing values and truncate long strings, recursively.
+
+    Recurses through dicts and lists at every nesting level so credentials
+    buried in nested telemetry args never reach the observability backend.
+    Values under secret-bearing keys (``connection_string``, ``dsn``,
+    ``api_key``, ``token``, ``secret``, ``password``, ``authorization``,
+    case-insensitive) are replaced with ``<redacted>`` regardless of length.
+    Non-secret string values longer than 300 chars are replaced with a
+    ``<N chars>`` placeholder to keep large file contents / patches out of
+    the backend. All other telemetry is left intact.
     """
-    return {k: (f"<{len(str(v))} chars>" if isinstance(v, str) and len(v) > 300 else v) for k, v in args.items()}
+    if isinstance(value, dict):
+        return {k: (_REDACTED if _is_secret_key(k) else _scrub(v)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub(item) for item in value]
+    if isinstance(value, str) and len(value) > 300:
+        return f"<{len(value)} chars>"
+    return value
 
 
 def emit_trace(payload: dict[str, Any]) -> None:
@@ -97,20 +135,24 @@ def emit_trace(payload: dict[str, Any]) -> None:
             client.create_event(
                 name=f"atelier.{domain}",
                 input={"task": payload.get("task", "")},
-                output={
-                    "status": status,
-                    "output_summary": payload.get("output_summary", ""),
-                    "diff_summary": payload.get("diff_summary", ""),
-                },
-                metadata={
-                    "agent": agent,
-                    "session_id": session_id or "",
-                    "files_touched": payload.get("files_touched", []),
-                    "tools_called": payload.get("tools_called", []),
-                    "commands_run": payload.get("commands_run", []),
-                    "errors_seen": payload.get("errors_seen", []),
-                    "validation_results": payload.get("validation_results", []),
-                },
+                output=_scrub(
+                    {
+                        "status": status,
+                        "output_summary": payload.get("output_summary", ""),
+                        "diff_summary": payload.get("diff_summary", ""),
+                    }
+                ),
+                metadata=_scrub(
+                    {
+                        "agent": agent,
+                        "session_id": session_id or "",
+                        "files_touched": payload.get("files_touched", []),
+                        "tools_called": payload.get("tools_called", []),
+                        "commands_run": payload.get("commands_run", []),
+                        "errors_seen": payload.get("errors_seen", []),
+                        "validation_results": payload.get("validation_results", []),
+                    }
+                ),
             )
     except Exception:  # noqa: BLE001
         logger.warning("Suppressed exception in emit_trace", exc_info=True)

@@ -9,7 +9,6 @@ They surface two missing views in the current product:
 
 from __future__ import annotations
 
-import logging
 import math
 import re
 from collections import Counter
@@ -52,8 +51,7 @@ def _read_file_tokens(path: Path) -> int:
         if not path.exists() or not path.is_file() or path.stat().st_size > 1_000_000:
             return 0
         return _estimate_tokens(path.read_text(encoding="utf-8"))
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
+    except (OSError, UnicodeDecodeError):
         return 0
 
 
@@ -62,7 +60,11 @@ def _collect_paths(root: Path | None, patterns: Iterable[str]) -> list[Path]:
         return []
     paths: list[Path] = []
     for pattern in patterns:
-        paths.extend(root.rglob(pattern))
+        try:
+            paths.extend(root.rglob(pattern))
+        except OSError:
+            # An unreadable subdirectory must not crash the advisory audit.
+            continue
     return sorted({path for path in paths if path.is_file()})
 
 

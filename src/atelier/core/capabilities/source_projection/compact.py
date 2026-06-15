@@ -75,47 +75,88 @@ def _conservative_compact(text: str) -> str:
 def _collapse_inline_whitespace(text: str) -> str:
     out: list[str] = []
     quote: str = ""
+    comment: str = ""  # "line" or "block" while inside a C-style comment
     escaped = False
     pending_space = False
     at_line_start = True
+    index = 0
+    length = len(text)
 
-    for char in text:
+    while index < length:
+        char = text[index]
+
+        if comment == "line":
+            if char == "\n":
+                comment = ""
+                pending_space = False
+                out.append(char)
+                at_line_start = True
+            else:
+                out.append(char)
+            index += 1
+            continue
+
+        if comment == "block":
+            out.append(char)
+            if char == "*" and index + 1 < length and text[index + 1] == "/":
+                out.append("/")
+                comment = ""
+                index += 2
+                continue
+            index += 1
+            continue
+
         if quote:
             out.append(char)
             if quote != "`" and escaped:
                 escaped = False
+                index += 1
                 continue
             if quote != "`" and char == "\\":
                 escaped = True
+                index += 1
                 continue
             if char == quote and (quote == "`" or not escaped):
                 quote = ""
+            index += 1
             continue
 
         if char == "\n":
             pending_space = False
             out.append(char)
             at_line_start = True
+            index += 1
             continue
 
         if at_line_start and char in " \t":
             out.append(char)
+            index += 1
             continue
 
         if char in " \t":
             pending_space = True
             at_line_start = False
+            index += 1
             continue
 
         if pending_space:
             out.append(" ")
             pending_space = False
 
+        if char == "/" and index + 1 < length and text[index + 1] in "/*":
+            comment = "line" if text[index + 1] == "/" else "block"
+            out.append(char)
+            out.append(text[index + 1])
+            at_line_start = False
+            index += 2
+            continue
+
         if char in {"'", '"', "`"}:
             quote = char
             escaped = False
         out.append(char)
         at_line_start = False
+        index += 1
     return "".join(out)
 
 

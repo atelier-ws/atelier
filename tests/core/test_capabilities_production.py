@@ -507,6 +507,45 @@ def test_context_compression_provenance_present(tmp_path: Path) -> None:
     assert "dropped" in d
 
 
+def test_context_compression_keystone_survives_budget(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A keystone event below the budget cutoff must never be dropped."""
+    import sys
+
+    import atelier.bench.mode  # noqa: F401 — ensures the sys.modules entry exists
+    from atelier.core.capabilities.context_compression import ContextCompressionCapability
+    from atelier.infra.runtime.run_ledger import RunLedger
+
+    # atelier.bench.__init__ exports a `mode` function that shadows the submodule,
+    # so retrieve the real module via sys.modules to reset the singleton.
+    _bm = sys.modules["atelier.bench.mode"]
+    monkeypatch.setattr(_bm, "_mode", None)
+    monkeypatch.setenv("ATELIER_BENCH_MODE", "on")
+
+    root = tmp_path / ".atelier"
+    _init_root(root)
+    led = RunLedger(session_id="test-cc-keystone", task="unrelated task", domain="test")
+    # Distinct, high-weight filler events (not collapsed by dedup) that exhaust the budget.
+    for summary in (
+        "configured database connection pooling for the analytics warehouse system today",
+        "rewrote the markdown parser to support nested footnote references throughout",
+        "optimized image thumbnail generation using vectorized numpy kernels everywhere",
+    ):
+        led.record(kind="file_edit", summary=summary, payload={"diff": summary * 4})
+    # A keystone fact recorded last; on score alone it sorts below the budget cutoff
+    # and would be evicted without keystone protection.
+    led.record(
+        kind="note",
+        summary="do not retry this operation under any circumstances whatsoever",
+        payload={"detail": "do not retry this operation under any circumstances whatsoever" * 2},
+    )
+
+    cap = ContextCompressionCapability()
+    result = cap.compress_with_provenance(led, token_budget=40)
+
+    assert any("do not retry" in fact for fact in result.preserved_facts), "keystone fact must be preserved"
+    assert all("do not retry" not in d.summary for d in result.dropped), "keystone fact must not be dropped"
+
+
 def test_context_compression_context_report(tmp_path: Path) -> None:
     from atelier.core.capabilities.context_compression import ContextCompressionCapability
     from atelier.infra.runtime.run_ledger import RunLedger

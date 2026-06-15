@@ -68,11 +68,14 @@ def test_benchmark_codebench_wraps_runner(monkeypatch, tmp_path: Path) -> None:
         "_ensure_codebench_tasks_dir",
         lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -133,11 +136,14 @@ def test_benchmark_codebench_accepts_vix_arm_and_api_options(monkeypatch, tmp_pa
         "_ensure_codebench_tasks_dir",
         lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -183,11 +189,14 @@ def test_benchmark_codebench_judge_defaults_to_runner_transport(monkeypatch, tmp
         "_ensure_codebench_tasks_dir",
         lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -229,11 +238,14 @@ def test_benchmark_codebench_openrouter_claude_preset_passes_agent_env(monkeypat
         "_ensure_codebench_tasks_dir",
         lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -280,11 +292,14 @@ def test_benchmark_codebench_generic_claude_provider_flags_pass_through(monkeypa
         "_ensure_codebench_tasks_dir",
         lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -331,11 +346,14 @@ def test_benchmark_codebench_forwards_cli_driver_and_jobs(monkeypatch, tmp_path:
         "_ensure_codebench_tasks_dir",
         lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,
@@ -384,11 +402,14 @@ def test_benchmark_codebench_named_aws_claude_preset_passes_env(monkeypatch, tmp
         "_ensure_codebench_tasks_dir",
         lambda repo_root, path: codebench_tasks_dir,
     )
-    monkeypatch.setattr(
-        benchmark_cmds,
-        "_run",
-        lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
-    )
+
+    def _fake_run(cmd, cwd, label, env=None, check=True):
+        # Model the real _run contract: it now returns the subprocess exit code
+        # and accepts check=. A 0 here represents a successful runner subprocess.
+        calls.append((cmd, label, env))
+        return 0
+
+    monkeypatch.setattr(benchmark_cmds, "_run", _fake_run)
 
     result = runner.invoke(
         cli,

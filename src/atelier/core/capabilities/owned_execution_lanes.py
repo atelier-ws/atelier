@@ -12,6 +12,7 @@ from atelier.core.capabilities.owned_execution_cache_affinity import (
     cache_affinity_for_route,
 )
 from atelier.core.capabilities.owned_execution_routing import (
+    NoFeasibleRouteError,
     OwnedCachePolicy,
     OwnedRouteDecision,
     OwnedRouteRequest,
@@ -229,15 +230,18 @@ def execute_owned_prompt(
                         cache_policy=normalized_cache_policy,
                     ),
                 ) from exc
-            next_decision = _fallback_route(
-                root=root,
-                tool_name=tool_name,
-                task_text=task_text,
-                failed_provider=current.provider,
-                host_agent=host_agent,
-                session_state=base_state,
-                cache_policy=normalized_cache_policy,
-            )
+            try:
+                next_decision = _fallback_route(
+                    root=root,
+                    tool_name=tool_name,
+                    task_text=task_text,
+                    failed_provider=current.provider,
+                    host_agent=host_agent,
+                    session_state=base_state,
+                    cache_policy=normalized_cache_policy,
+                )
+            except NoFeasibleRouteError:
+                next_decision = current
             if next_decision.provider == current.provider and next_decision.model == current.model:
                 raise OwnedExecutionError(
                     str(exc),

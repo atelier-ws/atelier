@@ -301,3 +301,36 @@ def test_search_read_to_dict_omits_empty_metadata_fields() -> None:
 def test_search_read_rejects_injection_attempt(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="search_read rejected"):
         search_read(query="foo; rm -rf /", path=str(tmp_path))
+
+
+def test_search_read_rejects_dotdot_escape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Workspace is a subdir; a relative ../ path that climbs out must be rejected.
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    secret = tmp_path / "secret.txt"
+    secret.write_text("TOPSECRET needle\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+
+    with pytest.raises(ValueError, match="escapes the workspace"):
+        search_read(query="needle", path="../secret.txt")
+
+
+def test_search_read_does_not_follow_symlinked_result_out_of_base(tmp_path: Path) -> None:
+    # A symlink inside the searched tree that points outside it must not be read.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "loot.py").write_text("SECRET = 'needle'\n", encoding="utf-8")
+
+    base = tmp_path / "base"
+    base.mkdir()
+    (base / "real.py").write_text("value = 'needle'\n", encoding="utf-8")
+    link = base / "loot.py"
+    try:
+        link.symlink_to(outside / "loot.py")
+    except (OSError, NotImplementedError):
+        pytest.skip("platform does not support symlinks")
+
+    result = search_read(query="needle", path=str(base))
+    for match in result.matches:
+        for snippet in match.snippets:
+            assert "SECRET" not in snippet.text

@@ -432,3 +432,102 @@ def test_parse_agent_env_from_host_reads_repo_env_file(tmp_path: Path, monkeypat
     parsed = CODEBENCH._parse_agent_env_from_host(["ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY"])
 
     assert parsed == {"ANTHROPIC_AUTH_TOKEN": "secret-from-file"}
+
+
+def test_normalize_model_usage_reads_camelcase_keys() -> None:
+    # Claude emits modelUsage with camelCase token-component keys; the breakdown
+    # must read them instead of silently zeroing on a snake_case lookup miss.
+    rows = [
+        CODEBENCH.ArmResult(
+            task="task-1",
+            arm="atelier",
+            rep=rep,
+            ok=True,
+            cost_usd=1.0,
+            duration_ms=1000,
+            duration_api_ms=800,
+            num_turns=2,
+            input_tokens=100,
+            cache_read_tokens=1000,
+            cache_creation_tokens=10,
+            output_tokens=40,
+            models=["m"],
+            is_error=False,
+            result_excerpt="ok",
+            flow_path=f"atelier-{rep}.flow",
+            model_usage={
+                "m": {
+                    "inputTokens": 100,
+                    "outputTokens": 40,
+                    "cacheReadInputTokens": 1000,
+                    "cacheCreationInputTokens": 10,
+                }
+            },
+        )
+        for rep in range(2)
+    ]
+
+    assert CODEBENCH._normalize_model_usage(rows[0].model_usage["m"]) == {
+        "input": 100,
+        "output": 40,
+        "cache_read": 1000,
+        "cache_write": 10,
+        "thinking": 0,
+    }
+    # Aggregating both rows sums the per-component tokens rather than zeroing them.
+    agg = CODEBENCH._agg(rows, "atelier")
+    assert agg["model_usage"]["m"] == {
+        "input": 200,
+        "output": 80,
+        "cache_read": 2000,
+        "cache_write": 20,
+        "thinking": 0,
+    }
+
+
+def test_is_content_invalid_excludes_timeouts_but_flags_off_topic() -> None:
+    timed_out = CODEBENCH.ArmResult(
+        task="task-1",
+        arm="atelier",
+        rep=0,
+        ok=False,
+        cost_usd=0.0,
+        duration_ms=1800000,
+        duration_api_ms=1800000,
+        num_turns=0,
+        input_tokens=0,
+        cache_read_tokens=0,
+        cache_creation_tokens=0,
+        output_tokens=0,
+        models=[],
+        is_error=True,
+        result_excerpt="timed out after 1800s",
+        flow_path="atelier.flow",
+        valid=False,
+        validity_reason=CODEBENCH.EXECUTION_FAILED_REASON,
+        timed_out=True,
+    )
+    off_topic = CODEBENCH.ArmResult(
+        task="task-1",
+        arm="atelier",
+        rep=0,
+        ok=True,
+        cost_usd=0.5,
+        duration_ms=1000,
+        duration_api_ms=800,
+        num_turns=2,
+        input_tokens=10,
+        cache_read_tokens=0,
+        cache_creation_tokens=0,
+        output_tokens=5,
+        models=["sonnet"],
+        is_error=False,
+        result_excerpt="here is a list of things I can do",
+        flow_path="atelier.flow",
+        valid=False,
+        validity_reason="off-task capability/list response",
+        timed_out=False,
+    )
+
+    assert CODEBENCH._is_content_invalid(timed_out) is False
+    assert CODEBENCH._is_content_invalid(off_topic) is True

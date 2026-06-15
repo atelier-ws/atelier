@@ -90,7 +90,6 @@ class ArchivalRecallCapability:
         if not ranked:
             widened_query = _widen_query(clean_query)
             if widened_query and widened_query != clean_query:
-                passages = self._store.list_passages(agent_id, tags=tags, since=since, limit=500)
                 ranked = rank_archival_passages(
                     query=widened_query,
                     passages=passages,

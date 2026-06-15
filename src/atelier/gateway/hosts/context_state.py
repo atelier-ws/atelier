@@ -119,6 +119,7 @@ def _codex_probe(session_id: str, root: Path | None = None) -> tuple[int, str]:
         return 0, ""
     best = 0
     best_model = ""
+    current_model = ""
     for raw in lines:
         raw = raw.strip()
         if not raw:
@@ -127,9 +128,11 @@ def _codex_probe(session_id: str, root: Path | None = None) -> tuple[int, str]:
             entry = json.loads(raw)
         except json.JSONDecodeError:
             continue  # first tail line may be partial
+        # Codex carries the model on `turn_context` entries that precede the
+        # usage entries, so track it across lines rather than per-entry.
         model = _extract_model_id(entry)
         if model:
-            best_model = model
+            current_model = model
         usage = _find_usage(entry)
         if usage is None:
             continue
@@ -142,6 +145,7 @@ def _codex_probe(session_id: str, root: Path | None = None) -> tuple[int, str]:
             ctx = input_tokens + cached + cache_write
         if ctx > 0:
             best = ctx
+            best_model = current_model
     return (best, best_model) if best > 0 else (0, "")
 
 

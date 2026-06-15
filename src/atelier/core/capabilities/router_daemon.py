@@ -1,6 +1,6 @@
 """Local model-router daemon — proxy the host's main model calls.
 
-wozcode-style: run a local LiteLLM proxy that reroutes the agent's model calls to
+Runs a local LiteLLM proxy that reroutes the agent's model calls to
 configured providers per a route map (e.g. ``*opus*`` -> ``openai/gpt-5.5``), then
 point the host (Claude Code) at it via ANTHROPIC_BASE_URL. Atelier already depends
 on litellm and has the host_router_bridge decision layer + ANTHROPIC_BASE_URL host
@@ -20,6 +20,8 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 _DEFAULT_PORT = 4000
 
@@ -62,12 +64,7 @@ def generate_litellm_config(root: str | Path) -> dict[str, Any]:
 
 
 def _to_yaml(config: dict[str, Any]) -> str:
-    lines = ["model_list:"]
-    for entry in config["model_list"]:
-        lines.append(f'  - model_name: "{entry["model_name"]}"')
-        lines.append("    litellm_params:")
-        lines.append(f'      model: "{entry["litellm_params"]["model"]}"')
-    return "\n".join(lines) + "\n"
+    return yaml.safe_dump(config, sort_keys=False)
 
 
 def _pid_alive(pid: int) -> bool:

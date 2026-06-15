@@ -60,8 +60,9 @@ export default function ProjectionInspector() {
   }, [payload?.content, comparison?.content]);
   const changedLineCount = comparisonRows.filter((row) => row.changed).length;
 
-  const loadProjection = async () => {
+  const loadProjection = async (shouldCommit: () => boolean = () => true) => {
     if (!path.trim()) {
+      if (!shouldCommit()) return;
       setPayload(null);
       setError(null);
       return;
@@ -71,13 +72,15 @@ export default function ProjectionInspector() {
       const response = await api.fileProjection(path, {
         view: view === "range" ? "range" : view,
         range: view === "range" ? range || undefined : undefined,
-        maxLines: Number.isFinite(maxLines) ? maxLines : 200,
+        maxLines: Number.isFinite(maxLines) && maxLines > 0 ? maxLines : 200,
       });
+      if (!shouldCommit()) return;
       setPayload(response);
       setComparison(null);
       setComparisonError(null);
       setError(null);
     } catch (err) {
+      if (!shouldCommit()) return;
       setPayload(null);
       setComparison(null);
       setComparisonError(null);
@@ -85,12 +88,19 @@ export default function ProjectionInspector() {
         err instanceof Error ? err.message : "Failed to load projection"
       );
     } finally {
-      setLoading(false);
+      if (shouldCommit()) setLoading(false);
     }
   };
 
   useEffect(() => {
-    void loadProjection();
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void loadProjection(() => !cancelled);
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [path, view, range, maxLines]);
 
   const loadExactComparison = async () => {
@@ -179,7 +189,11 @@ export default function ProjectionInspector() {
             <div className="space-y-2">
               <FieldLabel>Summary max lines</FieldLabel>
               <Input
-                value={Number.isFinite(maxLines) ? String(maxLines) : "200"}
+                value={
+                  Number.isFinite(maxLines) && maxLines > 0
+                    ? String(maxLines)
+                    : "200"
+                }
                 onChange={(event) =>
                   updateParam("max_lines", event.target.value)
                 }
