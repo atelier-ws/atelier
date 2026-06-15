@@ -1,4 +1,4 @@
-# 001 Code intelligence: SCIP + ast-grep, not Serena
+# 001 Code intelligence: SCIP + ast-grep
 
 ## Status
 
@@ -14,7 +14,7 @@ Milestones M1–M13 delivered. Phase 6 UAT passed (2026-05-23, commit cc b40764)
 - Bootstrap dependency-scope isolation confirmed: external packages (`scope="external"`) excluded from scope=repo queries.
 - Plan verifier passes; `make docs-check && make check-agent-context` exit 0.
 
-Open milestones (M14–M18) tracked in [`docs/plans/code-intel/index.md`](../plans/code-intel/index.md).
+Milestones M1–M13 cover all shipped code-intel operations. No further milestones are tracked.
 
 ## Context
 
@@ -70,9 +70,7 @@ We do **not** adopt Serena. We do **not** rely on live LSP in the hot path.
 
 - **No new top-level MCP tools.** Every milestone extends an already-
   registered tool in `src/atelier/gateway/adapters/mcp_server.py` (`code`,
-  `edit`, `read`, `search`, `memory`) with a new `op` or descriptor kind. See
-  [`../plans/code-intel/grounding.md`](../plans/code-intel/grounding.md)
-  for the landing map.
+  `edit`, `read`, `search`, `memory`) with a new `op` or descriptor kind.
 - Agents stop reaching for `search` (text/regex) when they already know the
   name; the hardened `code op="search"` (M2) is the new default.
 - One-time SCIP indexer install per language (auto-fetched static binaries).
@@ -81,8 +79,7 @@ We do **not** adopt Serena. We do **not** rely on live LSP in the hot path.
 - Hot-path queries are subprocess-free after warm; latency in the
   microseconds.
 - Cache hits return zero-token, zero-subprocess.
-- A separate plan (`docs/plans/code-intel/`) tracks the 13 milestones.
-- The full plan is gated by a cost-discipline benchmark
+- The implementation is gated by a cost-discipline benchmark
   (`tests/benchmarks/code_intel/bench_cost_discipline.py`): aggregate token
   cost across a 50-task suite must drop to ≤ 30% of the pre-implementation
   baseline.
@@ -100,4 +97,3 @@ We do **not** adopt Serena. We do **not** rely on live LSP in the hot path.
   - % of navigation tasks using `code op="search"` vs `tool_smart_search` (target ≥ 70%).
   - Median tokens per navigation task (target ≤ 25% of baseline).
   - Median tokens per refactor task (target ≤ 30% of baseline).
-- Plan: [`docs/plans/code-intel/index.md`](../plans/code-intel/index.md).

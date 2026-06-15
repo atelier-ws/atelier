@@ -39,8 +39,8 @@ Atelier is an MCP server + SDK middleware that gives every agent shared procedur
 
 | Document               | Description                                     |
 | ---------------------- | ----------------------------------------------- |
-| [Strategy](./strategy.md) | Positioning, market gap, defensible moat        |
-| [Roadmap](./roadmap.md)   | Execution-ordered 2-week / 30-day / 90-day plan |
+| [Strategy](./strategy.md) | Current architecture, capabilities, and guiding principles |
+| [Roadmap](./roadmap.md)   | Shipped capabilities and active development |
 
 ---
 

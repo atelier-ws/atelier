@@ -12,8 +12,7 @@ Start here when you need to answer:
 Read in this order:
 
 1. [layers.md](layers.md)
-2. [domain-map.md](domain-map.md)
-3. [../design/core-beliefs.md](../design/core-beliefs.md)
+2. [../design/core-beliefs.md](../design/core-beliefs.md)
 
 ## Code Intelligence Stack
 
