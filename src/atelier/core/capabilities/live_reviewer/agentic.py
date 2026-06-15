@@ -2,7 +2,7 @@
 
 Unlike the single-shot runner, this lets the model call ``read_file`` / ``grep``
 to investigate the diff before emitting its verdict via a ``finish`` tool — the
-baseline-style agentic reviewer. It runs against litellm directly (provider creds
+agentic reviewer pass. It runs against litellm directly (provider creds
 from env), so it works inside the detached reviewer child. Fully fail-open:
 any problem returns ``None`` and the caller falls back to the single-shot review.
 """

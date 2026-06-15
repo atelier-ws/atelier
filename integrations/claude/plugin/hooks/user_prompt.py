@@ -425,13 +425,17 @@ def _credit_pending_compaction(state: dict[str, Any], occupancy: int, model: str
         _clear_precompact(state)  # post-compact size never resolved; stop trying
 
 
-def _maybe_emit_compaction_advice(prompt: str, transcript_path: str) -> str | None:
+def _maybe_emit_compaction_advice(prompt: str, transcript_path: str, last_user_prompt: str) -> str | None:
     """Decide whether to nudge for compaction. Fail-open.
 
     Fires on absolute occupancy (>=100k tokens) so it works the same at 200k or
     1M windows, earlier (>=25k) when the topic has drifted, and re-nudges more
     often as occupancy grows. Cooldown + rolling topic history live in session
     state. Returns the nudge text when one should be shown, else None.
+
+    The ``last_user_prompt`` persist is folded into this function's single
+    read-modify-write of session state: keeping it as a separate RMW widened the
+    window for a concurrent workspace-touching hook to drop either update.
     """
     try:
         occupancy, model = _context_occupancy(transcript_path) if transcript_path else (0, None)
@@ -467,9 +471,11 @@ def _maybe_emit_compaction_advice(prompt: str, transcript_path: str) -> str | No
                     msg = _compaction_advice_msg(occupancy, _context_window_tokens(model), model, drifted)
         if occupancy > 0:
             state["last_occupancy"] = occupancy
+        state["last_user_prompt"] = last_user_prompt
         _write_session_state(state)
         return msg
-    except (OSError, ValueError, TypeError):
+    except Exception:  # noqa: BLE001 - hook fails open; always persist last_user_prompt
+        _persist_last_user_prompt(last_user_prompt)
         return None
 
 
@@ -502,14 +508,14 @@ def main() -> int:
     # model context would itself waste the tokens it complains about.
     transcript_path: str = payload.get("transcript_path", "") or ""
     ui_messages: list[str] = []
-    compact_msg = _maybe_emit_compaction_advice(prompt, transcript_path)
+    # Folds the last_user_prompt persist into a single session-state RMW.
+    compact_msg = _maybe_emit_compaction_advice(prompt, transcript_path, stored_prompt)
     if compact_msg:
         ui_messages.append(compact_msg)
     _emit_ui_messages(ui_messages)
 
     # Autopilot (M5): inject scoped context for this prompt. Fail-open.
     try:
-        _persist_last_user_prompt(stored_prompt)
         from atelier.core.capabilities.autopilot.factory import run_and_emit
 
         run_and_emit("user_prompt", {"prompt": prompt})

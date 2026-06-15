@@ -34,12 +34,11 @@ def _request(method: str, url: str, body: dict[str, object] | None = None) -> di
     key = _gemini_api_key()
     if not key:
         raise RuntimeError("No GEMINI_API_KEY or GOOGLE_API_KEY found in environment")
-    full_url = f"{url}?key={key}"
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(
-        full_url,
+        url,
         data=data,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "x-goog-api-key": key},
         method=method,
     )
     try:

@@ -12,6 +12,27 @@ def _configure(monkeypatch: pytest.MonkeyPatch, repo_root: Path) -> None:
     monkeypatch.setenv("ATELIER_CACHE_DISABLED", "1")
 
 
+def test_smart_search_rejects_path_outside_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _configure(monkeypatch, workspace)
+    secret = tmp_path / "secret.txt"
+    secret.write_text("top secret\n", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        smart_search_mod.smart_search(query="secret", path=str(secret))
+
+
+def test_smart_search_resolves_path_inside_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _configure(monkeypatch, tmp_path)
+    target = tmp_path / "src" / "inside.py"
+    target.parent.mkdir()
+    target.write_text("x = 1\n", encoding="utf-8")
+
+    resolved = smart_search_mod._resolve_path(tmp_path.resolve(), str(target))
+    assert resolved == target.resolve()
+
+
 def test_smart_search_relaxes_natural_language_query_after_empty_primary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

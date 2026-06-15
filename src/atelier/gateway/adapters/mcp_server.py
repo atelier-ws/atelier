@@ -2357,21 +2357,39 @@ def _mcp_debug_path() -> Path:
 
 _DEBUG_LARGE_KEYS = frozenset({"new_string", "old_string", "content", "prompt", "task", "query"})
 
+# Argument keys whose values carry credentials/PII (DSNs, tokens, passwords).
+# These are masked regardless of length before anything is written to the debug
+# log or shipped to telemetry — the 300-char large-value threshold misses short
+# secrets such as a sql `connection_string` or a bearer token.
+_DEBUG_SECRET_KEY_RE = re.compile(
+    r"(connection_string|dsn|api[_-]?key|token|secret|password|authorization)",
+    re.IGNORECASE,
+)
+
 
 def _scrub_args_for_debug(args: dict[str, Any]) -> dict[str, Any]:
-    """Replace large string values with a byte-count placeholder.
+    """Sanitize tool args before they are logged or emitted as telemetry.
 
-    Prevents giant file contents or prompts from bloating the debug log.
-    Values longer than 300 chars (or matching known large-value keys) are
-    replaced with ``<N chars>``.
+    Two transforms, applied in order:
+      1. Secret-bearing keys (connection_string/dsn/api_key/token/secret/
+         password/authorization, case-insensitive) have their value masked
+         regardless of length so short DSNs/tokens never leak verbatim.
+      2. Remaining large string values (>300 chars, or known large-value keys)
+         are replaced with ``<N chars>`` to keep the debug log small.
     """
-    result: dict[str, Any] = {}
-    for k, v in args.items():
-        if isinstance(v, str) and (k in _DEBUG_LARGE_KEYS or len(v) > 300):
-            result[k] = f"<{len(v)} chars>"
-        else:
-            result[k] = v
-    return result
+
+    def _scrub_value(key: str | None, value: Any) -> Any:
+        if isinstance(key, str) and _DEBUG_SECRET_KEY_RE.search(key):
+            return "<redacted>"
+        if isinstance(value, dict):
+            return {kk: _scrub_value(kk, vv) for kk, vv in value.items()}
+        if isinstance(value, list):
+            return [_scrub_value(None, item) for item in value]
+        if isinstance(value, str) and (key in _DEBUG_LARGE_KEYS or len(value) > 300):
+            return f"<{len(value)} chars>"
+        return value
+
+    return {k: _scrub_value(k, v) for k, v in args.items()}
 
 
 def _append_mcp_debug_event(
@@ -4112,11 +4130,14 @@ def _smart_read_single(
     target_path, suffix_range = _split_read_range_suffix(target_path)
     if range is None and suffix_range is not None:
         range = suffix_range
-    # Enforce workspace containment up front so the summary branch below (which
-    # reads via the core runtime, bypassing _workspace_path) is covered too.
-    _workspace_path(target_path)
+    # Reads may target any path the host process can access — a coding agent
+    # legitimately reads configs / sibling repos outside the project, and the
+    # host's own permission layer gates the tool call. Writes/edits, by contrast,
+    # are confined to the workspace (see tool_smart_edit). Relative paths still
+    # resolve against the workspace root.
+    resolved = _workspace_path(target_path)
     if max_lines is not None and range is None and not expand:
-        payload = cast(dict[str, Any], _core_runtime().smart_read(target_path, max_lines=max_lines))
+        payload = cast(dict[str, Any], _core_runtime().smart_read(str(resolved), max_lines=max_lines))
         payload.setdefault("mode", "summary")
         payload["projection"] = SourceProjection.summary().to_dict()
         if include_meta:
@@ -4125,7 +4146,7 @@ def _smart_read_single(
         payload.pop("tokens_saved", None)
         return payload
 
-    target = _workspace_path(target_path)
+    target = resolved
 
     # Detect directory input early — return a helpful listing instead of a cryptic error.
     if target.is_dir():
@@ -4841,11 +4862,36 @@ def tool_smart_edit(
     Returns ordinary successful hunks as {applied: ["path:line,start-end", ...]};
     failures and edits carrying special metadata remain structured.
     """
-    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    repo_root = Path(workspace)
+    # Resolve the edit root the same way reads do (honors CLAUDE/ATELIER
+    # workspace env + per-request project override) so write-confinement below
+    # matches the active workspace.
+    repo_root = _workspace_root()
     family = _validate_edit_descriptor_families(edits)
 
     paths = _collect_touched_paths(edits, repo_root=repo_root)
+    # Confine writes to the workspace: unlike read (which may read anywhere the
+    # host permits), edits/creates that resolve outside the workspace root are
+    # refused so a poisoned instruction cannot modify files outside the project.
+    from atelier.core.foundation.paths import confine_to_root
+
+    _escaped_edit_paths = []
+    for _p in paths.values():
+        try:
+            confine_to_root(_p, repo_root)
+        except ValueError:
+            _escaped_edit_paths.append(str(_p))
+    if _escaped_edit_paths:
+        return {
+            "applied": [],
+            "failed": [
+                {
+                    "paths": _escaped_edit_paths,
+                    "error": "edit path escapes the workspace root; edits are confined to the workspace",
+                }
+            ],
+            "rolled_back": True,
+            "writes": 0,
+        }
     # Serialize the snapshot/apply/write critical section per touched file so two
     # concurrent edit calls cannot read-modify-write the same file and lose one
     # update. Locks are ordered by path (inside _edit_path_locks) to avoid
@@ -8542,7 +8588,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
                 _lf_emit_tool(
                     tool=name,
-                    args=args if isinstance(args, dict) else {},
+                    args=_scrub_args_for_debug(args) if isinstance(args, dict) else {},
                     duration_ms=_call_duration_ms,
                     response_size=_ok_response_size,
                     status="ok",
@@ -8714,7 +8760,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
                     _lf_emit_tool(
                         tool=name,
-                        args=args if isinstance(args, dict) else {},
+                        args=_scrub_args_for_debug(args) if isinstance(args, dict) else {},
                         duration_ms=_call_duration_ms,
                         response_size=0,
                         status="error",

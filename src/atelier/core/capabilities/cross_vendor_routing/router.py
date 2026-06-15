@@ -169,6 +169,8 @@ class CrossVendorRouter:
                 reasons=(f"vendor={vendor}: read turns prefer cheapest capable candidate",),
             )
         router = _router_for_vendor(candidates)
+        if router is None:
+            return None
         scored = router.score(tool_name, task_text, session_state)
         if scored is None:
             return None
@@ -197,21 +199,23 @@ def _group_candidates(candidates: tuple[CandidateModel, ...]) -> dict[str, tuple
     return {vendor: tuple(items) for vendor, items in grouped.items()}
 
 
-def _router_for_vendor(candidates: tuple[CandidateModel, ...]) -> ModelRouter:
+def _router_for_vendor(candidates: tuple[CandidateModel, ...]) -> ModelRouter | None:
     cheap = _pick_candidate(candidates, tier="cheap", highest=False)
+    if cheap is None:
+        return None
     medium = _pick_tool_use_candidate(candidates, highest=False) or cheap
-    expensive = _pick_tool_use_candidate(candidates, highest=True) or medium or cheap
+    expensive = _pick_tool_use_candidate(candidates, highest=True) or medium
     return ModelRouter(
         cheap_model=cheap.model_id,
-        medium_model=(medium or cheap).model_id,
-        expensive_model=(expensive or medium or cheap).model_id,
+        medium_model=medium.model_id,
+        expensive_model=expensive.model_id,
     )
 
 
-def _pick_candidate(candidates: tuple[CandidateModel, ...], *, tier: str, highest: bool) -> CandidateModel:
+def _pick_candidate(candidates: tuple[CandidateModel, ...], *, tier: str, highest: bool) -> CandidateModel | None:
     matching = [candidate for candidate in candidates if candidate.tier == tier]
     if not matching:
-        raise NoFeasibleRouteError(f"no candidate models available for tier {tier!r}")
+        return None
     matching.sort(key=lambda item: _effective_price(item), reverse=highest)
     return matching[0]
 

@@ -22,6 +22,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _MAX_BODY_BYTES = 4 * 1024 * 1024
+_MAX_ERROR_TEXT_CHARS = 500
 _DEFAULT_TIMEOUT = 15
 _DEFAULT_PROTOCOL_VERSION = "2025-03-26"
 _DEFAULT_TOOLS = [
@@ -41,6 +42,14 @@ def _utcnow_iso() -> str:
 
 def _compact_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _truncate_server_text(value: Any) -> str:
+    """Bound server-controlled error text before embedding it in exceptions/logs."""
+    text = str(value)
+    if len(text) <= _MAX_ERROR_TEXT_CHARS:
+        return text
+    return text[:_MAX_ERROR_TEXT_CHARS] + "...[truncated]"
 
 
 def _default_user_id() -> str:
@@ -73,6 +82,11 @@ class OpenMemoryClient:
         timeout: int | None = None,
     ) -> None:
         self.base_url = (base_url or os.environ.get("ATELIER_OPENMEMORY_URL", "http://127.0.0.1:8765")).rstrip("/")
+        parsed_base = urllib.parse.urlsplit(self.base_url)
+        if parsed_base.scheme not in ("http", "https") or not parsed_base.netloc:
+            raise OpenMemoryMCPError(
+                f"ATELIER_OPENMEMORY_URL must be an http(s) URL with a host; got scheme {parsed_base.scheme!r}"
+            )
         self.client_name = (
             client_name or os.environ.get("ATELIER_OPENMEMORY_CLIENT_NAME", "atelier")
         ).strip() or "atelier"
@@ -135,7 +149,7 @@ class OpenMemoryClient:
                 )
                 if "error" in response:
                     error = response["error"]
-                    raise OpenMemoryMCPError(str(error))
+                    raise OpenMemoryMCPError(_truncate_server_text(error))
                 return response.get("result", {})
             except Exception as exc:
                 logging.exception("Recovered from broad exception handler")
@@ -158,7 +172,7 @@ class OpenMemoryClient:
         }
         response = self._post_json(endpoint, init_payload)
         if "error" in response:
-            raise OpenMemoryMCPError(str(response["error"]))
+            raise OpenMemoryMCPError(_truncate_server_text(response["error"]))
         self._post_json(
             endpoint,
             {
@@ -185,7 +199,9 @@ class OpenMemoryClient:
             except Exception:
                 logging.exception("Recovered from broad exception handler")
                 body = ""
-            raise OpenMemoryMCPError(f"HTTP {exc.code} from OpenMemory MCP: {body or exc.reason}") from exc
+            raise OpenMemoryMCPError(
+                f"HTTP {exc.code} from OpenMemory MCP: {_truncate_server_text(body or exc.reason)}"
+            ) from exc
         except urllib.error.URLError as exc:
             raise OpenMemoryMCPError(f"OpenMemory MCP unreachable at {endpoint}: {exc.reason}") from exc
         except Exception as exc:

@@ -15,6 +15,39 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from atelier.core.foundation.store import ContextStore
 
+# Module-level Prometheus Counter singletons. Counters register against the
+# default CollectorRegistry by metric name, so they must be created exactly
+# once per process; creating per-recorder-instance would raise on the second
+# recorder and silently drop its metrics.
+_TOKENS_SAVED_COUNTER: Any = None
+_COMPACT_TOKENS_SAVED_COUNTER: Any = None
+
+
+def _get_tokens_saved_counter() -> Any:
+    global _TOKENS_SAVED_COUNTER
+    if _TOKENS_SAVED_COUNTER is None:
+        from prometheus_client import Counter
+
+        _TOKENS_SAVED_COUNTER = Counter(
+            "atelier_tokens_saved_total",
+            "Total tokens saved by optimization lever",
+            ["lever", "model"],
+        )
+    return _TOKENS_SAVED_COUNTER
+
+
+def _get_compact_tokens_saved_counter() -> Any:
+    global _COMPACT_TOKENS_SAVED_COUNTER
+    if _COMPACT_TOKENS_SAVED_COUNTER is None:
+        from prometheus_client import Counter
+
+        _COMPACT_TOKENS_SAVED_COUNTER = Counter(
+            "atelier_compact_output_tokens_saved_total",
+            "Total tokens saved by compact output method",
+            ["method", "model"],
+        )
+    return _COMPACT_TOKENS_SAVED_COUNTER
+
 
 class RunSavings:
     """Aggregated savings for an entire run."""
@@ -135,18 +168,10 @@ class ContextBudgetRecorder:
     def _emit_metrics(self, record: Any) -> None:
         """Emit Prometheus metrics for the recorded turn."""
         try:
-            from prometheus_client import Counter
-
             # Total tokens saved across all levers for this turn
             total_saved = sum(record.lever_savings.values())
 
-            # Create or get the counter
-            if not hasattr(self, "_tokens_saved_counter"):
-                self._tokens_saved_counter = Counter(
-                    "atelier_tokens_saved_total",
-                    "Total tokens saved by optimization lever",
-                    ["lever", "model"],
-                )
+            counter = _get_tokens_saved_counter()
 
             # Emit one metric per lever, plus a total
             for lever, saved in record.lever_savings.items():
@@ -154,13 +179,13 @@ class ContextBudgetRecorder:
                 metric_lever = lever
                 if lever.startswith("compact_tool_output:"):
                     metric_lever, method = lever.split(":", 1)
-                self._tokens_saved_counter.labels(lever=metric_lever, model=record.model).inc(saved)
+                counter.labels(lever=metric_lever, model=record.model).inc(saved)
                 if method:
                     self._emit_compact_method_metric(method, record.model, saved)
 
             # Also emit a total across all levers
             if total_saved > 0:
-                self._tokens_saved_counter.labels(lever="total", model=record.model).inc(total_saved)
+                counter.labels(lever="total", model=record.model).inc(total_saved)
 
         except Exception:
             logging.exception("Recovered from broad exception handler")
@@ -172,16 +197,8 @@ class ContextBudgetRecorder:
 
     def _emit_compact_method_metric(self, method: str, model: str, saved: int) -> None:
         try:
-            from prometheus_client import Counter
-
-            if not hasattr(self, "_compact_tokens_saved_counter"):
-                self._compact_tokens_saved_counter = Counter(
-                    "atelier_compact_output_tokens_saved_total",
-                    "Total tokens saved by compact output method",
-                    ["method", "model"],
-                )
-
-            self._compact_tokens_saved_counter.labels(method=method, model=model).inc(saved)
+            counter = _get_compact_tokens_saved_counter()
+            counter.labels(method=method, model=model).inc(saved)
         except Exception:
             logging.exception("Recovered from broad exception handler")
             logger.warning(

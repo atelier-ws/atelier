@@ -12,8 +12,13 @@ export class ApiError extends Error {
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
-  if (!res.ok)
-    throw new ApiError(res.status, `${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new ApiError(
+      res.status,
+      detail ? `${res.status} ${detail}` : `${res.status} ${res.statusText}`
+    );
+  }
   return res.json();
 }
 
@@ -37,8 +42,13 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 
 async function getText(path: string): Promise<string> {
   const res = await fetch(`${BASE}${path}`);
-  if (!res.ok)
-    throw new ApiError(res.status, `${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new ApiError(
+      res.status,
+      detail ? `${res.status} ${detail}` : `${res.status} ${res.statusText}`
+    );
+  }
   return res.text();
 }
 
@@ -1807,11 +1817,12 @@ export const api = {
     if (days) params.set("days", String(days));
     return get<TraceListResponse>(`/traces?${params.toString()}`);
   },
-  trace: (id: string) => get<Trace>(`/v1/traces/${id}`),
-  ledger: (session_id: string) => get<any>(`/ledgers/${session_id}`),
+  trace: (id: string) => get<Trace>(`/v1/traces/${encodeURIComponent(id)}`),
+  ledger: (session_id: string) =>
+    get<any>(`/ledgers/${encodeURIComponent(session_id)}`),
   clusters: () => get<Cluster[]>("/clusters"),
   blocks: () => get<Playbook[]>("/blocks"),
-  block: (id: string) => get<Playbook>(`/blocks/${id}`),
+  block: (id: string) => get<Playbook>(`/blocks/${encodeURIComponent(id)}`),
   savings: () => get<SavingsSummary>("/savings"),
   savingsSummary: (windowDays = 14) =>
     get<SavingsSummaryV2>(`/v1/savings/summary?window_days=${windowDays}`),
@@ -1832,19 +1843,21 @@ export const api = {
     post<SwarmLaunchResponse>("/v1/swarm/runs", payload),
   swarmRuns: () => get<SwarmRunListItem[]>("/v1/swarm/runs"),
   swarmRun: (runId: string) =>
-    get<SwarmRunDetailResponse>(`/v1/swarm/runs/${runId}`),
+    get<SwarmRunDetailResponse>(
+      `/v1/swarm/runs/${encodeURIComponent(runId)}`
+    ),
   swarmLogs: (runId: string, childId?: string, stderr = false, tail = 80) => {
     const params = new URLSearchParams();
     if (childId) params.set("child_id", childId);
     params.set("stderr", String(stderr));
     params.set("tail", String(tail));
     return get<SwarmLogResponse>(
-      `/v1/swarm/runs/${runId}/logs?${params.toString()}`
+      `/v1/swarm/runs/${encodeURIComponent(runId)}/logs?${params.toString()}`
     );
   },
   stopSwarmRun: (runId: string, cleanup = false) =>
     post<SwarmRunStateView>(
-      `/v1/swarm/runs/${runId}/stop?cleanup=${cleanup}`,
+      `/v1/swarm/runs/${encodeURIComponent(runId)}/stop?cleanup=${cleanup}`,
       {}
     ),
   workflowCurrent: () => get<WorkflowCurrentDetail>("/v1/workflow/current"),
@@ -1858,7 +1871,7 @@ export const api = {
     }),
   calls: (limit = 200) => get<CallEntry[]>(`/calls?limit=${limit}`),
   rubrics: () => get<Rubric[]>("/v1/rubrics"),
-  rubric: (id: string) => get<Rubric>(`/v1/rubrics/${id}`),
+  rubric: (id: string) => get<Rubric>(`/v1/rubrics/${encodeURIComponent(id)}`),
   mcp_status: () => get<MCPStatus[]>("/mcp/status"),
   hosts: () => get<HostAdapter[]>("/hosts"),
   watchdogConfig: () => get<WatchdogConfig>("/watchdogs/config"),
@@ -1867,7 +1880,7 @@ export const api = {
     profiles?: Record<string, Record<string, number>>;
   }) => post<WatchdogConfig>("/watchdogs/config", payload),
   skills: () => get<Skill[]>("/skills"),
-  skill: (name: string) => get<Skill>(`/skills/${name}`),
+  skill: (name: string) => get<Skill>(`/skills/${encodeURIComponent(name)}`),
   agents: () => get<Agent[]>("/agents"),
   memoryBlocks: (agentId?: string, label?: string) => {
     const params = new URLSearchParams();
@@ -1917,9 +1930,9 @@ export const api = {
   telemetrySummary: () => get<TelemetrySummary>("/telemetry/summary"),
   telemetrySchema: () => get<Record<string, unknown>>("/telemetry/schema"),
   rawArtifact: (artifactId: string) =>
-    get<RawArtifact>(`/raw-artifacts/${artifactId}`),
+    get<RawArtifact>(`/raw-artifacts/${encodeURIComponent(artifactId)}`),
   rawArtifactContent: (artifactId: string) =>
-    getText(`/raw-artifacts/${artifactId}/content`),
+    getText(`/raw-artifacts/${encodeURIComponent(artifactId)}/content`),
   fileContentUrl: (path: string) =>
     `${BASE}/v1/files/content?path=${encodeURIComponent(path)}`,
   fileProjectionUrl: (
@@ -1974,19 +1987,24 @@ export const api = {
   // -----------------------------------------------------------------------
   sessions: (since = "7d", limit = 200) =>
     get<SessionSummary[]>(`/v1/sessions?since=${since}&limit=${limit}`),
-  sessionReport: (id: string) => get<SessionReport>(`/v1/sessions/${id}`),
+  sessionReport: (id: string) =>
+    get<SessionReport>(`/v1/sessions/${encodeURIComponent(id)}`),
   getTuiSessions: () => get<TUIAnalytics>("/analytics/tui-sessions"),
   memoryFacts: (vendor?: string) => {
     const suffix = vendor ? `?vendor=${encodeURIComponent(vendor)}` : "";
     return get<MemoryFact[]>(`/v1/memory/facts${suffix}`);
   },
-  memoryFact: (factId: string) => get<MemoryFact>(`/v1/memory/facts/${factId}`),
+  memoryFact: (factId: string) =>
+    get<MemoryFact>(`/v1/memory/facts/${encodeURIComponent(factId)}`),
   insightsWindow: (since = "7d") =>
     get<InsightsWindow>(`/v1/insights?since=${since}`),
   outcomesSummary: (since = "7d") =>
     get<OutcomesSummary>(`/v1/outcomes/summary?since=${since}`),
   outcomesForSession: (sessionId: string) =>
-    get<Record<string, unknown>[]>(`/v1/outcomes/${sessionId}`),
+    get<Record<string, unknown>[]>(
+      `/v1/outcomes/${encodeURIComponent(sessionId)}`
+    ),
   reports: () => get<ReportMeta[]>("/v1/reports"),
-  report: (week: string) => get<ReportContent>(`/v1/reports/${week}`),
+  report: (week: string) =>
+    get<ReportContent>(`/v1/reports/${encodeURIComponent(week)}`),
 };

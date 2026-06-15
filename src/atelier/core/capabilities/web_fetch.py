@@ -48,6 +48,7 @@ _TEXT_TYPES = {
     *_HTML_TYPES,
 }
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+_ALLOWED_PORTS = frozenset({80, 443})
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _NON_CONTENT_HTML_RE = re.compile(
     r"<!--.*?-->|<(?:script|style|noscript|template|svg|canvas|iframe)\b[^>]*>.*?</(?:script|style|noscript|template|svg|canvas|iframe)>",
@@ -407,6 +408,12 @@ def _validate_public_url(url: str) -> str:
         raise ValueError("web_fetch URL must include a hostname")
     if parsed.username or parsed.password:
         raise ValueError("web_fetch does not allow embedded credentials")
+    try:
+        port = parsed.port
+    except ValueError:
+        raise ValueError("web_fetch URL has a malformed port") from None
+    if port is not None and port not in _ALLOWED_PORTS:
+        raise ValueError(f"web_fetch blocked non-standard destination port: {port}")
     return url
 
 

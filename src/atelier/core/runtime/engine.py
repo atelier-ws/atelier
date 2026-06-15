@@ -142,42 +142,47 @@ class AtelierRuntimeCore:
             bootstrap_repo_id = None
 
         if recall:
-            from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
-            from atelier.core.foundation.redaction import redact
-            from atelier.infra.embeddings.factory import get_embedder
-            from atelier.infra.storage.factory import make_memory_store
+            try:
+                from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
+                from atelier.core.foundation.redaction import redact
+                from atelier.infra.embeddings.factory import get_embedder
+                from atelier.infra.storage.factory import make_memory_store
 
-            memory_store = make_memory_store(self.root)
-            recall_agent_id = agent_id if agent_id else "shared"
-            fact_agent_ids = [recall_agent_id]
-            fact_blocks = []
-            for fact_agent_id in fact_agent_ids:
-                for block in memory_store.list_blocks(fact_agent_id, include_tombstoned=False, limit=200):
-                    metadata = block.metadata or {}
-                    if metadata.get("kind") != "memory_fact":
-                        continue
-                    fact_blocks.append(block)
-            fact_blocks.sort(
-                key=lambda block: (
-                    -int(((block.metadata or {}).get("votes") or {}).get("upvote", 0) or 0)
-                    + int(((block.metadata or {}).get("votes") or {}).get("downvote", 0) or 0),
-                    -int(block.version),
+                memory_store = make_memory_store(self.root)
+                recall_agent_id = agent_id if agent_id else "shared"
+                fact_agent_ids = [recall_agent_id]
+                fact_blocks = []
+                for fact_agent_id in fact_agent_ids:
+                    for block in memory_store.list_blocks(fact_agent_id, include_tombstoned=False, limit=200):
+                        metadata = block.metadata or {}
+                        if metadata.get("kind") != "memory_fact":
+                            continue
+                        fact_blocks.append(block)
+                fact_blocks.sort(
+                    key=lambda block: (
+                        -int(((block.metadata or {}).get("votes") or {}).get("upvote", 0) or 0)
+                        + int(((block.metadata or {}).get("votes") or {}).get("downvote", 0) or 0),
+                        -int(block.version),
+                    )
                 )
-            )
-            fact_blocks = fact_blocks[:5]
+                fact_blocks = fact_blocks[:5]
 
-            capability = ArchivalRecallCapability(memory_store, get_embedder(), redactor=redact)
-            passages, _ = capability.recall(agent_id=recall_agent_id, query=task, top_k=3)
-            scoped_passages = filter_scoped_passages(passages, requested_agent_id=recall_agent_id)[:3]
-            if not scoped_passages:
-                scoped_passages = filter_scoped_passages(
-                    memory_store.list_passages(recall_agent_id, limit=3),
-                    requested_agent_id=recall_agent_id,
-                )[:3]
-            memory_context = render_memory_facts_for_agent(fact_blocks) + render_memory_for_agent(scoped_passages)
-            recalled_passages = summarize_memory_facts(fact_blocks) + summarize_recalled_passages(
-                scoped_passages, query=task
-            )
+                capability = ArchivalRecallCapability(memory_store, get_embedder(), redactor=redact)
+                passages, _ = capability.recall(agent_id=recall_agent_id, query=task, top_k=3)
+                scoped_passages = filter_scoped_passages(passages, requested_agent_id=recall_agent_id)[:3]
+                if not scoped_passages:
+                    scoped_passages = filter_scoped_passages(
+                        memory_store.list_passages(recall_agent_id, limit=3),
+                        requested_agent_id=recall_agent_id,
+                    )[:3]
+                memory_context = render_memory_facts_for_agent(fact_blocks) + render_memory_for_agent(scoped_passages)
+                recalled_passages = summarize_memory_facts(fact_blocks) + summarize_recalled_passages(
+                    scoped_passages, query=task
+                )
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                memory_context = ""
+                recalled_passages = []
 
         context = playbook_context + bootstrap_context + memory_context
         playbook_tokens = count_tokens(playbook_context)
@@ -881,9 +886,17 @@ class AtelierRuntimeCore:
             lines = text.splitlines(keepends=True)
             stripped = [line.strip() for line in lines]
             close = difflib.get_close_matches(target, stripped, n=1, cutoff=0.86)
-            if close:
+            # Only apply the fuzzy fallback when the match is unambiguous; a
+            # close match that appears on several lines could clobber the wrong
+            # one while reporting success.
+            if close and stripped.count(close[0]) == 1:
                 idx = stripped.index(close[0])
-                lines[idx] = replace + ("\n" if lines[idx].endswith("\n") else "")
+                line = lines[idx]
+                newline = "\n" if line.endswith("\n") else ""
+                # Insert `replace` verbatim (it carries its own indentation,
+                # matching the two exact/whitespace-flex branches above);
+                # preserve only the line terminator.
+                lines[idx] = replace + newline
                 return True, "".join(lines)
 
         return False, text

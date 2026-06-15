@@ -8,7 +8,8 @@ from typing import Any
 
 from .models import AnomalyAlert
 
-_WINDOW_SIZE = 50  # rolling window for frequency tracking
+_WINDOW_SIZE = 50  # rolling window of per-batch call counts
+_BATCH_SIZE = 5  # invocations aggregated into one count before windowing
 _Z_WARNING = 2.5  # z-score threshold for WARNING
 _Z_CRITICAL = 3.5  # z-score threshold for CRITICAL
 _BURST_WINDOW = 10  # events to look back for burst detection
@@ -27,6 +28,11 @@ class ToolAnomalyDetector:
     def __init__(self) -> None:
         # tool_name → deque of per-batch call counts
         self._windows: dict[str, deque[int]] = {}
+        # tool_name → total invocations seen (for reporting)
+        self._totals: dict[str, int] = {}
+        # per-tool counts accumulating in the in-progress observation batch
+        self._batch_counts: dict[str, int] = {}
+        self._batch_position = 0
         # flat event queue for burst detection
         self._recent_tools: deque[str] = deque(maxlen=_BURST_WINDOW)
 
@@ -35,10 +41,28 @@ class ToolAnomalyDetector:
     # ------------------------------------------------------------------
 
     def record(self, tool: str) -> None:
-        """Record a single tool invocation."""
-        window = self._windows.setdefault(tool, deque(maxlen=_WINDOW_SIZE))
-        window.append(1)
+        """Record a single tool invocation.
+
+        Invocations are grouped into fixed-size observation batches. When a
+        batch closes, each tool's count within it is pushed onto that tool's
+        rolling window (zero for tools idle this batch), giving a varying
+        time series so the Z-score compares the latest batch against the
+        tool's own history.
+        """
+        self._totals[tool] = self._totals.get(tool, 0) + 1
+        self._batch_counts[tool] = self._batch_counts.get(tool, 0) + 1
         self._recent_tools.append(tool)
+        self._batch_position += 1
+        if self._batch_position >= _BATCH_SIZE:
+            self._flush_batch()
+
+    def _flush_batch(self) -> None:
+        """Push the current batch's per-tool counts onto each rolling window."""
+        for tool in self._totals:
+            window = self._windows.setdefault(tool, deque(maxlen=_WINDOW_SIZE))
+            window.append(self._batch_counts.get(tool, 0))
+        self._batch_counts.clear()
+        self._batch_position = 0
 
     # ------------------------------------------------------------------
     # Analysis
@@ -108,8 +132,8 @@ class ToolAnomalyDetector:
     def summary(self) -> dict[str, Any]:
         return {
             tool: {
-                "total_calls": sum(self._windows[tool]),
+                "total_calls": self._totals[tool],
                 "z_score": self.z_score(tool),
             }
-            for tool in self._windows
+            for tool in self._totals
         }

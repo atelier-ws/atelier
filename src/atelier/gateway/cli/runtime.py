@@ -123,18 +123,24 @@ class InteractiveRuntime:
 
         if _provider_cache_style(self._provider_override or "", model) != "anthropic":
             return messages
-        request_messages = copy.deepcopy(messages)
-        # Static breakpoint on the system message: pins the tools+system prefix
-        # so every call gets a cache hit there regardless of how far the moving
-        # trailing breakpoint has advanced (Anthropic's automatic prefix lookback
-        # only scans a bounded number of blocks before each explicit breakpoint).
-        first = request_messages[0] if request_messages else None
+        # Shallow-copy the list so the two messages we re-wrap below don't mutate
+        # the persisted history, then deep-copy only those messages. A full
+        # deepcopy of the whole history here runs on every agent-loop iteration,
+        # so its cost scales as iterations x history-size.
+        request_messages = list(messages)
+        first_index = 0 if request_messages else None
         if (
-            first is not None
-            and first.get("role") == "system"
-            and isinstance(first.get("content"), str)
-            and first["content"]
+            first_index is not None
+            and request_messages[0].get("role") == "system"
+            and isinstance(request_messages[0].get("content"), str)
+            and request_messages[0]["content"]
         ):
+            # Static breakpoint on the system message: pins the tools+system
+            # prefix so every call gets a cache hit there regardless of how far
+            # the moving trailing breakpoint has advanced (Anthropic's automatic
+            # prefix lookback only scans a bounded number of blocks before each
+            # explicit breakpoint).
+            first = copy.deepcopy(request_messages[0])
             first["content"] = [
                 {
                     "type": "text",
@@ -142,13 +148,13 @@ class InteractiveRuntime:
                     "cache_control": {"type": "ephemeral"},
                 }
             ]
+            request_messages[0] = first
         # Moving breakpoint on the latest completed message.
-        for message in reversed(request_messages):
-            if message is first:
-                break
-            content = message.get("content")
+        for index in range(len(request_messages) - 1, -1, -1):
+            content = request_messages[index].get("content")
             if not isinstance(content, str) or not content:
                 continue
+            message = copy.deepcopy(request_messages[index])
             message["content"] = [
                 {
                     "type": "text",
@@ -156,6 +162,7 @@ class InteractiveRuntime:
                     "cache_control": {"type": "ephemeral"},
                 }
             ]
+            request_messages[index] = message
             break
         return request_messages
 
@@ -921,8 +928,16 @@ class InteractiveRuntime:
                 "**Conversation compacted**\n",
                 f"(Previous: {msg_count} messages)\n",
             ]
-            recent = messages[-4:] if len(messages) > 4 else messages
-            self._sessions[session_id] = list(recent)
+            # Preserve the leading system message, then keep a recent tail.
+            head = messages[:1] if messages and messages[0].get("role") == "system" else []
+            tail = messages[len(head) :]
+            recent = tail[-4:] if len(tail) > 4 else tail
+            # A tail must not begin with an orphaned tool_result, nor with an
+            # assistant message whose tool_calls lost their results to the cut —
+            # providers 400 on a leading tool_result without a preceding tool_use.
+            while recent and (recent[0].get("role") == "tool" or recent[0].get("tool_calls")):
+                recent = recent[1:]
+            self._sessions[session_id] = head + list(recent)
             yield AssistantMessage(type="assistant.message", text="\n".join(summary_lines))
         elif name == "cost":
             yield AssistantMessage(
@@ -1279,32 +1294,6 @@ class InteractiveRuntime:
 
     async def interrupt(self, session_id: str) -> None:
         return None
-
-    async def ask_choice(
-        self,
-        session_id: str,
-        question: str,
-        choices: list[str],
-        *,
-        allow_freeform: bool = True,
-    ) -> AsyncIterator[AtelierEvent]:
-        """Emit a ChoiceRequested event and wait for the frontend response."""
-        from atelier.gateway.cli.events import ChoiceRequested
-
-        choice_id = f"choice-{uuid.uuid4().hex[:8]}"
-        self._pending_permissions[choice_id] = {"approved": None, "response": None}
-        yield ChoiceRequested(
-            type="choice.requested",
-            id=choice_id,
-            question=question,
-            choices=choices,
-            allow_freeform=allow_freeform,
-        )
-        for _ in range(600):  # 60s timeout
-            await asyncio.sleep(0.1)
-            resp = self._pending_permissions.get(choice_id, {}).get("response")
-            if resp is not None:
-                break
 
 
 _HELP_TEXT = """

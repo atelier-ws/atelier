@@ -47,6 +47,12 @@ def test_semantic_loop_empty_steps() -> None:
     assert _semantic_loop(["only one"]) == 0.0
 
 
+def test_semantic_loop_distinct_short_lines_not_a_loop() -> None:
+    # Single-token status lines yield empty bigram sets; distinct ones must not
+    # be scored as a semantic loop (regression for empty-vs-empty Jaccard).
+    assert _semantic_loop(["ok.", "yes."]) == 0.0
+
+
 # --------------------------------------------------------------------------- #
 # verification_skip                                                            #
 # --------------------------------------------------------------------------- #

@@ -12,8 +12,6 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
-from atelier.bench.mode import is_off as _bench_is_off
-
 try:
     import tomllib
 except ImportError:  # pragma: no cover
@@ -81,7 +79,10 @@ def mcp_tool_description(tool_name: str, description: str | None) -> str:
 
 def mcp_tool_visible_to_llm(tool_name: str) -> bool:
     # Bench-off overrides the normal public surface — the baseline arm must not
-    # see Atelier MCP tools.
+    # see Atelier MCP tools. Imported lazily so reading runtime config does not
+    # couple core to the optional bench package at module load time.
+    from atelier.bench.mode import is_off as _bench_is_off
+
     if _bench_is_off():
         return False
     return tool_name not in HIDDEN_LLM_TOOLS
