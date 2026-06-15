@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 import os
@@ -630,14 +631,16 @@ class SemanticFileMemoryCapability:
                 for s in sym_infos
             ]
             imports_modules = sorted({i.module for i in imp_infos})
-            # Resolve local imports to file paths
+            # Resolve local imports to file paths. Canonicalise to absolute
+            # resolved form so reverse-dep lookups in change_impact match
+            # regardless of the path form the caller indexed/queried with.
             base = file_path.parent
             for imp in imp_infos:
                 parts = imp.module.split(".")
                 for search_base in [base, base.parent]:
                     candidate = search_base / Path(*parts).with_suffix(".py")
                     if candidate.is_file():
-                        dependency_map.append(str(candidate))
+                        dependency_map.append(str(candidate.resolve()))
                         break
             dependency_map = list(dict.fromkeys(dependency_map))[:15]
             summary_str = stub_function_bodies(source, max_body_lines=2)
@@ -684,7 +687,10 @@ class SemanticFileMemoryCapability:
         }
         if cache_enabled:
             self._index.put(file_path, payload)
-            return self._entry_to_summary(self._index.get(file_path) or payload)
+            # put() already stored the content hash; reuse it instead of a
+            # second get() (which would re-load the JSON cache and re-hash the
+            # file just to read back what we already have).
+            payload["content_hash"] = self._index.content_hash(file_path)
         return self._entry_to_summary(payload)
 
     @staticmethod
@@ -756,7 +762,11 @@ class SemanticFileMemoryCapability:
         fp = Path(path)
         if fp.is_file() and not self._index.get(fp):
             self.summarize_file(fp)
-        return self._symbol_index.change_impact(str(path))
+        # Query the reverse-dep graph by the same canonical (absolute resolved)
+        # form dependency_map entries are stored under, so a relative-vs-absolute
+        # path form does not silently collapse the importer set to [].
+        lookup = str(fp.resolve()) if fp.exists() else str(path)
+        return self._symbol_index.change_impact(lookup)
 
     def graph_analytics(self) -> GraphAnalytics:
         """Return file-graph analytics (blast_radius/dead_code/cycles/coupling)."""
@@ -774,8 +784,23 @@ class SemanticFileMemoryCapability:
         for _ in range(4):
             tests_dir = root / "tests"
             if tests_dir.is_dir():
-                matches = list(tests_dir.rglob(f"test_{stem}.py")) + list(tests_dir.rglob(f"*{stem}*test*.py"))
-                return [str(p) for p in matches[:5]]
+                # Single tree walk instead of two rglob passes. Exact
+                # ``test_{stem}.py`` matches rank first, then looser
+                # ``*{stem}*test*.py`` matches; short-circuit once the exact
+                # bucket alone fills the cap.
+                exact_pat = f"test_{stem}.py"
+                loose_pat = f"*{stem}*test*.py"
+                exact: list[Path] = []
+                loose: list[Path] = []
+                for p in tests_dir.rglob("*.py"):
+                    name = p.name
+                    if fnmatch.fnmatchcase(name, exact_pat):
+                        exact.append(p)
+                        if len(exact) >= 5:
+                            break
+                    elif fnmatch.fnmatchcase(name, loose_pat):
+                        loose.append(p)
+                return [str(p) for p in (exact + loose)[:5]]
             root = root.parent
         return []
 

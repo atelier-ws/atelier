@@ -68,12 +68,8 @@ def _read_json(path: Path, default: Any) -> Any:
     try:
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        logger.warning(
-            "Suppressed exception at plugin_runtime.py:58",
-            exc_info=True,
-        )
+    except (OSError, ValueError):
+        logger.warning("Failed to read JSON from %s", path, exc_info=True)
     return default
 
 
@@ -270,12 +266,8 @@ def parse_login_token(token: str) -> dict[str, Any]:
         padded = text + "=" * (-len(text) % 4)
         decoded = base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
         candidates.append(decoded)
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        logger.warning(
-            "Suppressed exception at plugin_runtime.py:170",
-            exc_info=True,
-        )
+    except (ValueError, UnicodeDecodeError):
+        logger.warning("Failed to base64-decode login token", exc_info=True)
     for candidate in candidates:
         try:
             payload = json.loads(candidate)
@@ -379,7 +371,7 @@ def share_referral(root: str | Path, *, app_url: str | None = None) -> dict[str,
     if not status.get("authenticated"):
         return {"is_error": True, "message": "Log in or start a local trial before sharing."}
     code = str(status.get("referralCode") or f"ATELIER-{_fingerprint(str(status.get('userId')))[:6].upper()}")
-    base = (app_url or os.environ.get("ATELIER_APP_URL") or "https:// 127.0.0.1:8787").rstrip("/")
+    base = (app_url or os.environ.get("ATELIER_APP_URL") or "https://127.0.0.1:8787").rstrip("/")
     text = f"Use code {code} for Atelier: {base}?ref={code}"
     return {"code": code, "url": f"{base}?ref={code}", "text": text}
 
@@ -2130,10 +2122,7 @@ def _now_ms(payload: dict[str, Any] | None = None) -> int:
             try:
                 return int(float(raw))
             except ValueError:
-                logger.warning(
-                    "Suppressed exception at plugin_runtime.py:1028",
-                    exc_info=True,
-                )
+                logger.warning("Failed to parse timestamp %r", raw, exc_info=True)
     return int(datetime.now().timestamp() * 1000)
 
 
@@ -2402,7 +2391,7 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
         state["subagents_completed"] = int(state.get("subagents_completed", 0) or 0) + 1
         state["pending_subagents"] = max(0, int(state.get("pending_subagents", 0) or 0) - 1)
         state["completed"] = True
-    elif event in {"Stop", "SubagentStop"}:
+    elif event == "Stop":
         state["completed"] = True
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")

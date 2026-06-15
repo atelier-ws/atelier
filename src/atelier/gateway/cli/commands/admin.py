@@ -714,9 +714,12 @@ def init(
         seeded_blocks: dict[str, Playbook] = {}
         for path in block_files:
             data = _load_yaml(path)
-            if "id" not in data:
-                data["id"] = Playbook.make_id(data["title"], data["domain"])
-            block = Playbook.model_validate(data)
+            try:
+                if "id" not in data:
+                    data["id"] = Playbook.make_id(data["title"], data["domain"])
+                block = Playbook.model_validate(data)
+            except (KeyError, ValueError) as exc:
+                raise click.ClickException(f"invalid seed playbook {path}: {exc}") from exc
             seeded_blocks[block.id] = block
         for block in _load_domain_manager(root).all_playbooks():
             seeded_blocks[block.id] = block
@@ -727,7 +730,10 @@ def init(
         n_r = 0
         for path in rubric_files:
             data = _load_yaml(path)
-            rubric = Rubric.model_validate(data)
+            try:
+                rubric = Rubric.model_validate(data)
+            except (KeyError, ValueError) as exc:
+                raise click.ClickException(f"invalid seed rubric {path}: {exc}") from exc
             store.upsert_rubric(rubric)
             n_r += 1
         click.echo(f"seeded {n_b} playbooks and {n_r} rubrics")
@@ -1493,48 +1499,40 @@ def insights_cmd(
             click.echo(f"No sessions found since {since_str}.")
         return
 
-    if vendor and not as_json:
+    cost_by_vendor = window.cost_by_vendor
+    if vendor:
         vendor_key = vendor.capitalize()
         filtered_cost = window.cost_by_vendor.get(vendor_key, 0.0)
-        click.echo(f"Vendor filter: {vendor_key}  ${filtered_cost:.2f} of ${window.total_cost_usd:.2f} total")
+        cost_by_vendor = {vendor_key: filtered_cost}
+        if not as_json:
+            click.echo(f"Vendor filter: {vendor_key}  ${filtered_cost:.2f} of ${window.total_cost_usd:.2f} total")
 
-    display_window = window
-    if group_by == "vendor" and not as_json:
-        pass
-    elif group_by == "model" and not as_json:
-        display_window = InsightsWindow(
-            since=window.since,
-            until=window.until,
-            session_count=window.session_count,
-            total_duration_seconds=window.total_duration_seconds,
-            total_cost_usd=window.total_cost_usd,
-            total_atelier_savings_usd=window.total_atelier_savings_usd,
-            cost_by_vendor=window.cost_by_vendor,
-            cost_by_tool=window.cost_by_model,
-            cost_by_model=window.cost_by_model,
-            top_sessions=window.top_sessions,
-            outcomes_summary=window.outcomes_summary,
-            opportunities=window.opportunities,
-        )
-    elif group_by == "session" and not as_json:
-        session_costs = {s.session_id[:8]: s.cost_usd for s in window.top_sessions}
-        display_window = InsightsWindow(
-            since=window.since,
-            until=window.until,
-            session_count=window.session_count,
-            total_duration_seconds=window.total_duration_seconds,
-            total_cost_usd=window.total_cost_usd,
-            total_atelier_savings_usd=window.total_atelier_savings_usd,
-            cost_by_vendor=window.cost_by_vendor,
-            cost_by_tool=session_costs,
-            cost_by_model=window.cost_by_model,
-            top_sessions=window.top_sessions,
-            outcomes_summary=window.outcomes_summary,
-            opportunities=window.opportunities,
-        )
+    if group_by == "model":
+        cost_by_tool = window.cost_by_model
+    elif group_by == "session":
+        cost_by_tool = {s.session_id[:8]: s.cost_usd for s in window.top_sessions}
+    elif group_by == "vendor":
+        cost_by_tool = cost_by_vendor
+    else:
+        cost_by_tool = window.cost_by_tool
+
+    display_window = InsightsWindow(
+        since=window.since,
+        until=window.until,
+        session_count=window.session_count,
+        total_duration_seconds=window.total_duration_seconds,
+        total_cost_usd=window.total_cost_usd,
+        total_atelier_savings_usd=window.total_atelier_savings_usd,
+        cost_by_vendor=cost_by_vendor,
+        cost_by_tool=cost_by_tool,
+        cost_by_model=window.cost_by_model,
+        top_sessions=window.top_sessions,
+        outcomes_summary=window.outcomes_summary,
+        opportunities=window.opportunities,
+    )
 
     if as_json:
-        click.echo(render_json(window))
+        click.echo(render_json(display_window))
     else:
         click.echo(render_text(display_window, no_color=no_color))
 

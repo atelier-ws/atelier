@@ -92,8 +92,15 @@ def _default_code_model(model: str | None = None) -> str:
 
 
 @lru_cache(maxsize=8)
+def _cached_ollama_code_embedder(model: str) -> OllamaEmbedder:
+    return OllamaEmbedder(model=model)
+
+
 def _make_available_ollama_code_embedder(model: str) -> OllamaEmbedder:
-    embedder = OllamaEmbedder(model=model)
+    # Construction is cached, but availability is re-checked on every call so a
+    # mid-session Ollama outage falls back to the local embedder instead of
+    # returning a stale embedder whose embed() would hit a dead socket.
+    embedder = _cached_ollama_code_embedder(model)
     if not embedder.is_available():
         raise RuntimeError(f"Ollama model {model!r} is unavailable")
     return embedder
@@ -131,7 +138,7 @@ def get_code_embedder() -> Embedder:
 
 
 def _clear_code_embedder_cache() -> None:
-    _make_available_ollama_code_embedder.cache_clear()
+    _cached_ollama_code_embedder.cache_clear()
 
 
 make_code_embedder.cache_clear = _clear_code_embedder_cache  # type: ignore[attr-defined]

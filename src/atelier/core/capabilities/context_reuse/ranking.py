@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from functools import lru_cache
 from typing import Any
 
 import tiktoken
@@ -29,8 +30,13 @@ _MINHASH_PERMUTATIONS = 128
 _MIN_DEDUP_TOKENS = 5
 
 
+@lru_cache(maxsize=1)
+def _encoder() -> tiktoken.Encoding:
+    return tiktoken.get_encoding("cl100k_base")
+
+
 def _count_tokens(text: str) -> int:
-    return len(tiktoken.get_encoding("cl100k_base").encode(text))
+    return len(_encoder().encode(text))
 
 
 def _recency_score(last_used_ts: float, now_ts: float, *, half_life_days: float = 7.0) -> float:

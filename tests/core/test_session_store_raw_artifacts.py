@@ -100,6 +100,16 @@ def test_path_escape_is_rejected(tmp_path: Path) -> None:
         store.record_raw_artifact(art, "nope")
 
 
+def test_path_escape_via_source_session_id_is_rejected(tmp_path: Path) -> None:
+    # A dot-dot in source_session_id must not escape the sessions tree: the base
+    # dir is built from the (untrusted) session id, so confinement is checked
+    # against the sessions root, not the attacker-built per-session base.
+    store = SessionStore(tmp_path)
+    art = _artifact("evil", source_session_id="../../escape")
+    with pytest.raises(ValueError, match="escapes session dir"):
+        store.record_raw_artifact(art, "nope")
+
+
 def test_context_store_keeps_raw_artifacts_out_of_atelier_db(tmp_path: Path) -> None:
     store = ContextStore(tmp_path)
     store.init()
