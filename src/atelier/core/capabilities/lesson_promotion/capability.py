@@ -44,7 +44,6 @@ class LessonPromoterCapability:
         self._embedder = embedder or get_embedder()
         self._cluster_threshold = cluster_threshold or float(os.environ.get("ATELIER_LESSON_CLUSTER_THRESHOLD", "0.85"))
         self._trace_embedding_cache: dict[str, list[float]] = {}
-        self._recent_failed_by_domain: dict[str, list[Trace]] = {}
 
     def _trace_text(self, trace: Trace) -> str:
         commands: list[str] = []
@@ -133,7 +132,14 @@ class LessonPromoterCapability:
         return [item[1] for item in scored[:limit]]
 
     def ingest_trace(self, trace: Trace) -> LessonCandidate | None:
-        """Ingest one failed trace and create an inbox candidate when cluster size >= 3."""
+        """Ingest one failed trace and create an inbox candidate when cluster size >= 3.
+
+        Neighbor lookup is store-backed (``_recent_trace_cluster`` +
+        ``_nearest_cluster``), not in-process state, so clustering works whether
+        the caller holds a long-lived capability or builds a fresh one per
+        recorded trace (the SDK ``record_trace`` seam). Persist the trace before
+        calling this so the store-backed lookup can see it among its peers.
+        """
         if trace.status != "failed":
             return None
         if not trace.errors_seen:
@@ -145,20 +151,13 @@ class LessonPromoterCapability:
             domain=trace.domain,
             embedding=embedding,
         )
-        bucket = self._recent_failed_by_domain.setdefault(trace.domain, [])
-        trace_neighbors: list[Trace] = []
-        for prior in reversed(bucket):
-            if len(trace_neighbors) >= 8:
-                break
-            try:
-                sim = cosine_similarity(embedding, self._embed_trace(prior))
-            except ValueError:
-                sim = 0.0
-            if sim >= self._cluster_threshold:
-                trace_neighbors.append(prior)
+        trace_neighbors = self._recent_trace_cluster(
+            domain=trace.domain,
+            current_trace_id=trace.id,
+            embedding=embedding,
+        )
 
         if len(neighbors) + len(trace_neighbors) + 1 < 3:
-            bucket.append(trace)
             return None
 
         traces = [trace, *trace_neighbors]
@@ -190,7 +189,6 @@ class LessonPromoterCapability:
         }
         candidate.embedding_provenance = self._embedder.__class__.__name__
         self.store.upsert_lesson_candidate(candidate)
-        bucket.append(trace)
         return candidate
 
     def inbox(self, *, domain: str | None = None, limit: int = 25) -> list[LessonCandidate]:
