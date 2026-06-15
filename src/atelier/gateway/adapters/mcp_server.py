@@ -483,6 +483,12 @@ _MAX_WIRE_BYTES = 14 * 1024 * 1024
 # on every later turn. ~64k tokens. Set ATELIER_MCP_COMPACT_RESULT_CHARS=0 to
 # disable.
 _DEFAULT_COMPACT_RESULT_CHARS = 256 * 1024
+# Per-read inline budget (bytes). A single file read larger than this is returned
+# as a line-aligned prefix plus an EXACT continuation range, instead of being
+# handed to the host whole -- where the host's own MCP-output guard would dump it
+# to a temp file and force the agent to re-read the file in blind ranges. Keep it
+# below the host limit (~50KB). Set ATELIER_READ_INLINE_BUDGET_BYTES=0 to disable.
+_DEFAULT_READ_INLINE_BUDGET_BYTES = 40 * 1024
 
 
 def _service_backed_state() -> bool:
@@ -4250,18 +4256,21 @@ def _smart_read_single(
     # gigabytes are never materialized. Range reads are inherently bounded, and
     # non-expand reads of code files become cheap outlines, so neither is touched.
     if expand and range is None:
-        result_cap = _max_result_bytes()
+        disconnect_cap = _max_result_bytes()
+        inline_budget = _read_inline_budget_bytes()
         try:
             total_bytes = target.stat().st_size
         except OSError:
             total_bytes = 0
-        if total_bytes > result_cap:
+        # Tier 1: enormous file — never materialize it (a multi-MB JSON-RPC frame
+        # disconnects the host). Read a bounded byte prefix straight from disk.
+        if total_bytes > disconnect_cap:
             notice = (
                 f"\n\n[atelier: result truncated — file is {total_bytes} bytes; read the "
-                f"first {result_cap} bytes only to keep the MCP connection alive. "
+                f"first {disconnect_cap} bytes only to keep the MCP connection alive. "
                 'Re-request a narrower slice, e.g. read with range="L1-L400".]'
             )
-            prefix_bytes = max(0, result_cap - len(notice.encode("utf-8")) - 1024)
+            prefix_bytes = max(0, disconnect_cap - len(notice.encode("utf-8")) - 1024)
             with open(target, "rb") as fh:
                 head = fh.read(prefix_bytes)
             return {
@@ -4272,6 +4281,41 @@ def _smart_read_single(
                 "truncated": True,
                 "bytes_total": total_bytes,
             }
+        # Tier 2: moderately large — fits in memory but exceeds the host's
+        # MCP-output limit, which would persist the result to a temp file and
+        # force blind range re-reads. Pre-empt that with a line-aligned prefix
+        # plus the EXACT continuation range, so a whole-file read costs at most a
+        # couple of clean calls and the bytes are never dumped.
+        if inline_budget and total_bytes > inline_budget:
+            text = target.read_text(encoding="utf-8", errors="ignore")
+            lines = text.splitlines(keepends=True)
+            kept: list[str] = []
+            used = 0
+            for line in lines:
+                line_bytes = len(line.encode("utf-8"))
+                if kept and used + line_bytes > inline_budget:
+                    break
+                kept.append(line)
+                used += line_bytes
+            shown = len(kept)
+            total_lines = len(lines)
+            if shown < total_lines:
+                notice = (
+                    f"\n\n[atelier: showing lines 1-{shown} of {total_lines}. The full file "
+                    f"({total_bytes} bytes) exceeds the single-response budget and would be "
+                    f'truncated by the host. Continue with range="L{shown + 1}-", or request a '
+                    "specific slice. To refactor a big file, read it in these labeled chunks.]"
+                )
+                return {
+                    "mode": "full",
+                    "content": "".join(kept) + notice,
+                    "path": str(target),
+                    "projection": SourceProjection.exact().to_dict(),
+                    "truncated": True,
+                    "bytes_total": total_bytes,
+                    "lines_total": total_lines,
+                    "lines_shown": shown,
+                }
 
     cap = SemanticFileMemoryCapability(_atelier_root())
     try:
@@ -8988,6 +9032,25 @@ def _max_result_bytes() -> int:
     # Floor avoids pathological tiny caps; ceiling keeps capped results safely
     # under the hard wire limit even after JSON string-escaping inflation.
     return max(64 * 1024, min(configured, _MAX_WIRE_BYTES - 1024 * 1024))
+
+
+def _read_inline_budget_bytes() -> int:
+    """Byte budget for a single inline file read before line-aligned truncation.
+
+    Distinct from ``_max_result_bytes`` (the multi-MB host-disconnect wire guard):
+    this is the much smaller threshold above which the *host's* MCP-output limit
+    would persist the result to a temp file and make the agent re-read in blind
+    ranges. Returning a line-aligned prefix with an exact continuation range keeps
+    a whole-file read to a couple of clean calls. 0 disables the behavior.
+    """
+    raw = os.environ.get("ATELIER_READ_INLINE_BUDGET_BYTES", str(_DEFAULT_READ_INLINE_BUDGET_BYTES))
+    try:
+        configured = int(raw)
+    except ValueError:
+        return _DEFAULT_READ_INLINE_BUDGET_BYTES
+    if configured <= 0:
+        return 0
+    return max(8 * 1024, configured)
 
 
 def _truncate_result_text(text: str, limit: int) -> str:
