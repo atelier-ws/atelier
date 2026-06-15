@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,15 @@ _log = logging.getLogger(__name__)
 
 # Sidecar file name under the atelier root. One JSON document keyed by tool name.
 TOOL_TOKEN_LEDGER_FILENAME = "tool_token_ledger.json"
+
+# Serializes the load->record->write of the shared sidecar. record_tool_tokens
+# runs per tool-call from the MCP dispatcher's default 16-worker thread pool, so
+# an unguarded read-modify-write loses concurrent updates (undercount). Mirrors
+# the _STATE_LOCK pattern around _record_smart_state_savings in mcp_server.py.
+# NOTE: this lock only protects threads within ONE process. Sharing a single
+# atelier_root across multiple processes would additionally need an OS-level
+# file lock (e.g. flock) around the same load->record->write critical section.
+_LEDGER_LOCK = threading.Lock()
 
 
 @dataclass
@@ -154,19 +164,22 @@ def record_tool_tokens(
     """
     if not tool_name:
         return ToolTokenLedger()
-    ledger = load_tool_token_ledger(atelier_root)
-    ledger.record(
-        tool_name,
-        input_tokens=count_payload_tokens(input_payload),
-        output_tokens=count_payload_tokens(output_payload),
-    )
-    path = _ledger_path(atelier_root)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(ledger.to_dict(), ensure_ascii=False), encoding="utf-8")
-    except OSError:
-        logging.exception("Recovered from broad exception handler")
-        _log.debug("tool token ledger write failed", exc_info=True)
+    # Hold the lock across the whole load->record->write so two worker threads
+    # cannot both read the same baseline and clobber each other's increment.
+    with _LEDGER_LOCK:
+        ledger = load_tool_token_ledger(atelier_root)
+        ledger.record(
+            tool_name,
+            input_tokens=count_payload_tokens(input_payload),
+            output_tokens=count_payload_tokens(output_payload),
+        )
+        path = _ledger_path(atelier_root)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(ledger.to_dict(), ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            logging.exception("Recovered from broad exception handler")
+            _log.debug("tool token ledger write failed", exc_info=True)
     return ledger
 
 

@@ -2587,18 +2587,53 @@ def _workspace_path(file_path: str) -> Path:
 _request_project: threading.local = threading.local()
 
 
+def _http_project_override_allowed() -> bool:
+    """H1 opt-in: whether a wire-supplied project override may be honored at all.
+
+    Default OFF. Resolving an arbitrary host directory from the wire lets a
+    caller pivot the server outside its workspace, so acceptance is gated behind
+    ``ATELIER_HTTP_ALLOW_PROJECT_OVERRIDE`` AND confined to the workspace root.
+    """
+    return os.environ.get("ATELIER_HTTP_ALLOW_PROJECT_OVERRIDE", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _project_override_root() -> Path:
+    """The allowlisted root a wire-supplied project override must stay inside."""
+    root = (
+        os.environ.get("CLAUDE_WORKSPACE_ROOT")
+        or os.environ.get("ATELIER_WORKSPACE_ROOT")
+        or os.environ.get("VSCODE_CWD")
+        or os.getcwd()
+    )
+    return Path(root).expanduser().resolve()
+
+
+def _is_within_root(candidate: Path, root: Path) -> bool:
+    """True iff ``candidate`` is ``root`` or nested under it (no parent escape)."""
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
 def _set_request_project(path: str | None) -> str | None:
     """Set the request-scoped project override; return the prior value.
 
     Only an existing directory is accepted; anything else clears the override so
     a bad header can never silently mis-route to a non-repo path.
+
+    H1 — a wire-supplied path can point ANYWHERE on the host. Acceptance is
+    therefore gated behind the explicit ``ATELIER_HTTP_ALLOW_PROJECT_OVERRIDE``
+    opt-in AND confined to the workspace root: a candidate outside the root is
+    rejected (override cleared) so the default never pivots out of bounds.
     """
     prior = getattr(_request_project, "value", None)
     resolved: str | None = None
-    if isinstance(path, str) and path.strip():
+    if isinstance(path, str) and path.strip() and _http_project_override_allowed():
         try:
             candidate = Path(path).expanduser().resolve()
-            if candidate.is_dir():
+            if candidate.is_dir() and _is_within_root(candidate, _project_override_root()):
                 resolved = str(candidate)
         except OSError:
             resolved = None
@@ -8680,12 +8715,22 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # reversible. Off -> returns response_text unchanged.
             _spill_args = args if isinstance(args, dict) else {}
             response_text = _auto_compact_result_text(response_text, name, _spill_args)
+            # T7 (ATELIER_TOOL_OUTPUT_SPILL, default off): spill the FULL,
+            # UNTRANSFORMED payload BEFORE the legacy char compaction below, gated
+            # on the same char threshold (_compact_result_chars) the compactor
+            # uses. Otherwise the byte-gated spill (6MB) never fires under default
+            # caps and _compact_result_text would drop the middle first, so the
+            # spilled artifact would only ever hold already-compacted text.
+            # Off / non-spill tools -> no-op, so _compact_result_text runs exactly
+            # as before.
+            response_text = _spill_oversized_result_text(
+                response_text, name, _spill_args, _compact_result_chars(), unit="chars"
+            )
             response_text = _compact_result_text(response_text, name)
-            # T7 (ATELIER_TOOL_OUTPUT_SPILL, default off): for spill-worthy tools
-            # whose result still exceeds the wire budget, spill the full payload
-            # and return a summary + ref id + retrieve hint INSTEAD of discarding
-            # the overflow. Off / other tools -> no-op, so the truncation below
-            # runs exactly as before.
+            # Wire-byte backstop: a spill-worthy result still over the multi-MB
+            # frame ceiling after compaction is spilled rather than truncated.
+            # When the char-gated spill above already fired, response_text is now
+            # a small summary, so this no-ops.
             response_text = _spill_oversized_result_text(response_text, name, _spill_args, _max_result_bytes())
             # Bound the result so one oversized frame can't trip the host's
             # stdout guard and disconnect the server (no mid-session reconnect).
@@ -8972,7 +9017,10 @@ def _auto_compact_result_text(text: str, tool_name: str, args: dict[str, Any]) -
 
     from atelier.core.capabilities.tool_supervision import compact_output, tool_output_spill
 
-    budget_tokens = max(256, threshold // 4 // 4)  # ~chars/4 tokens, then headroom
+    # 16x reduction from the char threshold: first chars/4 to estimate tokens
+    # (the ~4-chars-per-token rule), then /4 again for headroom so the compacted
+    # view lands well under the threshold. e.g. 256K chars -> ~16K-token budget.
+    budget_tokens = max(256, threshold // 4 // 4)
     compacted_text = text
     method = "compact_output"
 
@@ -9023,22 +9071,35 @@ def _auto_compact_result_text(text: str, tool_name: str, args: dict[str, Any]) -
     )
 
 
-def _spill_oversized_result_text(text: str, tool_name: str, args: dict[str, Any], limit: int) -> str:
+def _spill_oversized_result_text(
+    text: str,
+    tool_name: str,
+    args: dict[str, Any],
+    limit: int,
+    *,
+    unit: str = "bytes",
+) -> str:
     """T7 — spill an over-budget result instead of discarding the overflow.
 
-    When a ``shell``/``sql``/``read``/``web_fetch`` result still exceeds the wire
-    byte ceiling after compaction, the legacy path truncates and the tail is
-    *lost*. Here the full payload is written to the spill store and the
-    host-facing text becomes a head/tail summary + the spill ref id + a retrieve
-    hint, so the agent can pull the rest back without re-running the tool.
+    When a ``shell``/``sql``/``read``/``web_fetch`` result exceeds the budget, the
+    legacy path truncates/compacts and the middle is *lost*. Here the full,
+    UNTRANSFORMED payload is written to the spill store and the host-facing text
+    becomes a head/tail summary + the spill ref id + a retrieve hint, so the
+    agent can pull the rest back without re-running the tool.
+
+    M1 — the gate ``unit`` selects the budget basis: ``"chars"`` (compared
+    against ``len(text)``) lets the spill fire at the legacy char threshold
+    (``_compact_result_chars``), i.e. BEFORE ``_compact_result_text`` would have
+    dropped the middle; ``"bytes"`` keeps the original wire-byte semantics.
 
     Flag-gated by ``ATELIER_TOOL_OUTPUT_SPILL`` and limited to ``_SPILL_TOOLS``
     (off / other tools -> returns ``text`` unchanged so the caller's existing
-    ``_truncate_result_text`` runs exactly as before).
+    compaction/truncation runs exactly as before).
     """
     if not _tool_output_spill_enabled() or tool_name not in _SPILL_TOOLS:
         return text
-    if len(text.encode("utf-8")) <= limit:
+    measured = len(text) if unit == "chars" else len(text.encode("utf-8"))
+    if limit <= 0 or measured <= limit:
         return text
 
     from atelier.core.capabilities.tool_supervision import tool_output_spill
@@ -9048,13 +9109,14 @@ def _spill_oversized_result_text(text: str, tool_name: str, args: dict[str, Any]
         text,
         tool_name=tool_name,
         kind="tool_output",
-        meta={"path": _read_path_arg(args), "limit_bytes": limit},
+        meta={"path": _read_path_arg(args), "limit": limit, "unit": unit},
     )
     if record is None:
-        return text  # spill failed -> fall back to the legacy byte truncation.
+        return text  # spill failed -> fall back to the legacy compaction/truncation.
 
     # A compact head+tail summary that comfortably fits the budget.
-    target = max(4096, min(limit // 8, 16384))
+    summary_budget = limit if unit == "chars" else limit // 8
+    target = max(4096, min(summary_budget, 16384))
     head = int(target * 0.7)
     tail = max(1, target - head)
     summary = compress_tool_output(text, threshold_chars=target, head_chars=head, tail_chars=tail)

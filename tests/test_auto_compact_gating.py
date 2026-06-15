@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from atelier.core.capabilities.optimization.audit import context_window_for_model
 from atelier.core.capabilities.optimization.policy import (
     CompactionPolicy,
     preset_policy,
@@ -181,3 +182,50 @@ def test_flag_on_fail_open_when_fill_computation_raises(tmp_path: Path, monkeypa
     assert spy.calls == 1
     assert summary["compacted"] is True
     assert summary["session_id"] == session_id
+
+
+# --------------------------------------------------------------------------- #
+# 5) _live_context_fill reflects RECENT occupancy, not the cumulative sum
+# --------------------------------------------------------------------------- #
+
+
+def _llm_call(ledger: RunLedger, *, model: str, input_tokens: int) -> None:
+    # The helper inspects event.payload["kind"] == "llm_call"; the event's own
+    # kind is an unrelated allowed Literal.
+    ledger.record(
+        "note",
+        "llm call",
+        {"kind": "llm_call", "model": model, "input_tokens": input_tokens},
+    )
+
+
+def test_live_context_fill_uses_recent_occupancy_not_cumulative_sum(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    init_store_at(str(root))
+    rt = AtelierRuntimeCore(root)
+
+    model = "claude-sonnet"
+    window = context_window_for_model(model)
+
+    ledger = RunLedger(root=root, agent="test", task="t", domain="d")
+    # Several historical calls whose cumulative sum exceeds the window; the most
+    # recent live occupancy is a small fraction of it.
+    for _ in range(5):
+        _llm_call(ledger, model=model, input_tokens=int(window * 0.5))
+    recent = int(window * 0.10)
+    _llm_call(ledger, model=model, input_tokens=recent)
+
+    fill = rt._live_context_fill(ledger)
+
+    # Fill tracks the most-recent call (~0.10), NOT the monotonic cumulative
+    # sum (which would be ~2.6 and is clearly nonsensical as a fraction).
+    assert fill == pytest.approx(recent / window, rel=1e-6)
+    assert fill < 0.2
+
+
+def test_live_context_fill_empty_ledger_is_zero(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    init_store_at(str(root))
+    rt = AtelierRuntimeCore(root)
+    ledger = RunLedger(root=root, agent="test", task="t", domain="d")
+    assert rt._live_context_fill(ledger) == 0.0

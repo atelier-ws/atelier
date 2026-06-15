@@ -14,7 +14,16 @@ import re
 # because we only mask, not drop, and the surrounding text remains.
 _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
-        re.compile(r"(?i)\b(?:api[_-]?key|secret|token|password|passwd|pwd)\s*[:=]\s*\S+"),
+        # Generic ``key=value`` / ``key: value`` credential pairs. The value is
+        # masked to the end of the line rather than a single ``\S+`` token: a
+        # bare ``\S+`` stops at the first space and *leaks* multi-word secret
+        # values past that edge (e.g. ``token: Bearer <secret>`` would mask
+        # only ``Bearer`` and leak ``<secret>``). ``re.sub`` (no ``count``)
+        # replaces *every* occurrence, so a secret repeated in one string is
+        # fully masked, not just the first hit. The leading ``\b`` keeps this
+        # from swallowing ordinary identifiers like ``AWS_SECRET`` (whose value
+        # is caught by the dedicated high-entropy patterns below).
+        re.compile(r"(?i)\b(?:api[_-]?key|secret|token|password|passwd|pwd)\s*[:=]\s*\S[^\r\n]*"),
         "<redacted-credential>",
     ),
     (re.compile(r"sk-[A-Za-z0-9]{20,}"), "<redacted-openai-key>"),
@@ -49,7 +58,7 @@ _COT_PATTERNS = [
             r"\b(?:chain of thought|chain-of-thought|internal reasoning|private thoughts):[^\n\r]*",
             re.IGNORECASE,
         ),
-        "<redacted-hidden-reasoning><redacted-marker>",
+        "<redacted-hidden-reasoning>",
     ),
 ]
 

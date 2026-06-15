@@ -268,6 +268,12 @@ class ZoektServer:
                 timed_out.set()
                 with suppress(Exception):
                     bridge.kill()
+                # Reap the killed child and drop the handle so it is not left as a
+                # zombie with leaked pipe fds, and so _is_ready() reads False
+                # unambiguously for the now-dead bridge.
+                with suppress(Exception):
+                    bridge.wait(timeout=5)
+                self._bridge = None
 
             response_lines: list[str] = []
             timer = threading.Timer(30.0, _kill_bridge)

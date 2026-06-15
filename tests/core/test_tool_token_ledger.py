@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from atelier.core.capabilities.prompt_compilation.tokens import estimate_tokens
@@ -82,3 +83,46 @@ def test_empty_tool_name_is_ignored(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     record_tool_tokens(root, "", input_payload={"a": 1}, output_payload="x")
     assert load_tool_token_ledger(root).total_calls() == 0
+
+
+# --------------------------------------------------------------------------- #
+# H3 — concurrency: the load->record->write must not lose updates when called
+# from the MCP dispatcher's worker thread pool (default 16 workers).
+# --------------------------------------------------------------------------- #
+
+
+def test_record_tool_tokens_concurrent_no_lost_updates(tmp_path: Path) -> None:
+    root = tmp_path / ".atelier"
+    root.mkdir(parents=True, exist_ok=True)
+    # Pre-create the sidecar so every thread starts from a real on-disk file,
+    # maximising the read-modify-write overlap the lock must serialize.
+    record_tool_tokens(root, "read", input_payload={"path": "seed.py"}, output_payload="seed")
+
+    threads_per_tool = 32
+    payload_in = {"path": "x.py"}
+    payload_out = "some output body"
+    expected_in = count_payload_tokens(payload_in)
+    expected_out = count_payload_tokens(payload_out)
+    barrier = threading.Barrier(threads_per_tool * 2)
+
+    def _hammer(tool: str) -> None:
+        # Release all workers at once so the writes genuinely contend.
+        barrier.wait()
+        record_tool_tokens(root, tool, input_payload=payload_in, output_payload=payload_out)
+
+    workers = [
+        threading.Thread(target=_hammer, args=(tool,)) for tool in ("read", "grep") for _ in range(threads_per_tool)
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+    ledger = load_tool_token_ledger(root)
+    # "read" got the one seed call plus threads_per_tool contended calls.
+    assert ledger.per_tool["read"].calls == threads_per_tool + 1
+    assert ledger.per_tool["grep"].calls == threads_per_tool
+    assert ledger.total_calls() == threads_per_tool * 2 + 1
+    # No increment is lost: final token counts equal the sum of every call.
+    assert ledger.per_tool["grep"].input_tokens == expected_in * threads_per_tool
+    assert ledger.per_tool["grep"].output_tokens == expected_out * threads_per_tool

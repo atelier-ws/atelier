@@ -210,3 +210,82 @@ def test_compact_tool_retrieve_op_windows_with_slice() -> None:
 def test_compact_tool_retrieve_op_requires_ref_id() -> None:
     out = mcp_server.tool_compact({"op": "retrieve"})
     assert "error" in out
+
+
+# --------------------------------------------------------------------------- #
+# M1 — spill fires at the CHAR threshold, BEFORE legacy char compaction, so the #
+# spilled artifact holds the FULL untransformed payload (not compacted text).   #
+# --------------------------------------------------------------------------- #
+
+
+def test_spill_helper_char_unit_fires_at_char_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATELIER_TOOL_OUTPUT_SPILL", "1")
+    # Under default byte caps (6MB) this 200K-char payload would NOT spill, but
+    # the char-gated call (threshold 1000 chars) must.
+    text = "HEAD" + ("m" * 200_000) + "TAIL"
+    out = mcp_server._spill_oversized_result_text(text, "shell", {}, 1000, unit="chars")
+    assert len(out) < len(text)
+    recovered = tool_output_spill.retrieve(_extract_ref(out))
+    assert recovered["content"] == text  # FULL untransformed payload preserved
+
+
+def test_handle_spills_full_untransformed_payload_before_compaction(monkeypatch: pytest.MonkeyPatch) -> None:
+    """End-to-end through _handle: with the flag on and an oversized result, the
+    spilled artifact must hold the FULL untransformed payload — specifically the
+    MIDDLE that the legacy _compact_result_text would otherwise drop."""
+    monkeypatch.setenv("ATELIER_TOOL_OUTPUT_SPILL", "1")
+    # Char threshold well below the payload so the char-gated spill fires.
+    monkeypatch.setenv("ATELIER_MCP_COMPACT_RESULT_CHARS", "2000")
+
+    # web_fetch renders its result as the raw `content` string (no transform),
+    # and is a spill-worthy tool, so it isolates the dispatch ordering cleanly.
+    middle_marker = "UNIQUE-MIDDLE-MARKER-THAT-COMPACTION-WOULD-DROP"
+    payload = "HEAD" + ("a" * 100_000) + middle_marker + ("b" * 100_000) + "TAIL"
+
+    def _fake_web_fetch(_args: dict) -> dict:  # type: ignore[type-arg]
+        return {"content": payload}
+
+    monkeypatch.setitem(mcp_server.TOOLS["web_fetch"], "handler", _fake_web_fetch)
+
+    resp = mcp_server._handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "web_fetch", "arguments": {"url": "https://example.test"}},
+        }
+    )
+    assert resp is not None
+    host_text = resp["result"]["content"][0]["text"]
+    # Host-facing text is a compact summary that fits the budget...
+    assert len(host_text) < len(payload)
+    assert middle_marker not in host_text  # the middle is dropped from the summary
+    # ...but the spilled ref recovers the FULL untransformed payload, middle and all.
+    recovered = tool_output_spill.retrieve(_extract_ref(host_text))
+    assert recovered["content"] == payload
+    assert middle_marker in recovered["content"]
+
+
+def test_handle_spill_flag_off_does_not_spill(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Flag-off behavior preserved: no spill ref, legacy char compaction applies."""
+    monkeypatch.delenv("ATELIER_TOOL_OUTPUT_SPILL", raising=False)
+    monkeypatch.setenv("ATELIER_MCP_COMPACT_RESULT_CHARS", "2000")
+    payload = "HEAD" + ("a" * 200_000) + "TAIL"
+
+    def _fake_web_fetch(_args: dict) -> dict:  # type: ignore[type-arg]
+        return {"content": payload}
+
+    monkeypatch.setitem(mcp_server.TOOLS["web_fetch"], "handler", _fake_web_fetch)
+    resp = mcp_server._handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "web_fetch", "arguments": {"url": "https://example.test"}},
+        }
+    )
+    assert resp is not None
+    host_text = resp["result"]["content"][0]["text"]
+    assert tool_output_spill.SPILL_REF_PREFIX not in host_text  # flag off -> no spill
+    # Legacy char compaction still ran (its recovery hint, not a spill ref).
+    assert "compacted" in host_text
