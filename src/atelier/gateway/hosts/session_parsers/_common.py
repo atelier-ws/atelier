@@ -86,7 +86,14 @@ def parse_datetime(value: Any, *, default: datetime | None = None) -> datetime:
         stamp = float(value)
         if stamp < 1e12:
             stamp *= 1000
-        return datetime.fromtimestamp(stamp / 1000, tz=UTC)
+        try:
+            return datetime.fromtimestamp(stamp / 1000, tz=UTC)
+        except (OSError, ValueError, OverflowError):
+            logger.warning(
+                "Suppressed out-of-range numeric timestamp at _common.py",
+                exc_info=True,
+            )
+            return default or utcnow()
     if isinstance(value, str):
         stripped = value.strip()
         if stripped:

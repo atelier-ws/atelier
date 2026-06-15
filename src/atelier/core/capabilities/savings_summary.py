@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import UTC
 from pathlib import Path
@@ -962,18 +963,29 @@ def compute_savings_summary(
 _STATUS_TIPS: tuple[str, ...] = (
     "Try `atelier savings` to see tokens, time, and $ saved",
     "Use `sql` to explore your schema without reading SQL files",
-    "Batch reads: read(files=[...]) — one call, many files",
-    "grep content-mode finds and reads code in one step",
-    "Delegate scans to atelier:explore — cheaper model, fewer tokens",
-    "Use the memory tool to recall past sessions and decisions",
+    "Batch reads: `read(files=[...])` — one call, many files",
+    "`grep` content-mode finds and reads code in one step",
+    "Delegate scans to `atelier:explore` — cheaper model, fewer tokens",
+    "Use the `memory` tool to recall past sessions and decisions",
 )
 
 
 def _status_tip() -> str:
     """A rotating feature tip (changes ~every 90s so it isn't flickery)."""
-    import time
-
     return _STATUS_TIPS[int(time.time() // 90) % len(_STATUS_TIPS)]
+
+
+def _colorize_tip(text: str, c_dim: str, c_tool: str, c_reset: str) -> str:
+    """Highlight backtick-wrapped tool/command names; wrap the rest in dim.
+
+    ``text`` is left unmodified when all color strings are empty (no-color mode).
+    """
+    colored = re.sub(
+        r"`([^`]+)`",
+        lambda m: f"{c_reset}{c_tool}{m.group(1)}{c_reset}{c_dim}",
+        text,
+    )
+    return f"{c_dim}{colored}{c_reset}"
 
 
 def _resolve_status_text(atelier_root: str | Path | None = None) -> str:
@@ -1128,3 +1140,266 @@ def savings_line(
         f"|{summary.saved_pct:.0f}%"
         f"|{summary.vs_vanilla_calls}|${summary.vs_vanilla_usd:.3f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Rotating statusline segment  (replaces the multi-field --line parse in bash)
+# ---------------------------------------------------------------------------
+
+_SEGMENT_INTERVAL_S: int = 8  # seconds before advancing to the next frame
+
+
+def _read_historical_savings(days: int, root: Path) -> tuple[float, int]:
+    """Sum cost_saved_usd and tokens_saved from runs/*_context_savings.jsonl for the last N days.
+
+    Uses file mtime as a cheap pre-filter so we skip files that are entirely
+    outside the window before reading a single byte.
+    """
+    runs_dir = root / "runs"
+    if not runs_dir.exists():
+        return 0.0, 0
+    cutoff = time.time() - days * 86_400
+    total_usd = 0.0
+    total_tok = 0
+    try:
+        from datetime import datetime
+
+        for p in runs_dir.glob("*_context_savings.jsonl"):
+            # Fast path: skip files not touched since before the window.
+            try:
+                if p.stat().st_mtime < cutoff:
+                    continue
+            except OSError:
+                continue
+            try:
+                with p.open(encoding="utf-8") as fh:
+                    for raw in fh:
+                        raw = raw.strip()
+                        if not raw:
+                            continue
+                        try:
+                            row = json.loads(raw)
+                        except Exception:
+                            continue
+                        at_str = row.get("at", "")
+                        if not at_str:
+                            continue
+                        try:
+                            ts = datetime.fromisoformat(at_str).timestamp()
+                        except Exception:
+                            continue
+                        if ts < cutoff:
+                            continue
+                        total_usd += float(row.get("cost_saved_usd") or 0)
+                        total_tok += int(row.get("tokens_saved") or 0)
+            except OSError:
+                continue
+    except Exception:
+        logging.exception("Recovered reading historical savings")
+    return total_usd, total_tok
+
+
+def _read_review_verdict(session_id: str, root: Path) -> str:
+    """Return 'NEEDS_FIX' when an unconsumed review verdict exists, else ''."""
+    review_log = root / "reviews" / f"{session_id}.jsonl"
+    if not review_log.exists():
+        return ""
+    try:
+        with review_log.open(encoding="utf-8") as fh:
+            for raw in fh:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    row = json.loads(raw)
+                except Exception:
+                    continue
+                if isinstance(row, dict) and not row.get("consumed") and row.get("verdict") == "NEEDS_FIX":
+                    return "NEEDS_FIX"
+    except Exception:
+        pass
+    return ""
+
+
+def _read_last_saved_tok(session_id: str, root: Path) -> int:
+    """Most recent positive tokens_saved from the per-call context savings ledger."""
+    ledger = root / "runs" / f"{session_id}_context_savings.jsonl"
+    if not ledger.exists():
+        return 0
+    try:
+        lines = ledger.read_text(encoding="utf-8").splitlines()
+        last_val = 0
+        for raw in lines[-40:]:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                v = int(json.loads(raw).get("tokens_saved") or 0)
+                if v > 0:
+                    last_val = v
+            except Exception:
+                continue
+        return last_val
+    except Exception:
+        return 0
+
+
+def _get_frame_index(state_path: Path, num_frames: int) -> int:
+    """Return the current frame index, advancing the rolling counter every _SEGMENT_INTERVAL_S."""
+    counter = 0
+    last_ts = 0.0
+    try:
+        if state_path.exists():
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            counter = int(state.get("counter", 0))
+            last_ts = float(state.get("ts", 0))
+    except Exception:
+        pass
+    now = time.time()
+    if now - last_ts >= _SEGMENT_INTERVAL_S:
+        counter += 1
+        try:
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(json.dumps({"counter": counter, "ts": now}), encoding="utf-8")
+        except Exception:
+            pass
+    return counter % max(1, num_frames)
+
+
+def savings_segment(
+    session_id: str = "",
+    *,
+    atelier_root: str | Path | None = None,
+    live_cost_usd: float = 0.0,
+    live_in_tok: int = 0,
+    live_cache_tok: int = 0,
+    live_out_tok: int = 0,
+    no_color: bool = False,
+) -> str:
+    """Return a pre-formatted, pre-colored rotating statusline segment.
+
+    Reads frame state from ``<root>/statusline_frame_state.json``, advances the
+    frame every ``_SEGMENT_INTERVAL_S`` seconds, and returns the current frame's
+    content.  Callers just print what they receive — all formatting lives here.
+
+    Frames (non-empty only):
+      0  live cost + I/C/O token breakdown
+      1  session savings + % saved
+      2  carry credit (♻) and/or routing savings
+      3  vs vanilla Claude Code roundtrips
+      4  7-day historical savings
+      5  30-day historical savings
+      6  status tip / update notice
+
+    The review:NEEDS_FIX alert is appended to every frame (not rotated away).
+    """
+    env_root = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or ""
+    root: Path
+    if atelier_root is not None:
+        root = Path(atelier_root)
+    elif env_root:
+        root = Path(env_root)
+    else:
+        root = Path.home() / ".atelier"
+
+    # ANSI palette (mirrors statusline.sh)
+    if no_color:
+        C_BRAND = C_DIM = C_GREEN = C_COST = C_RED = C_RESET = ""
+    else:
+        C_BRAND = "\033[1;38;2;168;85;247m"  # purple  — carry / ♻
+        C_DIM = "\033[2;38;2;200;200;200m"  # dim grey — separators, tips
+        C_GREEN = "\033[1;38;2;72;199;116m"  # green   — savings / ↓
+        C_COST = "\033[38;2;255;180;70m"  # amber   — cost / ↑
+        C_RED = "\033[1;38;2;255;99;71m"  # red     — NEEDS_FIX
+        C_RESET = "\033[0m"
+    # Dim / used between label-value pairs on text-only frames.
+    SEP = f"{C_DIM}/{C_RESET}"
+
+    summary = compute_savings_summary(session_id, atelier_root=root)
+    summary.status_text = _resolve_status_text(root)
+
+    # Prefer transcript-derived cumulative I/C/O when available.
+    if summary.display_input_tokens > 0 or summary.display_cache_tokens > 0 or summary.display_output_tokens > 0:
+        eff_in = summary.display_input_tokens
+        eff_cache = summary.display_cache_tokens
+        eff_out = summary.display_output_tokens
+    else:
+        eff_in = live_in_tok
+        eff_cache = live_cache_tok
+        eff_out = live_out_tok
+
+    has_usage = eff_in > 0 or eff_cache > 0
+
+    # Cost: max(transcript-derived, live Claude value) so resumed sessions show correctly.
+    display_cost = max(summary.est_cost_usd, live_cost_usd)
+
+    # Historical savings (scanned once per segment call — fast file scan).
+    usd_7d, tok_7d = _read_historical_savings(7, root)
+    usd_30d, tok_30d = _read_historical_savings(30, root)
+
+    last_saved_tok = _read_last_saved_tok(session_id, root) if session_id else 0
+
+    # --- Build frames as (has_icon, content) tuples.
+    # has_icon=True  → ↑/↓/♻ leads the frame; no separator needed before it.
+    # has_icon=False → plain text; SEP is prepended so it doesn't abut ctx% directly.
+    frames: list[tuple[bool, str]] = []
+
+    # Frame 0: cost (I C O) + savings (tok+N) + carry (tok) all inline.
+    in_f, cache_f, out_f = _fmt_tok(eff_in), _fmt_tok(eff_cache), _fmt_tok(eff_out)
+    combined = f"{C_COST}↑ ${display_cost:.3f}{C_RESET} {C_DIM}(I:{in_f} C:{cache_f} O:{out_f}){C_RESET}"
+    if has_usage and summary.saved_usd > 0:
+        last_seg = f"+{last_saved_tok}" if last_saved_tok > 0 else ""
+        combined += f"  {C_GREEN}↓ ${summary.saved_usd:.3f}{C_DIM}({_fmt_tok(summary.ctx_saved)}{last_seg}){C_RESET}"
+    if summary.carry_usd > 0:
+        combined += f"  {C_BRAND}♻ ${summary.carry_usd:.3f}{C_DIM}({_fmt_tok(summary.carry_tokens)}){C_RESET}"
+    if summary.routing_saved_usd > 0:
+        combined += f"  {C_DIM}routing:{C_RESET} {C_GREEN}${summary.routing_saved_usd:.3f}{C_RESET}"
+    frames.append((True, combined))
+
+    # Frame 1: vs vanilla Claude Code (text-only — no icon)
+    if summary.vs_vanilla_calls > 0:
+        frames.append(
+            (
+                False,
+                f"{C_DIM}vs CC:{C_RESET} {summary.vs_vanilla_calls} rt"
+                f" {SEP} {C_GREEN}${summary.vs_vanilla_usd:.3f}{C_RESET}",
+            )
+        )
+
+    # Frame 2: 7-day historical savings  — $(tok)
+    if usd_7d > 0:
+        frames.append(
+            (
+                True,
+                f"{C_GREEN}↓ 7d: ${usd_7d:.2f}{C_DIM}({_fmt_tok(tok_7d)}){C_RESET}",
+            )
+        )
+
+    # Frame 3: 30-day historical savings  — $(tok)
+    if usd_30d > 0:
+        frames.append(
+            (
+                True,
+                f"{C_GREEN}↓ 30d: ${usd_30d:.2f}{C_DIM}({_fmt_tok(tok_30d)}){C_RESET}",
+            )
+        )
+
+    # Frame 6: status tip / update notice (text-only)
+    # Backtick-wrapped tool names are highlighted in brand purple; rest is dim.
+    if summary.status_text:
+        frames.append((False, _colorize_tip(summary.status_text, C_DIM, C_BRAND, C_RESET)))
+
+    # Advance the rolling counter and select current frame.
+    state_path = root / "statusline_frame_state.json"
+    idx = _get_frame_index(state_path, len(frames))
+    has_icon, segment = frames[idx]
+
+    # Review verdict: pinned — appended to every frame, never rotated away.
+    if session_id:
+        verdict = _read_review_verdict(session_id, root)
+        if verdict == "NEEDS_FIX":
+            segment += f" {SEP} {C_RED}review: NEEDS_FIX{C_RESET}"
+
+    # Icon-led frames (↑ ↓ ♻) are their own visual separator.
+    # Text-only frames get SEP prepended so they don't abut ctx% directly.
+    return f" {segment}" if has_icon else f" {SEP} {segment}"

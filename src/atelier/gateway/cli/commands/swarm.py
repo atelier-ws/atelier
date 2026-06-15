@@ -378,7 +378,7 @@ def swarm_apply(
             click.echo(f"  > {command}")
             try:
                 # We use shell=True because commands are formatted strings with paths and multiple refs
-                subprocess.run(command, shell=True, check=True, cwd=ctx.obj["root"])
+                subprocess.run(command, shell=True, check=True, cwd=state.repo_root)
             except subprocess.CalledProcessError as exc:
                 raise click.ClickException(f"Command failed: {command}\n{exc}") from exc
         click.echo("\nSuccessfully applied all changes.")

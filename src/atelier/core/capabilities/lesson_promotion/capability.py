@@ -236,7 +236,7 @@ class LessonPromoterCapability:
     def _promote(self, candidate: LessonCandidate) -> LessonPromotion:
         kind = str(getattr(candidate, "kind", ""))
 
-        if kind in {"new_block", "reasonblock"}:
+        if kind in {"new_block", "playbook"}:
             block = candidate.proposed_block
             if block is None:
                 # Fallback to the existing extractor path from evidence traces.

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from atelier.core.capabilities.lesson_promotion.pr_bot import LessonPrBot
 from atelier.core.foundation.lesson_models import LessonCandidate
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.store import ContextStore
 
 
@@ -15,7 +15,7 @@ def test_pr_bot_dry_run_emits_diff_without_side_effects(tmp_path: Path) -> None:
     store = ContextStore(root)
     store.init()
 
-    block = ReasonBlock(
+    block = Playbook(
         id="rb.lesson.test",
         title="Lesson test block",
         domain="coding",

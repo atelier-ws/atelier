@@ -2,8 +2,8 @@
 
 A reasoning/procedure runtime for coding and product agents. Combines:
 
-1. ReasonBlocks-style reasoning reuse (retrieve known procedures before/during runs).
-2. Lemma-style failure improvement (record traces, detect recurring failures).
+1. Playbook-based reasoning reuse (retrieve known procedures before/during runs).
+2. Failure-driven improvement (record traces, detect recurring failures).
 3. Rubric-style verification (check plans/outputs against expert rubrics).
 
 This is NOT memory. It stores observable traces, explicit procedures,
@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from atelier.core.foundation.models import (
         PlanCheckResult,
-        ReasonBlock,
+        Playbook,
         RescueResult,
         Rubric,
         RubricResult,
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 _LAZY_EXPORTS = {
     "PlanCheckResult": ("atelier.core.foundation.models", "PlanCheckResult"),
-    "ReasonBlock": ("atelier.core.foundation.models", "ReasonBlock"),
+    "Playbook": ("atelier.core.foundation.models", "Playbook"),
     "RescueResult": ("atelier.core.foundation.models", "RescueResult"),
     "Rubric": ("atelier.core.foundation.models", "Rubric"),
     "RubricResult": ("atelier.core.foundation.models", "RubricResult"),
@@ -80,7 +80,7 @@ __all__ = [
     "LocalClient",
     "MCPClient",
     "PlanCheckResult",
-    "ReasonBlock",
+    "Playbook",
     "RemoteClient",
     "RescueResult",
     "Rubric",

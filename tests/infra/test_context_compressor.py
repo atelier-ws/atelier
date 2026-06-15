@@ -46,10 +46,10 @@ def test_compressor_prompt_block_renders() -> None:
     assert "Atelier compact state" in text
 
 
-def test_compressor_preserves_recent_turns_reasonblocks_and_claude_hash(tmp_path: Path) -> None:
+def test_compressor_preserves_recent_turns_playbooks_and_claude_hash(tmp_path: Path) -> None:
     (tmp_path / "CLAUDE.md").write_text("project instructions", encoding="utf-8")
     led = RunLedger(task="t")
-    led.active_reasonblocks = ["rb-a", "rb-b"]
+    led.active_playbooks = ["rb-a", "rb-b"]
     for idx in range(12):
         led.record("agent_message", f"turn {idx}", {"idx": idx})
 
@@ -57,7 +57,7 @@ def test_compressor_preserves_recent_turns_reasonblocks_and_claude_hash(tmp_path
 
     assert len(state.recent_turns) == 10
     assert "turn 2" in state.recent_turns[0]
-    assert state.pinned_reasonblocks == ["rb-a", "rb-b"]
+    assert state.pinned_playbooks == ["rb-a", "rb-b"]
     assert state.claude_md_hash is not None
 
 

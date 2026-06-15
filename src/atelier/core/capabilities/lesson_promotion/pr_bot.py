@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromotion
-from atelier.core.foundation.models import ReasonBlock
-from atelier.core.foundation.renderer import render_block_markdown
+from atelier.core.foundation.models import Playbook
+from atelier.core.foundation.renderer import render_playbook_markdown
 from atelier.core.foundation.store import ContextStore
 
 _BOT_ENV_FLAG = "ATELIER_LESSON_PR_BOT_ENABLED"
@@ -55,10 +55,10 @@ class LessonPrBot:
 
         block = self._resolve_block(candidate)
         if block is None:
-            return {"skipped": True, "reason": "no_reasonblock_patch"}
+            return {"skipped": True, "reason": "no_playbook_patch"}
 
         block_path = self.store.blocks_dir / f"{block.id}.md"
-        new_content = render_block_markdown(block)
+        new_content = render_playbook_markdown(block)
         old_content = block_path.read_text(encoding="utf-8") if block_path.exists() else ""
 
         branch = f"atelier/lesson/{lesson_id}"
@@ -118,7 +118,7 @@ class LessonPrBot:
             "pr_url": pr_url,
         }
 
-    def _resolve_block(self, candidate: LessonCandidate) -> ReasonBlock | None:
+    def _resolve_block(self, candidate: LessonCandidate) -> Playbook | None:
         if candidate.proposed_block is not None:
             return candidate.proposed_block
         promotions = self.store.list_lesson_promotions(limit=200)

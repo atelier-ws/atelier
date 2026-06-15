@@ -115,7 +115,7 @@ class AtelierRuntimeCore:
             fsm_skip_etraces=fsm_skip_etraces,
         )
         should_return_payload = include_telemetry or agent_id is not None
-        reasonblock_context = render_context_for_agent([item.block for item in scored])
+        playbook_context = render_context_for_agent([item.block for item in scored])
         bootstrap_context = ""
         bootstrap_blocks: list[dict[str, Any]] = []
         bootstrap_repo_id: str | None = None
@@ -179,8 +179,8 @@ class AtelierRuntimeCore:
                 scoped_passages, query=task
             )
 
-        context = reasonblock_context + bootstrap_context + memory_context
-        reasonblock_tokens = count_tokens(reasonblock_context)
+        context = playbook_context + bootstrap_context + memory_context
+        playbook_tokens = count_tokens(playbook_context)
         bootstrap_tokens = count_tokens(bootstrap_context) if bootstrap_context else 0
         memory_tokens = count_tokens(memory_context) if memory_context else 0
         if not should_return_payload and not context:
@@ -191,10 +191,10 @@ class AtelierRuntimeCore:
             "context": context,
             "recalled_passages": recalled_passages,
             "tokens_breakdown": {
-                "reasonblocks": reasonblock_tokens,
+                "playbooks": playbook_tokens,
                 "bootstrap": bootstrap_tokens,
                 "memory": memory_tokens,
-                "total": reasonblock_tokens + bootstrap_tokens + memory_tokens,
+                "total": playbook_tokens + bootstrap_tokens + memory_tokens,
             },
             "bootstrap": {
                 "status": "warm" if bootstrap_context else bootstrap_state,

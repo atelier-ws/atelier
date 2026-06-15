@@ -335,7 +335,9 @@ def test_tool_code_search_can_attach_compact_rendered_block(tmp_path: Path, monk
     )
 
     assert "rendered" in payload
-    assert "src/orders.py:1" in payload["rendered"]
+    # Grouped by file: path header once, then an indented per-hit line.
+    assert "- src/orders.py" in payload["rendered"]
+    assert "  - 1 — orders.OrderService [class]" in payload["rendered"]
     assert "class OrderService" not in payload["rendered"]
 
 
@@ -658,7 +660,9 @@ def test_tool_code_callers_rendered_shape_excludes_source(tmp_path: Path, monkey
     )
 
     assert "rendered" in payload
-    assert "src/checkout.py:24" in payload["rendered"]
+    # Grouped by file: path header once, then an indented per-hit line.
+    assert "- src/checkout.py" in payload["rendered"]
+    assert "  - 24 — checkout.place_order" in payload["rendered"]
     assert "def place_order" not in payload["rendered"]
 
 

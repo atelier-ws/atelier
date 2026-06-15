@@ -45,7 +45,7 @@ def compact_tool_fn(bench_workspace: Path) -> Any:
         ledger.repeated_failures = list(seed.get("repeated_failures") or [])
         ledger.verified_facts = list(seed.get("verified_facts") or [])
         ledger.open_questions = list(seed.get("open_questions") or [])
-        ledger.active_reasonblocks = list(seed.get("active_reasonblocks") or [])
+        ledger.active_playbooks = list(seed.get("active_playbooks") or [])
         for event in seed.get("tool_events") or []:
             if isinstance(event, dict):
                 ledger.record_tool_call(

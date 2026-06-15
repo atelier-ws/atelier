@@ -1028,9 +1028,9 @@ def test_list_blocks_empty(app_no_auth: TestClient) -> None:
 
 
 def test_get_block_from_compat_endpoints(app_no_auth: TestClient, store: SQLiteStore) -> None:
-    from atelier.core.foundation.models import ReasonBlock
+    from atelier.core.foundation.models import Playbook
 
-    block = ReasonBlock(
+    block = Playbook(
         id="rb-api-test",
         title="API Test Block",
         domain="test",

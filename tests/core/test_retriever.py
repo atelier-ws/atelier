@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.retriever import TaskContext, retrieve
 from atelier.core.foundation.store import ContextStore
 
@@ -16,8 +16,8 @@ def _block(
     tools: Sequence[str] = (),
     failures: Sequence[str] = (),
     title: str = "T",
-) -> ReasonBlock:
-    return ReasonBlock(
+) -> Playbook:
+    return Playbook(
         id=bid,
         title=title,
         domain=domain,
@@ -68,8 +68,8 @@ def test_retrieve_excludes_deprecated_and_quarantined(store: ContextStore) -> No
 # --------------------------------------------------------------------------- #
 
 
-def _tiered_block(bid: str, tier: str, **kw: object) -> ReasonBlock:
-    return ReasonBlock(
+def _tiered_block(bid: str, tier: str, **kw: object) -> Playbook:
+    return Playbook(
         id=bid,
         title=f"{tier}-block",
         domain="coding",

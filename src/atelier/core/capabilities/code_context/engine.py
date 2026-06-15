@@ -222,6 +222,126 @@ _EXPLORE_ESSENTIAL_KEYS = [
 _EXPLORE_OPTIONAL_KEYS = ["relationships", "files", "additional_relevant_files"]
 _EXPLORE_SOURCE_SECTION_MAX_CHARS = resolve_output_policy("context").max_code_block_chars
 
+# Callee short-names that resolve to language builtins / ubiquitous container
+# methods. As callees they have no navigable definition and only add noise +
+# tokens, so they are dropped when no same-language definition is indexed.
+_PY_CALLEE_NOISE: frozenset[str] = frozenset(
+    {
+        "abs",
+        "all",
+        "any",
+        "ascii",
+        "bin",
+        "bool",
+        "bytearray",
+        "bytes",
+        "callable",
+        "chr",
+        "classmethod",
+        "compile",
+        "complex",
+        "delattr",
+        "dict",
+        "dir",
+        "divmod",
+        "enumerate",
+        "eval",
+        "exec",
+        "filter",
+        "float",
+        "format",
+        "frozenset",
+        "getattr",
+        "globals",
+        "hasattr",
+        "hash",
+        "help",
+        "hex",
+        "id",
+        "input",
+        "int",
+        "isinstance",
+        "issubclass",
+        "iter",
+        "len",
+        "list",
+        "locals",
+        "map",
+        "max",
+        "memoryview",
+        "min",
+        "next",
+        "object",
+        "oct",
+        "open",
+        "ord",
+        "pow",
+        "print",
+        "property",
+        "range",
+        "repr",
+        "reversed",
+        "round",
+        "set",
+        "setattr",
+        "slice",
+        "sorted",
+        "staticmethod",
+        "str",
+        "sum",
+        "super",
+        "tuple",
+        "type",
+        "vars",
+        "zip",
+        "append",
+        "extend",
+        "insert",
+        "pop",
+        "remove",
+        "clear",
+        "copy",
+        "get",
+        "keys",
+        "values",
+        "items",
+        "update",
+        "setdefault",
+        "add",
+        "discard",
+        "join",
+        "split",
+        "rsplit",
+        "splitlines",
+        "strip",
+        "lstrip",
+        "rstrip",
+        "replace",
+        "startswith",
+        "endswith",
+        "lower",
+        "upper",
+        "title",
+        "encode",
+        "decode",
+        "read",
+        "write",
+        "readline",
+        "readlines",
+        "close",
+        "flush",
+        "seek",
+        "format_map",
+        "index",
+        "count",
+        "sort",
+        "reverse",
+        "find",
+        "rfind",
+        "group",
+    }
+)
+
 _USAGES_ESSENTIAL_KEYS = ["file_path", "line", "provenance"]
 _USAGES_OPTIONAL_KEYS = ["snippet", "caller", "edge_kind", "confidence"]
 _PATTERN_ESSENTIAL_KEYS = ["snippet"]
@@ -3400,16 +3520,18 @@ class CodeContextEngine:
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
             record = _row_to_symbol(row)
-            grouped.setdefault(record.file_path, []).append(
-                {
-                    "name": record.symbol_name,
-                    "qualified_name": record.qualified_name,
-                    "kind": record.kind,
-                    "signature": record.signature,
-                    "line_start": record.start_line,
-                    "line_end": record.end_line,
-                }
-            )
+            entry: dict[str, Any] = {
+                "name": record.symbol_name,
+                "kind": record.kind,
+                "signature": record.signature,
+                "line_start": record.start_line,
+                "line_end": record.end_line,
+            }
+            # Drop qualified_name when it duplicates name (the common case for
+            # module-level symbols) — redundant bytes the agent never needs.
+            if record.qualified_name and record.qualified_name != record.symbol_name:
+                entry["qualified_name"] = record.qualified_name
+            grouped.setdefault(record.file_path, []).append(entry)
         return {"repo_id": self.repo_id, "files": grouped, "symbol_count": len(rows)}
 
     def repo_map(self, *, seed_files: list[str] | None = None, budget_tokens: int = 2000) -> dict[str, Any]:
@@ -4162,7 +4284,9 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found" if merged_status == "empty" else None
+                else "no related call edges were found"
+                if merged_status == "empty"
+                else None
             )
             merged_snapshot = None
             if snapshot:
@@ -5726,13 +5850,20 @@ class CodeContextEngine:
                 """,
                 (self.repo_id, target_file, target_start, target_end),
             ).fetchall()
+        target_ext = Path(target_file).suffix
+        target_is_python = target_ext == ".py"
         nodes_by_identity: dict[str, CallGraphNode] = {}
         for row in rows:
             callee_name = str(row["callee_name"])
             short_name = callee_name.rsplit(".", 1)[-1]
             matched = self._indexed_symbol_payloads_for_call_name(callee_name)
-            if matched:
-                for payload in matched:
+            # Keep only definitions in the caller's own language. A Python
+            # function cannot call a TS/JS symbol that merely shares the short
+            # name (e.g. `range`, `min`), so cross-language name collisions are
+            # dropped rather than surfaced as bogus callees.
+            same_lang = [p for p in matched if Path(str(p.get("file_path") or "")).suffix == target_ext]
+            if same_lang:
+                for payload in same_lang:
                     node = CallGraphNode(
                         symbol_id=str(payload["symbol_id"]),
                         symbol_name=str(payload["symbol_name"]),
@@ -5744,6 +5875,11 @@ class CodeContextEngine:
                         provenance=str(payload.get("provenance") or "local_index"),
                     )
                     nodes_by_identity[node.symbol_id] = node
+                continue
+            # No same-language definition: for Python callers, builtins and
+            # ubiquitous container methods have no navigable target and are pure
+            # noise — skip them instead of emitting a synthetic reference node.
+            if target_is_python and short_name in _PY_CALLEE_NOISE:
                 continue
             synthetic_id = f"local-callee::{hashlib.sha1(callee_name.encode('utf-8')).hexdigest()[:16]}"
             if synthetic_id not in nodes_by_identity:
@@ -6239,9 +6375,25 @@ class CodeContextEngine:
         *,
         budget_tokens: int,
     ) -> dict[str, Any]:
+        # `diff` is the one essential field, so the budget packer never drops it.
+        # A repo-wide rewrite would otherwise emit an unbounded verbatim diff into
+        # the model context; head+tail truncate so large rewrites stay bounded
+        # while small previews pass through untouched. files_changed always lists
+        # every affected file regardless of truncation.
+        diff_lines = (result.diff or "").splitlines(keepends=True)
+        diff_head, diff_tail = 170, 30
+        if len(diff_lines) > diff_head + diff_tail:
+            elided = len(diff_lines) - diff_head - diff_tail
+            diff = (
+                "".join(diff_lines[:diff_head])
+                + f"... ({elided} more diff lines elided; see files_changed)\n"
+                + "".join(diff_lines[-diff_tail:])
+            )
+        else:
+            diff = result.diff
         return self._pack_single_payload(
             {
-                "diff": result.diff,
+                "diff": diff,
                 "files_changed": result.files_changed,
                 "provenance": "ast-grep",
             },

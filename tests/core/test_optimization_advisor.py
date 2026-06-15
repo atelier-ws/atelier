@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from atelier.core.capabilities.optimization.complexity import score_complexity
 from atelier.core.capabilities.optimization.golden_runner import run_golden_suite
 from atelier.core.capabilities.optimization.optimizer import (
@@ -14,6 +16,7 @@ from atelier.core.capabilities.optimization.policy import (
     preset_policy,
     save_policy,
 )
+from atelier.core.capabilities.optimization.shadow import build_shadow_state
 from atelier.core.foundation.models import Trace, UsageEntry
 
 
@@ -105,3 +108,13 @@ def test_golden_optimization_corpus_has_at_least_50_well_formed_tasks() -> None:
 
     assert result.total >= 50
     assert result.failures == []
+
+
+def test_shadow_daily_cap_enforced_when_baseline_is_zero() -> None:
+    with pytest.raises(ValueError):
+        build_shadow_state(
+            policy="balanced",
+            days=7,
+            baseline_weekly_cost_usd=0.0,
+            max_daily_spend_usd=1000.0,
+        )

@@ -454,7 +454,7 @@ def _match_line_numbers(
     if regex is not None:
         out: list[int] = []
         for idx, line in enumerate(lines, start=1):
-            if deadline is not None and idx % 256 == 0 and time.monotonic() > deadline:
+            if deadline is not None and time.monotonic() > deadline:
                 break
             if regex.search(line[:_REGEX_MAX_LINE_CHARS]):
                 out.append(idx)

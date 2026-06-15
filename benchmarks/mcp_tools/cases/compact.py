@@ -78,7 +78,7 @@ def _build_compact_cases() -> list[BenchCase]:
                 f"anchor file is {anchor.path}",
             ],
             "open_questions": [f"Should {symbol.name} move out of {symbol.path}?"],
-            "active_reasonblocks": [symbol.name, anchor.path],
+            "active_playbooks": [symbol.name, anchor.path],
             "current_plan": [
                 f"Inspect {symbol.path}",
                 f"Trace callers of {symbol.name}",

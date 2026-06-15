@@ -347,7 +347,7 @@ def test_mcp_server_record_trace_persists_and_archives_learnings(tmp_path: Path)
                     {
                         "kind": "didnt work",
                         "text": "Relying on output_summary hid the actual lesson.",
-                        "target": "reasonblock",
+                        "target": "playbook",
                     },
                 ],
             }
@@ -360,7 +360,7 @@ def test_mcp_server_record_trace_persists_and_archives_learnings(tmp_path: Path)
             "Relying on output_summary hid the actual lesson.",
         ]
         assert [learning.kind for learning in stored_trace.learnings] == ["note", "did_not_work"]
-        assert stored_trace.learnings[1].promote_to == "reasonblock"
+        assert stored_trace.learnings[1].promote_to == "playbook"
         assert fake_memory.insert_passage.call_count == 2
 
 

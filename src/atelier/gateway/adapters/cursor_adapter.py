@@ -6,7 +6,7 @@ Cursor is an AI-native IDE built on VS Code that supports MCP servers via
 This adapter wraps Atelier's reasoning context and rubric gates so Cursor's
 agent (the Cursor Tab / Composer) can:
 
-- Retrieve relevant ReasonBlocks before tackling a task
+- Retrieve relevant Playbooks before tackling a task
 - Run rubric gates to validate results
 - Rescue from failures with recovery hints
 - Record traces for post-run analysis

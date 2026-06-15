@@ -56,24 +56,24 @@ class TestCompactAdviseLogic:
         assert not should_compact
 
     def test_preserve_blocks_selection(self) -> None:
-        """Test that preserve_blocks are correctly selected."""
+        """Test that preserve_playbooks are correctly selected."""
         ledger = RunLedger()
-        ledger.active_reasonblocks = ["block_a", "block_b", "block_c", "block_d"]
+        ledger.active_playbooks = ["block_a", "block_b", "block_c", "block_d"]
 
-        preserve_blocks = list(set(ledger.active_reasonblocks))[:3]
+        preserve_playbooks = list(set(ledger.active_playbooks))[:3]
 
-        assert len(preserve_blocks) == 3
+        assert len(preserve_playbooks) == 3
         # Check that 3 of the 4 blocks are present (set order is unpredictable)
-        assert all(block in ledger.active_reasonblocks for block in preserve_blocks)
+        assert all(block in ledger.active_playbooks for block in preserve_playbooks)
 
     def test_preserve_blocks_fewer_than_3(self) -> None:
         """Test block selection when fewer than 3 blocks exist."""
         ledger = RunLedger()
-        ledger.active_reasonblocks = ["block_a", "block_b"]
+        ledger.active_playbooks = ["block_a", "block_b"]
 
-        preserve_blocks = list(set(ledger.active_reasonblocks))[:3]
+        preserve_playbooks = list(set(ledger.active_playbooks))[:3]
 
-        assert len(preserve_blocks) == 2
+        assert len(preserve_playbooks) == 2
 
     def test_open_files_selection(self) -> None:
         """Test that open_files are correctly selected (last 5)."""
@@ -105,12 +105,12 @@ class TestCompactAdviseLogic:
     def test_suggested_prompt_generation(self) -> None:
         """Test that suggested_prompt is generated correctly."""
         utilisation_pct = 62.5
-        preserve_blocks = ["block_a", "block_b"]
+        preserve_playbooks = ["block_a", "block_b"]
         open_files = ["src/main.py", "src/utils.py"]
 
         suggested_prompt = (
             f"Compact this conversation. Context utilisation: {utilisation_pct}%. "
-            f"Please preserve these ReasonBlocks: {', '.join(preserve_blocks) or '(none yet)'}. "
+            f"Please preserve these Playbooks: {', '.join(preserve_playbooks) or '(none yet)'}. "
             f"Recently edited files: {', '.join(open_files) or '(none)'}"
         )
 
@@ -123,12 +123,12 @@ class TestCompactAdviseLogic:
     def test_suggested_prompt_with_no_blocks(self) -> None:
         """Test suggested_prompt when no blocks are preserved."""
         utilisation_pct = 45.0
-        preserve_blocks: list[str] = []
+        preserve_playbooks: list[str] = []
         open_files = ["src/main.py"]
 
         suggested_prompt = (
             f"Compact this conversation. Context utilisation: {utilisation_pct}%. "
-            f"Please preserve these ReasonBlocks: {', '.join(preserve_blocks) or '(none yet)'}. "
+            f"Please preserve these Playbooks: {', '.join(preserve_playbooks) or '(none yet)'}. "
             f"Recently edited files: {', '.join(open_files) or '(none)'}"
         )
 
@@ -147,7 +147,7 @@ class TestCompactManifestPersistence:
             "session_id": "test_run_123",
             "should_compact": True,
             "utilisation_pct": 62.5,
-            "preserve_blocks": ["block_a", "block_b"],
+            "preserve_playbooks": ["block_a", "block_b"],
             "pin_memory": ["mem_1"],
             "open_files": ["src/main.py"],
             "suggested_prompt": "Compact this conversation.",
@@ -161,7 +161,7 @@ class TestCompactManifestPersistence:
         assert read_manifest["session_id"] == "test_run_123"
         assert read_manifest["should_compact"] is True
         assert read_manifest["utilisation_pct"] == 62.5
-        assert len(read_manifest["preserve_blocks"]) == 2
+        assert len(read_manifest["preserve_playbooks"]) == 2
         assert len(read_manifest["pin_memory"]) == 1
 
     def test_manifest_path_creation(self, tmp_path: Path) -> None:

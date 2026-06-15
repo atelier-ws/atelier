@@ -48,7 +48,7 @@ def register(cli: click.Group) -> None:
         _IMPORT_FAILED = True
 
     try:
-        from .blocks import domain_group, report_cmd
+        from .playbooks import domain_group, report_cmd
 
         _h(domain_group)
         cli.add_command(domain_group)
@@ -107,9 +107,9 @@ def register(cli: click.Group) -> None:
 
         # 'atelier mcp' starts the stdio MCP server (replaces the legacy standalone binary)
         try:
-            from .mcp import mcp_cmd
+            from .mcp import mcp_group
 
-            cli.add_command(mcp_cmd)
+            cli.add_command(mcp_group)
         except (ModuleNotFoundError, ImportError):
             _IMPORT_FAILED = True
     except (ModuleNotFoundError, ImportError):

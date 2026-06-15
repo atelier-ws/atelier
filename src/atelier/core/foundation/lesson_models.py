@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from atelier.core.foundation.models import ReasonBlock, _utcnow
+from atelier.core.foundation.models import Playbook, _utcnow
 from atelier.infra.storage.ids import make_uuid7
 
 LessonCandidateKind = Literal["new_block", "edit_block", "new_rubric_check", "route-preference", "cost-cap"]
@@ -26,7 +26,7 @@ class LessonCandidate(BaseModel):
     cluster_fingerprint: str
     kind: LessonCandidateKind
     target_id: str | None = None
-    proposed_block: ReasonBlock | None = None
+    proposed_block: Playbook | None = None
     proposed_rubric_check: str | None = None
     evidence_trace_ids: list[str]
     body: str = ""

@@ -30,7 +30,7 @@ class Stability(StrEnum):
 
     STATIC = "static"  # tool schemas, system prompt, coding policy
     SESSION = "session"  # repo summary, project conventions
-    BRANCH = "branch"  # ReasonBlocks, file summaries for this task
+    BRANCH = "branch"  # Playbooks, file summaries for this task
     TURN = "turn"  # user task, current diff, last tool result
     VOLATILE = "volatile"  # timestamps, request IDs, raw logs
 
@@ -42,7 +42,7 @@ class BlockKind(StrEnum):
     SYSTEM = "system"
     CODING_POLICY = "coding_policy"
     REPO_SUMMARY = "repo_summary"
-    REASONBLOCK = "reasonblock"
+    PLAYBOOK = "playbook"
     FILE_SUMMARY = "file_summary"
     USER_TASK = "user_task"
     GIT_DIFF = "git_diff"
@@ -57,7 +57,7 @@ DEFAULT_STABILITY: dict[BlockKind, Stability] = {
     BlockKind.SYSTEM: Stability.STATIC,
     BlockKind.CODING_POLICY: Stability.STATIC,
     BlockKind.REPO_SUMMARY: Stability.SESSION,
-    BlockKind.REASONBLOCK: Stability.BRANCH,
+    BlockKind.PLAYBOOK: Stability.BRANCH,
     BlockKind.FILE_SUMMARY: Stability.BRANCH,
     BlockKind.USER_TASK: Stability.TURN,
     BlockKind.GIT_DIFF: Stability.TURN,

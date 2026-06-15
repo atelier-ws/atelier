@@ -16,7 +16,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.runtime import AtelierRuntimeCore, AtelierRuntimeV3
 from atelier.gateway.cli import cli
 from tests.helpers import init_store_at
@@ -92,8 +92,8 @@ def test_context_reuse_inject_includes_rescue_chains(tmp_path: Path) -> None:
     assert isinstance(payload["rescue_chains"], list)
 
 
-def _high_match_block(block_id: str, title: str, trigger: str) -> ReasonBlock:
-    return ReasonBlock(
+def _high_match_block(block_id: str, title: str, trigger: str) -> Playbook:
+    return Playbook(
         id=block_id,
         title=title,
         domain="state.change",
@@ -112,7 +112,7 @@ def test_context_reuse_filters_to_strong_top_two(tmp_path: Path) -> None:
     for idx, trigger in enumerate(["deploy", "rollback", "configuration"], start=1):
         rt.store.upsert_block(_high_match_block(f"strong-{idx}", f"Strong {idx}", trigger), write_markdown=False)
     rt.store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="weak-context",
             title="Weak context",
             domain="state.change",
@@ -139,7 +139,7 @@ def test_context_reuse_filters_to_strong_top_two(tmp_path: Path) -> None:
 def test_context_reuse_returns_empty_when_no_strong_match(tmp_path: Path) -> None:
     rt, _ = _make_rt(tmp_path)
     rt.store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="weak-only",
             title="Weak only",
             domain="weak.only",

@@ -1,7 +1,7 @@
 """Six trajectory monitors for agent health assessment.
 
-Pure-Python implementations of the six monitors from the ReasonBlocks.com
-trajectory monitor suite. Each monitor scores a single dimension in [0, 1]
+Pure-Python implementations of six trajectory-health monitors. Each monitor
+scores a single dimension in [0, 1]
 where 1 = maximum badness.
 
 Monitors:
@@ -34,7 +34,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 # --------------------------------------------------------------------------- #
-# Weights (coding profile — same defaults as ReasonBlocks.com)                #
+# Weights (coding profile)                #
 # --------------------------------------------------------------------------- #
 
 DEFAULT_WEIGHTS: dict[str, float] = {

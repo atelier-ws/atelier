@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from atelier.core.foundation.models import ReasonBlock
+from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.retriever import (
     WEIGHTS,
     WEIGHTS_WITH_VECTOR,
@@ -51,8 +51,8 @@ def _make_block(
     failure_signals: list[str] | None = None,
     success_count: int = 0,
     failure_count: int = 0,
-) -> ReasonBlock:
-    return ReasonBlock(
+) -> Playbook:
+    return Playbook(
         id=f"test-{title.lower().replace(' ', '-')}",
         title=title,
         domain=domain,
@@ -258,8 +258,8 @@ def test_generate_embedding_dimension(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(v) == 64
 
 
-def test_reasonblock_embedding_cache_round_trip(tmp_path: Path) -> None:
-    """ReasonBlock embedding cache should round-trip vectors by cache key and embedder."""
+def test_playbook_embedding_cache_round_trip(tmp_path: Path) -> None:
+    """Playbook embedding cache should round-trip vectors by cache key and embedder."""
     cache_key = vector_cache_key("rb-cache", "rendered content")
     assert get_cached_embedding(tmp_path, cache_key=cache_key, embedder_name="local:test") is None
 

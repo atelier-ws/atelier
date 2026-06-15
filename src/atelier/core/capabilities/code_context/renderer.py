@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 _CONTEXT_ENTRY_CAP = 8
@@ -22,6 +22,14 @@ def render_code_payload(op: str, payload: Mapping[str, Any]) -> str | None:
         return _render_symbol(payload)
     if op in {"callers", "callees", "usages"}:
         return _render_relations(op, payload)
+    if op == "pattern":
+        return _render_pattern(payload)
+    if op == "blame":
+        return _render_blame(payload)
+    if op == "rename":
+        return _render_rename(payload)
+    if op == "outline":
+        return _render_outline(payload)
     if op == "status":
         return _render_status(payload)
     if op == "index":
@@ -39,34 +47,53 @@ def render_code_payload(op: str, payload: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _group_rows_by_file(rows: Iterable[tuple[str, int, str]]) -> list[str]:
+    """Render ``(path, line, label)`` rows with each file path emitted once.
+
+    Emitting the path once per file (a header line, then indented per-hit
+    lines) instead of repeating the full path on every hit is the dominant
+    token win for clustered usages/callers/callees/search/pattern results.
+    """
+    from itertools import groupby
+
+    ordered = sorted(rows, key=lambda row: (row[0], row[1], row[2]))
+    out: list[str] = []
+    for file_path, group in groupby(ordered, key=lambda row: row[0]):
+        out.append(f"- {file_path}")
+        for _path, line, label in group:
+            loc = str(line) if line > 0 else ""
+            if loc and label:
+                out.append(f"  - {loc} — {label}")
+            elif loc:
+                out.append(f"  - {loc}")
+            elif label:
+                out.append(f"  - {label}")
+            else:
+                out.append("  - ?")
+    return out
+
+
 def _render_search(payload: Mapping[str, Any]) -> str:
     items = payload.get("items")
     if not isinstance(items, list):
         return "### search\n- no matches"
-    rows: list[str] = ["### search"]
-    provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        rows.append(f"- provenance: {provenance}")
-    sorted_items = sorted(
-        (item for item in items if isinstance(item, Mapping)),
-        key=lambda item: (
-            str(item.get("path") or item.get("file_path") or ""),
-            int(item.get("line") or item.get("start_line") or 0),
-            str(item.get("qualified_name") or item.get("name") or item.get("symbol_name") or ""),
-        ),
-    )
-    for item in sorted_items:
+    rows: list[tuple[str, int, str]] = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            continue
         file_path = str(item.get("path") or item.get("file_path") or "?")
         line = int(item.get("line") or item.get("start_line") or 0)
         name = str(item.get("qualified_name") or item.get("name") or item.get("symbol_name") or "?")
         kind = str(item.get("kind") or "?")
-        if line > 0:
-            rows.append(f"- {file_path}:{line} — {name} [{kind}]")
-        else:
-            rows.append(f"- {file_path} — {name} [{kind}]")
-    if len(rows) == 1 + (1 if provenance else 0):
-        rows.append("- no matches")
-    return "\n".join(rows)
+        rows.append((file_path, line, f"{name} [{kind}]"))
+    if not rows:
+        return "### search\n- no matches"
+    lines = ["### search"]
+    provenance = str(payload.get("provenance") or "").strip()
+    if provenance:
+        lines.append(f"- provenance: {provenance}")
+    lines.extend(_group_rows_by_file(rows))
+    return "\n".join(lines)
 
 
 def _render_symbol(payload: Mapping[str, Any]) -> str:
@@ -77,7 +104,10 @@ def _render_symbol(payload: Mapping[str, Any]) -> str:
     symbol = str(payload.get("qualified_name") or payload.get("name") or payload.get("symbol_name") or symbol_id or "?")
     kind = str(payload.get("kind") or "?")
     signature = str(payload.get("signature") or "").strip()
-    lines = ["### symbol", f"- id: {symbol_id or '?'}", f"- {symbol} [{kind}]"]
+    lines = ["### symbol"]
+    if symbol_id:
+        lines.append(f"- id: {symbol_id}")
+    lines.append(f"- {symbol} [{kind}]")
     if start_line > 0 and end_line >= start_line:
         lines.append(f"- location: {file_path}:{start_line}-{end_line}")
     else:
@@ -99,44 +129,38 @@ def _render_relations(op: str, payload: Mapping[str, Any]) -> str:
             target_loc = f" ({t_file}:{t_line})"
     lines = [f"### {op}", f"- target: {target_name}{target_loc}"]
     provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
-    meta_line_count = len(lines)
+
     if op == "usages":
-        lines.append("- group_by: file")
-        refs = _flatten_usages(payload.get("references"))
-        for ref in refs:
+        rows: list[tuple[str, int, str]] = []
+        for ref in _flatten_usages(payload.get("references")):
             file_path = str(ref.get("path") or ref.get("file_path") or "?")
             line = int(ref.get("line") or 0)
             caller = str(ref.get("caller") or ref.get("enclosing_qualified_name") or "").strip()
-            if caller:
-                lines.append(f"- {file_path}:{line} — {caller}")
-            else:
-                lines.append(f"- {file_path}:{line}")
-        if len(lines) == meta_line_count:
+            rows.append((file_path, line, caller))
+        if not rows:
             lines.append("- no references")
+            return "\n".join(lines)
+        if provenance:
+            lines.append(f"- provenance: {provenance}")
+        lines.extend(_group_rows_by_file(rows))
         return "\n".join(lines)
 
     related = payload.get("related")
+    rows = []
     if isinstance(related, list):
-        rows = sorted(
-            (item for item in related if isinstance(item, Mapping)),
-            key=lambda item: (
-                str(item.get("path") or item.get("file_path") or ""),
-                int(item.get("line") or item.get("start_line") or 0),
-                str(item.get("qualified_name") or item.get("name") or item.get("symbol_name") or ""),
-            ),
-        )
-        for item in rows:
+        for item in related:
+            if not isinstance(item, Mapping):
+                continue
             name = str(item.get("qualified_name") or item.get("name") or item.get("symbol_name") or "?")
             file_path = str(item.get("path") or item.get("file_path") or "?")
             line = int(item.get("line") or item.get("start_line") or 0)
-            if line > 0:
-                lines.append(f"- {file_path}:{line} — {name}")
-            else:
-                lines.append(f"- {file_path} — {name}")
-    if len(lines) == meta_line_count:
+            rows.append((file_path, line, name))
+    if not rows:
         lines.append("- no related symbols")
+        return "\n".join(lines)
+    if provenance:
+        lines.append(f"- provenance: {provenance}")
+    lines.extend(_group_rows_by_file(rows))
     return "\n".join(lines)
 
 
@@ -159,6 +183,118 @@ def _flatten_usages(references: Any) -> list[Mapping[str, Any]]:
             int(item.get("column") or 0),
         ),
     )
+
+
+def _render_pattern(payload: Mapping[str, Any]) -> str | None:
+    matches = payload.get("matches")
+    # Rewrite responses carry a diff/files_changed, not matches -- leave those as
+    # JSON so the agent still receives the structured diff. Only search responses
+    # (matches is a list, possibly empty) get the compact markdown treatment.
+    if not isinstance(matches, list):
+        return None
+    rows: list[tuple[str, int, str]] = []
+    for match in matches:
+        if not isinstance(match, Mapping):
+            continue
+        file_path = str(match.get("path") or match.get("file_path") or "?")
+        line = int(match.get("line") or match.get("start_line") or 0)
+        snippet = " ".join(str(match.get("snippet") or "").split())[:120]
+        rows.append((file_path, line, snippet))
+    if not rows:
+        return "### pattern\n- no matches"
+    lines = ["### pattern"]
+    lines.extend(_group_rows_by_file(rows))
+    if payload.get("truncated"):
+        total = payload.get("total_matches")
+        lines.append(f"- truncated (total_matches={total})" if total is not None else "- truncated")
+    return "\n".join(lines)
+
+
+def _render_blame(payload: Mapping[str, Any]) -> str:
+    name = str(payload.get("qualified_name") or payload.get("name") or payload.get("symbol_name") or "?")
+    file_path = str(payload.get("path") or payload.get("file_path") or "?")
+    start = int(payload.get("line_start") or 0)
+    end = int(payload.get("line_end") or 0)
+    loc = f"{file_path}:{start}-{end}" if start and end else file_path
+    lines = ["### blame", f"- target: {name} ({loc})"]
+    last_author = str(payload.get("last_author") or payload.get("author") or "").strip()
+    last_sha = str(payload.get("last_commit_sha") or "").strip()[:10]
+    summary = str(payload.get("last_commit_summary") or "").strip()
+    if last_sha or last_author:
+        head = " ".join(part for part in (last_sha, last_author) if part)
+        lines.append(f"- last: {head}" + (f" — {summary}" if summary else ""))
+    meta: list[str] = []
+    if payload.get("age_days") is not None:
+        meta.append(f"age_days={payload['age_days']}")
+    if payload.get("distinct_authors") is not None:
+        meta.append(f"authors={payload['distinct_authors']}")
+    if payload.get("local_edits"):
+        meta.append("local_edits=true")
+    freshness = str(payload.get("freshness") or "").strip()
+    if freshness:
+        meta.append(f"freshness={freshness}")
+    if meta:
+        lines.append("- " + ", ".join(meta))
+    hunks = payload.get("hunks")
+    if isinstance(hunks, list) and hunks:
+        lines.append(f"- hunks ({len(hunks)}):")
+        for hunk in hunks:
+            if not isinstance(hunk, Mapping):
+                continue
+            hs = int(hunk.get("start_line") or hunk.get("line") or 0)
+            he = int(hunk.get("end_line") or 0)
+            rng = f"{hs}-{he}" if hs and he else (str(hs) if hs else "?")
+            sha = str(hunk.get("commit_sha") or "").strip()[:10]
+            author = str(hunk.get("author_email") or "").strip()
+            lines.append(f"  - {rng} " + " ".join(part for part in (sha, author) if part))
+    churn = payload.get("churn")
+    if isinstance(churn, Mapping) and churn:
+        parts = []
+        if churn.get("commit_count") is not None:
+            parts.append(f"commits={churn['commit_count']}")
+        if churn.get("score") is not None:
+            parts.append(f"score={churn['score']}")
+        if parts:
+            lines.append("- churn: " + ", ".join(parts))
+    return "\n".join(lines)
+
+
+def _render_rename(payload: Mapping[str, Any]) -> str | None:
+    applied = payload.get("applied")
+    failed = payload.get("failed")
+    # Keep the structured JSON whenever the rename did not cleanly apply -- the
+    # agent needs the full failure / rollback detail to recover.
+    if payload.get("rolled_back") or (isinstance(failed, list) and failed) or not isinstance(applied, list):
+        return None
+    new_name = str(payload.get("new_name") or "?")
+    backend = str(payload.get("backend") or "?")
+    lines = [f"### rename → {new_name} (backend={backend})", f"- applied: {len(applied)} edit(s)"]
+    for entry in applied:
+        lines.append(f"  - {entry}")
+    return "\n".join(lines)
+
+
+def _render_outline(payload: Mapping[str, Any]) -> str | None:
+    files = payload.get("files")
+    if not isinstance(files, Mapping):
+        return None
+    total = payload.get("symbol_count")
+    lines = [f"### outline ({total} symbols)" if isinstance(total, int) else "### outline"]
+    for file_path in sorted(files.keys(), key=str):
+        symbols = files[file_path]
+        if not isinstance(symbols, list):
+            continue
+        lines.append(f"- {file_path}")
+        for symbol in symbols:
+            if not isinstance(symbol, Mapping):
+                continue
+            name = str(symbol.get("qualified_name") or symbol.get("name") or "?")
+            kind = str(symbol.get("kind") or "?")
+            start = symbol.get("line_start") or symbol.get("start_line")
+            end = symbol.get("line_end") or symbol.get("end_line")
+            rng = f"{start}-{end}" if start and end else (str(start) if start else "")
+            lines.append(f"  - {rng}: {name} [{kind}]" if rng else f"  - {name} [{kind}]")
+    return "\n".join(lines)
 
 
 def _render_status(payload: Mapping[str, Any]) -> str:

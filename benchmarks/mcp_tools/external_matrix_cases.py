@@ -200,10 +200,17 @@ def _collect_reference_facts(
                 names.add(node.attr)
         for name in names:
             name_to_files[name].add(relative_path)
+    # Cap: if a symbol's name appears in too many files it is a common
+    # English/Python word (e.g. "available", "run", "result") that happens to
+    # be defined exactly once.  Including it makes reference cases unfair
+    # (providers must do an expensive cross-repo disambiguation scan) and
+    # produces inflated ground-truth sets.  8 is a generous upper bound that
+    # keeps well-scoped symbols while filtering out noise.
+    _MAX_REFERENCE_FILES = 8
     facts: list[tuple[SymbolFact, tuple[str, ...]]] = []
     for symbol in unique_symbols:
         referencing = tuple(sorted(name_to_files.get(symbol.name, set()) - {symbol.path}))
-        if referencing:
+        if referencing and len(referencing) <= _MAX_REFERENCE_FILES:
             facts.append((symbol, referencing))
     return facts
 

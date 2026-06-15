@@ -13,15 +13,15 @@ def test_search_first_returns_ranked_matches_and_explicit_follow_ups(tmp_path, m
     monkeypatch.setenv("ATELIER_CACHE_DISABLED", "1")
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "alpha.py").write_text(
-        "class ReasonBlock:\n    pass\n",
+        "class Playbook:\n    pass\n",
         encoding="utf-8",
     )
     (tmp_path / "src" / "beta.py").write_text(
-        "from src.alpha import ReasonBlock\n\nrb = ReasonBlock()\n",
+        "from src.alpha import Playbook\n\nrb = Playbook()\n",
         encoding="utf-8",
     )
 
-    payload = search_first(query="ReasonBlock", task="trace ReasonBlock", path=str(tmp_path))
+    payload = search_first(query="Playbook", task="trace Playbook", path=str(tmp_path))
 
     assert payload["discovery"]["tool"] == "search"
     assert payload["backend"] == "ripgrep"
@@ -31,19 +31,19 @@ def test_search_first_returns_ranked_matches_and_explicit_follow_ups(tmp_path, m
     assert payload["handoff"]["context"] == {
         "tool": "context",
         "mode": "symbols",
-        "task": "trace ReasonBlock",
+        "task": "trace Playbook",
         "files": [match["path"] for match in payload["matches"]],
     }
     assert payload["handoff"]["memory"] == {
         "tool": "context",
         "mode": "procedures",
-        "task": "trace ReasonBlock",
+        "task": "trace Playbook",
         "files": [match["path"] for match in payload["matches"]],
         "recall": True,
     }
     assert payload["handoff"]["explore"] == {
         "tool": "explore",
-        "query": "ReasonBlock",
+        "query": "Playbook",
         "seed_files": [match["path"] for match in payload["matches"]],
     }
     assert payload["matches"][0]["follow_up"]["read"] == {
@@ -53,7 +53,7 @@ def test_search_first_returns_ranked_matches_and_explicit_follow_ups(tmp_path, m
     assert payload["matches"][0]["follow_up"]["context"] == {
         "tool": "context",
         "mode": "symbols",
-        "task": "trace ReasonBlock",
+        "task": "trace Playbook",
         "files": [payload["matches"][0]["path"]],
     }
 

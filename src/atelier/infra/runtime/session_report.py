@@ -173,29 +173,6 @@ def _read_context_compression_savings(session_id: str, root: Path) -> tuple[int,
     the run-ledger ``context_savings.jsonl`` shape
     (tool, tokens_saved, calls_saved, model, cost_saved_usd, at).
     """
-    path = root / "sessions" / session_id / "context_savings.jsonl"
-    if path.exists():
-        count = 0
-        total_saved = 0.0
-        rows: list[dict[str, Any]] = []
-        try:
-            for line in path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    ev = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                count += 1
-                total_saved += float(ev.get("cost_saved_usd") or 0.0)
-                rows.append(ev)
-        except OSError:
-            pass
-        if count > 0:
-            return count, round(total_saved, 6), rows
-
-    # Fallback: read host sidecars keyed by host session id.
     return _read_host_sidecar_savings(session_id, root)
 
 
@@ -239,8 +216,10 @@ def _read_host_sidecar_savings(session_id: str, root: Path) -> tuple[int, float,
             if tokens > PER_ROW_CAP:
                 continue
             model = str(ev.get("model") or "").strip()
-            cost = 0.0
-            if tokens > 0 and model:
+            # Prefer the pre-priced cost the dispatcher now writes; re-price only
+            # legacy rows that predate it.
+            cost = float(ev.get("cost_saved_usd") or 0.0)
+            if cost <= 0.0 and tokens > 0 and model:
                 pricing = get_model_pricing(resolve_model_id(model))
                 if pricing is not None and pricing.known and pricing.input > 0:
                     cost = pricing.input / 1_000_000 * tokens
