@@ -17,9 +17,11 @@ from typing import Any
 
 _AGENT_ID = "session-recall"
 _TAG = "session-recall"
-# "agent:any" makes indexed passages visible to the model-facing memory(op=recall)
-# tool for ANY agent_id (see _search_passage_rows), so past-session context surfaces
-# through the existing recall tool, not just the CLI.
+# "agent:any" tags each indexed passage so it can be recalled under ANY agent_id
+# *within the recall store* (see SqliteMemoryStore.list_passages). Cross-store
+# visibility is handled by mcp_server._memory_recall, which reads this store
+# (recall.db) in addition to memory.db, so past-session context surfaces through
+# the memory(op=recall) tool, not just the `atelier recall` CLI.
 _SHARED_TAG = "agent:any"
 _MAX_SESSIONS = 80
 _MAX_SNIPPETS_PER_SESSION = 40
