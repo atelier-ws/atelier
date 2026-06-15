@@ -78,7 +78,7 @@ backup_file() {
     fi
     if [ -f "$f" ]; then
         local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
-        run "cp '$f' '$bk'"
+        run "cp $(printf %q "$f") $(printf %q "$bk")"
         info "backed up $f → $bk"
     fi
 }
@@ -152,7 +152,7 @@ if $PRINT_ONLY; then
 fi
 
 # ---- write VS Code MCP ------------------------------------------------------
-run "mkdir -p '$VSCODE_DIR'"
+run "mkdir -p $(printf %q "$VSCODE_DIR")"
 
 if [ -f "$MCP_JSON" ]; then
     backup_file "$MCP_JSON"
@@ -185,14 +185,14 @@ fi
 ATELIER_INSTRUCTIONS="${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
 
 STAGING_DIR="${HOME}/.atelier/copilot"
-run "mkdir -p '$STAGING_DIR'"
+run "mkdir -p $(printf %q "$STAGING_DIR")"
 COPILOT_SRC="${ATELIER_REPO}/integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
 info "Staging Copilot instructions"
 atelier_write_managed_copy "${COPILOT_SRC}" "$STAGING_DIR/instructions.md" "$DRY_RUN"
 ATELIER_INSTRUCTIONS="$STAGING_DIR/instructions.md"
 
 if [ -f "$ATELIER_INSTRUCTIONS" ]; then
-    run "mkdir -p '$(dirname "$INSTRUCTIONS")'"
+    run "mkdir -p $(printf %q "$(dirname "$INSTRUCTIONS")")"
     if [ -f "$INSTRUCTIONS" ]; then
         backup_file "$INSTRUCTIONS"
         atelier_upsert_managed_block "$ATELIER_INSTRUCTIONS" "$INSTRUCTIONS" "$DRY_RUN"
@@ -201,7 +201,7 @@ if [ -f "$ATELIER_INSTRUCTIONS" ]; then
         if $DRY_RUN; then
             atelier_write_managed_copy "$ATELIER_INSTRUCTIONS" "$INSTRUCTIONS" "true"
         else
-            run "cp '$ATELIER_INSTRUCTIONS' '$INSTRUCTIONS'"
+            run "cp $(printf %q "$ATELIER_INSTRUCTIONS") $(printf %q "$INSTRUCTIONS")"
         fi
         info "created $INSTRUCTIONS"
     else
@@ -275,8 +275,8 @@ print('[atelier:copilot] merged Atelier task presets into ' + str(dest))
 PYEOF
         fi
     else
-        run "mkdir -p '$(dirname "$TASKS_DEST")'"
-        run "cp '$TASKS_SRC' '$TASKS_DEST'"
+        run "mkdir -p $(printf %q "$(dirname "$TASKS_DEST")")"
+        run "cp $(printf %q "$TASKS_SRC") $(printf %q "$TASKS_DEST")"
         info "created VS Code tasks preset: $TASKS_DEST"
     fi
 else

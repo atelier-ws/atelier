@@ -28,9 +28,9 @@ import sys
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
-logger = logging.getLogger(__name__)
-
 from benchmarks.wire_savings.usage_parser import Usage, extract_usage
+
+logger = logging.getLogger(__name__)
 
 # Model pricing -- USD per 1M tokens. Defaults: Claude Sonnet 4.6 on Amazon
 # Bedrock (2025). Override per-run with --in / --out / --cache-read / --cache-write.

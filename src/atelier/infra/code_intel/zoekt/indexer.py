@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from time import time
 
-from atelier.core.capabilities.repo_map.graph import should_skip_path
-
 _TEXT_SUFFIXES = {
     ".py",
     ".ts",
@@ -68,6 +66,8 @@ class ZoektIndexer:
         return int(max(0, time() - snapshot.indexed_at))
 
     def _build_snapshot(self) -> ZoektIndexSnapshot:
+        from atelier.core.capabilities.repo_map.graph import should_skip_path
+
         path_lines: dict[str, int] = {}
         total_lines = 0
         for path in sorted(self.repo_root.rglob("*")):

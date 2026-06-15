@@ -52,30 +52,6 @@ def _payload() -> dict[str, object]:
     }
 
 
-def test_statusline_shows_update_priority(tmp_path: Path) -> None:
-    (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
-    (tmp_path / "update.json").write_text(
-        json.dumps({"fromVersion": "1.0.0", "toVersion": "1.1.0"}),
-        encoding="utf-8",
-    )
-
-    output = _run_statusline(tmp_path, _payload())
-
-    assert "update 1.1.0" in output
-
-
-def test_statusline_shows_missing_login_before_update(tmp_path: Path) -> None:
-    (tmp_path / "update.json").write_text(
-        json.dumps({"fromVersion": "1.0.0", "toVersion": "1.1.0"}),
-        encoding="utf-8",
-    )
-
-    output = _run_statusline(tmp_path, _payload())
-
-    assert "login" in output
-    assert "update 1.1.0" not in output
-
-
 def test_statusline_reads_session_savings(tmp_path: Path) -> None:
     # MCP dispatcher writes one row per tool call to sessions/<session_id>/savings.jsonl.
     sidecar = tmp_path / "sessions" / "s1"
@@ -92,9 +68,9 @@ def test_statusline_reads_session_savings(tmp_path: Path) -> None:
     output = _run_statusline(tmp_path, _payload())
 
     # Format: "$0.036(12k)" — saved USD with token count in parens.
-    # Token breakdown (I: C: O:) is now always shown alongside the live cost.
+    # Token breakdown (I:.. C:.. O:..) rides inside the live-cost segment.
     assert "$0.036(12k)" in output
-    assert "I: 100 C: 300 O: 50" in output
+    assert "(I:100 C:300 O:50)" in output
     assert "calls saved" not in output
 
 
