@@ -20,6 +20,7 @@ import threading
 import time
 import types
 import uuid as _uuid_mod
+from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -98,6 +99,7 @@ from atelier.infra.runtime.realtime_context import RealtimeContextManager
 from atelier.infra.runtime.run_ledger import (
     RunLedger,
     outcomes_path,
+    run_file_path,
     session_run_dir,
 )
 from atelier.infra.storage.factory import make_memory_store
@@ -396,7 +398,7 @@ _current_ledger: RunLedger | None = None
 # that runs _handle so concurrent HTTP clients each accumulate their own run.json
 # instead of co-mingling into the process-global _current_ledger.
 _request_ledger: threading.local = threading.local()
-_http_session_ledgers: dict[str, RunLedger] = {}
+_http_session_ledgers: OrderedDict[str, RunLedger] = OrderedDict()
 _http_session_ledgers_lock = threading.Lock()
 _MAX_HTTP_SESSION_LEDGERS = 64
 _realtime_ctx: RealtimeContextManager | None = None
@@ -574,14 +576,29 @@ def _detect_agent() -> str:
 
 def _ledger_for_session(session_id: str) -> RunLedger:
     """Per-session ledger so concurrent HTTP clients don't co-mingle into the
-    process-global ledger. Bounded; the oldest entry is evicted past the cap."""
+    process-global ledger. Bounded LRU; the least-recently-used entry is evicted
+    past the cap. On a cache miss an existing ``run.json`` is rehydrated so an
+    evicted-then-reused session does not overwrite its own accumulated events."""
+    root = _atelier_root()
     with _http_session_ledgers_lock:
         led = _http_session_ledgers.get(session_id)
+        if led is not None:
+            _http_session_ledgers.move_to_end(session_id)
+            return led
+        path = run_file_path(root, session_id)
+        if path.exists():
+            try:
+                led = RunLedger.load(path)
+                # load() builds the ledger without a root; restore it so the
+                # rehydrated ledger persists back to the same run.json.
+                led._root = root
+            except ValueError:
+                led = None
         if led is None:
-            if len(_http_session_ledgers) >= _MAX_HTTP_SESSION_LEDGERS:
-                _http_session_ledgers.pop(next(iter(_http_session_ledgers)), None)
-            led = RunLedger(root=_atelier_root(), agent=_detect_agent(), session_id=session_id)
-            _http_session_ledgers[session_id] = led
+            led = RunLedger(root=root, agent=_detect_agent(), session_id=session_id)
+        if len(_http_session_ledgers) >= _MAX_HTTP_SESSION_LEDGERS:
+            _http_session_ledgers.popitem(last=False)
+        _http_session_ledgers[session_id] = led
         return led
 
 
@@ -1008,6 +1025,9 @@ def _live_savings_events_path() -> Path:
 _LIVE_SAVINGS_MAX_BYTES = 8 * 1024 * 1024
 _live_savings_dir_ready = False
 _live_savings_append_count = 0
+# Serializes the dir-ready flag, rotation counter, size-check/rotate, and the
+# append so concurrent dispatcher-pool threads can't lose an event on rotation.
+_LIVE_SAVINGS_LOCK = threading.Lock()
 
 
 def _append_live_savings_event(event: dict[str, Any]) -> None:
@@ -1019,21 +1039,23 @@ def _append_live_savings_event(event: dict[str, Any]) -> None:
     """
     global _live_savings_dir_ready, _live_savings_append_count
     path = _live_savings_events_path()
-    if not _live_savings_dir_ready:
-        # mkdir once per process instead of a syscall on every tool call.
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _live_savings_dir_ready = True
-    _live_savings_append_count += 1
-    if _live_savings_append_count % 128 == 0:
-        # Periodic size-based rotation (keep one prior generation) so the log
-        # cannot grow without bound; checked rarely to avoid a per-call stat().
-        try:
-            if path.exists() and path.stat().st_size > _LIVE_SAVINGS_MAX_BYTES:
-                path.replace(path.parent / (path.name + ".1"))
-        except OSError:
-            logging.exception("Recovered from broad exception handler")
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(event, sort_keys=True) + "\n")
+    line = json.dumps(event, sort_keys=True) + "\n"
+    with _LIVE_SAVINGS_LOCK:
+        if not _live_savings_dir_ready:
+            # mkdir once per process instead of a syscall on every tool call.
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _live_savings_dir_ready = True
+        _live_savings_append_count += 1
+        if _live_savings_append_count % 128 == 0:
+            # Periodic size-based rotation (keep one prior generation) so the log
+            # cannot grow without bound; checked rarely to avoid a per-call stat().
+            try:
+                if path.exists() and path.stat().st_size > _LIVE_SAVINGS_MAX_BYTES:
+                    path.replace(path.parent / (path.name + ".1"))
+            except OSError:
+                logging.exception("Recovered from broad exception handler")
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(line)
 
 
 def _workspace_savings_path() -> Path:
