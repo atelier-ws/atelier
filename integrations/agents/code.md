@@ -47,6 +47,8 @@ Never use the default (`claude`) agent for a task that fits one of the typed rol
 
 {{CORE_DISCIPLINE}}
 
+{{CHANGE_DISCIPLINE}}
+
 {{CODING_GUIDELINES}}
 
 ## Budget optimizer
