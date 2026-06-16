@@ -28,7 +28,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Any, Literal, Union, cast, get_args, get_origin, get_type_hints
 
-from pydantic import Field, create_model
+from pydantic import Field, ValidationError, create_model
 
 from atelier import __version__ as atelier_version
 from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
@@ -328,7 +328,22 @@ def mcp_tool(
                             sorted(unknown),
                             sorted(known_params),
                         )
-                validated = ArgsModel.model_validate(_coerce_json_strings(args, param_annotations))
+                try:
+                    validated = ArgsModel.model_validate(_coerce_json_strings(args, param_annotations))
+                except ValidationError as exc:
+                    if isinstance(args, dict) and not args:
+                        # An empty argument object almost always means the client
+                        # dropped the call's arguments in transit -- typically a large
+                        # batch (e.g. many `edits`) carrying non-ASCII characters that
+                        # didn't serialise. Surface an actionable hint instead of a
+                        # bare "field required".
+                        raise ValueError(
+                            f"{tool_name}: received empty arguments. If this was a large batch "
+                            "(e.g. many edits) with non-ASCII characters, the MCP client likely "
+                            "dropped the arguments in transit -- retry with fewer items per call "
+                            "and \\uXXXX escapes for any non-ASCII characters."
+                        ) from exc
+                    raise
                 return func(**validated.model_dump())
 
         else:
@@ -4542,7 +4557,7 @@ def _smart_read_single(
         "(structure only; default for files >200 LOC), range (range='L42-L118' or "
         "open-ended 'L42-'), full (small files or expand=true), and compact. Re-read "
         "with expand=true or a range before editing against an outline/compact view. "
-        "Batch 2+ files via files=[{path, range?}, ...] in one call."
+        "Batch 2+ files via files=[{path, range?}, ...]."
     ),
 )
 def tool_smart_read(
@@ -5093,12 +5108,13 @@ def _compact_applied_entries(entries: list[dict[str, Any]]) -> list[str | dict[s
     name="edit",
     input_schema=EDIT_TOOL_INPUT_SCHEMA,
     description=(
-        "Apply many mechanical edits across files in one deterministic call. Each edit is "
-        "one descriptor and all must share a family. Families (exact shapes in inputSchema): "
-        "file replace {file_path, old_string, new_string}; create {file_path, new_string, "
-        "overwrite:true}; line-scoped via file_path='foo.py#10-20'; notebook cell; symbol "
-        "{kind:'symbol', qualified_name|name, mode, new_body}; projection {kind:'projection', "
-        "...}. Maximise work per call: put every change in `edits`. Returns "
+        "Apply many mechanical edits across files in one deterministic call. Each edit is one "
+        "descriptor and all must share a family. Rich descriptors (file_path-based, exact shapes "
+        "in inputSchema): file replace {file_path, old_string, new_string}; create {file_path, "
+        "new_string, overwrite:true}; line-scoped via file_path='foo.py#10-20'; notebook cell; "
+        "symbol {kind:'symbol', qualified_name|name, mode, new_body}; projection "
+        "{kind:'projection', ...}. Legacy descriptors use path+op "
+        "(replace/insert_after/replace_range). Put every change in `edits`. Returns "
         "{applied:[...]}; failures stay structured."
     ),
 )
@@ -5270,8 +5286,7 @@ def tool_smart_edit(
                     applied_content[_disp] = None
             _applied = result.get("applied") or []
             if diffs and any(
-                isinstance(e, dict) and e.get("match_mode") in ("normalized", "placeholder", "fuzzy")
-                for e in _applied
+                isinstance(e, dict) and e.get("match_mode") in ("normalized", "placeholder", "fuzzy") for e in _applied
             ):
                 result["diff"] = diffs
             # match_mode is only informative when it is not the default exact match.
@@ -5392,7 +5407,21 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
 }
 
 
-@mcp_tool(name="sql", input_schema=SQL_TOOL_INPUT_SCHEMA)
+@mcp_tool(
+    name="sql",
+    input_schema=SQL_TOOL_INPUT_SCHEMA,
+    description=(
+        "SQL op-dispatch for connect, lint, and bounded query batching. Actions: connect "
+        "(discover database + schema overview); tables (list table names + count); schema "
+        "(columns + FKs per table); table (one table's columns + FKs, needs name); "
+        "relationships (FK graph as {from: 't.col', to: 'rt.col'}); search (keyword over "
+        "table/column names, needs name); lint (validate SQL syntax without executing, needs "
+        "sql); query (execute SQL, needs sql or queries[{name,sql},...]). Connection "
+        "auto-discovered from DATABASE_URL env or .env; pass connection_string to override. "
+        "Live introspection/queries run on SQLite; other dialects report a driver-required "
+        "note."
+    ),
+)
 def tool_sql(
     action: str,
     name: str | list[str] | None = None,
@@ -5597,9 +5626,7 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
             if len(_COMPACT_ADVISE_CACHE) > _MAX_COMPACT_ADVISE_CACHE:
                 # Bound the cache: a marathon process seeing many session ids must
                 # not leak compressed states. Evict oldest (skip current).
-                for _stale in list(_COMPACT_ADVISE_CACHE)[
-                    : len(_COMPACT_ADVISE_CACHE) - _MAX_COMPACT_ADVISE_CACHE
-                ]:
+                for _stale in list(_COMPACT_ADVISE_CACHE)[: len(_COMPACT_ADVISE_CACHE) - _MAX_COMPACT_ADVISE_CACHE]:
                     if _stale != _ca_key:
                         _COMPACT_ADVISE_CACHE.pop(_stale, None)
         compaction_savings = _session_compaction_savings_payload(
@@ -5881,8 +5908,11 @@ _CODE_OP_EXTRA_STRIP: dict[str, frozenset[str]] = {
     # edges contain only SCIP hash IDs — no names or paths; `related` has the useful data
     "callers": frozenset({"edges"}),
     "callees": frozenset({"edges"}),
-    # symbol op: byte offsets and hashes are useless to LLMs
+    # symbol/node ops: byte offsets and hashes are useless to LLMs (same payload
+    # shape — both come from engine.tool_symbol). node additionally renders the
+    # source body; symbol stays a compact location/signature summary.
     "symbol": frozenset({"start_byte", "end_byte", "content_hash", "score"}),
+    "node": frozenset({"start_byte", "end_byte", "content_hash", "score"}),
     # search: `snippet` at top level is just the mode string ("none"/"head"/"full"), not actual code
     "search": frozenset({"snippet"}),
     # context: `symbols` duplicates entry_points with heavy metadata; telemetry/import_neighbors are internal
@@ -6128,19 +6158,21 @@ SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         "snippet_lines": {"type": "integer", "default": 8},
         "file_glob": {"type": "string", "description": "e.g. 'src/api/**/*.py'"},
         "repo_root": {"type": "string"},
-        "scope": {
-            "type": "string",
-            "enum": ["repo", "external", "deleted"],
-            "default": "repo",
-            "description": "'external': dependencies; 'deleted': git graveyard.",
-        },
-        "since": {"type": "string", "description": "ISO date or relative ('7d')."},
         "format": _FORMAT_SCHEMA_PROPERTY,
     },
 }
 
 
-@mcp_tool(name="symbols", input_schema=SYMBOLS_TOOL_INPUT_SCHEMA)
+@mcp_tool(
+    name="symbols",
+    input_schema=SYMBOLS_TOOL_INPUT_SCHEMA,
+    description=(
+        "Search the SCIP code index for symbols by name or description. Results are exact (not "
+        "textual), indexed, and token-budgeted. The `view` param controls response shape: target "
+        "(locate primary definitions/files), graph (relationships for the best target), context "
+        "(broader context pack), explain (targets + graph evidence)."
+    ),
+)
 def tool_symbols(
     query: str | None = None,
     mode: Literal["auto", "lexical", "semantic", "hybrid"] = "auto",
@@ -6532,6 +6564,8 @@ def _op_explore(
     include_source: bool = True,
     include_relationships: bool = True,
     line_numbers: bool = True,
+    skeletonize: bool = True,
+    complete_families: bool | None = None,
     depth: int = 1,
     budget_tokens: int = 4000,
     repo_root: str | None = None,
@@ -6550,6 +6584,8 @@ def _op_explore(
             include_source=include_source,
             include_relationships=include_relationships,
             line_numbers=line_numbers,
+            skeletonize=skeletonize,
+            complete_families=complete_families,
             depth=depth,
             budget_tokens=budget_tokens,
         ),
@@ -6776,7 +6812,7 @@ def _op_node(
                 budget_tokens=budget_tokens,
             ),
         )
-    return _finish_code_result(_maybe_attach_code_rendered("symbol", payload, render_compact=render_compact))
+    return _finish_code_result(_maybe_attach_code_rendered("node", payload, render_compact=render_compact))
 
 
 def _op_rename(
@@ -6848,7 +6884,7 @@ def _op_rename(
 
     touched = _collect_touched_paths(edits, repo_root=root)
     snaps = _snapshot_paths(touched)
-    result = apply_rich_edits(edits, atomic=True, repo_root=root)
+    result = apply_rich_edits(edits, atomic=True, repo_root=root, allowed_roots=_claude_additional_dirs(root))
     if not result.get("failed") and not result.get("rolled_back"):
         _compute_and_record_diffs(snaps)
     result["op"] = "rename"
@@ -6932,7 +6968,17 @@ def _parse_symbol(symbol: str) -> dict[str, Any]:
     return {"symbol_name": symbol}
 
 
-@mcp_tool(name="node")
+@mcp_tool(
+    name="node",
+    description=(
+        "Get the full source definition of a symbol (function, class, method, variable): just "
+        "the symbol, not the whole file. Returns: signature, docstring, body, file location, and "
+        "a stable symbol_id for follow-up calls. Pass symbol as unqualified name ('run_command'), "
+        "qualified path ('module.Class.method'), or SCIP id (from a prior search/callers result). "
+        "Or use path+line for positional lookup — the line may be passed separately or as a "
+        "'path#line' suffix (e.g. 'store.py#100')."
+    ),
+)
 def tool_node(
     symbol: str | None = None,
     path: str | None = None,
@@ -6957,7 +7003,14 @@ def tool_node(
     return _op_node(**target, path=path, line=line)
 
 
-@mcp_tool(name="callers")
+@mcp_tool(
+    name="callers",
+    description=(
+        "Find all callers of a function — inbound call graph edges (who calls this?). Returns "
+        "caller names, file paths, and line numbers grouped by file. depth=1: direct callers; "
+        "depth=2: transitive callers."
+    ),
+)
 def tool_callers(
     symbol: str,
     depth: int = 1,
@@ -6972,7 +7025,15 @@ def tool_callers(
     return _op_callers(**_parse_symbol(symbol), depth=depth, limit=limit)
 
 
-@mcp_tool(name="callees")
+@mcp_tool(
+    name="callees",
+    description=(
+        "Find all functions called by a symbol — outbound call graph edges (what does this "
+        "call?). Use before editing to understand a function's dependencies. Returns callee "
+        "names, file paths, and call sites grouped by file. depth=1: direct callees; depth=2: "
+        "transitive callees."
+    ),
+)
 def tool_callees(
     symbol: str,
     depth: int = 1,
@@ -6987,7 +7048,14 @@ def tool_callees(
     return _op_callees(**_parse_symbol(symbol), depth=depth, limit=limit)
 
 
-@mcp_tool(name="explore")
+@mcp_tool(
+    name="explore",
+    description=(
+        "One-call grouped source + call-graph context for a concept or query, for multi-file "
+        "understanding. Returns: symbol definitions, source, and caller/callee summaries in one "
+        "call. Use seed_files to bias search toward specific files."
+    ),
+)
 def tool_explore(
     query: str,
     seed_files: list[str] | None = None,
@@ -7002,7 +7070,16 @@ def tool_explore(
     return _op_explore(query=query, seed_files=seed_files, max_files=max_files)
 
 
-@mcp_tool(name="usages")
+@mcp_tool(
+    name="usages",
+    description=(
+        "Find all references/usages of a symbol across the codebase: results are SCIP-indexed "
+        "and exact (not textual), so renames, shadowed names, and comments don't create false "
+        "hits. Pass an unqualified name ('run_command'), qualified path ('module.Class.method'), "
+        "or a SCIP id from a prior result. Returns: references grouped by file with line numbers "
+        "and matched snippets."
+    ),
+)
 def tool_usages(
     symbol: str,
     limit: int = 20,
@@ -7063,7 +7140,20 @@ def tool_graph(
     )
 
 
-@mcp_tool(name="codemod")
+@mcp_tool(
+    name="codemod",
+    description=(
+        "Structural code search and safe rewrite (codemod) by AST shape, via ast-grep. Matches "
+        "code *shape*, not text: formatting-independent and never matches inside strings or "
+        "comments. Metavariables: `$X` binds one node, `$$$` binds a "
+        "list — e.g. `isinstance($X, $Y)`, `$X == None`, `requests.get($URL)`. Pass `rewrite` to "
+        "transform every match; captured metavariables are reusable in the replacement, e.g. "
+        "pattern `$X == None`, rewrite `$X is None`. `dry_run=True` (default) returns a "
+        "unified-diff preview and writes nothing; `dry_run=False` applies the rewrite across all "
+        "matched files. Scope with `language` (e.g. 'python') and `file_glob`. Returns: matches "
+        "(snippet, file_path, line); with `rewrite`, a diff and `files_changed`."
+    ),
+)
 def tool_pattern(
     pattern: str,
     language: str | None = None,
@@ -7567,15 +7657,14 @@ def _run_native_grep(
 @mcp_tool(
     name="grep",
     description=(
-        "Search files with regex, glob, and type filters. Use this instead of `search` for "
+        "Search files with regex, glob, and type filters: "
         "grep-style matching, path listing, context lines, summaries, or incremental reruns.\n"
-        "Maximise work per call: pass every glob/path you need at once (file_glob_patterns) and "
-        "combine content_regex + type to narrow by scope and content in one call instead of "
-        "chaining narrow calls — tool-side filtering is cheaper than another round-trip. When "
-        "you'll need the matched code, set output_mode='file_paths_with_content' to discover AND "
-        "read matched context in one step rather than grep-then-read. Run independent searches in "
-        "parallel within one response. Pass a prior result's timestamp back as if_modified_since "
-        "to skip files unchanged since then."
+        "Pass every glob/path you need at once (file_glob_patterns) and combine content_regex + "
+        "type to narrow by scope and content in one call. When you'll need the matched code, set "
+        "output_mode='file_paths_with_content' to discover AND read matched context in one step "
+        "rather than grep-then-read. Run independent searches in parallel within one response. "
+        "Pass a prior result's timestamp back as if_modified_since to skip files unchanged since "
+        "then."
     ),
     hidden_params=("include_meta",),
 )
@@ -7735,10 +7824,8 @@ def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[in
 @mcp_tool(
     name="search",
     description=(
-        "Search code and docs by ranked query. Use this for relevance-ranked snippets, "
-        "full-file ranked reads, or repo maps seeded from known files. Use `grep` for "
-        "regex, glob, type-filter, or context-line search, then escalate with `node`, "
-        "`callers`, `callees`, `usages`, or `explore` once grounded."
+        "Search code and docs by ranked query: relevance-ranked snippets, full-file ranked "
+        "reads, or repo maps seeded from known files."
     ),
     input_schema={
         "type": "object",
@@ -8072,7 +8159,15 @@ SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
 }
 
 
-@mcp_tool(name="shell", input_schema=SHELL_TOOL_INPUT_SCHEMA)
+@mcp_tool(
+    name="shell",
+    input_schema=SHELL_TOOL_INPUT_SCHEMA,
+    description=(
+        "Execute a shell command and return compact text output. Prefer Atelier read/grep/search "
+        "tools directly — they are faster and cheaper. Use shell only for commands that have no "
+        "Atelier equivalent (git, make, uv, npm, etc.)."
+    ),
+)
 def tool_shell(
     command: str = "",
     timeout: int = 1800,
@@ -8102,9 +8197,9 @@ def tool_shell(
 @mcp_tool(
     name="web_fetch",
     description=(
-        "Fetch a public HTTP/HTTPS page for coding-agent research. Requests Markdown when available, "
-        "converts HTML to clean Markdown by default, blocks private/local network URLs, and caches "
-        "fetched content for 5 minutes."
+        "Fetch a public HTTP/HTTPS page for coding-agent research. Requests Markdown when "
+        "available, converts HTML to clean Markdown by default, blocks private/local network "
+        "URLs, and caches fetched content for 5 minutes."
     ),
 )
 def tool_web_fetch(
@@ -9094,25 +9189,15 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # JSON sidecar under the atelier root. Additive only — never touches
             # the response bytes; best-effort so a write failure can't break the
             # tool call.
-            # N4 ledger records ONLY savings-bearing calls: skip the full-output
-            # tiktoken encode + sidecar rewrite entirely when nothing was saved.
-            _n4_should_record = dedup_stubbed or (
-                isinstance(result, dict)
-                and (
-                    _extract_tokens_saved(result) > 0
-                    or _coerce_saved_tokens(result.get("calls_saved")) > 0
-                )
-            )
-            if _n4_should_record:
-                with contextlib.suppress(Exception):
-                    from atelier.core.capabilities.tool_token_ledger import record_tool_tokens
+            with contextlib.suppress(Exception):
+                from atelier.core.capabilities.tool_token_ledger import record_tool_tokens
 
-                    record_tool_tokens(
-                        _atelier_root(),
-                        name,
-                        input_payload=args,
-                        output_payload=response_text,
-                    )
+                record_tool_tokens(
+                    _atelier_root(),
+                    name,
+                    input_payload=args,
+                    output_payload=response_text,
+                )
 
             # Embed per-call savings on the content item so they also ride into
             # the Claude transcript JSONL. NOTE: this is a secondary record —
