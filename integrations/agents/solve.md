@@ -25,3 +25,5 @@ Autonomous solver for concrete tasks with a clear deliverable or acceptance sign
 - Keep large artifacts in the workspace through the available file tools rather than emitting them inline.
 
 {{CORE_DISCIPLINE}}
+
+{{CHANGE_DISCIPLINE}}
