@@ -4609,6 +4609,36 @@ def _smart_read_single(
     projection_delta: dict[str, Any] | None = None
     projection_result: CompactProjectionResult | MinifiedProjectionResult | None = None
     exact_read = expand or range is not None
+    # M9: a non-expand 'full' body (a text/data file with no outline) over the
+    # inline budget would otherwise be head+tail compacted downstream, dropping the
+    # middle with no way to continue. Pre-empt with a line-aligned prefix plus an
+    # EXACT continuation range (the treatment the expand path gives), and mark it
+    # exact so the minify projection below leaves the line numbers intact.
+    if mode == "full" and not exact_read and isinstance(content, str):
+        _inline_budget = _read_inline_budget_bytes()
+        if _inline_budget and len(content.encode("utf-8")) > _inline_budget:
+            _src_lines = content.splitlines(keepends=True)
+            _kept: list[str] = []
+            _used = 0
+            for _line in _src_lines:
+                _lb = len(_line.encode("utf-8"))
+                if _kept and _used + _lb > _inline_budget:
+                    break
+                _kept.append(_line)
+                _used += _lb
+            _shown = len(_kept)
+            if _shown < len(_src_lines):
+                _notice = (
+                    f"\n\n[atelier: showing lines 1-{_shown} of {len(_src_lines)}. The full "
+                    f"file exceeds the single-response budget and would otherwise be truncated "
+                    f'by the host. Continue with range="L{_shown + 1}-", or request a specific slice.]'
+                )
+                content = "".join(_kept) + _notice
+                payload["content"] = content
+                payload["truncated"] = True
+                payload["lines_total"] = len(_src_lines)
+                payload["lines_shown"] = _shown
+                exact_read = True
     if isinstance(content, str) and content and mode in ("full", "range") and not exact_read:
         from atelier.core.capabilities.source_projection import (
             ProjectionDelta,
@@ -5003,7 +5033,7 @@ def _apply_edit_verify_gate(
     try:
         from atelier.core.capabilities.verification.edit_gate import run_edit_gate
 
-        checks_seq = tuple(checks) if checks else ("typecheck", "tests")
+        checks_seq = tuple(checks) if checks else ("typecheck",)
         counterexamples = run_edit_gate(
             touched,
             repo_root=repo_root,
@@ -5153,15 +5183,16 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "default": False,
             "description": (
                 "Run an executing correctness gate after the edit: a tree-sitter parse check "
-                "(TS/JS/Rust/Go), scoped mypy over touched Python source, and pytest over touched "
-                "test files. On an error-severity failure the edit is rolled back (see verify_rollback). "
-                "Fail-open. Also enabled globally via ATELIER_EDIT_VERIFY=1."
+                "(TS/JS/Rust/Go) and scoped mypy over touched Python source. On an error-severity "
+                "failure the edit is rolled back (see verify_rollback). Fail-open. Also enabled "
+                "globally via ATELIER_EDIT_VERIFY=1. (pytest is not run inline -- run tests in your "
+                "own turn.)"
             ),
         },
         "verify_checks": {
             "type": "array",
-            "items": {"type": "string", "enum": ["typecheck", "tests", "lint"]},
-            "description": "Which executing checks the verify gate runs (default: typecheck + tests). The parse gate always runs when verify is enabled.",
+            "items": {"type": "string", "enum": ["typecheck", "lint"]},
+            "description": "Which executing checks the verify gate runs (default: typecheck). The parse gate always runs when verify is enabled. pytest is not run inline.",
         },
         "verify_rollback": {
             "type": "boolean",
