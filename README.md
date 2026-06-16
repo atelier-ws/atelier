@@ -6,7 +6,7 @@
 
 **One MCP server + SDK middleware — a pre-built code index, reusable procedures, failure rescue, loop detection, and cost tracking for Claude Code, Codex, Copilot, Cursor, opencode, Hermes, LangChain, the OpenAI SDK, Gemini ADK, and any MCP host.**
 
-<!-- BENCH_HERO -->**On [CodeGraph](https://github.com/colbymchenry/codegraph)'s 7-repo benchmark vs. stock Claude Code: ~26% cheaper · 75% fewer tokens · 76% fewer tool calls (median of 4 runs/arm). [Full results ↓](#why-atelier--benchmark-results)**<!-- /BENCH_HERO -->
+<!-- BENCH_HERO -->**On [CodeGraph](https://github.com/colbymchenry/codegraph)'s 7-repo benchmark vs. stock Claude Code: ~25% cheaper · 75% fewer tokens · 75% fewer tool calls (median of 4 runs/arm). [Full results ↓](#why-atelier--benchmark-results)**<!-- /BENCH_HERO -->
 
 <p align="center">
   <a href="https://github.com/atelier-ws/atelier/blob/main/LICENSE"><img src="https://img.shields.io/github/license/atelier-ws/atelier?style=for-the-badge" alt="License" /></a>
@@ -64,25 +64,25 @@ To measure the effect, we ran the A/B from [CodeGraph](https://github.com/colbym
 Both arms use the **same model** (Claude Sonnet, headless `claude -p`), the **same question** per repo, and the same isolated config — the only variable is Atelier. **4 runs per arm, median reported.**
 
 <!-- BENCH_AVG -->
-**Pooled across all 7 repos (median of 4 runs/arm, Claude Sonnet): ~26% cheaper · 75% fewer tokens · 76% fewer tool calls — but ~68% slower.** Atelier is leaner on **every** repo except tiny gin: the stock baseline answers by spawning an Explore subagent that fans out into 18–48 `grep`/`read` calls, while Atelier resolves each question in 0–12 targeted calls. The one consistent regression is **time** — Atelier builds a code index on large repos (VS Code: 738s on ~10k files), and that wall-clock cost isn't recovered by a single question.
+**Pooled across all 7 repos (median of 4 runs/arm, Claude Sonnet): ~25% cheaper · 75% fewer tokens · 75% fewer tool calls — but ~112% slower.** Atelier is cheaper on 5 of 7 repos: the stock baseline answers by spawning an Explore subagent that fans out into 14–40 `grep`/`read` calls, while Atelier resolves each question in 0–12 targeted calls. The consistent regression is **time** — Atelier builds a code index on large repos (VS Code: ~1034s on ~10k files), and that wall-clock cost isn't recovered by a single question.
 
-- **Tokens & tool calls:** cut 60–98% on 6 of 7 repos (Django −93% tokens / −100% calls, Tokio −98% / −100%, Excalidraw −80.4% / −75%).
-- **Cost:** −26% pooled, but bimodal — much cheaper on Django/Tokio/OkHttp, slightly pricier on VS Code, gin, and Alamofire, where Atelier's index-write + output cost outweighs the baseline's cheap cached discovery.
+- **Tokens & tool calls:** cut 60–98% on 5 of 7 repos (Django −92% tokens / −100% calls, Tokio −98% / −100%, OkHttp −77% / −100%).
+- **Cost:** −25% pooled, bimodal — much cheaper on Django/Tokio/OkHttp, slightly pricier on Excalidraw and Alamofire where Atelier's index-write + output cost outweighs the baseline's cheap cached discovery.
 <!-- /BENCH_AVG -->
 
 <!-- BENCH_TABLE_START -->
 | Codebase | Cost | Tokens | Time | Tool calls |
 | --- | --- | --- | --- | --- |
-| VS Code | 14.5% pricier | 69.6% fewer | 563.2% slower | 65.6% fewer |
-| Excalidraw | even | 80.4% fewer | 29.8% faster | 75% fewer |
-| Django | 86.9% cheaper | 93.5% fewer | 56.3% faster | 100% fewer |
-| Tokio | 87.3% cheaper | 97.5% fewer | 73.8% faster | 100% fewer |
-| OkHttp | 78.7% cheaper | 73% fewer | 14.2% faster | 100% fewer |
-| gin | 8.3% pricier | 44.1% more | 108.8% slower | 11.8% fewer |
-| Alamofire | 38.8% pricier | 63% fewer | 8.3% slower | 66.7% fewer |
-| **Overall (pooled)** | 25.7% cheaper | 74.7% fewer | 67.9% slower | 75.9% fewer |
+| VS Code | 13.1% cheaper | 77.5% fewer | 837.3% slower | 67.9% fewer |
+| Excalidraw | 20.5% pricier | 75.5% fewer | 20.2% faster | 70% fewer |
+| Django | 84.8% cheaper | 92% fewer | 56.7% faster | 100% fewer |
+| Tokio | 89.1% cheaper | 97.5% fewer | 69.2% faster | 100% fewer |
+| OkHttp | 81% cheaper | 76.8% fewer | 22.4% faster | 100% fewer |
+| gin | 5.5% cheaper | 5.2% more | 67.7% slower | even |
+| Alamofire | 27.4% pricier | 63% fewer | even | 61.2% fewer |
+| **Overall (pooled)** | 24.7% cheaper | 74.9% fewer | 111.5% slower | 74.9% fewer |
 
-<sub>Positive = Atelier better. Measured 2026-06-16 on Claude Sonnet (`claude-sonnet-4-6`), 4 runs per arm (56 runs total), each repo pinned at a fixed commit. **Tokens and tool calls are counted from the full wire capture (main agent + every subagent).** The stock baseline delegates discovery to an Explore subagent whose usage the `claude -p` receipt omits, so receipt-only counts undercount the baseline 10–40×; cost and time come from the receipt, which already bills subagent spend. Regenerate from a run's `.flow` captures with `benchmarks/codebench/cg_report_wire.py`.</sub>
+<sub>Positive = Atelier better. Measured 2026-06-16 on Claude Sonnet (`claude-sonnet-4-6`), 4 runs per arm (56 runs total), each repo pinned at a fixed commit. **Tokens and tool calls are counted from the full wire capture (main agent + every subagent).** The stock baseline delegates discovery to an Explore subagent whose usage the `claude -p` receipt omits, so receipt-only counts undercount the baseline 10–40×; cost and time come from the receipt, which already bills subagent spend. Raw results: [`benchmarks/codebench/results/published/`](benchmarks/codebench/results/published/). Regenerate with `uv run --project benchmarks python benchmarks/codebench/cg_report_wire.py benchmarks/codebench/results/published`.</sub>
 <!-- BENCH_TABLE_END -->
 
 <details>
@@ -110,24 +110,24 @@ Each arm is `claude -p` (Claude Sonnet) run headlessly against the repo in a con
 <summary><b>Per-repo absolute numbers (WITH / WITHOUT)</b></summary>
 
 <!-- BENCH_RAW_START -->
-| Codebase | arm | cost_usd | tokens | time_s | turns | reps |
+| Codebase | arm | cost_usd | tokens | time_s | tool_calls | reps |
 | --- | --- | --- | --- | --- | --- | --- |
-| VS Code | baseline | 0.2874 | 999,484 | 111.3 | 30 | 4 |
-| VS Code | atelier | 0.3289 | 303,464 | 738.0 | 10 | 4 |
-| Excalidraw | baseline | 0.3655 | 1,652,090 | 171.0 | 48 | 4 |
-| Excalidraw | atelier | 0.3676 | 324,162 | 120.1 | 12 | 4 |
-| Django | baseline | 0.3373 | 372,123 | 91.9 | 18 | 4 |
-| Django | atelier | 0.0442 | 24,274 | 40.2 | 0 | 4 |
-| Tokio | baseline | 0.3033 | 949,828 | 133.5 | 27 | 4 |
-| Tokio | atelier | 0.0385 | 23,886 | 34.9 | 0 | 4 |
-| OkHttp | baseline | 0.1598 | 87,063 | 27.8 | 4 | 4 |
-| OkHttp | atelier | 0.0340 | 23,536 | 23.9 | 0 | 4 |
-| gin | baseline | 0.1812 | 174,376 | 42.9 | 8 | 4 |
-| gin | atelier | 0.1964 | 251,204 | 89.6 | 8 | 4 |
-| Alamofire | baseline | 0.3170 | 1,022,338 | 127.0 | 32 | 4 |
-| Alamofire | atelier | 0.4399 | 378,603 | 137.5 | 10 | 4 |
+| VS Code | baseline | 0.2887 | 1,008,178 | 110.3 | 28 | 4 |
+| VS Code | atelier | 0.2509 | 226,994 | 1033.8 | 9 | 4 |
+| Excalidraw | baseline | 0.3283 | 1,345,003 | 161.4 | 40 | 4 |
+| Excalidraw | atelier | 0.3956 | 330,015 | 128.8 | 12 | 4 |
+| Django | baseline | 0.2076 | 291,064 | 77.6 | 14 | 4 |
+| Django | atelier | 0.0316 | 23,342 | 33.6 | 0 | 4 |
+| Tokio | baseline | 0.3115 | 955,610 | 125.4 | 30 | 4 |
+| Tokio | atelier | 0.0338 | 23,540 | 38.6 | 0 | 4 |
+| OkHttp | baseline | 0.1418 | 99,786 | 34.7 | 5 | 4 |
+| OkHttp | atelier | 0.0269 | 23,104 | 26.9 | 0 | 4 |
+| gin | baseline | 0.2312 | 211,272 | 42.0 | 7 | 4 |
+| gin | atelier | 0.2184 | 222,298 | 70.5 | 7 | 4 |
+| Alamofire | baseline | 0.3438 | 1,097,266 | 145.3 | 24 | 4 |
+| Alamofire | atelier | 0.4381 | 405,526 | 141.3 | 10 | 4 |
 
-<sub>Per-arm medians over 4 runs. `cost_usd` and `time_s` from the receipt; `tokens` (input + cache-read + cache-creation + output) and `tool_calls` from the wire capture (main + subagents). Note the baseline's true token counts — e.g. Excalidraw's 1.65M — vs the ~52k the receipt's main-agent `usage` field alone reports.</sub>
+<sub>Per-arm medians over 4 runs. `cost_usd` and `time_s` from the receipt; `tokens` (input + cache-read + cache-creation + output) and `tool_calls` from the wire capture (main + subagents). Note the baseline's true token counts — e.g. Excalidraw's 1.35M — vs the ~50k the receipt's main-agent `usage` field alone reports. Full run data: [`benchmarks/codebench/results/published/`](benchmarks/codebench/results/published/).</sub>
 <!-- BENCH_RAW_END -->
 
 </details>
@@ -137,14 +137,19 @@ Each arm is `claude -p` (Claude Sonnet) run headlessly against the repo in a con
 The 7 repositories are wired up as efficiency-only CodeBench tasks (`cg_*`). Run the full A/B and regenerate the table:
 
 ```bash
-atelier benchmark codebench \
+# Run all 7 repos, 4 reps per arm (56 runs total)
+uv run atelier benchmark codebench \
   --task cg_gin --task cg_alamofire --task cg_excalidraw --task cg_tokio \
   --task cg_okhttp --task cg_django --task cg_vscode \
+  --task-source-dir .bench-tasks \
   --reps 4 --model sonnet
 
-# turn the run's results.jsonl into the table above
-uv run python -m benchmarks.codebench.cg_report benchmarks/codebench/results/<run-dir>
+# Regenerate the wire-corrected table from a run directory
+uv run --project benchmarks python benchmarks/codebench/cg_report_wire.py \
+  benchmarks/codebench/results/published
 ```
+
+Published canonical results (all tasks, flat) live in [`benchmarks/codebench/results/published/`](benchmarks/codebench/results/published/). Timestamped run dirs (local scratch) are gitignored.
 
 ## How Atelier Saves LLM Cost
 

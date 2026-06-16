@@ -145,8 +145,8 @@ def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypa
     assert "search" in names
     assert "memory" in names
     assert "shell" in names
-    symbols_tool = next(tool for tool in tools if tool["tool_name"] == "symbols")
-    enum_param_names = {item["name"] for item in symbols_tool["enum_params"]}
+    search_tool = next(tool for tool in tools if tool["tool_name"] == "search")
+    enum_param_names = {item["name"] for item in search_tool["enum_params"]}
     assert "mode" in enum_param_names
 
 

@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 
 SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
     "atelier": [
-        {"surface": "symbol", "family": "exact_symbol", "benchmarked": True},
+        {"surface": "search:symbol", "family": "exact_symbol", "benchmarked": True},
         {"surface": "search:exact", "family": "exact_search", "benchmarked": True},
         {"surface": "search:substring", "family": "substring_search", "benchmarked": True},
         {"surface": "outline", "family": "file_outline", "benchmarked": True},
@@ -328,13 +328,21 @@ class AtelierRunner(_RunnerBase):
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
         assert self.snapshot_root is not None and self.call_code_op is not None
         if case.family == "exact_symbol":
+            # Atelier's source-free symbol locator is the `symbols` tool: a SCIP
+            # search with intent=symbol, view=target, snippet=none -> name +
+            # location, no body. This is the apples-to-apples peer of serena
+            # find_symbol / scip definition / ctags readtags, which all return
+            # location-only. (`node` is the heavier full-source view.)
             request = {
-                "op": "symbol",
+                "op": "search",
                 "repo_root": str(self.snapshot_root),
-                "symbol_name": case.symbol_name,
-                # Pass the definition file so Atelier picks the right symbol
-                # when the same name exists in multiple files or languages.
-                "path": case.path,
+                "query": case.symbol_name or case.query,
+                "mode": "lexical",
+                "intent": "symbol",
+                "view": "target",
+                "snippet": "none",
+                "limit": 20,
+                "file_glob": "src/atelier/**/*.py",
                 "budget_tokens": 4000,
             }
         elif case.family in {"exact_search", "substring_search", "nohit_search"}:
@@ -1787,6 +1795,12 @@ def summarize_results(results: list[CaseBenchResult]) -> list[dict[str, object]]
     summary: list[dict[str, object]] = []
     for (tool, family), rows in sorted(grouped.items()):
         ok_rows = [row for row in rows if row.status == "ok"]
+        # For latency and token comparisons, only consider cases the provider
+        # answered correctly (correctness > 0).  Wrong/skipped answers tend to
+        # be cheap (empty payloads, short output), which would artificially
+        # deflate a provider's latency/token medians and give an unfair
+        # advantage when comparing against a provider that gets more cases right.
+        correct_rows = [row for row in ok_rows if row.correctness > 0]
         unsupported = sum(1 for row in rows if row.status == "unsupported")
         failed = sum(1 for row in rows if row.status not in {"ok", "unsupported"})
         summary.append(
@@ -1802,10 +1816,12 @@ def summarize_results(results: list[CaseBenchResult]) -> list[dict[str, object]]
                     4,
                 ),
                 "median_ms": round(
-                    statistics.median(row.median_ms for row in ok_rows) if ok_rows else 0.0,
+                    statistics.median(row.median_ms for row in correct_rows) if correct_rows else 0.0,
                     2,
                 ),
-                "median_tokens": int(statistics.median(row.median_tokens for row in ok_rows) if ok_rows else 0),
+                "median_tokens": int(
+                    statistics.median(row.median_tokens for row in correct_rows) if correct_rows else 0
+                ),
             }
         )
     _add_atelier_comparisons(summary)

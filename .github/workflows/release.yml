@@ -56,9 +56,37 @@ jobs:
           path: dist/atelier-distribution-*.tar.gz
           if-no-files-found: error
 
+  public-snapshot:
+    name: Publish public snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out private repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guard filtered snapshot
+        run: bash scripts/publish-public.sh --dry-run --source-ref "$GITHUB_SHA"
+
+      - name: Publish filtered snapshot
+        env:
+          PUBLIC_REMOTE: https://github.com/atelier-ws/atelier.git
+          PUBLIC_REMOTE_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          if [[ -z "${PUBLIC_REMOTE_TOKEN:-}" ]]; then
+            echo "::error::RELEASE_PAT is required to publish atelier-ws/atelier. Use a fine-grained PAT with Contents: read/write on atelier-ws/atelier."
+            exit 1
+          fi
+
+          bash scripts/publish-public.sh --yes --source-ref "$GITHUB_SHA"
+
   release:
     name: Create GitHub Release
-    needs: [binary-build]
+    needs: [binary-build, public-snapshot]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

@@ -28,7 +28,6 @@ EXPECTED_TOOLS = {
     "grep",
     "sql",
     "search",
-    "symbols",
     "node",
     "callers",
     "callees",

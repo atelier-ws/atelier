@@ -709,6 +709,15 @@ def main() -> int:
     savings: dict[str, Any] | None = None
     with contextlib.suppress(Exception):
         savings = _load_session_savings(session_id)
+        from atelier.core.service.telemetry.public_rollup import publish_public_savings_rollup
+
+        publish_public_savings_rollup(
+            session_id=session_id,
+            saved_usd=float(savings.get("saved_usd", 0.0) or 0.0),
+            tokens_saved=int(savings.get("tokens_saved", 0) or 0),
+            calls_avoided=int(savings.get("calls_avoided", 0) or 0),
+            source="claude",
+        )
 
     # ── Surface unconsumed live-reviewer findings (advisory) ─────────────────
     review_suffix = ""
