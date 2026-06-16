@@ -328,6 +328,18 @@ def _sqlite_search(conn: sqlite3.Connection, terms: list[str], *, limit: int = 2
     return matches
 
 
+_MAX_SQL_CELL_BYTES = 4096
+
+
+def _bound_cell(value: Any) -> Any:
+    """Cap one cell so a large BLOB/TEXT column can't return MBs in a single response."""
+    if isinstance(value, str) and len(value) > _MAX_SQL_CELL_BYTES:
+        return value[:_MAX_SQL_CELL_BYTES] + f"... <truncated {len(value) - _MAX_SQL_CELL_BYTES} chars>"
+    if isinstance(value, (bytes, bytearray)) and len(value) > _MAX_SQL_CELL_BYTES:
+        return f"<{len(value)} byte blob, truncated>"
+    return value
+
+
 def _run_sqlite(conn: sqlite3.Connection, sql: str, max_rows: int) -> dict[str, Any]:
     max_rows = max(1, max_rows)
     cursor = conn.execute(sql)
@@ -337,7 +349,7 @@ def _run_sqlite(conn: sqlite3.Connection, sql: str, max_rows: int) -> dict[str, 
     # per row wastes tokens on every multi-row result.
     return {
         "columns": columns,
-        "rows": [list(row) for row in rows[:max_rows]],
+        "rows": [[_bound_cell(v) for v in row] for row in rows[:max_rows]],
         "row_count": min(len(rows), max_rows),
         "truncated": len(rows) > max_rows,
     }
@@ -414,6 +426,12 @@ def sql_tool(
     conn = sqlite3.connect(db_path, uri=uri, timeout=max(1.0, timeout_ms / 1000.0))
     try:
         conn.row_factory = sqlite3.Row
+        if not _writes_enabled(allow_writes):
+            # Engine-level read-only enforcement (defense in depth beyond
+            # lint_sql's verb list, which misses PRAGMA writable_schema /
+            # ANALYZE / REINDEX): the connection itself refuses any statement
+            # that writes to the database.
+            conn.execute("PRAGMA query_only = ON")
         try:
             if action == "connect":
                 overview = _sqlite_overview(conn)
