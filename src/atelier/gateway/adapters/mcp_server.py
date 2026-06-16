@@ -1531,9 +1531,12 @@ def _observed_host_fields(
     selected_runner: str,
     selected_model: str,
 ) -> tuple[str, ...]:
-    observed = ["prompt", "cache_policy", "spawn_group_id", "cache_scope_id"]
-    if str(spawn_envelope.get("role_id") or "").strip():
-        observed.append("role_id")
+    # Only fields the host CLI actually receives count as observed/honored: the
+    # prompt always crosses the process boundary and the model only when a
+    # --model flag is emitted. cache_policy / spawn_group_id / cache_scope_id /
+    # role_id are never passed to the subprocess (resolve_swarm_runner_command),
+    # so listing them as honored would overstate what the host actually did.
+    observed = ["prompt"]
     if selected_runner:
         observed.append("selected_runner")
     if selected_model:
@@ -1676,6 +1679,11 @@ def _default_workflow_tool_executor(step: Any, args: dict[str, Any], context_sta
 
 
 def _default_workflow_shell_executor(step: Any, command: str, forked_context: dict[str, Any]) -> Any:
+    if getattr(step, "fork_from", None):
+        # The shell tool handler has no parameter to receive forked context, so a
+        # fork_from on a shell step would be silently dropped. Reject it loudly
+        # rather than give the author a false sense that the fork took effect.
+        raise ValueError("workflow shell steps do not support fork_from (the shell tool cannot receive forked context)")
     spec = TOOLS.get("shell")
     if spec is None:
         raise ValueError("shell tool not registered")
@@ -5577,12 +5585,14 @@ def _task_boundary_detected(led: RunLedger) -> bool:
                 return bool(event.payload.get("passed"))
             if event.kind == "command_result":
                 return bool(event.payload.get("ok"))
-            return True
+            # A SUCCESS keyword in free-text (agent_message / reasoning / note)
+            # is the agent *talking* about completion, not a structured outcome,
+            # so it must NOT count as a boundary (it would auto-compact mid-task).
     return False
 
 
 def _context_lifecycle_decision(led: RunLedger) -> dict[str, Any]:
-    tokens_used = led.token_count + max(0, len(led.events) * 10)
+    tokens_used = led.token_count
     utilisation_pct = round(100.0 * tokens_used / CONTEXT_WINDOW_TOKENS, 1)
     turn_count = _ledger_turn_count(led)
     boundary = _task_boundary_detected(led)
