@@ -50,13 +50,136 @@ RATE_LIMIT = _load("benchmarks.codebench.rate_limit")
 TASKS = _load("benchmarks.codebench.tasks")
 
 
-def test_atelier_claude_arm_uses_generated_code_agent() -> None:
-    assert CODEBENCH._atelier_claude_agent_args() == [
-        "--plugin-dir",
-        str(ROOT / "integrations" / "claude" / "plugin"),
-        "--agent",
-        "atelier:code",
-    ]
+def test_arm_specs_resolve_persona_by_capability() -> None:
+    specs = CODEBENCH.ARM_SPECS
+    # baseline runs the built-in twin per capability (vanilla default for code).
+    assert specs["baseline"].persona_by_capability == {
+        "code": None,
+        "explore": "Explore",
+        "plan": "Plan",
+    }
+    # atelier runs the generated plugin's personas; code keeps the prior behavior.
+    assert specs["atelier"].plugin is True
+    assert specs["atelier"].strip_mcp is False
+    assert specs["atelier"].persona_by_capability["code"] == "atelier:code"
+    assert specs["atelier"].persona_by_capability["explore"] == "atelier:explore"
+    # execute / solve are code-only coding personas (no built-in twin).
+    assert set(specs["execute"].persona_by_capability) == {"code"}
+    assert set(specs["solve"].persona_by_capability) == {"code"}
+    assert CODEBENCH.VALID_ARMS == ("baseline", "atelier", "execute", "solve")
+    assert CODEBENCH.HEAVY_ARMS == ("atelier", "execute", "solve")
+
+
+def test_arm_applicability_skips_coding_arms_on_explore_tasks() -> None:
+    # The (arm, capability) predicate _run_task_rep consults to skip arms.
+    def applies(arm: str, capability: str) -> bool:
+        return capability in CODEBENCH.ARM_SPECS[arm].persona_by_capability
+
+    assert applies("baseline", "explore") and applies("atelier", "explore")
+    assert not applies("execute", "explore") and not applies("solve", "explore")
+    assert applies("execute", "code") and applies("solve", "code")
+
+
+def _armresult(task: str, excerpt: str, ok: bool = True) -> Any:
+    return CODEBENCH.ArmResult(task, "atelier", 0, ok, 0.0, 0, 0, 0, 0, 0, 0, 0, [], False, excerpt, "")
+
+
+def test_grade_explore_marks_correct_when_answer_key_matches(monkeypatch: MonkeyPatch) -> None:
+    task = TASKS.Task("explore_probe", "python", ("empty",), 1, "explore_probe", capability="explore")
+    monkeypatch.setitem(CODEBENCH.BY_ID, "explore_probe", task)
+    monkeypatch.setattr(CODEBENCH, "_task_answer_key", lambda _t: (["run_arm", "VALID_ARMS", "ArmSpec"], [], 0.6))
+    res = _armresult("explore_probe", "The runner's run_arm dispatches each ArmSpec; see VALID_ARMS.")
+    CODEBENCH._grade_explore(res)
+    assert res.judge_model == "answer"
+    assert res.correct is True
+    assert res.score == 1.0
+
+
+def test_grade_explore_fails_below_threshold(monkeypatch: MonkeyPatch) -> None:
+    task = TASKS.Task("explore_probe", "python", ("empty",), 1, "explore_probe", capability="explore")
+    monkeypatch.setitem(CODEBENCH.BY_ID, "explore_probe", task)
+    monkeypatch.setattr(
+        CODEBENCH,
+        "_task_answer_key",
+        lambda _t: (["run_arm", "VALID_ARMS", "ArmSpec", "judge_results"], [], 0.6),
+    )
+    res = _armresult("explore_probe", "I think it uses run_arm somewhere.")
+    CODEBENCH._grade_explore(res)
+    assert res.correct is False
+    assert res.score == 0.25
+
+
+def test_grade_explore_zeroes_score_when_forbidden_token_present(monkeypatch: MonkeyPatch) -> None:
+    task = TASKS.Task("explore_probe", "python", ("empty",), 1, "explore_probe", capability="explore")
+    monkeypatch.setitem(CODEBENCH.BY_ID, "explore_probe", task)
+    monkeypatch.setattr(CODEBENCH, "_task_answer_key", lambda _t: (["run_arm"], ["i cannot"], 0.5))
+    res = _armresult("explore_probe", "I cannot find run_arm in this workspace.")
+    CODEBENCH._grade_explore(res)
+    assert res.correct is False
+    assert res.score == 0.0
+
+
+def test_plan_mentions_path_matches_full_and_basename() -> None:
+    assert CODEBENCH._plan_mentions_path("I'd edit benchmarks/codebench/run.py", "benchmarks/codebench/run.py")
+    assert CODEBENCH._plan_mentions_path("change store.py and orders.py", "inventory/store.py")
+    assert not CODEBENCH._plan_mentions_path("touch limits.py only", "inventory/store.py")
+
+
+def test_grade_plan_scores_target_file_overlap(monkeypatch: MonkeyPatch) -> None:
+    task = TASKS.Task("plan_probe", "python", ("empty",), 1, "plan_probe", capability="plan")
+    monkeypatch.setitem(CODEBENCH.BY_ID, "plan_probe", task)
+    monkeypatch.setattr(
+        CODEBENCH,
+        "_task_plan_key",
+        lambda _t: (["inventory/store.py", "inventory/orders.py", "inventory/__init__.py"], "", 0.6),
+    )
+    good = _armresult(
+        "plan_probe",
+        "Add release_stock to store.py, a cancel_order in orders.py, and export it from __init__.py.",
+    )
+    CODEBENCH._grade_plan(good)
+    assert good.judge_model == "plan"
+    assert good.correct is True
+    assert good.score == 1.0
+    thin = _armresult("plan_probe", "I'll change store.py only.")
+    CODEBENCH._grade_plan(thin)
+    assert thin.correct is False
+    assert thin.score == round(1 / 3, 3)
+
+
+def test_grade_plan_combines_overlap_and_rubric_judge(monkeypatch: MonkeyPatch) -> None:
+    task = TASKS.Task("plan_probe", "python", ("empty",), 1, "plan_probe", capability="plan")
+    monkeypatch.setitem(CODEBENCH.BY_ID, "plan_probe", task)
+    monkeypatch.setattr(
+        CODEBENCH,
+        "_task_plan_key",
+        lambda _t: (["inventory/store.py", "inventory/orders.py"], "rubric text", 0.6),
+    )
+    # Stub the LLM half so no subprocess runs: a weak-quality verdict.
+    monkeypatch.setattr(CODEBENCH, "_run_plan_judge", lambda *a, **k: {"score": 0.4, "reason": "shaky approach"})
+    res = _armresult("plan_probe", "Edit store.py and orders.py to add release_stock.")
+    CODEBENCH._grade_plan(res, run_judge=True, judge_model="sonnet")
+    # overlap 2/2 = 1.0 combined with rubric 0.4 -> mean 0.7
+    assert res.judge_model == "plan"
+    assert res.score == 0.7
+    assert res.correct is True
+
+
+def test_grade_plan_overlap_only_when_judge_disabled(monkeypatch: MonkeyPatch) -> None:
+    task = TASKS.Task("plan_probe", "python", ("empty",), 1, "plan_probe", capability="plan")
+    monkeypatch.setitem(CODEBENCH.BY_ID, "plan_probe", task)
+    monkeypatch.setattr(
+        CODEBENCH, "_task_plan_key", lambda _t: (["inventory/store.py", "inventory/orders.py"], "rubric text", 0.6)
+    )
+
+    def _boom(*_a: object, **_k: object) -> object:
+        raise AssertionError("rubric judge must not run when run_judge is False")
+
+    monkeypatch.setattr(CODEBENCH, "_run_plan_judge", _boom)
+    res = _armresult("plan_probe", "Edit store.py and orders.py.")
+    CODEBENCH._grade_plan(res)  # run_judge defaults False
+    assert res.score == 1.0
+    assert res.judge_model == "plan"
 
 
 def test_rate_limiter_does_not_block_proxy_event_loop(monkeypatch: MonkeyPatch) -> None:
@@ -226,28 +349,22 @@ def test_main_resume_skips_existing_runs(tmp_path: Path, monkeypatch: MonkeyPatc
         out_dir: Path,
         timeout: int,
         agent_command: str = "claude",
-        transport: str = "cli",
         cli_driver: str = "claude",
-        api_provider: str = "ollama",
-        api_base_url: str | None = None,
-        api_key_env: str | None = None,
         agent_env: dict[str, str] | None = None,
         cli_extra_args: list[str] | tuple[str, ...] = (),
         resume_state: bool = False,
+        capture: bool = True,
     ) -> Any:
         del (
             model,
             out_dir,
             timeout,
             agent_command,
-            transport,
             cli_driver,
-            api_provider,
-            api_base_url,
-            api_key_env,
             agent_env,
             cli_extra_args,
             resume_state,
+            capture,
         )
         calls.append((task_obj.id, arm, rep))
         return CODEBENCH.ArmResult(
@@ -432,6 +549,46 @@ def test_parse_agent_env_from_host_reads_repo_env_file(tmp_path: Path, monkeypat
     parsed = CODEBENCH._parse_agent_env_from_host(["ANTHROPIC_AUTH_TOKEN=OPENROUTER_API_KEY"])
 
     assert parsed == {"ANTHROPIC_AUTH_TOKEN": "secret-from-file"}
+
+
+def test_load_benchmark_env_prefers_most_specific(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    (tmp_path / "benchmarks" / "codebench").mkdir(parents=True)
+    (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=root\nROOT_ONLY=r\n", encoding="utf-8")
+    (tmp_path / "benchmarks" / ".env").write_text("ANTHROPIC_API_KEY=mid\n", encoding="utf-8")
+    (tmp_path / "benchmarks" / "codebench" / ".env").write_text("ANTHROPIC_API_KEY=specific\n", encoding="utf-8")
+    monkeypatch.setattr(CODEBENCH, "REPO_ROOT", tmp_path)
+
+    merged = CODEBENCH._load_benchmark_env()
+
+    # codebench/.env wins for the shared key; root-only keys still cascade in.
+    assert merged["ANTHROPIC_API_KEY"] == "specific"
+    assert merged["ROOT_ONLY"] == "r"
+
+
+def test_load_benchmark_env_empty_value_falls_through(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    (tmp_path / "benchmarks" / "codebench").mkdir(parents=True)
+    # An empty placeholder in the most-specific file must not clobber a real
+    # value set in a less-specific file.
+    (tmp_path / "benchmarks" / "codebench" / ".env").write_text("CLAUDE_CODE_OAUTH_TOKEN=\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("CLAUDE_CODE_OAUTH_TOKEN=real-token\n", encoding="utf-8")
+    monkeypatch.setattr(CODEBENCH, "REPO_ROOT", tmp_path)
+
+    merged = CODEBENCH._load_benchmark_env()
+
+    assert merged["CLAUDE_CODE_OAUTH_TOKEN"] == "real-token"
+
+
+def test_benchmark_auth_present_distinguishes_identity_from_ambient() -> None:
+    # Explicit benchmark identity (from .env / --provider / --agent-env) -> skip copy.
+    assert CODEBENCH._benchmark_auth_present({"ANTHROPIC_API_KEY": "k"}, {})
+    # Legacy host-exported long-lived token -> skip copy.
+    assert CODEBENCH._benchmark_auth_present({}, {"CLAUDE_CODE_OAUTH_TOKEN": "t"})
+    # No identity at all -> fall back to copying the default session creds.
+    assert not CODEBENCH._benchmark_auth_present({}, {})
+    # Empty placeholder is not auth.
+    assert not CODEBENCH._benchmark_auth_present({"ANTHROPIC_API_KEY": ""}, {})
+    # Ambient ANTHROPIC_API_KEY in the host shell alone does NOT skip the copy.
+    assert not CODEBENCH._benchmark_auth_present({}, {"ANTHROPIC_API_KEY": "ambient"})
 
 
 def test_normalize_model_usage_reads_camelcase_keys() -> None:

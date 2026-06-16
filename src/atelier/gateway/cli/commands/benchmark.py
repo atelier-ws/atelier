@@ -405,6 +405,13 @@ def benchmark_gate_cmd(run_dir: Path, as_json: bool, require_pass: bool) -> None
     help="CodeBench task id; repeat for multiple or use 'all'.",
 )
 @click.option(
+    "--list",
+    "list_tasks",
+    is_flag=True,
+    default=False,
+    help="List available CodeBench task ids and exit.",
+)
+@click.option(
     "--arm",
     "arms",
     multiple=True,
@@ -543,6 +550,7 @@ def benchmark_gate_cmd(run_dir: Path, as_json: bool, require_pass: bool) -> None
 )
 def benchmark_codebench_cmd(
     tasks: tuple[str, ...],
+    list_tasks: bool,
     arms: tuple[str, ...],
     reps: int,
     model: str,
@@ -574,6 +582,12 @@ def benchmark_codebench_cmd(
 ) -> None:
     """Run cost/quality comparison (Atelier vs baseline) and write a report."""
     repo_root = Path.cwd().resolve()
+    if list_tasks:
+        catalog = _load_codebench_catalog(repo_root)
+        click.echo(f"{len(catalog)} CodeBench tasks:")
+        for task in catalog:
+            click.echo(f"  {task.get('id', '?')!s:30} {task.get('language', '')!s:12} {task.get('source', '')!s}")
+        return
     run_dir = _codebench_run_dir(repo_root)
     resolved_codebench_tasks_dir = _ensure_codebench_tasks_dir(repo_root, codebench_tasks_dir)
     env = {"CODEBENCH_TASKS_DIR": str(resolved_codebench_tasks_dir)}
@@ -877,10 +891,9 @@ def benchmark_local_cmd(
 
 
 def _codebench_run_dir(repo_root: Path) -> Path:
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    path = repo_root.resolve() / "benchmarks" / "codebench" / "results" / timestamp
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    # Central, verifiable record location shared with every other suite:
+    # reports/benchmark/codebench/<timestamp>/ (NOT benchmarks/codebench/results).
+    return _run_dir("codebench", None, repo_root=repo_root)
 
 
 def _run_dir(suite: str, out: Path | None, *, repo_root: Path | None = None) -> Path:
