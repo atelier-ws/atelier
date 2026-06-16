@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import uuid
 from collections.abc import AsyncIterator, Callable
 from typing import Any
@@ -87,13 +88,33 @@ def discovery_manifest(*, endpoint: str = MCP_HTTP_PATH) -> dict[str, Any]:
     }
 
 
-def _dispatch(request_obj: dict[str, Any]) -> dict[str, Any] | None:
+_ABS_PATH_RE = re.compile(r"(?:/[\w.+\-]+){2,}/?")
+
+
+def _redact_error_paths(response: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Strip absolute filesystem paths from a JSON-RPC error message before it
+    crosses the HTTP boundary. _handle returns tool errors as ``str(exc)``, which
+    can embed server paths; keep the error code + human-readable reason, drop the
+    leaked paths (so a remote agent can still self-correct on the reason)."""
+    if isinstance(response, dict):
+        error = response.get("error")
+        if isinstance(error, dict) and isinstance(error.get("message"), str):
+            error["message"] = _ABS_PATH_RE.sub("<path>", error["message"])
+    return response
+
+
+def _dispatch(request_obj: dict[str, Any], session_id: str | None = None) -> dict[str, Any] | None:
     """Run one JSON-RPC request through the shared dispatcher (fail-safe).
 
     M2 — a raw ``str(exc)`` leaks internals (paths, types, partial state) to the
     client. Log the full traceback server-side and return a generic message with
     a correlation id so an operator can still tie the client report to the log.
+
+    F1 — scope the ledger to the client's ``Mcp-Session-Id`` (set on this worker
+    thread, the one that runs _handle) so concurrent HTTP clients don't co-mingle
+    into the process-global ledger.
     """
+    prior = mcp_server._set_request_ledger(session_id)
     try:
         return mcp_server._handle(request_obj)
     except Exception:
@@ -104,6 +125,8 @@ def _dispatch(request_obj: dict[str, Any]) -> dict[str, Any] | None:
             -32603,
             f"internal error (correlation_id={correlation_id})",
         )
+    finally:
+        mcp_server._clear_request_ledger(prior)
 
 
 def _sse_event(payload: dict[str, Any]) -> str:
@@ -174,8 +197,12 @@ def register_mcp_http(
             return JSONResponse(mcp_server._err(None, -32600, "invalid request: expected a JSON object"))
 
         # H2 — _dispatch runs the synchronous shared handler; offload it to a
-        # worker thread so a slow tool call cannot block the event loop.
-        response = await run_in_threadpool(_dispatch, body)
+        # worker thread so a slow tool call cannot block the event loop. Pass the
+        # client's MCP session id (F1) so its ledger is scoped per session.
+        session_id = request.headers.get("mcp-session-id")
+        response = await run_in_threadpool(_dispatch, body, session_id)
+        # F2 — strip leaked server paths from any error message at the boundary.
+        response = _redact_error_paths(response)
         accept = request.headers.get("accept", "")
         wants_sse = "text/event-stream" in accept.lower()
 
