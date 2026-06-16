@@ -12,9 +12,12 @@ class SymbolGraveyard:
 
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
+        self._schema_ready = False
         self._init_schema()
 
     def _init_schema(self) -> None:
+        if self._schema_ready:
+            return
         self._connection.execute("""
             CREATE TABLE IF NOT EXISTS symbol_graveyard (
                 id INTEGER PRIMARY KEY,
@@ -36,6 +39,7 @@ class SymbolGraveyard:
             "ON symbol_graveyard(symbol_name, qualified_name, file_path, deleted_at_ts)"
         )
         self._connection.commit()
+        self._schema_ready = True
 
     def upsert(self, entry: GraveyardEntry) -> None:
         self._connection.execute(
@@ -107,7 +111,9 @@ class SymbolGraveyard:
                 signature_hash
             FROM symbol_graveyard
             WHERE
-            """ + " AND ".join(filters) + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC",
+            """
+            + " AND ".join(filters)
+            + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC",
             params,
         ).fetchall()
         return [GraveyardEntry(*row) for row in rows]

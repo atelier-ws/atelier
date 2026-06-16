@@ -644,6 +644,7 @@ class _FileIndexData:
     language: str
     content_hash: str
     size_bytes: int
+    text_lines: list[tuple[int, str]]
     symbols: list[_ExtractedSymbol]
     symbol_sources: list[str]  # source slices for FTS (parallel to symbols)
     imports: list[tuple[str, str | None]]
@@ -715,6 +716,15 @@ _FUZZY_SIMILARITY_CUTOFF = 0.75
 
 def _is_precise_symbol_query(query: str) -> bool:
     return bool(_PRECISE_SYMBOL_QUERY_RE.fullmatch(query.strip()))
+
+
+def _should_run_full_fuzzy_symbol_scan(query: str) -> bool:
+    normalized = query.strip()
+    if not _is_precise_symbol_query(normalized):
+        return False
+    # Digit-bearing generated identifiers are common no-hit probes and rare
+    # typo targets; avoid the expensive full-symbol fuzzy scan for them.
+    return not any(char.isdigit() for char in normalized)
 
 
 def _matches_file_glob(path: str, pattern: str) -> bool:
@@ -957,6 +967,7 @@ def _process_one_file(
         language=language,
         content_hash=content_hash,
         size_bytes=st.st_size,
+        text_lines=[(idx, line[:20_000]) for idx, line in enumerate(source.splitlines(), start=1)],
         symbols=extracted,
         symbol_sources=symbol_sources,
         imports=imports_list,
@@ -1480,6 +1491,15 @@ class CodeContextEngine:
             fts_rows,
         )
 
+        # --- line text + FTS ---
+        line_rows: list[tuple[str, str, int, str]] = []
+        for d in results:
+            line_rows.extend((self.repo_id, d.rel, line_no, text) for line_no, text in d.text_lines if text.strip())
+        conn.executemany(
+            "INSERT INTO file_line_fts(repo_id, file_path, line, text) VALUES (?, ?, ?, ?)",
+            line_rows,
+        )
+
         # --- imports ---
         rows: list[tuple[str, str, str, str | None]] = []
         for d in results:
@@ -1620,6 +1640,7 @@ class CodeContextEngine:
 
             if force:
                 # --- Full rebuild: wipe everything, then parallel-extract + batch-write ---
+                conn.execute("DELETE FROM file_line_fts")
                 conn.execute("DELETE FROM symbol_fts")
                 conn.execute("DELETE FROM symbols")
                 conn.execute("DELETE FROM imports")
@@ -1644,6 +1665,10 @@ class CodeContextEngine:
                 existing = {
                     str(row["file_path"]): (str(row["content_hash"]), int(row["size_bytes"])) for row in existing_rows
                 }
+                line_index_empty = (
+                    conn.execute("SELECT 1 FROM file_line_fts WHERE repo_id = ? LIMIT 1", (self.repo_id,)).fetchone()
+                    is None
+                )
 
                 to_extract: list[tuple[Path, bytes]] = []  # (path, source_bytes)
                 current_paths: set[str] = set()
@@ -1662,7 +1687,7 @@ class CodeContextEngine:
                     source_bytes = path.read_bytes()
                     content_hash = _sha256_bytes(source_bytes)
                     previous = existing.get(rel)
-                    if previous == (content_hash, int(stat.st_size)):
+                    if previous == (content_hash, int(stat.st_size)) and not line_index_empty:
                         continue  # unchanged
                     self._delete_file_index(conn, rel)
                     to_extract.append((path, source_bytes))
@@ -1711,6 +1736,7 @@ class CodeContextEngine:
         )
 
     def _delete_file_index(self, conn: sqlite3.Connection, rel: str) -> None:
+        conn.execute("DELETE FROM file_line_fts WHERE repo_id = ? AND file_path = ?", (self.repo_id, rel))
         conn.execute(
             """
             DELETE FROM symbol_fts
@@ -2819,9 +2845,21 @@ class CodeContextEngine:
         limit: int = 20,
         budget_tokens: int = 4000,
     ) -> dict[str, Any]:
+        self._ensure_indexed()
         effective_budget_tokens = self._effective_budget_tokens("pattern", budget_tokens)
         adapter = AstGrepAdapter(self.repo_root)
         if rewrite is None:
+            cache_args = {
+                "pattern": pattern,
+                "language": language,
+                "file_glob": file_glob,
+                "limit": limit,
+                "budget_tokens": effective_budget_tokens,
+            }
+            native_cache_args = {**cache_args, "native": True}
+            hit, cached = self._cache_get("code.pattern", native_cache_args)
+            if hit and cached is not None:
+                return self._mark_cache_hit(cached)
             native = self._native_python_pattern_search(
                 pattern=pattern,
                 language=language,
@@ -2832,24 +2870,10 @@ class CodeContextEngine:
                 payload = self._pack_pattern_matches(native, budget_tokens=effective_budget_tokens)
                 self._cache_set(
                     "code.pattern",
-                    {
-                        "pattern": pattern,
-                        "language": language,
-                        "file_glob": file_glob,
-                        "limit": limit,
-                        "budget_tokens": effective_budget_tokens,
-                        "native": True,
-                    },
+                    native_cache_args,
                     payload,
                 )
                 return payload
-            cache_args = {
-                "pattern": pattern,
-                "language": language,
-                "file_glob": file_glob,
-                "limit": limit,
-                "budget_tokens": effective_budget_tokens,
-            }
             hit, cached = self._cache_get("code.pattern", cache_args)
             if hit and cached is not None:
                 return self._mark_cache_hit(cached)
@@ -2966,7 +2990,83 @@ class CodeContextEngine:
                 captures=captures,
             )
 
+        max_matches = max(0, limit)
+        truncated = False
+
+        def append_match(match: PatternMatch) -> None:
+            nonlocal truncated
+            if len(matches) < max_matches:
+                matches.append(match)
+                return
+            truncated = True
+
+        if mode == "decorator" and target_name:
+            raw_matches = self.search_text(f"@{target_name}", path=".", limit=max_matches + 1)
+            decorator_re = re.compile(r"^\s*@\s*([A-Za-z_][A-Za-z0-9_\.]*)")
+            for raw_match in raw_matches:
+                if not raw_match.file_path.endswith(".py"):
+                    continue
+                if file_glob and not _matches_file_glob(raw_match.file_path, file_glob):
+                    continue
+                match = decorator_re.match(raw_match.text)
+                if match is None or not names_match(match.group(1)):
+                    continue
+                append_match(
+                    PatternMatch(
+                        file_path=raw_match.file_path,
+                        line=raw_match.line,
+                        column=raw_match.column,
+                        end_line=raw_match.line,
+                        end_column=raw_match.column + len(raw_match.text),
+                        snippet=raw_match.text.strip(),
+                        captures={"decorator": match.group(1)},
+                    )
+                )
+                if truncated:
+                    break
+            matches.sort(key=lambda item: (item.file_path, item.line, item.column, item.snippet))
+            return PatternSearchResult(
+                matches=matches, truncated=truncated, total_matches=None if truncated else len(matches)
+            )
+
+        if mode in {"def", "class"} and target_name:
+            wanted_kinds = ("class",) if mode == "class" else ("function", "method")
+            placeholders = ",".join("?" for _ in wanted_kinds)
+            with self._connect() as conn:
+                self._init_schema(conn)
+                rows = conn.execute(
+                    f"""
+                    SELECT *, NULL AS score FROM symbols
+                    WHERE repo_id = ? AND symbol_name = ? AND kind IN ({placeholders})
+                    ORDER BY file_path, start_line, end_line, qualified_name, symbol_id
+                    LIMIT ?
+                    """,
+                    (self.repo_id, target_name, *wanted_kinds, max_matches + 1),
+                ).fetchall()
+            for row in rows:
+                symbol = _row_to_symbol(row)
+                if file_glob and not _matches_file_glob(symbol.file_path, file_glob):
+                    continue
+                append_match(
+                    PatternMatch(
+                        file_path=symbol.file_path,
+                        line=symbol.start_line,
+                        column=1,
+                        end_line=symbol.end_line,
+                        end_column=1,
+                        snippet=symbol.signature,
+                        captures={"name": symbol.symbol_name},
+                    )
+                )
+                if truncated:
+                    break
+            return PatternSearchResult(
+                matches=matches, truncated=truncated, total_matches=None if truncated else len(matches)
+            )
+
         for rel in candidates:
+            if truncated:
+                break
             source = self._read_file(rel)
             lines = source.splitlines()
             try:
@@ -2975,6 +3075,8 @@ class CodeContextEngine:
                 continue
             if mode == "decorator":
                 for node in ast.walk(tree):
+                    if truncated:
+                        break
                     if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
                         continue
                     for decorator in node.decorator_list:
@@ -2983,7 +3085,7 @@ class CodeContextEngine:
                             name = decorator.id
                         if not names_match(name):
                             continue
-                        matches.append(
+                        append_match(
                             build_match(
                                 rel,
                                 lines,
@@ -2991,26 +3093,33 @@ class CodeContextEngine:
                                 captures={"decorator": name or target_name or ""},
                             )
                         )
+                        if truncated:
+                            break
             elif mode in {"call", "call_any"}:
                 for node in ast.walk(tree):
+                    if truncated:
+                        break
                     if not isinstance(node, ast.Call):
                         continue
                     name = self._python_call_name(node.func)
                     if not name or (mode == "call" and not names_match(name)):
                         continue
-                    matches.append(build_match(rel, lines, node, captures={"F": name}))
+                    append_match(build_match(rel, lines, node, captures={"F": name}))
             elif mode == "def":
                 for node in ast.walk(tree):
+                    if truncated:
+                        break
                     if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == target_name:
-                        matches.append(build_match(rel, lines, node, captures={"name": node.name}))
+                        append_match(build_match(rel, lines, node, captures={"name": node.name}))
             elif mode == "class":
                 for node in ast.walk(tree):
+                    if truncated:
+                        break
                     if isinstance(node, ast.ClassDef) and node.name == target_name:
-                        matches.append(build_match(rel, lines, node, captures={"name": node.name}))
+                        append_match(build_match(rel, lines, node, captures={"name": node.name}))
         matches.sort(key=lambda item: (item.file_path, item.line, item.column, item.snippet))
-        total_matches = len(matches)
-        limited = matches[: max(0, limit)]
-        return PatternSearchResult(matches=limited, truncated=total_matches > len(limited), total_matches=total_matches)
+        total_matches = None if truncated else len(matches)
+        return PatternSearchResult(matches=matches, truncated=truncated, total_matches=total_matches)
 
     def tool_status(
         self,
@@ -3599,13 +3708,15 @@ class CodeContextEngine:
                 or record.qualified_name.lower() == normalized_query_lower
                 for _, _, record in scored.values()
             )
-            if not has_exact_name_match:
-                fuzzy_rows = conn.execute(
-                    f"SELECT *, NULL AS score FROM symbols WHERE {where_sql}",
+            if not has_exact_name_match and _should_run_full_fuzzy_symbol_scan(normalized_query):
+                fuzzy_name_rows = conn.execute(
+                    f"SELECT symbol_id, symbol_name FROM symbols WHERE {where_sql}",
                     tuple(params),
                 ).fetchall()
-                if fuzzy_rows:
-                    candidate_names = [str(row["symbol_name"]).lower() for row in fuzzy_rows]
+                if fuzzy_name_rows:
+                    candidate_names = [str(row["symbol_name"]).lower() for row in fuzzy_name_rows]
+                    matched_ids: list[str] = []
+                    similarity_by_id: dict[str, float] = {}
                     for _matched, similarity, index in rapidfuzz_process.extract(
                         normalized_query_lower,
                         candidate_names,
@@ -3615,11 +3726,25 @@ class CodeContextEngine:
                     ):
                         if candidate_names[index] == normalized_query_lower:
                             continue
-                        consider_rows(
-                            [fuzzy_rows[index]],
-                            channel_rank=7,
-                            base=600.0 + similarity * 60.0,
-                        )
+                        symbol_id = str(fuzzy_name_rows[index]["symbol_id"])
+                        matched_ids.append(symbol_id)
+                        similarity_by_id[symbol_id] = float(similarity)
+                    if matched_ids:
+                        placeholders = ",".join("?" for _ in matched_ids)
+                        matched_rows = conn.execute(
+                            f"""
+                            SELECT *, NULL AS score FROM symbols
+                            WHERE repo_id = ? AND symbol_id IN ({placeholders})
+                            """,
+                            tuple([self.repo_id, *matched_ids]),
+                        ).fetchall()
+                        for row in matched_rows:
+                            symbol_id = str(row["symbol_id"])
+                            consider_rows(
+                                [row],
+                                channel_rank=7,
+                                base=600.0 + similarity_by_id.get(symbol_id, 0.0) * 60.0,
+                            )
 
         ranked = sorted(
             scored.values(),
@@ -4135,8 +4260,11 @@ class CodeContextEngine:
         limit: int = 50,
         ignore_case: bool = False,
     ) -> list[TextMatch]:
-        """Literal text search using ripgrep when available, with a Python fallback."""
+        """Literal text search over the warmed line index, with rg as legacy fallback."""
         search_path = self._resolve_inside_repo(path)
+        indexed = self._search_text_index(query, search_path=search_path, limit=limit, ignore_case=ignore_case)
+        if indexed:
+            return indexed
         if shutil.which("rg") is not None:
             args = [
                 "rg",
@@ -4157,6 +4285,76 @@ class CodeContextEngine:
                 raise RuntimeError(proc.stderr.strip() or "ripgrep failed")
             return self._parse_rg_output(proc.stdout, limit=limit)
         return self._python_text_search(query, search_path, limit=limit, ignore_case=ignore_case)
+
+    def _search_text_index(
+        self,
+        query: str,
+        *,
+        search_path: Path,
+        limit: int,
+        ignore_case: bool,
+    ) -> list[TextMatch]:
+        normalized = query.strip()
+        if not normalized:
+            return []
+        fts_query = _safe_fts_query(normalized)
+        rel = _safe_relpath(self.repo_root, search_path)
+        path_clause = ""
+        path_params: list[Any] = []
+        if search_path != self.repo_root:
+            if search_path.is_file():
+                path_clause = " AND file_path = ?"
+                path_params.append(rel)
+            else:
+                path_clause = " AND (file_path = ? OR file_path LIKE ?)"
+                path_params.extend([rel, f"{rel.rstrip('/')}/%"])
+        query_lower = normalized.lower()
+        rows: list[sqlite3.Row] = []
+        with self._connect() as conn:
+            self._init_schema(conn)
+            if fts_query:
+                rows = conn.execute(
+                    f"""
+                    SELECT file_path, line, text
+                    FROM file_line_fts
+                    WHERE file_line_fts MATCH ? AND repo_id = ?{path_clause}
+                    ORDER BY file_path, line
+                    LIMIT ?
+                    """,
+                    tuple([fts_query, self.repo_id, *path_params, max(limit * 8, 80)]),
+                ).fetchall()
+            if not rows:
+                like = f"%{query_lower if ignore_case else normalized}%"
+                text_expr = "lower(text)" if ignore_case else "text"
+                rows = conn.execute(
+                    f"""
+                    SELECT file_path, line, text
+                    FROM file_line_fts
+                    WHERE repo_id = ?{path_clause} AND {text_expr} LIKE ?
+                    ORDER BY file_path, line
+                    LIMIT ?
+                    """,
+                    tuple([self.repo_id, *path_params, like, max(limit * 8, 80)]),
+                ).fetchall()
+        matches: list[TextMatch] = []
+        for row in rows:
+            text = str(row["text"])
+            haystack = text.lower() if ignore_case else text
+            needle = query_lower if ignore_case else normalized
+            index = haystack.find(needle)
+            if index < 0:
+                continue
+            matches.append(
+                TextMatch(
+                    file_path=str(row["file_path"]),
+                    line=int(row["line"]),
+                    column=index + 1,
+                    text=text,
+                )
+            )
+            if len(matches) >= limit:
+                break
+        return matches
 
     def _should_use_text_substring_search(
         self,
@@ -4190,16 +4388,73 @@ class CodeContextEngine:
         language: str | None,
         file_glob: str | None,
     ) -> bool:
-        hits = self.intel_store.search_symbols(
-            query,
-            limit=20,
-            kind=kind,
-            language=language,
-            scope="repo",
-        )
+        clauses = [
+            "repo_id = ?",
+            "(symbol_name = ? OR qualified_name = ? OR lower(symbol_name) = ? OR lower(qualified_name) = ?)",
+        ]
+        params: list[Any] = [self.repo_id, query, query, query.lower(), query.lower()]
+        if kind:
+            clauses.append("kind = ?")
+            params.append(kind)
+        if language:
+            clauses.append("language = ?")
+            params.append(language)
+        with self._connect() as conn:
+            self._init_schema(conn)
+            rows = conn.execute(
+                f"""
+                SELECT file_path
+                FROM symbols
+                WHERE {" AND ".join(clauses)}
+                LIMIT 20
+                """,
+                tuple(params),
+            ).fetchall()
+        if file_glob:
+            return any(_matches_file_glob(str(row["file_path"]), file_glob) for row in rows)
+        return bool(rows)
+
+    def _substring_symbol_hits(
+        self,
+        query_lower: str,
+        *,
+        limit: int,
+        file_glob: str | None,
+    ) -> list[SymbolRecord]:
+        like_pattern = f"%{query_lower}%"
+        with self._connect() as conn:
+            self._init_schema(conn)
+            rows = conn.execute(
+                """
+                SELECT *, NULL AS score
+                FROM symbols
+                WHERE repo_id = ? AND (
+                    lower(symbol_name) LIKE ?
+                    OR lower(qualified_name) LIKE ?
+                    OR lower(signature) LIKE ?
+                )
+                ORDER BY
+                    CASE WHEN kind IN ('class', 'method', 'function') THEN 0 ELSE 1 END,
+                    CASE WHEN lower(symbol_name) LIKE ? OR lower(qualified_name) LIKE ? THEN 0 ELSE 1 END,
+                    length(symbol_name),
+                    file_path,
+                    start_line
+                LIMIT ?
+                """,
+                (
+                    self.repo_id,
+                    like_pattern,
+                    like_pattern,
+                    like_pattern,
+                    f"{query_lower}%",
+                    f"{query_lower}%",
+                    max(limit * 12, 120),
+                ),
+            ).fetchall()
+        hits = [_row_to_symbol(row) for row in rows]
         if file_glob:
             hits = [hit for hit in hits if _matches_file_glob(hit.file_path, file_glob)]
-        return bool(_exact_symbol_hits(hits, query))
+        return hits[:limit]
 
     def _tool_text_substring_search(
         self,
@@ -4213,14 +4468,7 @@ class CodeContextEngine:
     ) -> dict[str, Any]:
         search_path = "src/atelier" if (self.repo_root / "src" / "atelier").is_dir() else "."
         query_lower = query.lower()
-        symbol_hits = self.search_symbols(
-            query,
-            limit=max(limit * 40, 200),
-            mode="lexical",
-            file_glob=file_glob,
-            scope="repo",
-            auto_index=False,
-        )
+        symbol_hits = self._substring_symbol_hits(query_lower, limit=max(limit * 40, 200), file_glob=file_glob)
         ranked_symbol_hits = sorted(
             (
                 item
@@ -4666,7 +4914,9 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found" if merged_status == "empty" else None
+                else "no related call edges were found"
+                if merged_status == "empty"
+                else None
             )
             merged_snapshot = None
             if snapshot:
@@ -4820,6 +5070,12 @@ class CodeContextEngine:
                 signature,
                 file_path UNINDEXED,
                 source
+            );
+            CREATE VIRTUAL TABLE IF NOT EXISTS file_line_fts USING fts5(
+                repo_id UNINDEXED,
+                file_path UNINDEXED,
+                line UNINDEXED,
+                text
             );
             CREATE TABLE IF NOT EXISTS imports (
                 repo_id TEXT NOT NULL,
@@ -7915,12 +8171,65 @@ class CodeContextEngine:
         except Exception as exc:
             logging.exception("Recovered from broad exception handler")
             self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
+        else:
+            try:
+                self._deleted_history_adapter().start_background_warmup()
+            except Exception:
+                pass
+            if getattr(self, "_embed_prewarmed", False) is False:
+                try:
+                    self._prewarm_symbol_embeddings()
+                except Exception:
+                    pass
+                self._embed_prewarmed = True
         while not self._autosync_stop.wait(self._autosync_poll_ms / 1000.0):
             try:
                 self._maybe_autosync_reindex()
             except Exception as exc:
                 logging.exception("Recovered from broad exception handler")
                 self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
+
+    def _prewarm_symbol_embeddings(self) -> None:
+        """Pre-populate vector_cache for all indexed symbols.
+
+        Called once from the autosync worker after the FTS index is ready.
+        Converts the first semantic search from O(N) embed calls to a single
+        SQLite scan. Skipped when no semantic ranker is configured.
+        """
+        if not self._semantic_ranker.available:
+            return
+        embedder = self._semantic_ranker.embedder
+        embedding_dim = embedder.dim
+        if embedding_dim <= 0:
+            return
+        index_version = self._current_index_version()
+        candidates = self._semantic_symbol_candidates(limit=2000)
+        if not candidates:
+            return
+        with contextlib.closing(self._connect()) as conn:
+            self._init_schema(conn)
+            fresh_ids = self._ann_symbol_index.existing_stamped_ids(
+                conn,
+                embedder_name=embedder.name,
+                embedding_dim=embedding_dim,
+                index_version=index_version,
+            )
+            new_vectors: dict[str, tuple[str, list[float]]] = {}
+            for symbol in candidates:
+                if symbol.symbol_id in fresh_ids:
+                    continue
+                source_text = self._read_file_slice(symbol.file_path, symbol.start_byte, symbol.end_byte)
+                vector = self._semantic_ranker.embed_symbol(symbol, source_text=source_text)
+                if vector and len(vector) == embedding_dim:
+                    new_vectors[symbol.symbol_id] = (symbol.content_hash, vector)
+            if new_vectors:
+                self._ann_symbol_index.upsert_vectors(
+                    conn,
+                    embedder_name=embedder.name,
+                    embedding_dim=embedding_dim,
+                    index_version=index_version,
+                    vectors=new_vectors,
+                )
 
     def _record_autosync_event(self, *, event: str, reason: str, reindexed: bool) -> None:
         entry = {

@@ -189,23 +189,20 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
         )
         sys.stdout.flush()
 
-        # Bridge: persist live token counts into stats.json so the Codex stop
-        # hook can report real cost instead of $0.0000.  The statusline gets
-        # token data from Codex's native footer; the stop hook reads stats.json.
-        # Without this write those two data flows never meet.
+        # Bridge: persist live token counts so the Codex stop hook can report
+        # real usage instead of $0.0000.  The statusline gets token data from
+        # Codex's native footer; the stop hook reads stats.json or the latest
+        # workspace-scoped statusline snapshot. Without this write those two
+        # data flows never meet.
         # Only for Codex (Claude Code has its own transcript-based path).
         # context_window.current_usage is the overwrite path in
         # update_session_stats — correct here because the statusline value is
         # always a cumulative session snapshot, not a per-turn delta.
-        if (
-            os.environ.get("ATELIER_STATUS_HOST", "").strip().lower() == "codex"
-            and session_id
-            and (live_in > 0 or live_cache > 0)
-        ):
+        if os.environ.get("ATELIER_STATUS_HOST", "").strip().lower() == "codex" and (live_in > 0 or live_cache > 0):
             import contextlib
 
             with contextlib.suppress(Exception):
-                from atelier.core.capabilities.plugin_runtime import update_session_stats
+                from atelier.core.capabilities.plugin_runtime import record_codex_statusline_snapshot
 
                 root_val = (
                     os.environ.get("ATELIER_ROOT")
@@ -213,8 +210,9 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
                     or str(Path.home() / ".atelier")
                 )
                 model_val = (
-                    os.environ.get("ATELIER_STATUS_MODEL_DISPLAY") or os.environ.get("ATELIER_STATUS_MODEL") or ""
+                    os.environ.get("ATELIER_STATUS_MODEL") or os.environ.get("ATELIER_STATUS_MODEL_DISPLAY") or ""
                 )
+                workspace_val = os.environ.get("CODEX_WORKSPACE_ROOT") or os.environ.get("CLAUDE_WORKSPACE_ROOT") or ""
                 snapshot: dict[str, Any] = {
                     "hook_event_name": "StatuslineUpdate",
                     "session_id": session_id,
@@ -230,7 +228,9 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
                 }
                 if model_val:
                     snapshot["model"] = model_val
-                update_session_stats(root_val, snapshot)
+                if workspace_val:
+                    snapshot["cwd"] = workspace_val
+                record_codex_statusline_snapshot(root_val, snapshot)
 
         return
     if line:

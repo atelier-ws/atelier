@@ -1,0 +1,14 @@
+# Paths stripped from the generated public repository snapshot.
+# One path per line. Paths are repository-relative; glob syntax is not supported.
+
+docs-internal/
+.planning/
+internal/
+
+# Future closed-source tiers stay private by default if they are added later.
+pro/
+ee/
+
+# Private release/publish machinery should not be copied into the public repo.
+release/
+.github/workflows/release.yml
