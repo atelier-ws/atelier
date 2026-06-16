@@ -243,6 +243,72 @@ class SemanticFileMemoryCapability:
         return int(start_match.group(1)) > total_lines
 
     @staticmethod
+    def _parse_range_bounds(range_spec: str) -> tuple[int, int | None]:
+        """Parse a range spec into (start, end) WITHOUT needing the file length.
+
+        ``end`` is None for an open-ended range (``"L42-"``); a bare line
+        (``"42"``) yields ``(42, 42)``. Falls back to ``(1, None)`` on a bad spec.
+        """
+        m = re.match(r"\s*[Ll]?(\d+)\s*([-,:])?\s*[Ll]?(\d*)\s*$", range_spec)
+        if m is None:
+            return 1, None
+        start = max(1, int(m.group(1)))
+        if not m.group(2):
+            return start, start
+        if not m.group(3):
+            return start, None
+        return start, max(start, int(m.group(3)))
+
+    def _range_read(self, file_path: Path, range_spec: str) -> dict[str, Any]:
+        """Read only the requested line range by streaming the file, instead of
+        loading + splitting the whole file. tokens_saved is 0: a deliberate slice
+        does not 'avoid' a full-file read, so crediting it inflates savings."""
+        start, end = self._parse_range_bounds(range_spec)
+        kept: list[str] = []
+        total_read = 0
+        used = 0
+        capped = False
+        with file_path.open("r", encoding="utf-8", errors="replace") as handle:
+            for lineno, line in enumerate(handle, start=1):
+                total_read = lineno
+                used += len(line)
+                if used > _MAX_READ_BYTES:
+                    capped = True
+                    total_read = lineno - 1
+                    break
+                if lineno < start:
+                    continue
+                if end is not None and lineno > end:
+                    total_read = lineno - 1
+                    break
+                kept.append(line.rstrip("\n"))
+        result: dict[str, Any] = {
+            "path": str(file_path),
+            "language": self._language_for(file_path),
+            "mode": "range",
+            "tokens_saved": 0,
+        }
+        if not kept:
+            result["range"] = range_spec
+            result["content"] = ""
+            result["truncation_notice"] = (
+                f"[atelier: only the first {_MAX_READ_BYTES} bytes were scanned and the "
+                "requested range begins past them; request an earlier slice.]"
+                if capped
+                else f"[atelier: requested range starts past the {total_read} lines in the "
+                "file. Request an earlier slice.]"
+            )
+            return result
+        result["range"] = f"{start}-{start + len(kept) - 1}"
+        result["content"] = "\n".join(kept)
+        if capped:
+            result["truncation_notice"] = (
+                f"[atelier: stopped at the {_MAX_READ_BYTES}-byte read cap; the slice may be "
+                "incomplete for an oversized file.]"
+            )
+        return result
+
+    @staticmethod
     def _parse_range_spec(range_spec: str, total_lines: int) -> tuple[int, int]:
         """Parse ranges like 42-118/L42-L118/42,118, plus tolerant open-ended forms."""
         s = range_spec.strip()
@@ -404,8 +470,13 @@ class SemanticFileMemoryCapability:
         if not stat.S_ISREG(st.st_mode):
             raise FileNotFoundError(f"not a regular file (FIFO/socket/special files are unreadable): {file_path}")
 
+        if range_spec:
+            # A range read is a deliberate slice: stream only the requested lines
+            # instead of reading + splitting the whole file, and don't credit it
+            # against the full-file baseline (that inflates tokens_saved).
+            return self._range_read(file_path, range_spec)
+
         source, truncated = _read_source_bounded(file_path)
-        lines = source.splitlines()
         language = self._language_for(file_path)
         effective_loc = self._effective_loc(source, language)
 
@@ -433,36 +504,6 @@ class SemanticFileMemoryCapability:
                 "file is oversized or a special/streaming file. Request a narrower "
                 'slice, e.g. read with range="L1-L400".]'
             )
-
-        if range_spec:
-            if truncated and self._range_starts_past(range_spec, len(lines)):
-                result.update(
-                    {
-                        "mode": "range",
-                        "range": range_spec,
-                        "content": "",
-                        "truncation_notice": (
-                            f"[atelier: requested range starts past the {len(lines)} "
-                            f"lines read from the byte-capped prefix ({_MAX_READ_BYTES} "
-                            "bytes); the true line count is unknown. Request an earlier "
-                            "slice.]"
-                        ),
-                        "tokens_saved": 0,
-                    }
-                )
-                return result
-            start, end = self._parse_range_spec(range_spec, len(lines))
-            content = "\n".join(lines[start - 1 : end])
-            baseline = claude_read_baseline_text(source)
-            result.update(
-                {
-                    "mode": "range",
-                    "range": f"{start}-{end}",
-                    "content": content,
-                    "tokens_saved": self._token_savings(baseline, content),
-                }
-            )
-            return result
 
         mode, payload, outline_payload = self._projection_payload(
             file_path,
