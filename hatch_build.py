@@ -69,6 +69,8 @@ _SKIP_PATHS = {
     # coerce stringified client args. Compiling this module erases those types, so
     # every tool rejects stringified scalar (int/bool) args at the call boundary.
     "atelier/gateway/adapters/mcp_server.py",
+    # mypyc does not support async generators (async def with yield).
+    "atelier/gateway/adapters/mcp_http.py",
 }
 
 

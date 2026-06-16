@@ -11,4 +11,4 @@ ee/
 
 # Private release/publish machinery should not be copied into the public repo.
 release/
-.github/workflows/release.yml
+.github/workflows/
