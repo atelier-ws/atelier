@@ -392,6 +392,13 @@ _FORMAT_FIELD = Field(
 # --------------------------------------------------------------------------- #
 
 _current_ledger: RunLedger | None = None
+# Per-request ledger override for the HTTP transport: set on the worker thread
+# that runs _handle so concurrent HTTP clients each accumulate their own run.json
+# instead of co-mingling into the process-global _current_ledger.
+_request_ledger: threading.local = threading.local()
+_http_session_ledgers: dict[str, RunLedger] = {}
+_http_session_ledgers_lock = threading.Lock()
+_MAX_HTTP_SESSION_LEDGERS = 64
 _realtime_ctx: RealtimeContextManager | None = None
 _product_session_id: str | None = None
 _product_session_started_at: float | None = None
@@ -423,6 +430,10 @@ class _MonitorSession:
 _monitor_sessions: dict[str, _MonitorSession] = {}
 _MAX_MONITOR_STEPS = 25
 _MAX_MONITOR_SESSIONS = 64
+# Serializes mutation of the shared _monitor_sessions map / _MonitorSession
+# state: the dispatcher runs context calls on a thread pool, so two concurrent
+# calls for one session must not race the setdefault/eviction/steps mutation.
+_MONITOR_LOCK = threading.Lock()
 
 
 def _advance_monitors(session_id: str, task: str, original_task: str) -> tuple[float, bool]:
@@ -441,22 +452,24 @@ def _advance_monitors(session_id: str, task: str, original_task: str) -> tuple[f
         from atelier.core.capabilities.monitors import evaluate_all
         from atelier.core.capabilities.monitors.fsm import score_step
 
-        ms = _monitor_sessions.setdefault(session_id, _MonitorSession())
-        if len(_monitor_sessions) > _MAX_MONITOR_SESSIONS:
-            # Bound the session map: a marathon process seeing many session ids
-            # must not leak _MonitorSession objects. Evict oldest (skip current).
-            for _stale in list(_monitor_sessions)[: len(_monitor_sessions) - _MAX_MONITOR_SESSIONS]:
-                if _stale != session_id:
-                    _monitor_sessions.pop(_stale, None)
-        ms.steps.append(task)
-        if len(ms.steps) > _MAX_MONITOR_STEPS:
-            ms.steps = ms.steps[-20:]
-        ms.fsm.transition(score_step(task))
-        ms._call_count += 1
-
-        cooldown = ms.fsm.monitor_cooldown_steps
-        if ms._call_count % cooldown == 0 or ms._call_count == 1:
-            result = evaluate_all(ms.steps, task=original_task)
+        with _MONITOR_LOCK:
+            ms = _monitor_sessions.setdefault(session_id, _MonitorSession())
+            if len(_monitor_sessions) > _MAX_MONITOR_SESSIONS:
+                # Bound the session map: a marathon process seeing many session
+                # ids must not leak _MonitorSession objects. Evict oldest (skip current).
+                for _stale in list(_monitor_sessions)[: len(_monitor_sessions) - _MAX_MONITOR_SESSIONS]:
+                    if _stale != session_id:
+                        _monitor_sessions.pop(_stale, None)
+            ms.steps.append(task)
+            if len(ms.steps) > _MAX_MONITOR_STEPS:
+                ms.steps = ms.steps[-20:]
+            ms.fsm.transition(score_step(task))
+            ms._call_count += 1
+            cooldown = ms.fsm.monitor_cooldown_steps
+            run_eval = ms._call_count % cooldown == 0 or ms._call_count == 1
+            steps_snapshot = list(ms.steps)
+        if run_eval:
+            result = evaluate_all(steps_snapshot, task=original_task)
             ms.composite = result.composite
     except Exception:
         logging.exception("Recovered from broad exception handler")
@@ -559,7 +572,37 @@ def _detect_agent() -> str:
     return "claude"
 
 
+def _ledger_for_session(session_id: str) -> RunLedger:
+    """Per-session ledger so concurrent HTTP clients don't co-mingle into the
+    process-global ledger. Bounded; the oldest entry is evicted past the cap."""
+    with _http_session_ledgers_lock:
+        led = _http_session_ledgers.get(session_id)
+        if led is None:
+            if len(_http_session_ledgers) >= _MAX_HTTP_SESSION_LEDGERS:
+                _http_session_ledgers.pop(next(iter(_http_session_ledgers)), None)
+            led = RunLedger(root=_atelier_root(), agent=_detect_agent(), session_id=session_id)
+            _http_session_ledgers[session_id] = led
+        return led
+
+
+def _set_request_ledger(session_id: str | None) -> Any:
+    """Scope _get_ledger() to a per-session ledger on the CURRENT thread; returns
+    the prior value to restore. A falsy session_id is a no-op (stdio / no session
+    header keeps the process-global ledger)."""
+    prior = getattr(_request_ledger, "value", None)
+    if session_id:
+        _request_ledger.value = _ledger_for_session(session_id)
+    return prior
+
+
+def _clear_request_ledger(prior: Any) -> None:
+    _request_ledger.value = prior
+
+
 def _get_ledger() -> RunLedger:
+    req = getattr(_request_ledger, "value", None)
+    if isinstance(req, RunLedger):
+        return req
     global _current_ledger
     if _current_ledger is not None:
         return _current_ledger
@@ -908,11 +951,19 @@ def _spawn_worker_if_idle(root: Path) -> None:
         if now - _last_worker_spawn_time < _WORKER_SPAWN_THROTTLE_SECS:
             return
         _last_worker_spawn_time = now
-    threading.Thread(
-        target=_run_worker_tick_safe,
-        args=(root,),
-        daemon=True,
-    ).start()
+    try:
+        threading.Thread(
+            target=_run_worker_tick_safe,
+            args=(root,),
+            daemon=True,
+        ).start()
+    except RuntimeError:
+        # Thread creation failed (e.g. OS thread-limit pressure). Don't let the
+        # already-advanced throttle clock suppress the next 30s of ticks -- reset
+        # it so the next caller can retry the spawn.
+        with _STATE_LOCK:
+            _last_worker_spawn_time = 0.0
+        logging.exception("Recovered from broad exception handler")
 
 
 _runtime_cache: ContextRuntime | None = None
@@ -952,6 +1003,13 @@ def _live_savings_events_path() -> Path:
     return _atelier_root() / "live_savings_events.jsonl"
 
 
+# Cap the analytics log: full-file readers (audit_export, advisor, dashboard,
+# session_report) O(n)-scan it per render, so unbounded growth is a real cost.
+_LIVE_SAVINGS_MAX_BYTES = 8 * 1024 * 1024
+_live_savings_dir_ready = False
+_live_savings_append_count = 0
+
+
 def _append_live_savings_event(event: dict[str, Any]) -> None:
     """Append a routing / compaction analytics event.
 
@@ -959,8 +1017,21 @@ def _append_live_savings_event(event: dict[str, Any]) -> None:
     transcript and are summed from there. This file remains the log for
     audit_export and cross_vendor_routing.advisor only.
     """
+    global _live_savings_dir_ready, _live_savings_append_count
     path = _live_savings_events_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if not _live_savings_dir_ready:
+        # mkdir once per process instead of a syscall on every tool call.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _live_savings_dir_ready = True
+    _live_savings_append_count += 1
+    if _live_savings_append_count % 128 == 0:
+        # Periodic size-based rotation (keep one prior generation) so the log
+        # cannot grow without bound; checked rarely to avoid a per-call stat().
+        try:
+            if path.exists() and path.stat().st_size > _LIVE_SAVINGS_MAX_BYTES:
+                path.replace(path.parent / (path.name + ".1"))
+        except OSError:
+            logging.exception("Recovered from broad exception handler")
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, sort_keys=True) + "\n")
 
@@ -1164,16 +1235,22 @@ def _process_tool_accounting(name: str, args: dict[str, Any], result: Any, rid: 
                 paths = code_intel_credit.extract_credited_paths(name, result)
                 state = code_intel_credit.record_pending(state, name, paths)
 
+            pending_credits: list[dict[str, Any]] = []
             if code_intel_on:
                 threshold = int(os.environ.get("ATELIER_CODE_INTEL_CREDIT_AGE", "8"))
                 state, credits = code_intel_credit.tick_and_credit(state, threshold=threshold)
-                for credit_entry in credits:
-                    # Deferred credit for an EARLIER call -> sidecar only; never the
-                    # current response's `saved` field.
-                    _append_savings(credit_entry["tool"], 0, 1, rid=str(rid))
+                pending_credits = list(credits)
 
             _write_workspace_session_state(state)
             _tool_accounting_pending_hint = bool(state.get("code_intel_pending"))
+        # _append_savings writes a separate sidecar (not session_state) and
+        # re-enters _STATE_LOCK via _current_context_state, so run it AFTER the
+        # session_state lock releases -- keeping the sidecar append + transcript
+        # parsing out of the session_state critical section.
+        for credit_entry in pending_credits:
+            # Deferred credit for an EARLIER call -> sidecar only; never the
+            # current response's `saved` field.
+            _append_savings(credit_entry["tool"], 0, 1, rid=str(rid))
     except Exception:
         logging.exception("Recovered from broad exception handler")
 
@@ -1362,7 +1439,7 @@ def _default_workflow_agent_executor(
     duration_seconds = time.perf_counter() - started
     output = (completed.stdout or "").strip()
     if completed.returncode != 0:
-        error = (completed.stderr or output or f"{runner} exited with {completed.returncode}").strip()
+        error = (completed.stderr or output or f"{selected_runner} exited with {completed.returncode}").strip()
         return {
             "status": "failed",
             "output": output,
@@ -1512,9 +1589,12 @@ def _observed_host_fields(
     selected_runner: str,
     selected_model: str,
 ) -> tuple[str, ...]:
-    observed = ["prompt", "cache_policy", "spawn_group_id", "cache_scope_id"]
-    if str(spawn_envelope.get("role_id") or "").strip():
-        observed.append("role_id")
+    # Only fields the host CLI actually receives count as observed/honored: the
+    # prompt always crosses the process boundary and the model only when a
+    # --model flag is emitted. cache_policy / spawn_group_id / cache_scope_id /
+    # role_id are never passed to the subprocess (resolve_swarm_runner_command),
+    # so listing them as honored would overstate what the host actually did.
+    observed = ["prompt"]
     if selected_runner:
         observed.append("selected_runner")
     if selected_model:
@@ -1627,8 +1707,11 @@ def _provider_for_model(model_id: str) -> str:
     return "unknown"
 
 
-_WORKFLOW_SPAWN_DEPTH_ENV = "ATELIER_WORKFLOW_SPAWN_DEPTH"
 _WORKFLOW_SPAWN_DEPTH_LIMIT = 8
+# Per-worker-thread workflow spawn depth. The dispatcher runs a thread pool, so
+# tracking depth in os.environ races across parallel workflow steps and can leak
+# a stale value into the process env; a threading.local isolates it per thread.
+_workflow_spawn_depth: threading.local = threading.local()
 # Tools that themselves spawn sub-agents/workflows: invoking them from a
 # workflow step opens an unbounded recursive spawn path, so they are blocked.
 _WORKFLOW_SPAWNING_TOOLS = frozenset({"workflow"})
@@ -1640,24 +1723,25 @@ def _default_workflow_tool_executor(step: Any, args: dict[str, Any], context_sta
     spec = TOOLS.get(step.tool)
     if spec is None:
         raise ValueError(f"unknown workflow tool: {step.tool}")
-    depth = int(os.environ.get(_WORKFLOW_SPAWN_DEPTH_ENV, "0") or "0")
+    depth = getattr(_workflow_spawn_depth, "value", 0)
     if depth >= _WORKFLOW_SPAWN_DEPTH_LIMIT:
         raise ValueError(
             f"workflow spawn depth limit ({_WORKFLOW_SPAWN_DEPTH_LIMIT}) exceeded; aborting recursive tool execution"
         )
     handler = cast(Callable[[dict[str, Any]], Any], spec["handler"])
-    previous_depth = os.environ.get(_WORKFLOW_SPAWN_DEPTH_ENV)
-    os.environ[_WORKFLOW_SPAWN_DEPTH_ENV] = str(depth + 1)
+    _workflow_spawn_depth.value = depth + 1
     try:
         return handler(args)
     finally:
-        if previous_depth is None:
-            os.environ.pop(_WORKFLOW_SPAWN_DEPTH_ENV, None)
-        else:
-            os.environ[_WORKFLOW_SPAWN_DEPTH_ENV] = previous_depth
+        _workflow_spawn_depth.value = depth
 
 
 def _default_workflow_shell_executor(step: Any, command: str, forked_context: dict[str, Any]) -> Any:
+    if getattr(step, "fork_from", None):
+        # The shell tool handler has no parameter to receive forked context, so a
+        # fork_from on a shell step would be silently dropped. Reject it loudly
+        # rather than give the author a false sense that the fork took effect.
+        raise ValueError("workflow shell steps do not support fork_from (the shell tool cannot receive forked context)")
     spec = TOOLS.get("shell")
     if spec is None:
         raise ValueError("shell tool not registered")
@@ -2441,14 +2525,22 @@ def _append_workspace_savings(tool_name: str, tokens_saved: int, calls_saved: in
     _append_savings(tool_name, tokens_saved, calls_saved, rid=rid)
 
 
+_dev_mode_cache: bool | None = None
+
+
 def _mcp_debug_enabled() -> bool:
     if os.environ.get("ATELIER_MCP_DEBUG", "0") not in ("0", "", "false", "no"):
         return True
     # Auto-enable in dev installations (marker written by make dev / scripts/local.sh).
-    try:
-        return (_atelier_root() / ".dev_mode").exists()
-    except Exception:  # noqa: BLE001
-        return False
+    # The marker is constant per process, so cache the stat instead of issuing
+    # a syscall on every tool call.
+    global _dev_mode_cache
+    if _dev_mode_cache is None:
+        try:
+            _dev_mode_cache = (_atelier_root() / ".dev_mode").exists()
+        except Exception:  # noqa: BLE001
+            _dev_mode_cache = False
+    return _dev_mode_cache
 
 
 def _mcp_debug_path() -> Path:
@@ -2598,20 +2690,57 @@ def _extract_tokens_saved(result: dict[str, Any]) -> int:
     return _extract_compact_output_tokens_saved(result)
 
 
+def _acquire_smart_state_flock() -> Any:
+    """Best-effort POSIX exclusive flock on smart_state's sidecar lock file so a
+    sibling MCP process can't lose-update the machine-global counters. Returns an
+    open handle the caller must release, or None where flock is unavailable."""
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    try:
+        p = _smart_state_path()
+        lock_path = p.parent / (p.name + ".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(lock_path, "w", encoding="utf-8")
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        return handle
+    except OSError:
+        return None
+
+
+def _release_smart_state_flock(handle: Any) -> None:
+    if handle is None:
+        return
+    try:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except (ImportError, OSError):
+        pass
+    with contextlib.suppress(OSError):
+        handle.close()
+
+
 def _record_smart_state_savings(tokens_saved: int, calls_avoided: int) -> None:
     if tokens_saved <= 0 and calls_avoided <= 0:
         return
-    # Serialize the read-modify-write so concurrent tool calls can't lose an
-    # update to the cumulative counters. _STATE_LOCK is an RLock.
+    # Serialize the read-modify-write across threads (_STATE_LOCK) AND sibling
+    # MCP processes sharing the machine-global smart_state.json (flock), so a
+    # concurrent process can't lose-update the cumulative counters.
     with _STATE_LOCK:
-        state = _read_smart_state()
-        savings = state.get("savings")
-        if not isinstance(savings, dict):
-            savings = {"calls_avoided": 0, "tokens_saved": 0}
-        savings["calls_avoided"] = int(savings.get("calls_avoided", 0) or 0) + max(0, calls_avoided)
-        savings["tokens_saved"] = int(savings.get("tokens_saved", 0) or 0) + max(0, tokens_saved)
-        state["savings"] = savings
-        _write_smart_state(state)
+        _flock = _acquire_smart_state_flock()
+        try:
+            state = _read_smart_state()
+            savings = state.get("savings")
+            if not isinstance(savings, dict):
+                savings = {"calls_avoided": 0, "tokens_saved": 0}
+            savings["calls_avoided"] = int(savings.get("calls_avoided", 0) or 0) + max(0, calls_avoided)
+            savings["tokens_saved"] = int(savings.get("tokens_saved", 0) or 0) + max(0, tokens_saved)
+            state["savings"] = savings
+            _write_smart_state(state)
+        finally:
+            _release_smart_state_flock(_flock)
 
 
 class _NoOpContextBudgetRecorder:
@@ -2664,8 +2793,23 @@ def _redact_memory_input(text: str, field_name: str) -> str:
     return redacted
 
 
+_memory_store_tls = threading.local()
+
+
 def _memory_store() -> Any:
-    return make_memory_store(_atelier_root())
+    # Reuse the store (its sqlite connection + idempotent migrations) per thread
+    # instead of constructing a fresh one on every memory call. Thread-local
+    # because the sqlite connection has check_same_thread=True; keyed by root.
+    cache = getattr(_memory_store_tls, "by_root", None)
+    if cache is None:
+        cache = {}
+        _memory_store_tls.by_root = cache
+    root = str(_atelier_root())
+    store = cache.get(root)
+    if store is None:
+        store = make_memory_store(_atelier_root())
+        cache[root] = store
+    return store
 
 
 def _archival_recall() -> ArchivalRecallCapability:
@@ -2799,6 +2943,9 @@ def _workspace_root() -> Path:
     return Path(workspace)
 
 
+_CLAUDE_ADDITIONAL_DIRS_CACHE: dict[tuple[str, str, int, int], list[Path]] = {}
+
+
 def _claude_additional_dirs(workspace_root: Path) -> list[Path]:
     """Extra directories allowed for edits beyond *workspace_root*.
 
@@ -2811,9 +2958,25 @@ def _claude_additional_dirs(workspace_root: Path) -> list[Path]:
     Read-only tools (grep/search/read) already accept any absolute path, so
     this only affects write operations (edit, batch-edit).
     """
-    dirs: list[Path] = []
-
+    home_settings = Path.home() / ".claude" / "settings.json"
+    ws_settings = workspace_root / ".claude" / "settings.json"
     env_raw = os.environ.get("ATELIER_ADDITIONAL_DIRS", "").strip()
+
+    def _settings_mtime(p: Path) -> int:
+        try:
+            return p.stat().st_mtime_ns
+        except OSError:
+            return 0
+
+    # Memoize on the inputs' mtimes: this runs on every edit call, but the env
+    # var and the two settings files change rarely, so a stat-keyed cache avoids
+    # re-reading + JSON-parsing both files (and re-resolving entries) per edit.
+    cache_key = (str(workspace_root), env_raw, _settings_mtime(home_settings), _settings_mtime(ws_settings))
+    cached = _CLAUDE_ADDITIONAL_DIRS_CACHE.get(cache_key)
+    if cached is not None:
+        return list(cached)
+
+    dirs: list[Path] = []
     for raw in env_raw.split(":"):
         raw = raw.strip()
         if raw:
@@ -2822,10 +2985,7 @@ def _claude_additional_dirs(workspace_root: Path) -> list[Path]:
             except (OSError, ValueError):
                 pass
 
-    for sp in (
-        Path.home() / ".claude" / "settings.json",
-        workspace_root / ".claude" / "settings.json",
-    ):
+    for sp in (home_settings, ws_settings):
         try:
             data = json.loads(sp.read_text(encoding="utf-8"))
             for raw in data.get("additionalDirectories", []):
@@ -2837,7 +2997,10 @@ def _claude_additional_dirs(workspace_root: Path) -> list[Path]:
         except (OSError, json.JSONDecodeError, ValueError):
             pass
 
-    return dirs
+    if len(_CLAUDE_ADDITIONAL_DIRS_CACHE) > 16:
+        _CLAUDE_ADDITIONAL_DIRS_CACHE.clear()
+    _CLAUDE_ADDITIONAL_DIRS_CACHE[cache_key] = dirs
+    return list(dirs)
 
 
 # Thread-local slot for passing real tokens_saved from tool handlers to the
@@ -3465,6 +3628,7 @@ def tool_record_trace(
     payload["learnings"] = _normalize_learnings(learnings)
 
     raw_artifacts: list[str] = []
+    pending_artifacts: list[tuple[RawArtifact, str]] = []
     if capture_files:
         source_session_id = (
             _get_product_session_id()
@@ -3508,7 +3672,7 @@ def tool_record_trace(
                     source_path=str(p.absolute()),
                     source_file_mtime=datetime.fromtimestamp(p.stat().st_mtime, tz=UTC),
                 )
-                rt.store.record_raw_artifact(artifact, redacted_content)
+                pending_artifacts.append((artifact, redacted_content))
                 raw_artifacts.append(artifact_id)
             except Exception as e:
                 logging.exception("Recovered from broad exception handler")
@@ -3517,6 +3681,17 @@ def tool_record_trace(
     if raw_artifacts:
         payload["raw_artifact_ids"] = raw_artifacts
 
+    if "id" not in payload:
+        payload["id"] = Trace.make_id(task, agent)
+
+    # Validate BEFORE any store/ledger write so a malformed payload returns a
+    # structured error instead of leaving committed artifacts / a workflow event
+    # behind with no persisted trace (partial-write inconsistency).
+    trace = Trace.model_validate(payload)
+
+    for _artifact, _redacted_content in pending_artifacts:
+        rt.store.record_raw_artifact(_artifact, _redacted_content)
+
     if event_type:
         normalized_event_payload = _normalize_workflow_trace_payload(event_type, event_payload)
         if normalized_event_payload is not None:
@@ -3524,10 +3699,6 @@ def tool_record_trace(
         else:
             led.record("note", f"event:{redact(event_type)}", _redact_json_strings(event_payload))
 
-    if "id" not in payload:
-        payload["id"] = Trace.make_id(task, agent)
-
-    trace = Trace.model_validate(payload)
     rt.store.record_trace(trace)
     from atelier.core.capabilities.lesson_promotion import ingest_failed_trace
 
@@ -4302,6 +4473,10 @@ def _suggest_paths_for_missing(workspace_root: Path, missing: str, *, limit: int
     lowered = name.lower()
     hits: list[str] = []
     scanned = 0
+    # Bound the walk by file count AND wall time: a missed read (often a
+    # hallucinated path) otherwise walks the whole tree, turning a failed read
+    # into a multi-100ms stall on a large monorepo.
+    _suggest_deadline = time.monotonic() + 0.25
     try:
         for dirpath, dirnames, filenames in os.walk(workspace_root):
             dirnames[:] = [d for d in dirnames if d not in _READ_SUGGEST_PRUNE_DIRS]
@@ -4312,7 +4487,7 @@ def _suggest_paths_for_missing(workspace_root: Path, missing: str, *, limit: int
                         hits.append(str((Path(dirpath) / fname).relative_to(workspace_root)))
                     if len(hits) >= limit:
                         return hits
-            if scanned > 50_000:
+            if scanned > 20_000 or time.monotonic() > _suggest_deadline:
                 break
     except OSError:
         return hits
@@ -4324,7 +4499,7 @@ def _suggest_paths_for_missing(workspace_root: Path, missing: str, *, limit: int
 # range specs models naturally emit, e.g. "store.py#60-100"). Optional "L"
 # prefixes mirror the read tool's own range syntax. A non-numeric "#..." tail is
 # left intact so genuine '#' filenames still resolve.
-_READ_RANGE_SUFFIX = re.compile(r"#(L?\d+(?:[-,:]L?\d+)?)$", re.IGNORECASE)
+_READ_RANGE_SUFFIX = re.compile(r"#(L?\d+(?:[-,:](?:L?\d+)?)?)$", re.IGNORECASE)
 
 
 def _split_read_range_suffix(raw_path: str) -> tuple[str, str | None]:
@@ -4486,6 +4661,36 @@ def _smart_read_single(
     projection_delta: dict[str, Any] | None = None
     projection_result: CompactProjectionResult | MinifiedProjectionResult | None = None
     exact_read = expand or range is not None
+    # M9: a non-expand 'full' body (a text/data file with no outline) over the
+    # inline budget would otherwise be head+tail compacted downstream, dropping the
+    # middle with no way to continue. Pre-empt with a line-aligned prefix plus an
+    # EXACT continuation range (the treatment the expand path gives), and mark it
+    # exact so the minify projection below leaves the line numbers intact.
+    if mode == "full" and not exact_read and isinstance(content, str):
+        _inline_budget = _read_inline_budget_bytes()
+        if _inline_budget and len(content.encode("utf-8")) > _inline_budget:
+            _src_lines = content.splitlines(keepends=True)
+            _kept: list[str] = []
+            _used = 0
+            for _line in _src_lines:
+                _lb = len(_line.encode("utf-8"))
+                if _kept and _used + _lb > _inline_budget:
+                    break
+                _kept.append(_line)
+                _used += _lb
+            _shown = len(_kept)
+            if _shown < len(_src_lines):
+                _notice = (
+                    f"\n\n[atelier: showing lines 1-{_shown} of {len(_src_lines)}. The full "
+                    f"file exceeds the single-response budget and would otherwise be truncated "
+                    f'by the host. Continue with range="L{_shown + 1}-", or request a specific slice.]'
+                )
+                content = "".join(_kept) + _notice
+                payload["content"] = content
+                payload["truncated"] = True
+                payload["lines_total"] = len(_src_lines)
+                payload["lines_shown"] = _shown
+                exact_read = True
     if isinstance(content, str) and content and mode in ("full", "range") and not exact_read:
         from atelier.core.capabilities.source_projection import (
             ProjectionDelta,
@@ -4701,15 +4906,26 @@ def _collect_touched_paths(edits: list[dict[str, Any]], *, repo_root: str | Path
     return dict(sorted(paths.items()))
 
 
-def _snapshot_paths(paths: dict[str, Path]) -> dict[str, tuple[Path, str | None]]:
-    """Read each file's current content; None means the file does not exist."""
-    snap: dict[str, tuple[Path, str | None]] = {}
+def _snapshot_paths(paths: dict[str, Path]) -> dict[str, tuple[Path, bool, str | None]]:
+    """Snapshot each file's pre-edit state for rollback.
+
+    Returns ``(fp, existed, content)``. ``existed`` distinguishes a file that
+    was genuinely absent pre-edit (rollback should delete it) from one that
+    existed but could not be read (rollback must NOT delete it -- that would be
+    silent data loss). ``existed=True`` with ``content is None`` means the file
+    was unreadable: rollback skips it rather than deleting or truncating.
+    """
+    snap: dict[str, tuple[Path, bool, str | None]] = {}
     for display, fp in paths.items():
-        try:
-            snap[display] = (fp, fp.read_text(encoding="utf-8") if fp.exists() else None)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            snap[display] = (fp, None)
+        existed = fp.exists()
+        content: str | None = None
+        if existed:
+            try:
+                content = fp.read_text(encoding="utf-8")
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                content = None
+        snap[display] = (fp, existed, content)
     return snap
 
 
@@ -4732,17 +4948,17 @@ _SESSION_CREATED_FILES: set[str] = set()
 
 
 def _existing_test_contract_paths(
-    snapshots: dict[str, tuple[Path, str | None]],
+    snapshots: dict[str, tuple[Path, bool, str | None]],
 ) -> list[str]:
     return sorted(
         path
-        for path, (fp, old_content) in snapshots.items()
+        for path, (fp, _existed, old_content) in snapshots.items()
         if old_content is not None and _looks_like_test_path(path) and str(fp.resolve()) not in _SESSION_CREATED_FILES
     )
 
 
 def _compute_and_record_diffs(
-    snapshots: dict[str, tuple[Path, str | None]],
+    snapshots: dict[str, tuple[Path, bool, str | None]],
 ) -> dict[str, str]:
     """Compute unified diffs from *snapshots* vs current file content.
 
@@ -4755,13 +4971,13 @@ def _compute_and_record_diffs(
 
     led = _get_ledger()
     out: dict[str, str] = {}
-    for path, (fp, old_content) in snapshots.items():
+    for path, (fp, existed, old_content) in snapshots.items():
         try:
             new_content = fp.read_text(encoding="utf-8") if fp.exists() else None
         except Exception:
             logging.exception("Recovered from broad exception handler")
             new_content = None
-        if old_content is None and new_content is not None:
+        if not existed and new_content is not None:
             _SESSION_CREATED_FILES.add(str(fp.resolve()))
         if old_content == new_content:
             continue
@@ -4812,7 +5028,7 @@ def _edit_verify_enabled(verify_flag: bool) -> bool:
 
 
 def _restore_snapshots(
-    snapshots: dict[str, tuple[Path, str | None]],
+    snapshots: dict[str, tuple[Path, bool, str | None]],
     applied_content: dict[str, str | None] | None = None,
 ) -> list[str]:
     """Restore files to their pre-edit content (used when the verify gate fails).
@@ -4825,7 +5041,7 @@ def _restore_snapshots(
     (lost update). Returns the display paths skipped due to such a conflict.
     """
     conflicts: list[str] = []
-    for display, (fp, old_content) in snapshots.items():
+    for display, (fp, existed, old_content) in snapshots.items():
         try:
             if applied_content is not None and display in applied_content:
                 current = fp.read_text(encoding="utf-8") if fp.exists() else None
@@ -4835,9 +5051,15 @@ def _restore_snapshots(
                     # update. Leave the concurrent write in place.
                     conflicts.append(display)
                     continue
-            if old_content is None:
+            if not existed:
                 if fp.exists():
                     fp.unlink()
+            elif old_content is None:
+                # Existed pre-edit but was unreadable at snapshot time: we have
+                # no content to restore, so leave the file as-is rather than
+                # deleting or truncating it (data-loss safe).
+                conflicts.append(display)
+                continue
             else:
                 fp.write_text(old_content, encoding="utf-8")
         except Exception:
@@ -4849,7 +5071,7 @@ def _apply_edit_verify_gate(
     result: dict[str, Any],
     *,
     touched: list[Path],
-    snapshots: dict[str, tuple[Path, str | None]],
+    snapshots: dict[str, tuple[Path, bool, str | None]],
     applied_content: dict[str, str | None] | None = None,
     checks: list[str] | None,
     rollback: bool,
@@ -4863,7 +5085,7 @@ def _apply_edit_verify_gate(
     try:
         from atelier.core.capabilities.verification.edit_gate import run_edit_gate
 
-        checks_seq = tuple(checks) if checks else ("typecheck", "tests")
+        checks_seq = tuple(checks) if checks else ("typecheck",)
         counterexamples = run_edit_gate(
             touched,
             repo_root=repo_root,
@@ -5013,15 +5235,16 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "default": False,
             "description": (
                 "Run an executing correctness gate after the edit: a tree-sitter parse check "
-                "(TS/JS/Rust/Go), scoped mypy over touched Python source, and pytest over touched "
-                "test files. On an error-severity failure the edit is rolled back (see verify_rollback). "
-                "Fail-open. Also enabled globally via ATELIER_EDIT_VERIFY=1."
+                "(TS/JS/Rust/Go) and scoped mypy over touched Python source. On an error-severity "
+                "failure the edit is rolled back (see verify_rollback). Fail-open. Also enabled "
+                "globally via ATELIER_EDIT_VERIFY=1. (pytest is not run inline -- run tests in your "
+                "own turn.)"
             ),
         },
         "verify_checks": {
             "type": "array",
-            "items": {"type": "string", "enum": ["typecheck", "tests", "lint"]},
-            "description": "Which executing checks the verify gate runs (default: typecheck + tests). The parse gate always runs when verify is enabled.",
+            "items": {"type": "string", "enum": ["typecheck", "lint"]},
+            "description": "Which executing checks the verify gate runs (default: typecheck). The parse gate always runs when verify is enabled. pytest is not run inline.",
         },
         "verify_rollback": {
             "type": "boolean",
@@ -5525,12 +5748,14 @@ def _task_boundary_detected(led: RunLedger) -> bool:
                 return bool(event.payload.get("passed"))
             if event.kind == "command_result":
                 return bool(event.payload.get("ok"))
-            return True
+            # A SUCCESS keyword in free-text (agent_message / reasoning / note)
+            # is the agent *talking* about completion, not a structured outcome,
+            # so it must NOT count as a boundary (it would auto-compact mid-task).
     return False
 
 
 def _context_lifecycle_decision(led: RunLedger) -> dict[str, Any]:
-    tokens_used = led.token_count + max(0, len(led.events) * 10)
+    tokens_used = led.token_count
     utilisation_pct = round(100.0 * tokens_used / CONTEXT_WINDOW_TOKENS, 1)
     turn_count = _ledger_turn_count(led)
     boundary = _task_boundary_detected(led)
@@ -5591,6 +5816,9 @@ def _write_handover_packet(led: RunLedger, state: Any) -> Path:
 
 _COMPACT_ADVISE_CACHE: dict[str, tuple[int, Any]] = {}
 _MAX_COMPACT_ADVISE_CACHE = 64
+# Serializes cache read/insert/evict under the dispatcher thread pool; the
+# expensive compress() call runs outside the lock.
+_COMPACT_ADVISE_LOCK = threading.Lock()
 
 
 def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
@@ -5617,18 +5845,20 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
         # changing, and compress() walks every event each call. compress() is
         # pure (reads events, returns a fresh CompactState), so reuse is safe.
         _ca_key = led.session_id or ""
-        _ca_cached = _COMPACT_ADVISE_CACHE.get(_ca_key)
+        with _COMPACT_ADVISE_LOCK:
+            _ca_cached = _COMPACT_ADVISE_CACHE.get(_ca_key)
         if _ca_cached is not None and _ca_cached[0] == len(led.events):
             state = _ca_cached[1]
         else:
             state = ContextCompressor().compress(led, preserve_last_n_turns=10, workspace_root=_workspace_root())
-            _COMPACT_ADVISE_CACHE[_ca_key] = (len(led.events), state)
-            if len(_COMPACT_ADVISE_CACHE) > _MAX_COMPACT_ADVISE_CACHE:
-                # Bound the cache: a marathon process seeing many session ids must
-                # not leak compressed states. Evict oldest (skip current).
-                for _stale in list(_COMPACT_ADVISE_CACHE)[: len(_COMPACT_ADVISE_CACHE) - _MAX_COMPACT_ADVISE_CACHE]:
-                    if _stale != _ca_key:
-                        _COMPACT_ADVISE_CACHE.pop(_stale, None)
+            with _COMPACT_ADVISE_LOCK:
+                _COMPACT_ADVISE_CACHE[_ca_key] = (len(led.events), state)
+                if len(_COMPACT_ADVISE_CACHE) > _MAX_COMPACT_ADVISE_CACHE:
+                    # Bound the cache: a marathon process seeing many session ids
+                    # must not leak compressed states. Evict oldest (skip current).
+                    for _stale in list(_COMPACT_ADVISE_CACHE)[: len(_COMPACT_ADVISE_CACHE) - _MAX_COMPACT_ADVISE_CACHE]:
+                        if _stale != _ca_key:
+                            _COMPACT_ADVISE_CACHE.pop(_stale, None)
         compaction_savings = _session_compaction_savings_payload(
             led,
             state,
@@ -6029,6 +6259,9 @@ def _code_search_target_item(item: dict[str, Any]) -> dict[str, Any]:
 def _code_search_target_view(payload: dict[str, Any]) -> dict[str, Any]:
     items = payload.get("items")
     if isinstance(items, list):
+        # Copy before mutating so a cached/shared engine payload is never
+        # rewritten in place under concurrent callers.
+        payload = dict(payload)
         payload["items"] = [_code_search_target_item(item) if isinstance(item, dict) else item for item in items]
     return payload
 
@@ -6835,10 +7068,10 @@ def _op_rename(
     engine = _code_engine_at(repo_root)
     from atelier.core.capabilities.tool_supervision.rename_symbol import build_rename_edits
 
-    # Single root: the engine indexes repo_root (cwd fallback), so edits must be
+    # Single root: the engine resolves/indexes against _workspace_root() (NOT cwd), so edits must be
     # built and applied under the SAME root — otherwise a cross-repo rename hits
     # the wrong working tree.
-    root = Path(repo_root or os.getcwd())
+    root = Path(engine.repo_root)
     edits = build_rename_edits(
         engine,
         symbol_id=symbol_id,
@@ -6887,6 +7120,11 @@ def _op_rename(
     result = apply_rich_edits(edits, atomic=True, repo_root=root, allowed_roots=_claude_additional_dirs(root))
     if not result.get("failed") and not result.get("rolled_back"):
         _compute_and_record_diffs(snaps)
+        # Rename's overwrite-style edits don't trip apply_rich_edits' symbol-
+        # reindex gate, so refresh the cached engine (incremental, fresh for the
+        # next read) -- otherwise reads return pre-rename symbols. Fail-open.
+        with contextlib.suppress(Exception):
+            engine.index_repo(force=False, block=True)
     result["op"] = "rename"
     result["new_name"] = new_name
     result["backend"] = rename_backend
@@ -7451,7 +7689,10 @@ def _run_shell_tool(
             resolved_search_path = (Path(effective_cwd) / resolved_search_path).resolve()
         glob_patterns = ["**/*"] if resolved_search_path.is_dir() else None
         grep_args: dict[str, Any] = {
-            "path": raw_search_path,
+            # Pass the cwd-resolved absolute path: tool_grep resolves a relative
+            # path against CLAUDE_WORKSPACE_ROOT, which would search the wrong
+            # directory when the shell call's cwd differs from the workspace.
+            "path": str(resolved_search_path),
             "content_regex": content_regex,
             "file_glob_patterns": glob_patterns,
             "ignore_case": ignore_case,
@@ -8604,11 +8845,18 @@ def _persist_legacy_route(workflow: dict[str, Any], payload: dict[str, Any], cur
             "sticky_until_tool_calls": remaining,
         },
     }
+    routing_entry = workflow["routing"]
     # Hold _STATE_LOCK across the read-modify-write so a concurrent handler's
-    # session_state update is not lost. _STATE_LOCK is an RLock.
+    # session_state update is not lost. _STATE_LOCK is an RLock. Merge only the
+    # 'routing' key onto the lock-fresh workflow rather than overwriting the whole
+    # sub-dict with the pre-lock snapshot, which would clobber sibling keys
+    # (current_task/current_step/task_outputs) a concurrent step just wrote.
     with _STATE_LOCK:
         state = _read_workspace_session_state()
-        state["workflow"] = workflow
+        fresh_workflow = state.get("workflow")
+        fresh_workflow = fresh_workflow if isinstance(fresh_workflow, dict) else {}
+        fresh_workflow["routing"] = routing_entry
+        state["workflow"] = fresh_workflow
         _write_workspace_session_state(state)
 
 
@@ -8692,15 +8940,11 @@ def _prepare_model_recommendation(
         if legacy is None:
             raise NoFeasibleRouteError("bench-off") from None
         vs_model = "auto"
+        # The legacy path has no real baseline model to price against ("auto" is
+        # unknown to the pricing table -> input cost 0.0), so the old comparison
+        # produced a structural always-0.0 saving. Keep it explicit instead of
+        # computing a misleading zero. (The owned path above does real cost math.)
         cost_saved_usd = 0.0
-        if legacy.model != vs_model:
-            expensive_pricing = get_model_pricing(vs_model)
-            recommended_pricing = get_model_pricing(legacy.model)
-            cost_saved_usd = max(
-                0.0,
-                expensive_pricing.cost_usd(input_tokens=estimated_input_tokens)
-                - recommended_pricing.cost_usd(input_tokens=estimated_input_tokens),
-            )
         payload = {
             "at": datetime.now(UTC).isoformat(),
             "kind": "model_recommendation",
@@ -9420,8 +9664,18 @@ def _is_heavy_request(req: dict[str, Any]) -> bool:
     if req.get("method") != "tools/call":
         return False
     params = req.get("params") or {}
-    name = params.get("name") if isinstance(params, dict) else ""
-    return name in _HEAVY_TOOLS
+    if not isinstance(params, dict):
+        return False
+    name = params.get("name")
+    if name in _HEAVY_TOOLS:
+        return True
+    # memory store_fact runs a blocking arbiter LLM call; route it to the heavy
+    # lane so it can't occupy a light-pool worker and starve cheap reads.
+    if name == "memory":
+        args = params.get("arguments")
+        if isinstance(args, dict) and args.get("op") == "store_fact":
+            return True
+    return False
 
 
 def _max_result_bytes() -> int:
@@ -9718,7 +9972,10 @@ def _handle_and_write(request: dict[str, Any]) -> None:
         _log.exception("unhandled MCP request failure")
         response = _err(request.get("id"), -32603, f"internal error: {exc}")
     if response is not None:
-        _write_jsonrpc(response)
+        try:
+            _write_jsonrpc(response)
+        except Exception:  # noqa: BLE001 - a write failure (e.g. BrokenPipe on host disconnect) must be logged, not silently dropped by the pool.
+            _log.exception("failed to write MCP response")
 
 
 def serve() -> None:
@@ -9850,8 +10107,17 @@ def main() -> None:
     # warming failure never breaks server startup.
     threading.Thread(target=_warm_stdio_code_index, daemon=True).start()
 
-    threading.Thread(target=_check_auto_update, daemon=True).start()
-    serve()
+    _update_thread = threading.Thread(target=_check_auto_update, daemon=True)
+    _update_thread.start()
+    try:
+        serve()
+    finally:
+        # If an opt-in auto-update reinstall (git pull + install.sh) is mid-flight
+        # when the host disconnects, let it finish rather than killing the daemon
+        # thread abruptly and leaving a half-pulled tree / partial install. Returns
+        # immediately in the common no-update case (the thread already exited);
+        # only blocks when an install is genuinely running (its own cap is ~300s).
+        _update_thread.join(timeout=310.0)
 
 
 if __name__ == "__main__":
