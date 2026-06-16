@@ -211,7 +211,7 @@ class MemoryService:
         metadata["last_vote"] = {"direction": clean_direction, "reason": clean_reason, "at": voted_at}
         metadata["fact_scope"] = fact_scope
 
-        stored = self._upsert_block(match.model_copy(update={"metadata": metadata}))
+        stored = self._upsert_block(match.model_copy(update={"metadata": metadata}), dedup=False)
         return MemoryVoteResult(
             id=stored.id,
             fact=clean_fact,
@@ -329,7 +329,16 @@ class MemoryService:
             reason=str(metadata.get("reason") or ""),
         )
 
-    def _upsert_block(self, block: MemoryBlock) -> MemoryBlock:
+    def _upsert_block(self, block: MemoryBlock, *, dedup: bool = True) -> MemoryBlock:
+        if not dedup:
+            # Caller already resolved an exact existing block (e.g. vote_fact),
+            # so routing through arbitrate() would let a NOOP verdict silently
+            # drop the update or an UPDATE verdict reapply it to a different
+            # similar block. Persist the resolved block directly (the store's
+            # optimistic version check still guards concurrent writers).
+            return self._store.upsert_block(
+                block, actor=f"agent:{block.agent_id}", reason="direct-update"
+            )
         candidates = {item.id: item for item in _similar_blocks(block, self._store, k=5)}
         decision = arbitrate(block, self._store, self._embedder)
         target = None
