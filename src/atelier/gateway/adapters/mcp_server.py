@@ -9440,8 +9440,18 @@ def _is_heavy_request(req: dict[str, Any]) -> bool:
     if req.get("method") != "tools/call":
         return False
     params = req.get("params") or {}
-    name = params.get("name") if isinstance(params, dict) else ""
-    return name in _HEAVY_TOOLS
+    if not isinstance(params, dict):
+        return False
+    name = params.get("name")
+    if name in _HEAVY_TOOLS:
+        return True
+    # memory store_fact runs a blocking arbiter LLM call; route it to the heavy
+    # lane so it can't occupy a light-pool worker and starve cheap reads.
+    if name == "memory":
+        args = params.get("arguments")
+        if isinstance(args, dict) and args.get("op") == "store_fact":
+            return True
+    return False
 
 
 def _max_result_bytes() -> int:
@@ -9873,8 +9883,17 @@ def main() -> None:
     # warming failure never breaks server startup.
     threading.Thread(target=_warm_stdio_code_index, daemon=True).start()
 
-    threading.Thread(target=_check_auto_update, daemon=True).start()
-    serve()
+    _update_thread = threading.Thread(target=_check_auto_update, daemon=True)
+    _update_thread.start()
+    try:
+        serve()
+    finally:
+        # If an opt-in auto-update reinstall (git pull + install.sh) is mid-flight
+        # when the host disconnects, let it finish rather than killing the daemon
+        # thread abruptly and leaving a half-pulled tree / partial install. Returns
+        # immediately in the common no-update case (the thread already exited);
+        # only blocks when an install is genuinely running (its own cap is ~300s).
+        _update_thread.join(timeout=310.0)
 
 
 if __name__ == "__main__":
