@@ -117,10 +117,7 @@ export default function Savings() {
   const maxLever = sortedLevers[0]?.value ?? 0;
   const topSources = data.top_sources ?? [];
   const trackedToolCalls = data.tracked_tool_calls ?? 0;
-  const headlineLabel =
-    verification?.headline_kind === "tracked_proof_reduction"
-      ? "Tracked Proof Reduction"
-      : "Token Reduction";
+  const headlineLabel = "Cost Reduction";
   const loadLedger = (runId: string) => {
     const nextExpanded = !expandedRuns[runId];
     setExpandedRuns((prev) => ({ ...prev, [runId]: nextExpanded }));
@@ -156,16 +153,17 @@ export default function Savings() {
               {data.reduction_pct.toFixed(1)}%
             </div>
             <p className="text-sm text-neutral-400 mt-3">
-              {fmt.format(data.total_naive_tokens)} naive tool-output tokens vs{" "}
-              {fmt.format(data.total_actual_tokens)} compacted tool-output
-              tokens from {fmt.format(trackedToolCalls)} tracked tool turns over
-              the last {data.window_days} days.
+              {usdFmt.format(data.saved_usd ?? 0)} saved of{" "}
+              {usdFmt.format(data.would_have_cost_usd ?? 0)} would-have-cost
+              over the last {data.window_days} days —{" "}
+              {fmt.format(data.total_naive_tokens)} tokens kept out of the model
+              across {fmt.format(data.live_calls_saved ?? 0)} avoided calls.
             </p>
-            {verification?.headline_explanation && (
-              <p className="max-w-3xl text-xs text-neutral-500 mt-3 leading-relaxed">
-                {verification.headline_explanation}
-              </p>
-            )}
+            <p className="max-w-3xl text-xs text-neutral-500 mt-3 leading-relaxed">
+              Realized savings from the per-session ledger — the same figure
+              shown by the statusline and the{" "}
+              <code className="bg-neutral-900 px-1">atelier savings</code> CLI.
+            </p>
           </div>
           <div className="w-full md:w-auto">
             <Sparkline values={sparkValues} />
@@ -198,9 +196,11 @@ export default function Savings() {
             {usdFmt.format(data.actually_cost_usd ?? 0)}
           </div>
           <div className="text-xs text-neutral-500 mt-1">
-            {data.cost_basis === "context_budget"
-              ? `tracked from context-budget rows (${usdFmt.format(data.tracked_actual_cost_usd ?? 0)} actual / ${usdFmt.format(data.tracked_baseline_cost_usd ?? 0)} baseline)`
-              : `live estimate ${usdFmt.format(data.live_saved_usd ?? 0)}`}
+            {data.cost_basis === "session_ledger"
+              ? `realized session spend (${usdFmt.format(data.saved_usd ?? 0)} saved)`
+              : data.cost_basis === "context_budget"
+                ? `tracked from context-budget rows (${usdFmt.format(data.tracked_actual_cost_usd ?? 0)} actual / ${usdFmt.format(data.tracked_baseline_cost_usd ?? 0)} baseline)`
+                : `live estimate ${usdFmt.format(data.live_saved_usd ?? 0)}`}
           </div>
         </div>
         <div className="border border-neutral-800 bg-neutral-950/50 p-4">
