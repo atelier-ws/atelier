@@ -455,6 +455,22 @@ def _merge_session_aggregate(stats: dict[str, Any] | None, aggregate: dict[str, 
     stats["cache_write_tokens"] = int(stats.get("cache_write_tokens", 0) or 0) or int(
         usage.get("cache_write_tokens", 0) or 0
     )
+    # Pre-compact usage: token totals from turns that were erased when /compact rewrote the
+    # transcript. The compact.py PreCompact hook snapshots these before the overwrite; add
+    # them on top of whatever the (now-truncated) transcript shows. This bridges the gap
+    # between the Claude Code statusline (in-process running sum) and the stop hook
+    # (transcript-derived), making reported cost match what the statusline showed.
+    pre_compact = aggregate.get("pre_compact_usage")
+    if isinstance(pre_compact, dict):
+        stats["input_tokens"] = int(stats["input_tokens"]) + int(pre_compact.get("input_tokens", 0) or 0)
+        stats["output_tokens"] = int(stats["output_tokens"]) + int(pre_compact.get("output_tokens", 0) or 0)
+        stats["cache_read_tokens"] = int(stats["cache_read_tokens"]) + int(pre_compact.get("cache_read_tokens", 0) or 0)
+        stats["cache_write_tokens"] = int(stats["cache_write_tokens"]) + int(
+            pre_compact.get("cache_write_tokens", 0) or 0
+        )
+        stats["est_cost_usd"] = float(stats.get("est_cost_usd", 0.0) or 0.0) + float(
+            pre_compact.get("est_cost_usd", 0.0) or 0.0
+        )
     stats["total_tokens"] = (
         int(stats["input_tokens"])
         + int(stats["output_tokens"])
@@ -477,6 +493,28 @@ def _is_task_session(stats: dict[str, Any] | None, session_aggregate: dict[str, 
         return False
     tools_used: set[str] = set(stats.get("tools_used", {}).keys())
     return bool(CODE_EDITING_TOOLS & tools_used)
+
+
+def _write_session_cost(session_id: str, cost_usd: float, total_tokens: int) -> None:
+    """Append a session-end cost row to savings.jsonl for historical spend tracking.
+
+    The row has ``kind=="session_end"`` so ``_read_historical_savings`` in
+    savings_summary.py can accumulate actual spend for 7d/30d statusline frames
+    without touching the savings totals.
+    """
+    if not session_id or cost_usd <= 0:
+        return
+    path = _atelier_root() / "sessions" / session_id / "savings.jsonl"
+    if not path.exists():
+        return  # no savings sidecar → session produced no MCP events; skip
+    row = {
+        "kind": "session_end",
+        "ts": datetime.datetime.now(datetime.UTC).isoformat(),
+        "est_cost_usd": round(cost_usd, 6),
+        "total_tokens": int(total_tokens or 0),
+    }
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row) + "\n")
 
 
 def _load_session_savings(session_id: str) -> dict[str, Any]:
@@ -650,6 +688,15 @@ def main() -> int:
     if stats and stats.get("total_tokens", 0) > 0:
         with contextlib.suppress(Exception):
             _write_token_event(stats)
+
+    # ── Write session cost to savings.jsonl for historical 7d/30d spend tracking
+    if stats and stats.get("est_cost_usd", 0) > 0:
+        with contextlib.suppress(Exception):
+            _write_session_cost(
+                session_id,
+                float(stats["est_cost_usd"]),
+                int(stats.get("total_tokens", 0)),
+            )
 
     # ── Enrich run file with session title + full prompt history ──────────────
     with contextlib.suppress(Exception):

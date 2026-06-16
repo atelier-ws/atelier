@@ -151,6 +151,12 @@ results/
 !docs/plans/world-class-atelier/results/optimization/latest.json
 !docs/plans/phase-linear-cache-reuse/results/
 !docs/plans/phase-linear-cache-reuse/results/**
+
+# CodeBench per-run results are shippable metrics (no secrets) -- but never the
+# mitmproxy .flow captures (they embed the live OAuth token) or state/ (raw
+# session transcripts). Track results.jsonl / CSVs / report.txt / gate JSON only.
+benchmarks/codebench/results/*/*.flow
+benchmarks/codebench/results/*/state/
 /*.py
 /*.sh
 
@@ -225,7 +231,6 @@ docs-site/node_modules/
 docs-site/.docusaurus/
 docs-site/build/
 docs-site/docs/
-landing/
 jobs/
 
 # -----------------------

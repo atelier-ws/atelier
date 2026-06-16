@@ -53,7 +53,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -75,7 +75,39 @@ RESULTS_ROOT = REPO_ROOT / "benchmarks" / "codebench" / "results"
 CA_CERT = Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"
 
 EMPTY_MCP: dict[str, dict[str, object]] = {"mcpServers": {}}
-VALID_ARMS = ("baseline", "atelier")
+
+
+@dataclass(frozen=True)
+class ArmSpec:
+    """How an arm name maps to a Claude agent persona, per task capability.
+
+    ``persona_by_capability`` maps a task's capability to the ``--agent`` value
+    this arm runs for it (``None`` = Claude Code's default persona / vanilla
+    baseline). A capability absent from the map means the arm does not apply to
+    that capability, so it is skipped for those tasks.
+    """
+
+    persona_by_capability: Mapping[str, str | None]
+    plugin: bool = False  # inject --plugin-dir ATELIER_CLAUDE_PLUGIN_ROOT
+    strip_mcp: bool = True  # inject --mcp-config EMPTY_MCP --strict-mcp-config
+    heavy: bool = False  # counts toward the HEAVY_ARMS rate-limit warning
+
+
+# Persona is resolved by (arm, task.capability): the baseline arm runs the
+# built-in twin (Explore/Plan, or vanilla default for code); the atelier/
+# execute/solve arms run Atelier personas through the generated plugin.
+ARM_SPECS: dict[str, ArmSpec] = {
+    "baseline": ArmSpec({"code": None, "explore": "Explore", "plan": "Plan"}),
+    "atelier": ArmSpec(
+        {"code": "atelier:code", "explore": "atelier:explore", "plan": "atelier:plan"},
+        plugin=True,
+        strip_mcp=False,
+        heavy=True,
+    ),
+    "execute": ArmSpec({"code": "atelier:execute"}, plugin=True, strip_mcp=False, heavy=True),
+    "solve": ArmSpec({"code": "atelier:solve"}, plugin=True, strip_mcp=False, heavy=True),
+}
+VALID_ARMS = tuple(ARM_SPECS)
 PERSISTENT_WORKSPACE_ROOT = Path(
     os.environ.get("CODEBENCH_WORKSPACE_ROOT", str(Path(tempfile.gettempdir()) / "codebench_workspaces"))
 )
@@ -89,7 +121,7 @@ PROVIDER_ALIASES: dict[str, str] = {
 }
 CLI_DRIVERS = ("claude", "atelier-run")
 # Arms that drive many model + tool round-trips and so dominate wall time.
-HEAVY_ARMS = ("atelier",)
+HEAVY_ARMS = tuple(name for name, spec in ARM_SPECS.items() if spec.heavy)
 # Heuristic floor: on a non-trivial task a tool-heavy arm routinely issues this
 # many model round-trips. If --rate-limit-rpm x --timeout cannot fit this many
 # requests, the heavy arm will very likely hit the timeout, so we warn up front.
@@ -187,18 +219,8 @@ STOPWORDS = frozenset(
     }
 )
 ATELIER_CLAUDE_PLUGIN_ROOT = Path(
-    os.environ.get("ATELIER_BENCH_PLUGIN_ROOT")
-    or (REPO_ROOT / "integrations" / "claude" / "plugin")
+    os.environ.get("ATELIER_BENCH_PLUGIN_ROOT") or (REPO_ROOT / "integrations" / "claude" / "plugin")
 )
-
-
-def _atelier_claude_agent_args() -> list[str]:
-    return [
-        "--plugin-dir",
-        str(ATELIER_CLAUDE_PLUGIN_ROOT),
-        "--agent",
-        "atelier:code",
-    ]
 
 
 def _free_port() -> int:
@@ -492,6 +514,187 @@ def _apply_verify(results: list[ArmResult]) -> None:
         r.judge_reason = (detail if mode == "binary" else f"floor failed ({detail})")[:300]
 
 
+def _task_answer_key(task: Task) -> tuple[list[str], list[str], float]:
+    """Read the explore ``answer`` block from the task's config.yaml.
+
+    Mirrors :func:`_task_verify`. Returns ``(expect, forbid, threshold)``; an
+    empty ``expect`` means the task declares no answer key.
+        answer:
+          expect:    ["run_arm", "benchmarks/codebench/run.py"]   # must appear
+          forbid:    ["TODO"]                                      # optional
+          threshold: 0.6                                           # optional
+    """
+    config_path = task.prompt_path().parent / "config.yaml"
+    if not config_path.exists():
+        return [], [], 0.6
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return [], [], 0.6
+    answer = data.get("answer") if isinstance(data, dict) else None
+    if not isinstance(answer, dict):
+        return [], [], 0.6
+    expect = [str(x) for x in answer.get("expect", []) if str(x).strip()]
+    forbid = [str(x) for x in answer.get("forbid", []) if str(x).strip()]
+    try:
+        threshold = float(answer.get("threshold", 0.6))
+    except (TypeError, ValueError):
+        threshold = 0.6
+    return expect, forbid, threshold
+
+
+def _grade_explore(result: ArmResult) -> None:
+    """Grade a read-only explore answer against the task's answer key.
+
+    Score is the fraction of ``expect`` tokens present (case-insensitive
+    substring) in the response; ``correct`` is ``score >= threshold`` with no
+    ``forbid`` token present. Writes ``judge_model='answer'`` so the LLM judge
+    skips the row. Tasks with no answer key are left for the judge.
+    """
+    task = BY_ID.get(result.task)
+    if task is None or not result.ok:
+        return
+    expect, forbid, threshold = _task_answer_key(task)
+    if not expect:
+        return
+    lowered = result.result_excerpt.lower()
+    hits = [tok for tok in expect if tok.lower() in lowered]
+    forbidden = [tok for tok in forbid if tok.lower() in lowered]
+    score = len(hits) / len(expect)
+    result.correct = (score >= threshold) and not forbidden
+    result.score = round(0.0 if forbidden else score, 3)
+    result.judge_model = "answer"
+    detail = f"answer {len(hits)}/{len(expect)} matched"
+    if forbidden:
+        detail += f"; forbidden present: {', '.join(sorted(forbidden))}"
+    result.judge_reason = detail[:300]
+
+
+def _task_plan_key(task: Task) -> tuple[list[str], str, float]:
+    """Read the ``plan`` (+ optional ``judge.rubric``) blocks from config.yaml.
+
+    Mirrors :func:`_task_verify`. Returns ``(target_files, rubric, threshold)``.
+    ``target_files`` are the paths the source change actually touches (objective
+    half); ``rubric`` drives the optional LLM quality half. Both empty means no
+    plan key.
+        plan:
+          target_files: ["inventory/store.py", "inventory/orders.py"]
+          threshold: 0.6
+        judge:
+          rubric: "Reward a correct approach + right edit sites..."
+    """
+    config_path = task.prompt_path().parent / "config.yaml"
+    if not config_path.exists():
+        return [], "", 0.6
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return [], "", 0.6
+    data = data if isinstance(data, dict) else {}
+    judge_cfg = data.get("judge")
+    rubric = str(judge_cfg["rubric"]) if isinstance(judge_cfg, dict) and judge_cfg.get("rubric") else ""
+    plan = data.get("plan")
+    if not isinstance(plan, dict):
+        return [], rubric, 0.6
+    targets = [str(x) for x in plan.get("target_files", []) if str(x).strip()]
+    try:
+        threshold = float(plan.get("threshold", 0.6))
+    except (TypeError, ValueError):
+        threshold = 0.6
+    return targets, rubric, threshold
+
+
+def _plan_mentions_path(text: str, path: str) -> bool:
+    """True when *text* names *path* by full path or bare filename (basename)."""
+    low = text.lower()
+    p = path.lower()
+    return p in low or p.rsplit("/", 1)[-1] in low
+
+
+def _grade_plan(
+    result: ArmResult,
+    *,
+    run_judge: bool = False,
+    judge_model: str = "",
+    judge_agent_command: str = "claude",
+    timeout: int = 600,
+    agent_env: dict[str, str] | None = None,
+) -> None:
+    """Grade an implementation plan: file-targeting + (optionally) quality.
+
+    Objective half: fraction of ``plan.target_files`` (the paths the real change
+    touches) the plan names. Quality half (only when ``run_judge`` and a
+    ``judge.rubric`` are present -- i.e. under ``--judge``): an LLM scores how
+    well the plan would actually work against the rubric. Final score is the
+    mean of the available halves; ``correct`` is ``score >= threshold``. Writes
+    ``judge_model='plan'`` so the global LLM judge skips the row.
+    """
+    task = BY_ID.get(result.task)
+    if task is None or not result.ok:
+        return
+    targets, rubric, threshold = _task_plan_key(task)
+    if not targets and not rubric:
+        return
+    components: list[float] = []
+    detail: list[str] = []
+    if targets:
+        mentioned = [p for p in targets if _plan_mentions_path(result.result_excerpt, p)]
+        components.append(len(mentioned) / len(targets))
+        detail.append(f"files {len(mentioned)}/{len(targets)}")
+    if run_judge and rubric:
+        parsed = _run_plan_judge(task, result, rubric, judge_model, judge_agent_command, timeout, agent_env)
+        if parsed is not None:
+            jscore = max(0.0, min(1.0, _as_float(parsed.get("score", 0.0) or 0.0)))
+            components.append(jscore)
+            detail.append(f"rubric {jscore:.2f} ({str(parsed.get('reason', ''))[:80]})")
+        else:
+            detail.append("rubric judge error")
+    if not components:
+        return
+    score = sum(components) / len(components)
+    result.correct = score >= threshold
+    result.score = round(score, 3)
+    result.judge_model = "plan"
+    result.judge_reason = "; ".join(detail)[:300]
+
+
+def _apply_graders(
+    results: list[ArmResult],
+    *,
+    judge: bool = False,
+    judge_model: str = "",
+    judge_agent_command: str = "claude",
+    timeout: int = 600,
+    agent_env: dict[str, str] | None = None,
+) -> None:
+    """Route each result to the grader for its task's capability.
+
+    ``code`` -> objective verify gate (:func:`_apply_verify`); ``explore`` ->
+    answer-key overlap (:func:`_grade_explore`); ``plan`` -> target-file overlap
+    plus, under ``--judge``, a rubric quality judge (:func:`_grade_plan`). Every
+    grader writes the same ``correct``/``score``/``judge_model`` slots, and a set
+    ``judge_model`` makes the global LLM judge skip the row. Capabilities without
+    a grader fall through to the judge unchanged.
+    """
+    by_capability: dict[str, list[ArmResult]] = {}
+    for r in results:
+        task = BY_ID.get(r.task)
+        capability = task.capability if task is not None else "code"
+        by_capability.setdefault(capability, []).append(r)
+    _apply_verify(by_capability.get("code", []))
+    for r in by_capability.get("explore", []):
+        _grade_explore(r)
+    for r in by_capability.get("plan", []):
+        _grade_plan(
+            r,
+            run_judge=judge,
+            judge_model=judge_model,
+            judge_agent_command=judge_agent_command,
+            timeout=timeout,
+            agent_env=agent_env,
+        )
+
+
 def _fmt_hms(seconds: float) -> str:
     """Format a duration as a compact h/m/s string for progress lines."""
     total = round(seconds)
@@ -502,6 +705,44 @@ def _fmt_hms(seconds: float) -> str:
     if minutes:
         return f"{minutes}m{secs:02d}s"
     return f"{secs}s"
+
+
+def _pre_index_workspace(task: Task, arm: str, rep: int, ws: Path) -> None:
+    """Build the Atelier code index for *ws* before the timed run starts.
+
+    ``atelier code index`` is a local SCIP/FTS build — no model calls, no API
+    cost.  On large repos (e.g. VS Code ~10k files) it can take several minutes,
+    so running it here excludes that one-time setup from the benchmark timer and
+    lets the timed section measure only question-answering latency.
+
+    Failures are logged but do not abort the run: the agent will attempt its
+    own indexing if the pre-built index is absent.
+    """
+    label = f"[pre-index:{task.id}/{arm}/rep{rep}]"
+    print(f"  {label} building code index for {ws.name} ...", flush=True)
+    t0 = time.time()
+    try:
+        result = subprocess.run(
+            ["uv", "run", "atelier", "code", "index", "--repo-root", str(ws)],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=2400,  # 40-min ceiling; VS Code ~10 min
+            check=False,
+        )
+        elapsed = time.time() - t0
+        if result.returncode == 0:
+            print(f"  {label} done in {_fmt_hms(elapsed)}", flush=True)
+        else:
+            stderr_tail = (result.stderr or "").strip()[-200:]
+            print(
+                f"  {label} WARNING: index exited {result.returncode} after {_fmt_hms(elapsed)}"
+                + (f": {stderr_tail}" if stderr_tail else ""),
+                flush=True,
+            )
+    except subprocess.TimeoutExpired:
+        elapsed = time.time() - t0
+        print(f"  {label} WARNING: index timed out after {_fmt_hms(elapsed)}", flush=True)
 
 
 def _recover_flow_result(
@@ -524,15 +765,9 @@ def _recover_flow_result(
     """
     input_tokens = output_tokens = cache_read = cache_write = requests = 0
     cost_usd = 0.0
-    if flow_path.exists():
-        with contextlib.suppress(Exception):
-            stats = aggregate("flow", flow_records(str(flow_path)))
-            usage = stats.usage
-            input_tokens = usage.input_tokens
-            output_tokens = usage.output_tokens
-            cache_read = usage.cache_read_input_tokens
-            cache_write = usage.cache_creation_input_tokens
-            requests = stats.requests
+    wire = _read_flow_usage(flow_path)
+    if wire is not None:
+        input_tokens, output_tokens, cache_read, cache_write, requests = wire
     if model and (input_tokens or output_tokens or cache_read or cache_write):
         with contextlib.suppress(Exception):
             cost_usd = usage_cost_usd(
@@ -564,6 +799,32 @@ def _recover_flow_result(
     )
 
 
+def _read_flow_usage(flow_path: Path) -> tuple[int, int, int, int, int] | None:
+    """(input, output, cache_read, cache_write, requests) over EVERY model
+    round-trip in the capture -- the main agent AND any subagents it spawns.
+
+    The ``claude -p`` JSON receipt reports only the main agent, so when the stock
+    baseline delegates discovery to an Explore subagent its tokens, cost, and
+    round-trips are invisible (undercounted 10-40x), while an inline agent like
+    Atelier is already complete. The .flow capture sees every round-trip through
+    the proxy, so reconciling against it counts both arms the same way.
+    """
+    if not flow_path.exists():
+        return None
+    try:
+        stats = aggregate("flow", flow_records(str(flow_path)))
+    except Exception:
+        return None
+    usage = stats.usage
+    return (
+        usage.input_tokens,
+        usage.output_tokens,
+        usage.cache_read_input_tokens,
+        usage.cache_creation_input_tokens,
+        stats.requests,
+    )
+
+
 def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep: int) -> ArmResult:
     try:
         d = json.loads(stdout)
@@ -572,20 +833,47 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
 
     u = d.get("usage", {}) or {}
     model_usage = d.get("modelUsage", {}) or {}
+    model_id = next(iter(model_usage), "") or ""
+
+    # Default to the CLI JSON receipt (main agent only).
+    input_tokens = int(u.get("input_tokens", 0) or 0)
+    output_tokens = int(u.get("output_tokens", 0) or 0)
+    cache_read = int(u.get("cache_read_input_tokens", 0) or 0)
+    cache_write = int(u.get("cache_creation_input_tokens", 0) or 0)
+    num_turns = int(d.get("num_turns", 0) or 0)
     cost_usd = float(d.get("total_cost_usd", 0.0) or 0.0)
-    if cost_usd <= 0.0 and u:
-        # Bedrock/Vertex and some gateways report total_cost_usd=0; recompute
-        # from token usage via the shared pricing catalog so savings math works.
-        model_id = next(iter(model_usage), "") or ""
-        if model_id:
-            with contextlib.suppress(Exception):
-                cost_usd = usage_cost_usd(
-                    model_id,
-                    input_tokens=int(u.get("input_tokens", 0) or 0),
-                    output_tokens=int(u.get("output_tokens", 0) or 0),
-                    cache_read_tokens=int(u.get("cache_read_input_tokens", 0) or 0),
-                    cache_write_tokens=int(u.get("cache_creation_input_tokens", 0) or 0),
-                )
+
+    # Reconcile against the full wire capture: the receipt covers only the main
+    # agent, so a baseline that delegates to a subagent is undercounted while an
+    # inline agent is not. Prefer the wire totals whenever they are the larger
+    # (i.e. complete) set, and recompute cost from those tokens via the shared
+    # pricing catalog so cost stays consistent with the tokens it is billed on.
+    wire = _read_flow_usage(flow_path)
+    if wire is not None:
+        w_in, w_out, w_cr, w_cw, w_requests = wire
+        if (w_in + w_out + w_cr + w_cw) >= (input_tokens + output_tokens + cache_read + cache_write):
+            # The receipt's usage field + num_turns cover only the main agent; the
+            # wire captures the main agent AND every subagent it spawns (the stock
+            # baseline's Explore agent). Adopt the complete token + round-trip
+            # counts. cost_usd is intentionally left as the receipt's
+            # total_cost_usd -- that figure already rolls up subagent spend (a
+            # baseline main-agent priced at $0.06 reports $0.43 once its subagent
+            # is billed), so only the usage field and num_turns were main-only.
+            input_tokens, output_tokens, cache_read, cache_write = w_in, w_out, w_cr, w_cw
+            num_turns = w_requests or num_turns
+
+    if cost_usd <= 0.0 and model_id and (input_tokens or output_tokens or cache_read or cache_write):
+        # total_cost_usd missing (timeout / zero-cost gateway): price the
+        # reported tokens directly via the shared catalog as a fallback.
+        with contextlib.suppress(Exception):
+            cost_usd = usage_cost_usd(
+                model_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_tokens=cache_read,
+                cache_write_tokens=cache_write,
+            )
+
     return ArmResult(
         task=task,
         arm=arm,
@@ -594,11 +882,11 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
         cost_usd=cost_usd,
         duration_ms=int(d.get("duration_ms", 0) or 0),
         duration_api_ms=int(d.get("duration_api_ms", 0) or 0),
-        num_turns=int(d.get("num_turns", 0) or 0),
-        input_tokens=int(u.get("input_tokens", 0) or 0),
-        cache_read_tokens=int(u.get("cache_read_input_tokens", 0) or 0),
-        cache_creation_tokens=int(u.get("cache_creation_input_tokens", 0) or 0),
-        output_tokens=int(u.get("output_tokens", 0) or 0),
+        num_turns=num_turns,
+        input_tokens=input_tokens,
+        cache_read_tokens=cache_read,
+        cache_creation_tokens=cache_write,
+        output_tokens=output_tokens,
         thinking_tokens=int(u.get("thinking_tokens", 0) or 0),
         model_usage=model_usage,
         models=list(model_usage.keys()),
@@ -875,10 +1163,13 @@ def _parse_agent_env(entries: list[str] | None) -> dict[str, str]:
 
 
 def _env_file_candidates() -> tuple[Path, ...]:
+    # Most-specific first: benchmarks/codebench/.env overrides benchmarks/.env
+    # overrides the repo-root .env. First match wins in host-var lookups; the
+    # first non-empty value wins in the credential cascade (_load_benchmark_env).
     return (
-        REPO_ROOT / ".env",
-        REPO_ROOT / "benchmarks" / ".env",
         REPO_ROOT / "benchmarks" / "codebench" / ".env",
+        REPO_ROOT / "benchmarks" / ".env",
+        REPO_ROOT / ".env",
     )
 
 
@@ -924,6 +1215,58 @@ def _parse_agent_env_from_host(entries: list[str] | None) -> dict[str, str]:
             raise ValueError(f"missing host environment variable for --agent-env-from-host: {source}")
         parsed[dest] = value
     return parsed
+
+
+# Auth-bearing env keys. When the benchmark identity (a .env file, --provider, or
+# explicit --agent-env) carries any of these, the run authenticates with THAT
+# identity, so the rotating ~/.claude session credentials must not be copied into
+# the isolated config -- copying would shadow it and 401 the moment any other
+# process rotates the shared refresh token.
+AUTH_ENV_KEYS = (
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "AWS_PROFILE",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+)
+
+
+def _load_benchmark_env() -> dict[str, str]:
+    """Merge env vars from the .env cascade (codebench > benchmarks > root).
+
+    The most-specific file wins per key; empty values are skipped so a placeholder
+    such as ``CLAUDE_CODE_OAUTH_TOKEN=`` falls through to the next source instead
+    of clobbering it. Returns ``{}`` when no .env files exist, so the run falls
+    back to the default Claude session credentials.
+    """
+    merged: dict[str, str] = {}
+    for path in _env_file_candidates():  # most-specific first
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            parsed = _parse_env_assignment(line)
+            if parsed is None:
+                continue
+            key, value = parsed
+            if value and key not in merged:  # first (most-specific) non-empty wins
+                merged[key] = value
+    return merged
+
+
+def _benchmark_auth_present(agent_env: dict[str, str], env: dict[str, str]) -> bool:
+    """True when an explicit benchmark identity is configured, so the rotating
+    session credentials should not be copied.
+
+    Considers auth keys supplied by the .env cascade / --provider / --agent-env
+    (``agent_env``), plus a host-exported ``CLAUDE_CODE_OAUTH_TOKEN`` (the legacy
+    long-lived-token path). Ambient ``ANTHROPIC_API_KEY`` etc. in the host shell
+    do NOT count -- only an explicitly configured benchmark identity does.
+    """
+    if any(agent_env.get(k) for k in AUTH_ENV_KEYS):
+        return True
+    return bool(env.get("CLAUDE_CODE_OAUTH_TOKEN"))
 
 
 def _resolve_provider_env(provider: str | None) -> dict[str, str]:
@@ -988,6 +1331,11 @@ def run_arm(
         ws = prepare_workspace(task)
     if cli_driver not in CLI_DRIVERS:
         raise ValueError(f"unsupported cli driver: {cli_driver}")
+    # For plugin-enabled arms (atelier) pre-build the code index so index time
+    # is not charged to the benchmark timer.  Idempotent: a second rep that
+    # reuses the same workspace finds the index already warm and returns quickly.
+    if ARM_SPECS[arm].plugin:
+        _pre_index_workspace(task, arm, rep, ws)
     flow_path = out_dir / f"{task.id}_{arm}_rep{rep}.flow"
     proxy_supported = capture and cli_driver in {"claude", "atelier-run"}
     port = _free_port() if proxy_supported else 0
@@ -1046,31 +1394,34 @@ def run_arm(
                 agent_command=agent_command,
                 extra_args=cli_extra_args,
             )
-            if arm in {"baseline", "atelier"}:
-                # Contamination-free config: real subscription auth, but no
-                # globally-installed plugins/hooks/MCP. The ONLY A/B difference
-                # is then the Atelier MCP toolset + CLAUDE.md, not ambient host
-                # state. Persisted next to the workspace so --resume still finds
-                # the prior session transcript.
-                config_dir = _make_baseline_config(
-                    Path(str(row_state["workspace"])).parent / f"claude-config-{arm}" if row_state else None,
-                    copy_creds=not env.get("CLAUDE_CODE_OAUTH_TOKEN"),
-                )
-                env["CLAUDE_CONFIG_DIR"] = str(config_dir)
+            spec = ARM_SPECS[arm]
+            persona = spec.persona_by_capability.get(task.capability)
+            # Contamination-free config for every claude-driver arm: real
+            # subscription auth, but no globally-installed plugins/hooks/MCP, so
+            # the only A/B difference is the persona/toolset each arm injects
+            # below -- not ambient host state. Persisted next to the workspace so
+            # --resume still finds the prior session transcript.
+            config_dir = _make_baseline_config(
+                Path(str(row_state["workspace"])).parent / f"claude-config-{arm}" if row_state else None,
+                copy_creds=not _benchmark_auth_present(agent_env or {}, env),
+            )
+            env["CLAUDE_CONFIG_DIR"] = str(config_dir)
             if row_state:
                 session_id = str(row_state["session_id"])
                 cmd += ["--resume" if should_resume_session else "--session-id", session_id]
                 cmd += ["--add-dir", str(ws)]
-            if arm == "baseline":
-                # Bare baseline: stock Claude Code with no injected CLAUDE.md and no
-                # MCP servers. The comparison is the full Atelier agent vs a vanilla
-                # Claude Code session, persona and all.
+            if spec.plugin:
+                # Load the generated Atelier plugin so its agents/MCP/hooks resolve.
+                cmd += ["--plugin-dir", str(ATELIER_CLAUDE_PLUGIN_ROOT)]
+            if persona:
+                # Pin the arm to one agent persona: a built-in twin (e.g. "Explore"
+                # / "Plan") for baseline, or "atelier:<x>" for the candidate. None
+                # leaves Claude Code's default persona (the vanilla code baseline).
+                cmd += ["--agent", persona]
+            if spec.strip_mcp:
+                # Built-in / bare arms get no MCP servers, so the comparison is the
+                # arm's native stack, not ambient host MCP.
                 cmd.extend(["--mcp-config", json.dumps(EMPTY_MCP), "--strict-mcp-config"])
-            if arm == "atelier":
-                # Load the generated Claude plugin and run its real coding
-                # agent. The agent definition owns its prompt, MCP wiring, hooks,
-                # and native-tool restrictions.
-                cmd.extend(_atelier_claude_agent_args())
         elif cli_driver == "atelier-run":
             # Direct owned-session arm: Atelier owns prompt assembly, model routing,
             # caching, and the executable tool loop on the caller's API credentials.
@@ -1161,6 +1512,85 @@ Candidate response:
 """
 
 
+def _run_judge(
+    prompt: str,
+    *,
+    judge_model: str,
+    judge_agent_command: str,
+    timeout: int,
+    agent_env: dict[str, str] | None,
+) -> dict[str, object]:
+    """Run one judge prompt through the claude CLI; return parsed JSON.
+
+    Raises on subprocess failure or unparseable output.
+    """
+    cmd = build_driver_command(
+        cli_driver="claude",
+        prompt=prompt,
+        model=judge_model,
+        workspace=str(REPO_ROOT),
+        agent_command=judge_agent_command,
+    )
+    completed = subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        env={**os.environ, **(agent_env or {})},
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError((completed.stderr or completed.stdout or "").strip()[:300])
+    text = str(json.loads(completed.stdout).get("result", ""))
+    return _parse_judge_json(text)
+
+
+def _plan_judge_prompt(task: Task, result: ArmResult, rubric: str) -> str:
+    return f"""You are grading an implementation PLAN (no code was written).
+
+Return ONLY compact JSON with these keys:
+{{"score": number, "reason": string}}
+
+Score 0.0-1.0 for how well the plan would actually solve the task, judged
+against this rubric:
+{rubric}
+
+A high score requires a correct approach and the right edit sites -- not merely
+naming files. Penalize plans that are vague, target the wrong code, skip
+required steps, or would not work.
+
+Task prompt:
+{task.prompt()}
+
+Candidate plan:
+{result.result_excerpt}
+"""
+
+
+def _run_plan_judge(
+    task: Task,
+    result: ArmResult,
+    rubric: str,
+    judge_model: str,
+    judge_agent_command: str,
+    timeout: int,
+    agent_env: dict[str, str] | None,
+) -> dict[str, object] | None:
+    """Score a plan's quality against its rubric; ``None`` on judge failure."""
+    try:
+        return _run_judge(
+            _plan_judge_prompt(task, result, rubric),
+            judge_model=judge_model,
+            judge_agent_command=judge_agent_command,
+            timeout=timeout,
+            agent_env=agent_env,
+        )
+    except Exception:
+        return None
+
+
 def judge_results(
     results: list[ArmResult],
     *,
@@ -1170,8 +1600,8 @@ def judge_results(
     agent_env: dict[str, str] | None = None,
 ) -> None:
     for result in results:
-        if result.judge_model == "verify":
-            continue  # already graded by an objective per-task verify command
+        if result.judge_model:
+            continue  # already graded by a capability grader (verify/answer/plan)
         if not result.ok:
             result.correct = False
             result.score = 0.0
@@ -1186,28 +1616,13 @@ def judge_results(
             result.judge_reason = f"unknown task {result.task}"
             continue
         try:
-            prompt = _judge_prompt(task, result)
-            cmd = build_driver_command(
-                cli_driver="claude",
-                prompt=prompt,
-                model=judge_model,
-                workspace=str(REPO_ROOT),
-                agent_command=judge_agent_command,
-            )
-            completed = subprocess.run(
-                cmd,
-                cwd=str(REPO_ROOT),
-                env={**os.environ, **(agent_env or {})},
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                text=True,
+            parsed = _run_judge(
+                _judge_prompt(task, result),
+                judge_model=judge_model,
+                judge_agent_command=judge_agent_command,
                 timeout=timeout,
-                check=False,
+                agent_env=agent_env,
             )
-            if completed.returncode != 0:
-                raise RuntimeError((completed.stderr or completed.stdout or "").strip()[:300])
-            text = str(json.loads(completed.stdout).get("result", ""))
-            parsed = _parse_judge_json(text)
             result.correct = bool(parsed.get("correct", False))
             result.score = max(0.0, min(1.0, _as_float(parsed.get("score", 0.0) or 0.0)))
             result.judge_model = judge_model
@@ -1648,6 +2063,12 @@ def _run_task_rep(
     task = BY_ID[task_id]
     results: list[ArmResult] = []
     for arm in arms:
+        if task.capability not in ARM_SPECS[arm].persona_by_capability:
+            print(
+                f"[skip] {task_id} {arm} rep{rep} — not applicable to capability '{task.capability}'",
+                flush=True,
+            )
+            continue
         print(f"[run] {task_id} {arm} rep{rep} (model={model}, driver={cli_driver}) ...", flush=True)
         t0 = time.time()
         try:
@@ -1745,7 +2166,13 @@ def _run_single_arm(
 def main() -> int:
     p = argparse.ArgumentParser(description="CodeBench head-to-head runner")
     p.add_argument("tasks", nargs="*", default=["all"], metavar="TASK", help="task ids or 'all' (default: all)")
+    p.add_argument("--list", action="store_true", help="list available task ids and exit")
     p.add_argument("-a", "--arms", nargs="*", default=["baseline", "atelier"])
+    p.add_argument(
+        "--capability",
+        default=None,
+        help="Run only tasks of this capability (code/explore/plan); also selects each arm's persona.",
+    )
     p.add_argument("--reps", type=int, default=1)
     p.add_argument("--model", default="sonnet")
     p.add_argument("--timeout", type=int, default=1800)
@@ -1847,6 +2274,13 @@ def main() -> int:
         ),
     )
     args = p.parse_args()
+    if args.list:
+        print(f"{len(TASKS)} CodeBench tasks (id / capability / language / weight / source):")
+        for t in TASKS:
+            kind = t.source[0]
+            ref = t.source[1] if kind in ("repo", "path", "workspace") else ""
+            print(f"  {t.id:24} {t.capability:8} {t.language:12} w{t.weight}  {kind:9} {ref}")
+        return 0
     if args.rate_limit_rpm < 0:
         p.error("--rate-limit must be >= 0")
     if args.rate_limit_tpm < 0:
@@ -1864,7 +2298,12 @@ def main() -> int:
                 f"Raise --timeout to >= {suggested_timeout}s or increase --rate-limit-rpm.",
                 flush=True,
             )
+    # Credential cascade: the .env files (codebench > benchmarks > root) form the
+    # base identity; --provider and explicit --agent-env(/-from-host) override
+    # them; if none supply auth, the run falls back to the default Claude session
+    # credentials. See _load_benchmark_env / _benchmark_auth_present.
     agent_env = {
+        **_load_benchmark_env(),
         **_resolve_provider_env(args.provider),
         **_parse_agent_env(args.agent_env),
         **_parse_agent_env_from_host(args.agent_env_from_host),
@@ -1875,7 +2314,14 @@ def main() -> int:
         rdir = Path(args.report)
         report_results = _load_existing_results(rdir)
         if not args.no_verify:
-            _apply_verify(report_results)
+            _apply_graders(
+                report_results,
+                judge=args.judge,
+                judge_model=judge_model,
+                judge_agent_command=judge_agent_command,
+                timeout=args.timeout,
+                agent_env=agent_env,
+            )
         if args.judge:
             judge_results(
                 report_results,
@@ -1910,9 +2356,15 @@ def main() -> int:
         )
         print("", flush=True)
         print("=== Cost ESTIMATE (not a charge) ===", flush=True)
-        print(f"  runs:        {estimate['n_runs']} ({len(args.prompt)} prompt(s) x {len(args.arms)} arm(s) x {args.reps} rep(s))", flush=True)
+        print(
+            f"  runs:        {estimate['n_runs']} ({len(args.prompt)} prompt(s) x {len(args.arms)} arm(s) x {args.reps} rep(s))",
+            flush=True,
+        )
         print(f"  per run:     ${estimate['per_run_usd']:.4f}", flush=True)
-        print(f"  total:       ${estimate['total_usd']:.4f}  (range ${estimate['low_usd']:.4f}-${estimate['high_usd']:.4f})", flush=True)
+        print(
+            f"  total:       ${estimate['total_usd']:.4f}  (range ${estimate['low_usd']:.4f}-${estimate['high_usd']:.4f})",
+            flush=True,
+        )
         print(f"  basis:       {estimate['basis']}", flush=True)
         print(f"  assumption:  {estimate['assumption']}", flush=True)
         print("  NOTE: an estimate only; real spend depends on the agent's actual token use.", flush=True)
@@ -1930,8 +2382,7 @@ def main() -> int:
                 return 1
         else:
             print(
-                "wire capture off — cost from CLI receipts (pass --capture for "
-                "mitmproxy wire-level verification).",
+                "wire capture off — cost from CLI receipts (pass --capture for mitmproxy wire-level verification).",
                 flush=True,
             )
         # Ad-hoc repos have no per-task verify command and a generic language;
@@ -1941,6 +2392,8 @@ def main() -> int:
             args.cli_extra_arg = [*args.cli_extra_arg, "--max-turns", str(args.max_turns)]
     else:
         task_ids = [t.id for t in TASKS] if args.tasks == ["all"] else args.tasks
+        if args.capability:
+            task_ids = [tid for tid in task_ids if BY_ID.get(tid) and BY_ID[tid].capability == args.capability]
     run_dir = args.out if args.out is not None else RESULTS_ROOT / time.strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
     print(f"Results: {run_dir.resolve()}", flush=True)
@@ -2091,7 +2544,14 @@ def main() -> int:
             with contextlib.suppress(Exception):
                 bridge.wait(timeout=10)
     if not args.no_verify:
-        _apply_verify(results)
+        _apply_graders(
+            results,
+            judge=args.judge,
+            judge_model=judge_model,
+            judge_agent_command=judge_agent_command,
+            timeout=args.timeout,
+            agent_env=agent_env,
+        )
     if args.judge:
         judge_results(
             results,

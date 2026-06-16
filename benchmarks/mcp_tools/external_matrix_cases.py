@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -21,11 +22,101 @@ DEFAULT_CASE_QUOTAS: dict[str, int] = {
     "fuzzy_symbol": 100,
     "structural_search": 100,
     "nohit_search": 100,
+    "explore": 100,
+    "explore_skeleton": 100,
 }
 
 # Families whose corpus is opportunistic: generate up to the quota, but do not
 # fail if the repository yields fewer well-posed cases.
-_BEST_EFFORT_FAMILIES = frozenset({"nohit_search", "structural_search"})
+_BEST_EFFORT_FAMILIES = frozenset({"nohit_search", "structural_search", "explore", "explore_skeleton"})
+
+_SIBLING_KINDS = frozenset({"class", "struct", "interface", "trait", "protocol", "enum", "method", "function"})
+_SIBLING_STOPWORDS = frozenset(
+    {
+        "make",
+        "handle",
+        "data",
+        "base",
+        "util",
+        "utils",
+        "test",
+        "tests",
+        "impl",
+        "main",
+        "value",
+        "values",
+        "name",
+        "names",
+        "type",
+        "types",
+        "node",
+        "item",
+        "items",
+        "list",
+        "dict",
+        "async",
+        "await",
+        "none",
+        "true",
+        "false",
+        "self",
+        "func",
+        "call",
+        "args",
+        "kwargs",
+        "init",
+        "build",
+        "create",
+        "update",
+        "delete",
+        "result",
+        "config",
+        "client",
+        "server",
+        "model",
+        "models",
+        "error",
+        "errors",
+    }
+)
+_CAMEL_SPLIT_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
+def _affix_tokens(name: str) -> list[str]:
+    """CamelCase/snake_case affix tokens (>=4 chars, non-generic) of a symbol name."""
+    base = (name or "").split(".")[-1]
+    raw: list[str] = []
+    for snake in base.split("_"):
+        if snake:
+            raw.extend(_CAMEL_SPLIT_RE.split(snake))
+    tokens = [token.lower() for token in raw if token]
+    tokens = [token for token in tokens if len(token) >= 4 and token not in _SIBLING_STOPWORDS]
+    if not tokens:
+        return []
+    affixes: list[str] = []
+    if tokens[-1] not in affixes:
+        affixes.append(tokens[-1])
+    if tokens[0] not in affixes:
+        affixes.append(tokens[0])
+    return affixes
+
+
+def _sibling_family_facts(symbols: Iterable[SymbolFact]) -> list[tuple[str, tuple[str, ...]]]:
+    """Mine >=3-member same-kind/shared-affix symbol families (skeletonization targets)."""
+    groups: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for symbol in symbols:
+        kind = (symbol.kind or "").lower()
+        if kind not in _SIBLING_KINDS:
+            continue
+        for affix in _affix_tokens(symbol.name):
+            groups[(kind, affix)].add(symbol.path)
+    out: list[tuple[str, tuple[str, ...]]] = []
+    seen: set[str] = set()
+    for (_kind, affix), paths in sorted(groups.items()):
+        if len(paths) >= 3 and affix not in seen:
+            seen.add(affix)
+            out.append((affix, tuple(sorted(paths))))
+    return out
 
 
 @dataclass(frozen=True)
@@ -601,6 +692,38 @@ def generate_case_manifest(
             )
         )
 
+    # Both explore families share the SAME sibling-family queries so the rows form a
+    # controlled A/B: explore renders full bodies, explore_skeleton collapses
+    # redundant siblings to signatures at equal coverage.
+    sibling_facts = _sibling_family_facts(unique_symbols)
+    explore_appended = 0
+    for index, (affix, member_files) in enumerate(sibling_facts[: case_quotas.get("explore", 0)], start=1):
+        cases.append(
+            ExternalBenchCase(
+                case_id=f"explore-{index:04d}",
+                family="explore",
+                query=affix,
+                expected_paths=member_files,
+                expected_names=(affix,),
+                metadata={"family_size": str(len(member_files))},
+            )
+        )
+        explore_appended += 1
+
+    skeleton_appended = 0
+    for index, (affix, member_files) in enumerate(sibling_facts[: case_quotas.get("explore_skeleton", 0)], start=1):
+        cases.append(
+            ExternalBenchCase(
+                case_id=f"explore-skeleton-{index:04d}",
+                family="explore_skeleton",
+                query=affix,
+                expected_paths=member_files,
+                expected_names=(affix,),
+                metadata={"family_size": str(len(member_files))},
+            )
+        )
+        skeleton_appended += 1
+
     for index in range(1, case_quotas["nohit_search"] + 1):
         query = _make_nohit_query(index)
         cases.append(
@@ -618,6 +741,8 @@ def generate_case_manifest(
     # repository yields, up to the quota.
     available = {
         "structural_search": len(structural_facts),
+        "explore": explore_appended,
+        "explore_skeleton": skeleton_appended,
     }
     expected_total = sum(
         min(quota, available[family]) if family in available else quota for family, quota in case_quotas.items()
