@@ -414,6 +414,12 @@ def sql_tool(
     conn = sqlite3.connect(db_path, uri=uri, timeout=max(1.0, timeout_ms / 1000.0))
     try:
         conn.row_factory = sqlite3.Row
+        if not _writes_enabled(allow_writes):
+            # Engine-level read-only enforcement (defense in depth beyond
+            # lint_sql's verb list, which misses PRAGMA writable_schema /
+            # ANALYZE / REINDEX): the connection itself refuses any statement
+            # that writes to the database.
+            conn.execute("PRAGMA query_only = ON")
         try:
             if action == "connect":
                 overview = _sqlite_overview(conn)
