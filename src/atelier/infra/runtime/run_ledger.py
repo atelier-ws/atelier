@@ -578,9 +578,16 @@ class RunLedger:
         with self._lock:
             events = list(self.events)
             workflow_step_events = list(self.workflow_step_events)
-        tool_calls = [e for e in events if e.kind == "tool_call"]
-        total_output = sum(int(e.payload.get("output_chars", 0)) for e in tool_calls)
-        alerts = [e for e in events if e.kind == "watchdog_alert"]
+        # Single pass over the (locked-copy) events instead of three.
+        tool_calls: list[LedgerEvent] = []
+        alerts: list[LedgerEvent] = []
+        total_output = 0
+        for e in events:
+            if e.kind == "tool_call":
+                tool_calls.append(e)
+                total_output += int(e.payload.get("output_chars", 0))
+            elif e.kind == "watchdog_alert":
+                alerts.append(e)
         return {
             "session_id": self.session_id,
             "agent": self.agent,
