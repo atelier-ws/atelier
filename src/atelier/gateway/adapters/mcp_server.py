@@ -2825,6 +2825,9 @@ def _workspace_root() -> Path:
     return Path(workspace)
 
 
+_CLAUDE_ADDITIONAL_DIRS_CACHE: dict[tuple[str, str, int, int], list[Path]] = {}
+
+
 def _claude_additional_dirs(workspace_root: Path) -> list[Path]:
     """Extra directories allowed for edits beyond *workspace_root*.
 
@@ -2837,9 +2840,25 @@ def _claude_additional_dirs(workspace_root: Path) -> list[Path]:
     Read-only tools (grep/search/read) already accept any absolute path, so
     this only affects write operations (edit, batch-edit).
     """
-    dirs: list[Path] = []
-
+    home_settings = Path.home() / ".claude" / "settings.json"
+    ws_settings = workspace_root / ".claude" / "settings.json"
     env_raw = os.environ.get("ATELIER_ADDITIONAL_DIRS", "").strip()
+
+    def _settings_mtime(p: Path) -> int:
+        try:
+            return p.stat().st_mtime_ns
+        except OSError:
+            return 0
+
+    # Memoize on the inputs' mtimes: this runs on every edit call, but the env
+    # var and the two settings files change rarely, so a stat-keyed cache avoids
+    # re-reading + JSON-parsing both files (and re-resolving entries) per edit.
+    cache_key = (str(workspace_root), env_raw, _settings_mtime(home_settings), _settings_mtime(ws_settings))
+    cached = _CLAUDE_ADDITIONAL_DIRS_CACHE.get(cache_key)
+    if cached is not None:
+        return list(cached)
+
+    dirs: list[Path] = []
     for raw in env_raw.split(":"):
         raw = raw.strip()
         if raw:
@@ -2848,10 +2867,7 @@ def _claude_additional_dirs(workspace_root: Path) -> list[Path]:
             except (OSError, ValueError):
                 pass
 
-    for sp in (
-        Path.home() / ".claude" / "settings.json",
-        workspace_root / ".claude" / "settings.json",
-    ):
+    for sp in (home_settings, ws_settings):
         try:
             data = json.loads(sp.read_text(encoding="utf-8"))
             for raw in data.get("additionalDirectories", []):
@@ -2863,7 +2879,10 @@ def _claude_additional_dirs(workspace_root: Path) -> list[Path]:
         except (OSError, json.JSONDecodeError, ValueError):
             pass
 
-    return dirs
+    if len(_CLAUDE_ADDITIONAL_DIRS_CACHE) > 16:
+        _CLAUDE_ADDITIONAL_DIRS_CACHE.clear()
+    _CLAUDE_ADDITIONAL_DIRS_CACHE[cache_key] = dirs
+    return list(dirs)
 
 
 # Thread-local slot for passing real tokens_saved from tool handlers to the
@@ -8582,11 +8601,18 @@ def _persist_legacy_route(workflow: dict[str, Any], payload: dict[str, Any], cur
             "sticky_until_tool_calls": remaining,
         },
     }
+    routing_entry = workflow["routing"]
     # Hold _STATE_LOCK across the read-modify-write so a concurrent handler's
-    # session_state update is not lost. _STATE_LOCK is an RLock.
+    # session_state update is not lost. _STATE_LOCK is an RLock. Merge only the
+    # 'routing' key onto the lock-fresh workflow rather than overwriting the whole
+    # sub-dict with the pre-lock snapshot, which would clobber sibling keys
+    # (current_task/current_step/task_outputs) a concurrent step just wrote.
     with _STATE_LOCK:
         state = _read_workspace_session_state()
-        state["workflow"] = workflow
+        fresh_workflow = state.get("workflow")
+        fresh_workflow = fresh_workflow if isinstance(fresh_workflow, dict) else {}
+        fresh_workflow["routing"] = routing_entry
+        state["workflow"] = fresh_workflow
         _write_workspace_session_state(state)
 
 
