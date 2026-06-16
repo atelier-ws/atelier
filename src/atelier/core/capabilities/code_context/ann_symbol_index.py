@@ -129,14 +129,13 @@ class SymbolAnnIndex:
     graph cached against ``(index_version, embedder_name, embedding_dim)``.
     """
 
-    _schema_ready: bool = False
-
     def __init__(self, repo_id: str) -> None:
         self.repo_id = repo_id
         self._lock = threading.Lock()
         self._graph: Any = None
         self._graph_key: tuple[int, str, int] | None = None
         self._graph_ids: set[str] = set()
+        self._schema_ready: bool = False
 
     # -- schema guard ----------------------------------------------------
 
@@ -144,7 +143,7 @@ class SymbolAnnIndex:
         if self._schema_ready:
             return
         ensure_symbol_vector_schema(conn)
-        SymbolAnnIndex._schema_ready = True
+        self._schema_ready = True
 
     # -- persistence -----------------------------------------------------
 
