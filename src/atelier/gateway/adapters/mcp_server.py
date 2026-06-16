@@ -937,6 +937,13 @@ def _live_savings_events_path() -> Path:
     return _atelier_root() / "live_savings_events.jsonl"
 
 
+# Cap the analytics log: full-file readers (audit_export, advisor, dashboard,
+# session_report) O(n)-scan it per render, so unbounded growth is a real cost.
+_LIVE_SAVINGS_MAX_BYTES = 8 * 1024 * 1024
+_live_savings_dir_ready = False
+_live_savings_append_count = 0
+
+
 def _append_live_savings_event(event: dict[str, Any]) -> None:
     """Append a routing / compaction analytics event.
 
@@ -944,8 +951,21 @@ def _append_live_savings_event(event: dict[str, Any]) -> None:
     transcript and are summed from there. This file remains the log for
     audit_export and cross_vendor_routing.advisor only.
     """
+    global _live_savings_dir_ready, _live_savings_append_count
     path = _live_savings_events_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if not _live_savings_dir_ready:
+        # mkdir once per process instead of a syscall on every tool call.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _live_savings_dir_ready = True
+    _live_savings_append_count += 1
+    if _live_savings_append_count % 128 == 0:
+        # Periodic size-based rotation (keep one prior generation) so the log
+        # cannot grow without bound; checked rarely to avoid a per-call stat().
+        try:
+            if path.exists() and path.stat().st_size > _LIVE_SAVINGS_MAX_BYTES:
+                path.replace(path.parent / (path.name + ".1"))
+        except OSError:
+            logging.exception("Recovered from broad exception handler")
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, sort_keys=True) + "\n")
 
@@ -1612,8 +1632,11 @@ def _provider_for_model(model_id: str) -> str:
     return "unknown"
 
 
-_WORKFLOW_SPAWN_DEPTH_ENV = "ATELIER_WORKFLOW_SPAWN_DEPTH"
 _WORKFLOW_SPAWN_DEPTH_LIMIT = 8
+# Per-worker-thread workflow spawn depth. The dispatcher runs a thread pool, so
+# tracking depth in os.environ races across parallel workflow steps and can leak
+# a stale value into the process env; a threading.local isolates it per thread.
+_workflow_spawn_depth: threading.local = threading.local()
 # Tools that themselves spawn sub-agents/workflows: invoking them from a
 # workflow step opens an unbounded recursive spawn path, so they are blocked.
 _WORKFLOW_SPAWNING_TOOLS = frozenset({"workflow"})
@@ -1625,21 +1648,17 @@ def _default_workflow_tool_executor(step: Any, args: dict[str, Any], context_sta
     spec = TOOLS.get(step.tool)
     if spec is None:
         raise ValueError(f"unknown workflow tool: {step.tool}")
-    depth = int(os.environ.get(_WORKFLOW_SPAWN_DEPTH_ENV, "0") or "0")
+    depth = getattr(_workflow_spawn_depth, "value", 0)
     if depth >= _WORKFLOW_SPAWN_DEPTH_LIMIT:
         raise ValueError(
             f"workflow spawn depth limit ({_WORKFLOW_SPAWN_DEPTH_LIMIT}) exceeded; aborting recursive tool execution"
         )
     handler = cast(Callable[[dict[str, Any]], Any], spec["handler"])
-    previous_depth = os.environ.get(_WORKFLOW_SPAWN_DEPTH_ENV)
-    os.environ[_WORKFLOW_SPAWN_DEPTH_ENV] = str(depth + 1)
+    _workflow_spawn_depth.value = depth + 1
     try:
         return handler(args)
     finally:
-        if previous_depth is None:
-            os.environ.pop(_WORKFLOW_SPAWN_DEPTH_ENV, None)
-        else:
-            os.environ[_WORKFLOW_SPAWN_DEPTH_ENV] = previous_depth
+        _workflow_spawn_depth.value = depth
 
 
 def _default_workflow_shell_executor(step: Any, command: str, forked_context: dict[str, Any]) -> Any:
@@ -4686,15 +4705,26 @@ def _collect_touched_paths(edits: list[dict[str, Any]], *, repo_root: str | Path
     return dict(sorted(paths.items()))
 
 
-def _snapshot_paths(paths: dict[str, Path]) -> dict[str, tuple[Path, str | None]]:
-    """Read each file's current content; None means the file does not exist."""
-    snap: dict[str, tuple[Path, str | None]] = {}
+def _snapshot_paths(paths: dict[str, Path]) -> dict[str, tuple[Path, bool, str | None]]:
+    """Snapshot each file's pre-edit state for rollback.
+
+    Returns ``(fp, existed, content)``. ``existed`` distinguishes a file that
+    was genuinely absent pre-edit (rollback should delete it) from one that
+    existed but could not be read (rollback must NOT delete it -- that would be
+    silent data loss). ``existed=True`` with ``content is None`` means the file
+    was unreadable: rollback skips it rather than deleting or truncating.
+    """
+    snap: dict[str, tuple[Path, bool, str | None]] = {}
     for display, fp in paths.items():
-        try:
-            snap[display] = (fp, fp.read_text(encoding="utf-8") if fp.exists() else None)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            snap[display] = (fp, None)
+        existed = fp.exists()
+        content: str | None = None
+        if existed:
+            try:
+                content = fp.read_text(encoding="utf-8")
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                content = None
+        snap[display] = (fp, existed, content)
     return snap
 
 
@@ -4717,17 +4747,17 @@ _SESSION_CREATED_FILES: set[str] = set()
 
 
 def _existing_test_contract_paths(
-    snapshots: dict[str, tuple[Path, str | None]],
+    snapshots: dict[str, tuple[Path, bool, str | None]],
 ) -> list[str]:
     return sorted(
         path
-        for path, (fp, old_content) in snapshots.items()
+        for path, (fp, _existed, old_content) in snapshots.items()
         if old_content is not None and _looks_like_test_path(path) and str(fp.resolve()) not in _SESSION_CREATED_FILES
     )
 
 
 def _compute_and_record_diffs(
-    snapshots: dict[str, tuple[Path, str | None]],
+    snapshots: dict[str, tuple[Path, bool, str | None]],
 ) -> dict[str, str]:
     """Compute unified diffs from *snapshots* vs current file content.
 
@@ -4740,13 +4770,13 @@ def _compute_and_record_diffs(
 
     led = _get_ledger()
     out: dict[str, str] = {}
-    for path, (fp, old_content) in snapshots.items():
+    for path, (fp, existed, old_content) in snapshots.items():
         try:
             new_content = fp.read_text(encoding="utf-8") if fp.exists() else None
         except Exception:
             logging.exception("Recovered from broad exception handler")
             new_content = None
-        if old_content is None and new_content is not None:
+        if not existed and new_content is not None:
             _SESSION_CREATED_FILES.add(str(fp.resolve()))
         if old_content == new_content:
             continue
@@ -4797,7 +4827,7 @@ def _edit_verify_enabled(verify_flag: bool) -> bool:
 
 
 def _restore_snapshots(
-    snapshots: dict[str, tuple[Path, str | None]],
+    snapshots: dict[str, tuple[Path, bool, str | None]],
     applied_content: dict[str, str | None] | None = None,
 ) -> list[str]:
     """Restore files to their pre-edit content (used when the verify gate fails).
@@ -4810,7 +4840,7 @@ def _restore_snapshots(
     (lost update). Returns the display paths skipped due to such a conflict.
     """
     conflicts: list[str] = []
-    for display, (fp, old_content) in snapshots.items():
+    for display, (fp, existed, old_content) in snapshots.items():
         try:
             if applied_content is not None and display in applied_content:
                 current = fp.read_text(encoding="utf-8") if fp.exists() else None
@@ -4820,9 +4850,15 @@ def _restore_snapshots(
                     # update. Leave the concurrent write in place.
                     conflicts.append(display)
                     continue
-            if old_content is None:
+            if not existed:
                 if fp.exists():
                     fp.unlink()
+            elif old_content is None:
+                # Existed pre-edit but was unreadable at snapshot time: we have
+                # no content to restore, so leave the file as-is rather than
+                # deleting or truncating it (data-loss safe).
+                conflicts.append(display)
+                continue
             else:
                 fp.write_text(old_content, encoding="utf-8")
         except Exception:
@@ -4834,7 +4870,7 @@ def _apply_edit_verify_gate(
     result: dict[str, Any],
     *,
     touched: list[Path],
-    snapshots: dict[str, tuple[Path, str | None]],
+    snapshots: dict[str, tuple[Path, bool, str | None]],
     applied_content: dict[str, str | None] | None = None,
     checks: list[str] | None,
     rollback: bool,
@@ -6799,10 +6835,10 @@ def _op_rename(
     engine = _code_engine_at(repo_root)
     from atelier.core.capabilities.tool_supervision.rename_symbol import build_rename_edits
 
-    # Single root: the engine indexes repo_root (cwd fallback), so edits must be
+    # Single root: the engine resolves/indexes against _workspace_root() (NOT cwd), so edits must be
     # built and applied under the SAME root — otherwise a cross-repo rename hits
     # the wrong working tree.
-    root = Path(repo_root or os.getcwd())
+    root = Path(engine.repo_root)
     edits = build_rename_edits(
         engine,
         symbol_id=symbol_id,
