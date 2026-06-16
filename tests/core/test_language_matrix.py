@@ -50,6 +50,9 @@ FIXTURES: tuple[LanguageFixture, ...] = (
     LanguageFixture("yaml", "config.yaml", frozenset({"name", "services", "metadata"})),
     LanguageFixture("toml", "config.toml", frozenset({"package", "name", "tool.atelier", "tool.atelier.metadata"})),
     LanguageFixture("json", "config.json", frozenset({"name", "version", "settings", "metadata"})),
+    LanguageFixture("html", "sample.html"),
+    LanguageFixture("css", "sample.css"),
+    LanguageFixture("lua", "sample.lua", frozenset({"M", "helper"})),
 )
 
 

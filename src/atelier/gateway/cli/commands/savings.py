@@ -119,6 +119,50 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
             )
         )
         sys.stdout.flush()
+
+        # Bridge: persist live token counts into stats.json so the Codex stop
+        # hook can report real cost instead of $0.0000.  The statusline gets
+        # token data from Codex's native footer; the stop hook reads stats.json.
+        # Without this write those two data flows never meet.
+        # Only for Codex (Claude Code has its own transcript-based path).
+        # context_window.current_usage is the overwrite path in
+        # update_session_stats — correct here because the statusline value is
+        # always a cumulative session snapshot, not a per-turn delta.
+        if (
+            os.environ.get("ATELIER_STATUS_HOST", "").strip().lower() == "codex"
+            and session_id
+            and (live_in > 0 or live_cache > 0)
+        ):
+            import contextlib
+
+            with contextlib.suppress(Exception):
+                from atelier.core.capabilities.plugin_runtime import update_session_stats
+
+                root_val = (
+                    os.environ.get("ATELIER_ROOT")
+                    or os.environ.get("ATELIER_STORE_ROOT")
+                    or str(Path.home() / ".atelier")
+                )
+                model_val = (
+                    os.environ.get("ATELIER_STATUS_MODEL_DISPLAY") or os.environ.get("ATELIER_STATUS_MODEL") or ""
+                )
+                snapshot: dict[str, Any] = {
+                    "hook_event_name": "StatuslineUpdate",
+                    "session_id": session_id,
+                    # Cumulative snapshot — update_session_stats overwrites
+                    # state["usage"] when this key is present.
+                    "context_window": {
+                        "current_usage": {
+                            "input_tokens": live_in,
+                            "cache_read_input_tokens": live_cache,
+                            "output_tokens": live_out,
+                        }
+                    },
+                }
+                if model_val:
+                    snapshot["model"] = model_val
+                update_session_stats(root_val, snapshot)
+
         return
     if line:
         from atelier.core.capabilities.savings_summary import savings_line

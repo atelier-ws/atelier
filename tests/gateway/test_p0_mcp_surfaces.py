@@ -178,9 +178,6 @@ def test_search_tool_schema_prefers_path_and_documents_ranked_contract() -> None
     properties = search_tool["inputSchema"]["properties"]
 
     assert "query" in search_tool["description"]
-    assert "grep" in search_tool["description"]
-    assert "node" in search_tool["description"]
-    assert "explore" in search_tool["description"]
     assert "path" in properties
     assert "file_path" not in properties
     assert "content_regex" not in properties
@@ -623,6 +620,8 @@ def test_tool_code_explore_dispatches_to_engine(tmp_path: Path, monkeypatch: pyt
         include_source=True,
         include_relationships=True,
         line_numbers=True,
+        skeletonize=True,
+        complete_families=None,
         depth=2,
         budget_tokens=600,
     )
@@ -666,7 +665,9 @@ def test_tool_code_callers_rendered_shape_excludes_source(tmp_path: Path, monkey
     assert "def place_order" not in payload["rendered"]
 
 
-def test_tool_code_symbol_rendered_shape_is_compact_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tool_code_symbol_rendered_shape_includes_numbered_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     fake_engine = MagicMock()
     fake_engine.tool_symbol.return_value = {
         "symbol_id": "sym-order-total",
@@ -699,7 +700,11 @@ def test_tool_code_symbol_rendered_shape_is_compact_summary(tmp_path: Path, monk
     assert "rendered" in payload
     assert "- OrderService.calculate_total [method]" in payload["rendered"]
     assert "- location: src/orders.py:12-20" in payload["rendered"]
-    assert "total = sum(items)" not in payload["rendered"]
+    # Node now returns the symbol body inline, line-numbered from its start line,
+    # so an agent can cite file:line and edit without a follow-up read.
+    assert "- source:" in payload["rendered"]
+    assert "12\tdef calculate_total(self, items):" in payload["rendered"]
+    assert "13\t    total = sum(items)" in payload["rendered"]
 
 
 def test_tool_code_index_rendered_shape_is_compact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

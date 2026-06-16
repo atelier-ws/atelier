@@ -1,4 +1,12 @@
-# Atelier — Open-Source Context Runtime for Coding Agents
+<div align="center">
+
+# Atelier
+
+### The Open-Source Context Runtime for Coding Agents
+
+**One MCP server + SDK middleware — a pre-built code index, reusable procedures, failure rescue, loop detection, and cost tracking for Claude Code, Codex, Copilot, Cursor, opencode, Hermes, LangChain, the OpenAI SDK, Gemini ADK, and any MCP host.**
+
+<!-- BENCH_HERO -->**On [CodeGraph](https://github.com/colbymchenry/codegraph)'s 7-repo benchmark vs. stock Claude Code: ~26% cheaper · 75% fewer tokens · 76% fewer tool calls (median of 4 runs/arm). [Full results ↓](#why-atelier--benchmark-results)**<!-- /BENCH_HERO -->
 
 <p align="center">
   <a href="https://github.com/atelier-ws/atelier/blob/main/LICENSE"><img src="https://img.shields.io/github/license/atelier-ws/atelier?style=for-the-badge" alt="License" /></a>
@@ -7,7 +15,7 @@
   <a href="https://github.com/atelier-ws/atelier/releases"><img src="https://img.shields.io/github/downloads/atelier-ws/atelier/total?style=for-the-badge" alt="Total downloads" /></a>
 </p>
 
-**MCP server + SDK middleware that gives every coding agent shared procedures, failure rescue, loop detection, cost tracking, and cross-vendor routing — across Claude Code, Codex, Copilot, LangChain, OpenAI SDK, Gemini ADK, and any MCP host.**
+</div>
 
 Atelier ships the same context runtime everywhere: CLI, MCP (for all major agent hosts), and background services. It captures what your best engineers know as reusable procedures (Playbooks), learns from recurring failures, validates outputs against domain-specific rubrics, and plugs into any agent host through MCP.
 
@@ -44,6 +52,100 @@ The installed product gives you **CLI + MCP + Background Services**. No HTTP ser
 
 Telemetry is on by default; disable with `atelier telemetry off` or `ATELIER_TELEMETRY=0`.
 
+## Why Atelier? — Benchmark Results
+
+When a coding agent explores an unfamiliar codebase, it burns tokens and tool calls on `grep` / `glob` / `read` discovery sweeps — and the larger the repo, the worse it gets. Atelier gives the agent a pre-built [SCIP](https://github.com/sourcegraph/scip) code index, supervised (cached, token-budgeted, injection-guarded) tools, and a disciplined task loop, so it queries structure instead of re-scanning files.
+
+To measure the effect, we ran the A/B from [CodeGraph](https://github.com/colbymchenry/codegraph)'s benchmark — the **same 7 real-world repositories** and the **same architecture questions** — against Atelier:
+
+- **WITH Atelier** — Claude Code running the `atelier:code` agent: Atelier's MCP server (code intelligence + supervised tools) plus a pre-built index of the repo.
+- **WITHOUT (baseline)** — stock Claude Code with no plugins, hooks, or MCP servers; only the built-in `Read` / `Grep` / `Bash` tools.
+
+Both arms use the **same model** (Claude Sonnet, headless `claude -p`), the **same question** per repo, and the same isolated config — the only variable is Atelier. **4 runs per arm, median reported.**
+
+<!-- BENCH_AVG -->
+**Pooled across all 7 repos (median of 4 runs/arm, Claude Sonnet): ~26% cheaper · 75% fewer tokens · 76% fewer tool calls — but ~68% slower.** Atelier is leaner on **every** repo except tiny gin: the stock baseline answers by spawning an Explore subagent that fans out into 18–48 `grep`/`read` calls, while Atelier resolves each question in 0–12 targeted calls. The one consistent regression is **time** — Atelier builds a code index on large repos (VS Code: 738s on ~10k files), and that wall-clock cost isn't recovered by a single question.
+
+- **Tokens & tool calls:** cut 60–98% on 6 of 7 repos (Django −93% tokens / −100% calls, Tokio −98% / −100%, Excalidraw −80.4% / −75%).
+- **Cost:** −26% pooled, but bimodal — much cheaper on Django/Tokio/OkHttp, slightly pricier on VS Code, gin, and Alamofire, where Atelier's index-write + output cost outweighs the baseline's cheap cached discovery.
+<!-- /BENCH_AVG -->
+
+<!-- BENCH_TABLE_START -->
+| Codebase | Cost | Tokens | Time | Tool calls |
+| --- | --- | --- | --- | --- |
+| VS Code | 14.5% pricier | 69.6% fewer | 563.2% slower | 65.6% fewer |
+| Excalidraw | even | 80.4% fewer | 29.8% faster | 75% fewer |
+| Django | 86.9% cheaper | 93.5% fewer | 56.3% faster | 100% fewer |
+| Tokio | 87.3% cheaper | 97.5% fewer | 73.8% faster | 100% fewer |
+| OkHttp | 78.7% cheaper | 73% fewer | 14.2% faster | 100% fewer |
+| gin | 8.3% pricier | 44.1% more | 108.8% slower | 11.8% fewer |
+| Alamofire | 38.8% pricier | 63% fewer | 8.3% slower | 66.7% fewer |
+| **Overall (pooled)** | 25.7% cheaper | 74.7% fewer | 67.9% slower | 75.9% fewer |
+
+<sub>Positive = Atelier better. Measured 2026-06-16 on Claude Sonnet (`claude-sonnet-4-6`), 4 runs per arm (56 runs total), each repo pinned at a fixed commit. **Tokens and tool calls are counted from the full wire capture (main agent + every subagent).** The stock baseline delegates discovery to an Explore subagent whose usage the `claude -p` receipt omits, so receipt-only counts undercount the baseline 10–40×; cost and time come from the receipt, which already bills subagent spend. Regenerate from a run's `.flow` captures with `benchmarks/codebench/cg_report_wire.py`.</sub>
+<!-- BENCH_TABLE_END -->
+
+<details>
+<summary><b>Methodology &amp; the 7 repositories</b></summary>
+
+Each arm is `claude -p` (Claude Sonnet) run headlessly against the repo in a contamination-free config — real subscription auth, but no globally-installed plugins/hooks/MCP, so the only A/B difference is Atelier itself. The Atelier arm additionally loads the generated Claude plugin (`--agent atelier:code`) and pre-builds its code index (`atelier code index`) before the timed run, mirroring CodeGraph's pre-indexed setup. Repositories are cloned at a pinned commit and indexed by the same Atelier build that serves them.
+
+| Repo | Language | Question |
+| --- | --- | --- |
+| VS Code | TypeScript | How does the extension host communicate with the main process? |
+| Excalidraw | TypeScript | How does Excalidraw render and update canvas elements? |
+| Django | Python | How does Django's ORM build and execute a query from a QuerySet? |
+| Tokio | Rust | How does tokio schedule and run async tasks on its runtime? |
+| OkHttp | Java | How does OkHttp process a request through its interceptor chain? |
+| gin | Go | How does gin route requests through its middleware chain? |
+| Alamofire | Swift | How does Alamofire build, send, and validate a request? |
+
+**Metrics.** _Cost_ and _time_ come from the run's `total_cost_usd` and wall-clock — the receipt already bills any subagent the agent spawns. _Tokens_ (input + cache-read + cache-creation + output) and _tool calls_ are summed from the captured wire traffic across the main agent **and every subagent**, because the CLI receipt's `usage`/`num_turns` fields report only the main agent — which undercounts a baseline that delegates discovery to an Explore subagent (often 10–40×). Each cell is the saving at the **median of 4 runs per arm**; timed-out or errored runs are dropped before the median.
+
+**Honest caveats.** This measures Atelier-enabled Claude Code vs. stock Claude Code — _not_ Atelier vs. CodeGraph. Numbers vary run-to-run, and the questions are about famous OSS libraries the model partly knows, so the benchmark scores **efficiency, not answer accuracy** (same as CodeGraph's). The real Atelier regression is **wall-clock time**: building a code index on a large repo (VS Code, ~10k files) costs ~12 min a single question never recovers; on small/medium repos Atelier is faster. On tiny gin (191 files) Atelier's fixed overhead isn't amortized.
+
+</details>
+
+<details>
+<summary><b>Per-repo absolute numbers (WITH / WITHOUT)</b></summary>
+
+<!-- BENCH_RAW_START -->
+| Codebase | arm | cost_usd | tokens | time_s | turns | reps |
+| --- | --- | --- | --- | --- | --- | --- |
+| VS Code | baseline | 0.2874 | 999,484 | 111.3 | 30 | 4 |
+| VS Code | atelier | 0.3289 | 303,464 | 738.0 | 10 | 4 |
+| Excalidraw | baseline | 0.3655 | 1,652,090 | 171.0 | 48 | 4 |
+| Excalidraw | atelier | 0.3676 | 324,162 | 120.1 | 12 | 4 |
+| Django | baseline | 0.3373 | 372,123 | 91.9 | 18 | 4 |
+| Django | atelier | 0.0442 | 24,274 | 40.2 | 0 | 4 |
+| Tokio | baseline | 0.3033 | 949,828 | 133.5 | 27 | 4 |
+| Tokio | atelier | 0.0385 | 23,886 | 34.9 | 0 | 4 |
+| OkHttp | baseline | 0.1598 | 87,063 | 27.8 | 4 | 4 |
+| OkHttp | atelier | 0.0340 | 23,536 | 23.9 | 0 | 4 |
+| gin | baseline | 0.1812 | 174,376 | 42.9 | 8 | 4 |
+| gin | atelier | 0.1964 | 251,204 | 89.6 | 8 | 4 |
+| Alamofire | baseline | 0.3170 | 1,022,338 | 127.0 | 32 | 4 |
+| Alamofire | atelier | 0.4399 | 378,603 | 137.5 | 10 | 4 |
+
+<sub>Per-arm medians over 4 runs. `cost_usd` and `time_s` from the receipt; `tokens` (input + cache-read + cache-creation + output) and `tool_calls` from the wire capture (main + subagents). Note the baseline's true token counts — e.g. Excalidraw's 1.65M — vs the ~52k the receipt's main-agent `usage` field alone reports.</sub>
+<!-- BENCH_RAW_END -->
+
+</details>
+
+### Reproduce it
+
+The 7 repositories are wired up as efficiency-only CodeBench tasks (`cg_*`). Run the full A/B and regenerate the table:
+
+```bash
+atelier benchmark codebench \
+  --task cg_gin --task cg_alamofire --task cg_excalidraw --task cg_tokio \
+  --task cg_okhttp --task cg_django --task cg_vscode \
+  --reps 4 --model sonnet
+
+# turn the run's results.jsonl into the table above
+uv run python -m benchmarks.codebench.cg_report benchmarks/codebench/results/<run-dir>
+```
+
 ## How Atelier Saves LLM Cost
 
 Atelier reduces token spend at every layer of the agent loop — context loading, tool calls, model selection, and recovery. The savings stack:
@@ -65,7 +167,7 @@ Atelier reduces token spend at every layer of the agent loop — context loading
 | **Lesson Promotion & cost-cap bindings** | Promotes recurrent patterns into cost-capped routing policies tuned from observed behaviour.                                                                            | Continuous spend reduction as the runtime learns.                                                                                       |
 | **Savings dashboard**                    | The frontend's Savings page (and `atelier background status`) reports token and dollar savings per session and cumulatively.                                            | Makes the savings measurable, per session and total.                                                                                    |
 
-All savings are recorded into the run ledger and inspectable per session via `atelier` CLI, MCP, and the optional UI — measured token usage alongside clearly-labelled counterfactual estimates, not unverified marketing numbers.
+All savings are recorded into the run ledger and inspectable per session via `atelier` CLI, MCP, and the optional UI — measured token usage alongside clearly-labelled counterfactual estimates, not unverified marketing numbers. Counterfactual value is priced at the model's real input rate; models with no known price read as $0 rather than an inflated guess.
 
 ## Capabilities
 
@@ -410,6 +512,10 @@ make verify
 - Contributing guide: [docs/engineering/contributing.md](docs/engineering/contributing.md)
 
 Archived maintainer references live in `docs-archive/`.
+
+## License
+
+Atelier is licensed under the [Apache License 2.0](LICENSE).
 
 ## Star History
 
