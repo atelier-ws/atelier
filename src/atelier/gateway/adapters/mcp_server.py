@@ -1183,16 +1183,22 @@ def _process_tool_accounting(name: str, args: dict[str, Any], result: Any, rid: 
                 paths = code_intel_credit.extract_credited_paths(name, result)
                 state = code_intel_credit.record_pending(state, name, paths)
 
+            pending_credits: list[dict[str, Any]] = []
             if code_intel_on:
                 threshold = int(os.environ.get("ATELIER_CODE_INTEL_CREDIT_AGE", "8"))
                 state, credits = code_intel_credit.tick_and_credit(state, threshold=threshold)
-                for credit_entry in credits:
-                    # Deferred credit for an EARLIER call -> sidecar only; never the
-                    # current response's `saved` field.
-                    _append_savings(credit_entry["tool"], 0, 1, rid=str(rid))
+                pending_credits = list(credits)
 
             _write_workspace_session_state(state)
             _tool_accounting_pending_hint = bool(state.get("code_intel_pending"))
+        # _append_savings writes a separate sidecar (not session_state) and
+        # re-enters _STATE_LOCK via _current_context_state, so run it AFTER the
+        # session_state lock releases -- keeping the sidecar append + transcript
+        # parsing out of the session_state critical section.
+        for credit_entry in pending_credits:
+            # Deferred credit for an EARLIER call -> sidecar only; never the
+            # current response's `saved` field.
+            _append_savings(credit_entry["tool"], 0, 1, rid=str(rid))
     except Exception:
         logging.exception("Recovered from broad exception handler")
 
