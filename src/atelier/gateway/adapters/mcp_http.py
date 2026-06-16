@@ -88,7 +88,11 @@ def discovery_manifest(*, endpoint: str = MCP_HTTP_PATH) -> dict[str, Any]:
     }
 
 
-_ABS_PATH_RE = re.compile(r"(?:/[\w.+\-]+){2,}/?")
+# Strip server filesystem paths from error text while preserving relative paths
+# and URLs (which a remote agent needs to self-correct). Match POSIX absolute
+# paths only at a boundary (not preceded by a word char or ``/``, so ``https://``
+# and ``src/atelier/foo.py`` are left intact) plus Windows drive paths.
+_ABS_PATH_RE = re.compile(r"(?<![\w/])(?:/[\w.+\-]+)+/?|[A-Za-z]:\\[^\s:*?\"<>|]+")
 
 
 def _redact_error_paths(response: dict[str, Any] | None) -> dict[str, Any] | None:

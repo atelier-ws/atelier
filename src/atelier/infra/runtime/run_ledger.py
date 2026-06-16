@@ -168,35 +168,41 @@ class RunLedger:
     # ----- setters -------------------------------------------------------- #
 
     def set_plan(self, plan: list[str]) -> None:
-        self.current_plan = list(plan)
-        self.updated_at = _utcnow()
+        with self._lock:
+            self.current_plan = list(plan)
+            self.updated_at = _utcnow()
 
     def add_hypothesis(self, hypothesis: str, *, rejected: bool = False) -> None:
-        if rejected:
-            if hypothesis not in self.hypotheses_rejected:
-                self.hypotheses_rejected.append(hypothesis)
-        else:
-            if hypothesis not in self.hypotheses_tried:
-                self.hypotheses_tried.append(hypothesis)
-        self.updated_at = _utcnow()
+        with self._lock:
+            if rejected:
+                if hypothesis not in self.hypotheses_rejected:
+                    self.hypotheses_rejected.append(hypothesis)
+            else:
+                if hypothesis not in self.hypotheses_tried:
+                    self.hypotheses_tried.append(hypothesis)
+            self.updated_at = _utcnow()
 
     def add_verified_fact(self, fact: str) -> None:
-        if fact not in self.verified_facts:
-            self.verified_facts.append(fact)
-        self.updated_at = _utcnow()
+        with self._lock:
+            if fact not in self.verified_facts:
+                self.verified_facts.append(fact)
+            self.updated_at = _utcnow()
 
     def add_open_question(self, question: str) -> None:
-        if question not in self.open_questions:
-            self.open_questions.append(question)
-        self.updated_at = _utcnow()
+        with self._lock:
+            if question not in self.open_questions:
+                self.open_questions.append(question)
+            self.updated_at = _utcnow()
 
     def set_blocker(self, blocker: str) -> None:
-        self.current_blockers = [blocker]
-        self.updated_at = _utcnow()
+        with self._lock:
+            self.current_blockers = [blocker]
+            self.updated_at = _utcnow()
 
     def set_next_validation(self, validation: str | None) -> None:
-        self.next_required_validation = validation
-        self.updated_at = _utcnow()
+        with self._lock:
+            self.next_required_validation = validation
+            self.updated_at = _utcnow()
 
     def _normalize_workflow_event(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         if event_type == "workflow_state":
@@ -241,17 +247,18 @@ class RunLedger:
 
     def record_workflow_event(self, event_type: str, payload: dict[str, Any]) -> LedgerEvent:
         normalized = self._normalize_workflow_event(event_type, payload)
-        if event_type == "workflow_state":
-            self.workflow_state = normalized
-            summary = f"workflow:{normalized.get('workflow_step') or 'recorded'}"
-        elif event_type == "plan_review":
-            self.plan_review = normalized
-            summary = f"plan_review:{normalized.get('review_decision') or 'recorded'}"
-        elif event_type == "task_progress":
-            self.task_progress = normalized
-            summary = f"task_progress:{normalized.get('task_id') or 'recorded'}"
-        else:
-            summary = f"event:{event_type}"
+        with self._lock:
+            if event_type == "workflow_state":
+                self.workflow_state = normalized
+                summary = f"workflow:{normalized.get('workflow_step') or 'recorded'}"
+            elif event_type == "plan_review":
+                self.plan_review = normalized
+                summary = f"plan_review:{normalized.get('review_decision') or 'recorded'}"
+            elif event_type == "task_progress":
+                self.task_progress = normalized
+                summary = f"task_progress:{normalized.get('task_id') or 'recorded'}"
+            else:
+                summary = f"event:{event_type}"
         return self.record("note", summary, normalized)
 
     def record_workflow_step_event(
@@ -271,7 +278,8 @@ class RunLedger:
         }
         if payload:
             normalized.update(payload)
-        self.workflow_step_events.append(dict(normalized))
+        with self._lock:
+            self.workflow_step_events.append(dict(normalized))
         return self.record("note", f"workflow_step:{step_id}:{event}", normalized)
 
     # ----- recording ------------------------------------------------------ #
@@ -328,11 +336,12 @@ class RunLedger:
         stdout: str | None = None,
         stderr: str | None = None,
     ) -> LedgerEvent:
-        self.commands_run.append(command)
-        if not ok:
-            sig = error_signature.strip()
-            if sig and sig not in self.errors_seen:
-                self.errors_seen.append(sig)
+        with self._lock:
+            self.commands_run.append(command)
+            if not ok:
+                sig = error_signature.strip()
+                if sig and sig not in self.errors_seen:
+                    self.errors_seen.append(sig)
         return self.record(
             "command_result",
             command,
@@ -340,8 +349,9 @@ class RunLedger:
         )
 
     def record_file_event(self, path: str, event: str, diff: str | None = None) -> LedgerEvent:
-        if path and path not in self.files_touched:
-            self.files_touched.append(path)
+        with self._lock:
+            if path and path not in self.files_touched:
+                self.files_touched.append(path)
         kind = "file_revert" if event == "revert" else "file_edit"
         payload = {"path": path, "event": event}
         if diff:
@@ -350,7 +360,8 @@ class RunLedger:
 
     def record_alert(self, monitor: str, severity: str, message: str) -> LedgerEvent:
         if severity == "high":
-            self.current_blockers = [f"[{monitor}] {message}"]
+            with self._lock:
+                self.current_blockers = [f"[{monitor}] {message}"]
         return self.record(
             "watchdog_alert",
             f"[{severity}] {monitor}: {message}",
@@ -358,8 +369,9 @@ class RunLedger:
         )
 
     def record_test(self, test_id: str, passed: bool, detail: str = "") -> LedgerEvent:
-        if test_id not in self.tests_run:
-            self.tests_run.append(test_id)
+        with self._lock:
+            if test_id not in self.tests_run:
+                self.tests_run.append(test_id)
         return self.record(
             "test_result",
             f"{test_id}={'pass' if passed else 'fail'}",
@@ -432,8 +444,9 @@ class RunLedger:
         )
 
     def close(self, status: str = "complete") -> None:
-        self.status = status
-        self.updated_at = _utcnow()
+        with self._lock:
+            self.status = status
+            self.updated_at = _utcnow()
 
     def record_checkpoint(
         self,
@@ -573,59 +586,60 @@ class RunLedger:
     # ----- snapshot / persistence ----------------------------------------- #
 
     def snapshot(self) -> dict[str, Any]:
-        # Copy the mutable lists under the lock so a concurrent record() cannot
-        # mutate self.events mid-iteration (torn snapshot / RuntimeError).
+        # Hold the lock across the whole snapshot so a concurrent record_*/setter
+        # cannot mutate any list/dict mid-read (torn snapshot) and every field is
+        # captured at one consistent instant.
         with self._lock:
             events = list(self.events)
             workflow_step_events = list(self.workflow_step_events)
-        # Single pass over the (locked-copy) events instead of three.
-        tool_calls: list[LedgerEvent] = []
-        alerts: list[LedgerEvent] = []
-        total_output = 0
-        for e in events:
-            if e.kind == "tool_call":
-                tool_calls.append(e)
-                total_output += int(e.payload.get("output_chars", 0))
-            elif e.kind == "watchdog_alert":
-                alerts.append(e)
-        return {
-            "session_id": self.session_id,
-            "agent": self.agent,
-            "task": self.task,
-            "domain": self.domain,
-            "status": self.status,
-            "tool_call_count": len(tool_calls),
-            "total_tool_output_chars": total_output,
-            "alert_count": len(alerts),
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat(),
-            "current_plan": list(self.current_plan),
-            "files_touched": list(self.files_touched),
-            "tools_called": list(self.tools_called),
-            "commands_run": list(self.commands_run),
-            "tests_run": list(self.tests_run),
-            "errors_seen": list(self.errors_seen),
-            "repeated_failures": list(self.repeated_failures),
-            "hypotheses_tried": list(self.hypotheses_tried),
-            "hypotheses_rejected": list(self.hypotheses_rejected),
-            "verified_facts": list(self.verified_facts),
-            "open_questions": list(self.open_questions),
-            "active_playbooks": list(self.active_playbooks),
-            "active_rubrics": list(self.active_rubrics),
-            "current_blockers": list(self.current_blockers),
-            "next_required_validation": self.next_required_validation,
-            "workflow_state": dict(self.workflow_state),
-            "plan_review": dict(self.plan_review),
-            "task_progress": dict(self.task_progress),
-            "workflow_step_events": [dict(event) for event in workflow_step_events],
-            "agent_settings": dict(self.agent_settings),
-            "skills": list(self.skills),
-            "token_count": self.token_count,
-            "tool_count": self.tool_count,
-            "budget": dict(self.budget),
-            "cost": (self.cost_tracker.snapshot() if self.cost_tracker else {}),
-            "events": [to_jsonable(e) for e in events],
-        }
+            # Single pass over the (locked-copy) events instead of three.
+            tool_calls: list[LedgerEvent] = []
+            alerts: list[LedgerEvent] = []
+            total_output = 0
+            for e in events:
+                if e.kind == "tool_call":
+                    tool_calls.append(e)
+                    total_output += int(e.payload.get("output_chars", 0))
+                elif e.kind == "watchdog_alert":
+                    alerts.append(e)
+            return {
+                "session_id": self.session_id,
+                "agent": self.agent,
+                "task": self.task,
+                "domain": self.domain,
+                "status": self.status,
+                "tool_call_count": len(tool_calls),
+                "total_tool_output_chars": total_output,
+                "alert_count": len(alerts),
+                "created_at": self.created_at.isoformat(),
+                "updated_at": self.updated_at.isoformat(),
+                "current_plan": list(self.current_plan),
+                "files_touched": list(self.files_touched),
+                "tools_called": list(self.tools_called),
+                "commands_run": list(self.commands_run),
+                "tests_run": list(self.tests_run),
+                "errors_seen": list(self.errors_seen),
+                "repeated_failures": list(self.repeated_failures),
+                "hypotheses_tried": list(self.hypotheses_tried),
+                "hypotheses_rejected": list(self.hypotheses_rejected),
+                "verified_facts": list(self.verified_facts),
+                "open_questions": list(self.open_questions),
+                "active_playbooks": list(self.active_playbooks),
+                "active_rubrics": list(self.active_rubrics),
+                "current_blockers": list(self.current_blockers),
+                "next_required_validation": self.next_required_validation,
+                "workflow_state": dict(self.workflow_state),
+                "plan_review": dict(self.plan_review),
+                "task_progress": dict(self.task_progress),
+                "workflow_step_events": [dict(event) for event in workflow_step_events],
+                "agent_settings": dict(self.agent_settings),
+                "skills": list(self.skills),
+                "token_count": self.token_count,
+                "tool_count": self.tool_count,
+                "budget": dict(self.budget),
+                "cost": (self.cost_tracker.snapshot() if self.cost_tracker else {}),
+                "events": [to_jsonable(e) for e in events],
+            }
 
     def persist(self, root: Path | None = None) -> Path:
         target_root = root or self._root

@@ -252,6 +252,15 @@ def lint_sql(sql: str, *, allow_writes: bool = True) -> dict[str, Any]:
         return {"ok": False, "message": f"{verb.upper()} is not permitted from the SQL tool"}
     if not _writes_enabled(allow_writes) and (verb in _WRITE_PREFIXES or _has_data_modifying_cte(normalized)):
         return {"ok": False, "message": "write SQL rejected for read-only execution"}
+    if not _writes_enabled(allow_writes):
+        # The engine's query_only guard blocks most writes, but a PRAGMA
+        # assignment (PRAGMA query_only=OFF / writable_schema=ON / user_version=N)
+        # or REINDEX slips past both query_only and _WRITE_PREFIXES. Reject them so
+        # read-only mode cannot be toggled off or the schema rewritten.
+        if verb == "pragma" and "=" in normalized:
+            return {"ok": False, "message": "PRAGMA assignments are rejected for read-only execution"}
+        if verb == "reindex":
+            return {"ok": False, "message": "REINDEX is rejected for read-only execution"}
     return {"ok": True, "message": "ok"}
 
 
@@ -482,6 +491,10 @@ def sql_tool(
                 continue
             limited = sql_auto_limit(query_sql, max_rows=max_rows, auto_limit=auto_limit)
             try:
+                if not _writes_enabled(allow_writes):
+                    # Re-arm read-only on the shared connection before every batch
+                    # item so an earlier item cannot leave query_only disabled.
+                    conn.execute("PRAGMA query_only = ON")
                 result = _run_sqlite(conn, limited["sql"], max_rows)
                 if _top_level_verb(_strip_comments(query_sql)) in _WRITE_PREFIXES:
                     conn.commit()
