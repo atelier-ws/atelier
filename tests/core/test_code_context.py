@@ -2267,6 +2267,50 @@ def test_low_token_defaults_stay_lighter_for_search_and_pattern(
     assert pattern_default["total_tokens"] < pattern_heavy["total_tokens"]
 
 
+def test_native_pattern_uses_index_and_cache_for_def_patterns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "orders.py").write_text(
+        "def add_node(value: int) -> int:\n"
+        "    return value + 1\n",
+        encoding="utf-8",
+    )
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+
+    def fail_ast_parse(_source: str) -> object:
+        raise AssertionError("indexed def patterns should not parse source")
+
+    monkeypatch.setattr("atelier.core.capabilities.code_context.engine.ast.parse", fail_ast_parse)
+
+    first = engine.tool_pattern(pattern="def add_node($$$):", language="python", file_glob="src/**/*.py")
+    second = engine.tool_pattern(pattern="def add_node($$$):", language="python", file_glob="src/**/*.py")
+
+    assert [match["path"] for match in first["matches"]] == ["src/orders.py"]
+    assert second["cache_hit"] is True
+
+
+def test_search_text_uses_index_before_ripgrep(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "orders.py").write_text(
+        "def aggregate_session_stats() -> int:\n"
+        "    return 1\n",
+        encoding="utf-8",
+    )
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+
+    def fail_rg(*args: object, **kwargs: object) -> object:
+        raise AssertionError("search_text should use indexed line text before rg")
+
+    monkeypatch.setattr("atelier.core.capabilities.code_context.engine.subprocess.run", fail_rg)
+
+    matches = engine.search_text("aggregate", path="src", limit=5, ignore_case=True)
+
+    assert [(match.file_path, match.line) for match in matches] == [("src/orders.py", 1)]
+
+
 def test_tiny_budget_overflow_does_not_attach_spill_metadata(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "orders.py").write_text(

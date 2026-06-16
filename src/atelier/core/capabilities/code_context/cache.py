@@ -20,6 +20,7 @@ class RetrievalCache:
     def __init__(self, db_path: str | Path, *, max_bytes: int = 64 * 1024 * 1024) -> None:
         self.db_path = Path(db_path)
         self.max_bytes = max_bytes
+        self._schema_ready = False
 
     def get(
         self,
@@ -178,6 +179,8 @@ class RetrievalCache:
         return conn
 
     def _init_schema(self, conn: sqlite3.Connection) -> None:
+        if self._schema_ready:
+            return
         conn.execute("""
             CREATE TABLE IF NOT EXISTS retrieval_cache (
                 query_hash TEXT PRIMARY KEY,
@@ -192,6 +195,7 @@ class RetrievalCache:
         columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(retrieval_cache)")}
         if "repo_id" not in columns:
             conn.execute("ALTER TABLE retrieval_cache ADD COLUMN repo_id TEXT")
+        self._schema_ready = True
 
     def _evict_lru(self, conn: sqlite3.Connection) -> None:
         while True:

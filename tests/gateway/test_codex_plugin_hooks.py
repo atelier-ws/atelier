@@ -40,9 +40,12 @@ def _run_hook(
     )
 
 
-def _run_statusline(root: Path, payload: str) -> subprocess.CompletedProcess[str]:
+def _run_statusline(
+    root: Path, payload: str, env_extra: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.update({"ATELIER_ROOT": str(root), "ATELIER_NO_COLOR": "1"})
+    env.update(env_extra or {})
     return subprocess.run(
         [str(STATUSLINE)],
         input=payload,
@@ -272,6 +275,62 @@ def test_codex_stop_hook_emits_session_summary(tmp_path: Path) -> None:
     assert "est. cost: ~$" in message
     assert "savings: $0.0006 · 500 tokens saved · 2 calls avoided" in message
     assert "top tools: mcp__atelier__edit×1" in message
+
+
+def test_codex_stop_hook_reads_status_style_token_fields(tmp_path: Path) -> None:
+    from atelier.core.capabilities.pricing import override_pricing
+
+    root = tmp_path / ".atelier"
+    override_pricing(
+        "codex-test-model",
+        input_usd=1.0,
+        output_usd=10.0,
+        cache_read_usd=0.1,
+        cache_write_usd=2.0,
+    )
+
+    result = plugin_runtime.build_codex_stop_output(
+        root,
+        {
+            "hook_event_name": "Stop",
+            "session_id": "c-status",
+            "model": "codex-test-model",
+            "tokens": {
+                "input": "19.4M",
+                "output": "61.1K",
+                "cache": {"read": "2.5M", "write": "100k"},
+            },
+        },
+    )
+
+    message = result["systemMessage"]
+    assert "tokens: 19.5M input (19.4M new + 100.0k cW) / 2.5M cR / 61.1k out  (22.1M total)" in message
+    assert "est. cost: ~$20.4610" in message
+
+
+def test_codex_stop_hook_uses_native_statusline_snapshot_without_session_id(tmp_path: Path) -> None:
+    from atelier.core.capabilities.pricing import override_pricing
+
+    root = tmp_path / ".atelier"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    override_pricing("codex-test-model", input_usd=1.0, output_usd=10.0)
+
+    statusline = _run_statusline(
+        root,
+        "codex-test-model high · ~/workspace · 1.11M used · 19.4M in · 61.1K out",
+        env_extra={"CODEX_WORKSPACE_ROOT": str(workspace)},
+    )
+    assert "codex-test-model high" in statusline.stdout
+
+    result = plugin_runtime.build_codex_stop_output(
+        root,
+        {"hook_event_name": "Stop", "session_id": "c-native", "cwd": str(workspace)},
+    )
+
+    message = result["systemMessage"]
+    assert "tokens: 19.4M input (19.4M new + 0 cW) / 0 cR / 61.1k out  (19.5M total)" in message
+    assert "est. cost: ~$20.0110" in message
 
 
 def test_codex_stop_hook_is_quiet_without_session_activity(tmp_path: Path) -> None:

@@ -38,7 +38,6 @@ EXPECTED_TOOLS = {
     "grep",
     "sql",
     "search",
-    "symbols",
     "shell",
     "web_fetch",
     # Dedicated code-intel tools (split from `code` op for LLM discoverability)
