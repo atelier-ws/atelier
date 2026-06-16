@@ -158,6 +158,7 @@ results/
 benchmarks/codebench/results/*/*.flow
 benchmarks/codebench/results/*/state/
 /*.py
+!hatch_build.py
 /*.sh
 
 # -----------------------
