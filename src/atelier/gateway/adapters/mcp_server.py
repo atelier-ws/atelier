@@ -377,6 +377,13 @@ _FORMAT_FIELD = Field(
 # --------------------------------------------------------------------------- #
 
 _current_ledger: RunLedger | None = None
+# Per-request ledger override for the HTTP transport: set on the worker thread
+# that runs _handle so concurrent HTTP clients each accumulate their own run.json
+# instead of co-mingling into the process-global _current_ledger.
+_request_ledger: threading.local = threading.local()
+_http_session_ledgers: dict[str, RunLedger] = {}
+_http_session_ledgers_lock = threading.Lock()
+_MAX_HTTP_SESSION_LEDGERS = 64
 _realtime_ctx: RealtimeContextManager | None = None
 _product_session_id: str | None = None
 _product_session_started_at: float | None = None
@@ -550,7 +557,37 @@ def _detect_agent() -> str:
     return "claude"
 
 
+def _ledger_for_session(session_id: str) -> RunLedger:
+    """Per-session ledger so concurrent HTTP clients don't co-mingle into the
+    process-global ledger. Bounded; the oldest entry is evicted past the cap."""
+    with _http_session_ledgers_lock:
+        led = _http_session_ledgers.get(session_id)
+        if led is None:
+            if len(_http_session_ledgers) >= _MAX_HTTP_SESSION_LEDGERS:
+                _http_session_ledgers.pop(next(iter(_http_session_ledgers)), None)
+            led = RunLedger(root=_atelier_root(), agent=_detect_agent(), session_id=session_id)
+            _http_session_ledgers[session_id] = led
+        return led
+
+
+def _set_request_ledger(session_id: str | None) -> Any:
+    """Scope _get_ledger() to a per-session ledger on the CURRENT thread; returns
+    the prior value to restore. A falsy session_id is a no-op (stdio / no session
+    header keeps the process-global ledger)."""
+    prior = getattr(_request_ledger, "value", None)
+    if session_id:
+        _request_ledger.value = _ledger_for_session(session_id)
+    return prior
+
+
+def _clear_request_ledger(prior: Any) -> None:
+    _request_ledger.value = prior
+
+
 def _get_ledger() -> RunLedger:
+    req = getattr(_request_ledger, "value", None)
+    if isinstance(req, RunLedger):
+        return req
     global _current_ledger
     if _current_ledger is not None:
         return _current_ledger
