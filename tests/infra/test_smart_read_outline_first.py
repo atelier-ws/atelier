@@ -3,8 +3,8 @@ from typing import Any
 
 from atelier.core.capabilities.semantic_file_memory.capability import (
     SemanticFileMemoryCapability,
-    _claude_read_baseline_text,
     _count_tokens,
+    claude_read_baseline_text,
 )
 from atelier.gateway.adapters.mcp_server import _handle
 from tests.helpers import init_store_at
@@ -102,7 +102,7 @@ def test_smart_read_large_file_savings_use_claude_read_cap(tmp_path: Path) -> No
     target.write_text(source, encoding="utf-8")
 
     payload = SemanticFileMemoryCapability(tmp_path).smart_read(target, outline_threshold=10)
-    baseline_tokens = _count_tokens(_claude_read_baseline_text(source))
+    baseline_tokens = _count_tokens(claude_read_baseline_text(source))
     full_file_tokens = _count_tokens(source)
 
     assert payload["mode"] == "outline"

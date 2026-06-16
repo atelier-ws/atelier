@@ -227,8 +227,97 @@ _EXPLORE_ESSENTIAL_KEYS = [
     "truncated",
     "provenance",
 ]
-_EXPLORE_OPTIONAL_KEYS = ["relationships", "files", "additional_relevant_files"]
+# `files` is the primary content -- drop it LAST (after relationships/metadata) so a
+# budget-pressured explore degrades to fewer files rather than collapsing to nothing.
+_EXPLORE_OPTIONAL_KEYS = [
+    "relationships",
+    "additional_relevant_files",
+    "skeletonized",
+    "skeleton_tokens_saved",
+    "files",
+]
 _EXPLORE_SOURCE_SECTION_MAX_CHARS = resolve_output_policy("context").max_code_block_chars
+
+# Index-free sibling skeletonization for tool_explore: when an explore result
+# pulls >=3 same-kind symbols that share a name affix (e.g. *Embedder, *Resolver),
+# the highest-scored member is kept full and the rest render signatures-only.
+# Heuristic over the already-selected symbols -- no new index/SCIP queries.
+_SKELETON_KINDS = frozenset({"class", "struct", "interface", "trait", "protocol", "enum", "method", "function"})
+_SKELETON_STOPWORDS = frozenset(
+    {
+        "make",
+        "handle",
+        "data",
+        "base",
+        "util",
+        "utils",
+        "test",
+        "tests",
+        "impl",
+        "main",
+        "value",
+        "values",
+        "name",
+        "names",
+        "type",
+        "types",
+        "node",
+        "item",
+        "items",
+        "list",
+        "dict",
+        "async",
+        "await",
+        "none",
+        "true",
+        "false",
+        "self",
+        "func",
+        "call",
+        "args",
+        "kwargs",
+        "init",
+        "build",
+        "create",
+        "update",
+        "delete",
+        "result",
+        "config",
+        "client",
+        "server",
+        "model",
+        "models",
+        "error",
+        "errors",
+    }
+)
+_SKELETON_MIN_FAMILY = 3
+_SKELETON_MIN_BODY_LINES = 12
+# Family-completion retrieval: surface sibling families that name-ranked search
+# misses (FTS tokenization splits camelCase, so 'embedder' finds the base class
+# but not 'OpenAIEmbedder'). Bounded substring lookups over the symbol index.
+_EXPLORE_FAMILY_PROBE_SYMBOLS = 12
+_EXPLORE_FAMILY_TOTAL_CAP = 12
+_EXPLORE_FAMILY_PER_FAMILY_CAP = 8
+_EXPLORE_FAMILY_FILE_CAP = 16
+# Definitional kinds outrank trivial variables/constants when explore decides which
+# files survive the file/budget caps -- a class/function is higher signal than a const.
+_DEFINITION_KINDS = frozenset(
+    {"class", "struct", "interface", "trait", "protocol", "enum", "function", "method", "type_alias", "namespace"}
+)
+# Kinds probed by query-driven family completion (the definition families a query names).
+_QUERY_PROBE_KINDS = ("class", "function", "method")
+
+
+def _explore_skeleton_enabled() -> bool:
+    """Whether tool_explore sibling skeletonization is active (env override)."""
+    import os
+
+    value = os.environ.get("ATELIER_EXPLORE_SKELETON")
+    if value is None:
+        return True
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
 
 # Callee short-names that resolve to language builtins / ubiquitous container
 # methods. As callees they have no navigable definition and only add noise +
@@ -773,6 +862,21 @@ def _resolve_index_max_workers() -> int:
     if override.isdigit() and int(override) > 0:
         return int(override)
     return os.cpu_count() or 1
+
+
+def _resolve_serial_extract_threshold() -> int:
+    """File count at/below which indexing extracts serially, in-process.
+
+    A spawned ``ProcessPoolExecutor`` pays a fixed ~1-2s spawn+shutdown cost
+    (each worker is a fresh interpreter that re-imports the whole package). For
+    small repos that overhead dwarfs the millisecond-scale parsing, so serial
+    extraction is faster and produces byte-for-byte identical results. Honors
+    ``ATELIER_INDEX_SERIAL_MAX_FILES`` (set to 0 to always use the pool).
+    """
+    override = os.environ.get("ATELIER_INDEX_SERIAL_MAX_FILES", "").strip()
+    if override.isdigit():
+        return int(override)
+    return 64
 
 
 def _process_one_file(
@@ -1458,6 +1562,22 @@ class CodeContextEngine:
         for path in files:
             sb = source_bytes_map.get(str(path)) if source_bytes_map else None
             args_list.append((str(self.repo_root), str(path), sb))
+
+        # Small repos: skip the ProcessPoolExecutor entirely. Spawning fresh
+        # interpreters (each re-imports the whole package) and joining the pool
+        # costs a fixed ~1-2s that dwarfs the millisecond-scale parsing of a
+        # handful of files. Serial in-process extraction is byte-for-byte
+        # identical, just without the process churn.
+        if max_workers <= 1 or len(args_list) <= _resolve_serial_extract_threshold():
+            serial_results: list[_FileIndexData] = []
+            for completed, args in enumerate(args_list, start=1):
+                data = _process_one_file(*args)
+                if data is not None:
+                    serial_results.append(data)
+                if progress_callback is not None:
+                    progress_callback(completed, total_count)
+            serial_results.sort(key=lambda r: r.rel)
+            return serial_results
 
         # Use spawn, not fork: workers are fresh interpreters, so they never
         # inherit this multi-threaded process's locks or open fds. Forking here
@@ -2187,6 +2307,8 @@ class CodeContextEngine:
         include_source: bool = True,
         include_relationships: bool = True,
         line_numbers: bool = True,
+        skeletonize: bool = True,
+        complete_families: bool | None = None,
         depth: int = 1,
         budget_tokens: int = 9000,
         auto_index: bool = True,
@@ -2194,6 +2316,10 @@ class CodeContextEngine:
         if auto_index:
             self._ensure_indexed()
         self._sync_symbol_intel()
+        effective_skeletonize = skeletonize and _explore_skeleton_enabled()
+        effective_complete = (
+            bool(complete_families if complete_families is not None else skeletonize) and _explore_skeleton_enabled()
+        )
 
         bounded_max_symbols = max(1, min(max_symbols, 30))
         bounded_max_files = max(1, min(max_files, 8))
@@ -2208,6 +2334,8 @@ class CodeContextEngine:
             "include_source": include_source,
             "include_relationships": include_relationships,
             "line_numbers": line_numbers,
+            "skeletonize": effective_skeletonize,
+            "complete_families": effective_complete,
             "depth": bounded_depth,
             "budget_tokens": budget_tokens,
         }
@@ -2231,17 +2359,61 @@ class CodeContextEngine:
             ),
         )
         selected_symbols = ranked_symbols[:bounded_max_symbols]
+        family_member_ids: set[str] = set()
+        if effective_complete:
+            additions = self._complete_sibling_families(selected_symbols, query=query, seed_set=seed_set)
+            if additions:
+                have = {symbol.symbol_id for symbol in selected_symbols}
+                fresh = [symbol for symbol in additions if symbol.symbol_id not in have]
+                selected_symbols = selected_symbols + fresh
+                family_member_ids = {symbol.symbol_id for symbol in fresh}
+
+        # Rank so the highest-signal symbols claim the files that survive the file
+        # and budget caps: seed files, then the query's completed family, then
+        # definitions by score, then trivial variables/constants last.
+        def _explore_priority(symbol: SymbolRecord) -> int:
+            if symbol.file_path in seed_set:
+                return 0
+            if symbol.symbol_id in family_member_ids:
+                return 1
+            if (symbol.kind or "").lower() in _DEFINITION_KINDS:
+                return 2
+            return 3
+
+        selected_symbols = [
+            symbol
+            for _, symbol in sorted(enumerate(selected_symbols), key=lambda pair: (_explore_priority(pair[1]), pair[0]))
+        ]
         selected_files: list[str] = []
         by_file: dict[str, list[SymbolRecord]] = {}
         for symbol in selected_symbols:
             by_file.setdefault(symbol.file_path, []).append(symbol)
             if symbol.file_path not in selected_files:
                 selected_files.append(symbol.file_path)
-        selected_files = selected_files[:bounded_max_files]
+        # Family-completion can add files past the normal cap; allow them since the
+        # extra siblings render signatures-only (cheap), but stay bounded.
+        file_cap = bounded_max_files
+        if family_member_ids:
+            file_cap = min(_EXPLORE_FAMILY_FILE_CAP, max(bounded_max_files, len(selected_files)))
+        selected_files = selected_files[:file_cap]
         trimmed_symbols = [symbol for symbol in selected_symbols if symbol.file_path in set(selected_files)]
         trimmed_by_file: dict[str, list[SymbolRecord]] = {}
         for symbol in trimmed_symbols:
             trimmed_by_file.setdefault(symbol.file_path, []).append(symbol)
+
+        skeleton_ids: set[str] = set()
+        skeleton_families: dict[str, str] = {}
+        if effective_skeletonize:
+            skeleton_ids, skeleton_families = self._select_skeleton_symbols(trimmed_symbols, seed_set=seed_set)
+        # Completed family members are supplementary "here's the rest of the family"
+        # context, not direct hits -- always render them signatures-only so surfacing
+        # a whole family stays cheap and never forces the budget to drop relevant
+        # files. The actual search hits still render per the skeletonize flag.
+        if family_member_ids:
+            for symbol in trimmed_symbols:
+                if symbol.symbol_id in family_member_ids and symbol.file_path not in seed_set:
+                    skeleton_ids.add(symbol.symbol_id)
+                    skeleton_families.setdefault(symbol.symbol_id, "completion")
 
         entry_points = [
             {
@@ -2278,7 +2450,14 @@ class CodeContextEngine:
                 ],
             }
             if include_source:
-                sections = [self._source_section_for_symbol(symbol, line_numbers=line_numbers) for symbol in symbols]
+                sections = [
+                    self._source_section_for_symbol(
+                        symbol,
+                        line_numbers=line_numbers,
+                        skeleton=symbol.symbol_id in skeleton_ids,
+                    )
+                    for symbol in symbols
+                ]
                 merged_sections = self._merge_nearby_source_sections(sections)
                 file_entry["source_sections"] = merged_sections
             files_payload.append(file_entry)
@@ -2355,6 +2534,33 @@ class CodeContextEngine:
             "cache_hit": False,
             "provenance": _LOCAL_PROVENANCE,
         }
+        # Budget-aware file trim: drop the lowest-priority files until the payload
+        # fits, so explore degrades to fewer (most-relevant) files instead of
+        # collapsing to "no results" when a completed family + relationships overflow.
+        if include_source:
+            while len(files_payload) > 1 and self._compute_total_tokens(full_payload) > budget_tokens:
+                files_payload.pop()
+                full_payload["files"] = files_payload
+                full_payload["truncated"] = True
+        skeletonized_meta: list[dict[str, Any]] = []
+        tokens_saved_total = 0
+        for file_entry in files_payload:
+            for section in file_entry.get("source_sections", []):
+                if not section.get("skeleton"):
+                    continue
+                section_id = str(section.get("symbol_id") or "")
+                skeletonized_meta.append(
+                    {
+                        "symbol_id": section_id,
+                        "qualified_name": section.get("qualified_name"),
+                        "file_path": section.get("file_path"),
+                        "family": skeleton_families.get(section_id, ""),
+                    }
+                )
+                tokens_saved_total += int(section.get("tokens_saved") or 0)
+        if skeletonized_meta:
+            full_payload["skeletonized"] = skeletonized_meta
+            full_payload["skeleton_tokens_saved"] = tokens_saved_total
         packed = self._pack_single_payload(
             full_payload,
             budget_tokens=budget_tokens,
@@ -3622,7 +3828,14 @@ class CodeContextEngine:
             raise LookupError("symbol not found")
         symbol = _row_to_symbol(row)
         path = self.repo_root / symbol.file_path
-        source = path.read_bytes()[symbol.start_byte : symbol.end_byte].decode("utf-8", errors="replace")
+        try:
+            source = path.read_bytes()[symbol.start_byte : symbol.end_byte].decode("utf-8", errors="replace")
+        except OSError:
+            # The index can reference a file absent from disk (deleted, moved, or
+            # snapshot-excluded since indexing). Return the symbol metadata with an
+            # empty body so callers (explore relationship resolution, node, ...)
+            # degrade instead of crashing on one stale entry.
+            source = ""
         emit_product_local("code_symbol_retrieved", repo_id=self.repo_id, kind=symbol.kind)
         return {**symbol.model_dump(mode="json"), "source": source}
 
@@ -4453,9 +4666,7 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found"
-                if merged_status == "empty"
-                else None
+                else "no related call edges were found" if merged_status == "empty" else None
             )
             merged_snapshot = None
             if snapshot:
@@ -5445,10 +5656,20 @@ class CodeContextEngine:
         return [str(row["file_path"]) for row in rows]
 
     def _read_file(self, rel: str) -> str:
-        return (self.repo_root / rel).read_text(encoding="utf-8", errors="replace")
+        # The index can reference files absent from disk (deleted, moved, or excluded
+        # from a snapshot since indexing). Degrade to empty content so every caller
+        # (explore source + relationships, repo map, rerank, ...) survives instead of
+        # crashing the whole tool call on one stale entry.
+        try:
+            return (self.repo_root / rel).read_text(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            return ""
 
     def _read_file_slice(self, rel: str, start_byte: int, end_byte: int) -> str:
-        data = (self.repo_root / rel).read_bytes()
+        try:
+            data = (self.repo_root / rel).read_bytes()
+        except (OSError, ValueError):
+            return ""
         return data[start_byte:end_byte].decode("utf-8", errors="replace")
 
     def _load_symbol_source_for_rerank(self, symbol: SymbolRecord) -> str:
@@ -5465,6 +5686,7 @@ class CodeContextEngine:
         symbol: SymbolRecord | dict[str, Any],
         *,
         line_numbers: bool = True,
+        skeleton: bool = False,
     ) -> dict[str, Any]:
         payload = symbol.model_dump(mode="json") if isinstance(symbol, SymbolRecord) else symbol
         file_path = str(payload["file_path"])
@@ -5473,11 +5695,10 @@ class CodeContextEngine:
         source = self._read_file_slice(file_path, int(payload["start_byte"]), int(payload["end_byte"]))
         lines = source.splitlines()
         if line_numbers:
-            numbered = [f"{start_line + idx}\t{line}" for idx, line in enumerate(lines)]
-            content = "\n".join(numbered)
+            full_content = "\n".join(f"{start_line + idx}\t{line}" for idx, line in enumerate(lines))
         else:
-            content = source
-        return {
+            full_content = source
+        section: dict[str, Any] = {
             "file_path": file_path,
             "start_line": start_line,
             "end_line": end_line,
@@ -5485,8 +5706,26 @@ class CodeContextEngine:
             "symbol_name": payload["symbol_name"],
             "qualified_name": payload["qualified_name"],
             "line_numbers": line_numbers,
-            "content": hard_cap_chars(content, _EXPLORE_SOURCE_SECTION_MAX_CHARS),
         }
+        if skeleton:
+            skel = self._skeletonize_source(
+                source,
+                file_path=file_path,
+                start_line=start_line,
+                language=payload.get("language"),
+                line_numbers=line_numbers,
+            )
+            if skel is not None:
+                from atelier.core.capabilities.repo_map.budget import count_tokens
+
+                saved = count_tokens(full_content) - count_tokens(skel)
+                if saved > 0:
+                    section["content"] = hard_cap_chars(skel, _EXPLORE_SOURCE_SECTION_MAX_CHARS)
+                    section["skeleton"] = True
+                    section["tokens_saved"] = saved
+                    return section
+        section["content"] = hard_cap_chars(full_content, _EXPLORE_SOURCE_SECTION_MAX_CHARS)
+        return section
 
     def _merge_nearby_source_sections(
         self,
@@ -5509,7 +5748,7 @@ class CodeContextEngine:
             current = merged[-1]
             same_file = str(current["file_path"]) == str(section["file_path"])
             near_or_overlap = int(section["start_line"]) <= int(current["end_line"]) + max(0, gap_lines)
-            if same_file and near_or_overlap:
+            if same_file and near_or_overlap and not current.get("skeleton") and not section.get("skeleton"):
                 line_numbers = bool(current.get("line_numbers", True))
                 current["start_line"] = min(int(current["start_line"]), int(section["start_line"]))
                 current["end_line"] = max(int(current["end_line"]), int(section["end_line"]))
@@ -5545,6 +5784,208 @@ class CodeContextEngine:
                 _EXPLORE_SOURCE_SECTION_MAX_CHARS,
             )
         return hard_cap_chars("\n".join(segment), _EXPLORE_SOURCE_SECTION_MAX_CHARS)
+
+    def _complete_sibling_families(
+        self, symbols: list[SymbolRecord], *, query: str, seed_set: set[str]
+    ) -> list[SymbolRecord]:
+        """Surface sibling families that name-ranked search misses.
+
+        FTS tokenization splits camelCase, so a bare affix query ('embedder')
+        returns the base symbol but not 'OpenAIEmbedder'. For each strong suffix
+        affix -- both the query's own tokens and those of the top selected
+        symbols -- look up same-kind symbols whose name CONTAINS that affix
+        (substring match); when >=3 exist, return the members not already selected
+        so explore presents the whole family. Query-driven probes surface the
+        family even when search ranked unrelated symbols (e.g. trivial variables)
+        above it. Index lookups only, bounded by caps.
+        """
+        if not symbols:
+            return []
+        have_ids = {symbol.symbol_id for symbol in symbols}
+        probes: list[tuple[str, str]] = []
+        seen_probe: set[tuple[str, str]] = set()
+        # Query-driven probes first -- the family the caller actually named, across
+        # the definition kinds, regardless of how search ranked the raw hits.
+        for affix in self._skeleton_affixes(query):
+            for kind in _QUERY_PROBE_KINDS:
+                key = (kind, affix)
+                if key not in seen_probe:
+                    seen_probe.add(key)
+                    probes.append(key)
+        for symbol in symbols[:_EXPLORE_FAMILY_PROBE_SYMBOLS]:
+            kind = (symbol.kind or "").lower()
+            if kind not in _SKELETON_KINDS:
+                continue
+            affixes = self._skeleton_affixes(symbol.symbol_name or symbol.qualified_name)
+            if not affixes:
+                continue
+            key = (kind, affixes[0])  # suffix token -- the dominant family signal
+            if key not in seen_probe:
+                seen_probe.add(key)
+                probes.append(key)
+        if not probes:
+            return []
+        additions: list[SymbolRecord] = []
+        seen_ids: set[str] = set()
+        try:
+            with self._connect() as conn:
+                self._init_schema(conn)
+                for kind, affix in probes:
+                    if len(additions) >= _EXPLORE_FAMILY_TOTAL_CAP:
+                        break
+                    rows = conn.execute(
+                        """
+                        SELECT *, NULL AS score FROM symbols
+                        WHERE repo_id = ? AND lower(kind) = ? AND instr(lower(symbol_name), ?) > 0
+                        ORDER BY file_path, start_line
+                        LIMIT ?
+                        """,
+                        (self.repo_id, kind, affix, _EXPLORE_FAMILY_PER_FAMILY_CAP * 3),
+                    ).fetchall()
+                    members = [_row_to_symbol(row) for row in rows]
+                    if len({member.symbol_id for member in members}) < _SKELETON_MIN_FAMILY:
+                        continue
+                    added = 0
+                    for member in members:
+                        if added >= _EXPLORE_FAMILY_PER_FAMILY_CAP or len(additions) >= _EXPLORE_FAMILY_TOTAL_CAP:
+                            break
+                        if member.symbol_id in have_ids or member.symbol_id in seen_ids:
+                            continue
+                        if member.file_path in seed_set:
+                            continue
+                        if int(member.end_line) - int(member.start_line) < _SKELETON_MIN_BODY_LINES:
+                            continue
+                        seen_ids.add(member.symbol_id)
+                        additions.append(member)
+                        added += 1
+        except (sqlite3.Error, OSError, ValueError):
+            logging.exception("Recovered from broad exception handler")
+            return []
+        return additions
+
+    def _select_skeleton_symbols(
+        self,
+        symbols: list[SymbolRecord],
+        *,
+        seed_set: set[str],
+    ) -> tuple[set[str], dict[str, str]]:
+        """Pick redundant sibling symbols to render signatures-only.
+
+        Index-free: groups already-selected, non-seed symbols of the same kind
+        by a shared name affix (>=4 chars, non-generic). A family needs >=3
+        members; the highest-scored member stays full (the exemplar), the rest
+        are skeletoned. Returns (skeleton_symbol_ids, symbol_id -> "affix:kind").
+        """
+        from collections import defaultdict
+
+        candidates: list[SymbolRecord] = []
+        for symbol in symbols:
+            if symbol.file_path in seed_set:
+                continue
+            if (symbol.kind or "").lower() not in _SKELETON_KINDS:
+                continue
+            if int(symbol.end_line) - int(symbol.start_line) < _SKELETON_MIN_BODY_LINES:
+                continue
+            candidates.append(symbol)
+
+        groups: dict[tuple[str, str], list[SymbolRecord]] = defaultdict(list)
+        for symbol in candidates:
+            kind = (symbol.kind or "").lower()
+            for affix in self._skeleton_affixes(symbol.symbol_name or symbol.qualified_name):
+                groups[(kind, affix)].append(symbol)
+
+        assigned: set[str] = set()
+        skeleton_ids: set[str] = set()
+        families: dict[str, str] = {}
+        for (kind, affix), members in sorted(groups.items()):
+            fresh = {member.symbol_id: member for member in members if member.symbol_id not in assigned}
+            if len(fresh) < _SKELETON_MIN_FAMILY:
+                continue
+            ordered = sorted(
+                fresh.values(),
+                key=lambda member: (-(member.score or 0.0), member.qualified_name or member.symbol_name or ""),
+            )
+            assigned.add(ordered[0].symbol_id)
+            for member in ordered[1:]:
+                assigned.add(member.symbol_id)
+                skeleton_ids.add(member.symbol_id)
+                families[member.symbol_id] = f"{affix}:{kind}"
+        return skeleton_ids, families
+
+    def _skeleton_affixes(self, name: str | None) -> list[str]:
+        base = (name or "").split(".")[-1]
+        raw: list[str] = []
+        for snake in base.split("_"):
+            if snake:
+                raw.extend(_CAMEL_BOUNDARY_RE.split(snake))
+        tokens = [token.lower() for token in raw if token]
+        tokens = [token for token in tokens if len(token) >= 4 and token not in _SKELETON_STOPWORDS]
+        if not tokens:
+            return []
+        affixes: list[str] = []
+        if tokens[-1] not in affixes:
+            affixes.append(tokens[-1])
+        if tokens[0] not in affixes:
+            affixes.append(tokens[0])
+        return affixes
+
+    @staticmethod
+    def _signature_header_end(lines: list[str]) -> int:
+        """Index of the line that ends a callable's signature header (``def ...:`` / ``{``)."""
+        for index, line in enumerate(lines[:8]):
+            stripped = line.rstrip()
+            if stripped.endswith((":", "{", "=>")):
+                return index
+        return 0
+
+    def _skeletonize_source(
+        self,
+        source: str,
+        *,
+        file_path: str,
+        start_line: int,
+        language: str | None,
+        line_numbers: bool,
+    ) -> str | None:
+        """Render a symbol body as signature lines only (definitions kept, bodies dropped).
+
+        Reuses tree-sitter definition tags so nested member signatures survive.
+        Returns None when there is nothing meaningful to collapse.
+        """
+        lines = source.splitlines()
+        if len(lines) < 2:
+            return None
+        from atelier.infra.tree_sitter.tags import extract_tags_from_text
+
+        try:
+            tags = extract_tags_from_text(source, file_path, language or None)
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            return None
+        keep = {0}
+        for tag in tags:
+            if tag.kind == "definition" and 1 <= tag.line <= len(lines):
+                keep.add(tag.line - 1)
+        kept = sorted(index for index in keep if 0 <= index < len(lines))
+        if len(kept) <= 1:
+            # Flat callable (function/method with no nested defs): keep only the
+            # signature header and elide the body. Containers already keep their
+            # member definition lines above, so this only fires for callables.
+            header_end = self._signature_header_end(lines)
+            if header_end + 1 >= len(lines):
+                return None
+            kept = list(range(header_end + 1))
+        rendered: list[str] = []
+        previous: int | None = None
+        for index in kept:
+            if previous is not None and index > previous + 1:
+                rendered.append("\t…")
+            if line_numbers:
+                rendered.append(f"{start_line + index}\t{lines[index]}")
+            else:
+                rendered.append(lines[index])
+            previous = index
+        return "\n".join(rendered)
 
     def _usage_item(self, reference: UsageReference, *, snippet_lines: int) -> dict[str, Any]:
         payload = reference.model_dump(mode="json", exclude_none=True)

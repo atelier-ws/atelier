@@ -70,6 +70,8 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "callees", "family": "callees", "benchmarked": True},
         {"surface": "search:fuzzy", "family": "fuzzy_symbol", "benchmarked": True},
         {"surface": "pattern", "family": "structural_search", "benchmarked": True},
+        {"surface": "explore", "family": "explore", "benchmarked": True},
+        {"surface": "explore:skeleton", "family": "explore_skeleton", "benchmarked": True},
     ],
     "atelier-zoekt": [
         {"surface": "search:exact", "family": "exact_search", "benchmarked": True},
@@ -101,6 +103,8 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "query:nohit", "family": "nohit_search", "benchmarked": True},
         {"surface": "callers", "family": "callers", "benchmarked": True},
         {"surface": "callees", "family": "callees", "benchmarked": True},
+        {"surface": "context", "family": "explore", "benchmarked": True},
+        {"surface": "context:skeleton", "family": "explore_skeleton", "benchmarked": True},
     ],
     "code-index-mcp": [
         {"surface": "search_code:exact", "family": "exact_search", "benchmarked": True},
@@ -412,6 +416,22 @@ class AtelierRunner(_RunnerBase):
                 "limit": 50,
                 "budget_tokens": 4000,
             }
+        elif case.family in {"explore", "explore_skeleton"}:
+            # Controlled A/B on identical sibling-family queries: both surface the
+            # whole family (complete_families), explore renders full bodies while
+            # explore_skeleton collapses redundant siblings to signatures. Both
+            # measure the rendered markdown the model actually receives.
+            request = {
+                "op": "explore",
+                "repo_root": str(self.snapshot_root),
+                "query": case.query,
+                "max_files": 8,
+                "max_symbols": 20,
+                "line_numbers": True,
+                "skeletonize": case.family == "explore_skeleton",
+                "complete_families": True,
+                "budget_tokens": 9000,
+            }
         else:
             raise ValueError(f"unsupported family for {self.tool_name}: {case.family}")
         # Measure the REAL MCP response body the model receives. Code-intel tools
@@ -656,6 +676,22 @@ class CodeGraphRunner(_RunnerBase):
                 "20",
                 "-j",
                 case.symbol_name or case.query,
+            ]
+        elif case.family in {"explore", "explore_skeleton"}:
+            # CodeGraph's explore analogue is the `explore` subcommand (verified
+            # against the installed CLI: `explore [options] <query...>` with `-p`
+            # and `--max-files`, same output as the codegraph_explore MCP tool).
+            # Its adaptive skeletonization is automatic (env-gated, CODEGRAPH_
+            # ADAPTIVE_EXPLORE), not a per-call flag, so both explore families run
+            # the same command. max-files mirrors the atelier runner (8).
+            command = [
+                "codegraph",
+                "explore",
+                case.query,
+                "-p",
+                str(self.snapshot_root),
+                "--max-files",
+                "8",
             ]
         else:
             command = [
@@ -1441,6 +1477,11 @@ def score_case(case: ExternalBenchCase, output: str) -> float:
             output, case.expected_names[:1]
         )
         return 1.0 if has_expected_path and has_query_or_name else 0.0
+    if case.family in {"explore", "explore_skeleton"}:
+        # Correct if the grouped explore output surfaced at least one ground-truth
+        # file for the concept (path header appears in the rendered markdown).
+        lowered = output.lower()
+        return 1.0 if any(path.lower() in lowered for path in case.expected_paths) else 0.0
     if case.family in {"references", "callers", "callees"}:
         # Correct if the provider surfaced at least one true related file
         # (expected_paths holds the neutral AST-detected referrers / callers /
