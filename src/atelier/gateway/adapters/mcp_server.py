@@ -408,6 +408,10 @@ class _MonitorSession:
 _monitor_sessions: dict[str, _MonitorSession] = {}
 _MAX_MONITOR_STEPS = 25
 _MAX_MONITOR_SESSIONS = 64
+# Serializes mutation of the shared _monitor_sessions map / _MonitorSession
+# state: the dispatcher runs context calls on a thread pool, so two concurrent
+# calls for one session must not race the setdefault/eviction/steps mutation.
+_MONITOR_LOCK = threading.Lock()
 
 
 def _advance_monitors(session_id: str, task: str, original_task: str) -> tuple[float, bool]:
@@ -426,22 +430,24 @@ def _advance_monitors(session_id: str, task: str, original_task: str) -> tuple[f
         from atelier.core.capabilities.monitors import evaluate_all
         from atelier.core.capabilities.monitors.fsm import score_step
 
-        ms = _monitor_sessions.setdefault(session_id, _MonitorSession())
-        if len(_monitor_sessions) > _MAX_MONITOR_SESSIONS:
-            # Bound the session map: a marathon process seeing many session ids
-            # must not leak _MonitorSession objects. Evict oldest (skip current).
-            for _stale in list(_monitor_sessions)[: len(_monitor_sessions) - _MAX_MONITOR_SESSIONS]:
-                if _stale != session_id:
-                    _monitor_sessions.pop(_stale, None)
-        ms.steps.append(task)
-        if len(ms.steps) > _MAX_MONITOR_STEPS:
-            ms.steps = ms.steps[-20:]
-        ms.fsm.transition(score_step(task))
-        ms._call_count += 1
-
-        cooldown = ms.fsm.monitor_cooldown_steps
-        if ms._call_count % cooldown == 0 or ms._call_count == 1:
-            result = evaluate_all(ms.steps, task=original_task)
+        with _MONITOR_LOCK:
+            ms = _monitor_sessions.setdefault(session_id, _MonitorSession())
+            if len(_monitor_sessions) > _MAX_MONITOR_SESSIONS:
+                # Bound the session map: a marathon process seeing many session
+                # ids must not leak _MonitorSession objects. Evict oldest (skip current).
+                for _stale in list(_monitor_sessions)[: len(_monitor_sessions) - _MAX_MONITOR_SESSIONS]:
+                    if _stale != session_id:
+                        _monitor_sessions.pop(_stale, None)
+            ms.steps.append(task)
+            if len(ms.steps) > _MAX_MONITOR_STEPS:
+                ms.steps = ms.steps[-20:]
+            ms.fsm.transition(score_step(task))
+            ms._call_count += 1
+            cooldown = ms.fsm.monitor_cooldown_steps
+            run_eval = ms._call_count % cooldown == 0 or ms._call_count == 1
+            steps_snapshot = list(ms.steps)
+        if run_eval:
+            result = evaluate_all(steps_snapshot, task=original_task)
             ms.composite = result.composite
     except Exception:
         logging.exception("Recovered from broad exception handler")
@@ -893,11 +899,19 @@ def _spawn_worker_if_idle(root: Path) -> None:
         if now - _last_worker_spawn_time < _WORKER_SPAWN_THROTTLE_SECS:
             return
         _last_worker_spawn_time = now
-    threading.Thread(
-        target=_run_worker_tick_safe,
-        args=(root,),
-        daemon=True,
-    ).start()
+    try:
+        threading.Thread(
+            target=_run_worker_tick_safe,
+            args=(root,),
+            daemon=True,
+        ).start()
+    except RuntimeError:
+        # Thread creation failed (e.g. OS thread-limit pressure). Don't let the
+        # already-advanced throttle clock suppress the next 30s of ticks -- reset
+        # it so the next caller can retry the spawn.
+        with _STATE_LOCK:
+            _last_worker_spawn_time = 0.0
+        logging.exception("Recovered from broad exception handler")
 
 
 _runtime_cache: ContextRuntime | None = None
@@ -1367,7 +1381,7 @@ def _default_workflow_agent_executor(
     duration_seconds = time.perf_counter() - started
     output = (completed.stdout or "").strip()
     if completed.returncode != 0:
-        error = (completed.stderr or output or f"{runner} exited with {completed.returncode}").strip()
+        error = (completed.stderr or output or f"{selected_runner} exited with {completed.returncode}").strip()
         return {
             "status": "failed",
             "output": output,
@@ -2445,14 +2459,22 @@ def _append_workspace_savings(tool_name: str, tokens_saved: int, calls_saved: in
     _append_savings(tool_name, tokens_saved, calls_saved, rid=rid)
 
 
+_dev_mode_cache: bool | None = None
+
+
 def _mcp_debug_enabled() -> bool:
     if os.environ.get("ATELIER_MCP_DEBUG", "0") not in ("0", "", "false", "no"):
         return True
     # Auto-enable in dev installations (marker written by make dev / scripts/local.sh).
-    try:
-        return (_atelier_root() / ".dev_mode").exists()
-    except Exception:  # noqa: BLE001
-        return False
+    # The marker is constant per process, so cache the stat instead of issuing
+    # a syscall on every tool call.
+    global _dev_mode_cache
+    if _dev_mode_cache is None:
+        try:
+            _dev_mode_cache = (_atelier_root() / ".dev_mode").exists()
+        except Exception:  # noqa: BLE001
+            _dev_mode_cache = False
+    return _dev_mode_cache
 
 
 def _mcp_debug_path() -> Path:
@@ -4306,6 +4328,10 @@ def _suggest_paths_for_missing(workspace_root: Path, missing: str, *, limit: int
     lowered = name.lower()
     hits: list[str] = []
     scanned = 0
+    # Bound the walk by file count AND wall time: a missed read (often a
+    # hallucinated path) otherwise walks the whole tree, turning a failed read
+    # into a multi-100ms stall on a large monorepo.
+    _suggest_deadline = time.monotonic() + 0.25
     try:
         for dirpath, dirnames, filenames in os.walk(workspace_root):
             dirnames[:] = [d for d in dirnames if d not in _READ_SUGGEST_PRUNE_DIRS]
@@ -4316,7 +4342,7 @@ def _suggest_paths_for_missing(workspace_root: Path, missing: str, *, limit: int
                         hits.append(str((Path(dirpath) / fname).relative_to(workspace_root)))
                     if len(hits) >= limit:
                         return hits
-            if scanned > 50_000:
+            if scanned > 20_000 or time.monotonic() > _suggest_deadline:
                 break
     except OSError:
         return hits
@@ -4328,7 +4354,7 @@ def _suggest_paths_for_missing(workspace_root: Path, missing: str, *, limit: int
 # range specs models naturally emit, e.g. "store.py#60-100"). Optional "L"
 # prefixes mirror the read tool's own range syntax. A non-numeric "#..." tail is
 # left intact so genuine '#' filenames still resolve.
-_READ_RANGE_SUFFIX = re.compile(r"#(L?\d+(?:[-,:]L?\d+)?)$", re.IGNORECASE)
+_READ_RANGE_SUFFIX = re.compile(r"#(L?\d+(?:[-,:](?:L?\d+)?)?)$", re.IGNORECASE)
 
 
 def _split_read_range_suffix(raw_path: str) -> tuple[str, str | None]:
@@ -5598,6 +5624,9 @@ def _write_handover_packet(led: RunLedger, state: Any) -> Path:
 
 _COMPACT_ADVISE_CACHE: dict[str, tuple[int, Any]] = {}
 _MAX_COMPACT_ADVISE_CACHE = 64
+# Serializes cache read/insert/evict under the dispatcher thread pool; the
+# expensive compress() call runs outside the lock.
+_COMPACT_ADVISE_LOCK = threading.Lock()
 
 
 def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
@@ -5624,20 +5653,22 @@ def _compact_advise(session_id: str | None = None) -> dict[str, Any]:
         # changing, and compress() walks every event each call. compress() is
         # pure (reads events, returns a fresh CompactState), so reuse is safe.
         _ca_key = led.session_id or ""
-        _ca_cached = _COMPACT_ADVISE_CACHE.get(_ca_key)
+        with _COMPACT_ADVISE_LOCK:
+            _ca_cached = _COMPACT_ADVISE_CACHE.get(_ca_key)
         if _ca_cached is not None and _ca_cached[0] == len(led.events):
             state = _ca_cached[1]
         else:
             state = ContextCompressor().compress(led, preserve_last_n_turns=10, workspace_root=_workspace_root())
-            _COMPACT_ADVISE_CACHE[_ca_key] = (len(led.events), state)
-            if len(_COMPACT_ADVISE_CACHE) > _MAX_COMPACT_ADVISE_CACHE:
-                # Bound the cache: a marathon process seeing many session ids must
-                # not leak compressed states. Evict oldest (skip current).
-                for _stale in list(_COMPACT_ADVISE_CACHE)[
-                    : len(_COMPACT_ADVISE_CACHE) - _MAX_COMPACT_ADVISE_CACHE
-                ]:
-                    if _stale != _ca_key:
-                        _COMPACT_ADVISE_CACHE.pop(_stale, None)
+            with _COMPACT_ADVISE_LOCK:
+                _COMPACT_ADVISE_CACHE[_ca_key] = (len(led.events), state)
+                if len(_COMPACT_ADVISE_CACHE) > _MAX_COMPACT_ADVISE_CACHE:
+                    # Bound the cache: a marathon process seeing many session ids
+                    # must not leak compressed states. Evict oldest (skip current).
+                    for _stale in list(_COMPACT_ADVISE_CACHE)[
+                        : len(_COMPACT_ADVISE_CACHE) - _MAX_COMPACT_ADVISE_CACHE
+                    ]:
+                        if _stale != _ca_key:
+                            _COMPACT_ADVISE_CACHE.pop(_stale, None)
         compaction_savings = _session_compaction_savings_payload(
             led,
             state,
@@ -6035,6 +6066,9 @@ def _code_search_target_item(item: dict[str, Any]) -> dict[str, Any]:
 def _code_search_target_view(payload: dict[str, Any]) -> dict[str, Any]:
     items = payload.get("items")
     if isinstance(items, list):
+        # Copy before mutating so a cached/shared engine payload is never
+        # rewritten in place under concurrent callers.
+        payload = dict(payload)
         payload["items"] = [_code_search_target_item(item) if isinstance(item, dict) else item for item in items]
     return payload
 
@@ -7397,7 +7431,10 @@ def _run_shell_tool(
             resolved_search_path = (Path(effective_cwd) / resolved_search_path).resolve()
         glob_patterns = ["**/*"] if resolved_search_path.is_dir() else None
         grep_args: dict[str, Any] = {
-            "path": raw_search_path,
+            # Pass the cwd-resolved absolute path: tool_grep resolves a relative
+            # path against CLAUDE_WORKSPACE_ROOT, which would search the wrong
+            # directory when the shell call's cwd differs from the workspace.
+            "path": str(resolved_search_path),
             "content_regex": content_regex,
             "file_glob_patterns": glob_patterns,
             "ignore_case": ignore_case,
@@ -8633,15 +8670,11 @@ def _prepare_model_recommendation(
         if legacy is None:
             raise NoFeasibleRouteError("bench-off") from None
         vs_model = "auto"
+        # The legacy path has no real baseline model to price against ("auto" is
+        # unknown to the pricing table -> input cost 0.0), so the old comparison
+        # produced a structural always-0.0 saving. Keep it explicit instead of
+        # computing a misleading zero. (The owned path above does real cost math.)
         cost_saved_usd = 0.0
-        if legacy.model != vs_model:
-            expensive_pricing = get_model_pricing(vs_model)
-            recommended_pricing = get_model_pricing(legacy.model)
-            cost_saved_usd = max(
-                0.0,
-                expensive_pricing.cost_usd(input_tokens=estimated_input_tokens)
-                - recommended_pricing.cost_usd(input_tokens=estimated_input_tokens),
-            )
         payload = {
             "at": datetime.now(UTC).isoformat(),
             "kind": "model_recommendation",
@@ -9669,7 +9702,10 @@ def _handle_and_write(request: dict[str, Any]) -> None:
         _log.exception("unhandled MCP request failure")
         response = _err(request.get("id"), -32603, f"internal error: {exc}")
     if response is not None:
-        _write_jsonrpc(response)
+        try:
+            _write_jsonrpc(response)
+        except Exception:  # noqa: BLE001 - a write failure (e.g. BrokenPipe on host disconnect) must be logged, not silently dropped by the pool.
+            _log.exception("failed to write MCP response")
 
 
 def serve() -> None:
