@@ -9,6 +9,9 @@ _CONTEXT_ENTRY_CAP = 8
 _CONTEXT_RELATED_CAP = 10
 _CONTEXT_CODE_BLOCK_CAP = 3
 _CONTEXT_PER_FILE_CAP = 3
+_EXPLORE_FILE_SYMBOL_CAP = 8
+_NODE_BODY_MAX_LINES = 400
+_NODE_BODY_HEAD_LINES = 120
 
 
 def render_code_payload(op: str, payload: Mapping[str, Any]) -> str | None:
@@ -19,7 +22,9 @@ def render_code_payload(op: str, payload: Mapping[str, Any]) -> str | None:
     if op == "search":
         return _render_search(payload)
     if op in {"symbol", "node"}:
-        return _render_symbol(payload)
+        # The compact `symbol` view is location/signature-only; only the `node`
+        # view emits the source body.
+        return _render_symbol(payload, include_source=(op == "node"))
     if op in {"callers", "callees", "usages"}:
         return _render_relations(op, payload)
     if op == "pattern":
@@ -96,7 +101,7 @@ def _render_search(payload: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _render_symbol(payload: Mapping[str, Any]) -> str:
+def _render_symbol(payload: Mapping[str, Any], *, include_source: bool = True) -> str:
     symbol_id = str(payload.get("symbol_id") or "").strip()
     file_path = str(payload.get("path") or payload.get("file_path") or "?")
     start_line = int(payload.get("line") or payload.get("start_line") or 0)
@@ -114,6 +119,26 @@ def _render_symbol(payload: Mapping[str, Any]) -> str:
         lines.append(f"- location: {file_path}")
     if signature:
         lines.append(f"- signature: {signature}")
+    source = str(payload.get("source") or "")
+    if source and include_source:
+        language = str(payload.get("language") or "")
+        body_lines = source.splitlines()
+        if len(body_lines) <= _NODE_BODY_MAX_LINES:
+            kept = body_lines
+            lines.append("- source:")
+        else:
+            kept = body_lines[:_NODE_BODY_HEAD_LINES]
+            lines.append(
+                f"- source (first {_NODE_BODY_HEAD_LINES} of {len(body_lines)} lines; "
+                f"read range L{start_line}- for the rest):"
+            )
+        if start_line > 0:
+            body = "\n".join(f"{start_line + idx}\t{line}" for idx, line in enumerate(kept))
+        else:
+            body = "\n".join(kept)
+        lines.append(f"```{language}" if language else "```")
+        lines.append(body)
+        lines.append("```")
     return "\n".join(lines)
 
 
@@ -467,6 +492,87 @@ def _normalize_code_blocks(items: Any) -> list[dict[str, Any]]:
 
 
 def _render_explore(payload: Mapping[str, Any]) -> str:
+    files = payload.get("files")
+    if not isinstance(files, list) or not files:
+        return _render_explore_items(payload)
+    lines: list[str] = []
+    for file_entry in files:
+        if not isinstance(file_entry, Mapping):
+            continue
+        file_path = str(file_entry.get("file_path") or file_entry.get("path") or "?")
+        language = str(file_entry.get("language") or "")
+        labels: list[str] = []
+        symbols = file_entry.get("symbols")
+        if isinstance(symbols, list):
+            for sym in symbols:
+                if not isinstance(sym, Mapping):
+                    continue
+                name = str(sym.get("qualified_name") or sym.get("symbol_name") or sym.get("name") or "")
+                kind = str(sym.get("kind") or "")
+                if name:
+                    labels.append(f"{name} [{kind}]" if kind else name)
+        header = f"#### {file_path}"
+        if labels:
+            header += " — " + ", ".join(labels[:_EXPLORE_FILE_SYMBOL_CAP])
+        lines.append(header)
+        sections = file_entry.get("source_sections")
+        if not isinstance(sections, list):
+            continue
+        for section in sections:
+            if not isinstance(section, Mapping):
+                continue
+            content = str(section.get("content") or "").rstrip("\n")
+            if not content:
+                continue
+            if section.get("skeleton"):
+                lines.append("… · skeleton (signatures only; node/read for full body)")
+            lines.append(f"```{language}" if language else "```")
+            lines.append(content)
+            lines.append("```")
+    lines.extend(_render_explore_relationships(payload.get("relationships")))
+    extra = payload.get("additional_relevant_files")
+    if isinstance(extra, list) and extra:
+        lines.append("#### additional_relevant_files")
+        for path in extra[:_CONTEXT_RELATED_CAP]:
+            lines.append(f"- {path}")
+    return "\n".join(lines) if lines else "no results"
+
+
+def _render_explore_relationships(relationships: Any) -> list[str]:
+    if not isinstance(relationships, Mapping):
+        return []
+    out: list[str] = []
+    for op_name in ("callers", "callees", "usages"):
+        groups = relationships.get(op_name)
+        if not isinstance(groups, list) or not groups:
+            continue
+        rows: list[tuple[str, int, str]] = []
+        for group in groups:
+            if not isinstance(group, Mapping):
+                continue
+            entries = group.get("references") if op_name == "usages" else group.get("related")
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, Mapping):
+                    continue
+                file_path = str(entry.get("file_path") or entry.get("path") or "?")
+                line = int(entry.get("line") or entry.get("start_line") or 0)
+                label = str(
+                    entry.get("qualified_name")
+                    or entry.get("symbol_name")
+                    or entry.get("name")
+                    or entry.get("caller")
+                    or ""
+                )
+                rows.append((file_path, line, label))
+        if rows:
+            out.append(f"#### {op_name}")
+            out.extend(_group_rows_by_file(rows))
+    return out
+
+
+def _render_explore_items(payload: Mapping[str, Any]) -> str:
     items = payload.get("items")
     if not isinstance(items, list) or not items:
         return "no results"
@@ -474,7 +580,7 @@ def _render_explore(payload: Mapping[str, Any]) -> str:
     for item in items:
         if not isinstance(item, Mapping):
             continue
-        file_path = str(item.get("file_path") or "?")
+        file_path = str(item.get("file_path") or item.get("path") or "?")
         name = str(item.get("qualified_name") or item.get("symbol_name") or "")
         source = str(item.get("source") or "").strip()
         lines.append(f"{file_path} — {name}" if name else file_path)

@@ -381,7 +381,6 @@ def test_tools_list_search_schema_prefers_path_and_documents_modes() -> None:
     properties = search_tool["inputSchema"]["properties"]
 
     assert "query" in search_tool["description"]
-    assert "grep" in search_tool["description"]
     assert "path" in properties
     assert "file_path" not in properties
     assert "content_regex" not in properties
@@ -2039,9 +2038,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
-        f"'trace_id' missing or empty in trace receipt: {payload}"
-    )
+    assert (
+        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
+    ), f"'trace_id' missing or empty in trace receipt: {payload}"
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

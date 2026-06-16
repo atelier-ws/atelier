@@ -43,21 +43,25 @@ from atelier.gateway.integrations.openmemory_lifecycle import project_root as _p
 
 
 def _detect_git_root(search_path: Path) -> Path | None:
-    """Return the git repo root containing search_path, or None if not in a repo."""
-    import subprocess as _subprocess
+    """Return the git repo root containing search_path, or None if not in a repo.
 
+    Walks upward for a ``.git`` entry (a directory in a normal clone, a file in a
+    worktree/submodule) rather than shelling out to ``git rev-parse``. Forking a
+    git subprocess from this fully-imported, multi-threaded process costs seconds
+    (page-table copy of a large parent), while the walk is a few ``stat`` calls
+    and needs no ``git`` binary.
+    """
     try:
-        result = _subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=str(search_path),
-        )
-        if result.returncode == 0:
-            return Path(result.stdout.strip())
-    except (OSError, _subprocess.SubprocessError):
+        current = search_path.resolve()
+    except OSError:
         return None
+    for candidate in (current, *current.parents):
+        git_entry = candidate / ".git"
+        # A worktree/submodule uses a `.git` *file* (a gitlink); a normal clone
+        # uses a `.git` *directory*, which always contains HEAD. Requiring HEAD
+        # matches `git rev-parse` and rejects stray/empty `.git` dirs.
+        if git_entry.is_file() or (git_entry.is_dir() and (git_entry / "HEAD").is_file()):
+            return candidate
     return None
 
 

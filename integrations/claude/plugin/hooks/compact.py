@@ -235,6 +235,51 @@ def _append_compact_event(
 # ---------------------------------------------------------------------------
 
 
+def _checkpoint_pre_compact_usage(session_id: str, transcript_path: str) -> None:
+    """Snapshot cumulative session usage into stats.json before compact rewrites the transcript.
+
+    After /compact, Claude Code replaces the transcript JSONL with a compact summary.
+    The pre-compact token history is then invisible to read_transcript_stats at stop time.
+    By saving the running totals here (before the overwrite), the stop hook can add them
+    back on top of whatever post-compact usage the transcript shows.
+
+    Accumulates across multiple compacts (a session can be compacted more than once).
+    Fail-open: any error is silently swallowed.
+    """
+    try:
+        from atelier.core.capabilities.savings_summary import read_transcript_stats
+
+        stats = read_transcript_stats(transcript_path)
+        if stats is None:
+            return
+        # Only checkpoint if there's real usage to preserve.
+        if not (stats.input_tokens or stats.output_tokens or stats.cache_read_tokens or stats.cache_write_tokens):
+            return
+
+        atelier_root = _atelier_root()
+        stats_path = atelier_root / "sessions" / session_id / "stats.json"
+        try:
+            existing: dict[str, Any] = json.loads(stats_path.read_text("utf-8")) if stats_path.exists() else {}
+        except (OSError, json.JSONDecodeError):
+            existing = {}
+
+        # Accumulate — a session may be compacted multiple times.
+        prev = existing.get("pre_compact_usage")
+        if not isinstance(prev, dict):
+            prev = {}
+        existing["pre_compact_usage"] = {
+            "input_tokens": int(prev.get("input_tokens", 0) or 0) + stats.input_tokens,
+            "output_tokens": int(prev.get("output_tokens", 0) or 0) + stats.output_tokens,
+            "cache_read_tokens": int(prev.get("cache_read_tokens", 0) or 0) + stats.cache_read_tokens,
+            "cache_write_tokens": int(prev.get("cache_write_tokens", 0) or 0) + stats.cache_write_tokens,
+            "est_cost_usd": float(prev.get("est_cost_usd", 0.0) or 0.0) + stats.est_cost_usd,
+        }
+        stats_path.parent.mkdir(parents=True, exist_ok=True)
+        stats_path.write_text(json.dumps(existing, indent=2), "utf-8")
+    except Exception:  # noqa: BLE001
+        pass  # Fail-open — never block the compact
+
+
 def _handle_pre_compact(session_id: str, trigger: str, transcript_path: str = "") -> None:
     """Handle PreCompact: create manifest and capture pre-compaction occupancy.
 
@@ -245,6 +290,9 @@ def _handle_pre_compact(session_id: str, trigger: str, transcript_path: str = ""
     _ensure_compact_manifest(session_id)
     _append_compact_event(session_id, "PreCompact", trigger)
     if transcript_path:
+        # Snapshot cumulative usage BEFORE Claude Code overwrites the transcript.
+        # stop.py will add these pre-compact totals on top of post-compact transcript stats.
+        _checkpoint_pre_compact_usage(session_id, transcript_path)
         occ, model = _context_occupancy(transcript_path)
         if occ > 0:
             state = _read_session_state()
