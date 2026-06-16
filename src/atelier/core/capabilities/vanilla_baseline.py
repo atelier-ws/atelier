@@ -97,6 +97,9 @@ def build_turns(transcript_path: str | Path) -> list[dict[str, Any]]:
                 continue
             try:
                 entry = json.loads(raw)
+            except json.JSONDecodeError:
+                # Malformed JSON in transcript lines is common/expected noise
+                continue
             except Exception:
                 logging.exception("Recovered from broad exception handler")
                 continue
