@@ -271,16 +271,17 @@ def _seed_mode_docs(repo_root: Path, *, malformed: str) -> None:
     (modes_dir / f"{malformed}.md").write_text("no frontmatter here\n", encoding="utf-8")
 
 
-def test_build_default_registry_survives_malformed_mode_doc(tmp_path: Path) -> None:
+def test_build_default_registry_raises_on_malformed_mode_doc(tmp_path: Path) -> None:
     _seed_mode_docs(tmp_path, malformed="code")
 
-    registry = build_default_registry(tmp_path)
-
-    # The malformed "code" doc must not crash the build; the role falls back
-    # to built-in metadata instead.
-    assert REQUIRED_ROLES <= set(registry.roles)
-    assert registry.roles["code"].skill_description
-    assert registry.roles["code"].agent_description
+    # Descriptions are single-sourced from the mode docs, so a malformed doc is a
+    # hard build failure -- there is no silent fallback to stale built-in metadata.
+    try:
+        build_default_registry(tmp_path)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("build_default_registry must raise on a malformed mode doc")
 
 
 def test_load_mode_docs_strict_raises_on_malformed_doc(tmp_path: Path) -> None:

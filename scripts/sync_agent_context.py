@@ -48,6 +48,7 @@ DOC_LINKS = [
 ]
 CODING_GUIDELINES_PATH = ROOT / "integrations/shared/coding-guidelines.md"
 CORE_DISCIPLINE_PATH = ROOT / "integrations/shared/core-discipline.md"
+CHANGE_DISCIPLINE_PATH = ROOT / "integrations/shared/change-discipline.md"
 
 # Bare ``{{TOKEN}}`` placeholders a mode doc may embed; each expands to a shared
 # "## <heading>" section sourced from one canonical partial. A mode opts in by
@@ -55,6 +56,7 @@ CORE_DISCIPLINE_PATH = ROOT / "integrations/shared/core-discipline.md"
 SHARED_SECTIONS: dict[str, tuple[str, Path]] = {
     "{{CODING_GUIDELINES}}": ("Coding Guidelines", CODING_GUIDELINES_PATH),
     "{{CORE_DISCIPLINE}}": ("Core discipline", CORE_DISCIPLINE_PATH),
+    "{{CHANGE_DISCIPLINE}}": ("Change discipline", CHANGE_DISCIPLINE_PATH),
 }
 HOST_SKILL_DIRS = {
     "claude": ROOT / "integrations" / "claude" / "plugin" / "skills",
@@ -164,6 +166,10 @@ def core_discipline_section() -> str:
     return "\n".join(["## Core discipline", "", _markdown_body(CORE_DISCIPLINE_PATH)])
 
 
+def change_discipline_section() -> str:
+    return "\n".join(["## Change discipline", "", _markdown_body(CHANGE_DISCIPLINE_PATH)])
+
+
 _OPENCODE_TOOL_PREFIX = "atelier_"
 
 
@@ -199,6 +205,8 @@ def distribution_sections(host: str | None = None, *, tool_prefix: str = "") -> 
         tool_policy_section(tool_prefix=tool_prefix),
         "",
         core_discipline_section(),
+        "",
+        change_discipline_section(),
         "",
         budget_section(),
         "",
@@ -530,7 +538,7 @@ def render_simple_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostPr
     return (
         "\n".join(
             [
-                render_frontmatter(list(projection.frontmatter)),
+                render_frontmatter(_inject_description(projection.frontmatter, role.agent_description)),
                 "",
                 distribution_notice(),
                 "",
@@ -641,7 +649,7 @@ def render_opencode_agent(role: DefaultRole, mode_doc: ModeDoc, projection: Host
     return (
         "\n".join(
             [
-                render_frontmatter(list(projection.frontmatter)),
+                render_frontmatter(_inject_description(projection.frontmatter, role.agent_description)),
                 "",
                 distribution_notice(),
                 "",

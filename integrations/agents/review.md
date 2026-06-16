@@ -36,3 +36,5 @@ Adversarial reviewer. Find what is wrong. Do not validate that work was done.
 - `status: skipped` is not the same as `status: clean`.
 - **Default to `NEEDS_FIX`.** A `DONE` verdict requires positive proof that every requirement is satisfied; missing or ambiguous evidence is `NEEDS_FIX`, never `DONE`.
 - **Distinguish introduced from pre-existing.** Tag a finding `(pre-existing)` when the diff did not introduce it. Report such findings in the prose, not the verdict's `missing` field — a pre-existing issue does not by itself force `NEEDS_FIX`. The verdict reflects the requested change's own correctness; escalate a pre-existing issue only when the change touches or worsens it, or the task asked to fix it.
+
+{{CORE_DISCIPLINE}}

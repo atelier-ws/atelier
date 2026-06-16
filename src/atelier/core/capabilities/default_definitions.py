@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -389,46 +389,6 @@ def _tool_policies() -> dict[str, ToolPolicy]:
     }
 
 
-def _fallback_mode_metadata() -> dict[str, tuple[str, str]]:
-    return {
-        "code": (
-            "Switch to main Atelier coding mode. Uses Atelier MCP tools for file I/O, search, edits, and shell work. Applies the shared coding guidelines and validates changes before concluding.",
-            "Main coding agent. Edits, refactors, fixes bugs, and ships features with the Atelier task loop.",
-        ),
-        "explore": (
-            "Switch to read-only explorer mode. Locate files, symbols, and patterns. Never edit, create, or delete files.",
-            "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
-        ),
-        "review": (
-            "Switch to adversarial review mode. Apply the verification ladder, read the code directly, and never edit source files.",
-            "Adversarial code reviewer. Applies the verification ladder and rubric discipline. Never edits source files.",
-        ),
-        "plan": (
-            "Switch to planning mode. Explore enough to produce a concrete implementation plan, but do not edit files.",
-            "Dedicated planner. Turns grounded context into a concrete, reviewable implementation plan. Never edits.",
-        ),
-        "execute": (
-            "Switch to execution mode. Apply an accepted plan or task with the smallest verified code change.",
-            "Dedicated executor. Makes focused edits, self-verifies, and stops for review.",
-        ),
-        "research": (
-            "Switch to research mode. Fetch external docs and return a cited memo without editing files.",
-            "External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.",
-        ),
-        "solve": (
-            "Switch to autonomous solve mode. Resolve a concrete, verifiable task end to end with artifact-first iteration.",
-            "Autonomous task solver. Produces the required result early, iterates against real checks, and owns completion.",
-        ),
-    }
-
-
-def _role_descriptions(mode_name: str, mode_docs: Mapping[str, ModeDoc]) -> tuple[str, str]:
-    if mode_name in mode_docs:
-        mode = mode_docs[mode_name]
-        return mode.skill_description, mode.agent_description
-    return _fallback_mode_metadata()[mode_name]
-
-
 def _prompt_definitions() -> dict[str, PromptDefinition]:
     return {
         "owned-stem-system": PromptDefinition(
@@ -701,18 +661,18 @@ def _mcp_templates() -> dict[str, McpTemplate]:
 
 
 def build_default_registry(repo_root: Path | None = None) -> DefaultRegistry:
-    mode_docs = load_mode_docs(repo_root, strict=False)
+    mode_docs = load_mode_docs(repo_root)
     projections = _role_projections()
     policies = _tool_policies()
     roles: dict[str, DefaultRole] = {}
 
     for role_id in HOST_ROLE_IDS:
-        skill_description, agent_description = _role_descriptions(role_id, mode_docs)
+        mode = mode_docs[role_id]
         roles[role_id] = DefaultRole(
             role_id=role_id,
             name=role_id.replace("-", " ").title(),
-            skill_description=skill_description,
-            agent_description=agent_description,
+            skill_description=mode.skill_description,
+            agent_description=mode.agent_description,
             prompt_source=Path("integrations/agents") / f"{role_id}.md",
             prompt_body="",
             tool_policy=policies[role_id],
@@ -936,22 +896,11 @@ def _opencode_tool_gates(policy: ToolPolicy) -> dict[str, bool]:
     return gates
 
 
-_OPENCODE_DESCRIPTIONS: dict[str, str] = {
-    "code": "Atelier - main coding agent for the Agent Reasoning Runtime",
-    "explore": "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
-    "review": "Adversarial code reviewer. Applies the verification ladder. Never edits source files.",
-    "plan": "Dedicated planner. Turns grounded context into a concrete, reviewable implementation plan. Never edits.",
-    "execute": "Dedicated executor. Makes focused edits, self-verifies, and stops for review.",
-    "research": "External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.",
-    "solve": "Autonomous task solver. Produces the required result early, iterates against real checks, and owns completion.",
-}
-
-
 def _build_opencode_frontmatter() -> dict[str, tuple[tuple[str, Any], ...]]:
     policies = _tool_policies()
     out: dict[str, tuple[tuple[str, Any], ...]] = {}
     for role_id in SURFACED_ROLE_IDS:
-        items: list[tuple[str, Any]] = [("description", _OPENCODE_DESCRIPTIONS[role_id])]
+        items: list[tuple[str, Any]] = [("description", "")]
         if role_id == "code":
             items.append(("mode", "primary"))
         gates = _opencode_tool_gates(policies[role_id])
@@ -963,49 +912,10 @@ def _build_opencode_frontmatter() -> dict[str, tuple[tuple[str, Any], ...]]:
 
 OPENCODE_FRONTMATTER: dict[str, tuple[tuple[str, Any], ...]] = _build_opencode_frontmatter()
 
+# Antigravity carries description-only frontmatter; the per-role text is injected
+# at render time from the source ``agent_description`` (see render_simple_agent).
 ANTIGRAVITY_FRONTMATTER: dict[str, tuple[tuple[str, Any], ...]] = {
-    "code": (
-        (
-            "description",
-            "Main Atelier coding agent. Uses Atelier MCP tools for all file I/O, search, edits, and shell work.",
-        ),
-    ),
-    "explore": (
-        (
-            "description",
-            "Read-only codebase explorer. Finds files, symbols, and patterns. Never edits.",
-        ),
-    ),
-    "review": (
-        (
-            "description",
-            "Adversarial code reviewer. Applies the verification ladder. Never edits source files.",
-        ),
-    ),
-    "plan": (
-        (
-            "description",
-            "Dedicated planner. Turns grounded context into a concrete, reviewable implementation plan. Never edits.",
-        ),
-    ),
-    "execute": (
-        (
-            "description",
-            "Dedicated executor. Makes focused edits, self-verifies, and stops for review.",
-        ),
-    ),
-    "research": (
-        (
-            "description",
-            "External researcher. Fetches web pages, GitHub repos, and package docs. Never edits. Produces a structured memo with citations.",
-        ),
-    ),
-    "solve": (
-        (
-            "description",
-            "Autonomous task solver. Produces the required result early, iterates against real checks, and owns completion.",
-        ),
-    ),
+    role_id: (("description", ""),) for role_id in SURFACED_ROLE_IDS
 }
 
 

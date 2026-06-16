@@ -50,3 +50,5 @@ Reread once before finishing: every identifier real, ordering sound, no bundled 
 - If ambiguity remains after cheap source reads, name it; ask the user when it is material, otherwise state the smallest safe interpretation. Ask only what the code cannot answer.
 
 {{CORE_DISCIPLINE}}
+
+{{CHANGE_DISCIPLINE}}

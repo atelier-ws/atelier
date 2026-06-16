@@ -996,6 +996,38 @@ def test_smart_read_batch_accepts_string_paths(store_root: Path, tmp_path: Path)
     assert "beta_val" in mixed
 
 
+def test_smart_read_batch_honors_top_level_expand(store_root: Path, tmp_path: Path) -> None:
+    """A top-level ``expand=True`` must apply to every batched file.
+
+    Regression: the batch loop read ``expand`` only from each per-file spec
+    (``spec.get("expand", False)``), silently dropping a top-level
+    ``expand=True``. Plain-string entries therefore fell back to the >200-LOC
+    outline projection (bodies omitted) even though the caller asked for full
+    bodies. All prior ``expand`` coverage used single-path reads, which take a
+    different code path, so the batch gap went untested.
+    """
+    _ = store_root
+    big = tmp_path / "big_module.py"
+    # >200 LOC so the default projection is outline (bodies omitted). The marker
+    # lives inside a function body, which outline drops and expand keeps.
+    body = ["def head():", "    return 0", ""]
+    body += [f"const_{i} = {i}" for i in range(250)]
+    body += ["", "def carries_marker():", "    leaf = 'UNIQUE_BODY_TOKEN'", "    return leaf", ""]
+    big.write_text("\n".join(body), encoding="utf-8")
+
+    # Without expand: outline projection, the in-body marker is omitted.
+    outline = _result(_call("read", {"files": [str(big)]}))
+    assert "UNIQUE_BODY_TOKEN" not in outline
+
+    # Top-level expand=True must reach every plain-string batch entry.
+    expanded = _result(_call("read", {"files": [str(big)], "expand": True}))
+    assert "UNIQUE_BODY_TOKEN" in expanded
+
+    # A per-file expand still works and overrides the top-level default.
+    per_file = _result(_call("read", {"files": [{"path": str(big), "expand": True}]}))
+    assert "UNIQUE_BODY_TOKEN" in per_file
+
+
 def test_node_accepts_path_line_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
     """`node` parses a "path#line" suffix into the positional line, like read/edit."""
     captured: dict[str, Any] = {}
