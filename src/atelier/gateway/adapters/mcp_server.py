@@ -4863,8 +4863,8 @@ def tool_smart_read(
                 single = _smart_read_single(
                     path=spec_path,
                     range=spec.get("range"),
-                    expand=bool(spec.get("expand", False)),
-                    max_lines=spec.get("max_lines"),
+                    expand=bool(spec.get("expand", expand)),
+                    max_lines=spec.get("max_lines", max_lines),
                     include_meta=include_meta,
                     projection_kind=spec.get("projection_kind", projection_kind),
                 )
@@ -7068,6 +7068,61 @@ def _op_node(
             ),
         )
     return _finish_code_result(_maybe_attach_code_rendered("node", payload, render_compact=render_compact))
+
+
+def _op_symbol(
+    *,
+    symbol_id: str | None = None,
+    qualified_name: str | None = None,
+    symbol_name: str | None = None,
+    path: str | None = None,
+    line: int | None = None,
+    budget_tokens: int = 4000,
+    repo: str | None = None,
+    repo_root: str | None = None,
+    render_compact: bool = False,
+) -> dict[str, Any]:
+    """Compact symbol locator: signature + location, no source body.
+
+    Mirrors ``_op_node`` but renders the source-free ``symbol`` view (the
+    renderer already distinguishes the two: only ``node`` emits the body). Use
+    this to answer "where is this symbol defined?" -- the caller gets the
+    location and signature and can expand the body on demand via ``read`` or the
+    ``node`` op.
+    """
+    engine_root = repo_root or "."
+    workspace_router = _workspace_code_router(engine_root)
+    if repo is not None and not workspace_router.is_configured:
+        raise ValueError("repo filter requires .atelier/workspace.toml")
+    engine = _code_context_engine(engine_root)
+    _code_engine_for_current_call.value = engine
+    if workspace_router.is_configured:
+        payload = cast(
+            dict[str, Any],
+            workspace_router.route(
+                "symbol",
+                repo=repo,
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=path,
+                line=line,
+                budget_tokens=budget_tokens,
+            ),
+        )
+    else:
+        payload = cast(
+            dict[str, Any],
+            engine.tool_symbol(
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=path,
+                line=line,
+                budget_tokens=budget_tokens,
+            ),
+        )
+    return _finish_code_result(_maybe_attach_code_rendered("symbol", payload, render_compact=render_compact))
 
 
 def _op_rename(
