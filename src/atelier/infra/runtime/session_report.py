@@ -174,23 +174,18 @@ def _read_context_compression_savings(session_id: str, root: Path) -> tuple[int,
 def _read_host_sidecar_savings(session_id: str, root: Path) -> tuple[int, float, list[dict[str, Any]]]:
     """Aggregate savings from ``sessions/<session_id>/savings.jsonl``.
 
-    Each sidecar row is ``{tool, tokens, calls, model, ts, rid?}``. We price
-    ``tokens`` at the row's model input rate (same logic the statusline
-    uses via savings_summary.compute_savings_summary) and synthesise
-    context_savings-shaped rows so downstream renderers can treat both
-    sources uniformly.
+    Each sidecar row is priced through
+    :func:`savings_summary._price_savings_row` — the single rule the statusline,
+    stop hook, ``atelier savings`` CLI, dashboard, and web Savings page all use
+    — so this session-detail total reconciles exactly with the live figure.
+    Synthesises context_savings-shaped rows so downstream renderers can treat
+    both sources uniformly.
     """
-    from atelier.core.capabilities.pricing import get_model_pricing
-    from atelier.core.capabilities.savings_summary import resolve_model_id
+    from atelier.core.capabilities.savings_summary import _price_savings_row
 
     sidecar = root / "sessions" / session_id / "savings.jsonl"
     if not sidecar.is_file():
         return 0, 0.0, []
-
-    # Per-row sanity cap: a single tool call cannot legitimately save more
-    # than the full Anthropic context window. Anything larger came from a
-    # pre-fce2110 inflation bug and must not leak into the display.
-    PER_ROW_CAP = 2_000_000
 
     count = 0
     total_saved = 0.0
@@ -204,27 +199,18 @@ def _read_host_sidecar_savings(session_id: str, root: Path) -> tuple[int, float,
                 ev = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            tokens = max(0, int(ev.get("tokens") or ev.get("tokens_saved") or 0))
-            calls = max(0, int(ev.get("calls") or ev.get("calls_saved") or 0))
-            if tokens <= 0 and calls <= 0:
+            priced_tokens, usd, calls, calls_usd, unpriced = _price_savings_row(ev)
+            tokens = priced_tokens + unpriced
+            cost = usd + calls_usd
+            if tokens <= 0 and calls <= 0 and cost <= 0.0:
                 continue
-            if tokens > PER_ROW_CAP:
-                continue
-            model = str(ev.get("model") or "").strip()
-            # Prefer the pre-priced cost the dispatcher now writes; re-price only
-            # legacy rows that predate it.
-            cost = float(ev.get("cost_saved_usd") or 0.0)
-            if cost <= 0.0 and tokens > 0 and model:
-                pricing = get_model_pricing(resolve_model_id(model))
-                if pricing is not None and pricing.known and pricing.input > 0:
-                    cost = pricing.input / 1_000_000 * tokens
             count += 1
             total_saved += cost
             rows.append(
                 {
                     "at": ev.get("ts"),
                     "tool": ev.get("tool"),
-                    "model": model,
+                    "model": str(ev.get("model") or "").strip(),
                     "tokens_saved": tokens,
                     "calls_saved": calls,
                     "cost_saved_usd": round(cost, 6),
