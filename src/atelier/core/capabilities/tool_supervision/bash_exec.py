@@ -346,13 +346,18 @@ def _split_command_segments(command: str) -> list[list[str]]:
     ``; & | && ||``, newlines, and substitution/brace markers yields each
     segment's own leading token for the blocklist checks.
     """
-    operators = {";", "&", "|", "&&", "||", "\n", "$(", ")", "`", "{", "}"}
+    operators = {";", "&", "|", "&&", "||", "$(", ")", "`", "{", "}"}
+    # Newlines separate statements under ``bash -c``, but shlex.split discards
+    # them as whitespace -- which would merge a post-newline command into the
+    # previous segment and hide its leading token (``echo hi\nrm -rf x``).
+    # Convert them to an explicit ``;`` separator before tokenizing.
+    command = command.replace("\n", " ; ")
     # Pad control operators and substitution/brace boundaries with whitespace so
     # shlex isolates them even when glued to a token (``a&&rm``, ``true;rm``) and
     # the command inside ``$(...)`` / ``\`...\``` starts a fresh segment.
     # Over-splitting inside a quoted literal only yields extra benign segments;
     # it can never mask a dangerous leading token.
-    normalized = re.sub(r"(\$\(|\)|`|\{|\}|&&|\|\||;|&|\||\n)", r" \1 ", command)
+    normalized = re.sub(r"(\$\(|\)|`|\{|\}|&&|\|\||;|&|\|)", r" \1 ", command)
     try:
         tokens = shlex.split(normalized, comments=False)
     except ValueError:
@@ -397,10 +402,38 @@ def _is_noexec_shell(tokens: list[str]) -> bool:
     return False
 
 
+_ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_COMMAND_WRAPPERS = frozenset({"env", "command", "sudo", "nohup", "setsid", "stdbuf"})
+
+
+def _strip_command_prefixes(tokens: list[str]) -> list[str]:
+    """Strip leading ``VAR=value`` assignments and one pass-through wrapper
+    (``env``/``command``/``sudo``/...) so the real command head is checked.
+
+    ``env A=1 bash -c`` / ``command rm -rf`` would otherwise hide a dangerous
+    head behind the wrapper token. Conservative: option-taking wrappers
+    (``nice -n``, ``xargs``) are intentionally not unwrapped.
+    """
+    i = 0
+    while i < len(tokens) and _ASSIGN_RE.match(tokens[i]):
+        i += 1
+    if i < len(tokens) and os.path.basename(tokens[i]).lower() in _COMMAND_WRAPPERS:
+        i += 1
+        while i < len(tokens) and _ASSIGN_RE.match(tokens[i]):
+            i += 1
+    return tokens[i:]
+
+
 def _block_check_segment(tokens: list[str]) -> CommandPolicyDecision | None:
     """Return a block decision if *tokens* (one segment) is dangerous, else None."""
     if not tokens:
         return None
+    tokens = _strip_command_prefixes(tokens)
+    if not tokens:
+        return None
+    # Normalize the head to its basename so path-qualified invocations
+    # (``/bin/bash``, ``/usr/bin/git``) are matched like their bare names.
+    tokens = [os.path.basename(tokens[0]), *tokens[1:]]
     head = tokens[0].lower()
     if head in {"bash", "sh", "zsh", "fish"}:
         if _is_noexec_shell(tokens):

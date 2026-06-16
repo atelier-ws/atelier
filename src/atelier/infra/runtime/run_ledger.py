@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -125,6 +126,11 @@ class RunLedger:
         self.task = task
         self.domain = domain
         self.events: list[LedgerEvent] = []
+        # Guards mutation of events/counters and snapshot reads: the MCP
+        # dispatcher shares one ledger across a thread pool, so concurrent
+        # record()/record_call() and snapshot() must not race (torn snapshot,
+        # lost token_count increment). RLock: record_call() re-enters via record().
+        self._lock = threading.RLock()
         self.created_at = _utcnow()
         self.updated_at = self.created_at
         self.status: str = "running"
@@ -281,8 +287,9 @@ class RunLedger:
             summary=summary,
             payload=_bound_payload(payload or {}),
         )
-        self.events.append(event)
-        self.updated_at = _utcnow()
+        with self._lock:
+            self.events.append(event)
+            self.updated_at = _utcnow()
         return event
 
     def record_tool_call(
@@ -294,9 +301,10 @@ class RunLedger:
     ) -> LedgerEvent:
         from atelier.core.foundation.watchdogs import args_signature as _sig
 
-        self.tool_count += 1
-        if tool not in self.tools_called:
-            self.tools_called.append(tool)
+        with self._lock:
+            self.tool_count += 1
+            if tool not in self.tools_called:
+                self.tools_called.append(tool)
 
         signature = args_signature or _sig(args)
 
@@ -397,7 +405,8 @@ class RunLedger:
             cost_usd=cost_usd,
             lessons_used=lessons_used,
         )
-        self.token_count += rec.input_tokens + rec.output_tokens
+        with self._lock:
+            self.token_count += rec.input_tokens + rec.output_tokens
         return self.record(
             "tool_call",
             f"llm:{operation}({model})",
@@ -564,9 +573,21 @@ class RunLedger:
     # ----- snapshot / persistence ----------------------------------------- #
 
     def snapshot(self) -> dict[str, Any]:
-        tool_calls = [e for e in self.events if e.kind == "tool_call"]
-        total_output = sum(int(e.payload.get("output_chars", 0)) for e in tool_calls)
-        alerts = [e for e in self.events if e.kind == "watchdog_alert"]
+        # Copy the mutable lists under the lock so a concurrent record() cannot
+        # mutate self.events mid-iteration (torn snapshot / RuntimeError).
+        with self._lock:
+            events = list(self.events)
+            workflow_step_events = list(self.workflow_step_events)
+        # Single pass over the (locked-copy) events instead of three.
+        tool_calls: list[LedgerEvent] = []
+        alerts: list[LedgerEvent] = []
+        total_output = 0
+        for e in events:
+            if e.kind == "tool_call":
+                tool_calls.append(e)
+                total_output += int(e.payload.get("output_chars", 0))
+            elif e.kind == "watchdog_alert":
+                alerts.append(e)
         return {
             "session_id": self.session_id,
             "agent": self.agent,
@@ -596,14 +617,14 @@ class RunLedger:
             "workflow_state": dict(self.workflow_state),
             "plan_review": dict(self.plan_review),
             "task_progress": dict(self.task_progress),
-            "workflow_step_events": [dict(event) for event in self.workflow_step_events],
+            "workflow_step_events": [dict(event) for event in workflow_step_events],
             "agent_settings": dict(self.agent_settings),
             "skills": list(self.skills),
             "token_count": self.token_count,
             "tool_count": self.tool_count,
             "budget": dict(self.budget),
             "cost": (self.cost_tracker.snapshot() if self.cost_tracker else {}),
-            "events": [to_jsonable(e) for e in self.events],
+            "events": [to_jsonable(e) for e in events],
         }
 
     def persist(self, root: Path | None = None) -> Path:
