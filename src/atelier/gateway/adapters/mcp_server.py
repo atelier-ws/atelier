@@ -2632,20 +2632,57 @@ def _extract_tokens_saved(result: dict[str, Any]) -> int:
     return _extract_compact_output_tokens_saved(result)
 
 
+def _acquire_smart_state_flock() -> Any:
+    """Best-effort POSIX exclusive flock on smart_state's sidecar lock file so a
+    sibling MCP process can't lose-update the machine-global counters. Returns an
+    open handle the caller must release, or None where flock is unavailable."""
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    try:
+        p = _smart_state_path()
+        lock_path = p.parent / (p.name + ".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(lock_path, "w", encoding="utf-8")
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        return handle
+    except OSError:
+        return None
+
+
+def _release_smart_state_flock(handle: Any) -> None:
+    if handle is None:
+        return
+    try:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except (ImportError, OSError):
+        pass
+    with contextlib.suppress(OSError):
+        handle.close()
+
+
 def _record_smart_state_savings(tokens_saved: int, calls_avoided: int) -> None:
     if tokens_saved <= 0 and calls_avoided <= 0:
         return
-    # Serialize the read-modify-write so concurrent tool calls can't lose an
-    # update to the cumulative counters. _STATE_LOCK is an RLock.
+    # Serialize the read-modify-write across threads (_STATE_LOCK) AND sibling
+    # MCP processes sharing the machine-global smart_state.json (flock), so a
+    # concurrent process can't lose-update the cumulative counters.
     with _STATE_LOCK:
-        state = _read_smart_state()
-        savings = state.get("savings")
-        if not isinstance(savings, dict):
-            savings = {"calls_avoided": 0, "tokens_saved": 0}
-        savings["calls_avoided"] = int(savings.get("calls_avoided", 0) or 0) + max(0, calls_avoided)
-        savings["tokens_saved"] = int(savings.get("tokens_saved", 0) or 0) + max(0, tokens_saved)
-        state["savings"] = savings
-        _write_smart_state(state)
+        _flock = _acquire_smart_state_flock()
+        try:
+            state = _read_smart_state()
+            savings = state.get("savings")
+            if not isinstance(savings, dict):
+                savings = {"calls_avoided": 0, "tokens_saved": 0}
+            savings["calls_avoided"] = int(savings.get("calls_avoided", 0) or 0) + max(0, calls_avoided)
+            savings["tokens_saved"] = int(savings.get("tokens_saved", 0) or 0) + max(0, tokens_saved)
+            state["savings"] = savings
+            _write_smart_state(state)
+        finally:
+            _release_smart_state_flock(_flock)
 
 
 class _NoOpContextBudgetRecorder:
@@ -2698,8 +2735,23 @@ def _redact_memory_input(text: str, field_name: str) -> str:
     return redacted
 
 
+_memory_store_tls = threading.local()
+
+
 def _memory_store() -> Any:
-    return make_memory_store(_atelier_root())
+    # Reuse the store (its sqlite connection + idempotent migrations) per thread
+    # instead of constructing a fresh one on every memory call. Thread-local
+    # because the sqlite connection has check_same_thread=True; keyed by root.
+    cache = getattr(_memory_store_tls, "by_root", None)
+    if cache is None:
+        cache = {}
+        _memory_store_tls.by_root = cache
+    root = str(_atelier_root())
+    store = cache.get(root)
+    if store is None:
+        store = make_memory_store(_atelier_root())
+        cache[root] = store
+    return store
 
 
 def _archival_recall() -> ArchivalRecallCapability:
