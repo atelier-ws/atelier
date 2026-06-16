@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import sqlite3
+import threading
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,6 +30,7 @@ class DeletedHistorySearchAdapter:
         self._head_state_key = f"graveyard_head:{repo_id}"
         self._rename_target_cache: dict[tuple[str, str], str | None] = {}
         self._changed_files_cache: dict[tuple[int | None, str | None, str | None], frozenset[str]] = {}
+        self._history_ready = False
 
     def search(
         self,
@@ -86,6 +88,31 @@ class DeletedHistorySearchAdapter:
                     break
             return items[:limit]
 
+    def start_background_warmup(self) -> None:
+        """Launch a daemon thread to warm the graveyard index in the background.
+
+        Safe to call multiple times — only one thread is ever launched.
+        """
+        if self._history_ready:
+            return
+        t = threading.Thread(
+            target=self._background_warmup_worker,
+            daemon=True,
+            name=f"atelier-graveyard-{self._repo_id[:8]}",
+        )
+        t.start()
+
+    def _background_warmup_worker(self) -> None:
+        try:
+            self._ensure_history_ready()
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            return
+        try:
+            self.changed_files(since_ts=None, touched_by=None)
+        except Exception:
+            pass
+
     def _ensure_history_ready(self) -> None:
         current_head = self._current_head()
         if current_head is None:
@@ -97,6 +124,7 @@ class DeletedHistorySearchAdapter:
             count_row = conn.execute("SELECT COUNT(*) AS n FROM symbol_graveyard").fetchone()
             graveyard_count = int(count_row["n"]) if count_row is not None else 0
             if previous_head == current_head and graveyard_count > 0:
+                self._history_ready = True
                 return
             walk_history(self._repo_root, SymbolGraveyard(conn))
             conn.execute(
@@ -108,6 +136,7 @@ class DeletedHistorySearchAdapter:
                 (self._head_state_key, current_head),
             )
             conn.commit()
+        self._history_ready = True
 
     def _current_head(self) -> str | None:
         pygit2 = require_pygit2()
@@ -222,7 +251,9 @@ class DeletedHistorySearchAdapter:
                 signature_hash
             FROM symbol_graveyard
             WHERE
-            """ + " AND ".join(filters) + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC LIMIT ?",
+            """
+            + " AND ".join(filters)
+            + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC LIMIT ?",
             params,
         ).fetchall()
         return list(rows)
@@ -261,7 +292,9 @@ class DeletedHistorySearchAdapter:
                 rename_target,
                 signature_hash
             FROM symbol_graveyard
-            """ + where_clause + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC",
+            """
+            + where_clause
+            + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC",
             params,
         ).fetchall()
         return list(rows)

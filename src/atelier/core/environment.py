@@ -50,6 +50,10 @@ HIDDEN_LLM_TOOLS = frozenset(
         "rename",
         "cache_status",
         "cache_invalidate",
+        # SCIP symbol search: callable by name (CLI, benchmark, power use) but
+        # removed from the advertised agent surface. Agents use `search`/`grep`
+        # to find code by name and `node` to read a definition.
+        "symbols",
     }
 )
 HIDDEN_SKILLS = frozenset(

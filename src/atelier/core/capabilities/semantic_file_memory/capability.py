@@ -169,6 +169,10 @@ class SemanticFileMemoryCapability:
         self._root = Path(root)
         self._index = FileIndex(self._root)
         self._symbol_index = SymbolIndex(self._index)
+        try:
+            self._symbol_index._ensure_idf()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Language detection

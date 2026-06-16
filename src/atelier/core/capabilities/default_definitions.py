@@ -347,7 +347,7 @@ def _tool_policies() -> dict[str, ToolPolicy]:
         "general": ToolPolicy(policy_id="general", allowed_tools=("*",)),
         "explore": ToolPolicy(
             policy_id="explore",
-            allowed_tools=("read", "grep", "search", "symbols", "node", "usages", "explore"),
+            allowed_tools=("read", "grep", "search", "node", "usages", "explore"),
             denied_actions=("edit", "write", "delete", "agent-spawn"),
         ),
         "plan": ToolPolicy(

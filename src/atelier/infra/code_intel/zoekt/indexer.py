@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import threading
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from time import time
+from typing import Any
 
 _TEXT_SUFFIXES = {
     ".py",
@@ -32,6 +34,17 @@ class ZoektIndexSnapshot:
     total_lines: int
     path_lines: dict[str, int]
 
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ZoektIndexSnapshot":
+        return cls(
+            indexed_at=float(data["indexed_at"]),
+            total_lines=int(data["total_lines"]),
+            path_lines={str(k): int(v) for k, v in data["path_lines"].items()},
+        )
+
 
 class ZoektIndexer:
     """Keep lightweight line-count metadata for routing decisions."""
@@ -40,11 +53,24 @@ class ZoektIndexer:
         self.repo_root = Path(repo_root).resolve()
         self._lock = threading.Lock()
         self._snapshot: ZoektIndexSnapshot | None = None
+        if self._snapshot is None:
+            t = threading.Thread(
+                target=self.ensure_snapshot,
+                daemon=True,
+                name="atelier-zoekt-snapshot",
+            )
+            t.start()
 
     def ensure_snapshot(self) -> ZoektIndexSnapshot:
         with self._lock:
-            if self._snapshot is None:
-                self._snapshot = self._build_snapshot()
+            if self._snapshot is not None:
+                return self._snapshot
+            loaded = self._load_snapshot_from_disk()
+            if loaded is not None:
+                self._snapshot = loaded
+                return self._snapshot
+            self._snapshot = self._build_snapshot()
+            self._save_snapshot_to_disk(self._snapshot)
             return self._snapshot
 
     def line_count(self, search_path: str | Path | None = None) -> int:
@@ -64,6 +90,44 @@ class ZoektIndexer:
     def index_age_seconds(self) -> int:
         snapshot = self.ensure_snapshot()
         return int(max(0, time() - snapshot.indexed_at))
+
+    def _snapshot_cache_path(self) -> Path:
+        return self.repo_root / ".git" / "atelier" / "zoekt_snapshot.json"
+
+    def _current_head(self) -> str | None:
+        head_file = self.repo_root / ".git" / "HEAD"
+        try:
+            ref = head_file.read_text(encoding="utf-8").strip()
+            if ref.startswith("ref: "):
+                ref_path = self.repo_root / ".git" / ref[5:]
+                return ref_path.read_text(encoding="utf-8").strip()
+            return ref
+        except OSError:
+            return None
+
+    def _load_snapshot_from_disk(self) -> ZoektIndexSnapshot | None:
+        cache_path = self._snapshot_cache_path()
+        try:
+            data = json.loads(cache_path.read_text(encoding="utf-8"))
+            stored_head = data.get("head")
+            current_head = self._current_head()
+            if current_head is None or stored_head != current_head:
+                return None
+            return ZoektIndexSnapshot.from_dict(data["snapshot"])
+        except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+            return None
+
+    def _save_snapshot_to_disk(self, snapshot: ZoektIndexSnapshot) -> None:
+        cache_path = self._snapshot_cache_path()
+        current_head = self._current_head()
+        payload = json.dumps({"head": current_head, "snapshot": snapshot.to_dict()})
+        tmp = cache_path.with_suffix(".tmp")
+        try:
+            tmp.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(payload, encoding="utf-8")
+            tmp.replace(cache_path)
+        except OSError:
+            pass
 
     def _build_snapshot(self) -> ZoektIndexSnapshot:
         from atelier.core.capabilities.repo_map.graph import should_skip_path

@@ -1315,7 +1315,10 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
         return {"no_output": True}
 
     session_id = str(payload.get("session_id") or "default")
-    update_session_stats(root, payload)
+    state = update_session_stats(root, payload)
+    statusline_cost = 0.0
+    if not _usage_has_tokens(_as_dict(state.get("usage"))):
+        statusline_cost = _apply_codex_statusline_snapshot(root, session_id, payload)
     report = build_savings_report(root, session_id=session_id)
     session = report.get("session") or {}
     cost = report.get("cost") or {}
@@ -1346,8 +1349,19 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
     ):
         return {"no_output": True}
 
+    with suppress(Exception):
+        from atelier.core.service.telemetry.public_rollup import publish_public_savings_rollup
+
+        publish_public_savings_rollup(
+            session_id=session_id,
+            saved_usd=saved_usd,
+            tokens_saved=tokens_saved,
+            calls_avoided=calls_avoided,
+            source="codex",
+        )
+
     model = str(session.get("last_model") or session.get("model") or _codex_payload_model(payload) or "")
-    real_cost = _codex_payload_cost_usd(payload)
+    real_cost = _codex_payload_cost_usd(payload) or statusline_cost
     estimated_cost = real_cost if real_cost > 0 else _codex_estimated_cost_usd(model, usage)
     fresh_in = inp + cache_write
     activity = (
@@ -2398,19 +2412,86 @@ def _now_ms(payload: dict[str, Any] | None = None) -> int:
     return int(datetime.now().timestamp() * 1000)
 
 
+def _token_count(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, (int, float)):
+        return max(0, int(value))
+    if not isinstance(value, str):
+        return 0
+    text = value.strip().replace(",", "")
+    if not text:
+        return 0
+    multiplier = 1
+    suffix = text[-1].lower()
+    if suffix == "k":
+        multiplier = 1_000
+        text = text[:-1]
+    elif suffix == "m":
+        multiplier = 1_000_000
+        text = text[:-1]
+    elif suffix == "b":
+        multiplier = 1_000_000_000
+        text = text[:-1]
+    try:
+        return max(0, int(float(text) * multiplier))
+    except ValueError:
+        return 0
+
+
+def _nested_token_count(raw: dict[str, Any], path: tuple[str, ...]) -> int:
+    current: Any = raw
+    for key in path:
+        if not isinstance(current, dict):
+            return 0
+        current = current.get(key)
+    return _token_count(current)
+
+
 def _usage_numbers(raw: dict[str, Any]) -> dict[str, int]:
     aliases = {
-        "input_tokens": ("input_tokens", "prompt_tokens"),
-        "output_tokens": ("output_tokens", "completion_tokens"),
-        "cache_read_tokens": ("cache_read_input_tokens", "cache_read_tokens"),
-        "cache_write_tokens": ("cache_creation_input_tokens", "cache_write_tokens"),
+        "input_tokens": (
+            ("input_tokens",),
+            ("prompt_tokens",),
+            ("inputTokens",),
+            ("tokens_in",),
+            ("input",),
+            ("in",),
+        ),
+        "output_tokens": (
+            ("output_tokens",),
+            ("completion_tokens",),
+            ("outputTokens",),
+            ("tokens_out",),
+            ("output",),
+            ("out",),
+        ),
+        "cache_read_tokens": (
+            ("cache_read_input_tokens",),
+            ("cache_read_tokens",),
+            ("cached_input_tokens",),
+            ("cacheReadTokens",),
+            ("cachedInputTokens",),
+            ("cache_read",),
+            ("cacheRead",),
+            ("cache", "read"),
+        ),
+        "cache_write_tokens": (
+            ("cache_creation_input_tokens",),
+            ("cache_write_tokens",),
+            ("cacheCreationInputTokens",),
+            ("cacheWriteTokens",),
+            ("cache_write",),
+            ("cacheWrite",),
+            ("cache", "write"),
+        ),
     }
     result: dict[str, int] = {key: 0 for key in aliases}
-    for target, names in aliases.items():
-        for name in names:
-            value = raw.get(name)
-            if isinstance(value, (int, float)) and not isinstance(value, bool):
-                result[target] += int(value)
+    for target, paths in aliases.items():
+        for path in paths:
+            value = _nested_token_count(raw, path)
+            if value > 0:
+                result[target] = value
                 break
     return result
 
@@ -2426,7 +2507,14 @@ def _extract_usage(payload: dict[str, Any]) -> dict[str, int]:
         "cache_write_tokens": 0,
     }
     message_usage = (payload.get("message") or {}).get("usage") if isinstance(payload.get("message"), dict) else None
-    for candidate in (payload.get("usage"), payload.get("token_usage"), message_usage):
+    candidates = (
+        payload.get("usage"),
+        payload.get("token_usage"),
+        payload.get("tokenUsage"),
+        payload.get("tokens"),
+        message_usage,
+    )
+    for candidate in candidates:
         if not isinstance(candidate, dict):
             continue
         found = _usage_numbers(candidate)
@@ -2465,6 +2553,79 @@ def _merge_usage(state: dict[str, Any], usage: dict[str, int]) -> None:
     )
     for key, value in usage.items():
         totals[key] = int(totals.get(key, 0) or 0) + max(0, int(value))
+
+
+def _usage_has_tokens(usage: dict[str, Any]) -> bool:
+    return any(
+        int(usage.get(key, 0) or 0) > 0
+        for key in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens")
+    )
+
+
+def _context_usage_snapshot(payload: dict[str, Any]) -> dict[str, int]:
+    context_cw = payload.get("context_window") if isinstance(payload.get("context_window"), dict) else None
+    context_usage = payload.get("context") if isinstance(payload.get("context"), dict) else None
+    context_cw_usage = context_cw.get("current_usage") if context_cw else None
+    context_usage_snapshot = None
+    if context_usage:
+        context_usage_snapshot = context_usage.get("current_usage") or context_usage.get("usage")
+    for snapshot_source in (context_cw_usage, context_usage_snapshot):
+        if isinstance(snapshot_source, dict):
+            snapshot = _usage_numbers(snapshot_source)
+            if _usage_has_tokens(snapshot):
+                return snapshot
+    return {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
+
+
+def record_codex_statusline_snapshot(root: str | Path, payload: dict[str, Any]) -> None:
+    """Persist Codex statusline usage even when the native footer lacks a session id."""
+    session_id = str(payload.get("session_id") or "").strip()
+    if session_id:
+        update_session_stats(root, payload)
+        return
+    usage = _context_usage_snapshot(payload)
+    if not _usage_has_tokens(usage):
+        usage = _extract_usage(payload)
+    if not _usage_has_tokens(usage):
+        return
+    state = _read_codex_session_state(root, payload)
+    snapshot: dict[str, Any] = {"at_ms": _now_ms(payload), "usage": usage}
+    model = _codex_payload_model(payload)
+    if model:
+        snapshot["model"] = model
+    cost_usd = _codex_payload_cost_usd(payload)
+    if cost_usd > 0:
+        snapshot["cost_usd"] = cost_usd
+    state["last_statusline_usage"] = snapshot
+    _write_codex_session_state(root, payload, state)
+
+
+def _apply_codex_statusline_snapshot(root: str | Path, session_id: str, payload: dict[str, Any]) -> float:
+    state = _read_codex_session_state(root, payload)
+    snapshot = _as_dict(state.get("last_statusline_usage"))
+    usage = _as_dict(snapshot.get("usage"))
+    if not session_id or not _usage_has_tokens(usage):
+        return 0.0
+    at_ms = int(snapshot.get("at_ms", 0) or 0)
+    if at_ms > 0 and _now_ms(payload) - at_ms > 6 * 60 * 60 * 1000:
+        return 0.0
+    status_payload: dict[str, Any] = {
+        "hook_event_name": "StatuslineUpdate",
+        "session_id": session_id,
+        "context_window": {
+            "current_usage": {
+                "input_tokens": int(usage.get("input_tokens", 0) or 0),
+                "cache_read_input_tokens": int(usage.get("cache_read_tokens", 0) or 0),
+                "cache_creation_input_tokens": int(usage.get("cache_write_tokens", 0) or 0),
+                "output_tokens": int(usage.get("output_tokens", 0) or 0),
+            }
+        },
+    }
+    model = str(snapshot.get("model") or "").strip()
+    if model:
+        status_payload["model"] = model
+    update_session_stats(root, status_payload)
+    return float(snapshot.get("cost_usd", 0.0) or 0.0)
 
 
 def _append_session_event(root: str | Path, session_id: str, payload: dict[str, Any]) -> None:
@@ -2632,12 +2793,9 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
     _merge_usage(state, _extract_usage(payload))
     # context_window.current_usage is a cumulative snapshot of the entire session so far.
     # Overwrite state["usage"] with it each time — never accumulate it additively.
-    context_cw = payload.get("context_window") if isinstance(payload.get("context_window"), dict) else None
-    context_cw_usage = context_cw.get("current_usage") if context_cw else None
-    if isinstance(context_cw_usage, dict):
-        snapshot = _usage_numbers(context_cw_usage)
-        if any(v > 0 for v in snapshot.values()):
-            state["usage"].update(snapshot)
+    snapshot = _context_usage_snapshot(payload)
+    if _usage_has_tokens(snapshot):
+        state["usage"].update(snapshot)
     if event == "UserPromptSubmit":
         turn_id = str(payload.get("turn_id") or payload.get("prompt_id") or "")
         if turn_id:

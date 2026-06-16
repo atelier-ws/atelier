@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from atelier.core.service.telemetry.banner import maybe_show_banner
 from atelier.core.service.telemetry.config import load_telemetry_config, save_telemetry_config
 from atelier.core.service.telemetry.frustration import match_frustration
 from atelier.core.service.telemetry.local_store import LocalTelemetryStore
+from atelier.core.service.telemetry.public_rollup import _payload, publish_public_savings_rollup
 from atelier.core.service.telemetry.schema import EVENTS
 from atelier.core.service.telemetry.scrubber import scrub_string
 
@@ -48,6 +50,87 @@ def test_emit_product_allowlists_scrubs_and_keeps_local_store(
         "session_id": "00000000-0000-4000-8000-000000000000",
     }
     assert events[0]["exported"] is False
+
+
+def test_public_rollup_payload_is_minimal_and_session_scoped(telemetry_env: Path) -> None:
+    payload = _payload(
+        session_id="session-1",
+        saved_usd=0.1234567,
+        tokens_saved=9240,
+        calls_avoided=3,
+        source="codex",
+        occurred_at=datetime(2026, 6, 16, 10, 0, tzinfo=UTC),
+    )
+
+    assert payload is not None
+    assert payload["anon_id"]
+    assert payload["session_id"] == "session-1"
+    assert payload["atelier_version"]
+    assert payload["source"] == "codex"
+    assert payload["saved_usd"] == 0.123457
+    assert payload["tokens_saved"] == 9240
+    assert payload["calls_avoided"] == 3
+    assert payload["occurred_at"] == "2026-06-16T10:00:00Z"
+
+
+def test_public_rollup_respects_telemetry_opt_out(
+    telemetry_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_post(endpoint: str, payload: dict[str, Any], *, timeout_s: float) -> bool:
+        calls.append(payload)
+        return True
+
+    monkeypatch.setattr("atelier.core.service.telemetry.public_rollup._post_json", fake_post)
+    monkeypatch.setenv("ATELIER_TELEMETRY", "0")
+
+    assert (
+        publish_public_savings_rollup(
+            session_id="session-1",
+            saved_usd=1.0,
+            tokens_saved=100,
+            calls_avoided=2,
+            source="codex",
+        )
+        is False
+    )
+    assert calls == []
+
+
+def test_public_rollup_posts_when_remote_telemetry_enabled(
+    telemetry_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict[str, Any], float]] = []
+
+    def fake_post(endpoint: str, payload: dict[str, Any], *, timeout_s: float) -> bool:
+        calls.append((endpoint, payload, timeout_s))
+        return True
+
+    monkeypatch.setattr("atelier.core.service.telemetry.public_rollup._post_json", fake_post)
+    monkeypatch.setenv("ATELIER_TELEMETRY", "1")
+    monkeypatch.setenv("ATELIER_TELEMETRY_ALLOW_IN_TESTS", "1")
+    monkeypatch.setenv("ATELIER_PUBLIC_TELEMETRY_ENDPOINT", "https://example.test/rollup")
+    monkeypatch.setenv("ATELIER_PUBLIC_TELEMETRY_TIMEOUT_MS", "250")
+
+    assert publish_public_savings_rollup(
+        session_id="session-1",
+        saved_usd=1.25,
+        tokens_saved=1000,
+        calls_avoided=4,
+        source="claude",
+    )
+    assert len(calls) == 1
+    endpoint, payload, timeout_s = calls[0]
+    assert endpoint == "https://example.test/rollup"
+    assert payload["session_id"] == "session-1"
+    assert payload["saved_usd"] == 1.25
+    assert payload["tokens_saved"] == 1000
+    assert payload["calls_avoided"] == 4
+    assert payload["source"] == "claude"
+    assert timeout_s == 0.25
 
 
 def test_scrubber_removes_realistic_pii_fixture() -> None:

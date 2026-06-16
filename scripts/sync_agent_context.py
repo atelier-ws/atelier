@@ -185,7 +185,7 @@ def tool_policy_section(*, tool_prefix: str = "") -> str:
         "",
         f"- Shared docs use plain tool names like `{_tn('read', prefix=p)}` and `{_tn('edit', prefix=p)}`; some hosts expose them as handles like `mcp__atelier__context` — use the name shown by your host when invoking one explicitly.",
         f"- `{_tn('read', prefix=p)}` for file reads; `{_tn('search', prefix=p)}` / `{_tn('grep', prefix=p)}` for discovery; `{_tn('edit', prefix=p)}` for file changes; `{_tn('shell', prefix=p)}` only for commands without a better Atelier equivalent.",
-        f"- `{_tn('symbols', prefix=p)}` / `{_tn('node', prefix=p)}` / `{_tn('callers', prefix=p)}` / `{_tn('usages', prefix=p)}` / `{_tn('explore', prefix=p)}` for code intelligence; use them before text search for code relationships.",
+        f"- `{_tn('node', prefix=p)}` / `{_tn('callers', prefix=p)}` / `{_tn('usages', prefix=p)}` / `{_tn('explore', prefix=p)}` for code intelligence; use them before text search for code relationships.",
         "- Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.",
     ]
     if tool_prefix:
@@ -564,7 +564,7 @@ def _opencode_tool_discipline_section(prefix: str) -> str:
             f"- Shared docs use plain tool names like `{p}read`, `{p}search`, `{p}grep`, and `{p}edit`.",
             f"- In OpenCode, Atelier MCP tools use the `{p}` prefix: `{p}read` for file reads,",
             f"  `{p}edit` for edits, `{p}grep` / `{p}search` for discovery, `{p}shell` for shell,",
-            f"  `{p}symbols` / `{p}node` / `{p}callers` / `{p}usages` / `{p}explore` for code intelligence.",
+            f"  `{p}node` / `{p}callers` / `{p}usages` / `{p}explore` for code intelligence.",
             f"- Use `{p}node`, `{p}callers`, `{p}usages`, or `{p}explore` first for code intelligence.",
             f"- Use `{p}grep` or `{p}search` first for regex, glob, ranked discovery, and file/path lookup.",
             f"- Use `{p}read` first for file reads and exact ranges.",
@@ -638,7 +638,7 @@ def render_opencode_agent(role: DefaultRole, mode_doc: ModeDoc, projection: Host
             f"- Shared docs use plain tool names like `{p}read`, `{p}search`, `{p}grep`, and `{p}edit`.",
             f"- In OpenCode, Atelier MCP tools use the `{p}` prefix: `{p}read` for file reads,",
             f"  `{p}edit` for edits, `{p}grep` / `{p}search` for discovery, `{p}shell` for shell,",
-            f"  `{p}symbols` / `{p}node` / `{p}callers` / `{p}usages` / `{p}explore` for code intelligence.",
+            f"  `{p}node` / `{p}callers` / `{p}usages` / `{p}explore` for code intelligence.",
             "- Native OpenCode tools (`bash`, `edit`, `glob`, `grep`, `read`, `webfetch`, `write`)",
             "  are disallowed by policy — always use the Atelier MCP counterparts.",
             "- If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use",
@@ -742,43 +742,36 @@ def build_outputs() -> dict[Path, str]:
         ROOT / "AGENTS.md": render_project_entrypoint(ROOT / "AGENTS.md", title="Project Instructions: Atelier"),
         ROOT / ".github/copilot-instructions.md": render_copilot_workspace(ROOT / ".github/copilot-instructions.md"),
         ROOT / "integrations/AGENTS.atelier.md": render_distribution_guide(ROOT / "integrations/AGENTS.atelier.md"),
-        ROOT
-        / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_user_surface(
+        ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_user_surface(
             ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
         ),
-        ROOT
-        / "integrations/claude/AGENTS.atelier.md": render_host_surface(
+        ROOT / "integrations/claude/AGENTS.atelier.md": render_host_surface(
             ROOT / "integrations/claude/AGENTS.atelier.md",
             title="Atelier Agent Persona",
             host="claude",
         ),
-        ROOT
-        / "integrations/codex/AGENTS.atelier.md": render_host_surface(
+        ROOT / "integrations/codex/AGENTS.atelier.md": render_host_surface(
             ROOT / "integrations/codex/AGENTS.atelier.md",
             title="Atelier - Codex Agent",
             host="codex",
         ),
-        ROOT
-        / "integrations/antigravity/AGENTS.atelier.md": render_host_surface(
+        ROOT / "integrations/antigravity/AGENTS.atelier.md": render_host_surface(
             ROOT / "integrations/antigravity/AGENTS.atelier.md",
             title="Atelier - Antigravity Agent",
             host="antigravity",
         ),
-        ROOT
-        / "integrations/opencode/agents/atelier.md": render_host_surface(
+        ROOT / "integrations/opencode/agents/atelier.md": render_host_surface(
             ROOT / "integrations/opencode/agents/atelier.md",
             title="atelier:code",
             host="opencode",
         ),
-        ROOT
-        / "integrations/cursor/AGENTS.atelier.md": render_host_surface(
+        ROOT / "integrations/cursor/AGENTS.atelier.md": render_host_surface(
             ROOT / "integrations/cursor/AGENTS.atelier.md",
             title="Atelier - Cursor Agent",
             host="cursor",
         ),
         ROOT / "integrations/cursor/rules/coding-guidelines.mdc": render_cursor_coding_rules(),
-        ROOT
-        / "integrations/hermes/AGENTS.atelier.md": render_host_surface(
+        ROOT / "integrations/hermes/AGENTS.atelier.md": render_host_surface(
             ROOT / "integrations/hermes/AGENTS.atelier.md",
             title="Atelier - Hermes Agent",
             host="hermes",
