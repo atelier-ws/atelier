@@ -6,7 +6,7 @@ Wired into ``tool_smart_edit`` to run, *after* a successful edit:
    if the edited file no longer parses (an ``ERROR`` or missing node), the edit
    introduced a syntax break. Python is checked with :func:`ast.parse`.
 2. The executing :class:`VerifierCapability` (scoped ``mypy`` over touched source
-   files + ``pytest`` over touched test files).
+   files). pytest is intentionally NOT run inline -- see ``run_edit_gate``.
 
 The gate is **fail-open**: any unexpected error (missing grammar, runner crash,
 timeout) yields *no* counterexamples, so a flaky checker never blocks a
@@ -187,15 +187,20 @@ def run_edit_gate(
     touched_paths: Sequence[Path],
     *,
     repo_root: Path,
-    checks: Sequence[str] = ("typecheck", "tests"),
+    checks: Sequence[str] = ("typecheck",),
     timeout_s: float = 60.0,
     run_parse_gate: bool = True,
 ) -> list[Counterexample]:
-    """Run the parse gate, then scoped mypy/pytest, over *touched_paths*.
+    """Run the parse gate, then scoped mypy, over *touched_paths*.
 
     Fully fail-open: returns only genuine counterexamples; never raises.
     If the parse gate already finds a syntax break, the (more expensive)
-    mypy/pytest pass is skipped — there is no point typechecking unparseable code.
+    mypy pass is skipped — there is no point typechecking unparseable code.
+
+    pytest is intentionally excluded: it is slow (often exceeds the timeout ->
+    fail-open, so it neither protects nor returns quickly), it reads broad test
+    files while concurrent edits mutate the tree (non-deterministic verdicts),
+    and auto-rollback on a flaky test is harmful. The agent runs tests itself.
     """
     try:
         existing = [p for p in touched_paths if p.exists()]
@@ -206,8 +211,11 @@ def run_edit_gate(
         scope_files = [str(p) for p in existing if p.suffix.lower() in (".py", ".pyi")]
         if not scope_files:
             return []
+        verify_checks = [c for c in checks if c != "tests"]
+        if not verify_checks:
+            return []
         verifier = VerifierCapability(cwd=repo_root, run=_bounded_runner(timeout_s))
-        return verifier.run(scope_files=scope_files, checks=checks)
+        return verifier.run(scope_files=scope_files, checks=verify_checks)
     except Exception:
         logging.exception("Recovered from broad exception handler")
         return []
