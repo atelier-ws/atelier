@@ -165,8 +165,11 @@ def register_mcp_http(
             )
         try:
             body = json.loads(raw)
-        except (json.JSONDecodeError, ValueError) as exc:
-            return JSONResponse(mcp_server._err(None, -32700, f"parse error: {exc}"))
+        except (json.JSONDecodeError, ValueError):
+            # JSON-RPC over HTTP intentionally returns 200 with a JSON-RPC error
+            # body (test_parse_error_returns_jsonrpc_error), so keep the status;
+            # just don't echo the parser's exception text back to the client.
+            return JSONResponse(mcp_server._err(None, -32700, "parse error: request body is not valid JSON"))
         if not isinstance(body, dict):
             return JSONResponse(mcp_server._err(None, -32600, "invalid request: expected a JSON object"))
 
