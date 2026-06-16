@@ -1241,11 +1241,16 @@ def _codex_fmt_tokens(value: int) -> str:
     return str(value)
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    """Return *value* when it is a dict, else an empty dict (mypy-narrowing helper)."""
+    return value if isinstance(value, dict) else {}
+
+
 def _codex_payload_model(payload: dict[str, Any]) -> str:
     candidates: list[Any] = [payload.get("model"), payload.get("model_id")]
-    context_window = payload.get("context_window") if isinstance(payload.get("context_window"), dict) else {}
+    context_window = _as_dict(payload.get("context_window"))
     candidates.append(context_window.get("model"))
-    message = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+    message = _as_dict(payload.get("message"))
     candidates.append(message.get("model"))
     for candidate in candidates:
         if isinstance(candidate, dict):
@@ -1260,7 +1265,7 @@ def _codex_payload_model(payload: dict[str, Any]) -> str:
 
 def _codex_payload_cost_usd(payload: dict[str, Any]) -> float:
     candidates: list[Any] = [payload.get("total_cost_usd"), payload.get("total_cost")]
-    cost = payload.get("cost") if isinstance(payload.get("cost"), dict) else {}
+    cost = _as_dict(payload.get("cost"))
     candidates.extend([cost.get("total_cost_usd"), cost.get("total_usd"), cost.get("total_cost")])
     for candidate in candidates:
         if isinstance(candidate, (int, float)) and not isinstance(candidate, bool):
@@ -1314,7 +1319,7 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
     report = build_savings_report(root, session_id=session_id)
     session = report.get("session") or {}
     cost = report.get("cost") or {}
-    usage = session.get("usage") if isinstance(session.get("usage"), dict) else {}
+    usage = _as_dict(session.get("usage"))
 
     turns = int(session.get("turns", 0) or 0)
     total_tool_calls = int(session.get("total_tool_calls", 0) or 0)
@@ -1977,9 +1982,7 @@ def _codex_enrich_user_prompt(root: str | Path, payload: dict[str, Any]) -> None
     # occupancy, credit the realized delta, and clear the precompact_* keys --
     # all folded into this single read-modify-write of session state.
     occupancy, occ_model = _codex_context_occupancy(payload)
-    _codex_credit_pending_compaction(
-        root, str(payload.get("session_id") or "default"), state, occupancy, occ_model
-    )
+    _codex_credit_pending_compaction(root, str(payload.get("session_id") or "default"), state, occupancy, occ_model)
     _write_codex_session_state(root, payload, state)
     session_id = _codex_ledger_session_id(root, payload)
     if not session_id:
@@ -2701,7 +2704,7 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
         )
     elif event == "SubagentStop":
         agent_id = str(payload.get("agent_id") or "")
-        active_subagents = state.get("active_subagents") if isinstance(state.get("active_subagents"), dict) else {}
+        active_subagents = _as_dict(state.get("active_subagents"))
         if agent_id:
             active_subagents.pop(agent_id, None)
             state["active_subagents"] = active_subagents
@@ -2770,9 +2773,7 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
     files = (
         [session_stats_path(root, session_id)]
         if session_id
-        else sorted(sessions_dir.glob("*/stats.json"))
-        if sessions_dir.exists()
-        else []
+        else sorted(sessions_dir.glob("*/stats.json")) if sessions_dir.exists() else []
     )
     aggregate: dict[str, Any] = {
         "session_count": 0,
@@ -2787,6 +2788,13 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
             "output_tokens": 0,
             "cache_read_tokens": 0,
             "cache_write_tokens": 0,
+        },
+        "pre_compact_usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "est_cost_usd": 0.0,
         },
         "compactions": 0,
         "compaction_duration_ms": 0,
@@ -2819,7 +2827,7 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
         last_model = str(data.get("last_model") or model).strip()
         if last_model:
             aggregate["last_model"] = last_model
-        tools_used = data.get("tools_used") if isinstance(data.get("tools_used"), dict) else {}
+        tools_used = _as_dict(data.get("tools_used"))
         for name, count in tools_used.items():
             if str(name).strip():
                 aggregate["tools_used"][str(name)] = int(aggregate["tools_used"].get(str(name), 0) or 0) + int(
@@ -2827,6 +2835,11 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
                 )
         for key in aggregate["usage"]:
             aggregate["usage"][key] += int((data.get("usage") or {}).get(key, 0) or 0)
+        pre_compact_raw = data.get("pre_compact_usage")
+        if isinstance(pre_compact_raw, dict):
+            for key in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"):
+                aggregate["pre_compact_usage"][key] += int(pre_compact_raw.get(key, 0) or 0)
+            aggregate["pre_compact_usage"]["est_cost_usd"] += float(pre_compact_raw.get("est_cost_usd", 0.0) or 0.0)
         for key in (
             "compactions",
             "compaction_duration_ms",
