@@ -14,7 +14,7 @@ import logging
 import os
 import re
 from contextlib import suppress
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -2773,7 +2773,9 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
     files = (
         [session_stats_path(root, session_id)]
         if session_id
-        else sorted(sessions_dir.glob("*/stats.json")) if sessions_dir.exists() else []
+        else sorted(sessions_dir.glob("*/stats.json"))
+        if sessions_dir.exists()
+        else []
     )
     aggregate: dict[str, Any] = {
         "session_count": 0,
@@ -2915,7 +2917,12 @@ def live_savings_events_path(root: str | Path) -> Path:
     return Path(root) / "live_savings_events.jsonl"
 
 
-def load_live_savings_summary(root: str | Path, *, session_id: str | None = None) -> dict[str, Any]:
+def load_live_savings_summary(
+    root: str | Path,
+    *,
+    session_id: str | None = None,
+    days: int | None = None,
+) -> dict[str, Any]:
     """Aggregate routing/compaction events from the analytics log.
 
     NOTE: This no longer drives statusline / stop-hook savings display — those
@@ -2925,6 +2932,10 @@ def load_live_savings_summary(root: str | Path, *, session_id: str | None = None
     path = live_savings_events_path(root)
     if not path.is_file():
         return {"calls_saved": 0, "tokens_saved": 0, "saved_usd": 0.0, "routing_saved_usd": 0.0}
+
+    cutoff = None
+    if days is not None:
+        cutoff = datetime.now(UTC).timestamp() - (days * 86400)
 
     calls_saved = 0
     tokens_saved = 0
@@ -2937,6 +2948,18 @@ def load_live_savings_summary(root: str | Path, *, session_id: str | None = None
             continue
         if not isinstance(event, dict):
             continue
+
+        # Use 'ts' (unix) or 'at' (iso string) for filtering
+        ts = event.get("ts")
+        if ts is None and "at" in event:
+            try:
+                ts = datetime.fromisoformat(str(event["at"])).timestamp()
+            except (ValueError, TypeError):
+                pass
+
+        if cutoff is not None and ts is not None and ts < cutoff:
+            continue
+
         if session_id and str(event.get("session_id") or "") != session_id:
             continue
         calls_saved += max(0, int(event.get("calls_saved", 0) or 0))
@@ -2968,6 +2991,7 @@ def build_savings_report(
     """
     root_path = Path(root)
     session = aggregate_session_stats(root_path, session_id=session_id)
+    from atelier.core.capabilities.savings_summary import aggregate_window_savings
 
     if session_id:
         from atelier.core.capabilities.savings_summary import compute_savings_summary
@@ -2994,13 +3018,25 @@ def build_savings_report(
             "carry_tokens": carry_tokens,
         }
     else:
-        live = load_live_savings_summary(root_path)
-        tokens_saved = int(live.get("tokens_saved", 0) or 0)
-        calls_avoided = int(live.get("calls_saved", 0) or 0)
-        saved_usd = float(live.get("saved_usd", 0.0) or 0.0)
-        routing_saved_usd = float(live.get("routing_saved_usd", 0.0) or 0.0)
-        carry_usd = float(live.get("carry_usd", 0.0) or 0.0)
-        carry_tokens = int(live.get("carry_tokens", 0) or 0)
+        # All-sessions view: realized savings come from the per-session ledger
+        # (sessions/*/savings.jsonl) so the CLI agrees with the statusline and
+        # web Savings page. Routing credit stays sourced from the analytics log.
+        analytics = load_live_savings_summary(root_path)
+        lifetime_w = aggregate_window_savings(root_path, days=36500)
+        tokens_saved = lifetime_w.tokens_saved
+        calls_avoided = lifetime_w.calls_saved
+        saved_usd = lifetime_w.saved_usd
+        routing_saved_usd = float(analytics.get("routing_saved_usd", 0.0) or 0.0)
+        carry_usd = 0.0
+        carry_tokens = 0
+        live = {
+            "calls_saved": calls_avoided,
+            "tokens_saved": tokens_saved,
+            "saved_usd": round(saved_usd, 6),
+            "routing_saved_usd": round(routing_saved_usd, 6),
+            "carry_usd": round(carry_usd, 6),
+            "carry_tokens": carry_tokens,
+        }
 
     if session_id:
         cost = {
@@ -3048,10 +3084,32 @@ def build_savings_report(
     except Exception:
         logging.exception("Recovered from broad exception handler")
         vs_vanilla = {"calls_saved": 0, "time_saved_ms": 0, "tokens_saved": 0, "cost_saved_usd": 0.0}
+
+    # --- Summary breakdown (1D, 7D, 30D) ---
+    # Realized savings from the per-session ledger (sessions/*/savings.jsonl) —
+    # the same source as the statusline and stop hook. The vs-vanilla
+    # counterfactual is reported separately under ``vs_vanilla`` and is never
+    # folded into these measured totals.
+    def _window(d: int) -> dict[str, Any]:
+        w = aggregate_window_savings(root_path, days=d)
+        return {
+            "calls": w.calls_saved,
+            "usd": round(w.saved_usd, 2),
+            "tokens": w.tokens_saved,
+            "spend": round(w.spend_usd, 2),
+        }
+
+    summary_breakdown = {
+        "1D": _window(1),
+        "7D": _window(7),
+        "30D": _window(30),
+    }
+
     return {
         "calls_avoided": calls_avoided,
         "tokens_saved": tokens_saved,
         "saved_usd": saved_usd,
+        "summary_breakdown": summary_breakdown,
         "live": live,
         "session": session,
         "lifetime": lifetime,

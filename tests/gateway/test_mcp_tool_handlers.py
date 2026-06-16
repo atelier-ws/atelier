@@ -1028,6 +1028,28 @@ def test_smart_read_batch_honors_top_level_expand(store_root: Path, tmp_path: Pa
     assert "UNIQUE_BODY_TOKEN" in per_file
 
 
+def test_smart_read_batch_honors_top_level_max_lines(store_root: Path, tmp_path: Path) -> None:
+    """A top-level ``max_lines`` must apply to every batched file.
+
+    Same bug class as the ``expand`` drop: the batch loop read ``max_lines``
+    only from each per-file spec (``spec.get("max_lines")``), discarding a
+    top-level ``max_lines``. A caller capping every file in a batch silently
+    got the default projection instead of the head-summary cap.
+    """
+    _ = store_root
+    big = tmp_path / "big_module.py"
+    big.write_text("\n".join(f"line_{i} = {i}" for i in range(300)), encoding="utf-8")
+
+    # Top-level max_lines must reach each batched file -> summary (head-cap) mode.
+    capped = mcp_server.tool_smart_read({"files": [str(big)], "max_lines": 3})
+    assert capped["files"][0].get("mode") == "summary"
+
+    # Without it, the same large file is not summary-capped (proves the cap came
+    # from the top-level arg, not the file size).
+    plain = mcp_server.tool_smart_read({"files": [str(big)]})
+    assert plain["files"][0].get("mode") != "summary"
+
+
 def test_node_accepts_path_line_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
     """`node` parses a "path#line" suffix into the positional line, like read/edit."""
     captured: dict[str, Any] = {}
@@ -2070,9 +2092,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert (
-        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
-    ), f"'trace_id' missing or empty in trace receipt: {payload}"
+    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
+        f"'trace_id' missing or empty in trace receipt: {payload}"
+    )
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
