@@ -443,6 +443,8 @@ def read_transcript_stats(transcript_path: str | Path) -> TranscriptStats | None
                     continue
                 try:
                     entry = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
                 except Exception:
                     logging.exception("Recovered from broad exception handler")
                     continue
@@ -614,22 +616,63 @@ class SavingsSummary:
     vs_vanilla_usd: float = 0.0
 
 
+def _price_savings_row(ev: dict[str, Any]) -> tuple[int, float, int, float, int]:
+    """Price ONE ``savings.jsonl`` row — the single rule every surface shares.
+
+    Returns ``(priced_tokens, priced_usd, calls, calls_usd, unpriced_tokens)``.
+
+    The statusline, stop hook, ``atelier savings`` CLI, dashboard, and web
+    Savings page all run rows through this one function so their realized-savings
+    numbers agree.  The rule mirrors the long-standing live/statusline pricing:
+
+    * ``calls`` and the avoided-call credit are counted for every row.  The
+      credit was priced at write time and is stored as ``calls_usd`` (or the
+      older ``calls_cost_saved_usd``).
+    * tokens above the 2M per-call sanity cap are dropped (pre-fce2110
+      inflation bug).
+    * ``kind == "compaction"`` rows carry a pre-computed ``usd`` (cache-read
+      rate) for ``tokens`` dropped from context — credited as-is, never
+      re-priced at the input rate.
+    * every other row re-prices ``tokens`` at the row model's input rate.  Rows
+      with no priceable model are returned as ``unpriced_tokens`` so the caller
+      can apply a single weighted fallback without distorting the usd/token
+      ratio.
+    """
+    from atelier.core.capabilities.pricing import get_model_pricing
+
+    tokens = max(0, int(ev.get("tokens") or ev.get("tokens_saved") or 0))
+    calls = max(0, int(ev.get("calls") or ev.get("calls_saved") or 0))
+    calls_usd = max(0.0, float(ev.get("calls_usd") or ev.get("calls_cost_saved_usd") or 0.0))
+    if tokens > 2_000_000:
+        tokens = 0
+    if str(ev.get("kind") or "") == "compaction":
+        comp_usd = max(0.0, float(ev.get("usd") or 0.0))
+        if tokens > 0 and comp_usd > 0:
+            return tokens, comp_usd, calls, calls_usd, 0
+        return 0, 0.0, calls, calls_usd, 0
+    if tokens <= 0:
+        return 0, 0.0, calls, calls_usd, 0
+    model_raw = str(ev.get("model") or "").strip()
+    pricing = get_model_pricing(resolve_model_id(model_raw)) if model_raw else None
+    if pricing is not None and pricing.known and pricing.input > 0:
+        return tokens, pricing.input / 1_000_000 * tokens, calls, calls_usd, 0
+    return 0, 0.0, calls, calls_usd, tokens
+
+
 def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[int, int, float, int]:
     """Return ``(tokens_saved, calls_saved, usd_saved, unpriced_tokens)``.
 
-    Each row is priced at the model stored in the row (set by the MCP server
-    at write time).  Rows we can price contribute to both ``tokens_saved`` and
-    ``usd_saved``.  Rows we cannot price (missing or unknown model, or no
-    pricing entry) are returned separately via ``unpriced_tokens`` so the
-    caller can apply a single weighted fallback rate without distorting the
-    displayed (usd / tokens) ratio.
+    Every row is priced through :func:`_price_savings_row` — the shared rule the
+    statusline, stop hook, CLI, dashboard, and web Savings page all use — so the
+    per-session live total and the windowed totals never disagree.  Rows with no
+    priceable model are returned via ``unpriced_tokens`` so the caller can apply
+    a single weighted fallback rate without distorting the usd/token ratio.
     """
     if not session_id:
         return 0, 0, 0.0, 0
     path = atelier_root / "sessions" / session_id / "savings.jsonl"
     if not path.exists():
         return 0, 0, 0.0, 0
-    from atelier.core.capabilities.pricing import get_model_pricing
 
     priced_tokens = 0
     calls_total = 0
@@ -642,43 +685,16 @@ def _read_claude_session_savings(session_id: str, atelier_root: Path) -> tuple[i
                 continue
             try:
                 ev = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
             except Exception:
                 logging.exception("Recovered from broad exception handler")
                 continue
-            # Field names mirror the in-response `saved: {tokens, calls}` shape.
-            t = max(0, int(ev.get("tokens") or 0))
-            c = max(0, int(ev.get("calls") or 0))
+            pt, usd, c, calls_usd, up = _price_savings_row(ev)
+            priced_tokens += pt
+            usd_total += usd + calls_usd
             calls_total += c
-            # Avoided-call credit priced at write time (measured context size
-            # x cache-read rate); contributes USD without distorting tokens.
-            calls_usd = float(ev.get("calls_usd") or 0.0)
-            if calls_usd > 0:
-                usd_total += calls_usd
-            if t <= 0:
-                continue
-            # Sanity cap: a single tool call cannot save more than the full
-            # Anthropic context window (~1M tokens). Anything larger came from
-            # a pre-fce2110 inflation bug in native_search.py and must not be
-            # shown to the user — silently drop the row.
-            if t > 2_000_000:
-                continue
-            # Compaction-credit rows carry a pre-computed USD value priced at the
-            # cache-read rate (the per-turn cost of the context that compaction
-            # dropped). Add it directly — never re-price at the input rate, which
-            # would over-credit ~10x. Tokens still count toward ctx_saved.
-            if str(ev.get("kind") or "") == "compaction":
-                comp_usd = float(ev.get("usd") or 0.0)
-                if comp_usd > 0:
-                    priced_tokens += t
-                    usd_total += comp_usd
-                continue
-            model_raw = str(ev.get("model") or "").strip()
-            pricing = get_model_pricing(resolve_model_id(model_raw)) if model_raw else None
-            if pricing is not None and pricing.known and pricing.input > 0:
-                priced_tokens += t
-                usd_total += pricing.input / 1_000_000 * t
-            else:
-                unpriced_tokens += t
+            unpriced_tokens += up
     except OSError:
         pass
     return priced_tokens, calls_total, usd_total, unpriced_tokens
@@ -908,7 +924,10 @@ def compute_savings_summary(
                 has_own_entries = False
                 with cand.open(encoding="utf-8") as f:
                     for line in f:
-                        entry = json.loads(line)
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
                         entry_sid = entry.get("sessionId")
                         if not entry_sid:
                             continue
@@ -1238,21 +1257,62 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, in
                         if row.get("kind") == "session_end":
                             total_spend += float(row.get("est_cost_usd") or 0)
                             continue
-                        # Token savings + avoided-call USD, matching the
-                        # per-session reader so 7d/30d agrees with the live total.
-                        usd = float(row.get("cost_saved_usd") or 0) + float(row.get("calls_usd") or 0)
-                        tok = int(row.get("tokens") or 0)
-                        calls = int(row.get("calls") or 0)
-                        total_usd += usd
-                        total_tok += tok
-                        total_calls += calls
-                        if usd > 0 or tok > 0:
+                        # Price every row through the shared rule so the windowed
+                        # 7d/30d totals reconcile exactly with the live
+                        # per-session statusline/stop-hook figure.
+                        pt, row_usd, row_calls, row_calls_usd, up = _price_savings_row(row)
+                        row_usd += row_calls_usd
+                        row_tok = pt + up
+                        total_usd += row_usd
+                        total_tok += row_tok
+                        total_calls += row_calls
+                        if row_usd > 0 or row_tok > 0:
                             total_turns += 1
             except OSError:
                 continue
     except Exception:
         logging.exception("Recovered reading historical savings")
     return total_usd, total_tok, total_calls, total_turns, total_spend
+
+
+@dataclass
+class WindowSavings:
+    """Realized savings over a trailing window, from ``sessions/*/savings.jsonl``."""
+
+    saved_usd: float = 0.0
+    tokens_saved: int = 0
+    calls_saved: int = 0
+    turns: int = 0
+    spend_usd: float = 0.0
+
+    @property
+    def would_have_cost_usd(self) -> float:
+        """What the window would have cost without the realized savings."""
+        return self.saved_usd + self.spend_usd
+
+    @property
+    def saved_pct(self) -> float:
+        """Realized savings as a share of the would-have-cost baseline."""
+        whc = self.would_have_cost_usd
+        return round(100.0 * self.saved_usd / whc, 2) if whc > 0 else 0.0
+
+
+def aggregate_window_savings(root: str | Path, *, days: int) -> WindowSavings:
+    """Realized savings over the last *days* from the canonical per-session ledger.
+
+    Single source of truth for every windowed savings surface (CLI breakdown,
+    web Savings page, dashboard).  Built from ``sessions/*/savings.jsonl`` and
+    priced with :func:`_price_savings_row`, so it always reconciles with the
+    statusline/stop-hook live total.
+    """
+    usd, tok, calls, turns, spend = _read_historical_savings(int(days), Path(root))
+    return WindowSavings(
+        saved_usd=round(usd, 6),
+        tokens_saved=int(tok),
+        calls_saved=int(calls),
+        turns=int(turns),
+        spend_usd=round(spend, 6),
+    )
 
 
 def _first_savings_ts(root: Path) -> float:
