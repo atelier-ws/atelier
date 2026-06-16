@@ -30,4 +30,6 @@ You are the sole builder for this task. Make one complete implementation pass â€
 
 {{CORE_DISCIPLINE}}
 
+{{CHANGE_DISCIPLINE}}
+
 {{CODING_GUIDELINES}}
