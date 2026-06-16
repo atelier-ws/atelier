@@ -81,7 +81,7 @@ def _group_rows_by_file(rows: Iterable[tuple[str, int, str]]) -> list[str]:
 def _render_search(payload: Mapping[str, Any]) -> str:
     items = payload.get("items")
     if not isinstance(items, list):
-        return "### search\n- no matches"
+        return "- no matches"
     rows: list[tuple[str, int, str]] = []
     for item in items:
         if not isinstance(item, Mapping):
@@ -92,11 +92,8 @@ def _render_search(payload: Mapping[str, Any]) -> str:
         kind = str(item.get("kind") or "?")
         rows.append((file_path, line, f"{name} [{kind}]"))
     if not rows:
-        return "### search\n- no matches"
-    lines = ["### search"]
-    provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
+        return "- no matches"
+    lines: list[str] = []
     lines.extend(_group_rows_by_file(rows))
     return "\n".join(lines)
 
@@ -109,7 +106,7 @@ def _render_symbol(payload: Mapping[str, Any], *, include_source: bool = True) -
     symbol = str(payload.get("qualified_name") or payload.get("name") or payload.get("symbol_name") or symbol_id or "?")
     kind = str(payload.get("kind") or "?")
     signature = str(payload.get("signature") or "").strip()
-    lines = ["### symbol"]
+    lines: list[str] = []
     if symbol_id:
         lines.append(f"- id: {symbol_id}")
     lines.append(f"- {symbol} [{kind}]")
@@ -152,8 +149,7 @@ def _render_relations(op: str, payload: Mapping[str, Any]) -> str:
         t_line = int(target.get("line") or target.get("start_line") or 0)
         if t_file and t_line > 0:
             target_loc = f" ({t_file}:{t_line})"
-    lines = [f"### {op}", f"- target: {target_name}{target_loc}"]
-    provenance = str(payload.get("provenance") or "").strip()
+    lines = [f"- target: {target_name}{target_loc}"]
 
     if op == "usages":
         rows: list[tuple[str, int, str]] = []
@@ -165,8 +161,6 @@ def _render_relations(op: str, payload: Mapping[str, Any]) -> str:
         if not rows:
             lines.append("- no references")
             return "\n".join(lines)
-        if provenance:
-            lines.append(f"- provenance: {provenance}")
         lines.extend(_group_rows_by_file(rows))
         return "\n".join(lines)
 
@@ -183,8 +177,6 @@ def _render_relations(op: str, payload: Mapping[str, Any]) -> str:
     if not rows:
         lines.append("- no related symbols")
         return "\n".join(lines)
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
     lines.extend(_group_rows_by_file(rows))
     return "\n".join(lines)
 
@@ -226,8 +218,8 @@ def _render_pattern(payload: Mapping[str, Any]) -> str | None:
         snippet = " ".join(str(match.get("snippet") or "").split())[:120]
         rows.append((file_path, line, snippet))
     if not rows:
-        return "### pattern\n- no matches"
-    lines = ["### pattern"]
+        return "- no matches"
+    lines: list[str] = []
     lines.extend(_group_rows_by_file(rows))
     if payload.get("truncated"):
         total = payload.get("total_matches")
@@ -241,7 +233,7 @@ def _render_blame(payload: Mapping[str, Any]) -> str:
     start = int(payload.get("line_start") or 0)
     end = int(payload.get("line_end") or 0)
     loc = f"{file_path}:{start}-{end}" if start and end else file_path
-    lines = ["### blame", f"- target: {name} ({loc})"]
+    lines = [f"- target: {name} ({loc})"]
     last_author = str(payload.get("last_author") or payload.get("author") or "").strip()
     last_sha = str(payload.get("last_commit_sha") or "").strip()[:10]
     summary = str(payload.get("last_commit_summary") or "").strip()
@@ -293,7 +285,7 @@ def _render_rename(payload: Mapping[str, Any]) -> str | None:
         return None
     new_name = str(payload.get("new_name") or "?")
     backend = str(payload.get("backend") or "?")
-    lines = [f"### rename → {new_name} (backend={backend})", f"- applied: {len(applied)} edit(s)"]
+    lines = [f"- rename → {new_name} (backend={backend})", f"- applied: {len(applied)} edit(s)"]
     for entry in applied:
         lines.append(f"  - {entry}")
     return "\n".join(lines)
@@ -304,7 +296,9 @@ def _render_outline(payload: Mapping[str, Any]) -> str | None:
     if not isinstance(files, Mapping):
         return None
     total = payload.get("symbol_count")
-    lines = [f"### outline ({total} symbols)" if isinstance(total, int) else "### outline"]
+    lines: list[str] = []
+    if isinstance(total, int):
+        lines.append(f"- outline: {total} symbols")
     for file_path in sorted(files.keys(), key=str):
         symbols = files[file_path]
         if not isinstance(symbols, list):
@@ -353,14 +347,10 @@ def _render_index(payload: Mapping[str, Any]) -> str:
     imports_indexed = int(payload.get("imports_indexed") or 0)
     index_version = int(payload.get("index_version") or 0)
     lines = [
-        "### index",
         f"- repo: {(payload.get('repo_id') or '?')!s}",
         f"- version: {index_version}",
         f"- counts: files={files_indexed}, symbols={symbols_indexed}, imports={imports_indexed}",
     ]
-    provenance = str(payload.get("provenance") or "").strip()
-    if provenance:
-        lines.append(f"- provenance: {provenance}")
     return "\n".join(lines)
 
 
@@ -378,7 +368,6 @@ def _render_cache_status(payload: Mapping[str, Any]) -> str:
             if len(entries) > 4:
                 tool_summary = f"{tool_summary}, +{len(entries) - 4} more"
     lines = [
-        "### cache_status",
         f"- repo: {(payload.get('repo_id') or '?')!s}",
         f"- index_version: {index_version}",
         f"- entries: {entry_count}",

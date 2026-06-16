@@ -79,6 +79,12 @@ if command -v jq >/dev/null 2>&1 && [ -n "$input" ] && printf '%s' "$input" | jq
 else
   HOST_LINE="$(printf '%s' "$input" | sed -n '1s/[[:space:]]*$//p')"
   MODEL="$(printf '%s' "$HOST_LINE" | awk -F ' · ' '{print $1}')"
+  case "$MODEL" in
+    *' xhigh'|*' high'|*' medium'|*' low'|*' minimal')
+      EFFORT="${MODEL##* }"
+      MODEL="${MODEL% *}"
+      ;;
+  esac
   USED_TOK="$(printf '%s' "$HOST_LINE" | sed -nE 's/.*(^| · )([0-9.]+[kKmMbB]?) used( · |$).*/\2/p')"
   IN_TOK="$(printf '%s' "$HOST_LINE" | sed -nE 's/.*(^| · )([0-9.]+[kKmMbB]?) in( · |$).*/\2/p')"
   OUT_TOK="$(printf '%s' "$HOST_LINE" | sed -nE 's/.*(^| · )([0-9.]+[kKmMbB]?) out( · |$).*/\2/p')"
@@ -111,7 +117,7 @@ export ATELIER_STATUS_ROOT
 export ATELIER_ROOT="${ATELIER_STATUS_ROOT}"
 export ATELIER_STATUS_HOST="codex"
 export ATELIER_STATUS_SESSION_ID="${SESSION_ID:-${CODEX_SESSION_ID:-}}"
-export ATELIER_STATUS_MODEL="${MODEL_DISPLAY}"
+export ATELIER_STATUS_MODEL="${MODEL:-$MODEL_DISPLAY}"
 export ATELIER_STATUS_MODEL_DISPLAY="${MODEL_DISPLAY}"
 export ATELIER_STATUSLINE_COST_USD="${COST:-0}"
 export ATELIER_STATUSLINE_LIVE_IN_TOK="$(( IN_INT + CACHE_W_INT ))"

@@ -129,12 +129,22 @@ class SymbolAnnIndex:
     graph cached against ``(index_version, embedder_name, embedding_dim)``.
     """
 
+    _schema_ready: bool = False
+
     def __init__(self, repo_id: str) -> None:
         self.repo_id = repo_id
         self._lock = threading.Lock()
         self._graph: Any = None
         self._graph_key: tuple[int, str, int] | None = None
         self._graph_ids: set[str] = set()
+
+    # -- schema guard ----------------------------------------------------
+
+    def _ensure_vector_schema(self, conn: sqlite3.Connection) -> None:
+        if self._schema_ready:
+            return
+        ensure_symbol_vector_schema(conn)
+        SymbolAnnIndex._schema_ready = True
 
     # -- persistence -----------------------------------------------------
 
@@ -156,7 +166,7 @@ class SymbolAnnIndex:
         """
         if embedding_dim <= 0 or not vectors:
             return
-        ensure_symbol_vector_schema(conn)
+        self._ensure_vector_schema(conn)
         rows = [
             (self.repo_id, symbol_id, content_hash, embedder_name, embedding_dim, index_version, json.dumps(vector))
             for symbol_id, (content_hash, vector) in vectors.items()
@@ -196,7 +206,7 @@ class SymbolAnnIndex:
         if embedding_dim <= 0:
             return []
         try:
-            ensure_symbol_vector_schema(conn)
+            self._ensure_vector_schema(conn)
             rows = conn.execute(
                 """
                 SELECT symbol_id, vector_json FROM symbol_vectors
@@ -234,7 +244,7 @@ class SymbolAnnIndex:
         if embedding_dim <= 0:
             return set()
         try:
-            ensure_symbol_vector_schema(conn)
+            self._ensure_vector_schema(conn)
             rows = conn.execute(
                 """
                 SELECT symbol_id FROM symbol_vectors

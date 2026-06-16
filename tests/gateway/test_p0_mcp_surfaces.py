@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from atelier.core.capabilities.repo_map.budget import count_tokens
+from atelier.core.environment import HIDDEN_LLM_TOOLS
 from atelier.gateway.adapters import mcp_server
 from atelier.gateway.adapters.mcp_server import (
     TOOLS,
@@ -30,8 +31,11 @@ def _op_result(render_name: str, op_fn: Any, **kwargs: Any) -> Any:
     return rendered if rendered is not None else payload
 
 
-def test_public_symbols_surface_keeps_internal_code_alias() -> None:
+def test_symbols_surface_hidden_but_callable() -> None:
+    # `symbols` is registered and callable by name (CLI / benchmark / power use)
+    # but removed from the advertised agent surface (HIDDEN_LLM_TOOLS).
     assert "symbols" in TOOLS
+    assert "symbols" in HIDDEN_LLM_TOOLS
     assert "code" not in TOOLS
     assert callable(mcp_server.tool_symbols)
     transport = _LoopbackTransport()

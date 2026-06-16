@@ -26,7 +26,7 @@ _SECTIONS: dict[str, tuple[str, str]] = {
         (
             "Ground yourself before editing. Use `search` for ranked/relevant\n"
             "snippets and `grep` for regex/glob/type-filtered matches. Use\n"
-            "`symbols` to find a definition by name and `read` (outline mode) to\n"
+            "`node` to read a definition by name and `read` (outline mode) to\n"
             "skim large files cheaply. Batch independent reads in one `read`\n"
             "call. Do NOT start editing until you can name the files and symbols\n"
             "that define the deliverable and its constraints."
@@ -69,7 +69,7 @@ _SECTIONS: dict[str, tuple[str, str]] = {
         (
             "- Ranked relevance / 'where is X handled?'  -> `search`\n"
             "- Regex / glob / type-filtered text match    -> `grep`\n"
-            "- Find a definition by name                  -> `symbols`\n"
+            "- Find a definition by name                  -> `grep` / `search`\n"
             "- Read one definition's body                 -> `node`\n"
             "- Who calls / what does this call            -> `callers` / `callees`\n"
             "- Every reference to a symbol                -> `usages`\n"
@@ -87,7 +87,7 @@ _OVERVIEW = (
     "Atelier tool-usage playbook. Canonical sequence:\n"
     "    explore -> navigate -> edit -> verify\n"
     "Each phase has dedicated tools; do them in order and prefer the focused\n"
-    "SCIP tools (symbols/node/callers/callees/usages/explore) over repeated\n"
+    "SCIP tools (node/callers/callees/usages/explore) over repeated\n"
     "grep once you know the symbol."
 )
 

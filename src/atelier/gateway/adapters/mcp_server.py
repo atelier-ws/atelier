@@ -2247,7 +2247,7 @@ def _benchmark_edit_block_message(args: dict[str, Any]) -> str | None:
     target_list = ", ".join(missing[:4])
     return (
         "Benchmark edit gate requires grounding evidence before editing. "
-        f"Ground the target with read, grep, search, symbols, node, explore, callers, "
+        f"Ground the target with read, grep, search, node, explore, callers, "
         f"callees, or usages first: {target_list}"
     )
 
@@ -4432,7 +4432,10 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
             text = _render_grep_md(payload)
     elif name == "search":
         with contextlib.suppress(Exception):
-            text = _render_search_md(payload)
+            # mode="symbol" routes through _op_search, which stashes the compact
+            # code-intel locator on the thread-local; prefer it when present.
+            rendered = getattr(_tool_call_rendered_text, "value", None)
+            text = rendered if isinstance(rendered, str) and rendered.strip() else _render_search_md(payload)
     elif name == "shell":
         with contextlib.suppress(Exception):
             text = _render_shell_text(payload)
@@ -4586,7 +4589,7 @@ def _smart_read_single(
             "entries": [(e + "/" if (target / e).is_dir() else e) for e in entries],
             "message": (
                 "This is a directory, not a file. "
-                "Use `symbols` to find indexed code by name, "
+                "Use `search` to find indexed code by name, "
                 "or `grep` with `file_glob_patterns` to list/search files."
             ),
         }
@@ -7070,61 +7073,6 @@ def _op_node(
     return _finish_code_result(_maybe_attach_code_rendered("node", payload, render_compact=render_compact))
 
 
-def _op_symbol(
-    *,
-    symbol_id: str | None = None,
-    qualified_name: str | None = None,
-    symbol_name: str | None = None,
-    path: str | None = None,
-    line: int | None = None,
-    budget_tokens: int = 4000,
-    repo: str | None = None,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-) -> dict[str, Any]:
-    """Compact symbol locator: signature + location, no source body.
-
-    Mirrors ``_op_node`` but renders the source-free ``symbol`` view (the
-    renderer already distinguishes the two: only ``node`` emits the body). Use
-    this to answer "where is this symbol defined?" -- the caller gets the
-    location and signature and can expand the body on demand via ``read`` or the
-    ``node`` op.
-    """
-    engine_root = repo_root or "."
-    workspace_router = _workspace_code_router(engine_root)
-    if repo is not None and not workspace_router.is_configured:
-        raise ValueError("repo filter requires .atelier/workspace.toml")
-    engine = _code_context_engine(engine_root)
-    _code_engine_for_current_call.value = engine
-    if workspace_router.is_configured:
-        payload = cast(
-            dict[str, Any],
-            workspace_router.route(
-                "symbol",
-                repo=repo,
-                symbol_id=symbol_id,
-                qualified_name=qualified_name,
-                symbol_name=symbol_name,
-                file_path=path,
-                line=line,
-                budget_tokens=budget_tokens,
-            ),
-        )
-    else:
-        payload = cast(
-            dict[str, Any],
-            engine.tool_symbol(
-                symbol_id=symbol_id,
-                qualified_name=qualified_name,
-                symbol_name=symbol_name,
-                file_path=path,
-                line=line,
-                budget_tokens=budget_tokens,
-            ),
-        )
-    return _finish_code_result(_maybe_attach_code_rendered("symbol", payload, render_compact=render_compact))
-
-
 def _op_rename(
     *,
     new_name: str | None = None,
@@ -8142,8 +8090,9 @@ def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[in
 @mcp_tool(
     name="search",
     description=(
-        "Search code and docs by ranked query: relevance-ranked snippets, full-file ranked "
-        "reads, or repo maps seeded from known files."
+        "Search code and docs by ranked query: relevance-ranked snippets or repo maps seeded "
+        "from known files. Use mode='symbol' to locate a symbol's definition by name (exact, "
+        "indexed; name + location, no body)."
     ),
     input_schema={
         "type": "object",
@@ -8163,10 +8112,11 @@ def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[in
             },
             "mode": {
                 "type": "string",
-                "enum": ["chunks", "map"],
+                "enum": ["chunks", "map", "symbol"],
                 "default": "chunks",
                 "description": (
-                    "`chunks` returns ranked snippets per file, and `map` builds a repo map from `seed_files`."
+                    "`chunks` returns ranked snippets per file, `map` builds a repo map from `seed_files`, "
+                    "and `symbol` returns exact symbol definitions (name + location, no body) from the SCIP index."
                 ),
             },
             "max_files": {
@@ -8212,9 +8162,12 @@ def tool_smart_search(
         ),
     ] = ".",
     mode: Annotated[
-        Literal["chunks", "map"],
+        Literal["chunks", "map", "symbol"],
         Field(
-            description=("`chunks` returns ranked snippets per file, and `map` builds a repo map from `seed_files`.")
+            description=(
+                "`chunks` returns ranked snippets per file, `map` builds a repo map from `seed_files`, "
+                "and `symbol` returns exact symbol definitions (name + location, no body) from the SCIP index."
+            )
         ),
     ] = "chunks",
     max_files: Annotated[
@@ -8266,6 +8219,31 @@ def tool_smart_search(
         hi = int(re.sub(r"\D", "", hi_text) or 0) if hi_text else lo
         if lo:
             line_range = (lo, hi or lo)
+    if mode == "symbol":
+        # Exact symbol locator (folds in the internal `symbols`/SCIP search):
+        # name + location, no source body. Read the body with `node`.
+        if not query:
+            raise ValueError("query is required for mode='symbol'")
+        symbol_workspace_root = _workspace_root()
+        requested = Path(path)
+        resolved = requested if requested.is_absolute() else symbol_workspace_root / requested
+        resolved = resolved.resolve()
+        symbol_file_glob: str | None = None
+        if resolved != symbol_workspace_root:
+            with contextlib.suppress(ValueError):
+                relative = str(resolved.relative_to(symbol_workspace_root))
+                symbol_file_glob = relative if resolved.is_file() else f"{relative}/**"
+        return _op_search(
+            query=query,
+            mode="lexical",
+            intent="symbol",
+            view="target",
+            snippet="none",
+            limit=max(max_files * 2, 20),
+            file_glob=symbol_file_glob,
+            budget_tokens=budget_tokens,
+            repo_root=str(symbol_workspace_root),
+        )
     if mode == "map":
         if not seed_files:
             raise ValueError("seed_files is required when mode='map'")

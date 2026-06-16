@@ -633,10 +633,12 @@ def _price_savings_row(ev: dict[str, Any]) -> tuple[int, float, int, float, int]
     * ``kind == "compaction"`` rows carry a pre-computed ``usd`` (cache-read
       rate) for ``tokens`` dropped from context — credited as-is, never
       re-priced at the input rate.
-    * every other row re-prices ``tokens`` at the row model's input rate.  Rows
-      with no priceable model are returned as ``unpriced_tokens`` so the caller
-      can apply a single weighted fallback without distorting the usd/token
-      ratio.
+    * every other row uses the pre-priced ``cost_saved_usd`` the dispatcher
+      wrote (priced at the model in use at write time); rows that predate that
+      field are re-priced at the row model's input rate.  Rows with neither a
+      stored cost nor a priceable model are returned as ``unpriced_tokens`` so
+      the caller can apply a single weighted fallback without distorting the
+      usd/token ratio.
     """
     from atelier.core.capabilities.pricing import get_model_pricing
 
@@ -652,6 +654,11 @@ def _price_savings_row(ev: dict[str, Any]) -> tuple[int, float, int, float, int]
         return 0, 0.0, calls, calls_usd, 0
     if tokens <= 0:
         return 0, 0.0, calls, calls_usd, 0
+    # Prefer the cost the dispatcher pre-priced at write time; re-price only the
+    # legacy rows that predate that field.
+    stored = ev.get("cost_saved_usd")
+    if stored is not None:
+        return tokens, max(0.0, float(stored or 0.0)), calls, calls_usd, 0
     model_raw = str(ev.get("model") or "").strip()
     pricing = get_model_pricing(resolve_model_id(model_raw)) if model_raw else None
     if pricing is not None and pricing.known and pricing.input > 0:
@@ -1204,14 +1211,161 @@ def savings_line(
 _SEGMENT_INTERVAL_S: int = 5  # seconds before advancing to the next frame
 
 
-def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, int, float]:
-    """Sum cost_saved_usd, tokens, calls, turns and actual spend from sessions/*/savings.jsonl.
+# Spend cache freshness: an active session's transcript changes every turn, so
+# re-pricing it on every statusline render would be wasteful. Reuse cached
+# per-turn costs for this long even when the transcript mtime moved.
+_SPEND_CACHE_TTL_S = 60.0
 
-    Uses file mtime as a cheap pre-filter so we skip files that are entirely
-    outside the window before reading a single byte.
+
+def _transcript_turn_costs(transcript_path: str | Path) -> list[tuple[float, float]]:
+    """Per-assistant-turn ``(epoch_ts, cost_usd)`` for a transcript + subagents.
+
+    Summing the costs reconciles with :func:`read_transcript_stats`'s
+    ``est_cost_usd`` (same per-turn, per-model pricing incl. the long-context
+    premium); the timestamps let callers window spend the *same* per-turn way
+    savings rows are windowed, instead of attributing a whole session's cost at
+    its end. Usage is de-duplicated by message id across the main and subagent
+    transcripts, matching the stats parser.
+    """
+    from datetime import datetime
+
+    p = Path(transcript_path)
+    if not p.exists():
+        return []
+    sources: list[Path] = [p, *_subagent_transcripts(p)]
+    seen_ids: set[str] = set()
+    lc_thresholds: dict[str, int] = {}
+    out: list[tuple[float, float]] = []
+    for source in sources:
+        try:
+            lines = source.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for raw in lines:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                entry = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            msg = entry.get("message") or {}
+            if not isinstance(msg, dict):
+                continue
+            usage = msg.get("usage") or {}
+            if not isinstance(usage, dict):
+                continue
+            in_t = int(usage.get("input_tokens", 0) or 0)
+            out_t = int(usage.get("output_tokens", 0) or 0)
+            cr_t = int(usage.get("cache_read_input_tokens", 0) or 0)
+            cw_t = int(usage.get("cache_creation_input_tokens", 0) or 0)
+            if not (in_t or out_t or cr_t or cw_t):
+                continue
+            msg_id = str(msg.get("id") or "").strip()
+            if msg_id:
+                if msg_id in seen_ids:
+                    continue
+                seen_ids.add(msg_id)
+            try:
+                dt = datetime.fromisoformat(str(entry.get("timestamp") or "").replace("Z", "+00:00"))
+                ts_epoch = (dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt).timestamp()
+            except (ValueError, TypeError, OSError, OverflowError):
+                continue
+            model = str(msg.get("model") or entry.get("model") or "").strip()
+            cache_creation = usage.get("cache_creation") or {}
+            cw1_t = (
+                int(cache_creation.get("ephemeral_1h_input_tokens", 0) or 0) if isinstance(cache_creation, dict) else 0
+            )
+            cw1_t = min(cw1_t, cw_t)
+            threshold = _long_context_threshold(model, lc_thresholds) if model else 0
+            long_ctx = bool(threshold and (in_t + cr_t + cw_t) > threshold)
+            cost = estimate_cost_usd(
+                model_id=resolve_model_id(model),
+                input_tokens=in_t,
+                output_tokens=out_t,
+                cache_read_tokens=cr_t,
+                cache_write_tokens=cw_t - cw1_t,
+                cache_write_1h_tokens=cw1_t,
+                long_context=long_ctx,
+            )
+            out.append((ts_epoch, cost))
+    return out
+
+
+def _session_windowed_spend(session_id: str, root: Path, cutoff: float) -> float | None:
+    """Actual spend for *session_id*'s turns at/after *cutoff*, from the transcript.
+
+    Windows spend the same per-turn way savings rows are windowed, so a session
+    that ran across several days contributes only its in-window turns to each
+    window (fixing the "7d spend == 1d spend" artifact of end-of-session
+    attribution). Per-turn ``(ts, cost)`` pairs are cached in
+    ``sessions/<id>/spend_cache.json`` keyed on transcript mtime (short TTL for
+    the still-growing active session) so the statusline does not re-parse the
+    transcript every render. Returns ``None`` when no transcript exists so the
+    caller can fall back to ``session_end`` rows.
+    """
+    if not session_id:
+        return None
+    candidates = claude_transcript_candidates(session_id)
+    if not candidates:
+        return None
+    transcript = candidates[0]
+    try:
+        mtime = transcript.stat().st_mtime
+    except OSError:
+        return None
+    now = time.time()
+    cache_path = root / "sessions" / session_id / "spend_cache.json"
+    turns: list[Any] | None = None
+    try:
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        if (
+            isinstance(cached, dict)
+            and isinstance(cached.get("turns"), list)
+            and (
+                cached.get("transcript_mtime") == mtime
+                or (now - float(cached.get("computed_at") or 0)) < _SPEND_CACHE_TTL_S
+            )
+        ):
+            turns = cached["turns"]
+    except (OSError, json.JSONDecodeError, ValueError, TypeError):
+        turns = None
+    if turns is None:
+        turns = [[ts, cost] for ts, cost in _transcript_turn_costs(transcript)]
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(
+                json.dumps({"transcript_mtime": mtime, "computed_at": now, "turns": turns}),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+    total = 0.0
+    for item in turns:
+        try:
+            ts, cost = float(item[0]), float(item[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if ts >= cutoff:
+            total += cost
+    return total
+
+
+def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, int, float]:
+    """Sum windowed savings (tokens, calls, usd) and actual spend from sessions/*/savings.jsonl.
+
+    Savings are summed per row (priced via :func:`_price_savings_row`, filtered
+    by row ts). Spend is the session's actual cost: a ``kind=="session_end"`` row
+    when the stop hook recorded one, otherwise back-filled from the Claude
+    transcript's est_cost (cached, see :func:`_session_windowed_spend`) so a
+    window still reflects the spend of sessions that ran before session_end
+    tracking existed — keeping 7d/30d spend from collapsing to the stop hook's
+    ~1 day of coverage.
+
+    Uses file mtime as a cheap pre-filter so we skip files entirely outside the
+    window before reading a byte.
 
     Returns (savings_usd, tokens_saved, calls_saved, turns_saved, spend_usd).
-    spend_usd comes from ``kind=="session_end"`` rows written by the stop hook.
     """
     sessions_dir = root / "sessions"
     if not sessions_dir.exists():
@@ -1225,6 +1379,14 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, in
     try:
         from datetime import datetime
 
+        def _epoch(ts_str: str) -> float | None:
+            try:
+                # Rows are stamped naive-UTC (datetime.utcnow); pin the zone so
+                # the epoch matches time.time() exactly.
+                return datetime.fromisoformat(ts_str).replace(tzinfo=UTC).timestamp()
+            except (ValueError, TypeError, OSError, OverflowError):
+                return None
+
         for p in sessions_dir.glob("*/savings.jsonl"):
             # Fast path: skip files not touched since before the window.
             try:
@@ -1232,6 +1394,7 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, in
                     continue
             except OSError:
                 continue
+            session_end_window = 0.0
             try:
                 with p.open(encoding="utf-8") as fh:
                     for raw in fh:
@@ -1242,20 +1405,16 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, in
                             row = json.loads(raw)
                         except json.JSONDecodeError:
                             continue
-                        ts_str = row.get("ts", "")
-                        if not ts_str:
+                        ts = _epoch(str(row.get("ts", "")))
+                        if ts is None:
                             continue
-                        try:
-                            # Rows are stamped naive-UTC (datetime.utcnow); pin
-                            # the zone so the epoch matches time.time() exactly.
-                            ts = datetime.fromisoformat(ts_str).replace(tzinfo=UTC).timestamp()
-                        except (ValueError, TypeError, OSError, OverflowError):
+                        # session_end carries the whole-session cost at end time;
+                        # used only as a fallback when the transcript is gone.
+                        if row.get("kind") == "session_end":
+                            if ts >= cutoff:
+                                session_end_window += float(row.get("est_cost_usd") or 0)
                             continue
                         if ts < cutoff:
-                            continue
-                        # session_end rows carry actual spend, not savings.
-                        if row.get("kind") == "session_end":
-                            total_spend += float(row.get("est_cost_usd") or 0)
                             continue
                         # Price every row through the shared rule so the windowed
                         # 7d/30d totals reconcile exactly with the live
@@ -1270,6 +1429,12 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, in
                             total_turns += 1
             except OSError:
                 continue
+            # Per-turn windowed spend from the transcript, so spend windows the
+            # same way savings rows do (a multi-day session contributes only its
+            # in-window turns to each window). Fall back to the session_end total
+            # only when the transcript is unavailable.
+            windowed_spend = _session_windowed_spend(p.parent.name, root, cutoff)
+            total_spend += windowed_spend if windowed_spend is not None else session_end_window
     except Exception:
         logging.exception("Recovered reading historical savings")
     return total_usd, total_tok, total_calls, total_turns, total_spend
@@ -1446,6 +1611,7 @@ def savings_segment(
     display_cost = max(summary.est_cost_usd, live_cost_usd)
 
     # Historical savings (scanned once per segment call — fast file scan).
+    usd_1d, tok_1d, calls_1d, turns_1d, spend_1d = _read_historical_savings(1, root)
     usd_7d, tok_7d, calls_7d, turns_7d, spend_7d = _read_historical_savings(7, root)
     usd_30d, tok_30d, calls_30d, turns_30d, spend_30d = _read_historical_savings(30, root)
     first_ts = _first_savings_ts(root)
@@ -1476,15 +1642,15 @@ def savings_segment(
             carry_detail += f" · {summary.carry_pct:.0f}% of cost"
         frames.append((True, f"{C_BRAND}♻ carry ${summary.carry_usd:.3f}{C_DIM}({carry_detail}){C_RESET}"))
 
-    # Frame 2: vs vanilla Claude Code (text-only — no icon)
-    if summary.vs_vanilla_calls > 0:
-        frames.append(
-            (
-                False,
-                f"{C_DIM}vs CC:{C_RESET} {summary.vs_vanilla_calls} rt"
-                f" {SEP} {C_GREEN}${summary.vs_vanilla_usd:.3f} saved{C_RESET}",
-            )
-        )
+    # Frame 2: 1-day window — savings + actual spend — instant feedback.
+    if usd_1d > 0:
+        detail_1d = _fmt_tok(tok_1d)
+        if calls_1d > 0:
+            detail_1d += f" · {_fmt_tok(calls_1d)} calls"
+        if turns_1d > 0:
+            detail_1d += f" · {_fmt_tok(turns_1d)} turns"
+        cost_1d_str = f" {C_COST}↑ ${spend_1d:.2f}{C_RESET}" if spend_1d > 0 else ""
+        frames.append((True, f"{C_GREEN}↓ 1d: ${usd_1d:.2f}{C_DIM}({detail_1d}){C_RESET}{cost_1d_str}"))
 
     # Frame 3: 7-day window — savings + actual spend — only after ≥1 day of usage.
     if usd_7d > 0 and days_active >= 1:
