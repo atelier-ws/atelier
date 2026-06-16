@@ -42,7 +42,10 @@ def call_code_op(request: dict[str, Any]) -> dict[str, Any]:
 
     ops: dict[str, Callable[..., Any]] = {
         "search": mcp_server._op_search,
-        "symbol": mcp_server._op_node,
+        # "symbol" is the compact source-free locator (signature + location);
+        # "node" is the full source-bearing view. The exact_symbol family wants
+        # the locator, matching what ctags/scip/serena return.
+        "symbol": mcp_server._op_symbol,
         "node": mcp_server._op_node,
         "callers": mcp_server._op_callers,
         "callees": mcp_server._op_callees,

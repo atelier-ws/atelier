@@ -63,8 +63,8 @@ def _echo_vs_vanilla_block(root: str | Path, *, deep: bool = False) -> None:
         from atelier.core.capabilities.vanilla_baseline import aggregate_vanilla_baseline
 
         vs = aggregate_vanilla_baseline(root)
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
+    except Exception as e:
+        logger.debug("Failed to aggregate vanilla baseline: %s", e)
         return
     calls = int(vs.get("calls_saved", 0) or 0)
     if calls <= 0:
@@ -83,6 +83,75 @@ def _echo_vs_vanilla_block(root: str | Path, *, deep: bool = False) -> None:
             f"  window: {int(vs.get('window_days', 0) or 0)}d · {int(vs.get('sessions', 0) or 0)} sessions"
             + ("  (lifetime cap hit)" if vs.get("capped") else "")
         )
+
+
+def _render_savings_rich(payload: dict[str, Any], deep: bool = False) -> None:
+    """Polished Rich table for savings breakdown (1D, 7D, 30D)."""
+    from rich import box as rbox
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console(highlight=False)
+    breakdown = payload.get("summary_breakdown") or {}
+
+    if breakdown:
+        console.print()
+        console.print("[bold bright_white]  Savings Breakdown[/]")
+        console.print()
+
+        table = Table(box=rbox.SIMPLE, show_header=True, header_style="dim cyan", padding=(0, 2))
+        table.add_column("Window", style="bold")
+        table.add_column("Calls", justify="right")
+        table.add_column("Tokens", justify="right")
+        table.add_column("Saved", justify="right", style="green")
+        table.add_column("Spent", justify="right")
+
+        for window in ["1D", "7D", "30D"]:
+            w = breakdown.get(window, {})
+            table.add_row(
+                window,
+                f"{w.get('calls', 0):,}",
+                f"{_fmt_tok_compact(w.get('tokens', 0))}",
+                f"${w.get('usd', 0.0):,.2f}",
+                f"${w.get('spend', 0.0):,.2f}",
+            )
+        console.print(table)
+        console.print()
+
+    # High-level summary keys to show by default
+    _DEFAULT_KEYS = {"subscription"}
+
+    for k, v in payload.items():
+        if k not in _DEFAULT_KEYS and not deep:
+            continue
+        if isinstance(v, dict):
+            console.print(f"[bold]{k}:[/]")
+            for k2, v2 in v.items():
+                if isinstance(v2, dict) and not deep:
+                    console.print(f"  [dim]{k2}: <dict, pass --deep for detail>[/]")
+                elif isinstance(v2, list) and not deep:
+                    console.print(f"  [dim]{k2}: <list of {len(v2)} items, pass --deep for detail>[/]")
+                else:
+                    console.print(f"  {k2}: {v2}")
+        else:
+            console.print(f"[bold]{k}:[/] {v}")
+
+    if not deep:
+        console.print()
+        console.print(
+            "[dim]Pass --deep to see AB calibration, optimization recommendations, and full session stats.[/]"
+        )
+
+
+def _fmt_tok_compact(n: int) -> str:
+    """Format large token counts to K/M/B."""
+    if n < 1000:
+        return str(n)
+    if n < 1_000_000:
+        return f"{n / 1000:.1f}K"
+    if n < 1_000_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    return f"{n / 1_000_000_000:.1f}B"
 
 
 @click.group("savings", invoke_without_command=True)
@@ -208,14 +277,9 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
     if as_json:
         _emit(payload, as_json=True)
     else:
-        for k, v in payload.items():
-            if isinstance(v, dict):
-                click.echo(f"{k}:")
-                for k2, v2 in v.items():
-                    click.echo(f"  {k2}: {v2}")
-            else:
-                click.echo(f"{k}: {v}")
-        _echo_vs_vanilla_block(ctx.obj["root"], deep=deep)
+        _render_savings_rich(payload, deep=deep)
+        if deep:
+            _echo_vs_vanilla_block(ctx.obj["root"], deep=deep)
 
 
 @savings_cmd.command("wire")

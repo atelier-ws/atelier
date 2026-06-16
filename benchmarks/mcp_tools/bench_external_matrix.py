@@ -1737,10 +1737,10 @@ def _add_atelier_comparisons(summary: list[dict[str, object]]) -> None:
     for row in summary:
         baseline = baselines.get(row["family"])
         if baseline is None or int(cast(int, row["ok_cases"])) == 0:
-            row["atelier_score_result"] = "n/a"
-            row["atelier_score_vs_provider_pct"] = "n/a"
-            row["atelier_latency_vs_provider_pct"] = "n/a"
-            row["atelier_tokens_vs_provider_pct"] = "n/a"
+            row["atelier_score_result"] = ""
+            row["atelier_score_vs_provider_pct"] = ""
+            row["atelier_latency_vs_provider_pct"] = ""
+            row["atelier_tokens_vs_provider_pct"] = ""
             continue
         if row["tool"] == "atelier":
             row["atelier_score_result"] = "baseline"
