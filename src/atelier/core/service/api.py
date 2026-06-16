@@ -1958,6 +1958,24 @@ def _savings_summary_payload(
     ops = history.get("operations", {}) if isinstance(history, dict) else {}
     today = datetime.now(UTC).date()
     window_days = max(1, min(window_days, 30))
+    # Realized savings from the canonical per-session ledger (store A) — the same
+    # source the statusline, stop hook, and `atelier savings` CLI read. These
+    # override the proof-gate / cost_history money fields below so every surface
+    # reports the same realized savings figure.
+    from atelier.core.capabilities.savings_summary import aggregate_window_savings
+
+    _realized = aggregate_window_savings(root, days=window_days)
+    realized_overrides = {
+        "saved_usd": _realized.saved_usd,
+        "saved_pct": _realized.saved_pct,
+        "would_have_cost_usd": _realized.would_have_cost_usd,
+        "actually_cost_usd": _realized.spend_usd,
+        "reduction_pct": _realized.saved_pct,
+        "total_naive_tokens": _realized.tokens_saved,
+        "live_saved_usd": _realized.saved_usd,
+        "live_calls_saved": _realized.calls_saved,
+        "cost_basis": "session_ledger",
+    }
     start_day = today - timedelta(days=window_days - 1)
 
     by_day_seed: dict[str, dict[str, int | str]] = {}
@@ -2085,6 +2103,7 @@ def _savings_summary_payload(
             "session_proof": [],
             "coverage_gaps": [],
             "verification": {},
+            **realized_overrides,
         }
 
     def _parse_dt(value: Any) -> datetime:
@@ -2496,6 +2515,7 @@ def _savings_summary_payload(
                 "dominant_item_share_pct": dominant_item_share,
                 "warning": warning,
             },
+            **realized_overrides,
         }
 
     return {
@@ -2522,6 +2542,7 @@ def _savings_summary_payload(
         "session_proof": [],
         "coverage_gaps": coverage_gaps,
         "verification": {},
+        **realized_overrides,
     }
 
 
@@ -5627,7 +5648,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     or (
                         "assistant"
                         if turn.get("kind") == "agent_message"
-                        else "shell" if turn.get("kind") == "shell_command" else turn.get("kind") or "session"
+                        else "shell"
+                        if turn.get("kind") == "shell_command"
+                        else turn.get("kind") or "session"
                     )
                 )
                 bucket = tool_costs.setdefault(tool_name, {"calls": 0.0, "cost_usd": 0.0})
@@ -5771,7 +5794,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         total_turns = (
             authoritative_total_turns
             if authoritative_total_turns > 0
-            else trace_total_turns if trace_total_turns > 0 else reconstructed_total_turns
+            else trace_total_turns
+            if trace_total_turns > 0
+            else reconstructed_total_turns
         )
 
         input_token_cost_usd = (

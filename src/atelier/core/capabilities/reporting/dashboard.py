@@ -168,35 +168,46 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
     if not ledger_path:
         ledger_path = "NONE"
 
-    # Load savings data
+    # Load savings from the canonical per-session ledger (store A) — the same
+    # source the statusline, `atelier savings` CLI, and web Savings page read,
+    # so the dashboard's saved totals agree with every other surface.
+    from atelier.core.capabilities.savings_summary import _price_savings_row
+
     savings_map: dict[str, float] = {}
     routing_map: dict[str, float] = {}
     compaction_map: dict[str, float] = {}
     routing_total = 0.0
     compaction_total = 0.0
-    savings_path = root / "live_savings_events.jsonl"
-    if savings_path.exists():
-        for line in savings_path.read_text().splitlines():
+    sessions_root = root / "sessions"
+    if sessions_root.is_dir():
+        for sidecar in sessions_root.glob("*/savings.jsonl"):
+            rid = sidecar.parent.name
             try:
-                d = json.loads(line)
-                rid = d.get("session_id")
-                cost = float(d.get("cost_saved_usd", 0.0) or 0.0)
-                lever = str(d.get("lever") or d.get("tool_name") or "")
-                bucket = (
-                    "routing" if "routing" in lever.lower() else "compaction" if "compact" in lever.lower() else "other"
-                )
-                if rid:
-                    savings_map[rid] = savings_map.get(rid, 0.0) + cost
-                    if bucket == "routing":
-                        routing_map[rid] = routing_map.get(rid, 0.0) + cost
-                        routing_total += cost
-                    elif bucket == "compaction":
-                        compaction_map[rid] = compaction_map.get(rid, 0.0) + cost
-                        compaction_total += cost
-            except Exception:
-                logging.exception("Recovered from broad exception handler")
-                # Best-effort per-row savings aggregation; skip malformed records.
-                logger.debug("dashboard cost aggregation failed", exc_info=True)
+                sidecar_lines = sidecar.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                continue
+            for line in sidecar_lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(d, dict) or d.get("kind") == "session_end":
+                    continue
+                _pt, usd, _calls, calls_usd, _up = _price_savings_row(d)
+                cost = usd + calls_usd
+                if cost <= 0:
+                    continue
+                savings_map[rid] = savings_map.get(rid, 0.0) + cost
+                kind = str(d.get("kind") or "")
+                if kind == "routing":
+                    routing_map[rid] = routing_map.get(rid, 0.0) + cost
+                    routing_total += cost
+                elif kind == "compaction":
+                    compaction_map[rid] = compaction_map.get(rid, 0.0) + cost
+                    compaction_total += cost
 
     # Load cost + token data from DB
     cost_map: dict[str, float] = {}
