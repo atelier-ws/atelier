@@ -403,24 +403,65 @@ def _is_noexec_shell(tokens: list[str]) -> bool:
 
 
 _ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-_COMMAND_WRAPPERS = frozenset({"env", "command", "sudo", "nohup", "setsid", "stdbuf"})
+# Wrappers that run a following command; stripping them exposes the real head so
+# the blocklist isn't bypassed by ``timeout 5 rm -rf x`` / ``nice rm -rf x`` /
+# ``xargs rm -rf x``. After the wrapper we also skip its option flags and numeric
+# option-values / durations (``nice -n 10``, ``timeout 5``), but never a
+# non-option word, so a real command head (incl. ``/bin/rm``) is never skipped.
+_COMMAND_WRAPPERS = frozenset(
+    {
+        "env",
+        "command",
+        "sudo",
+        "doas",
+        "nohup",
+        "setsid",
+        "stdbuf",
+        "unbuffer",
+        "nice",
+        "ionice",
+        "time",
+        "timeout",
+        "chrt",
+        "xargs",
+        "watch",
+        "proot",
+        "flock",
+    }
+)
+# Shell interpreters whose direct execution is blocked (they run arbitrary
+# commands). ``busybox`` is handled separately: its applet is the real head.
+_SHELL_INTERPRETERS = frozenset({"bash", "sh", "zsh", "fish", "dash", "ash", "ksh", "mksh", "rbash", "csh", "tcsh"})
+# Heads that evaluate their remaining arguments as a fresh command line.
+_EVAL_WRAPPERS = frozenset({"eval", "exec"})
+# Option flags (``-x``) and numeric option-values / durations (``10``, ``5s``) a
+# wrapper may carry before its command; safe to skip (never a command name).
+_WRAPPER_SKIP_RE = re.compile(r"^(?:-.*|[+-]?\d+(?:\.\d+)?[smhdkKMGT]?)$")
 
 
 def _strip_command_prefixes(tokens: list[str]) -> list[str]:
-    """Strip leading ``VAR=value`` assignments and one pass-through wrapper
-    (``env``/``command``/``sudo``/...) so the real command head is checked.
+    """Strip leading ``VAR=value`` assignments and pass-through wrappers
+    (``env``/``sudo``/``timeout``/``nice``/...) to a fixed point so the real
+    command head is checked.
 
-    ``env A=1 bash -c`` / ``command rm -rf`` would otherwise hide a dangerous
-    head behind the wrapper token. Conservative: option-taking wrappers
-    (``nice -n``, ``xargs``) are intentionally not unwrapped.
+    ``env A=1 bash -c`` / ``command rm -rf`` / ``timeout 5 rm -rf`` would
+    otherwise hide a dangerous head behind a wrapper token. After a wrapper we
+    also skip its option flags and numeric option-values / durations
+    (``nice -n 10``, ``timeout 5``) -- but never a non-option word, so a real
+    command head (incl. a path-qualified ``/bin/rm``) is never skipped past.
     """
     i = 0
-    while i < len(tokens) and _ASSIGN_RE.match(tokens[i]):
-        i += 1
-    if i < len(tokens) and os.path.basename(tokens[i]).lower() in _COMMAND_WRAPPERS:
-        i += 1
+    changed = True
+    while changed:
+        changed = False
         while i < len(tokens) and _ASSIGN_RE.match(tokens[i]):
             i += 1
+            changed = True
+        if i < len(tokens) and os.path.basename(tokens[i]).lower() in _COMMAND_WRAPPERS:
+            i += 1
+            changed = True
+            while i < len(tokens) and _WRAPPER_SKIP_RE.match(tokens[i]):
+                i += 1
     return tokens[i:]
 
 
@@ -435,7 +476,18 @@ def _block_check_segment(tokens: list[str]) -> CommandPolicyDecision | None:
     # (``/bin/bash``, ``/usr/bin/git``) are matched like their bare names.
     tokens = [os.path.basename(tokens[0]), *tokens[1:]]
     head = tokens[0].lower()
-    if head in {"bash", "sh", "zsh", "fish"}:
+    # ``busybox <applet> ...``: the applet (sh/rm/...) is the effective head.
+    if head == "busybox" and len(tokens) > 1:
+        return _block_check_segment(tokens[1:])
+    # ``eval``/``exec <words>``: the remaining words run as a fresh command line,
+    # so re-tokenize and block-check them (catches ``eval \"rm -rf x\"``).
+    if head in _EVAL_WRAPPERS and len(tokens) > 1:
+        for inner in _split_command_segments(" ".join(tokens[1:])):
+            decision = _block_check_segment(inner)
+            if decision is not None:
+                return decision
+        return None
+    if head in _SHELL_INTERPRETERS:
         if _is_noexec_shell(tokens):
             return None  # `bash -n` / `-o noexec`: parse-only, runs nothing
         return CommandPolicyDecision(
