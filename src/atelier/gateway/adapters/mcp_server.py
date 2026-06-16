@@ -3570,6 +3570,7 @@ def tool_record_trace(
     payload["learnings"] = _normalize_learnings(learnings)
 
     raw_artifacts: list[str] = []
+    pending_artifacts: list[tuple[RawArtifact, str]] = []
     if capture_files:
         source_session_id = (
             _get_product_session_id()
@@ -3613,7 +3614,7 @@ def tool_record_trace(
                     source_path=str(p.absolute()),
                     source_file_mtime=datetime.fromtimestamp(p.stat().st_mtime, tz=UTC),
                 )
-                rt.store.record_raw_artifact(artifact, redacted_content)
+                pending_artifacts.append((artifact, redacted_content))
                 raw_artifacts.append(artifact_id)
             except Exception as e:
                 logging.exception("Recovered from broad exception handler")
@@ -3622,6 +3623,17 @@ def tool_record_trace(
     if raw_artifacts:
         payload["raw_artifact_ids"] = raw_artifacts
 
+    if "id" not in payload:
+        payload["id"] = Trace.make_id(task, agent)
+
+    # Validate BEFORE any store/ledger write so a malformed payload returns a
+    # structured error instead of leaving committed artifacts / a workflow event
+    # behind with no persisted trace (partial-write inconsistency).
+    trace = Trace.model_validate(payload)
+
+    for _artifact, _redacted_content in pending_artifacts:
+        rt.store.record_raw_artifact(_artifact, _redacted_content)
+
     if event_type:
         normalized_event_payload = _normalize_workflow_trace_payload(event_type, event_payload)
         if normalized_event_payload is not None:
@@ -3629,10 +3641,6 @@ def tool_record_trace(
         else:
             led.record("note", f"event:{redact(event_type)}", _redact_json_strings(event_payload))
 
-    if "id" not in payload:
-        payload["id"] = Trace.make_id(task, agent)
-
-    trace = Trace.model_validate(payload)
     rt.store.record_trace(trace)
     from atelier.core.capabilities.lesson_promotion import ingest_failed_trace
 
@@ -7002,6 +7010,11 @@ def _op_rename(
     result = apply_rich_edits(edits, atomic=True, repo_root=root)
     if not result.get("failed") and not result.get("rolled_back"):
         _compute_and_record_diffs(snaps)
+        # Rename's overwrite-style edits don't trip apply_rich_edits' symbol-
+        # reindex gate, so refresh the cached engine (incremental, fresh for the
+        # next read) -- otherwise reads return pre-rename symbols. Fail-open.
+        with contextlib.suppress(Exception):
+            engine.index_repo(force=False, block=True)
     result["op"] = "rename"
     result["new_name"] = new_name
     result["backend"] = rename_backend
