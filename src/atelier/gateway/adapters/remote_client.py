@@ -163,47 +163,56 @@ class RemoteClient:
             if direction not in {"upvote", "downvote"}:
                 raise ValueError("direction must be one of: upvote, downvote")
             list_limit = 500
-            blocks = self._get(f"/v1/memory/blocks?agent_id={urllib.parse.quote(agent_id)}&limit={list_limit}")
-            if not isinstance(blocks, list):
-                raise ValueError("unable to list memory blocks for vote_fact")
-            target = None
-            for block in blocks:
-                metadata = block.get("metadata") or {}
-                if metadata.get("kind") != "memory_fact":
+            # Retry on a 409 version conflict: a concurrent vote bumped the
+            # block's version, so re-read and re-apply the increment instead of
+            # dropping this vote.
+            result: dict[str, Any] = {"ok": False, "error": "vote_fact: no attempt made"}
+            for _attempt in range(3):
+                blocks = self._get(f"/v1/memory/blocks?agent_id={urllib.parse.quote(agent_id)}&limit={list_limit}")
+                if not isinstance(blocks, list):
+                    raise ValueError("unable to list memory blocks for vote_fact")
+                target = None
+                for block in blocks:
+                    metadata = block.get("metadata") or {}
+                    if metadata.get("kind") != "memory_fact":
+                        continue
+                    if str(metadata.get("fact", "")) != fact:
+                        continue
+                    if scope and str(metadata.get("scope", "")) != scope:
+                        continue
+                    target = block
+                    break
+                if target is None:
+                    if len(blocks) >= list_limit:
+                        raise ValueError(
+                            f"no matching stored fact found for vote_fact within the first {list_limit} blocks; "
+                            "the fact may exist beyond the listing limit"
+                        )
+                    raise ValueError("no matching stored fact found for vote_fact")
+                metadata = dict(target.get("metadata") or {})
+                votes = dict(metadata.get("votes") or {})
+                up = int(votes.get("upvote", 0) or 0)
+                down = int(votes.get("downvote", 0) or 0)
+                if direction == "upvote":
+                    up += 1
+                else:
+                    down += 1
+                history = list(metadata.get("vote_history") or [])
+                history.append({"direction": direction, "reason": vote_reason})
+                metadata["votes"] = {"upvote": up, "downvote": down}
+                metadata["vote_history"] = history[-20:]
+                payload = {
+                    "agent_id": agent_id,
+                    "label": str(target.get("label") or ""),
+                    "value": str(target.get("value") or ""),
+                    "metadata": metadata,
+                    "expected_version": int(target.get("version") or 1),
+                }
+                result = self._post("/v1/memory/blocks", payload)
+                if isinstance(result, dict) and result.get("error") == "HTTP 409":
                     continue
-                if str(metadata.get("fact", "")) != fact:
-                    continue
-                if scope and str(metadata.get("scope", "")) != scope:
-                    continue
-                target = block
-                break
-            if target is None:
-                if len(blocks) >= list_limit:
-                    raise ValueError(
-                        f"no matching stored fact found for vote_fact within the first {list_limit} blocks; "
-                        "the fact may exist beyond the listing limit"
-                    )
-                raise ValueError("no matching stored fact found for vote_fact")
-            metadata = dict(target.get("metadata") or {})
-            votes = dict(metadata.get("votes") or {})
-            up = int(votes.get("upvote", 0) or 0)
-            down = int(votes.get("downvote", 0) or 0)
-            if direction == "upvote":
-                up += 1
-            else:
-                down += 1
-            history = list(metadata.get("vote_history") or [])
-            history.append({"direction": direction, "reason": vote_reason})
-            metadata["votes"] = {"upvote": up, "downvote": down}
-            metadata["vote_history"] = history[-20:]
-            payload = {
-                "agent_id": agent_id,
-                "label": str(target.get("label") or ""),
-                "value": str(target.get("value") or ""),
-                "metadata": metadata,
-                "expected_version": int(target.get("version") or 1),
-            }
-            return self._post("/v1/memory/blocks", payload)
+                return result
+            return result
         raise ValueError(f"memory op not supported in remote mode: {op}")
 
     def lesson_inbox(self, args: dict[str, Any]) -> dict[str, Any]:
