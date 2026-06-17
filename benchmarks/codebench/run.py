@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import csv
+import hashlib
 import json
 import os
 import re
@@ -70,6 +71,7 @@ from atelier.core.capabilities.pricing import usage_cost_breakdown_usd, usage_co
 from benchmarks.codebench import local as local_mode
 from benchmarks.codebench.tasks import BY_ID, TASKS, Task
 from benchmarks.wire_savings.report import aggregate, flow_records
+from benchmarks.wire_savings.usage_parser import extract_usage
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_ROOT = REPO_ROOT / "benchmarks" / "codebench" / "results"
@@ -412,6 +414,31 @@ class ArmResult:
     workspace: str = ""
 
 
+@dataclass
+class PairwiseQualityResult:
+    task: str
+    rep: int
+    baseline_arm: str
+    candidate_arm: str
+    status: str
+    judged: bool
+    baseline_score: float | None
+    candidate_score: float | None
+    quality_delta: float | None
+    winner: str
+    candidate_at_least_baseline: bool | None
+    judge_model: str
+    judge_reason: str
+    baseline_correct: bool | None
+    candidate_correct: bool | None
+    baseline_cost_usd: float
+    candidate_cost_usd: float
+    raw_saved_usd: float
+    raw_saved_tokens: int
+    quality_adjusted_saved_usd: float
+    quality_adjusted_saved_tokens: int
+
+
 def _result_total_tokens(result: ArmResult) -> int:
     """Total billed tokens for one run (same basis the cost is charged on)."""
     return result.input_tokens + result.cache_read_tokens + result.cache_creation_tokens + result.output_tokens
@@ -744,7 +771,7 @@ def _pre_index_workspace(task: Task, arm: str, rep: int, ws: Path) -> None:
        pays the first-call costs (git ``diff_to_tree`` / ``lstat`` on 15k files,
        OS page-cache cold start) and persists the result to the SQLite retrieval
        cache.  When the agent calls the same tool the result is served from cache
-       in milliseconds instead of spending 200–1000s on warm-up inside the timer.
+       in milliseconds instead of spending 200-1000s on warm-up inside the timer.
 
     Failures in either phase are logged but do not abort the run.
     """
@@ -886,18 +913,17 @@ def _read_flow_usage(flow_path: Path) -> tuple[int, int, int, int, int] | None:
     )
 
 
-
 def _parse_codex_result(stdout: str, flow_path: Path, task: str, arm: str, rep: int) -> ArmResult:
     """Parse JSONL output from `codex exec --json`."""
     events = _iter_jsonl_objects(stdout)
-    
+
     input_tokens = output_tokens = cache_read = cache_write = thinking = 0
     cost_usd = 0.0
     num_turns = 0
     result_excerpt = ""
     is_error = False
     models: set[str] = set()
-    
+
     for event in events:
         if event.get("type") == "item.completed":
             item = event.get("item", {})
@@ -915,10 +941,10 @@ def _parse_codex_result(stdout: str, flow_path: Path, task: str, arm: str, rep: 
                 models.add(str(model_id))
         elif event.get("type") == "error":
             is_error = True
-            
+
     # Estimate cost based on usage (since Codex doesn't provide total_cost_usd)
     # Re-using usage_cost_usd which Atelier uses for other drivers.
-    model_id = next(iter(models), "claude-sonnet-4-6") # Default fallback
+    model_id = next(iter(models), "claude-sonnet-4-6")  # Default fallback
     with contextlib.suppress(Exception):
         cost_usd = usage_cost_usd(
             model_id,
@@ -927,7 +953,7 @@ def _parse_codex_result(stdout: str, flow_path: Path, task: str, arm: str, rep: 
             cache_read_tokens=cache_read,
             cache_write_tokens=cache_write,
         )
-            
+
     return ArmResult(
         task=task,
         arm=arm,
@@ -1655,6 +1681,38 @@ Candidate response:
 """
 
 
+def _pairwise_judge_prompt(task: Task, baseline: ArmResult, candidate: ArmResult, *, candidate_first: bool) -> str:
+    first_label = "candidate" if candidate_first else "baseline"
+    second_label = "baseline" if candidate_first else "candidate"
+    answer_a = candidate.result_excerpt if candidate_first else baseline.result_excerpt
+    answer_b = baseline.result_excerpt if candidate_first else candidate.result_excerpt
+    return f"""You are comparing two CodeBench answers for quality.
+
+Return ONLY compact JSON with these keys:
+{{"winner":"A|B|tie","a_score":number,"b_score":number,"reason":"short reason"}}
+
+Scoring:
+- 1.0 = complete, accurate, grounded in the repo/code concepts, no important omissions.
+- 0.7 = mostly correct but missing useful details.
+- 0.4 = shallow, partially wrong, or not grounded.
+- 0.0 = off-topic or unusable.
+
+Prefer correctness and coverage over verbosity. Penalize hallucinated files/symbols.
+
+Task metadata/rubric if present:
+{_task_description(task)}
+
+Task prompt:
+{task.prompt()}
+
+Answer A ({first_label}, hidden from final decision labels):
+{answer_a}
+
+Answer B ({second_label}, hidden from final decision labels):
+{answer_b}
+"""
+
+
 def _run_judge(
     prompt: str,
     *,
@@ -1775,6 +1833,209 @@ def judge_results(
             result.score = 0.0
             result.judge_model = judge_model
             result.judge_reason = f"judge error: {exc}"[:300]
+
+
+def _pairwise_quality_key(result: ArmResult) -> tuple[str, int]:
+    return (result.task, result.rep)
+
+
+def _candidate_first(task: str, rep: int, candidate_arm: str) -> bool:
+    digest = hashlib.sha256(f"{task}:{rep}:{candidate_arm}".encode()).hexdigest()
+    return int(digest[:2], 16) % 2 == 0
+
+
+def _pairwise_status(
+    baseline: ArmResult | None,
+    candidate: ArmResult | None,
+    *,
+    run_judge: bool,
+) -> str:
+    if baseline is None:
+        return "missing_baseline"
+    if candidate is None:
+        return "missing_candidate"
+    if not baseline.ok or not candidate.ok:
+        return "execution_failed"
+    if not baseline.valid or not candidate.valid:
+        return "invalid_output"
+    return "ready" if run_judge else "unjudged"
+
+
+def _pairwise_result_from_scores(
+    *,
+    baseline: ArmResult,
+    candidate: ArmResult,
+    status: str,
+    judged: bool,
+    baseline_score: float | None,
+    candidate_score: float | None,
+    winner: str,
+    judge_model: str,
+    judge_reason: str,
+) -> PairwiseQualityResult:
+    quality_delta = None
+    candidate_ok: bool | None = None
+    if baseline_score is not None and candidate_score is not None:
+        quality_delta = round(candidate_score - baseline_score, 3)
+        candidate_ok = candidate_score + 0.05 >= baseline_score
+    raw_saved_usd = round(baseline.cost_usd - candidate.cost_usd, 4)
+    raw_saved_tokens = _result_total_tokens(baseline) - _result_total_tokens(candidate)
+    return PairwiseQualityResult(
+        task=baseline.task,
+        rep=baseline.rep,
+        baseline_arm=baseline.arm,
+        candidate_arm=candidate.arm,
+        status=status,
+        judged=judged,
+        baseline_score=baseline_score,
+        candidate_score=candidate_score,
+        quality_delta=quality_delta,
+        winner=winner,
+        candidate_at_least_baseline=candidate_ok,
+        judge_model=judge_model,
+        judge_reason=judge_reason[:300],
+        baseline_correct=baseline.correct,
+        candidate_correct=candidate.correct,
+        baseline_cost_usd=baseline.cost_usd,
+        candidate_cost_usd=candidate.cost_usd,
+        raw_saved_usd=raw_saved_usd,
+        raw_saved_tokens=raw_saved_tokens,
+        quality_adjusted_saved_usd=raw_saved_usd if judged and candidate_ok is True else 0.0,
+        quality_adjusted_saved_tokens=raw_saved_tokens if judged and candidate_ok is True else 0,
+    )
+
+
+def build_pairwise_quality_rows(
+    results: list[ArmResult],
+    *,
+    baseline_arm: str = "baseline",
+) -> list[PairwiseQualityResult]:
+    by_arm = {result.arm for result in results}
+    candidate_arms = sorted(arm for arm in by_arm if arm != baseline_arm)
+    baseline_by_key = {_pairwise_quality_key(result): result for result in results if result.arm == baseline_arm}
+    rows: list[PairwiseQualityResult] = []
+    for candidate_arm in candidate_arms:
+        for candidate in sorted(
+            (result for result in results if result.arm == candidate_arm),
+            key=lambda result: (result.task, result.rep),
+        ):
+            baseline = baseline_by_key.get(_pairwise_quality_key(candidate))
+            status = _pairwise_status(baseline, candidate, run_judge=False)
+            if baseline is None:
+                continue
+            rows.append(
+                _pairwise_result_from_scores(
+                    baseline=baseline,
+                    candidate=candidate,
+                    status=status,
+                    judged=False,
+                    baseline_score=baseline.score,
+                    candidate_score=candidate.score,
+                    winner="",
+                    judge_model="",
+                    judge_reason="pairwise judge not run",
+                )
+            )
+    return rows
+
+
+def judge_pairwise_quality(
+    results: list[ArmResult],
+    *,
+    judge_model: str,
+    judge_agent_command: str,
+    timeout: int,
+    agent_env: dict[str, str] | None = None,
+    baseline_arm: str = "baseline",
+) -> list[PairwiseQualityResult]:
+    baseline_by_key = {_pairwise_quality_key(result): result for result in results if result.arm == baseline_arm}
+    rows: list[PairwiseQualityResult] = []
+    for candidate in sorted(
+        (result for result in results if result.arm != baseline_arm),
+        key=lambda result: (result.arm, result.task, result.rep),
+    ):
+        baseline = baseline_by_key.get(_pairwise_quality_key(candidate))
+        status = _pairwise_status(baseline, candidate, run_judge=True)
+        if baseline is None:
+            continue
+        if status != "ready":
+            rows.append(
+                _pairwise_result_from_scores(
+                    baseline=baseline,
+                    candidate=candidate,
+                    status=status,
+                    judged=False,
+                    baseline_score=baseline.score,
+                    candidate_score=candidate.score,
+                    winner="",
+                    judge_model="",
+                    judge_reason=status,
+                )
+            )
+            continue
+        task = BY_ID.get(candidate.task)
+        if task is None:
+            rows.append(
+                _pairwise_result_from_scores(
+                    baseline=baseline,
+                    candidate=candidate,
+                    status="unknown_task",
+                    judged=False,
+                    baseline_score=baseline.score,
+                    candidate_score=candidate.score,
+                    winner="",
+                    judge_model="",
+                    judge_reason=f"unknown task {candidate.task}",
+                )
+            )
+            continue
+        candidate_first = _candidate_first(candidate.task, candidate.rep, candidate.arm)
+        try:
+            parsed = _run_judge(
+                _pairwise_judge_prompt(task, baseline, candidate, candidate_first=candidate_first),
+                judge_model=judge_model,
+                judge_agent_command=judge_agent_command,
+                timeout=timeout,
+                agent_env=agent_env,
+            )
+            a_score = max(0.0, min(1.0, _as_float(parsed.get("a_score", 0.0) or 0.0)))
+            b_score = max(0.0, min(1.0, _as_float(parsed.get("b_score", 0.0) or 0.0)))
+            winner = str(parsed.get("winner", "")).strip().lower()
+            baseline_score = b_score if candidate_first else a_score
+            candidate_score = a_score if candidate_first else b_score
+            mapped_winner = "tie"
+            if winner == "a":
+                mapped_winner = candidate.arm if candidate_first else baseline.arm
+            elif winner == "b":
+                mapped_winner = baseline.arm if candidate_first else candidate.arm
+            rows.append(
+                _pairwise_result_from_scores(
+                    baseline=baseline,
+                    candidate=candidate,
+                    status="judged",
+                    judged=True,
+                    baseline_score=baseline_score,
+                    candidate_score=candidate_score,
+                    winner=mapped_winner,
+                    judge_model=judge_model,
+                    judge_reason=str(parsed.get("reason", "")),
+                )
+            )
+        except Exception as exc:
+            rows.append(
+                _pairwise_result_from_scores(
+                    baseline=baseline,
+                    candidate=candidate,
+                    status="judge_error",
+                    judged=False,
+                    baseline_score=baseline.score,
+                    candidate_score=candidate.score,
+                    winner="",
+                    judge_model=judge_model,
+                    judge_reason=f"pairwise judge error: {exc}",
+                )
+            )
+    return rows
 
 
 def _parse_judge_json(text: str) -> dict[str, object]:
@@ -1972,6 +2233,9 @@ def report(results: list[ArmResult]) -> str:
     task_tables = _render_task_metric_tables(results)
     if task_tables:
         lines.append(task_tables)
+    correctness_table = _render_task_correctness_table(results)
+    if correctness_table:
+        lines.append(correctness_table)
     ok_parts = [f"{arm} {aggregates[arm]['ok']}/{aggregates[arm]['runs']}" for arm in arms]
     lines.append(f"Runs ok     : {'  '.join(ok_parts)}")
     valid_parts = [f"{arm} {aggregates[arm]['valid']}/{aggregates[arm]['runs']}" for arm in arms]
@@ -1987,6 +2251,14 @@ def report(results: list[ArmResult]) -> str:
             for arm in arms
         ]
         lines.append(f"Correct     : {'  '.join(score_parts)}")
+        if any(result.score is None for result in results):
+            lines.append("Quality     : partially judged; headline savings remain exploratory.")
+    else:
+        lines.append("Quality     : unjudged; headline savings are exploratory until pairwise_quality.csv passes.")
+    lines.append(
+        "Chart data  : summary.csv, task_metrics.csv, model_audit.csv, "
+        "task_correctness.csv, pairwise_quality.csv, quality_adjusted_summary.csv"
+    )
     return "\n".join(lines)
 
 
@@ -2027,6 +2299,276 @@ def _summary_rows(results: list[ArmResult]) -> list[dict[str, object]]:
                 }
             )
         rows.append(row)
+    return rows
+
+
+def _pairwise_quality_csv_rows(pairwise_rows: list[PairwiseQualityResult]) -> list[dict[str, object]]:
+    return [asdict(row) for row in pairwise_rows]
+
+
+def _quality_adjusted_summary_rows(pairwise_rows: list[PairwiseQualityResult]) -> list[dict[str, object]]:
+    grouped: dict[tuple[str, str], list[PairwiseQualityResult]] = {}
+    for row in pairwise_rows:
+        grouped.setdefault((row.baseline_arm, row.candidate_arm), []).append(row)
+    rows: list[dict[str, object]] = []
+    for (baseline_arm, candidate_arm), group in sorted(grouped.items()):
+        judged = [row for row in group if row.judged]
+        passed = [row for row in judged if row.candidate_at_least_baseline is True]
+        deltas = [row.quality_delta for row in judged if row.quality_delta is not None]
+        baseline_cost = sum(row.baseline_cost_usd for row in group)
+        candidate_cost = sum(row.candidate_cost_usd for row in group)
+        raw_saved = sum(row.raw_saved_usd for row in group)
+        adjusted_saved = sum(row.quality_adjusted_saved_usd for row in group)
+        rows.append(
+            {
+                "baseline_arm": baseline_arm,
+                "candidate_arm": candidate_arm,
+                "pairs": len(group),
+                "judged_pairs": len(judged),
+                "quality_passed_pairs": len(passed),
+                "quality_failed_pairs": len(judged) - len(passed),
+                "unjudged_pairs": len(group) - len(judged),
+                "candidate_at_least_baseline_rate": round(len(passed) / len(judged), 3) if judged else "",
+                "avg_quality_delta": round(sum(deltas) / len(deltas), 3) if deltas else "",
+                "baseline_cost_usd": round(baseline_cost, 4),
+                "candidate_cost_usd": round(candidate_cost, 4),
+                "raw_saved_usd": round(raw_saved, 4),
+                "quality_adjusted_saved_usd": round(adjusted_saved, 4),
+                "raw_saved_tokens": sum(row.raw_saved_tokens for row in group),
+                "quality_adjusted_saved_tokens": sum(row.quality_adjusted_saved_tokens for row in group),
+                "raw_cost_savings_vs_baseline_pct": _savings_pct(baseline_cost, candidate_cost),
+                "quality_adjusted_cost_savings_vs_baseline_pct": (
+                    round(adjusted_saved / baseline_cost * 100, 1) if baseline_cost else 0.0
+                ),
+            }
+        )
+    return rows
+
+
+def _task_correctness_arm_summaries(results: list[ArmResult]) -> dict[tuple[str, str], dict[str, object]]:
+    summaries: dict[tuple[str, str], dict[str, object]] = {}
+    for task in _ordered_tasks(results):
+        for arm in _ordered_arms(results):
+            arm_results = [result for result in results if result.task == task and result.arm == arm]
+            if not arm_results:
+                continue
+            judged = [result for result in arm_results if result.score is not None]
+            summaries[(task, arm)] = {
+                "task": task,
+                "arm": arm,
+                "runs": len(arm_results),
+                "ok_runs": sum(1 for result in arm_results if result.ok),
+                "valid_runs": sum(1 for result in arm_results if result.valid),
+                "judged_runs": len(judged),
+                "correct_runs": sum(1 for result in arm_results if result.correct is True),
+                "avg_score": round(sum(float(result.score or 0.0) for result in judged) / len(judged), 3)
+                if judged
+                else "",
+                "cost_usd": round(sum(result.cost_usd for result in arm_results), 4),
+                "judge_models": ",".join(sorted({result.judge_model for result in judged if result.judge_model})),
+            }
+    return summaries
+
+
+def _score_delta(baseline_score: object, candidate_score: object) -> float | str:
+    if baseline_score == "" or candidate_score == "":
+        return ""
+    return round(float(candidate_score) - float(baseline_score), 3)
+
+
+def _correctness_winner(
+    *,
+    baseline_arm: str,
+    candidate_arm: str,
+    baseline_score: object,
+    candidate_score: object,
+    baseline_cost: float,
+    candidate_cost: float,
+) -> str:
+    if baseline_score == "" or candidate_score == "":
+        return "unjudged"
+    delta = float(candidate_score) - float(baseline_score)
+    if delta > 0.05:
+        return candidate_arm
+    if delta < -0.05:
+        return baseline_arm
+    if candidate_cost < baseline_cost:
+        return candidate_arm
+    if baseline_cost < candidate_cost:
+        return baseline_arm
+    return "tie"
+
+
+def _task_correctness_rows(results: list[ArmResult]) -> list[dict[str, object]]:
+    summaries = _task_correctness_arm_summaries(results)
+    arms = _ordered_arms(results)
+    baseline_arm = "baseline" if "baseline" in arms else (arms[0] if arms else "")
+    rows: list[dict[str, object]] = []
+    for task in _ordered_tasks(results):
+        baseline = summaries.get((task, baseline_arm))
+        if baseline is None:
+            continue
+        for arm in arms:
+            if arm == baseline_arm:
+                continue
+            candidate = summaries.get((task, arm))
+            if candidate is None:
+                continue
+            baseline_score = baseline["avg_score"]
+            candidate_score = candidate["avg_score"]
+            baseline_cost = float(baseline["cost_usd"])
+            candidate_cost = float(candidate["cost_usd"])
+            rows.append(
+                {
+                    "task": task,
+                    "baseline_arm": baseline_arm,
+                    "candidate_arm": arm,
+                    "baseline_runs": baseline["runs"],
+                    "candidate_runs": candidate["runs"],
+                    "baseline_judged_runs": baseline["judged_runs"],
+                    "candidate_judged_runs": candidate["judged_runs"],
+                    "baseline_correct_runs": baseline["correct_runs"],
+                    "candidate_correct_runs": candidate["correct_runs"],
+                    "baseline_avg_score": baseline_score,
+                    "candidate_avg_score": candidate_score,
+                    "correctness_delta": _score_delta(baseline_score, candidate_score),
+                    "baseline_cost_usd": baseline["cost_usd"],
+                    "candidate_cost_usd": candidate["cost_usd"],
+                    "cost_savings_vs_baseline_pct": _savings_pct(baseline_cost, candidate_cost),
+                    "winner": _correctness_winner(
+                        baseline_arm=baseline_arm,
+                        candidate_arm=arm,
+                        baseline_score=baseline_score,
+                        candidate_score=candidate_score,
+                        baseline_cost=baseline_cost,
+                        candidate_cost=candidate_cost,
+                    ),
+                    "baseline_judge_models": baseline["judge_models"],
+                    "candidate_judge_models": candidate["judge_models"],
+                }
+            )
+    return rows
+
+
+def _headers_dict(headers: object) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if isinstance(headers, Mapping):
+        return {str(key).lower(): str(value) for key, value in headers.items()}
+    if isinstance(headers, list):
+        for item in headers:
+            if not isinstance(item, (list, tuple)) or len(item) != 2:
+                continue
+            key, value = item
+            if isinstance(key, bytes):
+                key = key.decode("latin1", errors="replace")
+            if isinstance(value, bytes):
+                value = value.decode("latin1", errors="replace")
+            out[str(key).lower()] = str(value)
+    return out
+
+
+def _flow_model_usage_rows(result: ArmResult) -> list[dict[str, object]]:
+    flow_path = Path(result.flow_path) if result.flow_path else Path()
+    if not flow_path.is_file():
+        return []
+    try:
+        from mitmproxy.io import FlowReader
+    except ImportError:
+        return []
+    rows_by_model: dict[str, dict[str, int]] = {}
+    try:
+        with flow_path.open("rb") as handle:
+            flows = FlowReader(handle).stream()
+            for flow in flows:
+                req = getattr(flow, "request", None)
+                resp = getattr(flow, "response", None)
+                if req is None or resp is None:
+                    continue
+                path = str(getattr(req, "path", "") or "")
+                if "/v1/messages" not in path and "invoke" not in path:
+                    continue
+                try:
+                    request_payload = json.loads((req.content or b"").decode("utf-8", errors="replace"))
+                except Exception:
+                    request_payload = {}
+                model = str(request_payload.get("model") or "unknown")
+                headers = _headers_dict(getattr(resp, "headers", {}))
+                try:
+                    body = resp.content
+                except ValueError:
+                    body = resp.raw_content
+                usage = extract_usage(headers.get("content-type", ""), body or b"")
+                if usage.is_empty():
+                    continue
+                bucket = rows_by_model.setdefault(
+                    model,
+                    {"requests": 0, "input": 0, "cache_read": 0, "cache_write": 0, "output": 0},
+                )
+                bucket["requests"] += 1
+                bucket["input"] += usage.input_tokens
+                bucket["cache_read"] += usage.cache_read_input_tokens
+                bucket["cache_write"] += usage.cache_creation_input_tokens
+                bucket["output"] += usage.output_tokens
+    except Exception:
+        return []
+    return [_model_audit_row(result, model, usage, source="flow") for model, usage in sorted(rows_by_model.items())]
+
+
+def _model_audit_row(result: ArmResult, model: str, usage: dict[str, int], *, source: str) -> dict[str, object]:
+    input_tokens = int(usage.get("input", 0))
+    cache_read = int(usage.get("cache_read", 0))
+    cache_write = int(usage.get("cache_write", 0))
+    output_tokens = int(usage.get("output", 0))
+    cost = usage_cost_usd(
+        model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_tokens=cache_read,
+        cache_write_tokens=cache_write,
+    )
+    return {
+        "task": result.task,
+        "arm": result.arm,
+        "rep": result.rep,
+        "model": model,
+        "source": source,
+        "requests": int(usage.get("requests", 0)),
+        "input_tokens": input_tokens,
+        "cache_read_tokens": cache_read,
+        "cache_creation_tokens": cache_write,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + cache_read + cache_write + output_tokens,
+        "estimated_cost_usd": round(cost, 8),
+        "flow_path": result.flow_path,
+    }
+
+
+def _model_audit_rows(results: list[ArmResult]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for result in results:
+        flow_rows = _flow_model_usage_rows(result)
+        if flow_rows:
+            rows.extend(flow_rows)
+            continue
+        for model, raw_usage in sorted(result.model_usage.items()):
+            usage = _normalize_model_usage(raw_usage)
+            usage["requests"] = 0
+            rows.append(_model_audit_row(result, model, usage, source="receipt"))
+        if not result.model_usage and result.models:
+            rows.append(
+                _model_audit_row(
+                    result,
+                    result.models[0],
+                    {
+                        "requests": result.num_turns,
+                        "input": result.input_tokens,
+                        "cache_read": result.cache_read_tokens,
+                        "cache_write": result.cache_creation_tokens,
+                        "output": result.output_tokens,
+                    },
+                    source="result_totals",
+                )
+            )
     return rows
 
 
@@ -2119,7 +2661,7 @@ def _round_metric(metric: str, value: float | None) -> object:
         return round(value, 4)
     if metric == "duration_ms":
         return round(value, 1)
-    return int(round(value))
+    return round(value)
 
 
 def _savings_from_medians(baseline: float | None, current: float | None) -> float | str:
@@ -2199,6 +2741,51 @@ def _phrase_savings(metric: str, pct: object) -> str:
     else:
         word = "fewer" if value > 0 else "more"
     return f"{abs(value):g}% {word}"
+
+
+def _format_score(value: object) -> str:
+    if value == "":
+        return "unjudged"
+    return f"{float(value):.3g}"
+
+
+def _render_task_correctness_table(results: list[ArmResult]) -> str:
+    rows = _task_correctness_rows(results)
+    if not rows:
+        return ""
+    lines = [
+        "",
+        "=== Per-task correctness and cost ===",
+        "",
+        "| Task | Arm | Correct | Score | vs baseline | Cost | Cost delta | Winner |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in rows:
+        lines.append(
+            "| {task} | {arm} | {correct}/{judged} | {score} | {delta} | ${cost:.4f} | {cost_delta} | {winner} |".format(
+                task=row["task"],
+                arm=row["candidate_arm"],
+                correct=row["candidate_correct_runs"],
+                judged=row["candidate_judged_runs"],
+                score=_format_score(row["candidate_avg_score"]),
+                delta=_format_score(row["correctness_delta"]) if row["correctness_delta"] != "" else "unjudged",
+                cost=float(row["candidate_cost_usd"]),
+                cost_delta=_phrase_savings("cost", row["cost_savings_vs_baseline_pct"]),
+                winner=row["winner"],
+            )
+        )
+        lines.append(
+            "| {task} | {arm} | {correct}/{judged} | {score} | baseline | ${cost:.4f} | baseline | {winner} |".format(
+                task=row["task"],
+                arm=row["baseline_arm"],
+                correct=row["baseline_correct_runs"],
+                judged=row["baseline_judged_runs"],
+                score=_format_score(row["baseline_avg_score"]),
+                cost=float(row["baseline_cost_usd"]),
+                winner=row["winner"],
+            )
+        )
+    return "\n".join(lines)
 
 
 def _render_task_metric_tables(results: list[ArmResult]) -> str:
@@ -2352,7 +2939,12 @@ def _write_results_jsonl(run_dir: Path, results: list[ArmResult]) -> None:
     )
 
 
-def write_csv_artifacts(run_dir: Path, results: list[ArmResult]) -> None:
+def write_csv_artifacts(
+    run_dir: Path,
+    results: list[ArmResult],
+    pairwise_rows: list[PairwiseQualityResult] | None = None,
+) -> None:
+    pairwise_rows = pairwise_rows if pairwise_rows is not None else build_pairwise_quality_rows(results)
     _write_csv(
         run_dir / "results.csv",
         _detail_rows(results),
@@ -2430,6 +3022,99 @@ def write_csv_artifacts(run_dir: Path, results: list[ArmResult]) -> None:
             "baseline_tool_calls_median",
             "candidate_tool_calls_median",
             "tool_calls_savings_vs_baseline_pct",
+        ],
+    )
+    _write_csv(
+        run_dir / "task_correctness.csv",
+        _task_correctness_rows(results),
+        [
+            "task",
+            "baseline_arm",
+            "candidate_arm",
+            "baseline_runs",
+            "candidate_runs",
+            "baseline_judged_runs",
+            "candidate_judged_runs",
+            "baseline_correct_runs",
+            "candidate_correct_runs",
+            "baseline_avg_score",
+            "candidate_avg_score",
+            "correctness_delta",
+            "baseline_cost_usd",
+            "candidate_cost_usd",
+            "cost_savings_vs_baseline_pct",
+            "winner",
+            "baseline_judge_models",
+            "candidate_judge_models",
+        ],
+    )
+    _write_csv(
+        run_dir / "pairwise_quality.csv",
+        _pairwise_quality_csv_rows(pairwise_rows),
+        [
+            "task",
+            "rep",
+            "baseline_arm",
+            "candidate_arm",
+            "status",
+            "judged",
+            "baseline_score",
+            "candidate_score",
+            "quality_delta",
+            "winner",
+            "candidate_at_least_baseline",
+            "judge_model",
+            "judge_reason",
+            "baseline_correct",
+            "candidate_correct",
+            "baseline_cost_usd",
+            "candidate_cost_usd",
+            "raw_saved_usd",
+            "raw_saved_tokens",
+            "quality_adjusted_saved_usd",
+            "quality_adjusted_saved_tokens",
+        ],
+    )
+    _write_csv(
+        run_dir / "quality_adjusted_summary.csv",
+        _quality_adjusted_summary_rows(pairwise_rows),
+        [
+            "baseline_arm",
+            "candidate_arm",
+            "pairs",
+            "judged_pairs",
+            "quality_passed_pairs",
+            "quality_failed_pairs",
+            "unjudged_pairs",
+            "candidate_at_least_baseline_rate",
+            "avg_quality_delta",
+            "baseline_cost_usd",
+            "candidate_cost_usd",
+            "raw_saved_usd",
+            "quality_adjusted_saved_usd",
+            "raw_saved_tokens",
+            "quality_adjusted_saved_tokens",
+            "raw_cost_savings_vs_baseline_pct",
+            "quality_adjusted_cost_savings_vs_baseline_pct",
+        ],
+    )
+    _write_csv(
+        run_dir / "model_audit.csv",
+        _model_audit_rows(results),
+        [
+            "task",
+            "arm",
+            "rep",
+            "model",
+            "source",
+            "requests",
+            "input_tokens",
+            "cache_read_tokens",
+            "cache_creation_tokens",
+            "output_tokens",
+            "total_tokens",
+            "estimated_cost_usd",
+            "flow_path",
         ],
     )
 
@@ -2720,9 +3405,20 @@ def main() -> int:
                 timeout=args.timeout,
                 agent_env=agent_env,
             )
+        pairwise_rows = (
+            judge_pairwise_quality(
+                report_results,
+                judge_model=judge_model,
+                judge_agent_command=judge_agent_command,
+                timeout=args.timeout,
+                agent_env=agent_env,
+            )
+            if args.judge
+            else build_pairwise_quality_rows(report_results)
+        )
         _apply_savings(report_results)
         _write_results_jsonl(rdir, report_results)
-        write_csv_artifacts(rdir, report_results)
+        write_csv_artifacts(rdir, report_results, pairwise_rows)
         rep_txt = report(report_results)
         (rdir / "report.txt").write_text(rep_txt)
         print(rep_txt)
@@ -2950,9 +3646,20 @@ def main() -> int:
             timeout=args.timeout,
             agent_env=agent_env,
         )
+    pairwise_rows = (
+        judge_pairwise_quality(
+            results,
+            judge_model=judge_model,
+            judge_agent_command=judge_agent_command,
+            timeout=args.timeout,
+            agent_env=agent_env,
+        )
+        if args.judge
+        else build_pairwise_quality_rows(results)
+    )
     _apply_savings(results)
     _write_results_jsonl(run_dir, results)
-    write_csv_artifacts(run_dir, results)
+    write_csv_artifacts(run_dir, results, pairwise_rows)
     rep_txt = report(results)
     (run_dir / "report.txt").write_text(rep_txt)
     print(rep_txt)
