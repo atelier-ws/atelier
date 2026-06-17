@@ -113,7 +113,6 @@ jobs:
           fi
 
           gh release create "${TAG}" \
-            --clobber \
             --title "Atelier ${TAG}" \
             --notes-file RELEASE_NOTES.md \
             "${assets[@]}"
