@@ -151,7 +151,7 @@ else
 
     # If TAG is "latest", resolve the actual version tag from GitHub API
     if [[ "$TAG" == "latest" ]]; then
-        REAL_TAG=$(curl -sI https://github.com/atelier-ws/atelier-dev/releases/latest | grep -i location | awk -F/ '{print $NF}' | tr -d '\r')
+        REAL_TAG=$(curl -sI https://github.com/atelier-ws/atelier/releases/latest | grep -i location | awk -F/ '{print $NF}' | tr -d '\r')
         if [[ -z "$REAL_TAG" ]]; then
             echo "Failed to resolve 'latest' tag. Falling back to cached 'latest' if available." >&2
         else
@@ -161,7 +161,7 @@ else
 
     SUFFIX="${OS}-${ARCH}"
     ASSET="atelier-distribution-${SUFFIX}.tar.gz"
-    URL="https://github.com/atelier-ws/atelier-dev/releases/download/${TAG}/${ASSET}"
+    URL="https://github.com/atelier-ws/atelier/releases/download/${TAG}/${ASSET}"
 
     CACHE_DIR="${CACHE_ROOT}/${TAG}/${SUFFIX}"
     VENV="${CACHE_DIR}/venv"
