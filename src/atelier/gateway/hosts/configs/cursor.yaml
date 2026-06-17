@@ -1,0 +1,87 @@
+host_id: cursor
+name: Cursor IDE
+version: 1.0.0
+description: Integration with Cursor IDE for AI-native code development
+platforms:
+- macos
+- linux
+- windows
+detection:
+  command: cursor --version
+  config_path: ~/.cursor/mcp.json
+recommended_packs:
+- atelier-pack-coding-general
+mcp:
+  servers:
+  - name: atelier
+    command: atelier
+    args:
+    - mcp
+    - --host
+    - cursor
+    env:
+      ATELIER_ROOT: ~/.atelier
+installation:
+  macos: '# Install Atelier
+
+    brew install atelier
+
+
+    # Setup Cursor integration
+
+    atelier host setup cursor
+
+
+    # Verify installation
+
+    atelier host info cursor
+
+    '
+  linux: '# Install Atelier
+
+    sudo apt-get install atelier
+
+
+    # Setup Cursor integration
+
+    atelier host setup cursor
+
+
+    # Verify installation
+
+    atelier host info cursor
+
+    '
+  windows: '# Install Atelier
+
+    choco install atelier
+
+
+    # Setup Cursor integration
+
+    atelier host setup cursor
+
+
+    # Verify installation
+
+    atelier host info cursor
+
+    '
+prompt_templates:
+- name: session-optimization
+  template: 'Atelier budget optimizer is active for Cursor.
+
+    Always prefer Atelier MCP tools for file I/O, search, edits, shell, and code-intel
+    work; use native host tools only when Atelier returns `noop`, is hidden, or is
+    unavailable.
+
+    Before changing files, name the deliverable and summarize the smallest viable
+    plan.
+
+    Keep context narrow: the current goal, relevant files, failing command/output,
+    and known constraints; restate it in under 10 bullets after compaction.
+
+    If more than 10 minutes pass without an edit, name the expected deliverable or
+    check with the user.
+
+    If the same approach fails twice, change approach; do not retry a third time.'

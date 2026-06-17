@@ -1,0 +1,12 @@
+{
+  "task": "Apply a live state change",
+  "domain": "state.change",
+  "plan": [
+    "Resolve and record the canonical identifier",
+    "Capture pre-change state",
+    "Apply the change",
+    "Read back the state and diff against intent"
+  ],
+  "files": [],
+  "tools": ["api.write"]
+}

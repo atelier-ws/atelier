@@ -1,0 +1,129 @@
+#!/bin/bash
+# Pre-commit hook — Format staged files, run fast quality checks
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+# Cross-platform file size function
+get_file_size() {
+    local file=$1
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        stat -f%z "$file" 2>/dev/null
+    else
+        stat -c%s "$file" 2>/dev/null
+    fi
+}
+
+# Determine files to check
+if [ -n "$1" ]; then
+    FILES_TO_CHECK=("$@")
+    echo "📁 Checking ${#FILES_TO_CHECK[@]} provided files..."
+else
+    FILES_TO_CHECK=()
+    while IFS= read -r file; do
+        [[ -n "$file" ]] && FILES_TO_CHECK+=("$file")
+    done < <(git diff --cached --name-only --diff-filter=ACM)
+    echo "📁 Checking ${#FILES_TO_CHECK[@]} staged files..."
+fi
+
+if [ ${#FILES_TO_CHECK[@]} -eq 0 ]; then
+    echo "✅ No files to check."
+    exit 0
+fi
+
+if [ ${#FILES_TO_CHECK[@]} -le 10 ]; then
+    for file in "${FILES_TO_CHECK[@]}"; do
+        echo "   - $file"
+    done
+fi
+
+# Filter Python files
+PYTHON_FILES=()
+for file in "${FILES_TO_CHECK[@]}"; do
+    if [[ "$file" == *.py ]] && [[ "$file" != __pycache__/* ]]; then
+        PYTHON_FILES+=("$file")
+    fi
+done
+
+# 1. Code formatting — format staged files and re-stage them
+if [ ${#PYTHON_FILES[@]} -gt 0 ]; then
+    echo "📝 Running code formatting..."
+
+    # Run ruff check --fix (lint auto-fixes). Handles exit codes explicitly:
+    #   0 = all good (no issues or all fixed)
+    #   1+ = unfixable issues remain — warn but proceed to black anyway
+    set +e
+    uv run ruff check --fix "${PYTHON_FILES[@]}"
+    RUFF_EXIT=$?
+    set -e
+    if [ $RUFF_EXIT -ne 0 ]; then
+        echo -e "\033[1;33m⚠️  ruff found issues that could not be auto-fixed (exit code $RUFF_EXIT).\033[0m"
+        echo "   Fix remaining issues or use 'git commit --no-verify' to bypass."
+        exit 1
+    fi
+
+    uvx black "${PYTHON_FILES[@]}"
+
+    # Check if any files were modified by formatting — never auto-stage
+    FORMATTED_FILES=()
+    while IFS= read -r file; do
+        [[ -n "$file" ]] && FORMATTED_FILES+=("$file")
+    done < <(git diff --name-only -- "${PYTHON_FILES[@]}")
+    if [ ${#FORMATTED_FILES[@]} -gt 0 ]; then
+        echo -e "\n\033[1;31m================================================================================\033[0m"
+        echo -e "\033[1;31m❌  FORMATTING APPLIED — COMMIT ABORTED\033[0m"
+        echo -e "\n📝  The following files were auto-formatted during pre-commit checks."
+        echo -e "    \033[1;33mPlease review the changes, stage them, and commit again:\033[0m"
+        echo -e "\033[1;31m================================================================================\033[0m"
+        for file in "${FORMATTED_FILES[@]}"; do
+            echo "    - $file"
+        done
+        echo -e "\033[1;31m================================================================================\033[0m\n"
+        exit 1
+    fi
+fi
+
+# 2. Type checking — run mypy on staged Python files under src/
+SRC_PYTHON_FILES=()
+for file in "${PYTHON_FILES[@]}"; do
+    if [[ "$file" == src/* ]]; then
+        SRC_PYTHON_FILES+=("$file")
+    fi
+done
+if [ ${#SRC_PYTHON_FILES[@]} -gt 0 ]; then
+    echo "🔍 Running type checking..."
+
+    set +e
+    uv run mypy "${SRC_PYTHON_FILES[@]}"
+    MYPY_EXIT=$?
+    set -e
+    if [ $MYPY_EXIT -ne 0 ]; then
+        echo -e "\033[1;31m❌ Type checking failed (exit code $MYPY_EXIT).\033[0m"
+        echo "   Fix the issues above or use 'git commit --no-verify' to bypass."
+        exit 1
+    fi
+fi
+
+# 3. Large file detection
+echo "📏 Checking for large files..."
+MAX_SIZE=$((10 * 1024 * 1024)) # 10 MB
+LARGE_FILES=()
+for file in "${FILES_TO_CHECK[@]}"; do
+    if [ -f "$file" ] && [ "$(get_file_size "$file")" -gt "$MAX_SIZE" ]; then
+        LARGE_FILES+=("$file")
+    fi
+done
+
+if [ ${#LARGE_FILES[@]} -gt 0 ]; then
+    echo -e "\033[1;31m❌ Large files detected (>10MB):\033[0m"
+    for f in "${LARGE_FILES[@]}"; do
+        echo "   - $f"
+    done
+    echo "Consider using Git LFS or removing these files."
+    echo "Use 'git commit --no-verify' to bypass."
+    exit 1
+fi
+
+echo "✅ All pre-commit checks passed successfully!"
+exit 0

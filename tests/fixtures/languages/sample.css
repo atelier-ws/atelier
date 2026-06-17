@@ -1,0 +1,14 @@
+/* Sample stylesheet fixture */
+.button {
+  color: red;
+  padding: 4px 8px;
+}
+
+#header {
+  margin: 0;
+  font-weight: bold;
+}
+
+.button:hover {
+  color: darkred;
+}

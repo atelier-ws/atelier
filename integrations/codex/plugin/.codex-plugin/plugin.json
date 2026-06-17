@@ -1,0 +1,26 @@
+{
+  "name": "atelier",
+  "version": "0.1.0",
+  "description": "AI task/procedure/runtime layer for agentic workflows",
+  "author": {
+    "name": "Atelier Team"
+  },
+  "license": "MIT",
+  "keywords": ["task", "mcp", "skills", "workflow"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Atelier",
+    "shortDescription": "Atelier tools and trace capture for Codex.",
+    "longDescription": "Bundle the Atelier MCP transport, role skills, standalone custom agents, and trace capture for Codex. Atelier code instructions apply to the main session through AGENTS.md; atelier.code, atelier.explore, atelier.review, atelier.plan, atelier.execute, atelier.research, and atelier.solve are available as custom subagents.",
+    "developerName": "Atelier Team",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Use AGENTS.md for code mode; the legacy atelier_code config alias is not required.",
+      "Spawn atelier.plan, atelier.explore, or atelier.review for focused analysis.",
+      "Spawn atelier.execute, atelier.solve, atelier.research, or atelier.code when appropriate."
+    ],
+    "brandColor": "#0f766e"
+  }
+}

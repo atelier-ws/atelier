@@ -1,0 +1,150 @@
+#!/bin/bash
+# Pre-push hook — Atelier CI-equivalent validation
+#
+# Runs all checks that GitHub Actions would run on push/PR:
+#   - make lint        (ruff check)
+#   - black --check    (formatting)
+#   - make typecheck   (mypy — strict)
+#   - make docs-check  (agent context sync + docs governance)
+#   - make test        (pytest)
+#   - uv audit           (dependency vulnerability audit)
+ #
+ # Bypass with:  git push --no-verify
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+echo "🚀 Running pre-push checks..."
+
+CURRENT_BRANCH=$(git branch --show-current)
+REMOTE_INFO=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
+REMOTE_BRANCH=$(echo "$REMOTE_INFO" | sed 's/.*\///')
+
+echo "📍 Pushing $CURRENT_BRANCH → $REMOTE_BRANCH"
+
+# ---------------------------------------------------------------------------
+# 0. Branch protection
+# ---------------------------------------------------------------------------
+PROTECTED_BRANCHES=("main" "master" "production" "staging")
+
+echo "🔍 Checking branch protection..."
+for protected in "${PROTECTED_BRANCHES[@]}"; do
+    if [[ "$REMOTE_BRANCH" == "$protected" ]]; then
+        echo -e "\033[1;31m❌ Direct push to protected branch '$protected' is not allowed.\033[0m"
+        echo "   Create a pull request instead."
+        echo "   Use 'git push --no-verify' in emergencies."
+        exit 1
+    fi
+done
+
+# ---------------------------------------------------------------------------
+# 1. Unauthorized .md file check (atelier-specific)
+# ---------------------------------------------------------------------------
+echo "📄 Checking for unauthorized .md files..."
+md_files=$(git ls-files "*.md" \
+    | grep -v "^docs/" \
+    | grep -v "^docs-internal/" \
+    | grep -v "^docs-archive/" \
+    | grep -v "^reports/" \
+    | grep -v "^.planning/" \
+    | grep -v "^.lessons/" \
+    | grep -v "^templates/" \
+    | grep -v "^.ruler/" \
+    | grep -v "^.agent/" \
+    | grep -v "^skills/" \
+    | grep -v "^integrations/" \
+    | grep -v "^.github/" \
+    | grep -v "^.knowledge/" \
+    | grep -v "^internal/" \
+    | grep -v "^tests/fixtures/memory/" \
+    | grep -v "/prompts/" \
+    | grep -v "AGENTS" \
+    | grep -v "QUICK_REFERENCE" \
+    | grep -v "README\.md$" \
+    | grep -v "SECURITY\.md$" \
+    | grep -v "CLAUDE\.md$" \
+    | grep -v "SKILL\.md$" \
+    | grep -v "_README\.md$" \
+    | grep -v "LICENSE\.md$" \
+    | grep -v "CHANGELOG\.md$" \
+    | grep -v "CONTRIBUTING\.md$" \
+    | grep -v "GEMINI\.md$" || true)
+
+if [ -n "$md_files" ]; then
+    echo -e "\033[1;31m❌ Unauthorized .md files found:\033[0m"
+    echo "$md_files"
+    echo ""
+    echo "Allowed: docs/, docs-archive/, reports/, .planning/, .lessons/, templates/,"
+    echo "  .ruler/, .agent/, skills/, integrations/, .github/,"
+    echo "  .knowledge/, internal/, tests/fixtures/memory/,"
+    echo "  AGENTS*, QUICK_REFERENCE*,"
+    echo "  README.md, SECURITY.md, SKILL.md,"
+    echo "  LICENSE.md, CHANGELOG.md, CONTRIBUTING.md, GEMINI.md"
+    exit 1
+fi
+echo "✅ No unauthorized .md files."
+
+# ---------------------------------------------------------------------------
+# 3. Lint (ruff check) — same as CI lint-format job
+# ---------------------------------------------------------------------------
+echo "🔍 make lint ..."
+if ! make lint 2>&1; then
+    echo -e "\033[1;31m❌ Lint failed. Run 'make format' locally and commit.\033[0m"
+    echo "   Or use 'git push --no-verify' to bypass."
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Format check (black) — same as CI lint-format job
+# ---------------------------------------------------------------------------
+echo "🔍 black --check ..."
+if ! uv run black --check src tests 2>&1; then
+    echo -e "\033[1;31m❌ Formatting check failed. Run 'make format' locally.\033[0m"
+    echo "   Or use 'git push --no-verify' to bypass."
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# 5. Type check (mypy --strict) — same as CI typecheck job
+# ---------------------------------------------------------------------------
+echo "🔍 make typecheck ..."
+if ! make typecheck 2>&1; then
+    echo -e "\033[1;31m❌ Type check failed. Fix type errors or use 'git push --no-verify' to bypass.\033[0m"
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# 6. Docs governance — same as CI docs-check job
+# ---------------------------------------------------------------------------
+echo "📖 make docs-check ..."
+if ! make docs-check 2>&1; then
+    echo -e "\033[1;31m❌ Docs check failed. Run 'make docs-check' locally to diagnose.\033[0m"
+    echo "   Or use 'git push --no-verify' to bypass."
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# 7. Tests (pytest) — same as CI test job
+# ---------------------------------------------------------------------------
+echo "🧪 make test ..."
+if ! env -u ATELIER_WORKSPACE_ROOT -u CLAUDE_WORKSPACE_ROOT -u CURSOR_WORKSPACE_ROOT -u VSCODE_CWD -u ATELIER_LESSONS_ROOT -u ATELIER_ROOT make test 2>&1; then
+    echo -e "\033[1;31m❌ Tests failed. Run 'make test' locally to diagnose.\033[0m"
+    echo "   Or use 'git push --no-verify' to bypass."
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# 8. Dependency audit (uv audit) — same as CI security job
+# ---------------------------------------------------------------------------
+echo "🔒 Dependency audit ..."
+if ! uv audit --frozen 2>&1; then
+    echo -e "\033[1;31m❌ Dependency audit found vulnerabilities.\033[0m"
+    echo "   Run 'uv sync --upgrade' or use 'git push --no-verify' to bypass."
+    exit 1
+fi
+
+echo ""
+echo "✅ All CI-equivalent pre-push checks passed!"
+echo "🚀 Pushing $CURRENT_BRANCH to $REMOTE_BRANCH..."
