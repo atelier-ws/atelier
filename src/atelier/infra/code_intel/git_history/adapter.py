@@ -115,11 +115,12 @@ class DeletedHistorySearchAdapter:
 
     def _ensure_history_ready(
         self, *, on_commit: Callable[[int, int], None] | None = None
-    ) -> None:
+    ) -> dict[str, int]:
         import logging
         current_head = self._current_head()
         if current_head is None:
-            return
+            return {"commits_walked": 0, "symbols_found": 0, "renames_found": 0, "deletions_found": 0}
+        
         with closing(self._connection_factory()) as conn:
             SymbolGraveyard(conn)
             row = conn.execute("SELECT value FROM engine_state WHERE key = ?", (self._head_state_key,)).fetchone()
@@ -131,17 +132,25 @@ class DeletedHistorySearchAdapter:
             if previous_head == current_head and graveyard_count > 0:
                 logging.debug(f"Git history already indexed for HEAD {current_head[:8]}... ({graveyard_count} entries)")
                 self._history_ready = True
-                return
+                return {"commits_walked": 0, "symbols_found": 0, "renames_found": 0, "deletions_found": 0}
             
             # Log why we're walking
+            since_sha = previous_head if previous_head != current_head else None
             if previous_head is None:
                 logging.info("Git history not yet indexed, starting walk...")
             elif previous_head != current_head:
-                logging.info(f"Git HEAD changed ({previous_head[:8]}... → {current_head[:8]}...), re-walking history")
+                logging.info(f"Git HEAD changed ({previous_head[:8]}... → {current_head[:8]}...), walking new commits")
             elif graveyard_count == 0:
                 logging.info("Git history graveyard is empty, re-walking...")
             
-            walk_history(self._repo_root, SymbolGraveyard(conn), on_commit=on_commit)
+            # Walk history with since_sha for incremental indexing
+            summary = walk_history(
+                self._repo_root,
+                SymbolGraveyard(conn),
+                since_sha=since_sha,
+                on_commit=on_commit,
+            )
+            
             conn.execute(
                 """
                 INSERT INTO engine_state(key, value)
@@ -152,6 +161,7 @@ class DeletedHistorySearchAdapter:
             )
             conn.commit()
         self._history_ready = True
+        return summary
 
     def _current_head(self) -> str | None:
         pygit2 = require_pygit2()
