@@ -16,6 +16,9 @@ set -e
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
+# Capture stdin immediately — git only pipes it once at hook startup.
+PUSH_REFS="$(cat)"
+
 echo "🚀 Running pre-push checks..."
 
 CURRENT_BRANCH=$(git branch --show-current)
@@ -149,3 +152,24 @@ fi
 echo ""
 echo "✅ All CI-equivalent pre-push checks passed!"
 echo "🚀 Pushing $CURRENT_BRANCH to $REMOTE_BRANCH..."
+
+# ---------------------------------------------------------------------------
+# Mirror v* tags to the public atelier remote (if configured)
+# ---------------------------------------------------------------------------
+# One-time setup: git remote add atelier https://github.com/atelier-ws/atelier.git
+# Then PAT auth is handled by your credential manager as normal.
+if git remote get-url atelier >/dev/null 2>&1; then
+    # Read the refs being pushed from stdin to detect tag pushes.
+    # pre-push stdin: <local-ref> <local-sha> <remote-ref> <remote-sha>
+    PUSHED_TAGS=()
+    while IFS=' ' read -r local_ref local_sha remote_ref _remote_sha; do
+        if [[ "$local_ref" == refs/tags/v* ]]; then
+            PUSHED_TAGS+=("$local_ref")
+        fi
+    done <<< "$PUSH_REFS"
+    if [[ ${#PUSHED_TAGS[@]} -gt 0 ]]; then
+        echo "🔁 Mirroring tags to public atelier remote: ${PUSHED_TAGS[*]}"
+        git push atelier --no-verify "${PUSHED_TAGS[@]}" --force 2>&1 || \
+            echo "  ⚠  Mirror to atelier failed (non-fatal — push to atelier-dev still succeeded)"
+    fi
+fi
