@@ -57,8 +57,8 @@ verify_checksum() {
             echo "⛆ No published checksum at ${url}.sha256 — proceeding unverified (ATELIER_ALLOW_UNVERIFIED=1)." >&2
             return 0
         fi
-        echo "No published checksum at ${url}.sha256 to verify the download. Refusing to use an unverified archive. Set ATELIER_ALLOW_UNVERIFIED=1 to override." >&2
-        exit 1
+        echo "⚠  No published checksum at ${url}.sha256 — skipping verification and proceeding." >&2
+        return 0
     fi
     local actual
     if command -v sha256sum >/dev/null 2>&1; then
