@@ -1,0 +1,6 @@
+name = "atelier-docs"
+compatibility_date = "2026-06-10"
+
+# Static assets served by the Worker (Docusaurus build output)
+[assets]
+directory = "build/"

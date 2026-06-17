@@ -1,0 +1,42 @@
+{
+  "name": "code-audit-cross-check-fixture",
+  "scenario": "A repository contains a real raw-SQL injection bug and a real missing regression test, but one reviewer also raises a plausible-sounding false positive about a fixture secret that is actually a benign placeholder.",
+  "truth": {
+    "accepted_findings": [
+      "Raw SQL query interpolates user input directly and is vulnerable to injection.",
+      "Missing regression coverage for overlapping cron runs can hide the data-corruption bug."
+    ],
+    "rejected_findings": [
+      "Fixture token in test data is a production secret exposure."
+    ]
+  },
+  "single_pass": {
+    "reviewer": "security",
+    "findings": [
+      "Raw SQL query interpolates user input directly and is vulnerable to injection.",
+      "Fixture token in test data is a production secret exposure.",
+      "Missing regression coverage for overlapping cron runs can hide the data-corruption bug."
+    ]
+  },
+  "cross_check": {
+    "reviewers": [
+      "security",
+      "performance",
+      "tests",
+      "consolidator"
+    ],
+    "findings": [
+      "Raw SQL query interpolates user input directly and is vulnerable to injection.",
+      "Missing regression coverage for overlapping cron runs can hide the data-corruption bug."
+    ],
+    "rejected": [
+      "Fixture token in test data is a production secret exposure."
+    ]
+  },
+  "expected_metrics": {
+    "single_pass_precision": 0.6667,
+    "cross_check_precision": 1.0,
+    "single_pass_recall": 1.0,
+    "cross_check_recall": 1.0
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "reduction_pct": 13.27,
+  "note": "Measured baseline from WP-50 first honest replay run (2026-05-05). The no-regression gate in test_savings_replay.py asserts that future runs stay within 5 percentage points of this value.",
+  "source_commit": "v3.0.0"
+}

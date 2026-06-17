@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""PreToolUse read-after-edit guard.
+
+Blocks the one wasteful case: a full re-read (``expand=true`` with no range) of a
+file already edited this session. The edit response already returned the changed
+region, and a full re-read re-injects the whole file -- which is then re-cached
+on every later turn. Targeted range reads and reads of un-edited files pass
+through untouched.
+
+Edited files are recorded by loop_discipline_post.py (shared session state).
+Fail-open; opt-out via ATELIER_READ_AFTER_EDIT_GUARD=0.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import hashlib
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+
+def _root() -> Path:
+    raw = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT")
+    return Path(raw) if raw else Path.home() / ".atelier"
+
+
+def _edited_paths() -> set[str]:
+    workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+    sp = _root() / "workspaces" / h / "loop_discipline.json"
+    with contextlib.suppress(OSError, json.JSONDecodeError):
+        data = json.loads(sp.read_text("utf-8"))
+        if isinstance(data, dict):
+            return {str(p) for p in (data.get("edited_paths") or [])}
+    return set()
+
+
+def _is_read(name: str, ti: dict[str, Any]) -> bool:
+    if name.endswith("__read") or name == "read":
+        return True
+    return "path" in ti and "edits" not in ti and "command" not in ti
+
+
+def main() -> int:
+    if os.environ.get("ATELIER_READ_AFTER_EDIT_GUARD", "1") == "0":
+        return 0
+    try:
+        payload = json.loads(sys.stdin.read() or "{}")
+    except (json.JSONDecodeError, TypeError, OSError):
+        return 0
+    name = str(payload.get("tool_name") or "")
+    ti = payload.get("tool_input") or {}
+    if not isinstance(ti, dict) or not _is_read(name, ti):
+        return 0
+    raw_path = str(ti.get("path") or "")
+    has_range = bool(ti.get("range")) or "#" in raw_path
+    if not bool(ti.get("expand")) or has_range:
+        return 0
+    base = Path(raw_path.split("#")[0]).name
+    if not base or base not in _edited_paths():
+        return 0
+    reason = (
+        f"You edited {base} this session; its edit response already returned the changed region. "
+        "Avoid expand=true here -- it re-sends the whole file and is re-cached on every later turn. "
+        'Read the specific lines you need instead, e.g. range="L1-L120".'
+    )
+    print(json.dumps({"decision": "block", "reason": reason}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

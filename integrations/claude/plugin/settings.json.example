@@ -1,0 +1,16 @@
+{
+  "agent": "atelier:code",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Read|Grep|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/post_tool_use_compact.py"
+          }
+        ]
+      }
+    ]
+  }
+}

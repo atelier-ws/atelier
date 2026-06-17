@@ -1,0 +1,134 @@
+# Atelier
+
+<!-- cspell:ignore Alamofire Excalidraw ast-grep codegraph ctags django jcodemunch nohit okhttp scip serena tokio vscode zoekt -->
+
+[![License](https://img.shields.io/github/license/atelier-ws/atelier?style=for-the-badge)](https://github.com/atelier-ws/atelier/blob/main/LICENSE)
+[![Tests](https://img.shields.io/github/actions/workflow/status/atelier-ws/atelier/tests.yml?style=for-the-badge&label=tests)](https://github.com/atelier-ws/atelier/actions/workflows/tests.yml)
+[![Latest release](https://img.shields.io/github/v/release/atelier-ws/atelier?style=for-the-badge)](https://github.com/atelier-ws/atelier/releases)
+[![Total downloads](https://img.shields.io/github/downloads/atelier-ws/atelier/total?style=for-the-badge)](https://github.com/atelier-ws/atelier/releases)
+
+Local-first MCP tools, agents, and skills that help coding agents spend less time rediscovering your repo.
+
+> Claude Code: ~52% cheaper · 79.8% fewer tokens · 80.9% fewer tool calls
+
+Tags: `Claude Code` · `Codex` · `opencode`
+
+## Why it works?
+
+- **Grounded code intelligence:** search, file reads, exact symbols, callers, callees, usages, and outlines.
+- **Safer agent edits:** deterministic edit tools plus validation-friendly shell access.
+- **Local memory:** repo/session recall without requiring a hosted backend.
+- **Host-ready packaging:** MCP configs, agents, and skills for popular coding agents.
+- **Cost-aware workflow:** benchmark and savings reports from checked-in artifacts.
+
+## Quick Start
+
+```bash
+curl -fsSL https://install.atelier.ws | bash
+atelier init
+```
+
+Update an existing install:
+
+```bash
+atelier update
+```
+
+## MCP Tools
+
+| Tool                             | Use                                                  |
+| -------------------------------- | ---------------------------------------------------- |
+| `search` / `grep`                | Find code and docs without broad raw scans.          |
+| `read`                           | Budgeted file reads by outline, range, or full file. |
+| `node`                           | Exact source for a symbol.                           |
+| `callers` / `callees` / `usages` | Indexed code relationships.                          |
+| `edit`                           | Deterministic file edits.                            |
+| `memory`                         | Local memory and recall.                             |
+| `shell`                          | Compact command execution when needed.               |
+
+## Agents and Skills
+
+Packaged agents in [integrations/agents/](integrations/agents/):
+
+| Agent    | Subagent         | Writes? | Use                                                             | Details                                                                                                                               |
+| -------- | ---------------- | ------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| code     | atelier:code     | Yes     | Main coding mode for edits, refactors, bug fixes, and features. | Uses Atelier MCP tools for file I/O, search, edits, and shell work; applies shared coding guidelines and validates before concluding. |
+| explore  | atelier:explore  | No      | Read-only codebase exploration.                                 | Locates files, symbols, and patterns; reports cited findings; never edits, creates, or deletes files.                                 |
+| plan     | atelier:plan     | No      | Grounded implementation planning.                               | Explores enough to produce a concrete plan with files, ordering, validation, risks, and open questions; never edits.                  |
+| execute  | atelier:execute  | Yes     | Focused execution of an accepted plan or narrow task.           | Makes the smallest verified code change, self-verifies, and stops for review.                                                         |
+| solve    | atelier:solve    | Yes     | Autonomous end-to-end task solving.                             | Produces the required result early, iterates against real checks, and owns completion.                                                |
+| review   | atelier:review   | No      | Adversarial code review.                                        | Applies the verification ladder and rubric discipline; reads code directly and never edits source files.                              |
+| research | atelier:research | No      | External research.                                              | Fetches web sources, GitHub repos, and package docs; synthesizes with citations; never edits files.                                   |
+
+Packaged skills in [integrations/skills/](integrations/skills/):
+
+`benchmark` · `knowledge` · `orchestrate` · `settings` · `swarms`
+
+## Benchmarks
+
+Verify benchmark Baseline (CC) VS Atelier using raw works done by each: [benchmarks/codebench/results/published/](benchmarks/codebench/results/published/)
+
+Filtered headline excludes Excalidraw and Alamofire and uses the checked-in task medians for VS Code, Django, Tokio, OkHttp, and gin.
+
+| Codebase            | Cost              | Tokens          | Tool calls      |
+| ------------------- | ----------------- | --------------- | --------------- |
+| VS Code             | 13.1% cheaper     | 77.5% fewer     | 67.9% fewer     |
+| Django              | 84.8% cheaper     | 92.0% fewer     | 100.0% fewer    |
+| Tokio               | 89.1% cheaper     | 97.5% fewer     | 100.0% fewer    |
+| OkHttp              | 81.0% cheaper     | 76.8% fewer     | 100.0% fewer    |
+| gin                 | 5.5% cheaper      | 5.2% more       | even            |
+| **Overall, pooled** | **52.4% cheaper** | **79.8% fewer** | **80.9% fewer** |
+
+Run CodeBench:
+
+```bash
+atelier benchmark codebench \
+  --arm baseline --arm atelier \
+  --task all \
+  --reps 4 \
+  --model claude-sonnet-4-6 \
+  --cli-driver claude
+```
+
+Run local provider/read benchmarks:
+
+```bash
+atelier benchmark providers
+```
+
+Provider/read benchmark numbers: triplet is `correctness / median tokens / median ms`; `-` means unsupported or not benchmarked.
+
+| Test type         | [atelier](https://github.com/atelier-ws/atelier) | [atelier-zoekt](https://github.com/sourcegraph/zoekt) | [ast-grep](https://github.com/ast-grep/ast-grep) | [code-index-mcp](https://github.com/johnhuang316/code-index-mcp) | [codegraph](https://github.com/colbymchenry/codegraph) | [jcodemunch-mcp](https://github.com/jgravelle/jcodemunch-mcp) | [scip-python](https://github.com/sourcegraph/scip-python) | [serena](https://github.com/oraios/serena) | [universal-ctags](https://github.com/universal-ctags/ctags) | [zoekt](https://github.com/sourcegraph/zoekt) |
+| ----------------- | ------------------------------------------------ | ----------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------- | --------------------------------------------- |
+| callees           | **1.00 / 78 / 114**                              | -                                                     | -                                                | -                                                                | 0.85 / 112 / 135                                       | 0.97 / 1654 / 283                                             | -                                                         | -                                          | -                                                           | -                                             |
+| callers           | **1.00 / 72 / 48**                               | -                                                     | 0.52 / 276 / 342                                 | -                                                                | 0.99 / 204 / 136                                       | 0.53 / 1666 / 201                                             | 0.13 / 59 / 0.09                                          | 0.86 / 450 / 214                           | -                                                           | -                                             |
+| exact_search      | **1.00 / 26 / 53**                               | 0.98 / 73 / 7                                       | -                                                | 0.98 / 247 / 325                                                 | 1.00 / 436 / 132                                       | 1.00 / 162 / 50                                               | -                                                         | 1.00 / 88 / 223                            | -                                                           | 1.00 / 101 / 6                                |
+| exact_symbol      | **1.00 / 26 / 11**                               | -                                                     | -                                                | -                                                                | 1.00 / 436 / 137                                       | 1.00 / 431 / 10                                               | 1.00 / 51 / 0.09                                          | 1.00 / 54 / 304                            | 1.00 / 66 / 1                                               | -                                             |
+| file_outline      | **1.00 / 126 / 33**                              | -                                                     | -                                                | 0.99 / 975 / 321                                                 | -                                                      | 1.00 / 795 / 5                                                | 1.00 / 183 / 0.09                                         | 0.85 / 51 / 101                            | 1.00 / 687 / 6                                              | -                                             |
+| fuzzy_symbol      | 0.99 / 27 / 90                                   | -                                                     | -                                                | -                                                                | -                                                      | **1.00 / 434 / 398**                                          | -                                                         | -                                          | -                                                           | -                                             |
+| nohit_search      | 1.00 / 3 / 81                                    | 1.00 / 30 / 7                                       | -                                                | 1.00 / 47 / 308                                                  | **1.00 / 1 / 146**                                     | 1.00 / 61 / 55                                                | -                                                         | **1.00 / 1 / 229**                         | -                                                           | 1.00 / 29 / 6                                 |
+| references        | **1.00 / 43 / 22**                               | -                                                     | -                                                | -                                                                | -                                                      | 0.28 / 152 / 7                                                | 0.06 / 52 / 0.09                                          | 0.87 / 651 / 193                           | -                                                           | -                                             |
+| structural_search | **0.89 / 31 / 26**                               | -                                                     | 0.15 / 633 / 348                                 | -                                                                | -                                                      | -                                                             | -                                                         | -                                          | -                                                           | -                                             |
+| substring_search  | **1.00 / 131 / 76**                              | 0.99 / 292 / 9                                      | -                                                | 0.78 / 862 / 319                                                 | 1.00 / 1012 / 133                                      | 0.81 / 537 / 46                                               | -                                                         | 0.94 / 638 / 227                           | -                                                           | 1.00 / 587 / 8                                |
+
+## Docs
+
+- [Installation](docs/installation.md)
+- [CLI](docs/cli.md)
+- [Host overview](docs/hosts/all-agent-clis.md)
+- [MCP SDK](docs/sdk/mcp.md)
+- [Troubleshooting](docs/troubleshooting.md)
+
+## Star History
+
+<a href="https://star-history.com/#atelier-ws/atelier&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=atelier-ws/atelier&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=atelier-ws/atelier&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=atelier-ws/atelier&type=Date" />
+  </picture>
+</a>
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).

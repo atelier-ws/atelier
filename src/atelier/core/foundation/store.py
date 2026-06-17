@@ -1,0 +1,1535 @@
+"""Persistent storage for Playbooks, traces, and rubrics.
+
+Backend: SQLite + FTS5 (no external services).
+
+Design:
+- One table per entity, JSON column for the full payload.
+- A contentless FTS5 mirror table for Playbooks for fast lookup by
+  title / triggers / situation / dead_ends / procedure.
+- Markdown copies of playbooks live under <root>/blocks/ for human review
+  and version control. Traces are mirrored under <root>/traces/.
+- Redacted raw artifacts live under <root>/raw/ and are linked from traces
+  when a host import preserves more detail than the curated Trace schema.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import json
+import logging
+import os
+import re
+import sqlite3
+import tempfile
+import threading
+from collections.abc import Iterable, Iterator
+from contextlib import closing
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+import yaml
+
+from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromotion
+from atelier.core.foundation.models import (
+    ConsolidationCandidate,
+    Playbook,
+    PlaybookStatus,
+    RawArtifact,
+    Rubric,
+    Trace,
+    to_jsonable,
+)
+from atelier.core.foundation.paths import resolve_workspace_store_dir
+from atelier.core.foundation.session_store import SessionStore
+
+logger = logging.getLogger(__name__)
+
+# --------------------------------------------------------------------------- #
+# Schema                                                                      #
+# --------------------------------------------------------------------------- #
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS playbooks (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    status TEXT NOT NULL,
+    usage_count INTEGER NOT NULL DEFAULT 0,
+    success_count INTEGER NOT NULL DEFAULT 0,
+    failure_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_playbooks_domain ON playbooks(domain);
+CREATE INDEX IF NOT EXISTS idx_playbooks_status ON playbooks(status);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS playbooks_fts USING fts5(
+    id UNINDEXED,
+    title,
+    triggers,
+    situation,
+    dead_ends,
+    procedure,
+    failure_signals,
+    tokenize = 'porter'
+);
+
+
+CREATE TABLE IF NOT EXISTS rubrics (
+    id TEXT PRIMARY KEY,
+    domain TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS lesson_candidate (
+    id                     TEXT PRIMARY KEY,
+    domain                 TEXT NOT NULL,
+    cluster_fingerprint    TEXT NOT NULL DEFAULT '',
+    kind                   TEXT NOT NULL,
+    target_id              TEXT,
+    proposed_block_json    TEXT,
+    proposed_rubric_check  TEXT,
+    evidence_trace_ids     TEXT NOT NULL,
+    body                   TEXT NOT NULL DEFAULT '',
+    evidence_json          TEXT NOT NULL DEFAULT '{}',
+    embedding              BLOB,
+    embedding_provenance   TEXT NOT NULL DEFAULT 'legacy_stub',
+    confidence             REAL NOT NULL,
+    status                 TEXT NOT NULL DEFAULT 'inbox',
+    reviewer               TEXT,
+    decision_at            TEXT,
+    decision_reason        TEXT NOT NULL DEFAULT '',
+    created_at             TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_lesson_candidate_domain_status_at
+    ON lesson_candidate(domain, status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS lesson_promotion (
+    id                  TEXT PRIMARY KEY,
+    lesson_id           TEXT NOT NULL REFERENCES lesson_candidate(id),
+    published_block_id  TEXT,
+    edited_block_id     TEXT,
+    pr_url              TEXT NOT NULL DEFAULT '',
+    created_at          TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS consolidation_candidate (
+    id                  TEXT PRIMARY KEY,
+    kind                TEXT NOT NULL,
+    affected_block_ids  TEXT NOT NULL,
+    proposed_action     TEXT NOT NULL,
+    proposed_body       TEXT,
+    evidence_json       TEXT NOT NULL DEFAULT '{}',
+    created_at          TEXT NOT NULL,
+    decided_at          TEXT,
+    decided_by          TEXT,
+    decision            TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_consolidation_candidate_pending
+    ON consolidation_candidate(decided_at, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS benchmark_run (
+    id TEXT PRIMARY KEY,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    suite TEXT NOT NULL,
+    git_sha TEXT NOT NULL,
+    config_fingerprint TEXT NOT NULL,
+    n_prompts INTEGER NOT NULL DEFAULT 0,
+    median_input_tokens_baseline INTEGER,
+    median_input_tokens_optimized INTEGER,
+    reduction_pct REAL,
+    notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS benchmark_prompt_result (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES benchmark_run(id) ON DELETE CASCADE,
+    prompt_id TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    input_tokens_baseline INTEGER NOT NULL,
+    input_tokens_optimized INTEGER NOT NULL,
+    reduction_pct REAL NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    baseline_input_tokens INTEGER NOT NULL,
+    optimized_input_tokens INTEGER NOT NULL,
+    lever_attribution_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS jobs (
+    id TEXT PRIMARY KEY,
+    job_type TEXT NOT NULL,
+    payload TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    locked_by TEXT,
+    locked_at TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_type_status ON jobs(job_type, status, created_at);
+"""
+
+
+# --------------------------------------------------------------------------- #
+# Store                                                                       #
+# --------------------------------------------------------------------------- #
+
+
+class ContextStore:
+    """SQLite-backed store. Single-process, single-writer.
+
+    The store is also responsible for mirroring blocks/traces to the filesystem
+    so they can be reviewed in PRs without running tools.
+    """
+
+    def __init__(
+        self, root: Path | str, lessons_root: Path | str | None = None, *, db_name: str = "atelier.db"
+    ) -> None:
+        self.root = Path(root).resolve()
+        # db_name lets callers route a store to a dedicated SQLite file (e.g.
+        # memory.db, recall.db) so high-write use-cases don't contend on one file.
+        self.db_path = self.root / db_name
+
+        # Blocks/rubrics are runtime *mirrors* of DB content, kept per-project under
+        # the global store root (NOT in .lessons, which is reserved for the user's
+        # real knowledge consumed by the knowledge-extraction KB). Per-project
+        # isolation prevents one project's mirror from polluting another's. An
+        # explicit lessons_root still overrides for backward compatibility.
+        if lessons_root is not None:
+            _k_root = Path(lessons_root).expanduser().resolve()
+        else:
+            _k_root = resolve_workspace_store_dir(self.root)
+        self.blocks_dir = _k_root / "blocks"
+        self.rubrics_dir = _k_root / "rubrics"
+
+        self.traces_dir = self.root / "traces"
+
+        self._initialized = False
+        self._connection: sqlite3.Connection | None = None
+        # Long-lived connection dedicated to the high-frequency context-budget
+        # write path (one INSERT per non-error tool call). Lazily opened with
+        # check_same_thread=False because record() runs on the MCP dispatcher's
+        # thread pool; every use is serialized by _context_budget_lock.
+        self._context_budget_conn: sqlite3.Connection | None = None
+        self._context_budget_lock = threading.Lock()
+        # File-based session store (sessions/<id>/). Traces also flow here so the
+        # DB copy can eventually be retired in favor of the per-session files.
+        self._session_store: SessionStore | None = None
+
+    @property
+    def session_store(self) -> SessionStore:
+        if self._session_store is None:
+            self._session_store = SessionStore(self.root)
+        return self._session_store
+
+    @contextlib.contextmanager
+    def batch_mode(self) -> Iterator[sqlite3.Connection]:
+        """Run multiple operations over one shared connection.
+
+        Optimized for bulk imports with high-performance PRAGMAs. This is NOT
+        an atomic unit of work: the store's write helpers each use ``with
+        conn:`` and therefore commit piece-by-piece, so a mid-batch failure
+        leaves already-committed rows in place. Use this only for performance
+        (connection reuse + bulk PRAGMAs), not for all-or-nothing semantics.
+        """
+        conn = self._connect()
+        # High-performance settings for bulk import (must be outside transaction)
+        conn.execute("PRAGMA synchronous = OFF")
+        conn.execute(f"PRAGMA cache_size = -{512 * 1024}")  # 512MB cache
+
+        old_conn = self._connection
+        self._connection = conn
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            self._connection = old_conn
+            with contextlib.suppress(sqlite3.Error):
+                conn.execute("PRAGMA synchronous = NORMAL")
+            conn.close()
+
+    # ----- lifecycle ------------------------------------------------------- #
+
+    def init(self) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.blocks_dir.mkdir(parents=True, exist_ok=True)
+        self.traces_dir.mkdir(parents=True, exist_ok=True)
+        self.rubrics_dir.mkdir(parents=True, exist_ok=True)
+        with self._connect() as conn:
+            self._migrate_playbook_rename(conn)
+            conn.executescript(SCHEMA)
+            import contextlib
+
+            for ddl in (
+                "ALTER TABLE lesson_candidate ADD COLUMN body TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE lesson_candidate ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}'",
+                "ALTER TABLE lesson_candidate ADD COLUMN embedding_provenance TEXT NOT NULL DEFAULT 'legacy_stub'",
+                "ALTER TABLE archival_passage ADD COLUMN embedding_provenance TEXT NOT NULL DEFAULT 'legacy_stub'",
+                "ALTER TABLE memory_block ADD COLUMN deprecated_at TEXT",
+                "ALTER TABLE memory_block ADD COLUMN deprecated_by_block_id TEXT",
+                "ALTER TABLE memory_block ADD COLUMN deprecation_reason TEXT NOT NULL DEFAULT ''",
+            ):
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute(ddl)
+            self._apply_v2_migrations(conn)
+            self.verify_v2_schema(conn)
+        # Seed packaged rubrics and sync user lessons outside the schema
+        # migration connection so each upsert gets its own committed transaction.
+        self._seed_packaged_rubrics()
+        self.sync_lessons()
+        self._initialized = True
+
+    def _connect(self) -> sqlite3.Connection:
+        if self._connection:
+            return self._connection
+
+        conn = sqlite3.connect(self.db_path, timeout=30)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        return conn
+
+    @staticmethod
+    def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type IN ('table','virtual table') AND name = ?",
+            (name,),
+        ).fetchone()
+        return row is not None
+
+    def _migrate_playbook_rename(self, conn: sqlite3.Connection) -> None:
+        """Rename the legacy ``reasonblocks`` schema to ``playbooks`` in place.
+
+        Pre-v3 SQLite databases stored playbooks in a table named
+        ``reasonblocks`` (with ``reasonblocks_fts`` and ``idx_reasonblocks_*``).
+        The v3 :data:`SCHEMA` creates ``playbooks`` with
+        ``CREATE TABLE IF NOT EXISTS``; without this migration an upgraded DB
+        would keep the populated ``reasonblocks`` table and gain a *second*,
+        empty ``playbooks`` table -- orphaning every existing row.
+
+        This runs BEFORE :data:`SCHEMA` so the rename target is still free, and
+        is guarded so it is a safe no-op on a fresh DB (no ``reasonblocks``) and
+        on an already-migrated DB (``playbooks`` already present), making it
+        idempotent.
+        """
+        if self._table_exists(conn, "playbooks") or not self._table_exists(conn, "reasonblocks"):
+            return
+        conn.execute("ALTER TABLE reasonblocks RENAME TO playbooks")
+        # SQLite has no ALTER INDEX RENAME; drop the legacy indexes and let
+        # SCHEMA recreate them under their new names (CREATE INDEX IF NOT EXISTS).
+        conn.execute("DROP INDEX IF EXISTS idx_reasonblocks_domain")
+        conn.execute("DROP INDEX IF EXISTS idx_reasonblocks_status")
+        # The contentless FTS mirror keeps its indexed rows across the rename.
+        if self._table_exists(conn, "reasonblocks_fts") and not self._table_exists(conn, "playbooks_fts"):
+            conn.execute("ALTER TABLE reasonblocks_fts RENAME TO playbooks_fts")
+        conn.commit()
+
+    def _apply_v2_migrations(self, conn: sqlite3.Connection) -> None:
+        from atelier.infra.storage.migrations import SQLITE_MIGRATIONS, read_migration
+
+        conn.executescript(
+            "CREATE TABLE IF NOT EXISTS _schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);"
+        )
+        applied = {row[0] for row in conn.execute("SELECT name FROM _schema_migrations").fetchall()}
+        for name in SQLITE_MIGRATIONS:
+            if name in applied:
+                continue
+            for stmt in (s.strip() for s in read_migration(name).split(";")):
+                if not stmt:
+                    continue
+                try:
+                    conn.execute(stmt)
+                except sqlite3.OperationalError as exc:
+                    msg = str(exc).lower()
+                    if "duplicate column name" not in msg and "already exists" not in msg:
+                        raise
+            conn.execute(
+                "INSERT OR IGNORE INTO _schema_migrations (name, applied_at) VALUES (?, datetime('now'))",
+                (name,),
+            )
+            conn.commit()
+
+    def verify_v2_schema(self, conn: sqlite3.Connection | None = None) -> bool:
+        """Return True when every V2 table exists in SQLite."""
+
+        from atelier.infra.storage.migrations import V2_REQUIRED_TABLES
+
+        owns_connection = conn is None
+        active_conn = conn or self._connect()
+        try:
+            rows = active_conn.execute(
+                """
+                SELECT name FROM sqlite_master
+                WHERE type IN ('table', 'virtual table') AND name IN ({})
+                """.format(",".join("?" for _ in V2_REQUIRED_TABLES)),
+                V2_REQUIRED_TABLES,
+            ).fetchall()
+            found = {row["name"] for row in rows}
+            missing = set(V2_REQUIRED_TABLES) - found
+            if missing:
+                raise RuntimeError(f"missing V2 tables: {', '.join(sorted(missing))}")
+            return True
+        finally:
+            if owns_connection:
+                active_conn.close()
+
+    # ----- Playbooks ---------------------------------------------------- #
+
+    def upsert_block(self, block: Playbook, *, write_markdown: bool = True) -> None:
+        payload = json.dumps(to_jsonable(block), ensure_ascii=False)
+        with self._connect() as conn, closing(conn.cursor()) as cur:
+            cur.execute(
+                """
+                INSERT INTO playbooks (
+                    id, title, domain, status,
+                    usage_count, success_count, failure_count,
+                    created_at, updated_at, payload
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    title=excluded.title,
+                    domain=excluded.domain,
+                    status=excluded.status,
+                    usage_count=excluded.usage_count,
+                    success_count=excluded.success_count,
+                    failure_count=excluded.failure_count,
+                    updated_at=excluded.updated_at,
+                    payload=excluded.payload
+                """,
+                (
+                    block.id,
+                    block.title,
+                    block.domain,
+                    block.status,
+                    block.usage_count,
+                    block.success_count,
+                    block.failure_count,
+                    block.created_at.isoformat(),
+                    block.updated_at.isoformat(),
+                    payload,
+                ),
+            )
+            cur.execute("DELETE FROM playbooks_fts WHERE id = ?", (block.id,))
+            cur.execute(
+                """
+                INSERT INTO playbooks_fts (
+                    id, title, triggers, situation, dead_ends, procedure, failure_signals
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    block.id,
+                    block.title,
+                    " ; ".join(block.triggers),
+                    block.situation,
+                    " ; ".join(block.dead_ends),
+                    " ; ".join(block.procedure),
+                    " ; ".join(block.failure_signals),
+                ),
+            )
+        if write_markdown:
+            self._write_playbook_markdown(block)
+
+    def get_block(self, block_id: str) -> Playbook | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT payload FROM playbooks WHERE id = ?", (block_id,)).fetchone()
+        if row is None:
+            return None
+        return Playbook.model_validate_json(row["payload"])
+
+    def list_blocks(
+        self,
+        *,
+        domain: str | None = None,
+        status: PlaybookStatus | None = "active",
+        include_deprecated: bool = False,
+    ) -> list[Playbook]:
+        sql = "SELECT payload FROM playbooks WHERE 1=1"
+        params: list[Any] = []
+        if domain:
+            sql += " AND domain = ?"
+            params.append(domain)
+        if status and not include_deprecated:
+            sql += " AND status = ?"
+            params.append(status)
+        elif not include_deprecated:
+            sql += " AND status != 'quarantined'"
+        sql += " ORDER BY updated_at DESC"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [Playbook.model_validate_json(r["payload"]) for r in rows]
+
+    def search_blocks(self, query: str, *, limit: int = 20) -> list[Playbook]:
+        if not query.strip():
+            return self.list_blocks()[:limit]
+        fts_query = self._build_playbook_search_query(query)
+        # Match the blank-query branch (list_blocks defaults to active-only):
+        # deprecated and quarantined blocks must not reappear just because the
+        # caller supplied search terms.
+        sql = (
+            "SELECT r.payload FROM playbooks_fts f "
+            "JOIN playbooks r ON r.id = f.id "
+            "WHERE playbooks_fts MATCH ? "
+            "AND r.status = 'active' "
+            "ORDER BY rank LIMIT ?"
+        )
+        with self._connect() as conn:
+            rows = conn.execute(sql, (fts_query, limit)).fetchall()
+        return [Playbook.model_validate_json(r["payload"]) for r in rows]
+
+    def _build_playbook_search_query(self, query: str) -> str:
+        """Build a robust FTS5 query for playbooks.
+
+        Playbook retrieval should prefer recall over overly strict phrase
+        matching, so this expands input into prefix terms joined by AND.
+        """
+        clauses: list[str] = []
+        for phrase, token in re.findall(r'"([^"]+)"|(\S+)', query):
+            term = (phrase or token).strip().lower()
+            if not term:
+                continue
+            if phrase:
+                escaped = term.replace('"', '""')
+                clauses.append(f'"{escaped}"')
+                continue
+            pieces = [piece for piece in re.split(r"[^0-9a-z_]+", term) if piece]
+            clauses.extend(f"{piece}*" for piece in pieces)
+        if clauses:
+            return " AND ".join(clauses)
+        escaped = query.strip().replace('"', '""')
+        return f'"{escaped}"'
+
+    def update_block_status(self, block_id: str, status: PlaybookStatus) -> bool:
+        with self._connect() as conn, closing(conn.cursor()) as cur:
+            cur.execute(
+                "UPDATE playbooks SET status = ?, updated_at = ? WHERE id = ?",
+                (status, datetime.now(UTC).isoformat(), block_id),
+            )
+            changed = cur.rowcount > 0
+        if changed:
+            block = self.get_block(block_id)
+            if block:
+                self._write_playbook_markdown(block)
+        return changed
+
+    def delete_block(self, block_id: str) -> bool:
+        """Hard-delete a Playbook from the DB, FTS index, and markdown."""
+        with self._connect() as conn, closing(conn.cursor()) as cur:
+            cur.execute("DELETE FROM playbooks WHERE id = ?", (block_id,))
+            deleted = cur.rowcount > 0
+            cur.execute("DELETE FROM playbooks_fts WHERE id = ?", (block_id,))
+        markdown = self.blocks_dir / f"{block_id}.md"
+        if markdown.exists():
+            markdown.unlink()
+        return deleted
+
+    def increment_usage(
+        self,
+        block_id: str,
+        *,
+        success: bool | None = None,
+    ) -> None:
+        with self._connect() as conn, closing(conn.cursor()) as cur:
+            cur.execute(
+                "UPDATE playbooks SET usage_count = usage_count + 1 WHERE id = ?",
+                (block_id,),
+            )
+            if success is True:
+                cur.execute(
+                    "UPDATE playbooks SET success_count = success_count + 1 WHERE id = ?",
+                    (block_id,),
+                )
+            elif success is False:
+                cur.execute(
+                    "UPDATE playbooks SET failure_count = failure_count + 1 WHERE id = ?",
+                    (block_id,),
+                )
+
+    def sync_lessons(self) -> dict[str, int]:
+        """Sync blocks and rubrics from the filesystem to the database.
+
+        Uses a file-mtime manifest stored alongside the SQLite DB so that
+        unchanged files are skipped on subsequent calls — safe to call
+        repeatedly.
+        """
+        results = {"blocks": 0, "rubrics": 0}
+
+        if self.blocks_dir.exists():
+            from atelier.core.foundation.parser import parse_block_markdown
+
+            prev = self._load_sync_manifest("blocks")
+            fresh: dict[str, int] = {}
+
+            for path in sorted(self.blocks_dir.rglob("*.md")):
+                key = str(path)
+                mtime = path.stat().st_mtime_ns
+                if prev.get(key) == mtime:
+                    fresh[key] = mtime  # unchanged — keep seen, skip read/parse/upsert
+                    continue
+
+                try:
+                    content = path.read_text(encoding="utf-8")
+                    block = parse_block_markdown(content)
+                    self.upsert_block(block, write_markdown=False)
+                    results["blocks"] += 1
+                except Exception as exc:
+                    logging.exception("Recovered from broad exception handler")
+                    logger.warning("failed to sync lessons block from %s: %s", path, exc)
+                    continue  # leave out of manifest so a transient failure retries
+                # Only record the mtime once the upsert actually succeeded.
+                fresh[key] = mtime
+
+            self._save_sync_manifest("blocks", fresh)
+
+        if self.rubrics_dir.exists():
+            rubric_paths = sorted(self.rubrics_dir.rglob("*.yaml")) + sorted(self.rubrics_dir.rglob("*.yml"))
+            prev = self._load_sync_manifest("rubrics")
+            fresh_rubrics: dict[str, int] = {}
+
+            for path in rubric_paths:
+                key = str(path)
+                mtime = path.stat().st_mtime_ns
+                if prev.get(key) == mtime:
+                    fresh_rubrics[key] = mtime  # unchanged — keep seen
+                    continue
+
+                try:
+                    content = path.read_text(encoding="utf-8")
+                    data = yaml.safe_load(content) or {}
+                    rubric = Rubric.model_validate(data)
+                    self.upsert_rubric(rubric, write_yaml=False)
+                    results["rubrics"] += 1
+                except Exception as exc:
+                    logging.exception("Recovered from broad exception handler")
+                    logger.warning("failed to sync lessons rubric from %s: %s", path, exc)
+                    continue  # leave out of manifest so a transient failure retries
+                # Only record the mtime once the upsert actually succeeded.
+                fresh_rubrics[key] = mtime
+
+            self._save_sync_manifest("rubrics", fresh_rubrics)
+
+        return results
+
+    def _seed_packaged_rubrics(self) -> None:
+        """Upsert rubrics shipped with the package into the DB.
+
+        Called once per ``init()`` before ``sync_lessons()`` so packaged
+        rubrics are always available.  User-managed rubrics (synced from
+        ``self.rubrics_dir``) are written afterward and will override any
+        packaged rubric with the same ``id``.
+        """
+        try:
+            from atelier.core.foundation.rubric_gate import load_packaged_rubrics
+
+            for rubric in load_packaged_rubrics():
+                self.upsert_rubric(rubric, write_yaml=False)
+        except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
+            logger.warning("failed to seed packaged rubrics: %s", exc)
+
+    def _sync_manifest_path(self, kind: str) -> Path:
+        """Return path to the incremental-sync manifest for *kind*."""
+        return self.root / f".lessons_sync_{kind}.json"
+
+    def _load_sync_manifest(self, kind: str) -> dict[str, int]:
+        path = self._sync_manifest_path(kind)
+        if path.exists():
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                return {k: int(v) for k, v in raw.items() if isinstance(v, int)}
+            except Exception:
+                logging.exception("Recovered from broad exception handler")
+                return {}
+        return {}
+
+    def _save_sync_manifest(self, kind: str, manifest: dict[str, int]) -> None:
+        path = self._sync_manifest_path(kind)
+        # Write to a sibling temp file then atomically replace so a crash
+        # mid-write can never leave a partially written (corrupt) manifest.
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".~lessons_sync_")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(manifest, indent=2, sort_keys=True))
+            os.replace(tmp, path)
+        except Exception:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
+
+    # ----- Traces ---------------------------------------------------------- #
+
+    def record_trace(self, trace: Trace, *, write_json: bool = True) -> None:
+        # Traces are stored in the file-based session store (sessions/<id>/), not
+        # the DB — a session transcript is a file, so the DB copy was the wrong
+        # design. write_json additionally writes the legacy traces_dir mirror.
+        self.session_store.record(to_jsonable(trace))
+        if write_json:
+            self._write_trace_json(trace)
+
+    def delete_trace(self, trace_id: str) -> None:
+        self.session_store.delete(trace_id)
+        # Remove the legacy traces_dir mirror if it still exists.
+        with contextlib.suppress(OSError):
+            (self.traces_dir / f"{trace_id}.json").unlink()
+
+    def trace_exists(self, trace_id: str) -> bool:
+        """Lightweight existence check — no deserialization."""
+        return self.session_store.exists(trace_id)
+
+    def get_trace(self, trace_id: str) -> Trace | None:
+        data = self.session_store.get(trace_id)
+        if data is None:
+            # Fallback: trace_id may actually be a session_id.
+            traces = self.session_store.traces_for(trace_id)
+            data = traces[0] if traces else None
+        return Trace.model_validate(data) if data is not None else None
+
+    def list_unsynced_trace_ids(self, limit: int = 500) -> list[str]:
+        """Return IDs of traces that have not been successfully synced."""
+        return self.session_store.unsynced_ids(limit)
+
+    def mark_synced(self, session_id: str, payload_hash: str) -> None:
+        """Mark a session as successfully synced (payload_hash kept for API compat)."""
+        self.session_store.mark_synced(session_id, at=datetime.now(UTC).isoformat())
+
+    def list_traces(
+        self,
+        *,
+        domain: str | None = None,
+        status: str | None = None,
+        agent: str | None = None,
+        host: str | None = None,
+        query: str | None = None,
+        since: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Trace]:
+        rows = self.session_store.list_full(
+            domain=domain,
+            status=status,
+            agent=agent,
+            host=host,
+            query=query,
+            since=since.isoformat() if since else None,
+            limit=limit,
+            offset=offset,
+        )
+        return [Trace.model_validate(row) for row in rows]
+
+    def get_traces_metrics(
+        self,
+        *,
+        domain: str | None = None,
+        agent: str | None = None,
+        host: str | None = None,
+        since: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Return aggregate metrics for traces matching the filters."""
+        metrics = self.session_store.metrics(
+            domain=domain, agent=agent, host=host, since=since.isoformat() if since else None
+        )
+        return {
+            "stats": {
+                "total": metrics["total"],
+                "success": metrics["success"],
+                "failed": metrics["failed"],
+                "partial": metrics["partial"],
+            },
+            "hosts": metrics["hosts"],
+            "agents": metrics["agents"],
+            "domains": metrics["domains"],
+        }
+
+    # ----- Raw artifacts -------------------------------------------------- #
+
+    def record_raw_artifact(self, artifact: RawArtifact, content: str) -> None:
+        self.session_store.record_raw_artifact(artifact, content)
+
+    def get_raw_artifact(self, artifact_id: str) -> RawArtifact | None:
+        return self.session_store.get_raw_artifact(artifact_id)
+
+    def list_raw_artifacts(
+        self,
+        *,
+        source: str | None = None,
+        source_session_id: str | None = None,
+        limit: int = 100,
+    ) -> list[RawArtifact]:
+        return self.session_store.list_raw_artifacts(source=source, source_session_id=source_session_id, limit=limit)
+
+    def read_raw_artifact_content(self, artifact: RawArtifact) -> str:
+        return self.session_store.read_raw_artifact_content(artifact)
+
+    # ----- Rubrics --------------------------------------------------------- #
+
+    def upsert_rubric(self, rubric: Rubric, *, write_yaml: bool = True) -> None:
+        payload = json.dumps(to_jsonable(rubric), ensure_ascii=False)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO rubrics (id, domain, payload)
+                VALUES (?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    domain = excluded.domain,
+                    payload = excluded.payload
+                """,
+                (rubric.id, rubric.domain, payload),
+            )
+        if write_yaml:
+            self._write_rubric_yaml(rubric)
+
+    def get_rubric(self, rubric_id: str) -> Rubric | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT payload FROM rubrics WHERE id = ?", (rubric_id,)).fetchone()
+        if row is None:
+            return None
+        return Rubric.model_validate_json(row["payload"])
+
+    def list_rubrics(self, *, domain: str | None = None) -> list[Rubric]:
+        sql = "SELECT payload FROM rubrics"
+        params: list[Any] = []
+        if domain:
+            sql += " WHERE domain = ?"
+            params.append(domain)
+        sql += " ORDER BY id"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [Rubric.model_validate_json(r["payload"]) for r in rows]
+
+    # ----- Jobs ------------------------------------------------------------ #
+
+    def enqueue_job(
+        self,
+        job_type: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        max_attempts: int = 3,
+    ) -> str:
+        job_id = uuid4().hex
+        now = datetime.now(UTC).isoformat()
+        payload_json = json.dumps(payload or {}, ensure_ascii=False, sort_keys=True)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO jobs (
+                    id, job_type, payload, status, attempts, max_attempts,
+                    locked_by, locked_at, error, created_at, updated_at
+                )
+                VALUES (?, ?, ?, 'pending', 0, ?, NULL, NULL, NULL, ?, ?)
+                """,
+                (job_id, job_type, payload_json, max_attempts, now, now),
+            )
+        return job_id
+
+    def claim_job(self, worker_id: str | None = None) -> dict[str, Any] | None:
+        claimed_by = worker_id or f"sqlite-{os.getpid()}"
+        now = datetime.now(UTC).isoformat()
+        lease_raw = os.environ.get("ATELIER_JOB_LEASE_SECONDS", "")
+        lease_seconds = int(lease_raw) if lease_raw.isdigit() and int(lease_raw) > 0 else 900
+        lease_cutoff = (datetime.now(UTC) - timedelta(seconds=lease_seconds)).isoformat()
+        with self._connect() as conn:
+            # A shared connection (e.g. inside batch_mode) may already be in a
+            # transaction; BEGIN IMMEDIATE would then raise "cannot start a
+            # transaction within a transaction". Only begin our own.
+            if not conn.in_transaction:
+                conn.execute("BEGIN IMMEDIATE")
+            # Reap orphaned jobs before claiming. A worker that crashes mid-job
+            # leaves its row stuck in 'running' forever (the lease is never
+            # released), and because the servicectl enqueue guard treats
+            # 'running'/'failed' as active, a single orphan blocks all future
+            # enqueues of that job type indefinitely. Reclaim any 'running' job
+            # whose lease expired so it retries, or dead-letters once attempts
+            # are exhausted -- the queue self-heals instead of jamming.
+            conn.execute(
+                """
+                UPDATE jobs
+                SET status = CASE WHEN attempts >= max_attempts THEN 'dead' ELSE 'failed' END,
+                    locked_by = NULL,
+                    locked_at = NULL,
+                    error = 'lease expired: worker did not finish (reaped)',
+                    updated_at = ?
+                WHERE status = 'running'
+                  AND locked_at IS NOT NULL
+                  AND locked_at < ?
+                """,
+                (now, lease_cutoff),
+            )
+            row = conn.execute("""
+                SELECT *
+                FROM jobs
+                WHERE status IN ('pending', 'failed')
+                  AND attempts < max_attempts
+                ORDER BY created_at ASC
+                LIMIT 1
+                """).fetchone()
+            if row is None:
+                conn.commit()
+                return None
+            conn.execute(
+                """
+                UPDATE jobs
+                SET status = 'running',
+                    attempts = attempts + 1,
+                    locked_by = ?,
+                    locked_at = ?,
+                    updated_at = ?,
+                    error = NULL
+                WHERE id = ?
+                """,
+                (claimed_by, now, now, row["id"]),
+            )
+            claimed = conn.execute("SELECT * FROM jobs WHERE id = ?", (row["id"],)).fetchone()
+            conn.commit()
+        return self._row_to_job(claimed) if claimed is not None else None
+
+    def complete_job(self, job_id: str, result: dict[str, Any] | None = None) -> bool:
+        _ = result
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as conn:
+            res = conn.execute(
+                """
+                UPDATE jobs
+                SET status = 'succeeded',
+                    locked_by = NULL,
+                    locked_at = NULL,
+                    error = NULL,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (now, job_id),
+            )
+        return (res.rowcount or 0) > 0
+
+    def fail_job(self, job_id: str, error: str) -> bool:
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as conn:
+            res = conn.execute(
+                """
+                UPDATE jobs
+                SET status = CASE WHEN attempts >= max_attempts THEN 'dead' ELSE 'failed' END,
+                    locked_by = NULL,
+                    locked_at = NULL,
+                    error = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (error, now, job_id),
+            )
+        return (res.rowcount or 0) > 0
+
+    def list_jobs(
+        self,
+        *,
+        status: str | None = None,
+        job_type: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM jobs WHERE 1=1"
+        params: list[Any] = []
+        if status:
+            sql += " AND status = ?"
+            params.append(status)
+        if job_type:
+            sql += " AND job_type = ?"
+            params.append(job_type)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._row_to_job(row) for row in rows]
+
+    def job_queue_health(self) -> dict[str, int]:
+        lease_raw = os.environ.get("ATELIER_JOB_LEASE_SECONDS", "")
+        lease_seconds = int(lease_raw) if lease_raw.isdigit() and int(lease_raw) > 0 else 900
+        lease_cutoff = (datetime.now(UTC) - timedelta(seconds=lease_seconds)).isoformat()
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
+                    COALESCE(SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0) AS running,
+                    COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed,
+                    COALESCE(SUM(CASE WHEN status = 'dead' THEN 1 ELSE 0 END), 0) AS dead,
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN status = 'running' AND locked_at IS NOT NULL AND locked_at < ? THEN 1
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS stuck_running
+                FROM jobs
+                """,
+                (lease_cutoff,),
+            ).fetchone()
+        pending = int(row["pending"]) if row is not None else 0
+        running = int(row["running"]) if row is not None else 0
+        failed = int(row["failed"]) if row is not None else 0
+        dead = int(row["dead"]) if row is not None else 0
+        stuck_running = int(row["stuck_running"]) if row is not None else 0
+        return {
+            "pending": pending,
+            "running": running,
+            "failed": failed,
+            "dead": dead,
+            "stuck_running": stuck_running,
+            "active": pending + running + failed,
+        }
+
+    # ----- external analytics -------------------------------------------- #
+
+    def record_external_analytics_run(
+        self,
+        *,
+        tool: str,
+        period: str,
+        source: str,
+        ok: bool,
+        command_display: str = "",
+        returncode: int | None = None,
+        summary: dict[str, Any] | None = None,
+        payload: Any | None = None,
+        stdout: str = "",
+        stderr: str = "",
+        collected_at: str | None = None,
+        replace_period_snapshot: bool = False,
+    ) -> str:
+        session_id = uuid4().hex
+        created_at = datetime.now(UTC).isoformat()
+        collected = collected_at or created_at
+        with self._connect() as conn:
+            if replace_period_snapshot:
+                conn.execute(
+                    "DELETE FROM external_analytics_runs WHERE tool = ? AND period = ?",
+                    (tool, period),
+                )
+            conn.execute(
+                """
+                INSERT INTO external_analytics_runs (
+                    id, tool, period, source, command_display,
+                    ok, returncode, summary_json, payload_json,
+                    stdout, stderr, collected_at, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    tool,
+                    period,
+                    source,
+                    command_display,
+                    1 if ok else 0,
+                    returncode,
+                    json.dumps(summary or {}, ensure_ascii=False, sort_keys=True),
+                    json.dumps(payload if payload is not None else {}, ensure_ascii=False),
+                    stdout,
+                    stderr,
+                    collected,
+                    created_at,
+                ),
+            )
+        return session_id
+
+    def list_external_analytics_runs(
+        self,
+        *,
+        tool: str | None = None,
+        period: str | None = None,
+        ok: bool | None = None,
+        days: int | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM external_analytics_runs WHERE 1=1"
+        params: list[Any] = []
+        if tool:
+            sql += " AND tool = ?"
+            params.append(tool)
+        if period:
+            sql += " AND period = ?"
+            params.append(period)
+        if ok is not None:
+            sql += " AND ok = ?"
+            params.append(1 if ok else 0)
+        if days is not None:
+            cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+            sql += " AND collected_at >= ?"
+            params.append(cutoff)
+        sql += " ORDER BY collected_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._row_to_external_analytics_run(row) for row in rows]
+
+    # ----- Lessons --------------------------------------------------------- #
+
+    def upsert_lesson_candidate(self, candidate: LessonCandidate) -> None:
+        proposed_block_json = (
+            json.dumps(to_jsonable(candidate.proposed_block), ensure_ascii=False)
+            if candidate.proposed_block is not None
+            else None
+        )
+        embedding_json = json.dumps(candidate.embedding, ensure_ascii=False) if candidate.embedding else None
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO lesson_candidate (
+                    id, domain, cluster_fingerprint, kind, target_id,
+                    proposed_block_json, proposed_rubric_check, evidence_trace_ids,
+                    body, evidence_json, embedding, embedding_provenance,
+                    confidence, status, reviewer, decision_at,
+                    decision_reason, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    domain = excluded.domain,
+                    cluster_fingerprint = excluded.cluster_fingerprint,
+                    kind = excluded.kind,
+                    target_id = excluded.target_id,
+                    proposed_block_json = excluded.proposed_block_json,
+                    proposed_rubric_check = excluded.proposed_rubric_check,
+                    evidence_trace_ids = excluded.evidence_trace_ids,
+                    body = excluded.body,
+                    evidence_json = excluded.evidence_json,
+                    embedding = excluded.embedding,
+                    embedding_provenance = excluded.embedding_provenance,
+                    confidence = excluded.confidence,
+                    status = excluded.status,
+                    reviewer = excluded.reviewer,
+                    decision_at = excluded.decision_at,
+                    decision_reason = excluded.decision_reason
+                """,
+                (
+                    candidate.id,
+                    candidate.domain,
+                    candidate.cluster_fingerprint,
+                    candidate.kind,
+                    candidate.target_id,
+                    proposed_block_json,
+                    candidate.proposed_rubric_check,
+                    json.dumps(candidate.evidence_trace_ids, ensure_ascii=False),
+                    candidate.body,
+                    json.dumps(candidate.evidence, ensure_ascii=False, sort_keys=True),
+                    embedding_json,
+                    candidate.embedding_provenance,
+                    candidate.confidence,
+                    candidate.status,
+                    candidate.reviewer,
+                    candidate.decision_at.isoformat() if candidate.decision_at else None,
+                    candidate.decision_reason,
+                    candidate.created_at.isoformat(),
+                ),
+            )
+
+    def get_lesson_candidate(self, lesson_id: str) -> LessonCandidate | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM lesson_candidate WHERE id = ?", (lesson_id,)).fetchone()
+        if row is None:
+            return None
+        return self._row_to_lesson_candidate(row)
+
+    def list_lesson_candidates(
+        self,
+        *,
+        domain: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[LessonCandidate]:
+        sql = "SELECT * FROM lesson_candidate WHERE 1=1"
+        params: list[Any] = []
+        if domain:
+            sql += " AND domain = ?"
+            params.append(domain)
+        if status:
+            sql += " AND status = ?"
+            params.append(status)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._row_to_lesson_candidate(r) for r in rows]
+
+    def upsert_lesson_promotion(self, promotion: LessonPromotion) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO lesson_promotion (
+                    id, lesson_id, published_block_id, edited_block_id, pr_url, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    lesson_id = excluded.lesson_id,
+                    published_block_id = excluded.published_block_id,
+                    edited_block_id = excluded.edited_block_id,
+                    pr_url = excluded.pr_url
+                """,
+                (
+                    promotion.id,
+                    promotion.lesson_id,
+                    promotion.published_block_id,
+                    promotion.edited_block_id,
+                    promotion.pr_url,
+                    promotion.created_at.isoformat(),
+                ),
+            )
+
+    def list_lesson_promotions(self, *, limit: int = 100) -> list[LessonPromotion]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM lesson_promotion ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            LessonPromotion(
+                id=r["id"],
+                lesson_id=r["lesson_id"],
+                published_block_id=r["published_block_id"],
+                edited_block_id=r["edited_block_id"],
+                pr_url=r["pr_url"] or "",
+                created_at=datetime.fromisoformat(r["created_at"]),
+            )
+            for r in rows
+        ]
+
+    # ----- Consolidation candidates -------------------------------------- #
+
+    def upsert_consolidation_candidate(self, candidate: ConsolidationCandidate) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO consolidation_candidate (
+                    id, kind, affected_block_ids, proposed_action, proposed_body,
+                    evidence_json, created_at, decided_at, decided_by, decision
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    kind = excluded.kind,
+                    affected_block_ids = excluded.affected_block_ids,
+                    proposed_action = excluded.proposed_action,
+                    proposed_body = excluded.proposed_body,
+                    evidence_json = excluded.evidence_json,
+                    decided_at = excluded.decided_at,
+                    decided_by = excluded.decided_by,
+                    decision = excluded.decision
+                """,
+                (
+                    candidate.id,
+                    candidate.kind,
+                    json.dumps(candidate.affected_block_ids, ensure_ascii=False),
+                    candidate.proposed_action,
+                    candidate.proposed_body,
+                    json.dumps(candidate.evidence, ensure_ascii=False, sort_keys=True),
+                    candidate.created_at.isoformat(),
+                    candidate.decided_at.isoformat() if candidate.decided_at else None,
+                    candidate.decided_by,
+                    candidate.decision,
+                ),
+            )
+
+    def list_consolidation_candidates(
+        self, *, pending_only: bool = True, limit: int = 100
+    ) -> list[ConsolidationCandidate]:
+        sql = "SELECT * FROM consolidation_candidate"
+        if pending_only:
+            sql += " WHERE decided_at IS NULL"
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        with self._connect() as conn:
+            rows = conn.execute(sql, (limit,)).fetchall()
+        return [self._row_to_consolidation_candidate(row) for row in rows]
+
+    def get_consolidation_candidate(self, candidate_id: str) -> ConsolidationCandidate | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM consolidation_candidate WHERE id = ?", (candidate_id,)).fetchone()
+        return self._row_to_consolidation_candidate(row) if row is not None else None
+
+    def _row_to_job(self, row: sqlite3.Row) -> dict[str, Any]:
+        payload = row["payload"]
+        return {
+            "id": row["id"],
+            "job_type": row["job_type"],
+            "payload": json.loads(payload) if isinstance(payload, str) else (payload or {}),
+            "status": row["status"],
+            "attempts": row["attempts"],
+            "max_attempts": row["max_attempts"],
+            "locked_by": row["locked_by"],
+            "locked_at": row["locked_at"],
+            "error": row["error"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def _row_to_external_analytics_run(self, row: sqlite3.Row) -> dict[str, Any]:
+        def _load_json(raw: Any, fallback: Any) -> Any:
+            if isinstance(raw, str):
+                try:
+                    return json.loads(raw)
+                except json.JSONDecodeError:
+                    return fallback
+            return raw if raw is not None else fallback
+
+        return {
+            "id": row["id"],
+            "tool": row["tool"],
+            "period": row["period"],
+            "source": row["source"],
+            "command_display": row["command_display"],
+            "ok": bool(row["ok"]),
+            "returncode": row["returncode"],
+            "summary": _load_json(row["summary_json"], {}),
+            "payload": _load_json(row["payload_json"], {}),
+            "stdout": row["stdout"] or "",
+            "stderr": row["stderr"] or "",
+            "collected_at": row["collected_at"],
+            "created_at": row["created_at"],
+        }
+
+    def _row_to_consolidation_candidate(self, row: sqlite3.Row) -> ConsolidationCandidate:
+        return ConsolidationCandidate(
+            id=row["id"],
+            kind=row["kind"],
+            affected_block_ids=json.loads(row["affected_block_ids"] or "[]"),
+            proposed_action=row["proposed_action"],
+            proposed_body=row["proposed_body"],
+            evidence=json.loads(row["evidence_json"] or "{}"),
+            created_at=datetime.fromisoformat(row["created_at"]),
+            decided_at=datetime.fromisoformat(row["decided_at"]) if row["decided_at"] else None,
+            decided_by=row["decided_by"],
+            decision=row["decision"],
+        )
+
+    def _row_to_lesson_candidate(self, row: sqlite3.Row) -> LessonCandidate:
+        row_keys = set(row.keys())
+        proposed_block = None
+        if row["proposed_block_json"]:
+            proposed_block = Playbook.model_validate_json(row["proposed_block_json"])
+        embedding = None
+        if row["embedding"]:
+            raw_embedding = row["embedding"]
+            if isinstance(raw_embedding, bytes):
+                # Decode strictly: a corrupt/non-UTF-8 BLOB should fail loudly
+                # here rather than be silently coerced into replacement chars
+                # that yield a confusing JSON error or a wrong embedding vector.
+                raw_embedding = raw_embedding.decode("utf-8")
+            embedding = json.loads(raw_embedding)
+        decision_at = datetime.fromisoformat(row["decision_at"]) if row["decision_at"] else None
+        return LessonCandidate(
+            id=row["id"],
+            domain=row["domain"],
+            cluster_fingerprint=row["cluster_fingerprint"] or "",
+            kind=row["kind"],
+            target_id=row["target_id"],
+            proposed_block=proposed_block,
+            proposed_rubric_check=row["proposed_rubric_check"],
+            evidence_trace_ids=json.loads(row["evidence_trace_ids"]),
+            body=row["body"] if "body" in row_keys else "",
+            evidence=(json.loads(row["evidence_json"] or "{}") if "evidence_json" in row_keys else {}),
+            embedding=embedding,
+            embedding_provenance=(row["embedding_provenance"] if "embedding_provenance" in row_keys else "legacy_stub"),
+            confidence=float(row["confidence"]),
+            status=row["status"],
+            reviewer=row["reviewer"],
+            decision_at=decision_at,
+            decision_reason=row["decision_reason"] or "",
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+    # ----- File mirrors ---------------------------------------------------- #
+
+    def _write_playbook_markdown(self, block: Playbook) -> None:
+        path = self.blocks_dir / f"{block.id}.md"
+        from atelier.core.foundation.renderer import render_playbook_markdown
+
+        path.write_text(render_playbook_markdown(block), encoding="utf-8")
+
+    def _write_trace_json(self, trace: Trace) -> None:
+        path = self.traces_dir / f"{trace.id}.json"
+        path.write_text(
+            json.dumps(to_jsonable(trace), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def _write_rubric_yaml(self, rubric: Rubric) -> None:
+        path = self.rubrics_dir / f"{rubric.id}.yaml"
+        path.write_text(
+            yaml.safe_dump(to_jsonable(rubric), sort_keys=False),
+            encoding="utf-8",
+        )
+
+    # ----- Bulk import ---------------------------------------------------- #
+
+    def import_blocks(self, blocks: Iterable[Playbook]) -> int:
+        n = 0
+        for b in blocks:
+            self.upsert_block(b)
+            n += 1
+        return n
+
+    def import_rubrics(self, rubrics: Iterable[Rubric]) -> int:
+        n = 0
+        for r in rubrics:
+            self.upsert_rubric(r)
+            n += 1
+        return n
+
+    # ----- Context Budget -------------------------------------------------- #
+
+    def _context_budget_connection(self) -> sqlite3.Connection:
+        """Return the long-lived connection for context-budget writes.
+
+        Opened once and reused across calls to avoid per-call connection churn.
+        Created with ``check_same_thread=False`` so it can be shared across the
+        MCP dispatcher's threads; callers MUST hold ``_context_budget_lock``
+        while using the returned connection.
+        """
+        if self._context_budget_conn is None:
+            conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute("PRAGMA journal_mode = WAL")
+            self._context_budget_conn = conn
+        return self._context_budget_conn
+
+    def close(self) -> None:
+        """Close the long-lived context-budget connection if open.
+
+        Idempotent -- safe to call more than once. Scoped to the dedicated
+        budget connection; the bulk-import ``self._connection`` is managed by
+        its own callers and is not touched here.
+        """
+        with self._context_budget_lock:
+            if self._context_budget_conn is not None:
+                self._context_budget_conn.close()
+                self._context_budget_conn = None
+
+    def persist_context_budget(self, record: Any) -> None:
+        """Persist a ContextBudget record to the store.
+
+        Args:
+            record: A ContextBudget instance with session_id, turn_index, model,
+                    token counts, lever_savings dict, and tool_calls count.
+        """
+        params = (
+            record.id,
+            record.session_id,
+            record.turn_index,
+            record.model,
+            record.input_tokens,
+            record.cache_read_tokens,
+            record.cache_write_tokens,
+            record.output_tokens,
+            record.naive_input_tokens,
+            json.dumps(record.lever_savings),
+            record.tool_calls,
+            record.created_at.isoformat(),
+        )
+        sql = """
+            INSERT OR REPLACE INTO context_budget (
+                id, session_id, turn_index, model, input_tokens,
+                cache_read_tokens, cache_write_tokens, output_tokens,
+                naive_input_tokens, lever_savings_json, tool_calls, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        # Prefer the transiently-shared bulk-import connection when batch_mode
+        # has set it; otherwise use the dedicated long-lived connection guarded
+        # by _context_budget_lock to serialize concurrent dispatcher threads.
+        if self._connection is not None:
+            self._connection.execute(sql, params)
+            self._connection.commit()
+            return
+        with self._context_budget_lock:
+            conn = self._context_budget_connection()
+            conn.execute(sql, params)
+            conn.commit()
+
+    def list_context_budgets(self, session_id: str) -> list[Any]:
+        """List all ContextBudget records for a run.
+
+        Args:
+            session_id: The run identifier.
+
+        Returns:
+            A list of ContextBudget records (as dicts), ordered by turn_index.
+        """
+        from atelier.core.foundation.savings_models import ContextBudget
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, session_id, turn_index, model, input_tokens,
+                       cache_read_tokens, cache_write_tokens, output_tokens,
+                       naive_input_tokens, lever_savings_json, tool_calls, created_at
+                FROM context_budget
+                WHERE session_id = ?
+                ORDER BY turn_index ASC
+                """,
+                (session_id,),
+            ).fetchall()
+
+        results = []
+        for row in rows:
+            results.append(
+                ContextBudget(
+                    id=row[0],
+                    session_id=row[1],
+                    turn_index=row[2],
+                    model=row[3],
+                    input_tokens=row[4],
+                    cache_read_tokens=row[5],
+                    cache_write_tokens=row[6],
+                    output_tokens=row[7],
+                    naive_input_tokens=row[8],
+                    lever_savings=json.loads(row[9]),
+                    tool_calls=row[10],
+                    created_at=datetime.fromisoformat(row[11]),
+                )
+            )
+
+        return results
+
+    def get_context_budget(self, cb_id: str) -> Any | None:
+        """Get a single ContextBudget record by ID.
+
+        Args:
+            cb_id: The ContextBudget ID.
+
+        Returns:
+            A ContextBudget instance or None if not found.
+        """
+        from atelier.core.foundation.savings_models import ContextBudget
+
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, session_id, turn_index, model, input_tokens,
+                       cache_read_tokens, cache_write_tokens, output_tokens,
+                       naive_input_tokens, lever_savings_json, tool_calls, created_at
+                FROM context_budget
+                WHERE id = ?
+                """,
+                (cb_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return ContextBudget(
+            id=row[0],
+            session_id=row[1],
+            turn_index=row[2],
+            model=row[3],
+            input_tokens=row[4],
+            cache_read_tokens=row[5],
+            cache_write_tokens=row[6],
+            output_tokens=row[7],
+            naive_input_tokens=row[8],
+            lever_savings=json.loads(row[9]),
+            tool_calls=row[10],
+            created_at=datetime.fromisoformat(row[11]),
+        )

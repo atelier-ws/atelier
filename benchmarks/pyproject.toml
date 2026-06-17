@@ -1,0 +1,45 @@
+[project]
+name = "atelier-benchmarks"
+version = "0.1.0"
+description = "Atelier benchmark & evaluation suite (MCP-tool A/B, agent A/B, wire-savings, Terminal-Bench)"
+requires-python = ">=3.12"
+dependencies = [
+    "terminal-bench==0.2.18",
+    "pydantic>=2.6",
+    "pyyaml>=6.0",
+    "rich>=13.7",
+    "click>=8.1",
+    "jinja2>=3.1",
+    "matplotlib>=3.9",
+    "atelier",
+    "mitmproxy>=12.2.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+harbor = [
+    "harbor>=0.13",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+atelier = { workspace = true }
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["harbor"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = ["mcp_tools/fixtures/downloaded"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E501"]

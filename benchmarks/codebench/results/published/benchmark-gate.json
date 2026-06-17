@@ -1,0 +1,50 @@
+{
+  "checks": {
+    "baseline_arm": "baseline",
+    "candidate_arm": "atelier",
+    "confidence": 0.95,
+    "cost_metric": "cost_usd_sum",
+    "margin": 0.05,
+    "quality_metric": "judge correct rate"
+  },
+  "details": {
+    "baseline": {
+      "correct": 0,
+      "cost_usd_sum": 7.27078685,
+      "judged": 0,
+      "pass_rate": 0.0,
+      "total": 28,
+      "valid": 28,
+      "wilson_lower": 0.0,
+      "wilson_upper": 0.12064330476584559
+    },
+    "candidate": {
+      "correct": 0,
+      "cost_usd_sum": 5.6157957,
+      "judged": 0,
+      "pass_rate": 0.0,
+      "total": 28,
+      "valid": 28,
+      "wilson_lower": 0.0,
+      "wilson_upper": 0.12064330476584559
+    },
+    "cost": {
+      "baseline_cost_usd": 7.27078685,
+      "candidate_cost_usd": 5.6157957,
+      "estimated_cost_delta_usd": -1.6549911500000007,
+      "estimated_cost_savings_usd": 1.6549911500000007
+    },
+    "judged_delta": {
+      "delta_lower_bound": -0.12064330476584559,
+      "delta_upper_bound": 0.12064330476584559,
+      "pass_rate": 0.0
+    }
+  },
+  "evaluated_at": "2026-06-16T12:57:24.078287+00:00",
+  "passed": false,
+  "reasons": [
+    "quality gate requires judged results for every baseline and candidate run",
+    "lower confidence bound on judged solved-rate delta -0.1206 is below allowed margin -0.0500"
+  ],
+  "suite": "codebench"
+}
