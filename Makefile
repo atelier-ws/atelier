@@ -36,13 +36,15 @@ build: ## Build and package for production distribution
 
 release/build: build ## Alias for build release jobs
 
-mirror: ## Mirror current tag to atelier-ws/atelier (strips release/private-paths.txt)
+mirror: ## Mirror a tag to atelier-ws/atelier: make mirror tag=v0.4.8
 	@set -e; \
-	 TAG=$$(git describe --tags --exact-match 2>/dev/null) \
-	   || { echo "Error: not on an exact tag. Run: git tag vX.Y.Z && make mirror"; exit 1; }; \
+	 TAG=$${tag:-$$(git tag --sort=-version:refname | head -1)}; \
+	 [ -n "$$TAG" ] || { echo "Error: no tag found. Run: make mirror tag=vX.Y.Z"; exit 1; }; \
+	 git rev-parse "$$TAG" >/dev/null 2>&1 \
+	   || { echo "Error: tag '$$TAG' does not exist"; exit 1; }; \
 	 echo "Mirroring $$TAG -> atelier-ws/atelier ..."; \
 	 TMPDIR=$$(mktemp -d) && trap "rm -rf $$TMPDIR" EXIT; \
-	 git archive HEAD | tar -x -C $$TMPDIR; \
+	 git archive $$TAG | tar -x -C $$TMPDIR; \
 	 grep -v '^#' release/private-paths.txt | grep -v '^$$' | \
 	   while IFS= read -r p; do rm -rf "$$TMPDIR/$$p"; done; \
 	 mkdir -p "$$TMPDIR/.github/workflows"; \
