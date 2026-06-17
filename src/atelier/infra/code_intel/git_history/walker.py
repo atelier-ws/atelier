@@ -76,9 +76,15 @@ def _load_blob_text(repo: Any, tree: Any, file_path: str) -> str | None:
         entry = tree[file_path]
     except KeyError:
         return None
-    blob = repo[entry.id]
-    raw_bytes = cast(bytes, blob.read_raw())
-    return raw_bytes.decode("utf-8", errors="replace")
+    try:
+        blob = repo[entry.id]
+    except KeyError:
+        return None
+    try:
+        raw_bytes = cast(bytes, blob.read_raw())
+        return raw_bytes.decode("utf-8", errors="replace")
+    except Exception:
+        return None
 
 
 def _iter_definition_entries(
