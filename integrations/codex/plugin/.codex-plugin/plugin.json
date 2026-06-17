@@ -17,7 +17,7 @@
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Use the current AGENTS.md instructions for Atelier code-mode work.",
+      "Use AGENTS.md for code mode; the legacy atelier_code config alias is not required.",
       "Spawn atelier.plan, atelier.explore, or atelier.review for focused analysis.",
       "Spawn atelier.execute, atelier.solve, atelier.research, or atelier.code when appropriate."
     ],
