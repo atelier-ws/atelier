@@ -167,9 +167,9 @@ def walk_history(
     deletions_found = 0
 
     for idx, commit in enumerate(commits, 1):
+        if not commit.parents:
+            continue
         try:
-            if not commit.parents:
-                continue
             parent = commit.parents[0]
             diff = parent.tree.diff_to_tree(commit.tree)
             renames = detect_renames(diff)

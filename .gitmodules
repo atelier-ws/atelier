@@ -1,0 +1,3 @@
+[submodule "landing"]
+	path = landing
+	url = git@github.com:atelier-ws/landing.git
