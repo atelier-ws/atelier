@@ -10034,8 +10034,10 @@ def _handle_and_write(request: dict[str, Any]) -> None:
     if response is not None:
         try:
             _write_jsonrpc(response)
-        except Exception:
-            _log.exception("failed to write MCP response")
+        except OSError:
+            _log.exception("failed to write MCP response (connection closed)")
+        except Exception:  # noqa: BLE001 - JSON-RPC write boundary
+            _log.exception("failed to write MCP response (unexpected error)")
 
 
 def serve() -> None:
