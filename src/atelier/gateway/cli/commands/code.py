@@ -379,7 +379,16 @@ def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> Non
         )
         with progress:
             task_id = progress.add_task("[green]⟳[/green]  Indexing Git history...", total=None)
-            adapter._ensure_history_ready()
+            
+            def on_commit(current: int, total: int) -> None:
+                progress.update(
+                    task_id,
+                    total=total,
+                    completed=current,
+                    description=f"[cyan]⟳[/cyan]  Indexing Git history... {current}/{total}",
+                )
+            
+            adapter._ensure_history_ready(on_commit=on_commit)
             progress.update(
                 task_id,
                 total=100,

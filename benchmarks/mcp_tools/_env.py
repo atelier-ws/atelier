@@ -24,7 +24,6 @@ def configure_benchmark_runtime(root: Path, *, workspace_root: Path | None = Non
     os.environ["ATELIER_WORKSPACE_ROOT"] = str(resolved_workspace)
     os.environ["CLAUDE_WORKSPACE_ROOT"] = str(resolved_workspace)
     os.environ["ATELIER_DEV_MODE"] = "1"
-    os.environ["ATELIER_CODE_AUTOSYNC"] = "0"  # disable background reindex during benchmarks
     os.environ["ATELIER_LINEAGE_DISABLED"] = "1"  # commit-lineage bootstrap is unrelated to search benchmarks
     os.environ.pop("CURSOR_WORKSPACE_ROOT", None)
     os.environ.pop("VSCODE_CWD", None)
