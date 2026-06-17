@@ -18,7 +18,7 @@ def _run_without_codex(tmp_path: Path, *args: str) -> subprocess.CompletedProces
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    shutil.copy2(dirname, fake_bin / "dirname")
+    os.symlink(dirname, fake_bin / "dirname")
 
     home = tmp_path / "home"
     home.mkdir()
@@ -37,7 +37,7 @@ def _run_without_codex(tmp_path: Path, *args: str) -> subprocess.CompletedProces
 def test_codex_print_only_is_side_effect_free_without_cli(tmp_path: Path) -> None:
     result = _run_without_codex(tmp_path, "--print-only")
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, f"stdout: {result.stdout}, stderr: {result.stderr}"
     assert "Manual Install Steps" in result.stdout
     assert not any((tmp_path / "home").iterdir())
 
@@ -45,7 +45,7 @@ def test_codex_print_only_is_side_effect_free_without_cli(tmp_path: Path) -> Non
 def test_codex_missing_cli_skips_before_staging(tmp_path: Path) -> None:
     result = _run_without_codex(tmp_path)
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, f"stdout: {result.stdout}, stderr: {result.stderr}"
     assert "=== SKIPPED (codex CLI absent) ===" in result.stdout
     assert not any((tmp_path / "home").iterdir())
 
