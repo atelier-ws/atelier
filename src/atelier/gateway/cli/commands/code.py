@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import shutil
 import sqlite3
 import subprocess
@@ -407,10 +408,11 @@ def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> dic
             )
             return summary
     except Exception:
+        logging.exception("Failed to index git history")
         try:
             engine._deleted_history_adapter()._ensure_history_ready()
         except Exception:
-            pass
+            logging.exception("Failed to ensure git history ready")
         return None
 
 
@@ -491,10 +493,11 @@ def _prewarm_embeddings_with_progress(engine: Any, frame_prefix: str = "") -> No
                 description="[green]✓[/green]  Pre-warmed symbol embeddings",
             )
     except Exception:
+        logging.exception("Failed to prewarm embeddings")
         try:
             engine._prewarm_symbol_embeddings()
         except Exception:
-            pass
+            logging.exception("Failed to prewarm symbol embeddings")
 
 
 @click.group("code")
@@ -536,7 +539,7 @@ def code_index_cmd(
             engine._deleted_history_adapter()._ensure_history_ready()
             engine._prewarm_symbol_embeddings()
         except Exception:
-            pass
+            logging.exception("Failed to prepare background indexes")
         _emit(payload, as_json=True)
         return
 
@@ -614,7 +617,7 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
         if table_exists:
             embedding_count = c.execute("SELECT COUNT(*) FROM symbol_vectors").fetchone()[0]
     except Exception:
-        pass
+        logging.exception("Failed to query symbol_vectors table")
 
     prefix_markup = click.style(frame_prefix, dim=True) if frame_prefix else ""
 
@@ -625,7 +628,7 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
 
         console = Console()
 
-        def print_prefixed(renderable) -> None:
+        def print_prefixed(renderable: Any) -> None:
             # Capture what rich would print, then write it with the prefix
             with console.capture() as cap:
                 console.print(renderable)
@@ -772,7 +775,7 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
                 graveyard_table.columns[1].footer = f"{total_deleted:,}"
                 print_prefixed(graveyard_table)
         except Exception:
-            pass
+            logging.exception("Failed to query symbol_graveyard")
 
     except ImportError:
         # Fallback to simple prints if rich is not available, but with prefix support
@@ -812,7 +815,7 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
                 click.echo(f"{prefix_markup}  " + "-" * 25)
                 click.echo(f"{prefix_markup}  {'TOTAL':<15s}  {total_deleted:>7d}")
         except Exception:
-            pass
+            logging.exception("Failed to query symbol_graveyard in fallback")
 
     conn.close()
 
