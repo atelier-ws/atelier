@@ -104,6 +104,11 @@ jobs:
           # Attempt to delete the release and tag if they already exist to allow fresh creation
           gh release delete "${TAG}" --cleanup-tag -y || true
 
+          # Generate sha256 sidecars so the installer can verify downloads.
+          for f in binaries/*.tar.gz; do
+            shasum -a 256 "$f" | awk '{print $1}' > "${f}.sha256"
+          done
+
           shopt -s nullglob
           assets=(binaries/* scripts/install.sh scripts/sessions.sh)
 
