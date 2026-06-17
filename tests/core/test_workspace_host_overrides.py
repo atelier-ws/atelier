@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import atelier.core.capabilities.workspace_host_overrides as overrides
 from atelier.core.capabilities.workspace_host_overrides import (
     rewrite_agent_model,
     rewrite_agent_name,
@@ -87,7 +88,6 @@ def test_workspace_claude_agent_omits_model_for_auto(tmp_path: Path, monkeypatch
 
 
 def test_workspace_claude_agent_omits_model_when_runtime_default_only(tmp_path: Path, monkeypatch) -> None:
-    """Runtime-only model (no host override) should not inject model line."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     settings = workspace / ".atelier" / "settings.json"
@@ -105,7 +105,6 @@ def test_workspace_claude_agent_omits_model_when_runtime_default_only(tmp_path: 
 
 
 def test_workspace_claude_agent_injects_model_on_explicit_host_override(tmp_path: Path, monkeypatch) -> None:
-    """Explicit hosts.claude.code override should inject the model and normalize it."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     settings = workspace / ".atelier" / "settings.json"
@@ -159,7 +158,7 @@ def test_write_workspace_opencode_agents_projects_workspace_files(tmp_path: Path
     assert workspace / ".opencode" / "agents" / "atelier.review.md" in written
 
 
-def test_write_workspace_codex_agents_projects_workspace_files(tmp_path: Path, monkeypatch) -> None:
+def test_write_workspace_codex_agents_projects_standalone_files(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.setenv("ATELIER_ROOT", str(tmp_path / "global-root"))
@@ -168,27 +167,47 @@ def test_write_workspace_codex_agents_projects_workspace_files(tmp_path: Path, m
     content = (workspace / ".codex" / "agents" / "atelier.code.toml").read_text(encoding="utf-8")
 
     assert workspace / ".codex" / "agents" / "atelier.code.toml" in written
+    assert len(written) == 7
     assert 'name = "atelier.code"' in content
+    assert 'developer_instructions = """' in content
+    assert "{{CORE_DISCIPLINE}}" not in content
+    assert "## Core discipline" in content
 
 
-def test_write_workspace_codex_agent_config_registers_role_agents(tmp_path: Path, monkeypatch) -> None:
+def test_write_workspace_codex_agent_config_removes_legacy_registration(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.setenv("ATELIER_ROOT", str(tmp_path / "global-root"))
-    write_workspace_codex_agents(workspace)
+    config = workspace / ".codex" / "config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        'model = "gpt-5.5"\n\n'
+        "# ATELIER:CODEX AGENTS START\n"
+        "[agents.atelier_code]\n"
+        'description = "legacy"\n'
+        'config_file = "/tmp/atelier.code.toml"\n'
+        "# ATELIER:CODEX AGENTS END\n\n"
+        "[agents.atelier_review]\n"
+        'description = "orphan legacy section"\n\n'
+        "[agents]\n"
+        "max_threads = 4\n",
+        encoding="utf-8",
+    )
 
     written = write_workspace_codex_agent_config(workspace)
     write_workspace_codex_agent_config(workspace)
     content = written.read_text(encoding="utf-8")
 
-    assert written == workspace / ".codex" / "config.toml"
-    assert content.count("# ATELIER:CODEX AGENTS START") == 1
-    assert "[agents.atelier_code]" in content
-    assert f'config_file = "{workspace / ".codex" / "agents" / "atelier.code.toml"}"' in content
-    assert "[agents.atelier_review]" in content
+    assert written == config
+    assert 'model = "gpt-5.5"' in content
+    assert "[agents]" in content
+    assert "max_threads = 4" in content
+    assert "ATELIER:CODEX AGENTS" not in content
+    assert "[agents.atelier_code]" not in content
+    assert "[agents.atelier_review]" not in content
 
 
-def test_write_workspace_agents_md_installs_distributed_managed_block(tmp_path: Path, monkeypatch) -> None:
+def test_write_workspace_agents_md_installs_generic_managed_block(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.setenv("ATELIER_ROOT", str(tmp_path / "global-root"))
@@ -199,5 +218,15 @@ def test_write_workspace_agents_md_installs_distributed_managed_block(tmp_path: 
 
     assert written == workspace / "AGENTS.md"
     assert content.count("<!-- ATELIER:CODE START -->") == 1
-    assert "Codex may defer MCP tools behind `tool_search`" in content
-    assert "mcp__atelier__...` tools are visible" in content
+    assert "# Atelier Agent Guide" in content
+    assert "mcp__atelier__read" in content
+    assert "Codex may defer MCP tools" not in content
+    assert "tool_search" not in content
+
+
+def test_packaged_integration_root_is_used_when_checkout_assets_are_absent(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(overrides, "ATELIER_REPO_ROOT", tmp_path / "missing-checkout")
+    checkout_root = Path(__file__).resolve().parents[2]
+    monkeypatch.setattr(overrides.importlib.resources, "files", lambda package: checkout_root)
+
+    assert overrides._resolve_repo_root(None) == checkout_root
