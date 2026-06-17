@@ -86,24 +86,38 @@ def _write_stack_state(root: Path, payload: dict[str, Any]) -> None:
     state_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def _get_npm_path() -> str:
+    # Try common locations if not in PATH
+    for path in ["/opt/homebrew/bin/npm", "/usr/local/bin/npm", "/usr/bin/npm"]:
+        if os.path.exists(path):
+            return path
+    # Fallback to PATH search
+    npm_path = shutil.which("npm")
+    if npm_path:
+        return npm_path
+    return "npm"  # Will likely fail, but let's keep the signature consistent
+
+
 def _stack_frontend_dir() -> Path:
     return _project_root() / "frontend"
 
 
-def _stack_install_command(frontend_dir: Path) -> list[str]:
-    return ["npm", "ci"] if (frontend_dir / "package-lock.json").exists() else ["npm", "install"]
+def _stack_install_command(npm_path: str, frontend_dir: Path) -> list[str]:
+    cmd = "ci" if (frontend_dir / "package-lock.json").exists() else "install"
+    return [npm_path, cmd]
 
 
 def _ensure_stack_frontend_dependencies(frontend_dir: Path) -> None:
     if not frontend_dir.exists():
         raise click.ClickException(f"frontend directory not found: {frontend_dir}")
-    if not shutil.which("npm"):
+    npm_path = _get_npm_path()
+    if npm_path == "npm" and not shutil.which("npm"):
         raise click.ClickException("npm is required to run the optional Atelier frontend stack")
     node_modules = frontend_dir / "node_modules"
     vite_bin = node_modules / ".bin" / "vite"
     if node_modules.exists() and vite_bin.exists():
         return
-    subprocess.run(_stack_install_command(frontend_dir), cwd=frontend_dir, check=True)
+    subprocess.run(_stack_install_command(npm_path, frontend_dir), cwd=frontend_dir, check=True)
 
 
 def _stack_status_payload(root: Path) -> dict[str, Any]:
