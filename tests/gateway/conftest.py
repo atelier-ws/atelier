@@ -29,4 +29,3 @@ def _disable_code_autosync() -> None:
 
     with patch.object(CodeContextEngine, "__init__", patched_init):
         yield
-

@@ -53,7 +53,9 @@ def _embed_with_timeout(embedder: Embedder, texts: list[str]) -> list[list[float
     hung calls the acquire fails immediately and we fall back without spawning, so
     a sustained provider outage can never leak unbounded threads."""
     if not _embed_inflight.acquire(blocking=False):
-        _log.warning("embedder %s at in-flight cap (%d); falling back to lexical ranking", embedder.name, _EMBED_MAX_INFLIGHT)
+        _log.warning(
+            "embedder %s at in-flight cap (%d); falling back to lexical ranking", embedder.name, _EMBED_MAX_INFLIGHT
+        )
         return []
     result: list[list[float]] = []
     error: list[BaseException] = []
@@ -70,7 +72,9 @@ def _embed_with_timeout(embedder: Embedder, texts: list[str]) -> list[list[float
     worker.start()
     worker.join(timeout=_EMBED_TIMEOUT_S)
     if worker.is_alive():
-        _log.warning("embedder %s timed out after %.1fs; falling back to lexical ranking", embedder.name, _EMBED_TIMEOUT_S)
+        _log.warning(
+            "embedder %s timed out after %.1fs; falling back to lexical ranking", embedder.name, _EMBED_TIMEOUT_S
+        )
         return []
     if error:
         _log.warning("embedder %s failed; falling back to lexical ranking", embedder.name, exc_info=error[0])

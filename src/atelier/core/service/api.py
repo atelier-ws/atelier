@@ -5648,9 +5648,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     or (
                         "assistant"
                         if turn.get("kind") == "agent_message"
-                        else "shell"
-                        if turn.get("kind") == "shell_command"
-                        else turn.get("kind") or "session"
+                        else "shell" if turn.get("kind") == "shell_command" else turn.get("kind") or "session"
                     )
                 )
                 bucket = tool_costs.setdefault(tool_name, {"calls": 0.0, "cost_usd": 0.0})
@@ -5794,9 +5792,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         total_turns = (
             authoritative_total_turns
             if authoritative_total_turns > 0
-            else trace_total_turns
-            if trace_total_turns > 0
-            else reconstructed_total_turns
+            else trace_total_turns if trace_total_turns > 0 else reconstructed_total_turns
         )
 
         input_token_cost_usd = (

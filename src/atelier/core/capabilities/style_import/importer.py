@@ -300,9 +300,7 @@ def _response_dict(response: str | dict[str, Any]) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {"procedural": False}
 
 
-def _embed_existing_blocks(
-    blocks: list[Playbook], embedder: Embedder | None
-) -> list[tuple[Playbook, list[float]]]:
+def _embed_existing_blocks(blocks: list[Playbook], embedder: Embedder | None) -> list[tuple[Playbook, list[float]]]:
     embedder_local = embedder or get_embedder()
     out: list[tuple[Playbook, list[float]]] = []
     for block in blocks:
