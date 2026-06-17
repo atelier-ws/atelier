@@ -54,7 +54,7 @@ def _count_tiktoken(text: str) -> int:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+def _isolate_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     monkeypatch.setenv("ATELIER_ROOT", str(tmp_path / ".atelier-ws"))
     _reset_runtime_cache_for_testing()
     yield

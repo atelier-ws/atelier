@@ -10034,9 +10034,7 @@ def _handle_and_write(request: dict[str, Any]) -> None:
     if response is not None:
         try:
             _write_jsonrpc(response)
-        except (
-            Exception
-        ):  # noqa: BLE001 - a write failure (e.g. BrokenPipe on host disconnect) must be logged, not silently dropped by the pool.
+        except Exception:
             _log.exception("failed to write MCP response")
 
 

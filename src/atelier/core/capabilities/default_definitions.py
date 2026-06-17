@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 MODES_DIR = Path("integrations/agents")
@@ -330,7 +330,7 @@ def load_mode_docs(repo_root: Path | None = None, *, strict: bool = True) -> dic
     # 3. Fallback to packaged assets for missing roles (useful in installed package)
     if not all(role_id in docs for role_id in HOST_ROLE_IDS):
         try:
-            packaged = resources.files("atelier").joinpath("integrations", "agents")
+            packaged = cast(Any, resources.files("atelier")).joinpath("integrations", "agents")
             if packaged.is_dir():
                 for entry in sorted(packaged.glob("*.md"), key=lambda x: x.name):
                     meta, body = parse_frontmatter(entry.read_text(encoding="utf-8"))

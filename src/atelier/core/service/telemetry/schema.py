@@ -46,12 +46,8 @@ EVENTS: dict[str, EventSpec] = {
             "session_id": STR,
         }
     ),
-    "playbook_applied": EventSpec(
-        {"block_id_hash": STR, "domain": STR, "retrieval_score": FLOAT, "session_id": STR}
-    ),
-    "playbook_rejected": EventSpec(
-        {"block_id_hash": STR, "domain": STR, "rejection_reason": STR, "session_id": STR}
-    ),
+    "playbook_applied": EventSpec({"block_id_hash": STR, "domain": STR, "retrieval_score": FLOAT, "session_id": STR}),
+    "playbook_rejected": EventSpec({"block_id_hash": STR, "domain": STR, "rejection_reason": STR, "session_id": STR}),
     "plan_check_passed": EventSpec({"domain": STR, "rule_count": INT, "session_id": STR}),
     "plan_check_blocked": EventSpec({"domain": STR, "blocking_rule_id": STR, "severity": STR, "session_id": STR}),
     "plan_check_overridden": EventSpec({"domain": STR, "blocking_rule_id": STR, "session_id": STR}),

@@ -4940,9 +4940,7 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found"
-                if merged_status == "empty"
-                else None
+                else "no related call edges were found" if merged_status == "empty" else None
             )
             merged_snapshot = None
             if snapshot:
