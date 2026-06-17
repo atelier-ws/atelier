@@ -2731,7 +2731,8 @@ def _codex_transcript_snapshot(path: Path) -> dict[str, Any]:
             continue
         event_id = ""
         if isinstance(event, dict):
-            payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+            raw_payload = event.get("payload")
+            payload: dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}
             for candidate in (event, payload):
                 for key in ("id", "event_id", "eventId", "uuid", "message_id", "messageId"):
                     value = str(candidate.get(key) or "").strip()

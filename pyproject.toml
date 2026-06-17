@@ -12,7 +12,7 @@ name = "atelier"
 version = "0.3.5"
 description = "Agent Reasoning Runtime — reusable procedures, failure rescue, and rubric verification for coding and product agents."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13,<3.14"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Atelier" }]
 
@@ -52,6 +52,8 @@ dependencies = [
     "tree-sitter-language-pack>=1.8.1",
     "rapidfuzz>=3.14.5",
     "markdown-it-py>=3.0",
+    "yarl==1.24.2",
+    "zipp==4.1.0",
 ]
 
 [project.optional-dependencies]
@@ -102,7 +104,7 @@ packages = ["src/atelier"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py313"
 exclude = ["benchmarks/mcp_tools/fixtures/downloaded"]
 force-exclude = true
 
@@ -114,7 +116,7 @@ ignore = ["E501"]
 
 [tool.black]
 line-length = 120
-target-version = ["py312"]
+target-version = ["py313"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -126,7 +128,7 @@ markers = [
     ]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 strict = true
 warn_unused_ignores = false
 ignore_missing_imports = true
