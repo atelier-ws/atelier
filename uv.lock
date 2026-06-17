@@ -491,6 +491,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "gitpython" },
     { name = "litellm" },
+    { name = "markdown-it-py" },
     { name = "markdownify" },
     { name = "networkx" },
     { name = "opentelemetry-api", version = "1.30.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-memory-server'" },
@@ -591,6 +592,7 @@ requires-dist = [
     { name = "letta", marker = "extra == 'memory-server'", specifier = ">=0.16.7" },
     { name = "letta-client", marker = "extra == 'memory'", specifier = ">=1.7.12" },
     { name = "litellm", specifier = ">=1.83.14" },
+    { name = "markdown-it-py", specifier = ">=3.0" },
     { name = "markdownify", specifier = ">=1.2.2" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
@@ -3949,7 +3951,7 @@ name = "macholib"
 version = "1.16.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "altgraph" },
+    { name = "altgraph", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32') or (sys_platform == 'emscripten' and extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server') or (sys_platform == 'win32' and extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/10/2f/97589876ea967487978071c9042518d28b958d87b17dceb7cdc1d881f963/macholib-1.16.4.tar.gz", hash = "sha256:f408c93ab2e995cd2c46e34fe328b130404be143469e41bc366c807448979362", size = 59427, upload-time = "2025-11-22T08:28:38.373Z" }
 wheels = [
@@ -4988,7 +4990,7 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "opentelemetry-proto", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
+    { name = "opentelemetry-proto", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0e/9c/216acfeaedadf2e1937f4373929b20f73197c5c4a2546d4f584b7fa63813/opentelemetry_exporter_otlp_proto_common-1.42.1.tar.gz", hash = "sha256:04f1f01fb597c4249dfcd7f8b861c902c2102369d376d9d346ff38de4469a2ee", size = 21433, upload-time = "2026-05-21T16:32:55.526Z" }
 wheels = [
@@ -5061,12 +5063,12 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "googleapis-common-protos" },
-    { name = "opentelemetry-api", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "opentelemetry-exporter-otlp-proto-common", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "opentelemetry-proto", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "opentelemetry-sdk", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "requests" },
+    { name = "googleapis-common-protos", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "opentelemetry-api", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "opentelemetry-exporter-otlp-proto-common", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "opentelemetry-proto", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "opentelemetry-sdk", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "requests", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
     { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.15' and extra == 'extra-7-atelier-langfuse') or (python_full_version < '3.15' and extra != 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.15' and extra == 'extra-7-atelier-langfuse') or (python_full_version >= '3.15' and extra != 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
@@ -5163,7 +5165,7 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "protobuf" },
+    { name = "protobuf", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b4/55/63eac3e1089b768ba014091fdd2ae8a9a440c821ef5e2b786909c94c8836/opentelemetry_proto-1.42.1.tar.gz", hash = "sha256:c6a51e6b4f05ae63565f3a113217f3d2bfaec68f78c02d7a6c85f9010d1cfca6", size = 45839, upload-time = "2026-05-21T16:33:03.937Z" }
 wheels = [
@@ -5215,8 +5217,8 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "opentelemetry-api", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "opentelemetry-semantic-conventions", version = "0.63b1", source = { registry = "https://pypi.org/simple" } },
+    { name = "opentelemetry-api", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "opentelemetry-semantic-conventions", version = "0.63b1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
     { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.15' and extra == 'extra-7-atelier-langfuse') or (python_full_version < '3.15' and extra != 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.15' and extra == 'extra-7-atelier-langfuse') or (python_full_version >= '3.15' and extra != 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
@@ -5268,7 +5270,7 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "opentelemetry-api", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
+    { name = "opentelemetry-api", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
     { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.15' and extra == 'extra-7-atelier-langfuse') or (python_full_version < '3.15' and extra != 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.15' and extra == 'extra-7-atelier-langfuse') or (python_full_version >= '3.15' and extra != 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
@@ -8012,7 +8014,7 @@ name = "tree-sitter-languages"
 version = "1.10.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tree-sitter" },
+    { name = "tree-sitter", marker = "python_full_version < '3.13' or (python_full_version == '3.13.*' and extra == 'extra-7-atelier-langfuse') or (python_full_version == '3.13.*' and extra != 'extra-7-atelier-memory-server') or (python_full_version >= '3.14' and extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8d/bf/a9bd2d6ecbd053de0a5a50c150105b69c90eb49089f9e1d4fc4937e86adc/tree_sitter_languages-1.10.2-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:c0f4c8b2734c45859edc7fcaaeaab97a074114111b5ba51ab4ec7ed52104763c", size = 8884771, upload-time = "2024-02-04T10:28:39.655Z" },

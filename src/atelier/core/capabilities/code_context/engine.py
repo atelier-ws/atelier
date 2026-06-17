@@ -929,6 +929,10 @@ def _process_one_file(
             extracted = _extract_python_symbols(source, tree=py_tree)
         else:
             extracted = []
+    elif language == "markdown":
+        from atelier.infra.code_intel.markdown import extract_markdown_symbols
+
+        extracted = [_ExtractedSymbol(**s) for s in extract_markdown_symbols(source)]
     else:
         extracted = _extract_tag_symbols_worker(path, source, language)
 
@@ -1267,6 +1271,7 @@ class CodeContextEngine:
         *,
         db_path: str | Path | None = None,
         nonblocking_reads: bool = False,
+        autosync_enabled: bool | None = None,
     ) -> None:
         self.repo_root = Path(repo_root).resolve()
         self.repo_id = _repo_id(self.repo_root)
@@ -1291,8 +1296,8 @@ class CodeContextEngine:
             local_find_callees=self._find_callees_local,
         )
         self._deleted_history_search_adapter: DeletedHistorySearchAdapter | None = None
-        autosync_raw = os.getenv("ATELIER_CODE_AUTOSYNC", "1").strip().lower()
-        self._autosync_enabled = autosync_raw not in {"0", "false", "no", "off"}
+        # Autosync disabled for one-shot CLI commands, enabled for services/daemons
+        self._autosync_enabled = autosync_enabled if autosync_enabled is not None else True
         self._autosync_debounce_ms = self._parse_autosync_debounce(os.getenv("ATELIER_CODE_AUTOSYNC_DEBOUNCE_MS"))
         self._autosync_poll_ms = self._parse_autosync_poll_ms(os.getenv("ATELIER_CODE_AUTOSYNC_POLL_MS"))
         self._autosync_state = "idle"
@@ -1630,10 +1635,14 @@ class CodeContextEngine:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         all_files = [
             path
-            for path in iter_source_files(self.repo_root, include_globs=include_globs)
+            for path in iter_source_files(
+                self.repo_root, include_globs=include_globs, progress_callback=progress_callback
+            )
             if not self._excluded(path, exclude_globs or [])
         ]
         total = len(all_files)
+        if progress_callback is not None:
+            progress_callback(0, total)  # Signal: discovery done, real total known
 
         with self._connect() as conn:
             self._init_schema(conn)

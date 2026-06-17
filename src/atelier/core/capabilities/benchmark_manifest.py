@@ -58,6 +58,7 @@ def build_codebench_manifest(
             "report_txt": "report.txt",
             "results_csv": "results.csv",
             "summary_csv": "summary.csv",
+            "task_metrics_csv": "task_metrics.csv",
         },
     }
 
