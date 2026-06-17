@@ -54,3 +54,23 @@ def test_codex_installer_avoids_gnu_only_readlink_flag() -> None:
 
     assert "readlink -f" not in content
     assert "resolve_real_path" in content
+
+
+def test_workspace_codex_commands_keep_user_codex_home() -> None:
+    content = SCRIPT.read_text(encoding="utf-8")
+
+    assert '(cd "$WORKSPACE" && codex "$@")' in content
+    assert 'CODEX_HOME="$CODEX_HOME" codex' not in content
+    assert 'CODEX_HOME="$CODEX_DIR" codex' not in content
+    assert 'USER_CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"' in content
+
+
+def test_codex_installer_uses_current_agent_discovery_and_restart_safe_plugins() -> None:
+    content = SCRIPT.read_text(encoding="utf-8")
+
+    assert "write_codex_agents" in content
+    assert "write_workspace_codex_agent_config" not in content
+    assert "write_codex_agent_config" not in content
+    assert '"installation": "INSTALLED_BY_DEFAULT"' in content
+    assert "Codex config missing plugin entry" not in content
+    assert "plugin activation will complete after Codex restart" in content
