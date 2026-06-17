@@ -97,7 +97,7 @@ cp -f src/atelier/gateway/hosts/configs/*.yaml bundle/src/atelier/gateway/hosts/
 mkdir -p bundle/scripts/lib
 cp -f scripts/lib/common.sh bundle/scripts/lib/common.sh
 cp -f scripts/lib/managed_context.sh bundle/scripts/lib/managed_context.sh
-cp -f scripts/versions.sh bundle/scripts/lib/versions.sh
+cp -f scripts/lib/versions.sh bundle/scripts/lib/versions.sh
 
 # Bundle integration files (pre-generated .md/.json/.sh per-host configs).
 echo "◆ Bundling host integration configs..."
