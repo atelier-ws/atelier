@@ -37,24 +37,25 @@ build: ## Build and package for production distribution
 release/build: build ## Alias for build release jobs
 
 mirror: ## Mirror current tag to atelier-ws/atelier (strips release/private-paths.txt)
-	@TAG=$$(git describe --tags --exact-match 2>/dev/null) \
-	  || { echo "Error: not on an exact tag. Run: git tag vX.Y.Z && make mirror"; exit 1; }
-	@echo "Mirroring $$TAG -> atelier-ws/atelier ..."
-	@TMPDIR=$$(mktemp -d) && trap "rm -rf $$TMPDIR" EXIT && \
-	  git archive HEAD | tar -x -C $$TMPDIR && \
-	  grep -v '^#' release/private-paths.txt | grep -v '^$$' | \
-	    while IFS= read -r p; do rm -rf "$$TMPDIR/$$p"; done && \
-	  mkdir -p "$$TMPDIR/.github/workflows" && \
-	  cp .github/workflows/release.yml "$$TMPDIR/.github/workflows/release.yml" && \
-	  cd $$TMPDIR && \
-	  git init -b main >/dev/null && \
-	  git add -A && \
-	  git commit -q -m "Release $$TAG" && \
-	  git tag $$TAG && \
-	  git remote add origin https://github.com/atelier-ws/atelier.git && \
-	  git push origin main --force -q && \
-	  git push origin $$TAG --force -q && \
-	  echo "Mirrored $$TAG to atelier-ws/atelier"
+	@set -e; \
+	 TAG=$$(git describe --tags --exact-match 2>/dev/null) \
+	   || { echo "Error: not on an exact tag. Run: git tag vX.Y.Z && make mirror"; exit 1; }; \
+	 echo "Mirroring $$TAG -> atelier-ws/atelier ..."; \
+	 TMPDIR=$$(mktemp -d) && trap "rm -rf $$TMPDIR" EXIT; \
+	 git archive HEAD | tar -x -C $$TMPDIR; \
+	 grep -v '^#' release/private-paths.txt | grep -v '^$$' | \
+	   while IFS= read -r p; do rm -rf "$$TMPDIR/$$p"; done; \
+	 mkdir -p "$$TMPDIR/.github/workflows"; \
+	 cp .github/workflows/release.yml "$$TMPDIR/.github/workflows/release.yml"; \
+	 cd $$TMPDIR; \
+	 git init -b main >/dev/null; \
+	 git add -A; \
+	 git commit -q -m "Release $$TAG"; \
+	 git tag $$TAG; \
+	 git remote add origin git@github.com:atelier-ws/atelier.git; \
+	 git push origin main --force -q; \
+	 git push origin $$TAG --force -q; \
+	 echo "Mirrored $$TAG to atelier-ws/atelier"
 
 prod: ## Build and install from local production build (includes mypyc compilation; expects ~2-3 min build time)
 	bash scripts/build.sh
