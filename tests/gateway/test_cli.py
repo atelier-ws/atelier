@@ -159,7 +159,7 @@ def test_code_index_output_styling(tmp_path: Path) -> None:
     # Verify frame-prefix applies to breakdown tables
     indexed_prefixed = _invoke(root, "code", "index", "--repo-root", str(repo), "--frame-prefix", "|| ")
     assert indexed_prefixed.exit_code == 0, indexed_prefixed.output
-    
+
     # Verify the prefix is prepended to output lines
     has_prefixed_table = False
     for line in indexed_prefixed.output.splitlines():

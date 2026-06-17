@@ -2091,9 +2091,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
-        f"'trace_id' missing or empty in trace receipt: {payload}"
-    )
+    assert (
+        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
+    ), f"'trace_id' missing or empty in trace receipt: {payload}"
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

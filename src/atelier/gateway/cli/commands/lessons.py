@@ -666,8 +666,7 @@ def eval_harbor(
             base_cmd += ["--ae", f"CLAUDE_CODE_OAUTH_TOKEN={token}"]
         else:
             click.echo(
-                "WARNING: CLAUDE_CODE_OAUTH_TOKEN not set. "
-                "Set it in your shell or in benchmarks/codebench/.env.",
+                "WARNING: CLAUDE_CODE_OAUTH_TOKEN not set. " "Set it in your shell or in benchmarks/codebench/.env.",
                 err=True,
             )
 

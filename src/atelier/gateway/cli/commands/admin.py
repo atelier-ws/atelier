@@ -478,9 +478,7 @@ def _parse_since_arg(value: str) -> datetime:
         delta = (
             timedelta(days=amount)
             if unit == "d"
-            else timedelta(hours=amount)
-            if unit == "h"
-            else timedelta(minutes=amount)
+            else timedelta(hours=amount) if unit == "h" else timedelta(minutes=amount)
         )
         return datetime.now(UTC) - delta
 

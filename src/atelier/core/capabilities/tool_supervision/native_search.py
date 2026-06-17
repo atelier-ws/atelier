@@ -898,11 +898,7 @@ def search_workspace(
                 read = _read_search_text(candidate)
                 if read is None:
                     if _over_cap_size(candidate) is not None:
-                        rel = (
-                            str(candidate.relative_to(root))
-                            if candidate.is_relative_to(root)
-                            else str(candidate)
-                        )
+                        rel = str(candidate.relative_to(root)) if candidate.is_relative_to(root) else str(candidate)
                         skipped_oversized.append(rel)
                     continue
                 source = read

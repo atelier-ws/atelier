@@ -123,9 +123,9 @@ def test_commit_result_has_commit_sha(engine_with_commits: Any) -> None:
 def test_provenance_filter_commit_only(engine_with_commits: Any) -> None:
     results = engine_with_commits.search_symbols("authentication session", provenance_filter="commit")
     assert results, "Expected commit hits with mocked embedder"
-    assert all(r.provenance == "commit" for r in results), (
-        f"All results should have provenance=commit, got: {[r.provenance for r in results]}"
-    )
+    assert all(
+        r.provenance == "commit" for r in results
+    ), f"All results should have provenance=commit, got: {[r.provenance for r in results]}"
 
 
 def test_commit_score_has_penalty(engine_with_commits: Any) -> None:

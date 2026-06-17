@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import sqlite3
 import shutil
+import sqlite3
 import subprocess
 from hashlib import sha256
 from pathlib import Path
@@ -309,7 +309,7 @@ def _index_repo_with_progress(
                 if _phase[0] == "lock":
                     progress.update(
                         task_id,
-                        description=f"[yellow]⏳[/yellow]  Acquiring index lock...",
+                        description="[yellow]⏳[/yellow]  Acquiring index lock...",
                     )
                 elif _phase[0] == "discovery":
                     if total:
@@ -355,14 +355,13 @@ def _index_repo_with_progress(
 def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> dict[str, int] | None:
     try:
         from rich.console import Console
-        from rich.progress import Progress, TextColumn, BarColumn
+        from rich.progress import BarColumn, Progress, TextColumn
 
         adapter = engine._deleted_history_adapter()
         current_head = adapter._current_head()
         if current_head is None:
             return None
 
-        import sqlite3
         from contextlib import closing
 
         with closing(adapter._connection_factory()) as conn:
@@ -418,7 +417,7 @@ def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> dic
 def _prewarm_embeddings_with_progress(engine: Any, frame_prefix: str = "") -> None:
     try:
         from rich.console import Console
-        from rich.progress import Progress, TextColumn, BarColumn
+        from rich.progress import BarColumn, Progress, TextColumn
 
         if not engine._semantic_ranker.available:
             return
@@ -433,7 +432,6 @@ def _prewarm_embeddings_with_progress(engine: Any, frame_prefix: str = "") -> No
         if not candidates:
             return
 
-        import sqlite3
         from contextlib import closing
 
         with closing(engine._connect()) as conn:
@@ -577,7 +575,6 @@ def code_index_cmd(
 
 def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
     """Print language and symbol-kind breakdown after indexing."""
-    import sqlite3
     from pathlib import Path
 
     db_path = engine.db_path
@@ -622,9 +619,9 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
     prefix_markup = click.style(frame_prefix, dim=True) if frame_prefix else ""
 
     try:
+        from rich import box
         from rich.console import Console
         from rich.table import Table
-        from rich import box
 
         console = Console()
 
