@@ -1297,7 +1297,10 @@ def _codex_estimated_cost_usd(model: str, usage: dict[str, Any]) -> float:
 
 
 def _codex_top_tools(session: dict[str, Any]) -> str:
-    raw = session.get("tools_used")
+    return _codex_tools_text(session.get("tools_used"), limit=4)
+
+
+def _codex_tools_text(raw: Any, *, limit: int | None = None) -> str:
     if not isinstance(raw, dict):
         return "none"
     counts: list[tuple[str, int]] = []
@@ -1305,7 +1308,9 @@ def _codex_top_tools(session: dict[str, Any]) -> str:
         if not str(name).strip():
             continue
         counts.append((str(name), int(count or 0)))
-    top = sorted(counts, key=lambda item: (-item[1], item[0]))[:4]
+    top = sorted(counts, key=lambda item: (-item[1], item[0]))
+    if limit is not None:
+        top = top[:limit]
     return " · ".join(f"{name}×{count}" for name, count in top) if top else "none"  # noqa: RUF001
 
 
@@ -1321,15 +1326,16 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
         statusline_cost = _apply_codex_statusline_snapshot(root, session_id, payload)
         with suppress(Exception):
             state = json.loads(session_stats_path(root, session_id).read_text(encoding="utf-8"))
-    if not _usage_has_tokens(_as_dict(state.get("usage"))):
-        _apply_codex_transcript_snapshot(root, session_id, payload)
+    _apply_codex_transcript_snapshot(root, session_id, payload)
     report = build_savings_report(root, session_id=session_id)
     session = report.get("session") or {}
     cost = report.get("cost") or {}
     usage = _as_dict(session.get("usage"))
 
-    turns = int(session.get("llm_turns", 0) or session.get("turns", 0) or 0)
+    llm_turns = int(session.get("llm_turns", 0) or 0)
+    prompt_turns = int(session.get("turns", 0) or 0)
     total_tool_calls = int(session.get("total_tool_calls", 0) or 0)
+    hook_tool_calls = int(session.get("hook_total_tool_calls", 0) or 0)
     calls_avoided = int(report.get("calls_avoided", 0) or 0)
     tokens_saved = int(report.get("tokens_saved", 0) or 0)
     saved_usd = float(cost.get("saved_usd", 0.0) or 0.0)
@@ -1341,11 +1347,15 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
     out = int(usage.get("output_tokens", 0) or 0)
     cache_read = int(usage.get("cache_read_tokens", 0) or 0)
     cache_write = int(usage.get("cache_write_tokens", 0) or 0)
+    reasoning_out = int(usage.get("reasoning_output_tokens", 0) or 0)
+    thinking = int(usage.get("thinking_tokens", 0) or 0)
+    visible_out = max(0, out - reasoning_out)
     total_tokens = inp + out + cache_read + cache_write
 
     if (
         total_tool_calls <= 0
-        and turns <= 0
+        and llm_turns <= 0
+        and prompt_turns <= 0
         and total_tokens <= 0
         and calls_avoided <= 0
         and tokens_saved <= 0
@@ -1368,9 +1378,11 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
     real_cost = _codex_payload_cost_usd(payload) or statusline_cost
     estimated_cost = real_cost if real_cost > 0 else _codex_estimated_cost_usd(model, usage)
     fresh_in = inp + cache_write
-    activity = (
-        f"{turns} turn{'s' if turns != 1 else ''} · {total_tool_calls} tool call{'s' if total_tool_calls != 1 else ''}"
-    )
+    tool_source = str(session.get("tool_call_source") or "hooks")
+    turn_part = f"{llm_turns} LLM turn{'s' if llm_turns != 1 else ''}"
+    if llm_turns <= 0 and prompt_turns > 0:
+        turn_part += f" · {prompt_turns} prompt turn{'s' if prompt_turns != 1 else ''}"
+    activity = f"{turn_part} · " f"{total_tool_calls} tool call{'s' if total_tool_calls != 1 else ''} ({tool_source})"
 
     lines = [
         "Atelier session complete.",
@@ -1382,17 +1394,27 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
             f"{_codex_fmt_tokens(fresh_in)} input ({_codex_fmt_tokens(inp)} new + {_codex_fmt_tokens(cache_write)} cW) / "
             f"{_codex_fmt_tokens(cache_read)} cR / {_codex_fmt_tokens(out)} out  ({_codex_fmt_tokens(total_tokens)} total)"
         )
+        output_parts = [
+            f"{_codex_fmt_tokens(reasoning_out)} reasoning",
+            f"{_codex_fmt_tokens(visible_out)} visible",
+        ]
+        if thinking > 0:
+            output_parts.append(f"{_codex_fmt_tokens(thinking)} thinking")
+        lines.append(
+            "token breakdown: "
+            f"new input {_codex_fmt_tokens(inp)} · cache read {_codex_fmt_tokens(cache_read)} · "
+            f"cache write {_codex_fmt_tokens(cache_write)} · output {_codex_fmt_tokens(out)} "
+            f"({', '.join(output_parts)})"
+        )
     cost_prefix = "cost: " if real_cost > 0 else "est. cost: ~"
     lines.append(f"{cost_prefix}${estimated_cost:.4f}")
-    lines.append(f"savings: ${saved_usd:.4f} · {tokens_saved:,} tokens saved · {calls_avoided} calls avoided")
-    if carry_usd > 0:
-        carry_tokens_part = f" · {carry_tokens:,} tokens" if carry_tokens > 0 else ""
-        lines.append(f"context carry: ${carry_usd:.4f}{carry_tokens_part} (cache re-reads avoided on later turns)")
-    if routing_saved_usd > 0:
-        lines.append(f"routing savings: ${routing_saved_usd:.4f}")
+    lines.append(
+        f"savings: ${saved_usd:.4f} · {tokens_saved:,} tokens saved · {calls_avoided} calls avoided · "
+        f"routing ${routing_saved_usd:.4f} · carry ${carry_usd:.4f} / {carry_tokens:,} tokens"
+    )
     if compactions > 0:
         lines.append(f"compactions: {compactions}")
-    lines.append(f"top tools: {_codex_top_tools(session)}")
+    lines.append(f"tools: {_codex_tools_text(session.get('tools_used'))}")
     return {"systemMessage": "\n".join(lines), "report": report}
 
 
@@ -2470,6 +2492,20 @@ def _usage_numbers(raw: dict[str, Any]) -> dict[str, int]:
             ("output",),
             ("out",),
         ),
+        "reasoning_output_tokens": (
+            ("reasoning_output_tokens",),
+            ("reasoningOutputTokens",),
+            ("reasoning_tokens",),
+            ("reasoningTokens",),
+            ("output_tokens_details", "reasoning_tokens"),
+            ("outputTokensDetails", "reasoningTokens"),
+        ),
+        "thinking_tokens": (
+            ("thinking_tokens",),
+            ("thinkingTokens",),
+            ("thoughts_tokens",),
+            ("thoughtsTokens",),
+        ),
         "cache_read_tokens": (
             ("cache_read_input_tokens",),
             ("cache_read_tokens",),
@@ -2509,6 +2545,8 @@ def _extract_usage(payload: dict[str, Any]) -> dict[str, int]:
         "output_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0,
+        "reasoning_output_tokens": 0,
+        "thinking_tokens": 0,
     }
     message_usage = (payload.get("message") or {}).get("usage") if isinstance(payload.get("message"), dict) else None
     candidates = (
@@ -2622,6 +2660,8 @@ def _apply_codex_statusline_snapshot(root: str | Path, session_id: str, payload:
                 "cache_read_input_tokens": int(usage.get("cache_read_tokens", 0) or 0),
                 "cache_creation_input_tokens": int(usage.get("cache_write_tokens", 0) or 0),
                 "output_tokens": int(usage.get("output_tokens", 0) or 0),
+                "reasoning_output_tokens": int(usage.get("reasoning_output_tokens", 0) or 0),
+                "thinking_tokens": int(usage.get("thinking_tokens", 0) or 0),
             }
         },
     }
@@ -2667,12 +2707,16 @@ def _codex_transcript_snapshot(path: Path) -> dict[str, Any]:
         "model": "",
         "usage": {},
         "llm_turns": 0,
+        "tools_used": {},
+        "total_tool_calls": 0,
     }
     latest_usage: dict[str, Any] = {}
     llm_turns = 0
     previous_total_signature: tuple[int, int, int, int] | None = None
     previous_unidentified_event = ""
     seen_event_ids: set[str] = set()
+    tools_used: dict[str, int] = {}
+    fallback_tools_used: dict[str, int] = {}
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
@@ -2718,7 +2762,31 @@ def _codex_transcript_snapshot(path: Path) -> dict[str, Any]:
             if payload.get("model"):
                 snapshot["model"] = str(payload.get("model"))
             continue
-        if event.get("type") != "event_msg" or payload.get("type") != "token_count":
+        if event.get("type") == "response_item":
+            item_type = str(payload.get("type") or "")
+            if item_type in {"function_call", "custom_tool_call"}:
+                name = str(payload.get("name") or "custom_tool").strip()
+                if name:
+                    tools_used[name] = int(tools_used.get(name, 0) or 0) + 1
+            continue
+        if event.get("type") != "event_msg":
+            continue
+        payload_type = str(payload.get("type") or "")
+        if payload_type == "exec_command_end":
+            fallback_tools_used["exec_command"] = int(fallback_tools_used.get("exec_command", 0) or 0) + 1
+            continue
+        if payload_type == "patch_apply_end":
+            fallback_tools_used["apply_patch"] = int(fallback_tools_used.get("apply_patch", 0) or 0) + 1
+            continue
+        if payload_type == "mcp_tool_call_end":
+            invocation = _as_dict(payload.get("invocation"))
+            tool_name = str(invocation.get("tool") or "mcp").strip()
+            server = str(invocation.get("server") or "").strip()
+            name = f"{server}.{tool_name}" if server else tool_name
+            if name:
+                tools_used[name] = int(tools_used.get(name, 0) or 0) + 1
+            continue
+        if payload_type != "token_count":
             continue
         info = _as_dict(payload.get("info"))
         last_usage = _as_dict(info.get("last_token_usage"))
@@ -2740,17 +2808,29 @@ def _codex_transcript_snapshot(path: Path) -> dict[str, Any]:
                     llm_turns += 1
             previous_total_signature = total_signature
 
-    total_input = _token_count(latest_usage.get("input_tokens"))
-    cached_input = _token_count(latest_usage.get("cached_input_tokens"))
-    output = _token_count(latest_usage.get("output_tokens"))
+    total_numbers = _usage_numbers(latest_usage)
+    total_input = int(total_numbers.get("input_tokens", 0) or 0)
+    cached_input = int(total_numbers.get("cache_read_tokens", 0) or 0)
+    output = int(total_numbers.get("output_tokens", 0) or 0)
+    cache_write = int(total_numbers.get("cache_write_tokens", 0) or 0)
     if total_input or cached_input or output:
         snapshot["usage"] = {
             "input_tokens": max(0, total_input - cached_input),
             "output_tokens": output,
             "cache_read_tokens": cached_input,
-            "cache_write_tokens": 0,
+            "cache_write_tokens": cache_write,
+            "reasoning_output_tokens": int(total_numbers.get("reasoning_output_tokens", 0) or 0),
+            "thinking_tokens": int(total_numbers.get("thinking_tokens", 0) or 0),
         }
     snapshot["llm_turns"] = llm_turns
+    if tools_used:
+        for name, count in fallback_tools_used.items():
+            if name not in tools_used:
+                tools_used[name] = count
+    else:
+        tools_used = fallback_tools_used
+    snapshot["tools_used"] = tools_used
+    snapshot["total_tool_calls"] = sum(int(count or 0) for count in tools_used.values())
     return snapshot
 
 
@@ -2784,6 +2864,8 @@ def _apply_codex_transcript_snapshot(root: str | Path, session_id: str, payload:
                 "cache_read_input_tokens": int(usage.get("cache_read_tokens", 0) or 0),
                 "cache_creation_input_tokens": int(usage.get("cache_write_tokens", 0) or 0),
                 "output_tokens": int(usage.get("output_tokens", 0) or 0),
+                "reasoning_output_tokens": int(usage.get("reasoning_output_tokens", 0) or 0),
+                "thinking_tokens": int(usage.get("thinking_tokens", 0) or 0),
             }
         },
     }
@@ -2793,6 +2875,11 @@ def _apply_codex_transcript_snapshot(root: str | Path, session_id: str, payload:
     llm_turns = int(best.get("llm_turns", 0) or 0)
     if llm_turns > 0:
         status_payload["llm_turns"] = llm_turns
+    tools_used = _as_dict(best.get("tools_used"))
+    if tools_used:
+        status_payload["tools_used"] = tools_used
+        status_payload["total_tool_calls"] = int(best.get("total_tool_calls", 0) or 0)
+        status_payload["tool_call_source"] = "transcript"
     update_session_stats(root, status_payload)
 
 
@@ -2926,7 +3013,14 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
         state["tools_used"] = {}
     state.setdefault(
         "usage",
-        {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0},
+        {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "reasoning_output_tokens": 0,
+            "thinking_tokens": 0,
+        },
     )
     state["last_event_at_ms"] = _now_ms(payload)
     event = str(payload.get("hook_event_name") or payload.get("event") or "")
@@ -2967,6 +3061,20 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
     llm_turns = int(payload.get("llm_turns", 0) or 0)
     if llm_turns > 0:
         state["llm_turns"] = llm_turns
+    transcript_tools = _as_dict(payload.get("tools_used"))
+    if transcript_tools and payload.get("tool_call_source") == "transcript":
+        if "hook_total_tool_calls" not in state:
+            state["hook_total_tool_calls"] = int(state.get("total_tool_calls", 0) or 0)
+        if "hook_tools_used" not in state:
+            state["hook_tools_used"] = _as_dict(state.get("tools_used"))
+        clean_tools: dict[str, int] = {}
+        for name, count in transcript_tools.items():
+            name_text = str(name).strip()
+            if name_text:
+                clean_tools[name_text] = int(count or 0)
+        state["tools_used"] = clean_tools
+        state["total_tool_calls"] = int(payload.get("total_tool_calls", 0) or 0) or sum(clean_tools.values())
+        state["tool_call_source"] = "transcript"
     if event == "UserPromptSubmit":
         turn_id = str(payload.get("turn_id") or payload.get("prompt_id") or "")
         if turn_id:
@@ -3102,17 +3210,18 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
     files = (
         [session_stats_path(root, session_id)]
         if session_id
-        else sorted(sessions_dir.glob("*/stats.json"))
-        if sessions_dir.exists()
-        else []
+        else sorted(sessions_dir.glob("*/stats.json")) if sessions_dir.exists() else []
     )
     aggregate: dict[str, Any] = {
         "session_count": 0,
         "total_tool_calls": 0,
+        "hook_total_tool_calls": 0,
         "edit_tool_calls": 0,
         "turns": 0,
         "llm_turns": 0,
         "tools_used": {},
+        "hook_tools_used": {},
+        "tool_call_source": "",
         "model": "",
         "last_model": "",
         "usage": {
@@ -3120,6 +3229,8 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
             "output_tokens": 0,
             "cache_read_tokens": 0,
             "cache_write_tokens": 0,
+            "reasoning_output_tokens": 0,
+            "thinking_tokens": 0,
         },
         "pre_compact_usage": {
             "input_tokens": 0,
@@ -3151,9 +3262,13 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
             continue
         aggregate["session_count"] += 1
         aggregate["total_tool_calls"] += int(data.get("total_tool_calls", 0) or 0)
+        aggregate["hook_total_tool_calls"] += int(data.get("hook_total_tool_calls", 0) or 0)
         aggregate["edit_tool_calls"] += int(data.get("edit_tool_calls", 0) or 0)
         aggregate["turns"] += int(data.get("turns", 0) or 0)
         aggregate["llm_turns"] += int(data.get("llm_turns", 0) or 0)
+        tool_call_source = str(data.get("tool_call_source") or "").strip()
+        if tool_call_source == "transcript":
+            aggregate["tool_call_source"] = "transcript"
         model = str(data.get("model") or "").strip()
         if model and not aggregate["model"]:
             aggregate["model"] = model
@@ -3166,6 +3281,12 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
                 aggregate["tools_used"][str(name)] = int(aggregate["tools_used"].get(str(name), 0) or 0) + int(
                     count or 0
                 )
+        hook_tools_used = _as_dict(data.get("hook_tools_used"))
+        for name, count in hook_tools_used.items():
+            if str(name).strip():
+                aggregate["hook_tools_used"][str(name)] = int(
+                    aggregate["hook_tools_used"].get(str(name), 0) or 0
+                ) + int(count or 0)
         for key in aggregate["usage"]:
             aggregate["usage"][key] += int((data.get("usage") or {}).get(key, 0) or 0)
         pre_compact_raw = data.get("pre_compact_usage")
