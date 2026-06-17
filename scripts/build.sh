@@ -85,8 +85,7 @@ for s in scripts/install_hosts.sh scripts/install_agents.sh \
           scripts/install_codex.sh scripts/install_copilot.sh \
           scripts/install_cursor.sh scripts/install_hermes.sh \
           scripts/install_opencode.sh \
-          scripts/build_host_skills.sh scripts/sync_agent_context.py \
-          scripts/versions.sh; do
+          scripts/build_host_skills.sh scripts/sync_agent_context.py; do
     [[ -f "$s" ]] && cp -f "$s" "bundle/scripts/$(basename "$s")"
 done
 # sync_agent_context.py resolves ROOT = Path(__file__).parents[1] = bundle/
@@ -98,6 +97,7 @@ cp -f src/atelier/gateway/hosts/configs/*.yaml bundle/src/atelier/gateway/hosts/
 mkdir -p bundle/scripts/lib
 cp -f scripts/lib/common.sh bundle/scripts/lib/common.sh
 cp -f scripts/lib/managed_context.sh bundle/scripts/lib/managed_context.sh
+cp -f scripts/versions.sh bundle/scripts/lib/versions.sh
 
 # Bundle integration files (pre-generated .md/.json/.sh per-host configs).
 echo "◆ Bundling host integration configs..."
