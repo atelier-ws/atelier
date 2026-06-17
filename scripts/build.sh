@@ -63,7 +63,16 @@ cp -f scripts/bundle.sh bundle/scripts/bundle.sh
 # a single file valid across every release platform.
 if [ -f "uv.lock" ]; then
     echo "◆ Exporting dependency constraints (uv export)..."
-    uv export --frozen --no-emit-project --no-hashes --all-extras -o bundle/constraints.txt \
+    uv export --frozen --no-emit-project --no-hashes \
+        --extra mcp \
+        --extra memory \
+        --extra smart \
+        --extra cloud \
+        --extra postgres \
+        --extra vector \
+        --extra parsers \
+        --extra rename \
+        -o bundle/constraints.txt \
         || echo "  (constraints export skipped; install will resolve from PyPI)"
 fi
 
