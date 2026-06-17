@@ -336,9 +336,7 @@ class MemoryService:
             # drop the update or an UPDATE verdict reapply it to a different
             # similar block. Persist the resolved block directly (the store's
             # optimistic version check still guards concurrent writers).
-            return self._store.upsert_block(
-                block, actor=f"agent:{block.agent_id}", reason="direct-update"
-            )
+            return self._store.upsert_block(block, actor=f"agent:{block.agent_id}", reason="direct-update")
         candidates = {item.id: item for item in _similar_blocks(block, self._store, k=5)}
         decision = arbitrate(block, self._store, self._embedder)
         target = None

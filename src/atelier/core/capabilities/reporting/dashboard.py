@@ -82,6 +82,8 @@ def _age(ts: str) -> str:
 
 
 def _dur(t0: str, t1: str) -> str:
+    if not t0 or not t1:
+        return ""
     try:
         a = datetime.fromisoformat(t0.replace("Z", "+00:00"))
         b = datetime.fromisoformat(t1.replace("Z", "+00:00"))

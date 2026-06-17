@@ -38,7 +38,7 @@ class ZoektIndexSnapshot:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ZoektIndexSnapshot":
+    def from_dict(cls, data: dict[str, Any]) -> ZoektIndexSnapshot:
         return cls(
             indexed_at=float(data["indexed_at"]),
             total_lines=int(data["total_lines"]),

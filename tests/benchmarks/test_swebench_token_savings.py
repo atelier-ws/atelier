@@ -290,9 +290,9 @@ class TestTokenSavingsBenchmark:
         """Short-only runs (all messages under threshold) should save 0 tokens."""
         short_only = [a for a in benchmark_results["per_arm"] if "short-only" in a["name"]]
         for arm_result in short_only:
-            assert arm_result["compressions"] == 0, (
-                f"Short-only run {arm_result['name']} got compressed — threshold bug."
-            )
+            assert (
+                arm_result["compressions"] == 0
+            ), f"Short-only run {arm_result['name']} got compressed — threshold bug."
 
     @pytest.mark.slow
     def test_recent_messages_exempt(self) -> None:
@@ -366,17 +366,17 @@ class TestMonitorBenchmark:
         """Looping trajectories must produce composite ≥ 0.15."""
         steps = self._make_looping_steps(8)
         result = evaluate_all(steps, task="Fix the auth null pointer bug")
-        assert result.composite >= 0.15, (
-            f"Looping trajectory composite={result.composite:.3f} — expected ≥0.15. Fired: {result.fired}"
-        )
+        assert (
+            result.composite >= 0.15
+        ), f"Looping trajectory composite={result.composite:.3f} — expected ≥0.15. Fired: {result.fired}"
 
     def test_healthy_trajectory_below_threshold(self) -> None:
         """Healthy resolved trajectory should produce composite < 0.35."""
         steps = self._make_healthy_steps(5)
         result = evaluate_all(steps, task="Fix the auth null pointer bug")
-        assert result.composite < 0.35, (
-            f"Healthy trajectory composite={result.composite:.3f} — expected <0.35. Fired: {result.fired}"
-        )
+        assert (
+            result.composite < 0.35
+        ), f"Healthy trajectory composite={result.composite:.3f} — expected <0.35. Fired: {result.fired}"
 
     def test_semantic_loop_fires_on_repeating_steps(self) -> None:
         """Near-duplicate steps (same word bigrams, minor variation) must fire semantic_loop."""
@@ -441,9 +441,9 @@ class TestFSMBenchmark:
         ]
         sigs = signals_fn(looping_steps)
         # At least one signal should be elevated for a looping run
-        assert sigs["streak"] > 0.3 or sigs["hedge"] > 0.3 or sigs["diversity"] < 0.5, (
-            f"signals_fn did not detect looping: {sigs}"
-        )
+        assert (
+            sigs["streak"] > 0.3 or sigs["hedge"] > 0.3 or sigs["diversity"] < 0.5
+        ), f"signals_fn did not detect looping: {sigs}"
 
     def test_signals_fn_healthy_run(self) -> None:
         """make_signals_fn must NOT fire early-exit on a clean run."""
