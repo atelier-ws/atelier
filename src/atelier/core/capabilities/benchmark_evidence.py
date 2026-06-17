@@ -58,6 +58,10 @@ def build_codebench_evidence(
     summary_csv_path = run_dir / "summary.csv"
     results_csv_path = run_dir / "results.csv"
     task_metrics_csv_path = run_dir / "task_metrics.csv"
+    task_correctness_csv_path = run_dir / "task_correctness.csv"
+    model_audit_csv_path = run_dir / "model_audit.csv"
+    pairwise_quality_csv_path = run_dir / "pairwise_quality.csv"
+    quality_adjusted_summary_csv_path = run_dir / "quality_adjusted_summary.csv"
     report_path = run_dir / "report.txt"
     results = _load_jsonl(results_path)
     flow_paths = sorted(
@@ -77,6 +81,10 @@ def build_codebench_evidence(
             "results_csv": _artifact_record(results_csv_path),
             "summary_csv": _artifact_record(summary_csv_path),
             "task_metrics_csv": _artifact_record(task_metrics_csv_path),
+            "task_correctness_csv": _artifact_record(task_correctness_csv_path),
+            "model_audit_csv": _artifact_record(model_audit_csv_path),
+            "pairwise_quality_csv": _artifact_record(pairwise_quality_csv_path),
+            "quality_adjusted_summary_csv": _artifact_record(quality_adjusted_summary_csv_path),
             "report_txt": _artifact_record(report_path),
             "flow_paths": flow_paths,
         },
@@ -84,6 +92,14 @@ def build_codebench_evidence(
             "kind": "embedded-jsonl",
             "path": str(results_path),
             "fields": ["correct", "score", "judge_model", "judge_reason"],
+            "pairwise_path": str(pairwise_quality_csv_path),
+            "pairwise_fields": [
+                "candidate_at_least_baseline",
+                "baseline_score",
+                "candidate_score",
+                "quality_delta",
+                "judge_reason",
+            ],
         },
         "summary": _summarize_codebench_results(results),
     }
