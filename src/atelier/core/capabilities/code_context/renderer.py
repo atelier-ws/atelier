@@ -140,16 +140,7 @@ def _render_symbol(payload: Mapping[str, Any], *, include_source: bool = True) -
 
 
 def _render_relations(op: str, payload: Mapping[str, Any]) -> str:
-    target = payload.get("target")
-    target_name = "?"
-    target_loc = ""
-    if isinstance(target, Mapping):
-        target_name = str(target.get("qualified_name") or target.get("name") or target.get("symbol_name") or "?")
-        t_file = str(target.get("path") or target.get("file_path") or "")
-        t_line = int(target.get("line") or target.get("start_line") or 0)
-        if t_file and t_line > 0:
-            target_loc = f" ({t_file}:{t_line})"
-    lines = [f"- target: {target_name}{target_loc}"]
+    lines: list[str] = []
 
     if op == "usages":
         rows: list[tuple[str, int, str]] = []

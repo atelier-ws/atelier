@@ -1,0 +1,8 @@
+task,baseline_arm,candidate_arm,baseline_reps,candidate_reps,baseline_cost_usd_median,candidate_cost_usd_median,cost_savings_vs_baseline_pct,baseline_tokens_median,candidate_tokens_median,tokens_savings_vs_baseline_pct,baseline_duration_ms_median,candidate_duration_ms_median,duration_savings_vs_baseline_pct,baseline_tool_calls_median,candidate_tool_calls_median,tool_calls_savings_vs_baseline_pct
+cg_vscode,baseline,atelier,4,4,0.2887,0.2509,13.1,1008178,226994,77.5,110297.0,1033804.5,-837.3,28,9,67.9
+cg_excalidraw,baseline,atelier,4,4,0.3283,0.3956,-20.5,1345003,330015,75.5,161380.5,128805.5,20.2,40,12,70.0
+cg_django,baseline,atelier,4,4,0.2076,0.0316,84.8,291064,23342,92.0,77629.0,33623.0,56.7,14,0,100.0
+cg_tokio,baseline,atelier,4,4,0.3115,0.0338,89.1,955610,23540,97.5,125377.5,38580.0,69.2,30,0,100.0
+cg_okhttp,baseline,atelier,4,4,0.1418,0.0269,81.0,99786,23104,76.8,34702.0,26916.5,22.4,5,0,100.0
+cg_gin,baseline,atelier,4,4,0.2312,0.2184,5.5,211272,222298,-5.2,42009.5,70453.0,-67.7,7,7,0.0
+cg_alamofire,baseline,atelier,4,4,0.3438,0.4381,-27.4,1097266,405526,63.0,145286.5,141313.5,2.7,24,10,61.2

@@ -82,4 +82,5 @@ def test_build_codebench_evidence_summarizes_results_and_judge_fields(tmp_path: 
     assert evidence["judge_outputs"]["fields"] == ["correct", "score", "judge_model", "judge_reason"]
     assert evidence["summary"]["by_arm"]["atelier"]["correct"] == 1
     assert evidence["summary"]["by_arm"]["baseline"]["cost_usd_sum"] == 1.2
+    assert evidence["artifacts"]["task_metrics_csv"]["exists"] is False
     assert evidence["artifacts"]["flow_paths"] == ["atelier.flow", "baseline.flow"]

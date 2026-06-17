@@ -333,6 +333,112 @@ def test_codex_stop_hook_uses_native_statusline_snapshot_without_session_id(tmp_
     assert "est. cost: ~$20.0110" in message
 
 
+def test_codex_stop_hook_recovers_usage_from_local_codex_transcript(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from atelier.core.capabilities.pricing import override_pricing
+
+    root = tmp_path / ".atelier"
+    codex_home = tmp_path / ".codex"
+    workspace = tmp_path / "workspace"
+    transcript_dir = codex_home / "sessions" / "2026" / "06" / "16"
+    transcript_dir.mkdir(parents=True)
+    workspace.mkdir()
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    override_pricing("codex-test-model", input_usd=1.0, output_usd=10.0, cache_read_usd=0.1)
+
+    transcript = transcript_dir / "rollout-2026-06-16T21-42-38-session-abc.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "payload": {"id": "session-abc", "cwd": str(workspace)},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "turn_context",
+                        "payload": {"model": "codex-test-model", "cwd": str(workspace)},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "token_count",
+                            "info": {
+                                "last_token_usage": {
+                                    "input_tokens": 1000,
+                                    "cached_input_tokens": 700,
+                                    "output_tokens": 50,
+                                },
+                                "total_token_usage": {
+                                    "input_tokens": 1000,
+                                    "cached_input_tokens": 700,
+                                    "output_tokens": 50,
+                                    "total_tokens": 1050,
+                                },
+                            },
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "token_count",
+                            "info": {
+                                "last_token_usage": {
+                                    "input_tokens": 300,
+                                    "cached_input_tokens": 100,
+                                    "output_tokens": 20,
+                                },
+                                "total_token_usage": {
+                                    "input_tokens": 1300,
+                                    "cached_input_tokens": 800,
+                                    "output_tokens": 70,
+                                    "total_tokens": 1370,
+                                },
+                            },
+                        },
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    plugin_runtime.update_session_stats(
+        root,
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "atelier-session",
+            "turn_id": "human-prompt-1",
+        },
+    )
+    plugin_runtime.update_session_stats(
+        root,
+        {
+            "hook_event_name": "PostToolUse",
+            "session_id": "atelier-session",
+            "tool_name": "Bash",
+        },
+    )
+
+    result = plugin_runtime.build_codex_stop_output(
+        root,
+        {"hook_event_name": "Stop", "session_id": "atelier-session", "cwd": str(workspace)},
+    )
+
+    message = result["systemMessage"]
+    assert "2 turns · 1 tool call" in message
+    assert "tokens: 500 input (500 new + 0 cW) / 800 cR / 70 out  (1.4k total)" in message
+    assert "est. cost: ~$0.0013" in message
+
+
 def test_codex_stop_hook_is_quiet_without_session_activity(tmp_path: Path) -> None:
     result = _run_hook("stop.py", tmp_path / ".atelier", {"hook_event_name": "Stop", "session_id": "c1"})
 

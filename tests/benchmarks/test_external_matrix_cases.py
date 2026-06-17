@@ -171,6 +171,35 @@ def test_render_provider_progress_includes_total_cases(tmp_path: Path) -> None:
     assert "atelier 7/10 running" in status
 
 
+def test_zoekt_runner_stop_resets_supervisors(monkeypatch, tmp_path: Path) -> None:
+    _ensure_benchmarks_package()
+    runner_module = _load_module(
+        "benchmarks.mcp_tools.bench_external_matrix",
+        ROOT / "benchmarks" / "mcp_tools" / "bench_external_matrix.py",
+    )
+    captured: dict[str, object] = {"reset_count": 0}
+    zoekt_mod = types.ModuleType("atelier.infra.code_intel.zoekt.adapter")
+
+    def reset_zoekt_supervisors() -> None:
+        captured["reset_count"] = int(captured["reset_count"]) + 1
+
+    zoekt_mod.reset_zoekt_supervisors = reset_zoekt_supervisors
+    monkeypatch.setitem(sys.modules, "atelier.infra.code_intel.zoekt.adapter", zoekt_mod)
+
+    runner = runner_module.ZoektRunner(
+        ROOT,
+        tmp_path / "workspace",
+        cache_root=None,
+        cache_key="cache",
+    )
+    runner.supervisor = object()
+
+    runner.stop()
+
+    assert captured["reset_count"] == 1
+    assert runner.supervisor is None
+
+
 def test_balanced_case_subset_caps_each_family() -> None:
     _ensure_benchmarks_package()
     cases_module = _load_module(

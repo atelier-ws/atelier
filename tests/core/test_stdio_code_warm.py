@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
+import os
 
 import pytest
 
@@ -71,6 +73,64 @@ def test_warm_skips_missing_directory(monkeypatch: pytest.MonkeyPatch, tmp_path:
 
     assert code_warm.warm_stdio_workspace(missing) is False
     assert fake.instances == 0
+
+
+def test_discover_workspaces_prunes_dead_mcp_sessions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    store_root = tmp_path / "store"
+    sessions_dir = store_root / "mcp_sessions"
+    sessions_dir.mkdir(parents=True)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    dead_workspace = tmp_path / "dead-workspace"
+    dead_workspace.mkdir()
+    live_file = sessions_dir / "live.json"
+    dead_file = sessions_dir / "dead.json"
+    duplicate_file = sessions_dir / "duplicate.json"
+    live_payload = {
+        "pid": os.getpid(),
+        "workspace": str(workspace),
+    }
+    live_file.write_text(json.dumps(live_payload), encoding="utf-8")
+    duplicate_file.write_text(json.dumps(live_payload), encoding="utf-8")
+    dead_file.write_text(
+        json.dumps(
+            {
+                "pid": os.getpid() + 1,
+                "workspace": str(dead_workspace),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(code_warm, "default_store_root", lambda: store_root)
+    monkeypatch.setattr(code_warm, "_registered_mcp_pid_is_live", lambda pid: pid == os.getpid())
+
+    assert code_warm.discover_workspaces() == [workspace.resolve()]
+    assert live_file.exists()
+    assert duplicate_file.exists()
+    assert not dead_file.exists()
+
+
+def test_discover_workspaces_prunes_reused_non_mcp_pid(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    store_root = tmp_path / "store"
+    sessions_dir = store_root / "mcp_sessions"
+    sessions_dir.mkdir(parents=True)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    stale_file = sessions_dir / "stale.json"
+    stale_file.write_text(
+        json.dumps(
+            {
+                "pid": os.getpid(),
+                "workspace": str(workspace),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(code_warm, "default_store_root", lambda: store_root)
+    monkeypatch.setattr(code_warm, "_registered_mcp_pid_is_live", lambda pid: False)
+
+    assert code_warm.discover_workspaces() == []
+    assert not stale_file.exists()
 
 
 def test_stdio_warm_hook_is_fail_open(monkeypatch: pytest.MonkeyPatch) -> None:

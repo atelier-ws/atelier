@@ -42,7 +42,7 @@ def test_smart_read_outline_first_for_large_python_file(tmp_path: Path, monkeypa
 
     outline_md = _smart_read({"path": str(target), "include_meta": True})
     assert outline_md.startswith("Projection: outline")
-    assert "hint:" in outline_md
+    assert "hint:" not in outline_md
     assert "Demo" in outline_md
 
     full_md = _smart_read({"path": str(target), "expand": True})

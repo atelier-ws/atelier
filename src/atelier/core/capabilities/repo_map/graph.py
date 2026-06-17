@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 import networkx as nx
@@ -46,24 +47,38 @@ def should_skip_path(path: Path, *, repo_root: Path | None = None) -> bool:
     return should_skip_relative_path(rel.as_posix())
 
 
-def iter_source_files(repo_root: Path, include_globs: list[str] | None = None) -> list[Path]:
-    patterns = include_globs or [
-        "**/*.py",
-        "**/*.js",
-        "**/*.jsx",
-        "**/*.ts",
-        "**/*.tsx",
-        "**/*.go",
-        "**/*.rs",
-    ]
-    files = _iter_git_visible_source_files(repo_root, patterns)
+def _source_file_patterns() -> list[str]:
+    """Return glob patterns for all languages in the canonical registry."""
+    from atelier.infra.code_intel.languages import LANGUAGES
+
+    seen: set[str] = set()
+    patterns: list[str] = []
+    for lang in LANGUAGES:
+        for ext in sorted(lang.extensions, key=lambda e: (-len(e), e)):
+            pattern = f"**/*{ext}"
+            if pattern not in seen:
+                seen.add(pattern)
+                patterns.append(pattern)
+    return patterns
+
+
+def iter_source_files(
+    repo_root: Path,
+    include_globs: list[str] | None = None,
+    *,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> list[Path]:
+    patterns = include_globs or _source_file_patterns()
+    files = _iter_git_visible_source_files(repo_root, patterns, progress_callback=progress_callback)
     if files:
         return files
-    files = _iter_glob_source_files(repo_root, patterns)
+    files = _iter_glob_source_files(repo_root, patterns, progress_callback=progress_callback)
     return files
 
 
-def _iter_git_visible_source_files(repo_root: Path, patterns: list[str]) -> list[Path]:
+def _iter_git_visible_source_files(
+    repo_root: Path, patterns: list[str], *, progress_callback: Callable[[int, int], None] | None = None
+) -> list[Path]:
     try:
         completed = subprocess.run(
             [
@@ -87,7 +102,10 @@ def _iter_git_visible_source_files(repo_root: Path, patterns: list[str]) -> list
         return []
     files: list[Path] = []
     entries = [entry for entry in completed.stdout.split(b"\x00") if entry]
-    for raw_entry in entries:
+    total_raw = len(entries)
+    for i, raw_entry in enumerate(entries):
+        if progress_callback is not None:
+            progress_callback(i, total_raw)
         rel = raw_entry.decode("utf-8", errors="replace")
         if not any(fnmatch.fnmatch(rel, pattern) for pattern in patterns):
             continue
@@ -102,10 +120,14 @@ def _iter_git_visible_source_files(repo_root: Path, patterns: list[str]) -> list
     return sorted(set(files))
 
 
-def _iter_glob_source_files(repo_root: Path, patterns: list[str]) -> list[Path]:
+def _iter_glob_source_files(
+    repo_root: Path, patterns: list[str], *, progress_callback: Callable[[int, int], None] | None = None
+) -> list[Path]:
     files: list[Path] = []
     for pattern in patterns:
         for path in repo_root.glob(pattern):
+            if progress_callback is not None:
+                progress_callback(len(files), 0)  # type: ignore[arg-type]
             if not path.is_file():
                 continue
             if should_skip_path(path, repo_root=repo_root):
