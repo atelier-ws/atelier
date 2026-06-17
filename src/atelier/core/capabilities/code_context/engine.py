@@ -1685,13 +1685,12 @@ class CodeContextEngine:
 
             else:
                 # --- Incremental: detect changes, then parallel-extract + batch-write ---
-                existing_rows = conn.execute(
+                existing = {}
+                for row in conn.execute(
                     "SELECT file_path, content_hash, size_bytes FROM files WHERE repo_id = ?",
                     (self.repo_id,),
-                ).fetchall()
-                existing = {
-                    str(row["file_path"]): (str(row["content_hash"]), int(row["size_bytes"])) for row in existing_rows
-                }
+                ):
+                    existing[str(row["file_path"])] = (str(row["content_hash"]), int(row["size_bytes"]))
                 line_index_empty = (
                     conn.execute("SELECT 1 FROM file_line_fts WHERE repo_id = ? LIMIT 1", (self.repo_id,)).fetchone()
                     is None

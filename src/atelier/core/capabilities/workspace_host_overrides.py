@@ -19,6 +19,10 @@ from atelier.core.capabilities.model_settings import (
 from atelier.core.environment import skill_visible
 
 ATELIER_REPO_ROOT = Path(__file__).resolve().parents[4]
+ATELIER_CODE_BLOCK_START = "<!-- ATELIER:CODE START -->"
+ATELIER_CODE_BLOCK_END = "<!-- ATELIER:CODE END -->"
+CODEX_AGENTS_BLOCK_START = "# ATELIER:CODEX AGENTS START"
+CODEX_AGENTS_BLOCK_END = "# ATELIER:CODEX AGENTS END"
 
 
 def workspace_copilot_agent_text(
@@ -73,6 +77,26 @@ def write_workspace_copilot_agents(
 
     written.append(_write_copilot_vscode_settings(workspace))
     return written
+
+
+def write_workspace_agents_md(
+    workspace_root: str | Path,
+    *,
+    repo_root: str | Path | None = None,
+) -> Path:
+    """Create or update the project AGENTS.md with the distributed Atelier block."""
+    workspace = Path(workspace_root).expanduser().resolve()
+    target = workspace / "AGENTS.md"
+    source = _agents_md_source(repo_root).read_text(encoding="utf-8").strip()
+    source = _strip_managed_block(source)
+    managed = f"{ATELIER_CODE_BLOCK_START}\n{source}\n{ATELIER_CODE_BLOCK_END}"
+    if target.exists():
+        existing = target.read_text(encoding="utf-8").rstrip()
+        updated = _upsert_managed_block(existing, source, managed)
+    else:
+        updated = managed
+    target.write_text(updated.rstrip() + "\n", encoding="utf-8")
+    return target
 
 
 def write_workspace_claude_overrides(
@@ -225,6 +249,43 @@ def write_codex_agents(
     return written
 
 
+def write_codex_agent_config(
+    config_path: str | Path,
+    agents_dir: str | Path,
+    *,
+    repo_root: str | Path | None = None,
+) -> Path:
+    """Register generated Codex role agents in a config.toml managed block."""
+    root = _resolve_repo_root(repo_root)
+    registry = build_default_registry(root)
+    config = Path(config_path).expanduser().resolve()
+    agents = Path(agents_dir).expanduser().resolve()
+    config.parent.mkdir(parents=True, exist_ok=True)
+
+    lines = [CODEX_AGENTS_BLOCK_START]
+    for role_id in SURFACED_ROLE_IDS:
+        role = registry.roles[role_id]
+        agent_key = f"atelier_{role_id}"
+        agent_file = agents / f"atelier.{role_id}.toml"
+        config_file = _toml_basic_escape(str(agent_file))
+        description = _toml_basic_escape(role.agent_description).replace("\r", " ").replace("\n", " ")
+        lines.extend(
+            [
+                f"[agents.{agent_key}]",
+                f'description = "{description}"',
+                f'config_file = "{config_file}"',
+                "",
+            ]
+        )
+    lines.append(CODEX_AGENTS_BLOCK_END)
+    managed = "\n".join(lines).rstrip()
+
+    existing = config.read_text(encoding="utf-8").rstrip() if config.exists() else ""
+    updated = _upsert_codex_agents_block(existing, managed)
+    config.write_text(updated.rstrip() + "\n", encoding="utf-8")
+    return config
+
+
 def write_workspace_codex_agents(
     workspace_root: str | Path,
     *,
@@ -232,6 +293,19 @@ def write_workspace_codex_agents(
 ) -> list[Path]:
     workspace = Path(workspace_root).expanduser().resolve()
     return write_codex_agents(workspace / ".codex" / "agents", model_workspace=workspace, repo_root=repo_root)
+
+
+def write_workspace_codex_agent_config(
+    workspace_root: str | Path,
+    *,
+    repo_root: str | Path | None = None,
+) -> Path:
+    workspace = Path(workspace_root).expanduser().resolve()
+    return write_codex_agent_config(
+        workspace / ".codex" / "config.toml",
+        workspace / ".codex" / "agents",
+        repo_root=repo_root,
+    )
 
 
 def rewrite_agent_model(text: str, model: str | None) -> str:
@@ -325,6 +399,17 @@ def _resolve_repo_root(repo_root: str | Path | None) -> Path:
     return ATELIER_REPO_ROOT if repo_root is None else Path(repo_root).expanduser().resolve()
 
 
+def _agents_md_source(repo_root: str | Path | None) -> Path:
+    root = _resolve_repo_root(repo_root)
+    repo_agents = root / "AGENTS.md"
+    if repo_agents.exists():
+        return repo_agents
+    fallback = _integration_resource(repo_root, "AGENTS.atelier.md")
+    if fallback.exists():
+        return fallback
+    return repo_agents
+
+
 def _integration_resource(repo_root: str | Path | None, *parts: str) -> Path:
     """Resolve an ``integrations/`` asset.
 
@@ -358,6 +443,41 @@ def _write_copilot_vscode_settings(workspace_root: Path) -> Path:
     return target
 
 
+def _strip_managed_block(text: str) -> str:
+    if text.startswith(ATELIER_CODE_BLOCK_START) and text.endswith(ATELIER_CODE_BLOCK_END):
+        return text[len(ATELIER_CODE_BLOCK_START) : -len(ATELIER_CODE_BLOCK_END)].strip()
+    return text.strip()
+
+
+def _upsert_managed_block(existing: str, source: str, managed: str) -> str:
+    import re
+
+    pattern = re.compile(
+        rf"{re.escape(ATELIER_CODE_BLOCK_START)}.*?{re.escape(ATELIER_CODE_BLOCK_END)}\n?",
+        re.DOTALL,
+    )
+    if existing.strip() == source:
+        return managed
+    if pattern.search(existing):
+        return pattern.sub(managed, existing, count=1).rstrip()
+    if existing:
+        return f"{existing}\n\n---\n\n{managed}"
+    return managed
+
+
+def _upsert_codex_agents_block(existing: str, managed: str) -> str:
+    import re
+
+    pattern = re.compile(
+        rf"{re.escape(CODEX_AGENTS_BLOCK_START)}.*?{re.escape(CODEX_AGENTS_BLOCK_END)}\n?",
+        re.DOTALL,
+    )
+    stripped = pattern.sub("", existing).rstrip()
+    if stripped:
+        return f"{stripped}\n\n{managed}"
+    return managed
+
+
 def _toml_basic_escape(value: str) -> str:
     """Escape a string for a TOML basic string (single- or multi-line).
 
@@ -385,8 +505,11 @@ __all__ = [
     "rewrite_agent_name",
     "workspace_claude_agent_text",
     "workspace_copilot_agent_text",
+    "write_codex_agent_config",
     "write_codex_agents",
+    "write_workspace_agents_md",
     "write_workspace_claude_overrides",
+    "write_workspace_codex_agent_config",
     "write_workspace_codex_agents",
     "write_workspace_copilot_agents",
     "write_workspace_cursor_rules",
