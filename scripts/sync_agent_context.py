@@ -178,16 +178,20 @@ def _tn(name: str, *, prefix: str = "") -> str:
     return f"{prefix}{name}"
 
 
-def tool_policy_section(*, tool_prefix: str = "") -> str:
+def tool_policy_section(*, tool_prefix: str = "", host: str | None = None) -> str:
     p = tool_prefix
     lines = [
         "## Tool policy — mandatory",
         "",
-        f"- Shared docs use plain tool names like `{_tn('read', prefix=p)}` and `{_tn('edit', prefix=p)}`; some hosts expose them as handles like `mcp__atelier__context` — use the name shown by your host when invoking one explicitly.",
+        f"- Shared docs use plain tool names like `{_tn('read', prefix=p)}` and `{_tn('edit', prefix=p)}`; some hosts expose them as handles like `mcp__atelier__read` — use the name shown by your host when invoking one explicitly.",
         f"- `{_tn('read', prefix=p)}` for file reads; `{_tn('search', prefix=p)}` / `{_tn('grep', prefix=p)}` for discovery; `{_tn('edit', prefix=p)}` for file changes; `{_tn('shell', prefix=p)}` only for commands without a better Atelier equivalent.",
         f"- `{_tn('node', prefix=p)}` / `{_tn('callers', prefix=p)}` / `{_tn('usages', prefix=p)}` / `{_tn('explore', prefix=p)}` for code intelligence; use them before text search for code relationships.",
         "- Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.",
     ]
+    if host == "codex":
+        lines.append(
+            "- Codex may defer MCP tools behind `tool_search`; if no `mcp__atelier__...` tools are visible, call `tool_search` for Atelier MCP tools before treating Atelier as unavailable."
+        )
     if tool_prefix:
         lines.append(
             "- Native tools (`bash`, `edit`, `glob`, `grep`, `read`, `webfetch`, `write`) are disallowed by policy — always use the Atelier MCP counterparts."
@@ -202,7 +206,7 @@ def distribution_sections(host: str | None = None, *, tool_prefix: str = "") -> 
         "1. **Understand**: Read the relevant source of truth before changing anything; ground every change in real code.",
         f"2. **Implement**: Use Atelier MCP tools (`{_tn('read', prefix=tool_prefix)}`, `{_tn('edit', prefix=tool_prefix)}`, `{_tn('shell', prefix=tool_prefix)}`, etc.) for file I/O, search, edits, and shell work — see Tool policy.",
         "",
-        tool_policy_section(tool_prefix=tool_prefix),
+        tool_policy_section(tool_prefix=tool_prefix, host=host),
         "",
         core_discipline_section(),
         "",
@@ -233,7 +237,7 @@ def render_project_entrypoint(output_path: Path, *, title: str, host: str | None
         "1. **Understand** — read the relevant source of truth before touching any file; ground every change in real code.",
         "2. **Implement** — use Atelier tools for ALL file I/O and shell ops (see Tool policy).",
         "",
-        tool_policy_section(),
+        tool_policy_section(host=host),
         "",
         "## Project-specific invariants",
         "",
@@ -739,7 +743,9 @@ def build_outputs() -> dict[Path, str]:
     registry = build_default_registry(ROOT)
     mode_outputs = build_mode_outputs(ROOT)
     outputs = {
-        ROOT / "AGENTS.md": render_project_entrypoint(ROOT / "AGENTS.md", title="Project Instructions: Atelier"),
+        ROOT / "AGENTS.md": render_project_entrypoint(
+            ROOT / "AGENTS.md", title="Project Instructions: Atelier", host="codex"
+        ),
         ROOT / ".github/copilot-instructions.md": render_copilot_workspace(ROOT / ".github/copilot-instructions.md"),
         ROOT / "integrations/AGENTS.atelier.md": render_distribution_guide(ROOT / "integrations/AGENTS.atelier.md"),
         ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_user_surface(

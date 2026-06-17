@@ -91,6 +91,58 @@ def test_build_host_skills_generates_stable_bundle_by_default(tmp_path: Path) ->
     assert set(registry.surfaced_role_ids("shared_skill")) <= generated
 
 
+def test_codex_plugin_agent_surface_exists() -> None:
+    surface = INTEGRATIONS / "codex" / "plugin" / "agents" / "openai.yaml"
+    assert surface.exists()
+    content = surface.read_text(encoding="utf-8")
+    assert 'display_name: "Atelier Agents"' in content
+    assert "atelier_code" in content
+    assert "atelier_review" in content
+
+
+def test_codex_plugin_prompt_uses_real_discovery_path() -> None:
+    manifest = INTEGRATIONS / "codex" / "plugin" / ".codex-plugin" / "plugin.json"
+    manifest_text = manifest.read_text(encoding="utf-8")
+    data = json.loads(manifest_text)
+    prompt = "\n".join(data["interface"]["defaultPrompt"])
+    assert "atelier_code" in prompt
+    assert all(len(item) <= 128 for item in data["interface"]["defaultPrompt"])
+    assert "mcp__atelier__context" not in manifest_text
+    assert "context first" not in manifest_text
+
+
+def test_codex_installers_stage_plugin_agent_surface() -> None:
+    for script in (SCRIPTS / "install_codex.sh", INTEGRATIONS / "codex" / "install.sh"):
+        content = script.read_text(encoding="utf-8")
+        assert "integrations/codex/plugin/agents" in content
+        assert "agents/openai.yaml" in content
+        assert "write_codex_agent_config" in content
+        assert "write_workspace_codex_agent_config" in content
+        assert "agents\\.atelier_code" in content
+
+
+def test_codex_installers_auto_approve_exposed_atelier_tools() -> None:
+    expected_tools = [
+        "shell",
+        "read",
+        "grep",
+        "edit",
+        "callees",
+        "codemod",
+        "memory",
+        "callers",
+        "explore",
+        "web_fetch",
+        "search",
+        "usages",
+    ]
+    for script in (SCRIPTS / "install_codex.sh", INTEGRATIONS / "codex" / "install.sh"):
+        content = script.read_text(encoding="utf-8")
+        for tool in expected_tools:
+            assert f'"{tool}"' in content
+        assert '"context"' not in content
+
+
 def test_build_host_skills_ignores_removed_dev_bundle_flag(tmp_path: Path) -> None:
     dest = tmp_path / "skills"
     subprocess.run(
