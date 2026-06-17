@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "install_codex.sh"
+DEFAULT_AGENT_INSTRUCTIONS = ROOT / "integrations" / "codex" / "AGENTS.atelier.md"
 
 
 def _run_without_codex(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -69,8 +70,19 @@ def test_codex_installer_uses_current_agent_discovery_and_restart_safe_plugins()
     content = SCRIPT.read_text(encoding="utf-8")
 
     assert "write_codex_agents" in content
-    assert "write_workspace_codex_agent_config" not in content
-    assert "write_codex_agent_config" not in content
+    assert "config = write_workspace_codex_agent_config(" not in content
+    assert "config = write_codex_agent_config(" not in content
     assert '"installation": "INSTALLED_BY_DEFAULT"' in content
     assert "Codex config missing plugin entry" not in content
     assert "plugin activation will complete after Codex restart" in content
+
+
+def test_codex_default_session_uses_atelier_code_instructions() -> None:
+    content = DEFAULT_AGENT_INSTRUCTIONS.read_text(encoding="utf-8")
+
+    assert "You are operating as *atelier:code*." in content
+    assert "## Tool policy — mandatory" in content
+    assert "mcp__atelier__read" in content
+    installer = SCRIPT.read_text(encoding="utf-8")
+    assert "integrations/codex/AGENTS.atelier.md" in installer
+    assert 'merge_agents_file "${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md" "$AGENTS_FILE"' in installer
