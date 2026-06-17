@@ -85,7 +85,8 @@ for s in scripts/install_hosts.sh scripts/install_agents.sh \
           scripts/install_codex.sh scripts/install_copilot.sh \
           scripts/install_cursor.sh scripts/install_hermes.sh \
           scripts/install_opencode.sh \
-          scripts/build_host_skills.sh scripts/sync_agent_context.py; do
+          scripts/build_host_skills.sh scripts/sync_agent_context.py \
+          scripts/versions.sh; do
     [[ -f "$s" ]] && cp -f "$s" "bundle/scripts/$(basename "$s")"
 done
 # sync_agent_context.py resolves ROOT = Path(__file__).parents[1] = bundle/
