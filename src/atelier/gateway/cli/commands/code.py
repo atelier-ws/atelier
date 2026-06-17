@@ -567,14 +567,15 @@ def code_index_cmd(
         )
         click.echo(f"{prefix_markup}{git_line}" if frame_prefix else git_line)
     
-    _print_index_stats(engine.db_path, frame_prefix=frame_prefix)
+    _print_index_stats(engine, frame_prefix=frame_prefix)
 
 
-def _print_index_stats(db_path: str, frame_prefix: str = "") -> None:
+def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
     """Print language and symbol-kind breakdown after indexing."""
     import sqlite3
     from pathlib import Path
 
+    db_path = engine.db_path
     if not Path(db_path).exists():
         return
     conn = sqlite3.connect(db_path)
@@ -597,6 +598,23 @@ def _print_index_stats(db_path: str, frame_prefix: str = "") -> None:
     kinds = c.execute(
         "SELECT kind, COUNT(*) FROM symbols GROUP BY kind ORDER BY COUNT(*) DESC"
     ).fetchall()
+
+    # Embedding stats
+    from atelier.core.capabilities.code_context.ann_symbol_index import ann_retrieval_enabled
+    
+    ranker_configured = getattr(engine._semantic_ranker, "available", False)
+    flag_enabled = ann_retrieval_enabled()
+    should_show_embeddings = ranker_configured or flag_enabled
+    
+    embedding_count = 0
+    try:
+        table_exists = c.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='symbol_vectors'"
+        ).fetchone()
+        if table_exists:
+            embedding_count = c.execute("SELECT COUNT(*) FROM symbol_vectors").fetchone()[0]
+    except Exception:
+        pass
 
     prefix_markup = click.style(frame_prefix, dim=True) if frame_prefix else ""
 
@@ -709,6 +727,53 @@ def _print_index_stats(db_path: str, frame_prefix: str = "") -> None:
                 kind_table.add_row(f"[{color}]{display_kind}[/]", f"{cnt:,}")
 
             print_prefixed(kind_table)
+        
+        # Embeddings stats
+        if should_show_embeddings:
+            print_prefixed("")
+            if embedding_count > 0:
+                print_prefixed(f"[bold bright_white]Embeddings[/]  [dim]total indexed: {embedding_count:,}[/]")
+            elif not ranker_configured:
+                print_prefixed("[bold bright_white]Embeddings[/]  [dim]flag enabled, but provider not configured[/]")
+            else:
+                print_prefixed("[bold bright_white]Embeddings[/]  [dim]enabled, awaiting indexing[/]")
+
+        
+        # Git history graveyard stats
+        try:
+            graveyard_count = conn.execute("SELECT COUNT(*) FROM symbol_graveyard").fetchone()[0]
+            if graveyard_count > 0:
+                print_prefixed("")
+                print_prefixed("[bold bright_white]Git history[/]  [dim]deleted and renamed symbols[/]")
+                
+                graveyard_langs = conn.execute(
+                    "SELECT language, COUNT(*) FROM symbol_graveyard WHERE language IS NOT NULL GROUP BY language ORDER BY COUNT(*) DESC"
+                ).fetchall()
+                
+                graveyard_table = Table(
+                    box=box.SIMPLE,
+                    show_header=True,
+                    header_style="dim",
+                    padding=(0, 1),
+                    show_footer=True,
+                )
+                graveyard_table.add_column("Language", style="bold", min_width=15, footer="TOTAL")
+                graveyard_table.add_column("Deleted", justify="right")
+                
+                total_deleted = 0
+                for lang, cnt in graveyard_langs:
+                    total_deleted += cnt
+                    if lang in lang_styles:
+                        display_name, color = lang_styles[lang]
+                    else:
+                        display_name = lang.title() if lang else "Unknown"
+                        color = "white"
+                    graveyard_table.add_row(f"[{color}]{display_name}[/]", f"{cnt:,}")
+                
+                graveyard_table.columns[1].footer = f"{total_deleted:,}"
+                print_prefixed(graveyard_table)
+        except Exception:
+            pass
 
     except ImportError:
         # Fallback to simple prints if rich is not available, but with prefix support
@@ -728,6 +793,27 @@ def _print_index_stats(db_path: str, frame_prefix: str = "") -> None:
             click.echo(f"{prefix_markup}  " + "-" * 29)
             for kind, cnt in kinds:
                 click.echo(f"{prefix_markup}  {kind:<20s}  {cnt:>7d}")
+        
+        # Git history in fallback
+        try:
+            graveyard_count = conn.execute("SELECT COUNT(*) FROM symbol_graveyard").fetchone()[0]
+            if graveyard_count > 0:
+                graveyard_langs = conn.execute(
+                    "SELECT language, COUNT(*) FROM symbol_graveyard WHERE language IS NOT NULL GROUP BY language ORDER BY COUNT(*) DESC"
+                ).fetchall()
+                
+                click.echo(f"{prefix_markup}")
+                click.echo(f"{prefix_markup}  ── Git history (deleted symbols) ──")
+                click.echo(f"{prefix_markup}  {'Language':<15s}  {'Count':>7s}")
+                click.echo(f"{prefix_markup}  " + "-" * 25)
+                total_deleted = 0
+                for lang, cnt in graveyard_langs:
+                    total_deleted += cnt
+                    click.echo(f"{prefix_markup}  {lang:<15s}  {cnt:>7d}")
+                click.echo(f"{prefix_markup}  " + "-" * 25)
+                click.echo(f"{prefix_markup}  {'TOTAL':<15s}  {total_deleted:>7d}")
+        except Exception:
+            pass
 
     conn.close()
 
