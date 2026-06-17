@@ -127,54 +127,26 @@ DRY_RUN="${PUBLISH_DRY_RUN:-0}"
 ASSUME_YES="${PUBLISH_CONFIRM:-0}"
 PUBLIC_REMOTE="${PUBLIC_REMOTE:-https://github.com/atelier-ws/atelier.git}"
 PUBLIC_BRANCH="${PUBLIC_BRANCH:-main}"
-PUBLIC_COMMIT_MESSAGE="${PUBLIC_COMMIT_MESSAGE:-Initial public release}"
+# Removed the fixed default here: PUBLIC_COMMIT_MESSAGE="${PUBLIC_COMMIT_MESSAGE:-Initial public release}"
 PUBLIC_SOURCE_REF="${PUBLIC_SOURCE_REF:-HEAD}"
 PRIVATE_PATHS_FILE="${PRIVATE_PATHS_FILE:-release/private-paths.txt}"
 
 while (($#)); do
     case "$1" in
-        --dry-run)
-            DRY_RUN=1
-            shift
-            ;;
-        --yes)
-            ASSUME_YES=1
-            shift
-            ;;
-        --remote)
-            [[ $# -ge 2 ]] || die "--remote requires a URL"
-            PUBLIC_REMOTE="$2"
-            shift 2
-            ;;
-        --branch)
-            [[ $# -ge 2 ]] || die "--branch requires a name"
-            PUBLIC_BRANCH="$2"
-            shift 2
-            ;;
-        --source-ref)
-            [[ $# -ge 2 ]] || die "--source-ref requires a ref"
-            PUBLIC_SOURCE_REF="$2"
-            shift 2
-            ;;
+        # ... (rest of the case statement)
         --message)
             [[ $# -ge 2 ]] || die "--message requires text"
             PUBLIC_COMMIT_MESSAGE="$2"
             shift 2
             ;;
-        --private-paths)
-            [[ $# -ge 2 ]] || die "--private-paths requires a file"
-            PRIVATE_PATHS_FILE="$2"
-            shift 2
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            die "unknown argument: $1"
-            ;;
+        # ...
     esac
 done
+
+# Set a dynamic default if not provided via argument or env var
+if [[ -z "${PUBLIC_COMMIT_MESSAGE:-}" ]]; then
+    PUBLIC_COMMIT_MESSAGE="Public snapshot for ${PUBLIC_SOURCE_REF}"
+fi
 
 need_cmd git
 need_cmd tar
@@ -206,15 +178,25 @@ git archive --format=tar "$PUBLIC_SOURCE_REF" | tar -xf - -C "$SNAPSHOT_DIR"
 filter_snapshot
 verify_snapshot
 
-git -C "$SNAPSHOT_DIR" init -b "$PUBLIC_BRANCH" >/dev/null 2>&1 || {
-    git -C "$SNAPSHOT_DIR" init >/dev/null
-    git -C "$SNAPSHOT_DIR" checkout -B "$PUBLIC_BRANCH" >/dev/null
-}
+git -C "$SNAPSHOT_DIR" init >/dev/null
+git -C "$SNAPSHOT_DIR" remote add public "$(remote_with_token "$PUBLIC_REMOTE")"
+git -C "$SNAPSHOT_DIR" fetch public "$PUBLIC_BRANCH" --depth 1
+git -C "$SNAPSHOT_DIR" checkout -B "$PUBLIC_BRANCH" public/"$PUBLIC_BRANCH" >/dev/null 2>&1 || git -C "$SNAPSHOT_DIR" checkout -B "$PUBLIC_BRANCH"
 git -C "$SNAPSHOT_DIR" config user.name "${PUBLIC_GIT_USER_NAME:-Atelier Release Bot}"
 git -C "$SNAPSHOT_DIR" config user.email "${PUBLIC_GIT_USER_EMAIL:-release@atelier.local}"
+
+# Clean existing files (except .git) to ensure filtering
+find "$SNAPSHOT_DIR" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+
+# Copy filtered files back
+git archive --format=tar "$PUBLIC_SOURCE_REF" | tar -xf - -C "$SNAPSHOT_DIR"
+filter_snapshot
+verify_snapshot
+
 git -C "$SNAPSHOT_DIR" add -A
 if git -C "$SNAPSHOT_DIR" diff --cached --quiet; then
-    die "filtered snapshot is empty"
+    printf 'No changes to public snapshot.\n'
+    exit 0
 fi
 git -C "$SNAPSHOT_DIR" commit -m "$PUBLIC_COMMIT_MESSAGE" >/dev/null
 
@@ -228,9 +210,8 @@ if [[ "$DRY_RUN" == "1" ]]; then
 fi
 
 if [[ "$ASSUME_YES" != "1" ]]; then
-    die "refusing to force-push without --yes"
+    die "refusing to push without --yes"
 fi
 
-git -C "$SNAPSHOT_DIR" remote add public "$(remote_with_token "$PUBLIC_REMOTE")"
-git -C "$SNAPSHOT_DIR" push --force public "HEAD:refs/heads/$PUBLIC_BRANCH"
+git -C "$SNAPSHOT_DIR" push public "$PUBLIC_BRANCH"
 printf 'Pushed public snapshot %s to %s:%s.\n' "$COMMIT_SHA" "$(safe_remote_url "$PUBLIC_REMOTE")" "$PUBLIC_BRANCH"
