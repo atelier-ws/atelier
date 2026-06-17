@@ -94,22 +94,16 @@ def _get_engine(repo_root: Path) -> CodeContextEngine:
     atelier_root = Path(os.environ.get("ATELIER_ROOT") or Path.home() / ".atelier")
     db_path = atelier_root / "repos" / repo_id / "code.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    previous_autosync = os.environ.get("ATELIER_CODE_AUTOSYNC")
     previous_code_embedder = os.environ.get("ATELIER_CODE_EMBEDDER")
     previous_code_embed_model = os.environ.get("ATELIER_CODE_EMBED_MODEL")
-    os.environ["ATELIER_CODE_AUTOSYNC"] = "0"
     os.environ["ATELIER_CODE_EMBEDDER"] = "local"
     os.environ.pop("ATELIER_CODE_EMBED_MODEL", None)
     try:
         with patch.object(CodeContextEngine, "_ensure_lineage_ready", return_value=None):
-            engine = CodeContextEngine(repo_root=repo_root, db_path=db_path)
+            engine = CodeContextEngine(repo_root=repo_root, db_path=db_path, autosync_enabled=False)
         engine._zoekt_candidate_files = lambda *args, **kwargs: None  # type: ignore[method-assign]
         return engine
     finally:
-        if previous_autosync is None:
-            os.environ.pop("ATELIER_CODE_AUTOSYNC", None)
-        else:
-            os.environ["ATELIER_CODE_AUTOSYNC"] = previous_autosync
         if previous_code_embedder is None:
             os.environ.pop("ATELIER_CODE_EMBEDDER", None)
         else:

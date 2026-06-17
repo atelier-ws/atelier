@@ -118,6 +118,27 @@ def confine_to_root(candidate: str | Path, root: str | Path) -> Path:
     return resolved_candidate
 
 
+def ensure_gitignore(project_root: Path) -> list[str]:
+    """Create/update ``.atelier/.gitignore`` to ignore everything inside ``.atelier/``.
+
+    Keeps the ``.atelier/`` directory visible in git for brand awareness while
+    preventing cache files, binaries, and other project-local runtime data from
+    being committed.  Idempotent: returns a non-empty list on first run (entries
+    added) and an empty list on subsequent runs (already correct).
+    """
+    atelier_dir = project_root / ".atelier"
+    atelier_dir.mkdir(parents=True, exist_ok=True)
+    gitignore_path = atelier_dir / ".gitignore"
+    content = "# Atelier runtime data \u2014 keep the directory, ignore its contents\n*\n"
+    if gitignore_path.exists() and gitignore_path.read_text("utf-8") == content:
+        return []
+    gitignore_path.write_text(content, encoding="utf-8")
+    return ["*"]
+
+
+_ensure_gitignore = ensure_gitignore  # compat alias for internal use
+
+
 def resolve_workspace_store_dir(root: Path | str | None = None, workspace_root: Path | str | None = None) -> Path:
     """Return the per-project runtime subdir under the global store root.
 

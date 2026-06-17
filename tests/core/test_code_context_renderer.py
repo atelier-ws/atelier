@@ -30,7 +30,6 @@ def test_render_search_compact_is_location_only_and_omits_source_fields() -> Non
     )
 
     assert rendered is not None
-    assert rendered.startswith("### search")
     # Results are grouped by file: the path is emitted once as a header, then
     # one indented line per hit (line + symbol, or symbol-only when line == 0).
     assert "- src/pkg/worker.py" in rendered
@@ -40,6 +39,31 @@ def test_render_search_compact_is_location_only_and_omits_source_fields() -> Non
     assert rendered.count("src/pkg/worker.py") == 1
     assert "def run_command(cmd: str)" not in rendered
     assert "class Worker:\n" not in rendered
+
+
+def test_render_relations_omit_redundant_target_echo() -> None:
+    rendered = render_code_payload(
+        "callers",
+        {
+            "target": {
+                "qualified_name": "orders.export_audit_bundle",
+                "file_path": "src/orders.py",
+                "start_line": 18,
+            },
+            "related": [
+                {
+                    "qualified_name": "api.create_app",
+                    "file_path": "src/api.py",
+                    "start_line": 42,
+                }
+            ],
+        },
+    )
+
+    assert rendered is not None
+    assert "- target:" not in rendered
+    assert "- src/api.py" in rendered
+    assert "  - 42 — api.create_app" in rendered
 
 
 def test_render_symbol_compact_summary_excludes_source_body() -> None:
@@ -59,7 +83,6 @@ def test_render_symbol_compact_summary_excludes_source_body() -> None:
     )
 
     assert rendered is not None
-    assert rendered.startswith("### symbol")
     assert "- id: sym-1" in rendered
     assert "- location: src/orders.py:20-32" in rendered
     assert "- signature: def calculate_total(self, items: list[int]) -> int" in rendered
@@ -165,11 +188,9 @@ def test_render_index_and_cache_status_compact_summaries() -> None:
     )
 
     assert index_rendered is not None
-    assert index_rendered.startswith("### index")
     assert "counts: files=560, symbols=6200, imports=1400" in index_rendered
     assert "/workspace/hidden" not in index_rendered
     assert cache_rendered is not None
-    assert cache_rendered.startswith("### cache_status")
     assert "- tools: code.search=2, code.symbol=1" in cache_rendered
     assert "last_hit_at" not in cache_rendered
 
@@ -205,7 +226,6 @@ def test_render_blame_compact_summary_and_hunks() -> None:
     )
 
     assert rendered is not None
-    assert rendered.startswith("### blame")
     assert "- target: OrderService.calculate_total (src/orders.py:12-20)" in rendered
     assert "- last: abcdef1234 dev@example.com — add total" in rendered
     assert "- hunks (1):" in rendered
@@ -229,7 +249,7 @@ def test_render_rename_compact_when_clean_and_json_on_failure() -> None:
         },
     )
     assert clean is not None
-    assert clean.startswith("### rename → renamed (backend=ast-grep)")
+    assert "- rename → renamed (backend=ast-grep)" in clean
     assert "- applied: 2 edit(s)" in clean
     assert "  - src/a.py:1,0-5" in clean
 
@@ -267,7 +287,7 @@ def test_render_outline_groups_symbols_and_drops_signature() -> None:
     )
 
     assert rendered is not None
-    assert rendered.startswith("### outline (2 symbols)")
+    assert "- outline: 2 symbols" in rendered
     assert "- src/orders.py" in rendered
     assert "  - 1-10: OrderService [class]" in rendered
     assert "  - 2-5: OrderService.calculate_total [method]" in rendered

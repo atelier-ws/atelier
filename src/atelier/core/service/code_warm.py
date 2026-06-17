@@ -35,12 +35,38 @@ def _mcp_sessions_dir() -> Path:
     return default_store_root() / "mcp_sessions"
 
 
+def _pid_is_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _registered_mcp_pid_is_live(pid: int) -> bool:
+    if not _pid_is_running(pid):
+        return False
+    cmdline = Path(f"/proc/{pid}/cmdline")
+    if not cmdline.exists():
+        return True
+    try:
+        parts = [part for part in cmdline.read_bytes().split(b"\0") if part]
+    except OSError:
+        return False
+    text = " ".join(part.decode("utf-8", errors="ignore") for part in parts)
+    return "atelier" in text and "mcp" in text
+
+
 def discover_workspaces() -> list[Path]:
     """Return resolved workspace dirs from the mcp_sessions registry.
 
-    Only existing directories are returned. Discovery is limited to the
-    registry -- the service cwd is intentionally never auto-added so that a
-    daemon with no active MCP sessions warms nothing.
+    Only existing directories from live MCP processes are returned. Discovery is
+    limited to the registry -- the service cwd is intentionally never auto-added
+    so that a daemon with no active MCP sessions warms nothing.
     """
     sessions_dir = _mcp_sessions_dir()
     if not sessions_dir.is_dir():
@@ -52,6 +78,13 @@ def discover_workspaces() -> list[Path]:
             data = json.loads(entry.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             logger.debug("skipping unreadable mcp session file: %s", entry, exc_info=True)
+            continue
+        pid = data.get("pid") if isinstance(data, dict) else None
+        if not isinstance(pid, int) or not _registered_mcp_pid_is_live(pid):
+            try:
+                entry.unlink()
+            except OSError:
+                logger.debug("failed to prune dead mcp session file: %s", entry, exc_info=True)
             continue
         ws = data.get("workspace") if isinstance(data, dict) else None
         if not isinstance(ws, str) or not ws.strip():

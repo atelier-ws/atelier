@@ -220,7 +220,7 @@ benchmark_group.add_command(benchmark_solver_cmd, name="solver")
     help="Parallel suite shards. Use 0 to auto-size.",
 )
 def benchmark_mcp_cmd(out: Path | None, tools: tuple[str, ...], jobs: int) -> None:
-    """Run the public MCP tool benchmark suite and write results."""
+    """No LLM: Runs the public MCP tool benchmark suite and write results."""
     repo_root = Path.cwd().resolve()
     suite_filter = _mcp_suite_filter(tools)
     if suite_filter is not None:
@@ -812,7 +812,7 @@ def benchmark_local_cmd(
     capture: bool,
     yes: bool,
 ) -> None:
-    """Benchmark Atelier vs vanilla on YOUR repo with YOUR prompts (real spend).
+    """Uses LLM: Benchmark Atelier vs vanilla on YOUR repo with YOUR prompts (real spend).
 
     Runs each prompt for both arms on the same model and driver, then reports
     cost / turn / time deltas. Prints an up-front cost estimate and asks to

@@ -65,154 +65,7 @@ def _detect_git_root(search_path: Path) -> Path | None:
     return None
 
 
-def _ensure_gitignore(git_root: Path) -> list[str]:
-    """Add ``.atelier/`` to the project's ``.gitignore`` if not present.
-
-    Returns a list of entries added.
-    """
-    gitignore_path = git_root / ".gitignore"
-    existing = gitignore_path.read_text(encoding="utf-8").splitlines() if gitignore_path.exists() else []
-    added: list[str] = []
-    entries = [
-        "# Atelier runtime data",
-        ".atelier/",
-    ]
-    for entry in entries:
-        if entry not in existing:
-            existing.append(entry)
-            added.append(entry)
-    if added:
-        gitignore_path.write_text("\n".join(existing) + "\n", encoding="utf-8")
-    return added
-
-
-_ATELIER_CLAUDE_MD_TEMPLATE = """# CLAUDE.md — Atelier
-
-This file guides Claude Code when working in this repository. This project uses **Atelier** for code intelligence, context reuse, and agent reasoning.
-
-## Environment
-
-**All Python commands must use `uv run`** — this project uses `uv` for dependency management.
-
-```bash
-uv run python -c "..."          # one-off Python
-uv run pytest ...               # tests
-uv run mypy src                 # type-check
-uv run atelier ...              # Atelier CLI
-```
-
-## Common Commands
-
-```bash
-# Test
-uv run pytest -q                          # all tests
-uv run pytest -q -x -m "not slow"        # fast, stop on first failure
-uv run pytest tests/path/test_file.py -q # single file
-uv run pytest -q -k "test_name"          # single test by name
-
-# Lint / format / typecheck
-make lint           # ruff
-make format         # ruff --fix + black + prettier (frontend)
-make typecheck      # mypy --strict src
-
-# Full pre-commit gate
-make pre-commit     # format + lint + typecheck + docs + test
-
-# Docs governance
-make sync-agent-context   # regenerate host instruction files from integrations/shared/
-make check-agent-context  # verify generated files are up to date
-```
-
-## Atelier Commands
-
-| Command | Description |
-|---|---|
-| ``uv run atelier init`` | Initialize project for Atelier (store, seed, index) |
-| ``uv run atelier init --project`` | Also set up .gitignore, CLAUDE.md, AGENTS.md |
-| ``uv run atelier code index`` | Build or refresh code index |
-| ``uv run atelier search <query>`` | Semantic code search |
-| ``uv run atelier status`` | Show runtime status (runs dashboard) |
-| ``uv run atelier status --index`` | Show code index stats |
-| ``uv run atelier doctor`` | Run installation diagnostics |
-| ``uv run atelier reset`` | Reset code index (--all for full store reset) |
-
-## Architecture
-
-```
-gateway/  →  core/  →  infra/
-```
-
-- **`gateway/`** — agent-facing entry points: CLI, MCP server, SDK façade. Keep thin.
-- **`core/`** — domain logic: capabilities, models, orchestrator, API.
-- **`infra/`** — persistence and integrations: storage, code intelligence, embeddings.
-
-## Coding Guidelines
-
-Behavioral guidelines to reduce common LLM coding mistakes. Bias toward caution over speed; use judgment for trivial tasks.
-
-**1. Think Before Coding** — state assumptions explicitly; if uncertain, ask; if multiple interpretations exist, present them; push back when a simpler approach exists.
-
-**2. Simplicity First** — minimum code that solves the problem; no speculative features, abstractions for single-use code, or error handling for impossible scenarios; if 200 lines could be 50, rewrite it.
-
-**3. Surgical Changes** — touch only what you must; don't improve adjacent code, refactor things that aren't broken, or delete unrelated dead code; match existing style; remove only the imports/variables/functions that *your* changes made unused.
-
-**4. Goal-Driven Execution** — transform tasks into verifiable goals before implementing; for multi-step work, state a brief plan with per-step verify checks; loop until verified.
-
-See [integrations/shared/coding-guidelines.md](integrations/shared/coding-guidelines.md) for the full reference.
-
-## Code Intelligence
-
-Use the dedicated, focused code-intel tools (SCIP-indexed, prefer over `grep`):
-
-| Need | Tool |
-|---|---|
-| Find a symbol definition by name | `mcp__atelier__symbols` |
-| Read the full source of one symbol | `mcp__atelier__node` |
-| Who calls a function / what it calls | `mcp__atelier__callers` / `mcp__atelier__callees` |
-| All references to a symbol | `mcp__atelier__usages` |
-| Match/rewrite code by AST shape | `mcp__atelier__codemod` |
-| Grouped source + relationships in one call | `mcp__atelier__explore` |
-
-## Agent Spawning Rules
-
-When spawning sub-agents via the `Agent` tool, always pick the narrowest type:
-
-| Role | `subagent_type` | When |
-|---|---|---|
-| Code-review **finder** (read, search, grep — never edits) | `atelier:explore` | All Phase 1 / Angle A-G finder agents in `/code-review` |
-| Code-review **verifier** (applies rubric, never edits) | `atelier:review` | All Phase 2 verifier agents in `/code-review` |
-| Read-only research / exploration | `atelier:explore` | Any agent that only reads files, symbols, or web pages |
-| Coding, edits, fixes | `atelier:code` | Any agent that writes or modifies files |
-
-**Never** use the default (`claude`) agent for a task that fits one of the typed roles above — the default has write access it doesn't need and costs more.
-
-## Validation by Change Surface
-
-| What changed | Minimum check |
-|---|---|
-| Python / CLI | ``make lint && make typecheck && make test`` |
-| MCP tool handlers | ``uv run pytest tests/gateway/test_mcp_tool_handlers.py -q`` |
-| Code-intel engine | ``uv run pytest tests/core/test_code_context.py -q && make lint && make typecheck`` |
-| Frontend | ``cd frontend && npm run build && npm run test`` |
-| Documentation | ``make docs-check && make check-agent-context`` |
-"""
-
-
-_ATELIER_AGENTS_MD_TEMPLATE = """# Project Instructions — Atelier
-
-This project uses Atelier for code intelligence, context reuse, and agent reasoning.
-
-## Atelier commands
-
-| Command | Description |
-|---|---|
-| ``atelier init`` | Initialize project (gitignore, host files) |
-| ``atelier code index`` | Build or refresh code index |
-| ``atelier search <query>`` | Semantic search across the codebase |
-| ``atelier status`` | Show runtime status |
-| ``atelier doctor`` | Run diagnostics |
-"""
-
+from atelier.core.foundation.paths import ensure_gitignore as _ensure_gitignore  # noqa: E402
 
 _RUNTIME_ROLE_PROMPT_ORDER = ("code", "execute", "solve", "general", "explore", "plan", "research", "review")
 _HOST_ROLE_PROMPT_ORDER = ("code", "execute", "solve", "explore", "plan", "research", "review")
@@ -535,48 +388,12 @@ def _project_init_setup(git_root: Path) -> dict[str, list[str]]:
     """
     results: dict[str, list[str]] = {}
 
-    # .gitignore
+    # .gitignore \u2014 write .atelier/.gitignore so the dir stays visible in git
     added = _ensure_gitignore(git_root)
     if added:
-        results["gitignore"] = [f"added to .gitignore: {', '.join(a for a in added if not a.startswith('#'))}"]
+        results["gitignore"] = [".atelier/.gitignore written (ignores everything inside .atelier/)"]
     else:
-        results["gitignore"] = [".atelier/ already in .gitignore"]
-
-    # CLAUDE.md
-    claude_path = git_root / "CLAUDE.md"
-    if not claude_path.exists():
-        claude_path.write_text(_ATELIER_CLAUDE_MD_TEMPLATE.lstrip(), encoding="utf-8")
-        results["claude_md"] = ["created CLAUDE.md"]
-    else:
-        content = claude_path.read_text(encoding="utf-8")
-        # Detect whether the file already has any CLAUDE.md-style header or Atelier content
-        has_header = any(
-            marker in content for marker in ("# CLAUDE.md", "# CLAUDE.md — Atelier", "# Atelier", "mcp__atelier__")
-        )
-        if not has_header:
-            claude_path.write_text(
-                content.rstrip() + "\n\n" + _ATELIER_CLAUDE_MD_TEMPLATE,
-                encoding="utf-8",
-            )
-            results["claude_md"] = ["appended Atelier guidance to CLAUDE.md"]
-        else:
-            results["claude_md"] = ["CLAUDE.md already has Atelier guidance"]
-
-    # AGENTS.md
-    agents_path = git_root / "AGENTS.md"
-    if not agents_path.exists():
-        agents_path.write_text(_ATELIER_AGENTS_MD_TEMPLATE.lstrip(), encoding="utf-8")
-        results["agents_md"] = ["created AGENTS.md"]
-    else:
-        content = agents_path.read_text(encoding="utf-8")
-        if "Atelier" not in content:
-            agents_path.write_text(
-                content.rstrip() + "\n\n" + _ATELIER_AGENTS_MD_TEMPLATE,
-                encoding="utf-8",
-            )
-            results["agents_md"] = ["appended Atelier guidance to AGENTS.md"]
-        else:
-            results["agents_md"] = ["AGENTS.md already has Atelier guidance"]
+        results["gitignore"] = [".atelier/.gitignore already present"]
 
     return results
 
@@ -648,7 +465,9 @@ def _parse_since_arg(value: str) -> datetime:
         delta = (
             timedelta(days=amount)
             if unit == "d"
-            else timedelta(hours=amount) if unit == "h" else timedelta(minutes=amount)
+            else timedelta(hours=amount)
+            if unit == "h"
+            else timedelta(minutes=amount)
         )
         return datetime.now(UTC) - delta
 
@@ -664,17 +483,10 @@ def _parse_since_arg(value: str) -> datetime:
 
 @click.command()
 @click.option("--seed/--no-seed", default=True, help="Import bundled seed blocks and rubrics.")
-@click.option("--stack", default=None, help="Copy starter Playbook templates for a stack.")
-@click.option("--list-stacks", "show_stacks", is_flag=True, help="List available starter stacks.")
 @click.option(
     "--index/--no-index",
     default=True,
     help="Bootstrap the code index for the current git repo (default: on).",
-)
-@click.option(
-    "--project",
-    is_flag=True,
-    help="Also run project-scoped setup: .gitignore, CLAUDE.md, AGENTS.md.",
 )
 @click.option(
     "--configure-models/--no-configure-models",
@@ -685,25 +497,10 @@ def _parse_since_arg(value: str) -> datetime:
 def init(
     ctx: click.Context,
     seed: bool,
-    stack: str | None,
-    show_stacks: bool,
     index: bool,
-    project: bool,
     configure_models: bool | None,
 ) -> None:
     """Initialize the runtime store at --root."""
-    if show_stacks:
-        from atelier.core.capabilities.starter_packs import list_stacks
-
-        stacks = list_stacks()
-        if not stacks:
-            click.echo("No starter stacks available.")
-            return
-        click.echo("Available starter stacks:")
-        for item in stacks:
-            click.echo(f"  {item.slug:20} {item.name} ({item.version}) - {item.description}")
-        return
-
     root: Path = ctx.obj["root"]
     from atelier.infra.storage.factory import create_store
 
@@ -741,15 +538,6 @@ def init(
             store.upsert_rubric(rubric)
             n_r += 1
         click.echo(f"seeded {n_b} playbooks and {n_r} rubrics")
-    if stack:
-        from atelier.core.capabilities.starter_packs import copy_stack_templates
-
-        try:
-            copied, skipped = copy_stack_templates(stack, store.blocks_dir)
-        except ValueError as exc:
-            raise click.ClickException(str(exc)) from exc
-        suffix = f", skipped {skipped} existing" if skipped else ""
-        click.echo(f"copied {copied} starter playbooks for stack {stack}{suffix}")
     if index:
         git_root = _detect_git_root(Path.cwd())
         if git_root is not None:
@@ -785,15 +573,6 @@ def init(
             for section, messages in results.items():
                 for msg in messages:
                     click.echo(f"  [{section}] {msg}")
-    if project:
-        if git_root is not None:
-            click.echo("running project-scoped setup ...")
-            results = _project_init_setup(git_root)
-            for section, messages in results.items():
-                for msg in messages:
-                    click.echo(f"  [{section}] {msg}")
-        else:
-            click.echo("project init skipped (no git repository detected)")
 
 
 @click.command("doctor")

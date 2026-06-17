@@ -563,7 +563,6 @@ class ContextStore:
         results = {"blocks": 0, "rubrics": 0}
 
         if self.blocks_dir.exists():
-            from atelier.core.capabilities.starter_packs import load_template_block
             from atelier.core.foundation.parser import parse_block_markdown
 
             prev = self._load_sync_manifest("blocks")
@@ -577,11 +576,8 @@ class ContextStore:
                     continue
 
                 try:
-                    if path.name.startswith("template_"):
-                        block = load_template_block(path)
-                    else:
-                        content = path.read_text(encoding="utf-8")
-                        block = parse_block_markdown(content)
+                    content = path.read_text(encoding="utf-8")
+                    block = parse_block_markdown(content)
                     self.upsert_block(block, write_markdown=False)
                     results["blocks"] += 1
                 except Exception as exc:

@@ -2277,6 +2277,14 @@ def _register_mcp_session() -> None:
         _log.debug("MCP session registration write failed", exc_info=True)
 
 
+def _unregister_mcp_session() -> None:
+    """Remove this MCP process's registration file on clean shutdown."""
+    try:
+        _mcp_session_file().unlink(missing_ok=True)
+    except OSError:
+        _log.debug("MCP session registration cleanup failed", exc_info=True)
+
+
 def _get_claude_session_id() -> str:
     """Return the Claude Code session UUID.
 
@@ -4174,9 +4182,6 @@ def _render_read_outline_md(path: str, outline: dict[str, Any], language: str) -
         return text
     # AST outline: has `symbols`, `imports`, `hint` fields
     lines: list[str] = []
-    hint = str(outline.get("hint") or "").strip()
-    if hint:
-        lines.append(f"hint: {hint}")
     imports_list = outline.get("imports")
     if isinstance(imports_list, list) and imports_list:
         # Collapse to distinct top-level roots instead of one line per import.
@@ -10029,7 +10034,9 @@ def _handle_and_write(request: dict[str, Any]) -> None:
     if response is not None:
         try:
             _write_jsonrpc(response)
-        except Exception:  # noqa: BLE001 - a write failure (e.g. BrokenPipe on host disconnect) must be logged, not silently dropped by the pool.
+        except (
+            Exception
+        ):  # noqa: BLE001 - a write failure (e.g. BrokenPipe on host disconnect) must be logged, not silently dropped by the pool.
             _log.exception("failed to write MCP response")
 
 
@@ -10098,6 +10105,71 @@ def _setup_file_logging(root: str | Path) -> None:
     mcp_logger.setLevel(logging.DEBUG)
 
 
+def _auto_init_workspace() -> None:
+    """One-time workspace bootstrap: seed playbooks, add .gitignore, write marker.
+
+    Runs as a daemon thread on stdio MCP startup.  Fail-open so a crash never
+    blocks server startup.  Idempotent via ``.workspace_inited`` marker file.
+    """
+    try:
+        from importlib import resources as _resources
+
+        import yaml
+
+        from atelier.core.foundation.models import Playbook, Rubric
+        from atelier.core.foundation.paths import (
+            ensure_gitignore,
+            resolve_workspace_store_dir,
+        )
+        from atelier.infra.storage.factory import create_store
+
+        atelier_root = _atelier_root()
+        ws_root = _workspace_root()
+
+        marker = resolve_workspace_store_dir(atelier_root, ws_root) / ".workspace_inited"
+        if marker.exists():
+            return
+
+        # --- Seed playbooks and rubrics ---
+        store = create_store(atelier_root)
+        store.init()
+
+        blocks_dir = _resources.files("atelier") / "infra" / "seed_playbooks"
+        rubric_dir = _resources.files("atelier") / "core" / "rubrics"
+
+        for path in sorted(Path(str(p)) for p in blocks_dir.iterdir() if p.name.endswith(".yaml")):
+            data = yaml.safe_load(path.read_text("utf-8"))
+            if not isinstance(data, dict):
+                continue
+            if "id" not in data:
+                try:
+                    data["id"] = Playbook.make_id(data.get("title", ""), data.get("domain", ""))
+                except (KeyError, ValueError):
+                    continue
+            try:
+                store.upsert_block(Playbook.model_validate(data))
+            except (KeyError, ValueError):
+                continue
+
+        for path in sorted(Path(str(p)) for p in rubric_dir.iterdir() if p.name.endswith(".yaml")):
+            data = yaml.safe_load(path.read_text("utf-8"))
+            if not isinstance(data, dict):
+                continue
+            try:
+                store.upsert_rubric(Rubric.model_validate(data))
+            except (KeyError, ValueError):
+                continue
+
+        # --- Add .gitignore ---
+        ensure_gitignore(ws_root)
+
+        # --- Write marker ---
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("")
+    except Exception:
+        logging.exception("auto-init failed, continuing")
+
+
 def _warm_stdio_code_index() -> None:
     """Warm the single-workspace code-context engine for the stdio MCP path.
 
@@ -10162,11 +10234,16 @@ def main() -> None:
     # warming failure never breaks server startup.
     threading.Thread(target=_warm_stdio_code_index, daemon=True).start()
 
+    # One-time workspace bootstrap: seed playbooks, add .atelier/.gitignore,
+    # and write the .workspace_inited marker.  Daemon thread, fail-open.
+    threading.Thread(target=_auto_init_workspace, daemon=True).start()
+
     _update_thread = threading.Thread(target=_check_auto_update, daemon=True)
     _update_thread.start()
     try:
         serve()
     finally:
+        _unregister_mcp_session()
         # If an opt-in auto-update reinstall (git pull + install.sh) is mid-flight
         # when the host disconnects, let it finish rather than killing the daemon
         # thread abruptly and leaving a half-pulled tree / partial install. Returns

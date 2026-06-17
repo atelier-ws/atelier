@@ -73,7 +73,7 @@ background_group.add_command(_daemon_cli, name="service")
     is_flag=True,
     help="Also install the OpenMemory MCP (Docker-based) service.",
 )
-@click.option("--with-zoekt", is_flag=True, help="Also install the Zoekt code-search (Docker-based) service.")
+@click.option("--with-zoekt", is_flag=True, help="Enable managed Zoekt code search in the stack service.")
 @click.pass_context
 def background_install(
     ctx: click.Context, with_stack: bool, with_letta: bool, with_openmemory: bool, with_zoekt: bool
@@ -94,7 +94,7 @@ def background_install(
     if with_zoekt and not shutil.which("docker"):
         click.echo(
             "Warning: 'docker' not found on PATH. "
-            "The Zoekt service unit will be created but will fail until Docker is available."
+            "Managed Zoekt search will be unavailable until Docker is available."
         )
 
     if with_openmemory:
@@ -137,6 +137,7 @@ WantedBy=default.target
         click.echo(f"Installed {CONTROLLER_UNIT}")
 
         if with_stack:
+            zoekt_env = "Environment=ATELIER_ZOEKT_MODE=managed\n" if with_zoekt else ""
             stack_content = f"""[Unit]
 Description=Atelier HTTP Service
 After={CONTROLLER_UNIT}
@@ -149,7 +150,7 @@ Restart=on-failure
 RestartSec=5
 Environment=ATELIER_ROOT={root}
 Environment=PYTHONUNBUFFERED=1
-
+{zoekt_env}
 [Install]
 WantedBy=default.target
 """
@@ -177,27 +178,6 @@ WantedBy=default.target
             (SYSTEMD_USER_DIR / LETTA_UNIT).write_text(letta_content, encoding="utf-8")
             click.echo(f"Installed {LETTA_UNIT}")
 
-        if with_zoekt:
-            zoekt_content = f"""[Unit]
-Description=Atelier Zoekt Code Search (Docker)
-After=network.target docker.service
-Wants=docker.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart={atelier_bin} --root {root} zoekt up
-ExecStop={atelier_bin} --root {root} zoekt down
-WorkingDirectory={project_root}
-Environment=ATELIER_ROOT={root}
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=default.target
-"""
-            (SYSTEMD_USER_DIR / ZOEKT_UNIT).write_text(zoekt_content, encoding="utf-8")
-            click.echo(f"Installed {ZOEKT_UNIT}")
-
         if with_openmemory:
             openmemory_content = f"""[Unit]
 Description=Atelier OpenMemory MCP Server
@@ -224,7 +204,6 @@ WantedBy=default.target
             (with_stack, STACK_UNIT),
             (with_letta, LETTA_UNIT),
             (with_openmemory, OPENMEMORY_UNIT),
-            (with_zoekt, ZOEKT_UNIT),
         ]:
             if not flag:
                 unit_path = SYSTEMD_USER_DIR / unit
@@ -236,6 +215,15 @@ WantedBy=default.target
                         stderr=subprocess.DEVNULL,
                     )
                     unit_path.unlink()
+        zoekt_unit_path = SYSTEMD_USER_DIR / ZOEKT_UNIT
+        if zoekt_unit_path.exists():
+            subprocess.run(
+                ["systemctl", "--user", "disable", "--now", ZOEKT_UNIT],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            zoekt_unit_path.unlink()
 
         daemon_reload = subprocess.run(
             ["systemctl", "--user", "daemon-reload"],
@@ -270,15 +258,6 @@ WantedBy=default.target
         if with_openmemory:
             subprocess.run(["systemctl", "--user", "enable", OPENMEMORY_UNIT], check=True)
             subprocess.run(["systemctl", "--user", "restart", OPENMEMORY_UNIT], check=True)
-        if with_zoekt:
-            subprocess.run(["systemctl", "--user", "enable", ZOEKT_UNIT], check=True)
-            result = subprocess.run(["systemctl", "--user", "restart", ZOEKT_UNIT], check=False)
-            if result.returncode != 0:
-                click.echo(
-                    f"Warning: {ZOEKT_UNIT} did not start cleanly - "
-                    "run 'journalctl --user -xeu atelier-zoekt.service' for details",
-                    err=True,
-                )
 
     elif _is_macos():
         # Clean up stale plists for features no longer requested
@@ -286,7 +265,6 @@ WantedBy=default.target
             (with_stack, STACK_LABEL),
             (with_letta, LETTA_LABEL),
             (with_openmemory, OPENMEMORY_LABEL),
-            (with_zoekt, ZOEKT_LABEL),
         ]:
             if not flag:
                 plist = LAUNCHD_USER_DIR / f"{label}.plist"
@@ -298,6 +276,15 @@ WantedBy=default.target
                         stderr=subprocess.DEVNULL,
                     )
                     plist.unlink()
+        zoekt_plist_path = LAUNCHD_USER_DIR / f"{ZOEKT_LABEL}.plist"
+        if zoekt_plist_path.exists():
+            subprocess.run(
+                ["launchctl", "unload", str(zoekt_plist_path)],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            zoekt_plist_path.unlink()
 
         LAUNCHD_USER_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -312,7 +299,6 @@ WantedBy=default.target
         x_controller_label = _xml_escape(str(CONTROLLER_LABEL))
         x_stack_label = _xml_escape(str(STACK_LABEL))
         x_letta_label = _xml_escape(str(LETTA_LABEL))
-        x_zoekt_label = _xml_escape(str(ZOEKT_LABEL))
         x_openmemory_label = _xml_escape(str(OPENMEMORY_LABEL))
         x_stack_log = _xml_escape(str(_stack_log_path(root)))
         x_letta_log = _xml_escape(str(Path(root) / "letta" / "letta.log"))
@@ -353,6 +339,13 @@ WantedBy=default.target
         click.echo(f"Installed {CONTROLLER_LABEL}.plist")
 
         if with_stack:
+            zoekt_env = (
+                """
+        <key>ATELIER_ZOEKT_MODE</key>
+        <string>managed</string>"""
+                if with_zoekt
+                else ""
+            )
             stack_plist = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -385,6 +378,7 @@ WantedBy=default.target
         <string>{xroot}</string>
         <key>PYTHONUNBUFFERED</key>
         <string>1</string>
+{zoekt_env}
     </dict>
 </dict>
 </plist>
@@ -429,40 +423,6 @@ WantedBy=default.target
 """
             (LAUNCHD_USER_DIR / f"{LETTA_LABEL}.plist").write_text(letta_plist, encoding="utf-8")
             click.echo(f"Installed {LETTA_LABEL}.plist")
-
-        if with_zoekt:
-            zoekt_plist = f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>{x_zoekt_label}</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>{xb}</string>
-        <string>--root</string>
-        <string>{xroot}</string>
-        <string>zoekt</string>
-        <string>up</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <false/>
-    <key>WorkingDirectory</key>
-    <string>{xproject}</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>ATELIER_ROOT</key>
-        <string>{xroot}</string>
-        <key>PYTHONUNBUFFERED</key>
-        <string>1</string>
-    </dict>
-</dict>
-</plist>
-"""
-            (LAUNCHD_USER_DIR / f"{ZOEKT_LABEL}.plist").write_text(zoekt_plist, encoding="utf-8")
-            click.echo(f"Installed {ZOEKT_LABEL}.plist")
 
         if with_openmemory:
             # XML-escape every interpolated value before it lands in the plist.
@@ -525,8 +485,6 @@ WantedBy=default.target
                 ["launchctl", "load", str(LAUNCHD_USER_DIR / f"{OPENMEMORY_LABEL}.plist")],
                 check=False,
             )
-        if with_zoekt:
-            subprocess.run(["launchctl", "load", str(LAUNCHD_USER_DIR / f"{ZOEKT_LABEL}.plist")], check=False)
 
     else:
         raise click.ClickException(f"Unsupported platform for background services: {sys.platform}")
@@ -572,16 +530,12 @@ def background_status(ctx: click.Context) -> None:
             units.append(LETTA_UNIT)
         if (SYSTEMD_USER_DIR / OPENMEMORY_UNIT).exists():
             units.append(OPENMEMORY_UNIT)
-        if (SYSTEMD_USER_DIR / ZOEKT_UNIT).exists():
-            units.append(ZOEKT_UNIT)
-        if (SYSTEMD_USER_DIR / ZOEKT_UNIT).exists():
-            units.append(ZOEKT_UNIT)
         for unit in units:
             click.echo(f"--- {unit} ---")
             subprocess.run(["systemctl", "--user", "status", unit, "--no-pager"], check=False)
             click.echo("")
     elif _is_macos():
-        for label in [CONTROLLER_LABEL, STACK_LABEL, LETTA_LABEL, OPENMEMORY_LABEL, ZOEKT_LABEL]:
+        for label in [CONTROLLER_LABEL, STACK_LABEL, LETTA_LABEL, OPENMEMORY_LABEL]:
             if (LAUNCHD_USER_DIR / f"{label}.plist").exists():
                 click.echo(f"--- {label} ---")
                 subprocess.run(["launchctl", "list", label], check=False)
@@ -607,7 +561,7 @@ def background_restart(ctx: click.Context) -> None:
             click.echo(f"Restarted {unit}")
     elif _is_macos():
         uid = os.getuid()
-        for label in [CONTROLLER_LABEL, STACK_LABEL, LETTA_LABEL, OPENMEMORY_LABEL, ZOEKT_LABEL]:
+        for label in [CONTROLLER_LABEL, STACK_LABEL, LETTA_LABEL, OPENMEMORY_LABEL]:
             if (LAUNCHD_USER_DIR / f"{label}.plist").exists():
                 subprocess.run(["launchctl", "kickstart", "-k", f"gui/{uid}/{label}"], check=False)
                 click.echo(f"Restarted {label}")
