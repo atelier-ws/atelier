@@ -21,6 +21,7 @@ source "${SCRIPT_DIR}/lib/common.sh"
 # A distribution install is never a source checkout; keep host configs global
 # unless an explicit --workspace is provided.
 ATELIER_LOCAL=0
+ATELIER_PYTHON_VERSION="${ATELIER_PYTHON_VERSION:-3.13}"
 
 # ---- arg parsing ------------------------------------------------------------
 while [[ $# -gt 0 ]]; do
@@ -58,6 +59,10 @@ install_atelier_from_wheel() {
         export PATH="${HOME}/.local/bin:${PATH}"
     fi
 
+    if [[ "$ATELIER_DRY_RUN" != "1" ]]; then
+        uv python install "$ATELIER_PYTHON_VERSION" >/dev/null 2>&1 || true
+    fi
+
     # Pin every transitive dependency to its locked version via the constraints
     # file build.sh ships next to this script (<bundle>/constraints.txt). Without
     # it, `uv tool install` ignores uv.lock and resolves the wheel's unbounded
@@ -74,10 +79,13 @@ install_atelier_from_wheel() {
 
     local extras="mcp,memory,smart,cloud,postgres,vector,parsers,rename"
     info "Installing atelier from wheel (uv tool install)..."
+    UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
+        uv tool uninstall atelier >/dev/null 2>&1 || true
+
     # Install the console script to the same bin/tool dirs as `make dev` (scripts/local.sh),
     # so prod and dev share ONE on-PATH binary location (ATELIER_BIN_DIR, default ~/.local/bin).
     UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
-        uv tool install "${wheel}[${extras}]" ${constraints_arg[@]+"${constraints_arg[@]}"} --reinstall-package atelier
+        uv tool install --force --python "$ATELIER_PYTHON_VERSION" "${wheel}[${extras}]" ${constraints_arg[@]+"${constraints_arg[@]}"} --reinstall-package atelier
 
     # Re-derive ATELIER_BIN_DIR to the uv tool install location so that
     # run_setup() finds the real atelier binary (not the wheel-only
