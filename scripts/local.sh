@@ -28,24 +28,29 @@ ATELIER_LOCAL=1
 install_uv_if_needed() {
     if command -v uv >/dev/null 2>&1; then
         verbose "Found uv: $(uv --version 2>/dev/null || echo unknown)"
-        return
-    fi
-
-    need_cmd curl
-    verbose "Installing uv (official installer)..."
-    if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-        echo "[dry-run] curl -LsSf https://astral.sh/uv/install.sh | sh"
     else
-        # shellcheck disable=SC2016
-        curl -LsSf https://astral.sh/uv/install.sh | sh
+        need_cmd curl
+        verbose "Installing uv (official installer)..."
+        if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+            echo "[dry-run] curl -LsSf https://astral.sh/uv/install.sh | sh"
+        else
+            # shellcheck disable=SC2016
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+        fi
+
+        if [[ -x "${HOME}/.local/bin/uv" ]]; then
+            export PATH="${HOME}/.local/bin:${PATH}"
+        fi
+
+        command -v uv >/dev/null 2>&1 || fail "uv install completed but uv is still not on PATH"
+        verbose "Installed uv: $(uv --version 2>/dev/null || echo unknown)"
     fi
 
-    if [[ -x "${HOME}/.local/bin/uv" ]]; then
-        export PATH="${HOME}/.local/bin:${PATH}"
+    # Pin Python to the supported runtime so uv does not select a newer ABI.
+    if [[ "$ATELIER_DRY_RUN" != "1" ]]; then
+        uv python install 3.13 >/dev/null 2>&1 || true
+        uv python pin 3.13 >/dev/null 2>&1 || true
     fi
-
-    command -v uv >/dev/null 2>&1 || fail "uv install completed but uv is still not on PATH"
-    verbose "Installed uv: $(uv --version 2>/dev/null || echo unknown)"
 }
 
 install_console_scripts() {
@@ -90,7 +95,7 @@ install_console_scripts() {
     
     UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" \
         UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
-        ATELIER_SKIP_MYPYC=1 uv tool install "$package_spec" --force
+        ATELIER_SKIP_MYPYC=1 uv tool install --force "$package_spec"
 
 }
 

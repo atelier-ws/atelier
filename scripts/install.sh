@@ -181,6 +181,31 @@ if ! command -v uv >/dev/null 2>&1; then
     export PATH="${HOME}/.local/bin:${PATH}"
 fi
 
+# ---- ensure npm is available -------------------------------------------------
+if ! command -v npm >/dev/null 2>&1; then
+    info "Installing npm..."
+    case "$OS" in
+        darwin)
+            if command -v brew >/dev/null 2>&1; then
+                brew install node
+            else
+                warn "Homebrew not found. Please install Node.js manually: https://nodejs.org/"
+            fi
+            ;;
+        linux)
+            if command -v apt-get >/dev/null 2>&1; then
+                apt-get update && apt-get install -y nodejs npm
+            elif command -v dnf >/dev/null 2>&1; then
+                dnf install -y nodejs npm
+            elif command -v pacman >/dev/null 2>&1; then
+                pacman -S --noconfirm nodejs npm
+            else
+                warn "Package manager not found. Please install Node.js manually: https://nodejs.org/"
+            fi
+            ;;
+    esac
+fi
+
 # ---- run full setup via bundle.sh (installs wheel + host integrations) ------
 export PATH="${ATELIER_BIN_DIR}:${PATH}"
 BUNDLE_SH="${ATELIER_INSTALL_DIR}/scripts/bundle.sh"

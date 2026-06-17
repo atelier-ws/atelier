@@ -92,6 +92,16 @@ class CustomBuildHook(BuildHookInterface):
         src_dir = repo / "src"
         atelier_src = src_dir / "atelier"
 
+        # 1. Clean stale artifacts from previous failed runs to prevent conflicts.
+        build_dir = src_dir / "build"
+        if build_dir.exists():
+            shutil.rmtree(build_dir)
+        for so in list(src_dir.rglob("*.so")):
+            so.unlink(missing_ok=True)
+        mypy_cache = repo / ".mypy_cache"
+        if mypy_cache.exists():
+            shutil.rmtree(mypy_cache)
+
         compilable = _find_compilable(atelier_src, src_dir)
         if not compilable:
             return
@@ -100,7 +110,7 @@ class CustomBuildHook(BuildHookInterface):
         print(f"[hatch-mypyc] compiling {len(compilable)} modules …", flush=True)
         _run_mypyc(compilable, src_dir)
 
-        # Collect generated .so files
+        # 2. Collect generated .so files
         all_sos = list(src_dir.rglob("*.so"))
         support_sos = [s for s in all_sos if s.parent == src_dir]
         module_sos = [s for s in all_sos if s.parent != src_dir and "atelier" in str(s) and "build" not in s.parts]
@@ -137,10 +147,10 @@ class CustomBuildHook(BuildHookInterface):
             so.unlink(missing_ok=True)
         build_dir = src_dir / "build"
         if build_dir.exists():
-            shutil.rmtree(build_dir)
+            shutil.rmtree(build_dir, ignore_errors=True)
         mypy_cache = repo / ".mypy_cache"
         if mypy_cache.exists():
-            shutil.rmtree(mypy_cache)
+            shutil.rmtree(mypy_cache, ignore_errors=True)
 
         print("[hatch-mypyc] source restored, artifacts cleaned", flush=True)
 
@@ -172,9 +182,16 @@ def _find_compilable(atelier_src: pathlib.Path, src_dir: pathlib.Path) -> list[s
 
 
 def _run_mypyc(files: list[str], cwd: pathlib.Path) -> None:
+    # Disable parallel compilation (NPROC/MAX_JOBS) to prevent race conditions on macOS
+    # during intermediate directory creation and file renaming.
+    env = os.environ.copy()
+    env["NPROC"] = "1"
+    env["MAX_JOBS"] = "1"
     result = subprocess.run(
         [sys.executable, "-m", "mypyc", "--ignore-missing-imports", "--allow-untyped-decorators", *files],
         cwd=str(cwd),
+        env=env,
     )
     if result.returncode != 0:
         raise RuntimeError(f"mypyc compilation failed (exit {result.returncode})")
+

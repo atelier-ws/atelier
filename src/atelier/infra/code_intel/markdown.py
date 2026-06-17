@@ -14,6 +14,8 @@ Usage::
 
 from __future__ import annotations
 
+from typing import Any
+
 
 def _line_offsets(text: str) -> list[int]:
     """Character-offset of the start of each line (0-indexed)."""
@@ -25,7 +27,7 @@ def _line_offsets(text: str) -> list[int]:
     return offsets
 
 
-def extract_markdown_symbols(source: str) -> list[dict]:
+def extract_markdown_symbols(source: str) -> list[dict[str, Any]]:
     """Extract heading-based symbols from markdown source text.
 
     Returns a list of dicts matching ``_ExtractedSymbol`` field names so the
@@ -58,7 +60,7 @@ def extract_markdown_symbols(source: str) -> list[dict]:
         return []
 
     # --- build heading tree into symbols with section boundaries ---
-    symbols: list[dict] = []
+    symbols: list[dict[str, Any]] = []
     heading_stack: list[tuple[int, str]] = []  # [(level, name), …]
 
     for idx, (heading_line, level, text, _tag) in enumerate(heading_positions):
