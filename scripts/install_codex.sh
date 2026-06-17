@@ -2,27 +2,34 @@
 # install_codex.sh — Install Atelier into Codex CLI
 #
 # What it does:
-#   Global mode: installs a personal Codex marketplace plus a local Atelier plugin source.
-#   Workspace mode (--workspace DIR): installs a repo-local Codex marketplace plus a local Atelier plugin source under DIR.
+#   Global mode: installs a personal Codex marketplace, plugin bundle, and agents.
+#   Workspace mode (--workspace DIR): installs repo-local plugin artifacts and agents.
 #
 # Options:
 #   --dry-run        Print what would happen, touch nothing
-#   --print-only     Print config snippets for manual install, touch nothing
-#   --workspace DIR  Install project-local artifacts into DIR instead of global user config
-#   --strict         Exit nonzero if 'codex' CLI not on PATH
+#   --print-only     Print manual install steps, touch nothing
+#   --workspace DIR  Install project-local artifacts into DIR
+#   --strict         Exit nonzero if 'codex' CLI is not on PATH
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATELIER_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "${SCRIPT_DIR}/lib/managed_context.sh"
+
 PLUGIN_TEMPLATE="${ATELIER_REPO}/integrations/codex/plugin"
+SKILL_BUILDER="${SCRIPT_DIR}/build_host_skills.sh"
+STAGING_DIR="${HOME}/.atelier/codex-plugin"
+USER_CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
 
 DRY_RUN=false
 PRINT_ONLY=false
 STRICT=false
 WORKSPACE=""
 WORKSPACE_SET=false
+PLUGIN_INSTALL_PENDING=false
+MARKETPLACE_NAME="atelier-local"
+PLUGIN_ID="atelier@atelier-local"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -38,32 +45,38 @@ while [[ $# -gt 0 ]]; do
             WORKSPACE_SET=true
             shift
             ;;
-        *) echo "Unknown option: $1" >&2; exit 1 ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
     esac
     shift
 done
 
 if $WORKSPACE_SET; then
     WORKSPACE="$(cd "$WORKSPACE" && pwd)"
-fi
-
-if $WORKSPACE_SET; then
     INSTALL_SCOPE="workspace"
-    CODEX_HOME="${WORKSPACE}/.codex"
-    PLUGIN_DIR="${WORKSPACE}/.codex/plugins/atelier"
+    CODEX_DIR="${WORKSPACE}/.codex"
+    PLUGIN_DIR="${CODEX_DIR}/plugins/atelier"
+    AGENTS_DIR="${CODEX_DIR}/agents"
     AGENTS_FILE="${WORKSPACE}/AGENTS.md"
-    TASKS_DEST_DIR="${WORKSPACE}/.codex/tasks"
+    TASKS_DEST_DIR="${CODEX_DIR}/tasks"
+    CODEX_CONFIG="${CODEX_DIR}/config.toml"
+    MARKETPLACE_ROOT="$WORKSPACE"
 else
     INSTALL_SCOPE="global"
-    CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
-    PLUGIN_DIR="${CODEX_HOME}/plugins/atelier"
-    AGENTS_FILE="${CODEX_HOME}/AGENTS.md"
+    CODEX_DIR="$USER_CODEX_HOME"
+    PLUGIN_DIR="${CODEX_DIR}/plugins/atelier"
+    AGENTS_DIR="${CODEX_DIR}/agents"
+    AGENTS_FILE="${CODEX_DIR}/AGENTS.md"
     TASKS_DEST_DIR=""
+    CODEX_CONFIG="${CODEX_DIR}/config.toml"
+    MARKETPLACE_ROOT="$HOME"
 fi
 
 PLUGIN_MCP_JSON="${PLUGIN_DIR}/.mcp.json"
-SKILL_BUILDER="${SCRIPT_DIR}/build_host_skills.sh"
-STAGING_DIR="${HOME}/.atelier/codex-plugin"
+CODEX_MARKETPLACE="${MARKETPLACE_ROOT}/.agents/plugins/marketplace.json"
+USER_CODEX_CONFIG="${USER_CODEX_HOME}/config.toml"
 
 info()  { [[ "${ATELIER_VERBOSE:-0}" == "1" ]] && echo "[atelier:codex] $*" || true; }
 warn()  { echo "[atelier:codex] WARN: $*" >&2; }
@@ -78,46 +91,21 @@ print_manual_steps() {
     echo "   mkdir -p '${PLUGIN_DIR}'"
     echo "   cp -R '${ATELIER_REPO}/integrations/codex/plugin/.' '${PLUGIN_DIR}/'"
     echo "   cp -R '${ATELIER_REPO}/integrations/codex/hooks' '${PLUGIN_DIR}/'"
+    echo "   cp -R '${ATELIER_REPO}/integrations/codex/plugin/agents' '${PLUGIN_DIR}/'"
     echo "   cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '${PLUGIN_DIR}/agents/atelier.md'"
     echo "   bash '${SKILL_BUILDER}' --host codex --dest '${PLUGIN_DIR}/skills'"
     echo ""
-    echo "2. Patch '${PLUGIN_DIR}/hooks/hooks.json' by replacing:"
-    echo "   __ATELIER_PYTHON__  -> the Python interpreter used by the atelier launcher"
-    echo "   __ATELIER_REPO_SRC__ -> '${ATELIER_REPO}/src'"
+    echo "2. Add Atelier to '${CODEX_MARKETPLACE}' with:"
+    echo "   source.path = './.codex/plugins/atelier'"
+    echo "   policy.installation = 'INSTALLED_BY_DEFAULT'"
     echo ""
-    echo "3. Patch ${PLUGIN_MCP_JSON} to use 'atelier mcp --host codex'."
+    echo "3. Install the seven custom agents under '${AGENTS_DIR}'."
     echo ""
-    echo "4. Register Atelier as a Codex MCP server:"
-    if $WORKSPACE_SET; then
-        echo "   CODEX_HOME='${CODEX_HOME}' codex mcp add atelier --env ATELIER_WORKSPACE_ROOT='${WORKSPACE}' -- atelier mcp --host codex"
-    else
-        echo "   codex mcp add atelier -- atelier mcp --host codex"
-    fi
-    echo ""
-    echo "5. Register the complete plugin bundle in the personal marketplace:"
-    if $WORKSPACE_SET; then
-        echo "   # Add atelier to '${WORKSPACE}/.agents/plugins/marketplace.json'"
-        echo "   # with source.path './.codex/plugins/atelier', then run:"
-    else
-        echo "   # Add atelier to '${HOME}/.agents/plugins/marketplace.json'"
-        echo "   # with source.path './.codex/plugins/atelier', then run:"
-    fi
-    echo "   codex plugin add atelier@atelier-local"
-    echo ""
-    if $WORKSPACE_SET; then
-        echo "6. Install universal project agents (run once per project):"
-        echo "   bash scripts/install_agents.sh --workspace '${WORKSPACE}'"
-        echo ""
-        echo "7. Install task templates:"
-        echo "   mkdir -p '${TASKS_DEST_DIR}'"
-        echo "   cp '${ATELIER_REPO}/integrations/codex/tasks/'*.md '${TASKS_DEST_DIR}/'"
-    else
-        echo "6. Install Codex instructions:"
-        echo "   cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '${AGENTS_FILE}'"
-    fi
+    echo "4. Restart Codex. Open /plugins to confirm '${PLUGIN_ID}' is enabled."
+    echo "   Custom agents are spawned by name and appear in /agent after spawning."
 }
 
-# Print-only must be completely side-effect free and should not require Codex.
+# Print-only must be completely side-effect free and must not require Codex.
 if $PRINT_ONLY; then
     print_manual_steps
     exit 0
@@ -141,82 +129,12 @@ else
     info "Found Codex: $(codex --version 2>/dev/null || echo 'version unknown')"
 fi
 
-stage_plugin_bundle() {
-    # Recreate staging from scratch so removed files cannot survive upgrades.
-    run "rm -rf $(printf %q "$STAGING_DIR")"
-    run "mkdir -p $(printf %q "$STAGING_DIR/.codex-plugin")"
-    run "cp $(printf %q "${PLUGIN_TEMPLATE}/.codex-plugin/plugin.json") $(printf %q "$STAGING_DIR/.codex-plugin/")"
-    run "cp $(printf %q "${PLUGIN_TEMPLATE}/.mcp.json") $(printf %q "$STAGING_DIR/")"
-    run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/hooks") $(printf %q "$STAGING_DIR/")"
-    run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/plugin/scripts") $(printf %q "$STAGING_DIR/")"
-    run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/plugin/agents") $(printf %q "$STAGING_DIR/")"
-    run "mkdir -p $(printf %q "$STAGING_DIR/agents")"
-    local agent_src="${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md"
-    info "Staging Codex agent instructions"
-    run "cp $(printf %q "$agent_src") $(printf %q "$STAGING_DIR/agents/atelier.md")"
-    run "bash $(printf %q "$SKILL_BUILDER") --host codex --dest $(printf %q "$STAGING_DIR/skills")"
-    PLUGIN_TEMPLATE="$STAGING_DIR"
-}
-
-backup_file() {
-    local f="$1"
-    if $WORKSPACE_SET; then
-        return
-    fi
-    if [ -f "$f" ]; then
-        local bk="${f}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
-        run "cp $(printf %q "$f") $(printf %q "$bk")"
-        info "backed up $f → $bk"
-    fi
-}
-
-backup_path() {
-    local path="$1"
-    if $WORKSPACE_SET; then
-        return
-    fi
-    if [ -e "$path" ]; then
-        local bk="${path}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
-        if [ -d "$path" ]; then
-            run "cp -R $(printf %q "$path") $(printf %q "$bk")"
-        else
-            run "cp $(printf %q "$path") $(printf %q "$bk")"
-        fi
-        info "backed up $path → $bk"
-    fi
-}
-
-merge_agents_file() {
-    local source_file="$1"
-    local dest_file="$2"
-
-    if [ ! -f "$dest_file" ]; then
-        if $DRY_RUN; then
-            atelier_write_managed_copy "$source_file" "$dest_file" "true"
-        else
-            atelier_write_managed_copy "$source_file" "$dest_file" "false"
-        fi
-        info "created $dest_file"
-        return
-    fi
-
-    backup_file "$dest_file"
-    atelier_upsert_managed_block "$source_file" "$dest_file" "$DRY_RUN"
-    info "merged Atelier Codex instructions into $dest_file"
-}
-
-install_plugin_bundle() {
-    if [ -e "$PLUGIN_DIR" ]; then
-        backup_path "$PLUGIN_DIR"
-        run "rm -rf $(printf %q "$PLUGIN_DIR")"
-    fi
-    run "mkdir -p $(printf %q "$PLUGIN_DIR")"
-    run "cp -R $(printf %q "$PLUGIN_TEMPLATE/.") $(printf %q "$PLUGIN_DIR/")"
-}
-
+# In workspace mode, Codex must run from the workspace so it discovers the repo
+# marketplace and project config. Do not redefine CODEX_HOME: plugin enabled
+# state and cache remain user-scoped under ~/.codex (or the caller's CODEX_HOME).
 codex_cmd() {
     if $WORKSPACE_SET; then
-        CODEX_HOME="$CODEX_HOME" codex "$@"
+        (cd "$WORKSPACE" && codex "$@")
     else
         codex "$@"
     fi
@@ -268,17 +186,87 @@ resolve_atelier_hook_python() {
     resolve_atelier_runtime_python
 }
 
+stage_plugin_bundle() {
+    # Recreate staging from scratch so removed files cannot survive upgrades.
+    run "rm -rf $(printf %q "$STAGING_DIR")"
+    run "mkdir -p $(printf %q "$STAGING_DIR/.codex-plugin")"
+    run "cp $(printf %q "${PLUGIN_TEMPLATE}/.codex-plugin/plugin.json") $(printf %q "$STAGING_DIR/.codex-plugin/")"
+    run "cp $(printf %q "${PLUGIN_TEMPLATE}/.mcp.json") $(printf %q "$STAGING_DIR/")"
+    run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/hooks") $(printf %q "$STAGING_DIR/")"
+    run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/plugin/scripts") $(printf %q "$STAGING_DIR/")"
+    run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/plugin/agents") $(printf %q "$STAGING_DIR/")"
+    run "mkdir -p $(printf %q "$STAGING_DIR/agents")"
+    run "cp $(printf %q "${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md") $(printf %q "$STAGING_DIR/agents/atelier.md")"
+    run "bash $(printf %q "$SKILL_BUILDER") --host codex --dest $(printf %q "$STAGING_DIR/skills")"
+    PLUGIN_TEMPLATE="$STAGING_DIR"
+}
+
+backup_file() {
+    local path="$1"
+    if $WORKSPACE_SET; then
+        return
+    fi
+    if [ -f "$path" ]; then
+        local backup="${path}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
+        run "cp $(printf %q "$path") $(printf %q "$backup")"
+        info "backed up $path → $backup"
+    fi
+}
+
+backup_path() {
+    local path="$1"
+    if $WORKSPACE_SET; then
+        return
+    fi
+    if [ -e "$path" ]; then
+        local backup="${path}.atelier-backup.$(date +%Y%m%dT%H%M%S)"
+        if [ -d "$path" ]; then
+            run "cp -R $(printf %q "$path") $(printf %q "$backup")"
+        else
+            run "cp $(printf %q "$path") $(printf %q "$backup")"
+        fi
+        info "backed up $path → $backup"
+    fi
+}
+
+merge_agents_file() {
+    local source_file="$1"
+    local dest_file="$2"
+
+    if [ ! -f "$dest_file" ]; then
+        if $DRY_RUN; then
+            atelier_write_managed_copy "$source_file" "$dest_file" "true"
+        else
+            atelier_write_managed_copy "$source_file" "$dest_file" "false"
+        fi
+        info "created $dest_file"
+        return
+    fi
+
+    backup_file "$dest_file"
+    atelier_upsert_managed_block "$source_file" "$dest_file" "$DRY_RUN"
+    info "merged Atelier Codex instructions into $dest_file"
+}
+
+install_plugin_bundle() {
+    if [ -e "$PLUGIN_DIR" ]; then
+        backup_path "$PLUGIN_DIR"
+        run "rm -rf $(printf %q "$PLUGIN_DIR")"
+    fi
+    run "mkdir -p $(printf %q "$PLUGIN_DIR")"
+    run "cp -R $(printf %q "$PLUGIN_TEMPLATE/.") $(printf %q "$PLUGIN_DIR/")"
+}
+
 patch_plugin_hooks() {
     if $DRY_RUN; then
-        echo "  [dry-run] patch ${PLUGIN_DIR}/hooks/hooks.json with absolute plugin path"
+        echo "  [dry-run] patch ${PLUGIN_DIR}/hooks/hooks.json with absolute Atelier runtime paths"
         return
     fi
 
     local atelier_python
     atelier_python="$(resolve_atelier_hook_python)"
-
     if [[ "$atelier_python" != /* ]] || [ ! -x "$atelier_python" ]; then
-        echo "[atelier:codex] ERROR: cannot resolve Atelier Python interpreter from $atelier_python" >&2
+        echo "[atelier:codex] ERROR: cannot resolve Atelier hook runtime from $atelier_python" >&2
         exit 1
     fi
 
@@ -305,17 +293,13 @@ PYEOF
 }
 
 patch_plugin_mcp() {
-    local workspace_mode="0"
-    if $WORKSPACE_SET; then
-        workspace_mode="1"
-    fi
     if $DRY_RUN; then
-        echo "  [dry-run] patch $PLUGIN_MCP_JSON to use atelier"
+        echo "  [dry-run] patch $PLUGIN_MCP_JSON to run atelier mcp --host codex"
         return
     fi
 
     PLUGIN_MCP_JSON_PATH="$PLUGIN_MCP_JSON" \
-    ATELIER_WORKSPACE_MODE="$workspace_mode" \
+    ATELIER_WORKSPACE_MODE="$($WORKSPACE_SET && printf 1 || printf 0)" \
     ATELIER_WORKSPACE_VALUE="$WORKSPACE" \
     python3 - <<'PYEOF'
 import json
@@ -333,76 +317,152 @@ if os.environ["ATELIER_WORKSPACE_MODE"] == "1":
 else:
     env.pop("ATELIER_WORKSPACE_ROOT", None)
 server["env"] = env
-server["alwaysLoad"] = True
+# Older Atelier bundles emitted alwaysLoad/cwd, which are not part of the
+# documented Codex plugin MCP schema.
+server.pop("alwaysLoad", None)
 server.pop("cwd", None)
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PYEOF
 }
 
-ensure_codex_mcp() {
-    run "mkdir -p $(printf %q "$CODEX_HOME")"
+cleanup_legacy_codex_config() {
+    local config_path="$1"
     if $DRY_RUN; then
-        if $WORKSPACE_SET; then
-            echo "  [dry-run] CODEX_HOME='$CODEX_HOME' codex mcp add atelier --env ATELIER_WORKSPACE_ROOT='$WORKSPACE' -- atelier mcp --host codex"
-        else
-            echo "  [dry-run] codex mcp add atelier -- atelier mcp --host codex"
-        fi
+        echo "  [dry-run] remove obsolete Atelier per-agent registration block from ${config_path}"
+        return
+    fi
+    if [ ! -f "$config_path" ]; then
         return
     fi
 
-    codex_cmd mcp remove atelier >/dev/null 2>&1 || true
-    if $WORKSPACE_SET; then
-        codex_cmd mcp add atelier --env "ATELIER_WORKSPACE_ROOT=$WORKSPACE" -- atelier mcp --host codex >/dev/null 2>&1 || warn "codex mcp add failed (config may have other issues); MCP registration skipped"
-    else
-        codex_cmd mcp add atelier -- atelier mcp --host codex >/dev/null 2>&1 || warn "codex mcp add failed (config may have other issues); MCP registration skipped"
-    fi
-    if grep -q '\[mcp_servers\.atelier\]' "$CODEX_HOME/config.toml" 2>/dev/null; then
-        info "registered Codex MCP server 'atelier' in ${CODEX_HOME}/config.toml"
-    fi
+    CODEX_CONFIG_PATH="$config_path" python3 - <<'PYEOF'
+import os
+import re
+from pathlib import Path
+
+path = Path(os.environ["CODEX_CONFIG_PATH"])
+text = path.read_text(encoding="utf-8")
+original = text
+
+# Current Codex discovers standalone custom agent files directly from
+# .codex/agents or ~/.codex/agents. Remove the old generated registration block.
+text = re.sub(
+    r"(?ms)^# ATELIER:CODEX AGENTS START\n.*?^# ATELIER:CODEX AGENTS END\n?",
+    "",
+    text,
+)
+
+# A previous installer could leave tool-only MCP tables after MCP registration
+# failed. Remove those orphan tables only when no direct Atelier MCP server is
+# configured. Plugin-scoped MCP policy belongs under [plugins.<id>.mcp_servers].
+if not re.search(r"(?m)^\[mcp_servers\.atelier\]\s*$", text):
+    tools = (
+        "shell", "read", "grep", "edit", "callees", "codemod",
+        "memory", "callers", "explore", "web_fetch", "search", "usages",
+    )
+    for tool in tools:
+        text = re.sub(
+            rf"(?ms)^\[mcp_servers\.atelier\.tools\.{re.escape(tool)}\]\s*\n"
+            rf"(?:(?!^\[).*(?:\n|$))*",
+            "",
+            text,
+        )
+
+text = re.sub(r"\n{3,}", "\n\n", text).strip()
+if text:
+    text += "\n"
+if text != original:
+    path.write_text(text, encoding="utf-8")
+    print(f"[atelier:codex] removed obsolete Atelier config entries from {path}")
+PYEOF
 }
 
-install_codex_plugin() {
-    local marketplace_root marketplace source_path
-    if $WORKSPACE_SET; then
-        marketplace_root="$WORKSPACE"
-    else
-        marketplace_root="$HOME"
-    fi
-    source_path="./.codex/plugins/atelier"
-    marketplace="${marketplace_root}/.agents/plugins/marketplace.json"
-
+write_marketplace() {
     if $DRY_RUN; then
-        echo "  [dry-run] register atelier in ${marketplace}"
-        echo "  [dry-run] codex plugin add atelier@atelier-local"
+        echo "  [dry-run] register Atelier in ${CODEX_MARKETPLACE} with INSTALLED_BY_DEFAULT"
         return
     fi
 
-    mkdir -p "$(dirname "$marketplace")"
-    MARKETPLACE_PATH="$marketplace" PLUGIN_SOURCE_PATH="$source_path" python3 - <<'PYEOF'
+    mkdir -p "$(dirname "$CODEX_MARKETPLACE")"
+    MARKETPLACE_PATH="$CODEX_MARKETPLACE" python3 - <<'PYEOF'
 import json
 import os
 from pathlib import Path
 
 path = Path(os.environ["MARKETPLACE_PATH"])
-data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"name": "atelier-local", "plugins": []}
-data.setdefault("name", "atelier-local")
+if path.exists():
+    data = json.loads(path.read_text(encoding="utf-8"))
+else:
+    data = {"name": "atelier-local", "plugins": []}
+
+name = data.get("name")
+if not isinstance(name, str) or not name.strip():
+    name = "atelier-local"
+    data["name"] = name
+
 data.setdefault("interface", {"displayName": "Atelier local"})
 entry = {
     "name": "atelier",
-    "source": {"source": "local", "path": os.environ["PLUGIN_SOURCE_PATH"]},
-    "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+    "source": {"source": "local", "path": "./.codex/plugins/atelier"},
+    "policy": {"installation": "INSTALLED_BY_DEFAULT", "authentication": "ON_INSTALL"},
     "category": "Coding",
 }
-data["plugins"] = [plugin for plugin in data.get("plugins", []) if plugin.get("name") != "atelier"] + [entry]
+plugins = [p for p in data.get("plugins", []) if isinstance(p, dict) and p.get("name") != "atelier"]
+data["plugins"] = plugins + [entry]
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+print(name)
 PYEOF
+}
 
-    codex_cmd plugin remove atelier@openai-curated >/dev/null 2>&1 || true
-    if codex_cmd plugin add atelier@atelier-local >/dev/null 2>&1; then
-        info "installed Codex plugin atelier@atelier-local"
-    else
-        warn "Codex plugin auto-install failed; restart Codex and install atelier@atelier-local from /plugins."
+install_codex_plugin() {
+    if $DRY_RUN; then
+        echo "  [dry-run] attempt to install ${PLUGIN_ID}; otherwise restart Codex and use /plugins"
+        return
     fi
+
+    # The marketplace policy makes the plugin available after restart. Try the
+    # non-interactive command when the installed Codex build supports it, but do
+    # not fail a valid agent/plugin projection when activation is restart-bound.
+    codex_cmd plugin remove "atelier@openai-curated" >/dev/null 2>&1 || true
+    if codex_cmd plugin add "$PLUGIN_ID" >/dev/null 2>&1; then
+        info "installed Codex plugin ${PLUGIN_ID}"
+        return
+    fi
+    if codex_cmd plugin install "$PLUGIN_ID" >/dev/null 2>&1; then
+        info "installed Codex plugin ${PLUGIN_ID}"
+        return
+    fi
+
+    PLUGIN_INSTALL_PENDING=true
+    warn "Codex did not activate ${PLUGIN_ID} non-interactively; restart Codex, open /plugins, and enable Atelier."
+}
+
+project_custom_agents() {
+    cleanup_legacy_codex_config "$CODEX_CONFIG"
+
+    if $DRY_RUN; then
+        echo "  [dry-run] project seven custom agents into '${AGENTS_DIR}'"
+        return
+    fi
+
+    local atelier_python
+    atelier_python="$(resolve_atelier_runtime_python)"
+    ATELIER_AGENTS_DIR_VALUE="$AGENTS_DIR" \
+    ATELIER_WORKSPACE_VALUE="$WORKSPACE" \
+    ATELIER_REPO_VALUE="$ATELIER_REPO" \
+    ATELIER_WORKSPACE_MODE="$($WORKSPACE_SET && printf 1 || printf 0)" \
+    PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" \
+    "$atelier_python" - <<'PYEOF'
+import os
+from pathlib import Path
+from atelier.core.capabilities.workspace_host_overrides import write_codex_agents
+
+agents_dir = Path(os.environ["ATELIER_AGENTS_DIR_VALUE"])
+repo_root = Path(os.environ["ATELIER_REPO_VALUE"])
+workspace = Path(os.environ["ATELIER_WORKSPACE_VALUE"]) if os.environ["ATELIER_WORKSPACE_MODE"] == "1" else None
+written = write_codex_agents(agents_dir, model_workspace=workspace, repo_root=repo_root)
+print(f"[atelier:codex] projected {len(written)} custom Codex agents into {agents_dir}")
+PYEOF
 }
 
 # ---- stage + install plugin bundle -------------------------------------------
@@ -412,61 +472,17 @@ install_plugin_bundle
 run "chmod +x $(printf %q "${PLUGIN_DIR}/scripts/")*.sh 2>/dev/null || true"
 patch_plugin_hooks
 patch_plugin_mcp
-ensure_codex_mcp
+write_marketplace
+
+if ! $DRY_RUN; then
+    MARKETPLACE_NAME="$(MARKETPLACE_PATH="$CODEX_MARKETPLACE" python3 -c 'import json, os; print(json.load(open(os.environ["MARKETPLACE_PATH"]))["name"])')"
+    PLUGIN_ID="atelier@${MARKETPLACE_NAME}"
+fi
 install_codex_plugin
 
-# ---- auto-approve all Atelier MCP tools in config.toml -----------------------
-CODEX_CONFIG="${CODEX_HOME}/config.toml"
-if $DRY_RUN; then
-    echo "  [dry-run] add Atelier MCP tool auto-approvals to ${CODEX_CONFIG}"
-elif [ -f "$CODEX_CONFIG" ]; then
-    APPROVE_SCRIPT=$(mktemp "${TMPDIR:-/tmp}/atelier_codex_approve_XXXXXX")
-    cat > "${APPROVE_SCRIPT}" <<'PYEOF'
-import sys
-
-config_path = sys.argv[1]
-with open(config_path, "r") as f:
-    content = f.read()
-
-ATELIER_TOOLS = [
-    "shell", "read", "grep", "edit", "callees", "codemod",
-    "memory", "callers", "explore", "web_fetch", "search", "usages",
-]
-
-added = []
-for tool in ATELIER_TOOLS:
-    section = f'[mcp_servers.atelier.tools.{tool}]'
-    if section not in content:
-        content += f'\n{section}\napproval_mode = "auto"\n'
-        added.append(tool)
-
-with open(config_path, "w") as f:
-    f.write(content)
-
-if added:
-    print(f"[atelier:codex] Added auto-approval for {len(added)} Atelier tools in {config_path}")
-else:
-    print("[atelier:codex] Atelier MCP tool approvals already configured")
-PYEOF
-    python3 "${APPROVE_SCRIPT}" "${CODEX_CONFIG}"
-    rm -f "${APPROVE_SCRIPT}"
-fi
-
-# ---- statusline (command-backed; tui.status_line schema is version-dependent)
-STATUSLINE_SCRIPT="${PLUGIN_DIR}/scripts/statusline.sh"
-if $DRY_RUN; then
-    echo "  [dry-run] leave Codex tui.status_line unchanged; script installed at ${STATUSLINE_SCRIPT}"
-elif grep -q 'status_line' "${CODEX_CONFIG}" 2>/dev/null; then
-    info "status_line already configured in ${CODEX_CONFIG}; leaving as-is"
-else
-    info "Codex tui.status_line schema is version-dependent; script installed at ${STATUSLINE_SCRIPT}"
-    info "Use Codex /statusline if your build supports command-backed status lines."
-fi
-
-# ---- AGENTS.md ---------------------------------------------------------------
+# ---- AGENTS.md and task templates --------------------------------------------
 merge_agents_file "${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md" "$AGENTS_FILE"
 
-# ---- task templates ----------------------------------------------------------
 TASKS_SRC_DIR="${ATELIER_REPO}/integrations/codex/tasks"
 if $WORKSPACE_SET && [ -d "$TASKS_SRC_DIR" ]; then
     run "mkdir -p $(printf %q "$TASKS_DEST_DIR")"
@@ -476,54 +492,14 @@ elif $WORKSPACE_SET; then
     warn "task template directory missing: $TASKS_SRC_DIR"
 fi
 
-if $WORKSPACE_SET; then
-    if $DRY_RUN; then
-        echo "  [dry-run] project workspace-local Codex agents into '${WORKSPACE}/.codex/agents'"
-    else
-        ATELIER_RUNTIME_PYTHON="$(resolve_atelier_runtime_python)"
-        ATELIER_WORKSPACE_VALUE="$WORKSPACE" ATELIER_REPO_VALUE="$ATELIER_REPO" \
-        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" \
-        "$ATELIER_RUNTIME_PYTHON" - <<'PYEOF'
-import os
-from pathlib import Path
-from atelier.core.capabilities.workspace_host_overrides import write_workspace_codex_agent_config, write_workspace_codex_agents
-
-workspace = Path(os.environ["ATELIER_WORKSPACE_VALUE"])
-repo_root = Path(os.environ["ATELIER_REPO_VALUE"])
-written = write_workspace_codex_agents(workspace, repo_root=repo_root)
-config = write_workspace_codex_agent_config(workspace, repo_root=repo_root)
-print(f"[atelier:codex] projected {len(written)} workspace-local Codex agents into {workspace}/.codex/agents")
-print(f"[atelier:codex] registered workspace-local Codex agents in {config}")
-PYEOF
-    fi
-else
-    if $DRY_RUN; then
-        echo "  [dry-run] project global Codex agents into '${CODEX_HOME}/agents'"
-    else
-        ATELIER_RUNTIME_PYTHON="$(resolve_atelier_runtime_python)"
-        ATELIER_CODEX_HOME_VALUE="$CODEX_HOME" ATELIER_REPO_VALUE="$ATELIER_REPO" \
-        PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" \
-        "$ATELIER_RUNTIME_PYTHON" - <<'PYEOF'
-import os
-from pathlib import Path
-from atelier.core.capabilities.workspace_host_overrides import write_codex_agent_config, write_codex_agents
-
-codex_home = Path(os.environ["ATELIER_CODEX_HOME_VALUE"])
-repo_root = Path(os.environ["ATELIER_REPO_VALUE"])
-written = write_codex_agents(codex_home / "agents", repo_root=repo_root)
-config = write_codex_agent_config(codex_home / "config.toml", codex_home / "agents", repo_root=repo_root)
-print(f"[atelier:codex] projected {len(written)} global Codex agents into {codex_home}/agents")
-print(f"[atelier:codex] registered global Codex agents in {config}")
-PYEOF
-    fi
-fi
+project_custom_agents
 
 if $DRY_RUN; then
     info "Dry run complete; skipping post-install verification."
     exit 0
 fi
 
-# ── Post-install verification ------------------------------------------------
+# ---- post-install verification ------------------------------------------------
 info "Running post-install verification..."
 VFAIL=0
 vpass() { info "PASS: $*"; }
@@ -537,7 +513,7 @@ else
 fi
 
 if [ -f "${PLUGIN_DIR}/skills/code/SKILL.md" ] && [ -f "${PLUGIN_DIR}/skills/explore/SKILL.md" ]; then
-    vpass "Codex skill bundle installed with shared mode skills: ${PLUGIN_DIR}/skills"
+    vpass "Codex skill bundle installed: ${PLUGIN_DIR}/skills"
 else
     vfail "Codex skill bundle missing shared mode skills: ${PLUGIN_DIR}/skills"
 fi
@@ -549,7 +525,7 @@ else
 fi
 
 if [ -f "$PLUGIN_MCP_JSON" ]; then
-    MCP_STATUS=$(PLUGIN_MCP_JSON_PATH="$PLUGIN_MCP_JSON" python3 - <<'PYEOF'
+    MCP_STATUS="$(PLUGIN_MCP_JSON_PATH="$PLUGIN_MCP_JSON" python3 - <<'PYEOF'
 import json
 import os
 from pathlib import Path
@@ -557,82 +533,48 @@ from pathlib import Path
 data = json.loads(Path(os.environ["PLUGIN_MCP_JSON_PATH"]).read_text(encoding="utf-8"))
 server = data.get("atelier", {})
 print(server.get("command", ""))
+print(" ".join(server.get("args") or []))
 print((server.get("env") or {}).get("ATELIER_WORKSPACE_ROOT", ""))
 PYEOF
-)
-    MCP_COMMAND=$(printf '%s\n' "$MCP_STATUS" | sed -n '1p')
-    MCP_WORKSPACE_ROOT=$(printf '%s\n' "$MCP_STATUS" | sed -n '2p')
-    if [ "$MCP_COMMAND" = "atelier" ]; then
-        vpass "plugin MCP config points at atelier"
+)"
+    MCP_COMMAND="$(printf '%s\n' "$MCP_STATUS" | sed -n '1p')"
+    MCP_ARGS="$(printf '%s\n' "$MCP_STATUS" | sed -n '2p')"
+    MCP_WORKSPACE_ROOT="$(printf '%s\n' "$MCP_STATUS" | sed -n '3p')"
+    if [ "$MCP_COMMAND" = "atelier" ] && [ "$MCP_ARGS" = "mcp --host codex" ]; then
+        vpass "plugin MCP config points at atelier mcp --host codex"
     else
-        vfail "plugin MCP config does not point at atelier (got: $MCP_COMMAND)"
+        vfail "plugin MCP config is invalid (command: ${MCP_COMMAND:-unset}; args: ${MCP_ARGS:-unset})"
     fi
-    if $WORKSPACE_SET; then
-        if [ "$MCP_WORKSPACE_ROOT" = "$WORKSPACE" ]; then
-            vpass "plugin MCP config preserves ATELIER_WORKSPACE_ROOT=$WORKSPACE"
-        else
-            vfail "plugin MCP config expected ATELIER_WORKSPACE_ROOT=$WORKSPACE (got: ${MCP_WORKSPACE_ROOT:-unset})"
-        fi
-    elif [ -z "$MCP_WORKSPACE_ROOT" ]; then
-        vpass "plugin MCP config does not force a workspace root in global mode"
-    else
-        vfail "plugin MCP config unexpectedly set ATELIER_WORKSPACE_ROOT=${MCP_WORKSPACE_ROOT}"
+    if $WORKSPACE_SET && [ "$MCP_WORKSPACE_ROOT" != "$WORKSPACE" ]; then
+        vfail "plugin MCP config expected ATELIER_WORKSPACE_ROOT=$WORKSPACE (got: ${MCP_WORKSPACE_ROOT:-unset})"
     fi
 else
     vfail "plugin MCP config missing: $PLUGIN_MCP_JSON"
 fi
 
-if [ -f "$CODEX_HOME/config.toml" ] && grep -q '\[mcp_servers\.atelier\]' "$CODEX_HOME/config.toml" 2>/dev/null; then
-    vpass "Codex config registers atelier MCP server: $CODEX_HOME/config.toml"
-else
-    vwarn "Codex config missing atelier MCP server entry; plugin .mcp.json is the primary MCP surface"
-fi
-
-if codex_cmd mcp list 2>/dev/null | grep -q '^atelier[[:space:]]'; then
-    vpass "codex mcp list exposes atelier server"
-else
-    vwarn "codex mcp list does not expose atelier server; plugin .mcp.json still active"
-fi
-
-if command -v atelier &>/dev/null; then
-    vpass "atelier is available on PATH"
-else
-    vfail "atelier NOT found on PATH"
-fi
-
-if $WORKSPACE_SET; then
-    CODEX_MARKETPLACE="$WORKSPACE/.agents/plugins/marketplace.json"
-else
-    CODEX_MARKETPLACE="$HOME/.agents/plugins/marketplace.json"
-fi
 if [ -f "$CODEX_MARKETPLACE" ]; then
-    MARKETPLACE_OK=$(MARKETPLACE_PATH="$CODEX_MARKETPLACE" python3 -c 'import json, os; data = json.loads(open(os.environ["MARKETPLACE_PATH"]).read()); print("yes" if any(p.get("name") == "atelier" and p.get("source", {}).get("path") == "./.codex/plugins/atelier" for p in data.get("plugins", [])) else "no")')
+    MARKETPLACE_OK="$(MARKETPLACE_PATH="$CODEX_MARKETPLACE" python3 -c 'import json, os; data=json.load(open(os.environ["MARKETPLACE_PATH"])); print("yes" if any(p.get("name")=="atelier" and p.get("source",{}).get("path")=="./.codex/plugins/atelier" and p.get("policy",{}).get("installation")=="INSTALLED_BY_DEFAULT" for p in data.get("plugins",[])) else "no")')"
     if [ "$MARKETPLACE_OK" = "yes" ]; then
-        vpass "personal marketplace contains atelier entry: $CODEX_MARKETPLACE"
+        vpass "marketplace contains restart-installable Atelier entry: $CODEX_MARKETPLACE"
     else
-        vfail "personal marketplace has no valid atelier entry: $CODEX_MARKETPLACE"
+        vfail "marketplace has no valid Atelier entry: $CODEX_MARKETPLACE"
     fi
 else
-    vfail "personal marketplace file missing: $CODEX_MARKETPLACE"
+    vfail "marketplace file missing: $CODEX_MARKETPLACE"
 fi
 
-PLUGIN_CONFIG_KEY='[plugins."atelier@atelier-local"]'
-if [ -f "$CODEX_HOME/config.toml" ] && grep -qF "$PLUGIN_CONFIG_KEY" "$CODEX_HOME/config.toml" 2>/dev/null; then
-    vpass "Codex config enables plugin atelier@atelier-local"
+PLUGIN_LIST="$(codex_cmd plugin list 2>/dev/null || true)"
+if grep -Fq "$PLUGIN_ID" <<<"$PLUGIN_LIST"; then
+    vpass "Codex plugin list contains $PLUGIN_ID"
+elif grep -qF "[plugins.\"$PLUGIN_ID\"]" "$USER_CODEX_CONFIG" 2>/dev/null; then
+    vpass "user Codex config contains $PLUGIN_ID"
 else
-    vfail "Codex config missing plugin entry for atelier@atelier-local"
-fi
-
-PLUGIN_LIST=$(codex_cmd plugin list 2>/dev/null || true)
-if grep -Eq '^atelier@atelier-local[[:space:]]+installed, enabled([[:space:]]|$)' <<<"$PLUGIN_LIST"; then
-    vpass "codex plugin list shows atelier plugin installed"
-else
-    vfail "codex plugin list does not show atelier@atelier-local installed and enabled"
+    vwarn "${PLUGIN_ID} is staged but not active yet; restart Codex and enable it from /plugins."
 fi
 
 if [ -f "${PLUGIN_DIR}/hooks/hooks.json" ]; then
     if grep -qF '${PLUGIN_ROOT}/hooks/' "${PLUGIN_DIR}/hooks/hooks.json" && ! grep -qE '__ATELIER_(PYTHON|REPO_SRC)__' "${PLUGIN_DIR}/hooks/hooks.json"; then
-        vpass "Codex plugin lifecycle hooks installed with supported plugin-root paths: ${PLUGIN_DIR}/hooks/hooks.json"
+        vpass "Codex plugin lifecycle hooks installed: ${PLUGIN_DIR}/hooks/hooks.json"
     else
         vfail "Codex plugin lifecycle hooks do not resolve through PLUGIN_ROOT"
     fi
@@ -641,32 +583,35 @@ else
 fi
 
 if [ -f "${PLUGIN_DIR}/scripts/statusline.sh" ] && [ -x "${PLUGIN_DIR}/scripts/statusline.sh" ]; then
-    vpass "Codex statusline script installed and executable: ${PLUGIN_DIR}/scripts/statusline.sh"
+    vpass "Codex statusline script installed and executable"
 else
     vwarn "Codex statusline script missing or not executable (optional feature)"
 fi
 
 if [ -f "$AGENTS_FILE" ] && grep -q "atelier:code" "$AGENTS_FILE" 2>/dev/null; then
-    vpass "AGENTS.md present with atelier:code persona: $AGENTS_FILE"
+    vpass "AGENTS.md contains Atelier instructions: $AGENTS_FILE"
 else
     vfail "AGENTS.md missing or has no atelier:code persona: $AGENTS_FILE"
 fi
 
-if $WORKSPACE_SET; then
-    CODEX_AGENTS_DIR="${WORKSPACE}/.codex/agents"
+EXPECTED_AGENT_IDS=(code explore execute plan research review solve)
+MISSING_AGENTS=()
+for role_id in "${EXPECTED_AGENT_IDS[@]}"; do
+    agent_file="${AGENTS_DIR}/atelier.${role_id}.toml"
+    if [ ! -f "$agent_file" ] || ! grep -q '^name = ' "$agent_file" || ! grep -q '^developer_instructions = ' "$agent_file"; then
+        MISSING_AGENTS+=("$role_id")
+    fi
+done
+if [ "${#MISSING_AGENTS[@]}" -eq 0 ]; then
+    vpass "all seven standalone Codex agents installed: ${AGENTS_DIR}"
 else
-    CODEX_AGENTS_DIR="${CODEX_HOME}/agents"
-fi
-if [ -f "${CODEX_AGENTS_DIR}/atelier.code.toml" ]; then
-    vpass "Codex per-role agents installed: ${CODEX_AGENTS_DIR}"
-else
-    vfail "Codex per-role agents missing in ${CODEX_AGENTS_DIR}"
+    vfail "missing or invalid Codex agents: ${MISSING_AGENTS[*]}"
 fi
 
-if grep -q '^\[agents\.atelier_code\]' "${CODEX_CONFIG}" 2>/dev/null && grep -q 'config_file = ".*/agents/atelier.code.toml"' "${CODEX_CONFIG}" 2>/dev/null; then
-    vpass "Codex per-role agents registered in config.toml"
+if grep -q '^\[agents\.atelier_' "$CODEX_CONFIG" 2>/dev/null; then
+    vfail "obsolete per-agent registration blocks remain in $CODEX_CONFIG"
 else
-    vfail "Codex per-role agents not registered in config.toml"
+    vpass "Codex agents use the current standalone-file discovery format"
 fi
 
 if $WORKSPACE_SET; then
@@ -687,6 +632,9 @@ if [ "$VFAIL" -ne 0 ]; then
     echo "[atelier:codex] ERROR: post-install verification failed." >&2
     exit 1
 fi
-info "All post-install checks passed"
 
-info "Done. Restart Codex — the Atelier marketplace and plugin source are ready."
+if $PLUGIN_INSTALL_PENDING; then
+    warn "Installation succeeded; plugin activation will complete after Codex restart or manual enablement in /plugins."
+fi
+info "All required install checks passed"
+info "Done. Restart Codex, then spawn agents by name (for example: atelier.explore)."
