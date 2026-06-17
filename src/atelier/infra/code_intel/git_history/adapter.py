@@ -112,7 +112,7 @@ class DeletedHistorySearchAdapter:
         try:
             self.changed_files(since_ts=None, touched_by=None)
         except Exception:
-            pass
+            logging.exception("Failed to check changed_files")
 
     def _ensure_history_ready(self, *, on_commit: Callable[[int, int], None] | None = None) -> dict[str, int]:
         import logging

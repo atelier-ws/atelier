@@ -8199,12 +8199,12 @@ class CodeContextEngine:
             try:
                 self._deleted_history_adapter().start_background_warmup()
             except Exception:
-                pass
+                logging.exception("Failed to start background warmup")
             if getattr(self, "_embed_prewarmed", False) is False:
                 try:
                     self._prewarm_symbol_embeddings()
                 except Exception:
-                    pass
+                    logging.exception("Failed to prewarm symbol embeddings")
                 self._embed_prewarmed = True
         while not self._autosync_stop.wait(self._autosync_poll_ms / 1000.0):
             try:
