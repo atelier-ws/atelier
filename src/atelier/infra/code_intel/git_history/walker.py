@@ -133,7 +133,7 @@ def walk_history(
     Args:
         repo_path: Path to git repository
         graveyard: SymbolGraveyard to upsert entries into
-        on_commit: Optional callback(current, total) called after each commit processed
+        on_commit: Optional callback(current, total) called after each commit visited
     """
 
     pygit2 = require_pygit2()
@@ -143,42 +143,43 @@ def walk_history(
     total = len(commits)
     
     for idx, commit in enumerate(commits, 1):
-        if not commit.parents:
-            continue
-        parent = commit.parents[0]
-        diff = parent.tree.diff_to_tree(commit.tree)
-        renames = detect_renames(diff)
-        for patch in diff:
-            delta = patch.delta
-            old_path = delta.old_file.path
-            if delta.status == pygit2.enums.DeltaStatus.RENAMED:
-                source_text = _load_blob_text(repo, parent.tree, old_path)
-                if source_text is None:
-                    continue
-                for entry in _iter_definition_entries(
-                    source_text=source_text,
-                    file_path=old_path,
-                    deleted_at_sha=str(commit.id),
-                    deleted_at_ts=commit.commit_time,
-                    last_author=commit.author.email,
-                    last_commit_msg=commit.message.strip()[:200],
-                    rename_target=renames[old_path].new_path,
-                ):
-                    graveyard.upsert(entry)
-            elif delta.status == pygit2.enums.DeltaStatus.DELETED:
-                source_text = _load_blob_text(repo, parent.tree, old_path)
-                if source_text is None:
-                    continue
-                for entry in _iter_definition_entries(
-                    source_text=source_text,
-                    file_path=old_path,
-                    deleted_at_sha=str(commit.id),
-                    deleted_at_ts=commit.commit_time,
-                    last_author=commit.author.email,
-                    last_commit_msg=commit.message.strip()[:200],
-                    rename_target=None,
-                ):
-                    graveyard.upsert(entry)
-        
-        if on_commit is not None:
-            on_commit(idx, total)
+        try:
+            if not commit.parents:
+                continue
+            parent = commit.parents[0]
+            diff = parent.tree.diff_to_tree(commit.tree)
+            renames = detect_renames(diff)
+            for patch in diff:
+                delta = patch.delta
+                old_path = delta.old_file.path
+                if delta.status == pygit2.enums.DeltaStatus.RENAMED:
+                    source_text = _load_blob_text(repo, parent.tree, old_path)
+                    if source_text is None:
+                        continue
+                    for entry in _iter_definition_entries(
+                        source_text=source_text,
+                        file_path=old_path,
+                        deleted_at_sha=str(commit.id),
+                        deleted_at_ts=commit.commit_time,
+                        last_author=commit.author.email,
+                        last_commit_msg=commit.message.strip()[:200],
+                        rename_target=renames[old_path].new_path,
+                    ):
+                        graveyard.upsert(entry)
+                elif delta.status == pygit2.enums.DeltaStatus.DELETED:
+                    source_text = _load_blob_text(repo, parent.tree, old_path)
+                    if source_text is None:
+                        continue
+                    for entry in _iter_definition_entries(
+                        source_text=source_text,
+                        file_path=old_path,
+                        deleted_at_sha=str(commit.id),
+                        deleted_at_ts=commit.commit_time,
+                        last_author=commit.author.email,
+                        last_commit_msg=commit.message.strip()[:200],
+                        rename_target=None,
+                    ):
+                        graveyard.upsert(entry)
+        finally:
+            if on_commit is not None:
+                on_commit(idx, total)
