@@ -49,7 +49,7 @@ install_atelier_from_wheel() {
     local wheel
     wheel="$(find "${ATELIER_INSTALL_DIR}/bin" -maxdepth 1 -name "*.whl" 2>/dev/null | head -1)"
     if [[ -z "${wheel}" ]]; then
-        info "No bundled wheel found — assuming atelier already installed"
+        verbose "No bundled wheel found — assuming atelier already installed"
         return 0
     fi
 
@@ -73,18 +73,18 @@ install_atelier_from_wheel() {
     # extracts the bundle, then runs this exact script the same way.
     local constraints_arg=()
     if [[ -f "${SCRIPT_DIR}/../constraints.txt" ]]; then
-        info "Using bundled dependency constraints"
+        verbose "Using bundled dependency constraints"
         constraints_arg=(-c "${SCRIPT_DIR}/../constraints.txt")
     fi
 
     local extras="mcp,memory,smart,cloud,postgres,vector,parsers,rename"
-    info "Installing atelier from wheel (uv tool install)..."
     UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
         uv tool uninstall atelier >/dev/null 2>&1 || true
 
     # Install the console script to the same bin/tool dirs as `make dev` (scripts/local.sh),
     # so prod and dev share ONE on-PATH binary location (ATELIER_BIN_DIR, default ~/.local/bin).
-    UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
+    spin_tail "Installing Atelier" \
+        env UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
         uv tool install --force --python "$ATELIER_PYTHON_VERSION" "${wheel}[${extras}]" ${constraints_arg[@]+"${constraints_arg[@]}"} --reinstall-package atelier
 
     # Re-derive ATELIER_BIN_DIR to the uv tool install location so that
@@ -96,17 +96,14 @@ install_atelier_from_wheel() {
     if [[ -x "${uv_bin_dir}/atelier" ]]; then
         ATELIER_BIN_DIR="${uv_bin_dir}"
         export ATELIER_BIN_DIR
-        info "atelier installed: $(atelier --version 2>/dev/null || echo unknown)"
     else
-        info "atelier installed (binary not found in uv tool dir; using PATH fallback)"
+        verbose "atelier installed (binary not found in uv tool dir; using PATH fallback)"
     fi
 }
 
 # ---- main -------------------------------------------------------------------
 main() {
     need_cmd bash
-
-    install_atelier_from_wheel
 
     print_installer_header
     host_wizard
@@ -125,6 +122,7 @@ main() {
     [[ -n "$ATELIER_MEMORY_BACKEND" ]] && ATELIER_ADVANCED=1
 
     install_node_if_needed
+    install_atelier_from_wheel
 
     run_setup
 }
