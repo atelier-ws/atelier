@@ -116,6 +116,7 @@ class DeletedHistorySearchAdapter:
     def _ensure_history_ready(
         self, *, on_commit: Callable[[int, int], None] | None = None
     ) -> None:
+        import logging
         current_head = self._current_head()
         if current_head is None:
             return
@@ -125,9 +126,21 @@ class DeletedHistorySearchAdapter:
             previous_head = str(row["value"]) if row is not None else None
             count_row = conn.execute("SELECT COUNT(*) AS n FROM symbol_graveyard").fetchone()
             graveyard_count = int(count_row["n"]) if count_row is not None else 0
+            
+            # Check why we might need to re-walk
             if previous_head == current_head and graveyard_count > 0:
+                logging.debug(f"Git history already indexed for HEAD {current_head[:8]}... ({graveyard_count} entries)")
                 self._history_ready = True
                 return
+            
+            # Log why we're walking
+            if previous_head is None:
+                logging.info("Git history not yet indexed, starting walk...")
+            elif previous_head != current_head:
+                logging.info(f"Git HEAD changed ({previous_head[:8]}... → {current_head[:8]}...), re-walking history")
+            elif graveyard_count == 0:
+                logging.info("Git history graveyard is empty, re-walking...")
+            
             walk_history(self._repo_root, SymbolGraveyard(conn), on_commit=on_commit)
             conn.execute(
                 """

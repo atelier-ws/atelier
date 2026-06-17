@@ -1406,8 +1406,12 @@ class CodeContextEngine:
         try:
             flags = fcntl.LOCK_EX if block else fcntl.LOCK_EX | fcntl.LOCK_NB
             try:
+                if block:
+                    logging.info("Waiting for index write lock (another process may be indexing)...")
                 fcntl.flock(fd, flags)
                 acquired = True
+                if block:
+                    logging.debug("Index write lock acquired")
             except OSError:
                 acquired = False
             yield acquired
