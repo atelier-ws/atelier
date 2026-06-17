@@ -66,7 +66,7 @@ Packaged skills in [integrations/skills/](integrations/skills/):
 
 ## Benchmarks
 
-Current published results: [benchmarks/codebench/results/published/](benchmarks/codebench/results/published/)
+Verify benchmark Baseline (CC) VS Atelier using raw works done by each: [benchmarks/codebench/results/published/](benchmarks/codebench/results/published/)
 
 Filtered headline excludes Excalidraw and Alamofire and uses the checked-in task medians for VS Code, Django, Tokio, OkHttp, and gin.
 
