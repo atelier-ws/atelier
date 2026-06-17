@@ -48,7 +48,7 @@ mirror: ## Mirror a tag to atelier-ws/atelier: make mirror tag=v0.4.8
 	 grep -v '^#' release/private-paths.txt | grep -v '^$$' | \
 	   while IFS= read -r p; do rm -rf "$$TMPDIR/$$p"; done; \
 	 mkdir -p "$$TMPDIR/.github/workflows"; \
-	 cp .github/workflows/release.yml "$$TMPDIR/.github/workflows/release.yml"; \
+	 cp release/atelier-release.yml "$$TMPDIR/.github/workflows/release.yml"; \
 	 cd $$TMPDIR; \
 	 git init -b main >/dev/null; \
 	 git add -A; \
