@@ -65,9 +65,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$ATELIER_RELEASE_TAG" == "latest" ]]; then
-    RELEASE_BASE_URL="https://github.com/atelier-ws/atelier/releases/latest/download"
+    RELEASE_BASE_URL="https://github.com/atelier-ws/atelier-dev/releases/latest/download"
 else
-    RELEASE_BASE_URL="https://github.com/atelier-ws/atelier/releases/download/${ATELIER_RELEASE_TAG}"
+    RELEASE_BASE_URL="https://github.com/atelier-ws/atelier-dev/releases/download/${ATELIER_RELEASE_TAG}"
 fi
 ASSET_NAME="atelier-distribution-${BINARY_SUFFIX}.tar.gz"
 RELEASE_URL="${RELEASE_BASE_URL}/${ASSET_NAME}"
