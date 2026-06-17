@@ -59,6 +59,7 @@ md_files=$(git ls-files "*.md" \
     | grep -v "^.knowledge/" \
     | grep -v "^internal/" \
     | grep -v "^tests/fixtures/memory/" \
+    | grep -v "^tests/fixtures/languages/" \
     | grep -v "/prompts/" \
     | grep -v "AGENTS" \
     | grep -v "QUICK_REFERENCE" \
