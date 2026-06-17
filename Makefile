@@ -13,7 +13,7 @@ TEST_PRINT_TIME ?= 0
 COV_FAIL_UNDER ?= 66
 FORCE_ARG := $(if $(f),--force,)
 EXTERNAL_PERIODS ?= today week month
-.PHONY: help install uninstall dev build prod status start restart build-host-skills sync-agent-context \
+.PHONY: help install uninstall dev build release/build prod status start restart build-host-skills sync-agent-context \
 	check-agent-context docs-check worktree-env runtime-evidence \
 	test test-fast test-cov test-full lint format-check format typecheck launch-gate verify pre-commit \
 	proof-cost-quality demo import clean \
@@ -33,6 +33,8 @@ dev: ## Install Atelier in editable/dev mode
 
 build: ## Build and package for production distribution
 	bash scripts/build.sh
+
+release/build: build ## Alias for build release jobs
 
 prod: ## Build and install from local production build (includes mypyc compilation; expects ~2-3 min build time)
 	bash scripts/build.sh
