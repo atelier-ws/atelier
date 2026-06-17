@@ -27,7 +27,7 @@ jobs:
           - os: ubuntu-24.04-arm
           - os: macos-latest
           - os: macos-15-intel
-    timeout-minutes: 20
+    timeout-minutes: 60
 
     steps:
       - name: Check out repository
@@ -56,41 +56,13 @@ jobs:
           path: dist/atelier-distribution-*.tar.gz
           if-no-files-found: error
 
-  public-snapshot:
-    name: Publish public snapshot
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-
-    steps:
-      - name: Check out private repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Guard filtered snapshot
-        run: bash scripts/publish-public.sh --dry-run --source-ref "$GITHUB_SHA"
-
-      - name: Publish filtered snapshot
-        env:
-          PUBLIC_REMOTE: https://github.com/atelier-ws/atelier.git
-          PUBLIC_REMOTE_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          if [[ -z "${PUBLIC_REMOTE_TOKEN:-}" ]]; then
-            echo "::error::RELEASE_PAT is required to publish atelier-ws/atelier. Use a fine-grained PAT with Contents: read/write on atelier-ws/atelier."
-            exit 1
-          fi
-
-          bash scripts/publish-public.sh --yes --source-ref "$GITHUB_SHA"
-
   release:
     name: Create GitHub Release
-    needs: [binary-build, public-snapshot]
+    needs: [binary-build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
+      contents: write # Modified to allow creating releases
 
     steps:
       - name: Check out repository
@@ -123,16 +95,11 @@ jobs:
           - \`atelier-distribution-*.tar.gz\` — bundled production binaries for supported platforms
           EOF
 
-      - name: Create Release in Public Repo
+      - name: Create Release
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-
-          if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "::error::RELEASE_PAT is required to create releases in atelier-ws/atelier. Use a fine-grained PAT with Contents: read/write on atelier-ws/atelier."
-            exit 1
-          fi
 
           shopt -s nullglob
           assets=(binaries/* scripts/install.sh scripts/sessions.sh)
@@ -143,8 +110,6 @@ jobs:
           fi
 
           gh release create "${TAG}" \
-            --repo atelier-ws/atelier \
-            --target main \
             --title "Atelier ${TAG}" \
             --notes-file RELEASE_NOTES.md \
             "${assets[@]}"
