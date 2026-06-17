@@ -12,14 +12,14 @@
   "interface": {
     "displayName": "Atelier",
     "shortDescription": "Atelier tools and trace capture for Codex.",
-    "longDescription": "Bundle the Atelier MCP transport, role skills, custom agents, and trace capture for Codex. The standard Atelier install eagerly loads Atelier as a real Codex MCP server and registers the atelier_code, atelier_explore, atelier_review, atelier_plan, atelier_execute, atelier_research, and atelier_solve agents in config.toml.",
+    "longDescription": "Bundle the Atelier MCP transport, role skills, standalone custom agents, and trace capture for Codex. Atelier code instructions apply to the main session through AGENTS.md; atelier.code, atelier.explore, atelier.review, atelier.plan, atelier.execute, atelier.research, and atelier.solve are available as custom subagents.",
     "developerName": "Atelier Team",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Use atelier_code for repo changes with Atelier MCP tools first.",
-      "Use atelier_plan, atelier_explore, or atelier_review for analysis.",
-      "Use atelier_execute, atelier_solve, or atelier_research when appropriate."
+      "Use the current AGENTS.md instructions for Atelier code-mode work.",
+      "Spawn atelier.plan, atelier.explore, or atelier.review for focused analysis.",
+      "Spawn atelier.execute, atelier.solve, atelier.research, or atelier.code when appropriate."
     ],
     "brandColor": "#0f766e"
   }
