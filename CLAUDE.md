@@ -40,78 +40,10 @@ make check-agent-context  # verify generated files are up to date
 bash scripts/install_claude.sh
 ```
 
-## Architecture
-
-The codebase has three layers with strict dependency direction:
-
-```
-gateway/  →  core/  →  infra/
-```
-
-- **`src/atelier/gateway/`** — all agent-facing entry points: `cli.py` (the `atelier` CLI), `mcp_server.py` (stdio MCP server for Claude/Codex/Gemini), `runtime.py` (façade for in-process SDK use). Keep entry-point logic thin here.
-- **`src/atelier/core/`** — domain logic: `capabilities/` (context reuse, routing, tool supervision, proof gating, semantic memory, code-intel engine), `foundation/` (Pydantic models, SQLite store, paths), `runtime/engine.py` (orchestrator), `service/api.py` (FastAPI HTTP surface).
-- **`src/atelier/infra/`** — persistence and integrations: `storage/` (SQLite/Postgres), `runtime/` (run ledger, realtime context), `code_intel/` (SCIP index, ast-grep, Zoekt), `embeddings/`, `memory_bridges/`.
-
-**Key invariant:** New capabilities go in `core/capabilities/`, not in `mcp_server.py` or `cli.py`. Those files are dispatchers only.
-
-## Claude Plugin / Hooks
-
-The Claude Code integration lives in `integrations/claude/plugin/`. After any change:
-
-```bash
-bash scripts/install_claude.sh   # stages and reinstalls the plugin
-```
-
-Hook scripts run on Claude Code events:
-
-- `hooks/stop.py` — session stats display and auto-record at stop
-- `hooks/session_start.py` — session metadata capture
-- `hooks/pre_tool_use.py`, `post_tool_use.py` — tool-level savings tracking
-- `hooks/session_telemetry.py` — per-tool event emission to `~/.atelier/live_savings_events.jsonl`
-
-Session state is persisted to `~/.atelier/workspaces/<hash>/session_state.json`. Savings for the stop hook come from `~/.atelier/sessions/<claude-session-uuid>/savings.jsonl`.
-
-## Data / State Layout
-
-All runtime state lives under `~/.atelier/` (or `$ATELIER_ROOT`):
-
-| Path                                   | Contents                                                                                    |
-| -------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `sessions/<session_id>/run.json`       | Run ledger — events, traces, token stats                                                    |
-| `sessions/<uuid>/stats.json`           | Per-session stats keyed by Claude Code UUID                                                  |
-| `sessions/<uuid>/savings.jsonl`        | Per-session savings sidecar keyed by Claude Code UUID                                        |
-| `live_savings_events.jsonl`            | Append-only savings event log (uses internal Atelier session IDs,**not** Claude Code UUIDs) |
-| `workspaces/<hash>/session_state.json` | Hook-to-hook state for a workspace                                                          |
-| `smart_state.json`                     | Cumulative savings counters                                                                 |
-
-## Source of Truth Hierarchy
-
-Generated files must never be edited directly — edit the source and regenerate:
-
-| Generated file                                                 | Source                        | Regenerate with                  |
-| -------------------------------------------------------------- | ----------------------------- | -------------------------------- |
-| `AGENTS.md`, `copilot-instructions.md`, host instruction files | `integrations/agents/`, `integrations/shared/` | `make sync-agent-context`        |
-| Plugin staging dir `~/.atelier/claude-plugin-*/`               | `integrations/claude/plugin/` | `bash scripts/install_claude.sh` |
+|     |     |     |
+| --- | --- | --- |
+|     |     |     |
 
 ## Coding Guidelines
 
 The full guidelines (think before coding, simplicity first, surgical changes, goal-driven execution) are embedded in every Atelier persona. Source of truth: `integrations/shared/coding-guidelines.md` — do not restate them here.
-
-## Validation by Change Surface
-
-| What changed                                       | Minimum check                                                                                    |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Python runtime / CLI                               | `make lint && make typecheck && make test`                                                       |
-| Hook scripts (`integrations/claude/plugin/hooks/`) | `python3 -m py_compile <file>` then reinstall and smoke-test                                     |
-| MCP tool handlers                                  | `uv run pytest tests/gateway/test_mcp_tool_handlers.py tests/gateway/test_p0_mcp_surfaces.py -q` |
-| Code-intel engine                                  | `uv run pytest tests/core/test_code_context.py -q && make lint && make typecheck`                |
-| Frontend                                           | `cd frontend && npm run build && npm run test`                                                   |
-| Docs / host instruction sources                    | `make docs-check && make check-agent-context`                                                    |
-
-## Agent Spawning Rules
-
-The atelier:code persona carries the role table. `/code-review` specifics: Phase-1 finders → `atelier:explore`, Phase-2 verifiers → `atelier:review`. Never use the default `claude` agent for a task that fits a typed role — it has write access it doesn't need and costs more.
-
-## Code Intelligence
-
-Prefer the focused SCIP-backed tools (`node`, `callers`/`callees`, `usages`, `codemod`, `explore`) over grep. Each is a dedicated tool that calls the code-intel engine directly — there is no `op=` multiplexer and no `mcp__atelier__code` tool. `symbols` (SCIP symbol search, folded into `search` as `mode="symbol"`) and the repo/admin ops (`index`, `outline`, `hover`, `blame`, `rename`, `cache_status`, `cache_invalidate`) are registered as hidden internal tools, callable by name but not surfaced to agents — locate a symbol by name with `search` (`mode="symbol"`) and read its definition with `node`.

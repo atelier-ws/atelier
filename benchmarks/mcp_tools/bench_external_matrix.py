@@ -502,6 +502,12 @@ class ZoektRunner(_RunnerBase):
                 include_outline=False,
             )
 
+    def stop(self) -> None:
+        from atelier.infra.code_intel.zoekt.adapter import reset_zoekt_supervisors
+
+        reset_zoekt_supervisors()
+        self.supervisor = None
+
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
         # RAW Zoekt baseline: query the Zoekt server directly and return its native
         # file/line matches with NO Atelier reranking, source-preference, noise

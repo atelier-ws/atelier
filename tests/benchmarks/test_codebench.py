@@ -285,6 +285,8 @@ def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
         detail_rows = list(csv.DictReader(handle))
     with (tmp_path / "summary.csv").open("r", encoding="utf-8", newline="") as handle:
         summary_rows = list(csv.DictReader(handle))
+    with (tmp_path / "task_metrics.csv").open("r", encoding="utf-8", newline="") as handle:
+        task_metric_rows = list(csv.DictReader(handle))
 
     assert len(detail_rows) == 3
     assert {row["arm"] for row in summary_rows} == {"baseline", "atelier", "eval"}
@@ -297,6 +299,20 @@ def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
     assert atelier_row["output_token_savings_vs_baseline_pct"] == "20.0"
     assert atelier_row["valid_runs"] == "1"
     assert vix_row["cost_savings_vs_baseline_pct"] == "20.0"
+    assert {row["candidate_arm"] for row in task_metric_rows} == {"atelier", "eval"}
+    atelier_task_row = next(row for row in task_metric_rows if row["candidate_arm"] == "atelier")
+    assert atelier_task_row["baseline_cost_usd_median"] == "1.25"
+    assert atelier_task_row["candidate_cost_usd_median"] == "0.75"
+    assert atelier_task_row["cost_savings_vs_baseline_pct"] == "40.0"
+    assert atelier_task_row["baseline_tokens_median"] == "135"
+    assert atelier_task_row["candidate_tokens_median"] == "115"
+    assert atelier_task_row["tokens_savings_vs_baseline_pct"] == "14.8"
+    assert atelier_task_row["tool_calls_savings_vs_baseline_pct"] == "33.3"
+
+    report = CODEBENCH.report(results)
+    assert "=== Per-task medians (clean runs) ===" in report
+    assert "| task-1 | atelier | 40% cheaper | 14.8% fewer | 30% faster | 33.3% fewer | 1 |" in report
+    assert "| task-1 | baseline | 1.2500 | 135 | 1.0 | 3 | 1 |" in report
 
 
 def test_task_prompt_prefers_variant_prompt_when_prompt_md_missing(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:

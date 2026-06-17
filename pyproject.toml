@@ -51,6 +51,7 @@ dependencies = [
     "diff-match-patch>=2.1",
     "tree-sitter-language-pack>=1.8.1",
     "rapidfuzz>=3.14.5",
+    "markdown-it-py>=3.0",
 ]
 
 [project.optional-dependencies]
@@ -94,7 +95,6 @@ packages = ["src/atelier"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/atelier/core/service/telemetry/frustration_lexicon.yaml" = "atelier/core/service/telemetry/frustration_lexicon.yaml"
-"templates/playbooks" = "atelier/templates/playbooks"
 "integrations" = "atelier/integrations"
 
 [tool.hatch.build.targets.wheel.hooks.custom]
