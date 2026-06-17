@@ -1357,19 +1357,33 @@ class CodeContextEngine:
             progress_callback: Optional callback ``fn(current, total)`` called
                 after each file is processed during indexing.
         """
-        with self._db_lock, self._autosync_lock:
-            with self._index_write_lock(block=block) as acquired:
-                if not acquired:
-                    # Another process holds the cross-process index-write lock.
-                    # Don't pile on a redundant concurrent rebuild — return the
-                    # current on-disk snapshot and let the other writer finish.
-                    return self._current_index_stats()
-                return self._index_repo_unsafe(
-                    include_globs=include_globs,
-                    exclude_globs=exclude_globs,
-                    force=force,
-                    progress_callback=progress_callback,
-                )
+        if self._autosync_enabled:
+            with self._db_lock, self._autosync_lock:
+                with self._index_write_lock(block=block) as acquired:
+                    if not acquired:
+                        # Another process holds the cross-process index-write lock.
+                        # Don't pile on a redundant concurrent rebuild — return the
+                        # current on-disk snapshot and let the other writer finish.
+                        return self._current_index_stats()
+                    return self._index_repo_unsafe(
+                        include_globs=include_globs,
+                        exclude_globs=exclude_globs,
+                        force=force,
+                        progress_callback=progress_callback,
+                    )
+        else:
+            # CLI mode: no autosync, skip the autosync lock to avoid contention
+            # with background services that have autosync enabled.
+            with self._db_lock:
+                with self._index_write_lock(block=block) as acquired:
+                    if not acquired:
+                        return self._current_index_stats()
+                    return self._index_repo_unsafe(
+                        include_globs=include_globs,
+                        exclude_globs=exclude_globs,
+                        force=force,
+                        progress_callback=progress_callback,
+                    )
 
     @contextlib.contextmanager
     def _index_write_lock(self, *, block: bool) -> Iterator[bool]:
