@@ -342,7 +342,7 @@ def _index_repo_with_progress(
         ).model_dump(mode="json")
 
 
-def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> None:
+def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> dict[str, int] | None:
     try:
         from rich.console import Console
         from rich.progress import Progress, TextColumn, BarColumn
@@ -350,7 +350,7 @@ def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> Non
         adapter = engine._deleted_history_adapter()
         current_head = adapter._current_head()
         if current_head is None:
-            return
+            return None
 
         import sqlite3
         from contextlib import closing
@@ -361,7 +361,7 @@ def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> Non
             graveyard_count = int(count_row["n"]) if count_row is not None else 0
 
         if previous_head == current_head and graveyard_count > 0:
-            return
+            return None
 
         prefix_markup = f"[dim]{frame_prefix}[/dim]" if frame_prefix else ""
         console = Console(stderr=True)
@@ -388,18 +388,20 @@ def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> Non
                     description=f"[cyan]⟳[/cyan]  Indexing Git history... {current}/{total}",
                 )
             
-            adapter._ensure_history_ready(on_commit=on_commit)
+            summary = adapter._ensure_history_ready(on_commit=on_commit)
             progress.update(
                 task_id,
                 total=100,
                 completed=100,
                 description="[green]✓[/green]  Indexed Git history",
             )
+            return summary
     except Exception:
         try:
             engine._deleted_history_adapter()._ensure_history_ready()
         except Exception:
             pass
+        return None
 
 
 def _prewarm_embeddings_with_progress(engine: Any, frame_prefix: str = "") -> None:
@@ -533,10 +535,10 @@ def code_index_cmd(
         exclude_globs=list(exclude_globs) or None,
         description="Indexing code",
         success_description="Indexed code",
-        frame_prefix=frame_prefix,
+     frame_prefix=frame_prefix,
     )
 
-    _index_git_history_with_progress(engine, frame_prefix=frame_prefix)
+    git_summary = _index_git_history_with_progress(engine, frame_prefix=frame_prefix)
     _prewarm_embeddings_with_progress(engine, frame_prefix=frame_prefix)
 
     stats_line = (
@@ -545,6 +547,16 @@ def code_index_cmd(
     )
     prefix_markup = click.style(frame_prefix, dim=True) if frame_prefix else ""
     click.echo(f"{prefix_markup}{stats_line}" if frame_prefix else stats_line)
+    
+    # Print git history summary if any commits were processed
+    if git_summary and git_summary.get("commits_walked", 0) > 0:
+        git_line = (
+            f"{click.style('✓', fg='green')}  Indexed Git history: "
+            f"{git_summary['commits_walked']} commits, {git_summary['symbols_found']} deleted/renamed symbols "
+            f"({git_summary['deletions_found']} deletions, {git_summary['renames_found']} renames)"
+        )
+        click.echo(f"{prefix_markup}{git_line}" if frame_prefix else git_line)
+    
     _print_index_stats(engine.db_path, frame_prefix=frame_prefix)
 
 
