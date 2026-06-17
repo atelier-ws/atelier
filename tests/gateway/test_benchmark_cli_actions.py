@@ -113,9 +113,13 @@ def test_benchmark_codebench_wraps_runner(monkeypatch, tmp_path: Path) -> None:
         "baseline": "host-default",
     }
     assert manifest["corpus"]["tasks"][0]["id"] == "task1"
+    assert manifest["artifacts"]["model_audit_csv"] == "model_audit.csv"
+    assert manifest["artifacts"]["task_correctness_csv"] == "task_correctness.csv"
+    assert manifest["artifacts"]["pairwise_quality_csv"] == "pairwise_quality.csv"
     evidence = json.loads((tmp_path / "codebench" / "benchmark-evidence.json").read_text("utf-8"))
     assert evidence["suite"] == "codebench"
     assert evidence["artifacts"]["results_jsonl"]["path"].endswith("results.jsonl")
+    assert evidence["artifacts"]["quality_adjusted_summary_csv"]["path"].endswith("quality_adjusted_summary.csv")
     gate = json.loads((tmp_path / "codebench" / "benchmark-gate.json").read_text("utf-8"))
     assert gate["suite"] == "codebench"
     assert gate["passed"] is False

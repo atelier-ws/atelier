@@ -4,12 +4,13 @@
 # This is the main entrypoint for CI and local release builds.
 set -euo pipefail
 
-# 1. Clean ONLY local build/dist artifacts so the wheel is rebuilt fresh.
-#    The uv cache at ~/.cache/uv is deliberately left untouched — we want a
-#    rebuild that REUSES the cache, never a cold re-download. Do not add
-#    --no-cache/--refresh/--upgrade to any uv command below.
+# 1. Clean ONLY local build/dist/bundle artifacts so the wheel and release
+#    archive are rebuilt fresh. The uv cache at ~/.cache/uv is deliberately left
+#    untouched — we want a rebuild that REUSES the cache, never a cold
+#    re-download. Do not add --no-cache/--refresh/--upgrade to any uv command
+#    below.
 echo "◆ Cleaning local build artifacts (uv cache preserved)..."
-rm -rf build/ dist/
+rm -rf build/ dist/ bundle/
 mkdir -p build/ dist/ bundle/bin bundle/frontend bundle/scripts
 
 # Prime the uv cache from the committed lockfile before building. `uv build`
@@ -24,7 +25,7 @@ fi
 # 2. Build Frontend
 echo "◆ Building Frontend..."
 if [ -d "frontend" ]; then
-    cd frontend && npm install --silent && npm run build && cd ..
+    cd frontend && npm ci --silent && npm run build && cd ..
     rm -rf bundle/frontend/*
     cp -r frontend/dist/* bundle/frontend/
 fi
@@ -73,12 +74,9 @@ if [ -f "uv.lock" ]; then
         --extra parsers \
         --extra rename \
         -o bundle/constraints.txt \
+        >/dev/null \
         || echo "  (constraints export skipped; install will resolve from PyPI)"
 fi
-
-# Pre-generate host context files so install scripts work without uv/Python.
-echo "◆ Pre-generating host context files..."
-uv run python3 scripts/sync_agent_context.py >/dev/null 2>&1 || true
 
 # Bundle all host integration scripts so install.sh can run them after binary install.
 echo "◆ Bundling host integration scripts..."
@@ -106,6 +104,11 @@ mkdir -p bundle/integrations
 for host in agents antigravity claude codex copilot copilot-cli cursor hermes opencode shared skills; do
     [[ -d "integrations/$host" ]] && cp -r "integrations/$host" "bundle/integrations/$host"
 done
+
+# Pre-generate host context files in the staged bundle so install scripts work
+# without uv/Python, without rewriting generated files in the source checkout.
+echo "◆ Pre-generating bundled host context files..."
+uv run python3 bundle/scripts/sync_agent_context.py >/dev/null 2>&1 || true
 
 chmod +x bundle/scripts/*.sh 2>/dev/null || true
 

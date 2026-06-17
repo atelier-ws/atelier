@@ -59,6 +59,10 @@ def build_codebench_manifest(
             "results_csv": "results.csv",
             "summary_csv": "summary.csv",
             "task_metrics_csv": "task_metrics.csv",
+            "task_correctness_csv": "task_correctness.csv",
+            "model_audit_csv": "model_audit.csv",
+            "pairwise_quality_csv": "pairwise_quality.csv",
+            "quality_adjusted_summary_csv": "quality_adjusted_summary.csv",
         },
     }
 
