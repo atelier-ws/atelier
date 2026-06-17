@@ -30,6 +30,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # ---- paths & detection ------------------------------------------------------
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
@@ -49,6 +51,18 @@ ATELIER_NON_INTERACTIVE="${ATELIER_NON_INTERACTIVE:-0}"
 ATELIER_NO_PATH="${ATELIER_NO_PATH:-0}"
 ATELIER_NO_HOSTS="${ATELIER_NO_HOSTS:-0}"
 ATELIER_ALLOW_UNVERIFIED="${ATELIER_ALLOW_UNVERIFIED:-0}"
+ATELIER_LOCAL="${ATELIER_LOCAL:-0}"
+# Default source for --local: the bundle/ directory produced by 'make build',
+# which lives one level up from this script (i.e. <repo>/bundle/).
+ATELIER_LOCAL_SRC="${ATELIER_LOCAL_SRC:-${SCRIPT_DIR}/../bundle}"
+
+# Handle arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --local) ATELIER_LOCAL=1; shift ;;
+        *) shift ;;
+    esac
+done
 
 if [[ "$ATELIER_RELEASE_TAG" == "latest" ]]; then
     RELEASE_BASE_URL="https://github.com/atelier-ws/atelier/releases/latest/download"
@@ -137,38 +151,40 @@ else
 fi
 
 # ---- download & extract ------------------------------------------------------
-echo ""
-echo "  Atelier: v${ATELIER_RELEASE_TAG}"
-echo "  Platform: ${BINARY_SUFFIX}"
-echo "  Asset: ${ASSET_NAME}"
-echo ""
-
-if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
+if [[ "$ATELIER_LOCAL" == "1" ]]; then
+    LOCAL_SRC_ABS="$(cd "${ATELIER_LOCAL_SRC}" 2>/dev/null && pwd)" \
+        || fail "Local bundle not found at '${ATELIER_LOCAL_SRC}'. Run 'make build' first."
+    mkdir -p "${ATELIER_INSTALL_DIR}"
+    INSTALL_DIR_ABS="$(cd "${ATELIER_INSTALL_DIR}" && pwd)"
+    if [[ "${LOCAL_SRC_ABS}" != "${INSTALL_DIR_ABS}" ]]; then
+        cp -r "${LOCAL_SRC_ABS}/." "${INSTALL_DIR_ABS}/"
+    fi
+elif [[ "$ATELIER_DRY_RUN" == "1" ]]; then
     echo "  [dry-run] ${DOWNLOAD_CMD[*]} $RELEASE_URL > /tmp/${ASSET_NAME}"
     echo "  [dry-run] tar -xzf /tmp/${ASSET_NAME} -C $ATELIER_INSTALL_DIR"
     echo "  [dry-run] Binaries would be installed to: $ATELIER_BIN_DIR"
     echo ""
     exit 0
+else
+    mkdir -p "$ATELIER_BIN_DIR"
+    TMP_ARCHIVE="$(mktemp -t atelier-binaries.XXXXXX.tar.gz)"
+    trap 'rm -f "$TMP_ARCHIVE"' EXIT
+
+    verbose "Downloading from: $RELEASE_URL"
+    if ! "${DOWNLOAD_CMD[@]}" "$RELEASE_URL" > "$TMP_ARCHIVE"; then
+        fail "Could not download ${ASSET_NAME}. The release may not include this platform asset yet: ${RELEASE_URL}"
+    fi
+
+    if [[ ! -s "$TMP_ARCHIVE" ]]; then
+        fail "Downloaded archive is empty: ${RELEASE_URL}"
+    fi
+
+    verify_checksum "$TMP_ARCHIVE" "$RELEASE_URL"
+
+    tar -xzf "$TMP_ARCHIVE" -C "$ATELIER_INSTALL_DIR"
+
+    info "Distribution extracted to: ${ATELIER_INSTALL_DIR}"
 fi
-
-mkdir -p "$ATELIER_BIN_DIR"
-TMP_ARCHIVE="$(mktemp -t atelier-binaries.XXXXXX.tar.gz)"
-trap 'rm -f "$TMP_ARCHIVE"' EXIT
-
-verbose "Downloading from: $RELEASE_URL"
-if ! "${DOWNLOAD_CMD[@]}" "$RELEASE_URL" > "$TMP_ARCHIVE"; then
-    fail "Could not download ${ASSET_NAME}. The release may not include this platform asset yet: ${RELEASE_URL}"
-fi
-
-if [[ ! -s "$TMP_ARCHIVE" ]]; then
-    fail "Downloaded archive is empty: ${RELEASE_URL}"
-fi
-
-verify_checksum "$TMP_ARCHIVE" "$RELEASE_URL"
-
-tar -xzf "$TMP_ARCHIVE" -C "$ATELIER_INSTALL_DIR"
-
-info "Distribution extracted to: ${ATELIER_INSTALL_DIR}"
 
 # ---- ensure uv is available -------------------------------------------------
 if ! command -v uv >/dev/null 2>&1; then
@@ -218,6 +234,8 @@ if [[ "$ATELIER_NO_HOSTS" != "1" && -f "$BUNDLE_SH" ]]; then
     bash "$BUNDLE_SH" "${SETUP_ARGS[@]+"${SETUP_ARGS[@]}"}"
 elif [[ "$ATELIER_NO_HOSTS" == "1" ]]; then
     verbose "Skipping setup (ATELIER_NO_HOSTS=1)"
+else
+    warn "bundle.sh not found at ${BUNDLE_SH} — skipping host integration setup."
 fi
 
 # ---- PATH persistence --------------------------------------------------------
