@@ -138,7 +138,7 @@ fi
 
 # ---- download & extract ------------------------------------------------------
 echo ""
-echo "  Atelier — Production Install (v${ATELIER_RELEASE_TAG})"
+echo "  Atelier: v${ATELIER_RELEASE_TAG}"
 echo "  Platform: ${BINARY_SUFFIX}"
 echo "  Asset: ${ASSET_NAME}"
 echo ""
