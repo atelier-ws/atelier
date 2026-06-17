@@ -111,9 +111,7 @@ class SymbolGraveyard:
                 signature_hash
             FROM symbol_graveyard
             WHERE
-            """
-            + " AND ".join(filters)
-            + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC",
+            """ + " AND ".join(filters) + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC",
             params,
         ).fetchall()
         return [GraveyardEntry(*row) for row in rows]

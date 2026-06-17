@@ -89,9 +89,7 @@ class LoadedScipArtifact:
             rank = (
                 0
                 if symbol.symbol_name.lower() == query_lower
-                else 1
-                if symbol.qualified_name.lower() == query_lower
-                else 2
+                else 1 if symbol.qualified_name.lower() == query_lower else 2
             )
             ranked.append((rank, symbol.file_path, symbol))
         ranked.sort(key=lambda item: (item[0], item[1], item[2].start_line))

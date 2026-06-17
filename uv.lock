@@ -362,7 +362,7 @@ wheels = [
 
 [[package]]
 name = "atelier"
-version = "0.3.5"
+version = "0.4.5"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },

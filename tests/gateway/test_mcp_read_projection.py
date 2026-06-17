@@ -381,9 +381,7 @@ def test_read_single_path_still_works_without_files(tmp_path: Path, monkeypatch:
     assert "solo content" in payload["content"]
 
 
-def test_edit_surfaces_inline_diff_only_for_nonexact_match(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_edit_surfaces_inline_diff_only_for_nonexact_match(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
     # Exact match: the caller already knows old->new and gets the `applied`

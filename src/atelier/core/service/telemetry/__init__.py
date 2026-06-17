@@ -54,7 +54,7 @@ def emit_audit(
 
 
 @contextmanager
-def timed_request(endpoint: str) -> Generator[None, None, None]:
+def timed_request(endpoint: str) -> Generator[None]:
     """Context manager that logs request duration."""
     t0 = time.perf_counter()
     try:

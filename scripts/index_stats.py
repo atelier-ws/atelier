@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Print code context index stats (language & symbol breakdown)."""
-import sqlite3, sys, hashlib
+import hashlib
+import sqlite3
+import sys
 from pathlib import Path
 
 # determine db path

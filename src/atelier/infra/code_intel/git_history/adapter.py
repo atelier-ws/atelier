@@ -6,10 +6,11 @@ import hashlib
 import logging
 import sqlite3
 import threading
+from collections.abc import Callable
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 from atelier.infra.code_intel.git_history import require_pygit2
 from atelier.infra.code_intel.git_history.graveyard import SymbolGraveyard
@@ -113,27 +114,26 @@ class DeletedHistorySearchAdapter:
         except Exception:
             pass
 
-    def _ensure_history_ready(
-        self, *, on_commit: Callable[[int, int], None] | None = None
-    ) -> dict[str, int]:
+    def _ensure_history_ready(self, *, on_commit: Callable[[int, int], None] | None = None) -> dict[str, int]:
         import logging
+
         current_head = self._current_head()
         if current_head is None:
             return {"commits_walked": 0, "symbols_found": 0, "renames_found": 0, "deletions_found": 0}
-        
+
         with closing(self._connection_factory()) as conn:
             SymbolGraveyard(conn)
             row = conn.execute("SELECT value FROM engine_state WHERE key = ?", (self._head_state_key,)).fetchone()
             previous_head = str(row["value"]) if row is not None else None
             count_row = conn.execute("SELECT COUNT(*) AS n FROM symbol_graveyard").fetchone()
             graveyard_count = int(count_row["n"]) if count_row is not None else 0
-            
+
             # Check why we might need to re-walk
             if previous_head == current_head and graveyard_count > 0:
                 logging.debug(f"Git history already indexed for HEAD {current_head[:8]}... ({graveyard_count} entries)")
                 self._history_ready = True
                 return {"commits_walked": 0, "symbols_found": 0, "renames_found": 0, "deletions_found": 0}
-            
+
             # Log why we're walking
             since_sha = previous_head if previous_head != current_head else None
             if previous_head is None:
@@ -142,7 +142,7 @@ class DeletedHistorySearchAdapter:
                 logging.info(f"Git HEAD changed ({previous_head[:8]}... → {current_head[:8]}...), walking new commits")
             elif graveyard_count == 0:
                 logging.info("Git history graveyard is empty, re-walking...")
-            
+
             # Walk history with since_sha for incremental indexing
             summary = walk_history(
                 self._repo_root,
@@ -150,7 +150,7 @@ class DeletedHistorySearchAdapter:
                 since_sha=since_sha,
                 on_commit=on_commit,
             )
-            
+
             conn.execute(
                 """
                 INSERT INTO engine_state(key, value)
@@ -276,9 +276,7 @@ class DeletedHistorySearchAdapter:
                 signature_hash
             FROM symbol_graveyard
             WHERE
-            """
-            + " AND ".join(filters)
-            + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC LIMIT ?",
+            """ + " AND ".join(filters) + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC LIMIT ?",
             params,
         ).fetchall()
         return list(rows)
@@ -317,9 +315,7 @@ class DeletedHistorySearchAdapter:
                 rename_target,
                 signature_hash
             FROM symbol_graveyard
-            """
-            + where_clause
-            + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC",
+            """ + where_clause + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC",
             params,
         ).fetchall()
         return list(rows)
