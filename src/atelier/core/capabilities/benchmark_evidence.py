@@ -57,6 +57,7 @@ def build_codebench_evidence(
     results_path = run_dir / "results.jsonl"
     summary_csv_path = run_dir / "summary.csv"
     results_csv_path = run_dir / "results.csv"
+    task_metrics_csv_path = run_dir / "task_metrics.csv"
     report_path = run_dir / "report.txt"
     results = _load_jsonl(results_path)
     flow_paths = sorted(
@@ -75,6 +76,7 @@ def build_codebench_evidence(
             "results_jsonl": _artifact_record(results_path),
             "results_csv": _artifact_record(results_csv_path),
             "summary_csv": _artifact_record(summary_csv_path),
+            "task_metrics_csv": _artifact_record(task_metrics_csv_path),
             "report_txt": _artifact_record(report_path),
             "flow_paths": flow_paths,
         },

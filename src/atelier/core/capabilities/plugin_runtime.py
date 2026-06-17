@@ -1319,12 +1319,16 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
     statusline_cost = 0.0
     if not _usage_has_tokens(_as_dict(state.get("usage"))):
         statusline_cost = _apply_codex_statusline_snapshot(root, session_id, payload)
+        with suppress(Exception):
+            state = json.loads(session_stats_path(root, session_id).read_text(encoding="utf-8"))
+    if not _usage_has_tokens(_as_dict(state.get("usage"))):
+        _apply_codex_transcript_snapshot(root, session_id, payload)
     report = build_savings_report(root, session_id=session_id)
     session = report.get("session") or {}
     cost = report.get("cost") or {}
     usage = _as_dict(session.get("usage"))
 
-    turns = int(session.get("turns", 0) or 0)
+    turns = int(session.get("llm_turns", 0) or session.get("turns", 0) or 0)
     total_tool_calls = int(session.get("total_tool_calls", 0) or 0)
     calls_avoided = int(report.get("calls_avoided", 0) or 0)
     tokens_saved = int(report.get("tokens_saved", 0) or 0)
@@ -2628,6 +2632,170 @@ def _apply_codex_statusline_snapshot(root: str | Path, session_id: str, payload:
     return float(snapshot.get("cost_usd", 0.0) or 0.0)
 
 
+def _codex_home() -> Path:
+    return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+
+
+def _codex_transcript_paths(payload: dict[str, Any], session_id: str) -> list[Path]:
+    explicit = payload.get("transcript_path") or payload.get("session_path")
+    if isinstance(explicit, str) and explicit.strip():
+        path = Path(explicit).expanduser()
+        if path.is_file():
+            return [path]
+
+    sessions_root = _codex_home() / "sessions"
+    if not sessions_root.is_dir():
+        return []
+
+    def _mtime(path: Path) -> float:
+        with suppress(OSError):
+            return path.stat().st_mtime
+        return 0.0
+
+    paths = sorted(sessions_root.glob("**/*.jsonl"), key=_mtime, reverse=True)
+    if session_id:
+        matched = [path for path in paths if session_id in path.name]
+        if matched:
+            return matched
+    return paths[:100]
+
+
+def _codex_transcript_snapshot(path: Path) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {
+        "session_id": "",
+        "cwd": "",
+        "model": "",
+        "usage": {},
+        "llm_turns": 0,
+    }
+    latest_usage: dict[str, Any] = {}
+    llm_turns = 0
+    previous_total_signature: tuple[int, int, int, int] | None = None
+    previous_unidentified_event = ""
+    seen_event_ids: set[str] = set()
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return snapshot
+    for line in lines:
+        raw_line = line.strip()
+        if not raw_line:
+            continue
+        try:
+            event = json.loads(raw_line)
+        except json.JSONDecodeError:
+            continue
+        event_id = ""
+        if isinstance(event, dict):
+            payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+            for candidate in (event, payload):
+                for key in ("id", "event_id", "eventId", "uuid", "message_id", "messageId"):
+                    value = str(candidate.get(key) or "").strip()
+                    if value:
+                        event_id = value
+                        break
+                if event_id:
+                    break
+        if event_id:
+            if event_id in seen_event_ids:
+                continue
+            seen_event_ids.add(event_id)
+            previous_unidentified_event = ""
+        elif raw_line == previous_unidentified_event:
+            continue
+        else:
+            previous_unidentified_event = raw_line
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        if event.get("type") == "session_meta":
+            if payload.get("id"):
+                snapshot["session_id"] = str(payload.get("id"))
+            if payload.get("cwd"):
+                snapshot["cwd"] = str(payload.get("cwd"))
+            continue
+        if event.get("type") == "turn_context":
+            if payload.get("model"):
+                snapshot["model"] = str(payload.get("model"))
+            continue
+        if event.get("type") != "event_msg" or payload.get("type") != "token_count":
+            continue
+        info = _as_dict(payload.get("info"))
+        last_usage = _as_dict(info.get("last_token_usage"))
+        last_numbers = _usage_numbers(last_usage) if last_usage else {}
+        if _usage_has_tokens(last_numbers):
+            llm_turns += 1
+        usage = _as_dict(info.get("total_token_usage"))
+        if usage:
+            latest_usage = usage
+            total_numbers = _usage_numbers(usage)
+            total_signature = (
+                int(total_numbers.get("input_tokens", 0) or 0),
+                int(total_numbers.get("output_tokens", 0) or 0),
+                int(total_numbers.get("cache_read_tokens", 0) or 0),
+                int(total_numbers.get("cache_write_tokens", 0) or 0),
+            )
+            if not _usage_has_tokens(last_numbers) and _usage_has_tokens(total_numbers):
+                if previous_total_signature is None or total_signature != previous_total_signature:
+                    llm_turns += 1
+            previous_total_signature = total_signature
+
+    total_input = _token_count(latest_usage.get("input_tokens"))
+    cached_input = _token_count(latest_usage.get("cached_input_tokens"))
+    output = _token_count(latest_usage.get("output_tokens"))
+    if total_input or cached_input or output:
+        snapshot["usage"] = {
+            "input_tokens": max(0, total_input - cached_input),
+            "output_tokens": output,
+            "cache_read_tokens": cached_input,
+            "cache_write_tokens": 0,
+        }
+    snapshot["llm_turns"] = llm_turns
+    return snapshot
+
+
+def _apply_codex_transcript_snapshot(root: str | Path, session_id: str, payload: dict[str, Any]) -> None:
+    if not session_id:
+        return
+    wanted_cwd = str(payload.get("cwd") or os.environ.get("CODEX_WORKSPACE_ROOT") or "").strip()
+    best: dict[str, Any] = {}
+    for path in _codex_transcript_paths(payload, session_id):
+        snapshot = _codex_transcript_snapshot(path)
+        usage = _as_dict(snapshot.get("usage"))
+        if not _usage_has_tokens(usage):
+            continue
+        transcript_session_id = str(snapshot.get("session_id") or "")
+        transcript_cwd = str(snapshot.get("cwd") or "")
+        if session_id and transcript_session_id == session_id:
+            best = snapshot
+            break
+        if wanted_cwd and transcript_cwd == wanted_cwd:
+            best = snapshot
+            break
+    usage = _as_dict(best.get("usage"))
+    if not _usage_has_tokens(usage):
+        return
+    status_payload: dict[str, Any] = {
+        "hook_event_name": "StatuslineUpdate",
+        "session_id": session_id,
+        "context_window": {
+            "current_usage": {
+                "input_tokens": int(usage.get("input_tokens", 0) or 0),
+                "cache_read_input_tokens": int(usage.get("cache_read_tokens", 0) or 0),
+                "cache_creation_input_tokens": int(usage.get("cache_write_tokens", 0) or 0),
+                "output_tokens": int(usage.get("output_tokens", 0) or 0),
+            }
+        },
+    }
+    model = str(best.get("model") or "").strip()
+    if model:
+        status_payload["model"] = model
+    llm_turns = int(best.get("llm_turns", 0) or 0)
+    if llm_turns > 0:
+        status_payload["llm_turns"] = llm_turns
+    update_session_stats(root, status_payload)
+
+
 def _append_session_event(root: str | Path, session_id: str, payload: dict[str, Any]) -> None:
     event = str(payload.get("hook_event_name") or payload.get("event") or "")
     if not event:
@@ -2796,6 +2964,9 @@ def update_session_stats(root: str | Path, payload: dict[str, Any]) -> dict[str,
     snapshot = _context_usage_snapshot(payload)
     if _usage_has_tokens(snapshot):
         state["usage"].update(snapshot)
+    llm_turns = int(payload.get("llm_turns", 0) or 0)
+    if llm_turns > 0:
+        state["llm_turns"] = llm_turns
     if event == "UserPromptSubmit":
         turn_id = str(payload.get("turn_id") or payload.get("prompt_id") or "")
         if turn_id:
@@ -2940,6 +3111,7 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
         "total_tool_calls": 0,
         "edit_tool_calls": 0,
         "turns": 0,
+        "llm_turns": 0,
         "tools_used": {},
         "model": "",
         "last_model": "",
@@ -2981,6 +3153,7 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
         aggregate["total_tool_calls"] += int(data.get("total_tool_calls", 0) or 0)
         aggregate["edit_tool_calls"] += int(data.get("edit_tool_calls", 0) or 0)
         aggregate["turns"] += int(data.get("turns", 0) or 0)
+        aggregate["llm_turns"] += int(data.get("llm_turns", 0) or 0)
         model = str(data.get("model") or "").strip()
         if model and not aggregate["model"]:
             aggregate["model"] = model

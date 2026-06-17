@@ -2032,9 +2032,8 @@ def test_tool_status_reports_index_cache_and_freshness(tmp_path: Path) -> None:
 
 def test_autosync_incremental_reindex_updates_index_after_edit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_fixture_repo(tmp_path)
-    monkeypatch.setenv("ATELIER_CODE_AUTOSYNC", "1")
     monkeypatch.setenv("ATELIER_CODE_AUTOSYNC_DEBOUNCE_MS", "50")
-    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite", autosync_enabled=True)
 
     first = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     version_before = engine._current_index_version()

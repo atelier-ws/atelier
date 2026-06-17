@@ -196,9 +196,10 @@ def register(cli: click.Group) -> None:
         _IMPORT_FAILED = True
 
     try:
-        from .code import code_group
+        from .code import code_group, zoekt_group
 
         cli.add_command(code_group)
+        cli.add_command(zoekt_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
 

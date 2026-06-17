@@ -48,6 +48,7 @@ import re
 import shlex
 import shutil
 import socket
+import statistics
 import subprocess
 import tempfile
 import threading
@@ -119,7 +120,7 @@ PROVIDER_ALIASES: dict[str, str] = {
     "azure": "azure-claude",
     "openrouter": "openrouter-claude",
 }
-CLI_DRIVERS = ("claude", "atelier-run")
+CLI_DRIVERS = ("claude", "atelier-run", "codex")
 # Arms that drive many model + tool round-trips and so dominate wall time.
 HEAVY_ARMS = tuple(name for name, spec in ARM_SPECS.items() if spec.heavy)
 # Heuristic floor: on a non-trivial task a tool-heavy arm routinely issues this
@@ -885,7 +886,71 @@ def _read_flow_usage(flow_path: Path) -> tuple[int, int, int, int, int] | None:
     )
 
 
+
+def _parse_codex_result(stdout: str, flow_path: Path, task: str, arm: str, rep: int) -> ArmResult:
+    """Parse JSONL output from `codex exec --json`."""
+    events = _iter_jsonl_objects(stdout)
+    
+    input_tokens = output_tokens = cache_read = cache_write = thinking = 0
+    cost_usd = 0.0
+    num_turns = 0
+    result_excerpt = ""
+    is_error = False
+    models: set[str] = set()
+    
+    for event in events:
+        if event.get("type") == "item.completed":
+            item = event.get("item", {})
+            if item.get("type") == "agent_message":
+                result_excerpt = item.get("text", "")
+        elif event.get("type") == "turn.completed":
+            u = event.get("usage", {}) or {}
+            input_tokens += _usage_int(u.get("input_tokens", 0))
+            output_tokens += _usage_int(u.get("output_tokens", 0))
+            cache_read += _usage_int(u.get("cached_input_tokens", 0))
+            cache_write += _usage_int(u.get("cache_creation_input_tokens", 0))
+            thinking += _usage_int(u.get("reasoning_output_tokens", 0))
+            num_turns += 1
+            if model_id := event.get("model"):
+                models.add(str(model_id))
+        elif event.get("type") == "error":
+            is_error = True
+            
+    # Estimate cost based on usage (since Codex doesn't provide total_cost_usd)
+    # Re-using usage_cost_usd which Atelier uses for other drivers.
+    model_id = next(iter(models), "claude-sonnet-4-6") # Default fallback
+    with contextlib.suppress(Exception):
+        cost_usd = usage_cost_usd(
+            model_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_write,
+        )
+            
+    return ArmResult(
+        task=task,
+        arm=arm,
+        rep=rep,
+        ok=not is_error,
+        cost_usd=cost_usd,
+        duration_ms=0,
+        duration_api_ms=0,
+        num_turns=num_turns,
+        input_tokens=input_tokens,
+        cache_read_tokens=cache_read,
+        cache_creation_tokens=cache_write,
+        output_tokens=output_tokens,
+        thinking_tokens=thinking,
+        models=list(models),
+        is_error=is_error,
+        result_excerpt=result_excerpt[:4000],
+        flow_path=str(flow_path),
+    )
+
+
 def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep: int) -> ArmResult:
+
     try:
         d = json.loads(stdout)
     except json.JSONDecodeError:
@@ -1085,6 +1150,13 @@ def _parse_cli_result(
         return result
     if cli_driver == "atelier-run":
         return _parse_atelier_run_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
+    if cli_driver == "codex":
+        result = _parse_codex_result(stdout, flow_path, task, arm, rep)
+        if result.duration_ms == 0:
+            result.duration_ms = wall_duration_ms
+        if result.duration_api_ms == 0:
+            result.duration_api_ms = wall_duration_ms
+        return result
     raise ValueError(f"unsupported cli driver: {cli_driver}")
 
 
@@ -1387,6 +1459,8 @@ def run_arm(
         workspace_path = out_dir / "workspaces" / f"{task.id}_{arm}_rep{rep}"
         ws = prepare_workspace(task, workspace_path)
         persistent_workspace = True
+    elif cli_driver == "codex":
+        ws = prepare_workspace(task)
     else:
         ws = prepare_workspace(task)
     if cli_driver not in CLI_DRIVERS:
@@ -1397,7 +1471,7 @@ def run_arm(
     if ARM_SPECS[arm].plugin:
         _pre_index_workspace(task, arm, rep, ws)
     flow_path = out_dir / f"{task.id}_{arm}_rep{rep}.flow"
-    proxy_supported = capture and cli_driver in {"claude", "atelier-run"}
+    proxy_supported = capture and cli_driver in {"claude", "atelier-run", "codex"}
     port = _free_port() if proxy_supported else 0
     mitm = (
         subprocess.Popen(
@@ -1489,6 +1563,15 @@ def run_arm(
             cmd = ["atelier", "run", "start", task.prompt(), "--yolo"]
             if model:
                 cmd += ["--model", model]
+            cmd += list(cli_extra_args)
+        elif cli_driver == "codex":
+            # Codex non-interactive execution arm.
+            # Using -- as a separator is safer for passing the prompt.
+            cmd = ["codex", "exec", "--json"]
+            if model:
+                cmd += ["--model", model]
+            # codex needs to run in the workspace.
+            cmd += ["-C", str(ws), "--", task.prompt()]
             cmd += list(cli_extra_args)
         else:
             raise ValueError(f"unsupported cli driver: {cli_driver}")
@@ -1886,6 +1969,9 @@ def report(results: list[ArmResult]) -> str:
             )
             lines.append(f"{arm} cost saving : {cost_save:+.1f}%  (Eval target ~47-50%)")
             lines.append(f"{arm} time saving : {time_save:+.1f}%  (Eval target ~40%)")
+    task_tables = _render_task_metric_tables(results)
+    if task_tables:
+        lines.append(task_tables)
     ok_parts = [f"{arm} {aggregates[arm]['ok']}/{aggregates[arm]['runs']}" for arm in arms]
     lines.append(f"Runs ok     : {'  '.join(ok_parts)}")
     valid_parts = [f"{arm} {aggregates[arm]['valid']}/{aggregates[arm]['runs']}" for arm in arms]
@@ -1942,6 +2028,227 @@ def _summary_rows(results: list[ArmResult]) -> list[dict[str, object]]:
             )
         rows.append(row)
     return rows
+
+
+def _ordered_tasks(results: list[ArmResult]) -> list[str]:
+    seen = {result.task for result in results}
+    ordered = [task.id for task in TASKS if task.id in seen]
+    ordered.extend(sorted(seen - set(ordered)))
+    return ordered
+
+
+def _clean_results(results: list[ArmResult]) -> list[ArmResult]:
+    return [result for result in results if result.ok and result.valid and not result.timed_out]
+
+
+def _median(values: list[float]) -> float | None:
+    return statistics.median(values) if values else None
+
+
+def _metric_value(result: ArmResult, metric: str) -> float:
+    if metric == "cost_usd":
+        return result.cost_usd
+    if metric == "tokens":
+        return float(_result_total_tokens(result))
+    if metric == "duration_ms":
+        return float(result.duration_ms)
+    if metric == "tool_calls":
+        return float(_result_tool_calls(result))
+    raise ValueError(f"unknown metric: {metric}")
+
+
+def _result_tool_calls(result: ArmResult) -> int:
+    if result.flow_path:
+        flow_count = _flow_tool_calls(Path(result.flow_path))
+        if flow_count is not None:
+            return flow_count
+    return result.num_turns
+
+
+def _flow_tool_calls(flow_path: Path) -> int | None:
+    if not flow_path.exists():
+        return None
+    tool_calls = 0
+    saw_record = False
+    try:
+        records = flow_records(str(flow_path))
+        for _content_type, body in records:
+            saw_record = True
+            for raw in body.split(b"\n"):
+                raw = raw.strip()
+                if not raw.startswith(b"data:"):
+                    continue
+                try:
+                    event = json.loads(raw[5:].strip())
+                except json.JSONDecodeError:
+                    continue
+                if (
+                    event.get("type") == "content_block_start"
+                    and event.get("content_block", {}).get("type") == "tool_use"
+                ):
+                    tool_calls += 1
+    except Exception:
+        return None
+    return tool_calls if saw_record else None
+
+
+def _task_arm_medians(results: list[ArmResult]) -> dict[tuple[str, str], dict[str, object]]:
+    clean = _clean_results(results)
+    out: dict[tuple[str, str], dict[str, object]] = {}
+    for task in _ordered_tasks(clean):
+        for arm in _ordered_arms(clean):
+            arm_results = [result for result in clean if result.task == task and result.arm == arm]
+            if not arm_results:
+                continue
+            out[(task, arm)] = {
+                "task": task,
+                "arm": arm,
+                "reps": len(arm_results),
+                "cost_usd": _median([_metric_value(result, "cost_usd") for result in arm_results]),
+                "tokens": _median([_metric_value(result, "tokens") for result in arm_results]),
+                "duration_ms": _median([_metric_value(result, "duration_ms") for result in arm_results]),
+                "tool_calls": _median([_metric_value(result, "tool_calls") for result in arm_results]),
+            }
+    return out
+
+
+def _round_metric(metric: str, value: float | None) -> object:
+    if value is None:
+        return ""
+    if metric == "cost_usd":
+        return round(value, 4)
+    if metric == "duration_ms":
+        return round(value, 1)
+    return int(round(value))
+
+
+def _savings_from_medians(baseline: float | None, current: float | None) -> float | str:
+    if baseline in (None, 0) or current is None:
+        return ""
+    return _savings_pct(float(baseline), float(current))
+
+
+def _task_metric_rows(results: list[ArmResult]) -> list[dict[str, object]]:
+    medians = _task_arm_medians(results)
+    if not medians:
+        return []
+    arms = _ordered_arms(_clean_results(results))
+    baseline_arm = "baseline" if "baseline" in arms else (arms[0] if arms else "")
+    rows: list[dict[str, object]] = []
+    for task in _ordered_tasks(_clean_results(results)):
+        baseline = medians.get((task, baseline_arm))
+        for arm in arms:
+            if arm == baseline_arm:
+                continue
+            current = medians.get((task, arm))
+            if current is None:
+                continue
+            row: dict[str, object] = {
+                "task": task,
+                "baseline_arm": baseline_arm,
+                "candidate_arm": arm,
+                "baseline_reps": baseline["reps"] if baseline else "",
+                "candidate_reps": current["reps"],
+            }
+            for metric in ("cost_usd", "tokens", "duration_ms", "tool_calls"):
+                baseline_value = baseline.get(metric) if baseline else None
+                current_value = current.get(metric)
+                prefix = "cost" if metric == "cost_usd" else "duration" if metric == "duration_ms" else metric
+                row[f"baseline_{metric}_median"] = _round_metric(metric, baseline_value)  # type: ignore[arg-type]
+                row[f"candidate_{metric}_median"] = _round_metric(metric, current_value)  # type: ignore[arg-type]
+                row[f"{prefix}_savings_vs_baseline_pct"] = _savings_from_medians(
+                    baseline_value,  # type: ignore[arg-type]
+                    current_value,  # type: ignore[arg-type]
+                )
+            rows.append(row)
+    return rows
+
+
+def _task_arm_metric_rows(results: list[ArmResult]) -> list[dict[str, object]]:
+    medians = _task_arm_medians(results)
+    rows: list[dict[str, object]] = []
+    for task in _ordered_tasks(_clean_results(results)):
+        for arm in _ordered_arms(_clean_results(results)):
+            row = medians.get((task, arm))
+            if not row:
+                continue
+            rows.append(
+                {
+                    "task": task,
+                    "arm": arm,
+                    "cost_usd_median": _round_metric("cost_usd", row["cost_usd"]),  # type: ignore[arg-type]
+                    "tokens_median": _round_metric("tokens", row["tokens"]),  # type: ignore[arg-type]
+                    "duration_ms_median": _round_metric("duration_ms", row["duration_ms"]),  # type: ignore[arg-type]
+                    "tool_calls_median": _round_metric("tool_calls", row["tool_calls"]),  # type: ignore[arg-type]
+                    "reps": row["reps"],
+                }
+            )
+    return rows
+
+
+def _phrase_savings(metric: str, pct: object) -> str:
+    if pct == "":
+        return "n/a"
+    value = float(pct)
+    if abs(value) < 3:
+        return "even"
+    if metric == "cost":
+        word = "cheaper" if value > 0 else "pricier"
+    elif metric == "duration":
+        word = "faster" if value > 0 else "slower"
+    else:
+        word = "fewer" if value > 0 else "more"
+    return f"{abs(value):g}% {word}"
+
+
+def _render_task_metric_tables(results: list[ArmResult]) -> str:
+    savings_rows = _task_metric_rows(results)
+    absolute_rows = _task_arm_metric_rows(results)
+    if not savings_rows and not absolute_rows:
+        return ""
+
+    lines = ["", "=== Per-task medians (clean runs) ==="]
+    if savings_rows:
+        lines.extend(
+            [
+                "",
+                "| Task | Arm | Cost | Tokens | Time | Tool calls | Reps |",
+                "| --- | --- | --- | --- | --- | --- | --- |",
+            ]
+        )
+        for row in savings_rows:
+            lines.append(
+                "| {task} | {arm} | {cost} | {tokens} | {time} | {calls} | {reps} |".format(
+                    task=row["task"],
+                    arm=row["candidate_arm"],
+                    cost=_phrase_savings("cost", row["cost_savings_vs_baseline_pct"]),
+                    tokens=_phrase_savings("tokens", row["tokens_savings_vs_baseline_pct"]),
+                    time=_phrase_savings("duration", row["duration_savings_vs_baseline_pct"]),
+                    calls=_phrase_savings("tool_calls", row["tool_calls_savings_vs_baseline_pct"]),
+                    reps=row["candidate_reps"],
+                )
+            )
+    if absolute_rows:
+        lines.extend(
+            [
+                "",
+                "| Task | Arm | cost_usd | tokens | time_s | tool_calls | reps |",
+                "| --- | --- | --- | --- | --- | --- | --- |",
+            ]
+        )
+        for row in absolute_rows:
+            lines.append(
+                "| {task} | {arm} | {cost:.4f} | {tokens:,} | {time:.1f} | {calls} | {reps} |".format(
+                    task=row["task"],
+                    arm=row["arm"],
+                    cost=float(row["cost_usd_median"]),
+                    tokens=int(row["tokens_median"]),
+                    time=float(row["duration_ms_median"]) / 1000.0,
+                    calls=row["tool_calls_median"],
+                    reps=row["reps"],
+                )
+            )
+    return "\n".join(lines)
 
 
 def _ordered_arms(results: list[ArmResult]) -> list[str]:
@@ -2100,6 +2407,29 @@ def write_csv_artifacts(run_dir: Path, results: list[ArmResult]) -> None:
             "duration_savings_vs_baseline_pct",
             "input_token_savings_vs_baseline_pct",
             "output_token_savings_vs_baseline_pct",
+        ],
+    )
+    _write_csv(
+        run_dir / "task_metrics.csv",
+        _task_metric_rows(results),
+        [
+            "task",
+            "baseline_arm",
+            "candidate_arm",
+            "baseline_reps",
+            "candidate_reps",
+            "baseline_cost_usd_median",
+            "candidate_cost_usd_median",
+            "cost_savings_vs_baseline_pct",
+            "baseline_tokens_median",
+            "candidate_tokens_median",
+            "tokens_savings_vs_baseline_pct",
+            "baseline_duration_ms_median",
+            "candidate_duration_ms_median",
+            "duration_savings_vs_baseline_pct",
+            "baseline_tool_calls_median",
+            "candidate_tool_calls_median",
+            "tool_calls_savings_vs_baseline_pct",
         ],
     )
 

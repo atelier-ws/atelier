@@ -139,6 +139,39 @@ def test_code_context_cli_round_trip(tmp_path: Path) -> None:
     assert json.loads(indexed.output)["symbols_indexed"] >= 2
 
 
+def test_code_index_output_styling(tmp_path: Path) -> None:
+    root = tmp_path / "atelier"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "service.py").write_text(
+        "def alpha() -> int:\n    return 1\n",
+        encoding="utf-8",
+    )
+    _invoke(root, "init", "--no-seed")
+
+    # Verify standard output has the breakdown tables
+    indexed = _invoke(root, "code", "index", "--repo-root", str(repo))
+    assert indexed.exit_code == 0, indexed.output
+    assert "Language breakdown" in indexed.output
+    assert "Python" in indexed.output
+    assert "Symbol kinds" in indexed.output
+
+    # Verify frame-prefix applies to breakdown tables
+    indexed_prefixed = _invoke(root, "code", "index", "--repo-root", str(repo), "--frame-prefix", "|| ")
+    assert indexed_prefixed.exit_code == 0, indexed_prefixed.output
+    
+    # Verify the prefix is prepended to output lines
+    has_prefixed_table = False
+    for line in indexed_prefixed.output.splitlines():
+        if "Language breakdown" in line:
+            assert line.startswith("|| ")
+            has_prefixed_table = True
+        if "Symbol kinds" in line:
+            assert line.startswith("|| ")
+            has_prefixed_table = True
+    assert has_prefixed_table
+
+
 def test_record_trace_and_extract_block(tmp_path: Path) -> None:
     root = tmp_path / "a"
     init_store_at(str(root))
@@ -366,6 +399,52 @@ def test_background_install_writes_native_stack_unit(tmp_path: Path, monkeypatch
     assert any(cmd[:3] == ["systemctl", "--user", "restart"] for cmd in commands)
 
 
+def test_zoekt_group_is_registered(tmp_path: Path) -> None:
+    res = _invoke(tmp_path / "a", "zoekt", "--help")
+
+    assert res.exit_code == 0, res.output
+    assert "Manage Zoekt local binaries" in res.output
+
+
+def test_background_install_integrates_zoekt_into_stack_unit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "a"
+    unit_dir = tmp_path / "systemd-user"
+    unit_dir.mkdir()
+    stale_zoekt_unit = unit_dir / "atelier-zoekt.service"
+    stale_zoekt_unit.write_text("stale\n", encoding="utf-8")
+    commands: list[list[str]] = []
+
+    def _which(name: str) -> str | None:
+        mapping = {
+            "systemctl": "/bin/systemctl",
+            "atelier": "/usr/bin/atelier",
+            "docker": "/usr/bin/docker",
+        }
+        return mapping.get(name)
+
+    def _run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        command = [str(item) for item in args]
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("atelier.gateway.cli.commands.background._is_linux", lambda: True)
+    monkeypatch.setattr("atelier.gateway.cli.commands.background._is_macos", lambda: False)
+    monkeypatch.setattr("atelier.gateway.cli.commands.background.SYSTEMD_USER_DIR", unit_dir)
+    monkeypatch.setattr("atelier.gateway.cli.commands.background.shutil.which", _which)
+    monkeypatch.setattr("atelier.gateway.cli.commands.background.subprocess.run", _run)
+
+    res = _invoke(root, "background", "install", "--with-stack", "--with-zoekt")
+
+    assert res.exit_code == 0, res.output
+    stack_unit = (unit_dir / "atelier-stack.service").read_text(encoding="utf-8")
+    assert "Environment=ATELIER_ZOEKT_MODE=managed" in stack_unit
+    assert "zoekt up" not in stack_unit
+    assert not stale_zoekt_unit.exists()
+    assert ["systemctl", "--user", "disable", "--now", "atelier-zoekt.service"] in commands
+    assert ["systemctl", "--user", "enable", "atelier-zoekt.service"] not in commands
+    assert ["systemctl", "--user", "restart", "atelier-zoekt.service"] not in commands
+
+
 def test_background_install_skips_activation_when_user_systemd_bus_is_unavailable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -470,6 +549,39 @@ def test_background_install_macos_xml_escapes_plist_values(tmp_path: Path, monke
         assert "R&D<proj>" not in plist_text
         # And the generated XML must parse cleanly.
         minidom.parseString(plist_text)
+
+
+def test_background_install_macos_integrates_zoekt_into_stack_plist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "a"
+    launchd_dir = tmp_path / "launch-agents"
+    launchd_dir.mkdir()
+    stale_zoekt_plist = launchd_dir / "com.atelier.zoekt.plist"
+    stale_zoekt_plist.write_text("stale\n", encoding="utf-8")
+    commands: list[list[str]] = []
+
+    def _which(name: str) -> str | None:
+        return {"atelier": "/usr/bin/atelier", "docker": "/usr/bin/docker"}.get(name)
+
+    def _run(args: list[str], **kwargs: object) -> None:
+        commands.append([str(item) for item in args])
+
+    monkeypatch.setattr("atelier.gateway.cli.commands.background._is_linux", lambda: False)
+    monkeypatch.setattr("atelier.gateway.cli.commands.background._is_macos", lambda: True)
+    monkeypatch.setattr("atelier.gateway.cli.commands.background.LAUNCHD_USER_DIR", launchd_dir)
+    monkeypatch.setattr("atelier.gateway.cli.commands.background.shutil.which", _which)
+    monkeypatch.setattr("atelier.gateway.cli.commands.background.subprocess.run", _run)
+
+    res = _invoke(root, "background", "install", "--with-stack", "--with-zoekt")
+
+    assert res.exit_code == 0, res.output
+    stack_plist = (launchd_dir / "com.atelier.stack.plist").read_text(encoding="utf-8")
+    assert "<key>ATELIER_ZOEKT_MODE</key>" in stack_plist
+    assert "<string>managed</string>" in stack_plist
+    assert not stale_zoekt_plist.exists()
+    assert ["launchctl", "unload", str(stale_zoekt_plist)] in commands
+    assert ["launchctl", "load", str(stale_zoekt_plist)] not in commands
 
 
 def test_stop_stack_processes_kills_process_groups(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

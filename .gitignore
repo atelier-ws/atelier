@@ -151,6 +151,10 @@ results/
 !docs/plans/world-class-atelier/results/optimization/latest.json
 !docs/plans/phase-linear-cache-reuse/results/
 !docs/plans/phase-linear-cache-reuse/results/**
+!benchmarks/codebench/results/
+!benchmarks/codebench/results/.gitignore
+!benchmarks/codebench/results/published/
+!benchmarks/codebench/results/published/**
 
 # CodeBench per-run results are shippable metrics (no secrets) -- but never the
 # mitmproxy .flow captures (they embed the live OAuth token) or state/ (raw

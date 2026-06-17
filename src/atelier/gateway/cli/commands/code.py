@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import shutil
 import subprocess
 from hashlib import sha256
@@ -251,12 +252,14 @@ def zoekt_reset(ctx: click.Context, yes: bool) -> None:
 def _code_context_engine(repo_root: str) -> Any:
     from atelier.core.capabilities.code_context import CodeContextEngine
 
-    return CodeContextEngine(repo_root)
+    # One-shot CLI commands don't need background autosync threads
+    return CodeContextEngine(repo_root, autosync_enabled=False)
 
 
 def _index_repo_with_progress(
     engine: Any,
     *,
+    force: bool = False,
     include_globs: list[str] | None = None,
     exclude_globs: list[str] | None = None,
     description: str = "Indexing code",
@@ -289,20 +292,37 @@ def _index_repo_with_progress(
             transient=False,
         )
         with progress:
-            task_id = progress.add_task(f"[green]⟳[/green]  {description}", total=None)
+            task_id = progress.add_task("[green]\u27f3[/green]  Discovering files...", total=None)
+            _phase: list[str] = ["discovery"]  # list hack for nonlocal assignment
+            _last_total: list[int] = [0]
 
             def _on_progress(current: int, total: int) -> None:
-                if total:
+                # Transition from discovery -> indexing when total drops
+                # (raw git entries -> filtered file count).
+                if total and total < _last_total[0] and _phase[0] == "discovery":
+                    _phase[0] = "indexing"
+                if _phase[0] == "discovery":
+                    if total:
+                        progress.update(
+                            task_id,
+                            description=f"[green]\u27f3[/green]  Discovering files...  ({current}/{total})",
+                        )
+                    else:
+                        progress.update(
+                            task_id,
+                            description=f"[green]\u27f3[/green]  Discovering files...  ({current})",
+                        )
+                else:
                     progress.update(
                         task_id,
                         completed=current,
                         total=total,
-                        description=f"[green]⟳[/green]  {description}  ({current}/{total})",
+                        description=f"[green]\u27f3[/green]  {description}  ({current}/{total})",
                     )
-                else:
-                    progress.update(task_id, completed=current)
+                _last_total[0] = total
 
             payload = engine.index_repo(
+                force=force,
                 include_globs=include_globs,
                 exclude_globs=exclude_globs,
                 progress_callback=_on_progress,
@@ -316,9 +336,144 @@ def _index_repo_with_progress(
             return payload
     except ImportError:
         return engine.index_repo(
+            force=force,
             include_globs=include_globs,
             exclude_globs=exclude_globs,
         ).model_dump(mode="json")
+
+
+def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> None:
+    try:
+        from rich.console import Console
+        from rich.progress import Progress, TextColumn, BarColumn
+
+        adapter = engine._deleted_history_adapter()
+        current_head = adapter._current_head()
+        if current_head is None:
+            return
+
+        import sqlite3
+        from contextlib import closing
+        with closing(adapter._connection_factory()) as conn:
+            row = conn.execute("SELECT value FROM engine_state WHERE key = ?", (adapter._head_state_key,)).fetchone()
+            previous_head = str(row["value"]) if row is not None else None
+            count_row = conn.execute("SELECT COUNT(*) AS n FROM symbol_graveyard").fetchone()
+            graveyard_count = int(count_row["n"]) if count_row is not None else 0
+
+        if previous_head == current_head and graveyard_count > 0:
+            return
+
+        prefix_markup = f"[dim]{frame_prefix}[/dim]" if frame_prefix else ""
+        console = Console(stderr=True)
+        progress = Progress(
+            TextColumn(f"{prefix_markup}{{task.description}}"),
+            BarColumn(
+                bar_width=32,
+                style="bright_black",
+                complete_style="cyan",
+                finished_style="green",
+                pulse_style="magenta",
+            ),
+            console=console,
+            transient=False,
+        )
+        with progress:
+            task_id = progress.add_task("[green]⟳[/green]  Indexing Git history...", total=None)
+            adapter._ensure_history_ready()
+            progress.update(
+                task_id,
+                total=100,
+                completed=100,
+                description="[green]✓[/green]  Indexed Git history",
+            )
+    except Exception:
+        try:
+            engine._deleted_history_adapter()._ensure_history_ready()
+        except Exception:
+            pass
+
+
+def _prewarm_embeddings_with_progress(engine: Any, frame_prefix: str = "") -> None:
+    try:
+        from rich.console import Console
+        from rich.progress import Progress, TextColumn, BarColumn
+
+        if not engine._semantic_ranker.available:
+            return
+
+        embedder = engine._semantic_ranker.embedder
+        embedding_dim = embedder.dim
+        if embedding_dim <= 0:
+            return
+
+        index_version = engine._current_index_version()
+        candidates = engine._semantic_symbol_candidates(limit=2000)
+        if not candidates:
+            return
+
+        import sqlite3
+        from contextlib import closing
+        with closing(engine._connect()) as conn:
+            engine._init_schema(conn)
+            fresh_ids = engine._ann_symbol_index.existing_stamped_ids(
+                conn,
+                embedder_name=embedder.name,
+                embedding_dim=embedding_dim,
+                index_version=index_version,
+            )
+
+        to_embed = [c for c in candidates if c.symbol_id not in fresh_ids]
+        if not to_embed:
+            return
+
+        prefix_markup = f"[dim]{frame_prefix}[/dim]" if frame_prefix else ""
+        console = Console(stderr=True)
+        progress = Progress(
+            TextColumn(f"{prefix_markup}{{task.description}}"),
+            BarColumn(
+                bar_width=32,
+                style="bright_black",
+                complete_style="cyan",
+                finished_style="green",
+            ),
+            console=console,
+            transient=False,
+        )
+        with progress:
+            task_id = progress.add_task(
+                f"[green]⟳[/green]  Pre-warming symbol embeddings... (0/{len(to_embed)})",
+                total=len(to_embed),
+            )
+            with closing(engine._connect()) as conn:
+                engine._init_schema(conn)
+                new_vectors = {}
+                for i, symbol in enumerate(to_embed, start=1):
+                    source_text = engine._read_file_slice(symbol.file_path, symbol.start_byte, symbol.end_byte)
+                    vector = engine._semantic_ranker.embed_symbol(symbol, source_text=source_text)
+                    if vector and len(vector) == embedding_dim:
+                        new_vectors[symbol.symbol_id] = (symbol.content_hash, vector)
+                    progress.update(
+                        task_id,
+                        completed=i,
+                        description=f"[green]⟳[/green]  Pre-warming symbol embeddings... ({i}/{len(to_embed)})",
+                    )
+                if new_vectors:
+                    engine._ann_symbol_index.upsert_vectors(
+                        conn,
+                        embedder_name=embedder.name,
+                        embedding_dim=embedding_dim,
+                        index_version=index_version,
+                        vectors=new_vectors,
+                    )
+            progress.update(
+                task_id,
+                description="[green]✓[/green]  Pre-warmed symbol embeddings",
+            )
+    except Exception:
+        try:
+            engine._prewarm_symbol_embeddings()
+        except Exception:
+            pass
 
 
 @click.group("code")
@@ -330,27 +485,41 @@ def code_group() -> None:
 @click.option("--repo-root", default=".", show_default=True)
 @click.option("--include", "include_globs", multiple=True)
 @click.option("--exclude", "exclude_globs", multiple=True)
+@click.option("--reindex", is_flag=True, help="Full rebuild from scratch (default: incremental).")
 @click.option("--json", "as_json", is_flag=True)
 @click.option("--frame-prefix", default="", hidden=True, help="Prefix for progress output (used by dev.sh)")
 def code_index_cmd(
     repo_root: str,
     include_globs: tuple[str, ...],
     exclude_globs: tuple[str, ...],
+    reindex: bool,
     as_json: bool,
     frame_prefix: str,
 ) -> None:
-    """Index a repository into the SQLite FTS5 symbol store."""
+    """Index a repository into the SQLite FTS5 symbol store.
+
+    Incremental by default (only re-indexes changed files). Use --reindex
+    for a full rebuild from scratch.
+    """
     engine = _code_context_engine(repo_root)
+    force = reindex
     if as_json:
         payload = engine.index_repo(
+            force=force,
             include_globs=list(include_globs) or None,
             exclude_globs=list(exclude_globs) or None,
         ).model_dump(mode="json")
+        try:
+            engine._deleted_history_adapter()._ensure_history_ready()
+            engine._prewarm_symbol_embeddings()
+        except Exception:
+            pass
         _emit(payload, as_json=True)
         return
 
     payload = _index_repo_with_progress(
         engine,
+        force=force,
         include_globs=list(include_globs) or None,
         exclude_globs=list(exclude_globs) or None,
         description="Indexing code",
@@ -358,12 +527,178 @@ def code_index_cmd(
         frame_prefix=frame_prefix,
     )
 
+    _index_git_history_with_progress(engine, frame_prefix=frame_prefix)
+    _prewarm_embeddings_with_progress(engine, frame_prefix=frame_prefix)
+
     stats_line = (
         f"{click.style('✓', fg='green')}  Indexed {payload['files_indexed']} files, {payload['symbols_indexed']} "
         f"symbols ({payload['imports_indexed']} imports)"
     )
     prefix_markup = click.style(frame_prefix, dim=True) if frame_prefix else ""
     click.echo(f"{prefix_markup}{stats_line}" if frame_prefix else stats_line)
+    _print_index_stats(engine.db_path, frame_prefix=frame_prefix)
+
+
+def _print_index_stats(db_path: str, frame_prefix: str = "") -> None:
+    """Print language and symbol-kind breakdown after indexing."""
+    import sqlite3
+    from pathlib import Path
+
+    if not Path(db_path).exists():
+        return
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+
+    # Language breakdown
+    rows = c.execute(
+        "SELECT f.language, COUNT(DISTINCT f.file_path), COUNT(s.symbol_id) "
+        "FROM files f LEFT JOIN symbols s ON s.repo_id = f.repo_id AND s.file_path = f.file_path "
+        "GROUP BY f.language ORDER BY COUNT(DISTINCT f.file_path) DESC"
+    ).fetchall()
+
+    total_f = 0
+    total_s = 0
+    for _, fls, syms in rows:
+        total_f += fls
+        total_s += syms
+
+    # Symbol kinds (top ones)
+    kinds = c.execute(
+        "SELECT kind, COUNT(*) FROM symbols GROUP BY kind ORDER BY COUNT(*) DESC"
+    ).fetchall()
+
+    prefix_markup = click.style(frame_prefix, dim=True) if frame_prefix else ""
+
+    try:
+        from rich.console import Console
+        from rich.table import Table
+        from rich import box
+
+        console = Console()
+
+        def print_prefixed(renderable) -> None:
+            # Capture what rich would print, then write it with the prefix
+            with console.capture() as cap:
+                console.print(renderable)
+            text = cap.get()
+            lines = text.split("\n")
+            if lines and lines[-1] == "":
+                lines.pop()
+            for line in lines:
+                if line.strip():
+                    click.echo(f"{prefix_markup}  {line}")
+                else:
+                    click.echo(f"{prefix_markup}")
+
+        # Language breakdown
+        print_prefixed("")
+        print_prefixed("[bold bright_white]Language breakdown[/]  [dim]by files and symbols[/]")
+
+        lang_table = Table(
+            box=box.SIMPLE,
+            show_header=True,
+            header_style="dim",
+            padding=(0, 1),
+            show_footer=True,
+        )
+        lang_table.add_column("Language", style="bold", min_width=15, footer="TOTAL")
+        lang_table.add_column("Files", justify="right", footer=f"{total_f:,}")
+        lang_table.add_column("Symbols", justify="right", footer=f"{total_s:,}")
+
+        lang_styles = {
+            "python": ("Python", "bright_yellow"),
+            "typescript": ("TypeScript", "bright_cyan"),
+            "javascript": ("JavaScript", "yellow"),
+            "rust": ("Rust", "red"),
+            "go": ("Go", "cyan"),
+            "swift": ("Swift", "orange3"),
+            "kotlin": ("Kotlin", "bright_magenta"),
+            "java": ("Java", "bright_blue"),
+            "c/c++": ("C/C++", "blue"),
+            "cpp": ("C++", "blue"),
+            "c": ("C", "blue"),
+            "csharp": ("C#", "bright_green"),
+            "ruby": ("Ruby", "red"),
+            "php": ("PHP", "magenta"),
+            "scala": ("Scala", "bright_red"),
+            "bash": ("Shell", "green"),
+            "shell": ("Shell", "green"),
+            "html": ("HTML", "orange1"),
+            "css": ("CSS", "bright_blue"),
+            "toml": ("TOML", "dim white"),
+            "yaml": ("YAML", "dim white"),
+            "json": ("JSON", "dim white"),
+            "markdown": ("Markdown", "dim white"),
+            "sql": ("SQL", "dim white"),
+            "astro": ("Astro", "bright_cyan"),
+        }
+
+        for lang, fls, syms in rows:
+            if lang in lang_styles:
+                display_name, color = lang_styles[lang]
+            else:
+                display_name = lang.title() if lang else "Unknown"
+                color = "white"
+            lang_table.add_row(f"[{color}]{display_name}[/]", f"{fls:,}", f"{syms:,}")
+
+        print_prefixed(lang_table)
+
+        # Symbol kinds
+        if kinds:
+            print_prefixed("")
+            print_prefixed("[bold bright_white]Symbol kinds[/]  [dim]top kinds by count[/]")
+
+            kind_table = Table(
+                box=box.SIMPLE,
+                show_header=True,
+                header_style="dim",
+                padding=(0, 1),
+                show_footer=True,
+            )
+            kind_table.add_column("Symbol Kind", style="bold", min_width=20, footer="TOTAL")
+            kind_table.add_column("Count", justify="right", footer=f"{sum(cnt for _, cnt in kinds):,}")
+
+            kind_styles = {
+                "class": "bright_blue",
+                "interface": "bright_blue",
+                "struct": "bright_blue",
+                "method": "bright_cyan",
+                "function": "cyan",
+                "async_function": "cyan",
+                "variable": "white",
+                "heading": "dim white",
+                "type": "bright_green",
+                "module": "bright_magenta",
+                "import": "dim white",
+            }
+
+            for kind, cnt in kinds:
+                display_kind = kind.replace("_", " ").title() if kind else "Unknown"
+                color = kind_styles.get(kind, "white")
+                kind_table.add_row(f"[{color}]{display_kind}[/]", f"{cnt:,}")
+
+            print_prefixed(kind_table)
+
+    except ImportError:
+        # Fallback to simple prints if rich is not available, but with prefix support
+        click.echo(f"{prefix_markup}")
+        click.echo(f"{prefix_markup}  ── Language breakdown ──")
+        click.echo(f"{prefix_markup}  {'Language':<15s}  {'Files':>5s}  {'Symbols':>7s}")
+        click.echo(f"{prefix_markup}  " + "-" * 35)
+        for lang, fls, syms in rows:
+            click.echo(f"{prefix_markup}  {lang:<15s}  {fls:>5d}  {syms:>7d}")
+        click.echo(f"{prefix_markup}  " + "-" * 35)
+        click.echo(f"{prefix_markup}  {'TOTAL':<15s}  {total_f:>5d}  {total_s:>7d}")
+
+        if kinds:
+            click.echo(f"{prefix_markup}")
+            click.echo(f"{prefix_markup}  ── Symbol kinds ──")
+            click.echo(f"{prefix_markup}  {'Kind':<20s}  {'Count':>7s}")
+            click.echo(f"{prefix_markup}  " + "-" * 29)
+            for kind, cnt in kinds:
+                click.echo(f"{prefix_markup}  {kind:<20s}  {cnt:>7d}")
+
+    conn.close()
 
 
 __all__ = ["_code_context_engine", "_index_repo_with_progress", "code_group", "zoekt_group"]
