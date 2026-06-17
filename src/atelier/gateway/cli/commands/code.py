@@ -292,16 +292,26 @@ def _index_repo_with_progress(
             transient=False,
         )
         with progress:
-            task_id = progress.add_task("[green]\u27f3[/green]  Discovering files...", total=None)
-            _phase: list[str] = ["discovery"]  # list hack for nonlocal assignment
+            task_id = progress.add_task("[yellow]⏳[/yellow]  Acquiring index lock...", total=None)
+            _phase: list[str] = ["lock"]  # list hack for nonlocal assignment
             _last_total: list[int] = [0]
 
             def _on_progress(current: int, total: int) -> None:
+                # Transition: lock -> discovery -> indexing
+                # When discovery sends (0, total), we transition to discovery phase
+                if current == 0 and total > 0 and _phase[0] == "lock":
+                    _phase[0] = "discovery"
                 # Transition from discovery -> indexing when total drops
                 # (raw git entries -> filtered file count).
                 if total and total < _last_total[0] and _phase[0] == "discovery":
                     _phase[0] = "indexing"
-                if _phase[0] == "discovery":
+                
+                if _phase[0] == "lock":
+                    progress.update(
+                        task_id,
+                        description=f"[yellow]⏳[/yellow]  Acquiring index lock...",
+                    )
+                elif _phase[0] == "discovery":
                     if total:
                         progress.update(
                             task_id,

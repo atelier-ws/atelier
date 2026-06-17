@@ -136,13 +136,12 @@ def walk_history(
     on_commit: Callable[[int, int], None] | None = None,
 ) -> dict[str, int]:
     """Populate the graveyard from historical delete and rename commits.
-    
     Args:
         repo_path: Path to git repository
         graveyard: SymbolGraveyard to upsert entries into
         since_sha: If provided, only walk commits newer than this SHA (incremental mode)
         on_commit: Optional callback(current, total) called after each commit visited
-        
+
     Returns:
         Summary dict with 'commits_walked', 'symbols_found', 'renames_found', 'deletions_found'
     """
@@ -151,7 +150,7 @@ def walk_history(
     repo = pygit2.Repository(str(repo_path))
     head = repo.revparse_single("HEAD")
     all_commits = list(repo.walk(head.id, pygit2.enums.SortMode.TOPOLOGICAL))
-    
+
     # If incremental mode, only walk commits since the last indexed SHA
     if since_sha is not None:
         commits = []
@@ -161,12 +160,12 @@ def walk_history(
                 break
     else:
         commits = all_commits
-    
+
     total = len(commits)
     symbols_found = 0
     renames_found = 0
     deletions_found = 0
-    
+
     for idx, commit in enumerate(commits, 1):
         try:
             if not commit.parents:
@@ -181,15 +180,17 @@ def walk_history(
                     source_text = _load_blob_text(repo, parent.tree, old_path)
                     if source_text is None:
                         continue
-                    entries = list(_iter_definition_entries(
-                        source_text=source_text,
-                        file_path=old_path,
-                        deleted_at_sha=str(commit.id),
-                        deleted_at_ts=commit.commit_time,
-                        last_author=commit.author.email,
-                        last_commit_msg=commit.message.strip()[:200],
-                        rename_target=renames[old_path].new_path,
-                    ))
+                    entries = list(
+                        _iter_definition_entries(
+                            source_text=source_text,
+                            file_path=old_path,
+                            deleted_at_sha=str(commit.id),
+                            deleted_at_ts=commit.commit_time,
+                            last_author=commit.author.email,
+                            last_commit_msg=commit.message.strip()[:200],
+                            rename_target=renames[old_path].new_path,
+                        )
+                    )
                     for entry in entries:
                         graveyard.upsert(entry)
                     symbols_found += len(entries)
@@ -198,15 +199,17 @@ def walk_history(
                     source_text = _load_blob_text(repo, parent.tree, old_path)
                     if source_text is None:
                         continue
-                    entries = list(_iter_definition_entries(
-                        source_text=source_text,
-                        file_path=old_path,
-                        deleted_at_sha=str(commit.id),
-                        deleted_at_ts=commit.commit_time,
-                        last_author=commit.author.email,
-                        last_commit_msg=commit.message.strip()[:200],
-                        rename_target=None,
-                    ))
+                    entries = list(
+                        _iter_definition_entries(
+                            source_text=source_text,
+                            file_path=old_path,
+                            deleted_at_sha=str(commit.id),
+                            deleted_at_ts=commit.commit_time,
+                            last_author=commit.author.email,
+                            last_commit_msg=commit.message.strip()[:200],
+                            rename_target=None,
+                        )
+                    )
                     for entry in entries:
                         graveyard.upsert(entry)
                     symbols_found += len(entries)
@@ -214,7 +217,7 @@ def walk_history(
         finally:
             if on_commit is not None:
                 on_commit(idx, total)
-    
+
     return {
         "commits_walked": total,
         "symbols_found": symbols_found,
