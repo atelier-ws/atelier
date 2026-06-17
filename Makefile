@@ -38,14 +38,9 @@ release/build: build ## Alias for build release jobs
 
 prod: ## Build and install from local production build (includes mypyc compilation; expects ~2-3 min build time)
 	bash scripts/build.sh
-	# Run the BUNDLED bundle.sh (next to the generated constraints.txt) — the exact
-	# same step the distribution installer runs. install.sh only downloads and
-	# extracts the bundle before invoking this same script.
-	ATELIER_INSTALL_DIR=$(PWD)/bundle bash $(PWD)/bundle/scripts/bundle.sh --non-interactive
-
-
-
-
+	# Run the local installer: copies bundle/ → ~/.local/ and sets up host integrations,
+	# exactly mirroring the remote path (download → extract → bundle.sh).
+	bash scripts/install.sh --local
 
 uninstall: ## Remove all Atelier agent-host integrations, hooks, and bin wrappers
 	@bash scripts/uninstall.sh $${ARGS:-}
