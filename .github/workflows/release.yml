@@ -56,25 +56,6 @@ jobs:
           path: dist/atelier-distribution-*.tar.gz
           if-no-files-found: error
 
-  promote:
-    name: Promote tag to atelier
-    needs: [binary-build]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Push tag to atelier-ws/atelier
-        env:
-          ATELIER_RELEASE_PAT: ${{ secrets.ATELIER_RELEASE_PAT }}
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          git remote add atelier https://x-access-token:${ATELIER_RELEASE_PAT}@github.com/atelier-ws/atelier.git
-          git push atelier "refs/tags/${TAG}:refs/tags/${TAG}" --force
-
   release:
     name: Create GitHub Release
     needs: [binary-build]
