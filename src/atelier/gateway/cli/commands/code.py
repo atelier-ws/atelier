@@ -305,7 +305,7 @@ def _index_repo_with_progress(
                 # (raw git entries -> filtered file count).
                 if total and total < _last_total[0] and _phase[0] == "discovery":
                     _phase[0] = "indexing"
-                
+
                 if _phase[0] == "lock":
                     progress.update(
                         task_id,
@@ -364,6 +364,7 @@ def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> dic
 
         import sqlite3
         from contextlib import closing
+
         with closing(adapter._connection_factory()) as conn:
             row = conn.execute("SELECT value FROM engine_state WHERE key = ?", (adapter._head_state_key,)).fetchone()
             previous_head = str(row["value"]) if row is not None else None
@@ -389,7 +390,7 @@ def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> dic
         )
         with progress:
             task_id = progress.add_task("[green]⟳[/green]  Indexing Git history...", total=None)
-            
+
             def on_commit(current: int, total: int) -> None:
                 progress.update(
                     task_id,
@@ -397,7 +398,7 @@ def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> dic
                     completed=current,
                     description=f"[cyan]⟳[/cyan]  Indexing Git history... {current}/{total}",
                 )
-            
+
             summary = adapter._ensure_history_ready(on_commit=on_commit)
             progress.update(
                 task_id,
@@ -434,6 +435,7 @@ def _prewarm_embeddings_with_progress(engine: Any, frame_prefix: str = "") -> No
 
         import sqlite3
         from contextlib import closing
+
         with closing(engine._connect()) as conn:
             engine._init_schema(conn)
             fresh_ids = engine._ann_symbol_index.existing_stamped_ids(
@@ -509,12 +511,14 @@ def code_group() -> None:
 @click.option("--reindex", is_flag=True, help="Full rebuild from scratch (default: incremental).")
 @click.option("--json", "as_json", is_flag=True)
 @click.option("--frame-prefix", default="", hidden=True, help="Prefix for progress output (used by dev.sh)")
+@click.option("--no-stats", is_flag=True, help="Do not print indexing statistics.")
 def code_index_cmd(
     repo_root: str,
     include_globs: tuple[str, ...],
     exclude_globs: tuple[str, ...],
     reindex: bool,
     as_json: bool,
+    no_stats: bool,
     frame_prefix: str,
 ) -> None:
     """Index a repository into the SQLite FTS5 symbol store.
@@ -545,7 +549,7 @@ def code_index_cmd(
         exclude_globs=list(exclude_globs) or None,
         description="Indexing code",
         success_description="Indexed code",
-     frame_prefix=frame_prefix,
+        frame_prefix=frame_prefix,
     )
 
     git_summary = _index_git_history_with_progress(engine, frame_prefix=frame_prefix)
@@ -557,7 +561,7 @@ def code_index_cmd(
     )
     prefix_markup = click.style(frame_prefix, dim=True) if frame_prefix else ""
     click.echo(f"{prefix_markup}{stats_line}" if frame_prefix else stats_line)
-    
+
     # Print git history summary if any commits were processed
     if git_summary and git_summary.get("commits_walked", 0) > 0:
         git_line = (
@@ -566,8 +570,9 @@ def code_index_cmd(
             f"({git_summary['deletions_found']} deletions, {git_summary['renames_found']} renames)"
         )
         click.echo(f"{prefix_markup}{git_line}" if frame_prefix else git_line)
-    
-    _print_index_stats(engine, frame_prefix=frame_prefix)
+
+    if not no_stats:
+        _print_index_stats(engine, frame_prefix=frame_prefix)
 
 
 def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
@@ -595,17 +600,15 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
         total_s += syms
 
     # Symbol kinds (top ones)
-    kinds = c.execute(
-        "SELECT kind, COUNT(*) FROM symbols GROUP BY kind ORDER BY COUNT(*) DESC"
-    ).fetchall()
+    kinds = c.execute("SELECT kind, COUNT(*) FROM symbols GROUP BY kind ORDER BY COUNT(*) DESC").fetchall()
 
     # Embedding stats
     from atelier.core.capabilities.code_context.ann_symbol_index import ann_retrieval_enabled
-    
+
     ranker_configured = getattr(engine._semantic_ranker, "available", False)
     flag_enabled = ann_retrieval_enabled()
     should_show_embeddings = ranker_configured or flag_enabled
-    
+
     embedding_count = 0
     try:
         table_exists = c.execute(
@@ -727,7 +730,7 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
                 kind_table.add_row(f"[{color}]{display_kind}[/]", f"{cnt:,}")
 
             print_prefixed(kind_table)
-        
+
         # Embeddings stats
         if should_show_embeddings:
             print_prefixed("")
@@ -738,18 +741,17 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
             else:
                 print_prefixed("[bold bright_white]Embeddings[/]  [dim]enabled, awaiting indexing[/]")
 
-        
         # Git history graveyard stats
         try:
             graveyard_count = conn.execute("SELECT COUNT(*) FROM symbol_graveyard").fetchone()[0]
             if graveyard_count > 0:
                 print_prefixed("")
                 print_prefixed("[bold bright_white]Git history[/]  [dim]deleted and renamed symbols[/]")
-                
+
                 graveyard_langs = conn.execute(
                     "SELECT language, COUNT(*) FROM symbol_graveyard WHERE language IS NOT NULL GROUP BY language ORDER BY COUNT(*) DESC"
                 ).fetchall()
-                
+
                 graveyard_table = Table(
                     box=box.SIMPLE,
                     show_header=True,
@@ -759,7 +761,7 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
                 )
                 graveyard_table.add_column("Language", style="bold", min_width=15, footer="TOTAL")
                 graveyard_table.add_column("Deleted", justify="right")
-                
+
                 total_deleted = 0
                 for lang, cnt in graveyard_langs:
                     total_deleted += cnt
@@ -769,7 +771,7 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
                         display_name = lang.title() if lang else "Unknown"
                         color = "white"
                     graveyard_table.add_row(f"[{color}]{display_name}[/]", f"{cnt:,}")
-                
+
                 graveyard_table.columns[1].footer = f"{total_deleted:,}"
                 print_prefixed(graveyard_table)
         except Exception:
@@ -793,7 +795,7 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
             click.echo(f"{prefix_markup}  " + "-" * 29)
             for kind, cnt in kinds:
                 click.echo(f"{prefix_markup}  {kind:<20s}  {cnt:>7d}")
-        
+
         # Git history in fallback
         try:
             graveyard_count = conn.execute("SELECT COUNT(*) FROM symbol_graveyard").fetchone()[0]
@@ -801,7 +803,7 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
                 graveyard_langs = conn.execute(
                     "SELECT language, COUNT(*) FROM symbol_graveyard WHERE language IS NOT NULL GROUP BY language ORDER BY COUNT(*) DESC"
                 ).fetchall()
-                
+
                 click.echo(f"{prefix_markup}")
                 click.echo(f"{prefix_markup}  ── Git history (deleted symbols) ──")
                 click.echo(f"{prefix_markup}  {'Language':<15s}  {'Count':>7s}")

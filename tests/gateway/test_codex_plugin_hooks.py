@@ -1,3 +1,5 @@
+# ruff: noqa: RUF001
+
 from __future__ import annotations
 
 import json
@@ -61,9 +63,7 @@ def test_codex_statusline_renders_native_footer_in_claude_format(tmp_path: Path)
 
     result = _run_statusline(tmp_path / ".atelier", native)
 
-    assert result.stdout.strip() == (
-        "❯ atelier | gpt-5.5 xhigh ctx 1.1M ↑ $0.000 (I:19.4M C:0 O:61k) ↓ $0.000(0)"
-    )
+    assert result.stdout.strip() == ("❯ atelier | gpt-5.5 xhigh ctx 1.1M ↑ $0.000 (I:19.4M C:0 O:61k) ↓ $0.000(0)")
 
 
 def test_codex_statusline_renders_json_token_fields_in_claude_format(tmp_path: Path) -> None:
@@ -78,9 +78,7 @@ def test_codex_statusline_renders_json_token_fields_in_claude_format(tmp_path: P
 
     result = _run_statusline(tmp_path / ".atelier", json.dumps(payload))
 
-    assert result.stdout.strip() == (
-        "❯ atelier | gpt-5.5 xhigh ctx 1.1M 12% ↑ $1.235 (I:19.4M C:0 O:61k) ↓ $0.000(0)"
-    )
+    assert result.stdout.strip() == ("❯ atelier | gpt-5.5 xhigh ctx 1.1M 12% ↑ $1.235 (I:19.4M C:0 O:61k) ↓ $0.000(0)")
 
 
 def test_codex_multi_file_prompt_emits_no_runtime_context(tmp_path: Path) -> None:
@@ -270,11 +268,12 @@ def test_codex_stop_hook_emits_session_summary(tmp_path: Path) -> None:
     assert set(output) == {"systemMessage"}
     message = output["systemMessage"]
     assert "Atelier session complete." in message
-    assert "1 turn · 1 tool call" in message
-    assert "tokens: 1.2k input (1.0k new + 200 cW) / 3.0k cR / 400 out  (4.6k total)" in message
+    assert "0 LLM turns · 1 prompt turn · 1 tool call (hooks)" in message
     assert "est. cost: ~$" in message
-    assert "savings: $0.0006 · 500 tokens saved · 2 calls avoided" in message
-    assert "top tools: mcp__atelier__edit×1" in message
+    assert (
+        "savings: $0.0006 · 500 tokens saved · 2 calls avoided · routing $0.0000 · carry $0.0000 / 0 tokens" in message
+    )
+    assert "tools: mcp__atelier__edit×1" in message
 
 
 def test_codex_stop_hook_reads_status_style_token_fields(tmp_path: Path) -> None:
@@ -365,6 +364,16 @@ def test_codex_stop_hook_recovers_usage_from_local_codex_transcript(
                 ),
                 json.dumps(
                     {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "function_call",
+                            "name": "exec_command",
+                            "arguments": '{"cmd": "rg foo"}',
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
                         "type": "event_msg",
                         "payload": {
                             "type": "token_count",
@@ -378,9 +387,20 @@ def test_codex_stop_hook_recovers_usage_from_local_codex_transcript(
                                     "input_tokens": 1000,
                                     "cached_input_tokens": 700,
                                     "output_tokens": 50,
+                                    "reasoning_output_tokens": 30,
                                     "total_tokens": 1050,
                                 },
                             },
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "function_call",
+                            "name": "apply_patch",
+                            "arguments": '{"patch": "*** Begin Patch\\n*** End Patch"}',
                         },
                     }
                 ),
@@ -399,6 +419,7 @@ def test_codex_stop_hook_recovers_usage_from_local_codex_transcript(
                                     "input_tokens": 1300,
                                     "cached_input_tokens": 800,
                                     "output_tokens": 70,
+                                    "reasoning_output_tokens": 40,
                                     "total_tokens": 1370,
                                 },
                             },
@@ -434,9 +455,14 @@ def test_codex_stop_hook_recovers_usage_from_local_codex_transcript(
     )
 
     message = result["systemMessage"]
-    assert "2 turns · 1 tool call" in message
+    assert "2 LLM turns · 2 tool calls (transcript)" in message
     assert "tokens: 500 input (500 new + 0 cW) / 800 cR / 70 out  (1.4k total)" in message
+    assert (
+        "token breakdown: new input 500 · cache read 800 · cache write 0 · output 70 (40 reasoning, 30 visible)"
+        in message
+    )
     assert "est. cost: ~$0.0013" in message
+    assert "tools: apply_patch×1 · exec_command×1" in message
 
 
 def test_codex_stop_hook_is_quiet_without_session_activity(tmp_path: Path) -> None:

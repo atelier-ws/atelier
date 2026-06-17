@@ -74,6 +74,7 @@ run "cp $(printf %q "${PLUGIN_TEMPLATE}/.codex-plugin/plugin.json") $(printf %q 
 run "cp $(printf %q "${PLUGIN_TEMPLATE}/.mcp.json") $(printf %q "$STAGING_DIR/")"
 run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/hooks") $(printf %q "$STAGING_DIR/")"
 run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/plugin/scripts") $(printf %q "$STAGING_DIR/")"
+run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/plugin/agents") $(printf %q "$STAGING_DIR/")"
 run "mkdir -p $(printf %q "$STAGING_DIR/agents")"
 AGENT_SRC="${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md"
 info "Staging Codex agent instructions"
@@ -346,9 +347,8 @@ with open(config_path, "r") as f:
     content = f.read()
 
 ATELIER_TOOLS = [
-    "context", "route", "rescue", "trace", "verify",
-    "memory", "read", "edit", "sql", "code", "grep",
-    "search", "compact", "shell",
+    "shell", "read", "grep", "edit", "callees", "codemod",
+    "memory", "callers", "explore", "web_fetch", "search", "usages",
 ]
 
 added = []
@@ -401,10 +401,12 @@ if $WORKSPACE_SET; then
         ATELIER_RUNTIME_PYTHON="$(resolve_atelier_runtime_python)"
         PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" "$ATELIER_RUNTIME_PYTHON" - <<PYEOF
 from pathlib import Path
-from atelier.core.capabilities.workspace_host_overrides import write_workspace_codex_agents
+from atelier.core.capabilities.workspace_host_overrides import write_workspace_codex_agent_config, write_workspace_codex_agents
 
 written = write_workspace_codex_agents(Path("${WORKSPACE}"), repo_root=Path("${ATELIER_REPO}"))
+config = write_workspace_codex_agent_config(Path("${WORKSPACE}"), repo_root=Path("${ATELIER_REPO}"))
 print(f"[atelier:codex] projected {len(written)} workspace-local Codex agents into ${WORKSPACE}/.codex/agents")
+print(f"[atelier:codex] registered workspace-local Codex agents in {config}")
 PYEOF
     fi
 else
@@ -414,10 +416,12 @@ else
         ATELIER_RUNTIME_PYTHON="$(resolve_atelier_runtime_python)"
         PYTHONPATH="${ATELIER_REPO}/src${PYTHONPATH:+:${PYTHONPATH}}" "$ATELIER_RUNTIME_PYTHON" - <<PYEOF
 from pathlib import Path
-from atelier.core.capabilities.workspace_host_overrides import write_codex_agents
+from atelier.core.capabilities.workspace_host_overrides import write_codex_agent_config, write_codex_agents
 
 written = write_codex_agents(Path("${CODEX_HOME}") / "agents", repo_root=Path("${ATELIER_REPO}"))
+config = write_codex_agent_config(Path("${CODEX_HOME}") / "config.toml", Path("${CODEX_HOME}") / "agents", repo_root=Path("${ATELIER_REPO}"))
 print(f"[atelier:codex] projected {len(written)} global Codex agents into ${CODEX_HOME}/agents")
+print(f"[atelier:codex] registered global Codex agents in {config}")
 PYEOF
     fi
 fi
@@ -444,6 +448,12 @@ if [ -f "${PLUGIN_DIR}/skills/code/SKILL.md" ] && [ -f "${PLUGIN_DIR}/skills/exp
     vpass "Codex skill bundle installed with shared mode skills: ${PLUGIN_DIR}/skills"
 else
     vfail "Codex skill bundle missing shared mode skills: ${PLUGIN_DIR}/skills"
+fi
+
+if [ -f "${PLUGIN_DIR}/agents/openai.yaml" ]; then
+    vpass "Codex plugin agent surface installed: ${PLUGIN_DIR}/agents/openai.yaml"
+else
+    vfail "Codex plugin agent surface missing: ${PLUGIN_DIR}/agents/openai.yaml"
 fi
 
 if [ -f "$PLUGIN_MCP_JSON" ]; then
@@ -556,7 +566,13 @@ fi
 if [ -f "${CODEX_AGENTS_DIR}/atelier.code.toml" ]; then
     vpass "Codex per-role agents installed: ${CODEX_AGENTS_DIR}"
 else
-    vwarn "Codex per-role agents missing in ${CODEX_AGENTS_DIR} (optional)"
+    vfail "Codex per-role agents missing in ${CODEX_AGENTS_DIR}"
+fi
+
+if grep -q '^\[agents\.atelier_code\]' "${CODEX_CONFIG}" 2>/dev/null && grep -q 'config_file = ".*/agents/atelier.code.toml"' "${CODEX_CONFIG}" 2>/dev/null; then
+    vpass "Codex per-role agents registered in config.toml"
+else
+    vfail "Codex per-role agents not registered in config.toml"
 fi
 
 if $WORKSPACE_SET; then

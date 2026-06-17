@@ -12,12 +12,14 @@
   "interface": {
     "displayName": "Atelier",
     "shortDescription": "Atelier tools and trace capture for Codex.",
-    "longDescription": "Bundle the Atelier MCP transport, skills, and trace capture for Codex. The standard Atelier install eagerly loads Atelier as a real Codex MCP server. Coding tasks should call Atelier context first and use Atelier MCP tools for reads, search, code intelligence, edits, and shell work before any native Codex tool.",
+    "longDescription": "Bundle the Atelier MCP transport, role skills, custom agents, and trace capture for Codex. The standard Atelier install eagerly loads Atelier as a real Codex MCP server and registers the atelier_code, atelier_explore, atelier_review, atelier_plan, atelier_execute, atelier_research, and atelier_solve agents in config.toml.",
     "developerName": "Atelier Team",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "For coding tasks, call mcp__atelier__context first. Use Atelier MCP tools before native Codex tools: node/callers/callees/explore for code intelligence, grep/search for discovery, read for file reads, edit for writes, and shell only for git/build/test commands. Treat native Read/Edit/Write/MultiEdit/Bash/Grep/Glob as fallback-only when the Atelier equivalent is hidden, unavailable, or returned noop."
+      "Use atelier_code for repo changes with Atelier MCP tools first.",
+      "Use atelier_plan, atelier_explore, or atelier_review for analysis.",
+      "Use atelier_execute, atelier_solve, or atelier_research when appropriate."
     ],
     "brandColor": "#0f766e"
   }

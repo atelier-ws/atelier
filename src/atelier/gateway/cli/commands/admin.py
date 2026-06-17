@@ -26,7 +26,9 @@ from atelier.core.capabilities.model_settings import (
 )
 from atelier.core.capabilities.reporting.dashboard import _render_dashboard
 from atelier.core.capabilities.workspace_host_overrides import (
+    write_workspace_agents_md,
     write_workspace_claude_overrides,
+    write_workspace_codex_agent_config,
     write_workspace_codex_agents,
     write_workspace_copilot_agents,
     write_workspace_cursor_rules,
@@ -395,6 +397,17 @@ def _project_init_setup(git_root: Path) -> dict[str, list[str]]:
     else:
         results["gitignore"] = [".atelier/.gitignore already present"]
 
+    agents_path = write_workspace_agents_md(git_root)
+    results["agents_md"] = [f"updated {agents_path.relative_to(git_root)}"]
+
+    if "codex" in _detected_workspace_hosts(git_root):
+        codex_agents = write_workspace_codex_agents(git_root)
+        codex_config = write_workspace_codex_agent_config(git_root)
+        results["codex"] = [
+            f"updated {len(codex_agents)} workspace-local Codex agents",
+            f"updated {codex_config.relative_to(git_root)}",
+        ]
+
     return results
 
 
@@ -560,6 +573,11 @@ def init(
         else:
             click.echo("code index skipped (no git repository detected in current directory)")
     git_root = _detect_git_root(Path.cwd())
+    if git_root is not None:
+        results = _project_init_setup(git_root)
+        for section, messages in results.items():
+            for msg in messages:
+                click.echo(f"  [{section}] {msg}")
     should_offer_model_config = bool(git_root is not None and _is_interactive_terminal())
     if configure_models and not should_offer_model_config:
         raise click.ClickException("--configure-models requires an interactive terminal inside a git repository.")
