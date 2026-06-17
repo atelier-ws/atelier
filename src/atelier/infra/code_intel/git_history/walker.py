@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
 
@@ -110,13 +110,39 @@ def _iter_definition_entries(
     ]
 
 
-def walk_history(repo_path: str | Path, graveyard: SymbolGraveyard) -> None:
-    """Populate the graveyard from historical delete and rename commits."""
+def count_commits(repo_path: str | Path) -> int:
+    """Count total commits reachable from HEAD."""
+    pygit2 = require_pygit2()
+    try:
+        repo = pygit2.Repository(str(repo_path))
+        head = repo.revparse_single("HEAD")
+        return sum(1 for _ in repo.walk(head.id, pygit2.enums.SortMode.TOPOLOGICAL))
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return 0
+
+
+def walk_history(
+    repo_path: str | Path,
+    graveyard: SymbolGraveyard,
+    *,
+    on_commit: Callable[[int, int], None] | None = None,
+) -> None:
+    """Populate the graveyard from historical delete and rename commits.
+    
+    Args:
+        repo_path: Path to git repository
+        graveyard: SymbolGraveyard to upsert entries into
+        on_commit: Optional callback(current, total) called after each commit processed
+    """
 
     pygit2 = require_pygit2()
     repo = pygit2.Repository(str(repo_path))
     head = repo.revparse_single("HEAD")
-    for commit in repo.walk(head.id, pygit2.enums.SortMode.TOPOLOGICAL):
+    commits = list(repo.walk(head.id, pygit2.enums.SortMode.TOPOLOGICAL))
+    total = len(commits)
+    
+    for idx, commit in enumerate(commits, 1):
         if not commit.parents:
             continue
         parent = commit.parents[0]
@@ -153,3 +179,6 @@ def walk_history(repo_path: str | Path, graveyard: SymbolGraveyard) -> None:
                     rename_target=None,
                 ):
                     graveyard.upsert(entry)
+        
+        if on_commit is not None:
+            on_commit(idx, total)
