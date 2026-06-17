@@ -36,6 +36,26 @@ build: ## Build and package for production distribution
 
 release/build: build ## Alias for build release jobs
 
+# Dirs stripped from the public mirror (private/dev-only content).
+MIRROR_STRIP ?= docs-internal internal .planning .lessons .agent .knowledge .ruler reports
+
+mirror: ## Mirror current tag to public atelier repo (strips private dirs)
+	@TAG=$$(git describe --tags --exact-match 2>/dev/null) \
+	  || { echo "Error: not on an exact tag. Run: git tag vX.Y.Z && make mirror"; exit 1; }
+	@echo "Mirroring $$TAG → atelier-ws/atelier (stripping private dirs)..."
+	@TMPDIR=$$(mktemp -d) && trap "rm -rf $$TMPDIR" EXIT && \
+	  git archive HEAD | tar -x -C $$TMPDIR && \
+	  for d in $(MIRROR_STRIP); do rm -rf "$$TMPDIR/$$d"; done && \
+	  cd $$TMPDIR && \
+	  git init -b main >/dev/null && \
+	  git add -A && \
+	  git commit -q -m "Release $$TAG" && \
+	  git tag $$TAG && \
+	  git remote add origin https://github.com/atelier-ws/atelier.git && \
+	  git push origin main --force -q && \
+	  git push origin $$TAG --force -q && \
+	  echo "✓ Mirrored $$TAG to atelier-ws/atelier"
+
 prod: ## Build and install from local production build (includes mypyc compilation; expects ~2-3 min build time)
 	bash scripts/build.sh
 	# Run the local installer: copies bundle/ → ~/.local/ and sets up host integrations,
