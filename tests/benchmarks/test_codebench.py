@@ -287,6 +287,14 @@ def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
         summary_rows = list(csv.DictReader(handle))
     with (tmp_path / "task_metrics.csv").open("r", encoding="utf-8", newline="") as handle:
         task_metric_rows = list(csv.DictReader(handle))
+    with (tmp_path / "task_correctness.csv").open("r", encoding="utf-8", newline="") as handle:
+        task_correctness_rows = list(csv.DictReader(handle))
+    with (tmp_path / "pairwise_quality.csv").open("r", encoding="utf-8", newline="") as handle:
+        pairwise_rows = list(csv.DictReader(handle))
+    with (tmp_path / "quality_adjusted_summary.csv").open("r", encoding="utf-8", newline="") as handle:
+        adjusted_rows = list(csv.DictReader(handle))
+    with (tmp_path / "model_audit.csv").open("r", encoding="utf-8", newline="") as handle:
+        model_rows = list(csv.DictReader(handle))
 
     assert len(detail_rows) == 3
     assert {row["arm"] for row in summary_rows} == {"baseline", "atelier", "eval"}
@@ -308,11 +316,121 @@ def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
     assert atelier_task_row["candidate_tokens_median"] == "115"
     assert atelier_task_row["tokens_savings_vs_baseline_pct"] == "14.8"
     assert atelier_task_row["tool_calls_savings_vs_baseline_pct"] == "33.3"
+    assert {row["candidate_arm"] for row in task_correctness_rows} == {"atelier", "eval"}
+    assert next(row for row in task_correctness_rows if row["candidate_arm"] == "atelier")["winner"] == "unjudged"
+    assert {row["candidate_arm"] for row in pairwise_rows} == {"atelier", "eval"}
+    assert next(row for row in pairwise_rows if row["candidate_arm"] == "atelier")["status"] == "unjudged"
+    assert {row["candidate_arm"] for row in adjusted_rows} == {"atelier", "eval"}
+    assert next(row for row in adjusted_rows if row["candidate_arm"] == "atelier")["raw_saved_usd"] == "0.5"
+    assert {row["source"] for row in model_rows} == {"result_totals"}
 
     report = CODEBENCH.report(results)
     assert "=== Per-task medians (clean runs) ===" in report
     assert "| task-1 | atelier | 40% cheaper | 14.8% fewer | 30% faster | 33.3% fewer | 1 |" in report
     assert "| task-1 | baseline | 1.2500 | 135 | 1.0 | 3 | 1 |" in report
+    assert "=== Per-task correctness and cost ===" in report
+    assert "| task-1 | atelier | 0/0 | unjudged | unjudged | $0.7500 | 40% cheaper | unjudged |" in report
+    assert "Quality     : unjudged" in report
+    assert "task_correctness.csv" in report
+    assert "model_audit.csv" in report
+
+
+def test_task_correctness_rows_pick_winner_from_score_then_cost() -> None:
+    baseline = CODEBENCH.ArmResult(
+        task="task-1",
+        arm="baseline",
+        rep=0,
+        ok=True,
+        cost_usd=1.25,
+        duration_ms=1000,
+        duration_api_ms=800,
+        num_turns=3,
+        input_tokens=100,
+        cache_read_tokens=10,
+        cache_creation_tokens=0,
+        output_tokens=25,
+        models=["sonnet"],
+        is_error=False,
+        result_excerpt="ok",
+        flow_path="baseline.flow",
+        correct=True,
+        score=0.8,
+        judge_model="verify",
+    )
+    candidate = CODEBENCH.ArmResult(
+        task="task-1",
+        arm="atelier",
+        rep=0,
+        ok=True,
+        cost_usd=0.75,
+        duration_ms=700,
+        duration_api_ms=500,
+        num_turns=2,
+        input_tokens=70,
+        cache_read_tokens=20,
+        cache_creation_tokens=5,
+        output_tokens=20,
+        models=["sonnet"],
+        is_error=False,
+        result_excerpt="ok",
+        flow_path="atelier.flow",
+        correct=True,
+        score=0.8,
+        judge_model="verify",
+    )
+
+    rows = CODEBENCH._task_correctness_rows([baseline, candidate])
+
+    assert rows == [
+        {
+            "task": "task-1",
+            "baseline_arm": "baseline",
+            "candidate_arm": "atelier",
+            "baseline_runs": 1,
+            "candidate_runs": 1,
+            "baseline_judged_runs": 1,
+            "candidate_judged_runs": 1,
+            "baseline_correct_runs": 1,
+            "candidate_correct_runs": 1,
+            "baseline_avg_score": 0.8,
+            "candidate_avg_score": 0.8,
+            "correctness_delta": 0.0,
+            "baseline_cost_usd": 1.25,
+            "candidate_cost_usd": 0.75,
+            "cost_savings_vs_baseline_pct": 40.0,
+            "winner": "atelier",
+            "baseline_judge_models": "verify",
+            "candidate_judge_models": "verify",
+        }
+    ]
+
+
+def test_pairwise_quality_judge_counts_only_non_regressed_savings(monkeypatch: MonkeyPatch) -> None:
+    task = TASKS.Task("pair_probe", "python", ("empty",), 1, "pair_probe")
+    monkeypatch.setitem(CODEBENCH.BY_ID, "pair_probe", task)
+    monkeypatch.setattr(CODEBENCH, "_task_description", lambda _task: "rubric")
+    monkeypatch.setattr(
+        CODEBENCH, "_run_judge", lambda *a, **k: {"winner": "A", "a_score": 0.9, "b_score": 0.7, "reason": "A richer"}
+    )
+    monkeypatch.setattr(CODEBENCH, "_candidate_first", lambda *_args: True)
+    baseline = CODEBENCH.ArmResult(
+        "pair_probe", "baseline", 0, True, 1.0, 10, 9, 1, 100, 0, 0, 10, ["sonnet"], False, "base", ""
+    )
+    candidate = CODEBENCH.ArmResult(
+        "pair_probe", "atelier", 0, True, 0.4, 8, 7, 1, 50, 0, 0, 8, ["sonnet"], False, "better", ""
+    )
+
+    rows = CODEBENCH.judge_pairwise_quality(
+        [baseline, candidate], judge_model="sonnet", judge_agent_command="claude", timeout=30
+    )
+    adjusted = CODEBENCH._quality_adjusted_summary_rows(rows)
+
+    assert rows[0].judged is True
+    assert rows[0].winner == "atelier"
+    assert rows[0].candidate_at_least_baseline is True
+    assert rows[0].quality_adjusted_saved_usd == 0.6
+    assert adjusted[0]["quality_passed_pairs"] == 1
+    assert adjusted[0]["quality_adjusted_saved_usd"] == 0.6
 
 
 def test_task_prompt_prefers_variant_prompt_when_prompt_md_missing(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:

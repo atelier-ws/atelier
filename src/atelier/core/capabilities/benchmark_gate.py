@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -129,6 +130,21 @@ def evaluate_codebench_gate(
     candidate_cost = sum(float(row.get("cost_usd") or 0.0) for row in candidate_rows)
     if candidate_cost >= baseline_cost:
         reasons.append("candidate did not reduce measured cost versus baseline")
+    pairwise_rows = _load_csv(run_dir / "pairwise_quality.csv")
+    selected_pairwise = [
+        row
+        for row in pairwise_rows
+        if row.get("baseline_arm") == baseline_arm and row.get("candidate_arm") == candidate_arm
+    ]
+    expected_pairs = {(str(row.get("task") or ""), str(row.get("rep") or "")) for row in candidate_rows}
+    judged_pairs = [row for row in selected_pairwise if _truthy(row.get("judged"))]
+    passing_pairs = [row for row in judged_pairs if _truthy(row.get("candidate_at_least_baseline"))]
+    if len(selected_pairwise) < len(expected_pairs):
+        reasons.append("pairwise quality gate requires a baseline-vs-candidate row for every candidate run")
+    if len(judged_pairs) != len(selected_pairwise) or len(judged_pairs) < len(expected_pairs):
+        reasons.append("pairwise quality gate requires judged baseline-vs-candidate comparisons for every pair")
+    if len(passing_pairs) != len(judged_pairs):
+        reasons.append("candidate quality regressed versus baseline in at least one judged pair")
     return {
         "suite": "codebench",
         "evaluated_at": datetime.now(UTC).isoformat(),
@@ -163,6 +179,15 @@ def evaluate_codebench_gate(
                 "estimated_cost_delta_usd": candidate_cost - baseline_cost,
                 "estimated_cost_savings_usd": baseline_cost - candidate_cost,
             },
+            "pairwise_quality": {
+                "pairs": len(selected_pairwise),
+                "expected_pairs": len(expected_pairs),
+                "judged_pairs": len(judged_pairs),
+                "candidate_at_least_baseline": len(passing_pairs),
+                "quality_adjusted_savings_usd": sum(
+                    float(row.get("quality_adjusted_saved_usd") or 0.0) for row in selected_pairwise
+                ),
+            },
         },
     }
 
@@ -188,6 +213,17 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
         if isinstance(payload, dict):
             rows.append(payload)
     return rows
+
+
+def _load_csv(path: Path) -> list[dict[str, str]]:
+    if not path.is_file():
+        return []
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _truthy(value: object) -> bool:
+    return str(value).strip().lower() in {"true", "1", "yes"}
 
 
 def _codebench_arm_summary(rows: list[dict[str, Any]], *, correct: int, lower: float, upper: float) -> dict[str, Any]:
