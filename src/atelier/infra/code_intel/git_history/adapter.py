@@ -9,7 +9,7 @@ import threading
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 from atelier.infra.code_intel.git_history import require_pygit2
 from atelier.infra.code_intel.git_history.graveyard import SymbolGraveyard
@@ -113,7 +113,9 @@ class DeletedHistorySearchAdapter:
         except Exception:
             pass
 
-    def _ensure_history_ready(self) -> None:
+    def _ensure_history_ready(
+        self, *, on_commit: Callable[[int, int], None] | None = None
+    ) -> None:
         current_head = self._current_head()
         if current_head is None:
             return
@@ -126,7 +128,7 @@ class DeletedHistorySearchAdapter:
             if previous_head == current_head and graveyard_count > 0:
                 self._history_ready = True
                 return
-            walk_history(self._repo_root, SymbolGraveyard(conn))
+            walk_history(self._repo_root, SymbolGraveyard(conn), on_commit=on_commit)
             conn.execute(
                 """
                 INSERT INTO engine_state(key, value)
