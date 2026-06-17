@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -298,21 +299,54 @@ def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
 def load_mode_docs(repo_root: Path | None = None, *, strict: bool = True) -> dict[str, ModeDoc]:
     root = _resolve_repo_root(repo_root)
     docs: dict[str, ModeDoc] = {}
-    for path in sorted((root / MODES_DIR).glob("*.md")):
+
+    def _load_from_dir(d: Path, origin: Path) -> None:
+        if not d.exists():
+            return
+        for path in sorted(d.glob("*.md")):
+            try:
+                meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
+                name = meta["mode"]
+                if name not in docs:
+                    docs[name] = ModeDoc(
+                        name=name,
+                        skill_description=meta["skill_description"],
+                        agent_description=meta["agent_description"],
+                        body=body.rstrip() + "\n",
+                        source_path=path.relative_to(origin) if path.is_relative_to(origin) else path,
+                    )
+            except (ValueError, KeyError):
+                if strict:
+                    raise
+                continue
+
+    # 1. Try repository root first (the one passed in)
+    _load_from_dir(root / MODES_DIR, root)
+
+    # 2. Fallback to REPO_ROOT for missing roles (useful in source checkout)
+    if not all(role_id in docs for role_id in HOST_ROLE_IDS) and root != REPO_ROOT:
+        _load_from_dir(REPO_ROOT / MODES_DIR, REPO_ROOT)
+
+    # 3. Fallback to packaged assets for missing roles (useful in installed package)
+    if not all(role_id in docs for role_id in HOST_ROLE_IDS):
         try:
-            meta, body = parse_frontmatter(path.read_text(encoding="utf-8"))
-            doc = ModeDoc(
-                name=meta["mode"],
-                skill_description=meta["skill_description"],
-                agent_description=meta["agent_description"],
-                body=body.rstrip() + "\n",
-                source_path=path.relative_to(root),
-            )
-        except (ValueError, KeyError):
+            packaged = resources.files("atelier").joinpath("integrations", "agents")
+            if packaged.is_dir():
+                for entry in sorted(packaged.glob("*.md"), key=lambda x: x.name):
+                    meta, body = parse_frontmatter(entry.read_text(encoding="utf-8"))
+                    name = meta["mode"]
+                    if name not in docs:
+                        docs[name] = ModeDoc(
+                            name=name,
+                            skill_description=meta["skill_description"],
+                            agent_description=meta["agent_description"],
+                            body=body.rstrip() + "\n",
+                            source_path=Path("integrations/agents") / entry.name,
+                        )
+        except Exception:
             if strict:
                 raise
-            continue
-        docs[doc.name] = doc
+
     return docs
 
 
