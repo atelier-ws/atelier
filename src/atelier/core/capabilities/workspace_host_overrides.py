@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.resources
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -50,7 +51,6 @@ def workspace_claude_agent_text(
 ) -> str:
     agent_path = _integration_resource(repo_root, "claude", "plugin", "agents", f"{role_id}.md")
     text = agent_path.read_text(encoding="utf-8")
-    # Only inject model if user explicitly set a host override (otherwise inherit session model)
     model = _claude_explicit_host_model(role_id, workspace_root)
     return rewrite_agent_name(rewrite_agent_model(text, model), f"atelier:{role_id}")
 
@@ -84,7 +84,7 @@ def write_workspace_agents_md(
     *,
     repo_root: str | Path | None = None,
 ) -> Path:
-    """Create or update the project AGENTS.md with the distributed Atelier block."""
+    """Create or update the project AGENTS.md with the generic Atelier block."""
     workspace = Path(workspace_root).expanduser().resolve()
     target = workspace / "AGENTS.md"
     source = _agents_md_source(repo_root).read_text(encoding="utf-8").strip()
@@ -133,8 +133,6 @@ def write_workspace_claude_overrides(
         shutil.rmtree(target_skills)
     for source in sorted(source_skills.glob("*/SKILL.md")):
         skill_name = source.parent.name
-        # Surfaced role skills (code/explore/...) are projected as agents, not as
-        # user skills; hidden skills are never surfaced. Skip both.
         if skill_name in SURFACED_ROLE_IDS or not skill_visible(skill_name):
             continue
         relative = source.relative_to(source_skills)
@@ -216,7 +214,7 @@ def write_codex_agents(
     model_workspace: str | Path | None = None,
     repo_root: str | Path | None = None,
 ) -> list[Path]:
-    """Write per-role Codex agent TOMLs (``atelier.<role>.toml``) into target_dir.
+    """Write standalone per-role Codex agent TOMLs into target_dir.
 
     Used for both global installs (``$CODEX_HOME/agents``) and workspace installs
     (``<repo>/.codex/agents``). ``model_workspace`` scopes per-role model
@@ -242,8 +240,9 @@ def write_codex_agents(
             "codex",
             resolve_host_model("codex", role_id, workspace_root=model_workspace, fallback=None),
         )
+        instructions = _render_codex_mode_body(mode_doc.body, root)
         path.write_text(
-            _render_codex_agent_toml(role_id, role.agent_description, mode_doc.body, model), encoding="utf-8"
+            _render_codex_agent_toml(role_id, role.agent_description, instructions, model), encoding="utf-8"
         )
         written.append(path)
     return written
@@ -255,34 +254,25 @@ def write_codex_agent_config(
     *,
     repo_root: str | Path | None = None,
 ) -> Path:
-    """Register generated Codex role agents in a config.toml managed block."""
-    root = _resolve_repo_root(repo_root)
-    registry = build_default_registry(root)
+    """Remove legacy per-agent config tables.
+
+    Current Codex discovers custom agents directly from ``agents/*.toml``. Keep
+    this compatibility entrypoint because older callers invoke it during
+    ``atelier init``, but make it cleanup-only so init cannot reintroduce the
+    obsolete ``[agents.atelier_*]`` tables.
+    """
+    del agents_dir, repo_root
     config = Path(config_path).expanduser().resolve()
-    agents = Path(agents_dir).expanduser().resolve()
-    config.parent.mkdir(parents=True, exist_ok=True)
+    if not config.exists():
+        return config
 
-    lines = [CODEX_AGENTS_BLOCK_START]
-    for role_id in SURFACED_ROLE_IDS:
-        role = registry.roles[role_id]
-        agent_key = f"atelier_{role_id}"
-        agent_file = agents / f"atelier.{role_id}.toml"
-        config_file = _toml_basic_escape(str(agent_file))
-        description = _toml_basic_escape(role.agent_description).replace("\r", " ").replace("\n", " ")
-        lines.extend(
-            [
-                f"[agents.{agent_key}]",
-                f'description = "{description}"',
-                f'config_file = "{config_file}"',
-                "",
-            ]
-        )
-    lines.append(CODEX_AGENTS_BLOCK_END)
-    managed = "\n".join(lines).rstrip()
-
-    existing = config.read_text(encoding="utf-8").rstrip() if config.exists() else ""
-    updated = _upsert_codex_agents_block(existing, managed)
-    config.write_text(updated.rstrip() + "\n", encoding="utf-8")
+    original = config.read_text(encoding="utf-8")
+    cleaned = _remove_legacy_codex_agent_sections(original)
+    if cleaned != original:
+        if cleaned.strip():
+            config.write_text(cleaned.rstrip() + "\n", encoding="utf-8")
+        else:
+            config.unlink()
     return config
 
 
@@ -360,14 +350,7 @@ def rewrite_agent_name(text: str, name: str) -> str:
 
 
 def _claude_explicit_host_model(role_id: str, workspace_root: str | Path) -> str | None:
-    """Return the model for a Claude agent file, or None to inherit session model.
-
-    Only returns a model string when the user has explicitly set a host override
-    for *claude* (or *default* matching this role) in settings.json.  If the value
-    is only the runtime default we leave the model line out so Claude uses its
-    current session model -- avoids "model not available" warnings for model IDs
-    that Claude Code does not recognise.
-    """
+    """Return the model for a Claude agent file, or None to inherit session model."""
     workspace = Path(workspace_root).expanduser().resolve()
     settings = load_model_settings(workspace)
     hosts = settings.get("models", {}).get("hosts", {})
@@ -396,32 +379,30 @@ def _read_json(path: Path) -> dict[str, object]:
 
 
 def _resolve_repo_root(repo_root: str | Path | None) -> Path:
-    return ATELIER_REPO_ROOT if repo_root is None else Path(repo_root).expanduser().resolve()
+    if repo_root is not None:
+        return Path(repo_root).expanduser().resolve()
+    if (ATELIER_REPO_ROOT / "integrations").is_dir():
+        return ATELIER_REPO_ROOT
+    packaged_root = Path(str(importlib.resources.files("atelier")))
+    if (packaged_root / "integrations").is_dir():
+        return packaged_root
+    return ATELIER_REPO_ROOT
 
 
 def _agents_md_source(repo_root: str | Path | None) -> Path:
-    root = _resolve_repo_root(repo_root)
-    repo_agents = root / "AGENTS.md"
-    if repo_agents.exists():
-        return repo_agents
-    fallback = _integration_resource(repo_root, "AGENTS.atelier.md")
-    if fallback.exists():
-        return fallback
-    return repo_agents
+    generic = _integration_resource(repo_root, "AGENTS.atelier.md")
+    if generic.exists():
+        return generic
+    return _resolve_repo_root(repo_root) / "AGENTS.md"
 
 
 def _integration_resource(repo_root: str | Path | None, *parts: str) -> Path:
-    """Resolve an ``integrations/`` asset.
-
-    In a source/editable checkout the assets live under the repo root. In a
-    built wheel they are force-included under ``atelier/integrations``. Prefer
-    the repo-root copy and fall back to the packaged copy.
-    """
+    """Resolve an ``integrations/`` asset from a checkout or installed wheel."""
     repo_candidate = _resolve_repo_root(repo_root).joinpath("integrations", *parts)
     if repo_candidate.exists():
         return repo_candidate
     packaged = importlib.resources.files("atelier").joinpath("integrations", *parts)
-    if packaged.is_file():
+    if packaged.is_file() or packaged.is_dir():
         return Path(str(packaged))
     return repo_candidate
 
@@ -431,10 +412,6 @@ def _copilot_agent_filename(role_id: str) -> str:
 
 
 def _write_copilot_vscode_settings(workspace_root: Path) -> Path:
-    """Write github.copilot.chat.defaultAgent into .vscode/settings.json.
-
-    Merges with any existing settings so the file is never clobbered.
-    """
     target = workspace_root / ".vscode" / "settings.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     current = _read_json(target)
@@ -450,8 +427,6 @@ def _strip_managed_block(text: str) -> str:
 
 
 def _upsert_managed_block(existing: str, source: str, managed: str) -> str:
-    import re
-
     pattern = re.compile(
         rf"{re.escape(ATELIER_CODE_BLOCK_START)}.*?{re.escape(ATELIER_CODE_BLOCK_END)}\n?",
         re.DOTALL,
@@ -465,32 +440,88 @@ def _upsert_managed_block(existing: str, source: str, managed: str) -> str:
     return managed
 
 
-def _upsert_codex_agents_block(existing: str, managed: str) -> str:
-    import re
+def _remove_legacy_codex_agent_sections(existing: str) -> str:
+    """Remove only Atelier-owned legacy Codex agent registration sections."""
+    kept: list[str] = []
+    in_managed_block = False
+    skip_agent_section = False
+    removed = False
 
-    pattern = re.compile(
-        rf"{re.escape(CODEX_AGENTS_BLOCK_START)}.*?{re.escape(CODEX_AGENTS_BLOCK_END)}\n?",
-        re.DOTALL,
-    )
-    stripped = pattern.sub("", existing).rstrip()
-    if stripped:
+    for line in existing.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped == CODEX_AGENTS_BLOCK_START:
+            in_managed_block = True
+            skip_agent_section = False
+            removed = True
+            continue
+        if stripped == CODEX_AGENTS_BLOCK_END:
+            in_managed_block = False
+            skip_agent_section = False
+            removed = True
+            continue
+        if in_managed_block:
+            removed = True
+            continue
+        if stripped.startswith("[") and stripped.endswith("]"):
+            skip_agent_section = bool(re.fullmatch(r"\[agents\.atelier_[A-Za-z0-9_-]+\]", stripped))
+            if skip_agent_section:
+                removed = True
+                continue
+        if skip_agent_section:
+            removed = True
+            continue
+        kept.append(line)
+
+    if not removed:
+        return existing
+    cleaned = re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
+    return cleaned + ("\n" if cleaned else "")
+
+
+def _upsert_codex_agents_block(existing: str, managed: str) -> str:
+    """Backward-compatible helper used only by older callers/tests."""
+    stripped = _remove_legacy_codex_agent_sections(existing)
+    if stripped and managed:
         return f"{stripped}\n\n{managed}"
-    return managed
+    return stripped or managed
+
+
+def _markdown_body(path: Path) -> str:
+    text = path.read_text(encoding="utf-8").strip()
+    lines = text.splitlines()
+    if lines and lines[0].startswith("# "):
+        lines = lines[1:]
+        while lines and not lines[0].strip():
+            lines = lines[1:]
+    return "\n".join(lines).rstrip()
+
+
+def _render_codex_mode_body(body: str, repo_root: Path) -> str:
+    shared = {
+        "{{CORE_DISCIPLINE}}": ("Core discipline", repo_root / "integrations" / "shared" / "core-discipline.md"),
+        "{{CHANGE_DISCIPLINE}}": (
+            "Change discipline",
+            repo_root / "integrations" / "shared" / "change-discipline.md",
+        ),
+        "{{CODING_GUIDELINES}}": (
+            "Coding Guidelines",
+            repo_root / "integrations" / "shared" / "coding-guidelines.md",
+        ),
+    }
+    rendered = body.rstrip()
+    for token, (heading, path) in shared.items():
+        if token in rendered:
+            rendered = rendered.replace(token, f"## {heading}\n\n{_markdown_body(path)}")
+    if "{{" in rendered:
+        raise ValueError("unexpanded template token in Codex agent instructions")
+    return rendered
 
 
 def _toml_basic_escape(value: str) -> str:
-    """Escape a string for a TOML basic string (single- or multi-line).
-
-    Backslashes first (so literal ``\\d``/Windows paths survive instead of being
-    read as TOML escapes), then double-quotes (so a ``"`` or ``\"\"\"`` run can
-    never terminate the string early). Safe inside both ``"..."`` and
-    ``\"\"\"...\"\"\"`` forms.
-    """
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _render_codex_agent_toml(role_id: str, description: str, instructions: str, model: str | None) -> str:
-    # description is a single-line basic string: escape, then flatten newlines.
     desc = _toml_basic_escape(description).replace("\r", " ").replace("\n", " ")
     body = _toml_basic_escape(instructions.strip())
     rendered = f'name = "atelier.{role_id}"\ndescription = "{desc}"\n'
