@@ -8,7 +8,9 @@ from atelier.core.capabilities.workspace_host_overrides import (
     rewrite_agent_name,
     workspace_claude_agent_text,
     workspace_copilot_agent_text,
+    write_workspace_agents_md,
     write_workspace_claude_overrides,
+    write_workspace_codex_agent_config,
     write_workspace_codex_agents,
     write_workspace_copilot_agents,
     write_workspace_opencode_agents,
@@ -167,3 +169,35 @@ def test_write_workspace_codex_agents_projects_workspace_files(tmp_path: Path, m
 
     assert workspace / ".codex" / "agents" / "atelier.code.toml" in written
     assert 'name = "atelier.code"' in content
+
+
+def test_write_workspace_codex_agent_config_registers_role_agents(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("ATELIER_ROOT", str(tmp_path / "global-root"))
+    write_workspace_codex_agents(workspace)
+
+    written = write_workspace_codex_agent_config(workspace)
+    write_workspace_codex_agent_config(workspace)
+    content = written.read_text(encoding="utf-8")
+
+    assert written == workspace / ".codex" / "config.toml"
+    assert content.count("# ATELIER:CODEX AGENTS START") == 1
+    assert "[agents.atelier_code]" in content
+    assert f'config_file = "{workspace / ".codex" / "agents" / "atelier.code.toml"}"' in content
+    assert "[agents.atelier_review]" in content
+
+
+def test_write_workspace_agents_md_installs_distributed_managed_block(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("ATELIER_ROOT", str(tmp_path / "global-root"))
+
+    written = write_workspace_agents_md(workspace)
+    write_workspace_agents_md(workspace)
+    content = written.read_text(encoding="utf-8")
+
+    assert written == workspace / "AGENTS.md"
+    assert content.count("<!-- ATELIER:CODE START -->") == 1
+    assert "Codex may defer MCP tools behind `tool_search`" in content
+    assert "mcp__atelier__...` tools are visible" in content

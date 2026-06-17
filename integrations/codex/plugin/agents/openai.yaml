@@ -1,0 +1,4 @@
+interface:
+  display_name: "Atelier Agents"
+  short_description: "Use Atelier role agents and MCP tools for repo work"
+  default_prompt: "Use Atelier role agents: atelier_code, atelier_plan, atelier_explore, atelier_review, atelier_execute, atelier_solve, atelier_research."

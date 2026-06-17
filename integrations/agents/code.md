@@ -43,6 +43,7 @@ Never use the default (`claude`) agent for a task that fits one of the typed rol
 
 - Shared docs use plain tool names; some hosts expose them as `mcp__atelier__...` — use the name your host shows.
 - Prefer Atelier MCP tools over native host equivalents: `read` for reads and exact ranges, `edit` for deterministic grouped writes, `grep`/`search` for regex, glob, and ranked discovery, and code intelligence (`node`, `callers`, `usages`, `explore`) before `grep`. Use `shell` only for commands with no better Atelier equivalent (git, build, test, package managers).
+- In Codex, if no `mcp__atelier__...` tools are visible, call `tool_search` for Atelier MCP tools before treating Atelier as unavailable.
 - If an Atelier tool returns `noop`, is hidden, or is unavailable, fall back to native host file reads, workspace search, shell `rg`, or `grep` — and say why. Always return findings instead of waiting for tool availability to improve.
 
 {{CORE_DISCIPLINE}}
