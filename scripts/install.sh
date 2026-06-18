@@ -144,12 +144,34 @@ need_cmd tar
 
 DOWNLOAD_CMD=()
 if command -v curl >/dev/null 2>&1; then
-    DOWNLOAD_CMD=(curl -fL --retry 3 --retry-delay 2 --connect-timeout 15)
+    # Use clean single-line progress bar on a TTY; silent when piped.
+    if [[ -t 2 ]]; then
+        DOWNLOAD_CMD=(curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 --progress-bar)
+    else
+        DOWNLOAD_CMD=(curl -fLs --retry 3 --retry-delay 2 --connect-timeout 15)
+    fi
 elif command -v wget >/dev/null 2>&1; then
     DOWNLOAD_CMD=(wget -qO-)
 else
     fail "Either curl or wget is required to download the Atelier binary."
 fi
+
+# Spinner for steps that don't have built-in progress output.
+_spin() {
+    local pid=$1 msg=${2:-Working}
+    local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    local i=0
+    if [[ ! -t 2 ]]; then
+        wait "$pid"; return $?
+    fi
+    while kill -0 "$pid" 2>/dev/null; do
+        printf "\r  ${frames[i]} %s" "$msg" >&2
+        i=$(( (i + 1) % ${#frames[@]} ))
+        sleep 0.08
+    done
+    printf "\r" >&2
+    wait "$pid"
+}
 
 # ---- download & extract ------------------------------------------------------
 if [[ "$ATELIER_LOCAL" == "1" ]]; then
@@ -172,6 +194,7 @@ else
     trap 'rm -f "$TMP_ARCHIVE"' EXIT
 
     verbose "Downloading from: $RELEASE_URL"
+    printf "  Downloading Atelier ${ATELIER_RELEASE_TAG} (%s)...\n" "${BINARY_SUFFIX}" >&2
     if ! "${DOWNLOAD_CMD[@]}" "$RELEASE_URL" > "$TMP_ARCHIVE"; then
         fail "Could not download ${ASSET_NAME}. The release may not include this platform asset yet: ${RELEASE_URL}"
     fi
@@ -182,7 +205,7 @@ else
 
     verify_checksum "$TMP_ARCHIVE" "$RELEASE_URL"
 
-    tar -xzf "$TMP_ARCHIVE" -C "$ATELIER_INSTALL_DIR"
+    { tar -xzf "$TMP_ARCHIVE" -C "$ATELIER_INSTALL_DIR" & _spin $! "Extracting..."; }
 
     info "Distribution extracted to: ${ATELIER_INSTALL_DIR}"
 fi
