@@ -146,6 +146,16 @@ if ! uv audit --frozen 2>&1; then
     exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# 9. Mirror to public repo (bench -> atelier-ws/atelier main)
+# ---------------------------------------------------------------------------
+if [ "$CURRENT_BRANCH" = "bench" ] && [ -z "${ATELIER_MIRROR_RUNNING:-}" ]; then
+    echo "🪞 Mirroring to public repo..."
+    if ! ATELIER_MIRROR_RUNNING=1 uv run python scripts/mirror.py 2>&1; then
+        echo -e "\033[1;33m⚠️  Mirror failed — push continues (run mirror.py manually to retry).\033[0m"
+    fi
+fi
+
 echo ""
 echo "✅ All CI-equivalent pre-push checks passed!"
 echo "🚀 Pushing $CURRENT_BRANCH to $REMOTE_BRANCH..."
