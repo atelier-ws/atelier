@@ -48,6 +48,39 @@ overrides:
       cache_read: 2.00
       cache_write: 25.00
 
+  # Claude Opus 4 builds not yet in LiteLLM.
+  # Rates match published Anthropic Opus 4 card (input/output per M tokens).
+  claude-opus-4-8:
+    input: 15.00
+    output: 75.00
+    cache_read: 1.50
+    cache_write: 18.75
+    cache_write_1h: 30.00
+    thinking: 75.00
+    context_window: 200000
+    long_context:
+      threshold: 200000
+      input: 30.00
+      output: 150.00
+      cache_read: 3.00
+      cache_write: 37.50
+
+  # Claude Sonnet 4 builds not yet in LiteLLM.
+  claude-sonnet-4-6:
+    input: 3.00
+    output: 15.00
+    cache_read: 0.30
+    cache_write: 3.75
+    cache_write_1h: 6.00
+    thinking: 15.00
+    context_window: 200000
+    long_context:
+      threshold: 200000
+      input: 6.00
+      output: 30.00
+      cache_read: 0.60
+      cache_write: 7.50
+
   # OpenCode (Subscription-covered routing)
   # Uses GPT-4o-mini as a proxy.
   opencode/big-pickle:

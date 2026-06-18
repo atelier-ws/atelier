@@ -37,8 +37,10 @@ def test_frame0_shows_cost_savings_carry_combined(atelier_root: Path) -> None:
     # Frame 0: combined — cost always present, savings/carry when nonzero.
     seg = _segment(atelier_root, 0, live_cost_usd=1.234, live_in_tok=10_000, live_cache_tok=50_000, live_out_tok=2_000)
     assert "1.234" in seg
-    # Icon frame (↑) must not have a text separator prepended.
-    assert seg.startswith(" ↑"), f"expected icon-led output, got: {seg!r}"
+    # Cost-led icon frame: leads with " $" (no text separator prepended).
+    assert seg.startswith(" $"), f"expected cost-led output, got: {seg!r}"
+    assert "(I:10k C:50k O:2k)" in seg
+    assert "↓" in seg  # savings segment present when there is usage
 
 
 def test_frame1_shows_token_breakdown(atelier_root: Path) -> None:
@@ -50,20 +52,18 @@ def test_frame1_shows_token_breakdown(atelier_root: Path) -> None:
 
 
 def test_frame_wraps_when_few_frames(atelier_root: Path) -> None:
-    """With no savings/carry/etc, only frame 0 (combined) and frame 1 (tokens) exist;
-    even counters map to frame 0 (cost), odd to frame 1 (token breakdown)."""
+    """With only live cost (no savings/carry/historical), frame 0 (cost + I/C/O)
+    is the sole frame and is shown for every counter."""
     for i in range(4):
         seg = _segment(atelier_root, i, live_cost_usd=0.5)
-        if i % 2 == 0:
-            assert "0.500" in seg, f"counter={i} (frame 0 expected): {seg!r}"
-        else:
-            assert "↑" in seg, f"counter={i} (frame 1 expected): {seg!r}"
+        assert "0.500" in seg, f"counter={i}: {seg!r}"
+        assert seg.startswith(" $"), f"counter={i}: {seg!r}"
 
 
 def test_historical_savings_empty(atelier_root: Path) -> None:
     from atelier.core.capabilities.savings_summary import _read_historical_savings
 
-    usd, tok, _calls, _turns, _spend = _read_historical_savings(7, atelier_root)
+    usd, tok, _calls, _turns, _spend, _carry = _read_historical_savings(7, atelier_root)
     assert usd == 0.0
     assert tok == 0
 
@@ -88,7 +88,7 @@ def test_historical_savings_reads_recent_rows(atelier_root: Path, monkeypatch: p
     target_ts = 1781524800.0  # approx 2026-06-15T10:00:00 UTC
     monkeypatch.setattr(time_mod, "time", lambda: target_ts)
 
-    usd7, tok7, _calls7, _turns7, _spend7 = _read_historical_savings(7, atelier_root)
+    usd7, tok7, _calls7, _turns7, _spend7, _carry7 = _read_historical_savings(7, atelier_root)
     assert tok7 == 1000
     assert abs(usd7 - 0.5) < 1e-6
 

@@ -58,6 +58,7 @@ def test_public_rollup_payload_is_minimal_and_session_scoped(telemetry_env: Path
         saved_usd=0.1234567,
         tokens_saved=9240,
         calls_avoided=3,
+        turn_count=5,
         source="codex",
         occurred_at=datetime(2026, 6, 16, 10, 0, tzinfo=UTC),
     )
@@ -70,13 +71,15 @@ def test_public_rollup_payload_is_minimal_and_session_scoped(telemetry_env: Path
     assert payload["saved_usd"] == 0.123457
     assert payload["tokens_saved"] == 9240
     assert payload["calls_avoided"] == 3
+    assert payload["turn_count"] == 5
     assert payload["occurred_at"] == "2026-06-16T10:00:00Z"
 
 
-def test_public_rollup_respects_telemetry_opt_out(
+def test_public_rollup_always_fires_regardless_of_product_telemetry_setting(
     telemetry_env: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Public rollup fires unconditionally — no opt-out path."""
     calls: list[dict[str, Any]] = []
 
     def fake_post(endpoint: str, payload: dict[str, Any], *, timeout_s: float) -> bool:
@@ -84,22 +87,23 @@ def test_public_rollup_respects_telemetry_opt_out(
         return True
 
     monkeypatch.setattr("atelier.core.service.telemetry.public_rollup._post_json", fake_post)
-    monkeypatch.setenv("ATELIER_TELEMETRY", "0")
+    monkeypatch.setenv("ATELIER_TELEMETRY", "0")  # product telemetry off — must not affect public rollup
+    monkeypatch.setenv("ATELIER_PUBLIC_TELEMETRY_ENDPOINT", "https://example.test/rollup")
 
-    assert (
-        publish_public_savings_rollup(
-            session_id="session-1",
-            saved_usd=1.0,
-            tokens_saved=100,
-            calls_avoided=2,
-            source="codex",
-        )
-        is False
+    result = publish_public_savings_rollup(
+        session_id="session-always",
+        saved_usd=0.5,
+        tokens_saved=500,
+        calls_avoided=1,
+        turn_count=4,
+        source="claude",
     )
-    assert calls == []
+    assert result is True
+    assert len(calls) == 1
+    assert calls[0]["session_id"] == "session-always"
 
 
-def test_public_rollup_posts_when_remote_telemetry_enabled(
+def test_public_rollup_posts_correct_payload(
     telemetry_env: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -110,8 +114,6 @@ def test_public_rollup_posts_when_remote_telemetry_enabled(
         return True
 
     monkeypatch.setattr("atelier.core.service.telemetry.public_rollup._post_json", fake_post)
-    monkeypatch.setenv("ATELIER_TELEMETRY", "1")
-    monkeypatch.setenv("ATELIER_TELEMETRY_ALLOW_IN_TESTS", "1")
     monkeypatch.setenv("ATELIER_PUBLIC_TELEMETRY_ENDPOINT", "https://example.test/rollup")
     monkeypatch.setenv("ATELIER_PUBLIC_TELEMETRY_TIMEOUT_MS", "250")
 
@@ -120,6 +122,7 @@ def test_public_rollup_posts_when_remote_telemetry_enabled(
         saved_usd=1.25,
         tokens_saved=1000,
         calls_avoided=4,
+        turn_count=7,
         source="claude",
     )
     assert len(calls) == 1
