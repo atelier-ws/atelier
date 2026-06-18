@@ -30,7 +30,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 # ---- paths & detection ------------------------------------------------------
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
