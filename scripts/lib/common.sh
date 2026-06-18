@@ -1114,7 +1114,14 @@ stop_existing_atelier_processes() {
         # servicectl/stack are still cleaned.
         if [[ "${ATELIER_LOCAL:-0}" == "1" ]]; then
             case "$args" in
-                *"atelier mcp --host"*|*"/atelier mcp "*|*" atelier mcp "*) continue ;;
+                *"atelier mcp --host"*|*"/atelier mcp "*|*" atelier mcp "*)
+                    # Skip only dev-path MCP servers (live editable source, never stale).
+                    # Prod-path servers (~/.local/) ARE stale during make dev — kill them.
+                    case "$args" in
+                        *"${HOME}/.local/"*) ;; # prod path → fall through to kill
+                        *) continue ;;          # dev venv path → skip
+                    esac
+                    ;;
             esac
         fi
 
