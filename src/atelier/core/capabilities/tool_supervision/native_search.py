@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import base64
+import bisect
 import json
 import logging
 import mimetypes
@@ -575,31 +576,32 @@ def _query_variants(content_regex: str | None) -> list[str]:
 
 def _find_symbol_spans(path: Path, source: str) -> list[tuple[int, int, str]]:
     suffix = path.suffix.lower()
-    spans: list[tuple[int, int, str]] = []
     if suffix == ".py":
-        for match in re.finditer(r"^\s*(?:async\s+def|def|class)\s+([A-Za-z_]\w*)", source, flags=re.M):
-            name = match.group(1)
-            start = source.count("\n", 0, match.start()) + 1
-            spans.append((start, start, name))
+        pattern = r"^\s*(?:async\s+def|def|class)\s+([A-Za-z_]\w*)"
     elif suffix in {".ts", ".tsx", ".js", ".jsx"}:
-        for match in re.finditer(
-            r"^\s*(?:export\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)",
-            source,
-            flags=re.M,
-        ):
-            name = match.group(1)
-            start = source.count("\n", 0, match.start()) + 1
-            spans.append((start, start, name))
-
-    if not spans:
-        return spans
-    lines = source.splitlines()
+        pattern = r"^\s*(?:export\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)"
+    else:
+        return []
+    # `finditer` yields matches in ascending position, so a forward cursor makes
+    # total newline counting O(len(source)) instead of O(matches x len(source)).
+    # The previous `source.count("\n", 0, match.start())` per match was quadratic
+    # in file size and ran for minutes on large generated .ts files.
+    starts: list[int] = []
+    names: list[str] = []
+    line = 1
+    cursor = 0
+    for match in re.finditer(pattern, source, flags=re.M):
+        line += source.count("\n", cursor, match.start())
+        cursor = match.start()
+        starts.append(line)
+        names.append(match.group(1))
+    if not starts:
+        return []
+    total_lines = len(source.splitlines())
     finalized: list[tuple[int, int, str]] = []
-    starts = [line for line, _end, _name in spans]
-    for idx, (start, _end, name) in enumerate(spans):
-        next_start = starts[idx + 1] if idx + 1 < len(starts) else len(lines) + 1
-        end = max(start, next_start - 1)
-        finalized.append((start, end, name))
+    for idx, start in enumerate(starts):
+        next_start = starts[idx + 1] if idx + 1 < len(starts) else total_lines + 1
+        finalized.append((start, max(start, next_start - 1), names[idx]))
     return finalized
 
 
@@ -681,14 +683,20 @@ def _symbol_windows(
     lines_after: int,
 ) -> tuple[list[tuple[int, int]], list[str]]:
     symbols = _find_symbol_spans(path, source)
+    # Spans are sorted by start and non-overlapping (each ends one line before the
+    # next begins), so a binary search finds the containing span in O(log n) --
+    # the previous inner linear scan was O(line_nos x symbols), quadratic on big
+    # files where both grow together.
+    symbol_starts = [start for start, _end, _name in symbols]
     windows: list[tuple[int, int]] = []
     symbol_hits: list[str] = []
     for line_no in line_nos:
         matched_symbol = None
-        for start, end, name in symbols:
+        idx = bisect.bisect_right(symbol_starts, line_no) - 1
+        if idx >= 0:
+            start, end, name = symbols[idx]
             if start <= line_no <= end:
                 matched_symbol = (start, end, name)
-                break
         if matched_symbol is not None:
             start, end, name = matched_symbol
             windows.append((start, end))
