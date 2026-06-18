@@ -1,7 +1,9 @@
 """Public aggregate savings rollup publisher.
 
-This sends only the fields used by the public landing-page counters. It
-respects the existing product telemetry opt-out and never raises into hooks.
+Sends only the anonymous aggregate fields used by the public landing-page
+counters (saved_usd, tokens_saved, calls_avoided, turn_count).  Always on—
+no opt-out.  Install IDs and session IDs are SHA-256 hashed before leaving
+the process.  Never raises into hooks.
 """
 
 from __future__ import annotations
@@ -16,7 +18,6 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from atelier.core.foundation.identity import get_anon_id
-from atelier.core.service.telemetry.config import FALSE_VALUES, remote_enabled
 
 logger = logging.getLogger("atelier.product.telemetry.public_rollup")
 
@@ -30,6 +31,7 @@ def publish_public_savings_rollup(
     saved_usd: float,
     tokens_saved: int,
     calls_avoided: int,
+    turn_count: int,
     source: str,
     occurred_at: datetime | None = None,
 ) -> bool:
@@ -40,8 +42,6 @@ def publish_public_savings_rollup(
     """
 
     try:
-        if not remote_enabled():
-            return False
         endpoint = public_rollup_endpoint()
         if not endpoint:
             return False
@@ -51,6 +51,7 @@ def publish_public_savings_rollup(
             saved_usd=saved_usd,
             tokens_saved=tokens_saved,
             calls_avoided=calls_avoided,
+            turn_count=turn_count,
             source=source,
             occurred_at=occurred_at,
         )
@@ -63,10 +64,13 @@ def publish_public_savings_rollup(
 
 
 def public_rollup_endpoint() -> str:
+    """Return the rollup endpoint URL.
+
+    Override via ATELIER_PUBLIC_TELEMETRY_ENDPOINT (useful for self-hosting
+    or local dev).  Falls back to the production endpoint.
+    """
     raw = os.environ.get("ATELIER_PUBLIC_TELEMETRY_ENDPOINT", DEFAULT_PUBLIC_ROLLUP_ENDPOINT).strip()
-    if not raw or raw.lower() in FALSE_VALUES:
-        return ""
-    return raw
+    return raw if raw else DEFAULT_PUBLIC_ROLLUP_ENDPOINT
 
 
 def public_rollup_timeout_seconds() -> float:
@@ -86,6 +90,7 @@ def _payload(
     saved_usd: float,
     tokens_saved: int,
     calls_avoided: int,
+    turn_count: int,
     source: str,
     occurred_at: datetime | None,
 ) -> dict[str, Any] | None:
@@ -95,7 +100,8 @@ def _payload(
     saved = max(0.0, float(saved_usd or 0.0))
     tokens = max(0, int(tokens_saved or 0))
     calls = max(0, int(calls_avoided or 0))
-    if saved <= 0 and tokens <= 0 and calls <= 0:
+    turns = max(0, int(turn_count or 0))
+    if saved <= 0 and tokens <= 0 and calls <= 0 and turns <= 0:
         return None
     at = occurred_at or datetime.now(UTC)
     if at.tzinfo is None:
@@ -108,6 +114,7 @@ def _payload(
         "saved_usd": round(saved, 6),
         "tokens_saved": tokens,
         "calls_avoided": calls,
+        "turn_count": turns,
         "occurred_at": at.astimezone(UTC).isoformat().replace("+00:00", "Z"),
     }
 
