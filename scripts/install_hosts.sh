@@ -473,6 +473,14 @@ run_installer() {
         elif [[ "${ATELIER_HOST_STATUS_STREAM:-0}" != "1" ]]; then
             print_frame_line "Failed ${host}"
         fi
+        # Always show the captured output on failure so the user can see why.
+        if [[ -n "$output" ]]; then
+            printf "%b│%b  %bError output from %s installer:%b\n" \
+                "$C_FRAME" "$C_RESET" "$C_RED" "$host" "$C_RESET"
+            while IFS= read -r _err_line; do
+                printf "%b│%b  %s\n" "$C_FRAME" "$C_RESET" "$_err_line"
+            done <<< "$output"
+        fi
     elif echo "$output" | grep -q "] WARN:"; then
         WARN+=("$host")
         emit_host_status "WARN" "$host"
