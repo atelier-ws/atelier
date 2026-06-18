@@ -98,9 +98,10 @@ _bar() {
     local f=$(( cur * w / tot ))
     (( f > w )) && f=$w
     local e=$(( w - f ))
-    printf "${_CP}%s${_CD}%s${_C0}" \
-        "$(printf '%*s' "$f" '' | tr ' ' '█')" \
-        "$(printf '%*s' "$e" '' | tr ' ' '░')"
+    local i s='' b=''
+    for (( i=0; i<f; i++ )); do s+='█'; done
+    for (( i=0; i<e; i++ )); do b+='░'; done
+    printf "${_CP}%s${_CD}%s${_C0}" "$s" "$b"
 }
 
 # _hum <bytes>  — human-readable size
