@@ -13,7 +13,7 @@ TEST_PRINT_TIME ?= 0
 COV_FAIL_UNDER ?= 66
 FORCE_ARG := $(if $(f),--force,)
 EXTERNAL_PERIODS ?= today week month
-.PHONY: help install uninstall dev build release/build prod status start restart build-host-skills sync-agent-context \
+.PHONY: help install uninstall dev build release/build prod status start restart build-host-skills sync-agent-context mirror release \
 	check-agent-context docs-check worktree-env runtime-evidence \
 	test test-fast test-cov test-full lint format-check format typecheck launch-gate verify pre-commit \
 	proof-cost-quality demo import clean \
@@ -36,28 +36,26 @@ build: ## Build and package for production distribution
 
 release/build: build ## Alias for build release jobs
 
-mirror: ## Mirror a tag to atelier-ws/atelier: make mirror tag=v0.4.8
+mirror: ## Incremental mirror bench → public repo (history-preserving): make mirror
+	ATELIER_MIRROR_RUNNING=1 uv run python -m scripts.mirror
+
+release: ## Bump version, commit, push, mirror, tag public repo: make release tag=v0.4.X
 	@set -e; \
-	 TAG=$${tag:-$$(git tag --sort=-version:refname | head -1)}; \
-	 [ -n "$$TAG" ] || { echo "Error: no tag found. Run: make mirror tag=vX.Y.Z"; exit 1; }; \
-	 git rev-parse "$$TAG" >/dev/null 2>&1 \
-	   || { echo "Error: tag '$$TAG' does not exist"; exit 1; }; \
-	 echo "Mirroring $$TAG -> atelier-ws/atelier ..."; \
-	 TMPDIR=$$(mktemp -d) && trap "rm -rf $$TMPDIR" EXIT; \
-	 git archive $$TAG | tar -x -C $$TMPDIR; \
-	 grep -v '^#' release/private-paths.txt | grep -v '^$$' | \
-	   while IFS= read -r p; do rm -rf "$$TMPDIR/$$p"; done; \
-	 mkdir -p "$$TMPDIR/.github/workflows"; \
-	 cp release/atelier-release.yml "$$TMPDIR/.github/workflows/release.yml"; \
-	 cd $$TMPDIR; \
-	 git init -b main >/dev/null; \
-	 git add -A; \
-	 git commit -q -m "Release $$TAG"; \
+	 TAG=$${tag:-}; \
+	 [ -n "$$TAG" ] || { echo "Usage: make release tag=vX.Y.Z"; exit 1; }; \
+	 VER=$${TAG#v}; \
+	 sed -i "s/^version = .*/version = \"$$VER\"/" pyproject.toml; \
+	 echo "Bumped pyproject.toml to $$VER"; \
+	 git add pyproject.toml; \
+	 git commit --no-verify -m "chore: bump to $$TAG"; \
+	 git push --no-verify; \
 	 git tag $$TAG; \
-	 git remote add origin git@github.com:atelier-ws/atelier.git; \
-	 git push origin main --force -q; \
-	 git push origin $$TAG --force -q; \
-	 echo "Mirrored $$TAG to atelier-ws/atelier"
+	 git push --no-verify origin $$TAG; \
+	 echo "Mirroring to public repo..."; \
+	 ATELIER_MIRROR_RUNNING=1 uv run python -m scripts.mirror; \
+	 PUB_SHA=$$(git rev-parse refs/mirror/bench-pub); \
+	 git push --no-verify https://github.com/atelier-ws/atelier.git "$$PUB_SHA:refs/tags/$$TAG"; \
+	 echo "✓ Released $$TAG (dev + public)"
 
 prod: ## Build and install from local production build (includes mypyc compilation; expects ~2-3 min build time)
 	bash scripts/build.sh
