@@ -413,6 +413,95 @@ def _write_session_enrichment(
                 Path(tmp_path).unlink(missing_ok=True)
 
 
+def _push_public_rollup(
+    session_id: str,
+    saved_usd: float,
+    tokens_saved: int,
+    calls_avoided: int,
+    turn_count: int,
+    carry_usd: float = 0.0,
+    carry_tokens: int = 0,
+    source: str = "claude",
+) -> bool:
+    """Stdlib-only public rollup push — no atelier imports, always works."""
+    import hashlib
+    import json as _json
+    import urllib.request
+    from datetime import UTC, datetime
+
+    saved = max(0.0, float(saved_usd or 0))
+    tokens = max(0, int(tokens_saved or 0))
+    calls = max(0, int(calls_avoided or 0))
+    turns = max(0, int(turn_count or 0))
+    carry_s = max(0.0, float(carry_usd or 0))
+    carry_t = max(0, int(carry_tokens or 0))
+    if saved <= 0 and tokens <= 0 and calls <= 0 and turns <= 0 and carry_s <= 0 and carry_t <= 0:
+        return False
+
+    # Stable anonymous install identifier from auth.json
+    try:
+        import json as _j
+
+        _auth = _j.loads((_atelier_root() / "auth.json").read_text())
+        _raw_id = _auth.get("install_id") or _auth.get("userId") or "unknown"
+    except Exception:
+        _raw_id = "unknown"
+    anon_id = hashlib.sha256(_raw_id.encode()).hexdigest()
+
+    # Atelier version (best-effort)
+    try:
+        from importlib.metadata import version as _ver
+
+        atelier_version = _ver("atelier")
+    except Exception:
+        atelier_version = "unknown"
+
+    endpoint = (
+        __import__("os").environ.get("ATELIER_PUBLIC_TELEMETRY_ENDPOINT", "")
+        or "https://atelier.ws/api/telemetry/rollup"
+    )
+
+    payload = {
+        "anon_id": anon_id,
+        "session_id": str(session_id).strip(),
+        "atelier_version": atelier_version,
+        "source": source,
+        "saved_usd": round(saved, 6),
+        "tokens_saved": tokens,
+        "calls_avoided": calls,
+        "carry_usd": round(carry_s, 6),
+        "carry_tokens": carry_t,
+        "turn_count": turns,
+        "occurred_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+    try:
+        body = _json.dumps(payload).encode()
+        req = urllib.request.Request(
+            endpoint,
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": f"atelier/{atelier_version} (telemetry)",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            ok = resp.status in (200, 201)
+            logger.info(
+                "public_rollup.pushed session=%s saved=%.4f carry=%.4f tokens=%d turns=%d ok=%s",
+                payload["session_id"][:8],
+                saved,
+                carry_s,
+                tokens + carry_t,
+                turns,
+                ok,
+            )
+            return ok
+    except Exception as exc:
+        logger.warning("public_rollup.failed session=%s err=%s", payload["session_id"][:8], exc)
+        return False
+
+
 def _load_session_aggregate(session_id: str) -> dict[str, Any]:
     if not session_id:
         return {}
@@ -701,15 +790,19 @@ def main() -> int:
     savings: dict[str, Any] | None = None
     with contextlib.suppress(Exception):
         savings = _load_session_savings(session_id)
-        from atelier.core.service.telemetry.public_rollup import publish_public_savings_rollup
 
-        publish_public_savings_rollup(
-            session_id=session_id,
-            saved_usd=float(savings.get("saved_usd", 0.0) or 0.0),
-            tokens_saved=int(savings.get("tokens_saved", 0) or 0),
-            calls_avoided=int(savings.get("calls_avoided", 0) or 0),
-            source="claude",
-        )
+    # Public rollup — always-on stdlib push (no atelier import, never fails silently).
+    _s = savings or {}
+    _push_public_rollup(
+        session_id=session_id,
+        saved_usd=float(_s.get("saved_usd", 0.0) or 0.0),
+        tokens_saved=int(_s.get("tokens_saved", 0) or 0),
+        calls_avoided=int(_s.get("calls_avoided", 0) or 0),
+        carry_usd=float(_s.get("carry_usd", 0.0) or 0.0),
+        carry_tokens=int(_s.get("carry_tokens", 0) or 0),
+        turn_count=int((stats or {}).get("turns", 0) or 0),
+        source="claude",
+    )
 
     # ── Write session cost + carry to savings.jsonl for historical 7d/30d spend tracking
     if stats and stats.get("est_cost_usd", 0) > 0:
