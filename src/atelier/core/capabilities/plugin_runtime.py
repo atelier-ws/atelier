@@ -1335,7 +1335,6 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
     llm_turns = int(session.get("llm_turns", 0) or 0)
     prompt_turns = int(session.get("turns", 0) or 0)
     total_tool_calls = int(session.get("total_tool_calls", 0) or 0)
-    hook_tool_calls = int(session.get("hook_total_tool_calls", 0) or 0)
     calls_avoided = int(report.get("calls_avoided", 0) or 0)
     tokens_saved = int(report.get("tokens_saved", 0) or 0)
     saved_usd = float(cost.get("saved_usd", 0.0) or 0.0)
@@ -3212,9 +3211,7 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
     files = (
         [session_stats_path(root, session_id)]
         if session_id
-        else sorted(sessions_dir.glob("*/stats.json"))
-        if sessions_dir.exists()
-        else []
+        else sorted(sessions_dir.glob("*/stats.json")) if sessions_dir.exists() else []
     )
     aggregate: dict[str, Any] = {
         "session_count": 0,
