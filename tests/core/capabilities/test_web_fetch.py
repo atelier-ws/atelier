@@ -331,6 +331,26 @@ def test_html_to_markdown_preserves_coding_docs_structure() -> None:
     assert "alert" not in markdown
 
 
+def test_html_to_markdown_handles_decomposed_descendants() -> None:
+    # Regression: a hidden container holding child tags. _remove_noise
+    # decomposes the container, which nulls its descendants' .attrs while those
+    # descendants are still pending in find_all(True)'s materialized list.
+    # Reaching one used to raise "AttributeError: 'NoneType' object has no
+    # attribute 'get'" and broke every fetch of a page with such markup.
+    html = (
+        "<html><body>"
+        '<div style="display:none"><span>secret</span><p>hidden body</p></div>'
+        "<p>visible body</p>"
+        "</body></html>"
+    )
+
+    markdown = web_fetch.html_to_markdown_for_agent(html)
+
+    assert "visible body" in markdown
+    assert "secret" not in markdown
+    assert "hidden body" not in markdown
+
+
 def test_clean_markdown_removes_converter_noise() -> None:
     cleaned = web_fetch.clean_markdown_for_agent("Title\nTitle\n\n\n\n\n![](pixel.gif)\n[](/empty)\n    ```\ncode\n```")
 

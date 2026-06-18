@@ -74,15 +74,37 @@ ATELIER_PY="$(bash "$(dirname "${BASH_SOURCE[0]}")/_atelier_python.sh" 2>/dev/nu
 ATELIER_PY="${ATELIER_PY:-python3}"
 
 # --- Cost reset on /clear ---
-# SessionStart(clear) drops a marker; snapshot the cumulative live cost at
-# that moment and subtract it going forward so the row shows only post-clear spend.
+# SessionStart(clear) drops two markers:
+#   1. Session-keyed: statusline_cost_reset/<session_id>
+#   2. Workspace-keyed: statusline_cost_reset/ws_<workspace_key>
+# The workspace-keyed marker handles the case where /clear creates a new
+# session_id: Claude Code fires SessionStart(clear) with the pre-clear id,
+# but the statusline renders with the post-clear id, so the session-keyed
+# marker would never be matched without this fallback.
 if [ -n "${SESSION_ID:-}" ]; then
   _ATELIER_COST_RESET="${ATELIER_STATUS_ROOT}/statusline_cost_reset/${SESSION_ID}"
   _ATELIER_COST_BASE="${ATELIER_STATUS_ROOT}/statusline_cost_baseline/${SESSION_ID}"
-  if [ -f "${_ATELIER_COST_RESET}" ]; then
+  # Derive workspace key from TRANSCRIPT_PATH. Claude Code names its project
+  # dirs by replacing every "/" in the cwd with "-"; the hook writes the
+  # marker with the same encoding so we can match it here.
+  _ATELIER_COST_RESET_WS=""
+  if [ -n "${TRANSCRIPT_PATH:-}" ]; then
+    _TR_DIR=$(dirname "${TRANSCRIPT_PATH}" 2>/dev/null || echo "")
+    _TR_WS=$(basename "${_TR_DIR}" 2>/dev/null || echo "")
+    # Subagent transcripts live one level deeper; skip past the subagents/ dir.
+    if [ "${_TR_WS:-}" = "subagents" ]; then
+      _TR_DIR=$(dirname "${_TR_DIR}" 2>/dev/null || echo "")
+      _TR_WS=$(basename "${_TR_DIR}" 2>/dev/null || echo "")
+    fi
+    if [ -n "${_TR_WS:-}" ] && [ "${_TR_WS}" != "." ] && [ "${_TR_WS}" != "/" ]; then
+      _ATELIER_COST_RESET_WS="${ATELIER_STATUS_ROOT}/statusline_cost_reset/ws_${_TR_WS}"
+    fi
+  fi
+  if [ -f "${_ATELIER_COST_RESET}" ] || { [ -n "${_ATELIER_COST_RESET_WS:-}" ] && [ -f "${_ATELIER_COST_RESET_WS}" ]; }; then
     mkdir -p "${ATELIER_STATUS_ROOT}/statusline_cost_baseline" 2>/dev/null
     printf '%s' "${COST:-0}" >"${_ATELIER_COST_BASE}" 2>/dev/null
     rm -f "${_ATELIER_COST_RESET}" 2>/dev/null
+    [ -n "${_ATELIER_COST_RESET_WS:-}" ] && rm -f "${_ATELIER_COST_RESET_WS}" 2>/dev/null
   fi
   if [ -f "${_ATELIER_COST_BASE}" ]; then
     _ATELIER_COST_BASE_VAL=$(cat "${_ATELIER_COST_BASE}" 2>/dev/null)

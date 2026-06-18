@@ -226,6 +226,16 @@ def main() -> int:
                 reset_dir = _atelier_root() / "statusline_cost_reset"
                 reset_dir.mkdir(parents=True, exist_ok=True)
                 (reset_dir / session_id_raw).write_text("", encoding="utf-8")
+                # Also write a workspace-keyed marker so the statusline can
+                # find it even when /clear assigns a new session_id. Claude
+                # Code fires SessionStart(clear) with the pre-clear session_id,
+                # but the statusline renders with the post-clear session_id, so
+                # the session-keyed marker above is never matched.
+                # The workspace key uses the same encoding Claude Code applies
+                # to project dirs: replace "/" with "-" in the cwd.
+                if cwd:
+                    ws_key = cwd.replace("/", "-")
+                    (reset_dir / f"ws_{ws_key}").write_text("", encoding="utf-8")
         if not _apply_session_bootstrap(payload):
             _initialize_session_stats(payload)
 

@@ -11,13 +11,19 @@ Verifies:
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+from pathlib import Path as _Path
 
 import pytest
 from click.testing import CliRunner
 
-from atelier.core.capabilities.eval_mini.schema import MiniEvalReport
+_REPO_ROOT = _Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 from atelier.gateway.cli import cli
+from benchmarks.mini.schema import MiniEvalReport
 
 _API_KEY_VARS = (
     "ANTHROPIC_API_KEY",
@@ -42,7 +48,7 @@ def offline_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_eval_mini_help_exits_zero() -> None:
-    result = CliRunner().invoke(cli, ["eval", "mini", "--help"])
+    result = CliRunner().invoke(cli, ["benchmark", "mini", "--help"])
     assert result.exit_code == 0, result.output
     assert "mini eval suite" in result.output.lower()
     assert "--dry-run" in result.output
@@ -51,7 +57,7 @@ def test_eval_mini_help_exits_zero() -> None:
 def test_eval_mini_dry_run_json_offline(offline_env: Path) -> None:
     result = CliRunner().invoke(
         cli,
-        ["--root", str(offline_env), "eval", "mini", "--dry-run", "--json"],
+        ["--root", str(offline_env), "benchmark", "mini", "--dry-run", "--json"],
     )
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)
@@ -64,7 +70,7 @@ def test_eval_mini_dry_run_json_offline(offline_env: Path) -> None:
 def test_eval_mini_dry_run_json_validates_schema(offline_env: Path) -> None:
     result = CliRunner().invoke(
         cli,
-        ["--root", str(offline_env), "eval", "mini", "--dry-run", "--json"],
+        ["--root", str(offline_env), "benchmark", "mini", "--dry-run", "--json"],
     )
     assert result.exit_code == 0, result.output
     report = MiniEvalReport.model_validate_json(result.output)
@@ -76,7 +82,7 @@ def test_eval_mini_dry_run_json_validates_schema(offline_env: Path) -> None:
 def test_eval_mini_writes_default_report_path(offline_env: Path) -> None:
     result = CliRunner().invoke(
         cli,
-        ["--root", str(offline_env), "eval", "mini", "--dry-run"],
+        ["--root", str(offline_env), "benchmark", "mini", "--dry-run"],
     )
     assert result.exit_code == 0, result.output
     json_path = offline_env / "evals" / "mini-report.json"
@@ -95,7 +101,7 @@ def test_eval_mini_custom_output_path(offline_env: Path, tmp_path: Path) -> None
         [
             "--root",
             str(offline_env),
-            "eval",
+            "benchmark",
             "mini",
             "--dry-run",
             "--json",
@@ -114,7 +120,7 @@ def test_eval_mini_dry_run_never_claims_success(offline_env: Path) -> None:
     """A dry-run must never report status=pass nor non-zero accepted tasks."""
     result = CliRunner().invoke(
         cli,
-        ["--root", str(offline_env), "eval", "mini", "--dry-run", "--json"],
+        ["--root", str(offline_env), "benchmark", "mini", "--dry-run", "--json"],
     )
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)
@@ -126,7 +132,7 @@ def test_eval_mini_dry_run_never_claims_success(offline_env: Path) -> None:
 def test_eval_mini_limit_option(offline_env: Path) -> None:
     result = CliRunner().invoke(
         cli,
-        ["--root", str(offline_env), "eval", "mini", "--dry-run", "--json", "--limit", "2"],
+        ["--root", str(offline_env), "benchmark", "mini", "--dry-run", "--json", "--limit", "2"],
     )
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)

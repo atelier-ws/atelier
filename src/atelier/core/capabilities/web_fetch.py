@@ -518,6 +518,12 @@ def _remove_noise(soup: Any) -> None:
     ):
         tag.decompose()
     for tag in soup.find_all(True):
+        # decompose() below also tears down a tag's descendants (setting their
+        # .attrs to None), but find_all(True) already materialized those
+        # descendants into this list. Skip any a prior iteration decomposed --
+        # Tag.get() on a None .attrs raises AttributeError.
+        if tag.attrs is None:
+            continue
         style = str(tag.get("style") or "").lower()
         if (
             tag.has_attr("hidden")

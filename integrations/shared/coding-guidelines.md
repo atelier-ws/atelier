@@ -1,34 +1,5 @@
 # Coding Guidelines
 
-### 1. Think Before Coding
-
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
-
-Before implementing:
-
-- State your assumptions explicitly. If uncertain after checking the source, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is still unclear after a targeted read, stop. Name what's confusing. Ask.
-
-### 2. Simplicity First
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-### 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-
-- Don't "improve" adjacent code, comments, or formatting.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-The test: Every changed line should trace directly to the user's request.
+- **Think before coding.** State assumptions; surface competing readings instead of picking silently; push back when a simpler approach exists; ask when a targeted read leaves it unclear — don't guess.
+- **Simplicity over cleverness.** The least code that solves the problem; if 200 lines could be 50, rewrite.
+- **Match the codebase.** Follow existing style and patterns.

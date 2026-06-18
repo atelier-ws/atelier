@@ -84,7 +84,10 @@ def flow_records(path: str) -> Iterator[tuple[str, bytes]]:
     try:
         from mitmproxy.io import FlowReader
     except ImportError as exc:  # pragma: no cover - optional dependency
-        raise SystemExit(
+        # Re-raise as ImportError (not SystemExit) so callers' broad excepts can
+        # degrade to receipt-only usage instead of aborting an already-finished
+        # run on a transient venv re-sync race.
+        raise ImportError(
             "mitmproxy is required to read .flow files. Install it with:\n    uv pip install mitmproxy"
         ) from exc
 
