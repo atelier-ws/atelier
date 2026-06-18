@@ -31,6 +31,7 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 _STOP_WORDS = frozenset({"a", "an", "for", "how", "in", "of", "the", "to", "with"})
 _DEFAULT_RRF_K = 60
 _DEFAULT_CANDIDATE_LIMIT = 200
+_DEFAULT_EMBED_BATCH_SIZE = 64
 
 # N12: per-signal weights for the BM25(lexical) + semantic + graph RRF blend.
 # Env overrides (opt-in, WS6 ATELIER_* style):
@@ -114,6 +115,24 @@ def resolve_search_mode(query: str, requested_mode: SearchMode) -> Literal["lexi
 def semantic_candidate_limit(limit: int) -> int:
     """Cap semantic candidate generation to protect search latency."""
     return max(limit, min(_DEFAULT_CANDIDATE_LIMIT, max(limit * 5, 25)))
+
+
+def resolve_embed_batch_size() -> int:
+    """Documents per ``embed_documents`` call during batch symbol prewarm.
+
+    Overridable via ``ATELIER_EMBED_BATCH_SIZE``; falls back to the default on
+    missing/garbage values. Batching collapses a cold prewarm of N symbols from
+    N model calls to ``ceil(N / batch)``.
+    """
+    raw = os.environ.get("ATELIER_EMBED_BATCH_SIZE", "").strip()
+    if raw:
+        try:
+            value = int(raw)
+        except ValueError:
+            return _DEFAULT_EMBED_BATCH_SIZE
+        if value > 0:
+            return value
+    return _DEFAULT_EMBED_BATCH_SIZE
 
 
 def render_embedding_text(symbol: SymbolRecord, *, source_text: str | None = None) -> str:
@@ -258,6 +277,52 @@ class SemanticSearchRanker:
             return []
         return self._embed_symbol(symbol, embedding_text)
 
+    def embed_symbols(
+        self,
+        symbols: Sequence[SymbolRecord],
+        *,
+        source_texts: dict[str, str | None] | None = None,
+    ) -> dict[str, list[float]]:
+        """Batch-embed *symbols*, returning ``{symbol_id: vector}``.
+
+        Reuses the per-symbol vector cache and batches the uncached documents
+        into chunked ``embed_documents`` calls, so a cold prewarm makes
+        ``ceil(N / batch)`` model calls instead of one per symbol. Vectors are
+        byte-identical to :meth:`embed_symbol` (same cache key and embedding
+        text), so callers may mix the two freely.
+        """
+        results: dict[str, list[float]] = {}
+        if self.embedder.dim <= 0:
+            return results
+        texts = source_texts or {}
+        pending_texts: list[str] = []
+        pending_meta: list[tuple[str, str]] = []  # (symbol_id, cache_key)
+        for symbol in symbols:
+            embedding_text = render_embedding_text(symbol, source_text=texts.get(symbol.symbol_id))
+            if not embedding_text:
+                continue
+            cache_key = vector_cache_key(
+                symbol.symbol_id, f"{self.embedder.name}:{symbol.content_hash}:{embedding_text}"
+            )
+            cached = get_cached_embedding(self.store_root, cache_key=cache_key, embedder_name=self.embedder.name)
+            if cached is not None:
+                results[symbol.symbol_id] = cached
+                continue
+            pending_texts.append(embedding_text)
+            pending_meta.append((symbol.symbol_id, cache_key))
+        batch_size = resolve_embed_batch_size()
+        for start in range(0, len(pending_texts), batch_size):
+            chunk_texts = pending_texts[start : start + batch_size]
+            chunk_meta = pending_meta[start : start + batch_size]
+            vectors = embed_documents(self.embedder, chunk_texts)
+            for (symbol_id, cache_key), raw_vector in zip(chunk_meta, vectors, strict=False):
+                vector = [float(value) for value in raw_vector]
+                put_cached_embedding(
+                    self.store_root, cache_key=cache_key, embedder_name=self.embedder.name, vector=vector
+                )
+                results[symbol_id] = vector
+        return results
+
     def _embed_query(self, query: str) -> list[float]:
         cache_key = vector_cache_key("code-search-query", f"{self.embedder.name}:{query.strip().lower()}")
         return self._embed_text(query, cache_key=cache_key, embed_many=embed_queries)
@@ -293,6 +358,7 @@ __all__ = [
     "is_identifier_query",
     "looks_natural_language_query",
     "render_embedding_text",
+    "resolve_embed_batch_size",
     "resolve_search_mode",
     "semantic_candidate_limit",
 ]
