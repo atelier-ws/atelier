@@ -878,6 +878,35 @@ def _carry_credit(
     return carry_tokens, round(carry_usd, 6)
 
 
+def _last_call_tokens_saved(session_id: str, root: Path) -> int:
+    """Return the most recent per-call token saving from the session sidecar.
+
+    Scans the last 40 rows of ``sessions/<id>/savings.jsonl`` in reverse and
+    returns the first non-zero ``tokens`` value — the delta from the most
+    recent tool call that saved something. Returns 0 when absent.
+    """
+    if not session_id:
+        return 0
+    path = root / "sessions" / session_id / "savings.jsonl"
+    if not path.exists():
+        return 0
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        for raw in reversed(lines[-40:]):
+            try:
+                row = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if row.get("kind") == "session_end":
+                continue
+            t = int(row.get("tokens") or 0)
+            if t > 0:
+                return t
+    except OSError:
+        pass
+    return 0
+
+
 def compute_savings_summary(
     session_id: str = "",
     *,
@@ -1351,7 +1380,9 @@ def _session_windowed_spend(session_id: str, root: Path, cutoff: float) -> float
     return total
 
 
-def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, int, float]:
+def _read_historical_savings(
+    days: int, root: Path
+) -> tuple[float, int, int, int, float, float]:  # (usd, tok, calls, turns, spend, carry)
     """Sum windowed savings (tokens, calls, usd) and actual spend from sessions/*/savings.jsonl.
 
     Savings are summed per row (priced via :func:`_price_savings_row`, filtered
@@ -1369,13 +1400,14 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, in
     """
     sessions_dir = root / "sessions"
     if not sessions_dir.exists():
-        return 0.0, 0, 0, 0, 0.0
+        return 0.0, 0, 0, 0, 0.0, 0.0
     cutoff = time.time() - days * 86_400
     total_usd = 0.0
     total_tok = 0
     total_calls = 0
     total_turns = 0
     total_spend = 0.0
+    total_carry = 0.0
     try:
         from datetime import datetime
 
@@ -1395,6 +1427,7 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, in
             except OSError:
                 continue
             session_end_window = 0.0
+            session_carry_window = 0.0
             try:
                 with p.open(encoding="utf-8") as fh:
                     for raw in fh:
@@ -1413,6 +1446,7 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, in
                         if row.get("kind") == "session_end":
                             if ts >= cutoff:
                                 session_end_window += float(row.get("est_cost_usd") or 0)
+                                session_carry_window += float(row.get("carry_usd") or 0)
                             continue
                         if ts < cutoff:
                             continue
@@ -1435,9 +1469,10 @@ def _read_historical_savings(days: int, root: Path) -> tuple[float, int, int, in
             # only when the transcript is unavailable.
             windowed_spend = _session_windowed_spend(p.parent.name, root, cutoff)
             total_spend += windowed_spend if windowed_spend is not None else session_end_window
+            total_carry += session_carry_window
     except Exception:
         logging.exception("Recovered reading historical savings")
-    return total_usd, total_tok, total_calls, total_turns, total_spend
+    return total_usd, total_tok, total_calls, total_turns, total_spend, total_carry
 
 
 @dataclass
@@ -1449,6 +1484,7 @@ class WindowSavings:
     calls_saved: int = 0
     turns: int = 0
     spend_usd: float = 0.0
+    carry_usd: float = 0.0
 
     @property
     def would_have_cost_usd(self) -> float:
@@ -1470,13 +1506,14 @@ def aggregate_window_savings(root: str | Path, *, days: int) -> WindowSavings:
     priced with :func:`_price_savings_row`, so it always reconciles with the
     statusline/stop-hook live total.
     """
-    usd, tok, calls, turns, spend = _read_historical_savings(int(days), Path(root))
+    usd, tok, calls, turns, spend, carry = _read_historical_savings(int(days), Path(root))
     return WindowSavings(
         saved_usd=round(usd, 6),
         tokens_saved=int(tok),
         calls_saved=int(calls),
         turns=int(turns),
         spend_usd=round(spend, 6),
+        carry_usd=round(carry, 6),
     )
 
 
@@ -1611,9 +1648,9 @@ def savings_segment(
     display_cost = max(summary.est_cost_usd, live_cost_usd)
 
     # Historical savings (scanned once per segment call — fast file scan).
-    usd_1d, tok_1d, calls_1d, turns_1d, spend_1d = _read_historical_savings(1, root)
-    usd_7d, tok_7d, calls_7d, turns_7d, spend_7d = _read_historical_savings(7, root)
-    usd_30d, tok_30d, calls_30d, turns_30d, spend_30d = _read_historical_savings(30, root)
+    usd_1d, tok_1d, calls_1d, _turns_1d, spend_1d, carry_1d = _read_historical_savings(1, root)
+    usd_7d, tok_7d, calls_7d, _turns_7d, spend_7d, carry_7d = _read_historical_savings(7, root)
+    usd_30d, tok_30d, calls_30d, _turns_30d, spend_30d, carry_30d = _read_historical_savings(30, root)
     first_ts = _first_savings_ts(root)
     days_active = (time.time() - first_ts) / 86_400 if first_ts > 0 else 0.0
 
@@ -1622,55 +1659,54 @@ def savings_segment(
     # has_icon=False → plain text; SEP is prepended so it doesn't abut ctx% directly.
     frames: list[tuple[bool, str]] = []
 
-    # Frame 0: cost (I C O) + savings (tok+N) all inline.
+    # Frame 0: $cost(I C O) ↓ $saved(cumulative+last_delta) ♻ $carry(tok·%)
+    # Mirrors the pre-rotation "always visible" single-line format.
     in_f, cache_f, out_f = _fmt_tok(eff_in), _fmt_tok(eff_cache), _fmt_tok(eff_out)
-    combined = f"{C_COST}↑ ${display_cost:.3f}{C_RESET} {C_DIM}(I:{in_f} C:{cache_f} O:{out_f}){C_RESET}"
-    # Always render the savings indicator when the session has usage, even at
-    # $0 — so the row never silently drops to cost-only and you can see savings
-    # are being tracked (the "always show ↓" statusline policy).
+    last_delta = _last_call_tokens_saved(session_id, root) if session_id else 0
+    delta_str = f"+{last_delta}" if last_delta > 0 else ""
+    combined = f"{C_COST}${display_cost:.3f}{C_DIM}(I:{in_f} C:{cache_f} O:{out_f}){C_RESET}"
     if has_usage:
-        combined += f" {C_GREEN}↓ ${summary.saved_usd:.3f}{C_DIM}({_fmt_tok(summary.ctx_saved)}){C_RESET}"
+        combined += f" {C_GREEN}↓ ${summary.saved_usd:.3f}{C_DIM}({_fmt_tok(summary.ctx_saved)}{delta_str}){C_RESET}"
     if summary.routing_saved_usd > 0:
         combined += f" {C_DIM}routing:{C_RESET} {C_GREEN}${summary.routing_saved_usd:.3f}{C_RESET}"
-    frames.append((True, combined))
-
-    # Frame 1: carry credit — dedicated frame so it's visible in the rotation.
-    # Only emitted when carry is non-trivial (≥$0.001) so new sessions stay clean.
     if summary.carry_usd >= 0.001:
         carry_detail = _fmt_tok(summary.carry_tokens)
         if summary.carry_pct >= 1:
-            carry_detail += f" · {summary.carry_pct:.0f}% of cost"
-        frames.append((True, f"{C_BRAND}♻ carry ${summary.carry_usd:.3f}{C_DIM}({carry_detail}){C_RESET}"))
+            carry_detail += f" · {summary.carry_pct:.0f}%"
+        combined += f" {C_BRAND}♻ ${summary.carry_usd:.3f}{C_DIM}({carry_detail}){C_RESET}"
+    frames.append((True, combined))
 
-    # Frame 2: 1-day window — savings + actual spend — instant feedback.
-    if usd_1d > 0:
-        detail_1d = _fmt_tok(tok_1d)
-        if calls_1d > 0:
-            detail_1d += f" · {_fmt_tok(calls_1d)} calls"
-        if turns_1d > 0:
-            detail_1d += f" · {_fmt_tok(turns_1d)} turns"
-        cost_1d_str = f" {C_COST}↑ ${spend_1d:.2f}{C_RESET}" if spend_1d > 0 else ""
-        frames.append((True, f"{C_GREEN}↓ 1d: ${usd_1d:.2f}{C_DIM}({detail_1d}){C_RESET}{cost_1d_str}"))
+    def _hist_frame(label: str, usd: float, tok: int, calls: int, spend: float, carry: float) -> str:
+        """Format: label: ↑ $spent ↓ $saved · NM less tokens · N fewer calls"""
+        dot = f" {C_DIM}·{C_RESET} "
+        # ↑ cost and ↓ saved share no separator — the icons are the visual break.
+        money: list[str] = []
+        if spend > 0:
+            money.append(f"{C_COST}↑ ${spend:.2f}{C_RESET}")
+        combined = usd + carry
+        if combined > 0:
+            money.append(f"{C_GREEN}↓ ${combined:.2f}{C_RESET}")
+        detail: list[str] = []
+        if tok > 0:
+            detail.append(f"{C_DIM}{_fmt_tok(tok)} less tokens{C_RESET}")
+        if calls > 0:
+            detail.append(f"{C_DIM}{_fmt_tok(calls)} fewer calls{C_RESET}")
+        body = " ".join(money)
+        if detail:
+            body += dot + dot.join(detail)
+        return f"{C_DIM}{label}{C_RESET} {body}"
 
-    # Frame 3: 7-day window — savings + actual spend — only after ≥1 day of usage.
-    if usd_7d > 0 and days_active >= 1:
-        detail_7d = _fmt_tok(tok_7d)
-        if calls_7d > 0:
-            detail_7d += f" · {_fmt_tok(calls_7d)} calls"
-        if turns_7d > 0:
-            detail_7d += f" · {_fmt_tok(turns_7d)} turns"
-        cost_7d_str = f" {C_COST}↑ ${spend_7d:.2f}{C_RESET}" if spend_7d > 0 else ""
-        frames.append((True, f"{C_GREEN}↓ 7d: ${usd_7d:.2f}{C_DIM}({detail_7d}){C_RESET}{cost_7d_str}"))
+    # Frame 2: 1-day window — spent · saved · tokens less · calls fewer
+    if usd_1d > 0 or carry_1d > 0 or spend_1d > 0:
+        frames.append((False, _hist_frame("1d:", usd_1d, tok_1d, calls_1d, spend_1d, carry_1d)))
 
-    # Frame 4: 30-day window — savings + actual spend — only after ≥7 days of usage.
-    if usd_30d > 0 and days_active >= 7:
-        detail_30d = _fmt_tok(tok_30d)
-        if calls_30d > 0:
-            detail_30d += f" · {_fmt_tok(calls_30d)} calls"
-        if turns_30d > 0:
-            detail_30d += f" · {_fmt_tok(turns_30d)} turns"
-        cost_30d_str = f" {C_COST}↑ ${spend_30d:.2f}{C_RESET}" if spend_30d > 0 else ""
-        frames.append((True, f"{C_GREEN}↓ 30d: ${usd_30d:.2f}{C_DIM}({detail_30d}){C_RESET}{cost_30d_str}"))
+    # Frame 3: 7-day window — only after ≥1 day of usage.
+    if (usd_7d > 0 or carry_7d > 0 or spend_7d > 0) and days_active >= 1:
+        frames.append((False, _hist_frame("7d:", usd_7d, tok_7d, calls_7d, spend_7d, carry_7d)))
+
+    # Frame 4: 30-day window — only after ≥7 days of usage.
+    if (usd_30d > 0 or carry_30d > 0 or spend_30d > 0) and days_active >= 7:
+        frames.append((False, _hist_frame("30d:", usd_30d, tok_30d, calls_30d, spend_30d, carry_30d)))
 
     # Frame 6: status tip / update notice (text-only)
     # Backtick-wrapped tool names are highlighted in brand purple; rest is dim.

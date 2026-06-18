@@ -495,12 +495,18 @@ def _is_task_session(stats: dict[str, Any] | None, session_aggregate: dict[str, 
     return bool(CODE_EDITING_TOOLS & tools_used)
 
 
-def _write_session_cost(session_id: str, cost_usd: float, total_tokens: int) -> None:
+def _write_session_cost(
+    session_id: str,
+    cost_usd: float,
+    total_tokens: int,
+    carry_usd: float = 0.0,
+    carry_tokens: int = 0,
+) -> None:
     """Append a session-end cost row to savings.jsonl for historical spend tracking.
 
     The row has ``kind=="session_end"`` so ``_read_historical_savings`` in
-    savings_summary.py can accumulate actual spend for 7d/30d statusline frames
-    without touching the savings totals.
+    savings_summary.py can accumulate actual spend and carry for historical
+    statusline frames without touching the savings totals.
     """
     if not session_id or cost_usd <= 0:
         return
@@ -512,6 +518,8 @@ def _write_session_cost(session_id: str, cost_usd: float, total_tokens: int) -> 
         "ts": datetime.datetime.now(datetime.UTC).isoformat(),
         "est_cost_usd": round(cost_usd, 6),
         "total_tokens": int(total_tokens or 0),
+        "carry_usd": round(carry_usd, 6),
+        "carry_tokens": int(carry_tokens or 0),
     }
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(row) + "\n")
@@ -689,23 +697,7 @@ def main() -> int:
         with contextlib.suppress(Exception):
             _write_token_event(stats)
 
-    # ── Write session cost to savings.jsonl for historical 7d/30d spend tracking
-    if stats and stats.get("est_cost_usd", 0) > 0:
-        with contextlib.suppress(Exception):
-            _write_session_cost(
-                session_id,
-                float(stats["est_cost_usd"]),
-                int(stats.get("total_tokens", 0)),
-            )
-
-    # ── Enrich run file with session title + full prompt history ──────────────
-    with contextlib.suppress(Exception):
-        session_title = _extract_session_title(transcript_path)
-        user_prompts = _extract_user_prompts(transcript_path)
-        if session_title or user_prompts:
-            _write_session_enrichment(session_id, session_title, user_prompts, transcript_path)
-
-    # ── Load per-session savings breakdown ────────────────────────────────────
+    # ── Load per-session savings breakdown (before writing session_end so carry is persisted)
     savings: dict[str, Any] | None = None
     with contextlib.suppress(Exception):
         savings = _load_session_savings(session_id)
@@ -718,6 +710,24 @@ def main() -> int:
             calls_avoided=int(savings.get("calls_avoided", 0) or 0),
             source="claude",
         )
+
+    # ── Write session cost + carry to savings.jsonl for historical 7d/30d spend tracking
+    if stats and stats.get("est_cost_usd", 0) > 0:
+        with contextlib.suppress(Exception):
+            _write_session_cost(
+                session_id,
+                float(stats["est_cost_usd"]),
+                int(stats.get("total_tokens", 0)),
+                carry_usd=float((savings or {}).get("carry_usd", 0.0) or 0.0),
+                carry_tokens=int((savings or {}).get("carry_tokens", 0) or 0),
+            )
+
+    # ── Enrich run file with session title + full prompt history ─────────────────────
+    with contextlib.suppress(Exception):
+        session_title = _extract_session_title(transcript_path)
+        user_prompts = _extract_user_prompts(transcript_path)
+        if session_title or user_prompts:
+            _write_session_enrichment(session_id, session_title, user_prompts, transcript_path)
 
     # ── Surface unconsumed live-reviewer findings (advisory) ─────────────────
     review_suffix = ""

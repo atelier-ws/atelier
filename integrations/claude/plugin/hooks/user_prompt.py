@@ -432,10 +432,7 @@ def _compaction_advice_msg(occupancy: int, window: int, model: str | None, drift
     tok = _humanize_tokens(occupancy)
     pct_part = f" (~{min(100, round(occupancy * 100 / window))}% of the window)" if window > 0 else ""
     if drifted:
-        head = (
-            f"~{tok} tokens{pct_part} of earlier context may now be stale "
-            f"and are still loaded"
-        )
+        head = f"~{tok} tokens{pct_part} of earlier context may now be stale and are still loaded"
     else:
         head = f"Context is ~{tok} tokens{pct_part}"
     cost = f" Carrying it costs ~${per_turn:.2f} per turn in cache reads." if per_turn > 0 else ""
@@ -561,7 +558,13 @@ def _maybe_emit_compaction_advice(prompt: str, transcript_path: str, last_user_p
         msg: str | None = None
         if occupancy > 0:
             floor = _DRIFT_MIN_TOKENS if drifted else _COMPACT_MIN_TOKENS
-            if occupancy >= floor:
+            # Suppress the notification on the turn(s) immediately after /compact
+            # while precompact_pending is True.  The credit attempt above may not
+            # yet have observed the post-compact occupancy drop; firing again
+            # immediately is confusing even when the compact summary is large.
+            # Once precompact_pending clears (delta visible or gave up after 3
+            # attempts), normal cooldown logic applies.
+            if occupancy >= floor and not state.get("precompact_pending"):
                 last_raw = state.get("last_compact_notice_count")
                 last = last_raw if isinstance(last_raw, int) else -(10**9)
                 if count - last >= _compact_cooldown(occupancy):

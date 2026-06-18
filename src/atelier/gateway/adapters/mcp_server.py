@@ -1197,12 +1197,24 @@ def _process_tool_accounting(name: str, args: dict[str, Any], result: Any, rid: 
         with _STATE_LOCK:
             state = _read_workspace_session_state()
             # Epoch guard: a compaction resets both ledgers so credits cannot leak
-            # across context windows.
+            # across context windows.  A session-id guard resets read_baseline_credited
+            # when the Claude Code session changes (new session in same workspace without
+            # an intervening compaction), preventing a prior session's credited-file list
+            # from zeroing savings in the fresh context window.
             epoch = context_dedup.current_epoch()
-            if state.get("code_intel_epoch") != epoch:
+            # Use the workspace bridge session_id (updated by the SessionStart hook
+            # on every /clear) in preference to _claude_session_id() (the env var,
+            # frozen at MCP process launch).  This lets /clear in the same terminal
+            # window be detected and the dedup lists be reset for the new context.
+            current_sid = str(state.get("session_id") or "").strip() or _claude_session_id()
+            epoch_changed = state.get("code_intel_epoch") != epoch
+            session_changed = bool(current_sid) and state.get("code_intel_session_id") != current_sid
+            if epoch_changed or session_changed:
                 state = code_intel_credit.reset_pending(state)
                 state = read_baseline_credit.reset(state)
                 state["code_intel_epoch"] = epoch
+                if current_sid:
+                    state["code_intel_session_id"] = current_sid
 
             if is_read:
                 if result_errored:
@@ -2356,27 +2368,31 @@ def _get_mcp_model() -> str:
 
 
 def _get_host_session_sidecar_path() -> Path:
-    """Return per-session sidecar path for the current host.
+    """Return the per-session savings sidecar path for the current host.
 
-    Priority:
-    1. Claude: CLAUDE_CODE_SESSION_ID (set per MCP process by Claude Code), then
-       the workspace bridge / MCP session file (written by the SessionStart hook).
-    2. All other hosts: native session-ID env var exposed to the MCP process.
-    3. Fallback: workspace-scoped file (no per-session isolation).
+    The sidecar MUST land under the *currently active* session, because the
+    readers (Stop hook, statusline, session report) are always handed the
+    active session id by the host and look there.  The MCP server process is
+    long-lived and survives many /clear cycles, so its launch-time
+    ``CLAUDE_CODE_SESSION_ID`` goes stale the moment the user first runs /clear
+    and stays stale for the rest of the process's life.
+
+    Priority (Claude):
+    1. Workspace bridge ``session_state.json`` ``session_id`` — the SessionStart
+       hook rewrites this on every new session (startup, /clear, /compact), so
+       it always names the live session the readers will read from.
+    2. ``CLAUDE_CODE_SESSION_ID`` env var — fallback for the first calls before
+       SessionStart has written the bridge, or launchers that skip the hook.
+
+    Trade-off: two *concurrent* Claude windows in the same workspace share the
+    single bridge slot, so their savings both attribute to whichever session
+    started most recently.  That is rare (multi-repo work uses distinct
+    workspaces -> distinct bridges) and strictly less harmful than env-first,
+    which reported zero savings for every session after the first /clear.
     """
-    # 1. Per-process Claude session id, then the SessionStart-written fallbacks.
-    #    The env var is unique per session, so concurrent sessions sharing one
-    #    workspace no longer write into each other's sidecar.
-    sid = _claude_session_id()
-    if not sid:
-        try:
-            f = _mcp_session_file()
-            if f.is_file():
-                data = json.loads(f.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    sid = str(data.get("claude_session_id") or "").strip()
-        except (OSError, json.JSONDecodeError):
-            _log.debug("MCP sidecar session id read failed", exc_info=True)
+    # 1. Claude: prefer the live bridge session; fall back to the launch env var.
+    bridge_sid, _ = _read_workspace_session_bridge()
+    sid = bridge_sid or _claude_session_id()
     if sid:
         return _atelier_root() / "sessions" / sid / "savings.jsonl"
 
@@ -8417,46 +8433,69 @@ _DEDUP_TOOLS = frozenset({"read", "search", "grep", "explore"})
 
 SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
-    "properties": {
-        "command": {
-            "type": "string",
-            "description": "Shell command to execute. Blocked: bash/sh/zsh/fish, rm -rf, git reset --hard, git clean -fd. Rewritten transparently: cat→read, rg/grep→grep tool.",
+    # Three action-specific shapes so each branch only exposes what's relevant.
+    # timeout is intentionally absent from poll/cancel: poll blocks until the
+    # session's own deadline fires -- no LLM-set window needed or wanted.
+    "oneOf": [
+        {
+            "title": "run",
+            "description": "Execute a command (default).",
+            "properties": {
+                "action": {"type": "string", "enum": ["run"], "default": "run"},
+                "command": {
+                    "type": "string",
+                    "description": "Shell command to execute. Blocked: bash/sh/zsh/fish, rm -rf, git reset --hard, git clean -fd. Rewritten transparently: cat→read, rg/grep→grep tool.",
+                },
+                "cwd": {
+                    "type": "string",
+                    "description": "Working directory. Defaults to CLAUDE_WORKSPACE_ROOT.",
+                },
+                "timeout": {
+                    "type": "integer",
+                    "default": 1800,
+                    "description": "Seconds before the command is killed. Defaults to 30 minutes for builds and test suites.",
+                },
+                "max_lines": {
+                    "type": "integer",
+                    "default": 200,
+                    "description": "Max output lines. Excess lines are head+tail truncated; check truncated=true in response.",
+                },
+                "background": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Return a managed session handle immediately instead of waiting. By default the command runs inline and blocks until it finishes or its timeout elapses -- no need to poll.",
+                },
+            },
+            "required": ["command"],
+            "additionalProperties": False,
         },
-        "cwd": {
-            "type": "string",
-            "description": "Working directory. Defaults to CLAUDE_WORKSPACE_ROOT.",
+        {
+            "title": "poll",
+            "description": "Block until a background session finishes and return its result. No timeout parameter — the session's own deadline is the bound.",
+            "properties": {
+                "action": {"type": "string", "const": "poll"},
+                "session_id": {
+                    "type": "string",
+                    "description": "Session handle returned by a background run.",
+                },
+            },
+            "required": ["action", "session_id"],
+            "additionalProperties": False,
         },
-        "timeout": {
-            "type": "integer",
-            "default": 1800,
-            "description": "Seconds before the command is killed. Defaults to 30 minutes for builds and test suites.",
+        {
+            "title": "cancel",
+            "description": "Cancel a running background session.",
+            "properties": {
+                "action": {"type": "string", "const": "cancel"},
+                "session_id": {
+                    "type": "string",
+                    "description": "Session handle returned by a background run.",
+                },
+            },
+            "required": ["action", "session_id"],
+            "additionalProperties": False,
         },
-        "max_lines": {
-            "type": "integer",
-            "default": 200,
-            "description": "Max output lines. Excess lines are head+tail truncated; check truncated=true in response.",
-        },
-        "background": {
-            "type": "boolean",
-            "default": False,
-            "description": "Return a managed session handle immediately instead of waiting. By default the command runs inline and blocks until it finishes or its timeout elapses -- no need to poll.",
-        },
-        "session_id": {
-            "type": "string",
-            "description": "Managed shell session returned by a background run.",
-        },
-        "action": {
-            "type": "string",
-            "enum": ["run", "poll", "cancel"],
-            "default": "run",
-            "description": (
-                "Run a command, poll a managed (background) session, or cancel it. run blocks "
-                "until the command finishes or its timeout elapses; poll blocks until a "
-                "background session finishes. Most commands need only run."
-            ),
-        },
-    },
-    "additionalProperties": False,
+    ],
 }
 
 

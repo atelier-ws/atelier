@@ -13,6 +13,8 @@ dependencies = [
     "matplotlib>=3.9",
     "atelier",
     "mitmproxy>=12.2.3",
+    "multi-swe-bench",
+    "swebench>=3.0",
 ]
 
 [project.optional-dependencies]

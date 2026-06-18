@@ -99,7 +99,7 @@ print_manual_steps() {
     echo "   cp -R '${ATELIER_REPO}/integrations/codex/plugin/.' '${PLUGIN_DIR}/'"
     echo "   cp -R '${ATELIER_REPO}/integrations/codex/hooks' '${PLUGIN_DIR}/'"
     echo "   cp -R '${ATELIER_REPO}/integrations/codex/plugin/agents' '${PLUGIN_DIR}/'"
-    echo "   cp '${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md' '${PLUGIN_DIR}/agents/atelier.md'"
+    echo "   cp '${ATELIER_REPO}/integrations/AGENTS.atelier.md' '${PLUGIN_DIR}/agents/atelier.md'"
     echo "   bash '${SKILL_BUILDER}' --host codex --dest '${PLUGIN_DIR}/skills'"
     echo ""
     echo "2. Add Atelier to '${CODEX_MARKETPLACE}' with:"
@@ -195,7 +195,7 @@ stage_plugin_bundle() {
     run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/plugin/scripts") $(printf %q "$STAGING_DIR/")"
     run "cp -R $(printf %q "${ATELIER_REPO}/integrations/codex/plugin/agents") $(printf %q "$STAGING_DIR/")"
     run "mkdir -p $(printf %q "$STAGING_DIR/agents")"
-    run "cp $(printf %q "${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md") $(printf %q "$STAGING_DIR/agents/atelier.md")"
+    run "cp $(printf %q "${ATELIER_REPO}/integrations/AGENTS.atelier.md") $(printf %q "$STAGING_DIR/agents/atelier.md")"
     run "bash $(printf %q "$SKILL_BUILDER") --host codex --dest $(printf %q "$STAGING_DIR/skills")"
     PLUGIN_TEMPLATE="$STAGING_DIR"
 }
@@ -411,7 +411,7 @@ patch_plugin_hooks
 patch_plugin_mcp
 write_marketplace
 install_codex_plugin
-merge_agents_file "${ATELIER_REPO}/integrations/codex/AGENTS.atelier.md" "$AGENTS_FILE"
+merge_agents_file "${ATELIER_REPO}/integrations/AGENTS.atelier.md" "$AGENTS_FILE"
 
 TASKS_SRC_DIR="${ATELIER_REPO}/integrations/codex/tasks"
 if $WORKSPACE_SET && [ -d "$TASKS_SRC_DIR" ]; then
