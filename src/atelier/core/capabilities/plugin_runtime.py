@@ -1371,6 +1371,7 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
             saved_usd=saved_usd,
             tokens_saved=tokens_saved,
             calls_avoided=calls_avoided,
+            turn_count=llm_turns,
             source="codex",
         )
 
@@ -1382,7 +1383,7 @@ def build_codex_stop_output(root: str | Path, payload: dict[str, Any]) -> dict[s
     turn_part = f"{llm_turns} LLM turn{'s' if llm_turns != 1 else ''}"
     if llm_turns <= 0 and prompt_turns > 0:
         turn_part += f" · {prompt_turns} prompt turn{'s' if prompt_turns != 1 else ''}"
-    activity = f"{turn_part} · " f"{total_tool_calls} tool call{'s' if total_tool_calls != 1 else ''} ({tool_source})"
+    activity = f"{turn_part} · {total_tool_calls} tool call{'s' if total_tool_calls != 1 else ''} ({tool_source})"
 
     lines = [
         "Atelier session complete.",
@@ -3211,7 +3212,9 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
     files = (
         [session_stats_path(root, session_id)]
         if session_id
-        else sorted(sessions_dir.glob("*/stats.json")) if sessions_dir.exists() else []
+        else sorted(sessions_dir.glob("*/stats.json"))
+        if sessions_dir.exists()
+        else []
     )
     aggregate: dict[str, Any] = {
         "session_count": 0,
