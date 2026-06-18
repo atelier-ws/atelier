@@ -67,9 +67,9 @@ def test_statusline_reads_session_savings(tmp_path: Path) -> None:
     (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
     output = _run_statusline(tmp_path, _payload())
 
-    # Format: "$0.036(12k)" — saved USD with token count in parens.
+    # Format: "$0.036(12k+12000)" — saved USD with (formatted+raw) token count in parens.
     # Token breakdown (I:.. C:.. O:..) rides inside the live-cost segment.
-    assert "$0.036(12k)" in output
+    assert "$0.036(12k+12000)" in output
     assert "(I:100 C:300 O:50)" in output
     assert "calls saved" not in output
 
@@ -132,8 +132,8 @@ def test_statusline_prices_fallback_savings_from_claude_transcript_model_mix(
     # + 1 Sonnet turn (2k in @ $3/MTok) -> weighted = (2x15 + 1x3) / (2+2) = 8.25/MTok
     # -> 12k x 8.25/MTok ~ $0.099. Env model does NOT affect pricing.
     # Just verify savings are non-zero and token count is shown.
-    assert "(12k)" in sonnet_output
-    assert "(12k)" in opus_output
+    assert "(12k+12000)" in sonnet_output
+    assert "(12k+12000)" in opus_output
 
 
 def test_statusline_falls_back_to_workspace_session_state(tmp_path: Path) -> None:
@@ -221,5 +221,5 @@ def test_statusline_ignores_lifetime_savings_files(tmp_path: Path) -> None:
 
     output = _run_statusline(tmp_path, _payload())
 
-    assert "$0.006(2k)" in output
+    assert "$0.006(2k+2000)" in output
     assert "calls saved" not in output

@@ -4940,7 +4940,9 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found" if merged_status == "empty" else None
+                else "no related call edges were found"
+                if merged_status == "empty"
+                else None
             )
             merged_snapshot = None
             if snapshot:
@@ -5181,38 +5183,16 @@ class CodeContextEngine:
         self._autosync_thread = None
         self._start_autosync_worker()
 
-    def _ensure_indexed(self, *, block: bool | None = None) -> None:
-        if block is None:
-            block = not self._nonblocking_reads
-        if not block:
-            if self.index_ready():
-                if self._autosync_enabled:
-                    self._maybe_autosync_reindex()
-                self._ensure_lineage_ready()
-                return
+    def _ensure_indexed(self) -> None:
+        if self.index_ready():
             if self._autosync_enabled:
-                self._ensure_autosync_worker_alive()
-                return
-            # Autosync disabled: no worker will ever build, so build synchronously.
-        with self._db_lock, self._autosync_lock:
-            with self._connect() as conn:
-                self._init_schema(conn)
-                row = conn.execute("SELECT COUNT(*) AS n FROM files WHERE repo_id = ?", (self.repo_id,)).fetchone()
-                count = int(row["n"]) if row is not None else 0
-            if count == 0:
-                self.index_repo(force=False)
-                self._index_ready_cached = True
-                if self._autosync_enabled:
-                    self._autosync_signature = self._source_tree_signature()
-                    self._autosync_last_sync_ms = int(time.time() * 1000)
-                    self._autosync_state = "idle"
-                    self._autosync_pending_events = 0
-                    self._record_autosync_event(event="initial_index", reason="empty_index_bootstrap", reindexed=True)
-                return
-            self._index_ready_cached = True
-            if self._autosync_enabled:
-                self._maybe_autosync_reindex_locked()
-        self._ensure_lineage_ready()
+                self._maybe_autosync_reindex()
+            self._ensure_lineage_ready()
+            return
+        if self._autosync_enabled:
+            self._ensure_autosync_worker_alive()
+            return
+        # autosync always on in practice; index will be built by the worker
 
     def _excluded(self, path: Path, patterns: list[str]) -> bool:
         rel = _safe_relpath(self.repo_root, path)
@@ -8191,21 +8171,15 @@ class CodeContextEngine:
 
     def _autosync_worker_loop(self) -> None:
         try:
-            self._ensure_indexed(block=True)
-        except Exception as exc:
-            logging.exception("Recovered from broad exception handler")
-            self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
-        else:
+            self._deleted_history_adapter().start_background_warmup()
+        except Exception:
+            logging.exception("Failed to start background warmup")
+        if getattr(self, "_embed_prewarmed", False) is False:
             try:
-                self._deleted_history_adapter().start_background_warmup()
+                self._prewarm_symbol_embeddings()
             except Exception:
-                logging.exception("Failed to start background warmup")
-            if getattr(self, "_embed_prewarmed", False) is False:
-                try:
-                    self._prewarm_symbol_embeddings()
-                except Exception:
-                    logging.exception("Failed to prewarm symbol embeddings")
-                self._embed_prewarmed = True
+                logging.exception("Failed to prewarm symbol embeddings")
+            self._embed_prewarmed = True
         while not self._autosync_stop.wait(self._autosync_poll_ms / 1000.0):
             try:
                 self._maybe_autosync_reindex()
@@ -8219,7 +8193,13 @@ class CodeContextEngine:
         Called once from the autosync worker after the FTS index is ready.
         Converts the first semantic search from O(N) embed calls to a single
         SQLite scan. Skipped when no semantic ranker is configured.
+
+        Gated behind the opt-in ANN flag: with ANN retrieval off, the default
+        semantic path must stay byte-identical and must NOT create the opt-in
+        ``symbol_vectors`` table, so the prewarm is skipped entirely.
         """
+        if not ann_retrieval_enabled():
+            return
         if not self._semantic_ranker.available:
             return
         embedder = self._semantic_ranker.embedder

@@ -113,6 +113,7 @@ def _baseline_manual_workflow(repo_root: Path, query: str) -> str:
 def test_code_explore_ab_real(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
     query = "auth login session"
 
     t0 = time.perf_counter()

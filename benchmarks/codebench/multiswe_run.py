@@ -138,16 +138,23 @@ def _select_backend(args: argparse.Namespace) -> tuple[list[Any], GradeFn, str]:
         return list(instances), grade_swe, "swebench"
 
     dataset_path = Path(args.dataset) if args.dataset else ensure_flash()
+    # Explicit --instances must never be silently dropped by the corpus filters
+    # (min-changed-files / per-language / limit). Those filters shape the *random*
+    # sample; an explicitly named instance is a deliberate request, so bypass them
+    # and surface any id missing from the dataset instead of dropping it quietly.
+    explicit = set(args.instances) if args.instances else None
     multi = multiswe.load_instances(
         dataset_path,
         languages=args.languages,
-        min_changed_files=args.min_changed_files,
-        per_language_limit=args.per_language_limit,
-        limit=args.limit,
+        min_changed_files=0 if explicit else args.min_changed_files,
+        per_language_limit=None if explicit else args.per_language_limit,
+        limit=None if explicit else args.limit,
     )
-    if args.instances:
-        wanted = set(args.instances)
-        multi = [i for i in multi if i.instance_id in wanted]
+    if explicit:
+        multi = [i for i in multi if i.instance_id in explicit]
+        missing = explicit - {i.instance_id for i in multi}
+        if missing:
+            print(f"[warn] requested --instances not found in dataset: {sorted(missing)}", flush=True)
 
     def grade_multi(insts: list[Any], patches: dict[str, str], work_dir: Path, workers: int) -> dict[str, bool]:
         return grade.grade(insts, patches, dataset_path=dataset_path, work_dir=work_dir, max_workers=workers)

@@ -15,6 +15,7 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from atelier.core.capabilities.tool_supervision import command_discipline
@@ -34,6 +35,17 @@ _INTERP_WRITE_RE = re.compile(
     )""",
     re.IGNORECASE | re.VERBOSE | re.DOTALL,
 )
+# Literal write-target extraction for the allowed-roots escape hatch (below).
+# A write is permitted only when every target is an absolute literal path inside
+# an allowed root; any opaque target (variable, f-string, ``.write_text``
+# receiver) yields ``None`` so the guard blocks what it cannot verify.
+_OPEN_WRITE_TARGET_RE = re.compile(
+    r"""open\(\s*(?P<arg>[^,]+?)\s*,\s*['"][wax]b?\+?['"]""",
+    re.IGNORECASE | re.VERBOSE,
+)
+_CAT_REDIRECT_TARGET_RE = re.compile(r"""\bcat\s+>>?\s*(?P<tgt>'[^']*'|"[^"]*"|[^\s'"|;&>]+)""")
+_WRITE_METHOD_RE = re.compile(r"\.write_(?:text|bytes)\(", re.IGNORECASE)
+_QUOTED_LITERAL_RE = re.compile(r"""^(?P<q>['"])(?P<v>.*)(?P=q)$""", re.DOTALL)
 # A shell short-option cluster requesting no-exec parse mode (``-n``, ``-nx``).
 # Among bash/sh/zsh/fish single-char invocation options only ``-n`` contains an
 # 'n', so a single-dash cluster containing 'n' implies syntax-check-only.
@@ -337,6 +349,56 @@ def _is_shell_file_write(command: str) -> bool:
     return bool(_SHELL_FILE_WRITE_RE.search(command)) or bool(_INTERP_WRITE_RE.search(command))
 
 
+def _extract_write_targets(command: str) -> list[str] | None:
+    """Literal write targets in *command*, or ``None`` if any write op is opaque.
+
+    Returns ``None`` (caller must block) when a detected write cannot be tied to
+    a literal path: a ``.write_text``/``.write_bytes`` call, or an ``open`` whose
+    first argument is a variable or expression rather than a string literal.
+    """
+    if _WRITE_METHOD_RE.search(command):
+        return None
+    targets: list[str] = []
+    for match in _OPEN_WRITE_TARGET_RE.finditer(command):
+        literal = _QUOTED_LITERAL_RE.match(match.group("arg").strip())
+        if literal is None:
+            return None
+        targets.append(literal.group("v"))
+    for match in _CAT_REDIRECT_TARGET_RE.finditer(command):
+        target = match.group("tgt").strip().strip("'\"")
+        if not target:
+            return None
+        targets.append(target)
+    return targets
+
+
+def _file_write_within_allowed(command: str, allowed_roots: list[Path] | None) -> bool:
+    """True if every write target is a literal path inside *allowed_roots*.
+
+    *allowed_roots* are the directories writes may target — the workspace root
+    plus any opt-in directories (``additionalDirectories`` /
+    ``ATELIER_ADDITIONAL_DIRS``). A relative target resolves against the first
+    root (the workspace root). Any opaque target (variable, f-string, or
+    ``.write_text`` receiver) makes ``_extract_write_targets`` return ``None``,
+    so the guard blocks what it cannot verify.
+    """
+    if not allowed_roots:
+        return False
+    targets = _extract_write_targets(command)
+    if not targets:
+        return False
+    roots = [Path(root).resolve() for root in allowed_roots]
+    base = roots[0]
+    for raw in targets:
+        path = Path(os.path.expanduser(raw))
+        if not path.is_absolute():
+            path = base / path
+        path = path.resolve()
+        if not any(path == root or path.is_relative_to(root) for root in roots):
+            return False
+    return True
+
+
 def _split_command_segments(command: str) -> list[list[str]]:
     """Split a command line into segments on shell control operators.
 
@@ -519,15 +581,27 @@ def _block_check_segment(tokens: list[str]) -> CommandPolicyDecision | None:
     return None
 
 
-def classify_command(command: str) -> CommandPolicyDecision:
+def classify_command(command: str, *, allowed_write_roots: list[Path] | None = None) -> CommandPolicyDecision:
     # Detect file-write patterns before shlex.split (heredocs break shlex parsing).
     if _is_shell_file_write(command):
+        if _file_write_within_allowed(command, allowed_write_roots):
+            # Target is an absolute literal inside an opted-in write root: permit
+            # the write, but still run the destructive-command block checks since
+            # chaining can hide an ``rm -rf`` after the redirect.
+            for segment in _split_command_segments(command):
+                blocked = _block_check_segment(segment)
+                if blocked is not None:
+                    return blocked
+            return CommandPolicyDecision(category="file-write", action="allow")
         return CommandPolicyDecision(
             category="file-write",
             action="block",
             reason=(
                 "Use the edit tool to create or modify files — shell redirects, "
-                "heredocs, and inline interpreter writes are blocked for file content"
+                "heredocs, and inline interpreter writes are blocked unless the target "
+                "is a literal path inside an allowed write root (the workspace, "
+                "additionalDirectories, or ATELIER_ADDITIONAL_DIRS); variable or "
+                "computed paths cannot be verified."
             ),
         )
     # Block checks run per segment: bash -c executes the whole line, so chaining

@@ -681,11 +681,11 @@ def _recover_flow_result(
     recover the real token usage and cost from it so the trial is recorded with
     its true price instead of $0.
     """
-    input_tokens = output_tokens = cache_read = cache_write = requests = 0
+    input_tokens = output_tokens = cache_read = cache_write = cache_write_1h = requests = 0
     cost_usd = 0.0
     wire = _read_flow_usage(flow_path)
     if wire is not None:
-        input_tokens, output_tokens, cache_read, cache_write, requests = wire
+        input_tokens, output_tokens, cache_read, cache_write, cache_write_1h, requests = wire
     if model and (input_tokens or output_tokens or cache_read or cache_write):
         with contextlib.suppress(Exception):
             cost_usd = usage_cost_usd(
@@ -694,6 +694,7 @@ def _recover_flow_result(
                 output_tokens=output_tokens,
                 cache_read_tokens=cache_read,
                 cache_write_tokens=cache_write,
+                cache_write_1h_tokens=cache_write_1h,
             )
     detail = f"{excerpt} (recovered ${cost_usd:.4f} / {requests} request(s) from flow)"
     return ArmResult(
@@ -717,9 +718,11 @@ def _recover_flow_result(
     )
 
 
-def _read_flow_usage(flow_path: Path) -> tuple[int, int, int, int, int] | None:
-    """(input, output, cache_read, cache_write, requests) over EVERY model
-    round-trip in the capture -- the main agent AND any subagents it spawns.
+def _read_flow_usage(flow_path: Path) -> tuple[int, int, int, int, int, int] | None:
+    """(input, output, cache_read, cache_write, cache_write_1h, requests) over
+    EVERY model round-trip in the capture -- the main agent AND any subagents it
+    spawns. ``cache_write_1h`` is the 1h-TTL subset of cache_write (Anthropic
+    prices it 2x base input vs 1.25x for the 5m default).
 
     The ``claude -p`` JSON receipt reports only the main agent, so when the stock
     baseline delegates discovery to an Explore subagent its tokens, cost, and
@@ -739,6 +742,7 @@ def _read_flow_usage(flow_path: Path) -> tuple[int, int, int, int, int] | None:
         usage.output_tokens,
         usage.cache_read_input_tokens,
         usage.cache_creation_input_tokens,
+        usage.cache_creation_1h_input_tokens,
         stats.requests,
     )
 
@@ -830,8 +834,9 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
     # (i.e. complete) set, and recompute cost from those tokens via the shared
     # pricing catalog so cost stays consistent with the tokens it is billed on.
     wire = _read_flow_usage(flow_path)
+    cache_write_1h = 0
     if wire is not None:
-        w_in, w_out, w_cr, w_cw, w_requests = wire
+        w_in, w_out, w_cr, w_cw, w_cw1h, w_requests = wire
         if (w_in + w_out + w_cr + w_cw) >= (input_tokens + output_tokens + cache_read + cache_write):
             # The receipt's usage field + num_turns cover only the main agent; the
             # wire captures the main agent AND every subagent it spawns (the stock
@@ -841,6 +846,7 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
             # baseline main-agent priced at $0.06 reports $0.43 once its subagent
             # is billed), so only the usage field and num_turns were main-only.
             input_tokens, output_tokens, cache_read, cache_write = w_in, w_out, w_cr, w_cw
+            cache_write_1h = w_cw1h
             num_turns = w_requests or num_turns
 
     if cost_usd <= 0.0 and model_id and (input_tokens or output_tokens or cache_read or cache_write):
@@ -853,6 +859,7 @@ def _parse_claude_result(stdout: str, flow_path: Path, task: str, arm: str, rep:
                 output_tokens=output_tokens,
                 cache_read_tokens=cache_read,
                 cache_write_tokens=cache_write,
+                cache_write_1h_tokens=cache_write_1h,
             )
 
     return ArmResult(
@@ -2288,12 +2295,13 @@ def _flow_model_usage_rows(result: ArmResult) -> list[dict[str, object]]:
                     continue
                 bucket = rows_by_model.setdefault(
                     model,
-                    {"requests": 0, "input": 0, "cache_read": 0, "cache_write": 0, "output": 0},
+                    {"requests": 0, "input": 0, "cache_read": 0, "cache_write": 0, "cache_write_1h": 0, "output": 0},
                 )
                 bucket["requests"] += 1
                 bucket["input"] += usage.input_tokens
                 bucket["cache_read"] += usage.cache_read_input_tokens
                 bucket["cache_write"] += usage.cache_creation_input_tokens
+                bucket["cache_write_1h"] += usage.cache_creation_1h_input_tokens
                 bucket["output"] += usage.output_tokens
     except Exception:
         return []
@@ -2304,6 +2312,7 @@ def _model_audit_row(result: ArmResult, model: str, usage: dict[str, int], *, so
     input_tokens = int(usage.get("input", 0))
     cache_read = int(usage.get("cache_read", 0))
     cache_write = int(usage.get("cache_write", 0))
+    cache_write_1h = int(usage.get("cache_write_1h", 0))
     output_tokens = int(usage.get("output", 0))
     cost = usage_cost_usd(
         model,
@@ -2311,6 +2320,7 @@ def _model_audit_row(result: ArmResult, model: str, usage: dict[str, int], *, so
         output_tokens=output_tokens,
         cache_read_tokens=cache_read,
         cache_write_tokens=cache_write,
+        cache_write_1h_tokens=cache_write_1h,
     )
     return {
         "task": result.task,
@@ -2621,6 +2631,31 @@ def _render_task_metric_tables(results: list[ArmResult]) -> str:
                     reps=row["reps"],
                 )
             )
+
+    # Per-rep spread so run-to-run noise is visible, not hidden behind a point estimate.
+    clean = _clean_results(results)
+    spread_lines: list[str] = []
+    for task in _ordered_tasks(clean):
+        for arm in _ordered_arms(clean):
+            rs = [r for r in clean if r.task == task and r.arm == arm]
+            if len(rs) < 2:
+                continue
+            costs = sorted(_metric_value(r, "cost_usd") for r in rs)
+            toks = sorted(_metric_value(r, "tokens") for r in rs)
+            spread_lines.append(
+                f"| {task} | {arm} | {costs[0]:.4f} / {float(_median(costs) or 0.0):.4f} / {costs[-1]:.4f} | {int(toks[0]):,} / {int(_median(toks) or 0):,} / {int(toks[-1]):,} | {len(rs)} |"
+            )
+    if spread_lines:
+        lines.extend(
+            [
+                "",
+                "=== Per-rep spread (min / median / max -- noise check) ===",
+                "",
+                "| Task | Arm | cost_usd | tokens | reps |",
+                "| --- | --- | --- | --- | --- |",
+                *spread_lines,
+            ]
+        )
     return "\n".join(lines)
 
 
