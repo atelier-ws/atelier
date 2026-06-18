@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import sqlite3
 import threading
 from collections.abc import Callable
@@ -14,9 +15,23 @@ from typing import Any, cast
 
 from atelier.infra.code_intel.git_history import require_pygit2
 from atelier.infra.code_intel.git_history.graveyard import SymbolGraveyard
-from atelier.infra.code_intel.git_history.walker import walk_history
+from atelier.infra.code_intel.git_history.walker import resolve_history_bootstrap_commits, walk_history
 
 logger = logging.getLogger(__name__)
+
+
+def history_indexing_enabled() -> bool:
+    """Whether deleted/renamed-symbol history indexing runs (default ON; opt-out).
+
+    The first ``atelier code index`` indexes only the most-recent
+    ``ATELIER_HISTORY_BOOTSTRAP_COMMITS`` (default 100) commits synchronously, so
+    it stays fast; deeper history is left to the background backfill. Set
+    ``ATELIER_HISTORY_ENABLED=0`` to disable it completely: ``scope="deleted"``
+    then returns no results and the git-history phase is skipped. FTS/semantic
+    search and ``since``/``touched_by`` filters (separate ``changed_files`` walk)
+    are unaffected either way.
+    """
+    return os.environ.get("ATELIER_HISTORY_ENABLED", "1") != "0"
 
 
 class DeletedHistorySearchAdapter:
@@ -94,6 +109,8 @@ class DeletedHistorySearchAdapter:
 
         Safe to call multiple times — only one thread is ever launched.
         """
+        if not history_indexing_enabled():
+            return
         if self._history_ready:
             return
         t = threading.Thread(
@@ -116,6 +133,17 @@ class DeletedHistorySearchAdapter:
 
     def _ensure_history_ready(self, *, on_commit: Callable[[int, int], None] | None = None) -> dict[str, int]:
         import logging
+
+        if not history_indexing_enabled():
+            # Disabled via ATELIER_HISTORY_ENABLED=0: skip the historical diff +
+            # tree-sitter parse walk. Ensure the (empty) graveyard table exists so
+            # a scope="deleted" search degrades to no results instead of erroring.
+            # FTS indexing and since/touched_by filters are unaffected.
+            if not self._history_ready:
+                with closing(self._connection_factory()) as conn:
+                    SymbolGraveyard(conn)
+                self._history_ready = True
+            return {"commits_walked": 0, "symbols_found": 0, "renames_found": 0, "deletions_found": 0}
 
         current_head = self._current_head()
         if current_head is None:
@@ -143,11 +171,14 @@ class DeletedHistorySearchAdapter:
             elif graveyard_count == 0:
                 logging.info("Git history graveyard is empty, re-walking...")
 
-            # Walk history with since_sha for incremental indexing
+            # Bootstrap: index only the most-recent N commits synchronously so the
+            # eager index stays fast. Deeper history is left to the background
+            # backfill (ATELIER_HISTORY_BOOTSTRAP_COMMITS / _MAX_COMMITS).
             summary = walk_history(
                 self._repo_root,
                 SymbolGraveyard(conn),
                 since_sha=since_sha,
+                limit=resolve_history_bootstrap_commits(),
                 on_commit=on_commit,
             )
 
@@ -276,7 +307,9 @@ class DeletedHistorySearchAdapter:
                 signature_hash
             FROM symbol_graveyard
             WHERE
-            """ + " AND ".join(filters) + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC LIMIT ?",
+            """
+            + " AND ".join(filters)
+            + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC LIMIT ?",
             params,
         ).fetchall()
         return list(rows)
@@ -315,7 +348,9 @@ class DeletedHistorySearchAdapter:
                 rename_target,
                 signature_hash
             FROM symbol_graveyard
-            """ + where_clause + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC",
+            """
+            + where_clause
+            + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC",
             params,
         ).fetchall()
         return list(rows)

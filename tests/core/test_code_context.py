@@ -2269,7 +2269,7 @@ def test_low_token_defaults_stay_lighter_for_search_and_pattern(
 def test_native_pattern_uses_index_and_cache_for_def_patterns(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "orders.py").write_text(
-        "def add_node(value: int) -> int:\n" "    return value + 1\n",
+        "def add_node(value: int) -> int:\n    return value + 1\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -2290,7 +2290,7 @@ def test_native_pattern_uses_index_and_cache_for_def_patterns(tmp_path: Path, mo
 def test_search_text_uses_index_before_ripgrep(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "orders.py").write_text(
-        "def aggregate_session_stats() -> int:\n" "    return 1\n",
+        "def aggregate_session_stats() -> int:\n    return 1\n",
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
