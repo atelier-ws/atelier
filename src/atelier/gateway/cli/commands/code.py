@@ -354,6 +354,10 @@ def _index_repo_with_progress(
 
 
 def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> dict[str, int] | None:
+    from atelier.infra.code_intel.git_history.adapter import history_indexing_enabled
+
+    if not history_indexing_enabled():
+        return None
     try:
         from rich.console import Console
         from rich.progress import BarColumn, Progress, TextColumn
@@ -368,8 +372,11 @@ def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> dic
         with closing(adapter._connection_factory()) as conn:
             row = conn.execute("SELECT value FROM engine_state WHERE key = ?", (adapter._head_state_key,)).fetchone()
             previous_head = str(row["value"]) if row is not None else None
-            count_row = conn.execute("SELECT COUNT(*) AS n FROM symbol_graveyard").fetchone()
-            graveyard_count = int(count_row["n"]) if count_row is not None else 0
+            try:
+                count_row = conn.execute("SELECT COUNT(*) AS n FROM symbol_graveyard").fetchone()
+                graveyard_count = int(count_row["n"]) if count_row is not None else 0
+            except sqlite3.OperationalError:
+                graveyard_count = 0  # graveyard table not created yet -> nothing indexed
 
         if previous_head == current_head and graveyard_count > 0:
             return None
@@ -421,6 +428,8 @@ def _prewarm_embeddings_with_progress(engine: Any, frame_prefix: str = "") -> No
         from rich.console import Console
         from rich.progress import BarColumn, Progress, TextColumn
 
+        from atelier.core.capabilities.code_context.embedding import resolve_embed_batch_size
+
         if not engine._semantic_ranker.available:
             return
 
@@ -467,18 +476,26 @@ def _prewarm_embeddings_with_progress(engine: Any, frame_prefix: str = "") -> No
                 f"[green]⟳[/green]  Pre-warming symbol embeddings... (0/{len(to_embed)})",
                 total=len(to_embed),
             )
+            batch_size = resolve_embed_batch_size()
             with closing(engine._connect()) as conn:
                 engine._init_schema(conn)
                 new_vectors = {}
-                for i, symbol in enumerate(to_embed, start=1):
-                    source_text = engine._read_file_slice(symbol.file_path, symbol.start_byte, symbol.end_byte)
-                    vector = engine._semantic_ranker.embed_symbol(symbol, source_text=source_text)
-                    if vector and len(vector) == embedding_dim:
-                        new_vectors[symbol.symbol_id] = (symbol.content_hash, vector)
+                done = 0
+                for start in range(0, len(to_embed), batch_size):
+                    chunk = to_embed[start : start + batch_size]
+                    source_texts = {
+                        s.symbol_id: engine._read_file_slice(s.file_path, s.start_byte, s.end_byte) for s in chunk
+                    }
+                    embedded = engine._semantic_ranker.embed_symbols(chunk, source_texts=source_texts)
+                    for s in chunk:
+                        vector = embedded.get(s.symbol_id)
+                        if vector and len(vector) == embedding_dim:
+                            new_vectors[s.symbol_id] = (s.content_hash, vector)
+                    done += len(chunk)
                     progress.update(
                         task_id,
-                        completed=i,
-                        description=f"[green]⟳[/green]  Pre-warming symbol embeddings... ({i}/{len(to_embed)})",
+                        completed=done,
+                        description=f"[green]⟳[/green]  Pre-warming symbol embeddings... ({done}/{len(to_embed)})",
                     )
                 if new_vectors:
                     engine._ann_symbol_index.upsert_vectors(

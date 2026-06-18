@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
@@ -128,11 +129,52 @@ def count_commits(repo_path: str | Path) -> int:
         return 0
 
 
+_DEFAULT_HISTORY_MAX_COMMITS = 10000
+_DEFAULT_HISTORY_BOOTSTRAP_COMMITS = 100
+
+
+def resolve_history_bootstrap_commits() -> int:
+    """Commits indexed synchronously by the first ``atelier code index`` (bootstrap).
+
+    Keeps the eager index fast: only the most-recent N commits are walked inline.
+    Deeper history is left to the (separate) background backfill. Tunable via
+    ``ATELIER_HISTORY_BOOTSTRAP_COMMITS`` (default 100).
+    """
+    raw = os.environ.get("ATELIER_HISTORY_BOOTSTRAP_COMMITS", "").strip()
+    if raw:
+        try:
+            value = int(raw)
+        except ValueError:
+            return _DEFAULT_HISTORY_BOOTSTRAP_COMMITS
+        if value > 0:
+            return value
+    return _DEFAULT_HISTORY_BOOTSTRAP_COMMITS
+
+
+def _resolve_history_max_commits() -> int:
+    """Commit cap for :func:`walk_history`.
+
+    The deleted/renamed-symbol graveyard only needs recent history, but an
+    unbounded ``repo.walk`` over a deep-history repo (~130k commits for VS Code)
+    diffs every commit and dominates ``atelier code index``. Cap the walk to the
+    most recent N commits. ``ATELIER_HISTORY_MAX_COMMITS=0`` restores the
+    unbounded walk for callers that want the complete graveyard.
+    """
+    raw = os.environ.get("ATELIER_HISTORY_MAX_COMMITS", "").strip()
+    if raw:
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            return _DEFAULT_HISTORY_MAX_COMMITS
+    return _DEFAULT_HISTORY_MAX_COMMITS
+
+
 def walk_history(
     repo_path: str | Path,
     graveyard: SymbolGraveyard,
     *,
     since_sha: str | None = None,
+    limit: int | None = None,
     on_commit: Callable[[int, int], None] | None = None,
 ) -> dict[str, int]:
     """Populate the graveyard from historical delete and rename commits.
@@ -140,6 +182,8 @@ def walk_history(
         repo_path: Path to git repository
         graveyard: SymbolGraveyard to upsert entries into
         since_sha: If provided, only walk commits newer than this SHA (incremental mode)
+        limit: Max commits to walk (most recent first). Defaults to
+            ``ATELIER_HISTORY_MAX_COMMITS`` (2000); pass 0 for unbounded.
         on_commit: Optional callback(current, total) called after each commit visited
 
     Returns:
@@ -149,17 +193,19 @@ def walk_history(
     pygit2 = require_pygit2()
     repo = pygit2.Repository(str(repo_path))
     head = repo.revparse_single("HEAD")
-    all_commits = list(repo.walk(head.id, pygit2.enums.SortMode.TOPOLOGICAL))
 
-    # If incremental mode, only walk commits since the last indexed SHA
-    if since_sha is not None:
-        commits = []
-        for commit in all_commits:
-            commits.append(commit)
-            if str(commit.id) == since_sha:
-                break
-    else:
-        commits = all_commits
+    # Collect a bounded commit window lazily so deep-history repos don't
+    # materialize (and then diff) every commit. In incremental mode we stop at
+    # the previously-indexed SHA; in both modes we cap at ``max_commits`` (most
+    # recent first) so the walk stays O(cap) rather than O(history).
+    max_commits = _resolve_history_max_commits() if limit is None else max(0, limit)
+    commits = []
+    for commit in repo.walk(head.id, pygit2.enums.SortMode.TOPOLOGICAL):
+        commits.append(commit)
+        if since_sha is not None and str(commit.id) == since_sha:
+            break
+        if max_commits and len(commits) >= max_commits:
+            break
 
     total = len(commits)
     symbols_found = 0

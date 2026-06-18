@@ -8238,14 +8238,18 @@ class CodeContextEngine:
                 embedding_dim=embedding_dim,
                 index_version=index_version,
             )
-            new_vectors: dict[str, tuple[str, list[float]]] = {}
-            for symbol in candidates:
-                if symbol.symbol_id in fresh_ids:
-                    continue
-                source_text = self._read_file_slice(symbol.file_path, symbol.start_byte, symbol.end_byte)
-                vector = self._semantic_ranker.embed_symbol(symbol, source_text=source_text)
-                if vector and len(vector) == embedding_dim:
-                    new_vectors[symbol.symbol_id] = (symbol.content_hash, vector)
+            to_embed = [symbol for symbol in candidates if symbol.symbol_id not in fresh_ids]
+            source_texts = {
+                symbol.symbol_id: self._read_file_slice(symbol.file_path, symbol.start_byte, symbol.end_byte)
+                for symbol in to_embed
+            }
+            embedded = self._semantic_ranker.embed_symbols(to_embed, source_texts=source_texts)
+            content_hash_by_id = {symbol.symbol_id: symbol.content_hash for symbol in to_embed}
+            new_vectors: dict[str, tuple[str, list[float]]] = {
+                symbol_id: (content_hash_by_id[symbol_id], vector)
+                for symbol_id, vector in embedded.items()
+                if len(vector) == embedding_dim
+            }
             if new_vectors:
                 self._ann_symbol_index.upsert_vectors(
                     conn,
