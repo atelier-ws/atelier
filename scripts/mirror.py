@@ -40,6 +40,12 @@ MIRROR_PUB_TAG = "refs/mirror/bench-pub"  # public SHA created by last run
 DEFAULT_PUBLIC_REMOTE = "https://github.com/atelier-ws/atelier.git"
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
+# Files injected into the public repo that don't exist in the dev repo's public paths.
+# Each entry is (source_path_in_dev_repo, dest_path_in_public_tree).
+INJECTED_FILES: list[tuple[str, str]] = [
+    ("release/atelier-release.yml", ".github/workflows/release.yml"),
+]
+
 
 # ---------------------------------------------------------------------------
 # Git helpers
@@ -86,8 +92,21 @@ def is_private(path: str, prefixes: list[str]) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def get_blob_sha(commit_sha: str, path: str) -> str | None:
+    """Return the blob SHA for a file at a given commit, or None if absent."""
+    result = subprocess.run(
+        ["git", "ls-tree", commit_sha, path],
+        text=True, capture_output=True, cwd=REPO_ROOT,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    meta, _, _ = result.stdout.strip().partition("\t")
+    _, _, sha = meta.split()
+    return sha
+
+
 def build_filtered_tree(commit_sha: str, prefixes: list[str]) -> str:
-    """Return a new tree SHA with private paths removed."""
+    """Return a new tree SHA with private paths removed and injected files added."""
     ls = _run(["git", "ls-tree", "-r", "--full-tree", commit_sha]).stdout
     blobs: list[tuple[str, str, str, str]] = []
     for line in ls.splitlines():
@@ -95,6 +114,13 @@ def build_filtered_tree(commit_sha: str, prefixes: list[str]) -> str:
         mode, obj_type, sha = meta.split()
         if not is_private(path, prefixes):
             blobs.append((mode, obj_type, sha, path))
+
+    # Inject files from private paths into new public locations.
+    for src_path, dest_path in INJECTED_FILES:
+        blob_sha = get_blob_sha(commit_sha, src_path)
+        if blob_sha:
+            blobs.append(("100644", "blob", blob_sha, dest_path))
+
     return _make_tree(blobs, "") if blobs else EMPTY_TREE
 
 
