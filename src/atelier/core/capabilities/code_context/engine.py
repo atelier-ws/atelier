@@ -88,7 +88,7 @@ from atelier.infra.code_intel.astgrep import (
 )
 from atelier.infra.code_intel.cross_lang import CrossLangEdge, CrossLangEdgeStore
 from atelier.infra.internal_llm.exceptions import OllamaUnavailable
-from atelier.infra.tree_sitter.tags import detect_language, extract_tags
+from atelier.infra.tree_sitter.tags import Tag, detect_language, extract_tags
 
 if TYPE_CHECKING:
     from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
@@ -924,6 +924,7 @@ def _process_one_file(
             py_tree = None
 
     # ---- extract symbols ----
+    tag_list: list[Tag] = []
     if language == "python":
         if py_tree is not None:
             extracted = _extract_python_symbols(source, tree=py_tree)
@@ -934,7 +935,11 @@ def _process_one_file(
 
         extracted = [_ExtractedSymbol(**s) for s in extract_markdown_symbols(source)]
     else:
-        extracted = _extract_tag_symbols_worker(path, source, language)
+        try:
+            tag_list = extract_tags(path)
+        except (OSError, SyntaxError):
+            tag_list = []
+        extracted = _extract_tag_symbols_worker(path, source, language, tags=tag_list)
 
     # Pre-read symbol source slices for FTS5 (avoids re-reading during write)
     symbol_sources: list[str] = []
@@ -960,11 +965,16 @@ def _process_one_file(
                 imports_list.append((raw, None))
     imports_list = sorted(set((raw, target) for raw, target in imports_list if raw and target != rel))
 
-    # ---- extract references / call edges (Python only) ----
+    # ---- extract references / call edges ----
+    # Python: rich AST references + call edges. Every other tree-sitter language:
+    # reference rows from the same tag parse used for symbols, so query-time
+    # find_references is a pure index lookup (no whole-repo re-parse).
     references: list[_IndexedReference] = []
     call_edges: list[_IndexedCallEdge] = []
     if language == "python" and py_tree is not None:
         references, call_edges = _extract_python_reference_index_worker(rel, source, extracted, tree=py_tree)
+    elif tag_list:
+        references = _extract_tag_reference_index_worker(rel, source, tag_list, extracted)
 
     return _FileIndexData(
         rel=rel,
@@ -1058,12 +1068,16 @@ def _kind_from_signature_worker(signature: str) -> str:
     return "variable"
 
 
-def _extract_tag_symbols_worker(path: Path, source: str, language: str) -> list[_ExtractedSymbol]:
+def _extract_tag_symbols_worker(
+    path: Path, source: str, language: str, tags: list[Tag] | None = None
+) -> list[_ExtractedSymbol]:
     del language
-    try:
-        tags = [tag for tag in extract_tags(path) if tag.kind == "definition"]
-    except (OSError, SyntaxError):
-        return []
+    if tags is None:
+        try:
+            tags = extract_tags(path)
+        except (OSError, SyntaxError):
+            return []
+    tags = [tag for tag in tags if tag.kind == "definition"]
     offsets = _line_offsets(source)
     lines = source.splitlines()
     sorted_tags = sorted(tags, key=lambda tag: (tag.line, tag.name))
@@ -1088,6 +1102,57 @@ def _extract_tag_symbols_worker(path: Path, source: str, language: str) -> list[
             )
         )
     return symbols
+
+
+def _extract_tag_reference_index_worker(
+    rel: str,
+    source: str,
+    tags: list[Tag],
+    symbols: list[_ExtractedSymbol],
+) -> list[_IndexedReference]:
+    """Index reference tags for any tree-sitter language.
+
+    Mirrors the Python AST reference worker, reusing the tree-sitter tags already
+    parsed for symbol extraction, so query-time find_references is a pure index
+    lookup instead of re-parsing the whole repo.
+    """
+    lines = source.splitlines()
+
+    def containing(line: int) -> _ExtractedSymbol | None:
+        candidates = [sym for sym in symbols if sym.start_line <= line <= sym.end_line]
+        if not candidates:
+            return None
+        return sorted(candidates, key=lambda item: (item.end_line - item.start_line, -item.start_line))[0]
+
+    references: list[_IndexedReference] = []
+    seen: set[tuple[str, int, int]] = set()
+    for tag in tags:
+        if tag.kind != "reference":
+            continue
+        name = tag.name
+        line = tag.line
+        if line <= 0:
+            continue
+        line_text = lines[line - 1] if 1 <= line <= len(lines) else ""
+        column = max(1, line_text.find(name) + 1) if line_text else 1
+        key = (name, line, column)
+        if key in seen:
+            continue
+        seen.add(key)
+        enclosing = containing(line)
+        references.append(
+            _IndexedReference(
+                file_path=rel,
+                symbol_name=name,
+                line=line,
+                column=column,
+                end_column=column + len(name) - 1,
+                enclosing_symbol_name=enclosing.name if enclosing else None,
+                enclosing_qualified_name=enclosing.qualified_name if enclosing else None,
+                snippet=line_text.strip(),
+            )
+        )
+    return references
 
 
 def _python_call_name_worker(node: ast.AST) -> str | None:
@@ -1404,16 +1469,35 @@ class CodeContextEngine:
         fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
         acquired = False
         try:
-            flags = fcntl.LOCK_EX if block else fcntl.LOCK_EX | fcntl.LOCK_NB
-            try:
-                if block:
-                    logging.info("Waiting for index write lock (another process may be indexing)...")
-                fcntl.flock(fd, flags)
-                acquired = True
-                if block:
-                    logging.debug("Index write lock acquired")
-            except OSError:
-                acquired = False
+            if not block:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    acquired = True
+                except OSError:
+                    acquired = False
+            else:
+                # Poll with LOCK_NB so we don't block the process forever.
+                # 30-second timeout: if another atelier process holds the lock
+                # (e.g. a running MCP server) we skip indexing rather than hang.
+                _LOCK_TIMEOUT = 30.0
+                _POLL_INTERVAL = 0.5
+                deadline = time.monotonic() + _LOCK_TIMEOUT
+                logging.info("Waiting for index write lock (another process may be indexing)...")
+                while True:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        acquired = True
+                        logging.debug("Index write lock acquired")
+                        break
+                    except OSError:
+                        if time.monotonic() >= deadline:
+                            logging.warning(
+                                "Index write lock timeout after %.0fs — "
+                                "another process is indexing; skipping this run.",
+                                _LOCK_TIMEOUT,
+                            )
+                            break
+                        time.sleep(_POLL_INTERVAL)
             yield acquired
         finally:
             if acquired:
@@ -4940,9 +5024,7 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found"
-                if merged_status == "empty"
-                else None
+                else "no related call edges were found" if merged_status == "empty" else None
             )
             merged_snapshot = None
             if snapshot:
@@ -6560,39 +6642,11 @@ class CodeContextEngine:
         )
         if indexed:
             return indexed
-        results: list[UsageReference] = []
-        seen: set[tuple[str, int, int]] = set()
-        for rel in self._indexed_files():
-            path = self.repo_root / rel
-            try:
-                tags = extract_tags(path)
-            except OSError:
-                continue
-            lines = self._read_file(rel).splitlines()
-            for tag in tags:
-                if tag.kind != "reference" or tag.name != target_name:
-                    continue
-                if rel == target_file and target_start <= tag.line <= target_end:
-                    continue
-                line_text = lines[tag.line - 1] if 1 <= tag.line <= len(lines) else ""
-                column = max(1, line_text.find(target_name) + 1) if line_text else 1
-                key = (rel, tag.line, column)
-                if key in seen:
-                    continue
-                seen.add(key)
-                results.append(
-                    UsageReference(
-                        file_path=rel,
-                        line=tag.line,
-                        column=column,
-                        end_line=tag.line,
-                        end_column=column + len(target_name) - 1,
-                        snippet=line_text,
-                        provenance="treesitter",
-                    )
-                )
-        results.sort(key=lambda item: (item.file_path, item.line, item.column))
-        return results
+        # References are indexed for every tree-sitter language at index time, so a miss
+        # here means the symbol has no recorded references. Do NOT re-parse the whole repo
+        # with tree-sitter at query time -- that is O(repo) and can segfault on huge or
+        # generated files. Return empty; find_references() falls back to a cheap text scan.
+        return []
 
     def _indexed_references_for_symbol(
         self,
@@ -8104,10 +8158,15 @@ class CodeContextEngine:
 
     def _source_tree_signature(self) -> str:
         parts: list[str] = []
+        repo_root_str = str(self.repo_root)
         for path in iter_source_files(self.repo_root):
             with contextlib.suppress(OSError):
                 stat = path.stat()
-                rel = _safe_relpath(self.repo_root, path)
+                # iter_source_files yields paths rooted at self.repo_root, so compute the
+                # relative key with a pure-string op. _safe_relpath() would call realpath()
+                # per file -- an O(files x path-depth) syscall storm that made this change
+                # detector take minutes on large repos (e.g. VS Code).
+                rel = os.path.relpath(path, repo_root_str)
                 parts.append(f"{rel}|{stat.st_mtime_ns}|{stat.st_size}")
         digest_input = "\n".join(sorted(parts)).encode("utf-8")
         return hashlib.sha256(digest_input).hexdigest()
@@ -8292,8 +8351,13 @@ class CodeContextEngine:
         """Start background lineage bootstrap if commit_chunks is empty or stale.
 
         Non-blocking: launches a daemon thread. Safe to call multiple times.
+
+        Disabled by default: the commit-summary lineage walker makes one LLM
+        summarize call per commit, which is prohibitively slow on deep-history
+        repos (~26-40 min on VS Code). Opt in with ATELIER_LINEAGE_ENABLED=1.
+        The graveyard walker (deleted/renamed symbols) is independent and stays on.
         """
-        if os.getenv("ATELIER_LINEAGE_DISABLED") == "1":
+        if os.getenv("ATELIER_LINEAGE_ENABLED") != "1":
             return
         with self._lineage_lock:
             if self._lineage_thread is not None:
@@ -8401,7 +8465,7 @@ class CodeContextEngine:
 
         # Pass 1: summarise all commits (LLM calls — no embedding yet)
         summaries: list[CommitSummary] = []
-        for record in iter_commit_records(self.repo_root, limit=500, since_sha=since_sha):
+        for record in iter_commit_records(self.repo_root, since_sha=since_sha):
             try:
                 commit_obj = repo.revparse_single(record.sha)
                 diff_text = _get_diff_text(repo, commit_obj)
