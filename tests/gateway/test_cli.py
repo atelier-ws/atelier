@@ -230,15 +230,16 @@ def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
             "tool_input": {"content_regex": "needle", "file_glob_patterns": ["*.py"]},
         },
     )
-    # Real measured savings come from live_savings_events.jsonl (written by
-    # MCP tool handlers at result time, priced at the model in use that turn).
-    (root / "live_savings_events.jsonl").write_text(
+    # Realized savings come from the per-session ledger sessions/<id>/savings.jsonl —
+    # the canonical source aggregate_window_savings reads (live_savings_events.jsonl
+    # only feeds routing credit).
+    sidecar = root / "sessions" / "s1"
+    sidecar.mkdir(parents=True, exist_ok=True)
+    (sidecar / "savings.jsonl").write_text(
         json.dumps(
             {
-                "session_id": "s1",
-                "tool_name": "Read",
-                "lever": "structure_map",
-                "tokens_saved": 1200,
+                "ts": datetime.now(UTC).replace(tzinfo=None).isoformat(),
+                "tokens": 1200,
                 "cost_saved_usd": 0.0036,
                 "model": "claude-sonnet-4-5",
             }

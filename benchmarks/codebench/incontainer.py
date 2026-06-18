@@ -172,6 +172,11 @@ def _split_output(stdout: str) -> tuple[str, str]:
         rest = stdout[idx + len(_DIFF_BEGIN) :]
         end = rest.find(_DIFF_END)
         diff = (rest if end == -1 else rest[:end]).strip("\n")
+        if diff:
+            # git apply requires a newline-terminated patch; the strip above
+            # removes the trailing newline and makes the final hunk unparseable
+            # ('corrupt patch at line N'), which silently fails every grade.
+            diff += "\n"
     brace = head.find("{")
     claude_json = (head[brace:] if brace != -1 else head).strip()
     return claude_json, diff
@@ -220,6 +225,14 @@ def _docker_run_cmd(
     agent = _ARM_AGENT.get(arm)
     if agent:
         env["CODEBENCH_AGENT"] = agent
+    if arm == "atelier":
+        # Atelier exposes many MCP tools and Claude Code's tool-search defers
+        # some of them -- notably `shell` (command execution is deferred like
+        # built-in Bash, even with the server's alwaysLoad). The agent then
+        # burns turns hunting for a command runner via ToolSearch. Disable
+        # deferral for this arm so the full atelier surface (incl. shell) is
+        # loaded up front, matching baseline's always-available Bash.
+        env["ENABLE_TOOL_SEARCH"] = "false"
     env.update(agent_env)
     for key, value in env.items():
         cmd += ["-e", f"{key}={value}"]

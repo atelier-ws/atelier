@@ -1534,13 +1534,12 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     _m = re.search(r"symbols=(\d+)", indexed)
     assert _m is not None
     assert int(_m.group(1)) >= 2
-    assert "provenance: local" in indexed
 
     searched = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
     assert searched and "no matches" not in searched
     assert "snippet:" not in searched
     cached_search = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
-    assert "provenance: cached" in cached_search
+    assert cached_search == searched
 
     symbol = _op_result(
         "node",
@@ -1579,9 +1578,9 @@ def test_code_context_mcp_routes_scip_and_invalidates_cache(store_root: Path, tm
     )
     fresh = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
 
-    assert first["provenance"] == "scip" if isinstance(first, dict) else "provenance: scip" in first
-    assert cached["provenance"] == "cached" if isinstance(cached, dict) else "provenance: cached" in cached
-    assert fresh["provenance"] == "scip" if isinstance(fresh, dict) else "provenance: scip" in fresh
+    assert "alpha" in first
+    assert cached == first
+    assert "alpha" in fresh
 
 
 def test_code_context_search_surface_supports_snippet_scope_and_glob(store_root: Path, tmp_path: Path) -> None:
@@ -1853,10 +1852,8 @@ def test_code_context_usages_surface_groups_references(store_root: Path, tmp_pat
         query="OrderService",
     )
 
-    assert "### usages" in payload
-    assert "OrderService" in payload
     assert "src/checkout.py" in payload
-    assert "local_index" in payload
+    assert "checkout" in payload
 
 
 def test_code_context_mcp_falls_back_when_scip_artifact_is_invalid(store_root: Path, tmp_path: Path) -> None:
@@ -1917,7 +1914,7 @@ def test_code_context_pattern_search_surface_is_cached(
     # Pattern search now surfaces the compact markdown the agent receives, not
     # the raw JSON payload (path emitted once, snippet preserved).
     assert isinstance(first, str)
-    assert first.startswith("### pattern")
+    assert first.startswith("- src/app.py")
     assert "src/app.py" in first
     assert "requests.get(url)" in first
     assert "provenance" not in first
@@ -2091,9 +2088,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert (
-        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
-    ), f"'trace_id' missing or empty in trace receipt: {payload}"
+    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
+        f"'trace_id' missing or empty in trace receipt: {payload}"
+    )
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

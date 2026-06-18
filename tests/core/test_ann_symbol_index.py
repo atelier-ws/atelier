@@ -239,6 +239,7 @@ def test_engine_default_off_path_is_unchanged(tmp_path: Path, monkeypatch: pytes
     monkeypatch.delenv("ATELIER_ANN_RETRIEVAL", raising=False)
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
     hits = engine.search_symbols("create login token for authenticated user", limit=5, mode="semantic")
     assert hits
     assert hits[0].symbol_name == "issue_access_token"
@@ -255,10 +256,12 @@ def test_engine_ann_on_matches_brute_force_top_hit(tmp_path: Path, monkeypatch: 
 
     monkeypatch.delenv("ATELIER_ANN_RETRIEVAL", raising=False)
     engine_off = CodeContextEngine(tmp_path, db_path=tmp_path / "off.sqlite")
+    engine_off.index_repo()
     off_hits = engine_off.search_symbols("create login token for authenticated user", limit=5, mode="semantic")
 
     monkeypatch.setenv("ATELIER_ANN_RETRIEVAL", "1")
     engine_on = CodeContextEngine(tmp_path, db_path=tmp_path / "on.sqlite")
+    engine_on.index_repo()
     on_hits = engine_on.search_symbols("create login token for authenticated user", limit=5, mode="semantic")
 
     assert off_hits and on_hits
@@ -277,6 +280,7 @@ def test_engine_index_version_bump_invalidates_graph(tmp_path: Path, monkeypatch
     monkeypatch.setenv("ATELIER_ANN_RETRIEVAL", "1")
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
     engine.search_symbols("create login token for authenticated user", limit=5, mode="semantic")
 
     with engine._connect() as conn:
@@ -297,5 +301,6 @@ def test_engine_ann_fallback_when_hnsw_unavailable(tmp_path: Path, monkeypatch: 
     monkeypatch.setattr(ann_mod, "_HNSW", None)
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
     hits = engine.search_symbols("create login token for authenticated user", limit=5, mode="semantic")
     assert hits and hits[0].symbol_name == "issue_access_token"
