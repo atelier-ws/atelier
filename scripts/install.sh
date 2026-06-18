@@ -72,12 +72,106 @@ fi
 ASSET_NAME="atelier-distribution-${BINARY_SUFFIX}.tar.gz"
 RELEASE_URL="${RELEASE_BASE_URL}/${ASSET_NAME}"
 
-# ---- helpers -----------------------------------------------------------------
-info()  { printf "  ◇  %s\n" "$*"; }
-warn()  { printf "  ⚠  %s\n" "$*" >&2; }
-error() { printf "  ✗  %s\n" "$*" >&2; }
-fail()  { error "$*"; exit 1; }
+# ---- colour + helpers -------------------------------------------------------
+if [[ -t 2 ]]; then
+    _CP=$'\033[38;5;141m'   # brand purple
+    _CD=$'\033[2m'          # dim
+    _CB=$'\033[1m'          # bold
+    _CG=$'\033[32m'         # green
+    _CY=$'\033[33m'         # yellow
+    _CR=$'\033[31m'         # red
+    _C0=$'\033[0m'          # reset
+else
+    _CP='' _CD='' _CB='' _CG='' _CY='' _CR='' _C0=''
+fi
+
+info()    { printf "  ${_CP}◇${_C0}  %s\n" "$*"; }
+warn()    { printf "  ${_CY}⚠${_C0}  %s\n" "$*" >&2; }
+error()   { printf "  ${_CR}✗${_C0}  %s\n" "$*" >&2; }
+fail()    { error "$*"; exit 1; }
 verbose() { [[ "$ATELIER_VERBOSE" == "1" ]] && info "$*" || true; }
+
+# _bar <current> <total> [width=40]
+_bar() {
+    local cur=$1 tot=$2 w=${3:-40}
+    (( tot <= 0 )) && tot=1
+    local f=$(( cur * w / tot ))
+    (( f > w )) && f=$w
+    local e=$(( w - f ))
+    printf "${_CP}%s${_CD}%s${_C0}" \
+        "$(printf '%*s' "$f" '' | tr ' ' '█')" \
+        "$(printf '%*s' "$e" '' | tr ' ' '░')"
+}
+
+# _hum <bytes>  — human-readable size
+_hum() {
+    local b=$1
+    if   (( b >= 1073741824 )); then printf '%d.%dG' $(( b/1073741824 )) $(( (b%1073741824)*10/1073741824 ))
+    elif (( b >= 1048576    )); then printf '%d.%dM' $(( b/1048576    )) $(( (b%1048576)*10/1048576     ))
+    elif (( b >= 1024       )); then printf '%d.%dK' $(( b/1024       )) $(( (b%1024)*10/1024           ))
+    else printf '%dB' "$b"; fi
+}
+
+# _fsize <file>  — portable file size
+_fsize() { stat -c%s "$1" 2>/dev/null || stat -f%z "$1" 2>/dev/null || echo 0; }
+
+# _dl_progress <url> <dest>  — download with live progress bar
+_dl_progress() {
+    local url=$1 dest=$2
+    # Probe Content-Length (non-fatal)
+    local total=0
+    if command -v curl >/dev/null 2>&1; then
+        total=$(curl -fsI --max-time 5 "$url" 2>/dev/null \
+            | tr -d '\r' | awk 'tolower($1)=="content-length:" {print $2}' | tail -1)
+    fi
+    total=${total:-0}
+
+    # Always download silently
+    curl -fLs --retry 3 --retry-delay 2 --connect-timeout 15 "$url" > "$dest" &
+    local pid=$!
+
+    if [[ -t 2 && "$total" -gt 0 ]]; then
+        local cur=0 prev=0 t0=$SECONDS
+        while kill -0 "$pid" 2>/dev/null; do
+            cur=$(_fsize "$dest")
+            local pct=$(( cur * 100 / total ))
+            (( pct > 100 )) && pct=100
+            local speed=''
+            local dt=$(( SECONDS - t0 ))
+            if (( dt > 0 )); then
+                speed="  $(_hum $(( cur / dt )))/s"
+            fi
+            printf "\r     $(_bar "$cur" "$total")  %3d%%  $(_hum "$cur") / $(_hum "$total")%s" \
+                "$pct" "$speed" >&2
+            sleep 0.12
+        done
+        wait "$pid"; local rc=$?
+        printf "\r     $(_bar "$total" "$total")  100%%  $(_hum "$total") ${_CG}✓${_C0}\n" >&2
+        return $rc
+    else
+        wait "$pid"
+    fi
+}
+
+# _extract_progress <archive> <dest>  — extract with live file-count progress bar
+_extract_progress() {
+    local arc=$1 dest=$2
+    if [[ ! -t 2 ]]; then
+        tar -xzf "$arc" -C "$dest"
+        return $?
+    fi
+    local total
+    total=$(tar -tzf "$arc" 2>/dev/null | wc -l | tr -d ' ')
+    (( total <= 0 )) && total=1
+    local n=0
+    while IFS= read -r _; do
+        (( n++ )) || true
+        local pct=$(( n * 100 / total ))
+        (( pct > 100 )) && pct=100
+        printf "\r     $(_bar "$n" "$total")  %3d%%" "$pct" >&2
+    done < <(tar -xvzf "$arc" -C "$dest" 2>&1)
+    printf "\r     $(_bar "$total" "$total")  100%% ${_CG}✓${_C0}\n" >&2
+}
 
 need_cmd() {
     command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
@@ -142,36 +236,15 @@ esac
 need_cmd bash
 need_cmd tar
 
-DOWNLOAD_CMD=()
-if command -v curl >/dev/null 2>&1; then
-    # Use clean single-line progress bar on a TTY; silent when piped.
-    if [[ -t 2 ]]; then
-        DOWNLOAD_CMD=(curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 --progress-bar)
-    else
-        DOWNLOAD_CMD=(curl -fLs --retry 3 --retry-delay 2 --connect-timeout 15)
-    fi
-elif command -v wget >/dev/null 2>&1; then
-    DOWNLOAD_CMD=(wget -qO-)
-else
+if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     fail "Either curl or wget is required to download the Atelier binary."
 fi
-
-# Spinner for steps that don't have built-in progress output.
-_spin() {
-    local pid=$1 msg=${2:-Working}
-    local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
-    local i=0
-    if [[ ! -t 2 ]]; then
-        wait "$pid"; return $?
-    fi
-    while kill -0 "$pid" 2>/dev/null; do
-        printf "\r  ${frames[i]} %s" "$msg" >&2
-        i=$(( (i + 1) % ${#frames[@]} ))
-        sleep 0.08
-    done
-    printf "\r" >&2
-    wait "$pid"
-}
+# DOWNLOAD_CMD used only for checksum sidecar fetch (small, no progress needed)
+if command -v curl >/dev/null 2>&1; then
+    DOWNLOAD_CMD=(curl -fLs --retry 3 --retry-delay 2 --connect-timeout 15)
+else
+    DOWNLOAD_CMD=(wget -qO-)
+fi
 
 # ---- download & extract ------------------------------------------------------
 if [[ "$ATELIER_LOCAL" == "1" ]]; then
@@ -194,8 +267,9 @@ else
     trap 'rm -f "$TMP_ARCHIVE"' EXIT
 
     verbose "Downloading from: $RELEASE_URL"
-    printf "  Downloading Atelier ${ATELIER_RELEASE_TAG} (%s)...\n" "${BINARY_SUFFIX}" >&2
-    if ! "${DOWNLOAD_CMD[@]}" "$RELEASE_URL" > "$TMP_ARCHIVE"; then
+    printf "  ${_CP}◇${_C0}  ${_CB}Downloading${_C0} Atelier %s  ${_CD}(%s)${_C0}\n" \
+        "${ATELIER_RELEASE_TAG}" "${BINARY_SUFFIX}" >&2
+    if ! _dl_progress "$RELEASE_URL" "$TMP_ARCHIVE"; then
         fail "Could not download ${ASSET_NAME}. The release may not include this platform asset yet: ${RELEASE_URL}"
     fi
 
@@ -205,7 +279,8 @@ else
 
     verify_checksum "$TMP_ARCHIVE" "$RELEASE_URL"
 
-    { tar -xzf "$TMP_ARCHIVE" -C "$ATELIER_INSTALL_DIR" & _spin $! "Extracting..."; }
+    printf "  ${_CP}◇${_C0}  ${_CB}Extracting${_C0}\n" >&2
+    _extract_progress "$TMP_ARCHIVE" "$ATELIER_INSTALL_DIR"
 
     info "Distribution extracted to: ${ATELIER_INSTALL_DIR}"
 fi
