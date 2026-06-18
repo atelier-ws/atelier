@@ -112,7 +112,7 @@ def test_benchmark_codebench_wraps_runner(monkeypatch, tmp_path: Path) -> None:
         "atelier": "atelier:code",
         "baseline": "host-default",
     }
-    assert manifest["corpus"]["tasks"][0]["id"] == "task1"
+    assert manifest["corpus"]["tasks"][0]["id"] == "cg_vscode"
     assert manifest["artifacts"]["model_audit_csv"] == "model_audit.csv"
     assert manifest["artifacts"]["task_correctness_csv"] == "task_correctness.csv"
     assert manifest["artifacts"]["pairwise_quality_csv"] == "pairwise_quality.csv"
@@ -484,7 +484,7 @@ def test_benchmark_mcp_defaults_jobs_to_auto(monkeypatch, tmp_path: Path) -> Non
         lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
     )
 
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "mcp"])
+    result = runner.invoke(cli, ["--root", str(root), "eval", "mcp"])
 
     assert result.exit_code == 0, result.output
     cmd, _label, _env = calls[0]
@@ -505,7 +505,7 @@ def test_benchmark_mcp_passes_parallel_jobs(monkeypatch, tmp_path: Path) -> None
         lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
     )
 
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "mcp", "--jobs", "3"])
+    result = runner.invoke(cli, ["--root", str(root), "eval", "mcp", "--jobs", "3"])
 
     assert result.exit_code == 0, result.output
     assert len(calls) == 1
@@ -544,7 +544,7 @@ def test_benchmark_providers_passes_parallel_jobs(monkeypatch, tmp_path: Path) -
         lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
     )
 
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "providers", "--jobs", "4"])
+    result = runner.invoke(cli, ["--root", str(root), "eval", "providers", "--jobs", "4"])
 
     assert result.exit_code == 0, result.output
     assert len(calls) == 1
@@ -579,10 +579,104 @@ def test_benchmark_providers_defaults_to_auto_and_cache_root(monkeypatch, tmp_pa
         lambda cmd, cwd, label, env=None: calls.append((cmd, label, env)),
     )
 
-    result = runner.invoke(cli, ["--root", str(root), "benchmark", "providers"])
+    result = runner.invoke(cli, ["--root", str(root), "eval", "providers"])
 
     assert result.exit_code == 0, result.output
     cmd, label, _env = calls[0]
     assert label == "provider benchmark"
     assert cmd[cmd.index("--jobs") + 1] == "3"
     assert cmd[cmd.index("--cache-root") + 1] == str((tmp_path / "cache").resolve())
+
+
+def test_benchmark_swe_wraps_multiswe_runner(monkeypatch, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    calls: list[tuple[list[str], str]] = []
+
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _project: ["python"])
+    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_run",
+        lambda cmd, cwd, label, env=None, check=True: calls.append((cmd, label)) or 0,
+    )
+
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(root),
+            "benchmark",
+            "swe",
+            "--language",
+            "go",
+            "--language",
+            "rust",
+            "--per-language-limit",
+            "5",
+            "--jobs",
+            "2",
+            "--no-grade",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    cmd, label = calls[0]
+    assert label == "benchmark swe"
+    assert cmd[:3] == ["python", "-m", "benchmarks.codebench.multiswe_run"]
+    assert cmd[cmd.index("--arms") + 1 : cmd.index("--arms") + 3] == ["baseline", "atelier"]
+    assert cmd[cmd.index("--languages") + 1 : cmd.index("--languages") + 3] == ["go", "rust"]
+    assert cmd[cmd.index("--per-language-limit") + 1] == "5"
+    assert cmd[cmd.index("--jobs") + 1] == "2"
+    assert cmd[cmd.index("--model") + 1] == "sonnet"
+    assert "--no-grade" in cmd
+    assert cmd[cmd.index("--out") + 1] == str(tmp_path / "swe")
+
+
+def test_benchmark_swe_defaults_to_grading(monkeypatch, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _project: ["python"])
+    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_run",
+        lambda cmd, cwd, label, env=None, check=True: calls.append(cmd) or 0,
+    )
+
+    result = runner.invoke(cli, ["--root", str(root), "benchmark", "swe", "--limit", "1"])
+
+    assert result.exit_code == 0, result.output
+    cmd = calls[0]
+    assert "--no-grade" not in cmd
+    assert cmd[cmd.index("--limit") + 1] == "1"
+    assert cmd[cmd.index("--grade-workers") + 1] == "4"
+
+
+def test_benchmark_swe_forwards_suite(monkeypatch, tmp_path: Path) -> None:
+    runner = CliRunner()
+    root = tmp_path / ".atelier"
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(benchmark_cmds, "_python_cmd", lambda _project: ["python"])
+    monkeypatch.setattr(benchmark_cmds, "_run_dir", lambda suite, out, repo_root=None: tmp_path / suite)
+    monkeypatch.setattr(
+        benchmark_cmds,
+        "_run",
+        lambda cmd, cwd, label, env=None, check=True: calls.append(cmd) or 0,
+    )
+
+    result = runner.invoke(
+        cli,
+        ["--root", str(root), "benchmark", "swe", "--suite", "swe-bench-verified", "--limit", "2"],
+    )
+    assert result.exit_code == 0, result.output
+    assert calls[0][calls[0].index("--suite") + 1] == "swe-bench-verified"
+
+    calls.clear()
+    result = runner.invoke(cli, ["--root", str(root), "benchmark", "swe", "--limit", "1"])
+    assert result.exit_code == 0, result.output
+    assert calls[0][calls[0].index("--suite") + 1] == "multi-swe-bench"

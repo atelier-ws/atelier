@@ -30,6 +30,15 @@ DEFAULT_RUNTIME_MODELS = {
     "solve": "claude-opus-4.8",
 }
 
+# Per-host default model pins for roles that should NOT inherit the session
+# model out of the box. Read-only exploration/research run on a cheap model
+# (mirrors the built-in Explore=haiku); coding/judgment roles inherit. Users
+# override any entry via ``atelier init`` (writes models.hosts.<host>.roles).
+DEFAULT_HOST_ROLE_MODELS: dict[str, dict[str, str]] = {
+    "claude": {"explore": "claude-haiku-4.5", "research": "claude-haiku-4.5"},
+    "codex": {"explore": "gpt-5.4-mini", "research": "gpt-5.4-mini"},
+}
+
 _CLAUDE_DOT_VERSION_RE = re.compile(r"(\d)\.(?=\d)")
 
 
@@ -102,10 +111,43 @@ def resolve_host_model(
             candidate = str(raw or "").strip()
             if candidate:
                 return None if candidate == "auto" else candidate
+    shipped = DEFAULT_HOST_ROLE_MODELS.get(host, {}).get(role_id)
+    if shipped:
+        return shipped
     try:
         return resolve_runtime_model(role_id, workspace_root)
     except KeyError:
         return fallback
+
+
+def resolve_explicit_host_model(
+    host: str,
+    role_id: str,
+    *,
+    workspace_root: str | Path | None = None,
+) -> str | None:
+    """Model for a host *agent file*, or None to inherit the host session model.
+
+    Unlike :func:`resolve_host_model`, this never falls back to the runtime
+    default -- an absent pin means the agent file omits ``model:`` and inherits
+    the session model. Resolution: explicit settings (``models.hosts.<host>`` /
+    ``default``) -> shipped ``DEFAULT_HOST_ROLE_MODELS`` -> ``None``. An explicit
+    ``"auto"`` resolves to ``None`` and overrides the shipped default.
+    """
+    settings = load_model_settings(workspace_root)
+    hosts = settings.get("models", {}).get("hosts", {})
+    for host_key in (host, "default"):
+        host_settings = hosts.get(host_key, {})
+        roles = host_settings.get("roles", {})
+        if not isinstance(roles, dict):
+            continue
+        if _is_legacy_auto_host_stub(roles):
+            continue
+        for key in (role_id, "*"):
+            candidate = str(roles.get(key) or "").strip()
+            if candidate:
+                return None if candidate == "auto" else candidate
+    return DEFAULT_HOST_ROLE_MODELS.get(host, {}).get(role_id)
 
 
 def build_runtime_settings_payload(models: dict[str, str]) -> dict[str, Any]:
@@ -198,6 +240,7 @@ def _deep_merge(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
 
 __all__ = [
     "CANONICAL_COPILOT_AGENT_MODEL",
+    "DEFAULT_HOST_ROLE_MODELS",
     "DEFAULT_RUNTIME_MODELS",
     "HOST_IDS",
     "HOST_ROLE_IDS",
@@ -207,6 +250,7 @@ __all__ = [
     "global_model_settings_path",
     "load_model_settings",
     "normalize_model_for_host",
+    "resolve_explicit_host_model",
     "resolve_host_model",
     "resolve_runtime_model",
     "set_host_role_models",

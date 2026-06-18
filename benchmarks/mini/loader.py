@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from atelier.core.capabilities.eval_mini.schema import MiniEvalCase
+from .schema import MiniEvalCase
 
 
 def repo_root() -> Path:

@@ -10,19 +10,19 @@ Public API
 
 from __future__ import annotations
 
-from atelier.core.capabilities.eval_mini.loader import (
+from .loader import (
     default_cases_path,
     load_cases,
     repo_root,
 )
-from atelier.core.capabilities.eval_mini.report import render_markdown, save_report
-from atelier.core.capabilities.eval_mini.runner import (
+from .report import render_markdown, save_report
+from .runner import (
     aggregate_report,
     run_case,
     run_case_dry,
     run_suite,
 )
-from atelier.core.capabilities.eval_mini.schema import (
+from .schema import (
     MiniEvalCase,
     MiniEvalCaseResult,
     MiniEvalReport,
