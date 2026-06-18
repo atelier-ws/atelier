@@ -47,7 +47,10 @@ done
 # ---- install atelier from bundled wheel ------------------------------------
 install_atelier_from_wheel() {
     local wheel
-    wheel="$(find "${ATELIER_INSTALL_DIR}/bin" -maxdepth 1 -name "*.whl" 2>/dev/null | head -1)"
+    # Pick the highest-versioned wheel when multiple exist (old releases accumulate
+    # in the bin dir across installs). `sort -V` sorts by version number so tail -1
+    # always picks the newest regardless of filesystem directory order.
+    wheel="$(find "${ATELIER_INSTALL_DIR}/bin" -maxdepth 1 -name "atelier-*.whl" 2>/dev/null | sort -V | tail -1)"
     if [[ -z "${wheel}" ]]; then
         verbose "No bundled wheel found — assuming atelier already installed"
         return 0
@@ -99,6 +102,11 @@ install_atelier_from_wheel() {
     else
         verbose "atelier installed (binary not found in uv tool dir; using PATH fallback)"
     fi
+
+    # Remove stale wheels left over from previous installs so future runs
+    # always see exactly one wheel and `sort -V | tail -1` can't pick a stale one.
+    find "${ATELIER_INSTALL_DIR}/bin" -maxdepth 1 -name "atelier-*.whl" \
+        ! -name "$(basename "${wheel}")" -delete 2>/dev/null || true
 }
 
 # ---- main -------------------------------------------------------------------

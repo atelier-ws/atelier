@@ -1108,20 +1108,14 @@ stop_existing_atelier_processes() {
         [[ -n "${pid:-}" && -n "${args:-}" ]] || continue
         [[ "$pid" == "$current_pid" || "$pid" == "$parent_pid" ]] && continue
 
-        # Dev/source installs (local.sh sets ATELIER_LOCAL=1) reuse the live
-        # editable source, so a running MCP server is never a stale binary —
-        # skip it so `make dev` never kills the developer's running server.
-        # servicectl/stack are still cleaned.
+        # Dev/source installs (local.sh sets ATELIER_LOCAL=1): never kill any running
+        # MCP server. Claude Code owns the MCP process lifecycle — it spawns and kills
+        # the server as part of its own session. Killing it here disconnects the live
+        # session without an auto-reconnect. servicectl/stack are still cleaned.
         if [[ "${ATELIER_LOCAL:-0}" == "1" ]]; then
             case "$args" in
                 *"atelier mcp --host"*|*"/atelier mcp "*|*" atelier mcp "*)
-                    # Skip only dev-path MCP servers (live editable source, never stale).
-                    # Prod-path servers (~/.local/) ARE stale during make dev — kill them.
-                    case "$args" in
-                        *"${HOME}/.local/"*) ;; # prod path → fall through to kill
-                        *) continue ;;          # dev venv path → skip
-                    esac
-                    ;;
+                    continue ;;
             esac
         fi
 
@@ -1421,6 +1415,73 @@ _ensure_path_persistence() {
     rm -f "$tmp_input" "$tmp_output"
 
     info "Added Atelier directories to PATH in ${profile_file/#$HOME/~}"
+}
+
+# _write_install_update_state — record a version bump so the SessionStart hook
+# can show an update notification in Claude Code on the next session start.
+# Reads the previously known version from ~/.atelier/update_state.json and
+# only writes when the version actually changed (skips fresh installs and
+# same-version reinstalls). Fail-open: errors are silently swallowed.
+_write_install_update_state() {
+    [[ "${ATELIER_DRY_RUN:-0}" == "1" ]] && return 0
+    local atelier_bin="${ATELIER_BIN_DIR}/atelier"
+    command -v "$atelier_bin" >/dev/null 2>&1 || atelier_bin="atelier"
+    command -v "$atelier_bin" >/dev/null 2>&1 || return 0
+
+    local new_ver
+    new_ver=$("$atelier_bin" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+    [[ -n "$new_ver" ]] || return 0
+
+    local state_file="${HOME}/.atelier/update_state.json"
+    local prev_ver=""
+    if [[ -f "$state_file" ]]; then
+        # current_version in the existing file is the version that was known
+        # before this install (possibly already shown/notified to the user).
+        prev_ver=$(python3 -c "
+import json
+try:
+    print(json.load(open('${state_file}')).get('current_version',''))
+except Exception:
+    pass
+" 2>/dev/null || true)
+    fi
+
+    local method="install"
+    [[ "${ATELIER_LOCAL:-0}" == "1" ]] && method="source"
+
+    mkdir -p "${HOME}/.atelier"
+
+    if [[ -z "$prev_ver" ]]; then
+        # Fresh install: seed the file so the NEXT upgrade can detect the diff.
+        # notified=true so no spurious notification fires on this session start.
+        python3 -c "
+import json, datetime, pathlib, sys
+data = {
+    'previous_version': '',
+    'current_version': sys.argv[1],
+    'updated_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    'method': sys.argv[2],
+    'notified': True,
+}
+pathlib.Path(sys.argv[3]).write_text(json.dumps(data, indent=2), encoding='utf-8')
+" "$new_ver" "$method" "$state_file" 2>/dev/null || true
+        return 0
+    fi
+
+    # Same-version reinstall: nothing to notify.
+    [[ "$prev_ver" != "$new_ver" ]] || return 0
+
+    python3 -c "
+import json, datetime, pathlib, sys
+data = {
+    'previous_version': sys.argv[1],
+    'current_version': sys.argv[2],
+    'updated_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    'method': sys.argv[3],
+    'notified': False,
+}
+pathlib.Path(sys.argv[4]).write_text(json.dumps(data, indent=2), encoding='utf-8')
+" "$prev_ver" "$new_ver" "$method" "$state_file" 2>/dev/null || true
 }
 
 # run_setup — shared post-install steps invoked by BOTH installers after the
@@ -1899,6 +1960,7 @@ run_setup() {
 
     run_knowledge_extraction_if_selected
     configure_recall_if_selected
+    _write_install_update_state
 
     print_final_report
     local completion_title_line="✓ Installation Complete!                              "

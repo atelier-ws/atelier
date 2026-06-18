@@ -148,12 +148,29 @@ export ATELIER_STATUSLINE_LIVE_OUT_TOK="${OUT_TOK:-0}"
 [ -n "${ATELIER_NO_COLOR:-}" ] && export ATELIER_STATUSLINE_NO_COLOR=1
 
 _ATELIER_BIN="$(dirname "${ATELIER_PY}")/atelier"
+
+# Cache savings --segment output for 8s to avoid spawning Python on every render.
+# The statusline fires on every turn; without caching this burns ~90% CPU per render.
+_SEG_CACHE="${ATELIER_STATUS_ROOT}/statusline_segment_cache"
+_SEG_CACHE_TS="${ATELIER_STATUS_ROOT}/statusline_segment_ts"
+_NOW_S=$(date +%s)
+_CACHED_TS=$(cat "${_SEG_CACHE_TS}" 2>/dev/null || echo 0)
+_CACHE_AGE=$(( _NOW_S - ${_CACHED_TS:-0} ))
 DYNAMIC_SEG=""
-if [ -x "${_ATELIER_BIN}" ]; then
-  DYNAMIC_SEG=$("${_ATELIER_BIN}" savings --segment 2>/dev/null)
+if [ "${_CACHE_AGE}" -le 8 ] && [ -f "${_SEG_CACHE}" ]; then
+  DYNAMIC_SEG=$(cat "${_SEG_CACHE}" 2>/dev/null || true)
 fi
 if [ -z "${DYNAMIC_SEG:-}" ]; then
-  DYNAMIC_SEG=$(uv run --quiet atelier savings --segment 2>/dev/null)
+  if [ -x "${_ATELIER_BIN}" ]; then
+    DYNAMIC_SEG=$("${_ATELIER_BIN}" savings --segment 2>/dev/null)
+  fi
+  if [ -z "${DYNAMIC_SEG:-}" ]; then
+    DYNAMIC_SEG=$(uv run --quiet atelier savings --segment 2>/dev/null)
+  fi
+  if [ -n "${DYNAMIC_SEG:-}" ]; then
+    printf '%s' "${DYNAMIC_SEG}" > "${_SEG_CACHE}" 2>/dev/null || true
+    printf '%s' "${_NOW_S}" > "${_SEG_CACHE_TS}" 2>/dev/null || true
+  fi
 fi
 
 # --- Background shell jobs ---
@@ -225,7 +242,32 @@ TASKS_SEG=""
 [ "${BG_JOBS:-0}" -gt 0 ] 2>/dev/null && TASKS_SEG=" ${SEP} ${BG_JOBS} bg"
 [ "${BG_AGENTS:-0}" -gt 0 ] 2>/dev/null && TASKS_SEG="${TASKS_SEG} ${SEP} ${BG_AGENTS} agent"
 
-printf '%s%s%s %s %s ctx %s %s%%%s%s\n' \
+# --- Update tip: show once in the statusline when the plugin was upgraded ---
+UPDATE_SEG=""
+_UPDATE_STATE_FILE="${ATELIER_STATUS_ROOT}/update_state.json"
+if [ -f "${_UPDATE_STATE_FILE}" ]; then
+  _UPDATE_TIP=$(python3 -c "
+import json, sys, pathlib
+p = pathlib.Path(sys.argv[1])
+try:
+    d = json.loads(p.read_text())
+    prev = d.get('previous_version', '')
+    cur = d.get('current_version', '')
+    if cur and prev and cur != prev and not d.get('notified'):
+        print(prev + '|' + cur)
+        d['notified'] = True
+        p.write_text(json.dumps(d, indent=2))
+except Exception:
+    pass
+" "${_UPDATE_STATE_FILE}" 2>/dev/null || true)
+  if [ -n "${_UPDATE_TIP:-}" ]; then
+    _TIP_PREV="${_UPDATE_TIP%%|*}"
+    _TIP_CUR="${_UPDATE_TIP##*|}"
+    UPDATE_SEG=" ${SEP} ${C_BRAND}updated v${_TIP_PREV}→${_TIP_CUR}${C_RESET}"
+  fi
+fi
+
+printf '%s%s%s %s %s ctx %s %s%%%s%s%s\n' \
   "$C_BRAND" "$PLUGIN_LABEL" "$C_RESET" \
   "$PIPE" "$MODEL" "$ACTUAL_CTX_F" "$PCT_INT" \
-  "${DYNAMIC_SEG}" "$TASKS_SEG"
+  "${DYNAMIC_SEG}" "$TASKS_SEG" "${UPDATE_SEG}"
