@@ -581,9 +581,15 @@ def code_index_cmd(
     click.echo(f"{prefix_markup}{stats_line}" if frame_prefix else stats_line)
 
     if git_summary and git_summary.get("commits_walked", 0) > 0:
+        walked = git_summary["commits_walked"]
+        total_commits = git_summary.get("total_commits", walked)
+        if total_commits > walked:
+            commit_desc = f"{walked} of {total_commits} commits (rest indexing in background)"
+        else:
+            commit_desc = f"{walked} commits"
         git_line = (
             f"{click.style('✓', fg='green')}  Indexed Git history: "
-            f"{git_summary['commits_walked']} commits, {git_summary['symbols_found']} deleted/renamed symbols "
+            f"{commit_desc}, {git_summary['symbols_found']} deleted/renamed symbols "
             f"({git_summary['deletions_found']} deletions, {git_summary['renames_found']} renames)"
         )
         click.echo(f"{prefix_markup}{git_line}" if frame_prefix else git_line)
