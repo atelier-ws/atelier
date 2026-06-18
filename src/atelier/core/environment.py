@@ -56,17 +56,7 @@ HIDDEN_LLM_TOOLS = frozenset(
         "symbols",
     }
 )
-HIDDEN_SKILLS = frozenset(
-    {
-        "analyze-failures",
-        "context",
-        "evals",
-        "rescue",
-        "savings",
-        "status",
-        "record",
-    }
-)
+HIDDEN_SKILLS: frozenset[str] = frozenset()
 
 
 def bool_env(name: str, default: bool = False, env: Mapping[str, str] | None = None) -> bool:

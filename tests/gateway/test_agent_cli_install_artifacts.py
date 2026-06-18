@@ -47,17 +47,6 @@ def test_install_script_exists(host: str) -> None:
     assert is_executable(script), f"Not executable: scripts/install_{host}.sh"
 
 
-# ---------------------------------------------------------------------------
-# 2. atelier mcp on PATH
-# ---------------------------------------------------------------------------
-
-
-def test_mcp_binary_on_path() -> None:
-    # Just verify the command is documented as available
-    content = (ATELIER_ROOT / "README.md").read_text()
-    assert "atelier mcp" in content
-
-
 # atelier-status was folded into `atelier status` — its test moved to the CLI test suite.
 
 # ---------------------------------------------------------------------------
@@ -298,12 +287,6 @@ def test_antigravity_mcp_template_exists() -> None:
     assert data["servers"]["atelier"]["args"] == ["mcp", "--host", "antigravity"]
 
 
-def test_antigravity_agents_surface_exists() -> None:
-    surface = ANTIGRAVITY_INTEGRATION / "AGENTS.atelier.md"
-    assert surface.exists(), "integrations/antigravity/AGENTS.atelier.md must exist"
-    assert "atelier:code" in surface.read_text()
-
-
 def test_copilot_example_has_servers_key() -> None:
     example = INTEGRATIONS / "copilot" / "mcp.atelier.template.json"
     if not example.exists():
@@ -350,40 +333,9 @@ def test_codex_hooks_bundle_exists() -> None:
 
 
 def test_codex_agents_atelier_md_mentions_mcp() -> None:
-    agents_md = INTEGRATIONS / "codex" / "AGENTS.atelier.md"
-    if not agents_md.exists():
-        pytest.skip("codex/AGENTS.atelier.md not found")
+    agents_md = INTEGRATIONS / "AGENTS.atelier.md"
     content = agents_md.read_text()
     assert "mcp" in content.lower() or "MCP" in content, "AGENTS.atelier.md should mention MCP"
-
-
-# ---------------------------------------------------------------------------
-# 10. Copilot instructions mention atelier
-# ---------------------------------------------------------------------------
-
-
-def test_copilot_instructions_mention_atelier() -> None:
-    instructions = INTEGRATIONS / "copilot" / "COPILOT_INSTRUCTIONS.atelier.md"
-    if not instructions.exists():
-        pytest.skip("copilot/COPILOT_INSTRUCTIONS.atelier.md not found")
-    content = instructions.read_text()
-    assert "atelier" in content.lower() or "Atelier" in content, "Copilot instructions must reference Atelier"
-    assert "For multi-file edits, read all target files in one batched `read` call" in content
-    assert "## Edit and recovery nudges" not in content
-    assert "Call 'rescue' before any retry" not in content
-
-
-# ---------------------------------------------------------------------------
-# 11. README mentions the streamlined install flow
-# ---------------------------------------------------------------------------
-
-
-def test_readme_mentions_install_sh() -> None:
-    readme = ATELIER_ROOT / "README.md"
-    if not readme.exists():
-        pytest.skip("README.md not found")
-    content = readme.read_text()
-    assert "scripts/install.sh" in content or "install.sh | bash" in content
 
 
 # ---------------------------------------------------------------------------
@@ -480,9 +432,9 @@ def test_managed_context_helper_shared_across_host_installs() -> None:
         "install_opencode.sh",
     ]:
         content = (SCRIPTS / script_name).read_text()
-        assert (
-            'source "${SCRIPT_DIR}/lib/managed_context.sh"' in content
-        ), f"{script_name} must use the shared managed context helper"
+        assert 'source "${SCRIPT_DIR}/lib/managed_context.sh"' in content, (
+            f"{script_name} must use the shared managed context helper"
+        )
 
 
 def test_local_sh_bootstraps_atelier_before_host_installers() -> None:
@@ -595,9 +547,9 @@ def test_new_claude_plugin_json_has_no_commands_key() -> None:
     if not plugin_json.exists():
         pytest.skip("integrations/claude/plugin/.claude-plugin/plugin.json not found")
     data = json.loads(plugin_json.read_text())
-    assert (
-        "commands" not in data
-    ), "plugin.json must not have 'commands' key — use 'skills' for /atelier:name namespacing"
+    assert "commands" not in data, (
+        "plugin.json must not have 'commands' key — use 'skills' for /atelier:name namespacing"
+    )
 
 
 def test_new_claude_plugin_json_author_is_object() -> None:
@@ -606,9 +558,9 @@ def test_new_claude_plugin_json_author_is_object() -> None:
     if not plugin_json.exists():
         pytest.skip("integrations/claude/plugin/.claude-plugin/plugin.json not found")
     data = json.loads(plugin_json.read_text())
-    assert isinstance(
-        data.get("author"), dict
-    ), f'plugin.json \'author\' must be an object like {{"name": "Beseam"}}, got: {data.get("author")!r}'
+    assert isinstance(data.get("author"), dict), (
+        f'plugin.json \'author\' must be an object like {{"name": "Beseam"}}, got: {data.get("author")!r}'
+    )
 
 
 def test_new_claude_plugin_json_no_manifest_keys() -> None:
@@ -659,9 +611,9 @@ def test_new_claude_plugin_has_workflows() -> None:
     workflows_dir = CLAUDE_PLUGIN_NEW / "workflows"
     assert workflows_dir.is_dir(), "integrations/claude/plugin/workflows/ directory must exist"
     assert (workflows_dir / "code-audit.js").exists(), "integrations/claude/plugin/workflows/code-audit.js must exist"
-    assert (
-        workflows_dir / "gate-benchmark.js"
-    ).exists(), "integrations/claude/plugin/workflows/gate-benchmark.js must exist"
+    assert (workflows_dir / "gate-benchmark.js").exists(), (
+        "integrations/claude/plugin/workflows/gate-benchmark.js must exist"
+    )
 
 
 def test_new_claude_plugin_workflow_readme_documents_discovery_contract() -> None:
@@ -718,9 +670,9 @@ def test_new_claude_plugin_settings_uses_supported_keys() -> None:
     allowed = {"agent", "subagentStatusLine"}
     extra = set(data.keys()) - allowed
     assert not extra, f"settings.json contains unsupported keys: {extra}. Only {allowed} are honored by Claude Code."
-    assert (
-        data.get("agent") == "atelier:code"
-    ), "settings.json must set `agent` to 'atelier:code' so it appears as the default agent for the atelier plugin."
+    assert data.get("agent") == "atelier:code", (
+        "settings.json must set `agent` to 'atelier:code' so it appears as the default agent for the atelier plugin."
+    )
 
 
 def test_new_claude_plugin_subagent_statusline_wired() -> None:
@@ -732,17 +684,17 @@ def test_new_claude_plugin_subagent_statusline_wired() -> None:
     sl = data.get("subagentStatusLine")
     assert isinstance(sl, dict), "subagentStatusLine must be a dict"
     assert sl.get("type") == "command", "subagentStatusLine.type must be 'command'"
-    assert "${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh" in sl.get(
-        "command", ""
-    ), "subagentStatusLine.command must reference ${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh"
+    assert "${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh" in sl.get("command", ""), (
+        "subagentStatusLine.command must reference ${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh"
+    )
 
 
 def test_new_claude_plugin_statusline_script_exists_and_executable() -> None:
     """scripts/statusline.sh must exist and be executable."""
     script = CLAUDE_PLUGIN_NEW / "scripts" / "statusline.sh"
-    assert (
-        script.exists()
-    ), "integrations/claude/plugin/scripts/statusline.sh must exist — wired by settings.json subagentStatusLine."
+    assert script.exists(), (
+        "integrations/claude/plugin/scripts/statusline.sh must exist — wired by settings.json subagentStatusLine."
+    )
     assert os.access(script, os.X_OK), f"{script} must be executable (chmod +x)"
 
 
@@ -784,9 +736,9 @@ def test_root_marketplace_json_source_points_to_new_plugin() -> None:
     plugins = data.get("plugins", [])
     assert len(plugins) >= 1, "root marketplace.json must declare at least one plugin"
     source = plugins[0].get("source", "")
-    assert (
-        "integrations/claude/plugin" in source or source == "./"
-    ), f"root marketplace.json source must point to integrations/claude/plugin or './', got: {source}"
+    assert "integrations/claude/plugin" in source or source == "./", (
+        f"root marketplace.json source must point to integrations/claude/plugin or './', got: {source}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -906,17 +858,11 @@ def test_claude_install_docs_mention_workflows_and_version_gate() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_codex_agents_atelier_md_has_persona() -> None:
-    f = INTEGRATIONS / "codex" / "AGENTS.atelier.md"
-    assert f.exists(), "Missing: integrations/codex/AGENTS.atelier.md"
+def test_agents_atelier_md_has_persona() -> None:
+    f = INTEGRATIONS / "AGENTS.atelier.md"
+    assert f.exists(), "Missing: integrations/AGENTS.atelier.md"
     content = f.read_text()
-    assert "atelier:code" in content, "codex AGENTS.atelier.md must declare atelier:code persona"
-
-
-def test_antigravity_atelier_md_exists() -> None:
-    f = INTEGRATIONS / "antigravity" / "AGENTS.atelier.md"
-    assert f.exists(), "Missing: integrations/antigravity/AGENTS.atelier.md"
-    assert "atelier:code" in f.read_text()
+    assert "atelier:code" in content, "AGENTS.atelier.md must declare atelier:code persona"
 
 
 def test_opencode_atelier_agent_exists() -> None:

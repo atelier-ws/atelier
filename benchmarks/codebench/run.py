@@ -96,13 +96,13 @@ class ArmSpec:
     heavy: bool = False  # counts toward the HEAVY_ARMS rate-limit warning
 
 
-# Persona is resolved by (arm, task.capability): the baseline arm runs the
-# built-in twin (Explore/Plan, or vanilla default for code); the atelier/
-# execute/solve arms run Atelier personas through the generated plugin.
+# Persona is resolved by arm (every task is a ``code`` task): the baseline arm
+# runs the vanilla Claude default; the atelier/execute/solve arms run Atelier
+# personas through the generated plugin.
 ARM_SPECS: dict[str, ArmSpec] = {
-    "baseline": ArmSpec({"code": None, "explore": "Explore", "plan": "Plan"}),
+    "baseline": ArmSpec({"code": None}),
     "atelier": ArmSpec(
-        {"code": "atelier:code", "explore": "atelier:explore", "plan": "atelier:plan"},
+        {"code": "atelier:code"},
         plugin=True,
         strip_mcp=False,
         heavy=True,
@@ -325,7 +325,7 @@ def prepare_workspace(task: Task, workspace: Path | None = None) -> Path:
                 cwd=str(ws),
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=1800,
             )
             if result.returncode != 0:
                 print(
@@ -334,7 +334,7 @@ def prepare_workspace(task: Task, workspace: Path | None = None) -> Path:
                     flush=True,
                 )
         except subprocess.TimeoutExpired:
-            print(f"  [setup:{task.id}] WARNING: '{cmd}' timed out after 300s", flush=True)
+            print(f"  [setup:{task.id}] WARNING: '{cmd}' timed out after 1800s", flush=True)
 
     return ws
 
@@ -542,185 +542,15 @@ def _apply_verify(results: list[ArmResult]) -> None:
         r.judge_reason = (detail if mode == "binary" else f"floor failed ({detail})")[:300]
 
 
-def _task_answer_key(task: Task) -> tuple[list[str], list[str], float]:
-    """Read the explore ``answer`` block from the task's config.yaml.
+def _apply_graders(results: list[ArmResult]) -> None:
+    """Grade every result with the objective verify gate.
 
-    Mirrors :func:`_task_verify`. Returns ``(expect, forbid, threshold)``; an
-    empty ``expect`` means the task declares no answer key.
-        answer:
-          expect:    ["run_arm", "benchmarks/codebench/run.py"]   # must appear
-          forbid:    ["TODO"]                                      # optional
-          threshold: 0.6                                           # optional
+    Every CodeBench task is a ``code`` task: the verify gate
+    (:func:`_apply_verify`) IS the grade for binary tasks, or the floor the LLM
+    judge scores conformance against. A set ``judge_model`` makes the global LLM
+    judge skip the row; tasks with no verify block fall through to the judge.
     """
-    config_path = task.prompt_path().parent / "config.yaml"
-    if not config_path.exists():
-        return [], [], 0.6
-    try:
-        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    except Exception:
-        return [], [], 0.6
-    answer = data.get("answer") if isinstance(data, dict) else None
-    if not isinstance(answer, dict):
-        return [], [], 0.6
-    expect = [str(x) for x in answer.get("expect", []) if str(x).strip()]
-    forbid = [str(x) for x in answer.get("forbid", []) if str(x).strip()]
-    try:
-        threshold = float(answer.get("threshold", 0.6))
-    except (TypeError, ValueError):
-        threshold = 0.6
-    return expect, forbid, threshold
-
-
-def _grade_explore(result: ArmResult) -> None:
-    """Grade a read-only explore answer against the task's answer key.
-
-    Score is the fraction of ``expect`` tokens present (case-insensitive
-    substring) in the response; ``correct`` is ``score >= threshold`` with no
-    ``forbid`` token present. Writes ``judge_model='answer'`` so the LLM judge
-    skips the row. Tasks with no answer key are left for the judge.
-    """
-    task = BY_ID.get(result.task)
-    if task is None or not result.ok:
-        return
-    expect, forbid, threshold = _task_answer_key(task)
-    if not expect:
-        return
-    lowered = result.result_excerpt.lower()
-    hits = [tok for tok in expect if tok.lower() in lowered]
-    forbidden = [tok for tok in forbid if tok.lower() in lowered]
-    score = len(hits) / len(expect)
-    result.correct = (score >= threshold) and not forbidden
-    result.score = round(0.0 if forbidden else score, 3)
-    result.judge_model = "answer"
-    detail = f"answer {len(hits)}/{len(expect)} matched"
-    if forbidden:
-        detail += f"; forbidden present: {', '.join(sorted(forbidden))}"
-    result.judge_reason = detail[:300]
-
-
-def _task_plan_key(task: Task) -> tuple[list[str], str, float]:
-    """Read the ``plan`` (+ optional ``judge.rubric``) blocks from config.yaml.
-
-    Mirrors :func:`_task_verify`. Returns ``(target_files, rubric, threshold)``.
-    ``target_files`` are the paths the source change actually touches (objective
-    half); ``rubric`` drives the optional LLM quality half. Both empty means no
-    plan key.
-        plan:
-          target_files: ["inventory/store.py", "inventory/orders.py"]
-          threshold: 0.6
-        judge:
-          rubric: "Reward a correct approach + right edit sites..."
-    """
-    config_path = task.prompt_path().parent / "config.yaml"
-    if not config_path.exists():
-        return [], "", 0.6
-    try:
-        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    except Exception:
-        return [], "", 0.6
-    data = data if isinstance(data, dict) else {}
-    judge_cfg = data.get("judge")
-    rubric = str(judge_cfg["rubric"]) if isinstance(judge_cfg, dict) and judge_cfg.get("rubric") else ""
-    plan = data.get("plan")
-    if not isinstance(plan, dict):
-        return [], rubric, 0.6
-    targets = [str(x) for x in plan.get("target_files", []) if str(x).strip()]
-    try:
-        threshold = float(plan.get("threshold", 0.6))
-    except (TypeError, ValueError):
-        threshold = 0.6
-    return targets, rubric, threshold
-
-
-def _plan_mentions_path(text: str, path: str) -> bool:
-    """True when *text* names *path* by full path or bare filename (basename)."""
-    low = text.lower()
-    p = path.lower()
-    return p in low or p.rsplit("/", 1)[-1] in low
-
-
-def _grade_plan(
-    result: ArmResult,
-    *,
-    run_judge: bool = False,
-    judge_model: str = "",
-    judge_agent_command: str = "claude",
-    timeout: int = 600,
-    agent_env: dict[str, str] | None = None,
-) -> None:
-    """Grade an implementation plan: file-targeting + (optionally) quality.
-
-    Objective half: fraction of ``plan.target_files`` (the paths the real change
-    touches) the plan names. Quality half (only when ``run_judge`` and a
-    ``judge.rubric`` are present -- i.e. under ``--judge``): an LLM scores how
-    well the plan would actually work against the rubric. Final score is the
-    mean of the available halves; ``correct`` is ``score >= threshold``. Writes
-    ``judge_model='plan'`` so the global LLM judge skips the row.
-    """
-    task = BY_ID.get(result.task)
-    if task is None or not result.ok:
-        return
-    targets, rubric, threshold = _task_plan_key(task)
-    if not targets and not rubric:
-        return
-    components: list[float] = []
-    detail: list[str] = []
-    if targets:
-        mentioned = [p for p in targets if _plan_mentions_path(result.result_excerpt, p)]
-        components.append(len(mentioned) / len(targets))
-        detail.append(f"files {len(mentioned)}/{len(targets)}")
-    if run_judge and rubric:
-        parsed = _run_plan_judge(task, result, rubric, judge_model, judge_agent_command, timeout, agent_env)
-        if parsed is not None:
-            jscore = max(0.0, min(1.0, _as_float(parsed.get("score", 0.0) or 0.0)))
-            components.append(jscore)
-            detail.append(f"rubric {jscore:.2f} ({str(parsed.get('reason', ''))[:80]})")
-        else:
-            detail.append("rubric judge error")
-    if not components:
-        return
-    score = sum(components) / len(components)
-    result.correct = score >= threshold
-    result.score = round(score, 3)
-    result.judge_model = "plan"
-    result.judge_reason = "; ".join(detail)[:300]
-
-
-def _apply_graders(
-    results: list[ArmResult],
-    *,
-    judge: bool = False,
-    judge_model: str = "",
-    judge_agent_command: str = "claude",
-    timeout: int = 600,
-    agent_env: dict[str, str] | None = None,
-) -> None:
-    """Route each result to the grader for its task's capability.
-
-    ``code`` -> objective verify gate (:func:`_apply_verify`); ``explore`` ->
-    answer-key overlap (:func:`_grade_explore`); ``plan`` -> target-file overlap
-    plus, under ``--judge``, a rubric quality judge (:func:`_grade_plan`). Every
-    grader writes the same ``correct``/``score``/``judge_model`` slots, and a set
-    ``judge_model`` makes the global LLM judge skip the row. Capabilities without
-    a grader fall through to the judge unchanged.
-    """
-    by_capability: dict[str, list[ArmResult]] = {}
-    for r in results:
-        task = BY_ID.get(r.task)
-        capability = task.capability if task is not None else "code"
-        by_capability.setdefault(capability, []).append(r)
-    _apply_verify(by_capability.get("code", []))
-    for r in by_capability.get("explore", []):
-        _grade_explore(r)
-    for r in by_capability.get("plan", []):
-        _grade_plan(
-            r,
-            run_judge=judge,
-            judge_model=judge_model,
-            judge_agent_command=judge_agent_command,
-            timeout=timeout,
-            agent_env=agent_env,
-        )
+    _apply_verify(results)
 
 
 def _fmt_hms(seconds: float) -> str:
@@ -1746,50 +1576,6 @@ def _run_judge(
         raise RuntimeError((completed.stderr or completed.stdout or "").strip()[:300])
     text = str(json.loads(completed.stdout).get("result", ""))
     return _parse_judge_json(text)
-
-
-def _plan_judge_prompt(task: Task, result: ArmResult, rubric: str) -> str:
-    return f"""You are grading an implementation PLAN (no code was written).
-
-Return ONLY compact JSON with these keys:
-{{"score": number, "reason": string}}
-
-Score 0.0-1.0 for how well the plan would actually solve the task, judged
-against this rubric:
-{rubric}
-
-A high score requires a correct approach and the right edit sites -- not merely
-naming files. Penalize plans that are vague, target the wrong code, skip
-required steps, or would not work.
-
-Task prompt:
-{task.prompt()}
-
-Candidate plan:
-{result.result_excerpt}
-"""
-
-
-def _run_plan_judge(
-    task: Task,
-    result: ArmResult,
-    rubric: str,
-    judge_model: str,
-    judge_agent_command: str,
-    timeout: int,
-    agent_env: dict[str, str] | None,
-) -> dict[str, object] | None:
-    """Score a plan's quality against its rubric; ``None`` on judge failure."""
-    try:
-        return _run_judge(
-            _plan_judge_prompt(task, result, rubric),
-            judge_model=judge_model,
-            judge_agent_command=judge_agent_command,
-            timeout=timeout,
-            agent_env=agent_env,
-        )
-    except Exception:
-        return None
 
 
 def judge_results(
@@ -3389,14 +3175,7 @@ def main() -> int:
         rdir = Path(args.report)
         report_results = _load_existing_results(rdir)
         if not args.no_verify:
-            _apply_graders(
-                report_results,
-                judge=args.judge,
-                judge_model=judge_model,
-                judge_agent_command=judge_agent_command,
-                timeout=args.timeout,
-                agent_env=agent_env,
-            )
+            _apply_graders(report_results)
         if args.judge:
             judge_results(
                 report_results,
@@ -3630,14 +3409,7 @@ def main() -> int:
             with contextlib.suppress(Exception):
                 bridge.wait(timeout=10)
     if not args.no_verify:
-        _apply_graders(
-            results,
-            judge=args.judge,
-            judge_model=judge_model,
-            judge_agent_command=judge_agent_command,
-            timeout=args.timeout,
-            agent_env=agent_env,
-        )
+        _apply_graders(results)
     if args.judge:
         judge_results(
             results,

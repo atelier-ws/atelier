@@ -438,252 +438,175 @@ def eval_() -> None:
 eval_.name = "eval"
 
 
-@eval_.command("mini")
-@click.option("--dry-run", "dry_run", is_flag=True, help="Validate cases, print plan, no API calls.")
-@click.option("--limit", default=5, show_default=True, type=int, help="Max cases to run.")
-@click.option("--json", "as_json", is_flag=True, help="Print JSON report to stdout.")
-@click.option("--output", default=None, help="Path to write JSON report (default: .atelier/evals/mini-report.json)")
-@click.option("--cases", "cases_path", default=None, help="Path to cases YAML (default: benchmarks/mini/cases.yaml)")
-@click.pass_context
-def eval_mini(
-    ctx: click.Context,
-    dry_run: bool,
-    limit: int,
-    as_json: bool,
-    output: str | None,
-    cases_path: str | None,
-) -> None:
-    """Run the Atelier mini eval suite (5-10 tasks, cost-quality proof).
-
-    \b
-    Usage:
-      atelier eval mini --dry-run --json       # Offline validation, no API keys needed
-      atelier eval mini --limit 5 --json        # Run 5 cases, write JSON report
-    """
-    from atelier.core.capabilities.eval_mini import (
-        load_cases,
-        render_markdown,
-        repo_root,
-        run_suite,
-        save_report,
-    )
-
-    root: Path = ctx.obj["root"]
-    git_repo = repo_root()
-
-    try:
-        cases = load_cases(cases_path)
-    except FileNotFoundError as exc:
-        raise click.ClickException(str(exc)) from exc
-
-    report = run_suite(cases, root=root, git_repo=git_repo, dry_run=dry_run, limit=limit)
-
-    if output:
-        json_path = Path(output)
-        json_path.parent.mkdir(parents=True, exist_ok=True)
-        json_path.write_text(
-            json.dumps(report.model_dump(mode="json"), indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        md_path = json_path.with_suffix(".md")
-        md_path.write_text(render_markdown(report), encoding="utf-8")
-    else:
-        json_path, _md_path = save_report(report, Path(root) / "evals")
-
-    if as_json:
-        _emit(report.model_dump(mode="json"), as_json=True)
-        return
-
-    status_str = {"pass": "PASS", "fail": "FAIL", "dry_run": "DRY RUN"}.get(report.status, report.status)
-    click.echo(f"eval mini status={status_str} suite={report.suite}")
-    click.echo(f"tasks={report.total_tasks} accepted={report.accepted_tasks} failed={report.failed_tasks}")
-    click.echo(f"accepted_patch_rate={report.accepted_patch_rate:.2f}")
-    click.echo(f"total_cost_usd=${report.total_cost_usd:.4f}")
-    click.echo(f"cost_per_accepted_patch=${report.cost_per_accepted_patch:.4f}")
-    click.echo(f"cheap_success_rate={report.cheap_success_rate:.2f}")
-    click.echo(f"trace_coverage_pct={report.trace_coverage_pct:.0f}%")
-    click.echo(f"routing_regression_rate={report.routing_regression_rate:.4f}")
-    click.echo(f"report: {json_path}")
-
-
-@eval_.command("harbor")
+@eval_.command("mcp")
+@click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
 @click.option(
-    "--dataset",
-    "-d",
-    default="terminal-bench/terminal-bench-2",
-    show_default=True,
-    help="Harbor dataset to run against.",
+    "--tool",
+    "tools",
+    multiple=True,
+    metavar="NAME",
+    help="Run only the named tool suite(s), e.g. --tool node --tool read. "
+    "Repeatable or comma-separated; use 'code' for all code-intel tools. Default: all tools.",
 )
-@click.option("--limit", default=5, show_default=True, type=int, help="Max tasks to run.")
 @click.option(
-    "--agent",
-    "agent_arm",
-    default="atelier",
-    type=click.Choice(["atelier", "atelier-bedrock", "atelier-claude-code"]),
-    show_default=True,
-    help="Agent arm: direct API, Bedrock, or Claude Code CLI + Atelier plugin.",
+    "--jobs",
+    type=int,
+    default=0,
+    show_default="auto",
+    help="Parallel suite shards. Use 0 to auto-size.",
 )
-@click.option("--model", default=None, help="Model to use inside the container.")
-@click.option("--parallel", default=1, show_default=True, type=int, help="Number of parallel trials.")
-@click.option("--output", default=None, help="Output directory for results.")
-@click.pass_context
-def eval_harbor(
-    ctx: click.Context,
-    dataset: str,
-    limit: int,
-    agent_arm: str,
-    model: str | None,
-    parallel: int,
-    output: str | None,
-) -> None:
-    """Run Atelier on a Harbor benchmark dataset.
+def eval_mcp(out: Path | None, tools: tuple[str, ...], jobs: int) -> None:
+    """No LLM: Runs the public MCP tool benchmark suite and write results."""
+    from atelier.gateway.cli.commands import benchmark as _bm
 
-    \b
-    Requires: pip install harbor  (or: uv add harbor in benchmarks/)
-    Requires: Docker (for container execution)
+    repo_root = Path.cwd().resolve()
+    suite_filter = _bm._mcp_suite_filter(tools)
+    if suite_filter is not None:
+        _bm._validate_mcp_suites(suite_filter, repo_root=repo_root)
+    run_dir = _bm._run_dir("mcp", out)
+    workspace_dir = _bm._workspace_dir("mcp", repo_root=repo_root, run_id=run_dir.name)
+    resolved_jobs = _bm._resolve_mcp_jobs(jobs, repo_root=repo_root, suite_names=suite_filter)
+    from atelier.gateway.cli.progress import ProgressReporter
 
-    \b
-    Examples:
-      atelier eval harbor --limit 5
-      atelier eval harbor --agent atelier-bedrock --limit 10
-      atelier eval harbor -d "terminal-bench/terminal-bench-core@0.1.1" --limit 3
-
-    \b
-    To run A/B comparison, run with --agent atelier and then --agent atelier-baseline.
-    """
-    try:
-        import harbor  # noqa: F401
-    except ImportError as exc:
-        raise click.ClickException(
-            "harbor package not found.\n"
-            "Install it with:\n"
-            "  pip install harbor\n"
-            "or add it to your benchmarks project:\n"
-            "  uv add harbor --project benchmarks"
-        ) from exc
-
-    # Resolve the agent import path from the agent arm
-    _agent_import_paths = {
-        "atelier": "benchmarks.harbor.atelier_agent:AtelierHarborAgent",
-        "atelier-bedrock": "benchmarks.harbor.atelier_agent:AtelierBedrockHarborAgent",
-        "atelier-claude-code": "benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent",
-    }
-    agent_import_path = _agent_import_paths[agent_arm]
-
-    out_dir = output or str(ctx.obj.get("root", ".") / "evals" / "harbor")
-
-    # Load the pre-registered task list to select the first N
-    import shutil
-    import subprocess
-    from pathlib import Path as _Path
-
-    tasks_yaml = _Path(__file__).parents[5] / "benchmarks" / "harbor" / "tasks.yaml"
-    selected_tasks: list[str] = []
-    # tasks.yaml is pinned for terminal-bench-core only; for other datasets
-    # (TB2.0, TB2.1, etc.) use -l to let harbor pick the first N tasks.
-    core_dataset = "terminal-bench-core" in dataset
-    if tasks_yaml.exists() and core_dataset:
-        import yaml as _yaml  # type: ignore[import-untyped]
-
-        raw = _yaml.safe_load(tasks_yaml.read_text()) or {}
-        all_tasks: list[str] = raw.get("tasks", [])
-        selected_tasks = all_tasks[:limit]
-
-    click.echo(f"◆ Running Harbor eval: dataset={dataset}")
-    click.echo(
-        f"  agent={agent_arm}  model={model or 'default'}  tasks={len(selected_tasks) or limit}  parallel={parallel}"
-    )
-    click.echo(f"  output={out_dir}")
-    if selected_tasks:
-        click.echo(f"  tasks: {', '.join(selected_tasks)}")
-    click.echo("")
-
-    harbor_bin = shutil.which("harbor")
-    if harbor_bin is None:
-        raise click.ClickException(
-            "harbor CLI not found on PATH.\n"
-            "Install it: pip install harbor\n"
-            "Make sure the harbor binary is on your PATH after install."
-        )
-
-    # Ensure the repo root is on PYTHONPATH so harbor can import
-    # benchmarks.harbor.atelier_agent regardless of working directory.
-    import os as _os
-
-    repo_root = str(_Path(__file__).parents[5])
-    existing_pythonpath = _os.environ.get("PYTHONPATH", "")
-    pythonpath = f"{repo_root}:{existing_pythonpath}" if existing_pythonpath else repo_root
-    harbor_env = {**_os.environ, "PYTHONPATH": pythonpath}
-
-    def _read_token_from_env_files(key: str) -> str:
-        """Read a token from shell env or .env files in known locations."""
-        val = _os.environ.get(key, "")
-        if val:
-            return val
-        for env_file in (
-            _Path(repo_root) / ".env",
-            _Path(repo_root) / "benchmarks" / ".env",
-            _Path(repo_root) / "benchmarks" / "codebench" / ".env",
-        ):
-            if not env_file.is_file():
-                continue
-            for line in env_file.read_text(encoding="utf-8").splitlines():
-                stripped = line.strip().lstrip("export ").strip()
-                if stripped.startswith("#") or "=" not in stripped:
-                    continue
-                k, _, v = stripped.partition("=")
-                if k.strip() == key:
-                    return v.strip().strip("'\"")
-        return ""
-
-    import json as _json
-
-    base_cmd = [
-        harbor_bin,
-        "run",
-        "--dataset",
-        dataset,
-        "--agent-import-path",
-        agent_import_path,
-        "--jobs-dir",
-        out_dir,
-        # Mount the repo into the container so atelier can be installed from
-        # source (it is not published to PyPI).
-        "--mounts",
-        _json.dumps([{"type": "bind", "source": repo_root, "target": "/atelier"}]),
-        # Collect the claude CLI output log for debugging.
-        "--artifact",
-        "/logs/claude-run.json",
+    progress = ProgressReporter("mcp", total=1)
+    progress.start("starting benchmark", current=f"reports {run_dir} | jobs {resolved_jobs}")
+    bench_root = _bm._bench_source_root()
+    cmd = [
+        *_bm._python_cmd(bench_root),
+        "-m",
+        "benchmarks.mcp_tools.export_public_mcp_csv",
+        "--artifact-root",
+        str(workspace_dir),
+        "--csv-out",
+        str(run_dir / "results.csv"),
+        "--jobs",
+        str(resolved_jobs),
     ]
-    if model:
-        base_cmd += ["--model", model]
-    if parallel > 1:
-        base_cmd += ["--n-concurrent", str(parallel)]
-    # Forward CLAUDE_CODE_OAUTH_TOKEN for the claude-code arm
-    if agent_arm == "atelier-claude-code":
-        token = _read_token_from_env_files("CLAUDE_CODE_OAUTH_TOKEN")
-        if token:
-            base_cmd += ["--ae", f"CLAUDE_CODE_OAUTH_TOKEN={token}"]
-        else:
-            click.echo(
-                "WARNING: CLAUDE_CODE_OAUTH_TOKEN not set. " "Set it in your shell or in benchmarks/codebench/.env.",
-                err=True,
-            )
+    if suite_filter is not None:
+        cmd += ["--suites", ",".join(suite_filter)]
+    _bm._run(cmd, cwd=bench_root, label="MCP benchmark")
+    progress.step("benchmark command complete", current="public MCP tools")
+    progress.finish("benchmark complete")
+    click.echo(f"Results: {run_dir}")
 
-    if selected_tasks:
-        # terminal-bench-core: use -i filters (task names match exactly)
-        cmd = [*base_cmd]
-        for task_id in selected_tasks:
-            cmd += ["--include-task-name", task_id]
-    else:
-        # All other datasets: use -l to cap tasks, let harbor pick the first N
-        cmd = [*base_cmd, "--n-tasks", str(limit)]
-    click.echo(f"  Command: {' '.join(cmd)}\n")
-    ret = subprocess.call(cmd, env=harbor_env)
-    if ret != 0:
-        raise click.ClickException(f"harbor run exited with code {ret}")
 
-    click.echo(f"\n✓ Harbor eval complete. Results in: {out_dir}")
+@eval_.command("providers")
+@click.option("--repo-root", type=click.Path(path_type=Path, file_okay=False), default=Path("."))
+@click.option(
+    "--workspace-root",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=None,
+    help="Benchmark workspace/cache root. Defaults outside the repo under ../benchmarks/<repo>/.",
+)
+@click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
+@click.option("--iterations", type=int, default=1, show_default=True)
+@click.option(
+    "--max-cases",
+    type=int,
+    default=100,
+    show_default=True,
+    help="Maximum cases per family (default 100). Use 0 for no cap.",
+)
+@click.option(
+    "--jobs",
+    type=int,
+    default=0,
+    show_default="auto",
+    help="Parallel provider processes. Use 0 to auto-size.",
+)
+@click.option(
+    "--providers",
+    default=(
+        "atelier,atelier-zoekt,zoekt,serena,codegraph,code-index-mcp,jcodemunch-mcp,"
+        "ast-grep,scip-python,universal-ctags"
+    ),
+    show_default=True,
+)
+@click.option(
+    "--families",
+    default=(
+        "exact_symbol,exact_search,substring_search,file_outline,references,"
+        "callers,callees,fuzzy_symbol,structural_search,nohit_search"
+    ),
+    show_default=True,
+)
+@click.option(
+    "--install/--no-install",
+    default=True,
+    show_default=True,
+    help="Install external provider tools (npm/uv) before running. On by default; use --no-install to skip.",
+)
+def eval_providers(
+    repo_root: Path,
+    workspace_root: Path | None,
+    out: Path | None,
+    iterations: int,
+    max_cases: int,
+    jobs: int,
+    providers: str,
+    families: str,
+    install: bool,
+) -> None:
+    """Run the external code-search provider matrix and write CSV/JSON artifacts."""
+    import shutil
+
+    from atelier.gateway.cli.commands import benchmark as _bm
+    from atelier.gateway.cli.progress import ProgressReporter
+
+    repo_root = repo_root.resolve()
+    run_dir = _bm._run_dir("providers", out, repo_root=repo_root)
+    workspace_root = (
+        workspace_root.resolve()
+        if workspace_root is not None
+        else _bm._workspace_dir("providers", repo_root=repo_root, run_id=run_dir.name)
+    )
+    cache_root = _bm._cache_dir("providers", repo_root=repo_root)
+    # Always start from a clean provider cache so it does not accumulate across runs.
+    shutil.rmtree(cache_root, ignore_errors=True)
+    cache_root.mkdir(parents=True, exist_ok=True)
+    click.echo(f"Cleared provider cache: {cache_root}")
+    provider_list = _bm._csv_values(providers)
+    resolved_jobs = _bm._resolve_provider_jobs(jobs, provider_list)
+    csv_out = run_dir / "results.csv"
+    json_out = run_dir / "results.json"
+    progress = ProgressReporter("providers", total=1)
+    progress.start("starting benchmark", current=f"reports {run_dir} | jobs {resolved_jobs}")
+    bench_root = _bm._bench_source_root()
+    cmd = [
+        *_bm._python_cmd(bench_root),
+        "-m",
+        "benchmarks.mcp_tools.bench_external_matrix",
+        "--repo-root",
+        str(repo_root),
+        "--workspace-root",
+        str(workspace_root),
+        "--cache-root",
+        str(cache_root),
+        "--manifest-path",
+        str(workspace_root / "external_matrix_cases.json"),
+        "--audit-path",
+        str(workspace_root / "external_tool_surfaces.json"),
+        "--json-out",
+        str(json_out),
+        "--csv-out",
+        str(csv_out),
+        "--iterations",
+        str(iterations),
+        "--jobs",
+        str(resolved_jobs),
+        "--tools",
+        providers,
+        "--families",
+        families,
+    ]
+    if max_cases > 0:
+        cmd.extend(["--max-cases", str(max_cases)])
+    if install:
+        cmd.append("--install")
+    _bm._run(cmd, cwd=bench_root, label="provider benchmark")
+    progress.step("benchmark command complete", current="external provider matrix")
+    progress.finish("benchmark complete")
+    click.echo(f"Results: {run_dir}")
 
 
 __all__ = [

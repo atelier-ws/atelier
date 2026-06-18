@@ -22,11 +22,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atelier.core.capabilities.eval_mini.schema import MiniEvalCaseResult, MiniEvalReport
+from .schema import MiniEvalCaseResult, MiniEvalReport
 from atelier.core.capabilities.savings_summary import estimate_cost_usd
 
 if TYPE_CHECKING:
-    from atelier.core.capabilities.eval_mini.schema import MiniEvalCase
+    from .schema import MiniEvalCase
 
 
 @dataclass

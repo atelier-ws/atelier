@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from atelier.core.capabilities.eval_mini.schema import MiniEvalReport
+from .schema import MiniEvalReport
 
 _STATUS_LABEL = {"pass": "PASS", "fail": "FAIL", "dry_run": "DRY RUN"}
 

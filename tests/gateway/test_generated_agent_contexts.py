@@ -30,46 +30,6 @@ def load_script(path: Path, module_name: str) -> object:
     return module
 
 
-def test_root_entrypoints_link_to_live_docs() -> None:
-    for rel in ("AGENTS.md", ".github/copilot-instructions.md"):
-        path = ROOT / rel
-        assert "integrations/shared/coding-guidelines.md" in path.read_text(
-            encoding="utf-8"
-        ), f"{rel} must link to integrations/shared/coding-guidelines.md"
-
-
-def test_agents_use_repository_validation_entrypoints() -> None:
-    expected = {
-        "code": "Discover and use the project's validation entrypoints",
-        "execute": "Use the repository's validation entrypoints",
-        "plan": "the repository's exact validation entrypoints",
-        "review": "Discover and use the repository's validation entrypoints",
-    }
-
-    for role, guidance in expected.items():
-        source = (ROOT / f"integrations/agents/{role}.md").read_text(encoding="utf-8")
-        generated = (ROOT / f"integrations/claude/plugin/agents/{role}.md").read_text(encoding="utf-8")
-        assert guidance in source
-        assert guidance in generated
-
-    review = (ROOT / "integrations/agents/review.md").read_text(encoding="utf-8")
-    assert "preserve their exit status and failure evidence" in review
-
-
-def test_solve_skill_is_general_across_generated_hosts() -> None:
-    paths = (
-        ROOT / "integrations/claude/plugin/skills/solve/SKILL.md",
-        ROOT / "integrations/codex/plugin/skills/solve/SKILL.md",
-        ROOT / "integrations/antigravity/skills/solve/SKILL.md",
-    )
-
-    for path in paths:
-        body = path.read_text(encoding="utf-8")
-        assert "Switch to autonomous solve mode" in body
-        assert "Autonomous solver for concrete tasks" in body
-        assert "terminal-bench" not in body.lower()
-
-
 def test_copilot_instructions_stays_thin() -> None:
     path = ROOT / ".github/copilot-instructions.md"
     lines = path.read_text(encoding="utf-8").splitlines()

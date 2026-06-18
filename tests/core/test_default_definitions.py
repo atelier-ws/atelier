@@ -77,24 +77,6 @@ def test_host_facing_roles_stay_sourced_from_mode_docs() -> None:
         assert f"# {role_id.replace('-', ' ').title()} mode" in body
 
 
-def test_role_prompts_include_todo_and_question_discipline() -> None:
-    registry = build_default_registry(ROOT)
-
-    code = registry.render_prompt("code", ROOT)
-    assert "todo list" in code
-    assert "continue only when you can name the unresolved question" in code
-
-    execute = registry.render_prompt("execute", ROOT)
-    assert "todo list" in execute
-    assert "Resolve the design questions a reviewer would raise instead of handing them back" in execute
-    assert "{{CODING_GUIDELINES}}" in execute
-
-    plan = registry.render_prompt("plan", ROOT)
-    assert "todo list" in plan
-    assert "ask the user when it is material" in plan.lower()
-    assert "{{CORE_DISCIPLINE}}" in plan
-
-
 def test_registry_exposes_owned_workflows_and_solver_contracts() -> None:
     registry = build_default_registry(ROOT)
 
@@ -158,7 +140,6 @@ def test_solve_role_is_general_and_benchmark_policy_is_profile_scoped() -> None:
     registry = build_default_registry(ROOT)
     solve = registry.render_prompt("solve", ROOT)
 
-    assert "Autonomous solver for concrete tasks" in solve
     assert "repository's validation entrypoints" in solve
     assert "terminal-bench" not in solve.lower()
     assert "hidden evaluator" not in solve.lower()

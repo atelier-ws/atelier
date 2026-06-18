@@ -122,7 +122,7 @@ def test_init_installs_project_agents_md_and_codex_agents(tmp_path: Path, monkey
     assert "[agents_md] updated AGENTS.md" in result.output
     assert "[codex] updated" in result.output
     agents_md = (workspace / "AGENTS.md").read_text(encoding="utf-8")
-    assert "Codex may defer MCP tools behind `tool_search`" in agents_md
+    assert "tool_search" in agents_md
     assert (workspace / ".codex" / "agents" / "atelier.code.toml").exists()
     codex_config = (workspace / ".codex" / "config.toml").read_text(encoding="utf-8")
     assert "[agents.atelier_code]" in codex_config

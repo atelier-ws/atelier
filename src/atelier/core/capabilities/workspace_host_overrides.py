@@ -13,8 +13,8 @@ from atelier.core.capabilities.default_definitions import (
 )
 from atelier.core.capabilities.model_settings import (
     CANONICAL_COPILOT_AGENT_MODEL,
-    load_model_settings,
     normalize_model_for_host,
+    resolve_explicit_host_model,
     resolve_host_model,
 )
 from atelier.core.environment import skill_visible
@@ -238,7 +238,7 @@ def write_codex_agents(
         path = target / f"atelier.{role_id}.toml"
         model = normalize_model_for_host(
             "codex",
-            resolve_host_model("codex", role_id, workspace_root=model_workspace, fallback=None),
+            resolve_explicit_host_model("codex", role_id, workspace_root=model_workspace),
         )
         instructions = _render_codex_mode_body(mode_doc.body, root)
         path.write_text(
@@ -351,21 +351,9 @@ def rewrite_agent_name(text: str, name: str) -> str:
 
 def _claude_explicit_host_model(role_id: str, workspace_root: str | Path) -> str | None:
     """Return the model for a Claude agent file, or None to inherit session model."""
-    workspace = Path(workspace_root).expanduser().resolve()
-    settings = load_model_settings(workspace)
-    hosts = settings.get("models", {}).get("hosts", {})
-
-    for host_key in ("claude", "default"):
-        host_settings = hosts.get(host_key, {})
-        roles = host_settings.get("roles", {})
-        if not isinstance(roles, dict):
-            continue
-        for key in (role_id, "*"):
-            raw = roles.get(key)
-            candidate = str(raw or "").strip()
-            if candidate and candidate != "auto":
-                return normalize_model_for_host("claude", candidate)
-    return None
+    return normalize_model_for_host(
+        "claude", resolve_explicit_host_model("claude", role_id, workspace_root=workspace_root)
+    )
 
 
 def _read_json(path: Path) -> dict[str, object]:
