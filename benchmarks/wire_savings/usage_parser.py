@@ -46,6 +46,8 @@ class Usage:
     output_tokens: int = 0
     cache_read_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
+    # 1h-TTL subset of cache_creation_input_tokens (a breakdown, not additive to totals).
+    cache_creation_1h_input_tokens: int = 0
 
     @property
     def total_input(self) -> int:
@@ -63,6 +65,7 @@ class Usage:
         self.output_tokens += other.output_tokens
         self.cache_read_input_tokens += other.cache_read_input_tokens
         self.cache_creation_input_tokens += other.cache_creation_input_tokens
+        self.cache_creation_1h_input_tokens += other.cache_creation_1h_input_tokens
         return self
 
 
@@ -87,6 +90,11 @@ def _merge_usage_dict(u: Usage, usage: dict, *, update_inputs: bool, update_outp
         cw = _first_int(usage, _CACHE_WRITE_KEYS)
         if cw is not None:
             u.cache_creation_input_tokens = cw
+        cc = usage.get("cache_creation")
+        if isinstance(cc, dict):
+            oh = _first_int(cc, ("ephemeral_1h_input_tokens",))
+            if oh is not None:
+                u.cache_creation_1h_input_tokens = oh
     if update_output:
         ov = _first_int(usage, _OUTPUT_KEYS)
         if ov is not None:

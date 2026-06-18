@@ -150,14 +150,17 @@ def validation_line() -> str:
     return "See the validation matrix for the minimum checks by change surface."
 
 
-def _markdown_body(path: Path) -> str:
-    text = path.read_text(encoding="utf-8").strip()
-    lines = text.splitlines()
+def _strip_leading_title(text: str) -> str:
+    lines = text.strip().splitlines()
     if lines and lines[0].startswith("# "):
         lines = lines[1:]
         while lines and not lines[0].strip():
             lines = lines[1:]
     return "\n".join(lines).rstrip()
+
+
+def _markdown_body(path: Path) -> str:
+    return _strip_leading_title(path.read_text(encoding="utf-8"))
 
 
 def coding_guidelines_section() -> str:
@@ -223,12 +226,10 @@ def distribution_sections(host: str | None = None, *, tool_prefix: str = "") -> 
     return lines
 
 
-def render_project_entrypoint(output_path: Path, *, title: str, host: str | None = None) -> str:
+def render_project_entrypoint(output_path: Path, *, host: str | None = None) -> str:
     coding_guidelines_link = relpath(output_path, CODING_GUIDELINES_PATH)
     lines = [
         generated_notice(output_path),
-        "",
-        f"# {title}",
         "",
         "This file is a thin entrypoint. The live source of truth lives in the linked docs tree:",
         "",
@@ -440,15 +441,11 @@ def sync_host_configs() -> dict[Path, str]:
     return outputs
 
 
-def _shared_section(heading: str, source_path: Path) -> str:
-    return "\n".join([f"## {heading}", "", _markdown_body(source_path)])
-
-
 def render_mode_body(mode_doc: ModeDoc) -> str:
-    body = mode_doc.body.rstrip()
-    for token, (heading, source_path) in SHARED_SECTIONS.items():
+    body = _strip_leading_title(mode_doc.body)
+    for token, (_heading, source_path) in SHARED_SECTIONS.items():
         if token in body:
-            body = body.replace(token, _shared_section(heading, source_path))
+            body = body.replace(token, _markdown_body(source_path))
     return body
 
 
@@ -477,7 +474,6 @@ def _inject_description(frontmatter: tuple[tuple[str, Any], ...], description: s
 
 def render_claude_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostProjection) -> str:
     frontmatter = _inject_description(projection.frontmatter, role.agent_description)
-    identity_block = ["You are operating as *atelier:code*.", ""] if role.role_id == "code" else []
     return (
         "\n".join(
             [
@@ -485,7 +481,6 @@ def render_claude_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostPr
                 "",
                 distribution_notice(),
                 "",
-                *identity_block,
                 render_mode_body(mode_doc),
             ]
         ).rstrip()
@@ -704,9 +699,7 @@ def build_outputs() -> dict[Path, str]:
     registry = build_default_registry(ROOT)
     mode_outputs = build_mode_outputs(ROOT)
     outputs = {
-        ROOT / "AGENTS.md": render_project_entrypoint(
-            ROOT / "AGENTS.md", title="Project Instructions: Atelier", host="codex"
-        ),
+        ROOT / "AGENTS.md": render_project_entrypoint(ROOT / "AGENTS.md", host="codex"),
         ROOT / ".github/copilot-instructions.md": render_copilot_workspace(ROOT / ".github/copilot-instructions.md"),
         ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_user_surface(
             ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"

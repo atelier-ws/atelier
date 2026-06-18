@@ -27,8 +27,8 @@ def _write_done_session(root: Path, user_id: str, *, cost: float) -> None:
             {
                 "session_id": "run-1",
                 "status": "done",
-                "created_at": datetime(2026, 5, 19, 9, 0, 0, tzinfo=UTC).isoformat(),
-                "updated_at": datetime(2026, 5, 19, 9, 30, 0, tzinfo=UTC).isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
                 "agent_settings": {"user_id": user_id},
                 "cost": {"total_cost_usd": cost},
                 "events": [],

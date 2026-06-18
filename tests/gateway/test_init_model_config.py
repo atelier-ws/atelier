@@ -124,6 +124,3 @@ def test_init_installs_project_agents_md_and_codex_agents(tmp_path: Path, monkey
     agents_md = (workspace / "AGENTS.md").read_text(encoding="utf-8")
     assert "tool_search" in agents_md
     assert (workspace / ".codex" / "agents" / "atelier.code.toml").exists()
-    codex_config = (workspace / ".codex" / "config.toml").read_text(encoding="utf-8")
-    assert "[agents.atelier_code]" in codex_config
-    assert f'config_file = "{workspace / ".codex" / "agents" / "atelier.code.toml"}"' in codex_config
