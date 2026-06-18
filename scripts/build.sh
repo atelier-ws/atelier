@@ -105,6 +105,8 @@ mkdir -p bundle/integrations
 for host in agents antigravity claude codex copilot copilot-cli cursor hermes opencode shared skills; do
     [[ -d "integrations/$host" ]] && cp -r "integrations/$host" "bundle/integrations/$host"
 done
+# Top-level files (e.g. AGENTS.atelier.md) used by install_codex.sh and install_agents.sh
+[[ -f "integrations/AGENTS.atelier.md" ]] && cp -f "integrations/AGENTS.atelier.md" "bundle/integrations/AGENTS.atelier.md"
 
 # Pre-generate host context files in the staged bundle so install scripts work
 # without uv/Python, without rewriting generated files in the source checkout.
