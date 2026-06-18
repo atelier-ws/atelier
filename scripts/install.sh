@@ -122,7 +122,7 @@ _dl_progress() {
     # Probe Content-Length (non-fatal)
     local total=0
     if command -v curl >/dev/null 2>&1; then
-        total=$(curl -fsI --max-time 5 "$url" 2>/dev/null \
+        total=$(curl -fsIL --max-time 5 "$url" 2>/dev/null \
             | tr -d '\r' | awk 'tolower($1)=="content-length:" {print $2}' | tail -1)
     fi
     total=${total:-0}
