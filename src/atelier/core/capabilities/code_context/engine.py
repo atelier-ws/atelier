@@ -1477,9 +1477,9 @@ class CodeContextEngine:
                     acquired = False
             else:
                 # Poll with LOCK_NB so we don't block the process forever.
-                # 30-second timeout: if another atelier process holds the lock
+                # 10-second timeout: if another atelier process holds the lock
                 # (e.g. a running MCP server) we skip indexing rather than hang.
-                _LOCK_TIMEOUT = 30.0
+                _LOCK_TIMEOUT = 10.0
                 _POLL_INTERVAL = 0.5
                 deadline = time.monotonic() + _LOCK_TIMEOUT
                 logging.info("Waiting for index write lock (another process may be indexing)...")
@@ -5024,7 +5024,9 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found" if merged_status == "empty" else None
+                else "no related call edges were found"
+                if merged_status == "empty"
+                else None
             )
             merged_snapshot = None
             if snapshot:
