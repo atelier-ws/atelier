@@ -1639,6 +1639,10 @@ run_setup() {
         done
         if [[ ${#HOST_FLAGS[@]} -gt 0 ]]; then
             host_install_args+=("${HOST_FLAGS[@]}")
+        else
+            # No explicit selection (e.g. non-interactive run): cap to the
+            # supported set so copilot/antigravity are never auto-installed.
+            host_install_args+=(--claude --codex --opencode)
         fi
         if [[ ${#HOST_SCOPE_ARGS[@]} -gt 0 ]]; then
             host_install_args+=("${HOST_SCOPE_ARGS[@]}")

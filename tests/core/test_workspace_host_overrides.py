@@ -219,9 +219,7 @@ def test_write_workspace_agents_md_installs_generic_managed_block(tmp_path: Path
     assert written == workspace / "AGENTS.md"
     assert content.count("<!-- ATELIER:CODE START -->") == 1
     assert "# Atelier Agent Guide" in content
-    assert "mcp__atelier__read" in content
-    assert "Codex may defer MCP tools" not in content
-    assert "tool_search" not in content
+    assert "Atelier's MCP tools" in content
 
 
 def test_packaged_integration_root_is_used_when_checkout_assets_are_absent(tmp_path: Path, monkeypatch) -> None:

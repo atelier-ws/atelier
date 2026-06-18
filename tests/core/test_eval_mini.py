@@ -12,18 +12,23 @@ Verifies:
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from atelier.core.capabilities.eval_mini.loader import default_cases_path, load_cases
-from atelier.core.capabilities.eval_mini.runner import (
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from benchmarks.mini.loader import default_cases_path, load_cases
+from benchmarks.mini.runner import (
     aggregate_report,
     run_case_dry,
     run_suite,
 )
-from atelier.core.capabilities.eval_mini.schema import (
+from benchmarks.mini.schema import (
     MiniEvalCase,
     MiniEvalCaseResult,
     MiniEvalReport,

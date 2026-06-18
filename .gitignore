@@ -232,6 +232,7 @@ opencode.jsonc*
 # -----------------------
 # Documentation & Landing Sites
 # -----------------------
+brag-output/
 docs-site/node_modules/
 docs-site/.docusaurus/
 docs-site/build/
@@ -323,3 +324,5 @@ dist/
 bundle/
 build_dist/
 /.bench-tasks/
+# Multi-SWE-bench dataset cache (large JSONL downloaded on demand)
+benchmarks/codebench/data/

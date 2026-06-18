@@ -29,6 +29,8 @@ from atelier.core.capabilities.default_definitions import (
 )
 from atelier.core.capabilities.model_settings import (
     CANONICAL_COPILOT_AGENT_MODEL,
+    normalize_model_for_host,
+    resolve_explicit_host_model,
     resolve_host_model,
 )
 from atelier.core.capabilities.workspace_host_overrides import (
@@ -425,52 +427,6 @@ def render_shared_skill(role: DefaultRole, mode_doc: ModeDoc) -> str:
     )
 
 
-def render_host_surface(output_path: Path, *, title: str, host: str) -> str:
-    tool_prefix = _OPENCODE_TOOL_PREFIX if host == "opencode" else ""
-    lines = [
-        distribution_notice(),
-        "",
-        f"# {title}",
-        "",
-        "You are operating as *atelier:code*.",
-        "",
-        *distribution_sections(host, tool_prefix=tool_prefix),
-    ]
-    if host == "opencode":
-        return (
-            "\n".join(
-                [
-                    "---",
-                    "description: Atelier - main coding agent for the Agent Reasoning Runtime",
-                    "mode: primary",
-                    "---",
-                    "",
-                    *lines,
-                ]
-            ).rstrip()
-            + "\n"
-        )
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def render_distribution_guide(output_path: Path) -> str:
-    return (
-        "\n".join(
-            [
-                distribution_notice(),
-                "",
-                "# Atelier Agent Guide",
-                "",
-                "This is the compact shared guidance shipped with the Atelier distribution package.",
-                "Use a host-specific wrapper when one exists; otherwise this file is the fallback shared guide.",
-                "",
-                *distribution_sections(),
-            ]
-        ).rstrip()
-        + "\n"
-    )
-
-
 def sync_host_configs() -> dict[Path, str]:
     outputs: dict[Path, str] = {}
     for host in ("claude", "codex", "copilot", "antigravity", "opencode", "cursor", "hermes"):
@@ -699,7 +655,12 @@ def build_mode_outputs(root: Path | None = None) -> dict[Path, str]:
         stable_path = (
             repo_root / "integrations" / "claude" / "plugin" / "agents" / f"{stable_projection.output_name}.md"
         )
-        outputs[stable_path] = render_claude_agent(role, mode_doc, stable_projection)
+        outputs[stable_path] = rewrite_agent_model(
+            render_claude_agent(role, mode_doc, stable_projection),
+            normalize_model_for_host(
+                "claude", resolve_explicit_host_model("claude", role_id, workspace_root=repo_root)
+            ),
+        )
 
         antigravity_projection = registry.projection(role_id, "antigravity_agent")
         antigravity_path = (
@@ -747,41 +708,10 @@ def build_outputs() -> dict[Path, str]:
             ROOT / "AGENTS.md", title="Project Instructions: Atelier", host="codex"
         ),
         ROOT / ".github/copilot-instructions.md": render_copilot_workspace(ROOT / ".github/copilot-instructions.md"),
-        ROOT / "integrations/AGENTS.atelier.md": render_distribution_guide(ROOT / "integrations/AGENTS.atelier.md"),
         ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_user_surface(
             ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
         ),
-        ROOT / "integrations/claude/AGENTS.atelier.md": render_host_surface(
-            ROOT / "integrations/claude/AGENTS.atelier.md",
-            title="Atelier Agent Persona",
-            host="claude",
-        ),
-        ROOT / "integrations/codex/AGENTS.atelier.md": render_host_surface(
-            ROOT / "integrations/codex/AGENTS.atelier.md",
-            title="Atelier - Codex Agent",
-            host="codex",
-        ),
-        ROOT / "integrations/antigravity/AGENTS.atelier.md": render_host_surface(
-            ROOT / "integrations/antigravity/AGENTS.atelier.md",
-            title="Atelier - Antigravity Agent",
-            host="antigravity",
-        ),
-        ROOT / "integrations/opencode/agents/atelier.md": render_host_surface(
-            ROOT / "integrations/opencode/agents/atelier.md",
-            title="atelier:code",
-            host="opencode",
-        ),
-        ROOT / "integrations/cursor/AGENTS.atelier.md": render_host_surface(
-            ROOT / "integrations/cursor/AGENTS.atelier.md",
-            title="Atelier - Cursor Agent",
-            host="cursor",
-        ),
         ROOT / "integrations/cursor/rules/coding-guidelines.mdc": render_cursor_coding_rules(),
-        ROOT / "integrations/hermes/AGENTS.atelier.md": render_host_surface(
-            ROOT / "integrations/hermes/AGENTS.atelier.md",
-            title="Atelier - Hermes Agent",
-            host="hermes",
-        ),
     }
     for role_id in registry.surfaced_role_ids("copilot_agent"):
         projection = registry.projection(role_id, "copilot_agent")
