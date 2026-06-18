@@ -1810,7 +1810,7 @@ run_setup() {
 
     step_start "Initializing"
     if [[ "$ATELIER_DRY_RUN" == "1" ]]; then
-        echo "[dry-run] $atelier_cli init --no-index"
+        echo "[dry-run] $atelier_cli init"
         if [[ -n "$index_target" ]]; then
             info "Detected project repo: $index_target"
             echo "[dry-run] $atelier_cli code index --repo-root $index_target"
@@ -1824,7 +1824,7 @@ run_setup() {
             echo "[dry-run] $atelier_cli optimize auto disable"
         fi
     else
-        spin "Initializing agent runtime" "$atelier_cli" init --no-index
+        spin "Initializing agent runtime" "$atelier_cli" init
         if [[ -n "$index_target" ]]; then
             info "Detected project root: $index_target"
             if "$atelier_cli" code index --repo-root "$index_target" --frame-prefix "│  " --no-stats 2>&7; then
