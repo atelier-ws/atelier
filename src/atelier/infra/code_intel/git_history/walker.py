@@ -18,7 +18,7 @@ from atelier.infra.tree_sitter.tags import detect_language, extract_tags_from_te
 def iter_commit_records(
     repo_path: str | Path,
     *,
-    limit: int = 500,
+    limit: int = 5,
     since_sha: str | None = None,
 ) -> Iterator[CommitRecord]:
     """Yield up to `limit` CommitRecord objects in reverse-chronological order.
@@ -200,11 +200,14 @@ def walk_history(
     # recent first) so the walk stays O(cap) rather than O(history).
     max_commits = _resolve_history_max_commits() if limit is None else max(0, limit)
     commits = []
+    total_in_repo = 0  # count beyond the limit without materialising every commit
+    _COUNT_CAP = 10_000  # safety cap for enormous repos
     for commit in repo.walk(head.id, pygit2.enums.SortMode.TOPOLOGICAL):
-        commits.append(commit)
-        if since_sha is not None and str(commit.id) == since_sha:
-            break
-        if max_commits and len(commits) >= max_commits:
+        total_in_repo += 1
+        if max_commits == 0 or len(commits) < max_commits:
+            commits.append(commit)
+        at_since = since_sha is not None and str(commit.id) == since_sha
+        if at_since or total_in_repo >= _COUNT_CAP:
             break
 
     total = len(commits)
@@ -266,6 +269,7 @@ def walk_history(
 
     return {
         "commits_walked": total,
+        "total_commits": total_in_repo,
         "symbols_found": symbols_found,
         "renames_found": renames_found,
         "deletions_found": deletions_found,
