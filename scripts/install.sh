@@ -365,8 +365,8 @@ fi
 
 # ---- done --------------------------------------------------------------------
 echo ""
-if command -v atelier >/dev/null 2>&1 || ( command -v uv >/dev/null 2>&1 && uv tool list 2>/dev/null | grep -q "^atelier" ); then
-    info "Atelier $(atelier --version 2>/dev/null || echo '') ready!"
+if [[ -x "${ATELIER_BIN_DIR}/atelier" ]] || command -v atelier >/dev/null 2>&1 || ( command -v uv >/dev/null 2>&1 && uv tool list 2>/dev/null | grep -q "^atelier" ); then
+    info "Atelier $("${ATELIER_BIN_DIR}/atelier" --version 2>/dev/null || atelier --version 2>/dev/null || echo '') ready!"
     echo ""
     echo "  Quick start:  atelier --help"
     echo "  Init runtime: atelier init"
