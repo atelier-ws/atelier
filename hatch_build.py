@@ -187,6 +187,15 @@ def _run_mypyc(files: list[str], cwd: pathlib.Path) -> None:
     env = os.environ.copy()
     env["NPROC"] = "1"
     env["MAX_JOBS"] = "1"
+    # Pre-create the temp build directory so gcc can write __native_*.o there.
+    # mypyc places build/__native_*.c at the build/ root (not in a subdir), and
+    # setuptools may not create build/temp.{plat}-cpython-{ver}/build/ in time.
+    import sysconfig
+
+    _plat = sysconfig.get_platform()  # e.g. "linux-x86_64"
+    _ver = f"{sys.version_info.major}{sys.version_info.minor}"
+    _temp_build = cwd / "build" / f"temp.{_plat}-cpython-{_ver}" / "build"
+    _temp_build.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
         [sys.executable, "-m", "mypyc", "--ignore-missing-imports", "--allow-untyped-decorators", *files],
         cwd=str(cwd),
@@ -194,4 +203,3 @@ def _run_mypyc(files: list[str], cwd: pathlib.Path) -> None:
     )
     if result.returncode != 0:
         raise RuntimeError(f"mypyc compilation failed (exit {result.returncode})")
-
