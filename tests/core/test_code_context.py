@@ -948,6 +948,7 @@ def test_code_context_search_text_uses_literal_matches(tmp_path: Path) -> None:
 def test_tool_search_text_prefers_symbol_hits_for_substring_queries(tmp_path: Path) -> None:
     _write_substring_search_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     aggregate = engine.tool_search(
         "aggregate",
@@ -1014,6 +1015,7 @@ def test_retrieval_cache_hit_returns_cached_payload(tmp_path: Path) -> None:
 def test_retrieval_cache_invalidated_on_index_bump(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     _ = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     cached = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
@@ -1313,6 +1315,7 @@ def test_tool_search_keeps_total_tokens_within_budget(tmp_path: Path) -> None:
 def test_provenance_local_default(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     search_payload = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     symbol_payload = engine.tool_symbol(qualified_name="OrderService", file_path="src/orders.py", budget_tokens=4000)
@@ -1337,6 +1340,7 @@ def test_tool_usages_groups_local_references_and_reports_treesitter_fallback(
 ) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_usages(query="OrderService", budget_tokens=4000)
 
@@ -1406,6 +1410,7 @@ def test_tool_usages_aggregates_results_for_ambiguous_name(tmp_path: Path) -> No
     (tmp_path / "src" / "use_a.py").write_text("from src.a import helper\n\nvalue = helper()\n", encoding="utf-8")
     (tmp_path / "src" / "use_b.py").write_text("from src.b import helper\n\nvalue = helper()\n", encoding="utf-8")
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_usages(query="helper", budget_tokens=4000)
 
@@ -1427,6 +1432,7 @@ def test_tool_callers_and_callees_aggregate_results_for_ambiguous_name(tmp_path:
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     callers = engine.tool_callers(query="helper", budget_tokens=4000)
     callees = engine.tool_callees(query="run", budget_tokens=4000)
@@ -1455,6 +1461,7 @@ def test_tool_callees_resolves_indexed_targets_for_ambiguous_callee_name(tmp_pat
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_callees(query="run", budget_tokens=4000)
 
@@ -1533,6 +1540,7 @@ def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_search("OrderService", limit=5, snippet="none", budget_tokens=4000)
 
@@ -1547,6 +1555,7 @@ def test_tool_search_seed_files_prioritize_grounded_results(tmp_path: Path) -> N
     (tmp_path / "app" / "orders.py").write_text("class OrderService:\n    pass\n", encoding="utf-8")
     (tmp_path / "legacy" / "orders.py").write_text("class OrderService:\n    pass\n", encoding="utf-8")
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_search(
         "OrderService",
@@ -1563,6 +1572,7 @@ def test_tool_search_seed_files_prioritize_grounded_results(tmp_path: Path) -> N
 def test_tool_search_high_limit_forces_location_only_compaction(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_search(
         "OrderService",
@@ -1609,6 +1619,7 @@ def test_semantic_and_hybrid_modes_rank_intent_query_above_lexical(
     monkeypatch.setenv("ATELIER_EMBEDDER", "local")  # semantic search requires a real embedder
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
     query = "create login token for authenticated user"
 
     lexical_hits = engine.search_symbols(query, limit=5, mode="lexical")
@@ -1626,6 +1637,7 @@ def test_semantic_and_hybrid_modes_rank_intent_query_above_lexical(
 def test_auto_mode_keeps_identifier_queries_on_exact_lexical_order(tmp_path: Path) -> None:
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     hits = engine.search_symbols("issue_access_token", limit=5, mode="auto")
     payload = engine.tool_search("issue_access_token", limit=5, mode="auto", budget_tokens=4000)
@@ -1641,6 +1653,7 @@ def test_search_symbols_lexical_planner_prioritizes_exact_and_case_insensitive_m
 ) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     ci_hits = engine.search_symbols("orderservice", limit=5, mode="lexical")
     qualified_hits = engine.search_symbols("OrderService.calculate_total", limit=5, mode="lexical")
@@ -1663,6 +1676,7 @@ def test_search_symbols_lexical_planner_applies_camel_and_test_demotion(tmp_path
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     camel_first = engine.search_symbols("OSF", limit=5, mode="lexical")
     camel_second = engine.search_symbols("OSF", limit=5, mode="lexical")
@@ -1687,6 +1701,7 @@ def test_tool_search_skips_artifact_snapshot_hits(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_search("classify_command", limit=10, mode="lexical", budget_tokens=4000)
 
@@ -1712,6 +1727,7 @@ def test_tool_search_exact_identifier_query_returns_only_exact_symbol_hits(tmp_p
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_search("classify_command", limit=10, mode="lexical", budget_tokens=4000)
 
@@ -1753,6 +1769,7 @@ def test_search_symbols_lexical_planner_uses_fuzzy_fallback_only_when_needed(
 ) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     fuzzy_hits = engine.search_symbols("OrdreServce", limit=5, mode="lexical")
     exact_hits = engine.search_symbols("OrderService", limit=5, mode="lexical")
@@ -1767,6 +1784,7 @@ def test_tool_search_cache_keys_are_mode_aware(tmp_path: Path, monkeypatch: pyte
     monkeypatch.setenv("ATELIER_EMBEDDER", "local")  # semantic search requires a real embedder
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
     query = "create login token for authenticated user"
 
     lexical_first = engine.tool_search(query, limit=5, mode="lexical", budget_tokens=4000)
@@ -1788,6 +1806,7 @@ def test_retrieval_cache_diagnostics_hide_payloads_and_invalidate_one_tool(
 ) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     engine.tool_symbol(qualified_name="OrderService", file_path="src/orders.py", budget_tokens=4000)
@@ -1838,6 +1857,7 @@ def test_tool_index_returns_compact_summary_fields(tmp_path: Path) -> None:
 def test_tool_files_supports_tree_flat_grouped_filters(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     flat = engine.tool_files(
         path="src",
@@ -1887,6 +1907,7 @@ def test_tool_files_respects_budget_and_sets_truncated(tmp_path: Path) -> None:
             encoding="utf-8",
         )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_files(format="flat", include_metadata=True, budget_tokens=360)
 
@@ -1899,6 +1920,7 @@ def test_tool_files_respects_budget_and_sets_truncated(tmp_path: Path) -> None:
 def test_tool_explore_returns_grouped_sources_and_entry_points(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_explore(
         "OrderService",
@@ -1966,6 +1988,7 @@ def test_tool_routes_extracts_framework_endpoints(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_routes(limit=20, budget_tokens=4000)
 
@@ -1987,6 +2010,7 @@ def test_tool_routes_extracts_framework_endpoints(tmp_path: Path) -> None:
 def test_tool_explore_respects_budget_and_keeps_identity_fields(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_explore(
         "OrderService",
@@ -2006,6 +2030,7 @@ def test_tool_explore_respects_budget_and_keeps_identity_fields(tmp_path: Path) 
 def test_tool_status_reports_index_cache_and_freshness(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     payload = engine.tool_status(budget_tokens=4000)
     cached = engine.tool_status(budget_tokens=4000)
@@ -2034,6 +2059,7 @@ def test_autosync_incremental_reindex_updates_index_after_edit(tmp_path: Path, m
     _write_fixture_repo(tmp_path)
     monkeypatch.setenv("ATELIER_CODE_AUTOSYNC_DEBOUNCE_MS", "50")
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite", autosync_enabled=True)
+    engine.index_repo()
 
     first = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     version_before = engine._current_index_version()
@@ -2166,6 +2192,7 @@ def test_search_symbols_filters_with_zoekt_candidate_files(tmp_path: Path, monke
 def test_context_pack_uses_zoekt_anchor_files_as_seeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     captured_seed_files: list[str] = []
 
@@ -2228,6 +2255,7 @@ def test_low_token_defaults_stay_lighter_for_search_and_pattern(
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     search_default = engine.tool_search("OrderService", limit=5, snippet="none", budget_tokens=4000)
     search_heavy = engine.tool_search("OrderService", limit=5, snippet="full", budget_tokens=4000)
@@ -2319,6 +2347,7 @@ def test_tiny_budget_overflow_does_not_attach_spill_metadata(tmp_path: Path) -> 
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     full_payload = engine.tool_search("OrderService", limit=5, snippet="full", budget_tokens=4000)
     near_budget = max(1, int(full_payload["total_tokens"]) - 1)
@@ -2344,6 +2373,7 @@ def test_overflow_metadata_and_artifact_payload_are_compact(tmp_path: Path, monk
         encoding="utf-8",
     )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     full_payload = engine.tool_search("fetch_", limit=80, snippet="full", budget_tokens=12000)
     full_total = int(full_payload["total_tokens"])
@@ -2379,15 +2409,17 @@ def test_nonblocking_reads_skip_cold_build_while_default_blocks(
     monkeypatch.setattr(CodeContextEngine, "_start_autosync_worker", lambda self: None)
     _write_fixture_repo(tmp_path)
 
-    # MCP transport mode: a read must not trigger a synchronous cold build.
+    # MCP transport mode: a read on a cold index returns nothing (no blocking build).
     mcp_engine = CodeContextEngine(tmp_path, db_path=tmp_path / "mcp.sqlite", nonblocking_reads=True)
     assert mcp_engine.index_ready() is False
     warming = mcp_engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     assert not warming.get("items")
     assert mcp_engine.index_ready() is False
 
-    # Default (direct / SDK) mode: a read blocks and builds the index.
+    # Direct mode also does not block; the index must be pre-built to serve results.
+    # autosync always on in practice; index will be built by the worker
     direct_engine = CodeContextEngine(tmp_path, db_path=tmp_path / "direct.sqlite")
+    direct_engine.index_repo()
     result = direct_engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     assert any(item["name"] == "OrderService" for item in result["items"])
     assert direct_engine.index_ready() is True

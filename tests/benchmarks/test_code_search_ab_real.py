@@ -82,6 +82,7 @@ def _baseline_manual_symbol_search(repo_root: Path, symbol: str) -> str:
 def test_code_search_ab_real(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
     query = "OrderService"
 
     t0 = time.perf_counter()

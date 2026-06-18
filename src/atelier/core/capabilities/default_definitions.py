@@ -377,7 +377,7 @@ def _role_projections() -> dict[str, tuple[HostProjection, ...]]:
 
 def _tool_policies() -> dict[str, ToolPolicy]:
     return {
-        "code": ToolPolicy(policy_id="code", allowed_tools=("*",)),
+        "code": ToolPolicy(policy_id="code", allowed_tools=("*",), denied_actions=("agent-spawn",)),
         "general": ToolPolicy(policy_id="general", allowed_tools=("*",)),
         "explore": ToolPolicy(
             policy_id="explore",
@@ -792,12 +792,12 @@ def _role_turn_limit(role_id: str) -> int:
     return {
         "code": 100,
         "general": 100,
-        "explore": 25,
+        "explore": 100,
         "plan": 100,
         "execute": 100,
-        "review": 40,
-        "research": 25,
-        "solve": 80,
+        "review": 100,
+        "research": 100,
+        "solve": 200,
     }[role_id]
 
 

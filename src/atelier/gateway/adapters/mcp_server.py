@@ -7704,7 +7704,11 @@ def _run_shell_tool(
     if not command.strip():
         raise ValueError("command is required for shell action=run")
 
-    policy = classify_command(command)
+    _shell_workspace_root = Path(workspace).resolve()
+    policy = classify_command(
+        command,
+        allowed_write_roots=[_shell_workspace_root, *_claude_additional_dirs(_shell_workspace_root)],
+    )
 
     if policy.action == "rewrite" and policy.rewrite_target == "read" and policy.rewrite_payload:
         raw_file_path = str(policy.rewrite_payload.get("file_path") or "").strip()
@@ -8431,71 +8435,51 @@ _READ_TOOLS = frozenset(
 _DEDUP_TOOLS = frozenset({"read", "search", "grep", "explore"})
 
 
+# Flat single-object schema. The Anthropic Messages API rejects a top-level
+# oneOf/anyOf/allOf in a tool's input_schema, so Claude Code's MCP client
+# silently SKIPS any tool whose schema uses one ("its input schema uses
+# top-level oneOf, which the Anthropic API does not accept") -- which is why a
+# previous action-branched oneOf shape made `shell` vanish from the tool list
+# while every other tool stayed. Per-action requirements (command for run,
+# session_id for poll/cancel) are enforced in _run_shell_tool, not the schema.
 SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
-    # Three action-specific shapes so each branch only exposes what's relevant.
-    # timeout is intentionally absent from poll/cancel: poll blocks until the
-    # session's own deadline fires -- no LLM-set window needed or wanted.
-    "oneOf": [
-        {
-            "title": "run",
-            "description": "Execute a command (default).",
-            "properties": {
-                "action": {"type": "string", "enum": ["run"], "default": "run"},
-                "command": {
-                    "type": "string",
-                    "description": "Shell command to execute. Blocked: bash/sh/zsh/fish, rm -rf, git reset --hard, git clean -fd. Rewritten transparently: cat→read, rg/grep→grep tool.",
-                },
-                "cwd": {
-                    "type": "string",
-                    "description": "Working directory. Defaults to CLAUDE_WORKSPACE_ROOT.",
-                },
-                "timeout": {
-                    "type": "integer",
-                    "default": 1800,
-                    "description": "Seconds before the command is killed. Defaults to 30 minutes for builds and test suites.",
-                },
-                "max_lines": {
-                    "type": "integer",
-                    "default": 200,
-                    "description": "Max output lines. Excess lines are head+tail truncated; check truncated=true in response.",
-                },
-                "background": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Return a managed session handle immediately instead of waiting. By default the command runs inline and blocks until it finishes or its timeout elapses -- no need to poll.",
-                },
-            },
-            "required": ["command"],
-            "additionalProperties": False,
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": ["run", "poll", "cancel"],
+            "default": "run",
+            "description": "run (default): execute `command`. poll: block until background `session_id` finishes. cancel: cancel `session_id`.",
         },
-        {
-            "title": "poll",
-            "description": "Block until a background session finishes and return its result. No timeout parameter — the session's own deadline is the bound.",
-            "properties": {
-                "action": {"type": "string", "const": "poll"},
-                "session_id": {
-                    "type": "string",
-                    "description": "Session handle returned by a background run.",
-                },
-            },
-            "required": ["action", "session_id"],
-            "additionalProperties": False,
+        "command": {
+            "type": "string",
+            "description": "Shell command to execute (action=run). Blocked: bash/sh/zsh/fish, rm -rf, git reset --hard, git clean -fd. Rewritten transparently: cat→read, rg/grep→grep tool.",
         },
-        {
-            "title": "cancel",
-            "description": "Cancel a running background session.",
-            "properties": {
-                "action": {"type": "string", "const": "cancel"},
-                "session_id": {
-                    "type": "string",
-                    "description": "Session handle returned by a background run.",
-                },
-            },
-            "required": ["action", "session_id"],
-            "additionalProperties": False,
+        "cwd": {
+            "type": "string",
+            "description": "Working directory (action=run). Defaults to CLAUDE_WORKSPACE_ROOT.",
         },
-    ],
+        "timeout": {
+            "type": "integer",
+            "default": 1800,
+            "description": "Seconds before the command is killed (action=run). Defaults to 30 minutes for builds and test suites.",
+        },
+        "max_lines": {
+            "type": "integer",
+            "default": 200,
+            "description": "Max output lines (action=run). Excess lines are head+tail truncated; check truncated=true in response.",
+        },
+        "background": {
+            "type": "boolean",
+            "default": False,
+            "description": "action=run: return a managed session handle immediately instead of waiting. By default the command runs inline and blocks until it finishes or its timeout elapses -- no need to poll.",
+        },
+        "session_id": {
+            "type": "string",
+            "description": "Session handle returned by a background run (required for action=poll/cancel).",
+        },
+    },
+    "additionalProperties": False,
 }
 
 
