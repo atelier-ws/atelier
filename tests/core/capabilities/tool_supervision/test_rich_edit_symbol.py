@@ -26,6 +26,7 @@ def test_symbol_edit_requires_disambiguation_when_name_is_ambiguous(tmp_path: Pa
         "    return token == 'ok'\n",
         encoding="utf-8",
     )
+    CodeContextEngine(tmp_path).index_repo()
 
     result = apply_rich_edits(
         [
@@ -74,6 +75,7 @@ def test_symbol_edit_stale_symbol_id_fails_without_writing(tmp_path: Path) -> No
 
 def test_symbol_edit_reindexes_and_tags_memory_on_success(tmp_path: Path) -> None:
     _write_symbol_fixture(tmp_path)
+    CodeContextEngine(tmp_path).index_repo()
 
     result = apply_rich_edits(
         [

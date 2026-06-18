@@ -100,6 +100,7 @@ def _baseline_manual_route_discovery(repo_root: Path) -> str:
 def test_code_routes_ab_real(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
 
     t0 = time.perf_counter()
     native_text = _baseline_manual_route_discovery(tmp_path)

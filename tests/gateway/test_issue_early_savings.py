@@ -124,8 +124,8 @@ def test_statusline_hides_savings_until_real_token_usage(tmp_path: Path) -> None
 
     zero = _run_statusline(tmp_path, _payload(sid, input_tokens=0), env_extra=env)
     assert "\u2193" not in zero
-    assert "(603)" not in zero
+    assert "(603+603)" not in zero
 
     active = _run_statusline(tmp_path, _payload(sid, input_tokens=1200), env_extra=env)
     assert "\u2193" in active
-    assert "(603)" in active
+    assert "(603+603)" in active

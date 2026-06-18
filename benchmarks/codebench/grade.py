@@ -22,6 +22,39 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
 
 
+def _diff_files(patch_text: str) -> set[str]:
+    """Post-image (``b/``) paths a unified diff touches, one per ``diff --git`` header."""
+    files: set[str] = set()
+    for line in patch_text.splitlines():
+        if line.startswith("diff --git "):
+            parts = line.split(" b/", 1)
+            if len(parts) == 2:
+                files.add(parts[1].strip())
+    return files
+
+
+def _strip_files(model_diff: str, drop: set[str]) -> str:
+    """Drop whole ``diff --git`` sections whose ``b/`` path is in *drop*.
+
+    The harness applies the gold ``test_patch`` itself. If the agent also edited
+    those files, the two patches collide ('corrupt patch') and no tests run.
+    Matches SWE-bench convention: the harness owns the tests, the agent owns the
+    source -- so the agent's edits to test files are discarded before grading.
+    """
+    if not model_diff.strip() or not drop:
+        return model_diff
+    out: list[str] = []
+    keep = True
+    for line in model_diff.splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            parts = line.split(" b/", 1)
+            target = parts[1].strip() if len(parts) == 2 else ""
+            keep = target not in drop
+        if keep:
+            out.append(line)
+    return "".join(out)
+
+
 def _instance_id(row: dict[str, Any]) -> str:
     return str(row.get("instance_id") or f"{row.get('org')}__{row.get('repo')}-{row.get('number')}")
 
@@ -71,7 +104,15 @@ def grade(
         (work / sub).mkdir(parents=True, exist_ok=True)
 
     ids = {inst.instance_id for inst in instances}
-    patch_rows = [inst.patch_row(patches.get(inst.instance_id, "")) for inst in instances]
+    patch_rows = []
+    for inst in instances:
+        model_diff = patches.get(inst.instance_id, "")
+        test_files = _diff_files(inst.test_patch)
+        stripped = _strip_files(model_diff, test_files)
+        if stripped != model_diff:
+            dropped = test_files & _diff_files(model_diff)
+            print(f"[grade] {inst.instance_id}: stripped agent edits to gold test file(s): {sorted(dropped)}")
+        patch_rows.append(inst.patch_row(stripped))
     dataset_rows = [row for row in iter_rows(dataset_path) if _instance_id(row) in ids]
 
     patch_file = work / "patch.jsonl"

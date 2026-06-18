@@ -168,6 +168,10 @@ with_model_cost: dict[str, object] = {}  # populated lazily on first _load_prici
 
 
 _TOKENS_PER_MILLION = 1_000_000.0
+# Anthropic prices a 1h-TTL cache write at 2x base input vs 1.25x for the 5m
+# default -- i.e. 1.6x the 5m cache-write rate. Used to derive the 1h rate when a
+# model card omits an explicit cache_write_1h.
+_CACHE_WRITE_1H_OVER_5M = 1.6
 _DATE_SUFFIX_RE = re.compile(r"(?:-\d{8}|-\d{4}-\d{2}-\d{2})(?:-v\d+:\d+)?$")
 _LATEST_SUFFIX_RE = re.compile(r"-latest$")
 _PREVIEW_SUFFIX_RE = re.compile(r"-preview(?:-[a-z0-9.]+)*$", re.IGNORECASE)
@@ -242,14 +246,24 @@ class ModelPricing:
         output_tokens: int = 0,
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
+        cache_write_1h_tokens: int = 0,
         thinking_tokens: int = 0,
     ) -> dict[str, float]:
-        """Compute USD cost breakdown for the given token counts."""
+        """Compute USD cost breakdown for the given token counts.
+
+        ``cache_write_tokens`` is the total cache-creation count; the 1h-TTL
+        subset (``cache_write_1h_tokens``) is repriced at the 1h rate and folded
+        into the ``cache_write`` bucket.
+        """
+        cw_1h = min(max(cache_write_1h_tokens, 0), cache_write_tokens)
+        cw_5m = cache_write_tokens - cw_1h
+        rate_1h = self.cache_write_1h or (self.cache_write * _CACHE_WRITE_1H_OVER_5M)
         return {
             "input": self._cost_for_tokens(input_tokens, self.input, self.input_tiers),
             "output": self._cost_for_tokens(output_tokens, self.output, self.output_tiers),
             "cache_read": self._cost_for_tokens(cache_read_tokens, self.cache_read, self.cache_read_tiers),
-            "cache_write": self._cost_for_tokens(cache_write_tokens, self.cache_write, self.cache_write_tiers),
+            "cache_write": self._cost_for_tokens(cw_5m, self.cache_write, self.cache_write_tiers)
+            + cw_1h * rate_1h / _TOKENS_PER_MILLION,
             "thinking": self._cost_for_tokens(thinking_tokens, self.thinking or self.output, self.thinking_tiers),
         }
 
@@ -259,14 +273,24 @@ class ModelPricing:
         output_tokens: int = 0,
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
+        cache_write_1h_tokens: int = 0,
         thinking_tokens: int = 0,
     ) -> float:
-        """Compute total USD cost for the given token counts."""
+        """Compute total USD cost for the given token counts.
+
+        ``cache_write_tokens`` is the *total* cache-creation count; the 1h-TTL
+        subset (``cache_write_1h_tokens``) is repriced at the 1h rate (2x input
+        = cache_write x 1.6 when a model card omits an explicit cache_write_1h).
+        """
+        cw_1h = min(max(cache_write_1h_tokens, 0), cache_write_tokens)
+        cw_5m = cache_write_tokens - cw_1h
+        rate_1h = self.cache_write_1h or (self.cache_write * _CACHE_WRITE_1H_OVER_5M)
         return round(
             self._cost_for_tokens(input_tokens, self.input, self.input_tiers)
             + self._cost_for_tokens(output_tokens, self.output, self.output_tiers)
             + self._cost_for_tokens(cache_read_tokens, self.cache_read, self.cache_read_tiers)
-            + self._cost_for_tokens(cache_write_tokens, self.cache_write, self.cache_write_tiers)
+            + self._cost_for_tokens(cw_5m, self.cache_write, self.cache_write_tiers)
+            + cw_1h * rate_1h / _TOKENS_PER_MILLION
             + self._cost_for_tokens(thinking_tokens, self.thinking or self.output, self.thinking_tiers),
             8,
         )
@@ -628,6 +652,7 @@ def usage_cost_usd(
     output_tokens: int = 0,
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
+    cache_write_1h_tokens: int = 0,
     thinking_tokens: int = 0,
 ) -> float:
     """Compute usage cost for a model via the shared pricing catalog."""
@@ -636,6 +661,7 @@ def usage_cost_usd(
         output_tokens=output_tokens,
         cache_read_tokens=cache_read_tokens,
         cache_write_tokens=cache_write_tokens,
+        cache_write_1h_tokens=cache_write_1h_tokens,
         thinking_tokens=thinking_tokens,
     )
 
@@ -647,6 +673,7 @@ def usage_cost_breakdown_usd(
     output_tokens: int = 0,
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
+    cache_write_1h_tokens: int = 0,
     thinking_tokens: int = 0,
 ) -> dict[str, float]:
     """Compute usage cost breakdown for a model via the shared pricing catalog."""
@@ -655,6 +682,7 @@ def usage_cost_breakdown_usd(
         output_tokens=output_tokens,
         cache_read_tokens=cache_read_tokens,
         cache_write_tokens=cache_write_tokens,
+        cache_write_1h_tokens=cache_write_1h_tokens,
         thinking_tokens=thinking_tokens,
     )
 

@@ -61,7 +61,7 @@ install_console_scripts() {
         stop_existing_atelier_processes
         printf '[dry-run] uv sync --frozen (prime cache from uv.lock)\n'
         printf '[dry-run] uv tool uninstall atelier (if present)\n'
-        printf '[dry-run] UV_TOOL_BIN_DIR=%q UV_TOOL_DIR=%q uv tool install' "$ATELIER_BIN_DIR" "$ATELIER_TOOL_DIR"
+        printf '[dry-run] UV_TOOL_BIN_DIR=%q UV_TOOL_DIR=%q uv tool install --force --editable' "$ATELIER_BIN_DIR" "$ATELIER_TOOL_DIR"
         printf ' %q' "$package_spec"
         printf '\n'
         return
@@ -93,9 +93,13 @@ install_console_scripts() {
         UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
         uv tool uninstall atelier >/dev/null 2>&1 || true
     
+    # Editable tool install: the on-PATH `atelier` (the MCP server Claude Code
+    # launches) imports straight from this checkout, so a source edit goes live
+    # on the next server/session restart -- no `make dev` re-run needed. Prod
+    # (bundle.sh) installs a built wheel instead; only dev is editable.
     UV_TOOL_BIN_DIR="$ATELIER_BIN_DIR" \
         UV_TOOL_DIR="$ATELIER_TOOL_DIR" \
-        ATELIER_SKIP_MYPYC=1 uv tool install --force "$package_spec"
+        ATELIER_SKIP_MYPYC=1 uv tool install --force --editable "$package_spec"
 
 }
 

@@ -580,7 +580,6 @@ def code_index_cmd(
     prefix_markup = click.style(frame_prefix, dim=True) if frame_prefix else ""
     click.echo(f"{prefix_markup}{stats_line}" if frame_prefix else stats_line)
 
-    # Print git history summary if any commits were processed
     if git_summary and git_summary.get("commits_walked", 0) > 0:
         git_line = (
             f"{click.style('✓', fg='green')}  Indexed Git history: "

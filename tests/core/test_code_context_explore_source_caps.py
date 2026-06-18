@@ -25,6 +25,7 @@ def test_tool_explore_caps_merged_source_sections(tmp_path: Path) -> None:
     (src / "helpers.py").write_text(source, encoding="utf-8")
 
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
     payload = engine.tool_explore(
         "big_token_helper",
         max_files=2,
