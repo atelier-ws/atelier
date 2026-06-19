@@ -521,7 +521,7 @@ def _check_noop_cap(prompt: str) -> bool:
     """
     try:
         state = _read_session_state()
-        if prompt.strip() == _NOOP_PROMPT:
+        if _NOOP_PROMPT in prompt:
             count = int(state.get("noop_continue_count", 0) or 0) + 1
             state["noop_continue_count"] = count
             _write_session_state(state)
