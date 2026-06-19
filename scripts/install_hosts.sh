@@ -48,6 +48,10 @@ if [[ -n "${FORCE_COLOR:-}${CLICOLOR_FORCE:-}" && -z "${NO_COLOR:-}" ]]; then
     C_CYAN="$(printf '\033[38;2;155;117;217m')"
     C_PURPLE="$(printf '\033[38;2;155;117;217m')"
 fi
+# Frame/gutter color, mirrors common.sh. Defined after all color blocks so it
+# tracks C_DIM in every mode (TTY, no-TTY, FORCE_COLOR). Must exist before any
+# run_installer failure path references it, or `set -u` aborts the whole step.
+C_FRAME="$C_DIM"
 ACTIVE_BAR="┃"
 if [[ "${LC_ALL:-${LANG:-}}" != *"UTF-8"* && "${LC_ALL:-${LANG:-}}" != *"utf8"* ]]; then
     ACTIVE_BAR="|"
