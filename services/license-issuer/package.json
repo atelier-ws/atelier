@@ -1,0 +1,17 @@
+{
+  "name": "atelier-license-issuer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "keygen": "node scripts/keygen.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute atelier-licenses --remote --file=schema.sql",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^3.95.0"
+  }
+}

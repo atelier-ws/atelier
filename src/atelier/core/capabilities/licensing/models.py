@@ -1,0 +1,75 @@
+"""Data models for the Atelier licensing layer.
+
+A *license* is a short, signed token a customer pastes via ``atelier license
+activate``. Verification is fully offline (Ed25519) -- no license server, no
+phone-home -- which fits Atelier's local-first design. The signing key lives only
+in the issuer (a Cloudflare Worker); the public key is embedded in the client.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+# Plans that unlock the paid ("Pro") capability set. Higher tiers are a superset
+# of Pro for entitlement purposes; any tier-specific narrowing lives in the
+# per-license ``features`` list.
+PRO_PLANS: frozenset[str] = frozenset({"pro", "team", "enterprise"})
+
+# Bump when the token payload shape changes incompatibly.
+TOKEN_VERSION = 1
+
+
+class LicenseError(Exception):
+    """Raised when a license token is malformed, unsigned, or untrusted."""
+
+
+class FeatureLocked(Exception):
+    """Raised when a Pro-only feature is used without a valid license.
+
+    Carries the offending ``feature`` key so callers can render a precise
+    upgrade prompt.
+    """
+
+    def __init__(self, feature: str, message: str | None = None) -> None:
+        self.feature = feature
+        super().__init__(message or f"'{feature}' requires an Atelier Pro license")
+
+
+@dataclass(frozen=True)
+class License:
+    """A verified license payload.
+
+    Instances are only ever constructed *after* signature verification, so a
+    ``License`` in hand always means the token was signed by the trusted issuer.
+    Expiry is enforced separately (a signed-but-expired token still parses).
+    """
+
+    license_id: str
+    email: str
+    plan: str
+    issued_at: int
+    expires_at: int | None
+    features: tuple[str, ...] = ()
+
+    def is_expired(self, *, now: int) -> bool:
+        return self.expires_at is not None and now >= self.expires_at
+
+    def grants(self, feature: str) -> bool:
+        """Whether this license grants ``feature`` (empty ``features`` = all)."""
+        if not self.features:
+            return self.plan in PRO_PLANS
+        return feature in self.features
+
+
+@dataclass(frozen=True)
+class LicenseStatus:
+    """A flattened, render-ready view of the current entitlement state."""
+
+    licensed: bool
+    valid: bool
+    plan: str | None
+    email: str | None
+    expires_at: int | None
+    features: tuple[str, ...]
+    reason: str
+    source: str

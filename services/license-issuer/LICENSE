@@ -1,0 +1,13 @@
+Atelier Commercial License (proprietary)
+
+Copyright (c) Atelier. All rights reserved.
+
+This directory (services/license-issuer/) is NOT part of the Apache-2.0 licensed
+Atelier open-source distribution. It is the proprietary license-issuing backend.
+
+You may not copy, modify, distribute, sublicense, or operate this software as a
+service except under a separate written agreement with Atelier. It is published
+here for transparency and for the project owner's own deployment only.
+
+The open-source client verifier (src/atelier/core/capabilities/licensing/) is
+Apache-2.0 like the rest of the repository; only this backend is proprietary.
