@@ -167,7 +167,7 @@ def test_write_workspace_codex_agents_projects_standalone_files(tmp_path: Path, 
     content = (workspace / ".codex" / "agents" / "atelier.code.toml").read_text(encoding="utf-8")
 
     assert workspace / ".codex" / "agents" / "atelier.code.toml" in written
-    assert len(written) == 7
+    assert len(written) == len(overrides.SURFACED_ROLE_IDS)
     assert 'name = "atelier.code"' in content
     assert 'developer_instructions = """' in content
     assert "{{CORE_DISCIPLINE}}" not in content
