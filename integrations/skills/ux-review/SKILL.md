@@ -1,17 +1,17 @@
 ---
-name: design-review
+name: ux-review
 description: Verify an implemented UI against objective design gates — accessibility, design-token fidelity, and responsive behavior — by rendering it in a real browser and reasoning about what it actually looks like. Enforces design quality; does not redesign or review code.
 ---
 
-# Design review
+# UX review
 
-Use this skill to check that shipped UI *renders* correctly and conforms to the design system — not to review code quality (that is `/review`) and not to generate or restyle design (the designer owns that). You render the real thing, gate on what is measurable, and return a verdict.
+This skill checks whether a **shipped UI implementation** actually matches the design system — it opens the app in a real browser and gates on three objective measures: accessibility (WCAG), design-token fidelity (no hardcoded colors/spacing), and responsive behavior. It does **not** review code quality (use `/review` for that) and does **not** generate or restyle UI (the designer owns authoring).
 
-This is the verification half of design work: the designer keeps authoring control; this skill is the agentic gate that proves the implementation honors accessibility, tokens, and responsiveness.
+When invoked, tell the user in plain English: "I'll open your app in a browser, screenshot it at multiple breakpoints, run an accessibility audit, and check for design-token drift. I need to know what to render and a few other things first." Then gather inputs.
 
 ## Operating loop
 
-1. **Ground the target.** Confirm: what to render (route URL or component story), how to start it (dev-server command or running URL), WCAG level (default **AA**), the breakpoints to check (default 360 / 768 / 1280), and the design-token source of truth (a repo tokens file, or the Figma MCP `get_variable_defs` for the selection). Ask only what you cannot infer from the repo.
+1. **Ground the target.** Infer from the repo what you can (dev-server command, token file location). For what remains unknown, use `AskUserQuestion` with a single call covering all gaps — at minimum: the render target (route URL or component story), WCAG level (default **AA**), breakpoints to check (default 360 / 768 / 1280), and the design-token source of truth. Before starting a dev server or hitting a URL, confirm the command via `AskUserQuestion` unless the repo's `CLAUDE.md` or an allow-rule already authorizes it.
 2. **Render.** Start/confirm the app, drive a real browser via the Playwright MCP tools, navigate to the target, and screenshot at every breakpoint. Reason about the actual rendered pixels, not the markup.
 3. **Gate — accessibility.** Run axe-core against the rendered page (inject via `browser_evaluate`, or run an `axe`/`pa11y`/Lighthouse CLI). Collect violations at the chosen WCAG level: contrast, alt text, ARIA, focus order, labels.
 4. **Gate — token fidelity.** Compare the changed source (and, where feasible, computed styles) against the token set. Flag hardcoded colors, spacing, radii, and type values that bypass the design system.
@@ -33,5 +33,5 @@ This is the verification half of design work: the designer keeps authoring contr
 - **A clean axe run is not a clean a11y verdict.** Automated checks catch roughly half of WCAG; list what was not machine-checkable (keyboard nav, screen-reader semantics, focus traps) in `not_checked` and hand it to a human.
 - **Consume the design system; don't invent it.** Take tokens from the repo or the Figma MCP as source of truth. Do not guess the brand's intended values.
 - **Verify, don't redesign.** Report drift and propose the minimal conforming fix (the exact token, the contrast-passing value). Do not restyle, refactor, or "improve" the UI.
-- **Render at the boundary.** Starting a dev server or hitting a URL is a side-effect — confirm the command before running it unless the repo already authorizes it.
+- **Render at the boundary.** Starting a dev server or hitting a URL is a side-effect — confirm via `AskUserQuestion` before running it unless the repo already authorizes it.
 - **Default to `NEEDS_FIX`.** A `DONE` verdict requires positive proof every gate passed; a skipped gate (`status: skipped`) is not a pass.

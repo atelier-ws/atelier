@@ -1,0 +1,96 @@
+
+=== CodeBench head-to-head ===
+metric                      baseline       atelier
+cost_usd                     21.8574        6.8450
+  - input        : $       2.1133              
+  - output       : $       3.2863              
+  - cache_read   : $      13.6302              
+  - cache_write  : $      17.0669              
+  - input        :               $       0.0009
+  - output       :               $       1.4074
+  - cache_read   :               $       3.7221
+  - cache_write  :               $       4.0454
+duration_ms               14,918,227     3,255,589
+num_turns                        543           205
+input_tokens                 466,761           299
+cache_read_tokens         22,816,997     6,303,577
+cache_write_tokens         2,375,584       639,383
+thinking_tokens                    0             0
+output_tokens                209,996        93,829
+saved_usd                     0.0000       15.0124
+saved_tokens                       0    18,832,250
+
+atelier cost saving : +68.7%  (Vix target ~47-50%)
+atelier time saving : +78.2%  (Vix target ~40%)
+
+=== Per-task medians (clean runs) ===
+
+| Task | Arm | Cost | Tokens | Time | Tool calls | Reps |
+| --- | --- | --- | --- | --- | --- | --- |
+| cg_vscode | atelier | 82.1% cheaper | 91.2% fewer | 28.5% faster | 89.8% fewer | 5 |
+| cg_excalidraw | atelier | 62.6% cheaper | 67.1% fewer | 50.4% faster | 67.9% fewer | 5 |
+| cg_django | atelier | 88.1% cheaper | 92.4% fewer | 54.2% faster | 100% fewer | 5 |
+| cg_tokio | atelier | 96.8% cheaper | 96.9% fewer | 97.5% faster | 100% fewer | 5 |
+| cg_okhttp | atelier | 84.3% cheaper | 76.1% fewer | 14.1% faster | 100% fewer | 5 |
+| cg_gin | atelier | 17.8% cheaper | 17.4% more | 46.3% slower | 14.3% fewer | 5 |
+| cg_alamofire | atelier | 48.6% cheaper | 39.5% fewer | 87.6% faster | 63.3% fewer | 5 |
+
+| Task | Arm | cost_usd | tokens | time_s | tool_calls | reps |
+| --- | --- | --- | --- | --- | --- | --- |
+| cg_vscode | baseline | 1.0453 | 1,734,019 | 310.1 | 49 | 5 |
+| cg_vscode | atelier | 0.1867 | 152,987 | 221.8 | 5 | 5 |
+| cg_excalidraw | baseline | 1.0752 | 1,475,501 | 279.1 | 53 | 5 |
+| cg_excalidraw | atelier | 0.4020 | 485,081 | 138.5 | 17 | 5 |
+| cg_django | baseline | 0.2562 | 276,934 | 73.6 | 14 | 5 |
+| cg_django | atelier | 0.0306 | 21,180 | 33.7 | 0 | 5 |
+| cg_tokio | baseline | 0.9052 | 686,071 | 1346.7 | 26 | 5 |
+| cg_tokio | atelier | 0.0292 | 21,341 | 33.6 | 0 | 5 |
+| cg_okhttp | baseline | 0.1563 | 87,842 | 29.3 | 4 | 5 |
+| cg_okhttp | atelier | 0.0245 | 21,000 | 25.2 | 0 | 5 |
+| cg_gin | baseline | 0.2237 | 173,799 | 41.4 | 7 | 5 |
+| cg_gin | atelier | 0.1839 | 204,041 | 60.6 | 6 | 5 |
+| cg_alamofire | baseline | 0.7109 | 662,408 | 981.5 | 30 | 5 |
+| cg_alamofire | atelier | 0.3655 | 400,437 | 121.6 | 11 | 5 |
+
+=== Per-rep spread (min / median / max -- noise check) ===
+
+| Task | Arm | cost_usd | tokens | reps |
+| --- | --- | --- | --- | --- |
+| cg_vscode | baseline | 0.7934 / 1.0453 / 1.2582 | 835,507 / 1,734,019 / 2,171,017 | 5 |
+| cg_vscode | atelier | 0.1520 / 0.1867 / 0.2854 | 144,234 / 152,987 / 190,849 | 5 |
+| cg_excalidraw | baseline | 0.9073 / 1.0752 / 1.5161 | 1,225,486 / 1,475,501 / 2,590,587 | 5 |
+| cg_excalidraw | atelier | 0.2645 / 0.4020 / 0.7938 | 210,556 / 485,081 / 1,181,076 | 5 |
+| cg_django | baseline | 0.2040 / 0.2562 / 0.9643 | 201,879 / 276,934 / 1,197,173 | 5 |
+| cg_django | atelier | 0.0284 / 0.0306 / 0.0442 | 18,880 / 21,180 / 21,326 | 5 |
+| cg_tokio | baseline | 0.0582 / 0.9052 / 0.9697 | 74,837 / 686,071 / 767,932 | 5 |
+| cg_tokio | atelier | 0.0275 / 0.0292 / 0.0489 | 21,226 / 21,341 / 21,393 | 5 |
+| cg_okhttp | baseline | 0.1389 / 0.1563 / 0.1759 | 85,669 / 87,842 / 113,540 | 5 |
+| cg_okhttp | atelier | 0.0234 / 0.0245 / 0.0433 | 20,951 / 21,000 / 21,027 | 5 |
+| cg_gin | baseline | 0.1957 / 0.2237 / 0.2319 | 166,572 / 173,799 / 208,116 | 5 |
+| cg_gin | atelier | 0.1455 / 0.1839 / 0.2911 | 128,381 / 204,041 / 228,952 | 5 |
+| cg_alamofire | baseline | 0.6476 / 0.7109 / 0.7954 | 240,396 / 662,408 / 694,877 | 5 |
+| cg_alamofire | atelier | 0.3418 / 0.3655 / 0.4567 | 332,234 / 400,437 / 537,232 | 5 |
+
+=== Per-task correctness and cost ===
+
+| Task | Arm | Correct | Score | vs baseline | Cost | Cost delta | Winner |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| cg_vscode | atelier | 5/5 | 1 | 0.03 | $1.0120 | 80.4% cheaper | atelier |
+| cg_vscode | baseline | 5/5 | 0.97 | baseline | $5.1724 | baseline | atelier |
+| cg_excalidraw | atelier | 5/5 | 0.94 | -0.04 | $2.3682 | 58.1% cheaper | atelier |
+| cg_excalidraw | baseline | 5/5 | 0.98 | baseline | $5.6474 | baseline | atelier |
+| cg_django | atelier | 4/4 | 1 | 0 | $0.1758 | 90.9% cheaper | atelier |
+| cg_django | baseline | 5/5 | 1 | baseline | $1.9416 | baseline | atelier |
+| cg_tokio | atelier | 5/5 | 0.98 | 0.04 | $0.1836 | 94.8% cheaper | atelier |
+| cg_tokio | baseline | 5/5 | 0.94 | baseline | $3.5639 | baseline | atelier |
+| cg_okhttp | atelier | 5/5 | 0.98 | -0.02 | $0.1577 | 79.9% cheaper | atelier |
+| cg_okhttp | baseline | 5/5 | 1 | baseline | $0.7838 | baseline | atelier |
+| cg_gin | atelier | 5/5 | 0.94 | -0.06 | $1.0182 | 7.1% cheaper | baseline |
+| cg_gin | baseline | 5/5 | 1 | baseline | $1.0965 | baseline | baseline |
+| cg_alamofire | atelier | 4/4 | 1 | 0.06 | $1.9295 | 47.2% cheaper | atelier |
+| cg_alamofire | baseline | 5/5 | 0.94 | baseline | $3.6517 | baseline | atelier |
+Runs ok     : baseline 35/35  atelier 35/35
+Valid       : baseline 35/35  atelier 35/35
+Correct     : baseline 35/35 avg=0.976  atelier 33/35 avg=0.976
+Quality     : partially judged; headline savings remain exploratory.
+Chart data  : summary.csv, task_metrics.csv, model_audit.csv, task_correctness.csv, pairwise_quality.csv, quality_adjusted_summary.csv

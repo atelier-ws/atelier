@@ -24,11 +24,12 @@ settings` CLI — never hand-edit `~/.claude/settings.json`.
 
 ## Operating loop
 
-1. Show current values: `atelier settings show`.
-2. Change one: `atelier settings set <key> <on|off>` (accepts on/off/true/false/1/0).
-3. Map the user's words to a key, e.g. "turn off attribution" → `atelier settings set attribution off`; "hide tips" → `atelier settings set statusLineTips off`.
-4. Tell the user changes apply on the next Claude Code session start. For `spinnerVerbs`/`statusLine`/`attribution`, suggest `/reload-plugins` or a restart to pick it up immediately.
-5. Attribution detail: enabling sets `includeCoAuthoredBy=false` (suppressing Claude's trailer). To also stamp commits with the Atelier co-author line, run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/install_attribution_hook.sh` inside the target repo.
+1. Run `atelier settings show` to get current values.
+2. If no change was requested, render the current state as a markdown table directly in your response (key | on/off | what it controls) — do NOT just ask "what would you like to change?"; the table IS the useful output.
+3. To change a setting: `atelier settings set <key> <on|off>` (accepts on/off/true/false/1/0).
+4. Map plain-English requests to keys, e.g. "turn off attribution" → `atelier settings set attribution off`; "hide tips" → `atelier settings set statusLineTips off`.
+5. After a change, confirm the new value and note that most settings apply on the next session start; for `spinnerVerbs`/`statusLine`/`attribution` suggest `/reload-plugins` to pick it up immediately.
+6. Attribution detail: enabling sets `includeCoAuthoredBy=false` (suppressing Claude's default trailer). To also stamp commits with the Atelier co-author line, run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/install_attribution_hook.sh` inside the target repo.
 
 ## Guardrails
 

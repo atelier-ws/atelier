@@ -1318,7 +1318,10 @@ def run_arm(
         row_state = _ensure_claude_row_state(out_dir, task.id, arm, rep)
         ws = prepare_workspace(task, Path(str(row_state["workspace"])))
         persistent_workspace = True
-        should_resume_session = resume_state and has_saved_state
+        # Never resume a stuck/failed Claude session: benchmark --resume means
+        # "skip already-recorded tasks", not "continue the previous Claude session".
+        # Resuming a timed-out session picks up its stuck conversation and fails again.
+        should_resume_session = False
     elif cli_driver == "atelier-run":
         workspace_path = out_dir / "workspaces" / f"{task.id}_{arm}_rep{rep}"
         ws = prepare_workspace(task, workspace_path)

@@ -418,7 +418,7 @@ def _tool_policies() -> dict[str, ToolPolicy]:
         "solve": ToolPolicy(policy_id="solve", allowed_tools=("*",), denied_actions=("agent-spawn",)),
         "auto": ToolPolicy(policy_id="auto", allowed_tools=("*",), denied_actions=("plan-gate", "ask-user")),
         "bare": ToolPolicy(
-            policy_id="bare", allowed_tools=("*",), denied_actions=("plan-gate", "ask-user", "workflow", "schedule")
+            policy_id="bare", allowed_tools=("*",), denied_actions=("workflow", "schedule")
         ),
     }
 
