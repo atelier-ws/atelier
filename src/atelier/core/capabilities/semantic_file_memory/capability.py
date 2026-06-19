@@ -171,7 +171,7 @@ class SemanticFileMemoryCapability:
         self._symbol_index = SymbolIndex(self._index)
         try:
             self._symbol_index._ensure_idf()
-        except Exception:
+        except OSError:
             pass
 
     # ------------------------------------------------------------------
