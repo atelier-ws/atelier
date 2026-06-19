@@ -280,6 +280,12 @@ else
 
     verify_checksum "$TMP_ARCHIVE" "$RELEASE_URL"
 
+    # Remove stale wheels before extraction so the only wheel present after extract
+    # is the one bundled with this release. Without this, old wheels from previous
+    # installs accumulate in ATELIER_BIN_DIR and bundle.sh's sort-V picker may
+    # resolve to an older version if CI produced a version-downgrade artifact.
+    find "${ATELIER_BIN_DIR}" -maxdepth 1 -name "atelier-*.whl" -delete 2>/dev/null || true
+
     printf "  ${_CP}◇${_C0}  ${_CB}Extracting${_C0}\n" >&2
     _extract_progress "$TMP_ARCHIVE" "$ATELIER_INSTALL_DIR"
 
