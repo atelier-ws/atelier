@@ -362,12 +362,13 @@ wheels = [
 
 [[package]]
 name = "atelier"
-version = "0.4.23"
+version = "0.4.24"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "blake3" },
     { name = "click" },
+    { name = "cryptography" },
     { name = "datasketch" },
     { name = "diff-match-patch" },
     { name = "fastapi" },
@@ -463,6 +464,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=24.4" },
     { name = "blake3", specifier = ">=0.4.1" },
     { name = "click", specifier = ">=8.1" },
+    { name = "cryptography", specifier = ">=42" },
     { name = "datasketch", specifier = ">=1.6" },
     { name = "diff-match-patch", specifier = ">=2.1" },
     { name = "fastapi", specifier = ">=0.136.1" },

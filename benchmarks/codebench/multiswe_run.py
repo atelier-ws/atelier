@@ -270,6 +270,11 @@ def run(args: argparse.Namespace) -> int:
                     "",
                 )
             results.append(res)
+            # Persist incrementally so partial progress is durable and visible
+            # mid-run (resume-safe: `results` already holds reused/preserved rows,
+            # so a full rewrite never duplicates). Runs in the main thread, so the
+            # as_completed loop serializes these writes.
+            _write_results_jsonl(out_dir, results)
             print(
                 f"  -> {inst.instance_id}/{arm} rep{rep}: ok={res.ok} cost=${res.cost_usd:.4f} turns={res.num_turns}",
                 flush=True,

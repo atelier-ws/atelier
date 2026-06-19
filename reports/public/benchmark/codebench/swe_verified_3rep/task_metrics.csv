@@ -1,0 +1,13 @@
+task,baseline_arm,candidate_arm,baseline_reps,candidate_reps,baseline_cost_usd_median,candidate_cost_usd_median,cost_savings_vs_baseline_pct,baseline_tokens_median,candidate_tokens_median,tokens_savings_vs_baseline_pct,baseline_duration_ms_median,candidate_duration_ms_median,duration_savings_vs_baseline_pct,baseline_tool_calls_median,candidate_tool_calls_median,tool_calls_savings_vs_baseline_pct
+django__django-11138,baseline,atelier,3,3,1.6273,1.025,37.0,1489420,695459,53.3,240356.0,349236.0,-45.3,40,22,45.0
+django__django-11333,baseline,atelier,3,3,0.1205,0.1567,-30.1,86910,93018,-7.0,22713.0,116581.0,-413.3,3,3,0.0
+matplotlib__matplotlib-14623,baseline,atelier,3,3,0.8403,0.4101,51.2,749173,243788,67.5,163588.0,180004.0,-10.0,25,12,52.0
+pydata__xarray-3095,baseline,atelier,3,3,0.4358,0.9294,-113.3,365694,912478,-149.5,76612.0,163392.0,-113.3,13,27,-107.7
+pydata__xarray-3305,baseline,atelier,3,3,0.5111,0.3516,31.2,439030,312222,28.9,83100.0,62437.0,24.9,15,13,13.3
+pylint-dev__pylint-6386,baseline,atelier,3,3,1.0374,1.1697,-12.8,1149567,1048196,8.8,207861.0,265762.0,-27.9,32,31,3.1
+pytest-dev__pytest-8399,baseline,atelier,3,3,0.2174,0.3397,-56.3,180313,323666,-79.5,41246.0,74893.0,-81.6,7,12,-71.4
+scikit-learn__scikit-learn-12682,baseline,atelier,3,3,1.2615,0.7663,39.3,1264205,615510,51.3,188343.0,194386.0,-3.2,29,18,37.9
+sphinx-doc__sphinx-10673,baseline,atelier,2,3,1.8782,2.2334,-18.9,2046614,2340846,-14.4,358183.0,472345.0,-31.9,52,47,8.7
+sphinx-doc__sphinx-8120,baseline,atelier,3,3,0.984,0.2729,72.3,944561,203208,78.5,173548.0,94213.0,45.7,26,8,69.2
+sympy__sympy-13091,baseline,atelier,3,3,1.2754,1.579,-23.8,1152169,1223108,-6.2,241250.0,409208.0,-69.6,47,33,29.8
+sympy__sympy-13877,baseline,atelier,3,3,1.0629,0.098,90.8,1121863,25606,97.7,310286.0,33246.0,89.3,30,0,100.0

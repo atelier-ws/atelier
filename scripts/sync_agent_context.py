@@ -51,6 +51,7 @@ DOC_LINKS = [
 CODING_GUIDELINES_PATH = ROOT / "integrations/shared/coding-guidelines.md"
 CORE_DISCIPLINE_PATH = ROOT / "integrations/shared/core-discipline.md"
 CHANGE_DISCIPLINE_PATH = ROOT / "integrations/shared/change-discipline.md"
+COST_DISCIPLINE_PATH = ROOT / "integrations/shared/cost-discipline.md"
 
 # Bare ``{{TOKEN}}`` placeholders a mode doc may embed; each expands to a shared
 # "## <heading>" section sourced from one canonical partial. A mode opts in by
@@ -59,6 +60,7 @@ SHARED_SECTIONS: dict[str, tuple[str, Path]] = {
     "{{CODING_GUIDELINES}}": ("Coding Guidelines", CODING_GUIDELINES_PATH),
     "{{CORE_DISCIPLINE}}": ("Core discipline", CORE_DISCIPLINE_PATH),
     "{{CHANGE_DISCIPLINE}}": ("Change discipline", CHANGE_DISCIPLINE_PATH),
+    "{{COST_DISCIPLINE}}": ("Cost discipline", COST_DISCIPLINE_PATH),
 }
 HOST_SKILL_DIRS = {
     "claude": ROOT / "integrations" / "claude" / "plugin" / "skills",

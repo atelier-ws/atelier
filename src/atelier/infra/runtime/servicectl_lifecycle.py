@@ -165,6 +165,8 @@ def _servicectl_status_payload(root: Path) -> dict[str, Any]:
         "last_enqueued_jobs": state.get("last_enqueued_jobs", []),
         "last_imported_sessions": state.get("last_imported_sessions", {}),
         "last_session_import_at": state.get("last_session_import_at"),
+        "last_indexed_recall": state.get("last_indexed_recall", {}),
+        "last_recall_index_at": state.get("last_recall_index_at"),
         "last_external_analytics_runs": state.get("last_external_analytics_runs", []),
         "last_external_analytics_at": state.get("last_external_analytics_at"),
         "last_exit_reason": state.get("last_exit_reason"),
@@ -524,6 +526,23 @@ def _servicectl_check_and_apply_updates(root: Path) -> bool:
         return False
 
 
+def _servicectl_index_recall(root: Path) -> dict[str, int]:
+    """Index recent session transcripts into the recall store (semantic recall).
+
+    Background-owned replacement for the per-SessionStart hook spawn. Incremental
+    (sessions unchanged since the last run are skipped) and uses the offline local
+    embedder by default, so steady-state cost is just filesystem stats.
+    """
+    from atelier.core.capabilities.session_recall import index_sessions
+
+    try:
+        result = index_sessions(root)
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return {}
+    return {key: int(value) for key, value in result.items() if isinstance(value, (int, float))}
+
+
 def _servicectl_tick(
     root: Path,
     *,
@@ -628,6 +647,19 @@ def _servicectl_tick(
         imported_sessions = _servicectl_import_sessions(store)
         periodic[SESSION_IMPORT_KEY] = now.isoformat()
 
+    # Recall indexing (semantic past-session recall) is background-owned: it runs
+    # here on the maintenance cadence rather than from a per-SessionStart hook.
+    RECALL_INDEX_KEY = "index_recall_sessions"
+    last_recall_index_at = _periodic_timestamp(RECALL_INDEX_KEY)
+    if maintenance_interval_seconds <= 0 or last_recall_index_at is None:
+        recall_index_due = True
+    else:
+        recall_index_due = (now - last_recall_index_at).total_seconds() >= maintenance_interval_seconds
+    indexed_recall: dict[str, int] = {}
+    if recall_index_due:
+        indexed_recall = _servicectl_index_recall(root)
+        periodic[RECALL_INDEX_KEY] = now.isoformat()
+
     if external_analytics_interval_seconds < 0:
         external_analytics_due = False
     elif external_analytics_interval_seconds == 0 or last_external_analytics_at is None:
@@ -699,6 +731,8 @@ def _servicectl_tick(
         "last_enqueued_jobs": enqueued,
         "last_imported_sessions": imported_sessions if import_due else state.get("last_imported_sessions", {}),
         "last_session_import_at": periodic.get(SESSION_IMPORT_KEY),
+        "last_indexed_recall": indexed_recall if recall_index_due else state.get("last_indexed_recall", {}),
+        "last_recall_index_at": periodic.get(RECALL_INDEX_KEY),
         "last_external_analytics_runs": (
             external_analytics_runs if external_analytics_due else state.get("last_external_analytics_runs", [])
         ),
@@ -716,6 +750,8 @@ def _servicectl_tick(
         "processed_jobs": processed,
         "imported_sessions": imported_sessions,
         "session_import_ran": import_due,
+        "indexed_recall": indexed_recall,
+        "recall_index_ran": recall_index_due,
         "external_analytics_runs": external_analytics_runs,
         "external_analytics_periods": list(normalized_external_analytics_periods),
         "external_analytics_ran": external_analytics_due,

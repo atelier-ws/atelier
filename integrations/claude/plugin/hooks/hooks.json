@@ -6,10 +6,6 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/_run_hook.sh ${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py"
-          },
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/_run_hook.sh ${CLAUDE_PLUGIN_ROOT}/hooks/recall_index.py"
           }
         ]
       }
