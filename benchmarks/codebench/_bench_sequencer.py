@@ -30,7 +30,7 @@ CG_PID = 2630189
 
 REPORTS = pathlib.Path("reports/benchmark/codebench")
 REPORTS.mkdir(parents=True, exist_ok=True)
-DATA = pathlib.Path("benchmarks/codebench/data/curated12_verified.txt")
+DATA = pathlib.Path("benchmarks/codebench/data/verified.txt")
 
 
 def cg_running() -> bool:

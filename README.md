@@ -22,6 +22,8 @@
 
 **Live savings across all Atelier sessions** &nbsp;·&nbsp; updates on every session end
 
+`<sub>`Estimated gross savings: input tokens Atelier kept out of context, priced at each model's input / cache-read rates (zero for unknown models). Net end-to-end cost is measured separately under [Benchmarks](#benchmarks).`</sub>`
+
 [![Cost saved](https://img.shields.io/endpoint?url=https%3A%2F%2Fatelier.ws%2Fapi%2Fbadge%3Fmetric%3Dsavings&style=for-the-badge&color=04ba0d)](https://atelier.ws)
 [![Tokens less](https://img.shields.io/endpoint?url=https%3A%2F%2Fatelier.ws%2Fapi%2Fbadge%3Fmetric%3Dtokens&style=for-the-badge&color=7904b8)](https://atelier.ws)
 [![Calls avoided](https://img.shields.io/endpoint?url=https%3A%2F%2Fatelier.ws%2Fapi%2Fbadge%3Fmetric%3Dcalls&style=for-the-badge&color=eae4ed)](https://atelier.ws)
@@ -45,7 +47,7 @@ cd your-project
 atelier init
 ```
 
-<sub>Already installed? Run `atelier update` to update in place.</sub>
+`<sub>`Already installed? Run `atelier update` to update in place.`</sub>`
 
 ---
 
@@ -61,8 +63,8 @@ atelier init
 
 ## MCP Tools
 
-| Tool        | Use                                                             |
-| ----------- | --------------------------------------------------------------- |
+| Tool          | Use                                                             |
+| ------------- | --------------------------------------------------------------- |
 | `search`    | Semantic + keyword code search across the repo.                 |
 | `grep`      | Regex / glob / type-filtered search with token-budgeted output. |
 | `read`      | Budgeted file reads by outline, range, or full file.            |
@@ -97,26 +99,26 @@ Packaged agents in [integrations/agents/](integrations/agents/):
 
 Packaged skills in [integrations/skills/](integrations/skills/):
 
-`benchmark` · `knowledge` · `orchestrate` · `settings` · `swarms`
+`benchmark` · `orchestrate` · `recall` · `settings` · `swarms`
 
 ---
 
 ## Benchmarks
 
-Atelier vs baseline (Claude Code headless, `claude-sonnet-4-6`) across **7 real-world open-source** codebases — **5 reps** each, median reported. Correctness = mean LLM judge score across reps (0–1). Raw results: [reports/public/benchmark/codebench/](reports/public/benchmark/codebench/)
+Atelier vs baseline (Claude Code headless, `claude-sonnet-4-6`) across **7 real-world open-source** codebases — **5 reps** each, median reported. Correctness = mean LLM judge score across reps (0–1). All cost/token figures below are **net, end-to-end measured** (the full cost of each arm) — not the per-tool gross estimate behind the live badges above. Raw results: [reports/public/benchmark/codebench/](reports/public/benchmark/codebench/)
 
 ### Exploration tasks
 
-| Codebase            | Prompt                                                           | Language                                        | Turns (atelier / baseline) | Cost              | Tokens          | Time           | Judge score |
-| ------------------- | ---------------------------------------------------------------- | ----------------------------------------------- | -------------------------- | ----------------- | --------------- | -------------- | ----------- |
-| VS Code             | How does the extension host communicate with the main process?   | TypeScript · 11k files · 3.3M lines · 33M tok   | 6 / 28                     | 82.1% cheaper     | 91.2% fewer     | 28% faster     | 1.00        |
-| Excalidraw          | How does Excalidraw render and update canvas elements?           | TypeScript · 600 files · 171k lines · 1.7M tok  | 13 / 28                    | 62.6% cheaper     | 67.1% fewer     | 51% faster     | 0.94        |
-| Django              | How does Django's ORM build and execute a query from a QuerySet? | Python · 3k files · 522k lines · 4.8M tok       | 1 / 10                     | 88.1% cheaper     | 92.4% fewer     | 54% faster     | 1.00        |
-| Tokio               | How does tokio schedule and run async tasks on its runtime?      | Rust · 784 files · 176k lines · 1.4M tok        | 1 / 14                     | 96.8% cheaper     | 96.9% fewer     | 97% faster     | 0.98        |
-| OkHttp              | How does OkHttp process a request through its interceptor chain? | Kotlin/Java · 596 files · 133k lines · 1.1M tok | 1 / 4                      | 84.3% cheaper     | 76.1% fewer     | 14% faster     | 0.98        |
-| gin                 | How does gin route requests through its middleware chain?        | Go · 99 files · 24k lines · 171k tok            | 7 / 6                      | 17.8% cheaper     | 17.4% more      | 49% slower     | 0.94        |
-| Alamofire           | How does Alamofire build, send, and validate a request?          | Swift · 98 files · 44k lines · 452k tok         | 11 / 17                    | 48.6% cheaper     | 39.5% fewer     | 88% faster     | 1.00        |
-| **Overall, pooled** |                                                                  | **7 repos · 16k files · 4.4M lines · 43M tok**  | **205 / 543**              | **72.0% cheaper** | **74.4% fewer** | **71% faster** | **0.98**    |
+| Codebase                  | Prompt                                                           | Language                                                | Turns (atelier / baseline) | Cost                    | Tokens                | Time                 | Judge score    |
+| ------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------- | -------------------------- | ----------------------- | --------------------- | -------------------- | -------------- |
+| VS Code                   | How does the extension host communicate with the main process?   | TypeScript · 11k files · 3.3M lines · 33M tok        | 6 / 28                     | 82.1% cheaper           | 91.2% fewer           | 28% faster           | 1.00           |
+| Excalidraw                | How does Excalidraw render and update canvas elements?           | TypeScript · 600 files · 171k lines · 1.7M tok       | 13 / 28                    | 62.6% cheaper           | 67.1% fewer           | 51% faster           | 0.94           |
+| Django                    | How does Django's ORM build and execute a query from a QuerySet? | Python · 3k files · 522k lines · 4.8M tok            | 1 / 10                     | 88.1% cheaper           | 92.4% fewer           | 54% faster           | 1.00           |
+| Tokio                     | How does tokio schedule and run async tasks on its runtime?      | Rust · 784 files · 176k lines · 1.4M tok             | 1 / 14                     | 96.8% cheaper           | 96.9% fewer           | 97% faster           | 0.98           |
+| OkHttp                    | How does OkHttp process a request through its interceptor chain? | Kotlin/Java · 596 files · 133k lines · 1.1M tok      | 1 / 4                      | 84.3% cheaper           | 76.1% fewer           | 14% faster           | 0.98           |
+| gin                       | How does gin route requests through its middleware chain?        | Go · 99 files · 24k lines · 171k tok                 | 7 / 6                      | 17.8% cheaper           | 17.4% more            | 49% slower           | 0.94           |
+| Alamofire                 | How does Alamofire build, send, and validate a request?          | Swift · 98 files · 44k lines · 452k tok              | 11 / 17                    | 48.6% cheaper           | 39.5% fewer           | 88% faster           | 1.00           |
+| **Overall, pooled** |                                                                  | **7 repos · 16k files · 4.4M lines · 43M tok** | **205 / 543**        | **72.0% cheaper** | **74.4% fewer** | **71% faster** | **0.98** |
 
 Run CodeBench:
 
@@ -131,23 +133,23 @@ atelier benchmark codebench \
 
 ### SWE benchmark (bug fixing)
 
-End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** — a curated **12-instance** slice across **8 Python repos**, **3 reps** each (median reported), `claude-opus-4-8`, run inside each instance's Docker image with official `multi_swe_bench` grading. Both arms run with the project's environment pre-activated (identical setup). **Resolved** = reps whose patch passes the hidden gold tests. Raw results: [reports/public/benchmark/codebench/swe_verified_3rep/](reports/public/benchmark/codebench/swe_verified_3rep/)
+End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** — a curated **5-instance** slice across **5 Python repos**, **3 reps** each (median reported), `claude-opus-4-8`, run inside each instance's Docker image with official `multi_swe_bench` grading. Both arms run inside the image with the project's conda env activated identically (same setup for both arms). **Resolved** = reps whose patch passes the hidden gold tests. Raw results: [reports/public/benchmark/codebench/swe_verified_3rep/](reports/public/benchmark/codebench/swe_verified_3rep/)
 
-| Instance            | Repo · Language       | Cost              | Tokens          | Turns (atelier / baseline) | Time            | Resolved (atelier / baseline)  |
-| ------------------- | --------------------- | ----------------- | --------------- | -------------------------- | --------------- | ------------------------------ |
-| sphinx-8120         | Sphinx · Python       | 72.3% cheaper     | 78.5% fewer     | 8 / 28                     | 45.7% faster    | 3/3 / 2/3                      |
-| matplotlib-14623    | matplotlib · Python   | 51.2% cheaper     | 67.5% fewer     | 9 / 26                     | 10.0% slower    | 3/3 / 3/3                      |
-| scikit-learn-12682  | scikit-learn · Python | 39.3% cheaper     | 51.3% fewer     | 19 / 31                    | 3.2% slower     | 3/3 / 3/3                      |
-| django-11138        | Django · Python       | 37.0% cheaper     | 53.3% fewer     | 19 / 35                    | 45.3% slower    | 3/3 / 3/3                      |
-| xarray-3305         | xarray · Python       | 31.2% cheaper     | 28.9% fewer     | 12 / 16                    | 24.9% faster    | 3/3 / 3/3                      |
-| **Overall, pooled** | **5 instances**       | **45.9% cheaper** | **57.7% fewer** | **67 / 136 (51% less)**    | **3.7% slower** | **15/15 (100%) / 14/15 (93%)** |
+| Instance                  | Repo · Language       | Cost                    | Tokens                | Turns (atelier / baseline)    | Time                  | Resolved (atelier / baseline)        |
+| ------------------------- | ---------------------- | ----------------------- | --------------------- | ----------------------------- | --------------------- | ------------------------------------ |
+| sphinx-8120               | Sphinx · Python       | 72.3% cheaper           | 78.5% fewer           | 8 / 28                        | 45.7% faster          | 3/3 / 2/3                            |
+| matplotlib-14623          | matplotlib · Python   | 51.2% cheaper           | 67.5% fewer           | 9 / 26                        | 10.0% slower          | 3/3 / 3/3                            |
+| scikit-learn-12682        | scikit-learn · Python | 39.3% cheaper           | 51.3% fewer           | 19 / 31                       | 3.2% slower           | 3/3 / 3/3                            |
+| django-11138              | Django · Python       | 37.0% cheaper           | 53.3% fewer           | 19 / 35                       | 45.3% slower          | 3/3 / 3/3                            |
+| xarray-3305               | xarray · Python       | 31.2% cheaper           | 28.9% fewer           | 12 / 16                       | 24.9% faster          | 3/3 / 3/3                            |
+| **Overall, pooled** | **5 instances**  | **45.9% cheaper** | **57.7% fewer** | **67 / 136 (51% less)** | **3.7% slower** | **15/15 (100%) / 14/15 (93%)** |
 
 Run the SWE benchmark:
 
 ```bash
 uv run --project benchmarks python -m benchmarks.codebench.multiswe_run \
   --suite swe-bench-verified \
-  --instances $(cat benchmarks/codebench/data/curated12_verified.txt) \
+  --instances $(cat benchmarks/codebench/data/verified.txt) \
   -a baseline atelier \
   --reps 3 \
   --model claude-opus-4-8 \
@@ -163,17 +165,17 @@ atelier benchmark providers
 Provider/read benchmark numbers: triplet is `correctness / median tokens / median ms`; `-` means unsupported or not benchmarked.
 
 | Test type         | [atelier](https://github.com/atelier-ws/atelier) | [atelier-zoekt](https://github.com/sourcegraph/zoekt) | [ast-grep](https://github.com/ast-grep/ast-grep) | [code-index-mcp](https://github.com/johnhuang316/code-index-mcp) | [codegraph](https://github.com/colbymchenry/codegraph) | [jcodemunch-mcp](https://github.com/jgravelle/jcodemunch-mcp) | [scip-python](https://github.com/sourcegraph/scip-python) | [serena](https://github.com/oraios/serena) | [universal-ctags](https://github.com/universal-ctags/ctags) | [zoekt](https://github.com/sourcegraph/zoekt) |
-| ----------------- | ------------------------------------------------ | ----------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------- | --------------------------------------------- |
-| callees           | **1.00 / 78 / 114**                              | -                                                     | -                                                | -                                                                | 0.85 / 112 / 135                                       | 0.97 / 1654 / 283                                             | -                                                         | -                                          | -                                                           | -                                             |
-| callers           | **1.00 / 72 / 48**                               | -                                                     | 0.52 / 276 / 342                                 | -                                                                | 0.99 / 204 / 136                                       | 0.53 / 1666 / 201                                             | 0.13 / 59 / 0.09                                          | 0.86 / 450 / 214                           | -                                                           | -                                             |
-| exact_search      | **1.00 / 26 / 53**                               | 0.98 / 73 / 7                                         | -                                                | 0.98 / 247 / 325                                                 | 1.00 / 436 / 132                                       | 1.00 / 162 / 50                                               | -                                                         | 1.00 / 88 / 223                            | -                                                           | 1.00 / 101 / 6                                |
-| exact_symbol      | **1.00 / 26 / 11**                               | -                                                     | -                                                | -                                                                | 1.00 / 436 / 137                                       | 1.00 / 431 / 10                                               | 1.00 / 51 / 0.09                                          | 1.00 / 54 / 304                            | 1.00 / 66 / 1                                               | -                                             |
-| file_outline      | **1.00 / 126 / 33**                              | -                                                     | -                                                | 0.99 / 975 / 321                                                 | -                                                      | 1.00 / 795 / 5                                                | 1.00 / 183 / 0.09                                         | 0.85 / 51 / 101                            | 1.00 / 687 / 6                                              | -                                             |
-| fuzzy_symbol      | 0.99 / 27 / 90                                   | -                                                     | -                                                | -                                                                | -                                                      | **1.00 / 434 / 398**                                          | -                                                         | -                                          | -                                                           | -                                             |
-| nohit_search      | 1.00 / 3 / 81                                    | 1.00 / 30 / 7                                         | -                                                | 1.00 / 47 / 308                                                  | **1.00 / 1 / 146**                                     | 1.00 / 61 / 55                                                | -                                                         | **1.00 / 1 / 229**                         | -                                                           | 1.00 / 29 / 6                                 |
-| references        | **1.00 / 43 / 22**                               | -                                                     | -                                                | -                                                                | -                                                      | 0.28 / 152 / 7                                                | 0.06 / 52 / 0.09                                          | 0.87 / 651 / 193                           | -                                                           | -                                             |
-| structural_search | **0.89 / 31 / 26**                               | -                                                     | 0.15 / 633 / 348                                 | -                                                                | -                                                      | -                                                             | -                                                         | -                                          | -                                                           | -                                             |
-| substring_search  | **1.00 / 131 / 76**                              | 0.99 / 292 / 9                                        | -                                                | 0.78 / 862 / 319                                                 | 1.00 / 1012 / 133                                      | 0.81 / 537 / 46                                               | -                                                         | 0.94 / 638 / 227                           | -                                                           | 1.00 / 587 / 8                                |
+| ----------------- | --------------------------------------------- | -------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------- | -------------------------------------------------------- | ------------------------------------------ |
+| callees           | **1.00 / 78 / 114**                     | -                                                  | -                                             | -                                                             | 0.85 / 112 / 135                                    | 0.97 / 1654 / 283                                          | -                                                      | -                                       | -                                                        | -                                          |
+| callers           | **1.00 / 72 / 48**                      | -                                                  | 0.52 / 276 / 342                              | -                                                             | 0.99 / 204 / 136                                    | 0.53 / 1666 / 201                                          | 0.13 / 59 / 0.09                                       | 0.86 / 450 / 214                        | -                                                        | -                                          |
+| exact_search      | **1.00 / 26 / 53**                      | 0.98 / 73 / 7                                      | -                                             | 0.98 / 247 / 325                                              | 1.00 / 436 / 132                                    | 1.00 / 162 / 50                                            | -                                                      | 1.00 / 88 / 223                         | -                                                        | 1.00 / 101 / 6                             |
+| exact_symbol      | **1.00 / 26 / 11**                      | -                                                  | -                                             | -                                                             | 1.00 / 436 / 137                                    | 1.00 / 431 / 10                                            | 1.00 / 51 / 0.09                                       | 1.00 / 54 / 304                         | 1.00 / 66 / 1                                            | -                                          |
+| file_outline      | **1.00 / 126 / 33**                     | -                                                  | -                                             | 0.99 / 975 / 321                                              | -                                                   | 1.00 / 795 / 5                                             | 1.00 / 183 / 0.09                                      | 0.85 / 51 / 101                         | 1.00 / 687 / 6                                           | -                                          |
+| fuzzy_symbol      | 0.99 / 27 / 90                                | -                                                  | -                                             | -                                                             | -                                                   | **1.00 / 434 / 398**                                 | -                                                      | -                                       | -                                                        | -                                          |
+| nohit_search      | 1.00 / 3 / 81                                 | 1.00 / 30 / 7                                      | -                                             | 1.00 / 47 / 308                                               | **1.00 / 1 / 146**                            | 1.00 / 61 / 55                                             | -                                                      | **1.00 / 1 / 229**                | -                                                        | 1.00 / 29 / 6                              |
+| references        | **1.00 / 43 / 22**                      | -                                                  | -                                             | -                                                             | -                                                   | 0.28 / 152 / 7                                             | 0.06 / 52 / 0.09                                       | 0.87 / 651 / 193                        | -                                                        | -                                          |
+| structural_search | **0.89 / 31 / 26**                      | -                                                  | 0.15 / 633 / 348                              | -                                                             | -                                                   | -                                                          | -                                                      | -                                       | -                                                        | -                                          |
+| substring_search  | **1.00 / 131 / 76**                     | 0.99 / 292 / 9                                     | -                                             | 0.78 / 862 / 319                                              | 1.00 / 1012 / 133                                   | 0.81 / 537 / 46                                            | -                                                      | 0.94 / 638 / 227                        | -                                                        | 1.00 / 587 / 8                             |
 
 ---
 

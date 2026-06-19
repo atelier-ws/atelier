@@ -66,6 +66,7 @@ def rank_archival_passages(
     top_k: int = 5,
     embedding_model: str | None = None,
     valid_as_of: datetime | None = None,
+    ann_index: ArchivalAnnIndex | None = None,
 ) -> list[RankedPassage]:
     """Rank archival passages with hybrid BM25 and cosine scoring.
 
@@ -102,7 +103,7 @@ def rank_archival_passages(
     # reproduces today's results exactly.
     cosine_candidate_ids: set[str] | None = None
     if vector_enabled and embedding_model and ann_retrieval_enabled():
-        cosine_candidate_ids = _ARCHIVAL_ANN_INDEX.candidate_ids(
+        cosine_candidate_ids = (ann_index if ann_index is not None else _ARCHIVAL_ANN_INDEX).candidate_ids(
             query_embedding or [],
             filtered,
             model_id=embedding_model,

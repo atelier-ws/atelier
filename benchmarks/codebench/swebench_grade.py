@@ -9,6 +9,7 @@ Docker evaluation, then read ``resolved_ids`` from the run report.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from collections.abc import Iterable
 from pathlib import Path
@@ -23,6 +24,45 @@ MODEL_NAME = "atelier-codebench"
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+
+def _diff_paths(patch_text: str) -> set[str]:
+    """Repo-relative paths touched by a unified diff (from its ``diff --git`` lines)."""
+    paths: set[str] = set()
+    for line in patch_text.splitlines():
+        if line.startswith("diff --git "):
+            for tok in line.split()[2:]:
+                paths.add(tok[2:] if tok.startswith(("a/", "b/")) else tok)
+    return paths
+
+
+def _strip_gold_test_files(model_patch: str, test_patch: str) -> str:
+    """Drop model-patch sections for files the gold ``test_patch`` owns.
+
+    The gold test patch is authoritative and is applied by the harness after the
+    model patch. If the agent also touched those exact files (commonly by adding
+    its own test or fixtures at the same path), ``git apply`` of the gold test
+    patch fails with "already exists in working directory" and the real test
+    never runs -> a false-negative. Stripping those sections keeps only the
+    agent's solution code and lets the gold test decide.
+    """
+    gold = _diff_paths(test_patch)
+    if not gold or not model_patch.strip():
+        return model_patch
+    kept: list[str] = []
+    for chunk in model_patch.split("diff --git "):
+        if not chunk.strip():
+            continue
+        section = "diff --git " + chunk
+        header = section.splitlines()[0]
+        sec_paths = {tok[2:] if tok.startswith(("a/", "b/")) else tok for tok in header.split()[2:]}
+        if sec_paths & gold:
+            continue
+        kept.append(section)
+    out = "".join(kept)
+    if out and not out.endswith("\n"):
+        out += "\n"
+    return out
 
 
 def grade(
@@ -49,11 +89,25 @@ def grade(
     ids = [i.instance_id for i in insts]
 
     preds = [
-        {"instance_id": i.instance_id, "model_name_or_path": MODEL_NAME, "model_patch": patches.get(i.instance_id, "")}
+        {
+            "instance_id": i.instance_id,
+            "model_name_or_path": MODEL_NAME,
+            "model_patch": _strip_gold_test_files(patches.get(i.instance_id, ""), getattr(i, "test_patch", "")),
+        }
         for i in insts
     ]
     preds_file = work / "predictions.jsonl"
     _write_jsonl(preds_file, preds)
+
+    # Force a fresh evaluation of every requested instance. swebench's
+    # run_evaluation skips an instance when a prior report.json for the same
+    # run_id already exists, so a re-grade (e.g. --resume after re-running a
+    # task with a new patch) would silently inherit the STALE verdict from the
+    # previous patch. Drop the per-instance logs and the aggregate report first.
+    eval_logs = work / "logs" / "run_evaluation" / run_id / MODEL_NAME
+    for iid in ids:
+        shutil.rmtree(eval_logs / iid, ignore_errors=True)
+    (work / f"{MODEL_NAME.replace('/', '__')}.{run_id}.json").unlink(missing_ok=True)
 
     # run_evaluation writes its final report as ``<model>.<run_id>.json`` relative
     # to the process cwd, so run from the work dir and read it back there.
