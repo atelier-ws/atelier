@@ -97,11 +97,6 @@ def _atelier_root() -> Path:
     return Path.home() / ".atelier"
 
 
-def _active_session_id() -> str | None:
-    state = _read_session_state()
-    return state.get("session_id") or state.get("active_session_id")
-
-
 # ---------------------------------------------------------------------------
 # RunLedger event writer
 # ---------------------------------------------------------------------------
@@ -446,13 +441,12 @@ def _compaction_advice_msg(occupancy: int, window: int, model: str | None, drift
     return f"[Atelier] {head}.{cost} Run /compact to cut that."
 
 
-def _append_compaction_savings_row(tokens: int, usd: float, model: str | None) -> None:
+def _append_compaction_savings_row(tokens: int, usd: float, model: str | None, session_id: str) -> None:
     """Append a compaction-credit row to the savings sidecar (cache-read priced)."""
     try:
-        sid = _active_session_id()
-        if not sid:
+        if not session_id:
             return
-        path = _atelier_root() / "sessions" / sid / "savings.jsonl"
+        path = _atelier_root() / "sessions" / session_id / "savings.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         row = {
             "kind": "compaction",
@@ -478,7 +472,7 @@ def _clear_precompact(state: dict[str, Any]) -> None:
         state.pop(key, None)
 
 
-def _credit_pending_compaction(state: dict[str, Any], occupancy: int, model: str | None) -> None:
+def _credit_pending_compaction(state: dict[str, Any], occupancy: int, model: str | None, session_id: str) -> None:
     """Credit the realized cache-read reduction from a recent compaction.
 
     PreCompact stored the pre-compaction occupancy; once a turn has run on the
@@ -503,7 +497,7 @@ def _credit_pending_compaction(state: dict[str, Any], occupancy: int, model: str
             pre / 1_000_000 * _cache_read_price(price_model, pre)
             - occupancy / 1_000_000 * _cache_read_price(price_model, occupancy),
         )
-        _append_compaction_savings_row(delta, usd, price_model)
+        _append_compaction_savings_row(delta, usd, price_model, session_id)
         _clear_precompact(state)
     elif attempts >= 3:
         _clear_precompact(state)  # post-compact size never resolved; stop trying
@@ -535,7 +529,9 @@ def _check_noop_cap(prompt: str) -> bool:
         return False
 
 
-def _maybe_emit_compaction_advice(prompt: str, transcript_path: str, last_user_prompt: str) -> str | None:
+def _maybe_emit_compaction_advice(
+    prompt: str, transcript_path: str, last_user_prompt: str, session_id: str
+) -> str | None:
     """Decide whether to nudge for compaction. Fail-open.
 
     Fires on absolute occupancy (>=100k tokens) so it works the same at 200k or
@@ -551,7 +547,7 @@ def _maybe_emit_compaction_advice(prompt: str, transcript_path: str, last_user_p
     try:
         occupancy, model = _context_occupancy(transcript_path) if transcript_path else (0, None)
         state = _read_session_state()
-        _credit_pending_compaction(state, occupancy, model)
+        _credit_pending_compaction(state, occupancy, model, session_id)
         # Reset drift baseline when compact just ran or occupancy dropped sharply
         # (/clear).  Without this the first new prompt after compaction is always
         # flagged as unrelated to the now-gone conversation and the warning fires
@@ -575,9 +571,7 @@ def _maybe_emit_compaction_advice(prompt: str, transcript_path: str, last_user_p
         # dirs, or symbols under active edit is in-context, not a topic switch.
         # Word-overlap cosine misses this because coding turns reuse little
         # prose; the files being edited are the real topic signal.
-        if diverges and _prompt_in_working_set(
-            prompt, _recent_working_set(state.get("session_id") or state.get("active_session_id"))
-        ):
+        if diverges and _prompt_in_working_set(prompt, _recent_working_set(session_id)):
             diverges = False
         streak = (int(state.get("drift_streak", 0) or 0) + 1) if diverges else 0
         state["drift_streak"] = streak
@@ -659,9 +653,10 @@ def main() -> int:
     # it is advice for the USER to run /compact, and injecting it into the
     # model context would itself waste the tokens it complains about.
     transcript_path: str = payload.get("transcript_path", "") or ""
+    session_id = str(payload.get("session_id") or "").strip()
     ui_messages: list[str] = []
     # Folds the last_user_prompt persist into a single session-state RMW.
-    compact_msg = _maybe_emit_compaction_advice(prompt, transcript_path, stored_prompt)
+    compact_msg = _maybe_emit_compaction_advice(prompt, transcript_path, stored_prompt, session_id)
     if compact_msg:
         ui_messages.append(compact_msg)
     _emit_ui_messages(ui_messages)
@@ -675,7 +670,6 @@ def main() -> int:
         pass
 
     try:
-        session_id = _active_session_id()
         if not session_id:
             return 0
         _append_prompt_event(session_id, stored_prompt)

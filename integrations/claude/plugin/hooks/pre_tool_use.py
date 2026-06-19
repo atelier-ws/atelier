@@ -109,7 +109,7 @@ def main() -> int:
 
         workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
         state = _read_session_state()
-        session_id = str(state.get("session_id") or state.get("active_session_id") or "").strip()
+        session_id = str(payload.get("session_id") or "").strip()
         targets = extract_edit_targets(tool_name, tool_input, workspace_root=workspace)
         risky_targets = [target for target in targets if _is_risky(target)]
         missing = missing_grounding_targets(
