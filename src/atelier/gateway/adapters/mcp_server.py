@@ -2641,11 +2641,50 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
         logging.exception("Recovered from broad exception handler")
         # Best-effort savings sidecar; a failed write must not break the tool call.
         _log.debug("savings sidecar append failed", exc_info=True)
+        return
+    # Refresh the statusline sidecar so statusline.sh can read it without a
+    # subprocess.  Rate-limited internally; never raises.
+    _write_statusline_sidecar()
 
 
 def _append_workspace_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: str = "") -> None:
     """Backward-compat shim — delegates to _append_savings."""
     _append_savings(tool_name, tokens_saved, calls_saved, rid=rid)
+
+
+_STATUSLINE_SIDECAR_LAST_WRITE: float = 0.0
+_STATUSLINE_SIDECAR_MIN_INTERVAL: float = 5.0  # seconds — rate-limit transcript reads
+
+
+def _write_statusline_sidecar() -> None:
+    """Write the current savings segment to sessions/<resolved_id>/statusline_segment.
+
+    Called after every savings event so statusline.sh can read the pre-computed
+    segment directly without spawning a subprocess.  Uses the same resolved
+    session id as the savings sidecar, so the statusline and MCP server are
+    always in sync regardless of /clear or --resume.
+
+    Rate-limited to once per _STATUSLINE_SIDECAR_MIN_INTERVAL seconds to avoid
+    re-parsing the (potentially large) transcript on every tool call.
+    """
+    global _STATUSLINE_SIDECAR_LAST_WRITE
+    import time as _time
+
+    now = _time.monotonic()
+    if now - _STATUSLINE_SIDECAR_LAST_WRITE < _STATUSLINE_SIDECAR_MIN_INTERVAL:
+        return
+    _STATUSLINE_SIDECAR_LAST_WRITE = now
+    try:
+        sidecar = _get_host_session_sidecar_path()  # sessions/<id>/savings.jsonl
+        seg_path = sidecar.parent / "statusline_segment"
+        sid = sidecar.parent.name  # the MCP-resolved session id
+        from atelier.core.capabilities.savings_summary import savings_segment
+
+        seg = savings_segment(session_id=sid)
+        if seg:
+            seg_path.write_text(seg, encoding="utf-8")
+    except Exception:  # noqa: BLE001 - infrastructure path, must never raise
+        _log.debug("statusline sidecar write failed", exc_info=True)
 
 
 _dev_mode_cache: bool | None = None
@@ -5461,7 +5500,8 @@ def _compact_applied_entries(entries: list[dict[str, Any]]) -> list[str | dict[s
         "symbol {kind:'symbol', qualified_name|name, mode, new_body}; projection "
         "{kind:'projection', ...}. Legacy descriptors use path+op "
         "(replace/insert_after/replace_range). Put every change in `edits`. Returns "
-        "{applied:[...]}; failures stay structured."
+        "{applied:[...]}; failures stay structured. No diff is returned -- read the file "
+        "to verify a change if needed."
     ),
 )
 def tool_smart_edit(
@@ -5614,16 +5654,14 @@ def tool_smart_edit(
             # WS1 edit-loop correctness gate: optional executing parse + scoped
             # mypy/pytest verification with rollback. Opt-in via the `verify` arg or
             # the ATELIER_EDIT_VERIFY env var; fully fail-open.
-            # Diffs are always recorded to the ledger (audit/undo), computed
-            # inside the lock so a concurrent edit can't race the post-apply
-            # read. They are surfaced inline ONLY when an edit landed via a
-            # non-exact match (normalized/placeholder/fuzzy): there the applied
-            # text may diverge from what the caller asked for, so the diff is
-            # the sole signal of that divergence and earns its tokens by saving
-            # a verifying re-read. For exact matches the caller already knows
-            # old->new and the `applied` line ranges, so an inline diff is pure
-            # redundancy.
-            diffs = _compute_and_record_diffs(snapshots)
+            # Diffs are recorded to the ledger (audit/undo) but never surfaced
+            # inline: a unified diff echoes old+new content back into context
+            # (cache-write now, cache-read on every later turn) for a signal the
+            # agent can get on demand by reading the file. The compact `applied`
+            # line ranges confirm success; a non-exact match still exposes
+            # match_mode on its applied entry, so the agent knows to re-read and
+            # verify when a fuzzy match may have diverged from what was asked.
+            _compute_and_record_diffs(snapshots)
             for _disp, _fp in paths.items():
                 try:
                     applied_content[_disp] = _fp.read_text(encoding="utf-8") if _fp.exists() else None
@@ -5631,10 +5669,6 @@ def tool_smart_edit(
                     logging.exception("Recovered from broad exception handler")
                     applied_content[_disp] = None
             _applied = result.get("applied") or []
-            if diffs and any(
-                isinstance(e, dict) and e.get("match_mode") in ("normalized", "placeholder", "fuzzy") for e in _applied
-            ):
-                result["diff"] = diffs
             # match_mode is only informative when it is not the default exact match.
             for entry in _applied:
                 if isinstance(entry, dict) and entry.get("match_mode") == "exact":
@@ -5663,9 +5697,6 @@ def tool_smart_edit(
             timeout_ms=verify_timeout_ms,
             repo_root=repo_root,
         )
-        if result.get("rolled_back"):
-            # Files were restored to pre-edit state; the inline diff no longer applies.
-            result.pop("diff", None)
 
     # Include diagnostics inline: this IS the lint-after-edit turn.
     # Filter to errors/warnings only — informational notes add noise.
@@ -7624,6 +7655,31 @@ def tool_rename(
     )
 
 
+@mcp_tool(name="statusline_segment")
+def tool_statusline_segment() -> str:
+    """Return the pre-computed savings segment for the active session.
+
+    Hidden from agents (see HIDDEN_LLM_TOOLS).  statusline.sh reads the
+    sessions/<id>/statusline_segment sidecar file directly; this tool refreshes
+    that file and returns its content — useful for debugging or forced refresh.
+    """
+    try:
+        sidecar = _get_host_session_sidecar_path()
+        seg_path = sidecar.parent / "statusline_segment"
+        sid = sidecar.parent.name
+        from atelier.core.capabilities.savings_summary import savings_segment
+
+        seg = savings_segment(session_id=sid)
+        if seg:
+            seg_path.write_text(seg, encoding="utf-8")
+            return seg
+        if seg_path.exists():
+            return seg_path.read_text(encoding="utf-8").strip()
+    except Exception:  # noqa: BLE001 - infrastructure path, must never raise
+        _log.debug("tool_statusline_segment failed", exc_info=True)
+    return ""
+
+
 @mcp_tool(name="cache_status")
 def tool_cache_status(
     cache_tool: str | None = None,
@@ -7762,6 +7818,13 @@ def _run_shell_tool(
         return json.dumps(payload, ensure_ascii=False)
 
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    # A misconfigured CLAUDE_WORKSPACE_ROOT -- e.g. a host path that leaked into
+    # a container via the environment and does not exist here -- would make every
+    # cwd-less command fail with a raw FileNotFoundError from Popen, surfaced as
+    # an opaque "MCP error -32000". Fall back to the process cwd (always a real
+    # directory) so the command still runs instead of hard-failing.
+    if not Path(workspace).is_dir():
+        workspace = os.getcwd()
     effective_cwd = cwd or workspace
 
     if action in {"poll", "cancel"}:
@@ -8051,8 +8114,13 @@ def tool_grep(
         Field(description="Regex to match file contents. Omit for pure path/type listings."),
     ] = None,
     file_glob_patterns: Annotated[
-        list[str] | None,
-        Field(description="Globs constraining candidate files, e.g. `src/**/*.py`."),
+        str | list[str] | None,
+        Field(
+            description=(
+                "Globs constraining candidate files, e.g. `src/**/*.py`. Pass a list for "
+                "multiple globs, or a bare string for a single one."
+            ),
+        ),
     ] = None,
     output_mode: Annotated[
         Literal[
@@ -8132,6 +8200,10 @@ def tool_grep(
     Prefer `search` for ranked natural-language lookup and repo-map construction.
     Returns: results shaped by `output_mode` (default `ranked_file_map`: token-budgeted file pointers with line ranges and symbols).
     """
+    # Accept a single glob passed as a bare string -- a common shape the model
+    # reaches for -- so it does not trip schema validation against the array type.
+    if isinstance(file_glob_patterns, str):
+        file_glob_patterns = [file_glob_patterns]
     payload = _run_native_grep(
         path=path,
         content_regex=content_regex,

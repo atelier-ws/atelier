@@ -234,8 +234,8 @@ def test_read_transcript_stats_prices_1h_cache_writes_and_long_context(tmp_path:
     p.write_text(json.dumps(base_msg) + "\n", encoding="utf-8")
     stats = read_transcript_stats(p)
     assert stats is not None
-    # context = 2M > 200k threshold -> premium: in 1M*$20 + cW1h 1M*$20*(25/12.5)=$40
-    assert stats.est_cost_usd == pytest.approx(20.0 + 40.0)
+    # flat: in 1M*$10 + cW1h 1M*$20 = $30 (no long_context premium — Claude doesn't bill it)
+    assert stats.est_cost_usd == pytest.approx(10.0 + 20.0)
 
     # Same usage but under the threshold: in 1M*$10 + cW1h 1M*$20
     small = json.loads(json.dumps(base_msg))
