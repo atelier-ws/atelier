@@ -41,7 +41,8 @@ atelier license deactivate       # revert to Free
 
 The `ATELIER_LICENSE` env var overrides the stored file (handy for CI and
 containers). `ATELIER_LICENSE_PUBLIC_KEY` overrides the embedded public key
-(for self-issued keys or testing).
+(for self-issued keys or testing). `ATELIER_PRO_URL` overrides the "buy" link
+shown in upsells -- point it straight at your Stripe Payment Link.
 
 ## The entitlement contract
 
