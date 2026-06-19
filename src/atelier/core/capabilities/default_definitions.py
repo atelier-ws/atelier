@@ -9,8 +9,8 @@ from typing import Any, cast
 REPO_ROOT = Path(__file__).resolve().parents[4]
 MODES_DIR = Path("integrations/agents")
 
-HOST_ROLE_IDS = ("code", "explore", "review", "plan", "execute", "research", "solve")
-SURFACED_ROLE_IDS = ("code", "explore", "execute", "plan", "research", "review", "solve")
+HOST_ROLE_IDS = ("code", "explore", "review", "plan", "execute", "research", "solve", "auto", "bare")
+SURFACED_ROLE_IDS = ("code", "explore", "execute", "plan", "research", "review", "solve", "auto", "bare")
 DEFAULT_OWNED_MODEL = "claude-opus-4.8"
 READONLY_OWNED_MODEL = "claude-sonnet-4.6"
 
@@ -113,8 +113,6 @@ class DefaultRole:
     workflow_usage: tuple[str, ...]
     model_default: str
     effort_default: str
-    max_turns: int
-    max_tokens: int
     read_mode_hint: str
     host_projections: tuple[HostProjection, ...] = ()
     review_contract: ReviewContract | None = None
@@ -131,8 +129,6 @@ class DefaultRole:
             "workflow_usage": list(self.workflow_usage),
             "model_default": self.model_default,
             "effort_default": self.effort_default,
-            "max_turns": self.max_turns,
-            "max_tokens": self.max_tokens,
             "read_mode_hint": self.read_mode_hint,
             "host_projections": [projection.to_dict() for projection in self.host_projections],
             "review_contract": self.review_contract.to_dict() if self.review_contract is not None else None,
@@ -412,7 +408,7 @@ def _tool_policies() -> dict[str, ToolPolicy]:
                 "callers",
                 "verify",
             ),
-            denied_actions=("edit", "write", "delete", "agent-spawn"),
+            denied_actions=("edit", "write", "delete"),
         ),
         "research": ToolPolicy(
             policy_id="research",
@@ -420,6 +416,10 @@ def _tool_policies() -> dict[str, ToolPolicy]:
             denied_actions=("edit", "write", "delete", "agent-spawn"),
         ),
         "solve": ToolPolicy(policy_id="solve", allowed_tools=("*",), denied_actions=("agent-spawn",)),
+        "auto": ToolPolicy(policy_id="auto", allowed_tools=("*",), denied_actions=("plan-gate", "ask-user")),
+        "bare": ToolPolicy(
+            policy_id="bare", allowed_tools=("*",), denied_actions=("plan-gate", "ask-user", "workflow", "schedule")
+        ),
     }
 
 
@@ -713,8 +713,6 @@ def build_default_registry(repo_root: Path | None = None) -> DefaultRegistry:
             workflow_usage=_workflow_usage(role_id),
             model_default=_role_default_model(role_id),
             effort_default=_role_effort(role_id),
-            max_turns=_role_turn_limit(role_id),
-            max_tokens=_role_token_limit(role_id),
             read_mode_hint=_role_read_hint(role_id),
             host_projections=projections.get(role_id, ()),
             review_contract=ReviewContract() if role_id == "review" else None,
@@ -734,8 +732,6 @@ def build_default_registry(repo_root: Path | None = None) -> DefaultRegistry:
         workflow_usage=("owned-execute-review-loop", "owned-benchmark-solver"),
         model_default=_role_default_model("general"),
         effort_default="medium",
-        max_turns=_role_turn_limit("general"),
-        max_tokens=_role_token_limit("general"),
         read_mode_hint="exact",
         host_projections=(),
     )
@@ -758,6 +754,8 @@ def _workflow_usage(role_id: str) -> tuple[str, ...]:
         "execute": ("owned-execute-review-loop",),
         "research": (),
         "solve": ("owned-benchmark-solver",),
+        "auto": (),
+        "bare": (),
     }
     return usage[role_id]
 
@@ -772,6 +770,8 @@ def _role_effort(role_id: str) -> str:
         "review": "medium",
         "research": "medium",
         "solve": "high",
+        "auto": "high",
+        "bare": "high",
     }[role_id]
 
 
@@ -785,32 +785,8 @@ def _role_default_model(role_id: str) -> str:
         "review": READONLY_OWNED_MODEL,
         "research": READONLY_OWNED_MODEL,
         "solve": DEFAULT_OWNED_MODEL,
-    }[role_id]
-
-
-def _role_turn_limit(role_id: str) -> int:
-    return {
-        "code": 100,
-        "general": 100,
-        "explore": 100,
-        "plan": 100,
-        "execute": 100,
-        "review": 100,
-        "research": 100,
-        "solve": 200,
-    }[role_id]
-
-
-def _role_token_limit(role_id: str) -> int:
-    return {
-        "code": 64000,
-        "general": 64000,
-        "explore": 32000,
-        "plan": 64000,
-        "execute": 64000,
-        "review": 48000,
-        "research": 32000,
-        "solve": 64000,
+        "auto": DEFAULT_OWNED_MODEL,
+        "bare": DEFAULT_OWNED_MODEL,
     }[role_id]
 
 
@@ -824,6 +800,8 @@ def _role_read_hint(role_id: str) -> str:
         "review": "exact",
         "research": "compact",
         "solve": "exact",
+        "auto": "exact",
+        "bare": "exact",
     }[role_id]
 
 
@@ -869,6 +847,22 @@ def _denies_spawn(policy: ToolPolicy) -> bool:
     return "agent-spawn" in policy.denied_actions
 
 
+def _denies_plan_gate(policy: ToolPolicy) -> bool:
+    return "plan-gate" in policy.denied_actions
+
+
+def _denies_ask(policy: ToolPolicy) -> bool:
+    return "ask-user" in policy.denied_actions
+
+
+def _denies_workflow(policy: ToolPolicy) -> bool:
+    return "workflow" in policy.denied_actions
+
+
+def _denies_schedule(policy: ToolPolicy) -> bool:
+    return "schedule" in policy.denied_actions
+
+
 def _claude_disallowed_tools(policy: ToolPolicy) -> list[str]:
     """Render a Claude ``disallowedTools`` deny-list from the host-neutral policy.
 
@@ -882,6 +876,14 @@ def _claude_disallowed_tools(policy: ToolPolicy) -> list[str]:
         denied.append("Agent")
     if _denies_mutation(policy):
         denied.append("mcp__atelier__edit")
+    if _denies_plan_gate(policy):
+        denied.append("ExitPlanMode")
+    if _denies_ask(policy):
+        denied.append("AskUserQuestion")
+    if _denies_workflow(policy):
+        denied.append("Workflow")
+    if _denies_schedule(policy):
+        denied.append("ScheduleWakeup")
     return denied
 
 
@@ -893,6 +895,8 @@ _CLAUDE_AGENT_COLORS: dict[str, str] = {
     "execute": "purple",
     "research": "green",
     "solve": "orange",
+    "auto": "red",
+    "bare": "red",
 }
 
 
@@ -902,8 +906,6 @@ def _build_claude_stable_frontmatter() -> dict[str, tuple[tuple[str, Any], ...]]
         role_id: (
             ("name", role_id),
             ("description", ""),
-            ("maxTurns", _role_turn_limit(role_id)),
-            ("tools", ["*"]),
             ("disallowedTools", _claude_disallowed_tools(policies[role_id])),
             ("color", _CLAUDE_AGENT_COLORS[role_id]),
         )

@@ -1074,6 +1074,8 @@ _STATUS_TIPS: tuple[str, ...] = (
     "`grep` content-mode finds and reads code in one step",
     "Delegate scans to `atelier:explore` — cheaper model, fewer tokens",
     "Use the `memory` tool to recall past sessions and decisions",
+    "`atelier:bare` strips `Workflow` + `ScheduleWakeup` — saves ~6k tokens per request vs auto",
+    "Use `atelier:auto` for autonomous runs — no plan gates, no prompts",
 )
 
 
