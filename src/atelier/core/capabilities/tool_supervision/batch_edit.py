@@ -146,7 +146,7 @@ def apply_batch_edit(
         Repository root.  Defaults to the process cwd.
     allowed_roots:
         Additional directories outside *repo_root* that edits may target.
-        Populated from Claude Code’s ``additionalDirectories`` setting.
+        Populated from Claude Code's ``additionalDirectories`` setting.
 
     Returns
     -------

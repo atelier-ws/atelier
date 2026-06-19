@@ -222,6 +222,7 @@ opencode.jsonc*
 .clinerules/
 .letta/
 .agents/
+.playwright-mcp/
 
 # But ALWAYS track the integration templates and plugin manifests
 !integrations/**/.mcp.json

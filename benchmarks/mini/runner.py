@@ -22,8 +22,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .schema import MiniEvalCaseResult, MiniEvalReport
 from atelier.core.capabilities.savings_summary import estimate_cost_usd
+
+from .schema import MiniEvalCaseResult, MiniEvalReport
 
 if TYPE_CHECKING:
     from .schema import MiniEvalCase
@@ -94,10 +95,7 @@ def _boundary_respected(changed: list[str], allowed: list[str]) -> bool:
         return True
     if not allowed:
         return False
-    for path in changed:
-        if not any(fnmatch.fnmatch(path, pattern) for pattern in allowed):
-            return False
-    return True
+    return all(any(fnmatch.fnmatch(path, pattern) for pattern in allowed) for path in changed)
 
 
 def _run_verify(command: str, cwd: Path) -> bool:
@@ -329,7 +327,7 @@ def run_suite(
         for case in selected:
             try:
                 results.append(run_case(case, root=root, git_repo=git_repo))
-            except Exception as exc:  # noqa: BLE001 - record any runner failure as an error case
+            except Exception as exc:
                 results.append(
                     MiniEvalCaseResult(
                         id=case.id,

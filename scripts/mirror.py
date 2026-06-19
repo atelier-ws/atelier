@@ -96,7 +96,9 @@ def get_blob_sha(commit_sha: str, path: str) -> str | None:
     """Return the blob SHA for a file at a given commit, or None if absent."""
     result = subprocess.run(
         ["git", "ls-tree", commit_sha, path],
-        text=True, capture_output=True, cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        cwd=REPO_ROOT,
     )
     if result.returncode != 0 or not result.stdout.strip():
         return None
@@ -166,13 +168,13 @@ def get_commit_metadata(sha: str) -> dict[str, str]:
     body = git("log", "-1", "--format=%B", sha)
     parts = header.split(META_SEP, 5)
     return {
-        "author_name":     parts[0],
-        "author_email":    parts[1],
-        "author_date":     parts[2],
-        "committer_name":  parts[3],
+        "author_name": parts[0],
+        "author_email": parts[1],
+        "author_date": parts[2],
+        "committer_name": parts[3],
         "committer_email": parts[4],
-        "committer_date":  parts[5] if len(parts) > 5 else "",
-        "message":         body,
+        "committer_date": parts[5] if len(parts) > 5 else "",
+        "message": body,
     }
 
 

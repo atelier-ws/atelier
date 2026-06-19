@@ -451,6 +451,26 @@ def test_post_edit_hooks_false_diff_still_recorded(workspace: Path) -> None:
     assert "+after" in matching[-1].payload["diff"]
 
 
+def test_edit_result_omits_inline_diff(workspace: Path) -> None:
+    """The edit result never carries an inline diff; the agent re-reads to verify.
+
+    A unified diff echoes old+new content back into context (cache-write now,
+    cache-read on every later turn), so it is not returned. The diff is still
+    recorded to the ledger for audit/undo.
+    """
+    f = workspace / "nodiff.py"
+    f.write_text("x = 1\n", encoding="utf-8")
+
+    payload = _edit({"edits": [{"file_path": "nodiff.py", "old_string": "x = 1", "new_string": "x = 2"}]})
+
+    assert payload["failed"] == []
+    assert "diff" not in payload
+    assert f.read_text(encoding="utf-8") == "x = 2\n"
+    led = mcp_server._get_ledger()
+    file_events = [e for e in led.events if e.kind == "file_edit" and e.payload.get("path") == "nodiff.py"]
+    assert file_events and "+x = 2" in file_events[-1].payload["diff"]
+
+
 def test_hook_exception_does_not_fail_successful_edit(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A hook crash must not surface as an edit failure — the file was already written."""
     f = workspace / "hookcrash.py"

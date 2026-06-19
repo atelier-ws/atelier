@@ -3550,6 +3550,7 @@ def build_savings_report(
             "usd": round(w.saved_usd, 2),
             "tokens": w.tokens_saved,
             "spend": round(w.spend_usd, 2),
+            "carry": round(w.carry_usd, 2),
         }
 
     summary_breakdown = {

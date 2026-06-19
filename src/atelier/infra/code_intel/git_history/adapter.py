@@ -307,9 +307,7 @@ class DeletedHistorySearchAdapter:
                 signature_hash
             FROM symbol_graveyard
             WHERE
-            """
-            + " AND ".join(filters)
-            + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC LIMIT ?",
+            """ + " AND ".join(filters) + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC LIMIT ?",
             params,
         ).fetchall()
         return list(rows)
@@ -348,9 +346,7 @@ class DeletedHistorySearchAdapter:
                 rename_target,
                 signature_hash
             FROM symbol_graveyard
-            """
-            + where_clause
-            + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC",
+            """ + where_clause + " ORDER BY deleted_at_ts DESC, deleted_at_sha DESC, symbol_name ASC",
             params,
         ).fetchall()
         return list(rows)
