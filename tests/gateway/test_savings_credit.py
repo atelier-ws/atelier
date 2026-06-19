@@ -284,29 +284,49 @@ def test_price_avoided_calls_usd_uses_cache_read_rate() -> None:
     assert _price_avoided_calls_usd(MODEL, 0, 100_000) == 0.0
 
 
-def test_sidecar_routes_to_active_bridge_session_after_clear(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Savings must route to the *active* session (the workspace bridge), not the
+def test_sidecar_and_identity_route_to_live_window_session_after_clear(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Identity AND savings must route to the live *window* session, not the
     MCP process's launch-time CLAUDE_CODE_SESSION_ID.
 
     The MCP server is long-lived: after a /clear the env var still names the
-    dead launch session while the bridge (rewritten by SessionStart) names the
-    live one. The Stop hook / statusline read by the live session, so the writer
-    must agree or every post-clear session reports zero savings.
+    dead launch session, while SessionStart has written this window's own
+    identity file naming the live one. The unified window resolver makes the
+    ledger and the savings sidecar agree on the live session, so post-clear
+    sessions never report zero savings.
     """
+    import json
+
+    from atelier.core.foundation import session_window as sw
     from atelier.gateway.adapters import mcp_server as m
 
     monkeypatch.setattr(m, "_atelier_root", lambda: tmp_path)
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+    ws_hash = sw.workspace_hash(str(workspace))
 
-    # MCP launched in 'launch-sid'; the user then /cleared into 'active-sid'.
+    # Anchor both resolvers to one fixed window and reset the MCP-side caches so
+    # the monkeypatched window id / file are re-read.
+    monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: (4242, 99))
+    monkeypatch.setattr(m, "_MCP_WINDOW_ID", None, raising=False)
+    monkeypatch.setattr(m, "_MCP_WINDOW_ID_RESOLVED", False, raising=False)
+    monkeypatch.setattr(m, "_WINDOW_SID_CACHE", None, raising=False)
+
+    # MCP launched in 'launch-sid'; the user then /cleared into 'active-sid',
+    # which SessionStart recorded in this window's own identity file.
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "launch-sid")
-    monkeypatch.setattr(m, "_read_workspace_session_bridge", lambda: ("active-sid", "claude-sonnet-4-5"))
+    win_file = sw.window_file_path(tmp_path, ws_hash, 4242, 99)
+    win_file.parent.mkdir(parents=True, exist_ok=True)
+    win_file.write_text(json.dumps({"session_id": "active-sid"}), encoding="utf-8")
 
-    # Per-process identity (telemetry/ledger) still follows the env var ...
-    assert m._claude_session_id() == "launch-sid"
-    # ... but savings route to the live session the readers will look under.
+    # Identity (ledger/telemetry) and savings BOTH follow the live window id.
+    assert m._claude_session_id() == "active-sid"
     assert m._get_host_session_sidecar_path() == tmp_path / "sessions" / "active-sid" / "savings.jsonl"
 
-    # Before SessionStart writes the bridge (first calls / hookless launchers),
-    # fall back to the launch env var so early savings are still recorded.
-    monkeypatch.setattr(m, "_read_workspace_session_bridge", lambda: ("", ""))
+    # Before SessionStart writes this window's file (first calls / hookless
+    # launchers), fall back to the launch env var so early savings still record.
+    win_file.unlink()
+    monkeypatch.setattr(m, "_WINDOW_SID_CACHE", None, raising=False)
     assert m._get_host_session_sidecar_path() == tmp_path / "sessions" / "launch-sid" / "savings.jsonl"

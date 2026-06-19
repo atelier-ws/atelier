@@ -999,6 +999,7 @@ def _reset_runtime_cache_for_testing() -> None:
     global _current_ledger, _realtime_ctx, _product_session_id, _product_session_started_at
     global _runtime_cache, _remote_client, _context_budget_recorder
     global _last_worker_spawn_time
+    global _WINDOW_SID_CACHE, _MCP_WINDOW_ID, _MCP_WINDOW_ID_RESOLVED
     _current_ledger = None
     _realtime_ctx = None
     _product_session_id = None
@@ -1007,6 +1008,9 @@ def _reset_runtime_cache_for_testing() -> None:
     _remote_client = None
     _context_budget_recorder = None
     _last_worker_spawn_time = 0.0
+    _WINDOW_SID_CACHE = None
+    _MCP_WINDOW_ID = None
+    _MCP_WINDOW_ID_RESOLVED = False
     _last_plan_hash_by_session.clear()
     _last_plan_by_session.clear()
     _CONTEXT_STATE_CACHE.clear()
@@ -1128,11 +1132,25 @@ def _read_workspace_session_bridge() -> tuple[str, str]:
         return "", ""
 
 
-# Window-anchored live-session resolution. Cached on the SessionStart registry's
+# Window-anchored live-session resolution. Cached on this window's identity-file
 # mtime so the common path (no SessionStart since last call) is a single stat;
-# re-resolves (re-walking /proc + re-reading the registry) only when SessionStart
-# appended a row -- i.e. on startup / resume / clear / compact.
+# re-resolves only when SessionStart rewrote the file -- i.e. on startup /
+# resume / clear / compact.
 _WINDOW_SID_CACHE: tuple[float, str] | None = None
+# This MCP process's (window_pid, window_btime), memoized: the claude-window
+# ancestor is fixed for the server's whole life, so walk /proc only once.
+_MCP_WINDOW_ID: tuple[int, int] | None = None
+_MCP_WINDOW_ID_RESOLVED = False
+
+
+def _mcp_window_id() -> tuple[int, int] | None:
+    global _MCP_WINDOW_ID, _MCP_WINDOW_ID_RESOLVED
+    if not _MCP_WINDOW_ID_RESOLVED:
+        from atelier.core.foundation.session_window import host_window_id
+
+        _MCP_WINDOW_ID = host_window_id()
+        _MCP_WINDOW_ID_RESOLVED = True
+    return _MCP_WINDOW_ID
 
 
 def _workspace_ws_hash() -> str:
@@ -1146,20 +1164,22 @@ def _resolve_live_session_id() -> str:
     """Live session id for this MCP server's window.
 
     Anchors to the ``claude`` window process (stable across ``/clear``, unique
-    per window) via the SessionStart registry, falling back to the launch env
-    var then MRU. Replaces the old env-first/bridge-first split so a long-lived
-    server tracks the live session across ``/clear`` and never adopts a sibling
-    session's id from the shared workspace bridge.
+    per window) via its own per-window identity file, falling back to the launch
+    env var. A long-lived server tracks the live session across ``/clear`` and
+    never adopts a sibling session's id from a shared workspace slot.
     """
     global _WINDOW_SID_CACHE
-    from atelier.core.foundation.session_window import registry_path, resolve_window_session_id
+    from atelier.core.foundation.session_window import resolve_window_session_id, window_file_path
 
     root = _atelier_root()
     ws_hash = _workspace_ws_hash()
-    try:
-        mtime = registry_path(root, ws_hash).stat().st_mtime
-    except OSError:
-        mtime = 0.0
+    win = _mcp_window_id()
+    mtime = 0.0
+    if win is not None:
+        try:
+            mtime = window_file_path(root, ws_hash, win[0], win[1]).stat().st_mtime
+        except OSError:
+            mtime = 0.0
     cached = _WINDOW_SID_CACHE
     if cached is not None and cached[0] == mtime:
         return cached[1]
@@ -1192,8 +1212,13 @@ def _read_workspace_session_state() -> dict[str, Any]:
 
 
 def _write_workspace_session_state(state: dict[str, Any]) -> None:
+    path = _workspace_session_state_file()
+    if path == _workspace_bridge_file():
+        # No live session id yet (pre-SessionStart / hostless): do NOT write the
+        # shared workspace bridge -- that single slot is SessionStart's to own.
+        # Runtime state persists only once a per-session home exists.
+        return
     try:
-        path = _workspace_session_state_file()
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path: str | None = None
         with tempfile.NamedTemporaryFile(
@@ -2363,10 +2388,10 @@ def _unregister_mcp_session() -> None:
 def _get_claude_session_id() -> str:
     """Return the Claude Code session UUID.
 
-    Reads workspace session_state.json once (written by SessionStart hook),
-    caches the result in _cached_claude_session_id for all subsequent calls.
-    Falls back to MCP registration file for backward compatibility.
-    Falls back to the product session UUID if not yet populated.
+    Resolves the window-anchored live id first (``_resolve_live_session_id`` ->
+    this window's own identity file), caching it in _cached_claude_session_id.
+    Falls back to the cached value, then the MCP registration file, then the
+    product session UUID.
     """
     global _cached_claude_session_id, _cached_mcp_model
 
@@ -2434,21 +2459,16 @@ def _get_host_session_sidecar_path() -> Path:
     and stays stale for the rest of the process's life.
 
     Priority (Claude):
-    1. Workspace bridge ``session_state.json`` ``session_id`` — the SessionStart
-       hook rewrites this on every new session (startup, /clear, /compact), so
-       it always names the live session the readers will read from.
+    1. Window-anchored live session id (``_resolve_live_session_id`` -> this
+       window's own identity file) — correct across /clear and isolated per
+       window, so concurrent windows in one workspace never cross-attribute.
     2. ``CLAUDE_CODE_SESSION_ID`` env var — fallback for the first calls before
-       SessionStart has written the bridge, or launchers that skip the hook.
-
-    Trade-off: two *concurrent* Claude windows in the same workspace share the
-    single bridge slot, so their savings both attribute to whichever session
-    started most recently.  That is rare (multi-repo work uses distinct
-    workspaces -> distinct bridges) and strictly less harmful than env-first,
-    which reported zero savings for every session after the first /clear.
+       SessionStart has written this window's file, or launchers that skip the
+       hook.
     """
     # 1. Claude: window-anchored live session id -- the SAME resolver traces use,
     # so savings and traces always land under one session even across /clear and
-    # with concurrent sessions sharing the workspace.
+    # with concurrent windows in the same workspace.
     sid = _resolve_live_session_id()
     if sid:
         return _atelier_root() / "sessions" / sid / "savings.jsonl"

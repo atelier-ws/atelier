@@ -44,7 +44,7 @@ def _env(root: Path, ws: Path, marker: Path, stub: Path, **extra: str) -> dict:
 
 
 def _run(env: dict) -> subprocess.CompletedProcess[str]:
-    payload = {"tool_name": "Edit", "tool_input": {"file_path": "x.py"}}
+    payload = {"session_id": "sid1", "tool_name": "Edit", "tool_input": {"file_path": "x.py"}}
     result = subprocess.run(
         [sys.executable, str(HOOK)],
         input=json.dumps(payload),

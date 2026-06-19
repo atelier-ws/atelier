@@ -1,4 +1,9 @@
-"""Window-anchored session-id resolution (the /clear + concurrent-session fix)."""
+"""Window-anchored session-id resolution: per-window identity files.
+
+Each window writes its OWN file (single writer per file), so concurrent windows
+in one workspace never clobber each other -- the race the old shared registry
+could not avoid.
+"""
 
 from __future__ import annotations
 
@@ -9,51 +14,43 @@ from typing import Any
 from atelier.core.foundation import session_window as sw
 
 
-def _write_rows(root: Path, ws: str, rows: list[dict[str, Any]]) -> None:
-    p = sw.registry_path(root, ws)
+def _write_window(root: Path, ws: str, pid: int, btime: int, session_id: str) -> None:
+    p = sw.window_file_path(root, ws, pid, btime)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    p.write_text(
+        json.dumps({"session_id": session_id, "window_pid": pid, "window_btime": btime}),
+        encoding="utf-8",
+    )
 
 
-def test_window_match_beats_stale_env(tmp_path: Path, monkeypatch: Any) -> None:
+def test_window_file_beats_stale_env(tmp_path: Path, monkeypatch: Any) -> None:
     ws = "deadbeef0001"
     monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: (4242, 999))
-    _write_rows(
-        tmp_path,
-        ws,
-        [
-            {"session_id": "sibling", "window_pid": 7777, "window_btime": 111},
-            {"session_id": "mine", "window_pid": 4242, "window_btime": 999},
-        ],
-    )
-    # Launch env is stale; the window-matched row wins.
+    _write_window(tmp_path, ws, 4242, 999, "mine")
+    # A sibling window's file must not be consulted; the launch env is stale.
+    _write_window(tmp_path, ws, 7777, 111, "sibling")
     assert sw.resolve_window_session_id(tmp_path, ws, env_session_id="stale-launch") == "mine"
 
 
-def test_clear_newest_window_row_wins(tmp_path: Path, monkeypatch: Any) -> None:
+def test_clear_overwrites_same_window(tmp_path: Path, monkeypatch: Any) -> None:
     ws = "deadbeef0002"
     monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: (4242, 999))
-    _write_rows(
-        tmp_path,
-        ws,
-        [
-            {"session_id": "pre-clear", "window_pid": 4242, "window_btime": 999, "source": "startup"},
-            {"session_id": "post-clear", "window_pid": 4242, "window_btime": 999, "source": "clear"},
-        ],
-    )
+    monkeypatch.setattr(sw, "_pid_alive", lambda pid: True)
+    sw.register_window_session(tmp_path, ws, session_id="pre-clear", source="startup")
+    sw.register_window_session(tmp_path, ws, session_id="post-clear", source="clear")
     assert sw.resolve_window_session_id(tmp_path, ws, env_session_id="pre-clear") == "post-clear"
+    # Same window -> exactly one file, overwritten in place.
+    assert len(list(sw.windows_dir(tmp_path, ws).glob("*.json"))) == 1
 
 
 def test_concurrent_windows_isolated(tmp_path: Path, monkeypatch: Any) -> None:
     ws = "deadbeef0003"
-    _write_rows(
-        tmp_path,
-        ws,
-        [
-            {"session_id": "win-a", "window_pid": 100, "window_btime": 1},
-            {"session_id": "win-b", "window_pid": 200, "window_btime": 2},
-        ],
-    )
+    monkeypatch.setattr(sw, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: (100, 1))
+    sw.register_window_session(tmp_path, ws, session_id="win-a", source="startup")
+    monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: (200, 2))
+    sw.register_window_session(tmp_path, ws, session_id="win-b", source="startup")
+    # Neither register clobbered the other: each window resolves its own id.
     monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: (100, 1))
     assert sw.resolve_window_session_id(tmp_path, ws, env_session_id="") == "win-a"
     monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: (200, 2))
@@ -62,8 +59,8 @@ def test_concurrent_windows_isolated(tmp_path: Path, monkeypatch: Any) -> None:
 
 def test_pid_reuse_guarded_by_btime(tmp_path: Path, monkeypatch: Any) -> None:
     ws = "deadbeef0004"
-    _write_rows(tmp_path, ws, [{"session_id": "old-proc", "window_pid": 4242, "window_btime": 111}])
-    # Same pid, different start time -> not a match -> env fallback.
+    _write_window(tmp_path, ws, 4242, 111, "old-proc")
+    # Same pid, different start time -> different file -> no match -> env fallback.
     monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: (4242, 222))
     assert sw.resolve_window_session_id(tmp_path, ws, env_session_id="env-live") == "env-live"
 
@@ -71,39 +68,50 @@ def test_pid_reuse_guarded_by_btime(tmp_path: Path, monkeypatch: Any) -> None:
 def test_env_fallback_when_no_window(tmp_path: Path, monkeypatch: Any) -> None:
     ws = "deadbeef0005"
     monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: None)
-    _write_rows(tmp_path, ws, [{"session_id": "mru", "window_pid": 1, "window_btime": 1}])
+    _write_window(tmp_path, ws, 1, 1, "some-window")
     assert sw.resolve_window_session_id(tmp_path, ws, env_session_id="env-x") == "env-x"
 
 
-def test_mru_fallback_when_no_window_no_env(tmp_path: Path, monkeypatch: Any) -> None:
+def test_empty_when_no_window_no_env(tmp_path: Path, monkeypatch: Any) -> None:
     ws = "deadbeef0006"
     monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: None)
-    _write_rows(
-        tmp_path,
-        ws,
-        [
-            {"session_id": "old", "window_pid": 1, "window_btime": 1},
-            {"session_id": "newest", "window_pid": 2, "window_btime": 2},
-        ],
-    )
-    assert sw.resolve_window_session_id(tmp_path, ws, env_session_id="") == "newest"
+    _write_window(tmp_path, ws, 2, 2, "newest")
+    # No window match and no env -> "" (no MRU guess that could mis-attribute).
+    assert sw.resolve_window_session_id(tmp_path, ws, env_session_id="") == ""
 
 
-def test_register_roundtrip_and_trim(tmp_path: Path, monkeypatch: Any) -> None:
+def test_register_writes_own_file(tmp_path: Path, monkeypatch: Any) -> None:
     ws = "deadbeef0007"
     monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: (555, 42))
-    monkeypatch.setattr(sw, "_MAX_REGISTRY_ROWS", 5)
-    for i in range(12):
-        sw.register_window_session(tmp_path, ws, session_id=f"s{i}", source="startup")
-    rows = sw._read_registry(tmp_path, ws)
-    assert len(rows) == 5  # trimmed to most recent N
-    assert rows[-1]["session_id"] == "s11"
-    assert rows[-1]["window_pid"] == 555 and rows[-1]["window_btime"] == 42
-    assert sw.resolve_window_session_id(tmp_path, ws, env_session_id="") == "s11"
+    monkeypatch.setattr(sw, "_pid_alive", lambda pid: True)
+    sw.register_window_session(tmp_path, ws, session_id="s1", source="startup", model="m", transcript_path="/t")
+    path = sw.window_file_path(tmp_path, ws, 555, 42)
+    assert path.is_file()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["session_id"] == "s1" and data["window_pid"] == 555 and data["window_btime"] == 42
+    assert sw.resolve_window_session_id(tmp_path, ws, env_session_id="") == "s1"
 
 
 def test_empty_session_id_not_registered(tmp_path: Path, monkeypatch: Any) -> None:
     ws = "deadbeef0008"
     monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: (1, 1))
     sw.register_window_session(tmp_path, ws, session_id="")
-    assert sw._read_registry(tmp_path, ws) == []
+    assert not list(sw.windows_dir(tmp_path, ws).glob("*.json"))
+
+
+def test_register_noop_when_no_window(tmp_path: Path, monkeypatch: Any) -> None:
+    ws = "deadbeef0009"
+    monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: None)
+    sw.register_window_session(tmp_path, ws, session_id="s1")
+    assert not list(sw.windows_dir(tmp_path, ws).glob("*.json"))
+
+
+def test_prune_removes_dead_window_files(tmp_path: Path, monkeypatch: Any) -> None:
+    ws = "deadbeef0010"
+    # A stale file from a dead window, plus the live window registering now.
+    _write_window(tmp_path, ws, 999001, 5, "dead-window")
+    monkeypatch.setattr(sw, "host_window_id", lambda *a, **k: (999002, 6))
+    monkeypatch.setattr(sw, "_pid_alive", lambda pid: pid == 999002)
+    sw.register_window_session(tmp_path, ws, session_id="live", source="startup")
+    files = {p.name for p in sw.windows_dir(tmp_path, ws).glob("*.json")}
+    assert files == {"999002-6.json"}  # dead window's file pruned, live kept

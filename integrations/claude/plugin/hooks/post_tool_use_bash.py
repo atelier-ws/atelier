@@ -56,11 +56,6 @@ def _atelier_root() -> Path:
     return Path.home() / ".atelier"
 
 
-def _active_session_id() -> str | None:
-    state = _read_session_state()
-    return state.get("session_id") or state.get("active_session_id")
-
-
 def _cache_bash_invocation(
     command: str,
     stdout: str,
@@ -187,7 +182,7 @@ def main() -> int:
     return_code: int | None = int(_rc) if _rc is not None else None
 
     try:
-        session_id = _active_session_id()
+        session_id = str(payload.get("session_id") or "").strip()
         if not session_id:
             _cache_bash_invocation(command, stdout, stderr, return_code)
             return 0
