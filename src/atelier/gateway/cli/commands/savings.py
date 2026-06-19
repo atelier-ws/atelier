@@ -64,6 +64,7 @@ def _echo_vs_vanilla_block(root: str | Path, *, deep: bool = False) -> None:
 
         vs = aggregate_vanilla_baseline(root)
     except Exception as e:
+        logging.exception("Recovered from broad exception handler")
         logger.debug("Failed to aggregate vanilla baseline: %s", e)
         return
     calls = int(vs.get("calls_saved", 0) or 0)
@@ -277,9 +278,18 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
     if as_json:
         _emit(payload, as_json=True)
     else:
-        _render_savings_rich(payload, deep=deep)
-        if deep:
-            _echo_vs_vanilla_block(ctx.obj["root"], deep=deep)
+        from atelier.core.capabilities import licensing
+
+        # Free tier shows the headline summary; the full --deep breakdown
+        # (per-pattern vs-vanilla, optimization detail) is a Pro feature.
+        if deep and not licensing.has_feature("savings_dashboard"):
+            _render_savings_rich(payload, deep=False)
+            click.echo("")
+            click.echo("Full breakdown (--deep) is an Atelier Pro feature. Unlock at https://atelier.ws/pro")
+        else:
+            _render_savings_rich(payload, deep=deep)
+            if deep:
+                _echo_vs_vanilla_block(ctx.obj["root"], deep=deep)
 
 
 @savings_cmd.command("wire")
@@ -518,6 +528,19 @@ def optimize_apply(
     as_json: bool,
 ) -> None:
     """Apply a preset, the latest recommendation, or a custom policy YAML."""
+    from atelier.core.capabilities import licensing
+
+    # Pro gate: seeing recommendations (`atelier optimize`) is free; *applying*
+    # an optimization policy is the lever that activates the savings engine, so
+    # it requires a license. This is the freemium wall -- you can measure what
+    # you'd save before you pay to unlock it.
+    try:
+        licensing.require("optimizer")
+    except licensing.FeatureLocked as exc:
+        raise click.ClickException(
+            f"{exc}. Preview savings free with `atelier optimize`, then unlock applying them at https://atelier.ws/pro"
+        ) from exc
+
     from atelier.core.capabilities.optimization.policy import (
         policy_from_config,
         preset_policy,
