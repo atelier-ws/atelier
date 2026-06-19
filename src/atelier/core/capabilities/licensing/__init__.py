@@ -15,6 +15,8 @@ Public API::
 
 from __future__ import annotations
 
+import os
+
 from atelier.core.capabilities.licensing.entitlements import (
     current_license,
     has_feature,
@@ -32,6 +34,17 @@ from atelier.core.capabilities.licensing.models import (
 )
 from atelier.core.capabilities.licensing.store import delete_token, license_path, load_token
 from atelier.core.capabilities.licensing.verify import verify_token
+
+_DEFAULT_PRO_URL = "https://atelier.ws/pro"
+
+
+def pro_url() -> str:
+    """Where to send users to buy Pro.
+
+    Override with ``ATELIER_PRO_URL`` to point straight at your Stripe Payment
+    Link (or any storefront) without rebuilding the client.
+    """
+    return os.environ.get("ATELIER_PRO_URL", "").strip() or _DEFAULT_PRO_URL
 
 
 def activate(token: str) -> License:
@@ -69,6 +82,7 @@ __all__ = [
     "is_pro",
     "license_path",
     "load_token",
+    "pro_url",
     "reload",
     "require",
     "status",
