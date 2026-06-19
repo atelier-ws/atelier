@@ -8118,8 +8118,8 @@ def tool_grep(
     ] = None,
     context_budget_tokens: Annotated[
         int,
-        Field(description="Token budget capping output size (default 6000)."),
-    ] = 6000,
+        Field(description="Token budget capping output size (default 2000)."),
+    ] = 2000,
     include_meta: Annotated[
         bool,
         Field(description="Include response metadata such as file counts and caps."),

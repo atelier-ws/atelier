@@ -1,0 +1,75 @@
+diff --git a/doc/whats-new.rst b/doc/whats-new.rst
+index afb8a9b2..71e3728b 100644
+--- a/doc/whats-new.rst
++++ b/doc/whats-new.rst
+@@ -47,6 +47,11 @@ Enhancements
+ Bug fixes
+ ~~~~~~~~~
+ 
++- Fixed a regression where :py:meth:`Dataset.copy(deep=True)`,
++  :py:meth:`DataArray.copy`, ``copy.copy`` and ``copy.deepcopy`` accidentally
++  cast unicode (e.g. ``<U3``) :py:class:`~xarray.IndexVariable`'s to object
++  dtype (:issue:`3026`).
++  By `Guido Imperiale <https://github.com/crusaderky>`_.
+ - Improved error handling and documentation for `.expand_dims()` 
+   read-only view.
+ - Fix tests for big-endian systems (:issue:`3125`).
+diff --git a/xarray/core/indexing.py b/xarray/core/indexing.py
+index e262d9ee..2324ab75 100644
+--- a/xarray/core/indexing.py
++++ b/xarray/core/indexing.py
+@@ -1305,3 +1305,14 @@ class PandasIndexAdapter(ExplicitlyIndexedNDArrayMixin):
+     def __repr__(self):
+         return ('%s(array=%r, dtype=%r)'
+                 % (type(self).__name__, self.array, self.dtype))
++
++    def copy(self, deep=True):
++        # Not the same as just writing `self.array.copy(deep=deep)`, as
++        # shallow copies of the underlying numpy.ndarrays become deep ones
++        # upon pickling
++        # >>> len(pickle.dumps((self.array, self.array)))
++        # 4000281
++        # >>> len(pickle.dumps((self.array, self.array.copy(deep=False))))
++        # 8000341
++        array = self.array.copy(deep=True) if deep else self.array
++        return PandasIndexAdapter(array, self._dtype)
+diff --git a/xarray/core/variable.py b/xarray/core/variable.py
+index 379be8f5..5c6a3ad0 100644
+--- a/xarray/core/variable.py
++++ b/xarray/core/variable.py
+@@ -1942,14 +1942,7 @@ class IndexVariable(Variable):
+             data copied from original.
+         """
+         if data is None:
+-            if deep:
+-                # self._data should be a `PandasIndexAdapter` instance at this
+-                # point, which doesn't have a copy method, so make a deep copy
+-                # of the underlying `pandas.MultiIndex` and create a new
+-                # `PandasIndexAdapter` instance with it.
+-                data = PandasIndexAdapter(self._data.array.copy(deep=True))
+-            else:
+-                data = self._data
++            data = self._data.copy(deep=deep)
+         else:
+             data = as_compatible_data(data)
+             if self.shape != data.shape:
+diff --git a/xarray/tests/test_variable.py b/xarray/tests/test_variable.py
+index 73d2a40b..431a6405 100644
+--- a/xarray/tests/test_variable.py
++++ b/xarray/tests/test_variable.py
+@@ -502,6 +502,15 @@ class VariableSubclassobjects:
+             assert isinstance(w.to_index(), pd.MultiIndex)
+             assert_array_equal(v._data.array, w._data.array)
+ 
++    def test_copy_index_preserves_dtype(self):
++        # regression test: copy(deep=True/False) must not cast a unicode
++        # IndexVariable to object dtype
++        for dtype in ['<U3', object]:
++            v = self.cls('x', np.array(['foo'], dtype=dtype))
++            assert v.dtype == np.dtype(dtype)
++            for deep in [True, False]:
++                assert v.copy(deep=deep).dtype == np.dtype(dtype)
++
+     def test_copy_with_data(self):
+         orig = Variable(('x', 'y'), [[1.5, 2.0], [3.1, 4.3]], {'foo': 'bar'})
+         new_data = np.array([[2.5, 5.0], [7.1, 43]])

@@ -41,17 +41,29 @@ with options **Yes, proceed** / **No, cancel**. Honor a declined confirmation �
 stop here and tell the user they can re-run `/benchmark` when ready.
 
 **Phase B — real run (only if confirmed):**
+
+The Atelier arm builds a code index before running — this can take **5–20 minutes**
+on large repos. Run the benchmark as a background job so it doesn’t hit the
+shell tool’s 30-minute timeout:
+
 ```bash
-uv run atelier benchmark local --repo . \
+LOG="/tmp/atelier-bench-$$.log"
+nohup uv run atelier benchmark local --repo . \
   --prompt "<prompt 1>" [--prompt "<prompt 2>" ...] \
-  -y
+  -y > "$LOG" 2>&1 &
+echo "PID=$! log=$LOG"
 ```
 
-Pass `--yes` (`-y`) to skip the CLI's built-in prompt since the user already confirmed via
-`AskUserQuestion`. Each prompt runs for **both arms** (vanilla baseline and
-Atelier), so real spend is roughly `prompts × 2 × reps` runs. The repo is
-copied per run and never mutated. Spend uses **provider API credentials**
-(e.g. `ANTHROPIC_API_KEY`, or a `--provider` preset), not a Claude subscription.
+After launching:
+1. Tell the user the PID and log path.
+2. Tell them the Atelier arm pre-indexes the codebase first — estimated **5–20 min** depending on repo size — and to follow progress with `tail -f <log>`.
+3. Estimate total wall time: baseline arm + indexing + Atelier arm ≈ **10–30 min** for a single prompt on a medium repo.
+4. Poll the log every ~2 min with `tail -20 <log>` and report progress until the run finishes or the user asks to stop.
+
+Each prompt runs for **both arms** (vanilla baseline and Atelier), so real spend
+is roughly `prompts × 2 × reps` runs. The repo is copied per run and never
+mutated. Spend uses **provider API credentials** (e.g. `ANTHROPIC_API_KEY`, or
+a `--provider` preset), not a Claude subscription.
 
 ## 3. Relay + interpret
 

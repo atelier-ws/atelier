@@ -1,4 +1,4 @@
-"""All-sessions Recall — index past Claude transcripts for semantic recall.
+"""All-sessions Recall — index past Claude, Codex, and OpenCode transcripts for semantic recall.
 
 Indexes turns from every past session into the archival vector
 store, then semantic-searches across ALL sessions (not just the current one).
@@ -13,6 +13,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Callable
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -142,6 +145,162 @@ def _capability(root: str | Path) -> Any:
     return ArchivalRecallCapability(store, _make_recall_embedder(root), redactor=redact)
 
 
+_PROSE_KINDS = frozenset({"user_message", "agent_message"})
+
+
+@dataclass(frozen=True)
+class _Candidate:
+    """A session eligible for recall indexing, normalized across hosts."""
+
+    session_id: str
+    change_key: float
+    host: str
+    project: str
+    load: Callable[[], list[str]]
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _snippets_from_turns(turns: list[dict[str, Any]]) -> list[str]:
+    """Extract user/assistant prose snippets from normalized parser turns.
+
+    Used for Codex and OpenCode, whose transcript formats differ from Claude's;
+    the shared session parsers normalize both to ``user_message``/``agent_message``
+    turns whose ``content`` holds the prose.
+    """
+    out: list[str] = []
+    for turn in turns:
+        kind = turn.get("kind")
+        if kind not in _PROSE_KINDS:
+            continue
+        text = str(turn.get("content") or "").strip()
+        if len(text) < _MIN_SNIPPET_CHARS:
+            continue
+        role = "user" if kind == "user_message" else "assistant"
+        out.append(f"[{role}] {text[:_MAX_SNIPPET_CHARS]}")
+        if len(out) >= _MAX_SNIPPETS_PER_SESSION:
+            break
+    return out
+
+
+def _load_codex(path: Path) -> list[str]:
+    from atelier.gateway.hosts.session_parsers._session_parser import parse_session_turns
+
+    return _snippets_from_turns(parse_session_turns(_read_text(path), "codex"))
+
+
+def _load_opencode(session_id: str, db_path: Path) -> list[str]:
+    from atelier.gateway.hosts.session_parsers._session_parser import parse_session_turns
+    from atelier.gateway.hosts.session_parsers.opencode import serialize_opencode_session
+
+    return _snippets_from_turns(parse_session_turns(serialize_opencode_session(session_id, db_path), "opencode"))
+
+
+def _claude_candidates(window_days: int) -> list[_Candidate]:
+    from atelier.core.capabilities.vanilla_baseline import _transcript_paths_in_window
+
+    out: list[_Candidate] = []
+    for path in _transcript_paths_in_window(window_days):
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        out.append(
+            _Candidate(
+                session_id=path.stem,
+                change_key=mtime,
+                host="claude",
+                project=path.parent.name,
+                load=partial(_session_snippets, path),
+            )
+        )
+    return out
+
+
+def _codex_candidates(cutoff: float) -> list[_Candidate]:
+    try:
+        from atelier.gateway.hosts.session_parsers.codex import find_codex_sessions
+    except ImportError:
+        return []
+    out: list[_Candidate] = []
+    for path in find_codex_sessions():
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime < cutoff:
+            continue
+        out.append(
+            _Candidate(
+                session_id=path.stem,
+                change_key=mtime,
+                host="codex",
+                project="codex",
+                load=partial(_load_codex, path),
+            )
+        )
+    return out
+
+
+def _opencode_candidates(cutoff: float) -> list[_Candidate]:
+    try:
+        from atelier.gateway.hosts.session_parsers.opencode import find_opencode_sessions
+    except ImportError:
+        return []
+    db_path = Path.home() / ".local/share/opencode/opencode.db"
+    out: list[_Candidate] = []
+    for row in find_opencode_sessions(db_path):
+        session_id = str(row.get("id") or "").strip()
+        if not session_id:
+            continue
+        raw_time = row.get("time_updated") or row.get("time_created")
+        if raw_time is None:
+            continue
+        try:
+            change_key = float(raw_time)  # ms epoch
+        except (TypeError, ValueError):
+            continue
+        if change_key / 1000.0 < cutoff:
+            continue
+        out.append(
+            _Candidate(
+                session_id=session_id,
+                change_key=change_key,
+                host="opencode",
+                project="opencode",
+                load=partial(_load_opencode, session_id, db_path),
+            )
+        )
+    return out
+
+
+def _discover_candidates(window_days: int) -> list[_Candidate]:
+    from datetime import UTC, datetime, timedelta
+
+    cutoff = (datetime.now(UTC) - timedelta(days=window_days)).timestamp()
+    candidates: list[_Candidate] = []
+    # Each host's discovery is isolated: one failing (missing dir, unreadable db)
+    # must not block the others.
+    try:
+        candidates.extend(_claude_candidates(window_days))
+    except Exception:  # noqa: BLE001
+        _log.warning("recall discovery failed for host claude", exc_info=True)
+    try:
+        candidates.extend(_codex_candidates(cutoff))
+    except Exception:  # noqa: BLE001
+        _log.warning("recall discovery failed for host codex", exc_info=True)
+    try:
+        candidates.extend(_opencode_candidates(cutoff))
+    except Exception:  # noqa: BLE001
+        _log.warning("recall discovery failed for host opencode", exc_info=True)
+    return candidates
+
+
 def index_sessions(
     root: str | Path,
     *,
@@ -150,41 +309,56 @@ def index_sessions(
     paths: list[Path] | None = None,
     capability: Any | None = None,
 ) -> dict[str, Any]:
-    """Incrementally index recent session transcripts into the recall store."""
+    """Incrementally index recent session transcripts into the recall store.
+
+    Covers Claude, Codex, and OpenCode. When *paths* is given they are treated as
+    Claude transcript files (tests / manual runs); otherwise sessions are
+    discovered across all three hosts. The bounded ``max_sessions`` budget is
+    spent newest-first across hosts, after dropping sessions already current in
+    the index (so a backlog never starves never-indexed sessions).
+    """
     cap = capability or _capability(root)
     if paths is None:
-        from atelier.core.capabilities.vanilla_baseline import _transcript_paths_in_window
-
-        paths = _transcript_paths_in_window(window_days)
+        candidates = _discover_candidates(window_days)
+    else:
+        candidates = []
+        for path in paths:
+            file_path = Path(path)
+            try:
+                mtime = file_path.stat().st_mtime
+            except OSError:
+                continue
+            candidates.append(
+                _Candidate(
+                    session_id=file_path.stem,
+                    change_key=mtime,
+                    host="claude",
+                    project=file_path.parent.name,
+                    load=partial(_session_snippets, file_path),
+                )
+            )
     state = _load_state(root)
     indexed = 0
     sessions = 0
-    skipped = 0
-    for path in list(paths)[:max_sessions]:
-        candidate = Path(path)
-        session_id = candidate.stem
-        try:
-            mtime = candidate.stat().st_mtime
-        except OSError:
-            continue
-        if state.get(session_id) == mtime:
-            skipped += 1
-            continue
-        snippets = _session_snippets(candidate)
+    pending = [c for c in candidates if state.get(c.session_id) != c.change_key]
+    skipped = len(candidates) - len(pending)
+    pending.sort(key=lambda c: c.change_key, reverse=True)
+    for candidate in pending[:max_sessions]:
+        snippets = candidate.load()
         if not snippets:
-            state[session_id] = mtime
+            state[candidate.session_id] = candidate.change_key
             continue
-        project = candidate.parent.name
+        tags = [_TAG, _SHARED_TAG, f"project:{candidate.project}", f"host:{candidate.host}"]
         for snippet in snippets:
             cap.archive(
                 text=snippet,
                 source="trace",
                 agent_id=_AGENT_ID,
-                source_ref=session_id,
-                tags=[_TAG, _SHARED_TAG, f"project:{project}"],
+                source_ref=candidate.session_id,
+                tags=tags,
             )
             indexed += 1
-        state[session_id] = mtime
+        state[candidate.session_id] = candidate.change_key
         sessions += 1
     _save_state(root, state)
     return {"indexed": indexed, "sessions": sessions, "skipped": skipped}

@@ -1,0 +1,89 @@
+diff --git a/CHANGES b/CHANGES
+index 9ef4dd273..c0bdf36f4 100644
+--- a/CHANGES
++++ b/CHANGES
+@@ -27,6 +27,8 @@ Bugs fixed
+ ----------
+ 
+ * #8085: i18n: Add support for having single text domain
++* #5208: i18n: the translations of custom locale catalogs (under user
++  ``locale_dirs``) are ignored in favor of the built-in catalogs
+ * #8143: autodoc: AttributeError is raised when False value is passed to
+   autodoc_default_options
+ * #8103: autodoc: functools.cached_property is not considered as a property
+diff --git a/sphinx/application.py b/sphinx/application.py
+index 385b74d8a..0e52a278b 100644
+--- a/sphinx/application.py
++++ b/sphinx/application.py
+@@ -293,7 +293,9 @@ class Sphinx:
+                 if catalog.domain == 'sphinx' and catalog.is_outdated():
+                     catalog.write_mo(self.config.language)
+ 
+-            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)
++            locale_dirs = list(repo.locale_dirs)
++            locale_dirs += [None]
++            locale_dirs += [path.join(package_dir, 'locale')]
+             self.translator, has_translation = locale.init(locale_dirs, self.config.language)
+             if has_translation or self.config.language == 'en':
+                 # "en" never needs to be translated
+diff --git a/tests/roots/test-locale/locale1/en/LC_MESSAGES/myext.mo b/tests/roots/test-locale/locale1/en/LC_MESSAGES/myext.mo
+index 6aa00f77a..536112c66 100644
+Binary files a/tests/roots/test-locale/locale1/en/LC_MESSAGES/myext.mo and b/tests/roots/test-locale/locale1/en/LC_MESSAGES/myext.mo differ
+diff --git a/tests/roots/test-locale/locale1/en/LC_MESSAGES/myext.po b/tests/roots/test-locale/locale1/en/LC_MESSAGES/myext.po
+index ee1f6c23f..018573f8a 100644
+--- a/tests/roots/test-locale/locale1/en/LC_MESSAGES/myext.po
++++ b/tests/roots/test-locale/locale1/en/LC_MESSAGES/myext.po
+@@ -1,2 +1,5 @@
+ msgid "Hello world"
+ msgstr "HELLO WORLD"
++
++msgid "Hello reST"
++msgstr "HELLO REST"
+diff --git a/tests/roots/test-locale/locale2/en/LC_MESSAGES/myext.mo b/tests/roots/test-locale/locale2/en/LC_MESSAGES/myext.mo
+index 14c34d0b7..9be8c0e45 100644
+Binary files a/tests/roots/test-locale/locale2/en/LC_MESSAGES/myext.mo and b/tests/roots/test-locale/locale2/en/LC_MESSAGES/myext.mo differ
+diff --git a/tests/roots/test-locale/locale2/en/LC_MESSAGES/myext.po b/tests/roots/test-locale/locale2/en/LC_MESSAGES/myext.po
+index d376cf9bd..be506b996 100644
+--- a/tests/roots/test-locale/locale2/en/LC_MESSAGES/myext.po
++++ b/tests/roots/test-locale/locale2/en/LC_MESSAGES/myext.po
+@@ -1,2 +1,5 @@
+ msgid "Hello sphinx"
+ msgstr "HELLO SPHINX"
++
++msgid "Hello reST"
++msgstr "HELLO REST (from locale2)"
+diff --git a/tests/test_locale.py b/tests/test_locale.py
+index a744a5ff7..b25ca74be 100644
+--- a/tests/test_locale.py
++++ b/tests/test_locale.py
+@@ -31,21 +31,21 @@ def test_init(rootdir):
+     _ = locale.get_translation('myext')
+     assert _('Hello world') == 'HELLO WORLD'
+     assert _('Hello sphinx') == 'Hello sphinx'
+-    assert _('Hello reST') == 'Hello reST'
++    assert _('Hello reST') == 'HELLO REST'
+ 
+     # load a catalog to unrelated namespace
+     locale.init([rootdir / 'test-locale' / 'locale2'], 'en', 'myext', 'mynamespace')
+     _ = locale.get_translation('myext')
+     assert _('Hello world') == 'HELLO WORLD'
+     assert _('Hello sphinx') == 'Hello sphinx'  # nothing changed here
+-    assert _('Hello reST') == 'Hello reST'
++    assert _('Hello reST') == 'HELLO REST'
+ 
+     # load locale2 in addition
+     locale.init([rootdir / 'test-locale' / 'locale2'], 'en', 'myext')
+     _ = locale.get_translation('myext')
+     assert _('Hello world') == 'HELLO WORLD'
+     assert _('Hello sphinx') == 'HELLO SPHINX'
+-    assert _('Hello reST') == 'Hello reST'
++    assert _('Hello reST') == 'HELLO REST'  # locale1 is having higher priority
+ 
+ 
+ def test_init_with_unknown_language(rootdir):
+@@ -62,4 +62,4 @@ def test_add_message_catalog(app, rootdir):
+     _ = locale.get_translation('myext')
+     assert _('Hello world') == 'HELLO WORLD'
+     assert _('Hello sphinx') == 'Hello sphinx'
+-    assert _('Hello reST') == 'Hello reST'
++    assert _('Hello reST') == 'HELLO REST'

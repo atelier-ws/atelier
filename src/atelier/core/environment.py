@@ -71,6 +71,15 @@ def mcp_tool_description(tool_name: str, description: str | None) -> str:
     return str(description or "")
 
 
+def _extra_hidden_tools(env: Mapping[str, str] | None = None) -> frozenset[str]:
+    # Opt-in lean surface: ATELIER_HIDE_TOOLS=node,sql,... hides extra tools from
+    # the LLM surface (smaller per-turn schema, less tool-choice deliberation)
+    # without touching the always-hidden baseline set.
+    values = os.environ if env is None else env
+    raw = values.get("ATELIER_HIDE_TOOLS", "")
+    return frozenset(t.strip() for t in raw.split(",") if t.strip())
+
+
 def mcp_tool_visible_to_llm(tool_name: str) -> bool:
     # Bench-off overrides the normal public surface — the baseline arm must not
     # see Atelier MCP tools. Imported lazily so reading runtime config does not
@@ -79,7 +88,9 @@ def mcp_tool_visible_to_llm(tool_name: str) -> bool:
 
     if _bench_is_off():
         return False
-    return tool_name not in HIDDEN_LLM_TOOLS
+    if tool_name in HIDDEN_LLM_TOOLS:
+        return False
+    return tool_name not in _extra_hidden_tools()
 
 
 def mcp_tool_mode(tool_name: str) -> str:

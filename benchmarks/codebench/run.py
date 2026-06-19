@@ -102,7 +102,7 @@ class ArmSpec:
 ARM_SPECS: dict[str, ArmSpec] = {
     "baseline": ArmSpec({"code": None}),
     "atelier": ArmSpec(
-        {"code": "atelier:code"},
+        {"code": "atelier:auto"},
         plugin=True,
         strip_mcp=False,
         heavy=True,
@@ -2739,7 +2739,7 @@ def _ensure_claude_row_state(out_dir: Path, task_id: str, arm: str, rep: int) ->
     state_dir.mkdir(parents=True, exist_ok=True)
     state = _load_row_state(state_dir)
     run_key = uuid.uuid5(uuid.NAMESPACE_URL, str(out_dir.resolve())).hex[:12]
-    state.setdefault("session_id", str(uuid.uuid4()))
+    state["session_id"] = str(uuid.uuid4())  # always fresh — reusing a prior session ID causes "already in use"
     state.setdefault(
         "workspace",
         str(PERSISTENT_WORKSPACE_ROOT / f"{out_dir.name}-{run_key}" / f"{task_id}_{arm}_rep{rep}"),
@@ -3298,6 +3298,12 @@ def main() -> int:
         task_ids = [t.id for t in TASKS] if args.tasks == ["all"] else args.tasks
         if args.capability:
             task_ids = [tid for tid in task_ids if BY_ID.get(tid) and BY_ID[tid].capability == args.capability]
+        # Cap the turn count for all regular task runs so noop-retry loops
+        # hit --max-turns (50) rather than burning through the full 30-min
+        # wall-clock timeout. Matches what the in-container SWE-bench runner
+        # uses (CODEBENCH_MAX_TURNS=50) to keep both runners consistent.
+        if args.cli_driver == "claude" and "--max-turns" not in args.cli_extra_arg:
+            args.cli_extra_arg = [*args.cli_extra_arg, "--max-turns", "50"]
     run_dir = args.out if args.out is not None else RESULTS_ROOT / time.strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
     print(f"Results: {run_dir.resolve()}", flush=True)
