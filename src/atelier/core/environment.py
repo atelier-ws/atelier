@@ -25,6 +25,9 @@ MEMORY_BACKENDS = frozenset({"sqlite", "letta", "openmemory"})
 
 HIDDEN_LLM_TOOLS = frozenset(
     {
+        # Statusline IPC tool — written by MCP server, read by statusline.sh.
+        # Not surfaced to agents; reachable by name for the statusline and tests.
+        "statusline_segment",
         "rescue",
         "verify",
         "trace",
