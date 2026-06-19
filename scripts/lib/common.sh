@@ -524,26 +524,6 @@ _menu_restore_cursor() {
     : # no-op — replaced by line-count redraw
 }
 
-# Terminal raw-mode helpers.
-# When running as `curl | bash`, bash reads its script from stdin (a pipe), so
-# `read -s` suppresses echo on stdin — not on /dev/tty which is where the menu
-# reads from. The menu keys show as ^[[A/^[[B noise in the terminal output.
-# Explicitly saving/restoring stty state around menu loops fixes this.
-_MENU_STTY_SAVED=""
-_menu_enter() {
-    _MENU_STTY_SAVED=""
-    [[ -e /dev/tty ]] || return 0
-    command -v stty >/dev/null 2>&1 || return 0
-    _MENU_STTY_SAVED="$(stty -g </dev/tty 2>/dev/null || true)"
-    stty -echo -icanon min 1 time 0 </dev/tty 2>/dev/null || true
-}
-_menu_exit() {
-    if [[ -n "${_MENU_STTY_SAVED:-}" ]]; then
-        stty "${_MENU_STTY_SAVED}" </dev/tty 2>/dev/null || true
-        _MENU_STTY_SAVED=""
-    fi
-}
-
 _read_menu_byte() {
     local __out_var="${1-}"
     local timeout="${2-}"
@@ -660,8 +640,6 @@ interactive_single_select() {
     local first_render=1
 
     printf "%b◆%b  %b%s%b\n" "$C_PURPLE" "$C_RESET" "$C_PURPLE" "$prompt" "$C_RESET"
-    _menu_enter
-    trap '_menu_exit' EXIT INT TERM
     while true; do
         [[ "$first_render" == "0" ]] && _menu_erase
         render_single_select "$selected_index" "${options[@]}"
@@ -677,8 +655,6 @@ interactive_single_select() {
         esac
     done
     _menu_erase
-    _menu_exit
-    trap - EXIT INT TERM
     # Print final confirmed selection
     local label="${options[$selected_index]}"
     printf "%b│%b  %b●%b  %b%s%b\n" "$C_FRAME" "$C_RESET" "$C_DIM" "$C_RESET" "$C_DIM" "$label" "$C_RESET"
@@ -762,8 +738,6 @@ interactive_multi_select() {
     fi
 
     printf "%b◆%b  %b%s%b\n" "$C_PURPLE" "$C_RESET" "$C_PURPLE" "$prompt" "$C_RESET"
-    _menu_enter
-    trap '_menu_exit' EXIT INT TERM
     while true; do
         [[ "$first_render" == "0" ]] && _menu_erase
         render_multi_select "$cursor" "${options[@]}"
@@ -791,8 +765,6 @@ interactive_multi_select() {
         esac
     done
     _menu_erase
-    _menu_exit
-    trap - EXIT INT TERM
 
     # Print confirmed selections
     for i in "${!options[@]}"; do
