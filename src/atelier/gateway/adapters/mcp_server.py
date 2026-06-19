@@ -5144,9 +5144,7 @@ def _compute_and_record_diffs(
             continue
         old_lines = (old_content or "").splitlines(keepends=True)
         new_lines = (new_content or "").splitlines(keepends=True)
-        diff_text = "".join(
-            difflib.unified_diff(old_lines, new_lines, fromfile=f"a/{path}", tofile=f"b/{path}")
-        )
+        diff_text = "".join(difflib.unified_diff(old_lines, new_lines, fromfile=f"a/{path}", tofile=f"b/{path}"))
         if diff_text:
             led.record_file_event(path=path, event="edit", diff=diff_text)
         else:
