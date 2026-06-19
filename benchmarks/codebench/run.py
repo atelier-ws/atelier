@@ -575,7 +575,7 @@ from pathlib import Path
 from atelier.core.capabilities.code_context.engine import CodeContextEngine
 
 ws_path, query = sys.argv[1], sys.argv[2]
-engine = CodeContextEngine(Path(ws_path), nonblocking_reads=True)
+engine = CodeContextEngine(Path(ws_path))
 engine._ensure_indexed()
 # Match the parameter defaults used by the MCP tool_explore handler so the
 # warm result lands in the same SQLite cache slot the agent will hit.
