@@ -2058,8 +2058,12 @@ def test_tool_status_reports_index_cache_and_freshness(tmp_path: Path) -> None:
 def test_autosync_incremental_reindex_updates_index_after_edit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_fixture_repo(tmp_path)
     monkeypatch.setenv("ATELIER_CODE_AUTOSYNC_DEBOUNCE_MS", "50")
+    # No live worker: drive the autosync reindex deterministically below so this
+    # test exercises the change-detection + reindex path without a thread race.
+    monkeypatch.setattr(CodeContextEngine, "_start_autosync_worker", lambda self: None)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite", autosync_enabled=True)
     engine.index_repo()
+    engine._maybe_autosync_reindex()  # seed the change-detection signature
 
     first = engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     version_before = engine._current_index_version()
@@ -2075,6 +2079,11 @@ def test_autosync_incremental_reindex_updates_index_after_edit(tmp_path: Path, m
         encoding="utf-8",
     )
     engine._autosync_last_sync_ms = int(time.time() * 1000) - 500
+
+    # Change detection is the background autosync worker's job now -- read tools
+    # no longer reindex inline (that whole-repo stat walk was the per-call tax on
+    # large repos). Drive one worker poll; the read then serves the fresh symbol.
+    engine._maybe_autosync_reindex()
 
     second = engine.tool_search("NewService", limit=5, budget_tokens=4000)
     status = engine.tool_status(budget_tokens=4000)
@@ -2143,7 +2152,10 @@ def test_incremental_index_noop_does_not_bump_version(tmp_path: Path) -> None:
 
 def test_incremental_index_updates_changed_and_removed_files(tmp_path: Path) -> None:
     _write_fixture_repo(tmp_path)
-    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    # autosync_enabled=False: this test asserts exact index_repo(force=False)
+    # file counts, which a live background worker (it now owns the initial build)
+    # would race by reindexing the edit first. Disable it for determinism.
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite", autosync_enabled=False)
     engine.index_repo()
     version_before = engine._current_index_version()
 
@@ -2402,15 +2414,13 @@ def test_overflow_metadata_and_artifact_payload_are_compact(tmp_path: Path, monk
     assert "overflow" not in artifact_payload
 
 
-def test_nonblocking_reads_skip_cold_build_while_default_blocks(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cold_reads_do_not_block_on_missing_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Neuter the autosync worker so the test is deterministic (no async build race).
     monkeypatch.setattr(CodeContextEngine, "_start_autosync_worker", lambda self: None)
     _write_fixture_repo(tmp_path)
 
     # MCP transport mode: a read on a cold index returns nothing (no blocking build).
-    mcp_engine = CodeContextEngine(tmp_path, db_path=tmp_path / "mcp.sqlite", nonblocking_reads=True)
+    mcp_engine = CodeContextEngine(tmp_path, db_path=tmp_path / "mcp.sqlite")
     assert mcp_engine.index_ready() is False
     warming = mcp_engine.tool_search("OrderService", limit=5, budget_tokens=4000)
     assert not warming.get("items")

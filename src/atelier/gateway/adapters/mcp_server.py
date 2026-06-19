@@ -6187,7 +6187,7 @@ def _code_context_engine(repo_root: str = ".") -> Any:
         with _code_engine_cache_lock:
             engine = _code_engine_cache.get(cache_key)  # re-check under lock
             if engine is None:
-                engine = CodeContextEngine(resolved, nonblocking_reads=True)
+                engine = CodeContextEngine(resolved)
                 _code_engine_cache[cache_key] = engine
     return engine
 

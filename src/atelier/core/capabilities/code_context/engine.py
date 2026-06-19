@@ -650,6 +650,7 @@ class _FileIndexData:
     imports: list[tuple[str, str | None]]
     references: list[_IndexedReference]
     call_edges: list[_IndexedCallEdge]
+    mtime_ns: int = 0
 
 
 def _repo_id(repo_root: Path) -> str:
@@ -987,6 +988,7 @@ def _process_one_file(
         imports=imports_list,
         references=references,
         call_edges=call_edges,
+        mtime_ns=st.st_mtime_ns,
     )
 
 
@@ -1335,7 +1337,6 @@ class CodeContextEngine:
         repo_root: str | Path = ".",
         *,
         db_path: str | Path | None = None,
-        nonblocking_reads: bool = False,
         autosync_enabled: bool | None = None,
     ) -> None:
         self.repo_root = Path(repo_root).resolve()
@@ -1383,9 +1384,6 @@ class CodeContextEngine:
         # recompute and stale rankings are never served. Guarded by its own lock.
         self._centrality_cache: dict[tuple[int, int], dict[str, Any]] = {}
         self._centrality_cache_lock = threading.Lock()
-        # MCP transport engines pass nonblocking_reads=True so read tools never
-        # block on a cold index build; direct/SDK callers keep blocking semantics.
-        self._nonblocking_reads = nonblocking_reads
         self._lineage_rebuild_full = False
         self._lineage_score_penalty: float = float(
             os.getenv("ATELIER_LINEAGE_COMMIT_SCORE_PENALTY", str(_LINEAGE_DEFAULT_SCORE_PENALTY))
@@ -1526,15 +1524,16 @@ class CodeContextEngine:
         # --- files ---
         conn.executemany(
             """
-            INSERT INTO files(repo_id, file_path, language, content_hash, size_bytes, indexed_at)
-            VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            INSERT INTO files(repo_id, file_path, language, content_hash, size_bytes, mtime_ns, indexed_at)
+            VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             ON CONFLICT(repo_id, file_path) DO UPDATE SET
                 language = excluded.language,
                 content_hash = excluded.content_hash,
                 size_bytes = excluded.size_bytes,
+                mtime_ns = excluded.mtime_ns,
                 indexed_at = excluded.indexed_at
             """,
-            [(self.repo_id, d.rel, d.language, d.content_hash, d.size_bytes) for d in results],
+            [(self.repo_id, d.rel, d.language, d.content_hash, d.size_bytes, d.mtime_ns) for d in results],
         )
 
         # --- symbols + FTS ---
@@ -1771,10 +1770,14 @@ class CodeContextEngine:
                 # --- Incremental: detect changes, then parallel-extract + batch-write ---
                 existing = {}
                 for row in conn.execute(
-                    "SELECT file_path, content_hash, size_bytes FROM files WHERE repo_id = ?",
+                    "SELECT file_path, content_hash, size_bytes, mtime_ns FROM files WHERE repo_id = ?",
                     (self.repo_id,),
                 ):
-                    existing[str(row["file_path"])] = (str(row["content_hash"]), int(row["size_bytes"]))
+                    existing[str(row["file_path"])] = (
+                        str(row["content_hash"]),
+                        int(row["size_bytes"]),
+                        int(row["mtime_ns"] or 0),
+                    )
                 line_index_empty = (
                     conn.execute("SELECT 1 FROM file_line_fts WHERE repo_id = ? LIMIT 1", (self.repo_id,)).fetchone()
                     is None
@@ -1794,11 +1797,35 @@ class CodeContextEngine:
                         if rel in existing:
                             self._delete_file_index(conn, rel)
                         continue
+                    previous = existing.get(rel)
+                    # Fast path: a file whose (size, mtime) matches the indexed row
+                    # is already current -- skip the read + sha256 entirely. This
+                    # keeps the background incremental resync cheap on large repos
+                    # instead of O(repo bytes) on every poll.
+                    if (
+                        previous is not None
+                        and not line_index_empty
+                        and previous[1] == int(stat.st_size)
+                        and previous[2] == int(stat.st_mtime_ns)
+                        and previous[2] != 0
+                    ):
+                        continue
                     source_bytes = path.read_bytes()
                     content_hash = _sha256_bytes(source_bytes)
-                    previous = existing.get(rel)
-                    if previous == (content_hash, int(stat.st_size)) and not line_index_empty:
-                        continue  # unchanged
+                    if (
+                        previous is not None
+                        and not line_index_empty
+                        and previous[0] == content_hash
+                        and previous[1] == int(stat.st_size)
+                    ):
+                        # Content identical (e.g. a touch changed only mtime).
+                        # Refresh the stored mtime so the next pass fast-skips,
+                        # then move on without re-extracting.
+                        conn.execute(
+                            "UPDATE files SET mtime_ns = ? WHERE repo_id = ? AND file_path = ?",
+                            (int(stat.st_mtime_ns), self.repo_id, rel),
+                        )
+                        continue
                     self._delete_file_index(conn, rel)
                     to_extract.append((path, source_bytes))
 
@@ -5024,9 +5051,7 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found"
-                if merged_status == "empty"
-                else None
+                else "no related call edges were found" if merged_status == "empty" else None
             )
             merged_snapshot = None
             if snapshot:
@@ -5153,6 +5178,7 @@ class CodeContextEngine:
                 language TEXT NOT NULL,
                 content_hash TEXT NOT NULL,
                 size_bytes INTEGER NOT NULL,
+                mtime_ns INTEGER NOT NULL DEFAULT 0,
                 indexed_at TEXT NOT NULL,
                 PRIMARY KEY (repo_id, file_path)
             );
@@ -5239,6 +5265,12 @@ class CodeContextEngine:
             CREATE INDEX IF NOT EXISTS idx_commit_author_date ON commit_chunks(author_date);
             CREATE INDEX IF NOT EXISTS idx_commit_files ON commit_chunks(files_touched);
             """)
+        # Migration: older DBs predate the files.mtime_ns column used to fast-skip
+        # unchanged files during incremental reindex. CREATE TABLE IF NOT EXISTS
+        # never adds a column to an existing table, so add it here when absent.
+        file_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(files)")}
+        if "mtime_ns" not in file_columns:
+            conn.execute("ALTER TABLE files ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0")
         conn.execute("INSERT OR IGNORE INTO engine_state(key, value) VALUES ('index_version', '0')")
         self._schema_ready = True
 
@@ -5269,8 +5301,14 @@ class CodeContextEngine:
 
     def _ensure_indexed(self) -> None:
         if self.index_ready():
+            # Change detection + reindex is the background autosync worker's job
+            # (it polls every _autosync_poll_ms). Running it inline here would
+            # stat every source file in the repo on every read tool call -- the
+            # per-call tax that made grep/read/explore slow on large repos. Keep
+            # the worker alive and let it own resync; files just edited are
+            # already current via the targeted _reindex_files after each edit.
             if self._autosync_enabled:
-                self._maybe_autosync_reindex()
+                self._ensure_autosync_worker_alive()
             self._ensure_lineage_ready()
             return
         if self._autosync_enabled:
@@ -7088,9 +7126,55 @@ class CodeContextEngine:
         )
 
     def _reindex_files(self, file_paths: list[str]) -> None:
-        if not file_paths:
+        """Incrementally reindex only *file_paths* -- never a whole-repo rebuild.
+
+        Called after an edit (or codemod) touches specific files. Deleting and
+        re-extracting just those files keeps post-edit latency O(edited files).
+        The previous implementation called ``self.index_repo()`` (force=True),
+        which wiped every table and re-parsed the entire repo on every symbol
+        edit -- minutes on large repos (sympy/django) for a one-file change.
+        """
+        rels: list[str] = []
+        existing_paths: list[Path] = []
+        seen: set[str] = set()
+        for raw in file_paths:
+            try:
+                resolved = self._resolve_inside_repo(raw)
+            except ValueError:
+                continue
+            rel = _safe_relpath(self.repo_root, resolved)
+            if rel in seen:
+                continue
+            seen.add(rel)
+            rels.append(rel)
+            if resolved.is_file():
+                existing_paths.append(resolved)
+        if not rels:
             return
-        self.index_repo()
+
+        def _reindex_locked() -> None:
+            with self._index_write_lock(block=True) as acquired:
+                if not acquired:
+                    # Another process is rebuilding the index; it will pick up
+                    # these files. Don't pile on a concurrent write.
+                    return
+                with self._connect() as conn:
+                    self._init_schema(conn)
+                    for rel in rels:
+                        self._delete_file_index(conn, rel)
+                    results = (
+                        self._parallel_extract(existing_paths, total=len(existing_paths)) if existing_paths else []
+                    )
+                    if results:
+                        self._apply_file_data_batch(conn, results)
+                    self._bump_index_version(conn)
+
+        if self._autosync_enabled:
+            with self._db_lock, self._autosync_lock:
+                _reindex_locked()
+        else:
+            with self._db_lock:
+                _reindex_locked()
 
     def _current_index_version(self) -> int:
         with self._connect() as conn:
@@ -8235,6 +8319,15 @@ class CodeContextEngine:
             self._deleted_history_adapter().start_background_warmup()
         except Exception:
             logging.exception("Failed to start background warmup")
+        # Background-owned initial build: if nothing has populated the index yet
+        # (no external prewarm / `atelier code index`), build it here so the
+        # first tool call hits a warm index instead of paying a cold build on the
+        # request path.
+        if not self.index_ready():
+            try:
+                self.index_repo(force=False, block=False)
+            except Exception:
+                logging.exception("autosync: initial index build failed")
         if getattr(self, "_embed_prewarmed", False) is False:
             try:
                 self._prewarm_symbol_embeddings()
@@ -8243,7 +8336,12 @@ class CodeContextEngine:
             self._embed_prewarmed = True
         while not self._autosync_stop.wait(self._autosync_poll_ms / 1000.0):
             try:
-                self._maybe_autosync_reindex()
+                if not self.index_ready():
+                    # Still empty (e.g. the initial build lost an index-lock race
+                    # with a concurrent prewarm). Keep retrying until it exists.
+                    self.index_repo(force=False, block=False)
+                else:
+                    self._maybe_autosync_reindex()
             except Exception as exc:
                 logging.exception("Recovered from broad exception handler")
                 self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)

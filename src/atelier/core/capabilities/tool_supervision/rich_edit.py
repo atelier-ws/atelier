@@ -589,7 +589,11 @@ def apply_rich_edits(
         if resolved_symbol_edits:
             from atelier.core.capabilities.code_context import CodeContextEngine
 
-            engine = CodeContextEngine(root)
+            # autosync_enabled=False: this short-lived engine only runs the
+            # targeted _reindex_files below, so it must not spin up a background
+            # autosync worker per edit. The shared cross-process index lock keeps
+            # it coordinated with the long-lived MCP engine on the same DB.
+            engine = CodeContextEngine(root, autosync_enabled=False)
             engine._reindex_files([item.repo_file_path for item in resolved_symbol_edits])
             for resolved in resolved_symbol_edits:
                 record_symbol_edit_memory(resolved)
