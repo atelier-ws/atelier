@@ -55,11 +55,6 @@ def _atelier_root() -> Path:
     return Path.home() / ".atelier"
 
 
-def _active_session_id() -> str | None:
-    state = _read_session_state()
-    return state.get("session_id") or state.get("active_session_id")
-
-
 # ---------------------------------------------------------------------------
 # Diff helpers
 # ---------------------------------------------------------------------------
@@ -215,7 +210,7 @@ def main() -> int:
         if not file_path or not diff:
             return 0
 
-        session_id = _active_session_id()
+        session_id = str(payload.get("session_id") or "").strip()
         if not session_id:
             return 0
 

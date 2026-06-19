@@ -216,6 +216,26 @@ def main() -> int:
                 state_update["transcript_path"] = transcript_path
             _write_session_state(state_update)
 
+            # Window-anchored identity: write THIS window's own file so the
+            # long-lived MCP server recovers the live id across /clear without
+            # racing a shared workspace slot. Best-effort; uses the same
+            # workspace key the MCP server resolves with.
+            with suppress(Exception):
+                from atelier.core.foundation.session_window import (
+                    register_window_session,
+                    workspace_hash,
+                )
+
+                _ws = os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()
+                register_window_session(
+                    _atelier_root(),
+                    workspace_hash(_ws),
+                    session_id=session_id_raw,
+                    source=source,
+                    transcript_path=transcript_path,
+                    model=model,
+                )
+
         # On /clear, drop a marker so the statusline snapshots the current
         # cumulative live cost as a baseline and shows only post-clear spend.
         # Claude's cost.total_cost_usd is process-cumulative and does NOT reset
