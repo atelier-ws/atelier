@@ -8,8 +8,6 @@ import click
 
 from atelier.gateway.cli.commands._shared import _emit
 
-_PRO_URL = "https://atelier.ws/pro"
-
 
 @click.group("license", invoke_without_command=True)
 @click.pass_context
@@ -59,7 +57,7 @@ def license_status(as_json: bool) -> None:
         click.echo("Atelier Pro: not active (Free tier)")
         click.echo(f"  Reason: {st.reason}")
         click.echo("  Activate with: atelier license activate <key>")
-        click.echo(f"  Get a key at:  {_PRO_URL}")
+        click.echo(f"  Get a key at:  {licensing.pro_url()}")
 
 
 @license_group.command("activate")

@@ -285,7 +285,7 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
         if deep and not licensing.has_feature("savings_dashboard"):
             _render_savings_rich(payload, deep=False)
             click.echo("")
-            click.echo("Full breakdown (--deep) is an Atelier Pro feature. Unlock at https://atelier.ws/pro")
+            click.echo(f"Full breakdown (--deep) is an Atelier Pro feature. Unlock at {licensing.pro_url()}")
         else:
             _render_savings_rich(payload, deep=deep)
             if deep:
@@ -538,7 +538,7 @@ def optimize_apply(
         licensing.require("optimizer")
     except licensing.FeatureLocked as exc:
         raise click.ClickException(
-            f"{exc}. Preview savings free with `atelier optimize`, then unlock applying them at https://atelier.ws/pro"
+            f"{exc}. Preview savings free with `atelier optimize`, then unlock applying them at {licensing.pro_url()}"
         ) from exc
 
     from atelier.core.capabilities.optimization.policy import (
