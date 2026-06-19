@@ -67,6 +67,65 @@ def find_opencode_sessions(db_path: Path | None = None) -> list[dict[str, Any]]:
         return []
 
 
+def serialize_opencode_session(session_id: str, db_path: Path) -> str:
+    """Serialize an OpenCode session's messages+parts into normalized JSONL.
+
+    Module-level so recall indexing can reuse it without constructing an importer
+    (which needs a ContextStore).
+    """
+    lines: list[str] = []
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+
+        # Interleave messages and parts by time_created
+        # We use a UNION to get a combined stream of events
+        sql = """
+            SELECT 'message' as etype, id, data, time_created, NULL as role
+            FROM message
+            WHERE session_id = ?
+            UNION ALL
+            SELECT 'part' as etype, p.id, p.data, p.time_created, json_extract(m.data, '$.role') as role
+            FROM part p
+            JOIN message m ON p.message_id = m.id
+            WHERE p.session_id = ?
+            ORDER BY time_created ASC
+        """
+
+        rows = conn.execute(sql, (session_id, session_id)).fetchall()
+        for r in rows:
+            if r["etype"] == "message":
+                lines.append(
+                    json.dumps(
+                        {
+                            "_type": "message",
+                            "id": r["id"],
+                            "timestamp": r["time_created"],
+                            "data": json.loads(r["data"] or "{}"),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            else:
+                lines.append(
+                    json.dumps(
+                        {
+                            "_type": "part",
+                            "id": r["id"],
+                            "role": r["role"],
+                            "timestamp": r["time_created"],
+                            "data": json.loads(r["data"] or "{}"),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+
+        conn.close()
+    except Exception:
+        logger.exception("[atelier] opencode: failed to read messages from %s", db_path)
+    return "\n".join(lines)
+
+
 class OpenCodeImporter:
     """OpenCode session importer."""
 
@@ -307,54 +366,4 @@ class OpenCodeImporter:
         return trace.id
 
     def _serialize_session(self, session_id: str, db_path: Path) -> str:
-        lines: list[str] = []
-        try:
-            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-            conn.row_factory = sqlite3.Row
-
-            # Interleave messages and parts by time_created
-            # We use a UNION to get a combined stream of events
-            sql = """
-                SELECT 'message' as etype, id, data, time_created, NULL as role
-                FROM message
-                WHERE session_id = ?
-                UNION ALL
-                SELECT 'part' as etype, p.id, p.data, p.time_created, json_extract(m.data, '$.role') as role
-                FROM part p
-                JOIN message m ON p.message_id = m.id
-                WHERE p.session_id = ?
-                ORDER BY time_created ASC
-            """
-
-            rows = conn.execute(sql, (session_id, session_id)).fetchall()
-            for r in rows:
-                if r["etype"] == "message":
-                    lines.append(
-                        json.dumps(
-                            {
-                                "_type": "message",
-                                "id": r["id"],
-                                "timestamp": r["time_created"],
-                                "data": json.loads(r["data"] or "{}"),
-                            },
-                            ensure_ascii=False,
-                        )
-                    )
-                else:
-                    lines.append(
-                        json.dumps(
-                            {
-                                "_type": "part",
-                                "id": r["id"],
-                                "role": r["role"],
-                                "timestamp": r["time_created"],
-                                "data": json.loads(r["data"] or "{}"),
-                            },
-                            ensure_ascii=False,
-                        )
-                    )
-
-            conn.close()
-        except Exception:
-            logger.exception("[atelier] opencode: failed to read messages from %s", db_path)
-        return "\n".join(lines)
+        return serialize_opencode_session(session_id, db_path)

@@ -1,0 +1,116 @@
+diff --git a/CHANGES b/CHANGES
+index ba01f72a9..7b2d7ae83 100644
+--- a/CHANGES
++++ b/CHANGES
+@@ -21,6 +21,8 @@ Features added
+ * #10717: HTML Search: Increase priority for full title and 
+   subtitle matches in search results
+ * #10718: HTML Search: Save search result score to the HTML element for debugging
++* #6316, #10295: Allow the ``genindex``, ``modindex`` and ``search`` special
++  pages to be referenced in a :rst:dir:`toctree` without emitting a warning
+ 
+ Bugs fixed
+ ----------
+diff --git a/doc/usage/restructuredtext/directives.rst b/doc/usage/restructuredtext/directives.rst
+index 4029b04e6..3781eb014 100644
+--- a/doc/usage/restructuredtext/directives.rst
++++ b/doc/usage/restructuredtext/directives.rst
+@@ -244,6 +244,14 @@ The special document names (and pages generated for them) are:
+   JavaScript to full-text search the generated documents for search words; it
+   should work on every major browser that supports modern JavaScript.
+ 
++  These special names may also be listed as entries in a :rst:dir:`toctree`
++  directive (for example to add them to the sidebar); doing so does not emit a
++  warning even though they have no source document of their own.
++
++  .. versionchanged:: 5.2
++     ``genindex``, ``modindex`` and ``search`` may be referenced in a
++     :rst:dir:`toctree` directive.
++
+ * every name beginning with ``_``
+ 
+   Though few such names are currently used by Sphinx, you should not
+diff --git a/sphinx/directives/other.py b/sphinx/directives/other.py
+index 35e16e623..29bf3b5c5 100644
+--- a/sphinx/directives/other.py
++++ b/sphinx/directives/other.py
+@@ -118,6 +118,10 @@ class TocTree(SphinxDirective):
+                 docname = docname_join(self.env.docname, docname)
+                 if url_re.match(ref) or ref == 'self':
+                     toctree['entries'].append((title, ref))
++                elif ref in ('genindex', 'modindex', 'search'):
++                    # special pages that are generated automatically and have
++                    # no source document of their own
++                    toctree['entries'].append((title, ref))
+                 elif docname not in self.env.found_docs:
+                     if excluded(self.env.doc2path(docname, False)):
+                         message = __('toctree contains reference to excluded document %r')
+diff --git a/sphinx/environment/adapters/toctree.py b/sphinx/environment/adapters/toctree.py
+index 9678e3c7c..a52162d75 100644
+--- a/sphinx/environment/adapters/toctree.py
++++ b/sphinx/environment/adapters/toctree.py
+@@ -6,7 +6,7 @@ from docutils import nodes
+ from docutils.nodes import Element, Node
+ 
+ from sphinx import addnodes
+-from sphinx.locale import __
++from sphinx.locale import _, __
+ from sphinx.util import logging, url_re
+ from sphinx.util.matching import Matcher
+ from sphinx.util.nodes import clean_astext, process_only_nodes
+@@ -139,6 +139,25 @@ class TocTree:
+                         item = nodes.list_item('', para)
+                         # don't show subitems
+                         toc = nodes.bullet_list('', item)
++                    elif ref in ('genindex', 'modindex', 'search'):
++                        # special pages that are generated automatically;
++                        # they have no source document, so build the link here
++                        if title is None:
++                            title = {
++                                'genindex': _('Index'),
++                                'modindex': _('Module Index'),
++                                'search': _('Search Page'),
++                            }[ref]
++                        # the general index, module index and search page have
++                        # fixed target document names
++                        refuri = {'modindex': 'py-modindex'}.get(ref, ref)
++                        reference = nodes.reference('', '', internal=True,
++                                                    refuri=refuri, anchorname='',
++                                                    *[nodes.Text(title)])
++                        para = addnodes.compact_paragraph('', '', reference)
++                        item = nodes.list_item('', para)
++                        # don't show subitems
++                        toc = nodes.bullet_list('', item)
+                     else:
+                         if ref in parents:
+                             logger.warning(__('circular toctree references '
+diff --git a/tests/test_directive_other.py b/tests/test_directive_other.py
+index f221db075..025438567 100644
+--- a/tests/test_directive_other.py
++++ b/tests/test_directive_other.py
+@@ -103,6 +103,25 @@ def test_toctree_glob(app):
+                 includefiles=['baz', 'foo', 'quux', 'foo'])
+ 
+ 
++@pytest.mark.sphinx(testroot='toctree-glob')
++def test_toctree_special_pages(app):
++    # the special pages genindex, modindex and search may be referenced
++    # in a toctree without raising a warning (they are generated documents
++    # without a source file of their own)
++    text = (".. toctree::\n"
++            "\n"
++            "   genindex\n"
++            "   modindex\n"
++            "   search\n")
++
++    app.env.find_files(app.config, app.builder)
++    doctree = restructuredtext.parse(app, text, 'index')
++    assert_node(doctree, [nodes.document, nodes.compound, addnodes.toctree])
++    assert_node(doctree[0][0],
++                entries=[(None, 'genindex'), (None, 'modindex'), (None, 'search')],
++                includefiles=[])
++
++
+ @pytest.mark.sphinx(testroot='toctree-glob')
+ def test_toctree_glob_and_url(app):
+     text = (".. toctree::\n"

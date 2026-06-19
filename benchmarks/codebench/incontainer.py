@@ -8,7 +8,7 @@ existing savings / report / CSV path applies unchanged.
 
 The two arms differ only in the overlay contents + the claude flags:
   baseline -> vanilla Claude Code (default persona, empty MCP)
-  atelier  -> Claude Code + the Atelier plugin (--plugin-dir, --agent atelier:code)
+  atelier  -> Claude Code + the Atelier plugin (--plugin-dir, --agent atelier:auto)
 That is the vanilla-vs-Atelier isolation, same model, same task.
 """
 
@@ -53,7 +53,7 @@ _DIFF_BEGIN = "<<<CODEBENCH_DIFF_BEGIN>>>"
 _DIFF_END = "<<<CODEBENCH_DIFF_END>>>"
 
 # Persona per arm for the "code" capability (mirrors run.ARM_SPECS).
-_ARM_AGENT: dict[str, str | None] = {"baseline": None, "atelier": "atelier:code"}
+_ARM_AGENT: dict[str, str | None] = {"baseline": None, "atelier": "atelier:auto"}
 
 # Installed into every overlay: Node + the claude CLI on top of the instance image.
 _BASELINE_INSTALL = r"""
@@ -239,6 +239,12 @@ def _docker_run_cmd(
     if arm == "atelier":
         cmd += ["-v", f"{ATELIER_CLAUDE_PLUGIN_ROOT}:/mnt/plugin:ro"]
         cmd += ["-v", f"{TIKTOKEN_CACHE_HOST}:/opt/tiktoken-cache:ro"]
+        # Overlay the live repo source onto the baked-in (pure-Python) install so
+        # tool-behavior changes take effect without rebuilding 12 overlay images.
+        cmd += [
+            "-v",
+            f"{REPO_ROOT}/src/atelier:/root/.local/share/uv/tools/atelier/lib/python3.13/site-packages/atelier:ro",
+        ]
     env: dict[str, str] = {
         "IS_SANDBOX": "1",
         "NODE_EXTRA_CA_CERTS": "/mnt/mitm.pem",
@@ -261,6 +267,10 @@ def _docker_run_cmd(
         # Point tiktoken at the bind-mounted pre-warmed cache so the MCP server
         # never reaches the network at import (see TIKTOKEN_CACHE_HOST).
         env["TIKTOKEN_CACHE_DIR"] = "/opt/tiktoken-cache"
+        # Lean tool surface: hide code-intel/aux tools the autonomous SWE agent
+        # never reaches for (verified ~0 uses), shrinking the per-turn schema the
+        # model reasons over. Keeps read/grep/search/edit/shell/explore/node.
+        env["ATELIER_HIDE_TOOLS"] = "sql,memory,codemod,callers,callees,usages,web_fetch"
     env.update(agent_env)
     for key, value in env.items():
         cmd += ["-e", f"{key}={value}"]

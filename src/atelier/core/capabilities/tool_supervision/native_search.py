@@ -33,7 +33,7 @@ SearchOutputMode = Literal[
 ]
 
 MAX_STRUCTURED_OUTPUT_CHARS = 80_000
-DEFAULT_CONTEXT_BUDGET_TOKENS = 6_000
+DEFAULT_CONTEXT_BUDGET_TOKENS = 2_000
 INLINE_CHARS_PER_TOKEN = 2
 # Max paths emitted by output_mode=file_paths_only before truncation.
 _FILE_PATHS_ONLY_CAP = 200

@@ -1,0 +1,13 @@
+task,baseline_arm,candidate_arm,baseline_runs,candidate_runs,baseline_judged_runs,candidate_judged_runs,baseline_correct_runs,candidate_correct_runs,baseline_avg_score,candidate_avg_score,correctness_delta,baseline_cost_usd,candidate_cost_usd,cost_savings_vs_baseline_pct,winner,baseline_judge_models,candidate_judge_models
+django__django-11138,baseline,atelier,3,3,3,3,3,3,1.0,1.0,0.0,4.3912,4.6655,-6.2,baseline,swebench,swebench
+django__django-11333,baseline,atelier,3,3,3,3,2,0,0.667,0.0,-0.667,0.4473,0.4818,-7.7,baseline,swebench,swebench
+matplotlib__matplotlib-14623,baseline,atelier,3,3,3,3,3,3,1.0,1.0,0.0,2.5802,1.4047,45.6,atelier,swebench,swebench
+pydata__xarray-3095,baseline,atelier,3,3,3,3,3,3,1.0,1.0,0.0,1.5507,2.5047,-61.5,baseline,swebench,swebench
+pydata__xarray-3305,baseline,atelier,3,3,3,3,3,3,1.0,1.0,0.0,1.4912,1.0334,30.7,atelier,swebench,swebench
+pylint-dev__pylint-6386,baseline,atelier,3,3,3,3,3,3,1.0,1.0,0.0,3.3537,4.0298,-20.2,baseline,swebench,swebench
+pytest-dev__pytest-8399,baseline,atelier,3,3,3,3,3,3,1.0,1.0,0.0,0.7714,0.9326,-20.9,baseline,swebench,swebench
+scikit-learn__scikit-learn-12682,baseline,atelier,3,3,3,3,3,3,1.0,1.0,0.0,3.7009,2.3715,35.9,atelier,swebench,swebench
+sphinx-doc__sphinx-10673,baseline,atelier,3,3,3,3,3,2,1.0,0.667,-0.333,6.2486,5.9278,5.1,baseline,swebench,swebench
+sphinx-doc__sphinx-8120,baseline,atelier,3,3,3,3,2,3,0.667,1.0,0.333,2.9062,0.8403,71.1,atelier,swebench,swebench
+sympy__sympy-13091,baseline,atelier,3,3,3,3,3,3,1.0,1.0,0.0,4.2704,4.8999,-14.7,baseline,swebench,swebench
+sympy__sympy-13877,baseline,atelier,3,3,3,3,3,0,1.0,0.0,-1.0,2.9489,0.2914,90.1,baseline,swebench,swebench
