@@ -43,11 +43,6 @@ def _atelier_root() -> Path:
     return Path.home() / ".atelier"
 
 
-def _active_session_id() -> str | None:
-    state = _read_session_state()
-    return state.get("session_id") or state.get("active_session_id")
-
-
 def _spawn(session_id: str, mode: str, path: str, root: Path) -> None:
     """Detach a reviewer child. Never waits — returns control immediately."""
     override = os.environ.get("ATELIER_REVIEWER_CHILD_CMD")
@@ -91,7 +86,7 @@ def main() -> int:
         settings = load_reviewer_settings(root)
         if not settings.enabled:
             return 0
-        session_id = _active_session_id()
+        session_id = str(payload.get("session_id") or "").strip()
         if not session_id:
             return 0
         count = count_file_edits(root / "sessions" / session_id / "run.json")

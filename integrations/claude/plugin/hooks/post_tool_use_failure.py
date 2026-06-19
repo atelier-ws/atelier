@@ -79,11 +79,6 @@ def _atelier_root() -> Path:
     return Path.home() / ".atelier"
 
 
-def _active_session_id() -> str | None:
-    state = _read_session_state()
-    return state.get("session_id") or state.get("active_session_id")
-
-
 def _append_failure_event(session_id: str, command: str, error: str, repeat: int) -> None:
     """Append a note event for the command failure to runs/<session_id>.json."""
     run_file = _atelier_root() / "sessions" / session_id / "run.json"
@@ -160,7 +155,7 @@ def main() -> int:
 
     # Always write the failure to the RunLedger (fail-open)
     try:
-        session_id = _active_session_id()
+        session_id = str(payload.get("session_id") or "").strip()
         if session_id:
             _append_failure_event(session_id, command, error, failures[sig])
     except (OSError, json.JSONDecodeError, KeyError):

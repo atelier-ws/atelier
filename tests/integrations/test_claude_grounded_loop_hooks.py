@@ -72,7 +72,15 @@ def test_pre_tool_use_blocks_benchmark_risky_edit_without_grounding(
     monkeypatch.setattr(
         PRE_TOOL_USE.sys,
         "stdin",
-        io.StringIO(json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "shopify/catalog/product.py"}})),
+        io.StringIO(
+            json.dumps(
+                {
+                    "session_id": "bench-session",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "shopify/catalog/product.py"},
+                }
+            )
+        ),
     )
 
     assert pre_tool_use.main() == 0
@@ -109,7 +117,15 @@ def test_pre_tool_use_allows_grounded_benchmark_risky_edit(
     monkeypatch.setattr(
         PRE_TOOL_USE.sys,
         "stdin",
-        io.StringIO(json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "shopify/catalog/product.py"}})),
+        io.StringIO(
+            json.dumps(
+                {
+                    "session_id": "bench-session",
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "shopify/catalog/product.py"},
+                }
+            )
+        ),
     )
 
     assert pre_tool_use.main() == 0
@@ -168,7 +184,6 @@ def test_user_prompt_hook_emits_compaction_nudge_as_ui_only_system_message(
         encoding="utf-8",
     )
     monkeypatch.setattr(user_prompt, "_persist_last_user_prompt", lambda prompt: None)
-    monkeypatch.setattr(user_prompt, "_active_session_id", lambda: None)
     monkeypatch.setattr(user_prompt, "_read_session_state", lambda: {})
     monkeypatch.setattr(user_prompt, "_write_session_state", lambda state: None)
     monkeypatch.setattr(
@@ -201,7 +216,6 @@ def test_user_prompt_hook_skips_grounded_nudge_for_already_grounded_prompt(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(user_prompt, "_persist_last_user_prompt", lambda prompt: None)
-    monkeypatch.setattr(user_prompt, "_active_session_id", lambda: None)
     monkeypatch.setattr(
         USER_PROMPT.sys,
         "stdin",
@@ -231,7 +245,6 @@ def test_user_prompt_hook_blocks_after_noop_cap(
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("ATELIER_STORE_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setattr(user_prompt, "_active_session_id", lambda: None)
 
     noop = user_prompt._NOOP_PROMPT
     cap = user_prompt._NOOP_CAP
@@ -265,7 +278,6 @@ def test_user_prompt_hook_resets_noop_count_on_real_prompt(
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("ATELIER_STORE_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setattr(user_prompt, "_active_session_id", lambda: None)
 
     noop = user_prompt._NOOP_PROMPT
     cap = user_prompt._NOOP_CAP

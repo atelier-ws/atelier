@@ -17,8 +17,9 @@ This module anchors resolution to the **window process**: the ``claude``
 process that is the common ancestor of both the MCP server and the hook
 processes. That pid is stable across ``/clear`` (the window is the same) and
 unique per window (siblings have different ``claude`` pids). SessionStart
-appends a row keyed by ``(window_pid, window_btime)``; the MCP server resolves
-its live id by matching its own window. Both sides run on atelier's venv python
+writes a per-window file named ``<window_pid>-<window_btime>.json``; the MCP
+server reads its own window's file. One writer per file, so concurrent windows
+in a shared workspace never clobber each other. Both sides run on atelier's venv python
 (hooks via ``_run_hook.sh``), so this one module serves both.
 
 Linux/proc only. On platforms without ``/proc`` (or when no ``claude`` ancestor
@@ -28,13 +29,13 @@ env var, preserving today's behavior.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
 import os
 import time
 from pathlib import Path
-from typing import Any
 
 _log = logging.getLogger(__name__)
 
@@ -42,11 +43,6 @@ _log = logging.getLogger(__name__)
 # Claude exhibits the launch-env-goes-stale-on-/clear problem today; other hosts
 # set a per-session env var the callers read directly.
 _HOST_PROCESS_NAMES = frozenset({"claude"})
-
-# Keep the append-only registry bounded: SessionStart fires a handful of times
-# per session (startup/resume/clear/compact), but a workspace accumulates rows
-# across days. Trim to the most recent N on write so resolution stays O(N).
-_MAX_REGISTRY_ROWS = 200
 
 
 def _read_proc_stat(pid: int) -> tuple[int, int, str] | None:
@@ -114,28 +110,61 @@ def workspace_hash(workspace: str | os.PathLike[str]) -> str:
     return hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
 
 
-def registry_path(root: str | os.PathLike[str], ws_hash: str) -> Path:
-    return Path(root) / "workspaces" / ws_hash / "sessions.jsonl"
+def windows_dir(root: str | os.PathLike[str], ws_hash: str) -> Path:
+    """Directory holding this workspace's per-window identity files."""
+    return Path(root) / "workspaces" / ws_hash / "windows"
 
 
-def _read_registry(root: str | os.PathLike[str], ws_hash: str) -> list[dict[str, Any]]:
-    path = registry_path(root, ws_hash)
-    rows: list[dict[str, Any]] = []
+def window_file_path(root: str | os.PathLike[str], ws_hash: str, pid: int, btime: int) -> Path:
+    """Path to one window's identity file, keyed by ``(pid, btime)``."""
+    return windows_dir(root, ws_hash) / f"{int(pid)}-{int(btime)}.json"
+
+
+def _read_window_session_id(path: Path) -> str:
     try:
-        with path.open(encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(obj, dict):
-                    rows.append(obj)
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    return str(data.get("session_id") or "").strip()
+
+
+def _pid_alive(pid: int) -> bool:
+    """True if *pid* is a live process. Best-effort; assumes alive on error."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
     except OSError:
-        return []
-    return rows
+        return True
+    return True
+
+
+def _prune_dead_windows(directory: Path, *, keep: str) -> None:
+    """Best-effort removal of window files whose pid is no longer alive.
+
+    Bounds accumulation across days of sessions in one workspace (replaces the
+    old append-only-registry row cap). Never removes ``keep`` (this window's own
+    file). Fail-open.
+    """
+    try:
+        entries = list(directory.glob("*.json"))
+    except OSError:
+        return
+    for entry in entries:
+        if entry.name == keep:
+            continue
+        pid_str = entry.stem.partition("-")[0]
+        try:
+            pid = int(pid_str)
+        except ValueError:
+            continue
+        if not _pid_alive(pid):
+            with contextlib.suppress(OSError):
+                entry.unlink()
 
 
 def register_window_session(
@@ -147,40 +176,46 @@ def register_window_session(
     transcript_path: str = "",
     model: str = "",
 ) -> None:
-    """Append a window-keyed session row. Called by the SessionStart hook.
+    """Write *this* window's identity file. Called by the SessionStart hook.
 
-    The row records the live ``session_id`` together with this window's
-    ``(window_pid, window_btime)`` so the MCP server -- whose launch env id may
-    be stale -- can recover the live id by matching its own window. Best-effort:
-    failures never raise (the hook is fail-open).
+    Records the live ``session_id`` under this window's ``(window_pid,
+    window_btime)`` so the MCP server -- whose launch env id may be stale --
+    recovers the live id by reading its own window's file. Each window writes
+    only its own file, so concurrent windows sharing a workspace never clobber
+    each other (no shared slot, no read-modify-write, no lock). Best-effort:
+    failures never raise (the hook is fail-open). No-op when no ``claude``
+    window ancestor is found (non-Linux / hostless) -- callers fall back to the
+    env var.
     """
     session_id = (session_id or "").strip()
     if not session_id:
         return
     win = host_window_id()
-    row = {
+    if win is None:
+        return
+    pid, btime = win
+    payload = {
         "session_id": session_id,
         "source": source,
         "transcript_path": transcript_path,
         "model": model,
         "ts": time.time(),
-        "window_pid": win[0] if win else 0,
-        "window_btime": win[1] if win else 0,
+        "window_pid": pid,
+        "window_btime": btime,
     }
-    path = registry_path(root, ws_hash)
+    directory = windows_dir(root, ws_hash)
+    path = window_file_path(root, ws_hash, pid, btime)
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        rows = _read_registry(root, ws_hash)
-        rows.append(row)
-        if len(rows) > _MAX_REGISTRY_ROWS:
-            rows = rows[-_MAX_REGISTRY_ROWS:]
-        tmp = path.with_suffix(".jsonl.tmp")
-        with tmp.open("w", encoding="utf-8") as fh:
-            for r in rows:
-                fh.write(json.dumps(r) + "\n")
+        directory.mkdir(parents=True, exist_ok=True)
+        # Unique temp name per writer so even two registers for the SAME window
+        # can't corrupt each other -- last atomic replace wins, no partial file.
+        tmp = directory / f"{path.name}.{os.getpid()}.tmp"
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
         tmp.replace(path)
     except OSError:
-        _log.debug("window-session registry write failed", exc_info=True)
+        _log.debug("window-session file write failed", exc_info=True)
+        return
+    _prune_dead_windows(directory, keep=path.name)
 
 
 def resolve_window_session_id(
@@ -192,32 +227,19 @@ def resolve_window_session_id(
     """Resolve the live session id for *this* process's window.
 
     Priority:
-      1. Newest registry row whose ``(window_pid, window_btime)`` matches this
-         process's ``claude`` ancestor -- correct across ``/clear`` and immune
-         to sibling windows sharing the workspace.
+      1. This window's own identity file (keyed by ``(window_pid,
+         window_btime)``) -- written by SessionStart, correct across ``/clear``
+         and immune to sibling windows sharing the workspace.
       2. ``env_session_id`` (the launch env var) -- correct before SessionStart
-         has written a row, and the only signal on non-Linux hosts.
-      3. Newest registry row of any window (MRU) -- last-ditch for hostless
-         callers.
-      4. ``""`` when nothing is known.
+         has written the file, and the only signal on non-Linux hosts.
+      3. ``""`` when nothing is known.
     """
-    rows = _read_registry(root, ws_hash)
     win = host_window_id()
     if win is not None:
-        pid, btime = win
-        match: str = ""
-        for r in rows:  # append order; last match wins (newest for this window)
-            if int(r.get("window_pid") or 0) == pid and int(r.get("window_btime") or 0) == btime:
-                sid = str(r.get("session_id") or "").strip()
-                if sid:
-                    match = sid
-        if match:
-            return match
+        sid = _read_window_session_id(window_file_path(root, ws_hash, win[0], win[1]))
+        if sid:
+            return sid
     env = (env_session_id or "").strip()
     if env:
         return env
-    for r in reversed(rows):
-        sid = str(r.get("session_id") or "").strip()
-        if sid:
-            return sid
     return ""
