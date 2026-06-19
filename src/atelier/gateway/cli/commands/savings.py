@@ -105,6 +105,7 @@ def _render_savings_rich(payload: dict[str, Any], deep: bool = False) -> None:
         table.add_column("Calls", justify="right")
         table.add_column("Tokens", justify="right")
         table.add_column("Saved", justify="right", style="green")
+        table.add_column("Carry", justify="right", style="bright_magenta")
         table.add_column("Spent", justify="right")
 
         for window in ["1D", "7D", "30D"]:
@@ -114,6 +115,7 @@ def _render_savings_rich(payload: dict[str, Any], deep: bool = False) -> None:
                 f"{w.get('calls', 0):,}",
                 f"{_fmt_tok_compact(w.get('tokens', 0))}",
                 f"${w.get('usd', 0.0):,.2f}",
+                f"${w.get('carry', 0.0):,.2f}",
                 f"${w.get('spend', 0.0):,.2f}",
             )
         console.print(table)

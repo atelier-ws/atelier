@@ -444,7 +444,7 @@ def _push_public_rollup(
 
         _auth = _j.loads((_atelier_root() / "auth.json").read_text())
         _raw_id = _auth.get("install_id") or _auth.get("userId") or "unknown"
-    except Exception:
+    except Exception:  # noqa: BLE001
         _raw_id = "unknown"
     anon_id = hashlib.sha256(_raw_id.encode()).hexdigest()
 
@@ -453,7 +453,7 @@ def _push_public_rollup(
         from importlib.metadata import version as _ver
 
         atelier_version = _ver("atelier")
-    except Exception:
+    except Exception:  # noqa: BLE001
         atelier_version = "unknown"
 
     endpoint = (
@@ -497,7 +497,7 @@ def _push_public_rollup(
                 ok,
             )
             return ok
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning("public_rollup.failed session=%s err=%s", payload["session_id"][:8], exc)
         return False
 

@@ -63,6 +63,26 @@ def test_load_instances_respects_limit_and_instance_filter(tmp_path: Path) -> No
     assert [i.instance_id for i in only] == ["o__r-4"]
 
 
+def test_strip_gold_test_files_drops_colliding_sections() -> None:
+    """Sections for files the gold test patch owns are dropped; solution code stays."""
+    model_patch = (
+        "diff --git a/src/app.py b/src/app.py\n"
+        "--- a/src/app.py\n+++ b/src/app.py\n@@ -1 +1 @@\n-x\n+y\n"
+        "diff --git a/tests/roots/r/conf.py b/tests/roots/r/conf.py\n"
+        "new file mode 100644\n--- /dev/null\n+++ b/tests/roots/r/conf.py\n@@ -0,0 +1 @@\n+pass\n"
+    )
+    gold_test = (
+        "diff --git a/tests/roots/r/conf.py b/tests/roots/r/conf.py\n"
+        "diff --git a/tests/test_x.py b/tests/test_x.py\n"
+    )
+    out = swebench_grade._strip_gold_test_files(model_patch, gold_test)
+    assert "a/src/app.py" in out  # solution code kept
+    assert "tests/roots/r/conf.py" not in out  # gold owns it -> dropped to avoid collision
+    # No gold test patch (or empty model patch) -> unchanged passthrough.
+    assert swebench_grade._strip_gold_test_files(model_patch, "") == model_patch
+    assert swebench_grade._strip_gold_test_files("", gold_test) == ""
+
+
 def test_grade_writes_predictions_and_parses_resolved(tmp_path: Path, monkeypatch: Any) -> None:
     insts = [
         swebench_data.SweBenchInstance("o__r-2", "o/r", "abc", "python", "img2", "fix", 2),

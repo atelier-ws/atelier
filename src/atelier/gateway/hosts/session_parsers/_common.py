@@ -859,7 +859,7 @@ def snapshot_edited_files(
         try:
             store.record_raw_artifact(artifact, file_content)
             saved += 1
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.warning("snapshot_edited_files: failed to save %s", fpath, exc_info=True)
 
     return saved

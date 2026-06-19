@@ -145,8 +145,7 @@ def estimate_cost(
         per_run_usd = float(statistics.median(matching))
         basis = "calibrated"
         assumption = (
-            f"median of {len(matching)} historical per-run costs for "
-            f"{target_family or 'comparable'} models"
+            f"median of {len(matching)} historical per-run costs for " f"{target_family or 'comparable'} models"
         )
     else:
         input_tokens = max_turns * _HEURISTIC_INPUT_TOKENS_PER_TURN
