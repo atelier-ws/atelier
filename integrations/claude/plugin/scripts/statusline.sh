@@ -149,17 +149,35 @@ export ATELIER_STATUSLINE_LIVE_OUT_TOK="${OUT_TOK:-0}"
 
 _ATELIER_BIN="$(dirname "${ATELIER_PY}")/atelier"
 
-# Cache savings --segment output for 8s to avoid spawning Python on every render.
-# The statusline fires on every turn; without caching this burns ~90% CPU per render.
-_SEG_CACHE="${ATELIER_STATUS_ROOT}/statusline_segment_cache"
-_SEG_CACHE_TS="${ATELIER_STATUS_ROOT}/statusline_segment_ts"
+# Dynamic segment: MCP sidecar (primary) → per-session subprocess cache (fallback).
+# The MCP server writes sessions/<id>/statusline_segment after every savings event
+# using its window-anchored resolved session id — no subprocess, no session-id drift.
 _NOW_S=$(date +%s)
-_CACHED_TS=$(cat "${_SEG_CACHE_TS}" 2>/dev/null || echo 0)
-_CACHE_AGE=$(( _NOW_S - ${_CACHED_TS:-0} ))
+_MCP_SIDECAR="${ATELIER_STATUS_ROOT}/sessions/${SESSION_ID:-}/statusline_segment"
+# Per-session cache for the subprocess fallback path (was a global file — fixed).
+_SEG_CACHE="${ATELIER_STATUS_ROOT}/statusline_segment_cache_${SESSION_ID:-default}"
+_SEG_CACHE_TS="${ATELIER_STATUS_ROOT}/statusline_segment_ts_${SESSION_ID:-default}"
 DYNAMIC_SEG=""
-if [ "${_CACHE_AGE}" -le 8 ] && [ -f "${_SEG_CACHE}" ]; then
-  DYNAMIC_SEG=$(cat "${_SEG_CACHE}" 2>/dev/null || true)
+
+# 1. MCP sidecar — fresh if written within 10s
+if [ -n "${SESSION_ID:-}" ] && [ -f "${_MCP_SIDECAR}" ]; then
+  _SIDECAR_MTIME=$(stat -c '%Y' "${_MCP_SIDECAR}" 2>/dev/null || stat -f '%m' "${_MCP_SIDECAR}" 2>/dev/null || echo 0)
+  _SIDECAR_AGE=$(( _NOW_S - ${_SIDECAR_MTIME:-0} ))
+  if [ "${_SIDECAR_AGE}" -le 10 ]; then
+    DYNAMIC_SEG=$(cat "${_MCP_SIDECAR}" 2>/dev/null || true)
+  fi
 fi
+
+# 2. Per-session subprocess cache — 8s TTL
+if [ -z "${DYNAMIC_SEG:-}" ]; then
+  _CACHED_TS=$(cat "${_SEG_CACHE_TS}" 2>/dev/null || echo 0)
+  _CACHE_AGE=$(( _NOW_S - ${_CACHED_TS:-0} ))
+  if [ "${_CACHE_AGE}" -le 8 ] && [ -f "${_SEG_CACHE}" ]; then
+    DYNAMIC_SEG=$(cat "${_SEG_CACHE}" 2>/dev/null || true)
+  fi
+fi
+
+# 3. Subprocess fallback — spawns Python, result written to per-session cache
 if [ -z "${DYNAMIC_SEG:-}" ]; then
   if [ -x "${_ATELIER_BIN}" ]; then
     DYNAMIC_SEG=$("${_ATELIER_BIN}" savings --segment 2>/dev/null)
@@ -167,7 +185,9 @@ if [ -z "${DYNAMIC_SEG:-}" ]; then
   if [ -z "${DYNAMIC_SEG:-}" ]; then
     DYNAMIC_SEG=$(uv run --quiet atelier savings --segment 2>/dev/null)
   fi
-  if [ -n "${DYNAMIC_SEG:-}" ]; then
+  # Only cache when there is real live usage — avoids serving a stale
+  # zero-token result to the next render that has actual tokens in context.
+  if [ -n "${DYNAMIC_SEG:-}" ] && [ "${LIVE_CTX_TOK:-0}" -gt 0 ]; then
     printf '%s' "${DYNAMIC_SEG}" > "${_SEG_CACHE}" 2>/dev/null || true
     printf '%s' "${_NOW_S}" > "${_SEG_CACHE_TS}" 2>/dev/null || true
   fi

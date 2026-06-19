@@ -1076,7 +1076,7 @@ _STATUS_TIPS: tuple[str, ...] = (
     "`/atelier:execute` — apply an accepted plan with surgical, minimal edits",
     "`/atelier:auto` — autonomous runs; no plan gates, no prompts",
     "`/atelier:bare` — strips `Workflow` + `ScheduleWakeup`; saves ~6k tokens vs auto",
-    "`/atelier:knowledge` — view or curate the review knowledge base",
+    "`/atelier:recall` — recall what Atelier learned from your past sessions",
     "`/atelier:settings` — change plugin settings in plain English",
     "`/atelier:ux-review` — verify implemented UI against design gates in a real browser",
     "`/atelier:orchestrate` — choose subagent vs isolated execution for a single run",
@@ -1652,8 +1652,10 @@ def savings_segment(
 
     has_usage = eff_in > 0 or eff_cache > 0
 
-    # Cost: max(transcript-derived, live Claude value) so resumed sessions show correctly.
-    display_cost = max(summary.est_cost_usd, live_cost_usd)
+    # Cost: use transcript-derived value — it resets correctly on /clear (new session_id)
+    # and matches our corrected pricing rates. live_cost_usd (Claude's payload) is
+    # already baseline-subtracted by statusline.sh but can lag on the first render.
+    display_cost = summary.est_cost_usd if summary.est_cost_usd > 0 else live_cost_usd
 
     # Historical savings (scanned once per segment call — fast file scan).
     usd_1d, tok_1d, calls_1d, _turns_1d, spend_1d, carry_1d = _read_historical_savings(1, root)
