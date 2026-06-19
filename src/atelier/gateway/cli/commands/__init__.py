@@ -48,6 +48,13 @@ def register(cli: click.Group) -> None:
         _IMPORT_FAILED = True
 
     try:
+        from . import license as license_commands
+
+        cli.add_command(license_commands.license_group)
+    except (ModuleNotFoundError, ImportError):
+        _IMPORT_FAILED = True
+
+    try:
         from .playbooks import (
             add_playbook,
             domain_group,
