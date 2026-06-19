@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -281,7 +281,7 @@ class SemanticSearchRanker:
         self,
         symbols: Sequence[SymbolRecord],
         *,
-        source_texts: dict[str, str | None] | None = None,
+        source_texts: Mapping[str, str | None] | None = None,
     ) -> dict[str, list[float]]:
         """Batch-embed *symbols*, returning ``{symbol_id: vector}``.
 

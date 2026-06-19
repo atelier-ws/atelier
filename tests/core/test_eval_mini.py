@@ -22,13 +22,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from benchmarks.mini.loader import default_cases_path, load_cases
-from benchmarks.mini.runner import (
+from benchmarks.mini.loader import default_cases_path, load_cases  # noqa: E402
+from benchmarks.mini.runner import (  # noqa: E402
     aggregate_report,
     run_case_dry,
     run_suite,
 )
-from benchmarks.mini.schema import (
+from benchmarks.mini.schema import (  # noqa: E402
     MiniEvalCase,
     MiniEvalCaseResult,
     MiniEvalReport,

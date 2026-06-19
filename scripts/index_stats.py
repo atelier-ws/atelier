@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Print code context index stats (language & symbol breakdown)."""
+
 import hashlib
 import sqlite3
 import sys
@@ -15,8 +16,9 @@ else:
     if candidate.exists():
         db_path = str(candidate)
     else:
-        dbs = sorted(Path.home().glob(".atelier/workspaces/*/code_context.sqlite"),
-                     key=lambda p: p.stat().st_mtime, reverse=True)
+        dbs = sorted(
+            Path.home().glob(".atelier/workspaces/*/code_context.sqlite"), key=lambda p: p.stat().st_mtime, reverse=True
+        )
         db_path = str(dbs[0]) if dbs else None
 
 if not db_path or not Path(db_path).exists():
@@ -67,8 +69,10 @@ print(f"  {'Total symbols':<22s}  {sum(kinds.values()):>8d}")
 md_files = c.execute("SELECT COUNT(*) FROM files WHERE language=?", ("markdown",)).fetchone()[0]
 heading_kinds = kinds.get("heading", 0)
 print()
-print(f"  Markdown: {md_files} files, {heading_kinds} heading symbols"
-      + (f" ({heading_kinds//max(md_files,1)}/file)" if md_files else ""))
+print(
+    f"  Markdown: {md_files} files, {heading_kinds} heading symbols"
+    + (f" ({heading_kinds//max(md_files,1)}/file)" if md_files else "")
+)
 
 # --- Row counts ---
 print()

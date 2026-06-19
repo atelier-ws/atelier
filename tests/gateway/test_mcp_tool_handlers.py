@@ -399,6 +399,29 @@ def test_tools_list_grep_schema_covers_native_mode() -> None:
     assert "summary" in properties
 
 
+def test_grep_accepts_single_glob_string(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A bare string for file_glob_patterns is coerced to a one-element list.
+
+    The model frequently reaches for a single glob string; accepting it avoids a
+    schema-validation rejection against the array type. A list passes through.
+    """
+    captured: dict[str, Any] = {}
+
+    def _fake_run_native_grep(**kwargs: Any) -> dict[str, Any]:
+        captured.clear()
+        captured.update(kwargs)
+        return {}
+
+    monkeypatch.setattr(mcp_server, "_run_native_grep", _fake_run_native_grep)
+    handler = TOOLS["grep"]["handler"]
+
+    handler({"content_regex": "x", "file_glob_patterns": "src/**/*.py"})
+    assert captured["file_glob_patterns"] == ["src/**/*.py"]
+
+    handler({"content_regex": "x", "file_glob_patterns": ["a", "b"]})
+    assert captured["file_glob_patterns"] == ["a", "b"]
+
+
 def test_tools_list_edit_schema_documents_descriptor_variants() -> None:
     edit_tool = TOOLS["edit"]
     schema = edit_tool["inputSchema"]
@@ -2088,9 +2111,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
-        f"'trace_id' missing or empty in trace receipt: {payload}"
-    )
+    assert (
+        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
+    ), f"'trace_id' missing or empty in trace receipt: {payload}"
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2109,6 +2132,24 @@ def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.Monkey
     stdout = result["stdout"]
     # The last line must be visible (line-299)
     assert "line-299" in stdout, f"tail not preserved for failing command; stdout tail:\n{stdout[-500:]}"
+
+
+def test_shell_falls_back_when_workspace_root_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-existent CLAUDE_WORKSPACE_ROOT must not hard-fail the shell tool.
+
+    A host path leaking into a container (e.g. via the environment) used to make
+    every cwd-less command raise FileNotFoundError from Popen -> MCP -32000.
+    The handler now falls back to the process cwd so the command still runs.
+    """
+    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+
+    missing = tmp_path / "does" / "not" / "exist"
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(missing))
+
+    result = _run_shell_tool("pwd")
+
+    assert result["exit_code"] == 0, result
+    assert result["stdout"].strip()
 
 
 def test_shell_timeout_terminates_child_process_group(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

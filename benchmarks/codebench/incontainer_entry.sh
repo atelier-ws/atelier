@@ -19,20 +19,39 @@ cd "$REPO" || { echo "no repo dir found" >&2; exit 3; }
 
 # Activate the project's conda env (SWE-bench images ship a `testbed` env) for
 # BOTH arms so shells run the project interpreter. Claude Code's Bash sources
-# .bashrc (env active); the Atelier shell tool's `bash -c` subprocesses do not,
-# so without this the atelier arm burns turns rediscovering the interpreter.
-# Activating identically for both keeps the comparison fair and matches
-# production, where claude is launched from the user's already-activated shell.
+# .bashrc (env active); the Atelier shell tool's `bash -c` subprocesses do NOT
+# source .bashrc -- but non-interactive bash reads $BASH_ENV before running a
+# -c command. So we (a) activate in this entry shell, which `claude` and the
+# Atelier MCP server inherit, and (b) point $BASH_ENV at an activation snippet
+# so every Atelier `bash -c` re-activates even if inheritance is lost. Without
+# this the atelier arm burns turns rediscovering the interpreter. Identical for
+# both arms keeps the comparison fair and matches production, where claude is
+# launched from the user's already-activated shell.
+_act=/tmp/codebench_activate.sh
+: >"$_act"
 for _cs in /opt/miniconda3/etc/profile.d/conda.sh /opt/conda/etc/profile.d/conda.sh; do
-  if [ -f "$_cs" ]; then . "$_cs"; conda activate testbed 2>/dev/null || true; break; fi
+  if [ -f "$_cs" ]; then
+    # Snippet is idempotent and cheap: re-activation is skipped once active.
+    printf '[ "$CONDA_DEFAULT_ENV" = testbed ] || { . %s; conda activate testbed 2>/dev/null || true; }\n' "$_cs" >"$_act"
+    . "$_cs"; conda activate testbed 2>/dev/null || true
+    break
+  fi
 done
+export BASH_ENV="$_act"
 
 ARM="${CODEBENCH_ARM:-baseline}"
 MODEL="${CODEBENCH_MODEL:-sonnet}"
 
 # Atelier arm: build the code index before the timed agent run (setup, not graded).
+# A failed/missing prewarm means the timed run pays a cold index build, so surface
+# it on stderr instead of being silently slow.
 if [ "$ARM" = "atelier" ]; then
-  atelier code index --repo-root "$REPO" >/tmp/atelier-index.log 2>&1 || true
+  if atelier code index --repo-root "$REPO" >/tmp/atelier-index.log 2>&1; then
+    echo "atelier code index: prewarm OK" >&2
+  else
+    echo "WARNING: atelier code index prewarm FAILED; timed run will pay cold-index cost:" >&2
+    tail -n 5 /tmp/atelier-index.log >&2 || true
+  fi
 fi
 
 prompt="$(cat /mnt/prompt.txt)"

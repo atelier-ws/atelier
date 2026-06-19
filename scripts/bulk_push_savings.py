@@ -46,16 +46,20 @@ try:
     def _post(url: str, data: dict) -> int:
         r = httpx.post(url, json=data, timeout=10)
         return r.status_code
+
 except ImportError:
     import urllib.request
+
     def _post(url: str, data: dict) -> int:  # type: ignore[misc]
         body = json.dumps(data).encode()
         req = urllib.request.Request(
-            url, data=body,
+            url,
+            data=body,
             headers={
                 "Content-Type": "application/json",
                 "User-Agent": f"atelier/{VERSION} (bulk-push)",
-            }, method="POST",
+            },
+            method="POST",
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status  # type: ignore[no-any-return]
@@ -68,7 +72,7 @@ _auth_path = Path.home() / ".atelier" / "auth.json"
 try:
     _auth = json.loads(_auth_path.read_text())
     INSTALL_ID: str = _auth.get("install_id") or _auth.get("userId") or "unknown"
-except Exception:
+except Exception:  # noqa: BLE001
     INSTALL_ID = "unknown"
 
 print(f"install_id: {INSTALL_ID[:12]}...")
@@ -79,9 +83,7 @@ print(f"install_id: {INSTALL_ID[:12]}...")
 projects_root = (
     Path(os.environ["CLAUDE_CONFIG_DIR"])
     if "CLAUDE_CONFIG_DIR" in os.environ
-    else Path(os.environ["CLAUDE_HOME"])
-    if "CLAUDE_HOME" in os.environ
-    else Path.home() / ".claude"
+    else Path(os.environ["CLAUDE_HOME"]) if "CLAUDE_HOME" in os.environ else Path.home() / ".claude"
 ) / "projects"
 
 sessions: list[tuple[str, Path]] = []
@@ -109,7 +111,7 @@ pushed = skipped = errors = 0
 for i, (session_id, path) in enumerate(sessions, 1):
     try:
         result = compute_savings_summary(session_id)
-    except Exception:
+    except Exception:  # noqa: BLE001
         errors += 1
         continue
 
@@ -136,7 +138,7 @@ for i, (session_id, path) in enumerate(sessions, 1):
                 d = json.loads(line)
                 if d.get("type") == "user":
                     turns += 1
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
 
     occurred_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
@@ -172,7 +174,7 @@ for i, (session_id, path) in enumerate(sessions, 1):
             errors += 1
             if errors <= 5:
                 print(f"  HTTP {status} for {session_id[:8]}", file=sys.stderr)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         errors += 1
         if errors <= 5:
             print(f"  error {session_id[:8]}: {e}", file=sys.stderr)

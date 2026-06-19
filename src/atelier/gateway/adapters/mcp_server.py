@@ -5121,18 +5121,17 @@ def _existing_test_contract_paths(
 
 def _compute_and_record_diffs(
     snapshots: dict[str, tuple[Path, bool, str | None]],
-) -> dict[str, str]:
-    """Compute unified diffs from *snapshots* vs current file content.
+) -> None:
+    """Record a unified diff of each changed file to the ledger (audit/undo).
 
-    Records each diff in the ledger and returns {display_path: diff_text} for
-    callers that want to surface the diff inline (eliminating a read-after-edit turn).
-    Only the first 30 lines of each diff are included in the return value to
-    keep response size bounded.
+    Computed inside the edit lock so a concurrent edit can't race the post-apply
+    read. Diffs are never surfaced inline to the caller: echoing old+new content
+    back into context costs cache-write now and cache-read on every later turn,
+    and the agent can read the file on demand if it needs to verify a change.
     """
     import difflib
 
     led = _get_ledger()
-    out: dict[str, str] = {}
     for path, (fp, existed, old_content) in snapshots.items():
         try:
             new_content = fp.read_text(encoding="utf-8") if fp.exists() else None
@@ -5145,26 +5144,13 @@ def _compute_and_record_diffs(
             continue
         old_lines = (old_content or "").splitlines(keepends=True)
         new_lines = (new_content or "").splitlines(keepends=True)
-        diff_lines = list(
-            difflib.unified_diff(
-                old_lines,
-                new_lines,
-                fromfile=f"a/{path}",
-                tofile=f"b/{path}",
-            )
+        diff_text = "".join(
+            difflib.unified_diff(old_lines, new_lines, fromfile=f"a/{path}", tofile=f"b/{path}")
         )
-        diff_text = "".join(diff_lines) if diff_lines else ""
         if diff_text:
             led.record_file_event(path=path, event="edit", diff=diff_text)
-            # Truncate for inline response: keep first 30 diff lines
-            truncated_lines = diff_lines[:30]
-            truncated = "".join(truncated_lines)
-            if len(diff_lines) > 30:
-                truncated += f"... ({len(diff_lines) - 30} more lines)\n"
-            out[path] = truncated
         else:
             led.record_file_event(path=path, event="edit")
-    return out
 
 
 def _edit_descriptor_family(edit: dict[str, Any]) -> str:
