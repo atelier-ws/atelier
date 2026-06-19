@@ -1,0 +1,8 @@
+task,baseline_arm,candidate_arm,baseline_runs,candidate_runs,baseline_judged_runs,candidate_judged_runs,baseline_correct_runs,candidate_correct_runs,baseline_avg_score,candidate_avg_score,correctness_delta,baseline_cost_usd,candidate_cost_usd,cost_savings_vs_baseline_pct,winner,baseline_judge_models,candidate_judge_models
+cg_vscode,baseline,atelier,5,5,5,5,5,5,0.97,1.0,0.03,5.1724,1.012,80.4,atelier,claude-sonnet-4-6,claude-sonnet-4-6
+cg_excalidraw,baseline,atelier,5,5,5,5,5,5,0.98,0.94,-0.04,5.6474,2.3682,58.1,atelier,claude-sonnet-4-6,claude-sonnet-4-6
+cg_django,baseline,atelier,5,5,5,4,5,4,1.0,1.0,0.0,1.9416,0.1758,90.9,atelier,claude-sonnet-4-6,claude-sonnet-4-6
+cg_tokio,baseline,atelier,5,5,5,5,5,5,0.94,0.98,0.04,3.5639,0.1836,94.8,atelier,claude-sonnet-4-6,claude-sonnet-4-6
+cg_okhttp,baseline,atelier,5,5,5,5,5,5,1.0,0.98,-0.02,0.7838,0.1577,79.9,atelier,claude-sonnet-4-6,claude-sonnet-4-6
+cg_gin,baseline,atelier,5,5,5,5,5,5,1.0,0.94,-0.06,1.0965,1.0182,7.1,baseline,claude-sonnet-4-6,claude-sonnet-4-6
+cg_alamofire,baseline,atelier,5,5,5,4,5,4,0.94,1.0,0.06,3.6517,1.9295,47.2,atelier,claude-sonnet-4-6,claude-sonnet-4-6

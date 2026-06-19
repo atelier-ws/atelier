@@ -145,6 +145,80 @@ TASKS: list[Task] = [
             'case "$(pwd)" in *_atelier_rep*) /home/pankaj/Projects/leanchain/atelier/.venv/bin/atelier code index --repo-root . || true ;; esac',
         ),
     ),
+    # --- original task1–8 (coding capability) ---
+    Task(
+        "task1",
+        "swift",
+        ("empty",),
+        1,
+        "task1_LRUFileCacheSPec",
+        setup_cmds=("swift package --version",),
+    ),
+    Task(
+        "task2",
+        "swift",
+        ("repo", "https://github.com/maquannene/Track", None),
+        2,
+        "task2_AddLoggingToCache",
+        setup_cmds=("swift package resolve",),
+    ),
+    Task(
+        "task3",
+        "rust",
+        ("repo", "https://github.com/serde-rs/json", "4f6dbfac79647d032b0997b5ab73022340c6dab7"),
+        2,
+        "task3_FixJsonParsingBug",
+        setup_cmds=("cargo fetch --quiet",),
+    ),
+    Task(
+        "task4",
+        "python",
+        ("workspace", "workspace"),
+        1,
+        "task4_WriteTestsForExportFlows",
+        setup_cmds=(
+            "uv venv .venv --python 3.13 --quiet",
+            "uv pip install --quiet mitmproxy pytest --python .venv/bin/python",
+        ),
+    ),
+    Task(
+        "task5",
+        "python",
+        ("workspace", "workspace"),
+        1,
+        "task5_RefactorBasedOnTests",
+        setup_cmds=(
+            "uv venv .venv --python 3.13 --quiet",
+            "uv pip install --quiet mitmproxy pytest --python .venv/bin/python",
+        ),
+    ),
+    Task(
+        "task6",
+        "typescript",
+        (
+            "repo",
+            "https://github.com/openclaw/openclaw",
+            "412811ec19c553a7c249f75d94a13a65b61ea2e6",
+        ),
+        3,
+        "task6_AddFrenchSupportToOpenClaw",
+        setup_cmds=("npm ci --prefer-offline --silent 2>/dev/null || npm install --silent",),
+    ),
+    Task(
+        "task7",
+        "rust",
+        ("repo", "https://github.com/kirby88/codex", "7a393668185da6710425698885731b9af28ca0e0"),
+        3,
+        "task7_FixCompileBugCodex",
+        setup_cmds=("cargo fetch --quiet 2>/dev/null || true",),
+    ),
+    Task(
+        "task8",
+        "rust",
+        ("workspace", "workspace"),
+        1,
+        "task8_RenameAcrossCallSites",
+    ),
 ]
 
 BY_ID = {t.id: t for t in TASKS}

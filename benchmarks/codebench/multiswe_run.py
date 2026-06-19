@@ -17,6 +17,8 @@ Example:
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import json
 import time
 import urllib.request
 from collections.abc import Callable
@@ -162,6 +164,27 @@ def _select_backend(args: argparse.Namespace) -> tuple[list[Any], GradeFn, str]:
     return list(multi), grade_multi, "multiswe"
 
 
+def _load_prior_results(out_dir: Path) -> dict[tuple[str, str, int], ArmResult]:
+    """Index an existing results.jsonl by (task, arm, rep) for --resume reuse.
+
+    Each row is ``asdict(ArmResult)`` so it round-trips back via ``ArmResult(**row)``
+    (extra/unknown keys are dropped defensively against schema drift).
+    """
+    path = out_dir / "results.jsonl"
+    if not path.exists():
+        return {}
+    names = {f.name for f in dataclasses.fields(ArmResult)}
+    prior: dict[tuple[str, str, int], ArmResult] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        row = json.loads(line)
+        res = ArmResult(**{k: v for k, v in row.items() if k in names})
+        prior[(res.task, res.arm, res.rep)] = res
+    return prior
+
+
 def run(args: argparse.Namespace) -> int:
     instances, grade_fn, grade_label = _select_backend(args)
     if not instances:
@@ -170,7 +193,10 @@ def run(args: argparse.Namespace) -> int:
     for inst in instances:
         _register_stub_task(inst)
 
-    out_dir = Path(args.out) if args.out else RESULTS_ROOT / f"multiswe-{time.strftime('%Y%m%d-%H%M%S')}"
+    # Resolve to absolute: out_dir feeds docker -v bind mounts (prompt.txt, flow)
+    # and the grader's predictions path; a relative path makes docker reject the
+    # mount ("invalid characters for a local volume name") and grading FileNotFound.
+    out_dir = (Path(args.out) if args.out else RESULTS_ROOT / f"multiswe-{time.strftime('%Y%m%d-%H%M%S')}").resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[run] {len(instances)} instance(s) x {len(args.arms)} arm(s) x {args.reps} rep(s)", flush=True)
     print(f"[run] results -> {out_dir}", flush=True)
@@ -179,7 +205,31 @@ def run(args: argparse.Namespace) -> int:
 
     agent_env = _load_benchmark_env()
     jobs = [(inst, arm, rep) for inst in instances for arm in args.arms for rep in range(1, args.reps + 1)]
+    # --resume: reuse a prior (task, arm, rep) result when its patch artifact is
+    # still present, so a re-run re-executes only the missing/stripped jobs (e.g.
+    # keep valid baseline runs, re-run atelier after a fix) without re-paying.
+    prior = _load_prior_results(out_dir) if getattr(args, "resume", False) else {}
     results: list[ArmResult] = []
+    pending: list[tuple[Any, str, int]] = []
+    for job in jobs:
+        inst, arm, rep = job
+        cached = prior.get((inst.instance_id, arm, rep))
+        if cached is not None and _patch_path(out_dir, inst, arm, rep).exists():
+            results.append(cached)
+            print(f"  -> {inst.instance_id}/{arm} rep{rep}: reused (resume)", flush=True)
+        else:
+            pending.append(job)
+    if prior:
+        # Carry forward prior rows outside this run's scope so a narrower resume
+        # (e.g. -a atelier only) never drops the rows it isn't re-running.
+        covered = {(i.instance_id, a, r) for (i, a, r) in jobs}
+        preserved = [res for key, res in prior.items() if key not in covered]
+        results.extend(preserved)
+        print(
+            f"[resume] reused {len(results) - len(preserved)} in-scope + carried {len(preserved)} "
+            f"out-of-scope prior result(s); running {len(pending)} job(s)",
+            flush=True,
+        )
 
     def _one(job: tuple[Any, str, int]) -> ArmResult:
         inst, arm, rep = job
@@ -195,7 +245,7 @@ def run(args: argparse.Namespace) -> int:
         )
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        futures = {pool.submit(_one, job): job for job in jobs}
+        futures = {pool.submit(_one, job): job for job in pending}
         for fut in as_completed(futures):
             inst, arm, rep = futures[fut]
             try:
@@ -276,6 +326,11 @@ def main() -> int:
     p.add_argument("--jobs", type=int, default=1, help="Parallel container runs")
     p.add_argument("--grade-workers", type=int, default=4, help="multi_swe_bench eval workers")
     p.add_argument("--no-grade", action="store_true", help="Skip Docker grading (cost/turns only)")
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Reuse existing results.jsonl rows whose patch artifact is present; run only the rest",
+    )
     p.add_argument("--out", default=None, help="Results dir")
     return run(p.parse_args())
 
