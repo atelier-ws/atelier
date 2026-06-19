@@ -335,9 +335,20 @@ if [[ "$ATELIER_NO_HOSTS" != "1" && -f "$BUNDLE_SH" ]]; then
     SETUP_ARGS=()
     [[ "$ATELIER_DRY_RUN" == "1" ]] && SETUP_ARGS+=(--dry-run)
     [[ "$ATELIER_NON_INTERACTIVE" == "1" ]] && SETUP_ARGS+=(--non-interactive)
-    ATELIER_INSTALL_DIR="$ATELIER_INSTALL_DIR" \
-    ATELIER_BIN_DIR="$ATELIER_BIN_DIR" \
-    bash "$BUNDLE_SH" "${SETUP_ARGS[@]+"${SETUP_ARGS[@]}"}"
+    # When piped from curl, bash reads install.sh from stdin (a pipe), so
+    # bundle.sh inherits that pipe as fd 0. `read -s` suppresses echo on fd 0
+    # rather than /dev/tty, so it fails silently and arrow keys echo as ^[[A.
+    # Redirect stdin from /dev/tty for bundle.sh so interactive menus get a
+    # real TTY as fd 0 and `read -s` works correctly.
+    if [[ ! -t 0 && -e /dev/tty ]]; then
+        ATELIER_INSTALL_DIR="$ATELIER_INSTALL_DIR" \
+        ATELIER_BIN_DIR="$ATELIER_BIN_DIR" \
+        bash "$BUNDLE_SH" "${SETUP_ARGS[@]+${SETUP_ARGS[@]}}" </dev/tty
+    else
+        ATELIER_INSTALL_DIR="$ATELIER_INSTALL_DIR" \
+        ATELIER_BIN_DIR="$ATELIER_BIN_DIR" \
+        bash "$BUNDLE_SH" "${SETUP_ARGS[@]+${SETUP_ARGS[@]}}"
+    fi
 elif [[ "$ATELIER_NO_HOSTS" == "1" ]]; then
     verbose "Skipping setup (ATELIER_NO_HOSTS=1)"
 else
