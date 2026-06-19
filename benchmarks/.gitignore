@@ -4,3 +4,6 @@ terminalbench/outputs/
 swe/outputs/
 swe/outputs_smoke/
 jobs/
+codebench/outputs/
+codebench/results/
+codebench/.tiktoken-cache
