@@ -8,10 +8,12 @@ import re
 import threading
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 
 import tiktoken
 from blake3 import blake3
 
+from atelier.core.capabilities.archival_recall.ann import ArchivalAnnIndex
 from atelier.core.capabilities.archival_recall.ranking import rank_archival_passages
 from atelier.core.foundation.memory_models import ArchivalPassage, ArchivalSource, MemoryRecall
 from atelier.infra.embeddings.base import Embedder
@@ -97,11 +99,24 @@ def _warn_window_saturated() -> None:
     )
 
 
+def _ann_persist_path(store: MemoryStore) -> Path | None:
+    """On-disk location for this store's persistent ANN graph (next to its db).
+
+    None for stores without a file path (non-SQLite backends) -- the ANN index
+    then stays in-process only.
+    """
+    db_path = getattr(store, "db_path", None)
+    if isinstance(db_path, Path):
+        return db_path.with_name(f"{db_path.stem}.ann.pkl")
+    return None
+
+
 class ArchivalRecallCapability:
     def __init__(self, store: MemoryStore, embedder: Embedder, *, redactor: Callable[[str], str]):
         self._store = store
         self._embedder = embedder
         self._redactor = redactor
+        self._ann_index = ArchivalAnnIndex(persist_path=_ann_persist_path(store))
 
     def archive(
         self,
@@ -185,6 +200,7 @@ class ArchivalRecallCapability:
             since=since,
             top_k=top_k,
             embedding_model=embedding_model,
+            ann_index=self._ann_index,
         )
         recall_query = clean_query
         if not ranked:
@@ -198,6 +214,7 @@ class ArchivalRecallCapability:
                     since=since,
                     top_k=top_k,
                     embedding_model=embedding_model,
+                    ann_index=self._ann_index,
                 )
                 recall_query = widened_query
         selected = [item.passage for item in ranked]

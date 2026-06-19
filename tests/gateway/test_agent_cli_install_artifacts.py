@@ -432,9 +432,9 @@ def test_managed_context_helper_shared_across_host_installs() -> None:
         "install_opencode.sh",
     ]:
         content = (SCRIPTS / script_name).read_text()
-        assert 'source "${SCRIPT_DIR}/lib/managed_context.sh"' in content, (
-            f"{script_name} must use the shared managed context helper"
-        )
+        assert (
+            'source "${SCRIPT_DIR}/lib/managed_context.sh"' in content
+        ), f"{script_name} must use the shared managed context helper"
 
 
 def test_local_sh_bootstraps_atelier_before_host_installers() -> None:
@@ -547,9 +547,9 @@ def test_new_claude_plugin_json_has_no_commands_key() -> None:
     if not plugin_json.exists():
         pytest.skip("integrations/claude/plugin/.claude-plugin/plugin.json not found")
     data = json.loads(plugin_json.read_text())
-    assert "commands" not in data, (
-        "plugin.json must not have 'commands' key — use 'skills' for /atelier:name namespacing"
-    )
+    assert (
+        "commands" not in data
+    ), "plugin.json must not have 'commands' key — use 'skills' for /atelier:name namespacing"
 
 
 def test_new_claude_plugin_json_author_is_object() -> None:
@@ -558,9 +558,9 @@ def test_new_claude_plugin_json_author_is_object() -> None:
     if not plugin_json.exists():
         pytest.skip("integrations/claude/plugin/.claude-plugin/plugin.json not found")
     data = json.loads(plugin_json.read_text())
-    assert isinstance(data.get("author"), dict), (
-        f'plugin.json \'author\' must be an object like {{"name": "Beseam"}}, got: {data.get("author")!r}'
-    )
+    assert isinstance(
+        data.get("author"), dict
+    ), f'plugin.json \'author\' must be an object like {{"name": "Beseam"}}, got: {data.get("author")!r}'
 
 
 def test_new_claude_plugin_json_no_manifest_keys() -> None:
@@ -611,9 +611,9 @@ def test_new_claude_plugin_has_workflows() -> None:
     workflows_dir = CLAUDE_PLUGIN_NEW / "workflows"
     assert workflows_dir.is_dir(), "integrations/claude/plugin/workflows/ directory must exist"
     assert (workflows_dir / "code-audit.js").exists(), "integrations/claude/plugin/workflows/code-audit.js must exist"
-    assert (workflows_dir / "gate-benchmark.js").exists(), (
-        "integrations/claude/plugin/workflows/gate-benchmark.js must exist"
-    )
+    assert (
+        workflows_dir / "gate-benchmark.js"
+    ).exists(), "integrations/claude/plugin/workflows/gate-benchmark.js must exist"
 
 
 def test_new_claude_plugin_workflow_readme_documents_discovery_contract() -> None:
@@ -670,9 +670,9 @@ def test_new_claude_plugin_settings_uses_supported_keys() -> None:
     allowed = {"agent", "subagentStatusLine"}
     extra = set(data.keys()) - allowed
     assert not extra, f"settings.json contains unsupported keys: {extra}. Only {allowed} are honored by Claude Code."
-    assert data.get("agent") == "atelier:code", (
-        "settings.json must set `agent` to 'atelier:code' so it appears as the default agent for the atelier plugin."
-    )
+    assert (
+        data.get("agent") == "atelier:code"
+    ), "settings.json must set `agent` to 'atelier:code' so it appears as the default agent for the atelier plugin."
 
 
 def test_new_claude_plugin_subagent_statusline_wired() -> None:
@@ -684,17 +684,17 @@ def test_new_claude_plugin_subagent_statusline_wired() -> None:
     sl = data.get("subagentStatusLine")
     assert isinstance(sl, dict), "subagentStatusLine must be a dict"
     assert sl.get("type") == "command", "subagentStatusLine.type must be 'command'"
-    assert "${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh" in sl.get("command", ""), (
-        "subagentStatusLine.command must reference ${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh"
-    )
+    assert "${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh" in sl.get(
+        "command", ""
+    ), "subagentStatusLine.command must reference ${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh"
 
 
 def test_new_claude_plugin_statusline_script_exists_and_executable() -> None:
     """scripts/statusline.sh must exist and be executable."""
     script = CLAUDE_PLUGIN_NEW / "scripts" / "statusline.sh"
-    assert script.exists(), (
-        "integrations/claude/plugin/scripts/statusline.sh must exist — wired by settings.json subagentStatusLine."
-    )
+    assert (
+        script.exists()
+    ), "integrations/claude/plugin/scripts/statusline.sh must exist — wired by settings.json subagentStatusLine."
     assert os.access(script, os.X_OK), f"{script} must be executable (chmod +x)"
 
 
@@ -736,9 +736,9 @@ def test_root_marketplace_json_source_points_to_new_plugin() -> None:
     plugins = data.get("plugins", [])
     assert len(plugins) >= 1, "root marketplace.json must declare at least one plugin"
     source = plugins[0].get("source", "")
-    assert "integrations/claude/plugin" in source or source == "./", (
-        f"root marketplace.json source must point to integrations/claude/plugin or './', got: {source}"
-    )
+    assert (
+        "integrations/claude/plugin" in source or source == "./"
+    ), f"root marketplace.json source must point to integrations/claude/plugin or './', got: {source}"
 
 
 # ---------------------------------------------------------------------------

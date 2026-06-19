@@ -22,8 +22,8 @@ _REPO_ROOT = _Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from atelier.gateway.cli import cli
-from benchmarks.mini.schema import MiniEvalReport
+from atelier.gateway.cli import cli  # noqa: E402
+from benchmarks.mini.schema import MiniEvalReport  # noqa: E402
 
 _API_KEY_VARS = (
     "ANTHROPIC_API_KEY",
