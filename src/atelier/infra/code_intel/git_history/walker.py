@@ -199,7 +199,7 @@ def walk_history(
     # the previously-indexed SHA; in both modes we cap at ``max_commits`` (most
     # recent first) so the walk stays O(cap) rather than O(history).
     max_commits = _resolve_history_max_commits() if limit is None else max(0, limit)
-    commits = []
+    commits: list[Any] = []
     total_in_repo = 0  # count beyond the limit without materialising every commit
     _COUNT_CAP = 10_000  # safety cap for enormous repos
     for commit in repo.walk(head.id, pygit2.enums.SortMode.TOPOLOGICAL):
