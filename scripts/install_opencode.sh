@@ -356,7 +356,14 @@ else
     vfail "opencode Atelier prompt nudge plugin missing from $PLUGIN_DEST_DIR"
 fi
 
-AGENT_FILE="${AGENT_DEST_DIR}/atelier.md"
+# Global mode installs a single primary agent as atelier.md; workspace mode
+# projects per-role files (atelier.<role>.md) with atelier.code.md as the
+# primary, so verify the name the writer actually produces for this scope.
+if [ "$INSTALL_SCOPE" = "workspace" ]; then
+    AGENT_FILE="${AGENT_DEST_DIR}/atelier.code.md"
+else
+    AGENT_FILE="${AGENT_DEST_DIR}/atelier.md"
+fi
 if [ -f "$AGENT_FILE" ]; then
     vpass "opencode atelier agent installed: $AGENT_FILE"
 else
