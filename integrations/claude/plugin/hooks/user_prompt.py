@@ -185,6 +185,13 @@ def _persist_last_user_prompt(prompt: str) -> None:
 # window: we nudge on absolute occupancy, not just a percentage. Each nudge
 # carries a real per-turn cache-read cost so the user sees what the stale
 # context is actually costing on every message.
+# Harness-injected retry prompt: Claude Code re-injects this when the model
+# produces no tool use and no meaningful output ("No response requested.").
+# After _NOOP_CAP consecutive occurrences the session is stuck in an infinite
+# loop burning API quota; block the prompt to terminate cleanly.
+_NOOP_PROMPT = "Continue from where you left off."
+_NOOP_CAP = 3  # block after this many consecutive no-op retries
+
 _COMPACT_MIN_TOKENS = 100_000  # never nudge below this live occupancy
 _DRIFT_MIN_TOKENS = 25_000  # a topic switch can nudge a bit earlier than size alone
 # (occupancy_floor, prompts_between_nudges): the more is loaded, the more often
@@ -502,6 +509,32 @@ def _credit_pending_compaction(state: dict[str, Any], occupancy: int, model: str
         _clear_precompact(state)  # post-compact size never resolved; stop trying
 
 
+def _check_noop_cap(prompt: str) -> bool:
+    """Return True when the harness no-op retry loop should be broken.
+
+    Tracks consecutive occurrences of the harness-injected continuation prompt
+    in session state under ``noop_continue_count``.  Returns True (caller
+    should block + exit 2) once ``_NOOP_CAP`` consecutive occurrences have
+    been seen.  Always resets the counter for any other prompt so a real user
+    turn restarts the count.  Fail-open: returns False on any state error so
+    the session is never incorrectly terminated.
+    """
+    try:
+        state = _read_session_state()
+        if prompt.strip() == _NOOP_PROMPT:
+            count = int(state.get("noop_continue_count", 0) or 0) + 1
+            state["noop_continue_count"] = count
+            _write_session_state(state)
+            return count >= _NOOP_CAP
+        else:
+            if state.get("noop_continue_count"):
+                state["noop_continue_count"] = 0
+                _write_session_state(state)
+        return False
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _maybe_emit_compaction_advice(prompt: str, transcript_path: str, last_user_prompt: str) -> str | None:
     """Decide whether to nudge for compaction. Fail-open.
 
@@ -603,6 +636,24 @@ def main() -> int:
     if not prompt.strip():
         return 0
     stored_prompt = prompt[:_MAX_PROMPT_BYTES]
+
+    # Infinite no-op retry guard: the Claude Code harness re-injects the
+    # continuation prompt when the model emits "No response requested." without
+    # appending the response to history, so the same 35-message context is
+    # retried forever.  Block after _NOOP_CAP consecutive occurrences so the
+    # session exits cleanly instead of looping until wall-clock timeout.
+    if _check_noop_cap(prompt):
+        sys.stdout.write(
+            json.dumps(
+                {
+                    "decision": "block",
+                    "reason": f"Aborting: {_NOOP_CAP} consecutive no-op retry prompts; model is stuck.",
+                }
+            )
+            + "\n"
+        )
+        sys.stdout.flush()
+        return 2
 
     # Context-window check — the compaction nudge is UI-only (systemMessage):
     # it is advice for the USER to run /compact, and injecting it into the

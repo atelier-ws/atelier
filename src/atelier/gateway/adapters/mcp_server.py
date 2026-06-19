@@ -1075,7 +1075,15 @@ def _mcp_session_file() -> Path:
     return _atelier_root() / "mcp_sessions" / f"{_MCP_ID}.json"
 
 
-def _workspace_session_state_file() -> Path:
+def _workspace_bridge_file() -> Path:
+    """Workspace-shared identity relay (``session_id`` + ``model``).
+
+    Written by the SessionStart hook. This is the ONLY per-workspace shared
+    slot; it carries just the identity bridge used as a resolution fallback.
+    All per-session *runtime* state lives under ``sessions/<id>/`` -- see
+    :func:`_workspace_session_state_file` -- so concurrent sessions in one
+    workspace never clobber each other's workflow/phase/credit state.
+    """
     import hashlib
 
     ws = str(Path(os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()).resolve())
@@ -1083,10 +1091,33 @@ def _workspace_session_state_file() -> Path:
     return _atelier_root() / "workspaces" / ws_hash / "session_state.json"
 
 
+def _workspace_session_state_file() -> Path:
+    """Per-session runtime state (workflow runtime, ``session_phase``, credit
+    hints), keyed by the resolved live session id.
+
+    Previously a single ``workspaces/<hash>/session_state.json`` slot that every
+    concurrent session in the workspace overwrote -- so two sessions running
+    workflows in one repo corrupted each other's run state. Keying by the live
+    session id isolates them. Falls back to the workspace bridge file before a
+    session id is known (early startup / hostless callers).
+    """
+    sid = _resolve_live_session_id()
+    if sid:
+        return _atelier_root() / "sessions" / sid / "runtime_state.json"
+    return _workspace_bridge_file()
+
+
 def _read_workspace_session_bridge() -> tuple[str, str]:
-    """Read `(claude_session_id, model)` from workspace session_state.json."""
+    """Read ``(claude_session_id, model)`` from the workspace identity relay.
+
+    Reads the workspace bridge file directly (not the now-per-session runtime
+    state), since this is itself a *fallback* source of the live session id.
+    """
     try:
-        data = _read_workspace_session_state()
+        path = _workspace_bridge_file()
+        if not path.is_file():
+            return "", ""
+        data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             return "", ""
         sid = str(data.get("session_id") or "").strip()
@@ -1097,23 +1128,55 @@ def _read_workspace_session_bridge() -> tuple[str, str]:
         return "", ""
 
 
-def _claude_session_id() -> str:
-    """Session UUID for *this* MCP server process.
+# Window-anchored live-session resolution. Cached on the SessionStart registry's
+# mtime so the common path (no SessionStart since last call) is a single stat;
+# re-resolves (re-walking /proc + re-reading the registry) only when SessionStart
+# appended a row -- i.e. on startup / resume / clear / compact.
+_WINDOW_SID_CACHE: tuple[float, str] | None = None
 
-    Claude Code sets ``CLAUDE_CODE_SESSION_ID`` in every MCP server's
-    environment at launch, so it identifies the owning session even when
-    several sessions run concurrently in one workspace. The workspace bridge
-    (``workspaces/<hash>/session_state.json``) is a single shared slot the most
-    recent SessionStart hook overwrites - keying per-call savings off it
-    misattributes them to whichever sibling session last started. Prefer the
-    per-process env var; fall back to the bridge only when the host does not
-    set it. Empty when neither exists (non-Claude hosts).
+
+def _workspace_ws_hash() -> str:
+    from atelier.core.foundation.session_window import workspace_hash
+
+    ws = os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()
+    return workspace_hash(ws)
+
+
+def _resolve_live_session_id() -> str:
+    """Live session id for this MCP server's window.
+
+    Anchors to the ``claude`` window process (stable across ``/clear``, unique
+    per window) via the SessionStart registry, falling back to the launch env
+    var then MRU. Replaces the old env-first/bridge-first split so a long-lived
+    server tracks the live session across ``/clear`` and never adopts a sibling
+    session's id from the shared workspace bridge.
     """
+    global _WINDOW_SID_CACHE
+    from atelier.core.foundation.session_window import registry_path, resolve_window_session_id
+
+    root = _atelier_root()
+    ws_hash = _workspace_ws_hash()
+    try:
+        mtime = registry_path(root, ws_hash).stat().st_mtime
+    except OSError:
+        mtime = 0.0
+    cached = _WINDOW_SID_CACHE
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
     env_sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
-    if env_sid:
-        return env_sid
-    bridge_sid, _ = _read_workspace_session_bridge()
-    return bridge_sid
+    sid = resolve_window_session_id(root, ws_hash, env_session_id=env_sid)
+    _WINDOW_SID_CACHE = (mtime, sid)
+    return sid
+
+
+def _claude_session_id() -> str:
+    """Live session UUID for *this* MCP server process's window.
+
+    Resolved by :func:`_resolve_live_session_id`, which anchors to the window
+    process so it stays correct across ``/clear`` and never adopts a sibling
+    session's id from the shared workspace bridge. Empty for non-Claude hosts.
+    """
+    return _resolve_live_session_id()
 
 
 def _read_workspace_session_state() -> dict[str, Any]:
@@ -2306,22 +2369,15 @@ def _get_claude_session_id() -> str:
     Falls back to the product session UUID if not yet populated.
     """
     global _cached_claude_session_id, _cached_mcp_model
-    if _cached_claude_session_id:
-        return _cached_claude_session_id
 
-    # CLAUDE_CODE_SESSION_ID is set per MCP process by Claude Code, so it is the
-    # authoritative session identity even with concurrent sessions in one
-    # workspace. Prefer it over the shared workspace bridge.
-    env_sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
-    if env_sid:
-        _cached_claude_session_id = env_sid
-        return env_sid
-
-    sid, model = _read_workspace_session_bridge()
+    # Window-anchored live id: correct across /clear and immune to sibling
+    # sessions sharing the workspace bridge (resolver is mtime-cached).
+    sid = _resolve_live_session_id()
     if sid:
         _cached_claude_session_id = sid
-        _cached_mcp_model = model
         return sid
+    if _cached_claude_session_id:
+        return _cached_claude_session_id
 
     try:
         f = _mcp_session_file()
@@ -2390,9 +2446,10 @@ def _get_host_session_sidecar_path() -> Path:
     workspaces -> distinct bridges) and strictly less harmful than env-first,
     which reported zero savings for every session after the first /clear.
     """
-    # 1. Claude: prefer the live bridge session; fall back to the launch env var.
-    bridge_sid, _ = _read_workspace_session_bridge()
-    sid = bridge_sid or _claude_session_id()
+    # 1. Claude: window-anchored live session id -- the SAME resolver traces use,
+    # so savings and traces always land under one session even across /clear and
+    # with concurrent sessions sharing the workspace.
+    sid = _resolve_live_session_id()
     if sid:
         return _atelier_root() / "sessions" / sid / "savings.jsonl"
 
@@ -10075,7 +10132,8 @@ def serve() -> None:
         max_workers=_mcp_heavy_max_workers(),
         thread_name_prefix="atelier-heavy",
     )
-    try:
+
+    def _stdin_reader() -> None:
         for line in sys.stdin:
             line = line.strip()
             if not line:
@@ -10092,6 +10150,11 @@ def serve() -> None:
                 continue
             executor = heavy_executor if _is_heavy_request(req) else light_executor
             executor.submit(_handle_and_write, req)
+
+    reader = threading.Thread(target=_stdin_reader, daemon=True, name="mcp-stdin-reader")
+    reader.start()
+    try:
+        reader.join()
     finally:
         light_executor.shutdown(wait=True, cancel_futures=False)
         heavy_executor.shutdown(wait=True, cancel_futures=False)
