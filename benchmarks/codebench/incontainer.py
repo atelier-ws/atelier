@@ -15,7 +15,9 @@ That is the vanilla-vs-Atelier isolation, same model, same task.
 from __future__ import annotations
 
 import contextlib
+import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Protocol
@@ -40,6 +42,12 @@ class RunnableInstance(Protocol):
 
 
 ENTRY_SCRIPT = Path(__file__).parent / "incontainer_entry.sh"
+# Pre-warmed tiktoken cache bind-mounted into the atelier container. The Atelier
+# MCP server loads cl100k_base at import (repo_map.budget); without a warmed
+# cache it downloads from openaipublic.blob, which dies under the benchmark proxy
+# (mitm CA absent from Python's trust store) and crashes the server -> zero
+# Atelier tools reach the agent. Warmed by _ensure_tiktoken_cache().
+TIKTOKEN_CACHE_HOST = Path(__file__).parent / ".tiktoken-cache"
 OVERLAY_NAMESPACE = "codebench-overlay"
 _DIFF_BEGIN = "<<<CODEBENCH_DIFF_BEGIN>>>"
 _DIFF_END = "<<<CODEBENCH_DIFF_END>>>"
@@ -73,6 +81,29 @@ ATELIER_SKIP_MYPYC=1 UV_TOOL_BIN_DIR=/usr/local/bin /usr/local/bin/uv tool insta
 
 def _run(cmd: list[str], *, timeout: float | None = None, capture: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, capture_output=capture, text=True, timeout=timeout, check=False)
+
+
+def _ensure_tiktoken_cache() -> None:
+    """Warm the bind-mounted tiktoken cache (idempotent; a hit is a no-op).
+
+    The in-container Atelier MCP server loads cl100k_base at import; with this
+    cache present it never reaches the network, which would otherwise crash the
+    server under the benchmark proxy. Warms with the atelier venv (which carries
+    tiktoken) so a fresh clone / CI run can't silently regress.
+    """
+    if TIKTOKEN_CACHE_HOST.exists() and any(TIKTOKEN_CACHE_HOST.iterdir()):
+        return
+    TIKTOKEN_CACHE_HOST.mkdir(parents=True, exist_ok=True)
+    venv_py = REPO_ROOT / ".venv" / "bin" / "python3"
+    py = str(venv_py) if venv_py.exists() else sys.executable
+    subprocess.run(
+        [py, "-c", "import tiktoken; tiktoken.get_encoding('cl100k_base')"],
+        env={**os.environ, "TIKTOKEN_CACHE_DIR": str(TIKTOKEN_CACHE_HOST)},
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
 
 
 def image_exists(tag: str) -> bool:
@@ -207,6 +238,7 @@ def _docker_run_cmd(
     ]
     if arm == "atelier":
         cmd += ["-v", f"{ATELIER_CLAUDE_PLUGIN_ROOT}:/mnt/plugin:ro"]
+        cmd += ["-v", f"{TIKTOKEN_CACHE_HOST}:/opt/tiktoken-cache:ro"]
     env: dict[str, str] = {
         "IS_SANDBOX": "1",
         "NODE_EXTRA_CA_CERTS": "/mnt/mitm.pem",
@@ -226,13 +258,9 @@ def _docker_run_cmd(
     if agent:
         env["CODEBENCH_AGENT"] = agent
     if arm == "atelier":
-        # Atelier exposes many MCP tools and Claude Code's tool-search defers
-        # some of them -- notably `shell` (command execution is deferred like
-        # built-in Bash, even with the server's alwaysLoad). The agent then
-        # burns turns hunting for a command runner via ToolSearch. Disable
-        # deferral for this arm so the full atelier surface (incl. shell) is
-        # loaded up front, matching baseline's always-available Bash.
-        env["ENABLE_TOOL_SEARCH"] = "false"
+        # Point tiktoken at the bind-mounted pre-warmed cache so the MCP server
+        # never reaches the network at import (see TIKTOKEN_CACHE_HOST).
+        env["TIKTOKEN_CACHE_DIR"] = "/opt/tiktoken-cache"
     env.update(agent_env)
     for key, value in env.items():
         cmd += ["-e", f"{key}={value}"]
@@ -258,6 +286,8 @@ def run_in_container(
     ``...flow`` (wire capture) under *out_dir*; the grader reads the patch.
     """
     agent_env = agent_env or {}
+    if arm == "atelier":
+        _ensure_tiktoken_cache()
     overlay = overlay or ensure_overlay(instance.image, atelier=(arm == "atelier"))
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

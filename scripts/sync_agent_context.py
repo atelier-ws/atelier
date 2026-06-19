@@ -336,7 +336,7 @@ def _copilot_native_tools(role_id: str) -> list[str]:
         "search/usages",
         "vscode/vscodeAPI",
     ]
-    if role_id in {"code", "execute", "solve"}:
+    if role_id in {"code", "execute", "solve", "auto", "bare"}:
         base[1:1] = [
             "changes",
             "edit/editFiles",
@@ -701,7 +701,8 @@ def build_outputs() -> dict[Path, str]:
     outputs = {
         ROOT / "AGENTS.md": render_project_entrypoint(ROOT / "AGENTS.md", host="codex"),
         ROOT / ".github/copilot-instructions.md": render_copilot_workspace(ROOT / ".github/copilot-instructions.md"),
-        ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_user_surface(
+        ROOT
+        / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md": render_copilot_user_surface(
             ROOT / "integrations/copilot/COPILOT_INSTRUCTIONS.atelier.md"
         ),
         ROOT / "integrations/cursor/rules/coding-guidelines.mdc": render_cursor_coding_rules(),
