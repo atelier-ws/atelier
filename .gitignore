@@ -316,7 +316,9 @@ exports/
 .mcp-vector-search/
 # CocoIndex Code (ccc)
 /.cocoindex_code/
-/reports/
+/reports/*.md
+/reports/benchmark/
+/reports/**/*.flow
 .eval
 /installer/
 dist/

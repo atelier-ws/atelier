@@ -15,35 +15,43 @@ asks to confirm before spending anything.
 TRIGGER: "benchmark atelier", "atelier vs vanilla", "how much does atelier
 save", "is atelier worth it", or `/benchmark`.
 
-## 1. Gather inputs — BE BRIEF (one short message)
+## 1. Gather inputs
 
-Ask only for what isn't already given, in a single message; do NOT re-explain
-the benchmark:
-
-1. **Repo path** — the git repo to benchmark against (default: current dir).
-2. **Prompts** — 1 to 10 real coding prompts to run on that repo (e.g. "add a
-   docstring to the main entry point", "write a unit test for X").
-3. **Model** — default `sonnet`. Change only if the user names one (e.g. `opus`).
-4. **Setup** (optional) — any commands needed before the agent runs in the
-   copied workspace (e.g. `npm ci`, `uv sync`).
+- **Repo**: always the current working directory. Never ask.
+- **Model**: inherit from the current session model. Never ask.
+- **Setup**: omit `--setup` entirely. The benchmark runner handles workspace setup.
+- **Prompts**: the only thing to ask. Use `AskUserQuestion` with a single question:
+  `"What coding tasks should I benchmark? (one per line)"` — free-text input.
 
 ## 2. Run the local benchmark
 
+**Always run in two phases — never pass the CLI's interactive confirmation prompt
+through to the terminal (the Stop hook will intercept it).**
+
+**Phase A — estimate only:**
 ```bash
-atelier benchmark local --repo <path> \
+uv run atelier benchmark local --repo . \
   --prompt "<prompt 1>" [--prompt "<prompt 2>" ...] \
-  --model <model> [--setup "<cmd>" ...]
+  --estimate-only
 ```
 
-(Use `uv run atelier benchmark ...` if the `atelier` binary isn't on PATH.)
+Relay the printed estimate to the user verbatim, then use `AskUserQuestion` to
+ask: **"The estimate above shows $X for N runs. Proceed and spend real tokens?"**
+with options **Yes, proceed** / **No, cancel**. Honor a declined confirmation —
+stop here and tell the user they can re-run `/benchmark` when ready.
 
-The command first prints a labeled **cost estimate** (per-run and total, with a
-range), then asks `Proceed and spend real tokens?`. Add `--estimate-only` to
-stop after the estimate without spending. Each prompt runs for **both arms**
-(vanilla baseline and Atelier), so real spend is roughly `prompts x 2 x reps`
-runs. The repo is copied per run and never mutated. Spend uses **provider API
-credentials** (e.g. `ANTHROPIC_API_KEY`, or a `--provider` preset), not a
-Claude subscription.
+**Phase B — real run (only if confirmed):**
+```bash
+uv run atelier benchmark local --repo . \
+  --prompt "<prompt 1>" [--prompt "<prompt 2>" ...] \
+  -y
+```
+
+Pass `--yes` (`-y`) to skip the CLI's built-in prompt since the user already confirmed via
+`AskUserQuestion`. Each prompt runs for **both arms** (vanilla baseline and
+Atelier), so real spend is roughly `prompts × 2 × reps` runs. The repo is
+copied per run and never mutated. Spend uses **provider API credentials**
+(e.g. `ANTHROPIC_API_KEY`, or a `--provider` preset), not a Claude subscription.
 
 ## 3. Relay + interpret
 
