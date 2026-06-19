@@ -1068,14 +1068,20 @@ def compute_savings_summary(
 
 
 _STATUS_TIPS: tuple[str, ...] = (
-    "Try `atelier savings` to see tokens, time, and $ saved",
-    "Use `sql` to explore your schema without reading SQL files",
-    "Batch reads: `read(files=[...])` — one call, many files",
-    "`grep` content-mode finds and reads code in one step",
-    "Delegate scans to `atelier:explore` — cheaper model, fewer tokens",
-    "Use the `memory` tool to recall past sessions and decisions",
-    "`atelier:bare` strips `Workflow` + `ScheduleWakeup` — saves ~6k tokens per request vs auto",
-    "Use `atelier:auto` for autonomous runs — no plan gates, no prompts",
+    "`/atelier:explore` — investigate code read-only with a cheaper sub-model",
+    "`/atelier:plan` — produce a concrete plan before coding; skip wrong-direction work",
+    "`/atelier:review` — adversarial code review; finds what is wrong, not just what was done",
+    "`/atelier:research` — fetch and synthesize web sources with full citations",
+    "`/atelier:solve` — own a concrete task end-to-end autonomously",
+    "`/atelier:execute` — apply an accepted plan with surgical, minimal edits",
+    "`/atelier:auto` — autonomous runs; no plan gates, no prompts",
+    "`/atelier:bare` — strips `Workflow` + `ScheduleWakeup`; saves ~6k tokens vs auto",
+    "`/atelier:knowledge` — view or curate the review knowledge base",
+    "`/atelier:settings` — change plugin settings in plain English",
+    "`/atelier:ux-review` — verify implemented UI against design gates in a real browser",
+    "`/atelier:orchestrate` — choose subagent vs isolated execution for a single run",
+    "`/atelier:swarms` — launch multi-worktree swarm runs",
+    "`/atelier:benchmark` — benchmark Atelier vs vanilla Claude on your own repo",
 )
 
 

@@ -484,10 +484,10 @@ class SemanticFileMemoryCapability:
         language = self._language_for(file_path)
         effective_loc = self._effective_loc(source, language)
 
+        cache_hit = self._index.get(file_path) is not None
         # summarize_file does its own unbounded read_text; skip it when the
         # source was capped so an oversized/special file never gets read whole
         # through the cache-miss path.
-        cache_hit = self._index.get(file_path) is not None
         if not cache_hit and not truncated:
             self.summarize_file(file_path, cache_enabled=True)
 
@@ -811,7 +811,7 @@ class SemanticFileMemoryCapability:
 
         # Find linked test files
         test_files = self._find_test_files(file_path)
-        git_last_commit, git_last_author_date = self._git_metadata(file_path)
+        git_last_commit, git_last_author_date = "", ""  # skip live git calls; populate via pre-warm only
 
         payload: dict[str, Any] = {
             "path": str(file_path),

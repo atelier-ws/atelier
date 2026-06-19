@@ -1,19 +1,25 @@
+<!-- cspell:ignore Alamofire Excalidraw ast-grep codegraph ctags django jcodemunch nohit okhttp scip serena tokio vscode zoekt -->
+
+<div align="center">
+
 # Atelier
 
-<!-- cspell:ignore Alamofire Excalidraw ast-grep codegraph ctags django jcodemunch nohit okhttp scip serena tokio vscode zoekt -->
+### The complete runtime for coding agents
+
+**72% cheaper · 74% fewer tokens · 71% faster**
+
+### [Documentation →](https://atelier.ws)
 
 [![License](https://img.shields.io/github/license/atelier-ws/atelier?style=for-the-badge)](https://github.com/atelier-ws/atelier/blob/main/LICENSE)
 [![Tests](https://img.shields.io/github/actions/workflow/status/atelier-ws/atelier/tests.yml?style=for-the-badge&label=tests)](https://github.com/atelier-ws/atelier/actions/workflows/tests.yml)
 [![Latest release](https://img.shields.io/github/v/release/atelier-ws/atelier?style=for-the-badge)](https://github.com/atelier-ws/atelier/releases)
 [![Total downloads](https://img.shields.io/github/downloads/atelier-ws/atelier/total?style=for-the-badge)](https://github.com/atelier-ws/atelier/releases)
 
-Local-first MCP tools, agents, and skills that help coding agents spend less time rediscovering your repo.
+[![Claude Code](https://img.shields.io/badge/Claude_Code-supported-CF6D3F.svg)](https://claude.ai/code)
+[![Codex](https://img.shields.io/badge/Codex-supported-10A37F.svg)](https://openai.com/codex)
+[![opencode](https://img.shields.io/badge/opencode-supported-7C3AED.svg)](https://opencode.ai)
 
-> Claude Code: ~52% cheaper · 79.8% fewer tokens · 80.9% fewer tool calls
-
----
-
-<div align="center">
+<br/>
 
 **Live savings across all Atelier sessions** &nbsp;·&nbsp; updates on every session end
 
@@ -25,9 +31,26 @@ Local-first MCP tools, agents, and skills that help coding agents spend less tim
 
 ---
 
-Tags: `Claude Code` · `Codex` · `opencode`
+## Get Started
 
-## Why it works?
+### 1. Install
+
+```bash
+curl -fsSL https://install.atelier.ws | bash
+```
+
+### 2. Initialize your project
+
+```bash
+cd your-project
+atelier init
+```
+
+<sub>Already installed? Run `atelier update` to update in place.</sub>
+
+---
+
+## Why Atelier?
 
 - **Grounded code intelligence:** search, file reads, exact symbols, callers, callees, usages, and outlines.
 - **Safer agent edits:** deterministic edit tools plus validation-friendly shell access.
@@ -35,63 +58,64 @@ Tags: `Claude Code` · `Codex` · `opencode`
 - **Host-ready packaging:** MCP configs, agents, and skills for popular coding agents.
 - **Cost-aware workflow:** benchmark and savings reports from checked-in artifacts.
 
-## Quick Start
-
-```bash
-curl -fsSL https://install.atelier.ws | bash
-atelier init
-```
-
-Update an existing install:
-
-```bash
-atelier update
-```
+---
 
 ## MCP Tools
 
-| Tool                             | Use                                                  |
-| -------------------------------- | ---------------------------------------------------- |
-| `search` / `grep`                | Find code and docs without broad raw scans.          |
-| `read`                           | Budgeted file reads by outline, range, or full file. |
-| `node`                           | Exact source for a symbol.                           |
-| `callers` / `callees` / `usages` | Indexed code relationships.                          |
-| `edit`                           | Deterministic file edits.                            |
-| `memory`                         | Local memory and recall.                             |
-| `shell`                          | Compact command execution when needed.               |
+| Tool | Use |
+| ---- | --- |
+| `search` | Semantic + keyword code search across the repo. |
+| `grep` | Regex / glob / type-filtered search with token-budgeted output. |
+| `read` | Budgeted file reads by outline, range, or full file. |
+| `node` | Exact source for a named symbol. |
+| `explore` | Directory tree and file listing. |
+| `callers` | Find all call sites of a symbol. |
+| `callees` | Find all symbols called by a function. |
+| `usages` | All references to a symbol across the repo. |
+| `codemod` | Structured, pattern-based code transforms. |
+| `edit` | Deterministic file edits with optional verify gate. |
+| `shell` | Compact command execution when needed. |
+| `memory` | Local memory read and recall. |
+| `sql` | Query the local index database directly. |
+| `web_fetch` | Fetch a public URL and return clean Markdown. |
+
+---
 
 ## Agents and Skills
 
 Packaged agents in [integrations/agents/](integrations/agents/):
 
-| Agent    | Subagent         | Writes? | Use                                                             | Details                                                                                                                               |
-| -------- | ---------------- | ------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| code     | atelier:code     | Yes     | Main coding mode for edits, refactors, bug fixes, and features. | Uses Atelier MCP tools for file I/O, search, edits, and shell work; applies shared coding guidelines and validates before concluding. |
-| explore  | atelier:explore  | No      | Read-only codebase exploration.                                 | Locates files, symbols, and patterns; reports cited findings; never edits, creates, or deletes files.                                 |
-| plan     | atelier:plan     | No      | Grounded implementation planning.                               | Explores enough to produce a concrete plan with files, ordering, validation, risks, and open questions; never edits.                  |
-| execute  | atelier:execute  | Yes     | Focused execution of an accepted plan or narrow task.           | Makes the smallest verified code change, self-verifies, and stops for review.                                                         |
-| solve    | atelier:solve    | Yes     | Autonomous end-to-end task solving.                             | Produces the required result early, iterates against real checks, and owns completion.                                                |
-| review   | atelier:review   | No      | Adversarial code review.                                        | Applies the verification ladder and rubric discipline; reads code directly and never edits source files.                              |
-| research | atelier:research | No      | External research.                                              | Fetches web sources, GitHub repos, and package docs; synthesizes with citations; never edits files.                                   |
+| Agent    | Subagent         | Writes? | Use                                                              | Details                                                                                                                               |
+| -------- | ---------------- | ------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| auto     | atelier:auto     | Yes     | Fully autonomous unattended mode.                                | Runs end to end with no plan approval and no questions. For CI, benchmarks, and headless automation.                                  |
+| code     | atelier:code     | Yes     | Main coding mode for edits, refactors, bug fixes, and features.  | Uses Atelier MCP tools for file I/O, search, edits, and shell work; applies shared coding guidelines and validates before concluding. |
+| explore  | atelier:explore  | No      | Read-only codebase exploration.                                  | Locates files, symbols, and patterns; reports cited findings; never edits, creates, or deletes files.                                 |
+| plan     | atelier:plan     | No      | Grounded implementation planning.                                | Explores enough to produce a concrete plan with files, ordering, validation, risks, and open questions; never edits.                  |
+| execute  | atelier:execute  | Yes     | Focused execution of an accepted plan or narrow task.            | Makes the smallest verified code change, self-verifies, and stops for review.                                                         |
+| solve    | atelier:solve    | Yes     | Autonomous end-to-end task solving.                              | Produces the required result early, iterates against real checks, and owns completion.                                                |
+| review   | atelier:review   | No      | Adversarial code review.                                         | Applies the verification ladder and rubric discipline; reads code directly and never edits source files.                              |
+| research | atelier:research | No      | External research.                                               | Fetches web sources, GitHub repos, and package docs; synthesizes with citations; never edits files.                                   |
 
 Packaged skills in [integrations/skills/](integrations/skills/):
 
 `benchmark` · `knowledge` · `orchestrate` · `settings` · `swarms`
 
+---
+
 ## Benchmarks
 
-Verify benchmark Baseline (CC) VS Atelier using raw works done by each: [benchmarks/codebench/results/published/](benchmarks/codebench/results/published/)
+Atelier vs baseline (Claude Code headless, `claude-sonnet-4-6`) across 7 real-world open-source codebases — 5 reps each, median reported. Correctness = mean LLM judge score across reps (0–1). Raw results: [reports/public/benchmark/codebench/](reports/public/benchmark/codebench/)
 
-Filtered headline excludes Excalidraw and Alamofire and uses the checked-in task medians for VS Code, Django, Tokio, OkHttp, and gin.
-
-| Codebase            | Cost              | Tokens          | Tool calls      |
-| ------------------- | ----------------- | --------------- | --------------- |
-| VS Code             | 13.1% cheaper     | 77.5% fewer     | 67.9% fewer     |
-| Django              | 84.8% cheaper     | 92.0% fewer     | 100.0% fewer    |
-| Tokio               | 89.1% cheaper     | 97.5% fewer     | 100.0% fewer    |
-| OkHttp              | 81.0% cheaper     | 76.8% fewer     | 100.0% fewer    |
-| gin                 | 5.5% cheaper      | 5.2% more       | even            |
-| **Overall, pooled** | **52.4% cheaper** | **79.8% fewer** | **80.9% fewer** |
+| Codebase | Language | Cost | Tokens | Time | Judge score |
+| -------- | -------- | ---- | ------ | ---- | ----------- |
+| VS Code | TypeScript · 11k files · 3.3M lines · 33M tok | 82.1% cheaper | 91.2% fewer | 28% faster | 1.00 |
+| Excalidraw | TypeScript · 600 files · 171k lines · 1.7M tok | 62.6% cheaper | 67.1% fewer | 51% faster | 0.94 |
+| Django | Python · 3k files · 522k lines · 4.8M tok | 88.1% cheaper | 92.4% fewer | 54% faster | 1.00 |
+| Tokio | Rust · 784 files · 176k lines · 1.4M tok | 96.8% cheaper | 96.9% fewer | 97% faster | 0.98 |
+| OkHttp | Kotlin/Java · 596 files · 133k lines · 1.1M tok | 84.3% cheaper | 76.1% fewer | 14% faster | 0.98 |
+| gin | Go · 99 files · 24k lines · 171k tok | 17.8% cheaper | 17.4% more | 49% slower | 0.94 |
+| Alamofire | Swift · 98 files · 44k lines · 452k tok | 48.6% cheaper | 39.5% fewer | 88% faster | 1.00 |
+| **Overall, pooled** | **7 repos · 16k files · 4.4M lines · 43M tok** | **72.0% cheaper** | **74.4% fewer** | **71% faster** | **0.98** |
 
 Run CodeBench:
 
@@ -99,7 +123,7 @@ Run CodeBench:
 atelier benchmark codebench \
   --arm baseline --arm atelier \
   --task all \
-  --reps 4 \
+  --reps 5 \
   --model claude-sonnet-4-6 \
   --cli-driver claude
 ```
@@ -125,6 +149,8 @@ Provider/read benchmark numbers: triplet is `correctness / median tokens / media
 | structural_search | **0.89 / 31 / 26**                               | -                                                     | 0.15 / 633 / 348                                 | -                                                                | -                                                      | -                                                             | -                                                         | -                                          | -                                                           | -                                             |
 | substring_search  | **1.00 / 131 / 76**                              | 0.99 / 292 / 9                                        | -                                                | 0.78 / 862 / 319                                                 | 1.00 / 1012 / 133                                      | 0.81 / 537 / 46                                               | -                                                         | 0.94 / 638 / 227                           | -                                                           | 1.00 / 587 / 8                                |
 
+---
+
 ## Docs
 
 - [Installation](docs/installation.md)
@@ -132,6 +158,8 @@ Provider/read benchmark numbers: triplet is `correctness / median tokens / media
 - [Host overview](docs/hosts/all-agent-clis.md)
 - [MCP SDK](docs/sdk/mcp.md)
 - [Troubleshooting](docs/troubleshooting.md)
+
+---
 
 ## Star History
 
@@ -142,6 +170,8 @@ Provider/read benchmark numbers: triplet is `correctness / median tokens / media
     <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=atelier-ws/atelier&type=Date" />
   </picture>
 </a>
+
+---
 
 ## License
 
