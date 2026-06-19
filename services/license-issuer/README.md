@@ -104,8 +104,13 @@ it infers `lifetime` for one-time payments and `annual` for subscriptions.
 **Webhook.** Add an endpoint at
 `https://atelier-license-issuer.<you>.workers.dev/stripe/webhook` listening for:
 
-- `checkout.session.completed` (first purchase)
-- `invoice.paid` (subscription renewals → re-issues + re-emails the key)
+- `checkout.session.completed` — first purchase (issues + emails the key)
+- `invoice.paid` — subscription **renewals** only (`subscription_cycle`); re-issues + re-emails
+- `customer.subscription.deleted` — cancellation → marks the license revoked
+- `charge.refunded` — refund → marks the license revoked
+
+Deliveries are idempotent (deduped by Stripe event id), so retries and the
+signup double-fire never send a second key.
 
 Copy the signing secret (`whsec_...`) and re-run the `STRIPE_WEBHOOK_SECRET`
 secret command from step 4, then `npm run deploy` again.
@@ -134,10 +139,12 @@ You should receive an email with `atelier license activate <key>`. Run it, then
 
 ## Notes
 
-- **Refunds / chargebacks.** Annual keys expire on their own; for `lifetime`
-  abuse you can look up the row in D1 by email and revoke by shortening
-  `expires_at` (revocation needs a client check-in, which this offline design
-  intentionally avoids — keep it manual at this scale).
+- **Refunds / chargebacks.** Handled automatically: `charge.refunded` and
+  `customer.subscription.deleted` mark the D1 row `revoked` and shorten its
+  `expires_at`. Best-effort only — an already-issued offline key keeps working
+  until its embedded expiry (the client never phones home), so a refunded
+  **lifetime** key cannot be remotely killed; annual keys lapse on their own.
+  This stops renewals and records intent for any future online check.
 - **Rotating the keypair** invalidates every issued license. Avoid unless the
   private key leaks; if it does, re-keygen, redeploy, bump
   `_EMBEDDED_PUBLIC_KEY_B64`, ship a client release, and re-issue from D1.

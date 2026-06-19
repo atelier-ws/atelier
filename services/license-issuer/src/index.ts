@@ -65,11 +65,12 @@ async function issueAndDeliver(env: Env, input: IssueInput): Promise<string> {
 
   await env.DB.prepare(
     `INSERT INTO licenses
-       (license_id, email, plan, term, stripe_customer, issued_at, expires_at, token, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (license_id, email, plan, term, stripe_customer, issued_at, expires_at, token, revoked, revoked_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)
      ON CONFLICT(license_id) DO UPDATE SET
        email=excluded.email, plan=excluded.plan, term=excluded.term,
-       expires_at=excluded.expires_at, token=excluded.token, updated_at=excluded.updated_at`,
+       expires_at=excluded.expires_at, token=excluded.token,
+       revoked=0, revoked_at=NULL, updated_at=excluded.updated_at`,
   )
     .bind(
       licenseId,
@@ -95,6 +96,47 @@ async function issueAndDeliver(env: Env, input: IssueInput): Promise<string> {
   return token;
 }
 
+/** Best-effort revocation. Offline-issued keys keep working until their embedded
+ * expiry (we cannot reach the customer's machine), but we mark the row revoked
+ * and shorten its expiry so renewals stop and any future online check enforces
+ * it. */
+async function revokeByCustomer(
+  env: Env,
+  customer: string | null,
+  nowSec: number,
+): Promise<void> {
+  if (!customer) return;
+  await env.DB.prepare(
+    `UPDATE licenses
+        SET revoked = 1, revoked_at = ?, expires_at = MIN(COALESCE(expires_at, ?), ?), updated_at = ?
+      WHERE license_id = ?`,
+  )
+    .bind(nowSec, nowSec, nowSec, nowSec, `lic_${customer}`)
+    .run();
+}
+
+async function alreadyProcessed(env: Env, eventId: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    "SELECT 1 FROM processed_events WHERE event_id = ?",
+  )
+    .bind(eventId)
+    .first();
+  return row !== null;
+}
+
+async function markProcessed(
+  env: Env,
+  eventId: string,
+  type: string,
+  nowSec: number,
+): Promise<void> {
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO processed_events (event_id, type, created_at) VALUES (?, ?, ?)",
+  )
+    .bind(eventId, type, nowSec)
+    .run();
+}
+
 async function handleStripeWebhook(req: Request, env: Env): Promise<Response> {
   const body = await req.text();
   const ok = await verifyStripeSignature(
@@ -111,38 +153,79 @@ async function handleStripeWebhook(req: Request, env: Env): Promise<Response> {
     return new Response("bad json", { status: 400 });
   }
 
+  const eventId: string | undefined = event.id;
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  // Idempotency: Stripe retries deliver the same event id more than once.
+  // Verify-then-process-then-mark, so a failed run (500) is retried but a
+  // succeeded one is never re-emailed.
+  if (eventId && (await alreadyProcessed(env, eventId))) {
+    return new Response("ok (duplicate)");
+  }
+
   try {
-    if (event.type === "checkout.session.completed") {
-      const s = event.data.object;
-      const email = s.customer_details?.email ?? s.customer_email;
-      if (!email) return new Response("ok (no email)");
-      const meta = s.metadata ?? {};
-      await issueAndDeliver(env, {
-        email,
-        plan: meta.plan ?? "pro",
-        // `payment` mode => one-time => lifetime; `subscription` => annual.
-        term: meta.term ?? (s.mode === "payment" ? "lifetime" : "annual"),
-        customer: s.customer ?? null,
-      });
-    } else if (event.type === "invoice.paid") {
-      // Subscription renewal: refresh the same customer's license + email it.
-      const inv = event.data.object;
-      const email = inv.customer_email;
-      const meta = inv.lines?.data?.[0]?.metadata ?? {};
-      if (email) {
-        await issueAndDeliver(env, {
-          email,
-          plan: meta.plan ?? "pro",
-          term: meta.term ?? "annual",
-          customer: inv.customer ?? null,
-        });
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const s = event.data.object;
+        const email = s.customer_details?.email ?? s.customer_email;
+        if (email) {
+          await issueAndDeliver(env, {
+            email,
+            plan: s.metadata?.plan ?? "pro",
+            // `payment` mode => one-time => lifetime; `subscription` => annual.
+            term:
+              s.metadata?.term ??
+              (s.mode === "payment" ? "lifetime" : "annual"),
+            customer: s.customer ?? null,
+          });
+        }
+        break;
       }
+      case "invoice.paid": {
+        const inv = event.data.object;
+        // Renewals only. The first subscription invoice (`subscription_create`)
+        // is already covered by checkout.session.completed -- acting on it too
+        // would email the buyer a second key on signup.
+        if (inv.billing_reason !== "subscription_cycle") break;
+        const email = inv.customer_email;
+        const meta = inv.lines?.data?.[0]?.metadata ?? {};
+        if (email) {
+          await issueAndDeliver(env, {
+            email,
+            plan: meta.plan ?? "pro",
+            term: meta.term ?? "annual",
+            customer: inv.customer ?? null,
+          });
+        }
+        break;
+      }
+      case "customer.subscription.deleted": {
+        await revokeByCustomer(
+          env,
+          event.data.object?.customer ?? null,
+          nowSec,
+        );
+        break;
+      }
+      case "charge.refunded": {
+        await revokeByCustomer(
+          env,
+          event.data.object?.customer ?? null,
+          nowSec,
+        );
+        break;
+      }
+      default:
+        break;
     }
   } catch (err) {
+    // Do not mark processed -> Stripe will retry this event.
     return new Response(`handler error: ${(err as Error).message}`, {
       status: 500,
     });
   }
+
+  if (eventId) await markProcessed(env, eventId, event.type, nowSec);
   return new Response("ok");
 }
 

@@ -104,3 +104,10 @@ def test_feature_scoped_token(issuer: Ed25519PrivateKey, monkeypatch: pytest.Mon
     entitlements.reload()
     assert licensing.has_feature("model_routing") is True
     assert licensing.has_feature("optimizer") is False
+
+
+def test_pro_url_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ATELIER_PRO_URL", raising=False)
+    assert licensing.pro_url() == "https://atelier.ws/pro"
+    monkeypatch.setenv("ATELIER_PRO_URL", "https://buy.example.com/pro")
+    assert licensing.pro_url() == "https://buy.example.com/pro"
