@@ -1,0 +1,86 @@
+diff --git a/CHANGES b/CHANGES
+index 9ef4dd273..b7f807c52 100644
+--- a/CHANGES
++++ b/CHANGES
+@@ -46,6 +46,8 @@ Bugs fixed
+   singlehtml and so on)
+ * #8239: Failed to refer a token in productionlist if it is indented
+ * #8268: linkcheck: Report HTTP errors when ``linkcheck_anchors`` is ``True``
++* #6464: i18n: Custom translations in ``locale_dirs`` are ignored in favor of
++  the catalog shipped with Sphinx
+ 
+ Testing
+ --------
+diff --git a/sphinx/application.py b/sphinx/application.py
+index 385b74d8a..0e52a278b 100644
+--- a/sphinx/application.py
++++ b/sphinx/application.py
+@@ -293,7 +293,9 @@ class Sphinx:
+                 if catalog.domain == 'sphinx' and catalog.is_outdated():
+                     catalog.write_mo(self.config.language)
+ 
+-            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)
++            locale_dirs = list(repo.locale_dirs)
++            locale_dirs += [None]
++            locale_dirs += [path.join(package_dir, 'locale')]
+             self.translator, has_translation = locale.init(locale_dirs, self.config.language)
+             if has_translation or self.config.language == 'en':
+                 # "en" never needs to be translated
+diff --git a/tests/roots/test-locale/conf.py b/tests/roots/test-locale/conf.py
+new file mode 100644
+index 000000000..ac5a73d8d
+--- /dev/null
++++ b/tests/roots/test-locale/conf.py
+@@ -0,0 +1,3 @@
++project = 'Sphinx locale <Tests>'
++source_suffix = '.txt'
++exclude_patterns = ['_build']
+diff --git a/tests/roots/test-locale/index.txt b/tests/roots/test-locale/index.txt
+new file mode 100644
+index 000000000..170d3f099
+--- /dev/null
++++ b/tests/roots/test-locale/index.txt
+@@ -0,0 +1,2 @@
++test-locale
++===========
+diff --git a/tests/roots/test-locale/locale/da/LC_MESSAGES/sphinx.po b/tests/roots/test-locale/locale/da/LC_MESSAGES/sphinx.po
+new file mode 100644
+index 000000000..ee4c980ce
+--- /dev/null
++++ b/tests/roots/test-locale/locale/da/LC_MESSAGES/sphinx.po
+@@ -0,0 +1,12 @@
++msgid ""
++msgstr ""
++"Project-Id-Version: Sphinx\n"
++"MIME-Version: 1.0\n"
++"Content-Type: text/plain; charset=UTF-8\n"
++"Content-Transfer-Encoding: 8bit\n"
++
++msgid "Attention"
++msgstr "HELLO ATTENTION"
++
++msgid "Warning"
++msgstr "HELLO WARNING"
+diff --git a/tests/test_intl.py b/tests/test_intl.py
+index 1d1282baa..c3b3a1283 100644
+--- a/tests/test_intl.py
++++ b/tests/test_intl.py
+@@ -65,6 +65,18 @@ def _info(app):
+     print('# locale_dirs:', app.config.locale_dirs)
+ 
+ 
++@pytest.mark.sphinx(
++    'html', testroot='locale',
++    confoverrides={'language': 'da', 'locale_dirs': ['locale']})
++def test_user_locale_overrides_builtin(app):
++    # a user catalog placed in locale_dirs must take precedence over the
++    # built-in catalog shipped with Sphinx (refs: #6464)
++    assert app.translator.gettext('Attention') == 'HELLO ATTENTION'
++    assert app.translator.gettext('Warning') == 'HELLO WARNING'
++    # untranslated-by-user messages still fall back to the built-in catalog
++    assert app.translator.gettext('Caution') != 'Caution'
++
++
+ def elem_gettexts(elem):
+     return [_f for _f in [s.strip() for s in elem.itertext()] if _f]
+ 

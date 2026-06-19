@@ -328,3 +328,6 @@ build_dist/
 /.bench-tasks/
 # Multi-SWE-bench dataset cache (large JSONL downloaded on demand)
 benchmarks/codebench/data/
+
+# Local-only OpenCode config (machine-specific paths; not for the repo)
+/opencode.json

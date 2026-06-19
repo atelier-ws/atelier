@@ -8,7 +8,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from atelier.core.capabilities import session_recall
+from atelier.gateway.hosts.session_parsers._session_parser import parse_session_turns
 
 
 class _FakeCap:
@@ -150,3 +153,129 @@ def test_empty_session_marks_state_without_indexing(tmp_path: Path) -> None:
 
     result2 = session_recall.index_sessions(root, paths=[transcript], capability=_FakeCap())
     assert result2["skipped"] == 1
+
+
+def test_index_sessions_budget_prefers_newest_unindexed(tmp_path: Path) -> None:
+    # Regression: the per-run cap must apply to *unindexed* sessions, newest
+    # first — not to the raw (arbitrary-order) path list, which used to let a
+    # backlog of already-indexed sessions starve never-indexed ones.
+    root = tmp_path / ".atelier"
+    project = tmp_path / "proj"
+    project.mkdir()
+    paths = []
+    for i, name in enumerate(["old", "mid", "new"]):
+        p = _transcript(project / f"{name}.jsonl", [_msg("user", f"content for the {name} session number {i}")])
+        ts = 1000 + i * 100  # ascending mtime: old < mid < new
+        os.utime(p, (ts, ts))
+        paths.append(p)
+
+    # Pre-index "old" so it is already current in the state.
+    session_recall.index_sessions(root, paths=[paths[0]], capability=_FakeCap())
+
+    # "old" is listed first but already indexed; with budget 1 the run must spend
+    # it on the newest *unindexed* session ("new"), not skip everything.
+    cap = _FakeCap()
+    result = session_recall.index_sessions(root, paths=paths, capability=cap, max_sessions=1)
+    assert result["skipped"] == 1  # "old" filtered out, did not consume the budget
+    assert result["sessions"] == 1
+    assert {a["source_ref"] for a in cap.archived} == {"new"}
+
+
+def test_snippets_from_turns_keeps_prose_drops_tool_and_thinking() -> None:
+    turns = [
+        {"kind": "user_message", "content": "please add codex recall coverage now"},
+        {"kind": "thinking", "content": "let me think about this carefully"},
+        {"kind": "agent_message", "content": "added codex and opencode coverage"},
+        {"kind": "shell_command", "content": "rg something"},
+        {"kind": "user_message", "content": "ok"},  # below minimum length -> dropped
+    ]
+    snippets = session_recall._snippets_from_turns(turns)
+    assert snippets == [
+        "[user] please add codex recall coverage now",
+        "[assistant] added codex and opencode coverage",
+    ]
+
+
+def test_codex_prose_snippets_via_parser() -> None:
+    # Codex Format A (event_msg-wrapped) must normalize to user/assistant prose.
+    content = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "payload": {"type": "user_message", "message": "How do I index codex sessions for recall"},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "payload": {"type": "agent_message", "message": "The background indexer now covers codex sessions"},
+                }
+            ),
+            json.dumps({"type": "event_msg", "payload": {"type": "exec_command_end", "command": "rg foo"}}),
+        ]
+    )
+    snippets = session_recall._snippets_from_turns(parse_session_turns(content, "codex"))
+    assert any(s.startswith("[user] How do I index codex") for s in snippets)
+    assert any(s.startswith("[assistant] The background indexer") for s in snippets)
+    assert not any("rg foo" in s for s in snippets)  # shell command excluded
+
+
+def test_opencode_prose_snippets_via_parser() -> None:
+    # OpenCode serialized rows must normalize to user/assistant prose.
+    content = "\n".join(
+        [
+            json.dumps(
+                {
+                    "_type": "message",
+                    "timestamp": 1778891594191,
+                    "data": {"role": "user", "text": "How is opencode recall coverage configured"},
+                }
+            ),
+            json.dumps(
+                {
+                    "_type": "message",
+                    "timestamp": 1778891600000,
+                    "data": {"role": "assistant", "text": "OpenCode sessions are read from the sqlite db and indexed"},
+                }
+            ),
+            json.dumps(
+                {
+                    "_type": "part",
+                    "role": "assistant",
+                    "timestamp": 1778891700000,
+                    "data": {"type": "reasoning", "text": "internal reasoning that should be excluded"},
+                }
+            ),
+        ]
+    )
+    snippets = session_recall._snippets_from_turns(parse_session_turns(content, "opencode"))
+    assert any(s.startswith("[user] How is opencode recall") for s in snippets)
+    assert any(s.startswith("[assistant] OpenCode sessions are read") for s in snippets)
+    assert not any("internal reasoning" in s for s in snippets)  # thinking excluded
+
+
+def test_index_sessions_multi_host_tags_and_dedup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / ".atelier"
+    candidates = [
+        session_recall._Candidate(
+            "codex-1", 100.0, "codex", "codex", lambda: ["[user] codex q", "[assistant] codex a"]
+        ),
+        session_recall._Candidate("oc-1", 200.0, "opencode", "opencode", lambda: ["[user] opencode q"]),
+    ]
+    monkeypatch.setattr(session_recall, "_discover_candidates", lambda window_days: list(candidates))
+
+    cap = _FakeCap()
+    result = session_recall.index_sessions(root, capability=cap)
+    assert result["sessions"] == 2
+    assert result["indexed"] == 3
+    host_tags = {t for a in cap.archived for t in a["tags"] if t.startswith("host:")}
+    assert host_tags == {"host:codex", "host:opencode"}
+    assert {a["source_ref"] for a in cap.archived} == {"codex-1", "oc-1"}
+
+    # Second run: change_keys unchanged -> every host session is skipped.
+    cap2 = _FakeCap()
+    result2 = session_recall.index_sessions(root, capability=cap2)
+    assert result2["skipped"] == 2
+    assert result2["indexed"] == 0
+    assert cap2.archived == []

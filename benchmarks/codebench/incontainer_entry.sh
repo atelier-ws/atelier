@@ -17,6 +17,16 @@ if [ -z "$REPO" ]; then
 fi
 cd "$REPO" || { echo "no repo dir found" >&2; exit 3; }
 
+# Activate the project's conda env (SWE-bench images ship a `testbed` env) for
+# BOTH arms so shells run the project interpreter. Claude Code's Bash sources
+# .bashrc (env active); the Atelier shell tool's `bash -c` subprocesses do not,
+# so without this the atelier arm burns turns rediscovering the interpreter.
+# Activating identically for both keeps the comparison fair and matches
+# production, where claude is launched from the user's already-activated shell.
+for _cs in /opt/miniconda3/etc/profile.d/conda.sh /opt/conda/etc/profile.d/conda.sh; do
+  if [ -f "$_cs" ]; then . "$_cs"; conda activate testbed 2>/dev/null || true; break; fi
+done
+
 ARM="${CODEBENCH_ARM:-baseline}"
 MODEL="${CODEBENCH_MODEL:-sonnet}"
 
