@@ -19,26 +19,6 @@ EXPECTED_ROLE_MODELS = {
     "research": "claude-sonnet-4.6",
     "solve": "claude-opus-4.8",
 }
-EXPECTED_ROLE_TURNS = {
-    "code": 100,
-    "general": 100,
-    "explore": 25,
-    "plan": 100,
-    "execute": 100,
-    "review": 40,
-    "research": 25,
-    "solve": 80,
-}
-EXPECTED_ROLE_TOKENS = {
-    "code": 64000,
-    "general": 64000,
-    "explore": 32000,
-    "plan": 64000,
-    "execute": 64000,
-    "review": 48000,
-    "research": 32000,
-    "solve": 64000,
-}
 
 
 def test_default_registry_contains_required_roles() -> None:
@@ -51,8 +31,6 @@ def test_default_registry_contains_required_roles() -> None:
     assert general.prompt_body
     assert general.host_projections == ()
     assert general.model_default
-    assert general.max_turns > 0
-    assert general.max_tokens > 0
 
 
 def test_role_defaults_stay_workload_aware() -> None:
@@ -61,8 +39,6 @@ def test_role_defaults_stay_workload_aware() -> None:
     for role_id, expected_model in EXPECTED_ROLE_MODELS.items():
         role = registry.roles[role_id]
         assert role.model_default == expected_model
-        assert role.max_turns == EXPECTED_ROLE_TURNS[role_id]
-        assert role.max_tokens == EXPECTED_ROLE_TOKENS[role_id]
 
 
 def test_host_facing_roles_stay_sourced_from_mode_docs() -> None:

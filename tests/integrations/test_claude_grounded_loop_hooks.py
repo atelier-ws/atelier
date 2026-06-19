@@ -217,3 +217,74 @@ def test_user_prompt_hook_skips_grounded_nudge_for_already_grounded_prompt(
     assert user_prompt.main() == 0
 
     assert capsys.readouterr().out == ""
+
+
+def test_user_prompt_hook_blocks_after_noop_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """After _NOOP_CAP consecutive no-op retry prompts the hook returns 2 + blocks."""
+    root = tmp_path / ".atelier"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("ATELIER_ROOT", str(root))
+    monkeypatch.setenv("ATELIER_STORE_ROOT", str(root))
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setattr(user_prompt, "_active_session_id", lambda: None)
+
+    noop = user_prompt._NOOP_PROMPT
+    cap = user_prompt._NOOP_CAP
+
+    # First (cap - 1) calls should pass through.
+    for i in range(cap - 1):
+        monkeypatch.setattr(USER_PROMPT.sys, "stdin", io.StringIO(json.dumps({"prompt": noop})))
+        rc = user_prompt.main()
+        assert rc == 0, f"Expected 0 on call {i + 1}, got {rc}"
+        capsys.readouterr()  # discard
+
+    # The cap-th call must block.
+    monkeypatch.setattr(USER_PROMPT.sys, "stdin", io.StringIO(json.dumps({"prompt": noop})))
+    rc = user_prompt.main()
+    assert rc == 2
+    out = capsys.readouterr().out
+    payload = json.loads(out.strip())
+    assert payload["decision"] == "block"
+    assert "no-op" in payload["reason"].lower() or "stuck" in payload["reason"].lower()
+
+
+def test_user_prompt_hook_resets_noop_count_on_real_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A real user prompt resets the no-op counter so a later noop streak starts fresh."""
+    root = tmp_path / ".atelier"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("ATELIER_ROOT", str(root))
+    monkeypatch.setenv("ATELIER_STORE_ROOT", str(root))
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setattr(user_prompt, "_active_session_id", lambda: None)
+
+    noop = user_prompt._NOOP_PROMPT
+    cap = user_prompt._NOOP_CAP
+
+    # Drive the counter to (cap - 1).
+    for _ in range(cap - 1):
+        monkeypatch.setattr(USER_PROMPT.sys, "stdin", io.StringIO(json.dumps({"prompt": noop})))
+        user_prompt.main()
+        capsys.readouterr()
+
+    # Real prompt resets the counter.
+    monkeypatch.setattr(USER_PROMPT.sys, "stdin", io.StringIO(json.dumps({"prompt": "fix the auth flow"})))
+    rc = user_prompt.main()
+    assert rc == 0
+    capsys.readouterr()
+
+    # A fresh noop streak must not block until the cap is hit again.
+    for i in range(cap - 1):
+        monkeypatch.setattr(USER_PROMPT.sys, "stdin", io.StringIO(json.dumps({"prompt": noop})))
+        rc = user_prompt.main()
+        assert rc == 0, f"Expected 0 on call {i + 1} after reset, got {rc}"
+        capsys.readouterr()

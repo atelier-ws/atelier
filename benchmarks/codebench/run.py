@@ -109,6 +109,7 @@ ARM_SPECS: dict[str, ArmSpec] = {
     ),
     "execute": ArmSpec({"code": "atelier:execute"}, plugin=True, strip_mcp=False, heavy=True),
     "solve": ArmSpec({"code": "atelier:solve"}, plugin=True, strip_mcp=False, heavy=True),
+    "auto": ArmSpec({"code": "atelier:auto"}, plugin=True, strip_mcp=False, heavy=True),
 }
 VALID_ARMS = tuple(ARM_SPECS)
 PERSISTENT_WORKSPACE_ROOT = Path(
@@ -2154,9 +2155,9 @@ def _task_correctness_arm_summaries(results: list[ArmResult]) -> dict[tuple[str,
                 "valid_runs": sum(1 for result in arm_results if result.valid),
                 "judged_runs": len(judged),
                 "correct_runs": sum(1 for result in arm_results if result.correct is True),
-                "avg_score": round(sum(float(result.score or 0.0) for result in judged) / len(judged), 3)
-                if judged
-                else "",
+                "avg_score": (
+                    round(sum(float(result.score or 0.0) for result in judged) / len(judged), 3) if judged else ""
+                ),
                 "cost_usd": round(sum(result.cost_usd for result in arm_results), 4),
                 "judge_models": ",".join(sorted({result.judge_model for result in judged if result.judge_model})),
             }
