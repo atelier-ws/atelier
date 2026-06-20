@@ -15,36 +15,18 @@ When invoked, tell the user: "I'll spin up multiple isolated attempts running in
 3. Launch using the existing swarm surface (`atelier swarm ...` or the matching service API), not a new custom runtime.
 4. Return the `run_id` and the exact status/log/apply surface the user should use next.
 
-## Parameters to gather
+## Parameters to gather → launch contract
 
-Ask for the real runtime knobs via `AskUserQuestion` (batch up to 4 per call) until you have enough to launch:
+Ask for the real runtime knobs via `AskUserQuestion` (batch up to 4 per call), then map them onto the existing swarm launch contract:
 
-- spec source: existing `spec_path` or inline `spec_content`
-- runner and runner model (or provider model)
-- `runs`
-- `continuous`
-- `max_waves`
-- `evaluator_backend`
-- optional `evaluator_model`
-- `max_evaluator_failures`
-- `keep_worktrees`
-- `effort`
-- any runner options that materially change launch behavior
-
-## Current runtime mapping
-
-Map your conversation directly onto the existing swarm launch contract:
-
-- `spec_path` or `spec_mode="inline"` with `spec_content`
+- spec source — `spec_path`, or `spec_mode="inline"` with `spec_content`
 - `provider`
-- `runner`
-- `runner_model` or provider `model`
-- `runner_options`
+- `runner` and `runner_model` (or provider `model`)
+- `runner_options` — runner options that materially change launch behavior
 - `runs`
 - `continuous`
 - `max_waves`
-- `evaluator_backend`
-- `evaluator_model`
+- `evaluator_backend`, optional `evaluator_model`
 - `max_evaluator_failures`
 - `keep_worktrees`
 - `effort`
@@ -54,4 +36,3 @@ Map your conversation directly onto the existing swarm launch contract:
 - Prefer the repo's existing swarm CLI/API surfaces over inventing new ones.
 - Treat swarm children as **isolated** executions in separate worktrees.
 - Keep credentials out of persisted state and command output when provider-backed launches are used.
-- If the user only needs one coordinated run, route them to `orchestrate` instead of launching a swarm.
