@@ -16,7 +16,6 @@ and governance.
 | Capability                                                  | Free | Pro | Enterprise |
 | ----------------------------------------------------------- | :--: | :-: | :--------: |
 | Code-nav tools (`read`/`grep`/`search`/`node`/`edit`/…)     |  ✅  | ✅  |     ✅     |
-| Agent reasoning runtime (rescue, loop detection, verify)    |  ✅  | ✅  |     ✅     |
 | Host packaging, agents, skills, `init`; benchmarks          |  ✅  | ✅  |     ✅     |
 | Repo map + context engine (small repos)                     |  ✅  | ✅  |     ✅     |
 | Headline savings number ("you'd save $X")                   |  ✅  | ✅  |     ✅     |
@@ -38,9 +37,8 @@ Feature keys: `src/atelier/core/capabilities/licensing/features.py`
 grounded coding-agent runtime without paying.
 
 You get the full local runtime that makes any agent better: the code-navigation
-MCP tools, the **agent reasoning runtime** (failure rescue, loop detection,
-grounded loops, tool supervision, proof/verification), host packaging for every
-supported agent, single-repo memory, benchmarks, and a project snapshot. The
+MCP tools, host packaging for every supported agent, single-repo memory,
+benchmarks, and a project snapshot. The
 context engine and repo map work on normal-size repos. You also see the
 **headline savings number** — how much Atelier *would* save you — which is the
 hook to upgrade.
