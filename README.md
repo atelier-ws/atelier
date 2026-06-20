@@ -92,9 +92,9 @@ Packaged agents in [integrations/agents/](integrations/agents/):
 | code     | atelier:code     | Yes     | Main coding mode for edits, refactors, bug fixes, and features. | Uses Atelier MCP tools for file I/O, search, edits, and shell work; applies shared coding guidelines and validates before concluding. |
 | explore  | atelier:explore  | No      | Read-only codebase exploration.                                 | Locates files, symbols, and patterns; reports cited findings; never edits, creates, or deletes files.                                 |
 | plan     | atelier:plan     | No      | Grounded implementation planning.                               | Explores enough to produce a concrete plan with files, ordering, validation, risks, and open questions; never edits.                  |
-| execute  | atelier:execute  | Yes     | Focused execution of an accepted plan or narrow task.           | Makes the smallest verified code change, self-verifies, and stops for review.                                                         |
+| execute  | atelier:execute  | Yes     | Focused execution of an accepted plan or narrow task.           | Makes the smallest code change and stops for review.                                                         |
 | solve    | atelier:solve    | Yes     | Autonomous end-to-end task solving.                             | Produces the required result early, iterates against real checks, and owns completion.                                                |
-| review   | atelier:review   | No      | Adversarial code review.                                        | Applies the verification ladder and rubric discipline; reads code directly and never edits source files.                              |
+| review   | atelier:review   | No      | Adversarial code review.                                        | Reads code directly, reports cited findings, and never edits source files.                              |
 | research | atelier:research | No      | External research.                                              | Fetches web sources, GitHub repos, and package docs; synthesizes with citations; never edits files.                                   |
 
 Packaged skills in [integrations/skills/](integrations/skills/):
