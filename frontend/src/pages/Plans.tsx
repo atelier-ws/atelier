@@ -64,7 +64,7 @@ export default function Plans() {
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex flex-wrap items-center gap-2">
                         <span
-                          className={`text-neutral-500 font-mono text-xs transition-transform ${
+                          className={`text-neutral-400 font-mono text-xs transition-transform ${
                             isExpanded ? "rotate-90" : ""
                           }`}
                         >
@@ -90,7 +90,7 @@ export default function Plans() {
                     {/* Trace ID */}
                     <div>
                       <FieldLabel className="mb-2">❯ trace id</FieldLabel>
-                      <code className="text-xs font-mono text-neutral-500 bg-neutral-950 px-2 py-1 block border border-neutral-800">
+                      <code className="text-xs font-mono text-neutral-400 bg-neutral-950 px-2 py-1 block border border-neutral-800">
                         {p.trace_id}
                       </code>
                     </div>

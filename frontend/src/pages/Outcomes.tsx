@@ -78,16 +78,16 @@ export default function Outcomes() {
 
           {summary.sessions_with_high_extra_reads.length > 0 && (
             <Card tone="amber" className="p-4">
-              <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-amber-500">
+              <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-amber-300">
                 Sessions with high extra reads
               </h2>
-              <p className="mb-3 text-xs text-neutral-500">
+              <p className="mb-3 text-xs text-neutral-400">
                 These sessions show elevated re-read rates after compaction,
                 suggesting context loss.
               </p>
               <ul className="space-y-1">
                 {summary.sessions_with_high_extra_reads.map((sid) => (
-                  <li key={sid} className="font-mono text-xs text-amber-300/80">
+                  <li key={sid} className="font-mono text-xs text-amber-300">
                     {sid}
                   </li>
                 ))}

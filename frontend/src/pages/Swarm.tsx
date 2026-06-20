@@ -760,7 +760,7 @@ export default function Swarm() {
                     placeholder={
                       "AZURE_API_KEY=...\nAZURE_API_BASE=...\nAZURE_API_VERSION=..."
                     }
-                    className="min-h-[7rem] w-full border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-200 outline-none transition hover:border-neutral-600 focus:border-purple-500/60"
+                    className="min-h-[7rem] w-full border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-200 outline-none transition hover:border-neutral-600 focus:border-brand-500/60"
                     spellCheck={false}
                   />
                 </div>
@@ -814,7 +814,7 @@ export default function Swarm() {
                 <div className="flex items-end">
                   <Button
                     variant="accent"
-                    className="w-full bg-purple-500/20 text-purple-100 hover:bg-purple-500/30 hover:text-purple-50"
+                    className="w-full bg-brand-500/20 text-brand-100 hover:bg-brand-500/30 hover:text-brand-50"
                     onClick={handleLaunch}
                     disabled={
                       launching ||
