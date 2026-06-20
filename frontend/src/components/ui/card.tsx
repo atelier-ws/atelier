@@ -18,7 +18,7 @@ const CARD_TONES: Record<CardTone, string> = {
   amber: "border-amber-900/40 bg-amber-950/20",
   emerald: "border-emerald-900/40 bg-emerald-950/20",
   cyan: "border-cyan-900/40 bg-cyan-950/20",
-  purple: "border-purple-900/40 bg-purple-950/20",
+  purple: "border-brand-900/40 bg-brand-950/20",
   red: "border-red-900/40 bg-red-950/20",
 };
 

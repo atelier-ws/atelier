@@ -158,7 +158,7 @@ export default function Workflow() {
           ) : hasSnapshot && summary ? (
             <button
               type="button"
-              className="w-full border border-purple-500/40 bg-purple-500/10 px-3 py-3 text-left"
+              className="w-full border border-brand-500/40 bg-brand-500/10 px-3 py-3 text-left"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
@@ -342,7 +342,7 @@ export default function Workflow() {
                         className={cx(
                           "border bg-neutral-950/50 px-4 py-3",
                           summary.current_step === stepId
-                            ? "border-purple-500/40"
+                            ? "border-brand-500/40"
                             : "border-neutral-800"
                         )}
                         open={summary.current_step === stepId}

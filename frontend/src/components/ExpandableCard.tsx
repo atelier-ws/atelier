@@ -46,7 +46,7 @@ export function ExpandableCard({
             <div className="flex items-center gap-3 mb-1">
               {/* Expandable indicator */}
               <span
-                className={`text-amber-400 font-mono text-xs transition-transform ${
+                className={`text-amber-300 font-mono text-xs transition-transform ${
                   isExpanded ? "rotate-90" : ""
                 }`}
               >
@@ -66,7 +66,7 @@ export function ExpandableCard({
               )}
             </div>
             {subtitle && (
-              <p className="font-mono text-[11px] text-neutral-500 truncate">
+              <p className="font-mono text-[11px] text-neutral-400 truncate">
                 {subtitle}
               </p>
             )}

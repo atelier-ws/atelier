@@ -70,7 +70,7 @@ export default function Failures() {
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex flex-wrap items-center gap-2">
                         <span
-                          className={`text-neutral-500 font-mono text-xs transition-transform ${
+                          className={`text-neutral-400 font-mono text-xs transition-transform ${
                             isExpanded ? "rotate-90" : ""
                           }`}
                         >
@@ -91,7 +91,7 @@ export default function Failures() {
                     {/* Fingerprint */}
                     <div>
                       <FieldLabel className="mb-2">❯ fingerprint</FieldLabel>
-                      <div className="text-xs font-mono text-red-400/70 whitespace-pre-wrap break-words bg-neutral-950 p-2 border border-neutral-800">
+                      <div className="text-xs font-mono text-red-300 whitespace-pre-wrap break-words bg-neutral-950 p-2 border border-neutral-800">
                         {c.fingerprint}
                       </div>
                     </div>
@@ -163,13 +163,13 @@ export default function Failures() {
                           {c.trace_ids.slice(0, 10).map((t, j) => (
                             <span
                               key={j}
-                              className="text-xs font-mono text-neutral-500 bg-neutral-950 px-2 py-0.5 border border-neutral-800"
+                              className="text-xs font-mono text-neutral-400 bg-neutral-950 px-2 py-0.5 border border-neutral-800"
                             >
                               {t}
                             </span>
                           ))}
                           {c.trace_ids.length > 10 && (
-                            <span className="text-xs text-neutral-600">
+                            <span className="text-xs text-neutral-400">
                               +{c.trace_ids.length - 10} more
                             </span>
                           )}

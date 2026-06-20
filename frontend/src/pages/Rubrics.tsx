@@ -93,7 +93,7 @@ export default function Rubrics() {
               </option>
             ))}
           </Select>
-          <FieldLabel className="ml-auto text-neutral-600">
+          <FieldLabel className="ml-auto text-neutral-400">
             {filtered.length} rubric{filtered.length !== 1 ? "s" : ""}
           </FieldLabel>
         </div>
@@ -118,7 +118,7 @@ export default function Rubrics() {
                       <div className="mb-1 flex flex-wrap items-center gap-2">
                         <ChevronRight
                           size={14}
-                          className={`text-neutral-500 transition-transform ${
+                          className={`text-neutral-400 transition-transform ${
                             isExpanded ? "rotate-90" : ""
                           }`}
                         />
@@ -139,7 +139,7 @@ export default function Rubrics() {
                       <FieldLabel className="mb-2">
                         <ChevronRight size={10} className="inline mr-1" /> ID
                       </FieldLabel>
-                      <code className="text-[10px] bg-neutral-950 px-2 py-1 text-neutral-500 font-mono border border-neutral-800 block break-all">
+                      <code className="text-[10px] bg-neutral-950 px-2 py-1 text-neutral-400 font-mono border border-neutral-800 block break-all">
                         {r.id}
                       </code>
                     </div>
@@ -153,7 +153,7 @@ export default function Rubrics() {
                         {new Date(r.created_at).toLocaleString()}
                       </p>
                       {r.updated_at && (
-                        <p className="text-xs text-neutral-500 font-mono mt-1">
+                        <p className="text-xs text-neutral-400 font-mono mt-1">
                           Updated: {new Date(r.updated_at).toLocaleString()}
                         </p>
                       )}
@@ -170,7 +170,7 @@ export default function Rubrics() {
                             key={i}
                             className="text-[11px] text-neutral-300 leading-relaxed bg-neutral-900/40 px-2 py-1 border border-neutral-800 flex items-start gap-2"
                           >
-                            <Check size={14} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                            <Check size={14} className="text-emerald-300 flex-shrink-0 mt-0.5" />
                             <span>{check}</span>
                           </li>
                         ))}
@@ -206,7 +206,7 @@ export default function Rubrics() {
                                   key={j}
                                   className="text-[11px] text-red-300 flex items-start gap-1"
                                 >
-                                  <X size={14} className="flex-shrink-0 text-red-500 font-bold" />
+                                  <X size={14} className="flex-shrink-0 text-red-300 font-bold" />
                                   <span>{f}</span>
                                 </li>
                               ))}

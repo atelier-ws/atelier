@@ -17,7 +17,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     <input
       ref={ref}
       className={cn(
-        "w-full border border-neutral-700 bg-neutral-950 font-mono text-neutral-200 outline-none transition placeholder:text-neutral-600 hover:border-neutral-600 focus:border-purple-500/60",
+        "w-full border border-neutral-700 bg-neutral-950 font-mono text-neutral-200 outline-none transition placeholder:text-neutral-400 hover:border-neutral-600 focus:border-brand-500/60",
         SIZE_STYLES[uiSize],
         className
       )}

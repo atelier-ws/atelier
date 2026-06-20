@@ -142,7 +142,7 @@ export function HostsSection() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-xs uppercase tracking-widest text-neutral-500 font-mono">
+      <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-mono">
         Hosts
       </h2>
       <p className="text-xs text-neutral-400">
@@ -185,7 +185,7 @@ export function HostsSection() {
                   </p>
                   {host.install_command && (
                     <div className="space-y-1">
-                      <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-mono">
+                      <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-mono">
                         Install
                       </div>
                       <code className="block break-all border border-neutral-800 bg-neutral-950 px-2 py-1 text-[10px] text-neutral-300">
@@ -216,21 +216,21 @@ const AGENT_ICON: Record<string, React.ElementType> = {
 };
 
 const AGENT_BG: Record<string, string> = {
-  purple: "bg-purple-700",
-  cyan: "bg-cyan-700",
-  green: "bg-green-700",
-  red: "bg-red-700",
-  blue: "bg-blue-700",
-  yellow: "bg-yellow-700",
+  purple: "bg-brand-500/15",
+  cyan: "bg-cyan-500/15",
+  green: "bg-green-500/15",
+  red: "bg-red-500/15",
+  blue: "bg-blue-500/15",
+  yellow: "bg-yellow-500/15",
 };
 
 const AGENT_TEXT: Record<string, string> = {
-  purple: "text-purple-400",
-  cyan: "text-cyan-400",
-  green: "text-green-400",
-  red: "text-red-400",
-  blue: "text-blue-400",
-  yellow: "text-yellow-400",
+  purple: "text-brand-300",
+  cyan: "text-cyan-200",
+  green: "text-green-200",
+  red: "text-red-200",
+  blue: "text-blue-200",
+  yellow: "text-yellow-200",
 };
 
 export function AgentsSection() {
@@ -247,17 +247,17 @@ export function AgentsSection() {
   if (agents === null) {
     return (
       <section className="space-y-3">
-        <h2 className="text-xs uppercase tracking-widest text-neutral-500 font-mono">
+        <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-mono">
           Agents
         </h2>
-        <p className="text-xs text-neutral-500">Loading…</p>
+        <p className="text-xs text-neutral-400">Loading…</p>
       </section>
     );
   }
 
   return (
     <section className="space-y-3">
-      <h2 className="text-xs uppercase tracking-widest text-neutral-500 font-mono">
+      <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-mono">
         Agents
       </h2>
       <div className="grid gap-2 sm:grid-cols-2">
@@ -301,7 +301,7 @@ function AgentCard({
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex flex-wrap items-center gap-3">
               <span
-                className={`${bg} font-mono text-xs px-2 py-1 transition-transform inline-flex items-center gap-2 ${
+                className={`${bg} ${color} font-mono text-xs px-2 py-1 transition-transform inline-flex items-center gap-2 ${
                   expanded ? "rotate-0" : ""
                 }`}
               >
@@ -309,7 +309,7 @@ function AgentCard({
                   size={14}
                   className={`transition-transform ${expanded ? "rotate-90" : ""}`}
                 />
-                <span className="font-bold text-neutral-200 text-sm">
+                <span className="font-bold text-sm">
                   {agent.name}
                 </span>
               </span>
@@ -360,7 +360,7 @@ function AgentCard({
       {/* Source */}
       <div className="pt-2 border-t border-neutral-800">
         <FieldLabel className="mb-2">Source</FieldLabel>
-        <code className="text-[10px] bg-neutral-950 px-2 py-1 text-neutral-500 font-mono border border-neutral-700 block break-all">
+        <code className="text-[10px] bg-neutral-950 px-2 py-1 text-neutral-400 font-mono border border-neutral-700 block break-all">
           {agent.file}
         </code>
       </div>
@@ -388,7 +388,7 @@ export function SkillsSection() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-xs uppercase tracking-widest text-neutral-500 font-mono">
+      <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-mono">
         Skills
       </h2>
       <p className="text-xs text-neutral-400 mb-3">
@@ -458,17 +458,17 @@ function SkillCard({
         className="flex items-start gap-2 w-full text-left"
       >
         <span className="mt-0.5">
-          <skill.icon size={14} className="text-emerald-500" />
+          <skill.icon size={14} className="text-emerald-300" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-mono font-medium text-neutral-200 truncate">
             {skill.name}
           </div>
-          <div className="text-[10px] text-neutral-500 leading-tight">
+          <div className="text-[10px] text-neutral-400 leading-tight">
             {skill.desc}
           </div>
         </div>
-        <span className="text-neutral-600">
+        <span className="text-neutral-400">
           {loading ? (
             "..."
           ) : isExpanded ? (
@@ -517,7 +517,7 @@ const NS_META: Record<
   reasoning: {
     icon: Brain,
     label: "reasoning",
-    color: "text-purple-400 border-purple-900/50 bg-purple-950/10",
+    color: "text-brand-400 border-brand-900/50 bg-brand-950/10",
   },
   code_intel: {
     icon: Command,
@@ -542,7 +542,7 @@ const NS_META: Record<
   state: {
     icon: Archive,
     label: "state",
-    color: "text-amber-400 border-amber-900/50 bg-amber-950/10",
+    color: "text-amber-300 border-amber-900/50 bg-amber-950/10",
   },
 };
 
@@ -588,7 +588,7 @@ export function ToolsSection() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-xs uppercase tracking-widest text-neutral-500 font-mono">
+      <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-mono">
         Tools
       </h2>
       {!mcpTools && <EmptyState title="Loading tools…" className="p-4" />}
@@ -623,7 +623,7 @@ export function ToolsSection() {
 
           return (
             <div className="grid gap-5 sm:grid-cols-2">
-              <p className="text-[10px] font-mono text-neutral-600 sm:col-span-2">
+              <p className="text-[10px] font-mono text-neutral-400 sm:col-span-2">
                 {deduped.length} tools on stdio server: <code>atelier mcp</code>
               </p>
               {nsOrder
@@ -639,11 +639,11 @@ export function ToolsSection() {
                   return (
                     <div key={ns}>
                       <div className="flex items-center gap-2 mb-2">
-                        <meta.icon size={14} className="text-neutral-500" />
-                        <span className="text-[10px] uppercase tracking-widest font-mono text-neutral-500">
+                        <meta.icon size={14} className="text-neutral-400" />
+                        <span className="text-[10px] uppercase tracking-widest font-mono text-neutral-400">
                           {meta.label}
                         </span>
-                        <span className="text-[10px] text-neutral-700 font-mono">
+                        <span className="text-[10px] text-neutral-400 font-mono">
                           ({tools.length})
                         </span>
                       </div>
@@ -675,7 +675,7 @@ export function ToolsSection() {
                                   {tool.tool_name}
                                 </span>
                                 {primaryEnum && (
-                                  <span className="text-[8px] font-bold text-cyan-300 border border-cyan-500/30 px-1 py-0.5 mr-2">
+                                  <span className="text-[10px] font-bold text-cyan-300 border border-cyan-500/30 px-1 py-0.5 mr-2">
                                     {primaryEnum.options.length}{" "}
                                     {primaryEnum.name}
                                     {primaryEnum.options.length === 1
@@ -684,16 +684,16 @@ export function ToolsSection() {
                                   </span>
                                 )}
                                 {isDev && (
-                                  <span className="text-[8px] font-bold text-amber-500/60 border border-amber-500/30 px-1 py-0.5 mr-2">
+                                  <span className="text-[10px] font-bold text-amber-300 border border-amber-500/30 px-1 py-0.5 mr-2">
                                     DEV
                                   </span>
                                 )}
                                 {isDev && tool.mode === "passive" && (
-                                  <span className="text-[8px] font-bold text-neutral-500 border border-neutral-700 px-1 py-0.5 mr-2">
+                                  <span className="text-[10px] font-bold text-neutral-400 border border-neutral-700 px-1 py-0.5 mr-2">
                                     PASSIVE
                                   </span>
                                 )}
-                                <span className="text-neutral-600">
+                                <span className="text-neutral-400">
                                   {isExpanded ? (
                                     <ChevronUp size={14} />
                                   ) : (
@@ -708,13 +708,13 @@ export function ToolsSection() {
                                       {cleanDescription}
                                     </p>
                                   ) : (
-                                    <p className="text-xs text-neutral-600 italic">
+                                    <p className="text-xs text-neutral-400 italic">
                                       No description available.
                                     </p>
                                   )}
                                   <div className="mt-2 flex items-center gap-3">
                                     <span
-                                      className={`text-[10px] font-mono px-2 py-0.5 ${tool.available ? "bg-emerald-900/30 text-emerald-300" : "bg-neutral-800 text-neutral-500"}`}
+                                      className={`text-[10px] font-mono px-2 py-0.5 ${tool.available ? "bg-emerald-900/30 text-emerald-300" : "bg-neutral-800 text-neutral-400"}`}
                                     >
                                       {tool.mode === "passive"
                                         ? "passive capture"
@@ -722,7 +722,7 @@ export function ToolsSection() {
                                           ? "available"
                                           : "unavailable"}
                                     </span>
-                                    <code className="text-[10px] font-mono text-neutral-600">
+                                    <code className="text-[10px] font-mono text-neutral-400">
                                       {tool.tool_name}
                                     </code>
                                   </div>
@@ -741,7 +741,7 @@ export function ToolsSection() {
                                             key={`${tool.tool_name}-${param.name}`}
                                             className="space-y-2"
                                           >
-                                            <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-neutral-500 font-mono">
+                                            <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-neutral-400 font-mono">
                                               <code className="border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-neutral-300 normal-case">
                                                 {param.name}
                                               </code>
@@ -750,7 +750,7 @@ export function ToolsSection() {
                                               </span>
                                             </div>
                                             {param.description && (
-                                              <p className="text-[10px] text-neutral-500">
+                                              <p className="text-[10px] text-neutral-400">
                                                 {param.description}
                                               </p>
                                             )}
@@ -802,7 +802,7 @@ function SystemPageFrame({
     <div className="space-y-8 p-6 text-sm">
       <section className="border border-neutral-800 bg-neutral-950/70 p-5">
         <div className="space-y-2">
-          <div className="text-[10px] uppercase tracking-[0.3em] text-neutral-500">
+          <div className="text-[10px] uppercase tracking-[0.3em] text-neutral-400">
             System
           </div>
           <h1 className="text-2xl font-semibold text-neutral-100">{title}</h1>
