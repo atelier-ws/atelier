@@ -27,7 +27,7 @@ from atelier.core.capabilities.licensing.models import TOKEN_VERSION, License, L
 # Filled in at release time from `services/license-issuer/scripts/keygen.mjs`.
 # Empty means "no trusted key baked into this build" -> verification fails closed
 # unless the env override is set.
-_EMBEDDED_PUBLIC_KEY_B64 = ""
+_EMBEDDED_PUBLIC_KEY_B64 = "PqWtV43BPVCR6C4ljIe0X0yfOm2C6b1OsCeB+7Utl0s="
 
 _PUBLIC_KEY_ENV = "ATELIER_LICENSE_PUBLIC_KEY"
 

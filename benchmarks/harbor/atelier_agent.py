@@ -191,7 +191,8 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
         """Forward subscription token; skip ANTHROPIC_API_KEY (unused by claude CLI)."""
         env: dict[str, str] = {
             "ATELIER_BENCH_MODE": self._bench_mode,
-            "ATELIER_ROOT": "/home/agent/.atelier",
+            "ATELIER_ROOT": "/home/bench/.atelier",
+            "ATELIER_PYTHON": "/opt/atelier-venv/bin/python",
             "PYTHONUNBUFFERED": "1",
             # Isolated config dir: no pre-installed plugins/hooks/MCP.
             "CLAUDE_CONFIG_DIR": "/home/bench/.claude-bench",
@@ -207,35 +208,55 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
         # System deps + Node.js (required by claude CLI)
         await self.exec_as_root(
             environment,
-            command=("apt-get update -qq && apt-get install -y -qq git curl python3-pip nodejs npm 2>/dev/null"),
+            command=(
+                "i=0; while :; do apt-get update -qq && "
+                "apt-get install -y -qq git curl ca-certificates gnupg && break; "
+                "i=$((i+1)); [ $i -ge 4 ] && { echo apt_install_failed_after_$i; exit 1; }; "
+                "echo apt_retry_$i; sleep $((i*5)); done"
+            ),
+        )
+        # @anthropic-ai/claude-code needs Node >=18, but some task base images
+        # ship Node 12 (e.g. debian bullseye) where apt's nodejs stays too old.
+        # Install Node 20 from NodeSource regardless of the base distro.
+        await self.exec_as_root(
+            environment,
+            command=(
+                "i=0; while :; do curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && "
+                "apt-get install -y -qq nodejs && break; "
+                "i=$((i+1)); [ $i -ge 4 ] && { echo node_install_failed_after_$i; exit 1; }; "
+                "echo node_retry_$i; sleep $((i*5)); done"
+            ),
         )
         # Install Claude Code CLI
         await self.exec_as_root(
             environment,
-            command="npm install -g @anthropic-ai/claude-code 2>/dev/null",
+            command=(
+                "npm config set fetch-retries 5; "
+                "i=0; while :; do npm install -g @anthropic-ai/claude-code && break; "
+                "i=$((i+1)); [ $i -ge 5 ] && { echo npm_install_failed_after_$i; exit 1; }; "
+                "echo npm_retry_$i; sleep $((i*5)); done"
+            ),
         )
-        # Install atelier from the repo mounted at /atelier (not on PyPI).
-        # ATELIER_SKIP_MYPYC=1 skips the mypyc compilation step that runs
-        # via hatch_build.py — not needed inside the bench container.
+        # Atelier from the prebuilt portable bundle (mounted at
+        # /atelier-bundle.tar.gz). Built once on old glibc so it runs on every
+        # task image, and avoids the per-trial Python download + native-dep
+        # (tree-sitter) compilation that fails on old-glibc images.
         await self.exec_as_root(
             environment,
-            command="ATELIER_SKIP_MYPYC=1 pip install --quiet --break-system-packages /atelier",
+            command=(
+                "tar -C /opt -xzf /atelier-bundle.tar.gz && "
+                "chmod -R a+rX /opt/atelier-venv /opt/uvpy && "
+                "ln -sf /opt/atelier-venv/bin/atelier /usr/local/bin/atelier && "
+                "/opt/atelier-venv/bin/python -c 'import atelier'"
+            ),
         )
-        # Initialise atelier runtime store (the MCP server needs it).
-        # Use python3 -m so we don't depend on the binary being on PATH.
-        await self.exec_as_agent(
-            environment,
-            command="python3 -m atelier.gateway.cli init",
-            env=self._agent_env,
-        )
-        # Create a non-root user for running claude (it refuses --permission-mode
-        # bypassPermissions when running as root).
+        # Non-root user to run claude (it refuses bypassPermissions as root).
         await self.exec_as_root(
             environment,
             command="useradd -m -s /bin/bash bench 2>/dev/null || true",
         )
         # Isolated CLAUDE_CONFIG_DIR: empty .claude.json, no pre-installed
-        # plugins/hooks. CLAUDE_CODE_OAUTH_TOKEN authenticates so credentials
+        # plugins/hooks. CLAUDE_CODE_OAUTH_TOKEN authenticates so the credentials
         # file is not copied (avoids stale-token conflicts with concurrent runs).
         await self.exec_as_root(
             environment,
@@ -244,6 +265,26 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
                 "echo '{}' > /home/bench/.claude-bench/.claude.json && "
                 "chown -R bench:bench /home/bench/.claude-bench"
             ),
+        )
+        # Init the atelier store AS bench under a bench-owned ATELIER_ROOT so the
+        # MCP server (which runs as bench) can write it.
+        await self.exec_as_root(
+            environment,
+            command=(
+                "runuser -u bench -- bash -c 'cd /home/bench && ATELIER_ROOT=/home/bench/.atelier /opt/atelier-venv/bin/atelier init'"
+            ),
+        )
+        # Task workdir must be writable by bench (agent writes deliverables there).
+        await self.exec_as_root(
+            environment,
+            command="chown -R bench:bench /app 2>/dev/null || true",
+        )
+        # Reward-hacking compliance (TB leaderboard rule): block the agent from
+        # reaching the Terminal-Bench website/leaderboard so it cannot look up
+        # task solutions. github.com stays open (pip/npm/git tooling needs it).
+        await self.exec_as_root(
+            environment,
+            command="echo '127.0.0.1 tbench.ai www.tbench.ai harborframework.com www.harborframework.com' >> /etc/hosts",
         )
 
     @with_prompt_template
@@ -257,19 +298,58 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
         escaped = shlex.quote(instruction)
         model_flag = f"--model {shlex.quote(self._model)}" if self._model else ""
         log = shlex.quote(self._CLAUDE_LOG)
-        # Build env exports for the su subshell (env= dict is not forwarded by su -c)
-        env_exports = " ".join(f"{k}={shlex.quote(v)}" for k, v in self._agent_env.items())
+        # Export env into the runuser subshell. A leading `VAR=val` command prefix
+        # would bind only to the first statement, and we run several below, so use
+        # `export` (env= dict is not forwarded by runuser either).
+        env_exports = " ".join(f"export {k}={shlex.quote(v)};" for k, v in self._agent_env.items())
+        # bench_mode="off" -> vanilla claude-code baseline (no Atelier plugin),
+        # making the plugin the ONLY variable vs the "on" arm. Select the
+        # baseline at run time with `--ak bench_mode=off`.
+        plugin_flags = (
+            ""
+            if self._bench_mode == "off"
+            else "--plugin-dir /atelier/integrations/claude/plugin --agent atelier:code "
+        )
+        # Atelier arm only: build the code index BEFORE claude starts so the first
+        # MCP grep hits a ready FTS index instead of racing a lazy/incremental
+        # build (the empty-first-grep bug). `atelier code index` is fully
+        # synchronous for the FTS symbol/file store grep reads, and the CLI engine
+        # runs with autosync disabled (no background worker). Both `code index`
+        # and the MCP server key the db as sha256(resolved repo-root)[:12]; the
+        # MCP resolves it via CLAUDE_WORKSPACE_ROOT > ATELIER_WORKSPACE_ROOT > cwd,
+        # so we pin BOTH to $PWD (the prewarm runs in the same cwd) to guarantee
+        # the prewarm's db is the one the first grep reads.
+        #
+        # CLI index calls now use require_lock=True: a contended/failed build
+        # raises IndexLockTimeout (non-zero exit) instead of silently serving a
+        # stale snapshot. Empty / non-git workdirs still exit 0 (the git-history
+        # GitError is caught), so a non-zero exit now means a real failure -- we
+        # do NOT `|| true` it away (that would reintroduce the silent degrade the
+        # require_lock fix exists to prevent). We bump the lock timeout ('wait
+        # longer' -- the prewarm runs alone so the lock is uncontended; this just
+        # covers slow disks / large repos, and honours an external override), log
+        # a loud, greppable marker on failure, and still launch claude so the
+        # agent's graceful fallbacks apply.
+        prewarm = (
+            ""
+            if self._bench_mode == "off"
+            else (
+                'export ATELIER_WORKSPACE_ROOT="$PWD" CLAUDE_WORKSPACE_ROOT="$PWD" '
+                'ATELIER_INDEX_LOCK_TIMEOUT_S="${ATELIER_INDEX_LOCK_TIMEOUT_S:-300}"; '
+                "atelier code index --reindex --no-stats >/logs/atelier-index.log 2>&1 "
+                '|| echo "ATELIER_PREWARM_INDEX_FAILED rc=$? (see /logs/atelier-index.log)"; '
+            )
+        )
         inner = (
-            f"claude -p {escaped} {model_flag} "
+            env_exports + " " + prewarm + f"claude -p {escaped} {model_flag} "
             "--output-format json "
             "--permission-mode bypassPermissions "
-            "--plugin-dir /atelier/integrations/claude/plugin "
-            "--agent atelier:code "
+            f"{plugin_flags}"
             f"2>&1 | tee {log}"
         )
         # claude refuses --permission-mode bypassPermissions when run as root.
         # runuser (util-linux) switches user without requiring a password, unlike su.
-        cmd = f"runuser -u bench -- bash -c {shlex.quote(env_exports + ' ' + inner)}"
+        cmd = f"runuser -u bench -- bash -c {shlex.quote(inner)}"
         await self.exec_as_root(
             environment,
             command=cmd,

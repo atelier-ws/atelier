@@ -373,7 +373,7 @@ def _role_projections() -> dict[str, tuple[HostProjection, ...]]:
 
 def _tool_policies() -> dict[str, ToolPolicy]:
     return {
-        "code": ToolPolicy(policy_id="code", allowed_tools=("*",), denied_actions=("agent-spawn",)),
+        "code": ToolPolicy(policy_id="code", allowed_tools=("*",)),
         "general": ToolPolicy(policy_id="general", allowed_tools=("*",)),
         "explore": ToolPolicy(
             policy_id="explore",
@@ -394,7 +394,7 @@ def _tool_policies() -> dict[str, ToolPolicy]:
                 "explore",
                 "web_fetch",
             ),
-            denied_actions=("edit", "write", "delete", "agent-spawn"),
+            denied_actions=("edit", "write", "delete"),
         ),
         "execute": ToolPolicy(policy_id="execute", allowed_tools=("*",), denied_actions=("agent-spawn",)),
         "review": ToolPolicy(
@@ -413,7 +413,7 @@ def _tool_policies() -> dict[str, ToolPolicy]:
         "research": ToolPolicy(
             policy_id="research",
             allowed_tools=("web_fetch", "web_search", "read", "search"),
-            denied_actions=("edit", "write", "delete", "agent-spawn"),
+            denied_actions=("edit", "write", "delete"),
         ),
         "solve": ToolPolicy(policy_id="solve", allowed_tools=("*",), denied_actions=("agent-spawn",)),
         "auto": ToolPolicy(policy_id="auto", allowed_tools=("*",), denied_actions=("plan-gate", "ask-user")),

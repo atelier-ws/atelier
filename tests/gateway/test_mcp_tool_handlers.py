@@ -40,11 +40,10 @@ EXPECTED_TOOLS = {
     "search",
     "shell",
     "web_fetch",
-    # Dedicated code-intel tools (split from `code` op for LLM discoverability)
+    # Dedicated code-intel tools (split from `code` op for LLM discoverability).
+    # callers/callees/usages are hidden (HIDDEN_LLM_TOOLS): agents reach call
+    # edges + references via `explore`, single definitions via `node`.
     "node",
-    "callers",
-    "callees",
-    "usages",
     "explore",
     "codemod",
 }
