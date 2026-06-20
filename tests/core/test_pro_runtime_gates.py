@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from atelier.core.capabilities import pro_bridge
 from atelier.core.capabilities.licensing import entitlements
+from atelier.core.capabilities.optimization.policy import load_current_policy
 from atelier.core.service import code_warm
 
 
@@ -95,3 +96,16 @@ def test_pro_warms_all_repos(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
     warmer = code_warm._CodeWarmer()
     warmer._warm_once()
     assert len(warmer._engines) == 3  # Pro: all active workspaces
+
+
+def test_free_policy_is_unoptimized(tmp_path: Path) -> None:
+    # No license/overlay (autouse _clean) -> the savings engine is off.
+    policy = load_current_policy(tmp_path)
+    assert policy.preset == "custom"
+    assert policy.compaction.trigger_at_context_fraction == 1.0
+
+
+def test_pro_policy_is_balanced(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _grant(monkeypatch, {"optimizer"})
+    policy = load_current_policy(tmp_path)
+    assert policy.preset == "balanced"

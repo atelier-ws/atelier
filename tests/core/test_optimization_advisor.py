@@ -59,6 +59,13 @@ def test_complexity_scores_risky_migration_above_explanation() -> None:
     assert migration.label in {"medium", "hard"}
 
 
+@pytest.fixture(autouse=True)
+def _entitle_savings_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    # This module exercises the Pro savings engine; treat the install as licensed
+    # so load_current_policy returns the configured policy, not the Free baseline.
+    monkeypatch.setattr("atelier.core.capabilities.licensing.feature_active", lambda *a, **k: True)
+
+
 def test_policy_roundtrip_preserves_preset(tmp_path: Path) -> None:
     path = save_policy(tmp_path, preset_policy("economy"))
 
