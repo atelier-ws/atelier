@@ -10,20 +10,34 @@ import { type LicensePayload, signLicense } from "./license";
 import { verifyStripeSignature } from "./stripe";
 import type { Env } from "./types";
 
-// Must match PRO_FEATURES in the Python client (features.py). An empty list in
-// the token also means "all Pro features"; we send the explicit list so older
-// clients still see exactly what they bought.
+// Must match PRO_FEATURES / ENTERPRISE_FEATURES in the Python client
+// (features.py). Pro tokens carry the Pro keys; Enterprise tokens carry all.
 const PRO_FEATURES = [
+  "code_search",
+  "context_engine",
+  "source_projection",
+  "unlimited_repos",
+  "session_recall",
+  "cross_vendor_memory",
+  "reasoning_library",
   "optimizer",
+  "savings_dashboard",
   "context_compression",
   "prefix_cache",
   "scoped_context",
   "budget_optimizer",
   "model_routing",
   "cross_vendor_routing",
-  "savings_dashboard",
-  "unlimited_repos",
+  "swarm",
 ];
+
+const ENTERPRISE_FEATURES = ["large_repo", "shared_context", "governance"];
+
+function featuresForPlan(plan: string): string[] {
+  return plan === "enterprise"
+    ? [...PRO_FEATURES, ...ENTERPRISE_FEATURES]
+    : PRO_FEATURES;
+}
 
 const DAY = 86400;
 
@@ -59,7 +73,7 @@ async function issueAndDeliver(env: Env, input: IssueInput): Promise<string> {
     plan: input.plan,
     iat: nowSec,
     exp: expires,
-    features: PRO_FEATURES,
+    features: featuresForPlan(input.plan),
   };
   const token = await signLicense(payload, env.LICENSE_PRIVATE_KEY);
 

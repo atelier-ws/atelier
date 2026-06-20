@@ -36,20 +36,27 @@ without a key; a key with no overlay has nothing to run.
 |       **yes**      |       no       | **Locked** (handles a leak)     |
 |        yes         |      yes       | **Pro**                         |
 
-## Free vs Pro
+## Free vs Pro vs Enterprise
 
-| Capability                                                       | Free | Pro |
-| ---------------------------------------------------------------- | :--: | :-: |
-| Grounded code intelligence (`search`/`grep`/`read`/`node`/…)     |  ✅  | ✅  |
-| Host packaging, agents, skills, `init`                           |  ✅  | ✅  |
-| Local memory / recall (single repo)                              |  ✅  | ✅  |
-| See optimization recommendations (`atelier optimize`)            |  ✅  | ✅  |
-| **Apply** an optimization policy (`atelier optimize apply`)      |  —   | ✅  |
-| Full savings breakdown (`atelier savings --deep`)                |  —   | ✅  |
-| Model routing / cross-vendor routing                             |  —   | ✅  |
+| Capability                                                  | Free | Pro | Ent |
+| ----------------------------------------------------------- | :--: | :-: | :-: |
+| Code-nav MCP tools (`read`/`grep`/`search`/`node`/`edit`/…) |  ✅  | ✅  | ✅  |
+| Agent reasoning runtime (rescue, loop detection, verify)    |  ✅  | ✅  | ✅  |
+| Host packaging, agents, skills, `init`; benchmarks          |  ✅  | ✅  | ✅  |
+| Repo map + context engine (small repos)                     |  ✅  | ✅  | ✅  |
+| Headline savings number                                     |  ✅  | ✅  | ✅  |
+| Zoekt fast search; large-repo indexing; projection VFS      |  —   | ✅  | ✅  |
+| Session recall + cross-vendor memory                        |  —   | ✅  | ✅  |
+| Reasoning library (procedures, lessons, knowledge)          |  —   | ✅  | ✅  |
+| Savings engine: apply + full breakdown + compression/budget |  —   | ✅  | ✅  |
+| Model routing (daemon, cross-vendor, quality)               |  —   | ✅  | ✅  |
+| Multi-repo; multi-worktree swarm                            |  —   | ✅  | ✅  |
+| Very large repos (no caps); shared team context             |  —   | —   | ✅  |
+| Governance, audit export, retention, SSO                    |  —   | —   | ✅  |
 
-The Pro feature keys are defined in
-`src/atelier/core/capabilities/licensing/features.py` (`PRO_FEATURES`).
+The feature keys are in `src/atelier/core/capabilities/licensing/features.py`
+(`PRO_FEATURES`, with `ENTERPRISE_FEATURES` the Enterprise-only subset). For the
+customer-facing plans and prices see [Plans & Pricing](./pricing.md).
 
 ## Using a license
 
