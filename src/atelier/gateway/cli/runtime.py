@@ -1320,8 +1320,6 @@ _OWNED_TOOL_NAMES = (
     "grep",
     "symbols",
     "node",
-    "callers",
-    "usages",
     "explore",
     "edit",
     "shell",
