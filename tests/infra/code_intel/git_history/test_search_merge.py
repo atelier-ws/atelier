@@ -57,7 +57,7 @@ def engine_with_commits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
 
     db_dir = tmp_path / ".atelier"
-    db_dir.mkdir()
+    db_dir.mkdir(parents=True, exist_ok=True)
 
     from atelier.core.capabilities.code_context.engine import CodeContextEngine
 

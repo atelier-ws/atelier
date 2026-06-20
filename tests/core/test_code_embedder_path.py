@@ -67,6 +67,7 @@ def test_semantic_search_ranker_uses_task_aware_code_embedder(tmp_path: Path) ->
 def test_lineage_ready_preserves_old_chunks_until_full_rebuild_starts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("ATELIER_LINEAGE_ENABLED", "1")
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "orders.py").write_text("def total() -> int:\n    return 1\n", encoding="utf-8")
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")

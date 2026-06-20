@@ -223,3 +223,19 @@ def test_statusline_ignores_lifetime_savings_files(tmp_path: Path) -> None:
 
     assert "$0.006(2k+2000)" in output
     assert "calls saved" not in output
+
+
+def test_statusline_empty_session_never_writes_shared_segment_cache(tmp_path: Path) -> None:
+    # With no session id, the subprocess cache key used to collapse to a shared
+    # "statusline_segment_cache_default" slot that every unbound window
+    # read/wrote -- leaking one window's cost/savings into another. Fail closed:
+    # an empty-session render must not create any shared segment cache file.
+    (tmp_path / "auth.json").write_text(json.dumps({"authenticated": True}), encoding="utf-8")
+    payload = _payload()
+    payload["session_id"] = ""  # empty id -> previously hit the shared "default" cache
+
+    _run_statusline(tmp_path, payload)
+
+    leaked = sorted(p.name for p in tmp_path.glob("statusline_segment_cache*"))
+    leaked += sorted(p.name for p in tmp_path.glob("statusline_segment_ts*"))
+    assert leaked == [], f"empty-session render leaked shared cache files: {leaked}"
