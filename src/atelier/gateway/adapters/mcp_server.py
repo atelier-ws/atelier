@@ -2448,6 +2448,40 @@ def _get_mcp_model() -> str:
     return _cached_mcp_model
 
 
+# Native per-session id env vars for non-Claude hosts, tried in order after the
+# window-anchored Claude resolver. Module-level so _resolved_host_session_id and
+# _get_host_session_sidecar_path share one source of truth.
+_HOST_SESSION_ENVS: list[tuple[str, str]] = [
+    ("CODEX_SESSION_ID", "codex"),
+    ("OPENCODE_SESSION_ID", "opencode"),
+    ("GITHUB_COPILOT_SESSION_ID", "copilot"),
+    ("CURSOR_SESSION_ID", "cursor"),
+    ("CURSOR_TRACE_ID", "cursor"),
+    ("HERMES_SESSION_ID", "hermes"),
+    ("ANTIGRAVITY_SESSION_ID", "antigravity"),
+    ("AGY_SESSION_ID", "antigravity"),
+]
+
+
+def _resolved_host_session_id() -> str:
+    """Resolved per-session id for the current host, or ``""`` when unknown.
+
+    Window-anchored live id (Claude — stable across /clear, isolated per window)
+    first, then the native host session env vars. An empty result is a hard
+    signal that callers MUST fail closed: attributing savings to a
+    workspace-shared slot would cross-contaminate concurrent windows in one repo
+    (the exact mixing this guards against).
+    """
+    sid = _resolve_live_session_id()
+    if sid:
+        return sid
+    for env_var, _host in _HOST_SESSION_ENVS:
+        env_sid = os.environ.get(env_var, "").strip()
+        if env_sid:
+            return env_sid
+    return ""
+
+
 def _get_host_session_sidecar_path() -> Path:
     """Return the per-session savings sidecar path for the current host.
 
@@ -2458,37 +2492,15 @@ def _get_host_session_sidecar_path() -> Path:
     ``CLAUDE_CODE_SESSION_ID`` goes stale the moment the user first runs /clear
     and stays stale for the rest of the process's life.
 
-    Priority (Claude):
-    1. Window-anchored live session id (``_resolve_live_session_id`` -> this
-       window's own identity file) — correct across /clear and isolated per
-       window, so concurrent windows in one workspace never cross-attribute.
-    2. ``CLAUDE_CODE_SESSION_ID`` env var — fallback for the first calls before
-       SessionStart has written this window's file, or launchers that skip the
-       hook.
+    Resolution is delegated to :func:`_resolved_host_session_id` (window-anchored
+    Claude id, then native host env ids). When nothing resolves it falls back to
+    the workspace-shared path -- but callers that must not cross-attribute
+    (:func:`_append_savings`, :func:`_write_statusline_sidecar`) gate on
+    :func:`_resolved_host_session_id` and skip rather than write that slot.
     """
-    # 1. Claude: window-anchored live session id -- the SAME resolver traces use,
-    # so savings and traces always land under one session even across /clear and
-    # with concurrent windows in the same workspace.
-    sid = _resolve_live_session_id()
+    sid = _resolved_host_session_id()
     if sid:
         return _atelier_root() / "sessions" / sid / "savings.jsonl"
-
-    # 2. Other hosts — use their native session ID env var directly.
-    _HOST_SESSION_ENVS: list[tuple[str, str]] = [
-        ("CODEX_SESSION_ID", "codex"),
-        ("OPENCODE_SESSION_ID", "opencode"),
-        ("GITHUB_COPILOT_SESSION_ID", "copilot"),
-        ("CURSOR_SESSION_ID", "cursor"),
-        ("CURSOR_TRACE_ID", "cursor"),
-        ("HERMES_SESSION_ID", "hermes"),
-        ("ANTIGRAVITY_SESSION_ID", "antigravity"),
-        ("AGY_SESSION_ID", "antigravity"),
-    ]
-    for env_var, _host in _HOST_SESSION_ENVS:
-        env_sid = os.environ.get(env_var, "").strip()
-        if env_sid:
-            return _atelier_root() / "sessions" / env_sid / "savings.jsonl"
-
     return _workspace_savings_path()
 
 
@@ -2603,6 +2615,12 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
     """
     if tokens_saved <= 0 and calls_saved <= 0:
         return
+    # Fail closed: with no resolvable session id the sidecar path would fall back
+    # to a workspace-shared file that every concurrent window in this repo reads,
+    # cross-attributing one window's savings to another. Drop the event instead.
+    if not _resolved_host_session_id():
+        _log.debug("savings append skipped: unresolved session id (fail closed)")
+        return
     _register_mcp_session()
     ts = datetime.utcnow().isoformat()
     # Per-turn model truth from the transcript beats the SessionStart bridge,
@@ -2674,14 +2692,18 @@ def _write_statusline_sidecar() -> None:
     if now - _STATUSLINE_SIDECAR_LAST_WRITE < _STATUSLINE_SIDECAR_MIN_INTERVAL:
         return
     _STATUSLINE_SIDECAR_LAST_WRITE = now
+    # Fail closed: an unresolved session id would otherwise resolve to the
+    # workspace-shared slot and publish one window's segment for every sibling.
+    sid = _resolved_host_session_id()
+    if not sid:
+        return
     try:
-        sidecar = _get_host_session_sidecar_path()  # sessions/<id>/savings.jsonl
-        seg_path = sidecar.parent / "statusline_segment"
-        sid = sidecar.parent.name  # the MCP-resolved session id
+        seg_path = _atelier_root() / "sessions" / sid / "statusline_segment"
         from atelier.core.capabilities.savings_summary import savings_segment
 
         seg = savings_segment(session_id=sid)
         if seg:
+            seg_path.parent.mkdir(parents=True, exist_ok=True)
             seg_path.write_text(seg, encoding="utf-8")
     except Exception:  # noqa: BLE001 - infrastructure path, must never raise
         _log.debug("statusline sidecar write failed", exc_info=True)

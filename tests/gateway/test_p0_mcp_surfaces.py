@@ -52,6 +52,16 @@ def test_symbols_surface_hidden_but_callable() -> None:
         transport.call_tool("code", {})
 
 
+def test_symbol_graph_relations_hidden_but_callable() -> None:
+    # callers/callees/usages fold into `explore` (one call returns all three)
+    # plus `node` for single definitions. They stay registered and callable by
+    # name (tests / CLI / power use) but off the advertised agent surface.
+    for name in ("callers", "callees", "usages"):
+        assert name in TOOLS
+        assert name in HIDDEN_LLM_TOOLS
+        assert callable(TOOLS[name]["handler"])
+
+
 def test_mcp_grep_native_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     (tmp_path / "a.py").write_text("needle\n", encoding="utf-8")

@@ -7,3 +7,5 @@ agent_description: Minimal coding agent. Strips Workflow and ScheduleWakeup to r
 {{CORE_DISCIPLINE}}
 
 {{CHANGE_DISCIPLINE}}
+
+{{CODING_GUIDELINES}}

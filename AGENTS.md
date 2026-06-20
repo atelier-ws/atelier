@@ -18,7 +18,7 @@ This file is a thin entrypoint. The live source of truth lives in the linked doc
 
 - Shared docs use plain tool names like `read` and `edit`; some hosts expose them as handles like `mcp__atelier__read` — use the name shown by your host when invoking one explicitly.
 - `read` for file reads; `search` / `grep` for discovery; `edit` for file changes; `shell` only for commands without a better Atelier equivalent.
-- `node` / `callers` / `usages` / `explore` for code intelligence; use them before text search for code relationships.
+- `node` and `explore` for code intelligence (one `explore` call folds in callers, callees, and usages); use them before text search for code relationships.
 - Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.
 - Codex may defer MCP tools behind `tool_search`; if no `mcp__atelier__...` tools are visible, call `tool_search` for Atelier MCP tools before treating Atelier as unavailable.
 

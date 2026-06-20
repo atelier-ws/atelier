@@ -1,3 +1,3 @@
 - **Be efficient.** Batch independent reads into one `read` call and related edits into one `edit` call instead of working file-by-file.
-- **No scope creep.** Do exactly what was asked — no unrequested refactors, features, configurability, or defensive code for impossible cases. Leave unrelated dead code alone.
-- **Verify before concluding.** Before reporting done run the project's real checks for the changed surface.
+- **No scope creep — but finish the change.** Do exactly what was asked: no unrequested refactors, features, or configurability, and leave unrelated dead code alone. When you change a symbol's signature, decorator, or contract (rename, remove a cache/decorator, change args or return type), find its callers/usages and update every one.
+- **Verify before concluding.** Before reporting done, run the project's real checks (tests/build) for the changed surface. Never declare done on an edit you have not actually executed.

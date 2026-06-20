@@ -334,6 +334,7 @@ def _index_repo_with_progress(
 
             payload = engine.index_repo(
                 force=force,
+                require_lock=True,
                 include_globs=include_globs,
                 exclude_globs=exclude_globs,
                 progress_callback=_on_progress,
@@ -348,6 +349,7 @@ def _index_repo_with_progress(
     except ImportError:
         return engine.index_repo(
             force=force,
+            require_lock=True,
             include_globs=include_globs,
             exclude_globs=exclude_globs,
         ).model_dump(mode="json")
@@ -549,6 +551,7 @@ def code_index_cmd(
     if as_json:
         payload = engine.index_repo(
             force=force,
+            require_lock=True,
             include_globs=list(include_globs) or None,
             exclude_globs=list(exclude_globs) or None,
         ).model_dump(mode="json")
