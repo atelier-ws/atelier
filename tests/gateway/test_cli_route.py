@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,54 @@ from atelier.gateway.cli import cli
 def _invoke(root: Path, *args: str) -> Result:
     runner = CliRunner()
     return runner.invoke(cli, ["--root", str(root), *args])
+
+
+@pytest.fixture(autouse=True)
+def _pro_entitlement(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Cross-vendor routing CLI is Pro-gated; grant a license + overlay so these
+    tests exercise the routing behavior, not the entitlement wall."""
+    import base64
+    import sys
+    import time
+    import types
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from atelier.core.capabilities import pro_bridge
+    from atelier.core.capabilities.licensing import entitlements
+
+    priv = Ed25519PrivateKey.generate()
+    raw_pub = priv.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+
+    def _b64u(raw: bytes) -> str:
+        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+    payload = {
+        "v": 1,
+        "id": "lic",
+        "email": "d@e.com",
+        "plan": "pro",
+        "iat": int(time.time()) - 10,
+        "exp": None,
+        "features": [],
+    }
+    seg = _b64u(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    monkeypatch.setenv("ATELIER_LICENSE_PUBLIC_KEY", base64.b64encode(raw_pub).decode("ascii"))
+    monkeypatch.setenv("ATELIER_LICENSE", f"{seg}.{_b64u(priv.sign(seg.encode('ascii')))}")
+
+    overlay = types.ModuleType("atelier_pro")
+    overlay.FEATURES = frozenset({"cross_vendor_routing"})  # type: ignore[attr-defined]
+    sys.modules["atelier_pro"] = overlay
+    pro_bridge.reset_cache()
+    entitlements.reload()
+    yield
+    sys.modules.pop("atelier_pro", None)
+    pro_bridge.reset_cache()
+    entitlements.reload()
 
 
 def test_route_configure_writes_route_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
