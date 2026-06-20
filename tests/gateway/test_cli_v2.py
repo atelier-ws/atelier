@@ -206,9 +206,13 @@ def test_optimize_details_reports_advisor_breakdowns(tmp_path: Path) -> None:
     }
 
 
-def test_optimize_apply_preset_writes_policy(tmp_path: Path) -> None:
+def test_optimize_apply_preset_writes_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "a"
     init_store_at(str(root))
+
+    # Applying a policy is an Atelier Pro feature; grant the entitlement so this
+    # exercises the write path rather than the freemium gate.
+    monkeypatch.setattr("atelier.core.capabilities.licensing.require", lambda *a, **k: None)
 
     res = _invoke(root, "optimize", "apply", "--preset", "economy", "--json")
 
