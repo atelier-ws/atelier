@@ -1079,6 +1079,7 @@ _STATUS_TIPS: tuple[str, ...] = (
     "`/atelier:recall` — recall what Atelier learned from your past sessions",
     "`/atelier:settings` — change plugin settings in plain English",
     "`/atelier:ux-review` — verify implemented UI against design gates in a real browser",
+    "`/atelier:perf-review` — verify a change's runtime perf against measured gates",
     "`/atelier:orchestrate` — choose subagent vs isolated execution for a single run",
     "`/atelier:swarms` — launch multi-worktree swarm runs",
     "`/atelier:benchmark` — benchmark Atelier vs vanilla Claude on your own repo",
