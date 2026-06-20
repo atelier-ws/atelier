@@ -464,6 +464,45 @@ class _StateWriter:
         raise NotImplementedError
 
 
+# In-process cache of parsed outcome-state files, keyed by resolved path.
+# Maps path -> ((st_mtime_ns, st_size), parsed_full_state_dict). This collapses
+# the per-tool-call disk re-read + JSON-parse of the outcome state file (paid on
+# every _handle call via _route_outcome_calibration and FileStateWriter.write)
+# into a single parse that is reused until the file changes. The (mtime_ns, size)
+# stamp invalidates the entry if any *other* process rewrites the file, so the
+# cache never serves stale cross-process data; this process's own writes refresh
+# the entry in lockstep with the on-disk bytes.
+_state_cache: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
+
+
+def _read_state_cached(path: Path) -> dict[str, Any]:
+    """Return the parsed full state dict for *path*, reusing the in-process cache.
+
+    A fresh ``os.stat`` decides cache validity: if the file's (mtime_ns, size)
+    matches the cached stamp the parsed dict is returned without re-reading or
+    re-parsing. The returned dict is the cached object and MUST NOT be mutated by
+    callers.
+    """
+    key = str(path)
+    try:
+        st = path.stat()
+    except OSError:
+        _state_cache.pop(key, None)
+        return {}
+    stamp = (st.st_mtime_ns, st.st_size)
+    cached = _state_cache.get(key)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    try:
+        parsed = json.loads(path.read_text("utf-8"))
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+        return {}
+    state = parsed if isinstance(parsed, dict) else {}
+    _state_cache[key] = (stamp, state)
+    return state
+
+
 class FileStateWriter(_StateWriter):
     """Write outcomes directly to a session_state.json file."""
 
@@ -472,13 +511,18 @@ class FileStateWriter(_StateWriter):
 
     def write(self, updates: dict[str, Any]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        # Build the merged state from the cache (skips a redundant read+parse when
+        # this process already holds the current bytes) without mutating the
+        # cached object.
+        merged = {**_read_state_cached(self._path), **updates}
+        self._path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+        # Refresh the cache so the immediately-following load is a hit and never
+        # observes a stale stamp for our own just-written bytes.
         try:
-            existing: dict[str, Any] = json.loads(self._path.read_text("utf-8")) if self._path.exists() else {}
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            existing = {}
-        existing.update(updates)
-        self._path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+            st = self._path.stat()
+            _state_cache[str(self._path)] = ((st.st_mtime_ns, st.st_size), merged)
+        except OSError:
+            _state_cache.pop(str(self._path), None)
 
 
 def _flush(session_id: str, *, writer: _StateWriter | None) -> None:
@@ -500,13 +544,7 @@ def _flush(session_id: str, *, writer: _StateWriter | None) -> None:
 
 def load_outcomes_from_state(path: Path) -> dict[str, list[dict[str, Any]]]:
     """Load outcomes stored in a session_state.json file."""
-    if not path.exists():
-        return {"route_outcomes": [], "compact_outcomes": []}
-    try:
-        state: dict[str, Any] = json.loads(path.read_text("utf-8"))
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        return {"route_outcomes": [], "compact_outcomes": []}
+    state = _read_state_cached(path)
     return {
         "route_outcomes": list(state.get("route_outcomes") or []),
         "compact_outcomes": list(state.get("compact_outcomes") or []),
