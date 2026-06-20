@@ -50,7 +50,9 @@ def test_host_facing_roles_stay_sourced_from_mode_docs() -> None:
         assert role.prompt_source.as_posix().endswith(f"integrations/agents/{role_id}.md")
         body = registry.render_prompt(role_id, ROOT)
         assert "Eval" not in body
-        assert f"# {role_id.replace('-', ' ').title()} mode" in body
+        # Mode docs now compose from shared discipline partials (substituted at
+        # host-generation time), so the raw doc carries the partial placeholders.
+        assert "{{CORE_DISCIPLINE}}" in body
 
 
 def test_registry_exposes_owned_workflows_and_solver_contracts() -> None:
@@ -172,7 +174,7 @@ def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
 def test_registry_host_projections_match_current_surface_set() -> None:
     registry = build_default_registry(ROOT)
 
-    surfaced = {"code", "explore", "execute", "plan", "research", "review", "solve"}
+    surfaced = {"auto", "bare", "code", "explore", "execute", "plan", "research", "review", "solve"}
     assert set(registry.surfaced_role_ids("shared_skill")) == surfaced
     assert set(registry.surfaced_role_ids("claude_agent")) == surfaced
     assert set(registry.surfaced_role_ids("opencode_agent")) == surfaced

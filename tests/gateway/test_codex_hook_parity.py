@@ -499,7 +499,8 @@ def test_write_codex_agents_generates_all_surfaced_roles(tmp_path: Path) -> None
 
     target = tmp_path / "agents"
     written = write_codex_agents(target, repo_root=ROOT)
-    assert len(written) == 7
+    # 7 host-facing roles + the autonomous auto/bare roles = 9.
+    assert len(written) == 9
     names = {p.name for p in written}
     assert {"atelier.code.toml", "atelier.explore.toml", "atelier.solve.toml"} <= names
     text = (target / "atelier.code.toml").read_text(encoding="utf-8")

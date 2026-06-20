@@ -28,6 +28,7 @@ EXPECTED_TOOLS = {
     "graph",
     "scan",
     "orient",
+    "statusline_segment",
     # Repo/admin code-intel ops registered hidden (full split: no multiplexer).
     "index",
     "blame",

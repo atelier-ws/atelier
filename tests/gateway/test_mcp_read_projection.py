@@ -400,8 +400,9 @@ def test_edit_surfaces_inline_diff_only_for_nonexact_match(tmp_path: Path, monke
     assert exact_target.read_text(encoding="utf-8") == "value = 2\n"
 
     # Non-exact match (placeholder via `...`): the applied text may diverge from
-    # what the caller asked for, so the diff is the sole divergence signal and
-    # is surfaced inline to save a verifying re-read.
+    # what the caller asked for. The inline diff is no longer surfaced (it would
+    # echo old+new content into context); the applied entry's match_mode is the
+    # divergence signal, and the agent re-reads on demand.
     fuzzy_target = tmp_path / "fuzzy.py"
     fuzzy_target.write_text("start = 1\nmiddle = 2\nend = 3\n", encoding="utf-8")
     fuzzy = tool_smart_edit(
@@ -417,7 +418,5 @@ def test_edit_surfaces_inline_diff_only_for_nonexact_match(tmp_path: Path, monke
         }
     )
     assert fuzzy["failed"] == []
-    diff = fuzzy.get("diff")
-    assert diff, "non-exact edits must surface the inline unified diff"
-    diff_text = "".join(diff.values())
-    assert "-start = 1" in diff_text and "+start = 10" in diff_text
+    assert "diff" not in fuzzy, "edits never surface an inline diff; match_mode signals a non-exact apply"
+    assert fuzzy_target.read_text(encoding="utf-8") == "start = 10\nend = 30\n"
