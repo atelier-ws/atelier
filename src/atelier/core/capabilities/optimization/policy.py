@@ -344,7 +344,37 @@ def policy_from_config(data: dict[str, Any]) -> Policy:
     )
 
 
+def _free_baseline_policy() -> Policy:
+    """Unoptimized baseline returned for Free installs (the savings engine is Pro).
+
+    Compaction never triggers and routing is a strongest-model passthrough, so
+    the runtime behaves as if no optimization policy were active.
+    """
+    return Policy(
+        name="Free (unoptimized)",
+        preset="custom",
+        quality_floor=1.0,
+        confidence_required="high",
+        routing=_routing("prefer_strongest", "expensive", "expensive", "expensive"),
+        compaction=CompactionPolicy(
+            prompt_cache_reorder=False,
+            dedup=False,
+            retrieval_filter=False,
+            lossy_summary=False,
+            trigger_at_context_fraction=1.0,
+            preserve=[],
+        ),
+    )
+
+
 def load_current_policy(root: Path) -> Policy:
+    # The savings engine (compaction, routing, prefix-cache, budget) is Pro.
+    # Free installs run unoptimized regardless of any on-disk policy -- which can
+    # only be written by a Pro `optimize apply` anyway.
+    from atelier.core.capabilities import licensing
+
+    if not licensing.feature_active("optimizer"):
+        return _free_baseline_policy()
     config = load_optimization_config(root)
     if not config:
         return preset_policy("balanced")
