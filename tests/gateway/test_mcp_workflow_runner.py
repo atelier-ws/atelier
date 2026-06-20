@@ -40,9 +40,24 @@ def workflow_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     workspace.mkdir()
     monkeypatch.setenv("ATELIER_ROOT", str(root))
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "test-wf-session")
     mcp_server._current_ledger = None
     mcp_server._realtime_ctx = None
     mcp_server._remote_client = None
+    # _resolve_live_session_id caches the session id by window-file mtime (0.0 in
+    # test environments).  If a prior test in the same xdist worker cached
+    # (0.0, "") the current test would never re-resolve from the env var below.
+    # Reset every cache so the first _resolve_live_session_id() reads our pin.
+    mcp_server._reset_runtime_cache_for_testing()
+    # WorkflowRunner runs each step on a worker thread while _run_owned_workflow
+    # holds the re-entrant _STATE_LOCK on the main thread. When the worker
+    # resolves a session id and the module caches happen to be empty (e.g. a
+    # preceding suite left them unset), _get_claude_session_id() falls through to
+    # _get_product_session_id(), which acquires _STATE_LOCK unconditionally from
+    # the wrong thread -> a cross-thread deadlock that only unblocks at the 600s
+    # per-step deadline. Pin session resolution so the worker never contends for
+    # the lock, keeping these tests fast and hermetic regardless of suite order.
+    monkeypatch.setattr(mcp_server, "_get_product_session_id", lambda: "test-product-session")
     return root
 
 

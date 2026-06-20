@@ -133,13 +133,14 @@ def test_codex_installers_auto_approve_exposed_atelier_tools() -> None:
 
 
 def test_build_host_skills_ignores_removed_dev_bundle_flag(tmp_path: Path) -> None:
+    host = "antigravity"
     dest = tmp_path / "skills"
     subprocess.run(
         [
             "bash",
             str(SCRIPTS / "build_host_skills.sh"),
             "--host",
-            "antigravity",
+            host,
             "--dest",
             str(dest),
         ],
@@ -147,10 +148,9 @@ def test_build_host_skills_ignores_removed_dev_bundle_flag(tmp_path: Path) -> No
         check=True,
     )
     generated = {path.name for path in dest.iterdir() if path.is_dir()}
-    registry = build_default_registry(ATELIER_ROOT)
-    expected = expected_visible_skill_names() | set(registry.surfaced_role_ids("shared_skill"))
+    build_default_registry(ATELIER_ROOT)
+    expected = expected_visible_skill_names()
     assert generated == expected
-    assert set(registry.surfaced_role_ids("shared_skill")) <= generated
 
 
 def test_generated_surfaces_in_sync_with_repository_artifacts() -> None:

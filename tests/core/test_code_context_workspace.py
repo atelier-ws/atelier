@@ -9,8 +9,8 @@ from atelier.core.capabilities.code_context.workspace_router import WorkspaceCod
 
 
 def _write_workspace_config(workspace_root: Path) -> Path:
-    sibling_repo = workspace_root.parent / "billing"
-    sibling_repo.mkdir(parents=True, exist_ok=True)
+    sibling_repo = workspace_root / "billing"
+    sibling_repo.mkdir(parents=True)
     (workspace_root / ".atelier").mkdir(parents=True)
     (workspace_root / ".atelier" / "workspace.toml").write_text(
         "\n".join(
@@ -24,7 +24,7 @@ def _write_workspace_config(workspace_root: Path) -> Path:
                 "",
                 "[[workspace.repos]]",
                 'name = "billing"',
-                'path = "../billing"',
+                'path = "billing"',
                 "",
             ]
         ),
@@ -59,7 +59,7 @@ def test_workspace_router_unions_search_results_and_allows_repo_filter(tmp_path:
             "tokens_saved": 0,
             "total_tokens": 40,
         },
-        (tmp_path.parent / "billing").resolve(): {
+        (tmp_path / "billing").resolve(): {
             "items": [{"symbol_name": "SharedConfig", "file_path": "src/billing.py", "repo_id": "repo-2"}],
             "cache_hit": False,
             "provenance": "local",
@@ -89,8 +89,8 @@ def test_workspace_router_unions_search_results_and_allows_repo_filter(tmp_path:
     assert [item["file_path"] for item in filtered["items"]] == ["src/billing.py"]
     assert calls == [
         (tmp_path.resolve(), "SharedConfig"),
-        ((tmp_path.parent / "billing").resolve(), "SharedConfig"),
-        ((tmp_path.parent / "billing").resolve(), "SharedConfig"),
+        ((tmp_path / "billing").resolve(), "SharedConfig"),
+        ((tmp_path / "billing").resolve(), "SharedConfig"),
     ]
 
 
@@ -104,7 +104,7 @@ def test_workspace_router_rejects_unknown_repo_filter(tmp_path: Path) -> None:
 
 def test_workspace_router_adds_repo_name_and_preserves_origin_on_merged_search_results(tmp_path: Path) -> None:
     _write_workspace_config(tmp_path)
-    billing_root = (tmp_path.parent / "billing").resolve()
+    billing_root = (tmp_path / "billing").resolve()
 
     class FakeEngine:
         def __init__(self, repo_root: Path) -> None:
@@ -158,7 +158,7 @@ def test_workspace_router_adds_repo_name_and_preserves_origin_on_merged_search_r
 
 def test_workspace_router_symbol_defaults_to_first_repo_and_respects_repo_filter(tmp_path: Path) -> None:
     _write_workspace_config(tmp_path)
-    billing_root = (tmp_path.parent / "billing").resolve()
+    billing_root = (tmp_path / "billing").resolve()
 
     class FakeEngine:
         def __init__(self, repo_root: Path) -> None:
