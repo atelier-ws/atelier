@@ -39,11 +39,8 @@ EXPECTED_TOOLS = {
     "sql",
     "search",
     "node",
-    "callers",
-    "callees",
     "explore",
     "shell",
-    "usages",
     "web_fetch",
     "codemod",
 }

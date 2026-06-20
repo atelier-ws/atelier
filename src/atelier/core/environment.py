@@ -57,6 +57,13 @@ HIDDEN_LLM_TOOLS = frozenset(
         # removed from the advertised agent surface. Agents use `search`/`grep`
         # to find code by name and `node` to read a definition.
         "symbols",
+        # Symbol-graph relations: callable by name (tests, CLI, power use) but
+        # off the advertised surface. Agents reach call edges + references via
+        # `explore` (which folds callers/callees/usages into one call) and read
+        # a single definition via `node`.
+        "callers",
+        "callees",
+        "usages",
     }
 )
 HIDDEN_SKILLS: frozenset[str] = frozenset()

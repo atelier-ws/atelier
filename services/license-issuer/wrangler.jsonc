@@ -3,8 +3,9 @@
   "name": "atelier-license-issuer",
   "main": "src/index.ts",
   "compatibility_date": "2025-01-01",
-  "observability": { "enabled": true },
-
+  "observability": {
+    "enabled": true
+  },
   // Created with: wrangler d1 create atelier-licenses
   // Paste the returned database_id below.
   "d1_databases": [
@@ -14,11 +15,10 @@
       "database_id": "REPLACE_WITH_D1_DATABASE_ID"
     }
   ],
-
   // Non-secret config. Secrets (STRIPE_WEBHOOK_SECRET, LICENSE_PRIVATE_KEY,
   // RESEND_API_KEY) are set with `wrangler secret put` -- never put them here.
   "vars": {
     "FROM_EMAIL": "Atelier <licenses@example.com>",
-    "LICENSE_PUBLIC_KEY": "REPLACE_WITH_RAW_PUBLIC_KEY_BASE64"
+    "LICENSE_PUBLIC_KEY": "PqWtV43BPVCR6C4ljIe0X0yfOm2C6b1OsCeB+7Utl0s="
   }
 }

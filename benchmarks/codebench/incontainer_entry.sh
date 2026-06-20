@@ -17,6 +17,13 @@ if [ -z "$REPO" ]; then
 fi
 cd "$REPO" || { echo "no repo dir found" >&2; exit 3; }
 
+# Pin the workspace root so the live MCP server's code-index repo_id is
+# deterministic and matches the index pre-built below. Without this the MCP
+# server resolves its root from CLAUDE_WORKSPACE_ROOT/cwd, which can differ from
+# the prewarm's --repo-root -> a different repo_id -> the MCP reads an EMPTY
+# index -> grep returns nothing -> the agent wastes turns over-searching.
+export ATELIER_WORKSPACE_ROOT="$REPO"
+
 # Activate the project's conda env (SWE-bench images ship a `testbed` env) for
 # BOTH arms so shells run the project interpreter. Claude Code's Bash sources
 # .bashrc (env active); the Atelier shell tool's `bash -c` subprocesses do NOT
@@ -42,15 +49,22 @@ export BASH_ENV="$_act"
 ARM="${CODEBENCH_ARM:-baseline}"
 MODEL="${CODEBENCH_MODEL:-sonnet}"
 
-# Atelier arm: build the code index before the timed agent run (setup, not graded).
-# A failed/missing prewarm means the timed run pays a cold index build, so surface
-# it on stderr instead of being silently slow.
+# Atelier arm: build the FULL code index BEFORE the timed agent run (setup, not
+# graded). The live MCP server only READS this index -- it must never build on
+# the tool-call path. A forced full rebuild (--reindex) avoids incremental-on-
+# fresh edge cases; we then HARD-FAIL on an empty index so a broken build aborts
+# the run (which --resume retries) instead of silently degrading: an empty index
+# makes grep return nothing, and the agent burns turns falling back to shell.
 if [ "$ARM" = "atelier" ]; then
-  if atelier code index --repo-root "$REPO" >/tmp/atelier-index.log 2>&1; then
-    echo "atelier code index: prewarm OK" >&2
+  idx_json="$(atelier code index --repo-root "$REPO" --reindex --json 2>/tmp/atelier-index.log)"
+  files_indexed="$(printf '%s' "$idx_json" | grep -o '"files_indexed"[^,}]*' | grep -o '[0-9][0-9]*' | head -1)"
+  files_indexed="${files_indexed:-0}"
+  if [ "$files_indexed" -gt 0 ] 2>/dev/null; then
+    echo "atelier code index: prewarm OK ($files_indexed files)" >&2
   else
-    echo "WARNING: atelier code index prewarm FAILED; timed run will pay cold-index cost:" >&2
-    tail -n 5 /tmp/atelier-index.log >&2 || true
+    echo "FATAL: atelier code index built 0 files for $REPO -- aborting so the run is retried instead of over-searching on an empty index." >&2
+    tail -n 20 /tmp/atelier-index.log >&2 || true
+    exit 4
   fi
 fi
 

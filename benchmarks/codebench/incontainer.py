@@ -261,16 +261,23 @@ def _docker_run_cmd(
     if repo_dir:
         env["CODEBENCH_REPO_DIR"] = str(repo_dir)
     agent = _ARM_AGENT.get(arm)
+    if arm == "atelier":
+        # Per-run persona override (default atelier:auto). Lets a diagnostic run
+        # use e.g. atelier:bare without disturbing a concurrent auto run -- the
+        # other process doesn't set this env var, so it keeps the default.
+        agent = os.environ.get("CODEBENCH_ATELIER_AGENT") or agent
     if agent:
         env["CODEBENCH_AGENT"] = agent
     if arm == "atelier":
         # Point tiktoken at the bind-mounted pre-warmed cache so the MCP server
         # never reaches the network at import (see TIKTOKEN_CACHE_HOST).
         env["TIKTOKEN_CACHE_DIR"] = "/opt/tiktoken-cache"
-        # Lean tool surface: hide code-intel/aux tools the autonomous SWE agent
-        # never reaches for (verified ~0 uses), shrinking the per-turn schema the
-        # model reasons over. Keeps read/grep/search/edit/shell/explore/node.
-        env["ATELIER_HIDE_TOOLS"] = "sql,memory,codemod,callers,callees,usages,web_fetch"
+        # Lean tool surface: hide aux tools the autonomous SWE agent never
+        # reaches for (verified ~0 uses), shrinking the per-turn schema the model
+        # reasons over. callers/callees/usages are already hidden by default
+        # (folded into `explore`), so they need not be repeated here. Keeps
+        # read/grep/search/edit/shell/explore/node.
+        env["ATELIER_HIDE_TOOLS"] = "sql,memory,codemod,web_fetch"
     env.update(agent_env)
     for key, value in env.items():
         cmd += ["-e", f"{key}={value}"]

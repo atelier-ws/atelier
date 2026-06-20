@@ -36,11 +36,11 @@ _SECTIONS: dict[str, tuple[str, str]] = {
         "2. Navigate (build the call graph in your head)",
         (
             "Once grounded, walk the code structure with the focused SCIP tools\n"
-            "instead of more grep: `node` to read a single definition, `callers`\n"
-            "/ `callees` for the call graph, `usages` for every reference, and\n"
-            "`explore` for grouped context. Prefer these exact tools over\n"
-            "text search once you know the symbol -- results are indexed and\n"
-            "exact, not textual guesses."
+            "instead of more grep: `node` to read a single definition and\n"
+            "`explore` for grouped context -- one `explore` call returns the\n"
+            "definition plus its callers, callees, and usages folded in. Prefer\n"
+            "these exact tools over text search once you know the symbol --\n"
+            "results are indexed and exact, not textual guesses."
         ),
     ),
     "edit": (
@@ -71,8 +71,7 @@ _SECTIONS: dict[str, tuple[str, str]] = {
             "- Regex / glob / type-filtered text match    -> `grep`\n"
             "- Find a definition by name                  -> `grep` / `search`\n"
             "- Read one definition's body                 -> `node`\n"
-            "- Who calls / what does this call            -> `callers` / `callees`\n"
-            "- Every reference to a symbol                -> `usages`\n"
+            "- Callers / callees / usages of a symbol     -> `explore` (folds the call graph + references into one call)\n"
             "- Grouped context for a change               -> `explore`\n"
             "- Read a file (outline first on large)       -> `read`\n"
             "- Apply edits (batch multi-file)             -> `edit`\n"
@@ -87,8 +86,8 @@ _OVERVIEW = (
     "Atelier tool-usage playbook. Canonical sequence:\n"
     "    explore -> navigate -> edit -> verify\n"
     "Each phase has dedicated tools; do them in order and prefer the focused\n"
-    "SCIP tools (node/callers/callees/usages/explore) over repeated\n"
-    "grep once you know the symbol."
+    "SCIP tools (`node` for one definition, `explore` for the call graph and\n"
+    "references) over repeated grep once you know the symbol."
 )
 
 

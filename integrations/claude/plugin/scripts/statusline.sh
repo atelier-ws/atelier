@@ -154,9 +154,13 @@ _ATELIER_BIN="$(dirname "${ATELIER_PY}")/atelier"
 # using its window-anchored resolved session id — no subprocess, no session-id drift.
 _NOW_S=$(date +%s)
 _MCP_SIDECAR="${ATELIER_STATUS_ROOT}/sessions/${SESSION_ID:-}/statusline_segment"
-# Per-session cache for the subprocess fallback path (was a global file — fixed).
-_SEG_CACHE="${ATELIER_STATUS_ROOT}/statusline_segment_cache_${SESSION_ID:-default}"
-_SEG_CACHE_TS="${ATELIER_STATUS_ROOT}/statusline_segment_ts_${SESSION_ID:-default}"
+# Per-session cache for the subprocess fallback path. Keyed strictly by the
+# real SESSION_ID with NO "default" fallback: an empty id would collapse the
+# key to one shared slot that every unbound window reads/writes, leaking one
+# window's cost/savings into another. All reads/writes below are gated on a
+# non-empty SESSION_ID, so when it is empty these names are never touched.
+_SEG_CACHE="${ATELIER_STATUS_ROOT}/statusline_segment_cache_${SESSION_ID}"
+_SEG_CACHE_TS="${ATELIER_STATUS_ROOT}/statusline_segment_ts_${SESSION_ID}"
 DYNAMIC_SEG=""
 
 # 1. MCP sidecar — fresh if written within 10s
@@ -168,8 +172,9 @@ if [ -n "${SESSION_ID:-}" ] && [ -f "${_MCP_SIDECAR}" ]; then
   fi
 fi
 
-# 2. Per-session subprocess cache — 8s TTL
-if [ -z "${DYNAMIC_SEG:-}" ]; then
+# 2. Per-session subprocess cache — 8s TTL. Skipped entirely when SESSION_ID is
+# empty (fail closed): the cache is a cross-window leak vector when unkeyed.
+if [ -z "${DYNAMIC_SEG:-}" ] && [ -n "${SESSION_ID:-}" ]; then
   _CACHED_TS=$(cat "${_SEG_CACHE_TS}" 2>/dev/null || echo 0)
   _CACHE_AGE=$(( _NOW_S - ${_CACHED_TS:-0} ))
   if [ "${_CACHE_AGE}" -le 8 ] && [ -f "${_SEG_CACHE}" ]; then
@@ -187,7 +192,8 @@ if [ -z "${DYNAMIC_SEG:-}" ]; then
   fi
   # Only cache when there is real live usage — avoids serving a stale
   # zero-token result to the next render that has actual tokens in context.
-  if [ -n "${DYNAMIC_SEG:-}" ] && [ "${LIVE_CTX_TOK:-0}" -gt 0 ]; then
+  # Persist only with a real SESSION_ID — never write a shared, unkeyed cache.
+  if [ -n "${DYNAMIC_SEG:-}" ] && [ "${LIVE_CTX_TOK:-0}" -gt 0 ] && [ -n "${SESSION_ID:-}" ]; then
     printf '%s' "${DYNAMIC_SEG}" > "${_SEG_CACHE}" 2>/dev/null || true
     printf '%s' "${_NOW_S}" > "${_SEG_CACHE_TS}" 2>/dev/null || true
   fi
