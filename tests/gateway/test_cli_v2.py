@@ -210,9 +210,18 @@ def test_optimize_apply_preset_writes_policy(tmp_path: Path, monkeypatch: pytest
     root = tmp_path / "a"
     init_store_at(str(root))
 
-    # Applying a policy is an Atelier Pro feature; grant the entitlement so this
-    # exercises the write path rather than the freemium gate.
+    # Applying a policy is an Atelier Pro feature gated on two walls: a valid
+    # license AND the proprietary `atelier_pro` overlay. Grant the license and
+    # supply a stub overlay so this exercises the write path, not the gates.
+    from types import SimpleNamespace
+
+    from atelier.core.capabilities.optimization.policy import save_policy as _save_policy
+
     monkeypatch.setattr("atelier.core.capabilities.licensing.require", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "atelier.core.capabilities.licensing.pro_impl",
+        lambda feature: SimpleNamespace(apply_policy=lambda root, policy: _save_policy(Path(root), policy)),
+    )
 
     res = _invoke(root, "optimize", "apply", "--preset", "economy", "--json")
 
