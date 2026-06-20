@@ -77,6 +77,7 @@ GATED = [
     ("zoekt", "index"),
     ("knowledge", "extract"),
     ("swarm", "start"),
+    ("memory", "find", "hello"),
 ]
 
 
