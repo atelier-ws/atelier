@@ -301,9 +301,6 @@ def _native_args(tool: str, workspace: Path) -> dict[str, Any]:
         "context": {"task": "exercise the read path", "files": [sample]},
         "symbols": {"query": "alpha", "path": ws},
         "node": {"symbol": "alpha", "line": 1},
-        "callers": {"symbol": "alpha", "depth": 1, "limit": 5},
-        "callees": {"symbol": "alpha", "depth": 1, "limit": 5},
-        "usages": {"symbol": "alpha", "limit": 5},
         "codemod": {"pattern": "isinstance($X, $Y)"},
         "explore": {"query": "alpha", "max_files": 3, "seed_files": [sample]},
         "route": {"task": "add a feature", "task_type": "feature"},
@@ -494,15 +491,15 @@ def test_compiled_server_missing_required_arg_is_graceful(
 ) -> None:
     """Missing a required arg must be a clean validation error, not a .so crash.
 
-    ``usages`` requires ``symbol``.  Omitting it should surface a graceful
+    ``codemod`` requires ``pattern``.  Omitting it should surface a graceful
     JSON-RPC error (Pydantic validation), never a mypyc type assertion or a
     dead server.
     """
-    responses, proc = _run_server(compiled_server, [_tools_call(2, "usages", {})])
+    responses, proc = _run_server(compiled_server, [_tools_call(2, "codemod", {})])
     assert 2 in responses, f"no response; stderr:\n{proc.stderr[-1500:]}"
     resp = responses[2]
-    assert "error" in resp, f"expected a validation error for missing 'symbol': {resp}"
-    _assert_not_mypyc_error("usages(missing-required)", resp)
+    assert "error" in resp, f"expected a validation error for missing 'pattern': {resp}"
+    _assert_not_mypyc_error("codemod(missing-required)", resp)
 
 
 def test_compiled_server_unknown_tool_and_method_are_graceful(
