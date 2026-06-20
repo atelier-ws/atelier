@@ -52,6 +52,20 @@ def _emit(data: Any, *, as_json: bool) -> None:
         click.echo(data)
 
 
+def require_pro(feature: str, label: str) -> None:
+    """Gate a Pro-only CLI control surface.
+
+    Raises :class:`click.ClickException` with an upgrade hint unless ``feature``
+    is *active* -- a valid license grants it AND the proprietary ``atelier_pro``
+    overlay is installed. On a Free install both are absent, so the command is
+    blocked with a clear upsell.
+    """
+    from atelier.core.capabilities import licensing
+
+    if not licensing.feature_active(feature):
+        raise click.ClickException(f"{label} is an Atelier Pro feature. Unlock at {licensing.pro_url()}")
+
+
 def _redact_memory_input(text: str, field_name: str) -> str:
     from atelier.core.foundation.redaction import redact
 
