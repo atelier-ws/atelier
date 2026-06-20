@@ -75,6 +75,8 @@ GATED = [
     ("recall", "search", "hello"),
     ("router", "start"),
     ("zoekt", "index"),
+    ("knowledge", "extract"),
+    ("swarm", "start"),
 ]
 
 
