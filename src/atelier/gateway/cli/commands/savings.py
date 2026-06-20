@@ -284,7 +284,7 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
 
         # Free tier shows the headline summary; the full --deep breakdown
         # (per-pattern vs-vanilla, optimization detail) is a Pro feature.
-        if deep and not licensing.has_feature("savings_dashboard"):
+        if deep and not licensing.feature_active("savings_dashboard"):
             _render_savings_rich(payload, deep=False)
             click.echo("")
             click.echo(f"Full breakdown (--deep) is an Atelier Pro feature. Unlock at {licensing.pro_url()}")
@@ -543,10 +543,20 @@ def optimize_apply(
             f"{exc}. Preview savings free with `atelier optimize`, then unlock applying them at {licensing.pro_url()}"
         ) from exc
 
+    # The *compute* below (building a policy from a preset, custom YAML, or the
+    # advisor) is free; *activating* it is the paid lever and lives in the
+    # proprietary `atelier_pro` overlay. A licensed install missing the overlay
+    # is a broken Pro install -- fail loud rather than silently act like Free.
+    optimizer = licensing.pro_impl("optimizer")
+    if optimizer is None:
+        raise click.ClickException(
+            "Atelier Pro is licensed but the Pro engine package (atelier_pro) is "
+            "not installed. Reinstall Atelier Pro or contact support."
+        )
+
     from atelier.core.capabilities.optimization.policy import (
         policy_from_config,
         preset_policy,
-        save_policy,
     )
 
     selected = sum(1 for value in (preset, custom) if value is not None) + (1 if recommended else 0)
@@ -571,7 +581,7 @@ def optimize_apply(
             raise click.ClickException(result.message)
         policy = result.recommended_policy
 
-    path = save_policy(ctx.obj["root"], policy)
+    path = optimizer.apply_policy(ctx.obj["root"], policy)
     payload = {"applied": policy.to_dict(), "path": str(path)}
     if as_json:
         _emit(payload, as_json=True)

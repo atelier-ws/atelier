@@ -6,7 +6,7 @@ import os
 
 import click
 
-from atelier.gateway.cli.commands._shared import _emit
+from atelier.gateway.cli.commands._shared import _emit, require_pro
 
 
 @click.group("knowledge")
@@ -53,6 +53,8 @@ def knowledge_extract_cmd(
     as_json: bool,
 ) -> None:
     """Distil durable review rules from .lessons into the review overlay."""
+    require_pro("reasoning_library", "The review knowledge base")
+
     from atelier.core.capabilities.knowledge_extract import extract_rules
 
     repo_root = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())

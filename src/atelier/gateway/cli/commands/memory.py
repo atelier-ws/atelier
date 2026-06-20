@@ -16,6 +16,10 @@ def memory_group_cli() -> None:
 
 
 def _make_memory_registry(cwd: Path | None = None) -> Any:
+    from atelier.gateway.cli.commands._shared import require_pro
+
+    require_pro("cross_vendor_memory", "Unified cross-vendor memory")
+
     from atelier.core.capabilities.cross_vendor_memory import MemoryRegistry
     from atelier.core.capabilities.cross_vendor_memory.claude_adapter import ClaudeAdapter
     from atelier.core.capabilities.cross_vendor_memory.codex_adapter import CodexAdapter

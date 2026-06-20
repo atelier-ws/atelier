@@ -77,7 +77,6 @@ export function getTelemetryConfig(): Promise<TelemetryConfig> {
 }
 
 export function updateTelemetryConfig(payload: {
-  remote_enabled?: boolean;
   lexical_frustration_enabled?: boolean;
 }): Promise<TelemetryConfig> {
   return request<TelemetryConfig>("/telemetry/config", {

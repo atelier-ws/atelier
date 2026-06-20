@@ -12,7 +12,7 @@ from atelier.core.foundation.renderer import render_playbook_markdown
 from atelier.core.foundation.store import ContextStore
 from atelier.gateway.cli.commands._dev import dev_command as _dev_command
 from atelier.gateway.cli.commands._dev import dev_group as _dev_group
-from atelier.gateway.cli.commands._shared import _emit, _load_store, _parse_duration
+from atelier.gateway.cli.commands._shared import _emit, _load_store, _parse_duration, require_pro
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -100,6 +100,8 @@ def reembed(ctx: click.Context, dry_run: bool, batch_size: int, as_json: bool) -
 @click.pass_context
 def add_playbook(ctx: click.Context, path: Path) -> None:
     """Add or update a Playbook from a YAML file."""
+    require_pro("reasoning_library", "Playbook management")
+
     store = _load_store(ctx.obj["root"])
     data = _load_yaml(path)
     if "id" not in data:

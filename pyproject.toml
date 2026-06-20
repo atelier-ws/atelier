@@ -10,7 +10,7 @@ conflicts = [
 [project]
 name = "atelier"
 version = "0.4.25"
-description = "Agent Reasoning Runtime — reusable procedures, failure rescue, and rubric verification for coding and product agents."
+description = "Agent runtime for coding agents — reusable procedures, code intelligence, cost tracking, and model routing."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 license = { text = "Apache-2.0" }

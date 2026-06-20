@@ -1,0 +1,37 @@
+# Atelier Pro overlay -- PROPRIETARY. Lives at pro/ in this repo, tracked, but
+# stripped from the public snapshot via release/private-paths.txt. Build this
+# wheel here and distribute it only to licensed Pro customers.
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atelier-pro"
+version = "0.1.0"
+description = "Atelier Pro overlay -- proprietary engine activation surfaces (not open source)."
+requires-python = ">=3.13,<3.14"
+license = { text = "LicenseRef-Atelier-Commercial" }
+authors = [{ name = "Atelier" }]
+# Depends on the open-source core; the overlay imports its public compute and
+# adds the paid activation surfaces.
+dependencies = ["atelier>=0.4.25"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/atelier_pro"]
+
+# To ship a compiled (harder-to-read) wheel, copy the core's mypyc hatch hook
+# (hatch_build.py + [tool.hatch.build.targets.wheel.hooks.custom]) into this
+# package. A plain wheel works too; compilation is an obfuscation step, not a
+# correctness requirement.
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "BLE", "UP", "RUF"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
