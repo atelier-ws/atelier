@@ -36,7 +36,7 @@ export function fmtDuration(secs: number): string {
 // --- Host detection ---
 
 export const HOST_COLORS: Record<string, string> = {
-  atelier: "bg-purple-900/40 text-purple-300 border-purple-700/50",
+  atelier: "bg-brand-900/40 text-brand-300 border-brand-700/50",
   claude: "bg-violet-900/40 text-violet-300 border-violet-700/50",
   gemini: "bg-blue-900/40 text-blue-300 border-blue-700/50",
   copilot: "bg-sky-900/40 text-sky-300 border-sky-700/50",

@@ -128,13 +128,13 @@ export default function Watchdogs() {
         description="Active execution pathology guards (loops, thrashing, repeated failures)."
         action={
           <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold text-amber-500/60 border border-amber-500/30 px-1.5 py-0.5">
+            <span className="text-[10px] font-bold text-amber-300 border border-amber-500/30 px-1.5 py-0.5">
               DEV
             </span>
             <button
               type="button"
               disabled={!isDirty || saveState === "saving"}
-              className="border border-purple-500/60 px-4 py-1 font-mono text-xs uppercase tracking-widest text-purple-400 hover:bg-purple-500/10 disabled:opacity-30"
+              className="border border-brand-500/60 px-4 py-1 font-mono text-xs uppercase tracking-widest text-brand-400 hover:bg-brand-500/10 disabled:opacity-30"
               onClick={persistConfig}
             >
               {saveState === "saving" ? "Saving..." : "Save Configuration"}
@@ -143,7 +143,7 @@ export default function Watchdogs() {
         }
       />
 
-      {error && <div className="text-sm text-red-400">{error}</div>}
+      {error && <div className="text-sm text-red-300">{error}</div>}
 
       <section className="grid gap-4 md:grid-cols-4">
         <MetricCard
@@ -261,7 +261,7 @@ export default function Watchdogs() {
                         {monitor.severity}
                       </Chip>
                     </div>
-                    <div className="mt-1 text-xs text-neutral-500">
+                    <div className="mt-1 text-xs text-neutral-400">
                       {monitor.description}
                     </div>
                   </div>

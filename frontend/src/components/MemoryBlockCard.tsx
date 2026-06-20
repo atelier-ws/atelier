@@ -24,7 +24,7 @@ export default function MemoryBlockCard({
                 pinned
               </span>
             )}
-            <span className="text-[10px] uppercase tracking-tight px-1.5 py-0.5 border border-neutral-700 text-neutral-500">
+            <span className="text-[10px] uppercase tracking-tight px-1.5 py-0.5 border border-neutral-700 text-neutral-400">
               v{block.version}
             </span>
             {badges.map((badge) => (
@@ -37,7 +37,7 @@ export default function MemoryBlockCard({
             ))}
           </div>
           {block.description && (
-            <p className="text-xs text-neutral-500 mt-1">{block.description}</p>
+            <p className="text-xs text-neutral-400 mt-1">{block.description}</p>
           )}
           <p className="text-xs text-neutral-300 mt-2 whitespace-pre-wrap break-words leading-relaxed">
             {block.value}

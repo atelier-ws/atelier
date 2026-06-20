@@ -17,7 +17,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     <select
       ref={ref}
       className={cn(
-        "border border-neutral-700 bg-neutral-950 font-mono text-neutral-200 outline-none transition hover:border-neutral-600 focus:border-purple-500/60",
+        "border border-neutral-700 bg-neutral-950 font-mono text-neutral-200 outline-none transition hover:border-neutral-600 focus:border-brand-500/60",
         SIZE_STYLES[uiSize],
         className
       )}

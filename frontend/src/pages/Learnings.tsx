@@ -141,8 +141,8 @@ function BlocksSection() {
     });
   }, [items, filter, domainFilter, search]);
 
-  if (err) return <div className="text-red-400">Error: {err}</div>;
-  if (!items) return <div className="text-neutral-500">Loading…</div>;
+  if (err) return <div className="text-red-300">Error: {err}</div>;
+  if (!items) return <div className="text-neutral-400">Loading…</div>;
 
   const standingRules = items.filter(
     (block) => block.domain === "universal" || block.task_types.length >= 3
@@ -194,7 +194,7 @@ function BlocksSection() {
               className={`text-[10px] px-2.5 py-1 uppercase font-bold tracking-tight font-mono transition border ${
                 filter === f
                   ? "border-neutral-500 bg-neutral-800 text-neutral-100"
-                  : "border-neutral-700 text-neutral-500 hover:text-neutral-300"
+                  : "border-neutral-700 text-neutral-400 hover:text-neutral-300"
               }`}
             >
               {f}
@@ -218,7 +218,7 @@ function BlocksSection() {
             placeholder="Search…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="ml-auto text-[11px] bg-neutral-900/50 border border-neutral-700 px-2 py-1 text-neutral-300 placeholder:text-neutral-600 w-40 font-mono"
+            className="ml-auto text-[11px] bg-neutral-900/50 border border-neutral-700 px-2 py-1 text-neutral-300 placeholder:text-neutral-400 w-40 font-mono"
           />
         </div>
       </section>
@@ -235,7 +235,7 @@ function BlocksSection() {
           />
         ))}
         {filtered.length === 0 && (
-          <div className="text-neutral-500 text-sm italic py-4 font-mono">
+          <div className="text-neutral-400 text-sm italic py-4 font-mono">
             No blocks match the current filters.
           </div>
         )}
@@ -266,13 +266,13 @@ function FailuresSection() {
       .catch((e) => setErr(String(e)));
   }, []);
 
-  if (err) return <div className="text-red-400">Error: {err}</div>;
-  if (!items) return <div className="text-neutral-500">Loading…</div>;
+  if (err) return <div className="text-red-300">Error: {err}</div>;
+  if (!items) return <div className="text-neutral-400">Loading…</div>;
 
   if (items.length === 0)
     return (
-      <div className="text-neutral-500 text-center py-12">
-        <Check size={48} className="mx-auto mb-4 text-emerald-500" />
+      <div className="text-neutral-400 text-center py-12">
+        <Check size={48} className="mx-auto mb-4 text-emerald-300" />
         <p>No failure clusters detected — agents running smoothly.</p>
       </div>
     );
@@ -283,9 +283,9 @@ function FailuresSection() {
         const isExpanded = expandedId === c.id;
         const severityColor =
           c.severity === "high"
-            ? "bg-red-900/30 text-red-400"
+            ? "bg-red-900/30 text-red-300"
             : c.severity === "medium"
-              ? "bg-amber-900/30 text-amber-400"
+              ? "bg-amber-900/30 text-amber-300"
               : "bg-neutral-800/50 text-neutral-400";
         return (
           <div
@@ -305,7 +305,7 @@ function FailuresSection() {
                 <div className="flex items-center gap-2 mb-1">
                   <ChevronRight
                     size={14}
-                    className={`text-neutral-500 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                    className={`text-neutral-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}
                   />
                   <span className="font-mono font-bold text-neutral-200 text-sm">
                     {c.domain}
@@ -320,16 +320,16 @@ function FailuresSection() {
             {isExpanded && (
               <div className="border-t border-neutral-800 bg-neutral-950/50 px-5 py-4 space-y-4 text-xs">
                 <div>
-                  <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2 font-mono">
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-400 mb-2 font-mono">
                     Fingerprint
                   </div>
-                  <div className="font-mono text-red-400/70 whitespace-pre-wrap break-words bg-neutral-950 p-2 border border-neutral-800">
+                  <div className="font-mono text-red-300 whitespace-pre-wrap break-words bg-neutral-950 p-2 border border-neutral-800">
                     {c.fingerprint}
                   </div>
                 </div>
                 {c.sample_errors && c.sample_errors.length > 0 && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2 font-mono">
+                    <div className="text-[10px] uppercase tracking-widest text-neutral-400 mb-2 font-mono">
                       Sample errors
                     </div>
                     <div className="space-y-1">
@@ -346,7 +346,7 @@ function FailuresSection() {
                 )}
                 {c.suggested_block_title && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2 font-mono">
+                    <div className="text-[10px] uppercase tracking-widest text-neutral-400 mb-2 font-mono">
                       Suggested block
                     </div>
                     <div className="text-neutral-300 bg-neutral-950 p-2 border border-neutral-800">
@@ -356,20 +356,20 @@ function FailuresSection() {
                 )}
                 {c.trace_ids && c.trace_ids.length > 0 && (
                   <div className="pt-2 border-t border-neutral-800">
-                    <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2 font-mono">
+                    <div className="text-[10px] uppercase tracking-widest text-neutral-400 mb-2 font-mono">
                       Trace IDs
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {c.trace_ids.slice(0, 10).map((t, j) => (
                         <span
                           key={j}
-                          className="font-mono text-neutral-500 bg-neutral-950 px-2 py-0.5 border border-neutral-800"
+                          className="font-mono text-neutral-400 bg-neutral-950 px-2 py-0.5 border border-neutral-800"
                         >
                           {t}
                         </span>
                       ))}
                       {c.trace_ids.length > 10 && (
-                        <span className="text-neutral-600">
+                        <span className="text-neutral-400">
                           +{c.trace_ids.length - 10} more
                         </span>
                       )}
@@ -399,12 +399,12 @@ function PlansSection() {
       .catch((e) => setErr(String(e)));
   }, []);
 
-  if (err) return <div className="text-red-400">Error: {err}</div>;
-  if (!items) return <div className="text-neutral-500">Loading…</div>;
+  if (err) return <div className="text-red-300">Error: {err}</div>;
+  if (!items) return <div className="text-neutral-400">Loading…</div>;
 
   if (items.length === 0)
     return (
-      <div className="text-neutral-500 text-center py-12">
+      <div className="text-neutral-400 text-center py-12">
         <ClipboardList size={48} className="mx-auto mb-4" />
         <p>No plan validation results yet.</p>
       </div>
@@ -416,8 +416,8 @@ function PlansSection() {
         const isExpanded = expandedId === p.trace_id;
         const statusColor =
           p.status === "success"
-            ? "bg-emerald-900/30 text-emerald-400"
-            : "bg-red-900/30 text-red-400";
+            ? "bg-emerald-900/30 text-emerald-300"
+            : "bg-red-900/30 text-red-300";
         return (
           <div
             key={p.trace_id}
@@ -436,7 +436,7 @@ function PlansSection() {
                 <div className="flex items-center gap-2 mb-1">
                   <ChevronRight
                     size={14}
-                    className={`text-neutral-500 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                    className={`text-neutral-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}
                   />
                   <span className="font-mono font-bold text-neutral-200 text-sm">
                     {p.domain}
@@ -448,21 +448,21 @@ function PlansSection() {
             {isExpanded && (
               <div className="border-t border-neutral-800 bg-neutral-950/50 px-5 py-4 space-y-3 text-xs">
                 <div>
-                  <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2 font-mono">
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-400 mb-2 font-mono">
                     Task
                   </div>
                   <p className="text-neutral-300">{p.task}</p>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2 font-mono">
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-400 mb-2 font-mono">
                     Trace ID
                   </div>
-                  <code className="font-mono text-neutral-500 bg-neutral-950 px-2 py-1 block border border-neutral-800">
+                  <code className="font-mono text-neutral-400 bg-neutral-950 px-2 py-1 block border border-neutral-800">
                     {p.trace_id}
                   </code>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2 font-mono">
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-400 mb-2 font-mono">
                     Checks
                   </div>
                   <ul className="space-y-1">
@@ -538,18 +538,18 @@ function BlockCard({
       >
         <div className="flex-shrink-0 mt-0.5">
           {block.status === "active" ? (
-            <CircleDot size={18} className="text-emerald-500" />
+            <CircleDot size={18} className="text-emerald-300" />
           ) : block.status === "retired" ? (
-            <CircleDashed size={18} className="text-neutral-500" />
+            <CircleDashed size={18} className="text-neutral-400" />
           ) : (
-            <Circle size={18} className="text-red-500" />
+            <Circle size={18} className="text-red-300" />
           )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-1 flex-wrap">
             <ChevronRight
               size={14}
-              className={`text-amber-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+              className={`text-amber-300 transition-transform ${isExpanded ? "rotate-90" : ""}`}
             />
             <h3 className="font-mono font-bold text-neutral-200 text-sm">
               {block.title}
@@ -573,7 +573,7 @@ function BlockCard({
               {blockSeverity(block)} signal
             </Chip>
           </div>
-          <div className="text-[10px] text-neutral-500 font-mono">
+          <div className="text-[10px] text-neutral-400 font-mono">
             {block.id}
           </div>
         </div>
@@ -589,9 +589,9 @@ function BlockCard({
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    active: "bg-emerald-900/40 text-emerald-400",
+    active: "bg-emerald-900/40 text-emerald-300",
     retired: "bg-neutral-700 text-neutral-400",
-    deprecated: "bg-red-900/40 text-red-400",
+    deprecated: "bg-red-900/40 text-red-300",
   };
   return (
     <span
@@ -627,10 +627,10 @@ function BlockDetail({ block }: { block: Playbook }) {
         <h2 className="text-base font-bold text-neutral-300 leading-snug">
           {block.title}
         </h2>
-        <div className="font-mono text-[10px] text-neutral-600 mt-1">
+        <div className="font-mono text-[10px] text-neutral-400 mt-1">
           {block.id}
         </div>
-        <div className="flex gap-2 mt-1 text-[10px] text-neutral-600">
+        <div className="flex gap-2 mt-1 text-[10px] text-neutral-400">
           <span>Created {new Date(block.created_at).toLocaleString()}</span>
           {block.updated_at && (
             <span>· Updated {new Date(block.updated_at).toLocaleString()}</span>
@@ -638,7 +638,7 @@ function BlockDetail({ block }: { block: Playbook }) {
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-3">
           <div className="border border-neutral-800 bg-neutral-950/60 p-3">
-            <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+            <div className="text-[10px] uppercase tracking-widest text-neutral-400">
               Tier
             </div>
             <div className="mt-1 text-sm text-neutral-200">
@@ -646,7 +646,7 @@ function BlockDetail({ block }: { block: Playbook }) {
             </div>
           </div>
           <div className="border border-neutral-800 bg-neutral-950/60 p-3">
-            <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+            <div className="text-[10px] uppercase tracking-widest text-neutral-400">
               Used by
             </div>
             <div className="mt-1 text-sm text-neutral-200">
@@ -656,7 +656,7 @@ function BlockDetail({ block }: { block: Playbook }) {
             </div>
           </div>
           <div className="border border-neutral-800 bg-neutral-950/60 p-3">
-            <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+            <div className="text-[10px] uppercase tracking-widest text-neutral-400">
               Focus
             </div>
             <div className="mt-1 text-sm text-neutral-200">
@@ -670,15 +670,15 @@ function BlockDetail({ block }: { block: Playbook }) {
             <Stat
               label="✓"
               value={block.success_count}
-              color="text-emerald-400"
+              color="text-emerald-300"
             />
-            <Stat label="✗" value={block.failure_count} color="text-red-400" />
+            <Stat label="✗" value={block.failure_count} color="text-red-300" />
             {successRate !== null && (
               <Stat
                 label="Rate"
                 value={`${successRate}%`}
                 color={
-                  successRate >= 70 ? "text-emerald-400" : "text-amber-400"
+                  successRate >= 70 ? "text-emerald-300" : "text-amber-300"
                 }
               />
             )}
@@ -688,7 +688,7 @@ function BlockDetail({ block }: { block: Playbook }) {
 
       <section className="grid gap-3 md:grid-cols-3">
         <div className="border border-neutral-800 bg-neutral-950/60 p-3">
-          <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+          <div className="text-[10px] uppercase tracking-widest text-neutral-400">
             Detects
           </div>
           <p className="mt-2 text-xs leading-relaxed text-neutral-300">
@@ -696,7 +696,7 @@ function BlockDetail({ block }: { block: Playbook }) {
           </p>
         </div>
         <div className="border border-neutral-800 bg-neutral-950/60 p-3">
-          <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+          <div className="text-[10px] uppercase tracking-widest text-neutral-400">
             Catches
           </div>
           <p className="mt-2 text-xs leading-relaxed text-neutral-300">
@@ -707,7 +707,7 @@ function BlockDetail({ block }: { block: Playbook }) {
           </p>
         </div>
         <div className="border border-neutral-800 bg-neutral-950/60 p-3">
-          <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+          <div className="text-[10px] uppercase tracking-widest text-neutral-400">
             Why it matters
           </div>
           <p className="mt-2 text-xs leading-relaxed text-neutral-300">
@@ -782,7 +782,7 @@ function BlockDetail({ block }: { block: Playbook }) {
                 key={i}
                 className="flex gap-2 items-start text-[13px] text-emerald-300 bg-emerald-950/20 border border-emerald-900/30 px-3 py-2"
               >
-                <Check size={14} className="shrink-0 text-emerald-500 mt-0.5" />
+                <Check size={14} className="shrink-0 text-emerald-300 mt-0.5" />
                 {v}
               </li>
             ))}
@@ -799,7 +799,7 @@ function BlockDetail({ block }: { block: Playbook }) {
                 key={i}
                 className="flex gap-2 items-start text-[13px] text-red-300 bg-red-950/20 border border-red-900/30 px-3 py-2"
               >
-                <X size={14} className="shrink-0 text-red-500 mt-0.5" />
+                <X size={14} className="shrink-0 text-red-300 mt-0.5" />
                 {d}
               </li>
             ))}
@@ -818,7 +818,7 @@ function BlockDetail({ block }: { block: Playbook }) {
               >
                 <AlertTriangle
                   size={14}
-                  className="shrink-0 text-amber-500 mt-0.5"
+                  className="shrink-0 text-amber-300 mt-0.5"
                 />
                 {s}
               </li>
@@ -845,7 +845,7 @@ function BlockDetail({ block }: { block: Playbook }) {
 
 function SL({ children }: { children: ReactNode }) {
   return (
-    <div className="text-[10px] uppercase font-bold tracking-widest text-neutral-500 mb-2">
+    <div className="text-[10px] uppercase font-bold tracking-widest text-neutral-400 mb-2">
       {children}
     </div>
   );
@@ -863,7 +863,7 @@ function Stat({
   return (
     <div className="flex flex-col items-center bg-neutral-900/60 border border-neutral-800 px-2.5 py-1.5 min-w-[48px]">
       <span className={`text-sm font-bold ${color}`}>{value}</span>
-      <span className="text-[9px] text-neutral-600 uppercase tracking-wide">
+      <span className="text-[10px] text-neutral-400 uppercase tracking-wide">
         {label}
       </span>
     </div>
@@ -876,7 +876,7 @@ function MatchHints({ block }: { block: Playbook }) {
     <section>
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-widest text-neutral-600 hover:text-neutral-400 transition mb-2"
+        className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-widest text-neutral-400 hover:text-neutral-400 transition mb-2"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Match
         hints
@@ -894,7 +894,7 @@ function MatchHints({ block }: { block: Playbook }) {
             <ChipRow
               label="File patterns"
               items={block.file_patterns}
-              color="bg-purple-950/40 text-purple-300 border-purple-900/40"
+              color="bg-brand-950/40 text-brand-300 border-brand-900/40"
               mono
             />
           )}
@@ -925,7 +925,7 @@ function ChipRow({
 }) {
   return (
     <div>
-      <div className="text-[9px] uppercase text-neutral-600 mb-1">{label}</div>
+      <div className="text-[10px] uppercase text-neutral-400 mb-1">{label}</div>
       <div className="flex flex-wrap gap-1.5">
         {items.map((item) => (
           <span
