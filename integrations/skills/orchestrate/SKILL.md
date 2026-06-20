@@ -17,7 +17,7 @@ When invoked, tell the user: "I'll coordinate this as a single structured run. L
    - use the **`workflow`** MCP tool for durable, prompt-driven workflow runs
    - use a direct child subagent/background task when the task does not need durable workflow state
 4. If you use `workflow`, compile the smallest valid workflow spec and call `workflow` with `op="run"`.
-5. If the user wants an isolated/background run, prefer the host's background-task surface. Do not pretend that `workflow.pause` or `workflow.stop` can kill a live synchronous run.
+5. If the user wants an isolated/background run, prefer the host's background-task surface.
 6. Return the resulting `run_id`, task handle, or child-run handle and tell the user how to inspect progress.
 
 ## Questions to gather
