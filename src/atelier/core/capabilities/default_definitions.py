@@ -377,7 +377,7 @@ def _tool_policies() -> dict[str, ToolPolicy]:
         "general": ToolPolicy(policy_id="general", allowed_tools=("*",)),
         "explore": ToolPolicy(
             policy_id="explore",
-            allowed_tools=("read", "grep", "search", "node", "usages", "explore"),
+            allowed_tools=("read", "grep", "search", "node", "explore"),
             denied_actions=("edit", "write", "delete", "agent-spawn"),
         ),
         "plan": ToolPolicy(
@@ -388,9 +388,6 @@ def _tool_policies() -> dict[str, ToolPolicy]:
                 "search",
                 "symbols",
                 "node",
-                "usages",
-                "callers",
-                "callees",
                 "explore",
                 "web_fetch",
             ),
@@ -404,8 +401,7 @@ def _tool_policies() -> dict[str, ToolPolicy]:
                 "grep",
                 "search",
                 "node",
-                "usages",
-                "callers",
+                "explore",
                 "verify",
             ),
             denied_actions=("edit", "write", "delete"),
