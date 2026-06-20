@@ -29,7 +29,7 @@ from atelier.core.capabilities.swarm import (
     stop_swarm_run,
 )
 from atelier.core.capabilities.swarm.models import SwarmEvaluatorBackend
-from atelier.gateway.cli.commands._shared import _emit
+from atelier.gateway.cli.commands._shared import _emit, require_pro
 
 DEFAULT_RUNNER_PROMPT = (
     "The authoritative task spec is stored at {spec}.\n\n"
@@ -178,6 +178,7 @@ def swarm_start(
     ``--runner`` profile. The child command receives a per-child
     ``ATELIER_ROOT``, workspace root, and ``ATELIER_SWARM_SPEC_PATH``.
     """
+    require_pro("swarm", "Multi-worktree swarm runs")
 
     if runs < 1:
         raise click.ClickException("--runs must be >= 1")
