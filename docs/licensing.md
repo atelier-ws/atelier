@@ -41,7 +41,6 @@ without a key; a key with no overlay has nothing to run.
 | Capability                                                  | Free | Pro | Ent |
 | ----------------------------------------------------------- | :--: | :-: | :-: |
 | Code-nav MCP tools (`read`/`grep`/`search`/`node`/`edit`/…) |  ✅  | ✅  | ✅  |
-| Agent reasoning runtime (rescue, loop detection, verify)    |  ✅  | ✅  | ✅  |
 | Host packaging, agents, skills, `init`; benchmarks          |  ✅  | ✅  | ✅  |
 | Repo map + context engine (small repos)                     |  ✅  | ✅  | ✅  |
 | Headline savings number                                     |  ✅  | ✅  | ✅  |
