@@ -99,7 +99,7 @@ Packaged agents in [integrations/agents/](integrations/agents/):
 
 Packaged skills in [integrations/skills/](integrations/skills/):
 
-`benchmark` · `orchestrate` · `recall` · `settings` · `swarms`
+`benchmark` · `orchestrate` · `perf-review` · `recall` · `settings` · `swarms` · `ux-review`
 
 ---
 
