@@ -1,116 +1,116 @@
 # Atelier plans & pricing
 
-Atelier is **open-core** and **local-first**. The entire runtime is Apache-2.0
-and runs on your machine — nothing is sent to a license server, and there is no
-phone-home. The **Free** plan is genuinely useful on its own (grounded code
-intelligence, packaging, memory, and the optimization *recommendations*). The
-paid **Pro / Team / Enterprise** plans unlock the control surfaces that *apply*
-the savings engine and the full savings dashboard.
+Atelier is **open-core** and **local-first**: the whole runtime is Apache-2.0 and
+runs on your machine — no license server, no phone-home. **Free** is a genuinely
+useful coding-agent runtime on its own. **Pro** unlocks the leverage — fast search
+and indexing across large repos, cross-session memory, the savings engine, and
+model routing. **Enterprise** adds very-large-repo scale, shared team context,
+and governance.
 
-> **Prices below are suggestions.** They are not hard-coded anywhere in the
-> client — you set the real amounts when you create your Stripe Payment Links.
-> The client only checks *which plan* a license grants, never the price.
+> **Prices below are suggestions.** They are not hard-coded in the client — you
+> set the real amounts in your Stripe Payment Links. The client only checks
+> *which plan/features* a license grants, never the price.
 
 ## At a glance
 
-| Capability                                                   | Free | Pro | Team | Enterprise |
-| ------------------------------------------------------------ | :--: | :-: | :--: | :--------: |
-| Grounded code intelligence (`search`/`grep`/`read`/`node`/…) |  ✅  | ✅  |  ✅  |     ✅     |
-| Host packaging, agents, skills, `atelier init`               |  ✅  | ✅  |  ✅  |     ✅     |
-| Local memory / recall (single repo)                          |  ✅  | ✅  |  ✅  |     ✅     |
-| See optimization recommendations (`atelier optimize`)        |  ✅  | ✅  |  ✅  |     ✅     |
-| Default savings summary (`atelier savings`)                  |  ✅  | ✅  |  ✅  |     ✅     |
-| **Apply** an optimization policy (`atelier optimize apply`)  |  —   | ✅  |  ✅  |     ✅     |
-| Full savings dashboard (`atelier savings --deep`)            |  —   | ✅  |  ✅  |     ✅     |
-| Context compression / prefix-cache / scoped-context          |  —   | ✅  |  ✅  |     ✅     |
-| Model routing & cross-vendor routing                         |  —   | ✅  |  ✅  |     ✅     |
-| Optimize more than one repository                            |  —   | ✅  |  ✅  |     ✅     |
-| Multiple seats / shared billing                              |  —   | —   |  ✅  |     ✅     |
-| SSO, priority support, custom terms                          |  —   | —   |  —   |     ✅     |
+| Capability                                                  | Free | Pro | Enterprise |
+| ----------------------------------------------------------- | :--: | :-: | :--------: |
+| Code-nav tools (`read`/`grep`/`search`/`node`/`edit`/…)     |  ✅  | ✅  |     ✅     |
+| Agent reasoning runtime (rescue, loop detection, verify)    |  ✅  | ✅  |     ✅     |
+| Host packaging, agents, skills, `init`; benchmarks          |  ✅  | ✅  |     ✅     |
+| Repo map + context engine (small repos)                     |  ✅  | ✅  |     ✅     |
+| Headline savings number ("you'd save $X")                   |  ✅  | ✅  |     ✅     |
+| Zoekt fast search · large-repo indexing · projection VFS     |  —   | ✅  |     ✅     |
+| Session recall (all past sessions) · cross-vendor memory     |  —   | ✅  |     ✅     |
+| Reasoning library (procedures, lessons, knowledge base)     |  —   | ✅  |     ✅     |
+| Savings engine: apply + full breakdown + compression/budget |  —   | ✅  |     ✅     |
+| Model routing (proxy daemon · cross-vendor · quality)        |  —   | ✅  |     ✅     |
+| Multi-repo · multi-worktree swarm                           |  —   | ✅  |     ✅     |
+| Very large repos, no index caps · shared team context       |  —   | —   |     ✅     |
+| Governance · audit export · retention · SSO                  |  —   | —   |     ✅     |
 
-The Pro capability keys are the contract in
-[`features.py`](../src/atelier/core/capabilities/licensing/features.py)
-(`PRO_FEATURES`); the plans that unlock them (`pro`, `team`, `enterprise`) are in
-[`models.py`](../src/atelier/core/capabilities/licensing/models.py)
-(`PRO_PLANS`).
+Feature keys: `src/atelier/core/capabilities/licensing/features.py`
+(`PRO_FEATURES`; `ENTERPRISE_FEATURES` is the Enterprise-only subset).
 
 ## Free — $0
 
-**For:** anyone trying Atelier, open-source projects, and developers who want
-grounded code intelligence without paying.
+**For:** anyone trying Atelier, open-source work, and developers who want a
+grounded coding-agent runtime without paying.
 
-You get the whole local runtime: the MCP server and all code-intelligence tools,
-host packaging for every supported agent (Claude Code, Codex, Copilot, …),
-agents/skills, single-repo memory, and the cost tracker. You can run
-`atelier optimize` to **see** exactly what the savings engine *would* change and
-how much it *would* save — you just can't apply it automatically or open the deep
-dashboard.
+You get the full local runtime that makes any agent better: the code-navigation
+MCP tools, the **agent reasoning runtime** (failure rescue, loop detection,
+grounded loops, tool supervision, proof/verification), host packaging for every
+supported agent, single-repo memory, benchmarks, and a project snapshot. The
+context engine and repo map work on normal-size repos. You also see the
+**headline savings number** — how much Atelier *would* save you — which is the
+hook to upgrade.
 
 No account, no key, no network call. Free is the default state of every install.
 
 ## Pro — for individual developers
 
-**For:** a single developer who wants the savings engine to actually run.
+**For:** a developer who wants Atelier's leverage on real, large codebases.
 
-Everything in Free, **plus** every gated capability: apply optimization policies,
-the full savings dashboard, context compression, prefix-cache planning,
-scoped-context pruning, per-session budget optimization, automatic model routing
-and cross-vendor routing, and optimizing more than one repository.
+Everything in Free, **plus:**
+
+- **Search & indexing at scale** — Zoekt-backed fast search, the native context
+  engine + ANN symbol index for large repos, the projection/minification VFS, and
+  indexing across **more than one repository**.
+- **Memory** — semantic **recall over all your past sessions**, and **unified
+  cross-vendor memory** across Claude, Codex, and Gemini.
+- **Reasoning library** — reusable procedures, promoted lessons, and the review
+  knowledge base.
+- **Savings engine** — apply optimization policies, the full savings
+  breakdown/dashboard, context compression/dedup, prefix-cache planning,
+  scoped-context pruning, and the per-session budget optimizer.
+- **Model routing** — the local routing proxy daemon, cross-vendor routing, and
+  quality-gated routing.
+- **Orchestration** — multi-worktree swarm runs.
 
 | Billing | Suggested price | Notes                               |
 | ------- | --------------- | ----------------------------------- |
-| Monthly | **$9 / mo**     | Stripe subscription; cancel anytime |
-| Annual  | **$90 / yr**    | ~2 months free vs monthly           |
+| Monthly | **$19 / mo**    | Stripe subscription; cancel anytime |
+| Annual  | **$190 / yr**   | ~2 months free vs monthly           |
 
-A Pro license covers one person across all their machines (activate the same key
-anywhere). See [Billing terms](#billing-terms) for how each maps to expiry.
+One person, all their machines (activate the same key anywhere).
 
-## Team
+## Enterprise — contact us
 
-**For:** a small team that wants shared billing and one license to manage.
+**For:** teams and organizations with very large repos, shared-context needs, or
+compliance requirements.
 
-Everything in Pro for every member of the team, billed together.
+Everything in Pro, **plus:**
 
-| Billing         | Suggested price       |
-| --------------- | --------------------- |
-| Per seat / mo   | **$8 / seat** (min 3) |
-| Per seat / year | **$80 / seat**        |
+- **Very large repositories** with no index or symbol caps.
+- **Shared team context** across repositories (unified memory shared across the
+  team, not just one machine).
+- **Governance** — policy enforcement, audit export, retention/redaction, and SSO.
 
-Team licenses carry the `team` plan, which unlocks the same Pro capability set.
-
-## Enterprise
-
-**For:** organizations that need procurement, SSO, an invoice, or custom terms.
-
-Everything in Team, plus SSO, priority support, a signed agreement, and optional
-self-hosting of the issuer. **Pricing: custom — contact sales.**
-
-Enterprise licenses carry the `enterprise` plan.
+**Pricing: custom — [contact us](https://atelier.ws/enterprise).** Enterprise
+licenses carry the `enterprise` plan, which unlocks the Enterprise-only keys on
+top of the full Pro set.
 
 ## Billing terms
 
-Both plans are Stripe subscriptions. The issuer derives a license's expiry from
-the purchase ([`termToExpiry`](../services/license-issuer/src/index.ts)):
+Pro is a Stripe subscription. The issuer derives a license's expiry from the
+purchase ([`termToExpiry`](../services/license-issuer/src/index.ts)):
 
 | Term        | Stripe mode  | Expiry baked into the key |
 | ----------- | ------------ | ------------------------- |
 | **Annual**  | subscription | now + ~13 months (grace)  |
 | **Monthly** | subscription | now + ~35 days (grace)    |
 
-Subscriptions **auto-renew**: each successful Stripe renewal re-issues the *same*
-license row with a fresh expiry and re-emails the key, so an active subscriber
-never has to re-activate. If a subscription is cancelled or a charge is refunded,
-the issuer revokes the license and stops renewing; the key simply lapses at its
-current expiry and the install gracefully falls back to **Free**.
+Subscriptions **auto-renew**: each successful renewal re-issues the same license
+with a fresh expiry and re-emails the key. On cancellation or refund the issuer
+revokes the license; the key lapses at its current expiry and the install
+gracefully falls back to **Free**.
 
 ## How to buy & activate
 
 1. **Buy** — open the Pro purchase link (`atelier license` upsells point at it;
-   set your own with the `ATELIER_PRO_URL` env var or the default
-   `https://atelier.ws/pro`). Pay through the Stripe Payment Link.
+   override with `ATELIER_PRO_URL`). Pay through the Stripe Payment Link.
 2. **Receive** — the Cloudflare Worker issuer signs an Ed25519 license and emails
-   you the key. (See the issuer
-   [README](../services/license-issuer/README.md).)
+   you the key. (See the issuer [README](../services/license-issuer/README.md).)
 3. **Activate** —
 
    ```bash
@@ -119,25 +119,23 @@ current expiry and the install gracefully falls back to **Free**.
    atelier license deactivate       # revert to Free
    ```
 
-   In CI or containers, set `ATELIER_LICENSE=<key>` instead of activating a file.
+   In CI or containers, set `ATELIER_LICENSE=<key>` instead.
 
 ## FAQ
 
-**Does activation require internet?** No. Verification is offline Ed25519 — the
-public key is embedded in the client. You only need the network to *buy* (Stripe)
-and to *receive* the emailed key.
+**Does activation require internet?** No — verification is offline Ed25519. You
+only need the network to *buy* (Stripe) and *receive* the emailed key.
 
-**What happens when my license expires?** Nothing breaks. The gated control
-surfaces re-lock and the install behaves exactly like Free again. Your code,
-memory, and config are untouched.
+**What happens when my license expires?** Nothing breaks: the gated surfaces
+re-lock and the install behaves like Free again. Your code, memory, and config
+are untouched.
 
 **Can I use one key on multiple machines?** Yes for Pro (one person, many
-machines). Team/Enterprise are sized by seats.
+machines). Enterprise is sized per organization.
 
-**Refunds?** A Stripe refund triggers automatic revocation on the next webhook —
-no manual key-chasing required.
+**Refunds?** A Stripe refund triggers automatic revocation on the next webhook.
 
-**Why is Free so capable?** Because the honest moat is the closed issuer and the
-savings engine itself, not DRM on your local code. Free should be good enough to
-trust; Pro should be worth it because it *runs* the engine for you. See
+**Why is Free so capable?** The honest moat is the closed issuer + the private
+`pro/` overlay (Free installs don't have the paid code) + being the maintainer —
+not DRM on local code. Free should be good enough to trust. See
 [`docs/licensing.md`](./licensing.md) for the technical design.
