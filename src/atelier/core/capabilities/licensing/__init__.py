@@ -19,8 +19,11 @@ import os
 
 from atelier.core.capabilities.licensing.entitlements import (
     current_license,
+    feature_active,
     has_feature,
     is_pro,
+    pro_available,
+    pro_impl,
     reload,
     require,
     status,
@@ -34,6 +37,30 @@ from atelier.core.capabilities.licensing.models import (
 )
 from atelier.core.capabilities.licensing.store import delete_token, license_path, load_token
 from atelier.core.capabilities.licensing.verify import verify_token
+
+__all__ = [
+    "PRO_FEATURES",
+    "FeatureLocked",
+    "License",
+    "LicenseError",
+    "LicenseStatus",
+    "activate",
+    "current_license",
+    "deactivate",
+    "delete_token",
+    "feature_active",
+    "has_feature",
+    "is_pro",
+    "license_path",
+    "load_token",
+    "pro_available",
+    "pro_impl",
+    "pro_url",
+    "reload",
+    "require",
+    "status",
+    "verify_token",
+]
 
 _DEFAULT_PRO_URL = "https://atelier.ws/pro"
 
