@@ -2100,7 +2100,13 @@ def test_autosync_incremental_reindex_updates_index_after_edit(tmp_path: Path, m
 def test_autosync_worker_reindexes_without_search_trigger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_fixture_repo(tmp_path)
     monkeypatch.setenv("ATELIER_CODE_AUTOSYNC_DEBOUNCE_MS", "50")
-    monkeypatch.setenv("ATELIER_CODE_AUTOSYNC_POLL_MS", "1000")
+    monkeypatch.setenv("ATELIER_CODE_AUTOSYNC_POLL_MS", "100")
+    # Bypass the production-code poll floor (1000ms) so the worker detects
+    # changes within ~200ms instead of ~2s.
+    monkeypatch.setattr(
+        "atelier.core.capabilities.code_context.engine.CodeContextEngine._parse_autosync_poll_ms",
+        lambda self, raw_value: max(100, int(raw_value)) if raw_value else 100,
+    )
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
 
     for _ in range(40):
@@ -2112,8 +2118,17 @@ def test_autosync_worker_reindexes_without_search_trigger(tmp_path: Path, monkey
     version_before = engine._current_index_version()
     assert version_before > 0
 
-    # Ensure filesystem timestamp resolution can observe the edit across platforms.
-    time.sleep(1.1)
+    # Wait for the autosync worker to seed its initial source-tree signature
+    # so the file write happens *after* the seed, guaranteeing the next
+    # worker poll detects the change.
+    for _ in range(40):
+        if engine._autosync_signature is not None:
+            break
+        time.sleep(0.05)
+
+    # Modern filesystems (tmpfs, ext4, xfs) have nanosecond timestamps;
+    # a brief pause is sufficient to ensure the edit timestamp advances.
+    time.sleep(0.05)
     (tmp_path / "src" / "orders.py").write_text(
         "class OrderService:\n"
         "    def calculate_total(self, items: list[int]) -> int:\n"
@@ -2124,7 +2139,7 @@ def test_autosync_worker_reindexes_without_search_trigger(tmp_path: Path, monkey
         encoding="utf-8",
     )
 
-    for _ in range(200):
+    for _ in range(40):
         if engine._current_index_version() > version_before:
             break
         time.sleep(0.05)

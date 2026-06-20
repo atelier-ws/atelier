@@ -16,6 +16,15 @@ def _invoke(root: Path, *args: str) -> tuple[int, str]:
     return res.exit_code, res.output
 
 
+@pytest.fixture(autouse=True)
+def _isolated_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # `init` bootstraps a code index over cwd when it is a git repo. Without an
+    # isolated cwd the CliRunner inherits the atelier repo and init spends
+    # 14-37s indexing the whole codebase. Both tests here drive the actual work
+    # through --workspace, so cwd only needs to point away from the atelier repo.
+    monkeypatch.chdir(tmp_path)
+
+
 def test_search_smart_blocks(tmp_path: Path) -> None:
     root = tmp_path / ".atelier"
     code, out = _invoke(root, "init")

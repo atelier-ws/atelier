@@ -31,6 +31,15 @@ def _op_result(render_name: str, op_fn: Any, **kwargs: Any) -> Any:
     return rendered if rendered is not None else payload
 
 
+def _preindex(repo_root: str | Path) -> None:
+    """Explicitly index the repo for deterministic code-context tests.
+
+    The gateway conftest disables the background autosync worker so tests that
+    need a populated index build it explicitly via ``_op_index``.
+    """
+    mcp_server._op_index(repo_root=str(repo_root), force=True)
+
+
 def test_symbols_surface_hidden_but_callable() -> None:
     # `symbols` is registered and callable by name (CLI / benchmark / power use)
     # but removed from the advertised agent surface (HIDDEN_LLM_TOOLS).
@@ -391,6 +400,7 @@ def test_tool_code_search_accepts_hardened_params(tmp_path: Path) -> None:
         "from src.orders import OrderService\n",
         encoding="utf-8",
     )
+    _preindex(tmp_path)
 
     payload = mcp_server._op_search(
         repo_root=str(tmp_path),
@@ -424,6 +434,7 @@ def test_tool_code_search_semantic_unavailable_without_embedder(tmp_path: Path) 
         "    return {'user_id': user_id}\n",
         encoding="utf-8",
     )
+    _preindex(tmp_path)
 
     # Semantic search is opt-in: with no embedding backend configured (the default),
     # an explicit semantic request reports it is unavailable instead of contacting an
@@ -466,6 +477,7 @@ def test_tool_code_usages_returns_grouped_references(tmp_path: Path) -> None:
         "    return OrderService().calculate_total(items)\n",
         encoding="utf-8",
     )
+    _preindex(tmp_path)
 
     payload = mcp_server._op_usages(repo_root=str(tmp_path), query="OrderService", budget_tokens=4000)
 
@@ -995,6 +1007,7 @@ def test_tool_code_cache_diagnostics_hide_payloads_and_keep_other_ops_cached(
         "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
+    _preindex(tmp_path)
 
     mcp_server._op_search(repo_root=str(tmp_path), query="OrderService", budget_tokens=4000)
     mcp_server._op_node(
