@@ -10060,8 +10060,12 @@ def _auto_compact_result_text(text: str, tool_name: str, args: dict[str, Any]) -
     method = "compact_output"
 
     # AST-aware path for code reads: project the source to its compact view.
+    # Gated: the source-projection VFS is a Pro feature; Free falls back to the
+    # generic output compaction below.
     lang = ""
-    if tool_name in _CODE_CONTENT_TOOLS:
+    from atelier.core.capabilities import licensing as _licensing
+
+    if tool_name in _CODE_CONTENT_TOOLS and _licensing.feature_active("source_projection"):
         with contextlib.suppress(Exception):
             from atelier.core.capabilities.source_projection import build_compact_projection
             from atelier.infra.code_intel.languages import language_for_path

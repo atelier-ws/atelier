@@ -109,3 +109,26 @@ def test_pro_policy_is_balanced(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     _grant(monkeypatch, {"optimizer"})
     policy = load_current_policy(tmp_path)
     assert policy.preset == "balanced"
+
+
+def _big_python_src() -> str:
+    return "def f():\n" + "\n\n\n".join(f"    x{i} = {i}  " for i in range(2000)) + "\n"
+
+
+def test_free_read_skips_source_projection(monkeypatch: pytest.MonkeyPatch) -> None:
+    from atelier.gateway.adapters import mcp_server
+
+    monkeypatch.setenv("ATELIER_AUTO_COMPACT_OUTPUT", "1")
+    monkeypatch.setenv("ATELIER_MCP_COMPACT_RESULT_CHARS", "2000")
+    out = mcp_server._auto_compact_result_text(_big_python_src(), "read", {"path": "mod.py"})
+    assert "source_projection" not in out  # Free: AST projection gated off
+
+
+def test_pro_read_uses_source_projection(monkeypatch: pytest.MonkeyPatch) -> None:
+    _grant(monkeypatch, {"source_projection"})
+    from atelier.gateway.adapters import mcp_server
+
+    monkeypatch.setenv("ATELIER_AUTO_COMPACT_OUTPUT", "1")
+    monkeypatch.setenv("ATELIER_MCP_COMPACT_RESULT_CHARS", "2000")
+    out = mcp_server._auto_compact_result_text(_big_python_src(), "read", {"path": "mod.py"})
+    assert "source_projection:python" in out  # Pro: AST projection applies
