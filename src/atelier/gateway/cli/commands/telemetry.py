@@ -48,24 +48,6 @@ def telemetry_status(as_json: bool) -> None:
     click.echo(f"local database: {payload['local_db_path']}")
 
 
-@telemetry_group.command("on")
-def telemetry_on() -> None:
-    from atelier.core.service.telemetry import set_remote_enabled
-
-    set_remote_enabled(True)
-    click.echo("remote telemetry: on")
-
-
-@telemetry_group.command("off")
-def telemetry_off() -> None:
-    from atelier.core.service.telemetry import set_remote_enabled
-    from atelier.core.service.telemetry.banner import mark_acknowledged
-
-    set_remote_enabled(False)
-    mark_acknowledged()
-    click.echo("remote telemetry: off")
-
-
 @telemetry_group.command("show")
 @click.option("--limit", default=20, show_default=True, type=int)
 def telemetry_show(limit: int) -> None:
