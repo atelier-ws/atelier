@@ -54,15 +54,15 @@ def test_arm_specs_resolve_persona_by_capability() -> None:
     specs = CODEBENCH.ARM_SPECS
     # baseline runs the vanilla Claude default for the only capability (code).
     assert specs["baseline"].persona_by_capability == {"code": None}
-    # atelier runs the generated plugin's code persona.
+    # atelier runs the generated plugin's autonomous (auto) persona.
     assert specs["atelier"].plugin is True
     assert specs["atelier"].strip_mcp is False
-    assert specs["atelier"].persona_by_capability["code"] == "atelier:code"
+    assert specs["atelier"].persona_by_capability["code"] == "atelier:auto"
     # execute / solve are code-only coding personas (no built-in twin).
     assert set(specs["execute"].persona_by_capability) == {"code"}
     assert set(specs["solve"].persona_by_capability) == {"code"}
-    assert CODEBENCH.VALID_ARMS == ("baseline", "atelier", "execute", "solve")
-    assert CODEBENCH.HEAVY_ARMS == ("atelier", "execute", "solve")
+    assert CODEBENCH.VALID_ARMS == ("baseline", "atelier", "execute", "solve", "auto")
+    assert CODEBENCH.HEAVY_ARMS == ("atelier", "execute", "solve", "auto")
 
 
 def test_rate_limiter_does_not_block_proxy_event_loop(monkeypatch: MonkeyPatch) -> None:
