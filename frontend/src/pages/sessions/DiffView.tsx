@@ -337,19 +337,19 @@ function SideBySideBody({ rows }: { rows: SBSRow[] }) {
                   : ""
               )}
             >
-              <span className="w-9 flex-shrink-0 text-right pr-2 py-0.5 text-neutral-700 select-none text-[9px] leading-5 border-r border-neutral-800/20">
+              <span className="w-9 flex-shrink-0 text-right pr-2 py-0.5 text-neutral-400 select-none text-[10px] leading-5 border-r border-neutral-800/20">
                 {row.left.num}
               </span>
               <span
                 className={cx(
                   "flex-1 py-0.5 pl-2 whitespace-pre-wrap break-all leading-5 min-h-[1.4em]",
                   row.left.type === "remove"
-                    ? "text-red-300/80"
+                    ? "text-red-300"
                     : "text-neutral-400"
                 )}
               >
                 {row.left.type === "remove" && (
-                  <span className="text-red-500/40 select-none mr-1">−</span>
+                  <span className="text-red-300 select-none mr-1">−</span>
                 )}
                 {row.left.content}
               </span>
@@ -373,19 +373,19 @@ function SideBySideBody({ rows }: { rows: SBSRow[] }) {
                   : ""
               )}
             >
-              <span className="w-9 flex-shrink-0 text-right pr-2 py-0.5 text-neutral-700 select-none text-[9px] leading-5 border-r border-neutral-800/20">
+              <span className="w-9 flex-shrink-0 text-right pr-2 py-0.5 text-neutral-400 select-none text-[10px] leading-5 border-r border-neutral-800/20">
                 {row.right.num}
               </span>
               <span
                 className={cx(
                   "flex-1 py-0.5 pl-2 whitespace-pre-wrap break-all leading-5 min-h-[1.4em]",
                   row.right.type === "insert"
-                    ? "text-emerald-300/80"
+                    ? "text-emerald-300"
                     : "text-neutral-400"
                 )}
               >
                 {row.right.type === "insert" && (
-                  <span className="text-emerald-500/40 select-none mr-1">
+                  <span className="text-emerald-300 select-none mr-1">
                     +
                   </span>
                 )}
@@ -404,7 +404,7 @@ function SideBySideBody({ rows }: { rows: SBSRow[] }) {
 // Sticky column labels used by both diff surfaces
 function SBSLabels() {
   return (
-    <div className="flex sticky top-0 z-10 bg-[#080d08] border-b border-neutral-800/40 font-mono text-[8px] uppercase tracking-widest text-neutral-600">
+    <div className="flex sticky top-0 z-10 bg-[#080d08] border-b border-neutral-800/40 font-mono text-[10px] uppercase tracking-widest text-neutral-400">
       <div className="w-1/2 px-3 py-1.5 border-r border-neutral-800/40">
         Before
       </div>
@@ -523,14 +523,14 @@ function DiffShell({
     <div className="w-full border border-emerald-900/25 bg-[#050a05] rounded-sm overflow-hidden shadow-xl">
       <div className="flex items-center justify-between px-4 py-2.5 bg-[#080d08]">
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          <span className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-600/80 border border-emerald-800/40 bg-emerald-950/30 px-1.5 py-0.5 flex-shrink-0">
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600/80 border border-emerald-800/40 bg-emerald-950/30 px-1.5 py-0.5 flex-shrink-0">
             FILE_EDIT
           </span>
           <span className="text-xs font-mono text-neutral-400 truncate">
             {path || "(unknown path)"}
           </span>
           {(addCount > 0 || delCount > 0) && (
-            <div className="flex items-center gap-1.5 text-[9px] font-mono font-black flex-shrink-0">
+            <div className="flex items-center gap-1.5 text-[10px] font-mono font-black flex-shrink-0">
               {addCount > 0 && (
                 <span className="text-emerald-600">+{addCount}</span>
               )}
@@ -547,7 +547,7 @@ function DiffShell({
                 href={api.fileProjectionInspectUrl(path, { view: "compact" })}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[9px] text-neutral-500 hover:text-cyan-300 font-black uppercase tracking-widest transition-colors"
+                className="text-[10px] text-neutral-400 hover:text-cyan-300 font-black uppercase tracking-widest transition-colors"
                 title="Inspect compact projection metadata"
               >
                 Projection
@@ -556,7 +556,7 @@ function DiffShell({
                 href={`/api/v1/files/content?path=${encodeURIComponent(path)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[9px] text-neutral-500 hover:text-emerald-500 font-black uppercase tracking-widest transition-colors flex items-center gap-1"
+                className="text-[10px] text-neutral-400 hover:text-emerald-300 font-black uppercase tracking-widest transition-colors flex items-center gap-1"
               >
                 View <ExternalLink size={10} />
               </a>
@@ -565,7 +565,7 @@ function DiffShell({
           {!forceExpand && (
             <button
               onClick={onToggle}
-              className="text-[9px] text-neutral-500 hover:text-neutral-300 font-black uppercase tracking-widest transition-colors border-l border-neutral-800/60 pl-3 flex items-center gap-1.5"
+              className="text-[10px] text-neutral-400 hover:text-neutral-300 font-black uppercase tracking-widest transition-colors border-l border-neutral-800/60 pl-3 flex items-center gap-1.5"
             >
               {expanded ? (
                 <>
@@ -611,7 +611,7 @@ export function FileDetail({
   const delCount = rows.filter((r) => r.left?.type === "remove").length;
 
   return (
-    <div className="border border-neutral-800 bg-[#0d0d0d] rounded-none overflow-hidden group/file">
+    <div className="border border-neutral-800 bg-surface-raised rounded-none overflow-hidden group/file">
       <div className="flex items-center justify-between p-4 hover:bg-neutral-800/20 transition-all">
         <button
           onClick={() => setInternalExpanded(!internalExpanded)}
@@ -621,7 +621,7 @@ export function FileDetail({
             {path}
           </span>
           {diff && (addCount > 0 || delCount > 0) && (
-            <div className="flex items-center gap-1.5 text-[9px] font-mono font-black flex-shrink-0">
+            <div className="flex items-center gap-1.5 text-[10px] font-mono font-black flex-shrink-0">
               {addCount > 0 && (
                 <span className="text-emerald-600">+{addCount}</span>
               )}
@@ -636,7 +636,7 @@ export function FileDetail({
             href={api.fileProjectionInspectUrl(path, { view: "compact" })}
             target="_blank"
             rel="noreferrer"
-            className="text-[9px] text-neutral-500 font-black tracking-widest hover:text-cyan-300 transition-colors uppercase"
+            className="text-[10px] text-neutral-400 font-black tracking-widest hover:text-cyan-300 transition-colors uppercase"
             title="Inspect compact projection metadata"
           >
             Projection
@@ -645,14 +645,14 @@ export function FileDetail({
             href={`/api/v1/files/content?path=${encodeURIComponent(path)}`}
             target="_blank"
             rel="noreferrer"
-            className="text-[9px] text-neutral-500 font-black tracking-widest hover:text-emerald-500 transition-colors uppercase flex items-center gap-1"
+            className="text-[10px] text-neutral-400 font-black tracking-widest hover:text-emerald-300 transition-colors uppercase flex items-center gap-1"
             title="View raw file content"
           >
             Raw <ExternalLink size={10} />
           </a>
           <button
             onClick={() => setInternalExpanded(!internalExpanded)}
-            className="text-[9px] text-neutral-500 font-black tracking-widest group-hover/file:text-neutral-300 transition-colors uppercase pl-2 border-l border-neutral-800 flex items-center gap-1.5"
+            className="text-[10px] text-neutral-400 font-black tracking-widest group-hover/file:text-neutral-300 transition-colors uppercase pl-2 border-l border-neutral-800 flex items-center gap-1.5"
           >
             {expanded ? (
               <>

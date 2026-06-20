@@ -71,7 +71,7 @@ function HintButton({ label, hint }: { label: string; hint: string }) {
       type="button"
       aria-label={label}
       title={hint}
-      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-neutral-800 bg-neutral-950 text-neutral-500 transition hover:border-cyan-500/60 hover:text-cyan-300"
+      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-neutral-800 bg-neutral-950 text-neutral-400 transition hover:border-cyan-500/60 hover:text-cyan-300"
     >
       <HelpCircle size={12} />
     </button>
@@ -138,7 +138,7 @@ function FilterSelect({
   children: React.ReactNode;
 }) {
   return (
-    <label className="flex items-center gap-3 text-[10px] font-mono uppercase tracking-[0.22em] text-neutral-500">
+    <label className="flex items-center gap-3 text-[10px] font-mono uppercase tracking-[0.22em] text-neutral-400">
       <span className="whitespace-nowrap">{label}</span>
       <select
         aria-label={label}
@@ -161,7 +161,7 @@ function CountBars({
 }) {
   const max = Math.max(1, ...items.map((item) => item.count));
   if (items.length === 0) {
-    return <div className="text-sm text-neutral-500">{emptyLabel}</div>;
+    return <div className="text-sm text-neutral-400">{emptyLabel}</div>;
   }
   return (
     <div className="space-y-3">
@@ -243,7 +243,7 @@ function TimelineChart({
 }) {
   if (points.length === 0) {
     return (
-      <div className="flex min-h-[280px] items-center justify-center border border-dashed border-neutral-800 bg-black/20 text-sm text-neutral-500">
+      <div className="flex min-h-[280px] items-center justify-center border border-dashed border-neutral-800 bg-black/20 text-sm text-neutral-400">
         {emptyLabel}
       </div>
     );
@@ -413,13 +413,13 @@ function EventRow({
             {hostName && <Chip tone="cyan">{hostName}</Chip>}
             {item.exported && <Chip tone="emerald">Exported</Chip>}
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-neutral-500">
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-neutral-400">
             <span>{formatTimestamp(item.ts, rangeSeconds ?? undefined)}</span>
             <span>{formatRelative(item.ts)}</span>
             {item.session_id && <span>session {item.session_id}</span>}
           </div>
         </div>
-        <span className="pt-0.5 text-[10px] font-mono uppercase tracking-[0.22em] text-neutral-500">
+        <span className="pt-0.5 text-[10px] font-mono uppercase tracking-[0.22em] text-neutral-400">
           JSON
         </span>
       </summary>
@@ -613,11 +613,11 @@ export default function Telemetry() {
   }, [hostFilter, knownHosts]);
 
   if (error && !summary) {
-    return <div className="text-red-400">Error: {error}</div>;
+    return <div className="text-red-300">Error: {error}</div>;
   }
 
   if (!summary || !schema) {
-    return <div className="text-neutral-500">Loading...</div>;
+    return <div className="text-neutral-400">Loading...</div>;
   }
 
   const liveHint =
@@ -775,7 +775,7 @@ export default function Telemetry() {
       >
         <div className="space-y-3">
           {recentEvents.length === 0 ? (
-            <div className="text-sm text-neutral-500">
+            <div className="text-sm text-neutral-400">
               No telemetry rows match the current filters.
             </div>
           ) : (
@@ -798,7 +798,7 @@ export default function Telemetry() {
         <div className="overflow-auto">
           <table className="min-w-full border-collapse text-left text-sm">
             <thead>
-              <tr className="border-b border-neutral-800 text-xs uppercase tracking-widest text-neutral-500">
+              <tr className="border-b border-neutral-800 text-xs uppercase tracking-widest text-neutral-400">
                 <th className="py-2 pr-4">Event</th>
                 <th className="py-2 pr-4">Allowlisted properties</th>
                 <th className="py-2">Example payload</th>

@@ -57,11 +57,11 @@ function SnapshotChip({ label, value, detail, tone }: SnapshotChipData) {
   const palette = TONE_STYLES[tone];
   return (
     <div className={`border px-3 py-3 ${palette.chip}`}>
-      <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+      <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
         {label}
       </div>
       <div className={`mt-2 text-xl font-semibold ${palette.value}`}>{value}</div>
-      <div className="mt-1 text-xs leading-relaxed text-neutral-500">{detail}</div>
+      <div className="mt-1 text-xs leading-relaxed text-neutral-400">{detail}</div>
     </div>
   );
 }
@@ -184,7 +184,7 @@ export default function Overview() {
 
   return (
     <div className="space-y-6">
-      {err && <div className="text-sm text-red-400">{err}</div>}
+      {err && <div className="text-sm text-red-300">{err}</div>}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {snapshotChips.map((chip) => (
@@ -198,7 +198,7 @@ export default function Overview() {
           <SectionHeader title="Session Activity" />
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <div className="border border-neutral-800 bg-neutral-950/60 p-4">
-              <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+              <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
                 Sessions
               </div>
               <div className="mt-2 text-xl font-semibold text-violet-200">
@@ -206,7 +206,7 @@ export default function Overview() {
               </div>
             </div>
             <div className="border border-neutral-800 bg-neutral-950/60 p-4">
-              <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+              <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
                 Total Cost
               </div>
               <div className="mt-2 text-xl font-semibold text-amber-200">
@@ -214,7 +214,7 @@ export default function Overview() {
               </div>
             </div>
             <div className="border border-neutral-800 bg-neutral-950/60 p-4">
-              <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+              <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
                 Saved
               </div>
               <div className="mt-2 text-xl font-semibold text-emerald-200">
@@ -222,7 +222,7 @@ export default function Overview() {
               </div>
             </div>
             <div className="border border-neutral-800 bg-neutral-950/60 p-4">
-              <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+              <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
                 Avg Session Cost
               </div>
               <div className="mt-2 text-xl font-semibold text-neutral-100">
@@ -239,7 +239,7 @@ export default function Overview() {
           <div className="grid gap-4 xl:grid-cols-3">
             {data.insights.top_sessions.length > 0 && (
               <Card className="p-4">
-                <h3 className="mb-3 text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-500">
+                <h3 className="mb-3 text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400">
                   Top Cost Sessions
                 </h3>
                 <div className="space-y-2">
@@ -253,7 +253,7 @@ export default function Overview() {
                           className="flex flex-col gap-0.5"
                         >
                           <div className="flex justify-between text-xs">
-                            <span className="font-mono text-violet-400/80">
+                            <span className="font-mono text-violet-300">
                               {s.session_id.slice(0, 14)}…
                             </span>
                             <span className="text-amber-300">
@@ -285,7 +285,7 @@ export default function Overview() {
 
             {Object.keys(data.insights.cost_by_vendor).length > 0 && (
               <Card className="p-4">
-                <h3 className="mb-3 text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-500">
+                <h3 className="mb-3 text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400">
                   Cost by Vendor
                 </h3>
                 <div className="space-y-2">
@@ -322,7 +322,7 @@ export default function Overview() {
 
             {data.insights.opportunities.length > 0 && (
               <Card tone="amber" className="p-4">
-                <h3 className="mb-2 text-[10px] font-mono font-bold uppercase tracking-widest text-amber-500">
+                <h3 className="mb-2 text-[10px] font-mono font-bold uppercase tracking-widest text-amber-300">
                   Optimization Opportunities
                 </h3>
                 <ul className="space-y-2">
@@ -332,11 +332,11 @@ export default function Overview() {
                         <span className="font-semibold text-neutral-200">
                           {opp.kind}
                         </span>
-                        <span className="text-emerald-400">
+                        <span className="text-emerald-300">
                           {usd(opp.estimated_savings_usd)}
                         </span>
                       </div>
-                      <p className="mt-0.5 text-neutral-500">{opp.message}</p>
+                      <p className="mt-0.5 text-neutral-400">{opp.message}</p>
                     </li>
                   ))}
                 </ul>
@@ -408,7 +408,7 @@ export default function Overview() {
       {!hasAnyData && !err && (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <p className="text-sm text-neutral-400">No activity data yet.</p>
-          <p className="mt-2 text-xs text-neutral-600">
+          <p className="mt-2 text-xs text-neutral-400">
             Start using Atelier with your AI agent to see sessions, costs, and
             savings here.
           </p>

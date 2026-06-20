@@ -249,7 +249,7 @@ export default function ProjectionInspector() {
 
           {segmentPreview.length > 0 && (
             <Card className="space-y-3">
-              <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-500">
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-400">
                 Segment preview
               </div>
               <div className="space-y-2 font-mono text-xs">
@@ -263,7 +263,7 @@ export default function ProjectionInspector() {
                     </span>
                     <span
                       className={
-                        segment.exact ? "text-emerald-400" : "text-amber-300"
+                        segment.exact ? "text-emerald-300" : "text-amber-300"
                       }
                     >
                       {segment.kind}
@@ -280,7 +280,7 @@ export default function ProjectionInspector() {
           )}
 
           <Card className="space-y-3">
-            <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-500">
+            <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-400">
               Content preview
             </div>
             <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap border border-neutral-800 bg-black/30 p-4 text-sm text-neutral-200">
@@ -291,7 +291,7 @@ export default function ProjectionInspector() {
           {payload.projection.view === "compact" && !comparison && (
             <Card className="space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-500">
+                <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-400">
                   Exact comparison
                 </div>
                 <Button
@@ -315,7 +315,7 @@ export default function ProjectionInspector() {
 
           {comparison && (
             <Card className="space-y-3">
-              <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-500">
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-neutral-400">
                 Exact comparison
               </div>
               <div className="flex flex-wrap gap-2">
@@ -350,7 +350,7 @@ export default function ProjectionInspector() {
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-neutral-800 bg-black/20 p-3">
-      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">
+      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">
         {label}
       </div>
       <div className="mt-1 text-sm text-neutral-100">{value}</div>
@@ -381,7 +381,7 @@ function ComparisonPane({
               : "grid grid-cols-[auto_1fr] gap-3 border-b border-neutral-900/60 px-3 py-1.5"
           }
         >
-          <span className="text-neutral-500">{row.line}</span>
+          <span className="text-neutral-400">{row.line}</span>
           <span>
             {side === "compact" ? row.compact || " " : row.exact || " "}
           </span>

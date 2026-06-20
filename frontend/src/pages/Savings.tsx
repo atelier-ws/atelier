@@ -94,8 +94,8 @@ export default function Savings() {
       .catch((e) => setErr(String(e)));
   }, [days]);
 
-  if (err) return <div className="text-red-400">Error: {err}</div>;
-  if (!data) return <div className="text-neutral-500">Loading…</div>;
+  if (err) return <div className="text-red-300">Error: {err}</div>;
+  if (!data) return <div className="text-neutral-400">Loading…</div>;
 
   const latestBenchmark = data.latest_benchmark ?? null;
   const toolAggregates = data.tool_aggregates ?? [];
@@ -146,7 +146,7 @@ export default function Savings() {
       <section className="border border-cyan-900/60 bg-gradient-to-r from-cyan-950/60 to-neutral-950 p-6">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
           <div>
-            <div className="text-[11px] font-mono uppercase tracking-[0.22em] text-cyan-300/80">
+            <div className="text-[11px] font-mono uppercase tracking-[0.22em] text-cyan-300">
               {headlineLabel}
             </div>
             <div className="text-6xl md:text-7xl font-semibold leading-none text-cyan-200 mt-2">
@@ -159,7 +159,7 @@ export default function Savings() {
               {fmt.format(data.total_naive_tokens)} tokens kept out of the model
               across {fmt.format(data.live_calls_saved ?? 0)} avoided calls.
             </p>
-            <p className="max-w-3xl text-xs text-neutral-500 mt-3 leading-relaxed">
+            <p className="max-w-3xl text-xs text-neutral-400 mt-3 leading-relaxed">
               Realized savings from the per-session ledger — the same figure
               shown by the statusline and the{" "}
               <code className="bg-neutral-900 px-1">atelier savings</code> CLI.
@@ -167,7 +167,7 @@ export default function Savings() {
           </div>
           <div className="w-full md:w-auto">
             <Sparkline values={sparkValues} />
-            <p className="font-mono text-[10px] text-neutral-500 uppercase tracking-wider mt-2">
+            <p className="font-mono text-[10px] text-neutral-400 uppercase tracking-wider mt-2">
               Daily reduction trend
             </p>
           </div>
@@ -176,14 +176,14 @@ export default function Savings() {
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="border border-emerald-900/60 bg-emerald-950/30 p-4">
-          <div className="text-[10px] font-mono uppercase tracking-widest text-emerald-400/70 mb-1">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-emerald-300 mb-1">
             Cost Saved
           </div>
           <div className="text-2xl font-semibold text-emerald-300">
             {usdFmt.format(data.saved_usd ?? 0)}
           </div>
           {(data.saved_pct ?? 0) > 0 && (
-            <div className="text-xs text-emerald-400/60 mt-1">
+            <div className="text-xs text-emerald-300 mt-1">
               {(data.saved_pct ?? 0).toFixed(1)}% vs baseline
             </div>
           )}
@@ -195,7 +195,7 @@ export default function Savings() {
           <div className="text-2xl font-semibold text-neutral-200">
             {usdFmt.format(data.actually_cost_usd ?? 0)}
           </div>
-          <div className="text-xs text-neutral-500 mt-1">
+          <div className="text-xs text-neutral-400 mt-1">
             {data.cost_basis === "session_ledger"
               ? `realized session spend (${usdFmt.format(data.saved_usd ?? 0)} saved)`
               : data.cost_basis === "context_budget"
@@ -210,7 +210,7 @@ export default function Savings() {
           <div className="text-2xl font-semibold text-neutral-200">
             {fmt.format(data.live_calls_saved ?? 0)}
           </div>
-          <div className="text-xs text-neutral-500 mt-1">
+          <div className="text-xs text-neutral-400 mt-1">
             {(data.total_calls ?? 0) > 0
               ? `${fmt.format(data.total_calls ?? 0)} LLM calls tracked`
               : trackedToolCalls > 0
@@ -225,7 +225,7 @@ export default function Savings() {
           <div className="text-2xl font-semibold text-neutral-200">
             {fmt.format(data.total_actual_tokens)}
           </div>
-          <div className="text-xs text-neutral-500 mt-1">
+          <div className="text-xs text-neutral-400 mt-1">
             persisted compacted tool-output tokens
           </div>
         </div>
@@ -275,7 +275,7 @@ export default function Savings() {
               </h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div>
-                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-400">
                     Token reduction
                   </div>
                   <div className="text-2xl font-semibold text-cyan-200">
@@ -283,7 +283,7 @@ export default function Savings() {
                   </div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-400">
                     Cost saved
                   </div>
                   <div className="text-2xl font-semibold text-emerald-300">
@@ -291,7 +291,7 @@ export default function Savings() {
                   </div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-400">
                     Tasks
                   </div>
                   <div className="text-2xl font-semibold text-neutral-200">
@@ -299,7 +299,7 @@ export default function Savings() {
                   </div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-400">
                     Success
                   </div>
                   <div className="text-2xl font-semibold text-neutral-200">
@@ -307,7 +307,7 @@ export default function Savings() {
                   </div>
                 </div>
               </div>
-              <p className="mt-3 text-xs text-neutral-500">
+              <p className="mt-3 text-xs text-neutral-400">
                 Real paired command run: baseline{" "}
                 {fmt.format(latestBenchmark.total_tokens_baseline)} tokens vs
                 Atelier-enabled{" "}
@@ -323,7 +323,7 @@ export default function Savings() {
               </h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="text-[10px] uppercase tracking-widest text-neutral-500">
+                  <thead className="text-[10px] uppercase tracking-widest text-neutral-400">
                     <tr>
                       <th className="pb-2 pr-4">Lever</th>
                       <th className="pb-2 pr-4">Tool</th>
@@ -358,7 +358,7 @@ export default function Savings() {
                   </tbody>
                 </table>
               </div>
-              <p className="mt-3 text-xs text-neutral-500">
+              <p className="mt-3 text-xs text-neutral-400">
                 These rows use an equivalent-call estimator: search, edit, and
                 SQL tools count the built-in calls they replace, then apply live
                 token constants to estimate avoided cost.
@@ -373,7 +373,7 @@ export default function Savings() {
               </h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="text-[10px] uppercase tracking-widest text-neutral-500">
+                  <thead className="text-[10px] uppercase tracking-widest text-neutral-400">
                     <tr>
                       <th className="pb-2 pr-4">Tool</th>
                       <th className="pb-2 pr-4">Lever</th>
@@ -394,7 +394,7 @@ export default function Savings() {
                         <td className="py-2 pr-4 font-semibold text-cyan-200">
                           {displayToolName(tool.tool_name)}
                         </td>
-                        <td className="py-2 pr-4 text-neutral-500">
+                        <td className="py-2 pr-4 text-neutral-400">
                           {toTitle(tool.lever)}
                         </td>
                         <td className="py-2 pr-4 text-right">
@@ -420,7 +420,7 @@ export default function Savings() {
                   </tbody>
                 </table>
               </div>
-              <p className="mt-3 text-xs text-neutral-500 leading-relaxed">
+              <p className="mt-3 text-xs text-neutral-400 leading-relaxed">
                 These rows are built from persisted proof items. Actual and
                 baseline cost reflect the tracked tokens on each tool turn.
                 Baseline here is the naive tool-output baseline, not audited
@@ -436,7 +436,7 @@ export default function Savings() {
                 <h2 className="text-xs uppercase tracking-widest font-mono text-neutral-400 mb-2">
                   Session proof
                 </h2>
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-neutral-400">
                   Each session below links saved tokens and cost back to
                   concrete tool turns. Expand a session to inspect the stored
                   ledger, imported trace conversation, and command/tool
@@ -476,7 +476,7 @@ export default function Savings() {
                           {gap.trace_confidence}
                         </span>
                       )}
-                      <span className="text-neutral-500">{gap.session_id}</span>
+                      <span className="text-neutral-400">{gap.session_id}</span>
                     </div>
                     <div className="text-sm text-neutral-200">{gap.task}</div>
                     <p className="mt-2 text-xs text-neutral-400 leading-relaxed">
@@ -572,7 +572,7 @@ function ManualVerificationPanel({
 
       {compactOutputRows > 0 && (
         <div className="border border-neutral-800 bg-neutral-950/50 p-4 space-y-2">
-          <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
             Excluded Compact Output Rows
           </div>
           <div className="text-lg font-semibold text-cyan-200">
@@ -590,7 +590,7 @@ function ManualVerificationPanel({
 
       <div className="grid xl:grid-cols-2 gap-3">
         <div className="border border-neutral-800 bg-neutral-950/50 p-4 space-y-2">
-          <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
             Dominant Session
           </div>
           {dominantRun ? (
@@ -606,7 +606,7 @@ function ManualVerificationPanel({
               <div className="text-sm text-neutral-300">
                 {dominantRun.agent ?? "unknown"}
               </div>
-              <p className="text-xs text-neutral-500 leading-relaxed">
+              <p className="text-xs text-neutral-400 leading-relaxed">
                 {truncate(dominantRun.task ?? "No trace task attached.", 180)}
               </p>
               <div className="text-xs text-neutral-400">
@@ -614,14 +614,14 @@ function ManualVerificationPanel({
               </div>
             </>
           ) : (
-            <div className="text-sm text-neutral-500">
+            <div className="text-sm text-neutral-400">
               No tracked session data yet.
             </div>
           )}
         </div>
 
         <div className="border border-neutral-800 bg-neutral-950/50 p-4 space-y-2">
-          <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
             Largest Proof Row
           </div>
           {dominantItem ? (
@@ -645,14 +645,14 @@ function ManualVerificationPanel({
               </div>
             </>
           ) : (
-            <div className="text-sm text-neutral-500">
+            <div className="text-sm text-neutral-400">
               No tracked proof rows yet.
             </div>
           )}
         </div>
       </div>
 
-      <p className="text-xs text-neutral-500 font-mono break-all">
+      <p className="text-xs text-neutral-400 font-mono break-all">
         Data root: {verification.data_root}
       </p>
     </section>
@@ -706,7 +706,7 @@ function SessionProofCard({
               {session.agent}
             </span>
             {session.trace_confidence && (
-              <span className="px-2 py-0.5 border border-neutral-700 text-neutral-500">
+              <span className="px-2 py-0.5 border border-neutral-700 text-neutral-400">
                 {session.trace_confidence}
               </span>
             )}
@@ -730,11 +730,11 @@ function SessionProofCard({
           <div className="text-sm text-neutral-100 break-words">
             {session.task}
           </div>
-          <div className="text-[10px] font-mono text-neutral-500 break-all">
+          <div className="text-[10px] font-mono text-neutral-400 break-all">
             Session: {session.session_id}
           </div>
           {session.note && (
-            <p className="text-xs text-amber-300/90 leading-relaxed">
+            <p className="text-xs text-amber-300 leading-relaxed">
               {session.note}
             </p>
           )}
@@ -762,7 +762,7 @@ function SessionProofCard({
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
-          <thead className="text-[10px] uppercase tracking-widest text-neutral-500">
+          <thead className="text-[10px] uppercase tracking-widest text-neutral-400">
             <tr>
               <th className="pb-2 pr-4">Turn</th>
               <th className="pb-2 pr-4">Tool</th>
@@ -779,13 +779,13 @@ function SessionProofCard({
                 key={`${item.session_id}:${item.turn_index}:${item.tool_name}`}
                 className="border-t border-neutral-900 text-neutral-300"
               >
-                <td className="py-2 pr-4 font-mono text-neutral-500">
+                <td className="py-2 pr-4 font-mono text-neutral-400">
                   {item.turn_index}
                 </td>
                 <td className="py-2 pr-4 text-cyan-200 font-semibold">
                   {displayToolName(item.tool_name)}
                 </td>
-                <td className="py-2 pr-4 text-neutral-500">
+                <td className="py-2 pr-4 text-neutral-400">
                   {toTitle(item.lever)}
                 </td>
                 <td className="py-2 pr-4 text-right">
@@ -815,7 +815,7 @@ function SessionProofCard({
           {expanded ? "Hide evidence details" : "Inspect evidence details"}
         </button>
         {session.has_ledger && (
-          <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
             stored ledger available
           </span>
         )}
@@ -824,12 +824,12 @@ function SessionProofCard({
       {expanded && (
         <div className="border border-neutral-900 bg-neutral-950/60 p-4 space-y-4">
           {loading && (
-            <div className="text-xs text-neutral-500">
+            <div className="text-xs text-neutral-400">
               Loading ledger proof…
             </div>
           )}
           {!loading && ledger?.error && (
-            <div className="text-xs text-red-400">{ledger.error}</div>
+            <div className="text-xs text-red-300">{ledger.error}</div>
           )}
           {!loading && !ledger?.error && (
             <>
@@ -854,12 +854,12 @@ function SessionProofCard({
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-xs">
                   <div>
-                    <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 mb-2">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400 mb-2">
                       Tool calls
                     </div>
                     <div className="space-y-2">
                       {toolsCalled.length === 0 ? (
-                        <div className="text-neutral-500">
+                        <div className="text-neutral-400">
                           No tool-call detail captured for this session.
                         </div>
                       ) : (
@@ -873,7 +873,7 @@ function SessionProofCard({
                               <div className="text-cyan-200 font-semibold">
                                 {tool.name}
                               </div>
-                              <div className="text-neutral-500 font-mono">
+                              <div className="text-neutral-400 font-mono">
                                 x{tool.count ?? 1}
                               </div>
                               {tool.result_summary && (
@@ -888,12 +888,12 @@ function SessionProofCard({
                   </div>
 
                   <div>
-                    <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 mb-2">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400 mb-2">
                       Commands
                     </div>
                     <div className="space-y-2">
                       {commandsRun.length === 0 ? (
-                        <div className="text-neutral-500">
+                        <div className="text-neutral-400">
                           No command detail captured for this session.
                         </div>
                       ) : (
@@ -920,12 +920,12 @@ function SessionProofCard({
                   </div>
 
                   <div>
-                    <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 mb-2">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400 mb-2">
                       Conversation / LLM response
                     </div>
                     <div className="space-y-2">
                       {conversations.length === 0 ? (
-                        <div className="text-neutral-500">
+                        <div className="text-neutral-400">
                           No conversation transcript was attached to this
                           session.
                         </div>
@@ -937,14 +937,14 @@ function SessionProofCard({
                               key={`${entry.kind}:${index}`}
                               className="border border-neutral-900 p-2"
                             >
-                              <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+                              <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
                                 {entry.kind}
                               </div>
                               <div className="mt-1 text-neutral-200 leading-relaxed">
                                 {truncate(String(entry.summary ?? ""), 120)}
                               </div>
                               {entry.content && (
-                                <div className="mt-1 text-neutral-500 leading-relaxed whitespace-pre-wrap break-words">
+                                <div className="mt-1 text-neutral-400 leading-relaxed whitespace-pre-wrap break-words">
                                   {truncate(String(entry.content), 180)}
                                 </div>
                               )}
@@ -966,7 +966,7 @@ function SessionProofCard({
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-neutral-900 bg-neutral-950/40 p-3">
-      <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-500 mb-1">
+      <div className="text-[10px] font-mono uppercase tracking-widest text-neutral-400 mb-1">
         {label}
       </div>
       <div className="text-sm font-semibold text-neutral-200">{value}</div>

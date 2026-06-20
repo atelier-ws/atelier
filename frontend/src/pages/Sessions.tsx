@@ -46,7 +46,7 @@ function highlightSearchText(value: string, query: string): ReactNode {
     terms.includes(part.toLowerCase()) ? (
       <mark
         key={i}
-        className="bg-purple-500/30 text-purple-200 rounded-[1px] px-0.5 border border-purple-500/20"
+        className="bg-brand-500/30 text-brand-200 rounded-[1px] px-0.5 border border-brand-500/20"
       >
         {part}
       </mark>
@@ -223,12 +223,12 @@ export default function Sessions() {
   }, [refresh]);
 
   return (
-    <div className="flex h-[calc(100vh-180px)] overflow-hidden border border-neutral-800/80 bg-[#070707] shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-180px)] overflow-hidden border border-neutral-800/80 bg-surface-sunken">
       {/* Sidebar — master list */}
       <aside
         className={cx(
-          "flex-shrink-0 flex flex-col border-r border-neutral-800 bg-[#0a0a0a] transition-all duration-200 ease-in-out overflow-hidden",
-          sidebarCollapsed ? "w-12" : "w-80"
+          "flex-shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-neutral-800 bg-surface transition-all duration-200 ease-in-out overflow-hidden",
+          sidebarCollapsed ? "w-full md:w-12" : "w-full md:w-80"
         )}
       >
         {sidebarCollapsed ? (
@@ -237,26 +237,26 @@ export default function Sessions() {
             <button
               type="button"
               onClick={() => setSidebarCollapsed(false)}
-              className="w-6 h-6 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors rounded-full hover:bg-neutral-800"
+              className="w-6 h-6 flex items-center justify-center text-neutral-400 hover:text-neutral-300 transition-colors rounded-full hover:bg-neutral-800"
               title="Expand sidebar"
             >
               <ChevronRight size={14} />
             </button>
-            <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-500 [writing-mode:vertical-lr]">
+            <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400 [writing-mode:vertical-lr]">
               History
             </span>
           </div>
         ) : (
           /* ── Expanded: full sidebar ── */
           <>
-            <div className="p-4 border-b border-neutral-800 space-y-4 bg-[#0d0d0d]">
+            <div className="p-4 border-b border-neutral-800 space-y-4 bg-surface-raised">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 whitespace-nowrap">
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 whitespace-nowrap">
                     History
                   </h2>
                   {loadingTraces && (
-                    <span className="text-[10px] text-purple-500 animate-pulse shrink-0">
+                    <span className="text-[10px] text-brand-400 shrink-0">
                       Scanning...
                     </span>
                   )}
@@ -265,7 +265,7 @@ export default function Sessions() {
                   <button
                     type="button"
                     onClick={refresh}
-                    className="w-5 h-5 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors shrink-0 rounded hover:bg-neutral-800"
+                    className="w-5 h-5 flex items-center justify-center text-neutral-400 hover:text-neutral-300 transition-colors shrink-0 rounded hover:bg-neutral-800"
                     title="Refresh sessions"
                   >
                     <RefreshCw size={14} />
@@ -273,7 +273,7 @@ export default function Sessions() {
                   <button
                     type="button"
                     onClick={() => setSidebarCollapsed(true)}
-                    className="w-5 h-5 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors shrink-0 rounded hover:bg-neutral-800"
+                    className="w-5 h-5 flex items-center justify-center text-neutral-400 hover:text-neutral-300 transition-colors shrink-0 rounded hover:bg-neutral-800"
                     title="Collapse sidebar"
                   >
                     <ChevronLeft size={14} />
@@ -286,13 +286,13 @@ export default function Sessions() {
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="Search sessions, tasks, models..."
-                  className="w-full bg-[#141414] border border-neutral-800 px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-purple-600 transition-all rounded-sm shadow-inner"
+                  className="w-full bg-surface-overlay border border-neutral-800 px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-brand-600 transition-all rounded-sm shadow-inner"
                 />
                 {searchInput && (
                   <button
                     type="button"
                     onClick={() => setSearchInput("")}
-                    className="px-2 border border-neutral-800 text-neutral-500 hover:text-neutral-300 transition-colors"
+                    className="px-2 border border-neutral-800 text-neutral-400 hover:text-neutral-300 transition-colors"
                   >
                     <X size={14} />
                   </button>
@@ -302,7 +302,7 @@ export default function Sessions() {
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               {err && (
-                <div className="p-4 text-xs text-red-500 font-mono">{err}</div>
+                <div className="p-4 text-xs text-red-300 font-mono">{err}</div>
               )}
 
               {displayTraces
@@ -345,7 +345,7 @@ export default function Sessions() {
                       : fmtTok(cacheRead);
                   const host = extractHost(t);
                   const hostTextClass =
-                    HOST_COLORS[host]?.split(" ")[1] || "text-neutral-500";
+                    HOST_COLORS[host]?.split(" ")[1] || "text-neutral-400";
 
                   return (
                     <button
@@ -358,7 +358,7 @@ export default function Sessions() {
                       className={cx(
                         "w-full border-b border-neutral-800 p-3.5 text-left transition-all hover:bg-neutral-800/40 group/card",
                         isActive
-                          ? "bg-purple-900/10 border-r-2 border-r-purple-500 shadow-[inset_0_0_28px_rgba(168,85,247,0.08)]"
+                          ? "bg-brand-900/10 border-r-2 border-r-brand-500 shadow-[inset_0_0_28px_rgba(168,85,247,0.08)]"
                           : ""
                       )}
                     >
@@ -367,7 +367,7 @@ export default function Sessions() {
                           <StatusDot status={t.status} className="shrink-0" />
                           <span
                             className={cx(
-                              "shrink-0 text-[8px] font-mono uppercase tracking-[0.18em]",
+                              "shrink-0 text-[10px] font-mono uppercase tracking-[0.18em]",
                               hostTextClass
                             )}
                             title={host}
@@ -376,7 +376,7 @@ export default function Sessions() {
                           </span>
                           {sessionModel && (
                             <span
-                              className="min-w-0 truncate text-[9px] font-mono text-sky-200"
+                              className="min-w-0 truncate text-[10px] font-mono text-sky-200"
                               title={sessionModel}
                             >
                               {sessionModel}
@@ -385,13 +385,13 @@ export default function Sessions() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span
-                            className="shrink-0 text-[9px] font-mono text-neutral-500"
+                            className="shrink-0 text-[10px] font-mono text-neutral-400"
                             title={t.created_at}
                           >
                             {fmtDate(t.created_at)}
                           </span>
                           <span
-                            className="shrink-0 text-[9px] font-mono text-neutral-400"
+                            className="shrink-0 text-[10px] font-mono text-neutral-400"
                             title={
                               summary
                                 ? String(
@@ -428,14 +428,14 @@ export default function Sessions() {
                             [
                               "Cost",
                               summary ? fmtUsd(summary.total_cost_usd) : "—",
-                              "text-red-500/90",
+                              "text-red-300",
                             ],
                             [
                               "Saved",
                               summary
                                 ? fmtUsd(summary.total_atelier_savings_usd)
                                 : "—",
-                              "text-emerald-500/90",
+                              "text-emerald-300",
                             ],
 
                             ["Input", fmtTok(inputTokens), "text-neutral-400"],
@@ -456,7 +456,7 @@ export default function Sessions() {
                             key={label}
                             className="flex items-center justify-between gap-2 rounded-sm border border-neutral-800/50 bg-neutral-950/40 px-2 py-1.5"
                           >
-                            <div className="truncate text-[8px] font-mono tracking-[0.18em] uppercase text-neutral-500 leading-none">
+                            <div className="truncate text-[10px] font-mono tracking-[0.18em] uppercase text-neutral-400 leading-none">
                               {label}
                             </div>
                             <div
@@ -484,7 +484,7 @@ export default function Sessions() {
               )}
 
               {!loadingTraces && traces?.length === 0 && (
-                <div className="p-12 text-center text-xs text-neutral-500 italic font-mono">
+                <div className="p-12 text-center text-xs text-neutral-400 italic font-mono">
                   No sessions found
                 </div>
               )}
@@ -548,12 +548,12 @@ function EmptyState({ summaries }: { summaries: SessionSummary[] | null }) {
         />
       </div>
 
-      <div className="border border-neutral-800 bg-[#0d0d0d] p-16 text-center rounded-sm">
-        <Terminal size={48} className="mx-auto mb-6 text-neutral-500" />
-        <h3 className="text-xs font-bold text-neutral-500 mb-2 uppercase tracking-[0.4em]">
+      <div className="border border-neutral-800 bg-surface-raised p-16 text-center rounded-sm">
+        <Terminal size={48} className="mx-auto mb-6 text-neutral-400" />
+        <h3 className="text-xs font-bold text-neutral-400 mb-2 uppercase tracking-[0.4em]">
           Select History
         </h3>
-        <p className="text-xs text-neutral-500 max-w-sm mx-auto leading-relaxed">
+        <p className="text-xs text-neutral-400 max-w-sm mx-auto leading-relaxed">
           Explore the internal reasoning logs, tool executions, and file diffs
           for any past agent run.
         </p>

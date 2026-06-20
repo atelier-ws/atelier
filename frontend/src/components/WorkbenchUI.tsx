@@ -60,15 +60,15 @@ const TONES: Record<
   },
   red: {
     panel: "border-red-900/30 bg-red-950/20",
-    eyebrow: "text-red-400",
+    eyebrow: "text-red-300",
     value: "text-red-200",
     border: "border-red-900/50",
   },
   purple: {
-    panel: "border-purple-900/30 bg-purple-950/20",
-    eyebrow: "text-purple-400",
-    value: "text-purple-200",
-    border: "border-purple-900/50",
+    panel: "border-brand-900/30 bg-brand-950/20",
+    eyebrow: "text-brand-400",
+    value: "text-brand-200",
+    border: "border-brand-900/50",
   },
 };
 
@@ -84,7 +84,7 @@ export function FieldLabel({
   return (
     <div
       className={cn(
-        "text-[10px] font-mono uppercase tracking-widest text-neutral-500",
+        "text-[10px] font-mono uppercase tracking-widest text-neutral-400",
         className
       )}
     >
@@ -150,7 +150,7 @@ export function MetricCard({
       <div className={cn("mt-2 text-lg font-semibold", palette.value)}>
         {value}
       </div>
-      {detail && <div className="mt-2 text-xs text-neutral-500">{detail}</div>}
+      {detail && <div className="mt-2 text-xs text-neutral-400">{detail}</div>}
     </Card>
   );
 }
@@ -209,7 +209,7 @@ export function FeaturePanel({
             <Badge tone="emerald">{status}</Badge>
           </div>
           {subtitle && (
-            <p className="mb-3 font-mono text-[11px] text-neutral-500">
+            <p className="mb-3 font-mono text-[11px] text-neutral-400">
               {subtitle}
             </p>
           )}
@@ -217,10 +217,10 @@ export function FeaturePanel({
             {description}
           </div>
           {bullets.length > 0 && (
-            <div className="mt-3 space-y-1 text-xs text-emerald-300/90">
+            <div className="mt-3 space-y-1 text-xs text-emerald-300">
               {bullets.map((bullet) => (
                 <p key={bullet} className="flex items-center gap-1.5">
-                  <Check size={12} className="text-emerald-500" /> {bullet}
+                  <Check size={12} className="text-emerald-300" /> {bullet}
                 </p>
               ))}
             </div>
@@ -317,7 +317,7 @@ export function SnippetCard({
       <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
         <div>
           <div className="text-sm font-semibold text-neutral-100">{title}</div>
-          {caption && <div className="mt-1 text-xs text-neutral-500">{caption}</div>}
+          {caption && <div className="mt-1 text-xs text-neutral-400">{caption}</div>}
         </div>
         <CopyButton text={body} />
       </div>

@@ -138,7 +138,7 @@ export default function Blocks() {
 
         {/* Stats footer */}
         <div className="pt-4 border-t border-neutral-800">
-          <FieldLabel className="text-neutral-600">
+          <FieldLabel className="text-neutral-400">
             Showing {filtered.length} of {items.length} blocks
           </FieldLabel>
         </div>
@@ -173,7 +173,7 @@ function BlockCard({
             <div className="min-w-0 flex-1">
               <div className="mb-1 flex flex-wrap items-center gap-3">
                 <span
-                  className={`text-neutral-500 font-mono text-xs transition-transform ${
+                  className={`text-neutral-400 font-mono text-xs transition-transform ${
                     isExpanded ? "rotate-90" : ""
                   }`}
                 >
@@ -239,10 +239,10 @@ function BlockDetail({ block }: { block: Playbook }) {
         <h2 className="text-base font-bold text-neutral-300 leading-snug">
           {block.title}
         </h2>
-        <div className="font-mono text-[10px] text-neutral-600 mt-1">
+        <div className="font-mono text-[10px] text-neutral-400 mt-1">
           {block.id}
         </div>
-        <div className="flex gap-4 mt-2 text-[10px] text-neutral-600">
+        <div className="flex gap-4 mt-2 text-[10px] text-neutral-400">
           <span>Created {new Date(block.created_at).toLocaleString()}</span>
           {block.updated_at && (
             <span>· Updated {new Date(block.updated_at).toLocaleString()}</span>
@@ -255,19 +255,19 @@ function BlockDetail({ block }: { block: Playbook }) {
             <Stat
               label="✓ Success"
               value={block.success_count}
-              color="text-emerald-400"
+              color="text-emerald-300"
             />
             <Stat
               label="✗ Failures"
               value={block.failure_count}
-              color="text-red-400"
+              color="text-red-300"
             />
             {successRate !== null && (
               <Stat
                 label="Rate"
                 value={`${successRate}%`}
                 color={
-                  successRate >= 70 ? "text-emerald-400" : "text-amber-400"
+                  successRate >= 70 ? "text-emerald-300" : "text-amber-300"
                 }
               />
             )}
@@ -317,7 +317,7 @@ function BlockDetail({ block }: { block: Playbook }) {
                 key={i}
                 className="flex gap-2 items-start text-[13px] text-emerald-300 bg-emerald-950/20 border border-emerald-900/30 px-3 py-2"
               >
-                <span className="shrink-0 text-emerald-500 mt-0.5">✓</span>
+                <span className="shrink-0 text-emerald-300 mt-0.5">✓</span>
                 {v}
               </li>
             ))}
@@ -335,7 +335,7 @@ function BlockDetail({ block }: { block: Playbook }) {
                 key={i}
                 className="flex gap-2 items-start text-[13px] text-red-300 bg-red-950/20 border border-red-900/30 px-3 py-2"
               >
-                <span className="shrink-0 text-red-500 mt-0.5">✗</span>
+                <span className="shrink-0 text-red-300 mt-0.5">✗</span>
                 {d}
               </li>
             ))}
@@ -353,7 +353,7 @@ function BlockDetail({ block }: { block: Playbook }) {
                 key={i}
                 className="flex gap-2 items-start text-[13px] text-amber-300 bg-amber-950/20 border border-amber-900/30 px-3 py-2"
               >
-                <span className="shrink-0 text-amber-500 mt-0.5">⚠</span>
+                <span className="shrink-0 text-amber-300 mt-0.5">⚠</span>
                 {s}
               </li>
             ))}
@@ -391,7 +391,7 @@ function Stat({
   return (
     <div className="flex flex-col items-center bg-neutral-900/60 border border-neutral-800 px-2.5 py-1.5 min-w-[48px]">
       <span className={`text-sm font-bold ${color}`}>{value}</span>
-      <span className="text-[9px] text-neutral-600 uppercase tracking-wide">
+      <span className="text-[10px] text-neutral-400 uppercase tracking-wide">
         {label}
       </span>
     </div>
@@ -404,7 +404,7 @@ function MatchHints({ block }: { block: Playbook }) {
     <section>
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-widest text-neutral-600 hover:text-neutral-400 transition mb-2"
+        className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-widest text-neutral-400 hover:text-neutral-400 transition mb-2"
       >
         <span>{open ? "▼" : "▶"}</span>
         Match hints
@@ -422,7 +422,7 @@ function MatchHints({ block }: { block: Playbook }) {
             <ChipRow
               label="File patterns"
               items={block.file_patterns}
-              color="bg-purple-950/40 text-purple-300 border-purple-900/40"
+              color="bg-brand-950/40 text-brand-300 border-brand-900/40"
               mono
             />
           )}
@@ -453,7 +453,7 @@ function ChipRow({
 }) {
   return (
     <div>
-      <div className="text-[9px] uppercase text-neutral-600 mb-1">{label}</div>
+      <div className="text-[10px] uppercase text-neutral-400 mb-1">{label}</div>
       <div className="flex flex-wrap gap-1.5">
         {items.map((item) => (
           <span

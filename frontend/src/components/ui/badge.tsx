@@ -17,7 +17,7 @@ const BADGE_TONES: Record<BadgeTone, string> = {
   emerald: "border-emerald-700/50 text-emerald-300",
   violet: "border-violet-700/50 text-violet-300",
   red: "border-red-700/50 text-red-300",
-  purple: "border-purple-700/50 text-purple-300",
+  purple: "border-brand-700/50 text-brand-300",
 };
 
 interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
