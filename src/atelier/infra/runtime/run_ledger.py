@@ -39,6 +39,26 @@ except ValueError:
 _MAX_PAYLOAD_DEPTH = 8
 
 
+# Hard cap on the NUMBER of raw events retained in memory. ``_handle`` appends
+# ~2 events per tool call to one module-global ledger that lives for the whole
+# long-lived stdio session, so an unbounded ``self.events`` list grows linearly
+# for the life of the process (a confirmed RSS leak on the MCP hot path).
+# We retain only the most recent events; older raw events are evicted. This is
+# safe because the durable cumulative truth (routing/compaction savings, per-
+# call cost) is flushed independently to ``live_savings_events.jsonl`` and the
+# per-session savings sidecars on every call, and the live consumers of
+# ``self.events`` (compaction, loop detection, routing recommendation) only read
+# the recent tail. The cap is generous and env-overridable.
+try:
+    _MAX_RETAINED_EVENTS = max(0, int(os.environ.get("ATELIER_MAX_LEDGER_EVENTS", "8000")))
+except ValueError:
+    _MAX_RETAINED_EVENTS = 8000
+
+# Evict in chunks so trimming is amortized O(1) on the hot path rather than an
+# O(n) shift on every append once the cap is reached.
+_EVENT_EVICTION_CHUNK = 512
+
+
 def _bound_value(value: Any, depth: int) -> Any:
     """Return a bounded copy of ``value``, truncating oversized string leaves.
 
@@ -126,6 +146,9 @@ class RunLedger:
         self.task = task
         self.domain = domain
         self.events: list[LedgerEvent] = []
+        # Monotonic checkpoint step counter. Authoritative even after old
+        # checkpoint events are evicted from the bounded ``self.events`` list.
+        self._checkpoint_seq = 0
         # Guards mutation of events/counters and snapshot reads: the MCP
         # dispatcher shares one ledger across a thread pool, so concurrent
         # record()/record_call() and snapshot() must not race (torn snapshot,
@@ -297,6 +320,12 @@ class RunLedger:
         )
         with self._lock:
             self.events.append(event)
+            # Bound the retained raw events so a long-lived session can't grow
+            # ``self.events`` without limit. Evict the oldest chunk in one slice
+            # assignment (kept O(1) amortized; ``self.events`` stays a list so
+            # external slicing/indexing callers are unaffected).
+            if _MAX_RETAINED_EVENTS and len(self.events) > _MAX_RETAINED_EVENTS + _EVENT_EVICTION_CHUNK:
+                del self.events[:_EVENT_EVICTION_CHUNK]
             self.updated_at = _utcnow()
         return event
 
@@ -464,7 +493,12 @@ class RunLedger:
         """
         from atelier.infra.runtime.checkpoint import Checkpoint, CheckpointStore
 
-        step_id = len([e for e in self.events if e.kind == "checkpoint"])
+        # Monotonic per-ledger step id: derived from a counter rather than the
+        # (now bounded) raw events list, so eviction of old checkpoint events
+        # can never make step ids repeat and collide in the CheckpointStore.
+        with self._lock:
+            step_id = self._checkpoint_seq
+            self._checkpoint_seq += 1
         ckpt = Checkpoint.create(
             session_id=self.session_id,
             step_id=step_id,
@@ -680,6 +714,8 @@ class RunLedger:
                     payload=ev.get("payload", {}),
                 )
             )
+            if ev.get("kind") == "checkpoint":
+                led._checkpoint_seq += 1
         led.current_plan = list(snap.get("current_plan") or [])
         led.files_touched = list(snap.get("files_touched") or [])
         led.tools_called = list(snap.get("tools_called") or [])
