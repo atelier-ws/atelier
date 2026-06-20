@@ -14,6 +14,9 @@
 [![Latest release](https://img.shields.io/github/v/release/atelier-ws/atelier?style=for-the-badge)](https://github.com/atelier-ws/atelier/releases)
 [![Total downloads](https://img.shields.io/github/downloads/atelier-ws/atelier/total?style=for-the-badge)](https://github.com/atelier-ws/atelier/releases)
 
+[![macOS](https://img.shields.io/badge/macOS-supported-blue.svg)](#supported-platforms)
+[![Linux](https://img.shields.io/badge/Linux-supported-blue.svg)](#supported-platforms)
+
 [![Claude Code](https://img.shields.io/badge/Claude_Code-supported-CF6D3F.svg)](https://claude.ai/code)
 [![Codex](https://img.shields.io/badge/Codex-supported-10A37F.svg)](https://openai.com/codex)
 [![opencode](https://img.shields.io/badge/opencode-supported-7C3AED.svg)](https://opencode.ai)
@@ -53,7 +56,7 @@ Already installed? Run `atelier update` to update in place.
 
 ## Why Atelier?
 
-- **Grounded code intelligence:** search, file reads, exact symbols, callers, callees, usages, and outlines.
+- **Grounded code intelligence:** search, file reads, exact symbols, call-graph + usages exploration, and outlines.
 - **Safer agent edits:** deterministic edit tools plus validation-friendly shell access.
 - **Local memory:** repo/session recall without requiring a hosted backend.
 - **Host-ready packaging:** MCP configs, agents, and skills for popular coding agents.
@@ -69,10 +72,7 @@ Already installed? Run `atelier update` to update in place.
 | `grep`      | Regex / glob / type-filtered search with token-budgeted output. |
 | `read`      | Budgeted file reads by outline, range, or full file.            |
 | `node`      | Exact source for a named symbol.                                |
-| `explore`   | Directory tree and file listing.                                |
-| `callers`   | Find all call sites of a symbol.                                |
-| `callees`   | Find all symbols called by a function.                          |
-| `usages`    | All references to a symbol across the repo.                     |
+| `explore`   | Grouped source + callers, callees, and usages for a concept.    |
 | `codemod`   | Structured, pattern-based code transforms.                      |
 | `edit`      | Deterministic file edits with optional verify gate.             |
 | `shell`     | Compact command execution when needed.                          |

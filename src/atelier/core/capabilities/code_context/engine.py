@@ -653,6 +653,36 @@ class _FileIndexData:
     mtime_ns: int = 0
 
 
+class IndexLockTimeout(RuntimeError):
+    """A required index-write lock could not be acquired before the timeout.
+
+    Raised only when a caller passes ``require_lock=True`` (e.g. the CLI
+    ``atelier code index`` prewarm), so a contended/failed build fails loudly
+    instead of silently returning a stale snapshot.
+    """
+
+    def __init__(self, db_path: Path) -> None:
+        super().__init__(
+            f"index-write lock not acquired for {db_path}: another atelier process "
+            "is indexing. Increase ATELIER_INDEX_LOCK_TIMEOUT_S or retry."
+        )
+
+
+def _index_lock_timeout_s() -> float:
+    """Seconds a blocking index-write-lock acquisition waits before giving up.
+
+    Defaults to 10s (unchanged); override via ATELIER_INDEX_LOCK_TIMEOUT_S for
+    long prewarm builds that must win the lock before serving tool calls.
+    """
+    raw = os.environ.get("ATELIER_INDEX_LOCK_TIMEOUT_S")
+    if not raw:
+        return 10.0
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 10.0
+
+
 def _repo_id(repo_root: Path) -> str:
     return hashlib.sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:16]
 
@@ -1405,6 +1435,7 @@ class CodeContextEngine:
         exclude_globs: list[str] | None = None,
         force: bool = True,
         block: bool = True,
+        require_lock: bool = False,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> IndexStats:
         """Build or refresh the persistent symbol/import index for this repository.
@@ -1417,6 +1448,9 @@ class CodeContextEngine:
             block: If True (default), wait for the cross-process index-write lock.
                 Pass ``block=False`` to skip indexing (returning the current
                 snapshot) when another process is already rebuilding.
+            require_lock: If True, raise ``IndexLockTimeout`` when the lock cannot
+                be acquired instead of silently returning a stale snapshot. Use
+                for explicit, must-succeed builds (e.g. the CLI prewarm).
             progress_callback: Optional callback ``fn(current, total)`` called
                 after each file is processed during indexing.
         """
@@ -1424,6 +1458,8 @@ class CodeContextEngine:
             with self._db_lock, self._autosync_lock:
                 with self._index_write_lock(block=block) as acquired:
                     if not acquired:
+                        if require_lock:
+                            raise IndexLockTimeout(self.db_path)
                         # Another process holds the cross-process index-write lock.
                         # Don't pile on a redundant concurrent rebuild — return the
                         # current on-disk snapshot and let the other writer finish.
@@ -1440,6 +1476,8 @@ class CodeContextEngine:
             with self._db_lock:
                 with self._index_write_lock(block=block) as acquired:
                     if not acquired:
+                        if require_lock:
+                            raise IndexLockTimeout(self.db_path)
                         return self._current_index_stats()
                     return self._index_repo_unsafe(
                         include_globs=include_globs,
@@ -1475,9 +1513,11 @@ class CodeContextEngine:
                     acquired = False
             else:
                 # Poll with LOCK_NB so we don't block the process forever.
-                # 10-second timeout: if another atelier process holds the lock
-                # (e.g. a running MCP server) we skip indexing rather than hang.
-                _LOCK_TIMEOUT = 10.0
+                # Default 10s: if another atelier process holds the lock (e.g. a
+                # running MCP server) we skip indexing rather than hang. Override
+                # via ATELIER_INDEX_LOCK_TIMEOUT_S for long prewarm builds that
+                # must win the lock before serving.
+                _LOCK_TIMEOUT = _index_lock_timeout_s()
                 _POLL_INTERVAL = 0.5
                 deadline = time.monotonic() + _LOCK_TIMEOUT
                 logging.info("Waiting for index write lock (another process may be indexing)...")
@@ -2632,7 +2672,8 @@ class CodeContextEngine:
         }
         if include_relationships:
             for symbol in trimmed_symbols[:3]:
-                callers = self.tool_callers(
+                callers = self._neighborhood(
+                    "callers",
                     symbol_id=symbol.symbol_id,
                     depth=bounded_depth,
                     limit=20,
@@ -2648,7 +2689,8 @@ class CodeContextEngine:
                             "edges": callers.get("edges", []),
                         }
                     )
-                callees = self.tool_callees(
+                callees = self._neighborhood(
+                    "callees",
                     symbol_id=symbol.symbol_id,
                     depth=bounded_depth,
                     limit=20,
@@ -2664,7 +2706,8 @@ class CodeContextEngine:
                             "edges": callees.get("edges", []),
                         }
                     )
-                references = self.find_references(
+                references = self._neighborhood(
+                    "refs",
                     symbol_id=symbol.symbol_id,
                     group_by="none",
                     snippet_lines=0,
@@ -2888,7 +2931,8 @@ class CodeContextEngine:
         hit, cached = self._cache_get("code.usages", cache_args)
         if hit and cached is not None:
             return self._mark_cache_hit(cached)
-        payload = self.find_references(
+        payload = self._neighborhood(
+            "refs",
             query=query,
             symbol_id=symbol_id,
             qualified_name=qualified_name,
@@ -2923,7 +2967,7 @@ class CodeContextEngine:
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
-        return self._tool_call_graph(
+        return self._neighborhood(
             "callers",
             query=query,
             symbol_id=symbol_id,
@@ -2955,7 +2999,7 @@ class CodeContextEngine:
         budget_tokens: int = 4000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
-        return self._tool_call_graph(
+        return self._neighborhood(
             "callees",
             query=query,
             symbol_id=symbol_id,
@@ -5118,6 +5162,85 @@ class CodeContextEngine:
         if "error" not in packed:
             self._cache_set(f"code.{direction}", cache_args, packed)
         return packed
+
+    def _neighborhood(
+        self,
+        relation: Literal["self", "callers", "callees", "refs"],
+        *,
+        query: str | None = None,
+        symbol_id: str | None = None,
+        qualified_name: str | None = None,
+        symbol_name: str | None = None,
+        file_path: str | None = None,
+        line: int | None = None,
+        kind: str | None = None,
+        language: str | None = None,
+        file_glob: str | None = None,
+        depth: int = 1,
+        limit: int = 20,
+        group_by: Literal["file", "caller", "none"] = "file",
+        snippet_lines: int = 3,
+        snapshot: bool = False,
+        budget_tokens: int = 4000,
+        auto_index: bool = True,
+    ) -> dict[str, Any]:
+        """Unified symbol-graph access: one resolve+project entry over the shared
+        SCIP index. ``relation`` selects the projection:
+
+        * ``self``    -- the symbol's own definition (``depth``/``group_by``/
+          ``snippet_lines`` ignored).
+        * ``callers`` -- inbound call edges (transitive via ``depth``).
+        * ``callees`` -- outbound call edges (transitive via ``depth``).
+        * ``refs``    -- all references/usages (flat; ``depth`` ignored).
+
+        ``node``/``callers``/``callees``/``usages`` and ``explore``'s relationship
+        pass all funnel through here, so symbol-graph access has a single code
+        path. Each branch still delegates to its existing engine method, so
+        payloads are unchanged -- this is the seam the projections collapse into.
+        """
+        if relation == "self":
+            return self.tool_symbol(
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=file_path,
+                line=line,
+                budget_tokens=budget_tokens,
+                auto_index=auto_index,
+            )
+        if relation in ("callers", "callees"):
+            return self._tool_call_graph(
+                relation,
+                query=query,
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=file_path,
+                kind=kind,
+                language=language,
+                depth=depth,
+                limit=limit,
+                snapshot=snapshot,
+                budget_tokens=budget_tokens,
+                auto_index=auto_index,
+            )
+        if relation == "refs":
+            return self.find_references(
+                query=query,
+                symbol_id=symbol_id,
+                qualified_name=qualified_name,
+                symbol_name=symbol_name,
+                file_path=file_path,
+                kind=kind,
+                language=language,
+                file_glob=file_glob,
+                group_by=group_by,
+                snippet_lines=snippet_lines,
+                limit=limit,
+                auto_index=auto_index,
+                budget_tokens=budget_tokens,
+            )
+        raise ValueError(f"unknown neighborhood relation: {relation!r}")
 
     def changed_symbols(self, *, base_ref: str = "HEAD") -> list[SymbolRecord]:
         """Return indexed symbols whose files changed relative to a git ref."""

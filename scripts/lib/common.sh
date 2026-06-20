@@ -1989,7 +1989,7 @@ run_setup() {
     code_display="${code_display/#$HOME/~}"
     printf "%b📁 Your files:%b\n\n" "$C_PURPLE" "$C_RESET"
     printf "   Atelier dir:   %s\n" "~/.atelier"
-    printf "   Code:          %s\n\n" "$code_display"    
+    printf "   Binary:        %s\n\n" "$code_display"    
     printf "%b─────────────────────────────────────────────────────────%b\n\n" "$C_PURPLE" "$C_RESET"
     printf "%b🚀 Commands:%b\n\n" "$C_PURPLE" "$C_RESET"
     printf "   %batelier%b init                Initialize Atelier for a new project\n" "$C_PURPLE" "$C_RESET"

@@ -67,6 +67,10 @@ HOST_SKILL_DIRS = {
     "codex": ROOT / "integrations" / "codex" / "plugin" / "skills",
     "antigravity": ROOT / "integrations" / "antigravity" / "skills",
 }
+# Hosts where role-level skills are the primary injection mechanism.
+# Hosts with a native session-agent concept (Claude, Antigravity) use agents
+# for mode-switching and don't need role skills — only non-role extras go there.
+ROLE_SKILL_HOSTS: frozenset[str] = frozenset({"codex"})
 
 HOST_FALLBACKS = {
     "copilot": "Copilot or VS Code native file reads, workspace search, shell `rg`, or `grep`",
@@ -192,7 +196,7 @@ def tool_policy_section(*, tool_prefix: str = "", host: str | None = None) -> st
         "",
         f"- Shared docs use plain tool names like `{_tn('read', prefix=p)}` and `{_tn('edit', prefix=p)}`; some hosts expose them as handles like `mcp__atelier__read` — use the name shown by your host when invoking one explicitly.",
         f"- `{_tn('read', prefix=p)}` for file reads; `{_tn('search', prefix=p)}` / `{_tn('grep', prefix=p)}` for discovery; `{_tn('edit', prefix=p)}` for file changes; `{_tn('shell', prefix=p)}` only for commands without a better Atelier equivalent.",
-        f"- `{_tn('node', prefix=p)}` / `{_tn('callers', prefix=p)}` / `{_tn('usages', prefix=p)}` / `{_tn('explore', prefix=p)}` for code intelligence; use them before text search for code relationships.",
+        f"- `{_tn('node', prefix=p)}` and `{_tn('explore', prefix=p)}` for code intelligence (one `{_tn('explore', prefix=p)}` call folds in callers, callees, and usages); use them before text search for code relationships.",
         "- Use native host tools only when the Atelier equivalent returns `noop`, is hidden, or is unavailable.",
     ]
     if host == "codex":
@@ -412,6 +416,39 @@ def render_cursor_role_rule(role: DefaultRole, mode_doc: ModeDoc) -> str:
     )
 
 
+def _already_active_guard(skill_name: str) -> str:
+    """One-line blockquote that tells the model the skill is already loaded."""
+    return (
+        f"> **Already-active guard:** If you can read this, `atelier:{skill_name}` is already loaded "
+        f'— do NOT call `Skill("atelier:{skill_name}")` again. '
+        'The Skill tool says "do not invoke a skill that is already running" '
+        "— seeing this text IS that signal."
+    )
+
+
+def _inject_active_guard(content: str, skill_name: str) -> str:
+    """Insert the already-active guard after the YAML frontmatter block."""
+    guard = _already_active_guard(skill_name)
+    lines = content.splitlines(keepends=True)
+    in_fm = False
+    end_idx: int | None = None
+    for i, line in enumerate(lines):
+        if line.strip() == "---":
+            if not in_fm:
+                in_fm = True
+            else:
+                end_idx = i
+                break
+    if end_idx is None:
+        return guard + "\n\n" + content
+    before = "".join(lines[: end_idx + 1])
+    after_lines = lines[end_idx + 1 :]
+    # Strip leading blank lines that already follow the frontmatter close.
+    skip = sum(1 for ln in after_lines if not ln.strip()) if after_lines and not after_lines[0].strip() else 0
+    after = "".join(after_lines[skip:])
+    return before + "\n" + guard + "\n\n" + after
+
+
 def render_shared_skill(role: DefaultRole, mode_doc: ModeDoc) -> str:
     return (
         "\n".join(
@@ -422,6 +459,8 @@ def render_shared_skill(role: DefaultRole, mode_doc: ModeDoc) -> str:
                 "---",
                 "",
                 distribution_notice(),
+                "",
+                _already_active_guard(role.role_id),
                 "",
                 render_mode_body(mode_doc),
             ]
@@ -521,8 +560,8 @@ def _opencode_tool_discipline_section(prefix: str) -> str:
             f"- Shared docs use plain tool names like `{p}read`, `{p}search`, `{p}grep`, and `{p}edit`.",
             f"- In OpenCode, Atelier MCP tools use the `{p}` prefix: `{p}read` for file reads,",
             f"  `{p}edit` for edits, `{p}grep` / `{p}search` for discovery, `{p}shell` for shell,",
-            f"  `{p}node` / `{p}callers` / `{p}usages` / `{p}explore` for code intelligence.",
-            f"- Use `{p}node`, `{p}callers`, `{p}usages`, or `{p}explore` first for code intelligence.",
+            f"  `{p}node` and `{p}explore` for code intelligence.",
+            f"- Use `{p}node` or `{p}explore` first for code intelligence (one `{p}explore` call folds in callers, callees, and usages).",
             f"- Use `{p}grep` or `{p}search` first for regex, glob, ranked discovery, and file/path lookup.",
             f"- Use `{p}read` first for file reads and exact ranges.",
             f"- Use `{p}edit` first for deterministic writes and grouped edits.",
@@ -682,11 +721,12 @@ def build_mode_outputs(root: Path | None = None) -> dict[Path, str]:
         outputs[cursor_path] = render_cursor_role_rule(role, mode_doc)
 
         shared_skill = render_shared_skill(role, mode_doc)
-        for host_dir in HOST_SKILL_DIRS.values():
-            outputs[host_dir / role_id / "SKILL.md"] = shared_skill
+        for host, host_dir in HOST_SKILL_DIRS.items():
+            if host in ROLE_SKILL_HOSTS:
+                outputs[host_dir / role_id / "SKILL.md"] = shared_skill
 
     for skill_name, skill_path in _extra_shared_skill_paths(repo_root, generated_role_ids).items():
-        content = skill_path.read_text(encoding="utf-8")
+        content = _inject_active_guard(skill_path.read_text(encoding="utf-8"), skill_name)
         for host_dir in HOST_SKILL_DIRS.values():
             host_skill_path = host_dir / skill_name / "SKILL.md"
             outputs[host_skill_path] = content
