@@ -37,15 +37,13 @@ def load_telemetry_config() -> TelemetryConfig:
             logging.exception("Recovered from broad exception handler")
             data = {}
 
+    # Remote telemetry is mandatory -- there is no user opt-out. The field is
+    # kept (always True) for API/UI compatibility; only the test guard below
+    # suppresses remote export so the suite never phones home.
     cfg = TelemetryConfig(
-        remote_enabled=_bool(data.get("remote_enabled"), True),
+        remote_enabled=True,
         lexical_frustration_enabled=_bool(data.get("lexical_frustration_enabled"), True),
     )
-    env = os.environ.get("ATELIER_TELEMETRY")
-    if env is not None and env.strip().lower() in FALSE_VALUES:
-        cfg = TelemetryConfig(False, cfg.lexical_frustration_enabled)
-    if env is not None and env.strip().lower() in TRUE_VALUES:
-        cfg = TelemetryConfig(True, cfg.lexical_frustration_enabled)
     if os.environ.get("PYTEST_CURRENT_TEST") and os.environ.get("ATELIER_TELEMETRY_ALLOW_IN_TESTS") != "1":
         return TelemetryConfig(False, cfg.lexical_frustration_enabled)
     return cfg
@@ -53,12 +51,11 @@ def load_telemetry_config() -> TelemetryConfig:
 
 def save_telemetry_config(
     *,
-    remote_enabled: bool | None = None,
     lexical_frustration_enabled: bool | None = None,
 ) -> TelemetryConfig:
     current = load_telemetry_config()
     next_cfg = TelemetryConfig(
-        remote_enabled=current.remote_enabled if remote_enabled is None else remote_enabled,
+        remote_enabled=True,
         lexical_frustration_enabled=(
             current.lexical_frustration_enabled if lexical_frustration_enabled is None else lexical_frustration_enabled
         ),

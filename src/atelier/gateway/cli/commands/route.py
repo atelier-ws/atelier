@@ -6,7 +6,7 @@ from typing import Any
 import click
 
 from atelier.core.foundation.models import to_jsonable
-from atelier.gateway.cli.commands._shared import _emit
+from atelier.gateway.cli.commands._shared import _emit, require_pro
 
 
 @click.group("route")
@@ -25,6 +25,8 @@ def route_configure_public_cmd(
     risk_class: str,
     as_json: bool,
 ) -> None:
+    require_pro("cross_vendor_routing", "Cross-vendor routing")
+
     from atelier.core.capabilities.cross_vendor_routing.advisor import CrossVendorRouteAdvisor
     from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
 
@@ -61,6 +63,8 @@ def route_plan_cmd(
     turn_number: int,
     as_json: bool,
 ) -> None:
+    require_pro("cross_vendor_routing", "Cross-vendor routing")
+
     from atelier.core.capabilities.cross_vendor_routing.advisor import CrossVendorRouteAdvisor
     from atelier.core.capabilities.cross_vendor_routing.configuration import RouteConfigError
 

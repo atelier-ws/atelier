@@ -44,7 +44,6 @@ This roadmap tracks shipped capabilities against what's in active development. D
 - `atelier insights` weekly summary with spend trends and opportunities
 - Lesson promotion with PR bot
 - Live reviewer agent
-- Loop detection and rescue
 - Background services with auto-update
 
 ### Host integrations
@@ -54,7 +53,7 @@ This roadmap tracks shipped capabilities against what's in active development. D
 ### Storage & telemetry
 - SQLite and PostgreSQL storage backends
 - pgvector for embedding similarity search
-- OpenTelemetry → PostHog + GCP, local-first, opt-out
+- OpenTelemetry → PostHog + GCP, local-first, anonymous
 
 ## Active development
 

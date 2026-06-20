@@ -154,10 +154,12 @@ def test_scrubber_removes_realistic_pii_fixture() -> None:
         assert not forbidden.search(scrub_string(sample))
 
 
-def test_env_opt_out_is_immediate_and_remote_export_is_not_called(
+def test_remote_export_suppressed_in_tests_but_local_store_records(
     telemetry_env: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Telemetry is mandatory in production, but the pytest guard suppresses
+    # remote export so the suite never phones home. Local store still records.
     calls: list[tuple[str, dict[str, Any]]] = []
 
     def fake_export(event: str, props: dict[str, Any]) -> bool:
@@ -168,7 +170,6 @@ def test_env_opt_out_is_immediate_and_remote_export_is_not_called(
         "atelier.core.service.telemetry.exporters.otel.emit_product_log",
         fake_export,
     )
-    monkeypatch.setenv("ATELIER_TELEMETRY", "0")
     emit_product("session_end", session_id="s", duration_s_bucket="<10", exit_reason="success")
 
     assert calls == []
@@ -181,8 +182,10 @@ def test_config_round_trip_and_lexical_matcher_never_emits_input_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("ATELIER_TELEMETRY", raising=False)
-    save_telemetry_config(remote_enabled=False, lexical_frustration_enabled=True)
-    assert load_telemetry_config().remote_enabled is False
+    # Remote telemetry is mandatory (always on); only the lexical-frustration
+    # flag round-trips through the config now.
+    save_telemetry_config(lexical_frustration_enabled=True)
+    assert load_telemetry_config().lexical_frustration_enabled is True
 
     captured: list[tuple[str, dict[str, Any]]] = []
 
@@ -233,42 +236,6 @@ def test_first_run_banner_shows_once(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert stream.value == ""
 
 
-def test_banner_auto_acknowledges_when_telemetry_disabled_via_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """When ATELIER_TELEMETRY=0, the banner is never shown and is auto-acknowledged."""
-    ack_file = tmp_path / "ack"
-    monkeypatch.setenv("ATELIER_TELEMETRY_ACK", str(ack_file))
-    monkeypatch.setenv("ATELIER_TELEMETRY", "0")
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-
-    class Stream:
-        def __init__(self) -> None:
-            self.value = ""
-
-        def isatty(self) -> bool:
-            return True
-
-        def write(self, text: str) -> int:
-            self.value += text
-            return len(text)
-
-        def flush(self) -> None:
-            pass
-
-    stream = Stream()
-    # With ATELIER_TELEMETRY=0, should return False, not write to stream,
-    # AND create the ack file so subsequent calls are no-ops.
-    assert maybe_show_banner(stream) is False
-    assert stream.value == ""
-    assert ack_file.exists(), "ack file should have been created"
-    assert ack_file.read_text(encoding="utf-8") == "acknowledged\n"
-
-    # Second call: still no banner because ack exists
-    assert maybe_show_banner(stream) is False
-    assert stream.value == ""
-
-
 def test_banner_auto_acknowledges_in_non_tty_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """When telemetry is enabled but the stream is not a TTY (e.g. MCP subprocess),
     the banner should not be shown, but the ack should still be written silently
@@ -303,36 +270,6 @@ def test_banner_auto_acknowledges_in_non_tty_context(tmp_path: Path, monkeypatch
     # Second call: ack exists, so no banner and still no output
     assert maybe_show_banner(stream) is False
     assert stream.value == ""
-
-
-def test_banner_auto_acknowledges_with_false_env_variants(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify all false-value variants (0, false, off, no) trigger auto-ack."""
-    ack_file = tmp_path / "ack"
-    monkeypatch.setenv("ATELIER_TELEMETRY_ACK", str(ack_file))
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-
-    class Stream:
-        def __init__(self) -> None:
-            self.value = ""
-
-        def isatty(self) -> bool:
-            return True
-
-        def write(self, text: str) -> int:
-            self.value += text
-            return len(text)
-
-        def flush(self) -> None:
-            pass
-
-    for variant in ("0", "false", "off", "no"):
-        ack_file.unlink(missing_ok=True)
-        monkeypatch.setenv("ATELIER_TELEMETRY", variant)
-
-        stream = Stream()
-        assert maybe_show_banner(stream) is False
-        assert stream.value == ""
-        assert ack_file.exists(), f"ack should be created with ATELIER_TELEMETRY={variant}"
 
 
 def test_emit_product_call_sites_use_allowlisted_props() -> None:

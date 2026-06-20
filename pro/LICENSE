@@ -1,0 +1,14 @@
+Atelier Commercial License (proprietary)
+
+Copyright (c) Atelier. All rights reserved.
+
+This package (atelier-pro / the `atelier_pro` overlay) is NOT part of the
+Apache-2.0 licensed Atelier open-source distribution. It is the proprietary Pro
+engine overlay.
+
+You may not copy, modify, distribute, sublicense, or redistribute this software
+except under a separate written agreement with Atelier. It is distributed in
+compiled/binary form to licensed Pro customers for their own use only.
+
+The open-source core (the `atelier` package, Apache-2.0) ships without this
+overlay and runs fully in Free mode. Only this overlay is proprietary.

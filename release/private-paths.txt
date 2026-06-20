@@ -5,7 +5,9 @@ docs-internal/
 .planning/
 internal/
 
-# Future closed-source tiers stay private by default if they are added later.
+# Closed-source Pro overlay (the `atelier_pro` wheel under pro/) plus future
+# paid tiers. Stripped from the public snapshot; shipped only as a private wheel
+# to licensed customers.
 pro/
 ee/
 

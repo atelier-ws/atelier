@@ -152,6 +152,8 @@ def test_auto_compact_is_reversible_via_spill(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_auto_compact_code_is_ast_aware(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The AST source-projection path is Pro; treat the install as licensed.
+    monkeypatch.setattr("atelier.core.capabilities.licensing.feature_active", lambda *a, **k: True)
     monkeypatch.setenv("ATELIER_AUTO_COMPACT_OUTPUT", "1")
     monkeypatch.setenv("ATELIER_MCP_COMPACT_RESULT_CHARS", "2000")
     # Python source with lots of blank lines -> source_projection compact applies.

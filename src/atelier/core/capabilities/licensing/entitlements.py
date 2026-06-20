@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
+from types import ModuleType
 
 from atelier.core.capabilities.licensing import store
 from atelier.core.capabilities.licensing.features import PRO_FEATURES, describe
@@ -85,6 +86,46 @@ def require(feature: str) -> None:
     """Raise :class:`FeatureLocked` unless ``feature`` is unlocked."""
     if not has_feature(feature):
         raise FeatureLocked(feature, f"{describe(feature)} requires Atelier Pro")
+
+
+def feature_active(feature: str) -> bool:
+    """True only when ``feature`` is BOTH licensed and physically installed.
+
+    A Pro feature requires a valid license that grants it *and* the proprietary
+    ``atelier_pro`` overlay (the code that actually runs it). If either is
+    missing the caller falls back to Free behavior -- silently. Free features are
+    always active.
+    """
+    if not has_feature(feature):
+        return False
+    if feature not in PRO_FEATURES:
+        return True
+    from atelier.core.capabilities import pro_bridge
+
+    return pro_bridge.provides(feature)
+
+
+def pro_impl(feature: str) -> ModuleType | None:
+    """Return the ``atelier_pro`` implementation module for ``feature``.
+
+    ``None`` means the Pro overlay is not installed (or does not provide this
+    feature) -- the caller must fall back to Free behavior. Pair with
+    :func:`require` (license) so a leaked overlay can't run without a key.
+    """
+    if feature not in PRO_FEATURES:
+        return None
+    from atelier.core.capabilities import pro_bridge
+
+    if not pro_bridge.provides(feature):
+        return None
+    return pro_bridge.load(feature)
+
+
+def pro_available() -> bool:
+    """True if the proprietary Pro overlay package is importable."""
+    from atelier.core.capabilities import pro_bridge
+
+    return pro_bridge.available()
 
 
 def status() -> LicenseStatus:

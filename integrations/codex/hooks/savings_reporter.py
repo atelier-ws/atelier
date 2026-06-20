@@ -27,7 +27,7 @@ def main() -> int:
         root = _atelier_root()
         # Savings + native-tool telemetry stay silent (state only). The run
         # ledger + tool-supervision capture also happen here. The only surfaced
-        # output is the repeat-failure rescue nudge -- Codex has no separate
+        # output is the repeat-failure nudge -- Codex has no separate
         # PostToolUseFailure event, so it is folded into PostToolUse.
         build_codex_post_tool_use_savings_output(root, payload)
         ledger = build_codex_post_tool_use_ledger_output(root, payload)
