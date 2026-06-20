@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import click
 
-from atelier.gateway.cli.commands._shared import _emit
+from atelier.gateway.cli.commands._shared import _emit, require_pro
 
 
 @click.group("router")
@@ -25,6 +25,8 @@ def router_daemon_group() -> None:
 @click.pass_context
 def router_start_cmd(ctx: click.Context, port: int, wire_host: str | None, as_json: bool) -> None:
     """Start the router proxy daemon (detached)."""
+    require_pro("model_routing", "The model-routing proxy daemon")
+
     from atelier.core.capabilities import router_daemon
 
     result = router_daemon.start(ctx.obj["root"], port=port, wire_host=wire_host)

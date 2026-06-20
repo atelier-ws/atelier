@@ -10,7 +10,7 @@ from typing import Any
 
 import click
 
-from atelier.gateway.cli.commands._shared import _emit
+from atelier.gateway.cli.commands._shared import _emit, require_pro
 from atelier.gateway.integrations.openmemory_lifecycle import project_root as _project_root
 
 
@@ -90,6 +90,7 @@ def zoekt_install(auto: bool, print_only: bool) -> None:
 )
 def zoekt_index(target: Path, index_dir: Path) -> None:
     """Index a repository/directory into a local Zoekt index."""
+    require_pro("code_search", "Zoekt-backed code search")
     target = target.resolve()
     index_dir = index_dir.resolve()
     index_dir.mkdir(parents=True, exist_ok=True)
@@ -120,6 +121,7 @@ def zoekt_index(target: Path, index_dir: Path) -> None:
 )
 def zoekt_search(query: tuple[str, ...], index_dir: Path) -> None:
     """Search the local Zoekt index from CLI."""
+    require_pro("code_search", "Zoekt-backed code search")
     zoekt_bin = shutil.which("zoekt")
     if zoekt_bin is None:
         raise click.ClickException("zoekt binary not found. Run: atelier zoekt install")
@@ -143,6 +145,7 @@ def zoekt_search(query: tuple[str, ...], index_dir: Path) -> None:
 @click.option("--port", default=6070, show_default=True, type=int)
 def zoekt_serve(index_dir: Path, host: str, port: int) -> None:
     """Run local Zoekt web/API server against the local index."""
+    require_pro("code_search", "Zoekt-backed code search")
     webserver_bin = shutil.which("zoekt-webserver")
     if webserver_bin is None:
         raise click.ClickException("zoekt-webserver binary not found. Run: atelier zoekt install")

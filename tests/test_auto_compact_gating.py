@@ -31,6 +31,13 @@ BALANCED = preset_policy("balanced").compaction
 FRACTION = BALANCED.trigger_at_context_fraction
 
 
+@pytest.fixture(autouse=True)
+def _entitle_savings_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    # This module exercises the Pro savings engine (compaction policy); treat the
+    # install as licensed so load_current_policy returns the real policy.
+    monkeypatch.setattr("atelier.core.capabilities.licensing.feature_active", lambda *a, **k: True)
+
+
 # --------------------------------------------------------------------------- #
 # 1) Pure helper: below / at / above the threshold
 # --------------------------------------------------------------------------- #

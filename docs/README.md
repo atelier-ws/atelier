@@ -2,13 +2,14 @@
 
 Welcome to [Atelier](https://atelier.ws) — the open-source runtime engineering platform for AI agents.
 
-Atelier is an MCP server + SDK middleware that gives every agent shared procedures, failure rescue, loop detection, cost tracking, and cross-vendor routing — across Claude Code, Codex, Copilot, LangChain, and any MCP host.
+Atelier is an MCP server + SDK middleware that gives every agent shared procedures, code intelligence, cost tracking, and cross-vendor routing — across Claude Code, Codex, Copilot, LangChain, and any MCP host.
 
 ## Quick Links
 
 | Section                                           | Description                                             |
 | ------------------------------------------------- | ------------------------------------------------------- |
 | [Installation](./installation.md)                 | Install script, background services, modes, and storage |
+| [Plans & Pricing](./pricing.md)                   | Free vs Pro / Team / Enterprise, billing, activation    |
 | [CLI Reference](./cli.md)                         | Current public CLI reference                            |
 | [Troubleshooting](./troubleshooting.md)           | Common install, runtime, and background service issues  |
 | [Production Readiness](./production-readiness.md) | Production and self-hosted deployment checklist         |

@@ -49,7 +49,7 @@ Direction: `core` does not depend on `gateway`. `infra` does not depend on `gate
 | OpenAI-compatible gateway server | Shipped |
 | CLI: runs, ledger, swarm, lessons, benchmarks, savings | Shipped |
 | Background services with auto-update | Shipped |
-| Telemetry (OTel → PostHog, local-first, opt-out) | Shipped |
+| Telemetry (OTel → PostHog, local-first, anonymous) | Shipped |
 | Host integrations: Claude Code, Codex, Copilot, OpenCode, Cursor, Antigravity, Hermes | Shipped |
 | MCP server surface with local and remote modes | Shipped |
 | Cross-machine encrypted sync | Shipped |
