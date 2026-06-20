@@ -59,4 +59,12 @@ EMPTYRC=$?
 [ "$EMPTYRC" -eq 0 ] || fail "code_index_empty_rc$EMPTYRC:$(tail -c 200 /tmp/idxe.err)"
 grep -qiE 'Segmentation|core dumped' /tmp/idxe.err && fail code_index_empty_segfault
 
-echo "RESULT:$LABEL:PASS node=$(node -v) idx_git=$(idx_files /tmp/idxg.json) idx_nogit=$(idx_files /tmp/idxn.json) emptyrc=$EMPTYRC"
+# Run-command log path. harbor creates /logs/agent (chmod 0o777) and collects it;
+# the agent writes its run log + prewarm log THERE, not in /logs root (which is
+# not agent-writable on many images). Simulate harbor's setup and confirm bench
+# can write both files, so a wrong/unwritable log path can't slip through again.
+mkdir -p /logs/agent && chmod 777 /logs/agent
+runuser -u bench -- bash -c 'echo "{}" >/logs/agent/claude-run.json && echo ok >/logs/agent/atelier-index.log' \
+  || fail logs_agent_unwritable_by_bench
+
+echo "RESULT:$LABEL:PASS node=$(node -v) idx_git=$(idx_files /tmp/idxg.json) idx_nogit=$(idx_files /tmp/idxn.json) emptyrc=$EMPTYRC logs_agent=ok"
