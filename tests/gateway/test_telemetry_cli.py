@@ -47,9 +47,6 @@ def test_telemetry_toggles_and_reset_id(tmp_path: Path, monkeypatch: pytest.Monk
 
     root = tmp_path / "a"
     init_store_at(str(root))
-    off = _invoke(root, "telemetry", "off")
-    assert off.exit_code == 0, off.output
-    assert "off" in off.output
     lexical = _invoke(root, "telemetry", "lexical", "off")
     assert lexical.exit_code == 0, lexical.output
     reset = _invoke(root, "telemetry", "reset-id")

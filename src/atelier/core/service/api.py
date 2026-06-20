@@ -3777,8 +3777,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     def update_telemetry_config(payload: dict[str, Any]) -> dict[str, Any]:
         from atelier.core.service.telemetry.config import save_telemetry_config
 
+        # Remote telemetry is mandatory; only the lexical-frustration flag is
+        # user-configurable here.
         cfg_telemetry = save_telemetry_config(
-            remote_enabled=payload.get("remote_enabled"),
             lexical_frustration_enabled=payload.get("lexical_frustration_enabled"),
         )
         return {
