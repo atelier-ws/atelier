@@ -180,7 +180,9 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
             -k 1 -l 5 -o jobs/tb21-pilot
     """
 
-    _CLAUDE_LOG = "/logs/claude-run.json"
+    # Container path. harbor creates /logs/agent (chmod 0o777) and collects it to
+    # the host trial dir (self.logs_dir); /logs root is NOT agent-writable.
+    _CLAUDE_LOG = "/logs/agent/claude-run.json"
 
     @staticmethod
     def name() -> str:
@@ -336,8 +338,8 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
             else (
                 'export ATELIER_WORKSPACE_ROOT="$PWD" CLAUDE_WORKSPACE_ROOT="$PWD" '
                 'ATELIER_INDEX_LOCK_TIMEOUT_S="${ATELIER_INDEX_LOCK_TIMEOUT_S:-300}"; '
-                "atelier code index --reindex --no-stats >/logs/atelier-index.log 2>&1 "
-                '|| echo "ATELIER_PREWARM_INDEX_FAILED rc=$? (see /logs/atelier-index.log)"; '
+                "atelier code index --reindex --no-stats >/logs/agent/atelier-index.log 2>&1 "
+                '|| echo "ATELIER_PREWARM_INDEX_FAILED rc=$? (see agent/atelier-index.log)"; '
             )
         )
         inner = (
@@ -356,11 +358,16 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
         )
 
     def populate_context_post_run(self, context: AgentContext) -> None:
-        """Parse claude --output-format json output for token/cost accounting."""
-        if not os.path.exists(self._CLAUDE_LOG):
+        """Parse claude --output-format json for token/cost accounting.
+
+        claude writes /logs/agent/claude-run.json in the container; harbor
+        collects /logs/agent -> self.logs_dir on the host, so read it there.
+        """
+        host_log = os.path.join(str(self.logs_dir), "claude-run.json")
+        if not os.path.exists(host_log):
             return
         try:
-            with open(self._CLAUDE_LOG, encoding="utf-8") as fh:
+            with open(host_log, encoding="utf-8") as fh:
                 text = fh.read().strip()
             if not text:
                 return
