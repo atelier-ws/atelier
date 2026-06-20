@@ -22,16 +22,13 @@ is the entitlement.
 
 from __future__ import annotations
 
+from atelier.core.capabilities.licensing.features import PRO_FEATURES
+
 __version__ = "0.1.0"
 
-# Pro capability keys this overlay provides. Keep in sync with (a subset of)
-# PRO_FEATURES in the core. Add a key here -- and, if it runs code, a submodule
-# of the same name -- to extend Pro coverage to another capability.
-FEATURES: frozenset[str] = frozenset(
-    {
-        "optimizer",
-        "savings_dashboard",
-    }
-)
+# The overlay ships the code for every paid feature; the license decides which
+# tier a given install actually unlocks. Deriving from the core PRO_FEATURES
+# keeps this set in lockstep with the contract automatically.
+FEATURES: frozenset[str] = frozenset(PRO_FEATURES)
 
 __all__ = ["FEATURES", "__version__"]

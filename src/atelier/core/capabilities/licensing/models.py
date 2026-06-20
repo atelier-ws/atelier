@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-# Plans that unlock the paid ("Pro") capability set. Higher tiers are a superset
-# of Pro for entitlement purposes; any tier-specific narrowing lives in the
-# per-license ``features`` list.
-PRO_PLANS: frozenset[str] = frozenset({"pro", "team", "enterprise"})
+# Plans that unlock the paid capability set. ``enterprise`` is a superset of
+# ``pro`` for entitlement purposes; the per-license ``features`` list does the
+# tier-specific narrowing (a Pro token omits the Enterprise-only keys).
+PRO_PLANS: frozenset[str] = frozenset({"pro", "enterprise"})
 
 # Bump when the token payload shape changes incompatibly.
 TOKEN_VERSION = 1
