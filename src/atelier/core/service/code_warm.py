@@ -127,7 +127,13 @@ class _CodeWarmer:
         self._stop.set()
 
     def _warm_once(self) -> None:
-        for workspace in discover_workspaces():
+        from atelier.core.capabilities import licensing
+
+        workspaces = discover_workspaces()
+        if not licensing.feature_active("unlimited_repos"):
+            # Free warms a single repository; Pro warms all active workspaces.
+            workspaces = workspaces[:1]
+        for workspace in workspaces:
             if workspace in self._engines:
                 continue
             try:
