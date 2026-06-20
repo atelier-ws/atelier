@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from atelier.core.foundation.models import Trace, ValidationResult
@@ -11,8 +12,11 @@ from atelier.core.foundation.store import ContextStore
 from atelier.gateway.cli import cli
 
 
-def test_report_cli_outputs_json_and_markdown(tmp_path: Path) -> None:
+def test_report_cli_outputs_json_and_markdown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / ".atelier"
+    # Run outside a git repo so `init` skips the ~30s code-index bootstrap and
+    # project-setup writes; this test only needs an initialized store.
+    monkeypatch.chdir(tmp_path)
     runner = CliRunner()
     init = runner.invoke(cli, ["--root", str(root), "init"])
     assert init.exit_code == 0, init.output

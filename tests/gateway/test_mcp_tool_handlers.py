@@ -80,6 +80,25 @@ def _op_result(render_name: str, op_fn: Any, **kwargs: Any) -> Any:
     return rendered if rendered is not None else payload
 
 
+def _preindex(repo_root: str | Path) -> None:
+    """Explicitly index a repo for deterministic code-context tests.
+
+    Also indexes workspace siblings if ``.atelier/workspace.toml`` exists.
+    The gateway conftest disables the background autosync worker so tests that
+    need a populated index build it explicitly via ``_op_index``.
+    """
+    import tomllib
+
+    mcp_server._op_index(repo_root=str(repo_root), force=True)
+    workspace_config = Path(repo_root) / ".atelier" / "workspace.toml"
+    if workspace_config.exists():
+        config = tomllib.loads(workspace_config.read_text())
+        for entry in config.get("workspace", {}).get("repos", []):
+            entry_path = (Path(repo_root) / entry["path"]).resolve()
+            if entry_path.resolve() != Path(repo_root).resolve():
+                mcp_server._op_index(repo_root=str(entry_path), force=True)
+
+
 def _mock_client(return_values: dict[str, dict[str, Any]]) -> MagicMock:
     client = MagicMock()
     for method_name, retval in return_values.items():
@@ -528,13 +547,17 @@ def test_context_worker_tick_persists_bootstrap_blocks_without_blocking_initial_
 
     plan = build_bootstrap_plan(workspace_root)
     bootstrap_count = 0
-    for _ in range(3):
+    for _ in range(6):
+        import time
+
+        time.sleep(0.1)
         blocks = make_memory_store(store_root).list_pinned_blocks(plan.agent_id)
         bootstrap_count = len([block for block in blocks if block.label.startswith(f"bootstrap/{plan.repo_id}/")])
         if bootstrap_count == 4:
             break
         mcp_server._run_worker_tick_safe(store_root)
 
+    assert bootstrap_count == 4
     assert bootstrap_count == 4
 
 
@@ -1475,6 +1498,7 @@ def test_code_context_workspace_search_returns_repo_tagged_hits_and_repo_filter(
     _write_workspace_fixture_repo(tmp_path, module_name="atelier")
     _write_workspace_fixture_repo(billing_root, module_name="billing")
     _write_workspace_fixture_config(tmp_path, billing_root)
+    _preindex(tmp_path)
 
     payload = mcp_server._op_search(repo_root=str(tmp_path), query="SharedConfig", budget_tokens=4000)
     billing_only = mcp_server._op_search(
@@ -1500,6 +1524,7 @@ def test_code_context_workspace_symbol_filter_and_external_origin_metadata(
     _write_workspace_fixture_repo(tmp_path, module_name="atelier")
     _write_workspace_fixture_repo(billing_root, module_name="billing")
     _write_workspace_fixture_config(tmp_path, billing_root)
+    _preindex(tmp_path)
     _write_gateway_scip_fixture(
         billing_root,
         symbol_id="scip-requests-get",
@@ -1618,6 +1643,7 @@ def test_code_context_search_surface_supports_snippet_scope_and_glob(store_root:
         "from src.orders import OrderService\n",
         encoding="utf-8",
     )
+    _preindex(tmp_path)
 
     payload = mcp_server._op_search(
         repo_root=str(tmp_path),
@@ -1867,6 +1893,7 @@ def test_code_context_usages_surface_groups_references(store_root: Path, tmp_pat
         "    return OrderService().calculate_total(items)\n",
         encoding="utf-8",
     )
+    _preindex(tmp_path)
 
     payload = _op_result(
         "usages",
@@ -1953,6 +1980,7 @@ def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tm
         "class OrderService:\n    def calculate_total(self, items: list[int]) -> int:\n        return sum(items)\n",
         encoding="utf-8",
     )
+    _preindex(tmp_path)
 
     _op_result(
         "search",
@@ -2158,13 +2186,12 @@ def test_shell_timeout_terminates_child_process_group(tmp_path: Path, monkeypatc
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
     result = _run_shell_tool(
-        'python3 -c "import time; time.sleep(2)"',
-        timeout=1,
+        'python3 -c "import time; time.sleep(1)"',
+        timeout=0.5,
     )
-    time.sleep(1.5)
 
     assert result["exit_code"] == -1
-    assert "timed out after 1s" in result["stderr"]
+    assert "timed out after 0.5s" in result["stderr"]
 
 
 def test_shell_run_blocks_until_completion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2175,7 +2202,7 @@ def test_shell_run_blocks_until_completion(tmp_path: Path, monkeypatch: pytest.M
     # Foreground run blocks until the command finishes -- no artificial
     # window, no detach, no session, no poll -- even for a slow-ish command.
     result = _run_shell_tool(
-        "python3 -c \"import time; time.sleep(2); print('done')\"",
+        "python3 -c \"import time; time.sleep(0.3); print('done')\"",
         timeout=30,
     )
     assert result.get("status") != "running"
@@ -2280,16 +2307,16 @@ def test_shell_background_session_enforces_timeout(tmp_path: Path, monkeypatch: 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
     started = _run_shell_tool(
-        'python3 -c "import time; time.sleep(2)"',
-        timeout=1,
+        'python3 -c "import time; time.sleep(1)"',
+        timeout=0.5,
         background=True,
     )
-    time.sleep(1.2)
+    time.sleep(0.65)
     completed = _run_shell_tool(session_id=started["session_id"], action="poll")
 
     assert completed["status"] == "timed_out"
     assert completed["exit_code"] == -1
-    assert "timed out after 1s" in completed["stderr"]
+    assert "timed out after 0.5s" in completed["stderr"]
 
 
 def test_shell_mcp_call_returns_managed_session_for_background_command(

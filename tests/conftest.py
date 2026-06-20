@@ -36,6 +36,13 @@ def _isolate_workspace_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> I
     # the new read/projection workspace-confinement rejects files tests create
     # under tmp_path. Tests that need a specific workspace set it themselves.
     monkeypatch.setenv("ATELIER_WORKSPACE_ROOT", str(tmp_path))
+    # Point host-transcript discovery at an isolated, empty dir. Savings/recall/
+    # statusline code falls back to the developer's real ~/.claude/projects when
+    # CLAUDE_CONFIG_DIR is unset, so an in-process test would replay every real
+    # host session -- tens of seconds and non-hermetic. The dir is left absent so
+    # scans short-circuit on `projects.is_dir()`; tests needing transcripts set
+    # CLAUDE_CONFIG_DIR to their own fixture dir, which overrides this.
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "_isolated_claude_home"))
     yield
 
 

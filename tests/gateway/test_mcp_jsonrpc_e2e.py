@@ -21,6 +21,16 @@ from atelier.gateway.adapters import mcp_server
 from atelier.gateway.adapters.mcp_server import TOOLS, _handle
 from tests.helpers import init_store_at
 
+
+def _preindex(repo_root: str | Path) -> None:
+    """Explicitly index the repo for deterministic code-context tests.
+
+    The gateway conftest disables the background autosync worker so tests that
+    need a populated index build it explicitly via ``_op_index``.
+    """
+    mcp_server._op_index(repo_root=str(repo_root), force=True)
+
+
 EXPECTED_TOOLS = {
     "memory",
     "read",
@@ -575,6 +585,7 @@ def test_symbol_edit_descriptor_e2e(mcp_env: Path) -> None:
         "class AuthService:\n    def verify(self, token: str) -> bool:\n        return token == 'ok'\n",
         encoding="utf-8",
     )
+    _preindex(mcp_env)
 
     payload = _payload(
         _call(

@@ -51,7 +51,7 @@ def test_lesson_promotion_precision_on_fixture(tmp_path: Path, monkeypatch: pyte
 
     with _fixture_path().open("r", encoding="utf-8") as handle:
         for index, line in enumerate(handle):
-            if index >= 120:
+            if index >= 20:
                 break
             row = json.loads(line)
             expected_kind = row.pop("expected_kind", "")

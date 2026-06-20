@@ -70,8 +70,13 @@ def _seed_rescue_block(root: Path) -> None:
     )
 
 
-def test_init_seeds_blocks_and_rubrics(tmp_path: Path) -> None:
-    res = _invoke(tmp_path / "a", "init")
+def test_init_seeds_blocks_and_rubrics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Run outside any git repo so init skips the code-index bootstrap and the
+    # project-setup writes (both gated on _detect_git_root(cwd)). Otherwise the
+    # CliRunner inherits the atelier repo as cwd and init spends ~40s indexing
+    # the whole codebase -- work this test (which only checks seeding) never asserts.
+    monkeypatch.chdir(tmp_path)
+    res = _invoke(tmp_path / "a", "init", "--no-index")
     assert res.exit_code == 0, res.output
     assert "seeded" in res.output
     assert "playbooks and" in res.output
@@ -124,7 +129,11 @@ def test_run_rubric_blocks_when_required_missing(tmp_path: Path) -> None:
     assert payload["status"] == "blocked"
 
 
-def test_code_context_cli_round_trip(tmp_path: Path) -> None:
+def test_code_context_cli_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Run outside a git repo so the `init` below skips the default code-index
+    # bootstrap over the atelier repo (cwd). The real indexing this test asserts
+    # on is the explicit `code index --repo-root <repo>` against the tiny fixture.
+    monkeypatch.chdir(tmp_path)
     root = tmp_path / "atelier"
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -139,7 +148,11 @@ def test_code_context_cli_round_trip(tmp_path: Path) -> None:
     assert json.loads(indexed.output)["symbols_indexed"] >= 2
 
 
-def test_code_index_output_styling(tmp_path: Path) -> None:
+def test_code_index_output_styling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Run outside a git repo so the `init` below skips the default code-index
+    # bootstrap over the atelier repo (cwd); this test indexes the tiny fixture
+    # repo explicitly via `code index --repo-root <repo>`.
+    monkeypatch.chdir(tmp_path)
     root = tmp_path / "atelier"
     repo = tmp_path / "repo"
     repo.mkdir()
