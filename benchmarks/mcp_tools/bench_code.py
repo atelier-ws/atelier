@@ -3,8 +3,10 @@
 Run:
     uv run pytest benchmarks/mcp_tools/bench_code.py -v -s
 
-Exercises the public `symbols`, `node`, `callers`, `callees`, `usages`,
-`explore`, and `pattern` MCP tools against the real Atelier codebase.
+Exercises Atelier's code-intel surface against the real Atelier codebase:
+the public `node`, `explore`, and `pattern` tools, plus
+`explore(relation=callers|callees|usages)` for the call graph + references
+(the former standalone tools, now folded into `explore`).
 The first run builds the SCIP index (~10-30 s); subsequent runs are cached.
 
 Baseline comparison: each case has a `baseline_tokens` estimate of what
@@ -53,25 +55,32 @@ def code_tool_fn() -> Any:
             return mcp_server.tool_node(
                 {key: value for key, value in payload.items() if key in {"symbol", "path", "line"}}
             )
+        # callers/callees/usages are folded into `explore(relation=...)` -- the
+        # agent's only public path now. relation-mode delegates to the same
+        # _op_* engine wrapper, so the payload (and token count) is identical to
+        # the former standalone tools; this measures what the agent can call.
         if tool_name == "callers":
-            return mcp_server.tool_callers(
+            return mcp_server.tool_explore(
                 {
+                    "relation": "callers",
                     "symbol": _symbol_arg(payload),
                     "depth": int(payload.get("depth", 1)),
                     "limit": int(payload.get("limit", 20)),
                 }
             )
         if tool_name == "callees":
-            return mcp_server.tool_callees(
+            return mcp_server.tool_explore(
                 {
+                    "relation": "callees",
                     "symbol": _symbol_arg(payload),
                     "depth": int(payload.get("depth", 1)),
                     "limit": int(payload.get("limit", 20)),
                 }
             )
         if tool_name == "usages":
-            return mcp_server.tool_usages(
+            return mcp_server.tool_explore(
                 {
+                    "relation": "usages",
                     "symbol": _symbol_arg(payload),
                     "limit": int(payload.get("limit", 20)),
                 }
@@ -92,7 +101,7 @@ def code_tool_fn() -> Any:
                     if key in {"pattern", "language", "file_glob", "rewrite", "limit", "dry_run"}
                 }
             )
-        raise ValueError(f"unsupported public code-intel tool: {tool_name}")
+        raise ValueError(f"unsupported code-intel benchmark tool: {tool_name}")
 
     return _call
 

@@ -7402,96 +7402,52 @@ def tool_node(
 
 
 @mcp_tool(
-    name="callers",
-    description=(
-        "Find all callers of a function — inbound call graph edges (who calls this?). Returns "
-        "caller names, file paths, and line numbers grouped by file. depth=1: direct callers; "
-        "depth=2: transitive callers."
-    ),
-)
-def tool_callers(
-    symbol: str,
-    depth: int = 1,
-    limit: int = 20,
-) -> dict[str, Any]:
-    """Find all callers of a function — inbound call graph edges (who calls this?).
-
-    Prefer over grep when tracing where a function is invoked from.
-    Returns caller names, file paths, and line numbers grouped by file.
-    depth=1: direct callers; depth=2: transitive callers.
-    """
-    return _op_callers(**_parse_symbol(symbol), depth=depth, limit=limit)
-
-
-@mcp_tool(
-    name="callees",
-    description=(
-        "Find all functions called by a symbol — outbound call graph edges (what does this "
-        "call?). Use before editing to understand a function's dependencies. Returns callee "
-        "names, file paths, and call sites grouped by file. depth=1: direct callees; depth=2: "
-        "transitive callees."
-    ),
-)
-def tool_callees(
-    symbol: str,
-    depth: int = 1,
-    limit: int = 20,
-) -> dict[str, Any]:
-    """Find all functions called by a symbol — outbound call graph edges (what does this call?).
-
-    Use before editing to understand a function's dependencies.
-    Returns callee names, file paths, and call sites grouped by file.
-    depth=1: direct callees; depth=2: transitive callees.
-    """
-    return _op_callees(**_parse_symbol(symbol), depth=depth, limit=limit)
-
-
-@mcp_tool(
     name="explore",
     description=(
-        "One-call grouped source + call-graph context for a concept or query, for multi-file "
-        "understanding. Returns: symbol definitions, source, and caller/callee summaries in one "
-        "call. Use seed_files to bias search toward specific files."
+        "Grouped code intelligence for a concept OR a single symbol. Concept mode (default): pass "
+        "`query` for grouped source + caller/callee/usage context across the matched files in one "
+        "call. Targeted mode: pass `relation` (callers | callees | usages | self) with a `symbol` "
+        "to get exactly that relation of one symbol -- the focused, SCIP-indexed result (this folds "
+        "in the former node/callers/callees/usages tools). `depth` extends callers/callees "
+        "transitively; `limit` caps targeted results; `seed_files` biases concept mode."
     ),
 )
 def tool_explore(
-    query: str,
+    query: str | None = None,
+    relation: str | None = None,
+    symbol: str | None = None,
     seed_files: list[str] | None = None,
     max_files: int = 8,
-) -> dict[str, Any]:
-    """One-call grouped source + call-graph context for a concept or query.
-
-    Replaces chaining code search → node → callers/callees for multi-file understanding.
-    Returns: symbol definitions, source, and caller/callee summaries in one call.
-    Use seed_files to bias search toward specific files.
-    """
-    return _op_explore(query=query, seed_files=seed_files, max_files=max_files)
-
-
-@mcp_tool(
-    name="usages",
-    description=(
-        "Find all references/usages of a symbol across the codebase: results are SCIP-indexed "
-        "and exact (not textual), so renames, shadowed names, and comments don't create false "
-        "hits. Pass an unqualified name ('run_command'), qualified path ('module.Class.method'), "
-        "or a SCIP id from a prior result. Returns: references grouped by file with line numbers "
-        "and matched snippets."
-    ),
-)
-def tool_usages(
-    symbol: str,
+    depth: int = 1,
     limit: int = 20,
 ) -> dict[str, Any]:
-    """Find all references/usages of a symbol across the codebase.
+    """Grouped code intelligence for a concept or a single symbol.
 
-    Prefer over `grep` for "where is this used" — results are SCIP-indexed and
-    exact (not textual), so renames, shadowed names, and comments don't create
-    false hits. Use `callers` instead when you only want call sites of a function.
-    Pass an unqualified name ('run_command'), qualified path ('module.Class.method'),
-    or a SCIP id from a prior result.
-    Returns: references grouped by file with line numbers and matched snippets.
+    Concept mode (`query`): grouped source + call-graph context across the matched
+    files in one call -- replaces chaining search -> node -> callers/callees.
+    Targeted mode (`relation` + `symbol`): the exact callers / callees / usages /
+    definition of one symbol, folding in the former node/callers/callees/usages
+    tools (a targeted call returns the same focused payload those tools did, so it
+    is far cheaper than concept mode for a known symbol). Pass `symbol` as a name,
+    qualified path, or SCIP id; `depth` extends callers/callees transitively.
+    Use `seed_files` to bias concept-mode search toward specific files.
     """
-    return _op_usages(**_parse_symbol(symbol), limit=limit)
+    if relation is not None:
+        seed = symbol if symbol is not None else query
+        target = _parse_symbol(seed) if seed else {}
+        rel = relation.strip().lower()
+        if rel == "callers":
+            return _op_callers(**target, depth=depth, limit=limit)
+        if rel == "callees":
+            return _op_callees(**target, depth=depth, limit=limit)
+        if rel in ("usages", "refs", "references"):
+            return _op_usages(**target, limit=limit)
+        if rel in ("self", "node", "definition"):
+            return _op_node(**target)
+        raise ValueError(f"unknown relation {relation!r}; use callers, callees, usages, or self")
+    if not query:
+        raise ValueError("explore requires `query` (concept mode) or `relation` + `symbol` (targeted mode)")
+    return _op_explore(query=query, seed_files=seed_files, max_files=max_files)
 
 
 @mcp_tool(name="graph")

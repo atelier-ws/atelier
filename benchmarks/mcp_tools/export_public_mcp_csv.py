@@ -329,23 +329,27 @@ def _run_code_suite_cases(
                 {key: value for key, value in payload.items() if key in {"symbol", "path", "line"}}
             )
         if tool_name == "callers":
-            return mcp_server.tool_callers(
+            return mcp_server.tool_explore(
                 {
+                    "relation": "callers",
                     "symbol": _symbol_arg(payload),
                     "depth": int(payload.get("depth", 1)),
                     "limit": int(payload.get("limit", 20)),
                 }
             )
         if tool_name == "callees":
-            return mcp_server.tool_callees(
+            return mcp_server.tool_explore(
                 {
+                    "relation": "callees",
                     "symbol": _symbol_arg(payload),
                     "depth": int(payload.get("depth", 1)),
                     "limit": int(payload.get("limit", 20)),
                 }
             )
         if tool_name == "usages":
-            return mcp_server.tool_usages({"symbol": _symbol_arg(payload), "limit": int(payload.get("limit", 20))})
+            return mcp_server.tool_explore(
+                {"relation": "usages", "symbol": _symbol_arg(payload), "limit": int(payload.get("limit", 20))}
+            )
         if tool_name == "explore":
             return mcp_server.tool_explore(
                 {

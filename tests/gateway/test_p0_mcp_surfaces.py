@@ -52,14 +52,52 @@ def test_symbols_surface_hidden_but_callable() -> None:
         transport.call_tool("code", {})
 
 
-def test_symbol_graph_relations_hidden_but_callable() -> None:
-    # callers/callees/usages fold into `explore` (one call returns all three)
-    # plus `node` for single definitions. They stay registered and callable by
-    # name (tests / CLI / power use) but off the advertised agent surface.
+def test_explore_relation_mode_routes_to_targeted_ops(monkeypatch: pytest.MonkeyPatch) -> None:
+    # explore(relation=...) is the agent's targeted path into the folded-in
+    # callers/callees/usages/self relations; it must route to the matching _op_*
+    # with the parsed symbol, returning that op's focused payload verbatim.
+    seen: dict[str, dict[str, Any]] = {}
+
+    def _rec(name: str) -> Any:
+        def _fn(**kwargs: Any) -> dict[str, Any]:
+            seen[name] = kwargs
+            return {"relation": name}
+
+        return _fn
+
+    monkeypatch.setattr(mcp_server, "_op_callers", _rec("callers"))
+    monkeypatch.setattr(mcp_server, "_op_callees", _rec("callees"))
+    monkeypatch.setattr(mcp_server, "_op_usages", _rec("usages"))
+    monkeypatch.setattr(mcp_server, "_op_node", _rec("self"))
+
+    assert (
+        mcp_server.tool_explore({"relation": "callers", "symbol": "OrderService", "depth": 2})["relation"] == "callers"
+    )
+    assert seen["callers"]["symbol_name"] == "OrderService"
+    assert seen["callers"]["depth"] == 2
+    assert (
+        mcp_server.tool_explore({"relation": "callees", "symbol": "OrderService", "depth": 2})["relation"] == "callees"
+    )
+    assert seen["callees"]["symbol_name"] == "OrderService"
+    assert seen["callees"]["depth"] == 2
+    assert mcp_server.tool_explore({"relation": "usages", "symbol": "OrderService"})["relation"] == "usages"
+    assert seen["usages"]["symbol_name"] == "OrderService"
+    assert mcp_server.tool_explore({"relation": "self", "symbol": "OrderService"})["relation"] == "self"
+    # Concept mode still requires a query when no relation is given.
+    with pytest.raises(ValueError):
+        mcp_server.tool_explore({})
+
+
+def test_symbol_graph_relations_removed_in_favor_of_explore() -> None:
+    # callers/callees/usages are no longer standalone MCP tools: they fold into
+    # `explore(relation=...)` (targeted) and concept-mode `explore` (folded in),
+    # with `node` for single definitions. The faces are gone from the registry
+    # and the hidden set; the engine ops they delegated to still exist.
     for name in ("callers", "callees", "usages"):
-        assert name in TOOLS
-        assert name in HIDDEN_LLM_TOOLS
-        assert callable(TOOLS[name]["handler"])
+        assert name not in TOOLS
+        assert name not in HIDDEN_LLM_TOOLS
+    assert "explore" in TOOLS
+    assert "node" in TOOLS
 
 
 def test_mcp_grep_native_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
