@@ -1919,7 +1919,6 @@ export const api = {
     post<{ id: string }>("/v1/traces", payload),
   telemetryConfig: () => get<TelemetryConfigResponse>("/telemetry/config"),
   updateTelemetryConfig: (payload: {
-    remote_enabled?: boolean;
     lexical_frustration_enabled?: boolean;
   }) => post<TelemetryConfigResponse>("/telemetry/config", payload),
   telemetryAck: () => post<TelemetryConfigResponse>("/telemetry/ack", {}),

@@ -10,7 +10,6 @@ from atelier.core.service.telemetry.config import (
     posthog_key,
     posthog_otlp_url,
     remote_enabled,
-    save_telemetry_config,
 )
 from atelier.core.service.telemetry.local_store import LocalTelemetryStore
 from atelier.core.service.telemetry.schema import validate_event_props
@@ -45,21 +44,6 @@ def emit_product(event: str, **props: Any) -> None:
 
 def emit_product_local(event: str, **props: Any) -> None:
     _emit(event, props, remote=False)
-
-
-def set_remote_enabled(value: bool) -> None:
-    save_telemetry_config(remote_enabled=value)
-    if not value:
-        try:
-            from atelier.core.service.telemetry.exporters.otel import shutdown_otel
-
-            shutdown_otel()
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            logger.warning(
-                "Suppressed exception at emit.py:48",
-                exc_info=True,
-            )
 
 
 def _emit(event: str, props: dict[str, Any], *, remote: bool) -> None:

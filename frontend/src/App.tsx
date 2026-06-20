@@ -103,9 +103,7 @@ function TelemetryDisclosure() {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           Atelier collects anonymous usage telemetry to improve the product.
-          Disable any time with{" "}
-          <code className="bg-black/30 px-1">atelier telemetry off</code> or
-          <code className="ml-1 bg-black/30 px-1">ATELIER_TELEMETRY=0</code>.
+          See what&apos;s collected in the Insights tab.
         </div>
         <Button
           variant="accent"

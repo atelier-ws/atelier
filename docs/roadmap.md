@@ -54,7 +54,7 @@ This roadmap tracks shipped capabilities against what's in active development. D
 ### Storage & telemetry
 - SQLite and PostgreSQL storage backends
 - pgvector for embedding similarity search
-- OpenTelemetry → PostHog + GCP, local-first, opt-out
+- OpenTelemetry → PostHog + GCP, local-first, anonymous
 
 ## Active development
 
