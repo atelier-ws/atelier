@@ -84,6 +84,19 @@ def remove_device(purchase_token: str, device_id: str) -> tuple[DeviceInfo, ...]
     return _remove_device(purchase_token, device_id)
 
 
+def list_devices(purchase_token: str) -> tuple[DeviceInfo, ...]:
+    from atelier.core.capabilities.licensing.device import list_devices as _list_devices
+
+    return _list_devices(purchase_token)
+
+
+def stored_purchase_token() -> str | None:
+    """Return the purchase credential saved at activation, if present."""
+    from atelier.core.capabilities.licensing.device import load_purchase_token
+
+    return load_purchase_token()
+
+
 def deactivate() -> bool:
     """Remove the stored token and refresh the cache. Returns True if removed."""
     removed = delete_token()
@@ -107,6 +120,7 @@ __all__ = [
     "has_feature",
     "is_pro",
     "license_path",
+    "list_devices",
     "load_token",
     "pro_available",
     "pro_impl",
@@ -115,5 +129,6 @@ __all__ = [
     "remove_device",
     "require",
     "status",
+    "stored_purchase_token",
     "verify_token",
 ]
