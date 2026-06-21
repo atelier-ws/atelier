@@ -292,33 +292,3 @@ class BenchmarkListResponse(_Strict):
 
     benchmarks: list[BenchmarkResponse]
     total: int
-
-
-# ---- /api/integrations/hosts -----------------------------------------------
-
-
-class HostIntegrationRequest(_Strict):
-    """Request to get host integration config."""
-
-    host_id: str
-
-
-class HostIntegrationResponse(_Strict):
-    """Host integration configuration."""
-
-    host_id: str
-    name: str
-    version: str
-    description: str
-    detection: dict[str, Any] = Field(default_factory=dict)
-    recommended_domains: list[str] = Field(default_factory=list)
-    mcp_servers: list[dict[str, Any]] = Field(default_factory=list)
-    installation: dict[str, str] = Field(default_factory=dict)
-    prompt_templates: list[dict[str, str]] = Field(default_factory=list)
-
-
-class HostIntegrationListResponse(_Strict):
-    """List of available host integrations."""
-
-    hosts: list[HostIntegrationResponse]
-    total: int

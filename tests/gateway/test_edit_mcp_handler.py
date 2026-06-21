@@ -609,11 +609,11 @@ def test_diff_recorded_per_file_multi_edit(workspace: Path) -> None:
 
 
 def test_schema_top_level_params_have_descriptions() -> None:
-    """atomic, post_edit_hooks, post_edit_timeout_ms must each have a description."""
+    """atomic, post_edit_hooks must each have a description."""
     from atelier.gateway.adapters.mcp_server import EDIT_TOOL_INPUT_SCHEMA
 
     props = EDIT_TOOL_INPUT_SCHEMA["properties"]
-    for param in ("atomic", "post_edit_hooks", "post_edit_timeout_ms"):
+    for param in ("atomic", "post_edit_hooks"):
         assert "description" in props[param], f"{param!r} missing description in EDIT_TOOL_INPUT_SCHEMA"
         assert props[param]["description"].strip(), f"{param!r} description is empty"
 
@@ -624,8 +624,10 @@ def test_schema_registered_as_edit_tool() -> None:
 
     assert "edit" in TOOLS
     desc = TOOLS["edit"]["description"]
-    assert "Rich" in desc or "rich" in desc, "description should mention Rich descriptor family"
-    assert "Legacy" in desc or "legacy" in desc, "description should mention Legacy descriptor family"
+    assert "famil" in desc.lower(), "description should mention the descriptor families"
+    # Legacy path+op descriptors stay accepted by the handler but are no longer
+    # advertised in the description (resident-context trim); see
+    # test_schema_documents_descriptor_variants.
 
 
 def test_schema_edits_array_requires_min_one_item() -> None:

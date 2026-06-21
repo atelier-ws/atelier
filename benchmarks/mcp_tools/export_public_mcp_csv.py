@@ -322,12 +322,42 @@ def _run_code_suite_cases(
         payload = dict(args)
         tool_name = _tool_name_for_case_args(payload)
         payload.pop("_tool", None)
-        if tool_name == "symbols":
-            return mcp_server.tool_symbols(payload)
-        if tool_name == "node":
-            return mcp_server.tool_node(
-                {key: value for key, value in payload.items() if key in {"symbol", "path", "line"}}
+        if tool_name == "search":
+            # `symbols` tool removed; route to the surviving _op_search engine
+            # (token-identical -- `search` mode='symbol' uses the same backend).
+            return mcp_server._op_search(
+                **{
+                    key: value
+                    for key, value in payload.items()
+                    if key
+                    in {
+                        "query",
+                        "mode",
+                        "intent",
+                        "view",
+                        "kind",
+                        "language",
+                        "snippet",
+                        "snippet_lines",
+                        "file_glob",
+                        "scope",
+                        "since",
+                        "touched_by",
+                        "provenance",
+                        "seed_files",
+                        "max_symbols",
+                        "depth",
+                        "limit",
+                        "budget_tokens",
+                        "repo",
+                        "repo_root",
+                        "render_compact",
+                    }
+                }
             )
+        if tool_name == "node":
+            # `node` folded into explore(relation="self") -- same _op_node engine.
+            return mcp_server.tool_explore({"relation": "self", "symbol": _symbol_arg(payload)})
         if tool_name == "callers":
             return mcp_server.tool_explore(
                 {

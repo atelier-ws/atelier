@@ -14,8 +14,6 @@ EXPECTED_TOOLS = {
     "sql",
     "search",
     "compact",
-    "symbols",
-    "node",
     "explore",
     "shell",
     "codemod",
@@ -29,9 +27,7 @@ EXPECTED_TOOLS = {
     # Repo/admin code-intel ops registered hidden (full split: no multiplexer).
     "index",
     "blame",
-    "rename",
-    "cache_status",
-    "cache_invalidate",
+    "cache",
 }
 
 

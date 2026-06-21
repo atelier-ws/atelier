@@ -164,7 +164,7 @@ runner path today.
 ## Retrieval, Search, and Code-Aware Helpers
 
 Code retrieval, file reads, grep/search, and symbol lookup are exposed as
-Atelier **MCP tools** (`read`, `grep`, `search`, `node`, `explore`, `codemod`)
+Atelier **MCP tools** (`read`, `grep`, `search`, `explore`, `codemod`)
 rather than standalone CLI commands. Invoke them through your agent host or via
 `atelier tools call <name>`. (Call-graph and reference relations — callers,
 callees, usages — fold into one `explore` call.)

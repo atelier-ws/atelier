@@ -50,7 +50,6 @@ def call_code_op(request: dict[str, Any]) -> dict[str, Any]:
         "pattern": mcp_server._op_pattern,
         "index": mcp_server._op_index,
         "blame": mcp_server._op_blame,
-        "rename": mcp_server._op_rename,
         "cache_status": mcp_server._op_cache_status,
         "cache_invalidate": mcp_server._op_cache_invalidate,
     }
