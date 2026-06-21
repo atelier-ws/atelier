@@ -420,8 +420,8 @@ def test_uninstall_codex_removes_managed_agents_block() -> None:
 
 def test_managed_context_helper_shared_across_host_installs() -> None:
     helper = (SCRIPTS / "lib" / "managed_context.sh").read_text()
-    assert 'ATELIER_CODE_BLOCK_START="<!-- ATELIER:CODE START -->"' in helper
-    assert 'ATELIER_CODE_BLOCK_END="<!-- ATELIER:CODE END -->"' in helper
+    assert 'ATELIER_CODE_BLOCK_START="<!-- ATELIER START -->"' in helper
+    assert 'ATELIER_CODE_BLOCK_END="<!-- ATELIER END -->"' in helper
     assert "atelier_write_managed_copy()" in helper
     assert "atelier_upsert_managed_block()" in helper
     for script_name in [

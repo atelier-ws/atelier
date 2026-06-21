@@ -63,9 +63,8 @@ def main() -> int:
     if not base or base not in _edited_paths():
         return 0
     reason = (
-        f"You edited {base} this session; its edit response already returned the changed region. "
-        "Avoid expand=true here -- it re-sends the whole file and is re-cached on every later turn. "
-        'Read the specific lines you need instead, e.g. range="L1-L120".'
+        f"You edited {base} this session; re-reading the whole file re-caches it every later turn. "
+        'Use range="L1-L120" for the lines you need instead of expand=true.'
     )
     print(json.dumps({"decision": "block", "reason": reason}))
     return 0
