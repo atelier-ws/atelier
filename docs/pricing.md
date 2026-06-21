@@ -1,7 +1,7 @@
 # Atelier plans & pricing
 
 Atelier is **open-core** and **local-first**: the whole runtime is Apache-2.0 and
-runs on your machine — no license server, no phone-home. **Free** is a genuinely
+runs on your machine. **Free** is a genuinely
 useful coding-agent runtime on its own. **Pro** unlocks the leverage — fast search
 and indexing across large repos, cross-session memory, the savings engine, and
 model routing. **Enterprise** adds very-large-repo scale, shared team context,
@@ -15,7 +15,7 @@ and governance.
 
 | Capability                                                  | Free | Pro | Enterprise |
 | ----------------------------------------------------------- | :--: | :-: | :--------: |
-| Code-nav tools (`read`/`grep`/`search`/`node`/`edit`/…)     |  ✅  | ✅  |     ✅     |
+| Code-nav tools (`read`/`grep`/`search`/`edit`/…)     |  ✅  | ✅  |     ✅     |
 | Host packaging, agents, skills, `init`; benchmarks          |  ✅  | ✅  |     ✅     |
 | Repo map + context engine (small repos)                     |  ✅  | ✅  |     ✅     |
 | Headline savings number ("you'd save $X")                   |  ✅  | ✅  |     ✅     |
@@ -70,7 +70,8 @@ Everything in Free, **plus:**
 | Monthly | **$19 / mo**    | Stripe subscription; cancel anytime |
 | Annual  | **$190 / yr**   | ~2 months free vs monthly           |
 
-One person, all their machines (activate the same key anywhere).
+One person, up to three active devices. Replacing a device is immediate: remove
+an existing device when prompted, then activate the new one with no cooldown.
 
 ## Enterprise — contact us
 
@@ -112,7 +113,7 @@ gracefully falls back to **Free**.
 3. **Activate** —
 
    ```bash
-   atelier license activate <key>   # verify + store at ~/.atelier/license.key
+   atelier license activate <key>   # enroll this device and store its lease
    atelier license status           # show plan, expiry, unlocked features
    atelier license deactivate       # revert to Free
    ```
@@ -121,15 +122,17 @@ gracefully falls back to **Free**.
 
 ## FAQ
 
-**Does activation require internet?** No — verification is offline Ed25519. You
-only need the network to *buy* (Stripe) and *receive* the emailed key.
+**Does activation require internet?** Yes. Initial activation enrolls the device
+with the license issuer. The signed lease is then checked locally and refreshes
+automatically every 30 days, with a 7-day offline grace period.
 
 **What happens when my license expires?** Nothing breaks: the gated surfaces
 re-lock and the install behaves like Free again. Your code, memory, and config
 are untouched.
 
-**Can I use one key on multiple machines?** Yes for Pro (one person, many
-machines). Enterprise is sized per organization.
+**Can I use one key on multiple machines?** Yes, on up to three active devices
+for Pro. A fourth activation lists the existing devices and asks you to remove
+one first; the replacement activates immediately.
 
 **Refunds?** A Stripe refund triggers automatic revocation on the next webhook.
 

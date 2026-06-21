@@ -62,13 +62,42 @@ def license_status(as_json: bool) -> None:
 
 @license_group.command("activate")
 @click.argument("key")
+@click.option("--device-name", help="Name shown in your active-device list.")
 @click.option("--json", "as_json", is_flag=True)
-def license_activate(key: str, as_json: bool) -> None:
+def license_activate(key: str, device_name: str | None, as_json: bool) -> None:
     """Verify and store a license KEY."""
     from atelier.core.capabilities import licensing
 
     try:
-        lic = licensing.activate(key)
+        lic = licensing.activate(key, device_name=device_name)
+    except licensing.DeviceLimitError as exc:
+        if as_json:
+            _emit(
+                {
+                    "activated": False,
+                    "error": "device_limit_reached",
+                    "limit": exc.limit,
+                    "devices": [device.__dict__ for device in exc.devices],
+                },
+                as_json=True,
+            )
+            return
+        click.echo(f"Your {exc.limit} device slots are already in use:")
+        for index, device in enumerate(exc.devices, start=1):
+            last_seen = datetime.fromtimestamp(device.last_seen_at, tz=UTC).strftime("%Y-%m-%d")
+            click.echo(f"  {index}. {device.name} (last used {last_seen})")
+        if not click.confirm("Remove one of these devices and activate this device?"):
+            raise click.ClickException("Activation cancelled; no device was removed.") from exc
+        choice = click.prompt(
+            "Device number to remove",
+            type=click.IntRange(1, len(exc.devices)),
+        )
+        selected = exc.devices[choice - 1]
+        try:
+            licensing.remove_device(key, selected.device_id)
+            lic = licensing.activate(key, device_name=device_name)
+        except licensing.LicenseError as retry_exc:
+            raise click.ClickException(f"Could not replace device: {retry_exc}") from retry_exc
     except licensing.LicenseError as exc:
         raise click.ClickException(f"Invalid license key: {exc}") from exc
 

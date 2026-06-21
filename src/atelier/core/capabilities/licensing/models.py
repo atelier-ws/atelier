@@ -1,9 +1,10 @@
 """Data models for the Atelier licensing layer.
 
 A *license* is a short, signed token a customer pastes via ``atelier license
-activate``. Verification is fully offline (Ed25519) -- no license server, no
-phone-home -- which fits Atelier's local-first design. The signing key lives only
-in the issuer (a Cloudflare Worker); the public key is embedded in the client.
+activate``. Activation exchanges that purchase credential for a device-bound,
+Ed25519-signed lease. Lease verification remains local; the client contacts the
+issuer periodically to refresh it. The signing key lives only in the issuer (a
+Cloudflare Worker); the public key is embedded in the client.
 """
 
 from __future__ import annotations
@@ -50,12 +51,18 @@ class License:
     issued_at: int
     expires_at: int | None
     features: tuple[str, ...] = ()
+    kind: str = "legacy"
+    device_id: str | None = None
+    device_public_key: str | None = None
+    refresh_at: int | None = None
 
     def is_expired(self, *, now: int) -> bool:
         return self.expires_at is not None and now >= self.expires_at
 
     def grants(self, feature: str) -> bool:
         """Whether this license grants ``feature`` (empty ``features`` = all)."""
+        if self.kind == "purchase":
+            return False
         if not self.features:
             return self.plan in PRO_PLANS
         return feature in self.features

@@ -17,6 +17,15 @@ export interface LicensePayload {
   iat: number;
   exp: number | null;
   features: string[];
+  kind?: "purchase" | "device";
+  device_id?: string;
+  device_public_key?: string;
+  refresh_at?: number;
+}
+
+function b64urlToBytes(value: string): Uint8Array {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  return b64ToBytes(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="));
 }
 
 function b64urlEncode(input: ArrayBuffer | Uint8Array): string {
@@ -57,4 +66,35 @@ export async function signLicense(
     new TextEncoder().encode(payloadB64),
   );
   return `${payloadB64}.${b64urlEncode(sig)}`;
+}
+
+export async function verifyLicense(
+  token: string,
+  publicKeyB64: string,
+): Promise<LicensePayload> {
+  const parts = token.trim().split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error("invalid_license_token");
+  }
+  const key = await crypto.subtle.importKey(
+    "raw",
+    b64ToBytes(publicKeyB64),
+    { name: "Ed25519" },
+    false,
+    ["verify"],
+  );
+  const valid = await crypto.subtle.verify(
+    "Ed25519",
+    key,
+    b64urlToBytes(parts[1]),
+    new TextEncoder().encode(parts[0]),
+  );
+  if (!valid) throw new Error("invalid_license_signature");
+  const payload = JSON.parse(
+    new TextDecoder().decode(b64urlToBytes(parts[0])),
+  ) as LicensePayload;
+  if (payload.v !== 1 || !payload.id || !payload.email || !payload.plan) {
+    throw new Error("invalid_license_payload");
+  }
+  return payload;
 }

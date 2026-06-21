@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from atelier.core.capabilities import licensing
-from atelier.core.capabilities.licensing import entitlements
+from atelier.core.capabilities.licensing import device, entitlements, store
 
 
 def _b64u(raw: bytes) -> str:
@@ -104,6 +104,119 @@ def test_feature_scoped_token(issuer: Ed25519PrivateKey, monkeypatch: pytest.Mon
     entitlements.reload()
     assert licensing.has_feature("model_routing") is True
     assert licensing.has_feature("optimizer") is False
+
+
+def test_purchase_key_does_not_unlock_without_device_activation(
+    issuer: Ed25519PrivateKey, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ATELIER_LICENSE", _make_token(issuer, kind="purchase"))
+    entitlements.reload()
+    assert licensing.is_pro() is False
+    assert licensing.status().reason == "purchase key must be activated on this device"
+
+
+def test_device_token_is_bound_to_local_device(issuer: Ed25519PrivateKey) -> None:
+    key = device._load_or_create_private_key()
+    public_key = device._public_key_b64(key)
+    token = _make_token(
+        issuer,
+        kind="device",
+        device_id="dev_test",
+        device_public_key=public_key,
+        refresh_at=int(time.time()) + 3600,
+    )
+    licensing.activate(token)
+    assert licensing.is_pro() is True
+    device.device_key_path().unlink()
+    entitlements.reload()
+    assert licensing.is_pro() is False
+    assert licensing.status().reason == "license belongs to another device"
+
+
+def test_purchase_activation_exchanges_for_device_token(
+    issuer: Ed25519PrivateKey, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    key = device._load_or_create_private_key()
+    public_key = device._public_key_b64(key)
+    purchase = _make_token(issuer, kind="purchase", features=[])
+    device_token = _make_token(
+        issuer,
+        kind="device",
+        device_id="dev_test",
+        device_public_key=public_key,
+        refresh_at=int(time.time()) + 3600,
+    )
+    monkeypatch.setattr(device, "activate_purchase", lambda token, name=None: device_token)
+    lic = licensing.activate(purchase, device_name="Workstation")
+    assert lic.kind == "device"
+    assert store.load_token() == device_token
+
+
+def test_device_token_refreshes_automatically(issuer: Ed25519PrivateKey, monkeypatch: pytest.MonkeyPatch) -> None:
+    key = device._load_or_create_private_key()
+    public_key = device._public_key_b64(key)
+    stale = _make_token(
+        issuer,
+        kind="device",
+        device_id="dev_test",
+        device_public_key=public_key,
+        refresh_at=int(time.time()) - 1,
+        exp=int(time.time()) + 3600,
+    )
+    refreshed = _make_token(
+        issuer,
+        kind="device",
+        device_id="dev_test",
+        device_public_key=public_key,
+        refresh_at=int(time.time()) + 86400,
+        exp=int(time.time()) + 172800,
+    )
+    store.save_token(stale)
+    monkeypatch.setattr(device, "refresh_device", lambda token: refreshed)
+    entitlements.reload()
+    assert licensing.is_pro() is True
+    assert store.load_token() == refreshed
+
+
+def test_cached_device_token_refreshes_when_boundary_passes(
+    issuer: Ed25519PrivateKey, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = int(time.time())
+    clock = {"now": now}
+    key = device._load_or_create_private_key()
+    public_key = device._public_key_b64(key)
+    current = _make_token(
+        issuer,
+        kind="device",
+        device_id="dev_test",
+        device_public_key=public_key,
+        refresh_at=now + 10,
+        exp=now + 100,
+    )
+    refreshed = _make_token(
+        issuer,
+        kind="device",
+        device_id="dev_test",
+        device_public_key=public_key,
+        refresh_at=now + 1000,
+        exp=now + 1100,
+    )
+    refreshes: list[str] = []
+    store.save_token(current)
+    monkeypatch.setattr(entitlements, "_now", lambda: clock["now"])
+    monkeypatch.setattr(
+        device,
+        "refresh_device",
+        lambda token: refreshes.append(token) or refreshed,
+    )
+    entitlements.reload()
+
+    assert licensing.is_pro() is True
+    assert refreshes == []
+    clock["now"] += 11
+    assert licensing.is_pro() is True
+    assert refreshes == [current]
+    assert store.load_token() == refreshed
 
 
 def test_pro_url_override(monkeypatch: pytest.MonkeyPatch) -> None:

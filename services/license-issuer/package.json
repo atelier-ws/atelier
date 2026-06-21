@@ -7,11 +7,12 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:init": "wrangler d1 execute atelier-licenses --remote --file=schema.sql",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cf-types": "wrangler types --include-runtime false"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250101.0",
+    "@cloudflare/workers-types": "^4.20260621.1",
     "typescript": "^5.6.0",
-    "wrangler": "^3.95.0"
+    "wrangler": "^4.103.0"
   }
 }

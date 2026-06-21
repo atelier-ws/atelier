@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "atelier-license-issuer",
   "main": "src/index.ts",
-  "compatibility_date": "2025-01-01",
+  "compatibility_date": "2026-06-21",
   "observability": {
     "enabled": true
   },
@@ -12,13 +12,20 @@
     {
       "binding": "DB",
       "database_name": "atelier-licenses",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+      "database_id": "7ec9098d-5afc-45eb-b9d8-3b31cba693c9"
+    }
+  ],
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["licenses@atelier.ws"]
     }
   ],
   // Non-secret config. Secrets (STRIPE_WEBHOOK_SECRET, LICENSE_PRIVATE_KEY,
-  // RESEND_API_KEY) are set with `wrangler secret put` -- never put them here.
+  // SENDPULSE_API_SECRET) are set with `wrangler secret put` -- never put them here.
   "vars": {
-    "FROM_EMAIL": "Atelier <licenses@example.com>",
-    "LICENSE_PUBLIC_KEY": "PqWtV43BPVCR6C4ljIe0X0yfOm2C6b1OsCeB+7Utl0s="
+    "SENDPULSE_API_ID": "",
+    "LICENSE_PUBLIC_KEY": "4W8TlWyl9GWC0Fa2bkzsj4e7i1AMJDtVADq6JgPPmDE=",
+    "LICENSE_FROM_EMAIL": "licenses@atelier.ws"
   }
 }
