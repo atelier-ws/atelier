@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import concurrent.futures
 from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
 from typing import ClassVar
 
 import pytest
@@ -129,12 +131,9 @@ def test_validate_url_accepts_default_port() -> None:
     assert web_fetch._validate_public_url("http://example.com/path") == "http://example.com/path"
 
 
-def test_validate_url_rejects_non_standard_port() -> None:
-    """Non-standard destination ports (e.g. internal services) are blocked."""
-    with pytest.raises(ValueError, match="non-standard destination port"):
-        web_fetch._validate_public_url("http://example.com:8080/path")
-    with pytest.raises(ValueError, match="non-standard destination port"):
-        web_fetch._validate_public_url("http://example.com:6379")
+def test_validate_url_accepts_non_standard_ports() -> None:
+    assert web_fetch._validate_public_url("http://localhost:8080/path") == "http://localhost:8080/path"
+    assert web_fetch._validate_public_url("http://example.com:8443/path") == "http://example.com:8443/path"
 
 
 def test_validate_url_rejects_malformed_port() -> None:
@@ -148,42 +147,66 @@ def test_validate_url_rejects_malformed_port() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_assert_public_ip_rejects_loopback() -> None:
+def test_assert_fetchable_ip_accepts_loopback() -> None:
+    web_fetch._assert_fetchable_ip("127.0.0.1")
+    web_fetch._assert_fetchable_ip("127.23.45.67")
+    web_fetch._assert_fetchable_ip("::1")
+
+
+def test_assert_fetchable_ip_rejects_private() -> None:
     with pytest.raises(ValueError, match="private/local"):
-        web_fetch._assert_public_ip("127.0.0.1")
+        web_fetch._assert_fetchable_ip("10.0.0.1")
 
 
-def test_assert_public_ip_rejects_private() -> None:
+def test_assert_fetchable_ip_rejects_link_local() -> None:
     with pytest.raises(ValueError, match="private/local"):
-        web_fetch._assert_public_ip("10.0.0.1")
+        web_fetch._assert_fetchable_ip("169.254.1.1")
 
 
-def test_assert_public_ip_rejects_link_local() -> None:
+def test_assert_fetchable_ip_rejects_multicast() -> None:
     with pytest.raises(ValueError, match="private/local"):
-        web_fetch._assert_public_ip("169.254.1.1")
+        web_fetch._assert_fetchable_ip("224.0.0.1")
 
 
-def test_assert_public_ip_rejects_multicast() -> None:
+def test_assert_fetchable_ip_rejects_unspecified() -> None:
     with pytest.raises(ValueError, match="private/local"):
-        web_fetch._assert_public_ip("224.0.0.1")
+        web_fetch._assert_fetchable_ip("0.0.0.0")
 
 
-def test_assert_public_ip_rejects_unspecified() -> None:
-    with pytest.raises(ValueError, match="private/local"):
-        web_fetch._assert_public_ip("0.0.0.0")
+def test_assert_fetchable_ip_accepts_public_ipv4() -> None:
+    web_fetch._assert_fetchable_ip("8.8.8.8")
 
 
-def test_assert_public_ip_rejects_ipv6_loopback() -> None:
-    with pytest.raises(ValueError, match="private/local"):
-        web_fetch._assert_public_ip("::1")
+def test_assert_fetchable_ip_accepts_public_ipv6() -> None:
+    web_fetch._assert_fetchable_ip("2001:4860:4860::8888")
 
 
-def test_assert_public_ip_accepts_public_ipv4() -> None:
-    web_fetch._assert_public_ip("8.8.8.8")
+def test_fetch_url_allows_loopback_on_non_standard_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = b"localhost fetch works"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
+        def log_message(self, _format: str, *args: object) -> None:
+            pass
 
-def test_assert_public_ip_accepts_public_ipv6() -> None:
-    web_fetch._assert_public_ip("2001:4860:4860::8888")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr(web_fetch, "_resolve_host_safe", lambda host, timeout: "127.0.0.1")
+
+    try:
+        port = server.server_address[1]
+        result = web_fetch.fetch_url(f"http://localhost:{port}/health", output_format="text")
+        assert result["content"] == "localhost fetch works"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5.0)
 
 
 # --------------------------------------------------------------------------- #
