@@ -27,7 +27,7 @@ from atelier.core.capabilities.licensing.models import TOKEN_VERSION, License, L
 # Filled in at release time from `services/license-issuer/scripts/keygen.mjs`.
 # Empty means "no trusted key baked into this build" -> verification fails closed
 # unless the env override is set.
-_EMBEDDED_PUBLIC_KEY_B64 = "PqWtV43BPVCR6C4ljIe0X0yfOm2C6b1OsCeB+7Utl0s="
+_EMBEDDED_PUBLIC_KEY_B64 = "4W8TlWyl9GWC0Fa2bkzsj4e7i1AMJDtVADq6JgPPmDE="
 
 _PUBLIC_KEY_ENV = "ATELIER_LICENSE_PUBLIC_KEY"
 
@@ -101,6 +101,10 @@ def verify_token(token: str) -> License:
             issued_at=int(payload["iat"]),
             expires_at=None if payload.get("exp") is None else int(payload["exp"]),
             features=tuple(str(f) for f in payload.get("features", ())),
+            kind=str(payload.get("kind", "legacy")),
+            device_id=None if payload.get("device_id") is None else str(payload["device_id"]),
+            device_public_key=(None if payload.get("device_public_key") is None else str(payload["device_public_key"])),
+            refresh_at=None if payload.get("refresh_at") is None else int(payload["refresh_at"]),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise LicenseError("license payload is missing required fields") from exc

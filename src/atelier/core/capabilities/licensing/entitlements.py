@@ -1,9 +1,9 @@
 """The entitlement contract every Pro gate calls.
 
-Single source of truth for "is this feature unlocked?". Loads the active token
-(env or file), verifies it offline, enforces expiry, and answers ``is_pro`` /
-``has_feature`` / ``require``. Results are cached per-token so the hot path pays
-the Ed25519 cost at most once per distinct token.
+Single source of truth for "is this feature unlocked?". Loads the active token,
+verifies it locally, enforces expiry, refreshes device leases when due, and
+answers ``is_pro`` / ``has_feature`` / ``require``. Results are cached until the
+next time-sensitive lease boundary.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ class _Resolved:
     token: str | None
     license: License | None
     reason: str
+    next_check_at: int | None = None
 
 
 _cache: _Resolved | None = None
@@ -48,7 +49,8 @@ def _now() -> int:
 def _resolve() -> _Resolved:
     global _cache
     token = store.load_token()
-    if _cache is not None and _cache.token == token:
+    now = _now()
+    if _cache is not None and _cache.token == token and (_cache.next_check_at is None or now < _cache.next_check_at):
         return _cache
     if token is None:
         _cache = _Resolved(token=None, license=None, reason="no license activated")
@@ -58,10 +60,39 @@ def _resolve() -> _Resolved:
     except LicenseError as exc:
         _cache = _Resolved(token=token, license=None, reason=str(exc))
         return _cache
-    if lic.is_expired(now=_now()):
+    if lic.kind == "purchase":
+        _cache = _Resolved(token=token, license=None, reason="purchase key must be activated on this device")
+        return _cache
+    refresh_retry_at: int | None = None
+    if lic.kind == "device":
+        from atelier.core.capabilities.licensing.device import matches_device, refresh_device
+
+        if not matches_device(lic.device_public_key):
+            _cache = _Resolved(token=token, license=None, reason="license belongs to another device")
+            return _cache
+        if (
+            lic.refresh_at is not None
+            and now >= lic.refresh_at
+            and not os.environ.get(store.LICENSE_ENV_VAR, "").strip()
+        ):
+            try:
+                token = refresh_device(token)
+                store.save_token(token)
+                lic = verify_token(token)
+            except LicenseError:
+                refresh_retry_at = now + 3600
+    if lic.is_expired(now=now):
         _cache = _Resolved(token=token, license=None, reason="license expired")
         return _cache
-    _cache = _Resolved(token=token, license=lic, reason="active")
+    boundaries = [value for value in (lic.expires_at, refresh_retry_at) if value is not None]
+    if lic.refresh_at is not None and lic.refresh_at > now:
+        boundaries.append(lic.refresh_at)
+    _cache = _Resolved(
+        token=token,
+        license=lic,
+        reason="active",
+        next_check_at=min(boundaries) if boundaries else None,
+    )
     return _cache
 
 
