@@ -40,13 +40,16 @@ def _preindex(repo_root: str | Path) -> None:
     mcp_server._op_index(repo_root=str(repo_root), force=True)
 
 
-def test_symbols_surface_hidden_but_callable() -> None:
-    # `symbols` is registered and callable by name (CLI / benchmark / power use)
-    # but removed from the advertised agent surface (HIDDEN_LLM_TOOLS).
-    assert "symbols" in TOOLS
-    assert "symbols" in HIDDEN_LLM_TOOLS
+def test_symbols_removed_in_favor_of_search() -> None:
+    # The `symbols` tool was a redundant second face over _op_search and is
+    # fully removed (no registry entry, no handler). Agents use `search`
+    # (mode='symbol') / `grep` to find code by name and `explore`
+    # (relation='self') to read a definition. The _op_search engine survives:
+    # `search` mode='symbol' still routes through it.
+    assert "symbols" not in TOOLS
+    assert "symbols" not in HIDDEN_LLM_TOOLS
+    assert not hasattr(mcp_server, "tool_symbols")
     assert "code" not in TOOLS
-    assert callable(mcp_server.tool_symbols)
     transport = _LoopbackTransport()
     with pytest.raises(KeyError):
         transport.call_tool("code", {})
@@ -89,15 +92,14 @@ def test_explore_relation_mode_routes_to_targeted_ops(monkeypatch: pytest.Monkey
 
 
 def test_symbol_graph_relations_removed_in_favor_of_explore() -> None:
-    # callers/callees/usages are no longer standalone MCP tools: they fold into
-    # `explore(relation=...)` (targeted) and concept-mode `explore` (folded in),
-    # with `node` for single definitions. The faces are gone from the registry
+    # callers/callees/usages AND single definitions (former `node`) are no longer
+    # standalone MCP tools: they all fold into `explore` -- concept mode plus
+    # relation=callers|callees|usages|self. The faces are gone from the registry
     # and the hidden set; the engine ops they delegated to still exist.
-    for name in ("callers", "callees", "usages"):
+    for name in ("callers", "callees", "usages", "node"):
         assert name not in TOOLS
         assert name not in HIDDEN_LLM_TOOLS
     assert "explore" in TOOLS
-    assert "node" in TOOLS
 
 
 def test_mcp_grep_native_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -242,7 +244,7 @@ def test_search_tool_schema_prefers_path_and_documents_ranked_contract() -> None
     assert "path" in properties
     assert "file_path" not in properties
     assert "content_regex" not in properties
-    assert properties["path"]["description"].startswith("Workspace-relative file or directory to search.")
+    assert properties["path"]["description"].startswith("Workspace-relative file or directory")
     assert "#start-end" in properties["path"]["description"]
     assert "repo map" in properties["mode"]["description"].lower()
     assert "mode='map'" in properties["seed_files"]["description"]
@@ -256,7 +258,6 @@ def test_grep_tool_schema_covers_native_contract() -> None:
     assert "context lines" in grep_tool["description"].lower()
     assert "path" in properties
     assert "file_path" not in properties
-    assert "timestamp from the previous result header" in properties["if_modified_since"]["description"].lower()
     assert "summarize" in properties["summary"]["description"].lower()
     assert "max_line_length" not in properties
 

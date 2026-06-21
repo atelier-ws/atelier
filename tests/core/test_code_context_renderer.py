@@ -236,28 +236,6 @@ def test_render_blame_compact_summary_and_hunks() -> None:
     assert "commit_time" not in rendered
 
 
-def test_render_rename_compact_when_clean_and_json_on_failure() -> None:
-    clean = render_code_payload(
-        "rename",
-        {
-            "applied": ["src/a.py:1,0-5", "src/b.py:3,0-5"],
-            "failed": [],
-            "rolled_back": False,
-            "op": "rename",
-            "new_name": "renamed",
-            "backend": "ast-grep",
-        },
-    )
-    assert clean is not None
-    assert "- rename → renamed (backend=ast-grep)" in clean
-    assert "- applied: 2 edit(s)" in clean
-    assert "  - src/a.py:1,0-5" in clean
-
-    # Failures / rollbacks keep the structured JSON so the agent can recover.
-    assert render_code_payload("rename", {"applied": [], "failed": [{"path": "x"}], "new_name": "r"}) is None
-    assert render_code_payload("rename", {"applied": ["x"], "rolled_back": True, "new_name": "r"}) is None
-
-
 def test_render_outline_groups_symbols_and_drops_signature() -> None:
     rendered = render_code_payload(
         "outline",

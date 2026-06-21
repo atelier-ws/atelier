@@ -366,21 +366,13 @@ def mcp_tool(
     return decorator
 
 
-# G13 — caller-selectable output encoding shared by read/search/grep/symbols.
-# Defined here (before the tool handlers) so the @mcp_tool decorator can resolve
-# the Annotated default at import time. The handler ignores this arg; the MCP
-# dispatcher reads `args["format"]` and applies the N6-gated N7 columnar
-# encoding. `auto` (default) keeps today's byte-compatible output.
-_FORMAT_SCHEMA_PROPERTY: dict[str, Any] = {
-    "type": "string",
-    "enum": ["auto", "compact", "json"],
-    "default": "auto",
-    "description": (
-        "Output encoding: `auto` (default) keeps current behavior; `json` forces raw JSON; "
-        "`compact` emits a self-describing columnar form when it beats JSON by the savings "
-        "threshold (never inflates small payloads)."
-    ),
-}
+# G13 — caller-selectable output encoding for read/search/grep. NOT published to
+# LLMs (auto already picks the optimal encoding); kept as a power/CLI/benchmark
+# knob, accepted by the handler but stripped from the advertised schema. Defined
+# before the tool handlers so the @mcp_tool decorator can resolve the Annotated
+# default at import time. The handler ignores this arg; the MCP dispatcher reads
+# `args["format"]` and applies the N6-gated N7 columnar encoding. `auto`
+# (default) keeps today's byte-compatible output.
 _FORMAT_FIELD = Field(
     default="auto",
     description=(
@@ -4213,18 +4205,15 @@ def tool_memory(
         ],
         Field(
             description=(
-                "Operation to execute. recall requires query; "
-                "recall_symbol requires query (returns a symbol-linked recall bundle); "
-                "store_fact requires subject+fact+citations+reason+scope; "
-                "vote_fact requires fact+direction+reason."
+                "recall/recall_symbol need query; "
+                "store_fact needs subject+fact+citations+reason+scope; "
+                "vote_fact needs fact+direction+reason."
             )
         ),
     ],
     agent_id: Annotated[
         str | None,
-        Field(
-            description="Memory namespace for scoped blocks and archival passages. Defaults to shared namespace when not specified."
-        ),
+        Field(description="Memory namespace; defaults to shared."),
     ] = None,
     query: Annotated[str | None, Field(description="Search query used by recall.")] = None,
     top_k: Annotated[int, Field(description="Max results to return for recall.")] = 5,
@@ -4561,6 +4550,10 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
     Returns ``None`` when no renderer applies or it produced nothing — callers
     fall back to the raw string / compact JSON form.
     """
+    # "symbols" is a render-name (not a tool): the `symbols` tool was removed,
+    # but direct `_op_search` callers (tests, power use) still pass it to fetch
+    # the engine's thread-local rendered text. It can't be "search" -- that
+    # would flip the live `search` tool from raw JSON to markdown output.
     if name in {"symbols"} | _CODE_INTEL_TOOLS:
         return getattr(_tool_call_rendered_text, "value", None) or None
     if not isinstance(result, dict):
@@ -4940,7 +4933,7 @@ def _smart_read_single(
 
 @mcp_tool(
     name="read",
-    hidden_params=("projection_kind",),
+    hidden_params=("projection_kind", "format", "include_meta"),
     description=(
         "Read a file (or batch) with automatic source projection. Modes: outline "
         "(structure only; default for files >200 LOC), range (range='L42-L118' or "
@@ -4954,9 +4947,8 @@ def tool_smart_read(
         str,
         Field(
             description=(
-                "Workspace-relative file path to read. May carry a '#start-end' / '#line' "
-                "line-range suffix, e.g. 'store.py#60-100'. "
-                "For multiple independent files use `files` instead — one round trip for N reads."
+                "Workspace-relative path; may carry a '#start-end'/'#line' suffix "
+                "(e.g. 'store.py#60-100'). For 2+ files use `files`."
             ),
         ),
     ] = "",
@@ -4972,12 +4964,8 @@ def tool_smart_read(
         Field(
             description=(
                 "Batch read: ['path', ...] or [{path, range?, expand?, max_lines?}, ...] "
-                "(plain strings and dict specs may be mixed). "
-                "A plain string may carry a '#start-end' / '#line' suffix, e.g. "
-                "'store.py#60-100', read as that line range. "
-                "Returns {files: [{path, ...single-read result...}, ...]}. "
-                "Use this whenever reading 2+ independent files — it costs one round trip "
-                "vs one per file, cutting cached-context re-read tax by (N-1) turns."
+                "(strings and dicts may mix; a '#start-end'/'#line' suffix on a path scopes it). "
+                "Returns {files: [...]}. Use for 2+ files — one round trip instead of N."
             )
         ),
     ] = None,
@@ -5131,14 +5119,89 @@ def _looks_like_test_path(path: str) -> bool:
 _SESSION_CREATED_FILES: set[str] = set()
 
 
-def _existing_test_contract_paths(
+# Test-contract weakening guard. The real reward-hack is an agent "fixing" a red
+# test by deleting/loosening an assertion or marking it skip/xfail instead of
+# fixing the code. We trip ONLY on that signal -- additive edits (new tests or
+# assertions) and in-place assertion modifications pass freely. Heuristic and
+# language-fuzzy by design: it errs toward allowing, surfacing a counterexample +
+# rollback only on a clear net assertion-removal or skip/xfail addition. Operator
+# off-switch: ATELIER_TEST_CONTRACT_GUARD=0.
+_ASSERTION_RE = re.compile(r"\bassert|\bexpect\s*\(|\bEXPECT_|\bASSERT_|\.should\b")
+_SKIP_XFAIL_RE = re.compile(
+    r"@(?:pytest\.mark\.)?(?:skip|skipif|xfail)\b|@unittest\.skip|\bt\.Skip[a-zA-Z]*\("
+    r"|\bxit\s*\(|\bxdescribe\s*\(|\.skip\s*\("
+)
+
+
+def _test_contract_guard_enabled() -> bool:
+    """Whether the test-weakening guard runs (operator off-switch, default on)."""
+    return os.environ.get("ATELIER_TEST_CONTRACT_GUARD", "").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _classify_test_weakening(old_content: str, new_content: str) -> str | None:
+    """Return a reason if old->new weakens a test contract, else None.
+
+    Weakening = a NET removal of assertion lines, or a NET addition of skip/xfail
+    markers. In-place assertion modification (changing an expected value) nets to
+    zero and is NOT flagged; purely additive edits are NOT flagged.
+    """
+    import difflib
+
+    removed: list[str] = []
+    added: list[str] = []
+    for line in difflib.unified_diff(old_content.splitlines(), new_content.splitlines(), lineterm=""):
+        if line.startswith("-") and not line.startswith("---"):
+            removed.append(line[1:])
+        elif line.startswith("+") and not line.startswith("+++"):
+            added.append(line[1:])
+    removed_asserts = sum(1 for ln in removed if _ASSERTION_RE.search(ln))
+    added_asserts = sum(1 for ln in added if _ASSERTION_RE.search(ln))
+    if removed_asserts > added_asserts:
+        return f"net removal of {removed_asserts - added_asserts} assertion(s)"
+    added_skips = sum(1 for ln in added if _SKIP_XFAIL_RE.search(ln))
+    removed_skips = sum(1 for ln in removed if _SKIP_XFAIL_RE.search(ln))
+    if added_skips > removed_skips:
+        return f"added {added_skips - removed_skips} skip/xfail marker(s)"
+    return None
+
+
+def _detect_test_weakening(
     snapshots: dict[str, tuple[Path, bool, str | None]],
-) -> list[str]:
-    return sorted(
-        path
-        for path, (fp, _existed, old_content) in snapshots.items()
-        if old_content is not None and _looks_like_test_path(path) and str(fp.resolve()) not in _SESSION_CREATED_FILES
-    )
+) -> list[dict[str, str]]:
+    """Find edits to existing test files that weaken a test contract.
+
+    Pair signal: a genuine test-contract change almost always rides with a
+    production-code change in the same batch (the contract moved with the code),
+    whereas a reward-hack weakens the test WITHOUT fixing code. So when the batch
+    also edits a non-test file, the weakening is treated as a genuine refactor and
+    allowed; only test-ONLY weakening is blocked. Skips files absent pre-edit (new
+    files) and tests the agent authored this session.
+    """
+    findings: list[dict[str, str]] = []
+    changed_non_test = False
+    for path, (fp, _existed, old_content) in snapshots.items():
+        try:
+            new_content = fp.read_text(encoding="utf-8") if fp.exists() else None
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            continue
+        if not _looks_like_test_path(path):
+            if new_content != old_content:
+                changed_non_test = True
+            continue
+        if old_content is None or str(fp.resolve()) in _SESSION_CREATED_FILES:
+            continue
+        if new_content is None or new_content == old_content:
+            continue
+        reason = _classify_test_weakening(old_content, new_content)
+        if reason:
+            findings.append({"path": path, "reason": reason})
+    # A production-code change in the same batch reads as a genuine refactor (the
+    # contract moved with the code), not a reward-hack; allow the weakening. Block
+    # only a test-ONLY weakening edit.
+    if changed_non_test:
+        return []
+    return findings
 
 
 def _compute_and_record_diffs(
@@ -5383,48 +5446,6 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "default": True,
             "description": "Run formatter/linter on touched files; error/warning diagnostics appear in the result.",
         },
-        "post_edit_timeout_ms": {
-            "type": "integer",
-            "default": 30000,
-            "minimum": 0,
-            "description": "Maximum total timeout for post-edit hooks in milliseconds.",
-        },
-        "allow_test_contract_change": {
-            "type": "boolean",
-            "default": False,
-            "description": "Allow edits to existing test files.",
-        },
-        "contract_change_evidence": {
-            "type": "string",
-            "description": "Required with allow_test_contract_change=true: cite the user request or source of truth requiring the contract change.",
-        },
-        "verify": {
-            "type": "boolean",
-            "default": False,
-            "description": (
-                "Run an executing correctness gate after the edit: a tree-sitter parse check "
-                "(TS/JS/Rust/Go) and scoped mypy over touched Python source. On an error-severity "
-                "failure the edit is rolled back (see verify_rollback). Fail-open. Also enabled "
-                "globally via ATELIER_EDIT_VERIFY=1. (pytest is not run inline -- run tests in your "
-                "own turn.)"
-            ),
-        },
-        "verify_checks": {
-            "type": "array",
-            "items": {"type": "string", "enum": ["typecheck", "lint"]},
-            "description": "Which executing checks the verify gate runs (default: typecheck). The parse gate always runs when verify is enabled. pytest is not run inline.",
-        },
-        "verify_rollback": {
-            "type": "boolean",
-            "default": True,
-            "description": "When the verify gate finds an error-severity counterexample, restore all touched files to their pre-edit state.",
-        },
-        "verify_timeout_ms": {
-            "type": "integer",
-            "default": 60000,
-            "minimum": 0,
-            "description": "Maximum per-subprocess timeout for the verify gate's mypy/pytest runs.",
-        },
     },
     "required": ["edits"],
     "additionalProperties": False,
@@ -5499,15 +5520,11 @@ def _compact_applied_entries(entries: list[dict[str, Any]]) -> list[str | dict[s
     name="edit",
     input_schema=EDIT_TOOL_INPUT_SCHEMA,
     description=(
-        "Apply many mechanical edits across files in one deterministic call. Each edit is one "
-        "descriptor and all must share a family. Rich descriptors (file_path-based, exact shapes "
-        "in inputSchema): file replace {file_path, old_string, new_string}; create {file_path, "
-        "new_string, overwrite:true}; line-scoped via file_path='foo.py#10-20'; notebook cell; "
-        "symbol {kind:'symbol', qualified_name|name, mode, new_body}; projection "
-        "{kind:'projection', ...}. Legacy descriptors use path+op "
-        "(replace/insert_after/replace_range). Put every change in `edits`. Returns "
-        "{applied:[...]}; failures stay structured. No diff is returned -- read the file "
-        "to verify a change if needed."
+        "Apply many mechanical edits across files in one deterministic call. Each edit is a "
+        "descriptor in `edits`; all must share a family. Families: file replace, create, "
+        "line-scoped (`file_path='foo.py#10-20'`), notebook cell, symbol, projection -- exact "
+        "shapes in inputSchema. Returns `{applied}`; failures stay structured. No diff "
+        "returned; re-read to verify."
     ),
 )
 def tool_smart_edit(
@@ -5515,8 +5532,6 @@ def tool_smart_edit(
     atomic: bool = True,
     post_edit_hooks: bool = True,
     post_edit_timeout_ms: int = 30_000,
-    allow_test_contract_change: bool = False,
-    contract_change_evidence: str | None = None,
     verify: bool = False,
     verify_checks: list[str] | None = None,
     verify_rollback: bool = True,
@@ -5593,26 +5608,6 @@ def tool_smart_edit(
         for _lock in _edit_path_locks(list(paths.values())):
             _edit_locks.enter_context(_lock)
         snapshots = _snapshot_paths(paths)
-        contract_paths = _existing_test_contract_paths(snapshots)
-        evidence = (contract_change_evidence or "").strip()
-        if contract_paths and (not allow_test_contract_change or len(evidence) < 20):
-            return {
-                "applied": [],
-                "failed": [
-                    {
-                        "paths": contract_paths,
-                        "error": (
-                            "Existing test contract edit requires explicit review before writing. Reconsider the "
-                            "production change first. If the contract truly must change, retry with "
-                            "allow_test_contract_change=true and contract_change_evidence citing the user request or "
-                            "repository source of truth."
-                        ),
-                    }
-                ],
-                "rolled_back": True,
-                "writes": 0,
-                "contract_review": {"required": True, "paths": contract_paths},
-            }
 
         if family == "rich":
             from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
@@ -5624,6 +5619,29 @@ def tool_smart_edit(
             result = apply_batch_edit(edits, atomic=atomic, repo_root=repo_root, allowed_roots=_extra_roots)
 
         if not result.get("failed") and not result.get("rolled_back"):
+            if _test_contract_guard_enabled():
+                weakenings = _detect_test_weakening(snapshots)
+                if weakenings:
+                    _restore_snapshots(snapshots)
+                    return {
+                        "applied": [],
+                        "failed": [
+                            {
+                                "paths": [w["path"] for w in weakenings],
+                                "error": (
+                                    "Edit rolled back: it weakened an existing test contract ("
+                                    + "; ".join(f"{w['path']}: {w['reason']}" for w in weakenings)
+                                    + "). This was a test-only edit -- fix the production code in the SAME edit so "
+                                    "the original assertions pass (a genuine contract change that also edits code is "
+                                    "allowed). Additive test edits pass freely; operator override: "
+                                    "ATELIER_TEST_CONTRACT_GUARD=0."
+                                ),
+                            }
+                        ],
+                        "rolled_back": True,
+                        "writes": 0,
+                        "test_weakening": weakenings,
+                    }
             if post_edit_hooks:
                 from atelier.core.capabilities.tool_supervision.post_edit_hooks import (
                     HookConfig,
@@ -5679,12 +5697,6 @@ def tool_smart_edit(
             for entry in _applied:
                 if isinstance(entry, dict) and entry.get("match_mode") == "exact":
                     entry.pop("match_mode", None)
-            if contract_paths:
-                result["contract_review"] = {
-                    "required": True,
-                    "paths": contract_paths,
-                    "evidence": evidence,
-                }
 
     # WS1 edit-loop correctness gate: optional executing parse + scoped mypy/pytest
     # verification with rollback. Run OUTSIDE the per-file edit locks (released at
@@ -5743,11 +5755,7 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                 "lint",
                 "query",
             ],
-            "description": (
-                "connect: discover DB. tables: list tables. schema: all columns + FKs. table/search: one table "
-                "or keyword match (needs name). relationships: FK graph. lint: validate SQL (needs sql). "
-                "query: execute (needs sql or queries[])."
-            ),
+            "description": "table/search need name; lint/query need sql or queries[].",
         },
         "name": {
             "type": "string",
@@ -5773,16 +5781,10 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "DSN (sqlite:///path, postgresql://...). Auto-discovered from DATABASE_URL/.env if omitted.",
         },
-        "max_rows": {"type": "integer", "default": 500},
         "allow_writes": {
             "type": "boolean",
             "default": False,
             "description": "Permit INSERT/UPDATE/DELETE/DDL on action=query/lint. Off by default; reads always allowed.",
-        },
-        "auto_limit": {
-            "type": "boolean",
-            "default": True,
-            "description": "Append LIMIT max_rows when missing.",
         },
     },
     "required": ["action"],
@@ -5794,12 +5796,9 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     name="sql",
     input_schema=SQL_TOOL_INPUT_SCHEMA,
     description=(
-        "SQL op-dispatch for connect, lint, and bounded query batching. Actions: connect "
-        "(discover database + schema overview); tables (list table names + count); schema "
-        "(columns + FKs per table); table (one table's columns + FKs, needs name); "
-        "relationships (FK graph as {from: 't.col', to: 'rt.col'}); search (keyword over "
-        "table/column names, needs name); lint (validate SQL syntax without executing, needs "
-        "sql); query (execute SQL, needs sql or queries[{name,sql},...]). Connection "
+        "SQL op-dispatch: schema introspection (connect/tables/schema/table/relationships/"
+        "search), SQL lint, and bounded query execution (single `sql` or a `queries[]` batch). "
+        "Connection "
         "auto-discovered from DATABASE_URL env or .env; pass connection_string to override. "
         "Live introspection/queries run on SQLite; other dialects report a driver-required "
         "note."
@@ -6519,116 +6518,6 @@ def _code_search_graph_view(
     return payload
 
 
-# The published schema is intentionally slimmer than the handler signature: the
-# handler still accepts intent/scope/since/touched_by/provenance and view=graph|explain
-# (exercised by tests, the CLI, and power callers), but those axes duplicate the
-# dedicated callers/callees/explore/usages/grep/blame tools, so they are not
-# surfaced to LLM clients where they would cost schema tokens on every request.
-SYMBOLS_TOOL_INPUT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "required": ["query"],
-    "properties": {
-        "query": {
-            "type": "string",
-            "description": "Identifier ('MyClass', 'module.Class.method') or natural-language description.",
-        },
-        "mode": {
-            "type": "string",
-            "enum": ["auto", "lexical", "semantic", "hybrid"],
-            "default": "auto",
-            "description": "Match strategy: lexical | semantic | hybrid; 'auto' chooses per query.",
-        },
-        "view": {
-            "type": "string",
-            "enum": ["target", "context"],
-            "default": "target",
-            "description": "'target': matching symbols only; 'context': a budgeted symbol+source context pack.",
-        },
-        "kind": {"type": "string", "description": "Filter: 'function', 'method', 'class', ..."},
-        "language": {"type": "string"},
-        "limit": {"type": "integer", "default": 20},
-        "snippet": {"type": "string", "enum": ["none", "head", "full"], "default": "none"},
-        "snippet_lines": {"type": "integer", "default": 8},
-        "file_glob": {"type": "string", "description": "e.g. 'src/api/**/*.py'"},
-        "repo_root": {"type": "string"},
-        "format": _FORMAT_SCHEMA_PROPERTY,
-    },
-}
-
-
-@mcp_tool(
-    name="symbols",
-    input_schema=SYMBOLS_TOOL_INPUT_SCHEMA,
-    description=(
-        "Search the SCIP code index for symbols by name or description. Results are exact (not "
-        "textual), indexed, and token-budgeted. The `view` param controls response shape: target "
-        "(locate primary definitions/files), graph (relationships for the best target), context "
-        "(broader context pack), explain (targets + graph evidence)."
-    ),
-)
-def tool_symbols(
-    query: str | None = None,
-    mode: Literal["auto", "lexical", "semantic", "hybrid"] = "auto",
-    intent: Literal["auto", "symbol", "text", "semantic"] = "auto",
-    view: Literal["target", "graph", "context", "explain"] = "target",
-    kind: str | None = None,
-    language: str | None = None,
-    snippet: Literal["none", "head", "full"] = "none",
-    snippet_lines: int = 8,
-    file_glob: str | None = None,
-    scope: Literal["repo", "external", "deleted"] = "repo",
-    since: str | None = None,
-    touched_by: str | None = None,
-    provenance: str | None = None,
-    seed_files: list[str] | None = None,
-    max_symbols: int = 4,
-    depth: int = 1,
-    limit: int = 20,
-    budget_tokens: int = 4000,
-    repo: str | None = None,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-    format: Annotated[str, _FORMAT_FIELD] = "auto",
-) -> dict[str, Any]:
-    """Search the SCIP code index for symbols by name or description.
-
-    Prefer over `grep` for symbol lookup — results are exact (not textual), indexed, and token-budgeted.
-    Use `grep` for regex on arbitrary text. Use `search` for ranked file/snippet retrieval.
-
-    The `view` parameter controls response shape: `target` locates primary
-    definitions/files, `graph` returns relationships for the best target,
-    `context` returns a broader context pack, and `explain` combines targets
-    with graph evidence.
-
-    For call-graph, reference, and structural work use the dedicated tools:
-    `node` (read a definition), `callers` / `callees` (call graph), `usages`
-    (all references), `codemod` (AST search/rewrite), `explore` (grouped context).
-    """
-    return _op_search(
-        query=query,
-        mode=mode,
-        intent=intent,
-        view=view,
-        kind=kind,
-        language=language,
-        snippet=snippet,
-        snippet_lines=snippet_lines,
-        file_glob=file_glob,
-        scope=scope,
-        since=since,
-        touched_by=touched_by,
-        provenance=provenance,
-        seed_files=seed_files,
-        max_symbols=max_symbols,
-        depth=depth,
-        limit=limit,
-        budget_tokens=budget_tokens,
-        repo=repo,
-        repo_root=repo_root,
-        render_compact=render_compact,
-    )
-
-
 # Result keys that represent batched discoveries — each item would have
 # required its own naive grep/read in a side-by-side baseline.
 _CODE_BATCH_KEYS: tuple[str, ...] = (
@@ -7208,91 +7097,6 @@ def _op_node(
     return _finish_code_result(_maybe_attach_code_rendered("node", payload, render_compact=render_compact))
 
 
-def _op_rename(
-    *,
-    new_name: str | None = None,
-    query: str | None = None,
-    symbol_id: str | None = None,
-    qualified_name: str | None = None,
-    symbol_name: str | None = None,
-    path: str | None = None,
-    rename_backend: str = "auto",
-    budget_tokens: int = 4000,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-) -> dict[str, Any]:
-    if not new_name:
-        raise ValueError("new_name is required for code rename")
-    if not any([query, symbol_id, qualified_name, symbol_name]):
-        raise ValueError("query, symbol_id, qualified_name, or symbol_name is required for code rename")
-    engine = _code_engine_at(repo_root)
-    from atelier.core.capabilities.tool_supervision.rename_symbol import build_rename_edits
-
-    # Single root: the engine resolves/indexes against _workspace_root() (NOT cwd), so edits must be
-    # built and applied under the SAME root — otherwise a cross-repo rename hits
-    # the wrong working tree.
-    root = Path(engine.repo_root)
-    edits = build_rename_edits(
-        engine,
-        symbol_id=symbol_id,
-        qualified_name=qualified_name,
-        symbol_name=symbol_name or query,
-        file_path=path,
-        new_name=new_name,
-        repo_root=root,
-        backend=rename_backend,
-    )
-    if not edits:
-        raise ValueError(f"no occurrences renamed: symbol not found or no references for new_name {new_name!r}")
-    truncated = bool(getattr(edits, "truncated", False))
-    total_references = int(getattr(edits, "total_references", 0))
-    # A truncated edit set covers only the first _RENAME_USAGE_LIMIT (500) sites,
-    # so applying it would rewrite some references and leave the rest dangling --
-    # silent symbol corruption. Refuse rather than apply a partial rename.
-    if truncated:
-        return _finish_code_result(
-            _maybe_attach_code_rendered(
-                "rename",
-                {
-                    "op": "rename",
-                    "new_name": new_name,
-                    "backend": rename_backend,
-                    "failed": [
-                        {
-                            "error": (
-                                f"rename aborted: symbol has {total_references} references, exceeding the "
-                                "500-site cap. The naive backend would rewrite only the first 500 and leave the "
-                                "rest dangling, corrupting the symbol. Use a semantic backend (rope/ts-morph) or "
-                                "reduce scope."
-                            ),
-                        }
-                    ],
-                    "truncated": True,
-                    "total_references": total_references,
-                },
-                render_compact=render_compact,
-            )
-        )
-    from atelier.core.capabilities.tool_supervision.rich_edit import apply_rich_edits
-
-    touched = _collect_touched_paths(edits, repo_root=root)
-    snaps = _snapshot_paths(touched)
-    result = apply_rich_edits(edits, atomic=True, repo_root=root, allowed_roots=_claude_additional_dirs(root))
-    if not result.get("failed") and not result.get("rolled_back"):
-        _compute_and_record_diffs(snaps)
-        # Rename's overwrite-style edits don't trip apply_rich_edits' symbol-
-        # reindex gate, so refresh the cached engine (incremental, fresh for the
-        # next read) -- otherwise reads return pre-rename symbols. Fail-open.
-        with contextlib.suppress(Exception):
-            engine.index_repo(force=False, block=True)
-    result["op"] = "rename"
-    result["new_name"] = new_name
-    result["backend"] = rename_backend
-    result["truncated"] = truncated
-    result["total_references"] = total_references
-    return _finish_code_result(_maybe_attach_code_rendered("rename", result, render_compact=render_compact))
-
-
 def _op_cache_status(
     *,
     cache_tool: str | None = None,
@@ -7332,9 +7136,8 @@ def _op_cache_invalidate(
 # ------------------------------------------------------------------ #
 # Dedicated code-intel tools — each calls its `_op_*` engine wrapper  #
 # directly (no multiplexer). Published tools carry focused schemas;   #
-# repo/admin ops (index, blame, rename, cache_status, cache_invalidate)    #
-# are registered hidden via HIDDEN_LLM_TOOLS so tests and power use reach   #
-# them by name.                                                            #
+# repo/admin ops (index, blame, cache) are registered hidden via            #
+# HIDDEN_LLM_TOOLS so tests and power use reach them by name.               #
 # ------------------------------------------------------------------ #
 
 # Code-intel tool names whose pre-rendered text (set during the _op_* call) is
@@ -7350,7 +7153,7 @@ _CODE_INTEL_TOOLS: frozenset[str] = frozenset(
         "codemod",
         "index",
         "blame",
-        "rename",
+        "cache",
         "cache_status",
         "cache_invalidate",
     }
@@ -7367,49 +7170,13 @@ def _parse_symbol(symbol: str) -> dict[str, Any]:
 
 
 @mcp_tool(
-    name="node",
-    description=(
-        "Get the full source definition of a symbol (function, class, method, variable): just "
-        "the symbol, not the whole file. Returns: signature, docstring, body, file location, and "
-        "a stable symbol_id for follow-up calls. Pass symbol as unqualified name ('run_command'), "
-        "qualified path ('module.Class.method'), or SCIP id (from a prior search/callers result). "
-        "Or use path+line for positional lookup — the line may be passed separately or as a "
-        "'path#line' suffix (e.g. 'store.py#100')."
-    ),
-)
-def tool_node(
-    symbol: str | None = None,
-    path: str | None = None,
-    line: int | None = None,
-) -> dict[str, Any]:
-    """Get the full source definition of a symbol (function, class, method, variable).
-
-    Prefer over `read` — returns just the symbol, not the whole file.
-    Returns: signature, docstring, body, file location, and a stable symbol_id for follow-up calls.
-
-    Pass symbol as unqualified name ('run_command'), qualified path ('module.Class.method'),
-    or SCIP id (from a prior search/callers result). Or use path+line for positional lookup —
-    the line may be passed separately or as a "path#line" suffix (e.g. "store.py#100").
-    """
-    if path is not None:
-        path, suffix_range = _split_read_range_suffix(path)
-        if suffix_range is not None and line is None:
-            match = re.match(r"L?(\d+)", suffix_range)
-            if match is not None:
-                line = int(match.group(1))
-    target = _parse_symbol(symbol) if symbol else {}
-    return _op_node(**target, path=path, line=line)
-
-
-@mcp_tool(
     name="explore",
     description=(
-        "Grouped code intelligence for a concept OR a single symbol. Concept mode (default): pass "
-        "`query` for grouped source + caller/callee/usage context across the matched files in one "
-        "call. Targeted mode: pass `relation` (callers | callees | usages | self) with a `symbol` "
-        "to get exactly that relation of one symbol -- the focused, SCIP-indexed result (this folds "
-        "in the former node/callers/callees/usages tools). `depth` extends callers/callees "
-        "transitively; `limit` caps targeted results; `seed_files` biases concept mode."
+        "Grouped code intelligence for a concept OR a single symbol. Concept mode (default): "
+        "`query` returns grouped source + caller/callee/usage context across matched files. "
+        "Targeted mode: `relation` (callers|callees|usages|self) with a `symbol` returns exactly "
+        "that relation (SCIP-indexed). `depth` extends callers/callees transitively; `limit` caps "
+        "targeted results; `seed_files` biases concept mode."
     ),
 )
 def tool_explore(
@@ -7589,34 +7356,6 @@ def tool_blame(
     )
 
 
-@mcp_tool(name="rename")
-def tool_rename(
-    new_name: str | None = None,
-    query: str | None = None,
-    symbol_id: str | None = None,
-    qualified_name: str | None = None,
-    symbol_name: str | None = None,
-    path: str | None = None,
-    rename_backend: str = "auto",
-    budget_tokens: int = 4000,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-) -> dict[str, Any]:
-    """Rename a symbol across the repo via SCIP/ast-grep edits (internal/admin)."""
-    return _op_rename(
-        new_name=new_name,
-        query=query,
-        symbol_id=symbol_id,
-        qualified_name=qualified_name,
-        symbol_name=symbol_name,
-        path=path,
-        rename_backend=rename_backend,
-        budget_tokens=budget_tokens,
-        repo_root=repo_root,
-        render_compact=render_compact,
-    )
-
-
 @mcp_tool(name="statusline_segment")
 def tool_statusline_segment() -> str:
     """Return the pre-computed savings segment for the active session.
@@ -7642,31 +7381,28 @@ def tool_statusline_segment() -> str:
     return ""
 
 
-@mcp_tool(name="cache_status")
-def tool_cache_status(
+@mcp_tool(name="cache")
+def tool_cache(
+    op: Literal["status", "invalidate"] = "status",
     cache_tool: str | None = None,
     budget_tokens: int = 4000,
     repo_root: str | None = None,
     render_compact: bool = False,
 ) -> dict[str, Any]:
-    """Report code-intel cache hit/miss counters (internal/admin)."""
+    """Code-intel cache admin (internal/admin).
+
+    op='status' (default) reports cache hit/miss counters; op='invalidate'
+    clears caches, optionally scoped to one `cache_tool`. Folds the former
+    cache_status / cache_invalidate tools into one hidden admin face.
+    """
+    if op == "invalidate":
+        return _op_cache_invalidate(
+            cache_tool=cache_tool,
+            budget_tokens=budget_tokens,
+            repo_root=repo_root,
+            render_compact=render_compact,
+        )
     return _op_cache_status(
-        cache_tool=cache_tool,
-        budget_tokens=budget_tokens,
-        repo_root=repo_root,
-        render_compact=render_compact,
-    )
-
-
-@mcp_tool(name="cache_invalidate")
-def tool_cache_invalidate(
-    cache_tool: str | None = None,
-    budget_tokens: int = 4000,
-    repo_root: str | None = None,
-    render_compact: bool = False,
-) -> dict[str, Any]:
-    """Invalidate code-intel caches (internal/admin)."""
-    return _op_cache_invalidate(
         cache_tool=cache_tool,
         budget_tokens=budget_tokens,
         repo_root=repo_root,
@@ -8050,39 +7786,36 @@ def _run_native_grep(
 @mcp_tool(
     name="grep",
     description=(
-        "Search files with regex, glob, and type filters: "
-        "grep-style matching, path listing, context lines, summaries, or incremental reruns.\n"
-        "Pass every glob/path you need at once (file_glob_patterns) and combine content_regex + "
-        "type to narrow by scope and content in one call. When you'll need the matched code, set "
-        "output_mode='file_paths_with_content' to discover AND read matched context in one step "
-        "rather than grep-then-read. Run independent searches in parallel within one response. "
-        "Pass a prior result's timestamp back as if_modified_since to skip files unchanged since "
-        "then."
+        "Search files with regex, glob, and type filters: matching, path listing, context "
+        "lines, summaries, or incremental reruns. Set output_mode='file_paths_with_content' to "
+        "discover AND read matched context in one step."
     ),
-    hidden_params=("include_meta",),
+    hidden_params=(
+        "include_meta",
+        "format",
+        "lines_per_file",
+        "context_budget_tokens",
+        "file_limit",
+        "if_modified_since",
+    ),
 )
 def tool_grep(
     path: Annotated[
         str,
         Field(
             description=(
-                "Workspace-relative file or directory to search. A single file may carry a "
-                "'#start-end' suffix (e.g. 'store.py#60-100') to scope matches to that line range."
+                "Workspace-relative file or directory. A single file may carry '#start-end' "
+                "(e.g. 'store.py#60-100') to scope to a line range."
             ),
         ),
     ] = ".",
     content_regex: Annotated[
         str | None,
-        Field(description="Regex to match file contents. Omit for pure path/type listings."),
+        Field(description="Regex to match contents. Omit for path/type listings."),
     ] = None,
     file_glob_patterns: Annotated[
         str | list[str] | None,
-        Field(
-            description=(
-                "Globs constraining candidate files, e.g. `src/**/*.py`. Pass a list for "
-                "multiple globs, or a bare string for a single one."
-            ),
-        ),
+        Field(description="Globs constraining candidate files (e.g. `src/**/*.py`). List or bare string."),
     ] = None,
     output_mode: Annotated[
         Literal[
@@ -8093,10 +7826,8 @@ def tool_grep(
         ],
         Field(
             description=(
-                "`ranked_file_map` (default): ranked navigation pointers. "
-                "`file_paths_with_content`: matched lines with context. "
-                "`file_paths_only`: just paths. "
-                "`file_paths_with_match_count`: paths with hit counts."
+                "Default ranked_file_map = navigation pointers; "
+                "file_paths_with_content adds matched lines + context."
             )
         ),
     ] = "ranked_file_map",
@@ -8114,7 +7845,7 @@ def tool_grep(
     ] = False,
     type: Annotated[
         str | None,
-        Field(description="Language/file-type filter, e.g. `python` or `markdown`."),
+        Field(description="Language/file-type filter, e.g. `python`."),
     ] = None,
     file_limit: Annotated[
         int | None,
@@ -8139,12 +7870,7 @@ def tool_grep(
     ] = False,
     summary: Annotated[
         bool | None,
-        Field(
-            description=(
-                "Omit: auto-summarize large Python/JS/TS files. "
-                "`true`: always signatures-only. `false`: always raw lines."
-            )
-        ),
+        Field(description=("Omit: auto-summarize large Python/JS/TS. " "`true`: signatures-only. `false`: raw lines.")),
     ] = None,
     context_budget_tokens: Annotated[
         int,
@@ -8235,24 +7961,20 @@ def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[in
         "properties": {
             "query": {
                 "type": "string",
-                "description": "Ranked search query. Required for `chunks` and `full` mode.",
+                "description": "Ranked search query. Required for `chunks` mode.",
             },
             "path": {
                 "type": "string",
                 "default": ".",
-                "description": (
-                    "Workspace-relative file or directory to search. A single file may carry "
-                    "a '#start-end' suffix (e.g. 'store.py#60-100') to scope ranked results to "
-                    "that line range."
-                ),
+                "description": "Workspace-relative file or directory; a single file may carry '#start-end' to scope results.",
             },
             "mode": {
                 "type": "string",
                 "enum": ["chunks", "map", "symbol"],
                 "default": "chunks",
                 "description": (
-                    "`chunks` returns ranked snippets per file, `map` builds a repo map from `seed_files`, "
-                    "and `symbol` returns exact symbol definitions (name + location, no body) from the SCIP index."
+                    "chunks = ranked snippets; map = repo map from seed_files; "
+                    "symbol = exact definitions (name + location, no body)."
                 ),
             },
             "max_files": {
@@ -8268,17 +7990,6 @@ def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[in
                     "mode expands outward from these files."
                 ),
             },
-            "budget_tokens": {
-                "type": "integer",
-                "default": 2000,
-                "description": "Total token budget for ranked search output or repo-map output.",
-            },
-            "include_meta": {
-                "type": "boolean",
-                "default": False,
-                "description": "Include backend/cache metadata fields in the response.",
-            },
-            "format": _FORMAT_SCHEMA_PROPERTY,
         },
         "required": [],
     },
@@ -8560,30 +8271,21 @@ SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "type": "string",
             "enum": ["run", "poll", "cancel"],
             "default": "run",
-            "description": "run (default): execute `command`. poll: block until background `session_id` finishes. cancel: cancel `session_id`.",
+            "description": "run (default): execute `command`. poll/cancel: act on a background `session_id`.",
         },
         "command": {
             "type": "string",
             "description": "Shell command to execute (action=run). Blocked: bash/sh/zsh/fish, rm -rf, git reset --hard, git clean -fd. Rewritten transparently: cat→read, rg/grep→grep tool.",
         },
-        "cwd": {
-            "type": "string",
-            "description": "Working directory (action=run). Defaults to CLAUDE_WORKSPACE_ROOT.",
-        },
         "timeout": {
             "type": "integer",
             "default": 1800,
-            "description": "Seconds before the command is killed (action=run). Defaults to 30 minutes for builds and test suites.",
-        },
-        "max_lines": {
-            "type": "integer",
-            "default": 200,
-            "description": "Max output lines (action=run). Excess lines are head+tail truncated; check truncated=true in response.",
+            "description": "Seconds before kill (action=run).",
         },
         "background": {
             "type": "boolean",
             "default": False,
-            "description": "action=run: return a managed session handle immediately instead of waiting. By default the command runs inline and blocks until it finishes or its timeout elapses -- no need to poll.",
+            "description": "Return a managed session handle immediately instead of blocking inline.",
         },
         "session_id": {
             "type": "string",
@@ -8598,9 +8300,8 @@ SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     name="shell",
     input_schema=SHELL_TOOL_INPUT_SCHEMA,
     description=(
-        "Execute a shell command and return compact text output. Prefer Atelier read/grep/search "
-        "tools directly — they are faster and cheaper. Use shell only for commands that have no "
-        "Atelier equivalent (git, make, uv, npm, etc.)."
+        "Execute a shell command and return compact text. Prefer Atelier read/grep/search where "
+        "possible; use shell for git, make, uv, npm, etc."
     ),
 )
 def tool_shell(
@@ -8632,10 +8333,10 @@ def tool_shell(
 @mcp_tool(
     name="web_fetch",
     description=(
-        "Fetch a public HTTP/HTTPS page for coding-agent research. Requests Markdown when "
-        "available, converts HTML to clean Markdown by default, blocks private/local network "
-        "URLs, and caches fetched content for 5 minutes."
+        "Fetch a public HTTP/HTTPS page for research. Requests Markdown when available, "
+        "converts HTML to clean Markdown by default, blocks private/local URLs, caches 5 minutes."
     ),
+    hidden_params=("max_chars", "timeout_s", "include_meta"),
 )
 def tool_web_fetch(
     url: Annotated[str, Field(description="Public HTTP/HTTPS URL to fetch.")],

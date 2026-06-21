@@ -793,6 +793,12 @@ def _exact_symbol_hits(hits: list[SymbolRecord], query: str) -> list[SymbolRecor
     ]
 
 
+# A query is "symbol-like" when it is a bare identifier or dotted path (no
+# spaces) -- the shape worth an explicit exact-name lookup. Multi-word concept
+# queries skip that lookup so they never pay an extra search.
+_SYMBOL_QUERY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+
+
 def _query_implies_test_scope(query: str) -> bool:
     lowered = query.lower()
     return any(token in lowered for token in ("test", "tests", "spec", "pytest", "unittest"))
@@ -2552,10 +2558,30 @@ class CodeContextEngine:
             snippet="none",
             auto_index=False,
         )
+        # Exact-name guard: when the query is itself an indexed symbol name,
+        # semantic ranking can bury the exact definition behind lexical cousins
+        # (e.g. "_pack_single_payload" surfacing "_payload_looks_empty"), or the
+        # max_symbols cap can drop it outright. Pin any exact match to the front,
+        # fetching it via a lexical lookup if the ranked search missed it. Only
+        # symbol-like (single-token) queries pay that extra lookup.
+        exact_hits = _exact_symbol_hits(raw_symbols, query)
+        if not exact_hits and _SYMBOL_QUERY_RE.match(query.strip()):
+            lexical_hits = self.search_symbols(
+                query,
+                limit=max(bounded_max_symbols, 10),
+                mode="lexical",
+                snippet="none",
+                auto_index=False,
+            )
+            exact_hits = _exact_symbol_hits(lexical_hits, query)
+        exact_ids = {record.symbol_id for record in exact_hits}
+        if exact_hits:
+            raw_symbols = exact_hits + [record for record in raw_symbols if record.symbol_id not in exact_ids]
         ranked_symbols = sorted(
             raw_symbols,
             key=lambda record: (
                 0 if record.file_path in seed_set else 1,
+                0 if record.symbol_id in exact_ids else 1,
                 -(record.score or 0.0),
                 record.file_path,
                 record.start_line,
@@ -2575,6 +2601,8 @@ class CodeContextEngine:
         # and budget caps: seed files, then the query's completed family, then
         # definitions by score, then trivial variables/constants last.
         def _explore_priority(symbol: SymbolRecord) -> int:
+            if symbol.symbol_id in exact_ids:
+                return -1
             if symbol.file_path in seed_set:
                 return 0
             if symbol.symbol_id in family_member_ids:
@@ -2608,6 +2636,9 @@ class CodeContextEngine:
         skeleton_families: dict[str, str] = {}
         if effective_skeletonize:
             skeleton_ids, skeleton_families = self._select_skeleton_symbols(trimmed_symbols, seed_set=seed_set)
+            # An exact name match is the whole point of the query -- never reduce
+            # it to a signature-only skeleton; always show its full body.
+            skeleton_ids -= exact_ids
         # Completed family members are supplementary "here's the rest of the family"
         # context, not direct hits -- always render them signatures-only so surfacing
         # a whole family stays cheap and never forces the budget to drop relevant

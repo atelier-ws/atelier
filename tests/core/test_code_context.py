@@ -945,6 +945,49 @@ def test_code_context_search_text_uses_literal_matches(tmp_path: Path) -> None:
     assert {match.file_path for match in matches} == {"src/orders.py", "src/checkout.py"}
 
 
+def test_explore_pins_exact_symbol_name(tmp_path: Path) -> None:
+    # Concept-mode explore must surface an exact symbol-name match, rank it first,
+    # and render its full body -- never let lexical/semantic cousins bury it or the
+    # max_symbols cap drop it. Regression: explore("_pack_single_payload") used to
+    # return only "_payload_looks_empty" / "_response_payload" cousins, omitting the
+    # exact definition entirely.
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "payloads.py").write_text(
+        "def payload_looks_empty(payload):\n    return not payload\n\n\n"
+        "def iter_payloads(body):\n    return list(body)\n\n\n"
+        "def response_payload(result):\n    return {}\n\n\n"
+        "def transport_payload(data):\n    return data\n\n\n"
+        "def render_payload(payload):\n    return str(payload)\n\n\n"
+        "def pack_single_payload(data):\n    return {'packed': data}\n",
+        encoding="utf-8",
+    )
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
+    engine.index_repo()
+
+    res = engine.tool_explore(query="pack_single_payload", max_symbols=2, budget_tokens=4000)
+
+    names = [entry["qualified_name"] for entry in res["entry_points"]]
+    assert names, "explore returned no entry points"
+    assert names[0] == "pack_single_payload", f"exact match not pinned first: {names}"
+
+    sections = [section for file in res["files"] for section in file.get("source_sections", [])]
+    exact = [s for s in sections if s.get("qualified_name") == "pack_single_payload"]
+    assert exact, "exact match has no source section"
+    assert not exact[0].get("skeleton"), "exact match must render full body, not a skeleton"
+
+
+def test_symbol_query_regex_separates_identifiers_from_concepts() -> None:
+    # The exact-name lookup is gated on this regex: bare identifiers / dotted
+    # paths trigger it; multi-word concept queries skip it (no extra search).
+    from atelier.core.capabilities.code_context.engine import _SYMBOL_QUERY_RE
+
+    assert _SYMBOL_QUERY_RE.match("_pack_single_payload")
+    assert _SYMBOL_QUERY_RE.match("module.Class.method")
+    assert not _SYMBOL_QUERY_RE.match("pack the payload data")
+    assert not _SYMBOL_QUERY_RE.match("")
+
+
 def test_tool_search_text_prefers_symbol_hits_for_substring_queries(tmp_path: Path) -> None:
     _write_substring_search_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")

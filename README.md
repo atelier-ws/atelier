@@ -71,8 +71,7 @@ Already installed? Run `atelier update` to update in place.
 | `search`    | Semantic + keyword code search across the repo.                 |
 | `grep`      | Regex / glob / type-filtered search with token-budgeted output. |
 | `read`      | Budgeted file reads by outline, range, or full file.            |
-| `node`      | Exact source for a named symbol.                                |
-| `explore`   | Grouped source + callers, callees, and usages for a concept.    |
+| `explore`   | Grouped source + callers, callees, usages — for a concept or one symbol. |
 | `codemod`   | Structured, pattern-based code transforms.                      |
 | `edit`      | Deterministic file edits with optional verify gate.             |
 | `shell`     | Compact command execution when needed.                          |

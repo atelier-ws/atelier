@@ -5114,25 +5114,15 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
     @app.get("/hosts", tags=["ops"], dependencies=[Depends(verify_api_key)])
     def list_hosts() -> list[dict[str, Any]]:
-        import yaml
-
         store = get_store()
         seen_hosts = set(store.get_traces_metrics()["hosts"])
         root = Path(__file__).parent.parent.parent.parent.parent
-        configs_dir = root / "src" / "atelier" / "gateway" / "hosts" / "configs"
 
         hosts: list[dict[str, Any]] = []
         for host_id in _HOST_ORDER:
-            config_path = configs_dir / f"{host_id}.yaml"
-            payload: dict[str, Any] = {}
-            if config_path.exists():
-                loaded = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-                if isinstance(loaded, dict):
-                    payload = loaded
-
             install_script = root / "scripts" / f"install_{host_id}.sh"
-            label = _HOST_LABEL_OVERRIDES.get(host_id) or str(payload.get("name") or host_id)
-            description = _HOST_DESCRIPTION_OVERRIDES.get(host_id) or str(payload.get("description") or "")
+            label = _HOST_LABEL_OVERRIDES.get(host_id, host_id)
+            description = _HOST_DESCRIPTION_OVERRIDES.get(host_id)
             if host_id == "hermes":
                 label = "Hermes Agent (global-only)"
             hosts.append(

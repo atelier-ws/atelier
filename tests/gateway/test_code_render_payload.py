@@ -58,7 +58,7 @@ def test_render_explore_files_shape_with_numbers_and_skeleton_notice() -> None:
     assert "#### src/alpha.py" in out
     assert "AlphaEmbedder [class]" in out
     assert "1\tclass AlphaEmbedder:" in out  # line numbers preserved verbatim
-    assert "… · skeleton (signatures only; node/read for full body)" in out
+    assert "… · skeleton (signatures only; read for full body)" in out
     assert "#### callers" in out
     assert "- src/factory.py" in out
     assert "  - 5 — factory.make" in out
