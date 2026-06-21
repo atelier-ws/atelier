@@ -75,3 +75,4 @@ When invoked, briefly tell the user what you'll render and check, and that any f
 - **Remediation is opt-in, orchestrated by you, never inline (see step 11).** One finding → one worktree → one solver, scoped to the minimal conforming fix; re-render the failed gate with the identical target and state matrix before merge (reading the diff is not proof — a clean re-render and re-audit is). Never merge without that proof and the user's approval.
 - **Rendering is a side-effect.** Starting a dev server, hitting a URL, or running an audit / visual-regression harness is a side-effect — confirm the command via `AskUserQuestion` before running it unless the repo already authorizes it.
 - **Default to `NEEDS_FIX`.** A `DONE` verdict requires positive proof every gate passed; a skipped gate (`status: skipped`) is not a pass.
+- **Screen-reader text is always `sr-only`.** Descriptions of visual-only content go in `className="sr-only"`.

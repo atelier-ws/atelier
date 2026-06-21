@@ -88,11 +88,6 @@ for s in scripts/install_hosts.sh scripts/install_agents.sh \
           scripts/build_host_skills.sh scripts/sync_agent_context.py; do
     [[ -f "$s" ]] && cp -f "$s" "bundle/scripts/$(basename "$s")"
 done
-# sync_agent_context.py resolves ROOT = Path(__file__).parents[1] = bundle/
-# and expects host configs at ROOT/src/atelier/gateway/hosts/configs/.
-# Provide them at that path so the script can find them without the Python package.
-mkdir -p bundle/src/atelier/gateway/hosts/configs
-cp -f src/atelier/gateway/hosts/configs/*.yaml bundle/src/atelier/gateway/hosts/configs/
 # Bundle lib/ (shared installer functions + managed context helpers).
 mkdir -p bundle/scripts/lib
 cp -f scripts/lib/common.sh bundle/scripts/lib/common.sh
