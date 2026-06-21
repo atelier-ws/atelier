@@ -203,4 +203,7 @@ Provider/read benchmark numbers: triplet is `correctness / median tokens / media
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+[FSL-1.1-ALv2](LICENSE) — the Functional Source License: source-available and free for any
+Permitted Purpose, converting to Apache 2.0 two years after each release. The one carve-out is
+a *Competing Use* (a commercial product or service that competes with Atelier). The
+`services/license-issuer/` backend is proprietary and licensed separately under its own `LICENSE`.
