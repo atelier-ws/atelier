@@ -16,6 +16,7 @@ Or via the CLI:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shlex
@@ -30,12 +31,55 @@ from harbor.models.agent.context import AgentContext
 
 _ATELIER_VERSION = os.environ.get("ATELIER_BENCH_VERSION", "latest")
 _DEFAULT_MODEL = os.environ.get("ATELIER_BENCH_MODEL", "claude-sonnet-4-5")
+# Reasoning effort passed to `claude --effort`. Anthropic's official Opus 4.8
+# Terminal-Bench 2.1 runs use "high" effort (Opus 4.8 System Card, sec 8.3);
+# overridable via ATELIER_BENCH_EFFORT.
+_DEFAULT_EFFORT = os.environ.get("ATELIER_BENCH_EFFORT", "high")
 
 # Path inside the container where atelier writes its run log
 _CONTAINER_LOG = "/logs/atelier-run.jsonl"
 
 
-# ── Base adapter ──────────────────────────────────────────────────────────────
+# ── OAuth token pool ─────────────────────────────────────────────
+#
+# Spread trial load across two Claude subscriptions so neither hits its 5h usage
+# window as fast. When CLAUDE_CODE_OAUTH_TOKEN_1 and _2 are both set, each trial
+# borrows a token slot for the duration of its claude run and returns it after.
+# The per-token slot counts (default 3 on _1, 6 on _2) HARD-cap concurrent load
+# per subscription: harbor runs every trial in one asyncio loop (trial/queue.py),
+# so this module-level queue is shared across all trials. Set -n to the slot
+# total (3 + 6 = 9) so harbor's concurrency matches the pool exactly.
+_TOKEN_QUEUE: asyncio.Queue[str] | None = None
+_TOKEN_QUEUE_INIT = False
+
+
+def _token_queue() -> asyncio.Queue[str] | None:
+    """Lazily build the weighted token-slot queue; None for single-token mode.
+
+    Built on first call (inside harbor's event loop). asyncio is single-threaded,
+    and there is no await between the check and the assignment, so the lazy init
+    is race-free across concurrent trials.
+    """
+    global _TOKEN_QUEUE, _TOKEN_QUEUE_INIT
+    if _TOKEN_QUEUE_INIT:
+        return _TOKEN_QUEUE
+    _TOKEN_QUEUE_INIT = True
+    t1 = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN_1", "")
+    t2 = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN_2", "")
+    if not (t1 and t2):
+        return None
+    n1 = int(os.environ.get("ATELIER_BENCH_TOKEN1_SLOTS", "3"))
+    n2 = int(os.environ.get("ATELIER_BENCH_TOKEN2_SLOTS", "6"))
+    queue: asyncio.Queue[str] = asyncio.Queue()
+    for _ in range(n1):
+        queue.put_nowait(t1)
+    for _ in range(n2):
+        queue.put_nowait(t2)
+    _TOKEN_QUEUE = queue
+    return _TOKEN_QUEUE
+
+
+# ── Base adapter ───────────────────────────────────────────────────────────
 
 
 class AtelierHarborAgent(BaseInstalledAgent):
@@ -184,6 +228,11 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
     # the host trial dir (self.logs_dir); /logs root is NOT agent-writable.
     _CLAUDE_LOG = "/logs/agent/claude-run.json"
 
+    # Per-trial OAuth token, assigned from the weighted token pool in run() when
+    # two subscriptions are configured; empty -> fall back to the single
+    # CLAUDE_CODE_OAUTH_TOKEN env var.
+    _oauth_token: str = ""
+
     @staticmethod
     def name() -> str:
         return "atelier-claude-code"
@@ -193,16 +242,22 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
         """Forward subscription token; skip ANTHROPIC_API_KEY (unused by claude CLI)."""
         env: dict[str, str] = {
             "ATELIER_BENCH_MODE": self._bench_mode,
-            "ATELIER_ROOT": "/home/bench/.atelier",
+            "ATELIER_ROOT": "/root/.atelier",
             "ATELIER_PYTHON": "/opt/atelier-venv/bin/python",
             "PYTHONUNBUFFERED": "1",
             # Isolated config dir: no pre-installed plugins/hooks/MCP.
-            "CLAUDE_CONFIG_DIR": "/home/bench/.claude-bench",
+            "CLAUDE_CONFIG_DIR": "/root/.claude-bench",
+            # Run claude as root. Each task is a throwaway container, so root is
+            # safe -- and it matches the verifier's user, so system installs,
+            # services, and git ownership land where the grader looks instead of
+            # in a non-root userspace it cannot see. claude refuses
+            # bypassPermissions as root unless IS_SANDBOX is set (cli.js:
+            # getuid()===0 && !IS_SANDBOX -> exit 1).
+            "IS_SANDBOX": "1",
         }
-        for key in ("CLAUDE_CODE_OAUTH_TOKEN",):
-            val = os.environ.get(key, "")
-            if val:
-                env[key] = val
+        token = self._oauth_token or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
+        if token:
+            env["CLAUDE_CODE_OAUTH_TOKEN"] = token
         return env
 
     async def install(self, environment: BaseEnvironment) -> None:
@@ -252,34 +307,20 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
                 "/opt/atelier-venv/bin/python -c 'import atelier'"
             ),
         )
-        # Non-root user to run claude (it refuses bypassPermissions as root).
-        await self.exec_as_root(
-            environment,
-            command="useradd -m -s /bin/bash bench 2>/dev/null || true",
-        )
         # Isolated CLAUDE_CONFIG_DIR: empty .claude.json, no pre-installed
         # plugins/hooks. CLAUDE_CODE_OAUTH_TOKEN authenticates so the credentials
         # file is not copied (avoids stale-token conflicts with concurrent runs).
         await self.exec_as_root(
             environment,
-            command=(
-                "mkdir -p /home/bench/.claude-bench && "
-                "echo '{}' > /home/bench/.claude-bench/.claude.json && "
-                "chown -R bench:bench /home/bench/.claude-bench"
-            ),
+            command=("mkdir -p /root/.claude-bench && " "echo '{}' > /root/.claude-bench/.claude.json"),
         )
-        # Init the atelier store AS bench under a bench-owned ATELIER_ROOT so the
-        # MCP server (which runs as bench) can write it.
+        # Init the atelier store under a root-owned ATELIER_ROOT (the agent and
+        # its MCP server both run as root). /app is already root-owned, so the
+        # agent writes deliverables there and the (root) verifier reads them --
+        # no chown / user juggling needed.
         await self.exec_as_root(
             environment,
-            command=(
-                "runuser -u bench -- bash -c 'cd /home/bench && ATELIER_ROOT=/home/bench/.atelier /opt/atelier-venv/bin/atelier init'"
-            ),
-        )
-        # Task workdir must be writable by bench (agent writes deliverables there).
-        await self.exec_as_root(
-            environment,
-            command="chown -R bench:bench /app 2>/dev/null || true",
+            command=("cd /root && ATELIER_ROOT=/root/.atelier /opt/atelier-venv/bin/atelier init"),
         )
         # Reward-hacking compliance (TB leaderboard rule): block the agent from
         # reaching the Terminal-Bench website/leaderboard so it cannot look up
@@ -299,10 +340,19 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
         """Run claude CLI with Atelier plugin on the task instruction."""
         escaped = shlex.quote(instruction)
         model_flag = f"--model {shlex.quote(self._model)}" if self._model else ""
+        # Reasoning effort -- Anthropic's official Opus 4.8 TB-2.1 config is "high".
+        effort_flag = f"--effort {shlex.quote(_DEFAULT_EFFORT)}" if _DEFAULT_EFFORT else ""
         log = shlex.quote(self._CLAUDE_LOG)
-        # Export env into the runuser subshell. A leading `VAR=val` command prefix
+        # Borrow a token slot for this trial (weighted across both subscriptions
+        # when configured); released in the finally below. _agent_env reads
+        # self._oauth_token, so acquire BEFORE building env_exports.
+        token_queue = _token_queue()
+        oauth_token = await token_queue.get() if token_queue is not None else None
+        if oauth_token is not None:
+            self._oauth_token = oauth_token
+        # Export env into the bash -c subshell. A leading `VAR=val` command prefix
         # would bind only to the first statement, and we run several below, so use
-        # `export` (env= dict is not forwarded by runuser either).
+        # `export` for each (exec_as_root does not forward an env= dict).
         env_exports = " ".join(f"export {k}={shlex.quote(v)};" for k, v in self._agent_env.items())
         # bench_mode="off" -> vanilla claude-code baseline (no Atelier plugin),
         # making the plugin the ONLY variable vs the "on" arm. Select the
@@ -310,7 +360,7 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
         plugin_flags = (
             ""
             if self._bench_mode == "off"
-            else "--plugin-dir /atelier/integrations/claude/plugin --agent atelier:code "
+            else "--plugin-dir /atelier/integrations/claude/plugin --agent atelier:auto "
         )
         # Atelier arm only: build the code index BEFORE claude starts so the first
         # MCP grep hits a ready FTS index instead of racing a lazy/incremental
@@ -343,42 +393,61 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
             )
         )
         inner = (
-            env_exports + " " + prewarm + f"claude -p {escaped} {model_flag} "
-            "--output-format json "
+            env_exports + " " + prewarm + f"claude -p {escaped} {model_flag} {effort_flag} "
+            # stream-json (requires --verbose) captures the full turn-by-turn
+            # trajectory -- every assistant turn + MCP tool call -- to the tee'd
+            # log, not just the final result blob. Needed for leaderboard
+            # trajectories and failure debugging. The final line is a
+            # type="result" object carrying usage + total_cost_usd.
+            "--output-format stream-json --verbose "
             "--permission-mode bypassPermissions "
             f"{plugin_flags}"
             f"2>&1 | tee {log}"
         )
-        # claude refuses --permission-mode bypassPermissions when run as root.
-        # runuser (util-linux) switches user without requiring a password, unlike su.
-        cmd = f"runuser -u bench -- bash -c {shlex.quote(inner)}"
-        await self.exec_as_root(
-            environment,
-            command=cmd,
-        )
+        # Run as root directly (IS_SANDBOX=1 in _agent_env lets claude accept
+        # bypassPermissions as root). Root matches the verifier, so system
+        # installs / services / git ownership land where the grader looks.
+        cmd = f"bash -c {shlex.quote(inner)}"
+        try:
+            await self.exec_as_root(
+                environment,
+                command=cmd,
+            )
+        finally:
+            if token_queue is not None and oauth_token is not None:
+                token_queue.put_nowait(oauth_token)
 
     def populate_context_post_run(self, context: AgentContext) -> None:
-        """Parse claude --output-format json for token/cost accounting.
+        """Parse the claude --output-format stream-json log for token/cost.
 
-        claude writes /logs/agent/claude-run.json in the container; harbor
-        collects /logs/agent -> self.logs_dir on the host, so read it there.
+        claude writes a JSONL stream to /logs/agent/claude-run.json in the
+        container (one JSON object per line: an init line, the assistant/user
+        turns + tool calls = the trajectory, then a final type="result" object
+        carrying usage + total_cost_usd). harbor collects /logs/agent ->
+        self.logs_dir on the host. Scan from the end for the result line; this
+        also still handles the older single-object --output-format json log.
         """
         host_log = os.path.join(str(self.logs_dir), "claude-run.json")
         if not os.path.exists(host_log):
             return
         try:
             with open(host_log, encoding="utf-8") as fh:
-                text = fh.read().strip()
-            if not text:
-                return
-            obj = json.loads(text)
-        except (OSError, json.JSONDecodeError):
+                lines = [ln.strip() for ln in fh if ln.strip()]
+        except OSError:
             return
-        u = obj.get("usage", {}) or {}
-        context.n_input_tokens = int(u.get("input_tokens", 0) or 0)
-        context.n_cache_tokens = int(u.get("cache_read_input_tokens", 0) or 0)
-        context.n_output_tokens = int(u.get("output_tokens", 0) or 0)
-        context.cost_usd = float(obj.get("total_cost_usd", 0.0) or 0.0)
+        for line in reversed(lines):
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if obj.get("type") != "result" and "total_cost_usd" not in obj:
+                continue
+            u = obj.get("usage", {}) or {}
+            context.n_input_tokens = int(u.get("input_tokens", 0) or 0)
+            context.n_cache_tokens = int(u.get("cache_read_input_tokens", 0) or 0)
+            context.n_output_tokens = int(u.get("output_tokens", 0) or 0)
+            context.cost_usd = float(obj.get("total_cost_usd", 0.0) or 0.0)
+            return
 
 
 # ── Bedrock arm ───────────────────────────────────────────────────────────────
