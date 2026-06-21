@@ -188,9 +188,7 @@ def test_search_tool_returns_search_first_handoffs_without_meta(
     assert "total_tokens" not in result
 
 
-def test_search_tool_uses_cached_code_index_before_text_fallback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_search_tool_uses_cached_code_index_before_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     target = tmp_path / "src" / "commands.py"
     target.parent.mkdir()

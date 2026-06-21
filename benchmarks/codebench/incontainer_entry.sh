@@ -78,6 +78,19 @@ else
 fi
 [ -n "${CODEBENCH_AGENT:-}" ] && args+=(--agent "$CODEBENCH_AGENT")
 
+# Hermetic benchmark, BOTH arms: deny web + agent-orchestration tools at the CLI,
+# independent of persona config. WebSearch/WebFetch are server-side (run on
+# Anthropic's infra), so the mitmproxy egress guard never sees them -- they are
+# the answer-fetch contamination vector that an autonomous agent will otherwise
+# use to pull a SWE-bench task's public gold PR. Denying here also removes the
+# tool schemas from every request (token trim). Based on the harbor list
+# (benchmarks/harbor/atelier_agent.py::_DISALLOWED_TOOLS), plus EnterPlanMode --
+# a real tool as of claude 2.1.185, so denying ExitPlanMode alone still lets the
+# agent enter plan mode and plan instead of execute. The flag is variadic, so it
+# MUST stay last in args. Denying a tool an arm doesn't have is a harmless no-op
+# (e.g. baseline has no mcp__* tools).
+args+=(--disallowedTools AskUserQuestion EnterPlanMode ExitPlanMode WebFetch WebSearch mcp__atelier__web_fetch mcp__plugin_atelier_atelier__web_fetch Workflow ScheduleWakeup)
+
 claude "${args[@]}"
 
 echo "<<<CODEBENCH_DIFF_BEGIN>>>"

@@ -35,6 +35,22 @@ _DEFAULT_MODEL = os.environ.get("ATELIER_BENCH_MODEL", "claude-sonnet-4-5")
 # Terminal-Bench 2.1 runs use "high" effort (Opus 4.8 System Card, sec 8.3);
 # overridable via ATELIER_BENCH_EFFORT.
 _DEFAULT_EFFORT = os.environ.get("ATELIER_BENCH_EFFORT", "high")
+# Tools disabled for every benchmark run via `claude --disallowedTools` (this
+# REMOVES their schemas from the request, so it also trims tokens). No-ask
+# (AskUserQuestion/ExitPlanMode) stops the headless agent stalling on a prompt;
+# no-web (WebFetch/WebSearch/mcp__atelier__web_fetch) is the agent-layer answer-
+# fetch guard; Workflow/ScheduleWakeup are the heavy tools `bare` strips for
+# token overhead -- we strip them here so the `auto` agent stays token-light
+# without needing the `bare` variant (whose coding guide says "if confused ask").
+# Residual: the agent's shell can still curl -- close that with the network proxy
+# when full hermeticity is required.
+_DISALLOWED_TOOLS = os.environ.get(
+    "ATELIER_BENCH_DISALLOWED_TOOLS",
+    "AskUserQuestion ExitPlanMode WebFetch WebSearch"
+    # plugin tools are namespaced mcp__plugin_<plugin>_<server>__<tool>; list both
+    # the bare and the plugin-loaded name so the web fetch is removed either way.
+    " mcp__atelier__web_fetch mcp__plugin_atelier_atelier__web_fetch" " Workflow ScheduleWakeup",
+)
 
 # Path inside the container where atelier writes its run log
 _CONTAINER_LOG = "/logs/atelier-run.jsonl"
@@ -42,20 +58,22 @@ _CONTAINER_LOG = "/logs/atelier-run.jsonl"
 
 # ── OAuth token pool ─────────────────────────────────────────────
 #
-# Spread trial load across two Claude subscriptions so neither hits its 5h usage
-# window as fast. When CLAUDE_CODE_OAUTH_TOKEN_1 and _2 are both set, each trial
-# borrows a token slot for the duration of its claude run and returns it after.
-# The per-token slot counts (default 3 on _1, 6 on _2) HARD-cap concurrent load
-# per subscription: harbor runs every trial in one asyncio loop (trial/queue.py),
-# so this module-level queue is shared across all trials. Set -n to the slot
-# total (3 + 6 = 9) so harbor's concurrency matches the pool exactly.
+# Spread trial load across one or two Claude subscriptions so neither hits its
+# 5h usage window as fast. Each present token (CLAUDE_CODE_OAUTH_TOKEN_1/_2) gets
+# ATELIER_BENCH_TOKEN_SLOTS (default 6) slots; a trial borrows a slot for its
+# claude run and returns it after. The slot count HARD-caps concurrent load per
+# subscription: harbor runs every trial in one asyncio loop (trial/queue.py), so
+# this module-level queue is shared across all trials. Set -n to the slot total:
+# 1 token -> 6 (run -n 6), 2 tokens -> 12.
 _TOKEN_QUEUE: asyncio.Queue[str] | None = None
 _TOKEN_QUEUE_INIT = False
 
 
 def _token_queue() -> asyncio.Queue[str] | None:
-    """Lazily build the weighted token-slot queue; None for single-token mode.
+    """Lazily build the token-slot queue; None when no _1/_2 token is set.
 
+    Each present token (CLAUDE_CODE_OAUTH_TOKEN_1/_2) gets
+    ATELIER_BENCH_TOKEN_SLOTS (default 6) slots: 1 token -> 6, 2 tokens -> 12.
     Built on first call (inside harbor's event loop). asyncio is single-threaded,
     and there is no await between the check and the assignment, so the lazy init
     is race-free across concurrent trials.
@@ -64,17 +82,21 @@ def _token_queue() -> asyncio.Queue[str] | None:
     if _TOKEN_QUEUE_INIT:
         return _TOKEN_QUEUE
     _TOKEN_QUEUE_INIT = True
-    t1 = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN_1", "")
-    t2 = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN_2", "")
-    if not (t1 and t2):
+    tokens = [
+        t
+        for t in (
+            os.environ.get("CLAUDE_CODE_OAUTH_TOKEN_1", ""),
+            os.environ.get("CLAUDE_CODE_OAUTH_TOKEN_2", ""),
+        )
+        if t
+    ]
+    if not tokens:
         return None
-    n1 = int(os.environ.get("ATELIER_BENCH_TOKEN1_SLOTS", "3"))
-    n2 = int(os.environ.get("ATELIER_BENCH_TOKEN2_SLOTS", "6"))
+    per = int(os.environ.get("ATELIER_BENCH_TOKEN_SLOTS", "6"))
     queue: asyncio.Queue[str] = asyncio.Queue()
-    for _ in range(n1):
-        queue.put_nowait(t1)
-    for _ in range(n2):
-        queue.put_nowait(t2)
+    for tok in tokens:
+        for _ in range(per):
+            queue.put_nowait(tok)
     _TOKEN_QUEUE = queue
     return _TOKEN_QUEUE
 
@@ -312,7 +334,7 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
         # file is not copied (avoids stale-token conflicts with concurrent runs).
         await self.exec_as_root(
             environment,
-            command=("mkdir -p /root/.claude-bench && " "echo '{}' > /root/.claude-bench/.claude.json"),
+            command=("mkdir -p /root/.claude-bench && echo '{}' > /root/.claude-bench/.claude.json"),
         )
         # Init the atelier store under a root-owned ATELIER_ROOT (the agent and
         # its MCP server both run as root). /app is already root-owned, so the
@@ -402,6 +424,8 @@ class AtelierClaudeCodeHarborAgent(AtelierHarborAgent):
             "--output-format stream-json --verbose "
             "--permission-mode bypassPermissions "
             f"{plugin_flags}"
+            # --disallowedTools LAST (variadic): no-ask + no-web for the bench.
+            f"--disallowedTools {_DISALLOWED_TOOLS} "
             f"2>&1 | tee {log}"
         )
         # Run as root directly (IS_SANDBOX=1 in _agent_env lets claude accept
