@@ -17,6 +17,7 @@ from urllib.parse import urljoin, urlparse
 import urllib3
 from urllib3.connection import HTTPConnection, HTTPSConnection
 from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
+from urllib3.poolmanager import SSL_KEYWORDS
 from urllib3.response import BaseHTTPResponse
 from urllib3.util.connection import _set_socket_options
 
@@ -48,7 +49,6 @@ _TEXT_TYPES = {
     *_HTML_TYPES,
 }
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
-_ALLOWED_PORTS = frozenset({80, 443})
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _NON_CONTENT_HTML_RE = re.compile(
     r"<!--.*?-->|<(?:script|style|noscript|template|svg|canvas|iframe)\b[^>]*>.*?</(?:script|style|noscript|template|svg|canvas|iframe)>",
@@ -69,10 +69,10 @@ _DNS_EXECUTOR: concurrent.futures.ThreadPoolExecutor = concurrent.futures.Thread
 
 
 def _resolve_host_safe(hostname: str, timeout: float) -> str:
-    """Resolve *hostname* to an IP via DNS with a timeout and public-IP validation.
+    """Resolve *hostname* with a timeout and reject unsafe network destinations.
 
-    Returns the first resolved public IP address string.
-    Raises ``ValueError`` on resolution failure, timeout, or non-public IP.
+    Public and loopback addresses are allowed. Private-network, link-local, and
+    otherwise non-routable addresses are rejected.
     """
     try:
         ascii_host = hostname.encode("idna").decode("ascii")
@@ -90,16 +90,18 @@ def _resolve_host_safe(hostname: str, timeout: float) -> str:
         raise ValueError(f"web_fetch could not resolve host: {hostname}")
     for info in infos:
         raw_ip = str(info[4][0])
-        _assert_public_ip(raw_ip)
+        _assert_fetchable_ip(raw_ip)
     return str(infos[0][4][0])
 
 
 _CGNAT_RANGE = ipaddress.ip_network("100.64.0.0/10")
 
 
-def _assert_public_ip(raw_ip: str) -> None:
+def _assert_fetchable_ip(raw_ip: str) -> None:
     ip = ipaddress.ip_address(raw_ip)
-    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+    if ip.is_loopback:
+        return
+    if ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
         raise ValueError(f"web_fetch blocked private/local network IP: {raw_ip}")
     if ip.version == 4 and ip in _CGNAT_RANGE:
         raise ValueError(f"web_fetch blocked private/local network IP: {raw_ip}")
@@ -111,12 +113,14 @@ def _assert_public_ip(raw_ip: str) -> None:
 
 
 class _ValidatingHTTPConnection(HTTPConnection):
-    """HTTPConnection that resolves DNS with timeout and rejects private IPs."""
+    """HTTPConnection that resolves DNS with timeout and rejects unsafe IPs."""
 
     def _new_conn(self) -> socket.socket:
         host = self.host
         timeout = self.timeout if isinstance(self.timeout, (int, float)) else DNS_TIMEOUT_S
-        if not _is_ip_address(host):
+        if _is_ip_address(host):
+            _assert_fetchable_ip(host)
+        else:
             host = _resolve_host_safe(host, timeout=timeout)
         # Connect the socket to the validated IP via a local variable only. Do NOT
         # assign self._dns_host: urllib3 backs the self.host property (used for the
@@ -132,12 +136,14 @@ class _ValidatingHTTPConnection(HTTPConnection):
 
 
 class _ValidatingHTTPSConnection(HTTPSConnection):
-    """HTTPSConnection that resolves DNS with timeout and rejects private IPs."""
+    """HTTPSConnection that resolves DNS with timeout and rejects unsafe IPs."""
 
     def _new_conn(self) -> socket.socket:
         host = self.host
         timeout = self.timeout if isinstance(self.timeout, (int, float)) else DNS_TIMEOUT_S
-        if not _is_ip_address(host):
+        if _is_ip_address(host):
+            _assert_fetchable_ip(host)
+        else:
             host = _resolve_host_safe(host, timeout=timeout)
         # Connect the socket to the validated IP via a local variable only. Do NOT
         # assign self._dns_host: urllib3 derives the TLS server_hostname from
@@ -179,7 +185,14 @@ class _ValidatingPoolManager(urllib3.PoolManager):
             pool_cls = _ValidatingHTTPSConnectionPool
         else:
             pool_cls = self.pool_classes_by_scheme[scheme]
-        return pool_cls(host, port, **self.connection_pool_kw)
+
+        pool_kwargs = (self.connection_pool_kw if request_context is None else request_context).copy()
+        for key in ("scheme", "host", "port"):
+            pool_kwargs.pop(key, None)
+        if scheme == "http":
+            for key in SSL_KEYWORDS:
+                pool_kwargs.pop(key, None)
+        return pool_cls(host, port, **pool_kwargs)
 
 
 _HTTP = _ValidatingPoolManager(num_pools=16, maxsize=16, retries=False, cert_reqs="CERT_REQUIRED")
@@ -264,7 +277,7 @@ def fetch_url(
     timeout_s: float = DEFAULT_TIMEOUT_S,
     include_meta: bool = False,
 ) -> dict[str, Any]:
-    """Fetch a public URL and return coding-agent-friendly content."""
+    """Fetch an HTTP(S) URL and return coding-agent-friendly content."""
     requested_format = _normalize_output_format(output_format)
     char_limit = _clamp_int(max_chars, 1_000, MAX_MAX_CHARS)
     timeout = float(min(max(float(timeout_s), 1.0), 60.0))
@@ -417,11 +430,9 @@ def _validate_public_url(url: str) -> str:
     if parsed.username or parsed.password:
         raise ValueError("web_fetch does not allow embedded credentials")
     try:
-        port = parsed.port
+        _ = parsed.port
     except ValueError:
         raise ValueError("web_fetch URL has a malformed port") from None
-    if port is not None and port not in _ALLOWED_PORTS:
-        raise ValueError(f"web_fetch blocked non-standard destination port: {port}")
     return url
 
 
