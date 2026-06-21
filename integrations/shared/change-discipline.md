@@ -1,3 +1,4 @@
-- **Be efficient.** Batch independent reads into one `read` call and related edits into one `edit` call instead of working file-by-file.
+- **Be efficient.** Batch independent reads into one `read` call, related edits into one `edit` call, and independent shell probes into one run — instead of working one at a time.
+- **Solve from the code in front of you.** When a search comes up empty, reformulate or derive from code you've read — don't go hunting the answer in git history, release notes, or the web.
 - **No scope creep — but finish the change.** Do exactly what was asked: no unrequested refactors, features, or configurability, and leave unrelated dead code alone. When you change a symbol's signature, decorator, or contract (rename, remove a cache/decorator, change args or return type), find its callers/usages and update every one.
 - **Verify before concluding.** Before reporting done, run the project's real checks (tests/build) for the changed surface. Never declare done on an edit you have not actually executed.

@@ -146,14 +146,70 @@ End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** —
 Run the SWE benchmark:
 
 ```bash
+# Atelier arm uses the lean `atelier:bare` persona.
+# Edit-verify and hermetic egress (api.anthropic.com only) are ON by default.
+CODEBENCH_ATELIER_AGENT=atelier:bare \
 uv run --project benchmarks python -m benchmarks.codebench.multiswe_run \
   --suite swe-bench-verified \
   --instances $(cat benchmarks/codebench/data/verified.txt) \
+  --min-changed-files 1 \
   -a baseline atelier \
   --reps 3 \
   --model claude-opus-4-8 \
-  --jobs 4
+  --jobs 8
 ```
+
+Opt out of the defaults with `CODEBENCH_EDIT_VERIFY=0` (disable the edit-verify gate) or widen the egress allowlist with `CODEBENCH_EGRESS_ALLOW=anthropic.com,amazonaws.com,…`.
+
+### Terminal-Bench
+
+Agentic terminal tasks on **[Terminal-Bench 2.1](https://www.tbench.ai/leaderboard/terminal-bench/2.1)** — the official **89-task** suite, run through the **[Harbor](https://www.harborframework.com/)** harness. The Atelier arm is the `atelier:auto` persona loaded into Claude Code via `--plugin-dir`; both arms run **`claude-opus-4-8`** at **high effort** with **fixed (default) per-task timeouts** and **5 attempts** (`-k 5`) — matching Anthropic's official Opus 4.8 setup (System Card §8.3). The agent runs as root (`IS_SANDBOX=1`) in each throwaway task container, with full trajectories captured (`--output-format stream-json`). Disabled tools: `AskUserQuestion`/`ExitPlanMode` (no stalling on prompts), `WebFetch`/`WebSearch`/`mcp__atelier__web_fetch` (no answer-fetching), `Workflow`/`ScheduleWakeup` (token-heavy).
+
+Auth uses Claude **subscription OAuth tokens** (not API keys), in `benchmarks/harbor/.env`. Each present token gets `ATELIER_BENCH_TOKEN_SLOTS` (default 6) concurrent slots — run `-n 6` with one token, `-n 12` with two:
+
+```bash
+# benchmarks/harbor/.env
+CLAUDE_CODE_OAUTH_TOKEN_1=sk-ant-oat01-...
+# CLAUDE_CODE_OAUTH_TOKEN_2=sk-ant-oat01-...   # optional second subscription
+ATELIER_BENCH_MODEL=claude-opus-4-8
+```
+
+Build the portable Atelier bundle (pure-Python, old-glibc, reused across every task image), then swap it in:
+
+```bash
+docker run --rm -v "$PWD":/atelier:ro -v /tmp/avbuild:/out \
+  debian:bullseye-slim bash /atelier/benchmarks/harbor/rebuild_bundle.sh
+mv -f /tmp/avbuild/atelier-bundle-new.tar.gz /tmp/avbuild/atelier-bundle.tar.gz
+```
+
+Zero-LLM preflight — validates install + code index + the exact `claude` flags on a real task image, **without spending any AI credits**:
+
+```bash
+docker run --rm -v "$PWD":/atelier:ro \
+  -v /tmp/avbuild/atelier-bundle.tar.gz:/atelier-bundle.tar.gz:ro \
+  alexgshaw/adaptive-rejection-sampler:20251031 \
+  bash /atelier/benchmarks/harbor/setup_preflight.sh adaptive-rejection-sampler
+# -> RESULT:...:PASS node=... cmdprobe=ok idx_git=2 idx_nogit=1 emptyrc=0 logs_agent=ok
+```
+
+Run the benchmark — Atelier arm, then the baseline (timeouts stay at the default `1.0` multiplier, per the leaderboard rule):
+
+```bash
+set -a; . benchmarks/harbor/.env; set +a
+MOUNTS='[{"type":"bind","source":"'"$PWD"'","target":"/atelier","read_only":true},{"type":"bind","source":"/tmp/avbuild/atelier-bundle.tar.gz","target":"/atelier-bundle.tar.gz","read_only":true}]'
+
+# Atelier arm
+uv run --no-sync harbor run -d terminal-bench/terminal-bench-2-1 \
+  --agent-import-path benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent \
+  --mounts "$MOUNTS" -k 5 -n 6 -o benchmarks/jobs/atelier -y
+
+# Baseline arm — vanilla Claude Code, same model/effort, no Atelier plugin
+uv run --no-sync harbor run -d terminal-bench/terminal-bench-2-1 \
+  --agent-import-path benchmarks.harbor.atelier_agent:AtelierClaudeCodeHarborAgent \
+  --mounts "$MOUNTS" --ak bench_mode=off -k 5 -n 6 -o benchmarks/jobs/baseline -y
+```
+
+Resume rate-limited or incomplete trials in place with `harbor job resume -p <job-dir>`.
 
 Run local provider/read benchmarks:
 
