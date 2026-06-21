@@ -1,16 +1,17 @@
 # Atelier license issuer (Cloudflare Worker)
 
-The paid loop, end to end: **Stripe checkout → signed Ed25519 license → stored in
-D1 → emailed to the customer → `atelier license activate <key>` unlocks Pro.**
+The paid loop, end to end: **Stripe checkout → signed purchase credential →
+stored in D1 → emailed to the customer → device enrollment → signed lease.**
 
-This is the only hosted piece. It never touches the customer's machine — the
-client verifies the key **offline** with an embedded public key. The matching
-verifier is the Apache-2.0 client at
+This is the only hosted piece. The client contacts it for device enrollment,
+removal, and periodic lease refresh; normal entitlement checks remain local
+using an embedded public key. The matching verifier is the Apache-2.0 client at
 `src/atelier/core/capabilities/licensing/`. This directory is **proprietary**
 (see [LICENSE](./LICENSE)) and is not shipped in the `atelier` wheel.
 
-> Solo / low-ops setup. No accounts, no login server, no dashboard. Stripe holds
-> billing; this Worker only mints and mails keys.
+> Solo / low-ops setup. No user accounts or passwords. Stripe holds billing;
+> this Worker mints purchase credentials, tracks three device slots, and issues
+> 30-day leases with a 7-day offline grace period.
 
 ---
 
@@ -20,8 +21,8 @@ verifier is the Apache-2.0 client at
 
 - A Cloudflare account (`npx wrangler login`).
 - A Stripe account.
-- A [Resend](https://resend.com) account with a verified sending domain
-  (free tier is plenty), or swap `src/email.ts` for another sender.
+- A [SendPulse](https://sendpulse.com) account with a verified sending domain,
+  or swap `src/email.ts` for another sender.
 
 ```bash
 cd services/license-issuer
@@ -58,18 +59,18 @@ Paste the returned `database_id` into `wrangler.jsonc`, then create the table:
 npm run db:init
 ```
 
-### 3. Set `FROM_EMAIL`
+### 3. Set `SENDPULSE_API_ID`
 
-Edit `wrangler.jsonc` → `vars.FROM_EMAIL` to a verified Resend sender, e.g.
-`"Atelier <licenses@yourdomain.com>"`.
+Edit `wrangler.jsonc` → `vars.SENDPULSE_API_ID` to your SendPulse API ID
+(Account → API tab on sendpulse.com).
 
 ### 4. Set the secrets
 
 ```bash
 # from keygen output:
 echo '<PKCS8_BASE64>' | npx wrangler secret put LICENSE_PRIVATE_KEY
-# from resend.com/api-keys:
-echo 're_...'         | npx wrangler secret put RESEND_API_KEY
+# from sendpulse.com → Account → API:
+echo '<secret>'       | npx wrangler secret put SENDPULSE_API_SECRET
 # from step 6 (set placeholder now, update after creating the webhook):
 echo 'whsec_...'      | npx wrangler secret put STRIPE_WEBHOOK_SECRET
 ```
@@ -135,19 +136,22 @@ You should receive an email with `atelier license activate <key>`. Run it, then
 | ------ | ------------------ | ---------------------------------------- |
 | GET    | `/health`          | Liveness check.                          |
 | GET    | `/pubkey`          | Returns the public key (debug/transparency). |
-| POST   | `/stripe/webhook`  | Stripe events → issue + email a license. |
+| POST   | `/stripe/webhook`  | Stripe events → issue + email a purchase credential. |
+| POST   | `/devices/activate` | Enroll/reactivate a device and issue its lease. |
+| POST   | `/devices/refresh`  | Refresh an active device lease. |
+| POST   | `/devices/remove`   | Remove a device immediately and free its slot. |
 
 ## Notes
 
 - **Refunds / chargebacks.** Handled automatically: `charge.refunded` and
-  `customer.subscription.deleted` mark the D1 row `revoked` and shorten its
-  `expires_at`. Best-effort only — an already-issued offline key keeps working
-  until its embedded expiry (the client never phones home), so a refunded
-  **lifetime** key cannot be remotely killed; annual keys lapse on their own.
-  This stops renewals and records intent for any future online check.
+  `customer.subscription.deleted` mark the D1 row `revoked`. Existing device
+  leases stop refreshing and lapse after their remaining lease/grace window.
 - **Rotating the keypair** invalidates every issued license. Avoid unless the
   private key leaks; if it does, re-keygen, redeploy, bump
   `_EMBEDDED_PUBLIC_KEY_B64`, ship a client release, and re-issue from D1.
-- **Local-first reality.** A determined user can patch out an offline check.
+- **Local-first reality.** A determined user can patch out a local check or copy
+  both a lease and its device private key. The registry prevents casual key
+  sharing by limiting a purchase to three active device identities; it is not
+  hardware DRM.
   That's fine at the individual-dev tier: the buyer pays $X to save 10×; the
   moat is the closed savings engine + the brand, not DRM.

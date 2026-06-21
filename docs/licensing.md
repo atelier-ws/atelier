@@ -1,7 +1,7 @@
 # Licensing & Pro features (open-core)
 
 Atelier is open-core: the entire runtime is Apache-2.0 and runs locally. A small
-set of **paid ("Pro") control surfaces** are gated behind an offline-verified
+set of **paid ("Pro") control surfaces** are gated behind a device-bound
 license. The split is designed so the Free tier is genuinely useful (and already
 delivers most of the token savings) while the incremental optimizer and the full
 savings dashboard are paid.
@@ -20,9 +20,11 @@ savings dashboard are paid.
   turns a Stripe payment into a signed key and emails it. See its
   [README](../services/license-issuer/README.md).
 
-Verification is **offline Ed25519**: no license server, no phone-home. The
-private signing key lives only in the Worker; the public key is embedded in the
-client.
+Activation requires the issuer once, then stores a signed, device-bound lease.
+Entitlement checks are local Ed25519 verification. The client automatically
+refreshes its lease after 30 days; if the issuer cannot be reached, the current
+lease remains valid for a further 7-day grace period. The private signing key
+lives only in the Worker; the public key is embedded in the client.
 
 **Two walls, defense in depth.** A Pro path runs only when *both* agree: the
 code is physically present (the `atelier_pro` overlay is installed and declares
@@ -40,7 +42,7 @@ without a key; a key with no overlay has nothing to run.
 
 | Capability                                                  | Free | Pro | Ent |
 | ----------------------------------------------------------- | :--: | :-: | :-: |
-| Code-nav MCP tools (`read`/`grep`/`search`/`node`/`edit`/…) |  ✅  | ✅  | ✅  |
+| Code-nav MCP tools (`read`/`grep`/`search`/`edit`/…) |  ✅  | ✅  | ✅  |
 | Host packaging, agents, skills, `init`; benchmarks          |  ✅  | ✅  | ✅  |
 | Repo map + context engine (small repos)                     |  ✅  | ✅  | ✅  |
 | Headline savings number                                     |  ✅  | ✅  | ✅  |
@@ -60,13 +62,25 @@ customer-facing plans and prices see [Plans & Pricing](./pricing.md).
 ## Using a license
 
 ```bash
-atelier license activate <key>   # verify + store at ~/.atelier/license.key
+atelier license activate <key>   # enroll this device and store its lease
 atelier license status           # show plan, expiry, unlocked features
 atelier license deactivate       # revert to Free
 ```
 
-The `ATELIER_LICENSE` env var overrides the stored file (handy for CI and
-containers). `ATELIER_LICENSE_PUBLIC_KEY` overrides the embedded public key
+A Pro purchase can have up to **three active devices**. When all slots are in
+use, interactive activation lists them and asks which one to remove before it
+enrolls the new device. Removal is immediate; there is no cooldown. Device-added
+and device-removed notifications are sent to the purchase email.
+
+The CLI stores the purchase credential in `~/.atelier/purchase.key`, a local
+Ed25519 device private key in `~/.atelier/device.key`, and the current signed
+device lease in `~/.atelier/license.key`. These files are created with mode
+`0600`. Use the website's license-recovery page if the purchase credential is
+lost.
+
+The `ATELIER_LICENSE` env var overrides the stored lease (handy for a stable CI
+device). Device-bound leases also require that device's private key.
+`ATELIER_LICENSE_PUBLIC_KEY` overrides the embedded public key
 (for self-issued keys or testing). `ATELIER_PRO_URL` overrides the "buy" link
 shown in upsells -- point it straight at your Stripe Payment Link.
 

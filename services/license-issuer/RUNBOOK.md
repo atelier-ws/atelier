@@ -27,12 +27,12 @@ Keep the **PRIVATE** key for step B.
 ## B. Deploy the issuer Worker
 
 ```bash
-wrangler login                                   # if not already
-wrangler d1 create atelier-licenses              # copy database_id -> wrangler.jsonc
+npx wrangler login                                   # if not already
+npx wrangler d1 create atelier-licenses              # copy database_id -> wrangler.jsonc
 npm run db:init                                  # creates tables from schema.sql
-# set FROM_EMAIL in wrangler.jsonc to your verified Resend sender
+# set SENDPULSE_API_ID in wrangler.jsonc (Account → API tab on sendpulse.com)
 wrangler secret put LICENSE_PRIVATE_KEY          # paste the pkcs8 private from keygen
-wrangler secret put RESEND_API_KEY               # from resend.com
+wrangler secret put SENDPULSE_API_SECRET         # from sendpulse.com → Account → API
 npm run typecheck && npm run deploy              # note the Worker URL
 curl https://<worker-url>/health                 # -> ok
 curl https://<worker-url>/pubkey                 # -> matches your public key
@@ -47,6 +47,7 @@ curl https://<worker-url>/pubkey                 # -> matches your public key
 3. **Payment Link** for the price(s) -> copy the link URL.
 4. **Developers -> Webhooks -> Add endpoint**: URL
    `https://<worker-url>/stripe/webhook`, events (exactly these four):
+
    - `checkout.session.completed`
    - `invoice.paid`
    - `customer.subscription.deleted`
@@ -86,11 +87,19 @@ atelier license status                           # -> plan: pro, features listed
 
 ## What each piece does
 
-| Piece | Role |
-| ----- | ---- |
-| `npm run keygen` | Ed25519 keypair. Private -> Worker secret; public -> client + issuer var. |
-| Issuer Worker (`src/index.ts`) | Verifies Stripe webhooks, signs a license, stores it in D1, emails it. |
-| D1 `atelier-licenses` | License rows + processed-event dedup (idempotent webhooks). |
-| Resend | Delivers the license-key email. |
-| `PRO_CHECKOUT_URL` (landing) | Redirects `atelier.ws/pro` to the Stripe Payment Link. |
-| Client `verify.py` | Offline Ed25519 verification using the embedded public key. |
+| Piece                            | Role                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------- |
+| `npm run keygen`               | Ed25519 keypair. Private -> Worker secret; public -> client + issuer var. |
+| Issuer Worker (`src/index.ts`) | Verifies Stripe webhooks and routes device enrollment/refresh/removal.    |
+| D1 `atelier-licenses`          | Licenses, three-device registry, and processed-event dedup.               |
+| SendPulse                        | Delivers the license-key email.                                           |
+| `PRO_CHECKOUT_URL` (landing)   | Redirects `atelier.ws/pro` to the Stripe Payment Link.                  |
+| Client licensing package       | Device key storage, lease refresh, and local Ed25519 verification.         |
+
+## Device lifecycle check
+
+Activate the same purchase credential on three isolated test homes. A fourth
+interactive activation must list all active devices and require removal of one
+before continuing. The replacement must activate immediately. Confirm that the
+stored lease has `kind=device`, a `refresh_at` approximately 30 days out, and an
+expiry 7 days later (or earlier if the subscription itself ends).

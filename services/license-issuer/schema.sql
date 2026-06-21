@@ -24,3 +24,38 @@ CREATE TABLE IF NOT EXISTS processed_events (
   type       TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS devices (
+  device_id    TEXT PRIMARY KEY,
+  license_id   TEXT NOT NULL REFERENCES licenses(license_id) ON DELETE CASCADE,
+  public_key   TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  revoked_at   INTEGER,
+  UNIQUE (license_id, public_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_devices_license
+  ON devices (license_id, revoked_at, last_seen_at);
+
+CREATE TRIGGER IF NOT EXISTS devices_limit_insert
+BEFORE INSERT ON devices
+WHEN NEW.revoked_at IS NULL
+ AND (SELECT COUNT(*) FROM devices
+       WHERE license_id = NEW.license_id AND revoked_at IS NULL) >= 3
+BEGIN
+  SELECT RAISE(ABORT, 'device_limit_reached');
+END;
+
+CREATE TRIGGER IF NOT EXISTS devices_limit_reactivate
+BEFORE UPDATE OF revoked_at ON devices
+WHEN OLD.revoked_at IS NOT NULL
+ AND NEW.revoked_at IS NULL
+ AND (SELECT COUNT(*) FROM devices
+       WHERE license_id = NEW.license_id
+         AND revoked_at IS NULL
+         AND device_id != NEW.device_id) >= 3
+BEGIN
+  SELECT RAISE(ABORT, 'device_limit_reached');
+END;
