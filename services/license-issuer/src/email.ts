@@ -55,7 +55,54 @@ function escapeHtml(value: string): string {
     '"': "&quot;",
     "'": "&#039;",
   };
-  return value.replace(/[&<>"']/g, (character) => entities[character] ?? character);
+  return value.replace(
+    /[&<>"']/g,
+    (character) => entities[character] ?? character,
+  );
+}
+
+/** Email a one-time, short-lived link to manage devices (SendPulse). */
+export async function sendDeviceLoginEmail(opts: {
+  apiId: string;
+  apiSecret: string;
+  to: string;
+  url: string;
+}): Promise<void> {
+  const text = [
+    "Manage the devices on your Atelier Pro license using this secure link:",
+    "",
+    `    ${opts.url}`,
+    "",
+    "The link expires in 15 minutes and can be used once.",
+    "If you did not request this, you can safely ignore this email.",
+  ].join("\n");
+  const html =
+    `<p>Manage the devices on your Atelier Pro license:</p>` +
+    `<p><a href="${escapeHtml(opts.url)}">Open the Atelier device manager</a></p>` +
+    `<p>The link expires in 15 minutes and can be used once. ` +
+    `If you did not request this, you can safely ignore this email.</p>`;
+  const token = await getAccessToken(opts.apiId, opts.apiSecret);
+  const res = await fetch(`${SENDPULSE_API_BASE}/smtp/emails`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: {
+        html,
+        text,
+        subject: "Manage your Atelier devices",
+        from: { name: SMTP_FROM_NAME, email: SMTP_FROM_EMAIL },
+        to: [{ email: opts.to }],
+      },
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `device login email failed: ${res.status} ${await res.text()}`,
+    );
+  }
 }
 
 /** Fetch a short-lived OAuth2 bearer token from SendPulse. */
@@ -73,9 +120,7 @@ async function getAccessToken(
     }),
   });
   if (!res.ok) {
-    throw new Error(
-      `SendPulse auth failed: ${res.status} ${await res.text()}`,
-    );
+    throw new Error(`SendPulse auth failed: ${res.status} ${await res.text()}`);
   }
   const data = (await res.json()) as { access_token: string };
   return data.access_token;

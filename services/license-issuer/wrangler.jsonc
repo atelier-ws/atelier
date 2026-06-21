@@ -26,6 +26,7 @@
   "vars": {
     "SENDPULSE_API_ID": "",
     "LICENSE_PUBLIC_KEY": "4W8TlWyl9GWC0Fa2bkzsj4e7i1AMJDtVADq6JgPPmDE=",
-    "LICENSE_FROM_EMAIL": "licenses@atelier.ws"
+    "LICENSE_FROM_EMAIL": "licenses@atelier.ws",
+    "SITE_URL": "https://atelier.ws"
   }
 }
