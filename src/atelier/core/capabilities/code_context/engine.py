@@ -91,6 +91,7 @@ from atelier.infra.internal_llm.exceptions import OllamaUnavailable
 from atelier.infra.tree_sitter.tags import Tag, detect_language, extract_tags
 
 if TYPE_CHECKING:
+    from atelier.core.capabilities.code_context.search_verdict import ChannelHealth
     from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
 
 _MAX_FILE_BYTES = 1_000_000
@@ -2128,6 +2129,37 @@ class CodeContextEngine:
         )
         self._cache_set("code.search", cache_args, payload)
         return payload
+
+    def search_channel_health(self, query: str, mode: str = "auto") -> ChannelHealth:
+        """Liveness of optional retrieval channels for a query (verdict stamping).
+
+        Lets the MCP boundary distinguish a *trustworthy* empty (every channel the
+        query wanted actually ran) from a *dark* one (a wanted channel was off):
+
+        - ``semantic``: applicable only when the resolved mode wants it
+          (semantic/hybrid); ``True`` if an embedder is configured, ``False``
+          (dark) if not, ``None`` if the query never wanted it (lexical lookup).
+        - ``zoekt``: applicable for repo-scope lexical/hybrid; ``False`` (dark)
+          only when it is meant to route but the backend is unhealthy. A
+          config-disabled zoekt is ``None`` (not dark) -- FTS, always live,
+          covers the lexical channel.
+        """
+        from atelier.core.capabilities.code_context.search_verdict import ChannelHealth
+
+        requested = cast("SearchMode", mode if mode in ("auto", "lexical", "semantic", "hybrid") else "auto")
+        resolved = resolve_search_mode(query, requested)
+        semantic: bool | None = None
+        if resolved in {"semantic", "hybrid"}:
+            semantic = bool(self._semantic_ranker.available)
+        zoekt: bool | None = None
+        if resolved != "semantic":
+            with contextlib.suppress(Exception):
+                from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
+
+                supervisor = get_zoekt_supervisor(self.repo_root)
+                if supervisor.should_route(self.repo_root):
+                    zoekt = bool(supervisor.health().ok)
+        return ChannelHealth(semantic=semantic, zoekt=zoekt)
 
     def tool_blame(
         self,

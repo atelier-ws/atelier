@@ -493,6 +493,125 @@ _EDIT_PATH_LOCKS: dict[str, threading.Lock] = {}
 _EDIT_PATH_LOCKS_GUARD = threading.Lock()
 _DEFAULT_MCP_MAX_WORKERS = 16
 
+# --------------------------------------------------------------------------- #
+# Search verdict state (per session) -- mirrors the monitor-session pattern.   #
+# Turns an empty search/grep result into an honest signal (found/missed/absent/ #
+# dark) plus a soft circuit-breaker note, so the agent stops searching for the  #
+# right reason instead of spiraling on hard tasks.                             #
+# --------------------------------------------------------------------------- #
+_search_history_sessions: dict[str, Any] = {}
+_MAX_SEARCH_HISTORY_SESSIONS = 64
+_SEARCH_HISTORY_LOCK = threading.Lock()
+
+
+def _count_search_hits(payload: dict[str, Any]) -> int:
+    """Hit count for a `search` payload (items pre-view, matches post-view)."""
+    for key in ("matches", "items", "ranked_files"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return len(value)
+    return 0
+
+
+def _count_grep_hits(payload: dict[str, Any]) -> int:
+    """Hit count for a `grep` payload (ranked matches, else non-empty text blocks)."""
+    matches = payload.get("matches")
+    if isinstance(matches, list):
+        return len(matches)
+    content = payload.get("content")
+    if isinstance(content, list):
+        return sum(
+            1
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text" and str(block.get("text") or "").strip()
+        )
+    return 0
+
+
+def _search_cascade_enabled() -> bool:
+    """Phase 3 cascade-on-empty toggle (default on; set 0/false to disable)."""
+    return os.environ.get("ATELIER_SEARCH_CASCADE_ON_EMPTY", "1").strip().lower() not in {"0", "false", "no", ""}
+
+
+def _apply_search_verdict(
+    result: dict[str, Any],
+    *,
+    query: str,
+    hit_count: int,
+    channels: Any | None = None,
+) -> dict[str, Any]:
+    """Stamp verdict (+ next hint, + breaker note) onto a search/grep result.
+
+    Boundary-only: per-session reformulation memory drives missed->absent, and a
+    consecutive run of unproductive searches trips the soft breaker. The engine
+    packing path is untouched.
+    """
+    if not isinstance(result, dict) or not (query or "").strip():
+        return result
+    from atelier.core.capabilities.code_context.search_verdict import (
+        BREAKER_NOTE,
+        ChannelHealth,
+        SearchHistory,
+        compute_verdict,
+    )
+
+    found = hit_count > 0
+    session_id = _get_claude_session_id() or "_global"
+    with _SEARCH_HISTORY_LOCK:
+        history = _search_history_sessions.get(session_id)
+        if history is None:
+            history = SearchHistory()
+            _search_history_sessions[session_id] = history
+            if len(_search_history_sessions) > _MAX_SEARCH_HISTORY_SESSIONS:
+                # Bound the map: a marathon process seeing many session ids must
+                # not leak SearchHistory objects. Evict oldest (skip current).
+                for stale in list(_search_history_sessions)[
+                    : len(_search_history_sessions) - _MAX_SEARCH_HISTORY_SESSIONS
+                ]:
+                    if stale != session_id:
+                        _search_history_sessions.pop(stale, None)
+        prior = history.prior_empties()
+    verdict = compute_verdict(
+        hit_count=hit_count,
+        query=query,
+        channels=channels if isinstance(channels, ChannelHealth) else ChannelHealth(),
+        prior_empties=prior,
+    )
+    with _SEARCH_HISTORY_LOCK:
+        history.record(query, found=found)
+        tripped = history.breaker_tripped()
+    result["verdict"] = verdict.verdict
+    if verdict.next:
+        result["next"] = verdict.next
+    if tripped and not found:
+        result["breaker_note"] = BREAKER_NOTE
+    return result
+
+
+def _append_search_verdict_footer(text: str | None, result: dict[str, Any]) -> str | None:
+    """Append verdict / fallback / breaker lines to a search|grep render.
+
+    Single chokepoint so the model sees the honest-empty signal regardless of
+    which underlying renderer produced the body text.
+    """
+    parts: list[str] = []
+    fallback = result.get("text_fallback")
+    if isinstance(fallback, list) and fallback:
+        locs = "; ".join(f"{item.get('path')}:{item.get('line')}" for item in fallback[:8] if isinstance(item, dict))
+        if locs:
+            parts.append(f"[search:tfallback] ranked search empty; literal match at {locs}")
+    verdict = result.get("verdict")
+    if isinstance(verdict, str) and verdict not in {"", "found"}:
+        nxt = str(result.get("next") or "").strip()
+        parts.append(f"[search:{verdict}]" + (f" {nxt}" if nxt else ""))
+    breaker = result.get("breaker_note")
+    if isinstance(breaker, str) and breaker:
+        parts.append(f"[search:budget] {breaker}")
+    if not parts:
+        return text
+    footer = "\n".join(parts)
+    return f"{text}\n{footer}" if text else footer
+
 
 def _edit_path_locks(resolved_paths: list[Path]) -> list[threading.Lock]:
     """Return locks for *resolved_paths*, ordered deterministically to avoid
@@ -4603,6 +4722,8 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
     elif name == "memory":
         with contextlib.suppress(Exception):
             text = _render_memory_md(payload)
+    if name in {"search", "grep"} and isinstance(result, dict):
+        text = _append_search_verdict_footer(text, result)
     return text or None
 
 
@@ -6980,9 +7101,32 @@ def _op_search(
             dict[str, Any],
             workspace_router.route("search", repo=repo, query=query, **search_kwargs),
         )
+        routed_hits = _count_search_hits(routed_payload)
         routed_payload = _code_search_target_view(routed_payload)
-        return _finish_code_result(_maybe_attach_code_rendered("search", routed_payload, render_compact=render_compact))
+        routed_result = _finish_code_result(
+            _maybe_attach_code_rendered("search", routed_payload, render_compact=render_compact)
+        )
+        if scope != "repo":
+            return routed_result
+        return _apply_search_verdict(
+            routed_result,
+            query=query,
+            hit_count=routed_hits,
+            channels=engine.search_channel_health(query, mode),
+        )
     search_payload = cast(dict[str, Any], engine.tool_search(query, **search_kwargs))
+    resolved_mode = str(search_payload.get("mode") or mode)
+    primary_hits = _count_search_hits(search_payload)
+    text_fallback: list[dict[str, Any]] = []
+    if scope == "repo" and primary_hits == 0 and _search_cascade_enabled():
+        # Phase 3 -- reactive-serial cascade: ranked search came up empty, so fall
+        # through to a literal text scan within the SAME call (catches comments,
+        # config, and strings the symbol index does not hold) instead of making
+        # the model spend a turn on grep.
+        with contextlib.suppress(Exception):
+            text_fallback = [
+                {"path": match.file_path, "line": match.line} for match in engine.search_text(query, limit=8)
+            ]
     if view == "target":
         search_payload = _code_search_target_view(search_payload)
     elif view in {"graph", "explain"}:
@@ -6995,7 +7139,20 @@ def _op_search(
             depth=depth,
             budget_tokens=budget_tokens,
         )
-    return _finish_code_result(_maybe_attach_code_rendered("search", search_payload, render_compact=render_compact))
+    search_result = _finish_code_result(
+        _maybe_attach_code_rendered("search", search_payload, render_compact=render_compact)
+    )
+    if scope != "repo":
+        # deleted/external surfaces stay strictly additive -- no verdict stamping.
+        return search_result
+    if text_fallback:
+        search_result["text_fallback"] = text_fallback
+    return _apply_search_verdict(
+        search_result,
+        query=query,
+        hit_count=primary_hits or len(text_fallback),
+        channels=engine.search_channel_health(query, resolved_mode),
+    )
 
 
 def _op_index(
@@ -7826,8 +7983,7 @@ def tool_grep(
         ],
         Field(
             description=(
-                "Default ranked_file_map = navigation pointers; "
-                "file_paths_with_content adds matched lines + context."
+                "Default ranked_file_map = navigation pointers; file_paths_with_content adds matched lines + context."
             )
         ),
     ] = "ranked_file_map",
@@ -7870,7 +8026,7 @@ def tool_grep(
     ] = False,
     summary: Annotated[
         bool | None,
-        Field(description=("Omit: auto-summarize large Python/JS/TS. " "`true`: signatures-only. `false`: raw lines.")),
+        Field(description=("Omit: auto-summarize large Python/JS/TS. `true`: signatures-only. `false`: raw lines.")),
     ] = None,
     context_budget_tokens: Annotated[
         int,
@@ -7914,6 +8070,12 @@ def tool_grep(
     ts = int(payload.pop("tokens_saved", 0) or 0)
     if ts > 0:
         _tool_call_tokens_saved.value = ts
+    if content_regex and not payload.get("isError"):
+        # Literal grep has no semantic/zoekt channel, so no "dark" verdict -- only
+        # found / missed / absent, plus the shared breaker.
+        payload = _apply_search_verdict(
+            payload, query=content_regex, hit_count=_count_grep_hits(payload), channels=None
+        )
     return payload
 
 
