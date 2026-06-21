@@ -217,7 +217,7 @@ def test_write_workspace_agents_md_installs_generic_managed_block(tmp_path: Path
     content = written.read_text(encoding="utf-8")
 
     assert written == workspace / "AGENTS.md"
-    assert content.count("<!-- ATELIER:CODE START -->") == 1
+    assert content.count("<!-- ATELIER START -->") == 1
     assert "# Atelier Agent Guide" in content
     assert "Atelier's MCP tools" in content
 

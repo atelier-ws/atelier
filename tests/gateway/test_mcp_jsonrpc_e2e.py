@@ -38,7 +38,6 @@ EXPECTED_TOOLS = {
     "grep",
     "sql",
     "search",
-    "node",
     "explore",
     "shell",
     "web_fetch",

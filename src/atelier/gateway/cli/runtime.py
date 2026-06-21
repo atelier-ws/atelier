@@ -1318,8 +1318,6 @@ _OWNED_TOOL_NAMES = (
     "read",
     "search",
     "grep",
-    "symbols",
-    "node",
     "explore",
     "edit",
     "shell",
@@ -1343,9 +1341,7 @@ async def _aiter_sync_stream(stream: Any) -> AsyncIterator[Any]:
 # The MCP host surface still exposes these (user-authorized overrides); hiding
 # them here is owned-loop policy only. Single source of truth for both
 # _get_litellm_tools (schema) and _dispatch_tool (args).
-_OWNED_HIDDEN_PARAMS: dict[str, tuple[str, ...]] = {
-    "edit": ("allow_test_contract_change", "contract_change_evidence"),
-}
+_OWNED_HIDDEN_PARAMS: dict[str, tuple[str, ...]] = {}
 
 
 def _get_litellm_tools() -> list[dict[str, Any]]:

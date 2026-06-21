@@ -51,12 +51,16 @@ def _grep_repo(tmp_path: Path) -> Path:
     return target
 
 
-def test_schema_publishes_format_selector(store_root: Path) -> None:
+def test_format_selector_unpublished_but_handler_honors_it(store_root: Path) -> None:
     _ = store_root
-    for tool in ("read", "search", "grep", "symbols"):
+    # `format` is a power/CLI/benchmark knob: `auto` (default) already picks the
+    # optimal encoding, so it is NOT published in the LLM-facing schema -- that
+    # saves resident schema tokens every turn on the busiest tools. The handler
+    # still accepts it (it stays in the signature; the dispatcher reads
+    # args["format"]), as the byte-compat and json tests below verify.
+    for tool in ("read", "search", "grep"):
         props = mcp_server.TOOLS[tool]["inputSchema"]["properties"]
-        assert "format" in props, tool
-        assert props["format"]["enum"] == ["auto", "compact", "json"], tool
+        assert "format" not in props, tool
 
 
 def test_default_is_byte_compatible_with_explicit_auto(store_root: Path, tmp_path: Path) -> None:

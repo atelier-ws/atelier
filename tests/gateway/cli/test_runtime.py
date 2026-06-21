@@ -160,11 +160,13 @@ def test_agent_loop_parallelizes_independent_read_tools(tmp_path, monkeypatch) -
     assert len([event for event in events if isinstance(event, ToolFinished)]) == 2
 
 
-def test_owned_edit_cannot_self_authorize_existing_test_contract_change(tmp_path, monkeypatch) -> None:
+def test_owned_edit_blocks_test_weakening(tmp_path, monkeypatch) -> None:
+    # The owned runtime no longer publishes a self-authorize bypass; an edit that
+    # WEAKENS a test (removes an assertion) is rolled back by the detector.
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     target = tmp_path / "tests" / "test_contract.py"
     target.parent.mkdir()
-    target.write_text("assert value == 'old'\n", encoding="utf-8")
+    target.write_text("def test_x():\n    assert value == 'old'\n    assert other == 1\n", encoding="utf-8")
 
     edit_tool = next(tool for tool in _get_litellm_tools() if tool["function"]["name"] == "edit")
     properties = edit_tool["function"]["parameters"]["properties"]
@@ -177,18 +179,16 @@ def test_owned_edit_cannot_self_authorize_existing_test_contract_change(tmp_path
             "edits": [
                 {
                     "file_path": "tests/test_contract.py",
-                    "old_string": "assert value == 'old'",
-                    "new_string": "assert value == 'new'",
+                    "old_string": "    assert value == 'old'\n    assert other == 1\n",
+                    "new_string": "    assert other == 1\n",
                 }
             ],
-            "allow_test_contract_change": True,
-            "contract_change_evidence": "The model claims the new behavior is more accurate.",
             "post_edit_hooks": False,
         },
     )
 
     assert result["rolled_back"] is True
-    assert target.read_text(encoding="utf-8") == "assert value == 'old'\n"
+    assert "assert value == 'old'" in target.read_text(encoding="utf-8")
 
 
 def test_dispatch_tool_shell_passes_args_through(monkeypatch) -> None:

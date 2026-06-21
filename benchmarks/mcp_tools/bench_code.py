@@ -4,7 +4,7 @@ Run:
     uv run pytest benchmarks/mcp_tools/bench_code.py -v -s
 
 Exercises Atelier's code-intel surface against the real Atelier codebase:
-the public `node`, `explore`, and `pattern` tools, plus
+the public `explore` and `pattern` tools, plus
 `explore(relation=callers|callees|usages)` for the call graph + references
 (the former standalone tools, now folded into `explore`).
 The first run builds the SCIP index (~10-30 s); subsequent runs are cached.
@@ -49,12 +49,47 @@ def code_tool_fn() -> Any:
         payload = dict(args)
         tool_name = _tool_name_for_case_args(payload)
         payload.pop("_tool", None)
-        if tool_name == "symbols":
-            return mcp_server.tool_symbols(payload)
-        if tool_name == "node":
-            return mcp_server.tool_node(
-                {key: value for key, value in payload.items() if key in {"symbol", "path", "line"}}
+        if tool_name == "search":
+            # SCIP symbol/search via the surviving _op_search engine (the
+            # `symbols` tool face was removed; `search` mode='symbol' and this
+            # benchmark both route through _op_search, so the measured tokens
+            # are identical to the former `symbols` tool).
+            return mcp_server._op_search(
+                **{
+                    key: value
+                    for key, value in payload.items()
+                    if key
+                    in {
+                        "query",
+                        "mode",
+                        "intent",
+                        "view",
+                        "kind",
+                        "language",
+                        "snippet",
+                        "snippet_lines",
+                        "file_glob",
+                        "scope",
+                        "since",
+                        "touched_by",
+                        "provenance",
+                        "seed_files",
+                        "max_symbols",
+                        "depth",
+                        "limit",
+                        "budget_tokens",
+                        "repo",
+                        "repo_root",
+                        "render_compact",
+                    }
+                }
             )
+        if tool_name == "node":
+            # `node` folded into explore(relation="self") -- the agent's only
+            # public path for a single definition now. relation-mode delegates to
+            # the same _op_node engine wrapper, so the payload (and token count)
+            # is identical to the former standalone tool.
+            return mcp_server.tool_explore({"relation": "self", "symbol": _symbol_arg(payload)})
         # callers/callees/usages are folded into `explore(relation=...)` -- the
         # agent's only public path now. relation-mode delegates to the same
         # _op_* engine wrapper, so the payload (and token count) is identical to
@@ -142,7 +177,7 @@ def _tool_name_for_case_args(args: dict[str, Any]) -> str:
     op = str(args.get("op") or "")
     if op in {"callers", "callees", "explore", "usages", "pattern", "node"}:
         return op
-    return "symbols"
+    return "search"
 
 
 def _tool_name_for_case(case: BenchCase) -> str:
