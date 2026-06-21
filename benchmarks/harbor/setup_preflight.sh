@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Zero-LLM setup preflight (bundle variant). Replicates the agent install using
-# the prebuilt atelier bundle and verifies claude + atelier as the bench user.
-# NEVER invokes the agent/LLM -> zero AI credits.
+# the prebuilt atelier bundle and verifies claude + atelier AS ROOT -- the agent
+# now runs as root with IS_SANDBOX=1 (matches the verifier's user). NEVER invokes
+# the agent/LLM -> zero AI credits.
 #   docker run --rm -v <repo>:/atelier:ro -v <bundle>:/atelier-bundle.tar.gz:ro <IMAGE> \
 #       bash /atelier/benchmarks/harbor/setup_preflight.sh <LABEL>
 set +e
@@ -21,9 +22,15 @@ ln -sf /opt/atelier-venv/bin/atelier /usr/local/bin/atelier
 i=0; while :; do npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 && break; i=$((i+1)); [ $i -ge 3 ] && fail npm_claude; sleep 3; done
 command -v claude >/dev/null || fail claude_bin
 
-useradd -m bench 2>/dev/null || true
-runuser -u bench -- /opt/atelier-venv/bin/python -c 'import atelier' || fail bench_import
-runuser -u bench -- bash -c 'cd /home/bench && ATELIER_ROOT=/home/bench/.atelier /opt/atelier-venv/bin/atelier init' >/dev/null 2>&1 || fail bench_init
+export ATELIER_ROOT=/root/.atelier
+cd /root && /opt/atelier-venv/bin/atelier init >/dev/null 2>&1 || fail atelier_init
+
+# claude must accept --permission-mode bypassPermissions AS ROOT when IS_SANDBOX
+# is set (cli.js guard: bypassPermissions && getuid()===0 && !IS_SANDBOX -> exit
+# 1). Zero-credit probe: an empty token makes the run fail auth, but it must NOT
+# print the root-guard message -- if it does, root mode is broken on this image.
+ROOTCHK=$(IS_SANDBOX=1 CLAUDE_CODE_OAUTH_TOKEN= timeout 25 claude -p noop --permission-mode bypassPermissions 2>&1 | head -c 500)
+echo "$ROOTCHK" | grep -qi 'root/sudo privileges' && fail root_guard_blocks_with_IS_SANDBOX
 
 # Prewarm path (the run-time `atelier code index` step). Exercises tree-sitter
 # native parsing on this image's glibc. The FTS index grep reads must build for
@@ -38,33 +45,30 @@ IDXG=/tmp/idxgit
 mkdir -p "$IDXG"
 printf 'def alpha():\n    return 1\n' > "$IDXG/a.py"
 printf 'from a import alpha\ndef beta():\n    return alpha()\n' > "$IDXG/b.py"
-chown -R bench:bench "$IDXG"
-runuser -u bench -- bash -c "cd $IDXG && git init -q && git config user.email b@b && git config user.name b && git add -A && git commit -qm init" >/dev/null 2>&1
-runuser -u bench -- bash -c "cd $IDXG && export ATELIER_ROOT=/home/bench/.atelier; /opt/atelier-venv/bin/atelier code index --reindex --json" >/tmp/idxg.json 2>/tmp/idxg.err || fail "code_index_git:$(tail -c 200 /tmp/idxg.err)"
+(cd "$IDXG" && git init -q && git config user.email b@b && git config user.name b && git add -A && git commit -qm init) >/dev/null 2>&1
+(cd "$IDXG" && /opt/atelier-venv/bin/atelier code index --reindex --json) >/tmp/idxg.json 2>/tmp/idxg.err || fail "code_index_git:$(tail -c 200 /tmp/idxg.err)"
 [ "$(idx_files /tmp/idxg.json)" -ge 1 ] 2>/dev/null || fail "index_git_zero:$(head -c 200 /tmp/idxg.json)"
 
 # (b) NON-git dir with files -> still indexes (FTS does not need git), exit 0
 IDXN=/tmp/idxnogit
 mkdir -p "$IDXN"
 printf 'def gamma():\n    return 2\n' > "$IDXN/c.py"
-chown -R bench:bench "$IDXN"
-runuser -u bench -- bash -c "cd $IDXN && export ATELIER_ROOT=/home/bench/.atelier; /opt/atelier-venv/bin/atelier code index --reindex --json" >/tmp/idxn.json 2>/tmp/idxn.err || fail "code_index_nogit:$(tail -c 200 /tmp/idxn.err)"
+(cd "$IDXN" && /opt/atelier-venv/bin/atelier code index --reindex --json) >/tmp/idxn.json 2>/tmp/idxn.err || fail "code_index_nogit:$(tail -c 200 /tmp/idxn.err)"
 [ "$(idx_files /tmp/idxn.json)" -ge 1 ] 2>/dev/null || fail "index_nogit_zero:$(head -c 200 /tmp/idxn.json)"
 
 # (c) empty dir -> must not abort (exit 0); no real crash (segfault) allowed
 IDXE=/tmp/idxempty
-mkdir -p "$IDXE"; chown -R bench:bench "$IDXE"
-runuser -u bench -- bash -c "cd $IDXE && export ATELIER_ROOT=/home/bench/.atelier; /opt/atelier-venv/bin/atelier code index --reindex --no-stats" >/dev/null 2>/tmp/idxe.err
+mkdir -p "$IDXE"
+(cd "$IDXE" && /opt/atelier-venv/bin/atelier code index --reindex --no-stats) >/dev/null 2>/tmp/idxe.err
 EMPTYRC=$?
 [ "$EMPTYRC" -eq 0 ] || fail "code_index_empty_rc$EMPTYRC:$(tail -c 200 /tmp/idxe.err)"
 grep -qiE 'Segmentation|core dumped' /tmp/idxe.err && fail code_index_empty_segfault
 
 # Run-command log path. harbor creates /logs/agent (chmod 0o777) and collects it;
-# the agent writes its run log + prewarm log THERE, not in /logs root (which is
-# not agent-writable on many images). Simulate harbor's setup and confirm bench
-# can write both files, so a wrong/unwritable log path can't slip through again.
+# the agent writes its run log + prewarm log THERE, not in /logs root. The agent
+# runs as root now, so confirm both files are writable under the harbor layout.
 mkdir -p /logs/agent && chmod 777 /logs/agent
-runuser -u bench -- bash -c 'echo "{}" >/logs/agent/claude-run.json && echo ok >/logs/agent/atelier-index.log' \
-  || fail logs_agent_unwritable_by_bench
+bash -c 'echo "{}" >/logs/agent/claude-run.json && echo ok >/logs/agent/atelier-index.log' \
+  || fail logs_agent_unwritable
 
-echo "RESULT:$LABEL:PASS node=$(node -v) idx_git=$(idx_files /tmp/idxg.json) idx_nogit=$(idx_files /tmp/idxn.json) emptyrc=$EMPTYRC logs_agent=ok"
+echo "RESULT:$LABEL:PASS node=$(node -v) rootguard=ok idx_git=$(idx_files /tmp/idxg.json) idx_nogit=$(idx_files /tmp/idxn.json) emptyrc=$EMPTYRC logs_agent=ok"
