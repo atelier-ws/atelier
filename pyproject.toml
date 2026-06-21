@@ -13,11 +13,11 @@ version = "0.4.25"
 description = "Agent runtime for coding agents — reusable procedures, code intelligence, cost tracking, and model routing."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
-license = { text = "Apache-2.0" }
+license = { text = "FSL-1.1-ALv2" }
 authors = [{ name = "Atelier" }]
 
 classifiers = [
-    "License :: OSI Approved :: Apache Software License",
+    "License :: Other/Proprietary License",
 ]
 
 dependencies = [
