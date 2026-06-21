@@ -174,6 +174,11 @@ def _start_proxy(port: int, flow_path: Path) -> subprocess.Popen[bytes]:
             "mitmdump",
             "-w",
             str(flow_path),
+            # Hermetic egress allowlist: block any host that isn't a model-
+            # inference endpoint so an agent/subagent can't fetch the gold
+            # patch/test from GitHub/PyPI (SWE-bench tasks are public PRs).
+            "-s",
+            str(REPO_ROOT / "benchmarks" / "codebench" / "egress_guard.py"),
             "--listen-host",
             "0.0.0.0",
             "--listen-port",
@@ -278,6 +283,12 @@ def _docker_run_cmd(
         # (folded into `explore`), so they need not be repeated here. Keeps
         # read/grep/search/edit/shell/explore/node.
         env["ATELIER_HIDE_TOOLS"] = "sql,memory,codemod,web_fetch"
+        # Edit-verify gate ON by default (tree-sitter parse + scoped mypy): catches
+        # mechanical edit errors in-tool instead of via a shell round-trip, which
+        # collapses the edit->test->error->re-edit cycle on iteration-bound tasks
+        # (measured -33% to -47% cost at equal correctness). Opt out for control
+        # runs with CODEBENCH_EDIT_VERIFY=0.
+        env["ATELIER_EDIT_VERIFY"] = os.environ.get("CODEBENCH_EDIT_VERIFY", "1")
     env.update(agent_env)
     for key, value in env.items():
         cmd += ["-e", f"{key}={value}"]

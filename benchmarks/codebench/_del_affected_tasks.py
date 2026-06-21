@@ -21,7 +21,10 @@ AFFECTED = {
 }
 
 P = pathlib.Path("reports/benchmark/codebench/swe12_20260619T055432Z/results.jsonl")
-shutil.copy(P, P.with_suffix(".jsonl.bak_before_outlier_rerun"))
+# Note: .bak_before_outlier_rerun already holds the GOOD pre-rerun snapshot; do not clobber it.
+bak = P.with_suffix(".jsonl.bak_sessionlimit_partial")
+if not bak.exists():
+    shutil.copy(P, bak)
 
 kept: list[str] = []
 dropped: Counter = Counter()
