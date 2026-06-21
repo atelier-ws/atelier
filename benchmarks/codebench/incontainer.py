@@ -289,6 +289,16 @@ def _docker_run_cmd(
         # (measured -33% to -47% cost at equal correctness). Opt out for control
         # runs with CODEBENCH_EDIT_VERIFY=0.
         env["ATELIER_EDIT_VERIFY"] = os.environ.get("CODEBENCH_EDIT_VERIFY", "1")
+        # Semantic code search ON via the offline local (feature-hashing) embedder.
+        # Default is NullEmbedder => `search` returns empty, which was the retrieval
+        # dead-end that pushed stuck agents into shell/git-archaeology/subagent
+        # spirals on hard tasks (search-empty was 100% on the runaway tasks). The
+        # hashing embedder is fully offline (no network, no model download) and
+        # microsecond-cheap; symbols are embedded on-demand at query time (no ANN
+        # lib / no prewarm needed -- the ANN path re-scores with exact cosine, so
+        # brute-force cosine is identical). Override with CODEBENCH_CODE_EMBEDDER
+        # (e.g. ollama) for a stronger neural backend.
+        env["ATELIER_CODE_EMBEDDER"] = os.environ.get("CODEBENCH_CODE_EMBEDDER", "local")
     env.update(agent_env)
     for key, value in env.items():
         cmd += ["-e", f"{key}={value}"]

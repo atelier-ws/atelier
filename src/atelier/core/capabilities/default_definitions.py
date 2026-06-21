@@ -412,8 +412,16 @@ def _tool_policies() -> dict[str, ToolPolicy]:
             denied_actions=("edit", "write", "delete"),
         ),
         "solve": ToolPolicy(policy_id="solve", allowed_tools=("*",), denied_actions=("agent-spawn",)),
-        "auto": ToolPolicy(policy_id="auto", allowed_tools=("*",), denied_actions=("plan-gate", "ask-user")),
-        "bare": ToolPolicy(policy_id="bare", allowed_tools=("*",), denied_actions=("workflow", "schedule")),
+        "auto": ToolPolicy(
+            policy_id="auto",
+            allowed_tools=("*",),
+            denied_actions=("plan-gate", "ask-user"),
+        ),
+        "bare": ToolPolicy(
+            policy_id="bare",
+            allowed_tools=("*",),
+            denied_actions=("workflow", "schedule"),
+        ),
     }
 
 
@@ -821,7 +829,9 @@ def _role_read_hint(role_id: str) -> str:
 # ``mcp__atelier__web_fetch`` (telemetry, redaction, savings) instead of the
 # always-present native fetch. Native ``WebSearch`` stays enabled because
 # Atelier has no web-search equivalent -- denying it would leave research with
-# no way to discover sources.
+# no way to discover sources. (Hermetic benchmarks deny it per-run via the
+# claude CLI ``--disallowedTools`` flag, not here -- that's a contamination
+# concern, not a product-persona behavior.)
 _NATIVE_MCP_OVERRIDDEN: list[str] = [
     "Read",
     "Edit",
@@ -871,7 +881,9 @@ def _claude_disallowed_tools(policy: ToolPolicy) -> list[str]:
     if _denies_mutation(policy):
         denied.append("mcp__atelier__edit")
     if _denies_plan_gate(policy):
-        denied.append("ExitPlanMode")
+        # Deny both: ExitPlanMode alone still lets the agent EnterPlanMode and
+        # plan instead of execute (EnterPlanMode is a real tool as of claude 2.1).
+        denied.extend(("EnterPlanMode", "ExitPlanMode"))
     if _denies_ask(policy):
         denied.append("AskUserQuestion")
     if _denies_workflow(policy):

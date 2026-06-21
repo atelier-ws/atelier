@@ -25,12 +25,28 @@ command -v claude >/dev/null || fail claude_bin
 export ATELIER_ROOT=/root/.atelier
 cd /root && /opt/atelier-venv/bin/atelier init >/dev/null 2>&1 || fail atelier_init
 
-# claude must accept --permission-mode bypassPermissions AS ROOT when IS_SANDBOX
-# is set (cli.js guard: bypassPermissions && getuid()===0 && !IS_SANDBOX -> exit
-# 1). Zero-credit probe: an empty token makes the run fail auth, but it must NOT
-# print the root-guard message -- if it does, root mode is broken on this image.
-ROOTCHK=$(IS_SANDBOX=1 CLAUDE_CODE_OAUTH_TOKEN= timeout 25 claude -p noop --permission-mode bypassPermissions 2>&1 | head -c 500)
-echo "$ROOTCHK" | grep -qi 'root/sudo privileges' && fail root_guard_blocks_with_IS_SANDBOX
+# Static plugin/agent check: the bench loads --plugin-dir + --agent atelier:auto.
+test -f /atelier/integrations/claude/plugin/agents/auto.md || fail auto_agent_missing
+grep -q 'name: auto' /atelier/integrations/claude/plugin/agents/auto.md || fail auto_agent_name
+
+# Zero-credit command probe: parse the REAL claude flags (model + effort high +
+# stream-json/verbose + bypassPermissions + disallowedTools) AS ROOT with an
+# EMPTY token. claude emits a stream-json `init` line then a SYNTHETIC reply
+# (apiKeySource=none -> no API call -> no credit). Assert: (a) it started (init
+# line present), (b) the root guard did NOT fire, (c) the disallowed tools are
+# actually absent from the advertised tool set. The plugin+MCP path itself is
+# exercised by the real run (rep1 already proved it loads in-container).
+mkdir -p /tmp/cfgprobe && echo '{}' > /tmp/cfgprobe/.claude.json
+PROBE=$(IS_SANDBOX=1 CLAUDE_CONFIG_DIR=/tmp/cfgprobe CLAUDE_CODE_OAUTH_TOKEN= timeout 40 claude -p noop \
+  --model "${ATELIER_BENCH_MODEL:-claude-opus-4-8}" --effort high \
+  --output-format stream-json --verbose \
+  --permission-mode bypassPermissions \
+  --disallowedTools AskUserQuestion ExitPlanMode WebFetch WebSearch mcp__atelier__web_fetch Workflow ScheduleWakeup \
+  < /dev/null 2>&1 | head -c 4000)
+echo "$PROBE" | grep -qi 'root/sudo privileges' && fail cmdprobe_root_guard
+echo "$PROBE" | grep -q '"subtype":"init"' || fail "cmdprobe_no_init:$(printf '%s' "$PROBE" | tr '\n' ' ' | head -c 160)"
+echo "$PROBE" | grep -qE '"(AskUserQuestion|WebFetch|WebSearch|Workflow|ScheduleWakeup)"' && fail cmdprobe_disallow_not_applied
+CMDPROBE=ok
 
 # Prewarm path (the run-time `atelier code index` step). Exercises tree-sitter
 # native parsing on this image's glibc. The FTS index grep reads must build for
@@ -71,4 +87,4 @@ mkdir -p /logs/agent && chmod 777 /logs/agent
 bash -c 'echo "{}" >/logs/agent/claude-run.json && echo ok >/logs/agent/atelier-index.log' \
   || fail logs_agent_unwritable
 
-echo "RESULT:$LABEL:PASS node=$(node -v) rootguard=ok idx_git=$(idx_files /tmp/idxg.json) idx_nogit=$(idx_files /tmp/idxn.json) emptyrc=$EMPTYRC logs_agent=ok"
+echo "RESULT:$LABEL:PASS node=$(node -v) cmdprobe=$CMDPROBE idx_git=$(idx_files /tmp/idxg.json) idx_nogit=$(idx_files /tmp/idxn.json) emptyrc=$EMPTYRC logs_agent=ok"
