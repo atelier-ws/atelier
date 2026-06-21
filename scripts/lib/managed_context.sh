@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-ATELIER_CODE_BLOCK_START="<!-- ATELIER:CODE START -->"
-ATELIER_CODE_BLOCK_END="<!-- ATELIER:CODE END -->"
+ATELIER_CODE_BLOCK_START="<!-- ATELIER START -->"
+ATELIER_CODE_BLOCK_END="<!-- ATELIER END -->"
 
 atelier_resolve_install_profile() {
     local host_tag="${1:-atelier}"

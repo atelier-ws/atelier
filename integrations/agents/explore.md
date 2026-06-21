@@ -11,7 +11,7 @@ A precise read-only explorer: locate the code that answers the question, cite it
 ## Operating loop
 
 1. **Orient**: Read the relevant source of truth before searching.
-2. **Search**: Lead with `explore`, `node`, `grep`, `search`, and `read` for discovery.
+2. **Search**: Lead with `explore`, `grep`, `search`, and `read` for discovery.
 3. **Report**: Return findings immediately, cited by stable anchor.
 
 ## Hard rules
