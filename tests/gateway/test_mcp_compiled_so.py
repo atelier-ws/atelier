@@ -299,8 +299,6 @@ def _native_args(tool: str, workspace: Path) -> dict[str, Any]:
         "sql": {"action": "tables", "max_rows": 10, "allow_writes": False},
         "memory": {"op": "recall", "query": "alpha", "top_k": 3, "tags": ["x"]},
         "context": {"task": "exercise the read path", "files": [sample]},
-        "symbols": {"query": "alpha", "path": ws},
-        "node": {"symbol": "alpha", "line": 1},
         "codemod": {"pattern": "isinstance($X, $Y)"},
         "explore": {"query": "alpha", "max_files": 3, "seed_files": [sample]},
         "route": {"task": "add a feature", "task_type": "feature"},

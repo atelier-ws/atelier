@@ -31,8 +31,6 @@ def render_code_payload(op: str, payload: Mapping[str, Any]) -> str | None:
         return _render_pattern(payload)
     if op == "blame":
         return _render_blame(payload)
-    if op == "rename":
-        return _render_rename(payload)
     if op == "outline":
         return _render_outline(payload)
     if op == "status":
@@ -267,21 +265,6 @@ def _render_blame(payload: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _render_rename(payload: Mapping[str, Any]) -> str | None:
-    applied = payload.get("applied")
-    failed = payload.get("failed")
-    # Keep the structured JSON whenever the rename did not cleanly apply -- the
-    # agent needs the full failure / rollback detail to recover.
-    if payload.get("rolled_back") or (isinstance(failed, list) and failed) or not isinstance(applied, list):
-        return None
-    new_name = str(payload.get("new_name") or "?")
-    backend = str(payload.get("backend") or "?")
-    lines = [f"- rename → {new_name} (backend={backend})", f"- applied: {len(applied)} edit(s)"]
-    for entry in applied:
-        lines.append(f"  - {entry}")
-    return "\n".join(lines)
-
-
 def _render_outline(payload: Mapping[str, Any]) -> str | None:
     files = payload.get("files")
     if not isinstance(files, Mapping):
@@ -505,7 +488,7 @@ def _render_explore(payload: Mapping[str, Any]) -> str:
             if not content:
                 continue
             if section.get("skeleton"):
-                lines.append("… · skeleton (signatures only; node/read for full body)")
+                lines.append("… · skeleton (signatures only; read for full body)")
             lines.append(f"```{language}" if language else "```")
             lines.append(content)
             lines.append("```")

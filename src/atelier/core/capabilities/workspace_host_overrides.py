@@ -20,8 +20,8 @@ from atelier.core.capabilities.model_settings import (
 from atelier.core.environment import skill_visible
 
 ATELIER_REPO_ROOT = Path(__file__).resolve().parents[4]
-ATELIER_CODE_BLOCK_START = "<!-- ATELIER:CODE START -->"
-ATELIER_CODE_BLOCK_END = "<!-- ATELIER:CODE END -->"
+ATELIER_CODE_BLOCK_START = "<!-- ATELIER START -->"
+ATELIER_CODE_BLOCK_END = "<!-- ATELIER END -->"
 CODEX_AGENTS_BLOCK_START = "# ATELIER:CODEX AGENTS START"
 CODEX_AGENTS_BLOCK_END = "# ATELIER:CODEX AGENTS END"
 

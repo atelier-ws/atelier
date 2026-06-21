@@ -40,10 +40,9 @@ EXPECTED_TOOLS = {
     "search",
     "shell",
     "web_fetch",
-    # Dedicated code-intel tools (split from `code` op for LLM discoverability).
-    # callers/callees/usages are hidden (HIDDEN_LLM_TOOLS): agents reach call
-    # edges + references via `explore`, single definitions via `node`.
-    "node",
+    # Dedicated code-intel tool (split from `code` op for LLM discoverability).
+    # callers/callees/usages AND single definitions all fold into `explore`
+    # (concept mode + relation=callers|callees|usages|self).
     "explore",
     "codemod",
 }
@@ -401,7 +400,7 @@ def test_tools_list_search_schema_prefers_path_and_documents_modes() -> None:
     assert "path" in properties
     assert "file_path" not in properties
     assert "content_regex" not in properties
-    assert properties["path"]["description"].startswith("Workspace-relative file or directory to search.")
+    assert properties["path"]["description"].startswith("Workspace-relative file or directory")
     assert "#start-end" in properties["path"]["description"]
     assert "repo map" in properties["mode"]["description"].lower()
 
@@ -470,7 +469,7 @@ def test_tools_list_memory_schema_describes_ops_and_required_fields() -> None:
     assert "fact storage/voting and recall" in memory_tool["description"]
     assert "store_fact" in properties["op"]["description"]
     assert "vote_fact" in properties["op"]["description"]
-    assert "recall requires query" in properties["op"]["description"]
+    assert "need query" in properties["op"]["description"]
     assert "query used by recall" in properties["query"]["description"].lower()
     assert "subject" in properties
     assert "fact" in properties
@@ -1094,27 +1093,6 @@ def test_smart_read_batch_honors_top_level_max_lines(store_root: Path, tmp_path:
     assert plain["files"][0].get("mode") != "summary"
 
 
-def test_node_accepts_path_line_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`node` parses a "path#line" suffix into the positional line, like read/edit."""
-    captured: dict[str, Any] = {}
-
-    def fake_op_node(**kwargs: Any) -> dict[str, Any]:
-        captured.clear()
-        captured.update(kwargs)
-        return {}
-
-    monkeypatch.setattr(mcp_server, "_op_node", fake_op_node)
-
-    mcp_server.tool_node({"path": "store.py#100"})
-    assert captured["path"] == "store.py"
-    assert captured["line"] == 100
-
-    # An explicit line wins; the suffix is still stripped off the path.
-    mcp_server.tool_node({"path": "store.py#100", "line": 42})
-    assert captured["path"] == "store.py"
-    assert captured["line"] == 42
-
-
 def test_scope_search_matches_to_range_filters_snippets() -> None:
     payload: dict[str, Any] = {
         "matches": [
@@ -1237,14 +1215,16 @@ def test_smart_edit_cross_file_credit_matches_distinct_files(
     assert payload["calls_saved"] == len(files) - 1
 
 
-def test_smart_edit_flags_existing_test_contract_changes(
+def test_smart_edit_blocks_test_assertion_removal(
     store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Deleting an assertion from an existing test is the reward-hack signal:
+    # roll back and surface a counterexample (the detector trips only on weakening).
     _ = store_root
     monkeypatch.chdir(tmp_path)
-    target = Path("tests/test_parser.rs")
+    target = Path("tests/test_parser.py")
     target.parent.mkdir()
-    target.write_text('assert_eq!(message, "old");\n', encoding="utf-8")
+    target.write_text("def test_x():\n    assert compute() == 5\n    assert other() == 9\n", encoding="utf-8")
 
     payload = _result(
         _call(
@@ -1253,8 +1233,8 @@ def test_smart_edit_flags_existing_test_contract_changes(
                 "edits": [
                     {
                         "file_path": str(target),
-                        "old_string": 'assert_eq!(message, "old");',
-                        "new_string": 'assert_eq!(message, "new");',
+                        "old_string": "    assert compute() == 5\n    assert other() == 9\n",
+                        "new_string": "    assert other() == 9\n",
                     }
                 ],
                 "post_edit_hooks": False,
@@ -1264,20 +1244,19 @@ def test_smart_edit_flags_existing_test_contract_changes(
 
     assert payload["rolled_back"] is True
     assert payload["writes"] == 0
-    assert payload["contract_review"]["required"] is True
-    assert payload["contract_review"]["paths"] == ["tests/test_parser.rs"]
-    assert 'assert_eq!(message, "old");' in target.read_text(encoding="utf-8")
+    assert payload["test_weakening"][0]["path"] == "tests/test_parser.py"
+    assert "assertion" in payload["test_weakening"][0]["reason"]
+    assert "assert compute() == 5" in target.read_text(encoding="utf-8")
 
 
-def test_smart_edit_allows_reviewed_existing_test_contract_change(
+def test_smart_edit_blocks_test_skip_addition(
     store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _ = store_root
     monkeypatch.chdir(tmp_path)
-    target = Path("tests/test_parser.rs")
+    target = Path("tests/test_parser.py")
     target.parent.mkdir()
-    target.write_text('assert_eq!(message, "old");\n', encoding="utf-8")
-    evidence = "The user explicitly requested changing the parser error contract."
+    target.write_text("def test_x():\n    assert compute() == 5\n", encoding="utf-8")
 
     payload = _result(
         _call(
@@ -1286,21 +1265,122 @@ def test_smart_edit_allows_reviewed_existing_test_contract_change(
                 "edits": [
                     {
                         "file_path": str(target),
-                        "old_string": 'assert_eq!(message, "old");',
-                        "new_string": 'assert_eq!(message, "new");',
+                        "old_string": "def test_x():\n",
+                        "new_string": "@pytest.mark.skip\ndef test_x():\n",
                     }
                 ],
                 "post_edit_hooks": False,
-                "allow_test_contract_change": True,
-                "contract_change_evidence": evidence,
             },
         )
     )
 
-    assert payload["rolled_back"] is False
-    assert payload["applied"] == ["tests/test_parser.rs:1"]
-    assert payload["contract_review"]["evidence"] == evidence
-    assert 'assert_eq!(message, "new");' in target.read_text(encoding="utf-8")
+    assert payload["rolled_back"] is True
+    assert "skip/xfail" in payload["test_weakening"][0]["reason"]
+    assert "@pytest.mark.skip" not in target.read_text(encoding="utf-8")
+
+
+def test_smart_edit_allows_additive_test_edit(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Adding a new assertion to an existing test passes freely -- no friction.
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    target = Path("tests/test_parser.py")
+    target.parent.mkdir()
+    target.write_text("def test_x():\n    assert compute() == 5\n", encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "file_path": str(target),
+                        "old_string": "    assert compute() == 5\n",
+                        "new_string": "    assert compute() == 5\n    assert compute() != 0\n",
+                    }
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert payload.get("rolled_back") is not True
+    assert "test_weakening" not in payload
+    assert "assert compute() != 0" in target.read_text(encoding="utf-8")
+
+
+def test_smart_edit_allows_assertion_value_change(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # In-place assertion modification (changing an expected value) nets to zero
+    # assertions and passes -- the detector guards removal/skip, not value edits.
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    target = Path("tests/test_parser.py")
+    target.parent.mkdir()
+    target.write_text("def test_x():\n    assert compute() == 5\n", encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "file_path": str(target),
+                        "old_string": "assert compute() == 5",
+                        "new_string": "assert compute() == 6",
+                    }
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert payload.get("rolled_back") is not True
+    assert "test_weakening" not in payload
+    assert "assert compute() == 6" in target.read_text(encoding="utf-8")
+
+
+def test_smart_edit_allows_test_weakening_paired_with_production_change(
+    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Pair signal: a test weakening that rides with a production-code change reads
+    # as a genuine refactor (contract moved with the code), not a reward-hack.
+    _ = store_root
+    monkeypatch.chdir(tmp_path)
+    test_file = Path("tests/test_parser.py")
+    test_file.parent.mkdir()
+    test_file.write_text("def test_x():\n    assert compute() == 5\n    assert other() == 9\n", encoding="utf-8")
+    src_file = Path("src/parser.py")
+    src_file.parent.mkdir()
+    src_file.write_text("def compute():\n    return 5\n", encoding="utf-8")
+
+    payload = _result(
+        _call(
+            "edit",
+            {
+                "edits": [
+                    {
+                        "file_path": str(test_file),
+                        "old_string": "    assert compute() == 5\n    assert other() == 9\n",
+                        "new_string": "    assert other() == 9\n",
+                    },
+                    {
+                        "file_path": str(src_file),
+                        "old_string": "    return 5\n",
+                        "new_string": "    return 6\n",
+                    },
+                ],
+                "post_edit_hooks": False,
+            },
+        )
+    )
+
+    assert payload.get("rolled_back") is not True
+    assert "test_weakening" not in payload
+    assert "assert compute() == 5" not in test_file.read_text(encoding="utf-8")
+    assert "return 6" in src_file.read_text(encoding="utf-8")
 
 
 def test_smart_edit_does_not_flag_new_regression_test(
@@ -1582,10 +1662,10 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     assert _m is not None
     assert int(_m.group(1)) >= 2
 
-    searched = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
+    searched = _op_result("symbols", mcp_server._op_search, repo_root=str(tmp_path), query="alpha")
     assert searched and "no matches" not in searched
     assert "snippet:" not in searched
-    cached_search = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
+    cached_search = _op_result("symbols", mcp_server._op_search, repo_root=str(tmp_path), query="alpha")
     assert cached_search == searched
 
     symbol = _op_result(
@@ -1617,13 +1697,13 @@ def test_code_context_mcp_routes_scip_and_invalidates_cache(store_root: Path, tm
     (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
     artifact_path = _write_gateway_scip_fixture(tmp_path, symbol_id="scip-alpha-v1")
 
-    first = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
-    cached = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
+    first = _op_result("symbols", mcp_server._op_search, repo_root=str(tmp_path), query="alpha")
+    cached = _op_result("symbols", mcp_server._op_search, repo_root=str(tmp_path), query="alpha")
     artifact_path.write_text(
         artifact_path.read_text(encoding="utf-8").replace("scip-alpha-v1", "scip-alpha-v2"),
         encoding="utf-8",
     )
-    fresh = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
+    fresh = _op_result("symbols", mcp_server._op_search, repo_root=str(tmp_path), query="alpha")
 
     assert "alpha" in first
     assert cached == first
@@ -1913,7 +1993,7 @@ def test_code_context_mcp_falls_back_when_scip_artifact_is_invalid(store_root: P
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "python.scip").write_text("{invalid json", encoding="utf-8")
 
-    searched = _result(_call("symbols", {"repo_root": str(tmp_path), "query": "alpha"}))
+    searched = _op_result("symbols", mcp_server._op_search, repo_root=str(tmp_path), query="alpha")
 
     assert "alpha" in searched
     assert "provenance: scip" not in searched
@@ -1997,11 +2077,12 @@ def test_code_context_cache_diagnostics_surface_is_additive(store_root: Path, tm
         budget_tokens=4000,
     )
 
-    status = _result(_call("cache_status", {"repo_root": str(tmp_path), "budget_tokens": 200}))
+    status = _result(_call("cache", {"op": "status", "repo_root": str(tmp_path), "budget_tokens": 200}))
     invalidated = _result(
         _call(
-            "cache_invalidate",
+            "cache",
             {
+                "op": "invalidate",
                 "repo_root": str(tmp_path),
                 "cache_tool": "search",
                 "budget_tokens": 200,
