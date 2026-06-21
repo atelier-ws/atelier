@@ -39,6 +39,22 @@ CREATE TABLE IF NOT EXISTS devices (
 CREATE INDEX IF NOT EXISTS idx_devices_license
   ON devices (license_id, revoked_at, last_seen_at);
 
+-- Email magic-link auth for the self-service device manager. `magic` rows are
+-- one-time login links (consumed on first use); `session` rows are the short
+-- browser session minted after a magic link is verified. Both store only the
+-- SHA-256 of the opaque token, never the token itself.
+CREATE TABLE IF NOT EXISTS device_sessions (
+  token_hash  TEXT PRIMARY KEY,
+  email       TEXT NOT NULL,
+  kind        TEXT NOT NULL,            -- 'magic' | 'session'
+  created_at  INTEGER NOT NULL,
+  expires_at  INTEGER NOT NULL,
+  consumed_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_device_sessions_email
+  ON device_sessions (email, created_at);
+
 CREATE TRIGGER IF NOT EXISTS devices_limit_insert
 BEFORE INSERT ON devices
 WHEN NEW.revoked_at IS NULL

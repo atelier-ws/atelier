@@ -190,3 +190,17 @@ def refresh_device(device_token: str) -> str:
     if not isinstance(token, str) or not token:
         raise LicenseError("license issuer did not return a refreshed device token")
     return token
+
+
+def list_devices(purchase_token: str) -> tuple[DeviceInfo, ...]:
+    result = _request("/devices/list", {"purchase_token": purchase_token})
+    return _devices(result.get("devices"))
+
+
+def load_purchase_token() -> str | None:
+    """Return the purchase credential saved at activation, if present."""
+    path = purchase_key_path()
+    if not path.exists():
+        return None
+    token = path.read_text(encoding="utf-8").strip()
+    return token or None

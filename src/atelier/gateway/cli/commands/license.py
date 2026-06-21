@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import click
 
 from atelier.gateway.cli.commands._shared import _emit
+
+if TYPE_CHECKING:
+    from atelier.core.capabilities.licensing import DeviceInfo
 
 
 @click.group("license", invoke_without_command=True)
@@ -132,3 +136,79 @@ def license_deactivate(as_json: bool) -> None:
         _emit({"removed": removed}, as_json=True)
         return
     click.echo("License removed; reverted to Free tier." if removed else "No license was stored.")
+
+
+def _purchase_token() -> str:
+    from atelier.core.capabilities import licensing
+
+    token = licensing.stored_purchase_token()
+    if not token:
+        raise click.ClickException(
+            "No purchase key on this machine. Activate first with: atelier license activate <key>"
+        )
+    return token
+
+
+def _fetch_devices(token: str) -> tuple[DeviceInfo, ...]:
+    from atelier.core.capabilities import licensing
+
+    try:
+        return licensing.list_devices(token)
+    except licensing.LicenseError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+def _show_devices(as_json: bool) -> None:
+    devices = _fetch_devices(_purchase_token())
+    if as_json:
+        _emit({"devices": [device.__dict__ for device in devices]}, as_json=True)
+        return
+    if not devices:
+        click.echo("No active devices.")
+        return
+    click.echo("Active devices:")
+    for index, device in enumerate(devices, start=1):
+        last_seen = datetime.fromtimestamp(device.last_seen_at, tz=UTC).strftime("%Y-%m-%d")
+        click.echo(f"  {index}. {device.name} (last used {last_seen})")
+    click.echo("\nRemove one with: atelier license devices remove <number>")
+
+
+@license_group.group("devices", invoke_without_command=True)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def license_devices(ctx: click.Context, as_json: bool) -> None:
+    """List and remove the devices on your Pro license."""
+    if ctx.invoked_subcommand is None:
+        _show_devices(as_json)
+
+
+@license_devices.command("list")
+@click.option("--json", "as_json", is_flag=True)
+def license_devices_list(as_json: bool) -> None:
+    """Show the active devices on your license."""
+    _show_devices(as_json)
+
+
+@license_devices.command("remove")
+@click.argument("index", type=int)
+@click.option("--json", "as_json", is_flag=True)
+def license_devices_remove(index: int, as_json: bool) -> None:
+    """Revoke device number INDEX (as listed by `atelier license devices`)."""
+    from atelier.core.capabilities import licensing
+
+    token = _purchase_token()
+    devices = _fetch_devices(token)
+    if index < 1 or index > len(devices):
+        raise click.ClickException(f"No device #{index}. Run 'atelier license devices' to list them.")
+    selected = devices[index - 1]
+    try:
+        remaining = licensing.remove_device(token, selected.device_id)
+    except licensing.LicenseError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if as_json:
+        _emit(
+            {"removed": selected.device_id, "devices": [d.__dict__ for d in remaining]},
+            as_json=True,
+        )
+        return
+    click.echo(f"Removed {selected.name}; that slot is now free.")
