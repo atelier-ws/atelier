@@ -15,7 +15,7 @@ EXPECTED_TOOLS = {
     "search",
     "compact",
     "explore",
-    "shell",
+    "bash",
     "codemod",
     "web_fetch",
     "workflow",

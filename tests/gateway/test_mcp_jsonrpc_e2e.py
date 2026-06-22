@@ -39,7 +39,7 @@ EXPECTED_TOOLS = {
     "sql",
     "search",
     "explore",
-    "shell",
+    "bash",
     "web_fetch",
     "codemod",
 }

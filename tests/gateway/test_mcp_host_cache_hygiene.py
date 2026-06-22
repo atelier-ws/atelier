@@ -25,7 +25,7 @@ def test_compact_result_text_compacts_oversized_keeping_head_and_tail(
 ) -> None:
     monkeypatch.setenv("ATELIER_MCP_COMPACT_RESULT_CHARS", "1000")
     text = "HEAD" + ("m" * 20000) + "TAIL"
-    out = mcp_server._compact_result_text(text, "shell")
+    out = mcp_server._compact_result_text(text, "bash")
     assert len(out) < len(text)
     assert out.startswith("HEAD")  # head preserved
     assert "TAIL" in out  # tail preserved -- the win over head-only truncation

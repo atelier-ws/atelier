@@ -818,9 +818,9 @@ def _role_read_hint(role_id: str) -> str:
 # so an explicit allow-list is unnecessary. ``MultiEdit``/``NotebookEdit`` are
 # intentionally omitted (``Edit``/``Write`` plus ``mcp__atelier__edit`` cover the
 # real write paths) so the list stays short. Native ``Bash`` is denied so all
-# shell work flows through ``mcp__atelier__shell`` (the supervised path) instead
+# shell work flows through ``mcp__atelier__bash`` (the supervised path) instead
 # of native heredocs; without this, agents bypass every Atelier file/search tool
-# by doing all I/O through ``Bash``. ``mcp__atelier__shell`` is never denied:
+# by doing all I/O through ``Bash``. ``mcp__atelier__bash`` is never denied:
 # read-only roles still need shell to run checks and probes (``git diff``,
 # ``pytest``, ``ls``), and read-only is enforced by denying the write tools, not
 # by removing shell.

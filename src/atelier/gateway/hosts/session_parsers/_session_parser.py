@@ -118,7 +118,7 @@ def _normalize_tool_basename(name: str) -> str:
 
     Examples:
         ``mcp__atelier__grep``                       → ``grep``
-        ``mcp__plugin_atelier_atelier__shell``       → ``shell``
+        ``mcp__plugin_atelier_atelier__bash``        → ``bash``
         ``edit``                                     → ``edit``
     """
     base = (name or "").strip()

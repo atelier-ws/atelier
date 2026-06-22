@@ -38,6 +38,7 @@ from atelier.core.environment import skill_visible
 CODING_GUIDELINES_PATH = ROOT / "integrations/shared/coding-guidelines.md"
 CORE_DISCIPLINE_PATH = ROOT / "integrations/shared/core-discipline.md"
 CHANGE_DISCIPLINE_PATH = ROOT / "integrations/shared/change-discipline.md"
+TOOL_DISCIPLINE_PATH = ROOT / "integrations/shared/tool-discipline.md"
 AGENTS_GUIDE_PATH = ROOT / "integrations/AGENTS.atelier.md"
 
 # Bare ``{{TOKEN}}`` placeholders a mode doc may embed; each expands to a shared
@@ -47,6 +48,7 @@ SHARED_SECTIONS: dict[str, tuple[str, Path]] = {
     "{{CODING_GUIDELINES}}": ("Coding Guidelines", CODING_GUIDELINES_PATH),
     "{{CORE_DISCIPLINE}}": ("Core discipline", CORE_DISCIPLINE_PATH),
     "{{CHANGE_DISCIPLINE}}": ("Change discipline", CHANGE_DISCIPLINE_PATH),
+    "{{TOOL_DISCIPLINE}}": ("Tool discipline", TOOL_DISCIPLINE_PATH),
 }
 HOST_SKILL_DIRS = {
     "claude": ROOT / "integrations" / "claude" / "plugin" / "skills",
@@ -76,7 +78,9 @@ def coding_guidelines_section() -> str:
     return "\n".join(["## Coding Guidelines", "", _markdown_body(CODING_GUIDELINES_PATH)])
 
 
+_CLAUDE_TOOL_PREFIX = "mcp__atelier__"
 _OPENCODE_TOOL_PREFIX = "atelier_"
+_CODEX_TOOL_PREFIX = "atelier."
 
 
 def agent_guide() -> str:
@@ -230,6 +234,7 @@ def _inject_active_guard(content: str, skill_name: str) -> str:
 
 
 def render_shared_skill(role: DefaultRole, mode_doc: ModeDoc) -> str:
+    body = _replace_inline_tool_names(render_mode_body(mode_doc), _CODEX_TOOL_PREFIX)
     return (
         "\n".join(
             [
@@ -240,7 +245,7 @@ def render_shared_skill(role: DefaultRole, mode_doc: ModeDoc) -> str:
                 "",
                 _already_active_guard(role.role_id),
                 "",
-                render_mode_body(mode_doc),
+                body,
             ]
         ).rstrip()
         + "\n"
@@ -280,7 +285,8 @@ def _inject_description(frontmatter: tuple[tuple[str, Any], ...], description: s
 
 def render_claude_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostProjection) -> str:
     frontmatter = _inject_description(projection.frontmatter, role.agent_description)
-    return "\n".join([render_frontmatter(frontmatter), "", render_mode_body(mode_doc)]).rstrip() + "\n"
+    body = _replace_inline_tool_names(render_mode_body(mode_doc), _CLAUDE_TOOL_PREFIX)
+    return "\n".join([render_frontmatter(frontmatter), "", body]).rstrip() + "\n"
 
 
 def render_simple_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostProjection) -> str:
@@ -298,102 +304,75 @@ def render_simple_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostPr
     )
 
 
-def _opencode_tool_discipline_section(prefix: str) -> str:
-    """Generate the ``## Tool discipline`` section for OpenCode.
+# Bare tool names referenced as inline code (`` `read` ``) in shared mode-doc
+# sources.  When rendering for a host that prefixes tool names we replace the
+# inline backtick span with the prefixed form (e.g. `` `read` `` → `` `atelier_read` ``).
+_INLINE_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "codemod",
+        "edit",
+        "explore",
+        "glob",
+        "grep",
+        "memory",
+        "read",
+        "search",
+        "bash",
+        "sql",
+        "web_fetch",
+    }
+)
 
-    Uses ``atelier_``-prefixed tool names (``atelier_read``, ``atelier_edit``,
-    etc.) and disallows native OpenCode tools by policy.
+
+import re as _re
+
+
+def _replace_inline_tool_names(body: str, prefix: str) -> str:
+    """Replace backtick-quoted bare tool names with ``<prefix><tool>``.
+
+    Only affects tool names in ``_INLINE_TOOL_NAMES`` that appear as inline
+    code spans (`` `grep` `` → `` `atelier_grep` ``).  Ignores tool names
+    already prefixed and names outside backticks.
     """
-    p = prefix
-    return "\n".join(
-        [
-            "## Tool discipline",
-            "",
-            f"- Shared docs use plain tool names like `{p}read`, `{p}search`, `{p}grep`, and `{p}edit`.",
-            f"- In OpenCode, Atelier MCP tools use the `{p}` prefix: `{p}read` for file reads,",
-            f"  `{p}edit` for edits, `{p}grep` / `{p}search` for discovery, `{p}shell` for shell,",
-            f"  `{p}explore` for code intelligence.",
-            f"- Use `{p}explore` first for code intelligence (one call folds in single definitions, callers, callees, and usages).",
-            f"- Use `{p}grep` or `{p}search` first for regex, glob, ranked discovery, and file/path lookup.",
-            f"- Use `{p}read` first for file reads and exact ranges.",
-            f"- Use `{p}edit` first for deterministic writes and grouped edits.",
-            f"- Use `{p}shell` only for commands with no better Atelier equivalent, such as git, build, test, and package-manager commands.",
-            "- Native OpenCode tools (`bash`, `edit`, `glob`, `grep`, `read`, `webfetch`, `write`)",
-            "  are disallowed by policy — always use the Atelier MCP counterparts.",
-            "- If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use",
-            "  OpenCode-native file reads, repository search, shell `rg`, or `grep`.",
-            "  Always return findings instead of waiting for tool availability to improve.",
-        ]
-    )
+
+    def _replacer(m: _re.Match) -> str:
+        name = m.group(1)
+        if name in _INLINE_TOOL_NAMES:
+            return f"`{prefix}{name}`"
+        return m.group(0)
+
+    return _re.sub(r"`(\w+)`", _replacer, body)
 
 
-def _replace_tool_discipline_for_opencode(body: str, prefix: str) -> str:
-    """Replace a bare ``## Tool discipline`` section with the OpenCode variant.
+# Copilot exposes Atelier tools via the ``atelier/*`` allowlist entry.
+_COPILOT_TOOL_PREFIX = "atelier/"
 
-    Only the ``code`` mode doc has a dedicated ``## Tool discipline`` section
-    that lists bare tool names. For OpenCode we replace that section in-place
-    with one that uses ``atelier_``-prefixed names and disallows native tools.
 
-    Other mode docs (``explore``, ``execute``, etc.) do not have this section,
-    so the appended ``## OpenCode tool discipline`` appendix handles them.
+def render_agent(
+    role: DefaultRole,
+    mode_doc: ModeDoc,
+    projection: HostProjection,
+    *,
+    tool_prefix: str = _CLAUDE_TOOL_PREFIX,
+    host_label: str = "Atelier",
+) -> str:
+    """Host agent renderer with configurable tool name prefix.
+
+    Different MCP hosts expose Atelier tools under different name prefixes.
+    This renderer expands shared sections and rewrites bare tool names to the
+    host's prefix so agents know the exact tool names to call.
+
+    Parameters
+    ----------
+    tool_prefix : str
+        Prefix Atelier MCP tools are registered under by the host, e.g.
+        ``atelier_`` (OpenCode), ``mcp__atelier__`` (Claude Code stdio).
+    host_label : str
+        Human-readable host name for the generated prose.
     """
-    p = prefix
-    old_start = "## Tool discipline"
-    if old_start not in body:
-        return body
-
-    # Locate the section boundaries.
-    lines = body.splitlines()
-    start_idx = None
-    end_idx = None
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped == old_start:
-            start_idx = i
-        elif start_idx is not None and stripped.startswith("## ") and i > start_idx:
-            end_idx = i
-            break
-    if start_idx is None:
-        return body
-    if end_idx is None:
-        end_idx = len(lines)
-
-    new_section = _opencode_tool_discipline_section(p)
-    before = lines[:start_idx]
-    after = lines[end_idx:]
-    # Preserve a blank line before the next section heading if needed.
-    if after and after[0].startswith("## "):
-        after.insert(0, "")
-    return "\n".join([*before, new_section, *after])
-
-
-def render_opencode_agent(role: DefaultRole, mode_doc: ModeDoc, projection: HostProjection) -> str:
-    """OpenCode agent that uses ``atelier_``-prefixed tool names.
-
-    OpenCode registers MCP tools with the ``atelier_`` prefix (``atelier_read``,
-    ``atelier_edit``, etc.), so the body must reference those names rather than
-    the bare tool names used in other hosts.
-    """
-    p = _OPENCODE_TOOL_PREFIX
+    p = tool_prefix
     identity_block = ["You are operating as *atelier:code*.", ""] if role.role_id == "code" else []
-    body = _replace_tool_discipline_for_opencode(render_mode_body(mode_doc), p)
-    # Append an OpenCode-specific discipline appendix so roles that do not have
-    # a ``## Tool discipline`` section in the mode doc still get the guidance.
-    tool_discipline = "\n".join(
-        [
-            "## OpenCode tool discipline",
-            "",
-            f"- Shared docs use plain tool names like `{p}read`, `{p}search`, `{p}grep`, and `{p}edit`.",
-            f"- In OpenCode, Atelier MCP tools use the `{p}` prefix: `{p}read` for file reads,",
-            f"  `{p}edit` for edits, `{p}grep` / `{p}search` for discovery, `{p}shell` for shell,",
-            f"  `{p}explore` for code intelligence (folds in definitions, callers, callees, and usages).",
-            "- Native OpenCode tools (`bash`, `edit`, `glob`, `grep`, `read`, `webfetch`, `write`)",
-            "  are disallowed by policy — always use the Atelier MCP counterparts.",
-            "- If an Atelier MCP tool returns `noop`, is hidden, or is unavailable, use",
-            "  OpenCode-native file reads, repository search, shell `rg`, or `grep`.",
-            "  Always return findings instead of waiting for tool availability to improve.",
-        ]
-    )
+    body = _replace_inline_tool_names(render_mode_body(mode_doc), p)
     return (
         "\n".join(
             [
@@ -401,8 +380,6 @@ def render_opencode_agent(role: DefaultRole, mode_doc: ModeDoc, projection: Host
                 "",
                 *identity_block,
                 body,
-                "",
-                tool_discipline,
             ]
         ).rstrip()
         + "\n"
@@ -461,7 +438,9 @@ def build_mode_outputs(root: Path | None = None) -> dict[Path, str]:
 
         opencode_projection = registry.projection(role_id, "opencode_agent")
         opencode_path = repo_root / "integrations" / "opencode" / "agents" / f"{opencode_projection.output_name}.md"
-        outputs[opencode_path] = render_opencode_agent(role, mode_doc, opencode_projection)
+        outputs[opencode_path] = render_agent(
+            role, mode_doc, opencode_projection, tool_prefix=_OPENCODE_TOOL_PREFIX, host_label="OpenCode"
+        )
 
         copilot_projection = registry.projection(role_id, "copilot_agent")
         copilot_path = repo_root / "integrations" / "copilot" / "agents" / f"{copilot_projection.output_name}.agent.md"

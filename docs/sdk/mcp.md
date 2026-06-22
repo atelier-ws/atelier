@@ -51,7 +51,7 @@ names:
 - `search`
 - `compact`
 - `code`
-- `shell`
+- `bash`
 
 ## Structured Tool Operations
 

@@ -462,13 +462,13 @@ class InteractiveRuntime:
 
                 yield ToolRequested(type="tool.requested", id=tool_id, name=tool_name, args=tool_args)
 
-                if not self._yolo and tool_name in ("edit", "shell"):
+                if not self._yolo and tool_name in ("edit", "bash"):
                     self._pending_permissions[tool_id] = {"approved": None}
                     yield PermissionRequested(
                         type="permission.requested",
                         id=tool_id,
                         action=f"{tool_name}: {json.dumps(tool_args)[:120]}",
-                        risk="high" if tool_name == "shell" else "medium",
+                        risk="high" if tool_name == "bash" else "medium",
                     )
                     for _ in range(300):
                         await asyncio.sleep(0.1)
@@ -806,13 +806,13 @@ class InteractiveRuntime:
             perm_tools = self._active_tools or [
                 "read",
                 "edit",
-                "shell",
+                "bash",
                 "grep",
                 "explore",
             ]
             perm_map = {
                 "edit": "ask" if not self._yolo else "allow",
-                "shell": "ask" if not self._yolo else "allow",
+                "bash": "ask" if not self._yolo else "allow",
                 "read": "allow",
                 "grep": "allow",
                 "explore": "allow",
@@ -837,7 +837,7 @@ class InteractiveRuntime:
         elif name in ("mode", "agents"):
             mode_name = args[0].lower() if args else ""
             tools_by_mode = {
-                "code": ["read", "edit", "shell", "grep", "explore"],
+                "code": ["read", "edit", "bash", "grep", "explore"],
                 "explore": ["read", "grep", "explore"],
                 "research": ["read", "grep", "explore"],
                 "plan": ["read", "grep"],
@@ -1043,13 +1043,13 @@ class InteractiveRuntime:
                     )
                 except FileNotFoundError:
                     yield RuntimeErrorEvent(type="error", message=f"Checkpoint `{cp_id}` not found")
-        elif name == "shell":
+        elif name == "bash":
             cmd = " ".join(args) if args else ""
             if cmd:
-                from atelier.gateway.adapters.mcp_server import tool_shell
+                from atelier.gateway.adapters.mcp_server import tool_bash
 
                 try:
-                    result = await asyncio.to_thread(tool_shell, {"command": cmd, "timeout": 30})
+                    result = await asyncio.to_thread(tool_bash, {"command": cmd, "timeout": 30})
                     yield AssistantMessage(type="assistant.message", text=f"```\n{result}\n```")
                 except Exception as exc:  # noqa: BLE001 - shell is best-effort
                     yield RuntimeErrorEvent(type="error", message=f"Shell failed: {exc}")
@@ -1320,11 +1320,11 @@ _OWNED_TOOL_NAMES = (
     "grep",
     "explore",
     "edit",
-    "shell",
+    "bash",
 )
 
 # Owned tools that are safe to execute concurrently (everything read-only).
-_PARALLEL_SAFE_TOOLS = frozenset(_OWNED_TOOL_NAMES) - {"edit", "shell"}
+_PARALLEL_SAFE_TOOLS = frozenset(_OWNED_TOOL_NAMES) - {"edit", "bash"}
 
 
 async def _aiter_sync_stream(stream: Any) -> AsyncIterator[Any]:

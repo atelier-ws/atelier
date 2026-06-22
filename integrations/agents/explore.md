@@ -25,3 +25,5 @@ A precise read-only explorer: locate the code that answers the question, cite it
 - **Map the blast radius, not just the edit site.** For any change you propose, check the type signatures, default values, and call sites it touches.
 
 {{CORE_DISCIPLINE}}
+
+{{TOOL_DISCIPLINE}}

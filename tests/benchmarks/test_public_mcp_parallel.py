@@ -160,7 +160,7 @@ def test_flatten_reports_adds_case_input_and_stable_args(monkeypatch: pytest.Mon
     monkeypatch.setattr(EXPORTER, "_repo_root", lambda: tmp_path / "repo")
 
     case = harness.BenchCase(
-        op="shell",
+        op="bash",
         label="shell/example",
         args={"command": f"cat {tmp_path}/repo/src/example.py"},
         baseline_tokens=100,
@@ -179,7 +179,7 @@ def test_flatten_reports_adds_case_input_and_stable_args(monkeypatch: pytest.Mon
         passed=True,
     )
 
-    rows = EXPORTER._flatten_reports([harness.ToolReport(tool_name="shell", results=[result])])
+    rows = EXPORTER._flatten_reports([harness.ToolReport(tool_name="bash", results=[result])])
 
     assert rows[0]["case_input"].startswith("cat ")
     assert "$REPO_ROOT" in rows[0]["stable_args_json"]

@@ -191,7 +191,7 @@ def test_owned_edit_blocks_test_weakening(tmp_path, monkeypatch) -> None:
     assert "assert value == 'old'" in target.read_text(encoding="utf-8")
 
 
-def test_dispatch_tool_shell_passes_args_through(monkeypatch) -> None:
+def test_dispatch_tool_bash_passes_args_through(monkeypatch) -> None:
     from atelier.gateway.adapters.mcp_server import TOOLS
 
     captured: list[dict] = []
@@ -200,16 +200,16 @@ def test_dispatch_tool_shell_passes_args_through(monkeypatch) -> None:
         captured.append(dict(args))
         return "ok"
 
-    monkeypatch.setitem(TOOLS["shell"], "handler", fake_handler)
+    monkeypatch.setitem(TOOLS["bash"], "handler", fake_handler)
 
-    # Foreground shell blocks to completion by default -- no injected params.
+    # Foreground bash blocks to completion by default -- no injected params.
     foreground_args = {"command": "echo hi", "timeout": 1800}
-    assert _dispatch_tool("shell", foreground_args) == "ok"
+    assert _dispatch_tool("bash", foreground_args) == "ok"
     assert captured[-1] == {"command": "echo hi", "timeout": 1800}
 
-    # sync_wait is gone entirely: not a shell parameter anywhere.
-    shell_tool = next(tool for tool in _get_litellm_tools() if tool["function"]["name"] == "shell")
-    assert "sync_wait" not in shell_tool["function"]["parameters"]["properties"]
+    # sync_wait is gone entirely: not a bash parameter anywhere.
+    bash_tool = next(tool for tool in _get_litellm_tools() if tool["function"]["name"] == "bash")
+    assert "sync_wait" not in bash_tool["function"]["parameters"]["properties"]
 
 
 def test_cache_breakpoints_pin_system_and_latest_message(tmp_path) -> None:

@@ -111,7 +111,7 @@ All hosts ultimately use the same Atelier stdio MCP server.
 
 - `trace` is the consistently active observable recording surface.
 - With `ATELIER_DEV_MODE=1`, hosts can actively use `context`, `route`, `rescue`,
-  `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `shell`, and
+  `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `bash`, and
   the `atelier_code_*` helpers.
 - Packaged hosts may add wrapper tasks, skills, or commands on top of that shared
   MCP surface.
