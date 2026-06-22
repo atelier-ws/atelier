@@ -691,7 +691,9 @@ def _repo_id(repo_root: Path) -> str:
 
 
 def _default_db_path(repo_root: Path) -> Path:
-    workspace_hash = hashlib.sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:12]
+    from atelier.core.foundation.paths import workspace_key
+
+    workspace_hash = workspace_key(repo_root.resolve())
     return default_store_root() / "workspaces" / workspace_hash / "code_context.sqlite"
 
 

@@ -123,4 +123,4 @@ def test_context_store_keeps_raw_artifacts_out_of_atelier_db(tmp_path: Path) -> 
     with sqlite3.connect(str(tmp_path / "atelier.db")) as conn:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert "raw_artifacts" not in tables
-    assert (tmp_path / "sessions" / "sess1" / "raw").exists()
+    assert (store.session_store.root / "sessions" / "sess1" / "raw").exists()

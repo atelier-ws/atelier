@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import subprocess
@@ -21,8 +20,9 @@ def _setup(tmp_path: Path, settings: dict, n_edits: int) -> tuple[Path, Path]:
     root = tmp_path / ".atelier"
     ws = tmp_path / "ws"
     ws.mkdir()
-    h = hashlib.sha256(str(ws.resolve()).encode("utf-8")).hexdigest()[:12]
-    state_dir = root / "workspaces" / h
+    from atelier.core.foundation.paths import workspace_key
+
+    state_dir = root / "workspaces" / workspace_key(ws)
     state_dir.mkdir(parents=True)
     (state_dir / "session_state.json").write_text(json.dumps({"session_id": "sid1"}), encoding="utf-8")
     (root / "plugin_settings.json").write_text(json.dumps(settings), encoding="utf-8")

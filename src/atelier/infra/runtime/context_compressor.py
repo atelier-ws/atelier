@@ -59,7 +59,9 @@ def _load_compression_hints() -> dict[str, Any]:
         import os
 
         workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-        h = hashlib.sha256(str(Path(workspace).resolve()).encode()).hexdigest()[:12]
+        from atelier.core.foundation.paths import workspace_key
+
+        h = workspace_key(Path(workspace).resolve())
         root_env = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT")
         root = Path(root_env) if root_env else Path.home() / ".atelier"
         state_path = root / "workspaces" / h / "session_state.json"

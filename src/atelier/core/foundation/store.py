@@ -227,7 +227,11 @@ class ContextStore:
     @property
     def session_store(self) -> SessionStore:
         if self._session_store is None:
-            self._session_store = SessionStore(self.root)
+            from atelier.core.foundation.paths import resolve_workspace_root, resolve_workspace_store_dir
+
+            ws_root = resolve_workspace_root()
+            store_root = resolve_workspace_store_dir(root=self.root, workspace_root=ws_root)
+            self._session_store = SessionStore(store_root)
         return self._session_store
 
     @contextlib.contextmanager

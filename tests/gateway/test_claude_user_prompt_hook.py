@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import subprocess
@@ -38,7 +37,8 @@ def test_user_prompt_hook_persists_last_user_prompt(tmp_path: Path) -> None:
         env=env,
     )
 
-    workspace_hash = hashlib.sha256(str(workspace.resolve()).encode("utf-8")).hexdigest()[:12]
-    session_state = atelier_root / "workspaces" / workspace_hash / "session_state.json"
+    from atelier.core.foundation.paths import workspace_key
+
+    session_state = atelier_root / "workspaces" / workspace_key(workspace) / "session_state.json"
     data = json.loads(session_state.read_text(encoding="utf-8"))
     assert data["last_user_prompt"] == "fix the auth flow"

@@ -746,10 +746,11 @@ def _resolve_workspace_session_id(workspace: str | None, root_path: Path) -> str
     """
     if not workspace:
         return ""
-    import hashlib as _hl
 
     try:
-        ws_hash = _hl.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+        from atelier.core.foundation.paths import workspace_key
+
+        ws_hash = workspace_key(Path(workspace).resolve())
         state_path = root_path / "workspaces" / ws_hash / "session_state.json"
         if not state_path.is_file():
             return ""

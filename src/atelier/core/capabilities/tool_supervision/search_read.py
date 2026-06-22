@@ -253,11 +253,10 @@ def _run_grep(pattern: str, search_path: str) -> str:
 
 
 def _cache_state_path(repo_root: Path) -> Path:
-    from hashlib import sha256
 
-    from atelier.core.foundation.paths import default_store_root
+    from atelier.core.foundation.paths import default_store_root, workspace_key
 
-    h = sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:12]
+    h = workspace_key(repo_root.resolve())
     return default_store_root() / "workspaces" / h / "smart_state.json"
 
 

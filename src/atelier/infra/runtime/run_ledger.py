@@ -117,17 +117,41 @@ def outcomes_path(root: str | Path, session_id: str) -> Path:
 
 
 def iter_run_files(root: str | Path) -> list[Path]:
-    """All run-ledger snapshots, name-sorted: ``sessions/*/run.json``."""
-    base = Path(root) / "sessions"
-    return sorted(base.glob("*/run.json")) if base.is_dir() else []
+    """All run-ledger snapshots across global and workspace-scoped session dirs."""
+    base = Path(root)
+    results: list[Path] = []
+    # Global sessions (legacy fallback — sessions without a known workspace)
+    global_sessions = base / "sessions"
+    if global_sessions.is_dir():
+        results.extend(sorted(global_sessions.glob("*/run.json")))
+    # Per-workspace sessions (new location)
+    workspaces_dir = base / "workspaces"
+    if workspaces_dir.is_dir():
+        for ws_dir in sorted(workspaces_dir.iterdir()):
+            if ws_dir.is_dir():
+                ws_sessions = ws_dir / "sessions"
+                if ws_sessions.is_dir():
+                    results.extend(sorted(ws_sessions.glob("*/run.json")))
+    return results
 
 
 def iter_session_outcomes(root: str | Path) -> list[tuple[str, Path]]:
     """``(session_id, outcomes.json)`` for every session that captured outcomes."""
-    base = Path(root) / "sessions"
-    if not base.is_dir():
-        return []
-    return [(p.parent.name, p) for p in sorted(base.glob("*/outcomes.json"))]
+    base = Path(root)
+    results: list[tuple[str, Path]] = []
+    # Global sessions
+    global_sessions = base / "sessions"
+    if global_sessions.is_dir():
+        results.extend((p.parent.name, p) for p in sorted(global_sessions.glob("*/outcomes.json")))
+    # Per-workspace sessions
+    workspaces_dir = base / "workspaces"
+    if workspaces_dir.is_dir():
+        for ws_dir in sorted(workspaces_dir.iterdir()):
+            if ws_dir.is_dir():
+                ws_sessions = ws_dir / "sessions"
+                if ws_sessions.is_dir():
+                    results.extend((p.parent.name, p) for p in sorted(ws_sessions.glob("*/outcomes.json")))
+    return results
 
 
 class RunLedger:

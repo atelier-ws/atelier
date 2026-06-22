@@ -26,7 +26,6 @@ where ``default_store_root()`` is ``$ATELIER_ROOT`` or ``~/.atelier``.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -66,7 +65,9 @@ def default_tag_cache_path(repo_root: str | Path) -> Path:
     subdirectory under the global store root.
     """
     root = Path(repo_root).resolve()
-    workspace_hash = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:12]
+    from atelier.core.foundation.paths import workspace_key
+
+    workspace_hash = workspace_key(root)
     return default_store_root() / "workspaces" / workspace_hash / _DB_FILENAME
 
 
