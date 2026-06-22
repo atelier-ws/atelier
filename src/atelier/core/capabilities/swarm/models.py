@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from atelier.core.capabilities.swarm.fitness import FitnessSpec
+
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
@@ -198,6 +200,8 @@ class SwarmChildState(BaseModel):
     duration_seconds: float = 0.0
     score: float | None = None
     score_breakdown: list[str] = Field(default_factory=list)
+    metric: float | None = None
+    gate_passed: bool | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
 
@@ -230,6 +234,7 @@ class SwarmRunState(BaseModel):
     reducer_name: str = "merge"
     exec_mode: SwarmExecMode = "edit"
     search_space: list[str] = Field(default_factory=list)
+    fitness_spec: FitnessSpec | None = None
     launch_provider: Literal["cli", "openai", "litellm"] = "cli"
     launch_effort: str = ""
     evaluator_backend: SwarmEvaluatorBackend = "auto"
@@ -304,4 +309,5 @@ class SwarmRunState(BaseModel):
         payload.setdefault("reducer_name", "merge")
         payload.setdefault("exec_mode", "edit")
         payload.setdefault("search_space", [])
+        payload.setdefault("fitness_spec", None)
         return payload
