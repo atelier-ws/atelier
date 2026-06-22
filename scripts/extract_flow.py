@@ -20,6 +20,27 @@ def _is_messages_request(url: str) -> bool:
     return "v1/messages" in url or "invoke" in url
 
 
+def _iter_text_from_sse(raw: bytes):
+    for line in raw.decode("utf-8", errors="ignore").splitlines():
+        if not line.startswith("data: "):
+            continue
+        try:
+            chunk = json.loads(line[6:])
+        except (json.JSONDecodeError, ValueError):
+            continue
+        t = chunk.get("type", "")
+        if t == "content_block_delta":
+            delta = chunk.get("delta", {})
+            if delta.get("type") == "text_delta":
+                yield delta.get("text", "")
+            elif delta.get("type") == "input_json_delta":
+                yield delta.get("partial_json", "")
+        elif t == "content_block_start":
+            cb = chunk.get("content_block", {})
+            if cb.get("type") == "tool_use":
+                yield f"[tool_use: {cb['name']}] "
+
+
 def _iter_text_from_bedrock_stream(raw: bytes):
     for b64 in re.findall(rb'"bytes":"([A-Za-z0-9+/=]+)"', raw):
         try:
@@ -103,7 +124,8 @@ def extract(path: str, output_file: str) -> None:
             except json.JSONDecodeError:
                 pass
 
-            # Extract assistant response
+            # Decode gzip/br transfer encoding before parsing JSON or SSE.
+            flow.response.decode(strict=False)
             resp_raw = flow.response.content
             if resp_raw is None:
                 out.write("[assistant] (no response captured)\n")
@@ -118,7 +140,10 @@ def extract(path: str, output_file: str) -> None:
                     elif block.get("type") == "tool_use":
                         resp_text += f"[tool_use: {block['name']}({json.dumps(block.get('input', {}))})] "
             except json.JSONDecodeError:
-                resp_text = "".join(_iter_text_from_bedrock_stream(resp_raw))
+                if b"data: " in resp_raw:
+                    resp_text = "".join(_iter_text_from_sse(resp_raw))
+                else:
+                    resp_text = "".join(_iter_text_from_bedrock_stream(resp_raw))
 
             if resp_text:
                 out.write(f"[assistant] {resp_text}\n")
