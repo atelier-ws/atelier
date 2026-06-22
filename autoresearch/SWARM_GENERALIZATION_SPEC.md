@@ -271,11 +271,11 @@ Map to this spec:
 ```
 FitnessSpec(
   objective    = "min $/task at >=50% vs baseline, correctness same-or-better",
-  metric_command = "uv run python autoresearch/eval.py --objective swe --tasks <subset> --reps 1 --json -",
+  metric_command = "uv run python benchmarks/self_opt/eval.py --objective swe --tasks <subset> --reps 1 --json -",
   metric_parse = "json:savings_pct",
   direction    = "max",
   gate_command = None,   # correctness folded into eval: `correct` must be true; surface as gate
-  baseline     = "auto", # or read autoresearch/baseline/swe30.json
+  baseline     = "auto", # or read benchmarks/self_opt/baseline/swe30.json
 )
 ```
 Validated findings from the prototype (useful priors): a *persona* change (“bias to act; don’t spelunk git history” in `integrations/shared/change-discipline.md`) cut the most expensive task’s churn dramatically (167→23 msgs, 76→0 git-log calls) for ~53% on the churn tasks at equal-or-better correctness; a blunt shell-output cap **backfired** (truncation → the agent re-ran commands). I.e. behavioral levers beat blunt tooling caps — a hint for `generator` strategy in self-improvement jobs.
