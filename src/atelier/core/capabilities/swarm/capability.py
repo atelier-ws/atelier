@@ -41,6 +41,14 @@ from atelier.core.capabilities.swarm.models import (
     SwarmWaveEvaluation,
     SwarmWaveState,
 )
+from atelier.core.capabilities.swarm.reducers import WaveContext, get_reducer
+from atelier.core.capabilities.swarm.reducers.best import (
+    _has_non_structural_passing_validation,
+    _score_child,
+)
+from atelier.core.capabilities.swarm.reducers.best import (
+    rank_children as rank_children,  # re-exported via swarm/__init__.py
+)
 from atelier.infra.runtime.run_ledger import RunLedger
 from atelier.infra.runtime.swarm_worktree import (
     SwarmWorktreeManager,
@@ -387,14 +395,6 @@ def _normalize_changed_file(entry: str) -> str:
 
 def _changed_file_set(entries: list[str]) -> set[str]:
     return {_normalize_changed_file(path) for path in entries if _normalize_changed_file(path)}
-
-
-def _is_structural_validation(check: SwarmValidationCheck) -> bool:
-    return check.name.startswith("structural-")
-
-
-def _has_non_structural_passing_validation(child: SwarmChildState) -> bool:
-    return any(item.passed and not _is_structural_validation(item) for item in child.validation_results)
 
 
 def _validation_summary(validation_results: list[SwarmValidationCheck]) -> list[dict[str, object]]:
@@ -1142,72 +1142,9 @@ def _coerce_float(value: object, fallback: float) -> float:
     return fallback
 
 
-def _score_child(child: SwarmChildState) -> tuple[float, list[str]]:
-    score = 0.0
-    reasons: list[str] = []
-    if child.status == "success":
-        score += 100.0
-        reasons.append("+100 successful child run")
-    elif child.status == "stopped":
-        score -= 30.0
-        reasons.append("-30 stopped before completion")
-    else:
-        score -= 60.0
-        reasons.append("-60 failed child run")
-    validation_passes = sum(1 for item in child.validation_results if item.passed)
-    validation_failures = sum(1 for item in child.validation_results if not item.passed)
-    if not child.validation_results:
-        score -= 12.0
-        reasons.append("-12 no validation evidence")
-    only_structural_validation = bool(child.validation_results) and all(
-        _is_structural_validation(item) for item in child.validation_results
-    )
-    if validation_passes:
-        delta = validation_passes * (3.0 if only_structural_validation else 15.0)
-        score += delta
-        if only_structural_validation:
-            reasons.append(f"+{delta:.1f} structural validation checks passed")
-        else:
-            reasons.append(f"+{delta:.1f} validation checks passed")
-    if validation_failures:
-        delta = validation_failures * 25.0
-        score -= delta
-        reasons.append(f"-{delta:.1f} validation checks failed")
-    if child.files_changed:
-        score += 5.0
-        reasons.append("+5 produced a git diff")
-    else:
-        score -= 10.0
-        reasons.append("-10 no files changed")
-    file_penalty = min(len(child.files_changed), 50) * 0.2
-    if file_penalty:
-        score -= file_penalty
-        reasons.append(f"-{file_penalty:.1f} changed-file penalty")
-    if child.cost_usd > 0:
-        cost_penalty = child.cost_usd * 10.0
-        score -= cost_penalty
-        reasons.append(f"-{cost_penalty:.2f} cost penalty")
-    if child.duration_seconds > 0:
-        duration_penalty = min(child.duration_seconds / 120.0, 10.0)
-        score -= duration_penalty
-        reasons.append(f"-{duration_penalty:.2f} duration penalty")
-    return round(score, 3), reasons
-
-
-def rank_children(children: list[SwarmChildState]) -> list[SwarmChildState]:
-    for child in children:
-        score, breakdown = _score_child(child)
-        child.score = score
-        child.score_breakdown = breakdown
-    return sorted(
-        children,
-        key=lambda item: (
-            item.score if item.score is not None else float("-inf"),
-            sum(1 for check in item.validation_results if check.passed),
-            -(len(item.files_changed)),
-        ),
-        reverse=True,
-    )
+# `_score_child`, `rank_children`, and the structural-validation helpers now live
+# in `swarm/reducers/best.py` (the heuristic `best` reducer) and are re-imported
+# at the top of this module. They are referenced below unchanged.
 
 
 def _ensure_snapshot_commit(worktree: Path, message: str) -> str:
@@ -2152,7 +2089,8 @@ def apply_wave_candidates(
     # (patch_preview, digest-based duplicate hints) and the deterministic
     # fallback evaluator can read real diffs instead of nonexistent files.
     patch_paths: dict[str, Path | None] = {child.child_id: _write_child_patch(child) for child in ranked}
-    evaluation = _evaluate_wave(state, wave, ranked)
+    reducer = get_reducer(state.reducer_name or "merge")
+    evaluation = reducer.reduce(ranked, WaveContext(state=state, wave=wave))
     wave.evaluation = evaluation
     accepted: list[str] = []
     rejected: list[str] = []

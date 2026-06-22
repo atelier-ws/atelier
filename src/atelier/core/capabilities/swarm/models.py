@@ -36,6 +36,7 @@ SwarmEvaluatorBackend = Literal["auto", "disabled", "ollama", "openai", "litellm
 SwarmDecisionVerdict = Literal["accept", "reject", "defer"]
 SwarmEvaluationStatus = Literal["pending", "completed", "fallback", "failed"]
 SwarmConvergenceVerdict = Literal["continue", "converged", "stagnating", "blocked"]
+SwarmExecMode = Literal["edit", "readonly"]
 
 
 class SwarmValidationCheck(BaseModel):
@@ -225,6 +226,10 @@ class SwarmRunState(BaseModel):
     used_program_md: bool = False
     runner_name: str = "custom"
     runner_model: str = ""
+    job_kind: str = "solve"
+    reducer_name: str = "merge"
+    exec_mode: SwarmExecMode = "edit"
+    search_space: list[str] = Field(default_factory=list)
     launch_provider: Literal["cli", "openai", "litellm"] = "cli"
     launch_effort: str = ""
     evaluator_backend: SwarmEvaluatorBackend = "auto"
@@ -295,4 +300,8 @@ class SwarmRunState(BaseModel):
         payload.setdefault("max_evaluator_failures", 3)
         payload.setdefault("max_waves", 0)
         payload.setdefault("dirty_paths", [])
+        payload.setdefault("job_kind", "solve")
+        payload.setdefault("reducer_name", "merge")
+        payload.setdefault("exec_mode", "edit")
+        payload.setdefault("search_space", [])
         return payload
