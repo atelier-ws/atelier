@@ -426,7 +426,6 @@ dependencies = [
     { name = "rich" },
     { name = "tenacity" },
     { name = "tiktoken" },
-    { name = "trafilatura" },
     { name = "tree-sitter" },
     { name = "tree-sitter-language-pack" },
     { name = "urllib3" },
@@ -475,6 +474,9 @@ rename = [
 ]
 smart = [
     { name = "ollama" },
+]
+trafilatura = [
+    { name = "trafilatura" },
 ]
 vector = [
     { name = "numpy" },
@@ -540,7 +542,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "tenacity", specifier = ">=9.0" },
     { name = "tiktoken", specifier = ">=0.9" },
-    { name = "trafilatura", specifier = ">=2.0.0" },
+    { name = "trafilatura", marker = "extra == 'trafilatura'", specifier = ">=2.0.0" },
     { name = "tree-sitter", specifier = ">=0.23" },
     { name = "tree-sitter-language-pack", specifier = ">=1.8.1" },
     { name = "tree-sitter-languages", marker = "python_full_version < '3.13' and extra == 'parsers'", specifier = ">=1.10" },
@@ -550,7 +552,7 @@ requires-dist = [
     { name = "yarl", specifier = "==1.24.2" },
     { name = "zipp", specifier = "==4.1.0" },
 ]
-provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "postgres", "vector", "parsers", "rename", "ortools", "langfuse", "dev"]
+provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "postgres", "vector", "parsers", "rename", "ortools", "trafilatura", "langfuse", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
