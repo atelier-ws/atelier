@@ -160,6 +160,17 @@ The skill front-end (or `coordinator`) must obtain the `SwarmJob` from a natural
 
 This elicitation is the only “intelligent” front-end; the runtime stays mechanical. Same `/swarms "make X faster|cheaper|smaller"` works across projects because the *project-specific knowledge lives in the elicited commands*, not the engine.
 
+### 5.1 The fitness is per-project; the engine ships ZERO fitness files
+
+The swarm engine and the installed skill carry **no** project-specific fitness. It is resolved per run, by the skill, in three tiers — usually with **no file generated at all**:
+1. **Use an existing command** (most projects): `npm run build && stat -c%s dist/bundle.js`, `pytest -q | tail -1`, `hyperfine -N './bin'`. The skill maps it to a `FitnessSpec` (command + parse + direction). Nothing generated.
+2. **Scaffold a thin wrapper** (only when the metric needs light assembly): the skill generates a small `fitness.sh`/`fitness.py` that runs the thing, extracts the number, prints it (or JSON). The user can edit it.
+3. **Point at an existing harness** (complex objective): if the repo already maintains a benchmark, use it as-is.
+
+Baseline defaults to **`auto`** (engine measures HEAD once before wave 1). A project only *freezes* a baseline to a file when re-measuring is expensive **and** invariant — an optimization, not a requirement.
+
+**Consequence — nothing Atelier-specific is required by the engine.** Atelier's `eval.py` (§12) is a tier-3 case: Atelier's *own* project fitness (an expensive multi-task benchmark with a frozen baseline), the exact artifact any user's project supplies for itself. The swarm uses it in the Atelier repo the way it uses `npm run build` in a JS repo. Atelier is simply the **first consumer** of its own generic capability; its fitness is **not shipped** with the swarm and **not required** for the swarm to optimize any other project. A user who installs Atelier gets the engine + the eliciting skill and brings (or scaffolds) their own one-line fitness — they never see Atelier's `eval.py`.
+
 ---
 
 ## 6. Use-case catalog (knob settings per family)
