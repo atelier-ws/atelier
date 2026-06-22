@@ -28,7 +28,8 @@ from atelier.core.capabilities.swarm import (
     spawn_swarm_coordinator,
     stop_swarm_run,
 )
-from atelier.core.capabilities.swarm.models import SwarmEvaluatorBackend
+from atelier.core.capabilities.swarm.fitness import FitnessDirection, build_fitness_spec
+from atelier.core.capabilities.swarm.models import SwarmEvaluatorBackend, SwarmExecMode
 from atelier.gateway.cli.commands._shared import _emit, require_pro
 
 DEFAULT_RUNNER_PROMPT = (
@@ -151,6 +152,76 @@ def swarm_list(ctx: click.Context, as_json: bool) -> None:
     show_default=True,
     help="Remove child worktrees after completion instead of leaving them for inspection.",
 )
+@click.option(
+    "--reducer",
+    type=click.Choice(["merge", "best", "union", "vote"], case_sensitive=False),
+    default="merge",
+    show_default=True,
+    help="How candidates are combined: merge (solve), best (optimize/tune), union (search/audit), vote (verify).",
+)
+@click.option(
+    "--mode",
+    "exec_mode",
+    type=click.Choice(["edit", "readonly"], case_sensitive=False),
+    default="edit",
+    show_default=True,
+    help="edit = worktrees + patches (default); readonly = parallel reasoning, no diffs.",
+)
+@click.option(
+    "--job-kind",
+    default="solve",
+    show_default=True,
+    help="Free-form job label (solve, optimize, search, audit, verify, ...).",
+)
+@click.option(
+    "--search-space",
+    "search_space",
+    multiple=True,
+    help="Glob(s) candidates may change (optimize/migrate). Repeatable.",
+)
+@click.option(
+    "--quorum",
+    default=0,
+    show_default=True,
+    type=int,
+    help="vote reducer: votes required for consensus. 0 => simple majority.",
+)
+@click.option(
+    "--fitness-cmd",
+    "fitness_cmd",
+    help="optimize: shell command run in each worktree that emits the metric. Implies --reducer best.",
+)
+@click.option(
+    "--metric-parse",
+    default="stdout_float",
+    show_default=True,
+    help="Parse the metric: json:<dotted.key> | regex:<pat> | stdout_float | exit_code.",
+)
+@click.option(
+    "--direction",
+    type=click.Choice(["min", "max"], case_sensitive=False),
+    default="min",
+    show_default=True,
+    help="Whether lower or higher metric is better.",
+)
+@click.option(
+    "--gate-cmd",
+    "gate_cmd",
+    help="optimize: correctness gate command that must exit 0 for a candidate to count.",
+)
+@click.option(
+    "--baseline",
+    default="auto",
+    show_default=True,
+    help="optimize: baseline to beat. 'auto' measures HEAD once before wave 1, or pass a number.",
+)
+@click.option(
+    "--improve-margin",
+    default=0.0,
+    show_default=True,
+    type=float,
+    help="optimize: required improvement over baseline to accept a candidate.",
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable run metadata.")
 @click.argument("child_command", nargs=-1, type=str)
 @click.pass_context
@@ -169,6 +240,17 @@ def swarm_start(
     runner_model: str | None,
     runner_args: tuple[str, ...],
     cleanup: bool,
+    reducer: str,
+    exec_mode: str,
+    job_kind: str,
+    search_space: tuple[str, ...],
+    quorum: int,
+    fitness_cmd: str | None,
+    metric_parse: str,
+    direction: str,
+    gate_cmd: str | None,
+    baseline: str,
+    improve_margin: float,
     as_json: bool,
     child_command: tuple[str, ...],
 ) -> None:
@@ -186,6 +268,17 @@ def swarm_start(
         raise click.ClickException("--max-waves must be >= 0")
     if max_evaluator_failures < 1:
         raise click.ClickException("--max-evaluator-failures must be >= 1")
+    fitness_spec = build_fitness_spec(
+        metric_command=fitness_cmd or "",
+        metric_parse=metric_parse,
+        direction=cast(FitnessDirection, direction),
+        gate_command=gate_cmd,
+        baseline=baseline,
+        improve_margin=improve_margin,
+        objective=job_kind if job_kind != "solve" else "",
+    )
+    # A supplied fitness implies a measured best-of-N; promote the default reducer.
+    effective_reducer = "best" if (fitness_spec is not None and reducer == "merge") else reducer
     repo_root = discover_repo_root(Path.cwd())
     root = Path(ctx.obj["root"])
     try:
@@ -227,6 +320,12 @@ def swarm_start(
         evaluator_backend=cast(SwarmEvaluatorBackend, evaluator_backend),
         evaluator_model=evaluator_model or "",
         max_evaluator_failures=max_evaluator_failures,
+        job_kind=job_kind,
+        reducer_name=effective_reducer,
+        exec_mode=cast(SwarmExecMode, exec_mode),
+        search_space=list(search_space),
+        fitness_spec=fitness_spec,
+        quorum=quorum,
     )
     if detach:
         coordinator_pid, log_path = spawn_swarm_coordinator(root, repo_root, state_path)

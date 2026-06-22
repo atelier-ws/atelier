@@ -35,6 +35,7 @@ from atelier.core.capabilities.swarm.models import (
     SwarmChildState,
     SwarmConvergenceVerdict,
     SwarmEvaluatorBackend,
+    SwarmExecMode,
     SwarmPlanningMode,
     SwarmRunState,
     SwarmValidationCheck,
@@ -43,6 +44,7 @@ from atelier.core.capabilities.swarm.models import (
     SwarmWaveState,
 )
 from atelier.core.capabilities.swarm.reducers import WaveContext, get_reducer
+from atelier.core.capabilities.swarm.fitness import FitnessSpec
 from atelier.core.capabilities.swarm.reducers.best import (
     _has_non_structural_passing_validation,
     _score_child,
@@ -310,6 +312,12 @@ def build_swarm_spec_payload(state: SwarmRunState) -> dict[str, Any]:
         "copied_path": state.copied_spec_path,
         "resolution": state.spec_resolution,
         "used_program_md": state.used_program_md,
+        "job_kind": state.job_kind,
+        "reducer": state.reducer_name,
+        "exec_mode": state.exec_mode,
+        "search_space": list(state.search_space),
+        "quorum": state.quorum,
+        "fitness": (state.fitness_spec.model_dump(mode="json") if state.fitness_spec else None),
         "title": title[:160],
         "excerpt": excerpt,
         "truncated": len(content) > len(excerpt),
@@ -1748,6 +1756,12 @@ def initialize_swarm_run(
     continuous: bool = False,
     max_waves: int = 0,
     max_evaluator_failures: int = 3,
+    job_kind: str = "solve",
+    reducer_name: str = "merge",
+    exec_mode: SwarmExecMode = "edit",
+    search_space: list[str] | None = None,
+    fitness_spec: FitnessSpec | None = None,
+    quorum: int = 0,
 ) -> tuple[SwarmRunState, Path]:
     root = Path(root).resolve()
     repo_root = Path(repo_root).resolve()
@@ -1793,6 +1807,12 @@ def initialize_swarm_run(
         launch_effort=launch_effort,
         evaluator_backend=evaluator_backend,
         evaluator_model=evaluator_model,
+        job_kind=job_kind,
+        reducer_name=reducer_name,
+        exec_mode=exec_mode,
+        search_space=list(search_space or []),
+        fitness_spec=fitness_spec,
+        quorum=quorum,
         child_command=list(child_command),
         validation_commands=list(validation_commands),
         runs=runs,
