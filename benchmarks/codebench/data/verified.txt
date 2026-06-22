@@ -18,3 +18,13 @@ pydata__xarray-3993
 pylint-dev__pylint-6528
 sympy__sympy-14248
 scikit-learn__scikit-learn-25102
+matplotlib__matplotlib-24870
+pytest-dev__pytest-5840
+astropy__astropy-13398
+astropy__astropy-14369
+astropy__astropy-8707
+mwaskom__seaborn-3187
+mwaskom__seaborn-3069
+pallets__flask-5014
+psf__requests-2931
+psf__requests-6028

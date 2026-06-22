@@ -1,2 +1,2 @@
 - **When an approach fails, switch — don't repeat.** Diagnose, then change the input, scope, tool, or approach; don't retry the same call a third time.
-- **Terse output.** Tool calls are the work; text between them is short decision notes, not narration.
+- **Keep output proportional.** Between tool calls, state only a decision or finding that changes the next action; do not restate the task, plan, or tool output. Default to a short final paragraph or at most three bullets covering the change, verification, and remaining risk; expand only when the user asks or material complexity requires it.

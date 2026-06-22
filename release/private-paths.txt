@@ -1,16 +1,3 @@
-# Paths stripped from the generated public repository snapshot.
-# One path per line. Paths are repository-relative; glob syntax is not supported.
-
-docs-internal/
-.planning/
-internal/
-
-# Closed-source Pro overlay (the `atelier_pro` wheel under pro/) plus future
-# paid tiers. Stripped from the public snapshot; shipped only as a private wheel
-# to licensed customers.
-pro/
-ee/
-
-# Private release/publish machinery should not be copied into the public repo.
-release/
-.github/workflows/
+THIS FILE IS REPLACED BY release/public-paths.txt.
+The mirror now uses an allowlist: only paths listed in public-paths.txt
+are included in the public mirror; everything else is private by default.

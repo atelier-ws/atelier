@@ -13,12 +13,12 @@ savings dashboard are paid.
   and stores license keys, answers "is this feature unlocked?".
 - **Pro overlay (proprietary):** the `atelier_pro` package under `pro/` — a
   separate wheel holding the paid engine activation surfaces. Tracked in this
-  repo but stripped from public releases via `release/private-paths.txt`. The
+  repo but excluded from public releases via `release/public-paths.txt`. The
   core never imports it directly; it soft-imports it through `pro_bridge`, so
   it's absent on every Free install. See [`pro/README.md`](../pro/README.md).
 - **Issuer (proprietary):** `services/license-issuer/` — a Cloudflare Worker that
-  turns a Stripe payment into a signed key and emails it. See its
-  [README](../services/license-issuer/README.md).
+  turns a Stripe payment into a signed key and emails it. Private by default
+  (not in `release/public-paths.txt`).
 
 Activation requires the issuer once, then stores a signed, device-bound lease.
 Entitlement checks are local Ed25519 verification. The client automatically
@@ -132,22 +132,18 @@ via `pro_impl`) and `atelier savings --deep` (`feature_active`) in
 
 ## Open-core layout (what's public vs private)
 
-Everything lives in **one repo**. Private paths are listed in
-`release/private-paths.txt` and stripped when the public snapshot is generated
-(`scripts/mirror.py` / `scripts/publish-public.sh`).
+Everything lives in **one repo**. Only paths listed in
+`release/public-paths.txt` are included in the public mirror
+(`scripts/mirror.py`). Everything else is private by default — a new directory
+never leaks unless it's explicitly allowlisted.
 
-| Public (kept in the snapshot)                   | Private (stripped via private-paths.txt)              |
-| ----------------------------------------------- | ----------------------------------------------------- |
-| Whole runtime, MCP server, SDK, CLI             | `pro/` — the `atelier_pro` overlay (paid surfaces)    |
-| License **client** (`licensing/`, `pro_bridge`) | `internal/`, `docs-internal/`, `.planning/` (strategy)|
-| Public compute the overlay calls into           | `release/`, `.github/workflows/` (publish machinery)  |
-| `docs/`, `integrations/`, `tests/`, benchmarks  | Ed25519 **private** key + Stripe secrets (never committed) |
+| Public (included via `public-paths.txt`)           | Private (excluded by default)                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------ |
+| Whole runtime, MCP server, SDK, CLI                | `pro/` — the `atelier_pro` overlay (paid surfaces)                 |
+| License **client** (`licensing/`, `pro_bridge`)    | `internal/`, `docs-internal/`, `.planning/` (strategy)             |
+| Public compute the overlay calls into              | `services/` — license issuer (Stripe, D1, device registry)         |
+| `docs/`, `integrations/`, `tests/`, benchmarks     | `deploy/`, `release/` (publish machinery)                          |
+| `frontend/`, `landing/`, `docs-site/`              | Ed25519 **private** key + Stripe secrets (never committed)         |
 
 The `atelier_pro` wheel is built from `pro/` and distributed only to licensed
-customers; the public snapshot never contains `pro/`. (The license **issuer**,
-`services/license-issuer/`, stays public for transparency — it holds no secrets;
-the signing key lives only in the deployed Worker.)
-
-> The enforceable moat is the closed issuer (only it mints valid keys) plus the
-> private overlay (Free installs don't have the paid code) — not DRM on local
-> source. Keep the split honest: the Free tier should be good enough to trust.
+customers; the public snapshot never contains `pro/`.
