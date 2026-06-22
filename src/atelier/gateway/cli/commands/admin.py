@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import re
 import shutil
@@ -35,7 +33,6 @@ from atelier.core.capabilities.workspace_host_overrides import (
     write_workspace_opencode_agents,
 )
 from atelier.core.foundation.models import Playbook, Rubric
-from atelier.gateway.cli.commands._dev import dev_command as _dev_command
 from atelier.gateway.cli.commands._shared import (
     _core_runtime,
     _emit,
@@ -413,9 +410,9 @@ def _project_init_setup(git_root: Path) -> dict[str, list[str]]:
 
 def _code_index_db_path(repo_root: Path) -> Path:
     """Return the default code index database path for a repo."""
-    from atelier.core.foundation.paths import default_store_root
+    from atelier.core.foundation.paths import default_store_root, workspace_key
 
-    workspace_hash = hashlib.sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:12]
+    workspace_hash = workspace_key(repo_root.resolve())
     return default_store_root() / "workspaces" / workspace_hash / "code_context.sqlite"
 
 
@@ -978,38 +975,6 @@ def plugin_settings_set(ctx: click.Context, key: str, value: str, as_json: bool)
     click.echo(f"set {key}={str(enabled).lower()}")
 
 
-@_dev_command("detect-loop")  # type: ignore[untyped-decorator]
-@click.option("--session-id", default=None, help="Specific session ID. Defaults to latest.")
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def detect_loop_cmd(ctx: click.Context, session_id: str | None, as_json: bool) -> None:
-    """Detect loops, repeated failures, and dead-end trajectories in a run ledger."""
-    rt = _core_runtime(ctx.obj["root"])
-    payload = rt.loop_report(session_id=session_id)
-    if as_json:
-        _emit(payload, as_json=True)
-        return
-    click.echo(f"loop_detected: {payload['loop_detected']}")
-    click.echo(f"severity: {payload['severity']}")
-    click.echo(f"loop_types: {', '.join(payload['loop_types']) or 'none'}")
-    click.echo(f"prior_attempts: {payload['prior_attempts']}")
-    if payload["rescue_strategies"]:
-        click.echo("rescue_strategies:")
-        for s in payload["rescue_strategies"]:
-            click.echo(f"  - {s}")
-
-
-@click.command("loop-report")
-@click.option("--session-id", default=None, help="Specific session ID. Defaults to latest.")
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def loop_report_cmd(ctx: click.Context, session_id: str | None, as_json: bool) -> None:
-    """Full loop analysis: signature, severity, alerts, rescue strategies."""
-    rt = _core_runtime(ctx.obj["root"])
-    payload = rt.loop_report(session_id=session_id)
-    _emit(payload, as_json=True) if as_json else click.echo(json.dumps(payload, indent=2))
-
-
 @click.command("tool-report")
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
@@ -1340,7 +1305,6 @@ __all__ = [
     "_project_root",
     "audit_group",
     "deprecate",
-    "detect_loop_cmd",
     "doctor_cmd",
     "env_group",
     "governance_group",
@@ -1348,7 +1312,6 @@ __all__ = [
     "insights_cmd",
     "login_cmd",
     "logout_cmd",
-    "loop_report_cmd",
     "plugin_settings_group",
     "quarantine",
     "reset_cmd",

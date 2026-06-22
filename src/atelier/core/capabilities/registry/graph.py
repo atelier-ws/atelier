@@ -47,8 +47,7 @@ class CapabilityRegistry:
 
         context_reuse    ──►  context_compression
         semantic_memory  ──►  context_reuse
-        tool_supervision ──►  loop_detection
-        loop_detection   ──►  context_compression
+        tool_supervision ──►  context_compression
 
     Usage::
 

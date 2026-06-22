@@ -200,7 +200,7 @@ def test_context_budget_lever_savings_json_serialization(store: ContextStore) ->
         "semantic_file_memory": 300,
         "archival_recall": 200,
         "context_compression": 150,
-        "loop_detection": 50,
+        "tool_supervision": 50,
     }
 
     recorder.record(

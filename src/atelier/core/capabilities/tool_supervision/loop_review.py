@@ -1,18 +1,17 @@
 """Spiral nudge at the MCP tool boundary.
 
-Atelier's own runtime consults :class:`LoopDetectionCapability` to break out of
-no-progress loops, but an external host driving Atelier over MCP (Claude Code,
-Codex, ...) never sees that signal -- those detectors read a ``RunLedger`` the
-MCP path does not populate, and several of them (``search_read_loop``,
-``stall``, ``hypothesis_loop`` on re-reads) fire during *normal* early
-exploration, so they cannot be surfaced verbatim to a host without nagging.
+A narrow, false-positive-free no-progress signal for any host driving Atelier
+over MCP (Claude Code, Codex, ...): a per-session count of byte-identical tool
+calls. Re-issuing the same call with the same arguments cannot change the
+result, so once it crosses a threshold we surface a one-line note telling the
+agent to change approach. ``read`` is intentionally excluded -- re-reading a
+file after an edit is normal iteration, and identical reads are already
+deduplicated upstream.
 
-This module supplies the narrow, false-positive-free complement that *can* run
-at the boundary: a per-session count of byte-identical tool calls. Re-issuing
-the same call with the same arguments cannot change the result, so once it
-crosses a threshold we surface a one-line note telling the agent to change
-approach. ``read`` is intentionally excluded -- re-reading a file after an edit
-is normal iteration, and identical reads are already deduplicated upstream.
+(History: a broader trajectory-pattern detector -- search/read loops, stalls,
+patch/revert cycles -- was hard-removed after it proved dead or
+false-positive-prone against the real ledger event vocabulary. The
+identical-call signal is the part that holds up, so it is the only one kept.)
 
 Soft signal only: it never blocks a call. The MCP boundary owns the per-session
 registry + kill switch; this module is pure logic so it is unit-testable on its
@@ -34,8 +33,8 @@ from atelier.core.foundation.watchdogs import args_signature
 _REPEAT_SENSITIVE = frozenset({"bash", "grep", "search", "explore", "edit", "codemod", "sql", "web_fetch"})
 
 # Nudge once the same (tool, args) has been issued this many times in a session.
-# 4 == "medium" in loop_detection's hypothesis_loop, i.e. past the point where a
-# repeat is plausibly a deliberate retry and into clear no-progress territory.
+# 4 is past the point where a repeat is plausibly a deliberate retry and into
+# clear no-progress territory.
 _REPEAT_THRESHOLD = 4
 
 # Cap distinct signatures retained per session so a marathon run cannot grow the
