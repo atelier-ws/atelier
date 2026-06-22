@@ -773,7 +773,10 @@ def _suite_specs() -> list[tuple[str, int, Callable[[Path, ProgressReporter], To
         ("compact", len(COMPACT_CASES), _run_compact_suite),
         ("shell", len(SHELL_CASES), _run_shell_suite),
     ]
+    # "search" is already a top-level suite (SEARCH_CASES); skip it here to avoid duplicates.
     for tool_name in sorted(CODE_TOOL_CASES):
+        if tool_name == "search":
+            continue
         specs.append((tool_name, len(CODE_TOOL_CASES[tool_name]), _code_suite_runner(tool_name)))
     return specs
 
