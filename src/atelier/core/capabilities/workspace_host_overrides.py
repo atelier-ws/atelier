@@ -499,11 +499,19 @@ def _render_codex_mode_body(body: str, repo_root: Path) -> str:
             "Coding Guidelines",
             repo_root / "integrations" / "shared" / "coding-guidelines.md",
         ),
+        "{{TOOL_DISCIPLINE}}": (
+            "Tool discipline",
+            repo_root / "integrations" / "shared" / "tool-discipline.md",
+        ),
     }
     rendered = body.rstrip()
     for token, (heading, path) in shared.items():
         if token in rendered:
-            rendered = rendered.replace(token, f"## {heading}\n\n{_markdown_body(path)}")
+            section = _markdown_body(path)
+            # Some partials (e.g. tool-discipline.md) carry their own heading;
+            # don't double it.
+            prefix = "" if section.lstrip().startswith("#") else f"## {heading}\n\n"
+            rendered = rendered.replace(token, f"{prefix}{section}")
     if "{{" in rendered:
         raise ValueError("unexpanded template token in Codex agent instructions")
     return rendered

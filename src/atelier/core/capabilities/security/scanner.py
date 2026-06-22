@@ -23,7 +23,7 @@ from atelier.core.capabilities.security.rules import (
     SecurityRule,
     rule_by_id,
 )
-from atelier.core.capabilities.security.taint import analyze_python_source
+from atelier.core.capabilities.security.taint import TaintFinding, analyze_python_source
 from atelier.infra.code_intel.astgrep.adapter import (
     AstGrepAdapter,
     AstGrepToolUnavailable,
@@ -33,6 +33,12 @@ from atelier.infra.code_intel.astgrep.adapter import (
 logger = logging.getLogger(__name__)
 
 _PYTHON_SUFFIXES: frozenset[str] = frozenset({".py", ".pyi"})
+
+# Process-level taint cache: (abs_path_str, mtime_ns, size) -> findings.
+# A stat() call (~1µs) replaces a full ast.parse + taint walk (~5-12ms) per
+# unchanged file. Invalidated automatically when mtime_ns or size changes.
+_taint_cache: dict[tuple[str, int, int], list[TaintFinding]] = {}
+
 _SKIP_DIR_NAMES: frozenset[str] = frozenset(
     {".git", ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache", ".atelier"}
 )
@@ -163,15 +169,28 @@ class SecurityScanner:
     def _scan_taint(self, paths: list[str] | None) -> list[Finding]:
         findings: list[Finding] = []
         for path in self._iter_python_files(paths):
+            # Cache check: stat() is ~1µs; skip re-parse + re-walk if unchanged.
             try:
-                source = path.read_text(encoding="utf-8")
+                st = path.stat()
+                cache_key: tuple[str, int, int] | None = (str(path.resolve()), st.st_mtime_ns, st.st_size)
             except OSError:
-                continue
-            except Exception:
-                logging.exception("Recovered from broad exception handler")
-                continue
+                cache_key = None
+            if cache_key is not None and cache_key in _taint_cache:
+                taint_results = _taint_cache[cache_key]
+            else:
+                try:
+                    source = path.read_text(encoding="utf-8")
+                except OSError:
+                    continue
+                except Exception:
+                    logging.exception("Recovered from broad exception handler")
+                    continue
+                rel_for_analyze = self._relpath(str(path))
+                taint_results = analyze_python_source(source, file_path=rel_for_analyze)
+                if cache_key is not None:
+                    _taint_cache[cache_key] = taint_results
             rel = self._relpath(str(path))
-            for taint in analyze_python_source(source, file_path=rel):
+            for taint in taint_results:
                 findings.append(
                     Finding(
                         rule_id=taint.rule_id,

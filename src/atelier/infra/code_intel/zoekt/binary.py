@@ -33,9 +33,16 @@ class ZoektBinaryResolution:
 
 
 def zoekt_mode() -> str:
-    """Return the configured Zoekt policy."""
-    mode = os.environ.get(_MODE_ENV_VAR, "off").strip().lower()
-    return mode if mode in _VALID_MODES else "off"
+    """Return the configured Zoekt policy.
+
+    Defaults to ``installed``: use Zoekt's regex/trigram index whenever the
+    binaries are already on PATH (or pinned via ``ATELIER_ZOEKT_BIN``), and fall
+    back silently to native search otherwise. This never bootstraps Docker --
+    that requires explicitly opting into ``managed`` -- so the default carries no
+    runtime cost on machines where Zoekt is not installed.
+    """
+    mode = os.environ.get(_MODE_ENV_VAR, "installed").strip().lower()
+    return mode if mode in _VALID_MODES else "installed"
 
 
 def _is_executable(path: Path) -> bool:

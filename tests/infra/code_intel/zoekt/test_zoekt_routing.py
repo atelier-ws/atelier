@@ -238,16 +238,14 @@ def test_default_mode_disables_zoekt_without_runtime_probes(tmp_path: Path, monk
     monkeypatch.delenv("ATELIER_ZOEKT_MODE", raising=False)
     monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
     monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
-    monkeypatch.setattr(
-        binary.shutil,
-        "which",
-        lambda _name: (_ for _ in ()).throw(AssertionError("default mode must not probe PATH")),
-    )
+    monkeypatch.setattr(binary.shutil, "which", lambda _name: None)
 
     resolution = discover_zoekt_binary(repo_root)
 
+    # Default is now `installed`: it probes PATH for the zoekt binaries and,
+    # finding none, falls back safely (no Docker bootstrap, no manifest write).
     assert resolution.available is False
-    assert resolution.reason == "ATELIER_ZOEKT_MODE=off"
+    assert resolution.reason == "zoekt is not installed; managed Docker bootstrap is disabled"
     assert not (repo_root / ".atelier" / "bin" / "MANIFEST.json").exists()
 
 

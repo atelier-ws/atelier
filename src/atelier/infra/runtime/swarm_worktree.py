@@ -87,7 +87,7 @@ _SKIP_UNTRACKED_DIR_NAMES = frozenset(
         "node_modules",
     }
 )
-_ALLOWLISTED_HIDDEN_DIRS = frozenset({".github", ".lessons", ".planning"})
+_ALLOWLISTED_HIDDEN_DIRS = frozenset({".planning"})
 _SKIP_UNTRACKED_FILE_SUFFIXES = frozenset(
     {
         ".db",
