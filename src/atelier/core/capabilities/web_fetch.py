@@ -458,11 +458,9 @@ def _render_content(raw: _RawFetchResult, *, requested_format: OutputFormat) -> 
     if media_type in _HTML_TYPES:
         if requested_format == "html":
             return {"content": _sanitize_html(decoded, base_url=raw.final_url), "format": "html"}
-        markdown = html_to_markdown_for_agent(decoded, base_url=raw.final_url)
+        markdown = _trafilatura_markdown(decoded, base_url=raw.final_url)
         if _markdown_looks_weak(markdown, decoded):
-            fallback = _trafilatura_markdown(decoded, base_url=raw.final_url)
-            if fallback:
-                markdown = fallback
+            markdown = html_to_markdown_for_agent(decoded, base_url=raw.final_url)
         return _format_markdown(markdown, requested_format=requested_format)
     if media_type == "application/json":
         return {"content": _format_json(decoded), "format": "text" if requested_format == "text" else "markdown"}
