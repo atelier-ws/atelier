@@ -112,7 +112,7 @@ def test_codex_installers_stage_plugin_agent_surface() -> None:
 
 def test_codex_installers_auto_approve_exposed_atelier_tools() -> None:
     expected_tools = [
-        "shell",
+        "bash",
         "read",
         "grep",
         "edit",

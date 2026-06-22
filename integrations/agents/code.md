@@ -9,3 +9,5 @@ agent_description: Main coding agent. Edits, refactors, fixes bugs, and ships fe
 {{CHANGE_DISCIPLINE}}
 
 {{CODING_GUIDELINES}}
+
+{{TOOL_DISCIPLINE}}

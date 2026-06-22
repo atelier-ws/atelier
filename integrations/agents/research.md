@@ -37,3 +37,5 @@ An external research specialist: fetch primary sources, synthesize, and cite eve
 ## Gaps
 - <what could not be confirmed>
 ```
+
+{{TOOL_DISCIPLINE}}

@@ -495,7 +495,7 @@ def _run_shell_suite(artifact_root: Path, progress: ProgressReporter | None = No
     src = workspace / "src"
     src.mkdir(exist_ok=True)
     (src / "module.py").write_text("# module with needle_token\ndef needle_token():\n    return 42\n", encoding="utf-8")
-    from atelier.gateway.adapters.mcp_server import tool_shell
+    from atelier.gateway.adapters.mcp_server import tool_bash
 
     results: list[CaseResult] = []
     for case in SHELL_CASES:
@@ -509,7 +509,7 @@ def _run_shell_suite(artifact_root: Path, progress: ProgressReporter | None = No
             custom_assert=case.custom_assert,
             baseline_tokens=case.baseline_tokens,
         )
-        results.append(run_case(patched_case, tool_shell))
+        results.append(run_case(patched_case, tool_bash))
         if progress is not None:
             progress.step("running MCP tool benchmark", current=f"shell {case.label}")
     return _tool_report("shell", results)

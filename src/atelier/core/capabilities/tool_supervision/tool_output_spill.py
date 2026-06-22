@@ -22,6 +22,7 @@ rather than breaking the tool call.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
@@ -33,6 +34,12 @@ from typing import Any
 
 # Prefix marking a spill ref id so callers / the retrieve op can recognize one.
 SPILL_REF_PREFIX = "spill:"
+
+# Bounded retention so the shared spill dir can't grow without limit across a long
+# session or many sessions (nothing else ever deletes these files). The sweep runs
+# best-effort on each write. Override via env; set either axis to 0 to disable it.
+_DEFAULT_SPILL_MAX_FILES = 512
+_DEFAULT_SPILL_TTL_SECONDS = 24 * 60 * 60  # 24h
 
 
 def _spill_dir() -> Path:
@@ -47,6 +54,11 @@ def _spill_dir() -> Path:
     else:
         path = Path(tempfile.gettempdir()) / "atelier-spill"
     path.mkdir(parents=True, exist_ok=True)
+    # Spill payloads can contain command output, file contents, and SQL results,
+    # so keep the directory owner-only. Best-effort: a shared/pre-existing dir we
+    # don't own may reject chmod, which is fine.
+    with contextlib.suppress(OSError):
+        path.chmod(0o700)
     return path
 
 
@@ -61,6 +73,58 @@ def _path_for_ref(ref_id: str) -> Path | None:
     if not name or name != Path(name).name:
         return None
     return _spill_dir() / name
+
+
+def _retention_limits() -> tuple[int, int]:
+    """Return ``(max_files, max_age_seconds)``; either ``<= 0`` disables that axis."""
+
+    def _read(name: str, default: int) -> int:
+        raw = os.environ.get(name)
+        if raw is None:
+            return default
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            return default
+
+    return (
+        _read("ATELIER_MCP_SPILL_MAX_FILES", _DEFAULT_SPILL_MAX_FILES),
+        _read("ATELIER_MCP_SPILL_TTL_SECONDS", _DEFAULT_SPILL_TTL_SECONDS),
+    )
+
+
+def _enforce_retention(directory: Path) -> None:
+    """Evict old spill artifacts by age then count so the dir stays bounded.
+
+    Best-effort and never raises into the caller: retention is hygiene, not
+    correctness. Sweeps every ``*.json`` in the shared spill dir (both
+    tool-output and ``native_search`` spills, neither cleaned elsewhere).
+    """
+    max_files, max_age = _retention_limits()
+    if max_files <= 0 and max_age <= 0:
+        return
+    try:
+        entries: list[tuple[float, Path]] = []
+        for p in directory.glob("*.json"):
+            try:
+                entries.append((p.stat().st_mtime, p))
+            except OSError:
+                continue
+    except OSError:
+        return
+    now = time.time()
+    survivors: list[tuple[float, Path]] = []
+    for mtime, p in entries:
+        if max_age > 0 and (now - mtime) > max_age:
+            with contextlib.suppress(OSError):
+                p.unlink()
+        else:
+            survivors.append((mtime, p))
+    if max_files > 0 and len(survivors) > max_files:
+        survivors.sort(key=lambda item: item[0])  # oldest first
+        for _, p in survivors[: len(survivors) - max_files]:
+            with contextlib.suppress(OSError):
+                p.unlink()
 
 
 @dataclass(frozen=True)
@@ -105,7 +169,18 @@ def spill(
             "content": content,
         }
         spill_path = directory / file_name
-        spill_path.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+        # Atomic publish: write to a sibling temp file then rename, so a concurrent
+        # retrieve never observes a half-written envelope. The '.tmp' suffix keeps
+        # in-flight writes out of the '*.json' retention sweep.
+        tmp_path = directory / f".{file_name}.{uuid.uuid4().hex[:8]}.tmp"
+        try:
+            tmp_path.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp_path, spill_path)
+        finally:
+            with contextlib.suppress(OSError):
+                if tmp_path.exists():
+                    tmp_path.unlink()
+        _enforce_retention(directory)
         return SpillRecord(
             ref_id=_ref_for(file_name),
             path=spill_path,
@@ -136,6 +211,11 @@ def retrieve(ref_id: str, *, slice: tuple[int, int] | None = None) -> dict[str, 
         envelope = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return {"error": f"could not read spill ref {ref_id!r}: {exc}", "ref_id": ref_id}
+    if not isinstance(envelope, dict):
+        # Valid JSON that isn't an object (e.g. an array/scalar left in the shared
+        # spill dir by another producer) would make the .get() calls below raise;
+        # return a structured error instead.
+        return {"error": f"malformed spill envelope (not an object): {ref_id!r}", "ref_id": ref_id}
 
     content = str(envelope.get("content", ""))
     total_chars = len(content)
@@ -168,15 +248,39 @@ def summary_with_ref(
     *,
     tool_name: str,
     retrieve_op: str = "compact",
+    max_chars: int | None = None,
 ) -> str:
     """Compose the host-facing text: summary + ref id + a retrieve hint.
 
     The hint names the agent-callable retrieve path so the model knows how to
     pull the full (or a sliced) payload back instead of re-running ``tool_name``.
     """
-    return (
-        f"{summary}\n\n[atelier: full {tool_name} output ({record.original_bytes} bytes) "
+    hint = (
+        f"\n\n[atelier: full {tool_name} output ({record.original_bytes} bytes) "
         f"spilled to ref {record.ref_id}; recover it with the `{retrieve_op}` tool "
         f'(op="retrieve", ref_id="{record.ref_id}"), or a window via '
         f"slice_start/slice_length, instead of re-running {tool_name}.]"
     )
+    if max_chars is None:
+        return f"{summary}{hint}"
+    if max_chars <= 0:
+        return ""
+    if len(hint) >= max_chars:
+        # The cap is smaller than the full recovery hint (only reachable via an
+        # impractically tiny configured limit). Never cut mid-ref: prefer the bare
+        # ref_id so the spill stays recoverable, falling back to its prefix only
+        # when even that can't fit. Always honor the promised return bound.
+        ref = record.ref_id
+        return ref if len(ref) <= max_chars else ref[:max_chars]
+
+    available = max_chars - len(hint)
+    if len(summary) > available:
+        marker = "\n...[summary clipped; full output is in spill]...\n"
+        if available <= len(marker):
+            summary = summary[:available]
+        else:
+            content_budget = available - len(marker)
+            head_chars = int(content_budget * 0.7)
+            tail_chars = content_budget - head_chars
+            summary = f"{summary[:head_chars]}{marker}{summary[-tail_chars:]}"
+    return f"{summary}{hint}"

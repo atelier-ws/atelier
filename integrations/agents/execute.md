@@ -26,3 +26,5 @@ A focused implementation specialist: take an accepted plan or scoped task and la
 {{CHANGE_DISCIPLINE}}
 
 {{CODING_GUIDELINES}}
+
+{{TOOL_DISCIPLINE}}

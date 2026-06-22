@@ -28,3 +28,5 @@ An autonomous solver: own a concrete, verifiable task end to end — no separate
 {{CHANGE_DISCIPLINE}}
 
 {{CODING_GUIDELINES}}
+
+{{TOOL_DISCIPLINE}}

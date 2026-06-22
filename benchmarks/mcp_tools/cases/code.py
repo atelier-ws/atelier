@@ -185,7 +185,7 @@ def _baseline_plan_for_case(case: BenchCase) -> tuple[list[list[str]], list[str]
                 [
                     "rg",
                     "-n",
-                    "_run_shell_tool|tool_shell",
+                    "_run_bash_tool|tool_bash",
                     "src/atelier/gateway/adapters/mcp_server.py",
                 ],
             ],
@@ -472,9 +472,9 @@ def _assert_callers(result: dict[str, Any]) -> None:
     assert "run_command" in text, f"callers result must reference run_command, got: {text[:300]!r}"
     if result.get("data_status") == "unavailable":
         return
-    # _run_shell_tool in mcp_server.py calls run_command
+    # _run_bash_tool in mcp_server.py calls run_command
     assert any(
-        name in text for name in ("mcp_server", "_run_shell_tool", "bench_shell", "test_")
+        name in text for name in ("mcp_server", "_run_bash_tool", "bench_shell", "test_")
     ), f"callers must surface at least one known caller file, got: {text[:400]!r}"
 
 

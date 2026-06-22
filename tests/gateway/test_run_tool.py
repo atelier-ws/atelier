@@ -129,7 +129,7 @@ def test_run_via_mcp_rewrites_cat(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": {"name": "shell", "arguments": {"command": "cat sample.txt"}},
+            "params": {"name": "bash", "arguments": {"command": "cat sample.txt"}},
         }
     )
     assert resp is not None
@@ -151,7 +151,7 @@ def test_run_via_mcp_rewrites_rg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": {"name": "shell", "arguments": {"command": "rg needle src"}},
+            "params": {"name": "bash", "arguments": {"command": "rg needle src"}},
         }
     )
     assert resp is not None

@@ -59,7 +59,7 @@ _SECTIONS: dict[str, tuple[str, str]] = {
         (
             "Close the loop with the narrowest authoritative check. Run the\n"
             "repo's lint, typecheck, and the smallest relevant test selection\n"
-            "via `shell`. Preserve failure evidence: read the delta, change the\n"
+            "via `bash`. Preserve failure evidence: read the delta, change the\n"
             "input/scope/approach on failure -- do not blindly retry the same\n"
             "command. Report verbatim pass/fail tails, not a paraphrase."
         ),
@@ -76,7 +76,7 @@ _SECTIONS: dict[str, tuple[str, str]] = {
             "- Read a file (outline first on large)       -> `read`\n"
             "- Apply edits (batch multi-file)             -> `edit`\n"
             "- AST-shaped structural rewrite              -> `codemod`\n"
-            "- Run a command / tests                      -> `shell`\n"
+            "- Run a command / tests                      -> `bash`\n"
             "- Recall durable cross-session knowledge     -> `memory`"
         ),
     ),

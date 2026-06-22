@@ -75,7 +75,7 @@ bash scripts/run_opencode_with_atelier.sh --dry-run --workspace /path/to/workspa
 - The local plugin adds context-window and multi-file-edit nudges to submitted prompts when applicable
 - opencode loads local plugins at startup; restart it after installation or plugin changes
 - opencode does not expose a Codex-style `/hooks` status screen
-- With `ATELIER_DEV_MODE=1`, opencode can actively use `context`, `route`, `rescue`, `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `shell`, and the `atelier_code_*` helpers
+- With `ATELIER_DEV_MODE=1`, opencode can actively use `context`, `route`, `rescue`, `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `bash`, and the `atelier_code_*` helpers
 - `trace` remains the stable observable recording surface
 
 ## Troubleshooting
@@ -90,7 +90,7 @@ bash scripts/run_opencode_with_atelier.sh --dry-run --workspace /path/to/workspa
 
 With `ATELIER_DEV_MODE=1`, the active Atelier MCP surface for opencode includes
 `context`, `route`, `rescue`, `trace`, `verify`, `memory`, `read`, `edit`,
-`sql`, `search`, `compact`, `shell`, and the `code` helpers.
+`sql`, `search`, `compact`, `bash`, and the `code` helpers.
 
 Without developer mode, `trace` remains the most reliable active surface and
 some other tools may still appear as passive compatibility stubs.

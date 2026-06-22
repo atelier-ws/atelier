@@ -96,7 +96,7 @@ if [[ "${ATELIER_ENFORCE_NATIVE_DENY:-0}" == "1" ]]; then
 else
     ATELIER_DENY_TOOLS_JSON='[]'
 fi
-ATELIER_MCP_TOOLS_JSON='["mcp__atelier__symbols", "mcp__atelier__node", "mcp__atelier__callers", "mcp__atelier__callees", "mcp__atelier__usages", "mcp__atelier__codemod", "mcp__atelier__explore", "mcp__atelier__compact", "mcp__atelier__context", "mcp__atelier__edit", "mcp__atelier__grep", "mcp__atelier__memory", "mcp__atelier__read", "mcp__atelier__rescue", "mcp__atelier__route", "mcp__atelier__search", "mcp__atelier__shell", "mcp__atelier__sql", "mcp__atelier__trace", "mcp__atelier__verify"]'
+ATELIER_MCP_TOOLS_JSON='["mcp__atelier__symbols", "mcp__atelier__node", "mcp__atelier__callers", "mcp__atelier__callees", "mcp__atelier__usages", "mcp__atelier__codemod", "mcp__atelier__explore", "mcp__atelier__compact", "mcp__atelier__context", "mcp__atelier__edit", "mcp__atelier__grep", "mcp__atelier__memory", "mcp__atelier__read", "mcp__atelier__rescue", "mcp__atelier__route", "mcp__atelier__search", "mcp__atelier__bash", "mcp__atelier__sql", "mcp__atelier__trace", "mcp__atelier__verify"]'
 ATELIER_BASH_ALLOWS_JSON='["Bash(git *)", "Bash(gh *)", "Bash(uv run pytest *)", "Bash(uv run python *)", "Bash(uv run mypy *)", "Bash(uv run ruff *)", "Bash(uv run atelier *)", "Bash(uv run uvicorn *)", "Bash(uv sync *)", "Bash(uv add *)", "Bash(uv pip *)", "Bash(uv lock *)", "Bash(npm run *)", "Bash(npm install *)", "Bash(npm test *)", "Bash(npx tsc *)", "Bash(make *)", "Bash(docker-compose *)", "Bash(docker compose *)"]'
 
 # --------------------------------------------------------------------------- #

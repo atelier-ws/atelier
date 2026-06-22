@@ -636,6 +636,18 @@ _MAX_WIRE_BYTES = 14 * 1024 * 1024
 # on every later turn. ~64k tokens. Set ATELIER_MCP_COMPACT_RESULT_CHARS=0 to
 # disable.
 _DEFAULT_COMPACT_RESULT_CHARS = 256 * 1024
+# Recoverable tool-output cap (chars). Results from spill-supported tools above
+# this size are persisted in full and replaced by a bounded head+tail summary
+# carrying a retrieval reference. Keep this separate from the legacy lossy
+# compaction threshold so tools without spill support retain their prior budget.
+# Set ATELIER_MCP_SPILL_RESULT_CHARS=0 to disable the char-gated spill cap.
+_DEFAULT_SPILL_RESULT_CHARS = 2 * 1024
+# Per-tool overrides of the recoverable char cap. bash output (test runs, diffs,
+# build logs, git status) is routinely needed inline during the debug loop, so it
+# gets a larger inline budget than web_fetch/sql, whose payloads are rarely needed
+# byte-complete. Tools absent here use _DEFAULT_SPILL_RESULT_CHARS. An explicit
+# ATELIER_MCP_SPILL_RESULT_CHARS env value overrides this map for every tool.
+_SPILL_RESULT_CHARS_BY_TOOL = {"bash": 8 * 1024}
 # Per-read inline budget (bytes). A single file read larger than this is returned
 # as a line-aligned prefix plus an EXACT continuation range, instead of being
 # handed to the host whole -- where the host's own MCP-output guard would dump it
@@ -1975,9 +1987,9 @@ def _default_workflow_shell_executor(step: Any, command: str, forked_context: di
         # fork_from on a shell step would be silently dropped. Reject it loudly
         # rather than give the author a false sense that the fork took effect.
         raise ValueError("workflow shell steps do not support fork_from (the shell tool cannot receive forked context)")
-    spec = TOOLS.get("shell")
+    spec = TOOLS.get("bash")
     if spec is None:
-        raise ValueError("shell tool not registered")
+        raise ValueError("bash tool not registered")
     handler = cast(Callable[[dict[str, Any]], Any], spec["handler"])
     return handler({"command": command})
 
@@ -4707,9 +4719,9 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
             # code-intel locator on the thread-local; prefer it when present.
             rendered = getattr(_tool_call_rendered_text, "value", None)
             text = rendered if isinstance(rendered, str) and rendered.strip() else _render_search_md(payload)
-    elif name == "shell":
+    elif name == "bash":
         with contextlib.suppress(Exception):
-            text = _render_shell_text(payload)
+            text = _render_bash_text(payload)
     elif name == "web_fetch":
         with contextlib.suppress(Exception):
             text = str(payload.get("content") or "")
@@ -5436,9 +5448,10 @@ def _apply_edit_verify_gate(
     timeout_ms: int,
     repo_root: Path,
 ) -> None:
-    """Run the executing parse + mypy/pytest gate; attach counterexamples and roll back on failure.
+    """Run mechanical parse/type checks; attach counterexamples and roll back on failure.
 
-    Fully fail-open: a gate crash never blocks a legitimate edit.
+    This gate does not run behavioral tests. Fully fail-open: a gate crash never
+    blocks a legitimate edit.
     """
     try:
         from atelier.core.capabilities.verification.edit_gate import run_edit_gate
@@ -5451,10 +5464,15 @@ def _apply_edit_verify_gate(
             timeout_s=max(1.0, timeout_ms / 1000),
         )
         errors = [c for c in counterexamples if c.severity == "error"]
+        gate_result = {
+            "passed": not errors,
+            "checks": list(checks_seq),
+            "scope": "mechanical",
+            "behavioral_tests_run": False,
+        }
+        result["mechanical_checks"] = gate_result
         if not errors:
-            result["verify"] = {"passed": True, "checks": list(checks_seq)}
             return
-        result["verify"] = {"passed": False, "checks": list(checks_seq)}
         result["counterexamples"] = [c.to_dict() for c in errors]
         if rollback:
             # The gate runs outside the per-file edit locks (so verify can't
@@ -5469,10 +5487,15 @@ def _apply_edit_verify_gate(
             result["rolled_back"] = True
             result["applied"] = []
             result["writes"] = 0
-            result["verify"]["rolled_back"] = True
+            result["mechanical_checks"]["rolled_back"] = True
     except Exception:
         logging.exception("Recovered from broad exception handler")
-        result["verify"] = {"passed": None, "error": "verify gate failed open"}
+        result["mechanical_checks"] = {
+            "passed": None,
+            "scope": "mechanical",
+            "behavioral_tests_run": False,
+            "error": "mechanical edit gate failed open",
+        }
 
 
 EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
@@ -7641,7 +7664,7 @@ def tool_orient(topic: str | None = None) -> dict[str, Any]:
     return orientation_playbook(topic)
 
 
-def _run_shell_tool(
+def _run_bash_tool(
     command: str = "",
     timeout: int = 30,
     cwd: str | None = None,
@@ -7830,7 +7853,7 @@ def _fmt_duration_ms(ms: int) -> str:
     return f"{hours}h{minutes:02d}m"
 
 
-def _render_shell_text(result: dict[str, Any]) -> str:
+def _render_bash_text(result: dict[str, Any]) -> str:
     """Render shell output as compact text while preserving structured internals."""
     exit_code = result.get("exit_code")
     stdout = str(result.get("stdout") or "")
@@ -8429,10 +8452,10 @@ _DEDUP_TOOLS = frozenset({"read", "search", "grep", "explore"})
 # oneOf/anyOf/allOf in a tool's input_schema, so Claude Code's MCP client
 # silently SKIPS any tool whose schema uses one ("its input schema uses
 # top-level oneOf, which the Anthropic API does not accept") -- which is why a
-# previous action-branched oneOf shape made `shell` vanish from the tool list
+# previous action-branched oneOf shape made `bash` vanish from the tool list
 # while every other tool stayed. Per-action requirements (command for run,
-# session_id for poll/cancel) are enforced in _run_shell_tool, not the schema.
-SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
+# session_id for poll/cancel) are enforced in _run_bash_tool, not the schema.
+BASH_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "action": {
@@ -8465,14 +8488,15 @@ SHELL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
 
 
 @mcp_tool(
-    name="shell",
-    input_schema=SHELL_TOOL_INPUT_SCHEMA,
+    name="bash",
+    input_schema=BASH_TOOL_INPUT_SCHEMA,
     description=(
-        "Execute a shell command and return compact text. Prefer Atelier read/grep/search where "
-        "possible; use shell for git, make, uv, npm, etc."
+        "Run a command via the system shell and return compact text. Prefer Atelier "
+        "read/grep/search where possible; use bash for git, make, uv, npm, etc. "
+        "Don't spawn nested interactive shells."
     ),
 )
-def tool_shell(
+def tool_bash(
     command: str = "",
     timeout: int = 1800,
     cwd: str | None = None,
@@ -8484,9 +8508,9 @@ def tool_shell(
     """Execute a shell command and return compact text output.
 
     Prefer Atelier read/grep/search tools directly — they are faster and cheaper.
-    Use shell only for commands that have no Atelier equivalent (git, make, uv, npm, etc.).
+    Use bash only for commands that have no Atelier equivalent (git, make, uv, npm, etc.).
     """
-    result = _run_shell_tool(
+    result = _run_bash_tool(
         command,
         timeout=timeout,
         cwd=cwd,
@@ -8495,7 +8519,7 @@ def tool_shell(
         session_id=session_id,
         action=action,
     )
-    return _render_shell_text(result)
+    return _render_bash_text(result)
 
 
 @mcp_tool(
@@ -9275,7 +9299,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
     if method == "tools/call":
         name = params.get("name") or ""
         if name == "run":
-            name = "shell"
+            name = "bash"
         args = params.get("arguments") or {}
         # Some MCP clients deliver the whole `arguments` payload as a JSON string
         # instead of an object. mypyc-compiled handlers enforce dict at the boundary
@@ -9327,6 +9351,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     blocked_message = _benchmark_edit_block_message(args)
                     if blocked_message:
                         return _err(rid, -32000, blocked_message)
+                # Hidden alias: file_paths_with_count → file_paths_with_match_count
+                if name == "grep" and isinstance(args, dict) and args.get("output_mode") == "file_paths_with_count":
+                    args["output_mode"] = "file_paths_with_match_count"
                 _tool_call_tokens_saved.value = 0  # reset before handler so stale values can't bleed through
                 _tool_call_rendered_text.value = None  # reset before handler
                 wrapper_model = (
@@ -9490,22 +9517,6 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         dedup_stubbed = True
                         if dedup_chars_saved > 0:
                             _append_workspace_savings(name, dedup_chars_saved // 4, 0, rid=str(rid))
-            # N4 — per-tool exact input/output token ledger. Measures the
-            # request args (input) and the final emitted text (output) with the
-            # local tiktoken counter, accumulates per tool name, and persists a
-            # JSON sidecar under the atelier root. Additive only — never touches
-            # the response bytes; best-effort so a write failure can't break the
-            # tool call.
-            with contextlib.suppress(Exception):
-                from atelier.core.capabilities.tool_token_ledger import record_tool_tokens
-
-                record_tool_tokens(
-                    _atelier_root(),
-                    name,
-                    input_payload=args,
-                    output_payload=response_text,
-                )
-
             # Embed per-call savings on the content item so they also ride into
             # the Claude transcript JSONL. NOTE: this is a secondary record —
             # the live statusline/analytics source is the per-session sidecar
@@ -9515,24 +9526,36 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # object is omitted entirely when both are 0.
             # First bound, for context hygiene: head+tail compact a single
             # runaway result so it can't flood the host prompt (which the host
-            # re-pays for on every later turn). Deterministic, so the compacted
-            # bytes stay prefix-cache stable across identical calls.
+            # re-pays for on every later turn). The legacy char-compaction path
+            # (_compact_result_text) is deterministic and prefix-cache stable
+            # across identical calls; the T7 spill summary below is intentionally
+            # NOT -- it embeds a unique ref_id (timestamp+random), so two identical
+            # capped-tool calls yield different host text (spill summaries are
+            # <4096 chars and so never get the cache_control marker below anyway).
             # T8 (ATELIER_AUTO_COMPACT_OUTPUT, default off): auto-compact an
             # oversized result (AST-aware for code) while preserving the
             # untransformed original in the T7 spill store so it stays
             # reversible. Off -> returns response_text unchanged.
             _spill_args = args if isinstance(args, dict) else {}
             response_text = _auto_compact_result_text(response_text, name, _spill_args)
-            # T7 (ATELIER_TOOL_OUTPUT_SPILL, default off): spill the FULL,
+            # T7 (ATELIER_TOOL_OUTPUT_SPILL, default on): spill the FULL,
             # UNTRANSFORMED payload BEFORE the legacy char compaction below, gated
-            # on the same char threshold (_compact_result_chars) the compactor
-            # uses. Otherwise the byte-gated spill (6MB) never fires under default
-            # caps and _compact_result_text would drop the middle first, so the
-            # spilled artifact would only ever hold already-compacted text.
-            # Off / non-spill tools -> no-op, so _compact_result_text runs exactly
-            # as before.
+            # at the recoverable result cap. This is deliberately separate from
+            # the legacy lossy compaction threshold: capped tools return at most
+            # 2 KiB by default (full original recoverable via `compact`/`read`),
+            # while unsupported tools retain their prior context-hygiene budget.
+            # `read` is exempt (see _SPILL_CHAR_CAP_TOOLS): it is the explicit,
+            # incremental retrieval surface, so it stays full here and only the
+            # multi-MB wire backstop below can spill it.
+            # Off / non-capped tools -> no-op, so _compact_result_text runs
+            # exactly as before.
             response_text = _spill_oversized_result_text(
-                response_text, name, _spill_args, _compact_result_chars(), unit="chars"
+                response_text,
+                name,
+                _spill_args,
+                _spill_result_chars(name),
+                unit="chars",
+                tools=_SPILL_CHAR_CAP_TOOLS,
             )
             response_text = _compact_result_text(response_text, name)
             # Wire-byte backstop: a spill-worthy result still over the multi-MB
@@ -9543,6 +9566,20 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # Bound the result so one oversized frame can't trip the host's
             # stdout guard and disconnect the server (no mid-session reconnect).
             response_text = _truncate_result_text(response_text, _max_result_bytes())
+            # N4 — per-tool exact input/output token ledger. Runs HERE, after the
+            # spill/compact/truncate bounds above, so output is measured against
+            # the FINAL emitted text the host actually receives (a spilled summary,
+            # not the pre-spill payload). Additive only -- never touches the
+            # response bytes; best-effort so a write failure can't break the call.
+            with contextlib.suppress(Exception):
+                from atelier.core.capabilities.tool_token_ledger import record_tool_tokens
+
+                record_tool_tokens(
+                    _atelier_root(),
+                    name,
+                    input_payload=args,
+                    output_payload=response_text,
+                )
             content_item: dict[str, Any] = {
                 "type": "text",
                 "text": response_text,
@@ -9710,7 +9747,7 @@ _MAX_MCP_HEAVY_WORKERS = 32
 # a workflow/agent spawn up to the 48h ceiling). They get a separate small
 # executor lane so a burst can't evict cheap, frequent reads/searches from the
 # main pool.
-_HEAVY_TOOLS = frozenset({"shell", "run", "edit", "web_fetch", "workflow", "agent"})
+_HEAVY_TOOLS = frozenset({"bash", "run", "edit", "web_fetch", "workflow", "agent"})
 
 
 def _mcp_heavy_max_workers() -> int:
@@ -9818,6 +9855,31 @@ def _compact_result_chars() -> int:
     return max(0, configured)
 
 
+def _spill_result_chars(tool_name: str | None = None) -> int:
+    """Strict returned-char cap for recoverably spilled tool outputs.
+
+    The full original is persisted before the bounded summary is emitted, so this
+    limit never discards output and does not affect tools without spill support.
+    Resolution order: an explicit ``ATELIER_MCP_SPILL_RESULT_CHARS`` env value
+    wins for every tool (set it to ``0`` to disable the char-gated cap while
+    retaining the multi-MB wire backstop); otherwise a per-tool override from
+    ``_SPILL_RESULT_CHARS_BY_TOOL`` (e.g. bash gets a larger inline budget);
+    otherwise ``_DEFAULT_SPILL_RESULT_CHARS``.
+    """
+    raw = os.environ.get("ATELIER_MCP_SPILL_RESULT_CHARS")
+    if raw is not None:
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            _log.warning(
+                "invalid ATELIER_MCP_SPILL_RESULT_CHARS=%r; using per-tool defaults",
+                raw,
+            )
+    if tool_name is not None:
+        return _SPILL_RESULT_CHARS_BY_TOOL.get(tool_name, _DEFAULT_SPILL_RESULT_CHARS)
+    return _DEFAULT_SPILL_RESULT_CHARS
+
+
 def _compact_result_text(text: str, tool_name: str) -> str:
     """Head+tail compact a single oversized tool result before it reaches the host.
 
@@ -9855,14 +9917,22 @@ def _compact_result_text(text: str, tool_name: str) -> str:
 # These produce expensive or non-idempotent output (shell side effects, sql
 # query cost, large file reads, network fetches) where re-running to recover a
 # truncated tail is wasteful or unsafe.
-_SPILL_TOOLS = frozenset({"shell", "sql", "read", "web_fetch"})
+_SPILL_TOOLS = frozenset({"bash", "sql", "read", "web_fetch"})
+
+# Tools subject to the strict char-gated spill cap (_spill_result_chars). `read`
+# is intentionally EXCLUDED: it is the agent's explicit, incremental retrieval
+# surface (ranges, expand=true, slice windows) and the very tool used to recover
+# spilled output, so capping it would defeat the spill-recovery cycle. read keeps
+# its own inline budget + outline projection and the multi-MB wire backstop, so
+# it is never lossily truncated -- just not force-summarized at 2 KiB.
+_SPILL_CHAR_CAP_TOOLS = frozenset({"bash", "sql", "web_fetch"})
 
 _CODE_CONTENT_TOOLS = frozenset({"read"})
 
 
 def _tool_output_spill_enabled() -> bool:
     """T7 flag: spill oversized output instead of discarding the overflow."""
-    return os.environ.get("ATELIER_TOOL_OUTPUT_SPILL", "0").strip().lower() in {"1", "true", "yes", "on"}
+    return os.environ.get("ATELIER_TOOL_OUTPUT_SPILL", "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _auto_compact_output_enabled() -> bool:
@@ -9964,10 +10034,11 @@ def _spill_oversized_result_text(
     limit: int,
     *,
     unit: str = "bytes",
+    tools: frozenset[str] = _SPILL_TOOLS,
 ) -> str:
     """T7 — spill an over-budget result instead of discarding the overflow.
 
-    When a ``shell``/``sql``/``read``/``web_fetch`` result exceeds the budget, the
+    When a ``bash``/``sql``/``read``/``web_fetch`` result exceeds the budget, the
     legacy path truncates/compacts and the middle is *lost*. Here the full,
     UNTRANSFORMED payload is written to the spill store and the host-facing text
     becomes a head/tail summary + the spill ref id + a retrieve hint, so the
@@ -9978,11 +10049,13 @@ def _spill_oversized_result_text(
     (``_compact_result_chars``), i.e. BEFORE ``_compact_result_text`` would have
     dropped the middle; ``"bytes"`` keeps the original wire-byte semantics.
 
-    Flag-gated by ``ATELIER_TOOL_OUTPUT_SPILL`` and limited to ``_SPILL_TOOLS``
-    (off / other tools -> returns ``text`` unchanged so the caller's existing
-    compaction/truncation runs exactly as before).
+    Enabled by default, explicitly disabled with ``ATELIER_TOOL_OUTPUT_SPILL=0``,
+    and limited to ``tools`` (default ``_SPILL_TOOLS``; the char-gated call site
+    passes ``_SPILL_CHAR_CAP_TOOLS`` to exempt ``read``). Off / ineligible tools
+    -> returns ``text`` unchanged so the caller's existing compaction/truncation
+    runs exactly as before.
     """
-    if not _tool_output_spill_enabled() or tool_name not in _SPILL_TOOLS:
+    if not _tool_output_spill_enabled() or tool_name not in tools:
         return text
     measured = len(text) if unit == "chars" else len(text.encode("utf-8"))
     if limit <= 0 or measured <= limit:
@@ -10000,13 +10073,20 @@ def _spill_oversized_result_text(
     if record is None:
         return text  # spill failed -> fall back to the legacy compaction/truncation.
 
-    # A compact head+tail summary that comfortably fits the budget.
+    # A compact head+tail summary. summary_with_ref applies the final strict cap
+    # after reserving room for the recovery reference and instructions.
     summary_budget = limit if unit == "chars" else limit // 8
-    target = max(4096, min(summary_budget, 16384))
+    target = max(256, min(summary_budget, 16384))
     head = int(target * 0.7)
     tail = max(1, target - head)
     summary = compress_tool_output(text, threshold_chars=target, head_chars=head, tail_chars=tail)
-    return tool_output_spill.summary_with_ref(summary, record, tool_name=tool_name, retrieve_op="compact")
+    return tool_output_spill.summary_with_ref(
+        summary,
+        record,
+        tool_name=tool_name,
+        retrieve_op="compact",
+        max_chars=limit if unit == "chars" else None,
+    )
 
 
 def _write_jsonrpc(message: dict[str, Any]) -> None:

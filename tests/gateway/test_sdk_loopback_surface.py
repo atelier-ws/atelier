@@ -15,7 +15,7 @@ def test_previously_unreachable_tools_are_registered() -> None:
     # resolves the full TOOLS registry, so each must be present and dispatchable.
     # (rename is performed via `codemod`, not a standalone tool -- see the SDK
     # loopback note "rename-via-codemod".)
-    for name in ("workflow", "codemod", "shell", "grep", "graph", "scan"):
+    for name in ("workflow", "codemod", "bash", "grep", "graph", "scan"):
         assert name in mcp_server.TOOLS, name
 
 

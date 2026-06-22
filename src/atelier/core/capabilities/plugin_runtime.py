@@ -977,7 +977,7 @@ _ATELIER_TOOL_NAMES: frozenset[str] = frozenset(
         "grep",
         "search",
         "compact",
-        "shell",
+        "bash",
     }
 )
 
@@ -1020,8 +1020,8 @@ def _codex_native_tool_replacement(payload: dict[str, Any]) -> tuple[str, str] |
         if normalized.startswith(("cat ", "sed ", "head ", "tail ")):
             return ("mcp__atelier__read", "Use Atelier read instead of shell file-print commands.")
         return (
-            "mcp__atelier__shell",
-            "Use Atelier shell so command execution stays compact and supervised.",
+            "mcp__atelier__bash",
+            "Use Atelier bash so command execution stays compact and supervised.",
         )
     return None
 

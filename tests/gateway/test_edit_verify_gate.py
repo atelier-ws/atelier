@@ -28,7 +28,11 @@ def test_verify_gate_rolls_back_syntax_break(tmp_path: Path, monkeypatch: pytest
     )
 
     assert result.get("rolled_back") is True
-    assert result.get("verify", {}).get("passed") is False
+    gate = result.get("mechanical_checks", {})
+    assert gate.get("passed") is False
+    assert gate.get("scope") == "mechanical"
+    assert gate.get("behavioral_tests_run") is False
+    assert "verify" not in result
     counterexamples = result.get("counterexamples") or []
     assert any(c.get("check") == "parse" for c in counterexamples)
     # File restored to its pre-edit content.
@@ -51,7 +55,14 @@ def test_verify_gate_passes_clean_edit(tmp_path: Path, monkeypatch: pytest.Monke
     )
 
     assert not result.get("rolled_back")
-    assert result.get("verify", {}).get("passed") is True
+    gate = result.get("mechanical_checks", {})
+    assert gate == {
+        "passed": True,
+        "checks": ["typecheck"],
+        "scope": "mechanical",
+        "behavioral_tests_run": False,
+    }
+    assert "verify" not in result
     assert "export const x = 2;" in target.read_text(encoding="utf-8")
 
 
@@ -67,6 +78,7 @@ def test_default_path_has_no_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     )
 
     assert "verify" not in result
+    assert "mechanical_checks" not in result
     assert not result.get("rolled_back")
     # No gate -> the (broken) edit is written through.
     assert target.read_text(encoding="utf-8") == _BROKEN_TS
