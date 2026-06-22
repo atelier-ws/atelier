@@ -14,7 +14,6 @@ __all__ = [
     "ContextReuseCapability",
     "FailureAnalysisCapability",
     "LessonPromoterCapability",
-    "LoopDetectionCapability",
     "PromptBudgetOptimizer",
     "ProofGateCapability",
     "QualityRouterCapability",
@@ -48,10 +47,6 @@ def __getattr__(name: str) -> Any:
         "LessonPromoterCapability": (
             "atelier.core.capabilities.lesson_promotion",
             "LessonPromoterCapability",
-        ),
-        "LoopDetectionCapability": (
-            "atelier.core.capabilities.loop_detection",
-            "LoopDetectionCapability",
         ),
         "ContextReuseCapability": (
             "atelier.core.capabilities.context_reuse",

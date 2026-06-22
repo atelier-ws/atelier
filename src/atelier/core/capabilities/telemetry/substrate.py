@@ -50,9 +50,9 @@ class TelemetrySubstrate:
     Usage::
 
         bus = TelemetrySubstrate()
-        bus.emit("loop_detection", "loop_probability", 0.8, session_id="r1")
-        events = bus.query(capability="loop_detection")
-        stats  = bus.aggregates(metric="loop_probability")
+        bus.emit("tool_supervision", "redundancy_score", 0.8, session_id="r1")
+        events = bus.query(capability="tool_supervision")
+        stats  = bus.aggregates(metric="redundancy_score")
     """
 
     def __init__(self, max_events: int = _MAX_EVENTS) -> None:

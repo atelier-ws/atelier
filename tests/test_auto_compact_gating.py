@@ -117,7 +117,7 @@ def test_flag_on_compress_fires_at_or_above_fraction(tmp_path: Path, monkeypatch
     assert spy.calls == 1
     assert summary["compacted"] is True
     assert summary["session_id"] == session_id
-    assert "loop_alerts" in summary
+    assert "compacted" in summary
 
 
 def test_flag_on_compress_skipped_below_fraction(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -131,7 +131,7 @@ def test_flag_on_compress_skipped_below_fraction(tmp_path: Path, monkeypatch: py
     assert summary["compacted"] is False
     # Contract preserved even when compaction is skipped.
     assert summary["session_id"] == session_id
-    assert "loop_alerts" in summary
+    assert "compacted" in summary
 
 
 # --------------------------------------------------------------------------- #
@@ -150,7 +150,7 @@ def test_flag_off_preserves_current_behavior_low_fill(tmp_path: Path, monkeypatc
     assert spy.calls == 1
     assert summary["compacted"] is True
     assert summary["session_id"] == session_id
-    assert "loop_alerts" in summary
+    assert "compacted" in summary
 
 
 def test_flag_off_explicit_false_value_preserves_current_behavior(

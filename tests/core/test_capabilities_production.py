@@ -3,7 +3,6 @@
 Tests cover:
 - context_reuse: BM25 ranking, rescue boost, savings accumulation
 - semantic_file_memory: AST truncation, symbol details, module_summary, symbol_search, cache hits
-- loop_detection: LoopReport returned, signature stability, loop type detection
 - tool_supervision: token savings accumulation, tool_report structure
 - context_compression: CompressionResult provenance metadata
 - engine lifecycle hooks: pre_tool, post_tool, finalize
@@ -258,149 +257,6 @@ def test_semantic_memory_symbol_search(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# loop_detection                                                              #
-# --------------------------------------------------------------------------- #
-
-
-def test_loop_detection_check_returns_looproport_dict(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-1", task="fix bug", domain="test")
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    # check() returns a LoopReport with .to_dict()
-    d = report.to_dict()
-    assert "loop_detected" in d
-    assert "severity" in d
-    assert "prior_attempts" in d
-    assert "rescue_strategies" in d
-    assert "loop_types" in d
-    assert isinstance(d["rescue_strategies"], list)
-
-
-def test_loop_detection_severity_none_for_empty_ledger(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-2", task="nothing", domain="test")
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    assert report.severity == "none"
-    assert report.loop_detected is False
-
-
-def test_loop_detection_signature_stable(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import _loop_signature
-
-    parts = ["error_A", "error_A", "error_A"]
-    sig1 = _loop_signature(parts)
-    sig2 = _loop_signature(parts)
-    assert sig1 == sig2
-    assert len(sig1) == 12  # SHA1 truncated hex digest
-
-
-def test_loop_detection_patch_revert_detected(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-3", task="patch fix", domain="test")
-    # Simulate alternating edit/revert events on same file
-    for i in range(4):
-        kind = "file_edit" if i % 2 == 0 else "file_revert"
-        led.record(kind=kind, summary="op on foo.py", payload={"path": "foo.py"})
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    # patch_revert_cycle should be among detected types
-    # (may be low/medium depending on count)
-    d = report.to_dict()
-    assert isinstance(d["loop_types"], list)
-
-
-# Phase 3 loop_detection tests
-
-
-def test_loop_detection_phase3_fields_present(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-p3-1", task="check fields", domain="test")
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    d = report.to_dict()
-    assert "risk_velocity" in d
-    assert "rescue_scores" in d
-    assert isinstance(d["risk_velocity"], float)
-    assert isinstance(d["rescue_scores"], dict)
-
-
-def test_loop_detection_stall_detected(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-p3-2", task="stall test", domain="test")
-    # 10 tool_call events with no file writes => stall
-    for i in range(10):
-        led.record(
-            kind="tool_call",
-            summary=f"grep call {i}",
-            payload={"tool": "grep", "args_signature": f"q{i}"},
-        )
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    # stall should be in loop_types
-    assert "stall" in report.loop_types
-
-
-def test_loop_detection_second_guess_detected(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-p3-3", task="second guess test", domain="test")
-    # 5 reasoning events out of 8 total => second_guess_loop (ratio >= 0.4)
-    for i in range(5):
-        led.record(kind="reasoning", summary=f"clarify {i}", payload={})
-    for i in range(3):
-        led.record(kind="tool_call", summary=f"tool {i}", payload={"tool": "grep"})
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    assert "second_guess_loop" in report.loop_types
-
-
-def test_loop_detection_rescue_scores_nonempty_when_loop(tmp_path: Path) -> None:
-    from atelier.core.capabilities.loop_detection import LoopDetectionCapability
-    from atelier.infra.runtime.run_ledger import RunLedger
-
-    root = tmp_path / ".atelier"
-    _init_root(root)
-    led = RunLedger(session_id="test-ld-p3-4", task="rescue score test", domain="test")
-    for i in range(10):
-        led.record(
-            kind="tool_call",
-            summary=f"search {i}",
-            payload={"tool": "grep", "args_signature": f"q{i}"},
-        )
-    cap = LoopDetectionCapability()
-    report = cap.check(led)
-    if report.loop_detected:
-        assert len(report.rescue_scores) > 0
-        for score in report.rescue_scores.values():
-            assert 0.0 <= score <= 1.0
-
-
-# --------------------------------------------------------------------------- #
 # tool_supervision                                                            #
 # --------------------------------------------------------------------------- #
 
@@ -578,7 +434,6 @@ def test_runtime_pre_tool_hook(tmp_path: Path) -> None:
     result = rt.pre_tool("read_file", {"path": "foo.py"}, ledger=led)
     assert isinstance(result, dict)
     assert "cache_available" in result
-    assert "loop_alert" in result
 
 
 def test_runtime_post_tool_hook(tmp_path: Path) -> None:
@@ -610,15 +465,10 @@ def test_runtime_finalize_returns_aggregate(tmp_path: Path) -> None:
     assert "token_savings" in result["savings"]
 
 
-def test_runtime_loop_report_no_ledger(tmp_path: Path) -> None:
+def test_runtime_loop_report_removed(tmp_path: Path) -> None:
     rt, _ = _make_rt(tmp_path)
-    # Should raise ClickException or return error dict — no crash
-    try:
-        report = rt.loop_report(session_id=None)
-        # If there's no ledger, it may return an error dict or raise
-        assert isinstance(report, dict)
-    except FileNotFoundError:
-        pass  # raising is acceptable when no ledger exists
+    # loop_report was hard-removed together with the loop_detection capability.
+    assert not hasattr(rt, "loop_report")
 
 
 def test_runtime_context_report_no_ledger(tmp_path: Path) -> None:
@@ -652,16 +502,16 @@ def test_telemetry_emit_and_query() -> None:
     from atelier.core.capabilities.telemetry import TelemetryEvent, TelemetrySubstrate
 
     bus = TelemetrySubstrate()
-    bus.emit("loop_detection", "loop_probability", 0.8, session_id="r1")
+    bus.emit("tool_supervision", "redundancy_score", 0.8, session_id="r1")
     bus.emit("context_reuse", "hit_quality", 0.95, session_id="r1")
-    bus.emit("loop_detection", "retry_count", 2.0, session_id="r1")
+    bus.emit("tool_supervision", "retry_count", 2.0, session_id="r1")
 
     all_events = bus.query()
     assert len(all_events) == 3
 
-    ld_events = bus.query(capability="loop_detection")
+    ld_events = bus.query(capability="tool_supervision")
     assert len(ld_events) == 2
-    assert all(e.capability == "loop_detection" for e in ld_events)
+    assert all(e.capability == "tool_supervision" for e in ld_events)
 
     hp_events = bus.query(metric="hit_quality")
     assert len(hp_events) == 1
@@ -833,7 +683,7 @@ def test_budget_optimizer_to_dict_shape() -> None:
     from atelier.core.capabilities.budget_optimizer import ContextBlock, PromptBudgetOptimizer
 
     blocks = [
-        ContextBlock("x1", "content", token_cost=10, utility=0.5, source="loop_detection"),
+        ContextBlock("x1", "content", token_cost=10, utility=0.5, source="tool_supervision"),
     ]
     plan = PromptBudgetOptimizer().solve(blocks, token_budget=100)
     d = plan.to_dict()

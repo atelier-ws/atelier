@@ -2812,20 +2812,6 @@ def _implemented_optimization_catalog(
             "notes": "Recommends a cheaper model tier than opus for routine tool calls and records the estimated dollar delta.",
             "examples": _optimization_lever_examples(top_sources, exact=("model_routing",)),
         },
-        {
-            "id": "loop_detection",
-            "title": "Loop detection + rescue",
-            "category": "control_plane",
-            "automation": "Automatic detection, partial host-native rescue surfacing",
-            "status": "active",
-            "observed_tokens_saved": 0,
-            "applies_to": supported_hosts,
-            "notes": (
-                "Detects repeated search/read or retry loops and redirects the agent toward rescue instead of repeated spend. "
-                "This is a qualitative safeguard rather than a direct savings counter today."
-            ),
-            "examples": ["search_read_loop", "repeated bash failures"],
-        },
     ]
     for item in catalog:
         observed_tokens = item.get("observed_tokens_saved")

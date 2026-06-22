@@ -737,7 +737,9 @@ def _ledger_for_session(session_id: str) -> RunLedger:
     process-global ledger. Bounded LRU; the least-recently-used entry is evicted
     past the cap. On a cache miss an existing ``run.json`` is rehydrated so an
     evicted-then-reused session does not overwrite its own accumulated events."""
-    root = _atelier_root()
+    from atelier.core.foundation.paths import resolve_store_root_for_workspace
+
+    root = resolve_store_root_for_workspace()
     with _http_session_ledgers_lock:
         led = _http_session_ledgers.get(session_id)
         if led is not None:
@@ -789,7 +791,11 @@ def _get_ledger() -> RunLedger:
     host_sid = _get_claude_session_id() or None
     with _STATE_LOCK:
         if _current_ledger is None:
-            _current_ledger = RunLedger(root=_atelier_root(), agent=_detect_agent(), session_id=host_sid)
+            from atelier.core.foundation.paths import resolve_store_root_for_workspace
+
+            _current_ledger = RunLedger(
+                root=resolve_store_root_for_workspace(), agent=_detect_agent(), session_id=host_sid
+            )
     return _current_ledger
 
 
@@ -1222,10 +1228,11 @@ def _append_live_savings_event(event: dict[str, Any]) -> None:
 
 def _workspace_savings_path() -> Path:
     """Side log for per-session savings on Copilot CLI and other non-Claude hosts."""
-    import hashlib
+
+    from atelier.core.foundation.paths import workspace_key
 
     workspace = str(Path(os.environ.get("ATELIER_WORKSPACE_ROOT") or os.getcwd()).resolve())
-    h = hashlib.sha256(workspace.encode()).hexdigest()[:12]
+    h = workspace_key(workspace)
     return _atelier_root() / "workspaces" / h / "session_savings.jsonl"
 
 
@@ -1246,10 +1253,11 @@ def _workspace_bridge_file() -> Path:
     :func:`_workspace_session_state_file` -- so concurrent sessions in one
     workspace never clobber each other's workflow/phase/credit state.
     """
-    import hashlib
+
+    from atelier.core.foundation.paths import workspace_key
 
     ws = str(Path(os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()).resolve())
-    ws_hash = hashlib.sha256(ws.encode()).hexdigest()[:12]
+    ws_hash = workspace_key(ws)
     return _atelier_root() / "workspaces" / ws_hash / "session_state.json"
 
 
@@ -2518,13 +2526,13 @@ def _register_mcp_session() -> None:
     try:
         f.parent.mkdir(parents=True, exist_ok=True)
         ws = str(Path(os.environ.get("CLAUDE_WORKSPACE_ROOT") or os.getcwd()).resolve())
-        import hashlib as _hl2
+        from atelier.core.foundation.paths import workspace_key as _workspace_key
 
         data = {
             "atelier_mcp_id": _MCP_ID,
             "pid": os.getpid(),
             "workspace": ws,
-            "workspace_hash": _hl2.sha256(ws.encode()).hexdigest()[:12],
+            "workspace_hash": _workspace_key(ws),
             "started_at": datetime.utcnow().isoformat(),
             "claude_session_id": "",
             "model": "",
@@ -5556,8 +5564,7 @@ def _loop_nudge_for_call(name: str, args: dict[str, Any]) -> str | None:
     """Record this tool call against its per-session identical-call counter and
     return a one-line spiral nudge once the same call repeats past threshold.
 
-    The host loop_detection capability runs in Atelier's own runtime but not at
-    this MCP boundary; this is the narrow, false-positive-free signal that can.
+    Narrow, false-positive-free no-progress signal at the MCP boundary.
     Fail-open: any error returns None so a tool call is never broken by it.
     """
     from atelier.core.capabilities.tool_supervision.loop_review import (
@@ -9536,9 +9543,8 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 rendered_text = render_tool_result_text(name, result)
 
                 # Spiral nudge: surface a soft note when the agent repeats an
-                # identical tool call. loop_detection runs in Atelier's own
-                # runtime but not at this MCP boundary; this is the narrow,
-                # false-positive-free signal that can. Fail-open; never blocks.
+                # identical tool call -- a narrow, false-positive-free
+                # no-progress signal. Fail-open; never blocks.
                 if _loop_review_enabled():
                     with contextlib.suppress(Exception):
                         _loop_note = _loop_nudge_for_call(name, _args)
