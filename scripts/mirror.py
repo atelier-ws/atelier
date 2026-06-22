@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Incremental, history-preserving git mirror: atelier-dev (bench) -> atelier (main).
 
-Strips private paths (release/private-paths.txt) from every commit tree via git
-plumbing -- no squash, no wipe, real history preserved on the public repo.
+Includes only paths listed in release/public-paths.txt (allowlist) from every
+commit tree via git plumbing -- no squash, no wipe, real history preserved.
 
 State (two git tags in the dev repo, never pushed to remotes):
   refs/mirror/bench      -- last mirrored dev SHA (watermark)
@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
-PRIVATE_PATHS_FILE = REPO_ROOT / "release" / "private-paths.txt"
+PUBLIC_PATHS_FILE = REPO_ROOT / "release" / "public-paths.txt"
 DEFAULT_SOURCE_REF = "bench"
 MIRROR_DEV_TAG = "refs/mirror/bench"  # watermark: last mirrored dev SHA
 MIRROR_PUB_TAG = "refs/mirror/bench-pub"  # public SHA created by last run
@@ -67,20 +67,20 @@ def git_ok(*args: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Private-path filtering
+# Public-path allowlist filtering
 # ---------------------------------------------------------------------------
 
 
-def load_private_prefixes() -> list[str]:
+def load_public_prefixes() -> list[str]:
     prefixes = []
-    for line in PRIVATE_PATHS_FILE.read_text().splitlines():
+    for line in PUBLIC_PATHS_FILE.read_text().splitlines():
         line = line.strip()
         if line and not line.startswith("#"):
             prefixes.append(line.rstrip("/"))
     return prefixes
 
 
-def is_private(path: str, prefixes: list[str]) -> bool:
+def is_public(path: str, prefixes: list[str]) -> bool:
     for prefix in prefixes:
         if path == prefix or path.startswith(prefix + "/"):
             return True
@@ -107,14 +107,14 @@ def get_blob_sha(commit_sha: str, path: str) -> str | None:
     return sha
 
 
-def build_filtered_tree(commit_sha: str, prefixes: list[str]) -> str:
-    """Return a new tree SHA with private paths removed and injected files added."""
+def build_filtered_tree(commit_sha: str, public_prefixes: list[str]) -> str:
+    """Return a new tree SHA with only files matching the public allowlist."""
     ls = _run(["git", "ls-tree", "-r", "--full-tree", commit_sha]).stdout
     blobs: list[tuple[str, str, str, str]] = []
     for line in ls.splitlines():
         meta, _, path = line.partition("\t")
         mode, obj_type, sha = meta.split()
-        if not is_private(path, prefixes):
+        if is_public(path, public_prefixes):
             blobs.append((mode, obj_type, sha, path))
 
     # Inject files from private paths into new public locations.
@@ -267,7 +267,7 @@ def main() -> int:
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
-    prefixes = load_private_prefixes()
+    public_prefixes = load_public_prefixes()
     remote_url = build_remote_url(args.public_remote)
     dev_tip = git("rev-parse", args.source_ref)
 
@@ -320,7 +320,7 @@ def main() -> int:
 
     for i, dev_sha in enumerate(commits):
         meta = get_commit_metadata(dev_sha)
-        filtered_tree = build_filtered_tree(dev_sha, prefixes)
+        filtered_tree = build_filtered_tree(dev_sha, public_prefixes)
         dev_parents = get_commit_parents(dev_sha)
 
         if i == 0:

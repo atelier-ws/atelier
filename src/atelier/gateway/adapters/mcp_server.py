@@ -5054,7 +5054,7 @@ def _smart_read_single(
 
 @mcp_tool(
     name="read",
-    hidden_params=("projection_kind", "format", "include_meta"),
+    hidden_params=("projection_kind", "format", "include_meta", "filePath"),
     description=(
         "Read a file (or batch) with automatic source projection. Modes: outline "
         "(structure only; default for files >200 LOC), range (range='L42-L118' or "
@@ -5092,6 +5092,7 @@ def tool_smart_read(
     ] = None,
     projection_kind: str | None = None,
     format: Annotated[Literal["auto", "compact", "json"], _FORMAT_FIELD] = "auto",
+    filePath: str = "",  # accepted alias for `path` (hidden from the published schema)
 ) -> dict[str, Any]:
     """Read a file (or batch of files) with automatic source projection.
 
@@ -5113,6 +5114,11 @@ def tool_smart_read(
     holds something, use `grep` with output_mode="file_paths_with_content" to
     discover and read in one step instead of grep-then-read.
     """
+    # `filePath` is an accepted alias for `path` (host Read-tool habit); fold it
+    # in before any dispatch so both name the same file.
+    if not path and filePath:
+        path = filePath
+
     # Batch mode: process each file spec and return aggregated results.
     if files is not None:
         results = []
@@ -5644,8 +5650,8 @@ def _compact_applied_entries(entries: list[dict[str, Any]]) -> list[str | dict[s
         "Apply many mechanical edits across files in one deterministic call. Each edit is a "
         "descriptor in `edits`; all must share a family. Families: file replace, create, "
         "line-scoped (`file_path='foo.py#10-20'`), notebook cell, symbol, projection -- exact "
-        "shapes in inputSchema. Returns `{applied}`; failures stay structured. No diff "
-        "returned; re-read to verify."
+        "shapes in inputSchema. Returns compact `{applied}` ranges confirming exact writes; "
+        "failures stay structured. Re-read only after a fuzzy match or when changed content is needed."
     ),
 )
 def tool_smart_edit(

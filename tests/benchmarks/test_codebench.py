@@ -182,14 +182,14 @@ def test_write_csv_artifacts_emits_detail_and_summary(tmp_path: Path) -> None:
     assert len(detail_rows) == 3
     assert {row["arm"] for row in summary_rows} == {"baseline", "atelier", "eval"}
     atelier_row = next(row for row in summary_rows if row["arm"] == "atelier")
-    vix_row = next(row for row in summary_rows if row["arm"] == "eval")
+    eval_row = next(row for row in summary_rows if row["arm"] == "eval")
     assert atelier_row["cost_usd"] == "0.75"
     assert atelier_row["cost_savings_vs_baseline_pct"] == "40.0"
     assert atelier_row["duration_savings_vs_baseline_pct"] == "30.0"
     assert atelier_row["input_token_savings_vs_baseline_pct"] == "30.0"
     assert atelier_row["output_token_savings_vs_baseline_pct"] == "20.0"
     assert atelier_row["valid_runs"] == "1"
-    assert vix_row["cost_savings_vs_baseline_pct"] == "20.0"
+    assert eval_row["cost_savings_vs_baseline_pct"] == "20.0"
     assert {row["candidate_arm"] for row in task_metric_rows} == {"atelier", "eval"}
     atelier_task_row = next(row for row in task_metric_rows if row["candidate_arm"] == "atelier")
     assert atelier_task_row["baseline_cost_usd_median"] == "1.25"
