@@ -10399,7 +10399,9 @@ def main() -> None:
         except (OSError, _subprocess.SubprocessError):
             _log.debug("git rev-parse workspace-root detection failed", exc_info=True)
     os.environ.setdefault("ATELIER_WORKSPACE_ROOT", os.getcwd())
-    os.environ.setdefault("ATELIER_LESSONS_ROOT", os.path.join(os.environ["ATELIER_WORKSPACE_ROOT"], ".lessons"))
+    os.environ.setdefault(
+        "ATELIER_LESSONS_ROOT", os.path.join(os.environ["ATELIER_WORKSPACE_ROOT"], ".atelier/lessons")
+    )
 
     argv = sys.argv[1:]
     if "--version" in argv or "-V" in argv:

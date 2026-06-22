@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 DEFAULT_STORE_DIRNAME = ".atelier"
-DEFAULT_LESSONS_DIRNAME = ".lessons"
+DEFAULT_LESSONS_DIRNAME = ".atelier/lessons"
 
 
 def default_store_root() -> Path:
@@ -54,7 +54,7 @@ def resolve_lessons_root(root: Path | str | None = None, lessons_root: Path | st
     Precedence:
     1. Explicit constructor argument
     2. ATELIER_LESSONS_ROOT
-    3. <workspace>/.lessons
+    3. <workspace>/.atelier/lessons
     """
     if lessons_root is not None:
         return Path(lessons_root).expanduser().resolve()
@@ -93,7 +93,10 @@ def _derive_workspace_root(root: Path | str | None) -> Path | None:
     if "workspaces" in candidate.parts:
         return None
 
-    if candidate.name in {DEFAULT_STORE_DIRNAME, DEFAULT_LESSONS_DIRNAME}:
+    # .atelier/lessons is two levels deep — peel both parts to reach workspace
+    if candidate.name == "lessons" and candidate.parent.name == DEFAULT_STORE_DIRNAME:
+        return candidate.parent.parent
+    if candidate.name == DEFAULT_STORE_DIRNAME:
         return candidate.parent
     if candidate.parent != candidate:
         return candidate.parent
@@ -146,7 +149,7 @@ def resolve_workspace_store_dir(root: Path | str | None = None, workspace_root: 
     ``session_state.json``: ``<store_root>/workspaces/<sha256(workspace)[:12]>``.
     Keeps per-project runtime artifacts (blocks/rubrics mirrors, etc.) isolated so
     one project cannot pollute another, while living in the global store rather
-    than the Git-tracked ``.lessons`` (which is reserved for real knowledge).
+    than the Git-tracked ``.atelier/lessons`` (which is reserved for real knowledge).
     """
     from hashlib import sha256
 

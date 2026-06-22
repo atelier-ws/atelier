@@ -345,9 +345,10 @@ class TestFileStateWriter:
             scored_state=_default_scored_state(),
             writer=writer,
         )
-        assert (tmp_path / f"{sid}_outcomes.json").exists()
         for _ in range(5):
             advance(sid, tool_name="Edit", writer=writer)
+        # schedule_route buffers; advance/_flush_commit drains to disk.
+        assert (tmp_path / f"{sid}_outcomes.json").exists()
         loaded = load_outcomes_from_state(tmp_path / f"{sid}_outcomes.json")
         assert len(loaded["route_outcomes"]) == 1
         assert loaded["route_outcomes"][0]["outcome_window"] is not None
@@ -362,6 +363,7 @@ class TestFileStateWriter:
         path.write_text(json.dumps({"existing_key": "value"}), encoding="utf-8")
         writer = FileStateWriter(path)
         writer.write({"new_key": 42})
+        writer.commit()
         content = json.loads(path.read_text("utf-8"))
         assert content["existing_key"] == "value"
         assert content["new_key"] == 42
