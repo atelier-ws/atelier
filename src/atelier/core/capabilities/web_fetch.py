@@ -659,25 +659,20 @@ def _sanitize_html(html: str, *, base_url: str) -> str:
 
 
 def _trafilatura_markdown(html: str, *, base_url: str) -> str:
+    """Extract main content via readability-lxml, then markdownify the result."""
     try:
-        import trafilatura
-    except ImportError:
+        from readability import Document
+    except ImportError:  # pragma: no cover
         return ""
     try:
-        extracted = trafilatura.extract(
-            html,
-            url=base_url or None,
-            output_format="markdown",
-            include_comments=False,
-            include_tables=True,
-            include_links=True,
-            deduplicate=True,
-            favor_precision=False,
-            favor_recall=True,
-        )
+        doc = Document(html, url=base_url or None)
+        content_html = doc.summary()
     except (AttributeError, TypeError, ValueError, OSError, RuntimeError):
         return ""
-    return clean_markdown_for_agent(extracted or "")
+    if not content_html:
+        return ""
+    markdown = _markdownify_html(content_html)
+    return clean_markdown_for_agent(markdown)
 
 
 def _markdown_looks_weak(markdown: str, html: str) -> bool:

@@ -52,6 +52,7 @@ dependencies = [
     "markdown-it-py>=3.0",
     "yarl==1.24.2",
     "zipp==4.1.0",
+    "readability-lxml>=0.8.4.1",
 ]
 
 [project.optional-dependencies]
@@ -72,7 +73,6 @@ parsers = [
 ]
 rename = ["rope>=0.23"]
 ortools = ["ortools>=9.10"]
-trafilatura = ["trafilatura>=2.0.0"]
 langfuse = ["langfuse>=3"]
 dev = [
     "pytest>=8.0",
