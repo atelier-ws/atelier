@@ -13,7 +13,7 @@ Options:
   --branch NAME          Public branch. Default: PUBLIC_BRANCH or main
   --source-ref REF       Git ref to snapshot. Default: PUBLIC_SOURCE_REF or HEAD
   --message TEXT         Snapshot commit message. Default: PUBLIC_COMMIT_MESSAGE or Initial public release
-  --private-paths FILE   Denylist file. Default: PRIVATE_PATHS_FILE or release/private-paths.txt
+  --public-paths FILE    Allowlist file. Default: release/public-paths.txt
   -h, --help             Show this help.
 
 Environment:
@@ -42,36 +42,36 @@ trim_path() {
     printf '%s' "$value"
 }
 
-validate_private_path() {
+validate_public_path() {
     local path="$1"
-    [[ -n "$path" ]] || die "empty private path in ${PRIVATE_PATHS_FILE}"
-    [[ "$path" != /* ]] || die "private path must be repository-relative: $path"
-    [[ "$path" != "." ]] || die "private path cannot be repository root"
-    [[ "$path" != ".." && "$path" != ../* && "$path" != */../* && "$path" != */.. ]] || die "private path cannot escape repository root: $path"
-    [[ "$path" != ".git" && "$path" != .git/* ]] || die "private path cannot target .git: $path"
-    [[ "$path" != *'*'* && "$path" != *'?'* && "$path" != *'['* ]] || die "glob syntax is not supported in private paths: $path"
+    [[ -n "$path" ]] || die "empty public path in ${PUBLIC_PATHS_FILE}"
+    [[ "$path" != /* ]] || die "public path must be repository-relative: $path"
+    [[ "$path" != "." ]] || die "public path cannot be repository root"
+    [[ "$path" != ".." && "$path" != ../* && "$path" != */../* && "$path" != */.. ]] || die "public path cannot escape repository root: $path"
+    [[ "$path" != ".git" && "$path" != .git/* ]] || die "public path cannot target .git: $path"
+    [[ "$path" != *'*'* && "$path" != *'?'* && "$path" != *'['* ]] || die "glob syntax is not supported in public paths: $path"
 }
 
-load_private_paths() {
+load_public_paths() {
     local raw path
-    private_paths=()
+    public_paths=()
     while IFS= read -r raw || [[ -n "$raw" ]]; do
         [[ "$raw" =~ ^[[:space:]]*$ ]] && continue
         [[ "$raw" =~ ^[[:space:]]*# ]] && continue
         path="$(trim_path "$raw")"
-        validate_private_path "$path"
-        private_paths+=("$path")
-    done <"$PRIVATE_PATHS_FILE"
+        validate_public_path "$path"
+        public_paths+=("$path")
+    done <"$PUBLIC_PATHS_FILE"
 
-    ((${#private_paths[@]} > 0)) || die "no private paths configured in ${PRIVATE_PATHS_FILE}"
+    ((${#public_paths[@]} > 0)) || die "no public paths configured in ${PUBLIC_PATHS_FILE}"
 }
 
-is_private_path() {
+is_public_path() {
     local rel="$1"
-    local private
+    local public
     rel="$(trim_path "$rel")"
-    for private in "${private_paths[@]}"; do
-        if [[ "$rel" == "$private" || "$rel" == "$private/"* ]]; then
+    for public in "${public_paths[@]}"; do
+        if [[ "$rel" == "$public" || "$rel" == "$public/"* ]]; then
             return 0
         fi
     done
@@ -79,12 +79,16 @@ is_private_path() {
 }
 
 filter_snapshot() {
-    local private
-    for private in "${private_paths[@]}"; do
-        if [[ -e "$SNAPSHOT_DIR/$private" || -L "$SNAPSHOT_DIR/$private" ]]; then
-            rm -rf -- "$SNAPSHOT_DIR/$private"
+    # Remove everything NOT in the public allowlist.
+    local item rel
+    while IFS= read -r -d '' item; do
+        rel="${item#"$SNAPSHOT_DIR/"}"
+        if ! is_public_path "$rel"; then
+            rm -rf -- "$item"
         fi
-    done
+    done < <(find "$SNAPSHOT_DIR" -mindepth 1 -maxdepth 1 -print0)
+    # Clean up empty directories left behind.
+    find "$SNAPSHOT_DIR" -depth -type d -empty -delete 2>/dev/null || true
 }
 
 verify_snapshot() {
@@ -92,13 +96,13 @@ verify_snapshot() {
     local -a violations=()
     while IFS= read -r -d '' item; do
         rel="${item#"$SNAPSHOT_DIR/"}"
-        if is_private_path "$rel"; then
+        if ! is_public_path "$rel"; then
             violations+=("$rel")
         fi
     done < <(find "$SNAPSHOT_DIR" -mindepth 1 -print0)
 
     if ((${#violations[@]} > 0)); then
-        printf 'error: filtered public snapshot still contains private paths:\n' >&2
+        printf 'error: filtered public snapshot contains non-public paths:\n' >&2
         printf '  %s\n' "${violations[@]}" >&2
         exit 1
     fi
@@ -129,7 +133,7 @@ PUBLIC_REMOTE="${PUBLIC_REMOTE:-https://github.com/atelier-ws/atelier.git}"
 PUBLIC_BRANCH="${PUBLIC_BRANCH:-main}"
 # Removed the fixed default here: PUBLIC_COMMIT_MESSAGE="${PUBLIC_COMMIT_MESSAGE:-Initial public release}"
 PUBLIC_SOURCE_REF="${PUBLIC_SOURCE_REF:-HEAD}"
-PRIVATE_PATHS_FILE="${PRIVATE_PATHS_FILE:-release/private-paths.txt}"
+PUBLIC_PATHS_FILE="${PUBLIC_PATHS_FILE:-release/public-paths.txt}"
 
 while (($#)); do
     case "$1" in
@@ -161,10 +165,10 @@ cd "$REPO_ROOT"
 [[ -n "$PUBLIC_BRANCH" ]] || die "PUBLIC_BRANCH cannot be empty"
 [[ "$PUBLIC_SOURCE_REF" != -* ]] || die "source ref cannot start with '-': $PUBLIC_SOURCE_REF"
 git check-ref-format --branch "$PUBLIC_BRANCH" >/dev/null || die "invalid public branch name: $PUBLIC_BRANCH"
-[[ -f "$PRIVATE_PATHS_FILE" ]] || die "private paths file not found: $PRIVATE_PATHS_FILE"
+[[ -f "$PUBLIC_PATHS_FILE" ]] || die "public paths file not found: $PUBLIC_PATHS_FILE"
 git rev-parse --verify "${PUBLIC_SOURCE_REF}^{tree}" >/dev/null || die "source ref does not exist: $PUBLIC_SOURCE_REF"
 
-load_private_paths
+load_public_paths
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/atelier-public.XXXXXX")"
 SNAPSHOT_DIR="$TMP_DIR/snapshot"

@@ -110,7 +110,7 @@ _TRACE_SPECS: list[dict[str, object]] = [
         "label": "trace/failed/session-limit",
         "agent": "bench",
         "domain": "eval",
-        "task": "resume VIX evaluation after prior partial run",
+        "task": "resume eval evaluation after prior partial run",
         "status": "failed",
         "errors_seen": ["session limit reached"],
         "event_type": "cli.session_limited",

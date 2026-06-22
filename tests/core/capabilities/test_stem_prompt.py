@@ -34,3 +34,6 @@ def test_phase_user_message_injects_code_mode() -> None:
 
 def test_stem_prompt_is_comprehensive() -> None:
     assert len(STEM_SYSTEM_PROMPT) > 500
+    assert "additional discovery must answer a named unresolved question" in STEM_SYSTEM_PROMPT
+    assert "execute each necessary check once" in STEM_SYSTEM_PROMPT
+    assert "at most three bullets" in STEM_SYSTEM_PROMPT

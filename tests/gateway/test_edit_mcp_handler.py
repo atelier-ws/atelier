@@ -625,6 +625,7 @@ def test_schema_registered_as_edit_tool() -> None:
     assert "edit" in TOOLS
     desc = TOOLS["edit"]["description"]
     assert "famil" in desc.lower(), "description should mention the descriptor families"
+    assert "applied" in desc and "re-read to verify" not in desc
     # Legacy path+op descriptors stay accepted by the handler but are no longer
     # advertised in the description (resident-context trim); see
     # test_schema_documents_descriptor_variants.

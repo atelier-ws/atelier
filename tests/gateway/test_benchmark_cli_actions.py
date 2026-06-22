@@ -125,7 +125,7 @@ def test_benchmark_codebench_wraps_runner(monkeypatch, tmp_path: Path) -> None:
     assert gate["passed"] is False
 
 
-def test_benchmark_codebench_accepts_vix_arm_and_api_options(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_codebench_accepts_eval_arm_and_api_options(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
     root = tmp_path / ".atelier"
     calls: list[tuple[list[str], str, dict[str, str] | None]] = []

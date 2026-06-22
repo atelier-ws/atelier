@@ -1,0 +1,63 @@
+# Paths included in the public mirror.
+# Everything else is private by default — new directories never leak.
+# One path per line. Directory paths include all files under them.
+# File paths include only that specific file.
+#
+# To publish new content, add it here and re-run `make mirror ARGS="--force"`.
+
+# === Source code, CLI, MCP server ===
+src/
+
+# === Tests & benchmarks ===
+tests/
+benchmarks/
+
+# === Public documentation & docs site ===
+docs/
+docs-site/
+
+# === Web dashboard & landing page (submodule) ===
+frontend/
+landing/
+
+# === Agent integrations ===
+integrations/
+
+# === Scripts (installers, builders, mirror) ===
+scripts/
+
+# === Examples ===
+examples/
+
+# === Published benchmark reports ===
+reports/public/
+
+# === CI/CD workflows (open-source) ===
+.github/
+
+# === Git hooks (developer tooling) ===
+.githooks/
+
+# === Root-level files ===
+AGENTS.md
+CHANGELOG.md
+CLA.md
+CLAUDE.md
+CONTRIBUTING.md
+Dockerfile.api
+Dockerfile.frontend
+LICENSE
+Makefile
+QUICK_REFERENCE.md
+README.md
+docker-compose.yml
+hatch_build.py
+pyproject.toml
+uv.lock
+.python-version
+.env.production.example
+.gitattributes
+.gitignore
+.gitmodules
+requirements-audit.txt
+test_output.jsonl
