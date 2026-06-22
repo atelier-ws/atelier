@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import ast
+import atexit
 import concurrent.futures
 import contextlib
 import fnmatch
 import hashlib
+import itertools
 import json
 import logging
 import multiprocessing
@@ -898,18 +900,57 @@ def _git_repo_class() -> Any:
     return Repo
 
 
+# Minimum address space (MB) a spawn worker needs to re-import the full package
+# (interpreter + tree-sitter grammars + gitpython + glibc arenas, which scale
+# with core count). Measured: ~2.5 GB OOMs on import, ~4 GB is safe. RLIMIT_AS
+# caps *virtual* address space, which runs well ahead of actual RSS, so the
+# per-worker cap must never drop below this floor or workers die on startup.
+_WORKER_MIN_MB = 4096
+
+
+def _available_memory_mb() -> int | None:
+    """Best-effort memory we may use, in MB: the lesser of host MemAvailable and
+    any cgroup memory ceiling. Returns ``None`` when it can't be determined."""
+    candidates: list[int] = []
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    candidates.append(int(line.split()[1]) // 1024)  # kB -> MB
+                    break
+    except Exception:  # noqa: BLE001  # non-Linux / unreadable -- fall through
+        pass
+    for cg in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            raw = Path(cg).read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if raw and raw != "max" and raw.isdigit():
+            val = int(raw)
+            if 0 < val < (1 << 62):  # cgroup v1 uses a huge sentinel for "unlimited"
+                candidates.append(val // (1024 * 1024))
+    return min(candidates) if candidates else None
+
+
 def _resolve_index_max_workers() -> int:
     """Worker count for the indexing ProcessPool.
 
-    Defaults to the CPU count, but honors the ``ATELIER_INDEX_MAX_WORKERS``
-    environment variable so resource-constrained environments (CI, sandboxes)
-    can cap parallelism: each spawn worker is a fresh interpreter that re-imports
-    the full package, so one-per-CPU can OOM-kill the pool on large repos.
+    Honors ``ATELIER_INDEX_MAX_WORKERS`` first. Otherwise defaults to half the
+    CPUs, then caps that by available memory: each spawn worker is a fresh
+    interpreter that re-imports the full package (~4 GB of address space), so on
+    a memory-constrained host one-per-CPU OOM-kills the pool on import. The pool
+    is sized so its total address-space budget stays within ~80% of available
+    memory (OS- and cgroup-aware).
     """
     override = os.environ.get("ATELIER_INDEX_MAX_WORKERS", "").strip()
     if override.isdigit() and int(override) > 0:
         return int(override)
-    return os.cpu_count() or 1
+    cpu_workers = max(1, (os.cpu_count() or 1) // 2)
+    avail_mb = _available_memory_mb()
+    if avail_mb is None:
+        return cpu_workers
+    mem_workers = max(1, int(avail_mb * 0.8) // _WORKER_MIN_MB)
+    return max(1, min(cpu_workers, mem_workers))
 
 
 def _resolve_serial_extract_threshold() -> int:
@@ -925,6 +966,81 @@ def _resolve_serial_extract_threshold() -> int:
     if override.isdigit():
         return int(override)
     return 64
+
+
+# ---------------------------------------------------------------------------
+# Shared process pool — one pool for the lifetime of the process so that
+# repeated index calls don't each spawn a fresh set of interpreter workers.
+# ---------------------------------------------------------------------------
+
+_PROCESS_POOL: concurrent.futures.ProcessPoolExecutor | None = None
+_PROCESS_POOL_LOCK = threading.Lock()
+
+
+def _worker_memory_guard() -> None:
+    """Worker-process initializer: cap virtual address space to prevent runaway OOM.
+
+    The cap is this worker's share of ~80% of available memory (OS- and
+    cgroup-aware), never below the per-worker import floor (``_WORKER_MIN_MB``) --
+    so a worker can't false-OOM just re-importing the package, while a
+    pathological parse still can't grow it unbounded. Override with
+    ``ATELIER_INDEX_WORKER_MAX_MEM_MB`` (0 disables); skipped silently where
+    ``resource`` / memory detection is unavailable.
+    """
+    try:
+        import resource as _resource
+
+        override = os.environ.get("ATELIER_INDEX_WORKER_MAX_MEM_MB", "").strip()
+        if override.lstrip("-").isdigit():
+            mb = int(override)
+        else:
+            avail_mb = _available_memory_mb()
+            if avail_mb is None:
+                return  # can't size safely -> don't cap (a too-low RLIMIT_AS OOMs on import)
+            mb = max(_WORKER_MIN_MB, int(avail_mb * 0.8) // _resolve_index_max_workers())
+        if mb <= 0:
+            return
+        limit = mb * 1024 * 1024
+        _resource.setrlimit(_resource.RLIMIT_AS, (limit, limit))
+    except Exception:  # noqa: BLE001 — non-POSIX or resource unavailable, skip silently
+        pass
+
+
+def _get_index_process_pool() -> concurrent.futures.ProcessPoolExecutor:
+    """Return the shared ProcessPoolExecutor, creating it lazily on first use."""
+    global _PROCESS_POOL
+    if _PROCESS_POOL is not None:
+        return _PROCESS_POOL
+    with _PROCESS_POOL_LOCK:
+        if _PROCESS_POOL is None:
+            mp_ctx = multiprocessing.get_context("spawn")
+            _PROCESS_POOL = concurrent.futures.ProcessPoolExecutor(
+                max_workers=_resolve_index_max_workers(),
+                mp_context=mp_ctx,
+                # Recycle each worker after N tasks so accumulated garbage
+                # (AST nodes, interned strings, module caches) is freed by
+                # the OS rather than growing indefinitely.
+                max_tasks_per_child=256,
+                initializer=_worker_memory_guard,
+            )
+            atexit.register(_shutdown_index_process_pool)
+    return _PROCESS_POOL
+
+
+def _reset_index_process_pool() -> None:
+    """Tear down a broken pool so the next call recreates it."""
+    global _PROCESS_POOL
+    with _PROCESS_POOL_LOCK:
+        if _PROCESS_POOL is not None:
+            _PROCESS_POOL.shutdown(wait=False, cancel_futures=True)
+            _PROCESS_POOL = None
+
+
+def _shutdown_index_process_pool() -> None:  # atexit handler
+    global _PROCESS_POOL
+    if _PROCESS_POOL is not None:
+        _PROCESS_POOL.shutdown(wait=False, cancel_futures=True)
+        _PROCESS_POOL = None
 
 
 def _process_one_file(
@@ -1752,21 +1868,44 @@ class CodeContextEngine:
             serial_results.sort(key=lambda r: r.rel)
             return serial_results
 
-        # Use spawn, not fork: workers are fresh interpreters, so they never
-        # inherit this multi-threaded process's locks or open fds. Forking here
-        # could deadlock a worker that inherited a lock held by a background
-        # thread (autosync / lineage) at fork time, and would also let a stuck
-        # worker keep the cross-process index lock, freezing other processes.
-        mp_ctx = multiprocessing.get_context("spawn")
+        # Use the shared pool (spawn context, single instance per process).
+        # Workers never inherit this process's locks or open fds.
+        # Chunked submission: keep at most (max_workers x 4) futures in flight
+        # so input pickles and result objects don't all accumulate in the parent
+        # at once — important when source_bytes_map is provided.
+        # On BrokenProcessPool (worker crash/OOM), reset and retry once.
         results: list[_FileIndexData] = []
-        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers, mp_context=mp_ctx) as executor:
-            future_map = {executor.submit(_process_one_file, *args): args for args in args_list}
-            for completed, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
-                data = future.result()
-                if data is not None:
-                    results.append(data)
-                if progress_callback is not None:
-                    progress_callback(completed, total_count)
+        for attempt in range(2):
+            executor = _get_index_process_pool()
+            try:
+                backlog = max(8, max_workers * 4)
+                args_iter = iter(args_list)
+                pending: dict[concurrent.futures.Future[_FileIndexData | None], None] = {}
+                completed_count = 0
+
+                for args in itertools.islice(args_iter, backlog):
+                    pending[executor.submit(_process_one_file, *args)] = None
+
+                while pending:
+                    done, _ = concurrent.futures.wait(pending, return_when=concurrent.futures.FIRST_COMPLETED)
+                    for future in done:
+                        del pending[future]
+                        data = future.result()
+                        if data is not None:
+                            results.append(data)
+                        completed_count += 1
+                        if progress_callback is not None:
+                            progress_callback(completed_count, total_count)
+                        next_args = next(args_iter, None)
+                        if next_args is not None:
+                            pending[executor.submit(_process_one_file, *next_args)] = None
+                break  # success
+            except concurrent.futures.process.BrokenProcessPool:
+                logging.warning("Index process pool broken — resetting (attempt %d/2)", attempt + 1)
+                _reset_index_process_pool()
+                results.clear()
+                if attempt == 1:
+                    raise
 
         results.sort(key=lambda r: r.rel)
         return results
