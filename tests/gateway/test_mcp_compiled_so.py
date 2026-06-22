@@ -295,7 +295,7 @@ def _native_args(tool: str, workspace: Path) -> dict[str, Any]:
             "context_budget_tokens": 2000,
         },
         "search": {"query": "alpha", "path": ws, "max_files": 3, "budget_tokens": 800},
-        "shell": {"command": "echo hi", "timeout": 30, "max_lines": 20, "background": False},
+        "bash": {"command": "echo hi", "timeout": 30, "max_lines": 20, "background": False},
         "sql": {"action": "tables", "max_rows": 10, "allow_writes": False},
         "memory": {"op": "recall", "query": "alpha", "top_k": 3, "tags": ["x"]},
         "context": {"task": "exercise the read path", "files": [sample]},

@@ -44,9 +44,9 @@ def shell_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture(scope="session")
 def shell_tool_fn() -> Any:
-    from atelier.gateway.adapters.mcp_server import tool_shell
+    from atelier.gateway.adapters.mcp_server import tool_bash
 
-    return tool_shell
+    return tool_bash
 
 
 def _patch_paths(args: dict[str, Any], workspace: Path) -> dict[str, Any]:

@@ -38,7 +38,7 @@ EXPECTED_TOOLS = {
     "grep",
     "sql",
     "search",
-    "shell",
+    "bash",
     "web_fetch",
     # Dedicated code-intel tool (split from `code` op for LLM discoverability).
     # callers/callees/usages AND single definitions all fold into `explore`
@@ -2226,12 +2226,12 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """For failing commands, the tail of stdout must be preserved even when output is long."""
-    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
     # Generate 300 numbered lines then exit 1 — only tail should survive truncation
-    result = _run_shell_tool(
+    result = _run_bash_tool(
         "python3 -c \"import sys; [print(f'line-{i}') for i in range(300)]; sys.exit(1)\"",
         max_lines=60,
     )
@@ -2249,23 +2249,23 @@ def test_shell_falls_back_when_workspace_root_missing(tmp_path: Path, monkeypatc
     every cwd-less command raise FileNotFoundError from Popen -> MCP -32000.
     The handler now falls back to the process cwd so the command still runs.
     """
-    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
 
     missing = tmp_path / "does" / "not" / "exist"
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(missing))
 
-    result = _run_shell_tool("pwd")
+    result = _run_bash_tool("pwd")
 
     assert result["exit_code"] == 0, result
     assert result["stdout"].strip()
 
 
 def test_shell_timeout_terminates_child_process_group(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
-    result = _run_shell_tool(
+    result = _run_bash_tool(
         'python3 -c "import time; time.sleep(1)"',
         timeout=0.5,
     )
@@ -2275,13 +2275,13 @@ def test_shell_timeout_terminates_child_process_group(tmp_path: Path, monkeypatc
 
 
 def test_shell_run_blocks_until_completion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
     # Foreground run blocks until the command finishes -- no artificial
     # window, no detach, no session, no poll -- even for a slow-ish command.
-    result = _run_shell_tool(
+    result = _run_bash_tool(
         "python3 -c \"import time; time.sleep(0.3); print('done')\"",
         timeout=30,
     )
@@ -2292,13 +2292,13 @@ def test_shell_run_blocks_until_completion(tmp_path: Path, monkeypatch: pytest.M
 
 
 def test_shell_large_timeout_does_not_detach_fast_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
     # A 30-minute timeout budget must not make a fast command detach: it
     # blocks only as long as the command actually runs, then returns.
-    result = _run_shell_tool("echo hi", timeout=1800)
+    result = _run_bash_tool("echo hi", timeout=1800)
     assert result.get("status") != "running"
     assert "session_id" not in result
     assert result["exit_code"] == 0
@@ -2306,32 +2306,32 @@ def test_shell_large_timeout_does_not_detach_fast_command(tmp_path: Path, monkey
 
 
 def test_shell_poll_blocks_until_completion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
     # Detach immediately, then a SINGLE blocking poll returns the finished
     # result -- no manual retry loop, no busy-polling.
-    started = _run_shell_tool(
+    started = _run_bash_tool(
         "python3 -c \"import time; time.sleep(0.5); print('done')\"",
         timeout=10,
         background=True,
     )
     assert started["status"] == "running"
 
-    completed = _run_shell_tool(session_id=started["session_id"], action="poll")
+    completed = _run_bash_tool(session_id=started["session_id"], action="poll")
     assert completed["status"] == "completed"
     assert completed["exit_code"] == 0
     assert completed["stdout"] == "done"
 
 
 def test_shell_background_return_reports_timeout_remaining(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
     # Detaching surfaces an honest upper bound (the timeout), not a fake ETA.
-    started = _run_shell_tool(
+    started = _run_bash_tool(
         'python3 -c "import time; time.sleep(5)"',
         timeout=10,
         background=True,
@@ -2342,13 +2342,13 @@ def test_shell_background_return_reports_timeout_remaining(tmp_path: Path, monke
         assert started["duration_ms"] >= 0
         assert 0 < started["timeout_remaining_ms"] <= 10_000
     finally:
-        _run_shell_tool(session_id=started["session_id"], action="cancel")
+        _run_bash_tool(session_id=started["session_id"], action="cancel")
 
 
 def test_render_shell_text_running_surfaces_progress_hints() -> None:
-    from atelier.gateway.adapters.mcp_server import _render_shell_text
+    from atelier.gateway.adapters.mcp_server import _render_bash_text
 
-    text = _render_shell_text(
+    text = _render_bash_text(
         {
             "status": "running",
             "session_id": "abc123",
@@ -2364,16 +2364,16 @@ def test_render_shell_text_running_surfaces_progress_hints() -> None:
 
 
 def test_shell_background_session_can_be_cancelled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
-    started = _run_shell_tool(
+    started = _run_bash_tool(
         'python3 -c "import time; time.sleep(10)"',
         timeout=10,
         background=True,
     )
-    cancelled = _run_shell_tool(session_id=started["session_id"], action="cancel")
+    cancelled = _run_bash_tool(session_id=started["session_id"], action="cancel")
     time.sleep(0.1)
 
     assert cancelled["status"] == "cancelled"
@@ -2382,17 +2382,17 @@ def test_shell_background_session_can_be_cancelled(tmp_path: Path, monkeypatch: 
 
 
 def test_shell_background_session_enforces_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from atelier.gateway.adapters.mcp_server import _run_shell_tool
+    from atelier.gateway.adapters.mcp_server import _run_bash_tool
 
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
-    started = _run_shell_tool(
+    started = _run_bash_tool(
         'python3 -c "import time; time.sleep(1)"',
         timeout=0.5,
         background=True,
     )
     time.sleep(0.65)
-    completed = _run_shell_tool(session_id=started["session_id"], action="poll")
+    completed = _run_bash_tool(session_id=started["session_id"], action="poll")
 
     assert completed["status"] == "timed_out"
     assert completed["exit_code"] == -1
@@ -2405,7 +2405,7 @@ def test_shell_mcp_call_returns_managed_session_for_background_command(
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
 
     response = _call(
-        "shell",
+        "bash",
         {
             "command": 'python3 -c "import time; time.sleep(10)"',
             "timeout": 30,
@@ -2417,7 +2417,7 @@ def test_shell_mcp_call_returns_managed_session_for_background_command(
 
     assert "status=running" in text
     assert match is not None
-    cancelled = mcp_server._run_shell_tool(session_id=match.group(1), action="cancel")
+    cancelled = mcp_server._run_bash_tool(session_id=match.group(1), action="cancel")
     assert cancelled["status"] == "cancelled"
 
 

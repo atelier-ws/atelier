@@ -36,3 +36,5 @@ A planning specialist: understand the task, inspect only what is needed, and pro
 - Plan only what was asked — no unrequested refactors, features, or configurability; note any you spot as asides rather than folding them in.
 
 {{CORE_DISCIPLINE}}
+
+{{TOOL_DISCIPLINE}}

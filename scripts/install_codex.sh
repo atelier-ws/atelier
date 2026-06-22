@@ -319,7 +319,7 @@ text = path.read_text(encoding="utf-8")
 original = text
 text = re.sub(r"(?ms)^# ATELIER:CODEX AGENTS START\n.*?^# ATELIER:CODEX AGENTS END\n?", "", text)
 if not re.search(r"(?m)^\[mcp_servers\.atelier\]\s*$", text):
-    tools = {"shell", "read", "grep", "edit", "callees", "codemod", "memory", "callers", "explore", "web_fetch", "search", "usages"}
+    tools = {"bash", "read", "grep", "edit", "callees", "codemod", "memory", "callers", "explore", "web_fetch", "search", "usages"}
     orphan_headers = {f"[mcp_servers.atelier.tools.{tool}]" for tool in tools}
     kept = []
     skipping = False

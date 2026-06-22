@@ -79,7 +79,7 @@ atelier mcp --host cursor --version
 ## Expected Behavior
 
 - Cursor connects to the Atelier MCP server via stdio on startup
-- Atelier tools (`context`, `trace`, `rescue`, `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `shell`, `code`) appear in Cursor's tool list
+- Atelier tools (`context`, `trace`, `rescue`, `verify`, `memory`, `read`, `edit`, `sql`, `search`, `compact`, `bash`, `code`) appear in Cursor's tool list
 - With `ATELIER_DEV_MODE=1`, all tools are fully visible and active
 - `trace` remains the stable observable recording surface
 - Cursor's agent uses Atelier's `context` tool for task-level reasoning

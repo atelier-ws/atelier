@@ -188,7 +188,7 @@ surface.
 
 With `ATELIER_DEV_MODE=1`, the active Atelier MCP surface for Claude Code includes
 `context`, `route`, `rescue`, `record`, `verify`, `memory`, `read`, `edit`,
-`sql`, `search`, `compact`, `shell`, and the `code` helpers.
+`sql`, `search`, `compact`, `bash`, and the `code` helpers.
 
 Without developer mode, `record` remains the most reliable active surface and
 some other tools may still appear as passive compatibility stubs.

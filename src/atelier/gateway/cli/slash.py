@@ -21,7 +21,7 @@ SLASH_COMMANDS = [
     "diff",
     "approve",
     "deny",
-    "shell",
+    "bash",
 ]
 
 

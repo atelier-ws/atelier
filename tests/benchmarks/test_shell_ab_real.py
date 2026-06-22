@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from atelier.gateway.adapters.mcp_server import _reset_runtime_cache_for_testing, tool_shell
+from atelier.gateway.adapters.mcp_server import _reset_runtime_cache_for_testing, tool_bash
 
 pytestmark = pytest.mark.ab
 
@@ -70,14 +70,14 @@ def test_shell_ab_real(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     native_text = f"{native_proc.stdout}\n{native_proc.stderr}"
 
     t1 = time.perf_counter()
-    payload = tool_shell({"command": command, "timeout": 30, "cwd": str(tmp_path), "max_lines": 120})
+    payload = tool_bash({"command": command, "timeout": 30, "cwd": str(tmp_path), "max_lines": 120})
     atelier_ms = (time.perf_counter() - t1) * 1000.0
     atelier_text = payload
 
     native_tokens = _count_tiktoken(native_text)
     atelier_tokens = _count_tiktoken(atelier_text)
     row = ABRow(
-        tool="shell",
+        tool="bash",
         mode="truncated",
         native_tool="raw_shell_full_output",
         native_tokens=native_tokens,

@@ -41,7 +41,7 @@ stop here and tell the user they can re-run `/benchmark` when ready.
 
 The Atelier arm builds a code index before running — this can take **5–20 minutes**
 on large repos. Run the benchmark as a background job so it doesn’t hit the
-shell tool’s 30-minute timeout:
+bash tool’s 30-minute timeout:
 
 ```bash
 LOG="/tmp/atelier-bench-$$.log"

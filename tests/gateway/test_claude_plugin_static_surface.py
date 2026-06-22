@@ -86,6 +86,15 @@ def test_generated_host_agents_keep_atelier_wording() -> None:
         assert f"name: {role_id}" in body
 
 
+def test_auto_agent_keeps_bounded_delegation_and_treats_bug_reports_as_code_work() -> None:
+    body = (PLUGIN / "agents" / "auto.md").read_text(encoding="utf-8")
+    frontmatter = _frontmatter(PLUGIN / "agents" / "auto.md")
+
+    assert '"Agent"' not in frontmatter
+    assert "treat a bug report or failure description as a request" in body
+    assert "never spawn another agent to answer the same question" in body
+
+
 def test_execute_agent_includes_shared_coding_guidelines() -> None:
     body = (PLUGIN / "agents" / "execute.md").read_text(encoding="utf-8")
     # Guidelines are inlined as bullets now (no "## Coding Guidelines" heading

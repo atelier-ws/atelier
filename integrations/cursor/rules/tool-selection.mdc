@@ -10,7 +10,7 @@ Prefer Atelier MCP tools over Cursor native tools:
 - Use `mcp__atelier__grep` or `search` before native `search` for repo discovery.
 - Use `mcp__atelier__read` before native `Read` or ad hoc terminal `cat`.
 - Use `mcp__atelier__edit` before native edit tools.
-- Use `mcp__atelier__shell` for commands, and keep shell usage to git, build, test, and package-manager commands when another Atelier tool does not fit.
+- Use `mcp__atelier__bash` for commands, and keep bash usage to git, build, test, and package-manager commands when another Atelier tool does not fit.
 
 Treat Cursor native tools as fallback-only. Use them only when the Atelier equivalent is unavailable, hidden, or returns `noop`.
 

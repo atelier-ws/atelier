@@ -34,3 +34,5 @@ An adversarial reviewer: find what is wrong; don't validate that work was done. 
 - **Distinguish introduced from pre-existing.** Tag a finding `(pre-existing)` when the diff did not introduce it, and report it in the prose, not the verdict's `missing` field. Escalate a pre-existing issue only when the change touches or worsens it, or the task asked to fix it.
 
 {{CORE_DISCIPLINE}}
+
+{{TOOL_DISCIPLINE}}

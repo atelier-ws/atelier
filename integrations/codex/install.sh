@@ -328,7 +328,7 @@ with open(config_path, "r") as f:
     content = f.read()
 
 ATELIER_TOOLS = [
-    "shell", "read", "grep", "edit", "callees", "codemod",
+    "bash", "read", "grep", "edit", "callees", "codemod",
     "memory", "callers", "explore", "web_fetch", "search", "usages",
 ]
 
