@@ -423,6 +423,7 @@ dependencies = [
     { name = "pygit2" },
     { name = "pyyaml" },
     { name = "rapidfuzz" },
+    { name = "readability-lxml" },
     { name = "rich" },
     { name = "tenacity" },
     { name = "tiktoken" },
@@ -474,9 +475,6 @@ rename = [
 ]
 smart = [
     { name = "ollama" },
-]
-trafilatura = [
-    { name = "trafilatura" },
 ]
 vector = [
     { name = "numpy" },
@@ -537,12 +535,12 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rapidfuzz", specifier = ">=3.14.5" },
+    { name = "readability-lxml", specifier = ">=0.8.4.1" },
     { name = "rich", specifier = ">=13.7" },
     { name = "rope", marker = "extra == 'rename'", specifier = ">=0.23" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "tenacity", specifier = ">=9.0" },
     { name = "tiktoken", specifier = ">=0.9" },
-    { name = "trafilatura", marker = "extra == 'trafilatura'", specifier = ">=2.0.0" },
     { name = "tree-sitter", specifier = ">=0.23" },
     { name = "tree-sitter-language-pack", specifier = ">=1.8.1" },
     { name = "tree-sitter-languages", marker = "python_full_version < '3.13' and extra == 'parsers'", specifier = ">=1.10" },
@@ -552,7 +550,7 @@ requires-dist = [
     { name = "yarl", specifier = "==1.24.2" },
     { name = "zipp", specifier = "==4.1.0" },
 ]
-provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "postgres", "vector", "parsers", "rename", "ortools", "trafilatura", "langfuse", "dev"]
+provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "postgres", "vector", "parsers", "rename", "ortools", "langfuse", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2882,7 +2880,7 @@ name = "justext"
 version = "3.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "lxml", extra = ["html-clean"] },
+    { name = "lxml", extra = ["html-clean"], marker = "extra == 'extra-7-atelier-memory-server'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/49/f3/45890c1b314f0d04e19c1c83d534e611513150939a7cf039664d9ab1e649/justext-3.0.2.tar.gz", hash = "sha256:13496a450c44c4cd5b5a75a5efcd9996066d2a189794ea99a49949685a0beb05", size = 828521, upload-time = "2025-02-25T20:21:49.934Z" }
 wheels = [
@@ -5829,7 +5827,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chardet" },
     { name = "cssselect" },
-    { name = "lxml", extra = ["html-clean"], marker = "extra == 'extra-7-atelier-memory-server'" },
+    { name = "lxml", extra = ["html-clean"] },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/55/3e/dc87d97532ddad58af786ec89c7036182e352574c1cba37bf2bf783d2b15/readability_lxml-0.8.4.1.tar.gz", hash = "sha256:9d2924f5942dd7f37fb4da353263b22a3e877ccf922d0e45e348e4177b035a53", size = 22874, upload-time = "2025-05-03T21:11:45.493Z" }
 wheels = [
@@ -7030,7 +7028,7 @@ name = "tzlocal"
 version = "5.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tzdata", marker = "sys_platform == 'win32' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8b/2e/c14812d3d4d9cd1773c6be938f89e5735a1f11a9f184ac3639b93cef35d5/tzlocal-5.3.1.tar.gz", hash = "sha256:cceffc7edecefea1f595541dbd6e990cb1ea3d19bf01b2809f362a03dd7921fd", size = 30761, upload-time = "2025-03-05T21:17:41.549Z" }
 wheels = [
