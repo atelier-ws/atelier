@@ -157,17 +157,10 @@ reg.register(
     depends_on=[("telemetry", 0.6), ("context_compression", 0.9)],
     tags=["optimization"],
 )
-reg.register(
-    "loop_detection",
-    None,
-    depends_on=[("telemetry", 1.0), ("tool_supervision", 0.7)],
-    tags=["safety"],
-)
-
 print(f"\n  Capabilities registered: {len(reg)}")
 
 # Activation paths
-for target in ["tool_supervision", "budget_optimizer", "loop_detection"]:
+for target in ["tool_supervision", "budget_optimizer"]:
     path = reg.activation_path(target)
     print(f"\n  activation_path({target!r}):")
     print(f"    {' → '.join(path)}")
@@ -380,7 +373,7 @@ if os.environ.get("ATELIER_RUN_SERVER", ""):
                     body = _json.loads(resp.read())
                     print(f"\n  GET {endpoint}")
                     print(_json.dumps(body, indent=4)[:600])
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - demo: surface any HTTP/JSON failure
                 print(f"\n  GET {endpoint} → ERROR: {exc}")
 
         proc.terminate()

@@ -24,7 +24,7 @@ Usage::
     blocks = [
         ContextBlock("r1", "prior chain ...", token_cost=120, utility=0.9, source="context_reuse"),
         ContextBlock("m1", "memory frag ...", token_cost=80,  utility=0.7, source="semantic_memory"),
-        ContextBlock("l1", "rescue hint ...", token_cost=40,  utility=0.6, source="loop_detection"),
+        ContextBlock("l1", "diff context ...", token_cost=40,  utility=0.6, source="tool_supervision"),
     ]
     plan = opt.solve(blocks, token_budget=200)
     print(plan.to_dict())

@@ -118,7 +118,6 @@ ENUMS: dict[tuple[str, str], set[str]] = {
         "frustration_signal_behavioral",
         "signal_type",
     ): {
-        "loop_detected",
         "retry_burst",
         "file_revert",
         "abandon_after_error",
@@ -245,5 +244,5 @@ def _example_value(key: str, expected: PropertyTypes) -> Any:
     if key == "surface":
         return "cli_input"
     if key == "signal_type":
-        return "loop_detected"
+        return "retry_burst"
     return "example"

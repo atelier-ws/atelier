@@ -18,7 +18,6 @@ from atelier.core.capabilities import (
     ContextCompressionCapability,
     ContextReuseCapability,
     FailureAnalysisCapability,
-    LoopDetectionCapability,
     ProofGateCapability,
     QualityRouterCapability,
     SemanticFileMemoryCapability,
@@ -46,7 +45,6 @@ class AtelierRuntimeCore:
     CAPABILITIES: ClassVar[dict[str, str]] = {
         "context_compression": "Compress stale history into actionable runtime context.",
         "failure_analysis": "Cluster repeated failures and propose root-cause fixes.",
-        "loop_detection": "Repeated-failure and dead-end detection with runtime alerts.",
         "proof_gate": "Cost-quality proof gate combining context savings, routing evals, and trace confidence.",
         "quality_router": "Deterministic quality-aware route selection for runtime steps.",
         "context_reuse": "Reuse prior successful procedures and failure signatures.",
@@ -62,11 +60,9 @@ class AtelierRuntimeCore:
 
         self.context_reuse = ContextReuseCapability(self.store, self.root)
         self.semantic_memory = SemanticFileMemoryCapability(self.root)
-        self.loop_detection = LoopDetectionCapability()
         self.quality_router = QualityRouterCapability(
             self.store,
             self.root,
-            loop_detection=self.loop_detection,
         )
         self.tool_supervision = ToolSupervisionCapability(self.root)
         self.context_compression = ContextCompressionCapability()
@@ -514,8 +510,6 @@ class AtelierRuntimeCore:
             compressed = self.context_compression.compress(ledger)
         else:
             compressed = {"compacted": False}
-        loops = self.loop_detection.from_ledger(ledger)
-        compressed["loop_alerts"] = loops
         compressed["session_id"] = ledger.session_id
         return cast(dict[str, Any], compressed)
 
@@ -625,28 +619,6 @@ class AtelierRuntimeCore:
         return cast(list[dict[str, Any]], self.semantic_memory.symbol_search(query, limit=limit))
 
     # ------------------------------------------------------------------ #
-    # Loop detection helpers                                               #
-    # ------------------------------------------------------------------ #
-
-    def detect_loop(self, ledger: RunLedger) -> dict[str, Any]:
-        """Run full loop analysis on a ledger and return the report dict."""
-        report = self.loop_detection.check(ledger)
-        if report.loop_detected:
-            from atelier.core.service.telemetry import emit_product
-
-            emit_product(
-                "frustration_signal_behavioral",
-                signal_type="loop_detected",
-                session_id=getattr(ledger, "session_id", ""),
-            )
-        return cast(dict[str, Any], report.to_dict())
-
-    def loop_report(self, session_id: str | None = None) -> dict[str, Any]:
-        """Load the ledger and return a loop analysis report."""
-        ledger = self._load_ledger(session_id)
-        return self.detect_loop(ledger)
-
-    # ------------------------------------------------------------------ #
     # Tool supervision helpers                                             #
     # ------------------------------------------------------------------ #
 
@@ -754,32 +726,16 @@ class AtelierRuntimeCore:
     ) -> dict[str, Any]:
         """Hook: called before a tool invocation.
 
-        Checks for loop conditions and returns cached result if available.
+        Returns a cached tool result when one is available. ``ledger`` is part of
+        the hook contract but no longer inspected here.
         """
         args_key = f"{tool_name}:{json.dumps(args, sort_keys=True, default=str)[:100]}"
         cached = self.tool_supervision.get(args_key)
-        loop_alert: dict[str, Any] | None = None
-        if ledger is not None:
-            report = self.loop_detection.check(ledger)
-            if report.loop_detected:
-                from atelier.core.service.telemetry import emit_product
-
-                emit_product(
-                    "frustration_signal_behavioral",
-                    signal_type="loop_detected",
-                    session_id=getattr(ledger, "session_id", ""),
-                )
-                loop_alert = {
-                    "severity": report.severity,
-                    "summary": f"Loop detected: {', '.join(report.loop_types)}",
-                    "rescue": report.rescue_strategies[:1],
-                }
         return {
             "hook": "pre_tool",
             "tool": tool_name,
             "cached_result": cached,
             "cache_available": cached is not None,
-            "loop_alert": loop_alert,
         }
 
     def post_tool(
