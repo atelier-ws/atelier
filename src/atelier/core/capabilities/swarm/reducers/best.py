@@ -14,12 +14,20 @@ the ``merge`` reducer when no semantic backend is available.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atelier.core.capabilities.swarm.models import SwarmChildState, SwarmValidationCheck
+from atelier.core.capabilities.swarm.models import (
+    SwarmChildState,
+    SwarmConvergenceVerdict,
+    SwarmRunState,
+    SwarmValidationCheck,
+    SwarmWaveDecision,
+    SwarmWaveEvaluation,
+)
 
 if TYPE_CHECKING:
-    from atelier.core.capabilities.swarm.models import SwarmWaveEvaluation
     from atelier.core.capabilities.swarm.reducers.base import WaveContext
 
 
@@ -99,15 +107,143 @@ def rank_children(children: list[SwarmChildState]) -> list[SwarmChildState]:
     )
 
 
-class BestReducer:
-    """Heuristic best-of-N selection.
+def _measured_wave_evaluation(
+    state: SwarmRunState,
+    candidates: list[SwarmChildState],
+) -> SwarmWaveEvaluation:
+    """Score candidates by a measured ``FitnessSpec`` and accept the best.
 
-    Phase 1: the heuristic ``best`` is exactly the deterministic, overlap-aware
-    fallback selection already used by the ``merge`` reducer -- it ranks by
-    ``_score_child`` and accepts the strongest non-duplicate, non-conflicting
-    candidate(s). Reusing it keeps a single source of truth and identical
-    behavior. Phase 2 swaps the heuristic score for a measured ``FitnessSpec``
-    when the job supplies one.
+    Per candidate: run the correctness gate (reject on fail), then the metric
+    command, parse it, and rank by improvement over the baseline (honoring
+    ``direction``). Accept the single best candidate that beats the baseline by
+    ``improve_margin``. ``metric``/``gate_passed`` are recorded on each child.
+    """
+    from atelier.core.capabilities.swarm.fitness import (
+        evaluate_candidate,
+        improvement,
+        rank_key,
+        resolve_baseline,
+    )
+
+    spec = state.fitness_spec
+    assert spec is not None  # reducer only routes here when a fitness is set
+    baseline = resolve_baseline(spec)
+    decisions: list[SwarmWaveDecision] = []
+    pre_rejected: list[str] = []
+    eligible: list[tuple[float, SwarmChildState, float]] = []  # (sort_value, child, metric)
+
+    for child in candidates:
+        if child.status != "success":
+            child.metric = None
+            child.gate_passed = None
+            decisions.append(
+                SwarmWaveDecision(child_id=child.child_id, verdict="reject", rationale="Child run did not succeed.")
+            )
+            pre_rejected.append(child.child_id)
+            continue
+        result = evaluate_candidate(spec, Path(child.worktree_path))
+        child.gate_passed = result.gate_passed
+        child.metric = result.metric
+        if not result.gate_passed:
+            decisions.append(
+                SwarmWaveDecision(
+                    child_id=child.child_id,
+                    verdict="reject",
+                    rationale=f"Correctness gate failed: {result.gate_detail}",
+                )
+            )
+            pre_rejected.append(child.child_id)
+            continue
+        if result.metric is None:
+            decisions.append(
+                SwarmWaveDecision(
+                    child_id=child.child_id,
+                    verdict="reject",
+                    rationale=f"Metric did not parse: {result.parse_error}",
+                )
+            )
+            pre_rejected.append(child.child_id)
+            continue
+        sort_value = (
+            improvement(spec, result.metric, baseline) if baseline is not None else rank_key(spec, result.metric)
+        )
+        eligible.append((sort_value, child, result.metric))
+
+    eligible.sort(key=lambda row: row[0], reverse=True)
+    accepted: list[str] = []
+    margin_note = ""
+    if eligible:
+        _best_sort, best_child, best_metric = eligible[0]
+        accept_ok = True
+        if baseline is not None:
+            gain = improvement(spec, best_metric, baseline)
+            accept_ok = gain >= spec.improve_margin
+            margin_note = f" (metric {best_metric:g} vs baseline {baseline:g}, improvement {gain:+g})"
+        if accept_ok:
+            accepted.append(best_child.child_id)
+            decisions.append(
+                SwarmWaveDecision(
+                    child_id=best_child.child_id,
+                    verdict="accept",
+                    rationale=f"Best measured candidate for the objective{margin_note}.",
+                )
+            )
+            for _sv, other, _metric in eligible[1:]:
+                decisions.append(
+                    SwarmWaveDecision(
+                        child_id=other.child_id,
+                        verdict="reject",
+                        rationale="Did not beat the wave's best measured candidate.",
+                    )
+                )
+        else:
+            for _sv, other, _metric in eligible:
+                decisions.append(
+                    SwarmWaveDecision(
+                        child_id=other.child_id,
+                        verdict="reject",
+                        rationale=f"Did not beat the baseline by the required margin {spec.improve_margin:g}.",
+                    )
+                )
+
+    if accepted:
+        verdict: SwarmConvergenceVerdict = "continue"
+        summary = f"Accepted measured winner {accepted[0]}{margin_note}."
+        directives = [f"Push further toward the objective: {spec.objective}"] if spec.objective else []
+    elif eligible:
+        verdict = "converged"
+        summary = "No candidate beat the baseline within the improvement margin; measured search converged."
+        directives = []
+    else:
+        verdict = "stagnating"
+        summary = "No candidate produced a parseable metric with a passing gate."
+        directives = []
+
+    candidate_order = [child.child_id for _sv, child, _metric in eligible] + pre_rejected
+    return SwarmWaveEvaluation(
+        status="completed",
+        evaluator_backend=state.evaluator_backend,
+        evaluator_model=state.evaluator_model,
+        summary=summary,
+        verdict=verdict,
+        candidate_order=candidate_order,
+        accepted_child_ids=accepted,
+        rejected_child_ids=[item.child_id for item in decisions if item.verdict == "reject"],
+        deferred_child_ids=[],
+        decisions=decisions,
+        next_wave_directives=directives,
+        finished_at=datetime.now(UTC),
+    )
+
+
+class BestReducer:
+    """Best-of-N selection by a fitness.
+
+    With a ``FitnessSpec`` on the run (``state.fitness_spec``) this measures each
+    candidate (gate + metric) and accepts the single best that beats the
+    baseline -- the ``optimize`` / ``tune`` capability. Without one it falls back
+    to the heuristic deterministic selection already used by the ``merge``
+    reducer, so behavior is unchanged for non-measured jobs.
     """
 
     name = "best"
@@ -117,6 +253,8 @@ class BestReducer:
         candidates: list[SwarmChildState],
         ctx: WaveContext,
     ) -> SwarmWaveEvaluation:
+        if ctx.state.fitness_spec is not None:
+            return _measured_wave_evaluation(ctx.state, candidates)
         from atelier.core.capabilities.swarm.capability import _fallback_wave_evaluation
 
         return _fallback_wave_evaluation(ctx.state, candidates)
@@ -126,6 +264,7 @@ __all__ = [
     "BestReducer",
     "_has_non_structural_passing_validation",
     "_is_structural_validation",
+    "_measured_wave_evaluation",
     "_score_child",
     "rank_children",
 ]

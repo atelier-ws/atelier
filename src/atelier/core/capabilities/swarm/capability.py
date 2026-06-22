@@ -2292,10 +2292,31 @@ def apply_wave_candidates(
     return False
 
 
+def _ensure_fitness_baseline(state: SwarmRunState) -> None:
+    """Auto-measure the fitness baseline on the base snapshot before wave 1.
+
+    No-op unless the run carries a ``FitnessSpec`` whose ``baseline`` is still
+    ``"auto"``. The measured value replaces ``"auto"`` and is persisted with the
+    run so every wave compares against the same frozen number.
+    """
+    spec = state.fitness_spec
+    if spec is None or spec.baseline != "auto":
+        return
+    from atelier.core.capabilities.swarm.fitness import measure_baseline
+
+    worktree = Path(state.integration_worktree or state.base_worktree or state.repo_root)
+    try:
+        spec.baseline = measure_baseline(spec, worktree)
+        state.ranking_notes.append(f"Auto-measured fitness baseline = {spec.baseline:g} on the base snapshot.")
+    except Exception as exc:  # noqa: BLE001 - a bad fitness must not wedge the coordinator
+        state.limitations.append(f"Fitness baseline auto-measure failed: {exc}")
+
+
 def launch_swarm_children(root: Path, state_path: Path) -> SwarmRunState:
     state = load_swarm_state(state_path)
     state.status = "running"
     state.coordinator_pid = os.getpid()
+    _ensure_fitness_baseline(state)
     save_swarm_state(state_path, state)
 
     def _terminate(_signum: int, _frame: object) -> None:
