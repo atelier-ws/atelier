@@ -4,9 +4,11 @@ from pathlib import Path
 
 import pytest
 
+from atelier.core.capabilities.swarm.capability import build_swarm_spec_payload
 from atelier.core.capabilities.swarm.fitness import (
     FitnessSpec,
     beats_baseline,
+    build_fitness_spec,
     evaluate_candidate,
     improvement,
     measure_baseline,
@@ -140,6 +142,31 @@ def test_best_reducer_converges_when_nothing_beats_baseline(tmp_path: Path) -> N
     evaluation = get_reducer("best").reduce(children, WaveContext(state=state, wave=wave))
     assert evaluation.accepted_child_ids == []
     assert evaluation.verdict == "converged"
+
+
+def test_build_fitness_spec_from_loose_inputs() -> None:
+    assert build_fitness_spec(metric_command="  ") is None  # no metric => not an optimize job
+    auto = build_fitness_spec(metric_command="cat v", baseline="auto")
+    assert auto is not None and auto.baseline == "auto"
+    numeric = build_fitness_spec(
+        metric_command="cat v", metric_parse="json:cost", direction="max", baseline="42.5", gate_command="true"
+    )
+    assert numeric is not None
+    assert numeric.baseline == 42.5
+    assert numeric.direction == "max"
+    assert numeric.gate_command == "true"
+
+
+def test_build_swarm_spec_payload_surfaces_knobs(tmp_path: Path) -> None:
+    state = _measured_state(tmp_path)
+    state.exec_mode = "edit"
+    state.search_space = ["src/**"]
+    payload = build_swarm_spec_payload(state)
+    assert payload["reducer"] == "best"
+    assert payload["exec_mode"] == "edit"
+    assert payload["job_kind"] == "optimize"
+    assert payload["search_space"] == ["src/**"]
+    assert payload["fitness"]["metric_command"] == "cat value"
 
 
 def test_best_reducer_falls_back_to_heuristic_without_fitness(tmp_path: Path) -> None:
