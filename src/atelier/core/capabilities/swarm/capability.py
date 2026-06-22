@@ -29,6 +29,7 @@ from atelier.core.capabilities.host_runners import (
     resolve_swarm_runner_command as _resolve_swarm_runner_command,
 )
 from atelier.core.capabilities.swarm.models import (
+    Finding,
     SwarmAcceptedCommit,
     SwarmArtifactRef,
     SwarmChildState,
@@ -1142,6 +1143,28 @@ def _coerce_float(value: object, fallback: float) -> float:
     return fallback
 
 
+def _coerce_float_or_none(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        with contextlib.suppress(ValueError):
+            return float(value)
+    return None
+
+
+def _coerce_findings(value: object) -> list[Finding]:
+    if not isinstance(value, list):
+        return []
+    findings: list[Finding] = []
+    for item in value:
+        if isinstance(item, dict):
+            with contextlib.suppress(Exception):
+                findings.append(Finding.model_validate(item))
+    return findings
+
+
 # `_score_child`, `rank_children`, and the structural-validation helpers now live
 # in `swarm/reducers/best.py` (the heuristic `best` reducer) and are re-imported
 # at the top of this module. They are referenced below unchanged.
@@ -2078,11 +2101,72 @@ def _run_integration_validation(
     return results
 
 
+def _apply_readonly_wave(
+    state: SwarmRunState,
+    wave_children: list[SwarmChildState],
+    wave: SwarmWaveState,
+) -> bool:
+    """Reduce a readonly wave: no patches, transplant, or integration validation.
+
+    Children produced ``findings`` / ``answer`` / ``metric`` instead of a diff.
+    The reducer (``union`` / ``vote`` / ``merge``) selects which to keep and may
+    synthesize ``merged_output``; acceptance is recorded without mutating any
+    integration worktree.
+    """
+    reducer = get_reducer(state.reducer_name or "merge")
+    evaluation = reducer.reduce(wave_children, WaveContext(state=state, wave=wave))
+    wave.evaluation = evaluation
+    decision_map = {item.child_id: item for item in evaluation.decisions}
+    accepted_set = set(evaluation.accepted_child_ids)
+    accepted: list[str] = []
+    rejected: list[str] = []
+    for child in wave_children:
+        decision = decision_map.get(child.child_id)
+        note = decision.rationale if decision is not None and decision.rationale else ""
+        if child.child_id in accepted_set:
+            child.accepted = True
+            child.acceptance_note = note or "Accepted (readonly candidate)."
+            accepted.append(child.child_id)
+        else:
+            child.accepted = False
+            child.acceptance_note = note or "Not selected by the reducer."
+            rejected.append(child.child_id)
+            wave.rejected_child_notes[child.child_id] = child.acceptance_note
+    wave.accepted_child_ids = accepted
+    wave.rejected_child_ids = rejected
+    wave.primary_winner_child_id = accepted[0] if accepted else None
+    wave.finished_at = _utcnow()
+    state.convergence_status = evaluation.verdict
+    state.convergence_summary = evaluation.summary
+    state.next_wave_directives = list(evaluation.next_wave_directives)
+    if evaluation.status == "completed":
+        state.consecutive_evaluator_failures = 0
+    else:
+        state.consecutive_evaluator_failures += 1
+    for child_id in accepted:
+        if child_id not in state.accepted_child_ids:
+            state.accepted_child_ids.append(child_id)
+    if accepted:
+        state.primary_winner_child_id = accepted[0]
+        state.winner_child_id = accepted[0]
+        wave.status = "applied"
+        wave.summary = evaluation.summary or f"Accepted {len(accepted)} readonly candidate(s)."
+    else:
+        wave.status = "no-improvement"
+        wave.summary = evaluation.summary or "No readonly candidate was accepted."
+    _write_wave_evaluation_manifest(state, wave)
+    _write_wave_manifest(state, wave)
+    _write_run_acceptance_manifest(state)
+    return bool(accepted)
+
+
 def apply_wave_candidates(
     state: SwarmRunState,
     wave_children: list[SwarmChildState],
     wave: SwarmWaveState,
 ) -> bool:
+    if state.exec_mode == "readonly":
+        return _apply_readonly_wave(state, wave_children, wave)
     integration = Path(state.integration_worktree)
     ranked = rank_children(wave_children)
     # Write candidate patches before evaluation so the evaluator evidence
@@ -2544,7 +2628,13 @@ def run_child_once(state_path: Path, child_id: str) -> SwarmChildState:
         files_changed = _relative_git_status(worktree)
         summary = str(metadata.get("summary") or _summarize_output(stdout_path, stderr_path))
         error = str(metadata.get("error") or "")
-        silent_noop = exit_code == 0 and not files_changed and summary == "No summary emitted." and not error
+        silent_noop = (
+            state.exec_mode == "edit"
+            and exit_code == 0
+            and not files_changed
+            and summary == "No summary emitted."
+            and not error
+        )
         result = child.model_copy(
             update={
                 "status": "failed" if silent_noop else ("success" if exit_code == 0 else "failed"),
@@ -2558,6 +2648,9 @@ def run_child_once(state_path: Path, child_id: str) -> SwarmChildState:
                     "Child runner exited successfully without output or code changes." if silent_noop else summary
                 ),
                 "error": ("Child runner exited successfully without output or code changes." if silent_noop else error),
+                "findings": _coerce_findings(metadata.get("findings")),
+                "answer": str(metadata.get("answer") or ""),
+                "metric": _coerce_float_or_none(metadata.get("metric")),
                 "token_count": _coerce_int(metadata.get("token_count"), token_count),
                 "cost_usd": _coerce_float(metadata.get("cost_usd"), cost_usd),
                 "duration_seconds": round(time.perf_counter() - started, 3),
