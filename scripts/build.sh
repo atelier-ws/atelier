@@ -73,6 +73,7 @@ if [ -f "uv.lock" ]; then
         --extra vector \
         --extra parsers \
         --extra rename \
+        --extra ortools \
         -o bundle/constraints.txt \
         >/dev/null \
         || echo "  (constraints export skipped; install will resolve from PyPI)"
