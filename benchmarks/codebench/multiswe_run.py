@@ -324,8 +324,12 @@ def main() -> int:
     p.add_argument(
         "--max-turns",
         type=int,
-        default=100,
-        help="Runaway-loop safety cap on agentic turns; the LLM finishes on its own below it (--timeout is the hard wall).",
+        default=50,
+        help=(
+            "Runaway-loop safety cap on agentic turns. Kept at 50: raising it to 100 let "
+            "non-converging tasks spiral into the 1800s --timeout wall (more cost, same "
+            "failure) instead of stopping early. Converging tasks finish well below it."
+        ),
     )
     p.add_argument("--timeout", type=int, default=1800, help="Per-run agent timeout (s)")
     p.add_argument("--jobs", type=int, default=1, help="Parallel container runs")
