@@ -324,7 +324,7 @@ def main() -> int:
     p.add_argument(
         "--max-turns",
         type=int,
-        default=50,
+        default=100,
         help="Runaway-loop safety cap on agentic turns; the LLM finishes on its own below it (--timeout is the hard wall).",
     )
     p.add_argument("--timeout", type=int, default=1800, help="Per-run agent timeout (s)")
