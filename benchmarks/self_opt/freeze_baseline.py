@@ -7,8 +7,8 @@ reuse it as the frozen reference. The autoresearch loop then only runs the
 atelier arm. Savings must come from token efficiency at the same model -- never
 from routing to a cheaper model.
 
-    uv run python autoresearch/freeze_baseline.py detect
-    uv run python autoresearch/freeze_baseline.py freeze <run_dir> --out autoresearch/baseline/swe30.json
+    uv run python benchmarks/self_opt/freeze_baseline.py detect
+    uv run python benchmarks/self_opt/freeze_baseline.py freeze <run_dir> --out benchmarks/self_opt/baseline/swe30.json
 
 Per task we store rep-normalized figures so a reps=1 iterate run compares fairly
 to a reps=3 baseline:
@@ -25,7 +25,7 @@ import statistics
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _read_rows(path: Path) -> list[dict[str, Any]]:
@@ -121,7 +121,7 @@ def main() -> int:
     sub.add_parser("detect", help="list candidate run dirs with results.jsonl")
     fp = sub.add_parser("freeze", help="freeze the baseline arm from a run dir")
     fp.add_argument("run_dir")
-    fp.add_argument("--out", default="autoresearch/baseline/swe30.json")
+    fp.add_argument("--out", default="benchmarks/self_opt/baseline/swe30.json")
     args = ap.parse_args()
     if args.cmd == "detect":
         return detect()

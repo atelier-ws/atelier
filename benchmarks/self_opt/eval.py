@@ -19,10 +19,10 @@ mini (paid)
 
 Usage
 -----
-    uv run python autoresearch/eval.py
-    uv run python autoresearch/eval.py --objective mini --limit 5
-    uv run python autoresearch/eval.py --json autoresearch/last.json \
-        --log autoresearch/results.tsv --desc "tighten types in store"
+    uv run python benchmarks/self_opt/eval.py
+    uv run python benchmarks/self_opt/eval.py --objective mini --limit 5
+    uv run python benchmarks/self_opt/eval.py --json benchmarks/self_opt/last.json \
+        --log benchmarks/self_opt/results.tsv --desc "tighten types in store"
 
 Output: a grep-friendly ``key: value`` block between ``---`` fences, e.g.
 
@@ -51,7 +51,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_PYTEST_ARGS = ["-q", "-p", "no:cacheprovider", "-m", "not slow"]
 LOG_COLUMNS = [
@@ -273,7 +273,7 @@ def objective_swe(args: argparse.Namespace) -> dict[str, Any]:
     tasks = _read_task_ids(args.tasks)
     baseline = _load_baseline(args.baseline)
     knobs = _read_knobs(args.knobs)
-    out_dir = Path(args.out) if args.out else REPO_ROOT / "autoresearch" / "runs" / "last"
+    out_dir = Path(args.out) if args.out else REPO_ROOT / "benchmarks" / "self_opt" / "runs" / "last"
 
     cmd = [
         "uv",
@@ -414,7 +414,7 @@ def _detail(metrics: dict[str, Any]) -> str:
             f"target_met={metrics.get('target_met', '?')}"
         )
     if obj == "mini":
-        return f"cpap={metrics.get('cost_per_accepted_patch', '?')} " f"apr={metrics.get('accepted_patch_rate', '?')}"
+        return f"cpap={metrics.get('cost_per_accepted_patch', '?')} apr={metrics.get('accepted_patch_rate', '?')}"
     return ""
 
 
@@ -447,7 +447,7 @@ def main() -> int:
     ap.add_argument("--desc", default="", help="description recorded in the results log")
     ap.add_argument("--status", default=None, help="override status (keep/discard/crash)")
     ap.add_argument("--tasks", default="benchmarks/codebench/data/verified.txt", help="instance-id file (swe)")
-    ap.add_argument("--baseline", default="autoresearch/baseline/swe30.json", help="frozen baseline JSON (swe)")
+    ap.add_argument("--baseline", default="benchmarks/self_opt/baseline/swe30.json", help="frozen baseline JSON (swe)")
     ap.add_argument("--reps", type=int, default=1, help="reps per task (swe)")
     ap.add_argument(
         "--model",
@@ -459,7 +459,9 @@ def main() -> int:
     ap.add_argument("--out", default=None, help="benchmark run output dir (swe)")
     ap.add_argument("--no-grade", dest="no_grade", action="store_true", help="skip Docker grading; cost-only (swe)")
     ap.add_argument("--resume", action="store_true", help="reuse existing atelier patches (swe)")
-    ap.add_argument("--knobs", default="autoresearch/knobs.env", help="env-knob overrides for the atelier arm (swe)")
+    ap.add_argument(
+        "--knobs", default="benchmarks/self_opt/knobs.env", help="env-knob overrides for the atelier arm (swe)"
+    )
     ap.add_argument("--run-timeout", type=int, default=1800, help="per-agent-run timeout passed to multiswe_run (swe)")
     ap.add_argument(
         "--dry-run", dest="dry_run", action="store_true", help="print planned command without running (swe)"
