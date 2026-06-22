@@ -52,7 +52,7 @@ dependencies = [
     "markdown-it-py>=3.0",
     "yarl==1.24.2",
     "zipp==4.1.0",
-    "readability-lxml>=0.8.4.1",
+    "trafilatura>=2.0.0",
 ]
 
 [project.optional-dependencies]
