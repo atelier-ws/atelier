@@ -252,12 +252,19 @@ def _slim_schema(node: Any) -> Any:
         branches = slimmed.get("anyOf")
         if isinstance(branches, list):
             non_null = [b for b in branches if not (isinstance(b, dict) and b.get("type") == "null")]
-            if len(non_null) == 1 and len(non_null) < len(branches):
-                collapsed = {key: value for key, value in slimmed.items() if key != "anyOf"}
-                collapsed.update(non_null[0])
-                if collapsed.get("default") is None:
-                    collapsed.pop("default", None)
-                return collapsed
+            if non_null and len(non_null) < len(branches):
+                if len(non_null) == 1:
+                    collapsed = {key: value for key, value in slimmed.items() if key != "anyOf"}
+                    collapsed.update(non_null[0])
+                    if collapsed.get("default") is None:
+                        collapsed.pop("default", None)
+                    return collapsed
+                # Multiple real branches: drop only the null option. The param
+                # stays optional via its absence from `required`.
+                slimmed["anyOf"] = non_null
+                if slimmed.get("default") is None:
+                    slimmed.pop("default", None)
+                return slimmed
         return slimmed
     if isinstance(node, list):
         return [_slim_schema(item) for item in node]
@@ -269,8 +276,16 @@ def mcp_tool(
     description: str | None = None,
     input_schema: dict[str, Any] | None = None,
     hidden_params: tuple[str, ...] = (),
+    param_aliases: dict[str, str] | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[[dict[str, Any]], Any]]:
-    """Decorator to register a tool and auto-derive its MCP schema."""
+    """Decorator to register a tool and auto-derive its MCP schema.
+
+    ``param_aliases`` maps an old (deprecated) argument name to its current
+    parameter name. The advertised schema only shows the current name, but the
+    handler accepts either: incoming args carrying an old name are remapped
+    before validation (the current name wins if both are present).
+    """
+    aliases = dict(param_aliases or {})
 
     def decorator(
         func: Callable[..., Any],
@@ -316,13 +331,25 @@ def mcp_tool(
 
             @wraps(func)
             def handler_wrapper(args: dict[str, Any]) -> Any:
+                # Remap deprecated arg names to their current parameter before
+                # validation. The current name wins if both are present.
+                if isinstance(args, dict) and aliases:
+                    remapped: dict[str, Any] | None = None
+                    for old_name, new_name in aliases.items():
+                        if old_name in args and new_name not in args:
+                            if remapped is None:
+                                remapped = dict(args)
+                            remapped[new_name] = remapped.pop(old_name)
+                    if remapped is not None:
+                        args = remapped
                 # Pydantic's default config silently drops unknown keys, so a
                 # typo'd argument (e.g. codemod `dryrun` for `dry_run`) would be
                 # discarded and the wrong default used while the call still
                 # "succeeds". Surface those keys instead of forbidding them, so
-                # callers that legitimately pass extras are not broken.
+                # callers that legitimately pass extras are not broken. Accepted
+                # aliases are not "unknown" even if a caller passes both names.
                 if isinstance(args, dict):
-                    unknown = [key for key in args if key not in known_params]
+                    unknown = [key for key in args if key not in known_params and key not in aliases]
                     if unknown:
                         logger.warning(
                             "tool %s received unknown argument(s) %s (ignored; known: %s)",
@@ -360,6 +387,7 @@ def mcp_tool(
             "handler": handler_wrapper,
             "description": tool_description,
             "inputSchema": input_schema or schema,
+            "param_aliases": dict(aliases),
         }
         return handler_wrapper
 
@@ -4325,6 +4353,7 @@ def _memory_vote_fact(
 @mcp_tool(
     name="memory",
     description=("Memory op-dispatch for fact storage/voting and recall."),
+    param_aliases={"agent_id": "agent", "top_k": "k"},
 )
 def tool_memory(
     op: Annotated[
@@ -4342,12 +4371,12 @@ def tool_memory(
             )
         ),
     ],
-    agent_id: Annotated[
+    agent: Annotated[
         str | None,
         Field(description="Memory namespace; defaults to shared."),
     ] = None,
     query: Annotated[str | None, Field(description="Search query used by recall.")] = None,
-    top_k: Annotated[int, Field(description="Max results to return for recall.")] = 5,
+    k: Annotated[int, Field(description="Max results to return for recall.")] = 5,
     subject: Annotated[
         str | None,
         Field(description="Fact subject for store_fact (for example: testing, workflow preference)."),
@@ -4382,13 +4411,13 @@ def tool_memory(
 
     if op == "recall":
         return _memory_recall(
-            agent_id=agent_id,
+            agent_id=agent,
             query=require("query", query),
-            top_k=top_k,
+            top_k=k,
         )
     if op == "store_fact":
         return _memory_store_fact(
-            agent_id=agent_id,
+            agent_id=agent,
             subject=require("subject", subject),
             fact=require("fact", fact),
             citations=citations or "",
@@ -4397,7 +4426,7 @@ def tool_memory(
         )
     if op == "vote_fact":
         return _memory_vote_fact(
-            agent_id=agent_id,
+            agent_id=agent,
             fact=require("fact", fact),
             direction=require("direction", direction),
             reason=require("reason", reason),
@@ -4408,8 +4437,8 @@ def tool_memory(
             dict[str, Any],
             _symbol_recall().recall_symbol(
                 query=require("query", query),
-                agent_id=agent_id,
-                top_k=top_k,
+                agent_id=agent,
+                top_k=k,
             ),
         )
     raise ValueError(f"unsupported memory op: {op}")
@@ -4750,7 +4779,7 @@ def _read_dedup_resource(args: dict[str, Any]) -> str:
     if not path or args.get("files") is not None:
         return ""
     range_spec = str(args.get("range") or "")
-    max_lines = args.get("max_lines")
+    max_lines = args.get("lines", args.get("max_lines"))
     max_lines_spec = "" if max_lines is None else str(max_lines)
     projection_spec = str(args.get("projection_kind") or "")
     return f"read:{path}:{range_spec}:{max_lines_spec}:{projection_spec}:{int(bool(args.get('expand')))}"
@@ -5069,11 +5098,10 @@ def _smart_read_single(
     hidden_params=("projection_kind", "format", "include_meta", "filePath"),
     description=(
         "Read a file (or batch) with automatic source projection. Modes: outline "
-        "(structure only; default for files >200 LOC), range (range='L42-L118' or "
-        "open-ended 'L42-'), full (small files or expand=true), and compact. Re-read "
-        "with expand=true or a range before editing against an outline/compact view. "
-        "Batch 2+ files via files=[{path, range?}, ...]."
+        "(default for files >200 LOC), range (range='L42-L118' or 'L42-'), full "
+        "(expand=true), compact. Batch 2+ files via files=[{path, range?}, ...]."
     ),
+    param_aliases={"max_lines": "lines"},
 )
 def tool_smart_read(
     path: Annotated[
@@ -5087,7 +5115,7 @@ def tool_smart_read(
     ] = "",
     range: str | None = None,
     expand: bool = False,
-    max_lines: int | None = None,
+    lines: int | None = None,
     include_meta: Annotated[
         bool,
         Field(description="Include tool metadata fields (cache and token counters)."),
@@ -5096,9 +5124,7 @@ def tool_smart_read(
         list[dict[str, Any] | str] | None,
         Field(
             description=(
-                "Batch read: ['path', ...] or [{path, range?, expand?, max_lines?}, ...] "
-                "(strings and dicts may mix; a '#start-end'/'#line' suffix on a path scopes it). "
-                "Returns {files: [...]}. Use for 2+ files — one round trip instead of N."
+                "['path', ...] or [{path, range?, expand?, lines?}, ...]. " "Returns {files: [...]}. Use for 2+ files."
             )
         ),
     ] = None,
@@ -5153,7 +5179,7 @@ def tool_smart_read(
                     path=spec_path,
                     range=spec.get("range"),
                     expand=bool(spec.get("expand", expand)),
-                    max_lines=spec.get("max_lines", max_lines),
+                    max_lines=spec.get("lines", spec.get("max_lines", lines)),
                     include_meta=include_meta,
                     projection_kind=spec.get("projection_kind", projection_kind),
                 )
@@ -5171,7 +5197,7 @@ def tool_smart_read(
         path=path,
         range=range,
         expand=expand,
-        max_lines=max_lines,
+        max_lines=lines,
         include_meta=include_meta,
         projection_kind=projection_kind,
     )
@@ -5522,16 +5548,31 @@ def _attach_contract_literal_review(
     if not _contract_review_enabled():
         return
     try:
-        from atelier.core.capabilities.tool_supervision.edit_impact import contract_literal_impact
+        from atelier.core.capabilities.tool_supervision.edit_impact import (
+            contract_literal_impact,
+            sibling_symbol_impact,
+        )
 
+        engine = _code_context_engine(str(repo_root))
         impact = contract_literal_impact(
             edits,
-            engine=_code_context_engine(str(repo_root)),
+            engine=engine,
             repo_root=repo_root,
             touched_paths=touched_paths,
         )
         if impact:
             result["contract_review"] = impact
+        else:
+            # No quoted contract literal moved -- fall back to identifier-cluster
+            # sibling discovery for parallel implementations (no embedder needed).
+            sibling = sibling_symbol_impact(
+                edits,
+                engine=engine,
+                repo_root=repo_root,
+                touched_paths=touched_paths,
+            )
+            if sibling:
+                result["sibling_review"] = sibling
     except Exception:
         logging.exception("Recovered from broad exception handler")
 
@@ -5547,9 +5588,9 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                     {
                         "title": "File edit",
                         "type": "object",
-                        "required": ["file_path", "new_string"],
+                        "required": ["path", "new_string"],
                         "properties": {
-                            "file_path": {
+                            "path": {
                                 "type": "string",
                                 "description": "Path, optionally suffixed with #line, #start-end, or #cell=N.",
                             },
@@ -5561,9 +5602,9 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                     {
                         "title": "Notebook cell edit",
                         "type": "object",
-                        "required": ["file_path", "cell_action"],
+                        "required": ["path", "cell_action"],
                         "properties": {
-                            "file_path": {"type": "string"},
+                            "path": {"type": "string"},
                             "cell_action": {
                                 "enum": [
                                     "insert_after",
@@ -5586,7 +5627,7 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                             "kind": {"const": "symbol"},
                             "qualified_name": {"type": "string"},
                             "name": {"type": "string"},
-                            "file_path": {"type": "string"},
+                            "path": {"type": "string"},
                             "mode": {"enum": ["replace", "prepend", "append"]},
                             "new_body": {"type": "string"},
                             "preserve_signature": {"type": "boolean"},
@@ -5595,10 +5636,10 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                     {
                         "title": "Projection edit",
                         "type": "object",
-                        "required": ["kind", "file_path", "projection_mapping"],
+                        "required": ["kind", "path", "projection_mapping"],
                         "properties": {
                             "kind": {"const": "projection"},
-                            "file_path": {"type": "string"},
+                            "path": {"type": "string"},
                             "projection_mapping": {
                                 "type": "object",
                                 "description": "Mapping returned by a compact read with include_meta=true.",
@@ -5629,7 +5670,7 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "default": True,
             "description": "Roll back all edits if any one fails.",
         },
-        "post_edit_hooks": {
+        "hooks": {
             "type": "boolean",
             "default": True,
             "description": "Run formatter/linter on touched files; error/warning diagnostics appear in the result.",
@@ -5710,15 +5751,16 @@ def _compact_applied_entries(entries: list[dict[str, Any]]) -> list[str | dict[s
     description=(
         "Apply many mechanical edits across files in one deterministic call. Each edit is a "
         "descriptor in `edits`; all must share a family. Families: file replace, create, "
-        "line-scoped (`file_path='foo.py#10-20'`), notebook cell, symbol, projection -- exact "
+        "line-scoped (`path='foo.py#10-20'`), notebook cell, symbol, projection -- exact "
         "shapes in inputSchema. Returns compact `{applied}` ranges confirming exact writes; "
         "failures stay structured. Re-read only after a fuzzy match or when changed content is needed."
     ),
+    param_aliases={"post_edit_hooks": "hooks"},
 )
 def tool_smart_edit(
     edits: list[dict[str, Any]],
     atomic: bool = True,
-    post_edit_hooks: bool = True,
+    hooks: bool = True,
     post_edit_timeout_ms: int = 30_000,
     verify: bool = False,
     verify_checks: list[str] | None = None,
@@ -5830,7 +5872,7 @@ def tool_smart_edit(
                         "writes": 0,
                         "test_weakening": weakenings,
                     }
-            if post_edit_hooks:
+            if hooks:
                 from atelier.core.capabilities.tool_supervision.post_edit_hooks import (
                     HookConfig,
                     run_post_edit_hooks,
@@ -5972,11 +6014,11 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                 },
             },
         },
-        "connection_string": {
+        "connection": {
             "type": "string",
             "description": "DSN (sqlite:///path, postgresql://...). Auto-discovered from DATABASE_URL/.env if omitted.",
         },
-        "allow_writes": {
+        "write": {
             "type": "boolean",
             "default": False,
             "description": "Permit INSERT/UPDATE/DELETE/DDL on action=query/lint. Off by default; reads always allowed.",
@@ -5994,21 +6036,22 @@ SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         "SQL op-dispatch: schema introspection (connect/tables/schema/table/relationships/"
         "search), SQL lint, and bounded query execution (single `sql` or a `queries[]` batch). "
         "Connection "
-        "auto-discovered from DATABASE_URL env or .env; pass connection_string to override. "
+        "auto-discovered from DATABASE_URL env or .env; pass connection to override. "
         "Live introspection/queries run on SQLite; other dialects report a driver-required "
         "note."
     ),
+    param_aliases={"connection_string": "connection", "allow_writes": "write"},
 )
 def tool_sql(
     action: str,
     name: str | list[str] | None = None,
     sql: str | None = None,
     queries: list[dict[str, str]] | None = None,
-    connection_string: str | None = None,
+    connection: str | None = None,
     max_rows: int = 500,
     timeout_ms: int = 30_000,
     auto_limit: bool = True,
-    allow_writes: bool = False,
+    write: bool = False,
 ) -> dict[str, Any]:
     """SQL op-dispatch for connect, lint, and bounded query batching.
 
@@ -6023,7 +6066,7 @@ def tool_sql(
       query         — execute SQL (needs sql or queries[{name,sql},...])
 
     Connection is auto-discovered from DATABASE_URL env or .env file.
-    Pass connection_string explicitly to override. Live introspection/queries run on SQLite;
+    Pass connection explicitly to override. Live introspection/queries run on SQLite;
     other dialects report a driver-required note.
 
     Returns: introspection actions return {tables|table_count|schema|columns|foreign_keys|relationships|matches};
@@ -6053,11 +6096,11 @@ def tool_sql(
         name=name,
         sql=sql,
         queries=queries,
-        connection_string=connection_string,
+        connection_string=connection,
         max_rows=max_rows,
         timeout_ms=timeout_ms,
         auto_limit=auto_limit,
-        allow_writes=allow_writes,
+        allow_writes=write,
         repo_root=os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()),
     )
     # Batched queries collapse N would-be individual sql calls into 1.
@@ -7403,11 +7446,10 @@ def _parse_symbol(symbol: str) -> dict[str, Any]:
 @mcp_tool(
     name="explore",
     description=(
-        "Grouped code intelligence for a concept OR a single symbol. Concept mode (default): "
-        "`query` returns grouped source + caller/callee/usage context across matched files. "
-        "Targeted mode: `relation` (callers|callees|usages|self) with a `symbol` returns exactly "
-        "that relation (SCIP-indexed). `depth` extends callers/callees transitively; `limit` caps "
-        "targeted results; `seed_files` biases concept mode."
+        "Code intelligence by concept or symbol. Concept mode: `query` returns grouped "
+        "source + caller/callee/usage context. Targeted mode: `relation` "
+        "(callers/callees/usages/self) + `symbol` returns that relation (SCIP). `depth` "
+        "extends transitively; `seed_files` biases concept mode."
     ),
 )
 def tool_explore(
@@ -7495,21 +7537,18 @@ def tool_graph(
 @mcp_tool(
     name="codemod",
     description=(
-        "Structural code search and safe rewrite (codemod) by AST shape, via ast-grep. Matches "
-        "code *shape*, not text: formatting-independent and never matches inside strings or "
-        "comments. Metavariables: `$X` binds one node, `$$$` binds a "
-        "list — e.g. `isinstance($X, $Y)`, `$X == None`, `requests.get($URL)`. Pass `rewrite` to "
-        "transform every match; captured metavariables are reusable in the replacement, e.g. "
-        "pattern `$X == None`, rewrite `$X is None`. `dry_run=True` (default) returns a "
-        "unified-diff preview and writes nothing; `dry_run=False` applies the rewrite across all "
-        "matched files. Scope with `language` (e.g. 'python') and `file_glob`. Returns: matches "
-        "(snippet, file_path, line); with `rewrite`, a diff and `files_changed`."
+        "AST-shape search and rewrite via ast-grep. Matches structure, not text "
+        "(formatting-safe; ignores strings/comments). `$X` = one node, `$$$` = list; "
+        "e.g. pattern `$X == None`, rewrite `$X is None`. Scope with `language`/`glob`. "
+        "`dry_run=true` (default) previews a diff, false applies. Returns matches "
+        "(snippet, path, line); with rewrite: diff + files_changed."
     ),
+    param_aliases={"file_glob": "glob"},
 )
 def tool_pattern(
     pattern: str,
     language: str | None = None,
-    file_glob: str | None = None,
+    glob: str | None = None,
     rewrite: str | None = None,
     limit: int = 20,
     dry_run: bool = True,
@@ -7532,7 +7571,7 @@ def tool_pattern(
         pattern=pattern,
         rewrite=rewrite,
         language=language,
-        file_glob=file_glob,
+        file_glob=glob,
         dry_run=dry_run,
         limit=limit,
     )
@@ -8018,7 +8057,7 @@ def _run_native_grep(
     name="grep",
     description=(
         "Search files with regex, glob, and type filters: matching, path listing, context "
-        "lines, summaries, or incremental reruns. Set output_mode='file_paths_with_content' to "
+        "lines, summaries, or incremental reruns. Set mode='file_paths_with_content' to "
         "discover AND read matched context in one step."
     ),
     hidden_params=(
@@ -8029,26 +8068,29 @@ def _run_native_grep(
         "file_limit",
         "if_modified_since",
     ),
+    param_aliases={
+        "content_regex": "regex",
+        "file_glob_patterns": "glob",
+        "output_mode": "mode",
+        "lines_before": "before",
+        "lines_after": "after",
+        "ignore_case": "i",
+    },
 )
 def tool_grep(
     path: Annotated[
         str,
-        Field(
-            description=(
-                "Workspace-relative file or directory. A single file may carry '#start-end' "
-                "(e.g. 'store.py#60-100') to scope to a line range."
-            ),
-        ),
+        Field(description="Workspace path; single file may carry '#start-end' (e.g. 'store.py#60-100') to scope."),
     ] = ".",
-    content_regex: Annotated[
+    regex: Annotated[
         str | None,
         Field(description="Regex to match contents. Omit for path/type listings."),
     ] = None,
-    file_glob_patterns: Annotated[
+    glob: Annotated[
         str | list[str] | None,
         Field(description="Globs constraining candidate files (e.g. `src/**/*.py`). List or bare string."),
     ] = None,
-    output_mode: Annotated[
+    mode: Annotated[
         Literal[
             "ranked_file_map",
             "file_paths_with_content",
@@ -8061,15 +8103,15 @@ def tool_grep(
             )
         ),
     ] = "ranked_file_map",
-    lines_before: Annotated[
+    before: Annotated[
         int,
         Field(description="Context lines before each match."),
     ] = 0,
-    lines_after: Annotated[
+    after: Annotated[
         int,
         Field(description="Context lines after each match."),
     ] = 0,
-    ignore_case: Annotated[
+    i: Annotated[
         bool,
         Field(description="Case-insensitive matching."),
     ] = False,
@@ -8116,20 +8158,20 @@ def tool_grep(
 
     Use this tool when you already know the pattern, file globs, or file types you want.
     Prefer `search` for ranked natural-language lookup and repo-map construction.
-    Returns: results shaped by `output_mode` (default `ranked_file_map`: token-budgeted file pointers with line ranges and symbols).
+    Returns: results shaped by `mode` (default `ranked_file_map`: token-budgeted file pointers with line ranges and symbols).
     """
     # Accept a single glob passed as a bare string -- a common shape the model
     # reaches for -- so it does not trip schema validation against the array type.
-    if isinstance(file_glob_patterns, str):
-        file_glob_patterns = [file_glob_patterns]
+    if isinstance(glob, str):
+        glob = [glob]
     payload = _run_native_grep(
         path=path,
-        content_regex=content_regex,
-        file_glob_patterns=file_glob_patterns,
-        output_mode=output_mode,
-        lines_before=lines_before,
-        lines_after=lines_after,
-        ignore_case=ignore_case,
+        content_regex=regex,
+        file_glob_patterns=glob,
+        output_mode=mode,
+        lines_before=before,
+        lines_after=after,
+        ignore_case=i,
         type=type,
         file_limit=file_limit,
         lines_per_file=lines_per_file,
@@ -8144,12 +8186,10 @@ def tool_grep(
     ts = int(payload.pop("tokens_saved", 0) or 0)
     if ts > 0:
         _tool_call_tokens_saved.value = ts
-    if content_regex and not payload.get("isError"):
+    if regex and not payload.get("isError"):
         # Literal grep has no semantic/zoekt channel, so no "dark" verdict -- only
         # found / missed / absent, plus the shared breaker.
-        payload = _apply_search_verdict(
-            payload, query=content_regex, hit_count=_count_grep_hits(payload), channels=None
-        )
+        payload = _apply_search_verdict(payload, query=regex, hit_count=_count_grep_hits(payload), channels=None)
     return payload
 
 
@@ -8213,7 +8253,7 @@ def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[in
                     "symbol = exact definitions (name + location, no body)."
                 ),
             },
-            "max_files": {
+            "limit": {
                 "type": "integer",
                 "default": 10,
                 "description": "Maximum number of ranked files to return.",
@@ -8229,6 +8269,7 @@ def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[in
         },
         "required": [],
     },
+    param_aliases={"max_files": "limit"},
 )
 def tool_smart_search(
     query: Annotated[
@@ -8253,7 +8294,7 @@ def tool_smart_search(
             )
         ),
     ] = "chunks",
-    max_files: Annotated[
+    limit: Annotated[
         int,
         Field(description="Maximum number of ranked files to return."),
     ] = 10,
@@ -8322,7 +8363,7 @@ def tool_smart_search(
             intent="symbol",
             view="target",
             snippet="none",
-            limit=max(max_files * 2, 20),
+            limit=max(limit * 2, 20),
             file_glob=symbol_file_glob,
             budget_tokens=budget_tokens,
             repo_root=str(symbol_workspace_root),
@@ -8336,7 +8377,7 @@ def tool_smart_search(
             query=query or "",
             path=path,
             mode=mode,
-            max_files=max_files,
+            max_files=limit,
             max_chars_per_file=max_chars_per_file,
             include_outline=include_outline,
             seed_files=seed_files,
@@ -8381,7 +8422,7 @@ def tool_smart_search(
             query=query,
             task=query,
             path=path,
-            max_files=max_files,
+            max_files=limit,
             max_chars_per_file=max_chars_per_file,
             include_outline=include_outline,
             budget_tokens=budget_tokens,
@@ -8521,11 +8562,11 @@ BASH_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         "background": {
             "type": "boolean",
             "default": False,
-            "description": "Return a managed session handle immediately instead of blocking inline.",
+            "description": "Return session handle immediately (non-blocking).",
         },
         "session_id": {
             "type": "string",
-            "description": "Session handle returned by a background run (required for action=poll/cancel).",
+            "description": "Handle from a background run; required for poll/cancel.",
         },
     },
     "additionalProperties": False,
@@ -8574,10 +8615,11 @@ def tool_bash(
         "converts HTML to clean Markdown by default, blocks private/local URLs, caches 5 minutes."
     ),
     hidden_params=("max_chars", "timeout_s", "include_meta"),
+    param_aliases={"output_format": "type"},
 )
 def tool_web_fetch(
     url: Annotated[str, Field(description="Public HTTP/HTTPS URL to fetch.")],
-    output_format: Annotated[
+    type: Annotated[
         Literal["auto", "markdown", "text", "html"],
         Field(description="Return format. auto prefers Markdown and converts HTML to Markdown."),
     ] = "auto",
@@ -8602,7 +8644,7 @@ def tool_web_fetch(
 
     return fetch_url(
         url,
-        output_format=output_format,
+        output_format=type,
         max_chars=max_chars,
         timeout_s=timeout_s,
         include_meta=include_meta,
@@ -9360,6 +9402,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         if name == "memory" and isinstance(args, dict):
             properties = spec.get("inputSchema", {}).get("properties", {})
             allowed_args = set(properties) if isinstance(properties, dict) else set()
+            # Accept declared backward-compat aliases (e.g. agent_id -> agent);
+            # the handler remaps them to the current name before validation.
+            allowed_args |= set(spec.get("param_aliases", {}) or {})
             unknown_args = sorted(set(args) - allowed_args)
             if unknown_args:
                 return _err(

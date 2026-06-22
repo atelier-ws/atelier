@@ -172,6 +172,46 @@ def test_rich_overwrite_replaces_existing_file(workspace: Path) -> None:
     assert f.read_text(encoding="utf-8") == "new content\n"
 
 
+def test_rich_overwrite_with_line_range_rejected(workspace: Path) -> None:
+    """overwrite=true + a #line range is a contradiction: reject, don't truncate."""
+    f = workspace / "big.py"
+    original = "".join(f"line_{i} = {i}\n" for i in range(1, 21))
+    f.write_text(original, encoding="utf-8")
+
+    payload = _edit({"edits": [{"file_path": "big.py#5-10", "new_string": "replacement\n", "overwrite": True}]})
+
+    assert payload["rolled_back"] is True
+    assert payload["failed"]
+    assert "ignores the #5-10 line range" in payload["failed"][0]["error"]
+    # The file must be untouched — not emptied, not partially overwritten.
+    assert f.read_text(encoding="utf-8") == original
+
+
+def test_rich_overwrite_empty_string_truncation_rejected(workspace: Path) -> None:
+    """overwrite=true with an empty new_string must not silently zero a non-empty file."""
+    f = workspace / "keep.py"
+    f.write_text("def keep():\n    return 1\n", encoding="utf-8")
+
+    payload = _edit({"edits": [{"file_path": "keep.py", "overwrite": True}]})
+
+    assert payload["rolled_back"] is True
+    assert payload["failed"]
+    assert "truncate non-empty file" in payload["failed"][0]["error"]
+    assert f.read_text(encoding="utf-8") == "def keep():\n    return 1\n"
+
+
+def test_rich_overwrite_empty_string_allowed_for_new_file(workspace: Path) -> None:
+    """Creating an empty file via overwrite stays allowed — nothing is destroyed."""
+    f = workspace / "fresh.py"
+    assert not f.exists()
+
+    payload = _edit({"edits": [{"file_path": "fresh.py", "new_string": "", "overwrite": True}]})
+
+    assert payload["failed"] == []
+    assert f.exists()
+    assert f.read_text(encoding="utf-8") == ""
+
+
 def test_rich_line_anchor_restricts_scope(workspace: Path) -> None:
     """file_path#line scopes the replacement to that line only."""
     f = workspace / "scope.py"
@@ -609,11 +649,11 @@ def test_diff_recorded_per_file_multi_edit(workspace: Path) -> None:
 
 
 def test_schema_top_level_params_have_descriptions() -> None:
-    """atomic, post_edit_hooks must each have a description."""
+    """atomic, hooks must each have a description."""
     from atelier.gateway.adapters.mcp_server import EDIT_TOOL_INPUT_SCHEMA
 
     props = EDIT_TOOL_INPUT_SCHEMA["properties"]
-    for param in ("atomic", "post_edit_hooks"):
+    for param in ("atomic", "hooks"):
         assert "description" in props[param], f"{param!r} missing description in EDIT_TOOL_INPUT_SCHEMA"
         assert props[param]["description"].strip(), f"{param!r} description is empty"
 
