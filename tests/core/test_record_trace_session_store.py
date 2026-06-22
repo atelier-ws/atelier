@@ -29,8 +29,10 @@ def test_record_trace_populates_session_store(tmp_path: Path) -> None:
     trace = _trace("sess-1")
     store.record_trace(trace)
 
-    # Per-session file is written (source of truth) ...
-    assert (root / "sessions" / "sess-1" / "traces.jsonl").exists()
+    # Per-session file is written (source of truth) — under the workspace-scoped
+    # sessions dir (which may be a workspaces/<key>/sessions/ subdir).
+    sessions_root = store.session_store.root
+    assert (sessions_root / "sessions" / "sess-1" / "traces.jsonl").exists()
     recorded = store.session_store.traces_for("sess-1")
     assert [t["id"] for t in recorded] == [trace.id]
     # ... and the tiny index is queryable.

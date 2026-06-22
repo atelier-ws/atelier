@@ -60,11 +60,27 @@ CODE_EDITING_TOOLS: frozenset[str] = frozenset(
 # ---------------------------------------------------------------------------
 
 
-def _state_path() -> Path:
-    import hashlib
+def _workspace_key(path: str) -> str:
+    import re
+    from hashlib import sha256
+    from pathlib import Path as _Path
 
+    resolved = _Path(path).expanduser().resolve()
+    home = _Path.home().resolve()
+    try:
+        parts = resolved.relative_to(home).parts
+    except ValueError:
+        parts = [p for p in resolved.parts if p and p != "/"]
+    sanitized = [re.sub(r"[^a-zA-Z0-9.\-_]", "-", p) for p in parts if p]
+    label = re.sub(r"-{2,}", "-", "-".join(sanitized)).strip("-")
+    if len(label) > 120:
+        label = label[:110].rstrip("-") + "--" + sha256(str(resolved).encode()).hexdigest()[:6]
+    return label or sha256(str(resolved).encode()).hexdigest()[:12]
+
+
+def _state_path() -> Path:
     workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    h = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+    h = _workspace_key(workspace)
     root = Path(os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT") or Path.home() / ".atelier")
     return root / "workspaces" / h / "session_state.json"
 
@@ -96,13 +112,38 @@ def _atelier_root() -> Path:
     return Path.home() / ".atelier"
 
 
+def _sessions_root() -> Path:
+    """Per-workspace store root for sessions — falls back to atelier root."""
+    import re
+
+    root = _atelier_root()
+    workspace = os.environ.get("ATELIER_WORKSPACE_ROOT") or os.environ.get("CLAUDE_WORKSPACE_ROOT") or ""
+    if not workspace:
+        return root
+
+    resolved = Path(workspace).expanduser().resolve()
+    home = Path.home().resolve()
+    try:
+        parts = resolved.relative_to(home).parts
+    except ValueError:
+        parts = [p for p in resolved.parts if p and p != "/"]
+    sanitized = [re.sub(r"[^a-zA-Z0-9._\-]", "-", p) for p in parts if p]
+    label = re.sub(r"-{2,}", "-", "-".join(sanitized)).strip("-")
+    if len(label) > 120:
+        from hashlib import sha256
+
+        label = label[:110].rstrip("-") + "--" + sha256(str(resolved).encode()).hexdigest()[:6]
+    key = label or __import__("hashlib").sha256(str(resolved).encode()).hexdigest()[:12]
+    return root / "workspaces" / key
+
+
 def _write_token_event(stats: dict[str, Any]) -> None:
     """Append a session_stats note event to the active run file."""
     state = _load_state()
     session_id: str | None = state.get("session_id") or state.get("active_session_id")
     if not session_id:
         return
-    run_file = _atelier_root() / "sessions" / session_id / "run.json"
+    run_file = _sessions_root() / "sessions" / session_id / "run.json"
     if not run_file.exists():
         return
     try:
@@ -364,7 +405,7 @@ def _write_session_enrichment(
     """
     if not session_id:
         return
-    run_file = _atelier_root() / "sessions" / session_id / "run.json"
+    run_file = _sessions_root() / "sessions" / session_id / "run.json"
     if not run_file.exists():
         return
     try:
@@ -599,7 +640,7 @@ def _write_session_cost(
     """
     if not session_id or cost_usd <= 0:
         return
-    path = _atelier_root() / "sessions" / session_id / "savings.jsonl"
+    path = _sessions_root() / "sessions" / session_id / "savings.jsonl"
     if not path.exists():
         return  # no savings sidecar → session produced no MCP events; skip
     row = {

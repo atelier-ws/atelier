@@ -54,7 +54,9 @@ class ZoektServer:
 
     @property
     def runtime_root(self) -> Path:
-        workspace_hash = sha256(str(self.repo_root).encode("utf-8")).hexdigest()[:12]
+        from atelier.core.foundation.paths import workspace_key
+
+        workspace_hash = workspace_key(self.repo_root)
         return default_store_root() / "workspaces" / workspace_hash / "zoekt"
 
     @property

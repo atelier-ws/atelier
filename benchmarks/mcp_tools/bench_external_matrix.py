@@ -18,6 +18,7 @@ import csv
 import json
 import os
 import re
+import shutil
 import statistics
 import subprocess
 import sys
@@ -280,6 +281,7 @@ class AtelierRunner(_RunnerBase):
         self.cache_key = cache_key
         self.snapshot_root: Path | None = None
         self.call_code_op: Any | None = None
+        self._runtime_root: Path | None = None
 
     def start(self) -> None:
         if str(self.repo_root) not in sys.path:
@@ -292,8 +294,8 @@ class AtelierRunner(_RunnerBase):
             cache_root=self.cache_root,
             cache_key=self.cache_key,
         )
-        runtime_root = Path(tempfile.mkdtemp(prefix="atelier-matrix-root-", dir=tool_workspace))
-        configure_benchmark_runtime(runtime_root, workspace_root=self.snapshot_root)
+        self._runtime_root = Path(tempfile.mkdtemp(prefix="atelier-matrix-root-", dir=tool_workspace))
+        configure_benchmark_runtime(self._runtime_root, workspace_root=self.snapshot_root)
         from benchmarks.mcp_tools._env import call_code_op
 
         self.call_code_op = call_code_op
@@ -324,6 +326,11 @@ class AtelierRunner(_RunnerBase):
                     "budget_tokens": 200,
                 }
             )
+
+    def stop(self) -> None:
+        if self._runtime_root is not None:
+            shutil.rmtree(self._runtime_root, ignore_errors=True)
+            self._runtime_root = None
 
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
         assert self.snapshot_root is not None and self.call_code_op is not None

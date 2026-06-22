@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import subprocess
@@ -139,8 +138,9 @@ def test_statusline_prices_fallback_savings_from_claude_transcript_model_mix(
 def test_statusline_falls_back_to_workspace_session_state(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    workspace_hash = hashlib.sha256(str(workspace.resolve()).encode("utf-8")).hexdigest()[:12]
-    state_dir = tmp_path / "workspaces" / workspace_hash
+    from atelier.core.foundation.paths import workspace_key
+
+    state_dir = tmp_path / "workspaces" / workspace_key(workspace)
     state_dir.mkdir(parents=True)
     (state_dir / "session_state.json").write_text(json.dumps({"session_id": "s1"}), encoding="utf-8")
 
@@ -166,8 +166,9 @@ def test_statusline_falls_back_to_workspace_session_state(tmp_path: Path) -> Non
 def test_statusline_does_not_fallback_when_session_id_is_missing(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    workspace_hash = hashlib.sha256(str(workspace.resolve()).encode("utf-8")).hexdigest()[:12]
-    state_dir = tmp_path / "workspaces" / workspace_hash
+    from atelier.core.foundation.paths import workspace_key
+
+    state_dir = tmp_path / "workspaces" / workspace_key(workspace)
     state_dir.mkdir(parents=True)
     (state_dir / "session_state.json").write_text(json.dumps({"session_id": "s1"}), encoding="utf-8")
 

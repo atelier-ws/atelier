@@ -15,10 +15,9 @@ USER_PROMPT = cast(Any, user_prompt)
 
 
 def _session_state_path(root: Path, workspace: Path) -> Path:
-    import hashlib
+    from atelier.core.foundation.paths import workspace_key
 
-    workspace_hash = hashlib.sha256(str(workspace.resolve()).encode("utf-8")).hexdigest()[:12]
-    return root / "workspaces" / workspace_hash / "session_state.json"
+    return root / "workspaces" / workspace_key(workspace) / "session_state.json"
 
 
 def _write_session_state(root: Path, workspace: Path, state: dict[str, object]) -> None:

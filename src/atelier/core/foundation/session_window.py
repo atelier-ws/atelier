@@ -30,7 +30,6 @@ env var, preserving today's behavior.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import logging
 import os
@@ -106,8 +105,10 @@ def host_window_id(start_pid: int | None = None) -> tuple[int, int] | None:
 
 
 def workspace_hash(workspace: str | os.PathLike[str]) -> str:
-    """12-hex workspace key, matching the SessionStart hook + MCP server."""
-    return hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+    """Human-readable workspace key, matching the SessionStart hook + MCP server."""
+    from atelier.core.foundation.paths import workspace_key
+
+    return workspace_key(Path(workspace).resolve())
 
 
 def windows_dir(root: str | os.PathLike[str], ws_hash: str) -> Path:
