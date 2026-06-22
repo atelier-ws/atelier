@@ -29,7 +29,7 @@ Inventory — counts of what the background has processed:
 ```bash
 python3 -c "import json,pathlib; p=pathlib.Path('~/.atelier/recall/index_state.json').expanduser(); print('sessions indexed for recall:', len(json.loads(p.read_text())) if p.exists() else 0)"
 atelier memory list                            # durable facts stored
-ls .lessons/blocks/*.md 2>/dev/null | wc -l    # lessons extracted for this repo
+ls .atelier/lessons/blocks/*.md 2>/dev/null | wc -l    # lessons extracted for this repo
 ```
 
 ## What you do NOT do
@@ -45,7 +45,7 @@ If the inventory is empty or stale, say so plainly — the background loop fills
 
 - **Session recall** — `~/.atelier/recall.db`: semantic snippets from past session transcripts. The primary layer for most users; coverage is windowed to recent sessions by design.
 - **Durable facts** — `~/.atelier/memory.db`: facts remembered via `memory(op=store_fact)`.
-- **Lessons** — `.lessons/blocks/*.md`: durable review rules Atelier extracted from this repo's traces.
+- **Lessons** — `.atelier/lessons/blocks/*.md`: durable review rules Atelier extracted from this repo's traces.
 - **Review overlay** — `.atelier/review.json` (team) / `~/.atelier/review_overlay.json` (personal): `notes`/`boost`/`suppress` the live reviewer applies.
 
 ## Guardrails

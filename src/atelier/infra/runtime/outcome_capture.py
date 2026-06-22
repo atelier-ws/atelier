@@ -242,7 +242,7 @@ def advance(
         is_read_tool=is_read_tool,
     )
     _advance_compacts(session_id, is_error=is_error, is_read_tool=is_read_tool, errors_total=errors_total)
-    _flush(session_id, writer=writer)
+    _flush_commit(session_id, writer=writer)
 
 
 def close_session(
@@ -254,7 +254,7 @@ def close_session(
     """Finalise all still-pending outcomes at session close."""
     _finalise_routes(session_id)
     _finalise_compacts(session_id, errors_total=errors_total)
-    _flush(session_id, writer=writer)
+    _flush_commit(session_id, writer=writer)
 
 
 def get_outcomes(session_id: str) -> dict[str, list[dict[str, Any]]]:
@@ -463,6 +463,10 @@ class _StateWriter:
     def write(self, updates: dict[str, Any]) -> None:  # pragma: no cover
         raise NotImplementedError
 
+    def commit(self) -> None:  # pragma: no cover
+        """Drain any buffered writes to the store. No-op for writers that
+        persist eagerly in ``write()``."""
+
 
 # In-process cache of parsed outcome-state files, keyed by resolved path.
 # Maps path -> ((st_mtime_ns, st_size), parsed_full_state_dict). This collapses
@@ -503,30 +507,46 @@ def _read_state_cached(path: Path) -> dict[str, Any]:
     return state
 
 
+# Module-level write buffer keyed by path string. FileStateWriter.write()
+# merges updates here without touching disk; commit() drains the buffer with a
+# single read+merge+write_text. This coalesces the two per-tool-call flushes
+# (schedule_route → _flush, then advance → _flush) into ONE disk write.
+_write_buffer: dict[str, dict[str, Any]] = {}
+
+
 class FileStateWriter(_StateWriter):
     """Write outcomes directly to a session_state.json file."""
 
     def __init__(self, path: Path) -> None:
         self._path = path
+        self._key = str(path)
 
     def write(self, updates: dict[str, Any]) -> None:
+        """Buffer updates in memory; call commit() to flush to disk."""
+        buf = _write_buffer.setdefault(self._key, {})
+        buf.update(updates)
+
+    def commit(self) -> None:
+        """Drain the write buffer to disk in a single read+merge+write_text."""
+        updates = _write_buffer.pop(self._key, None)
+        if updates is None:
+            return
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        # Build the merged state from the cache (skips a redundant read+parse when
-        # this process already holds the current bytes) without mutating the
-        # cached object.
         merged = {**_read_state_cached(self._path), **updates}
         self._path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
-        # Refresh the cache so the immediately-following load is a hit and never
-        # observes a stale stamp for our own just-written bytes.
         try:
             st = self._path.stat()
-            _state_cache[str(self._path)] = ((st.st_mtime_ns, st.st_size), merged)
+            _state_cache[self._key] = ((st.st_mtime_ns, st.st_size), merged)
         except OSError:
-            _state_cache.pop(str(self._path), None)
+            _state_cache.pop(self._key, None)
 
 
 def _flush(session_id: str, *, writer: _StateWriter | None) -> None:
-    """Serialise current outcomes and push them to the state writer."""
+    """Buffer current outcomes in the writer (no disk I/O).
+
+    Call _flush_commit() at the terminal point of a tool call to drain
+    the buffer to disk in a single write.
+    """
     if writer is None:
         return
     writer.write(
@@ -535,6 +555,13 @@ def _flush(session_id: str, *, writer: _StateWriter | None) -> None:
             "compact_outcomes": [e.to_dict() for e in _pending_compact.get(session_id, [])],
         }
     )
+
+
+def _flush_commit(session_id: str, *, writer: _StateWriter | None) -> None:
+    """Buffer current outcomes then commit (one disk write per tool call)."""
+    _flush(session_id, writer=writer)
+    if writer is not None:
+        writer.commit()
 
 
 # --------------------------------------------------------------------------- #

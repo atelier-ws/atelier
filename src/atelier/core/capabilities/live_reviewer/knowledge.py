@@ -103,7 +103,7 @@ def ensure_repo_share_gitignore(repo_root: str | Path) -> None:
 
 
 def _repo_lessons(repo_root: str | Path) -> list[str]:
-    blocks = Path(repo_root) / ".lessons" / "blocks"
+    blocks = Path(repo_root) / ".atelier" / "lessons" / "blocks"
     if not blocks.is_dir():
         return []
     try:

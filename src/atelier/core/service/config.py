@@ -71,7 +71,7 @@ class ServiceConfig:
 
     @property
     def lessons_root(self) -> str | None:
-        """Project-local lessons root (usually ./.lessons)."""
+        """Project-local lessons root (usually ./.atelier/lessons)."""
         return os.environ.get("ATELIER_LESSONS_ROOT")
 
     def as_dict(self) -> dict[str, object]:

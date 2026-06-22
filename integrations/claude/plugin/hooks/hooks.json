@@ -126,6 +126,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/_run_hook.sh ${CLAUDE_PLUGIN_ROOT}/hooks/verify_before_done.py"
+          },
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/_run_hook.sh ${CLAUDE_PLUGIN_ROOT}/hooks/stop.py"
           }
         ]

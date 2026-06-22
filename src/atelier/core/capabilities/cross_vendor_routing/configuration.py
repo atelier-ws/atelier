@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import os
 import shutil
 from collections.abc import Mapping
@@ -104,15 +105,29 @@ def route_config_path(root: Path | str | None = None) -> Path:
     return base / "route.yaml"
 
 
-def detect_configured_vendors(env: Mapping[str, str] | None = None) -> tuple[str, ...]:
-    source = env if env is not None else os.environ
+@functools.cache
+def _detect_configured_vendors_cached() -> tuple[str, ...]:
+    """Process-level cached vendor detection using os.environ (invariant for process lifetime)."""
     enabled: list[str] = []
     for vendor in SUPPORTED_ROUTE_VENDORS:
-        has_env = any(str(source.get(key, "")).strip() for key in _VENDOR_ENV_VARS[vendor])
+        has_env = any(str(os.environ.get(key, "")).strip() for key in _VENDOR_ENV_VARS[vendor])
         has_host_surface = any(shutil.which(command) is not None for command in _VENDOR_HOST_COMMANDS[vendor])
         if has_env or has_host_surface:
             enabled.append(vendor)
     return tuple(enabled)
+
+
+def detect_configured_vendors(env: Mapping[str, str] | None = None) -> tuple[str, ...]:
+    if env is not None:
+        # Custom env provided — bypass cache and compute directly.
+        enabled: list[str] = []
+        for vendor in SUPPORTED_ROUTE_VENDORS:
+            has_env = any(str(env.get(key, "")).strip() for key in _VENDOR_ENV_VARS[vendor])
+            has_host_surface = any(shutil.which(command) is not None for command in _VENDOR_HOST_COMMANDS[vendor])
+            if has_env or has_host_surface:
+                enabled.append(vendor)
+        return tuple(enabled)
+    return _detect_configured_vendors_cached()
 
 
 def detect_api_key_vendors(env: Mapping[str, str] | None = None) -> tuple[str, ...]:
@@ -157,6 +172,12 @@ def load_route_config(root: Path | str | None = None, *, path: Path | str | None
     return config
 
 
+# Module-level cache for load_route_config_or_default.
+# Key: (resolved_path_str, mtime_ns, file_size) — or (resolved_path_str, None, None) when absent.
+# Value: RouteConfig | RouteConfigError  (we cache errors too so absent-file calls don't stat repeatedly)
+_route_config_cache: dict[tuple[str, int | None, int | None], RouteConfig | RouteConfigError] = {}
+
+
 def load_route_config_or_default(
     root: Path | str | None = None,
     *,
@@ -173,17 +194,47 @@ def load_route_config_or_default(
     only when the file is genuinely missing *and* no API-key vendor is present,
     or when the file exists but is invalid (so real config mistakes are never
     silently masked).
+
+    Results are cached keyed on (resolved_path, mtime_ns, file_size) so repeated
+    calls within a session pay no I/O cost.  A custom ``env`` mapping bypasses
+    the cache because the synthesised default depends on the caller-supplied env.
     """
+    config_path = Path(path).expanduser().resolve() if path is not None else route_config_path(root)
+    resolved = str(config_path)
+
+    # Build cache key from file metadata (or sentinel when absent).
+    if config_path.exists():
+        stat = config_path.stat()
+        cache_key: tuple[str, int | None, int | None] = (resolved, stat.st_mtime_ns, stat.st_size)
+    else:
+        cache_key = (resolved, None, None)
+
+    # Only use cache when env is None (default os.environ path).
+    if env is None and cache_key in _route_config_cache:
+        cached = _route_config_cache[cache_key]
+        if isinstance(cached, RouteConfigError):
+            raise cached
+        return cached
+
+    # Cache miss (or custom env) — compute the result.
     try:
-        return load_route_config(root, path=path)
-    except RouteConfigError:
-        config_path = Path(path).expanduser().resolve() if path is not None else route_config_path(root)
+        result = load_route_config(root, path=path)
+    except RouteConfigError as exc:
         if config_path.exists():
-            raise  # file present but invalid — surface the real error
+            # File present but invalid — cache and re-raise.
+            if env is None:
+                _route_config_cache[cache_key] = exc
+            raise
         vendors = list(detect_api_key_vendors(env))
         if not vendors:
+            if env is None:
+                _route_config_cache[cache_key] = exc
             raise
-        return RouteConfig(enabled_vendors=vendors)
+        result = RouteConfig(enabled_vendors=vendors)
+
+    if env is None:
+        _route_config_cache[cache_key] = result
+    return result
 
 
 def save_route_config(

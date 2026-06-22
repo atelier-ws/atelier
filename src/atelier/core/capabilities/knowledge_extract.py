@@ -50,7 +50,7 @@ def gather_sources(
     max_chars: int = _DEFAULT_MAX_CHARS,
 ) -> list[str]:
     """Read up to *max_items* recent .lessons blocks, bounded by *max_chars*."""
-    blocks = Path(repo_root) / ".lessons" / "blocks"
+    blocks = Path(repo_root) / ".atelier" / "lessons" / "blocks"
     if not blocks.is_dir():
         return []
     try:
@@ -250,7 +250,7 @@ def extract_rules(
         "overlay": str(overlay_target(root, repo_root, scope)),
     }
     if not sources:
-        return {**base, "reason": "no .lessons/blocks found"}
+        return {**base, "reason": "no .atelier/lessons/blocks found"}
     prompt = _PROMPT_HEADER + "\n\n---\n\n".join(sources)
     estimate = estimate_cost_usd(prompt, host, model)
     base["estimated_cost_usd"] = estimate

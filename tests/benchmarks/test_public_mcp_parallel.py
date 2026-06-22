@@ -35,7 +35,10 @@ def _ensure_benchmarks_package() -> None:
 
 def _load(module_name: str) -> ModuleType:
     _ensure_benchmarks_package()
-    sys.modules.pop(module_name, None)
+    # Clear dependency modules so source edits take effect on reload
+    for cached in list(sys.modules):
+        if cached.startswith("benchmarks.mcp_tools."):
+            sys.modules.pop(cached, None)
     return importlib.import_module(module_name)
 
 
@@ -92,7 +95,8 @@ def test_select_suite_specs_expands_code_alias() -> None:
     specs = EXPORTER._select_suite_specs(["code"])
     names = [name for name, _size, _runner in specs]
 
-    assert "symbols" in names
+    # "symbols" was merged into "search" — not a separate suite name
+    assert "search" in names
     assert "node" in names
     assert "callers" in names
     assert "code" not in names

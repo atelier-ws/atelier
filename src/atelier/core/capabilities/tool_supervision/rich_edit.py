@@ -549,7 +549,33 @@ def apply_rich_edits(
                 continue
 
             if edit.get("overwrite") or (not path.exists() and not edit.get("old_string")):
-                file_state[path] = str(edit.get("new_string", ""))
+                # overwrite replaces the WHOLE file. A #line range only ever scopes
+                # old_string matching, so overwrite+range is a contradiction: the
+                # range gets silently dropped and the entire file is replaced. Reject
+                # it loudly rather than truncate the file the caller meant to scope.
+                if edit.get("overwrite") and spec.start_line is not None:
+                    rng = (
+                        f"#{spec.start_line}"
+                        if spec.start_line == spec.end_line
+                        else f"#{spec.start_line}-{spec.end_line}"
+                    )
+                    raise ValueError(
+                        f"overwrite=true replaces the entire file and ignores the {rng} line "
+                        f"range on {spec.path!r}; drop the range to overwrite the whole file, or "
+                        "use old_string/projection to edit just those lines"
+                    )
+                new_string = str(edit.get("new_string", ""))
+                # Guard the other half of the footgun: an empty new_string would zero
+                # out a non-empty file (and an empty file is valid Python, so the parse
+                # gate below never catches it). Refuse unless the caller is creating a
+                # new/empty file or explicitly supplies replacement content.
+                if edit.get("overwrite") and not new_string and content.strip():
+                    raise ValueError(
+                        f"overwrite=true with an empty new_string would truncate non-empty file "
+                        f"{spec.path!r} to nothing; pass the full replacement content, or use "
+                        "old_string to remove a specific region"
+                    )
+                file_state[path] = new_string
                 applied.append({"path": raw_path, "kind": "overwrite"})
                 continue
 
