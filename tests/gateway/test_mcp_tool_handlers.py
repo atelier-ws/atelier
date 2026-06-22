@@ -412,7 +412,7 @@ def test_tools_list_grep_schema_covers_native_mode() -> None:
     assert "regex" in grep_tool["description"].lower()
     assert "path" in properties
     assert "file_path" not in properties
-    assert "content_regex" in properties
+    assert "regex" in properties
     assert "summary" in properties
 
 
@@ -437,6 +437,40 @@ def test_grep_accepts_single_glob_string(monkeypatch: pytest.MonkeyPatch) -> Non
 
     handler({"content_regex": "x", "file_glob_patterns": ["a", "b"]})
     assert captured["file_glob_patterns"] == ["a", "b"]
+
+
+def test_grep_param_aliases_reach_handler(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Old (content_regex) and new (regex) arg names both reach the handler.
+
+    The published schema only shows the short names, but the alias layer remaps
+    deprecated names before validation; when both are passed, the new name wins.
+    """
+    captured: dict[str, Any] = {}
+
+    def _fake_run_native_grep(**kwargs: Any) -> dict[str, Any]:
+        captured.clear()
+        captured.update(kwargs)
+        return {}
+
+    monkeypatch.setattr(mcp_server, "_run_native_grep", _fake_run_native_grep)
+    handler = TOOLS["grep"]["handler"]
+
+    # New name only.
+    handler({"regex": "needle", "before": 2, "after": 3, "i": True})
+    assert captured["content_regex"] == "needle"
+    assert captured["lines_before"] == 2
+    assert captured["lines_after"] == 3
+    assert captured["ignore_case"] is True
+
+    # Old alias only — remapped to the new param before the handler runs.
+    handler({"content_regex": "legacy", "lines_before": 1, "ignore_case": True})
+    assert captured["content_regex"] == "legacy"
+    assert captured["lines_before"] == 1
+    assert captured["ignore_case"] is True
+
+    # Both present — the new name wins.
+    handler({"regex": "winner", "content_regex": "loser"})
+    assert captured["content_regex"] == "winner"
 
 
 def test_tools_list_edit_schema_documents_descriptor_variants() -> None:
