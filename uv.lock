@@ -37,6 +37,18 @@ wheels = [
 ]
 
 [[package]]
+name = "aiofile"
+version = "3.11.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "caio", marker = "python_full_version >= '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/48/41/2fea7e193e061ce54eacc3b7bc0e6a99e4fcff43c78cf0a76dd781ed8334/aiofile-3.11.1.tar.gz", hash = "sha256:1f91912c6643d2a4e49ca4ae3514f0bf3867ce948a36d99a6411b8f4755f4cf9", size = 19342, upload-time = "2026-05-16T08:18:33.538Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/67/cd/0d76dfc5de72bde52f55f53e925c7d152d9c7906634ec1e0cbc7e8d4ad93/aiofile-3.11.1-py3-none-any.whl", hash = "sha256:ce77d14ac07f77bc2b757834a5c129321f3f705c474593deed5ab209079a52c9", size = 20446, upload-time = "2026-05-16T08:18:32.051Z" },
+]
+
+[[package]]
 name = "aiofiles"
 version = "25.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -65,7 +77,7 @@ dependencies = [
     { name = "frozenlist" },
     { name = "multidict" },
     { name = "propcache" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "yarl" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/82/78/8ea7308cac6934de8c74a14f3d5f65d1c89287426688be79538d0e5c013d/aiohttp-3.14.1.tar.gz", hash = "sha256:307f2cff90a764d329e77040603fa032db89c5c24fdad50c4c15334cba744035", size = 7955794, upload-time = "2026-06-07T21:09:35.529Z" }
@@ -150,7 +162,7 @@ version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "frozenlist" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/61/62/06741b579156360248d1ec624842ad0edf697050bbaf7c3e46394e106ad1/aiosignal-1.4.0.tar.gz", hash = "sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7", size = 25007, upload-time = "2025-07-03T22:54:43.528Z" }
 wheels = [
@@ -173,7 +185,8 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mako" },
     { name = "sqlalchemy" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/94/13/8b084e0f2efb0275a1d534838844926f798bd766566b1375174e2448cd31/alembic-1.18.4.tar.gz", hash = "sha256:cb6e1fd84b6174ab8dbb2329f86d631ba9559dd78df550b57804d607672cedbc", size = 2056725, upload-time = "2026-02-10T16:00:47.195Z" }
 wheels = [
@@ -189,7 +202,8 @@ dependencies = [
     { name = "jsonschema" },
     { name = "narwhals" },
     { name = "packaging" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/86/97/9a0dc61efd4f2dee29cb6d8edbbacdb789ce48cbffd98efa2b3ab145b297/altair-6.2.1.tar.gz", hash = "sha256:ca0298fa20b1a4fae22eff8847b95f74912bd90544013ad36af192119883ea64", size = 766468, upload-time = "2026-06-05T16:23:36.57Z" }
 wheels = [
@@ -244,7 +258,8 @@ dependencies = [
     { name = "jiter" },
     { name = "pydantic" },
     { name = "sniffio" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8e/3b/96c84c2d70fb7e185d240fbd101c185f7f9b0f6fea39d0f86d22c628add5/anthropic-0.109.0.tar.gz", hash = "sha256:86719114c62f21b50bf7148a373371605f065d22e6eeee3d4d361ac0ea079d0e", size = 927503, upload-time = "2026-06-09T20:04:24.701Z" }
 wheels = [
@@ -257,7 +272,7 @@ version = "4.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "idna" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/19/14/2c5dd9f512b66549ae92767a9c7b330ae88e1932ca57876909410251fe13/anyio-4.13.0.tar.gz", hash = "sha256:334b70e641fd2221c1505b3890c69882fe4a2df910cba14d97019b90b24439dc", size = 231622, upload-time = "2026-03-24T12:59:09.671Z" }
 wheels = [
@@ -401,7 +416,6 @@ dependencies = [
     { name = "opentelemetry-exporter-otlp-proto-http", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
     { name = "opentelemetry-sdk", version = "1.30.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-memory-server'" },
     { name = "opentelemetry-sdk", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "ortools" },
     { name = "prometheus-client" },
     { name = "prompt-toolkit" },
     { name = "pybreaker" },
@@ -410,7 +424,6 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rapidfuzz" },
     { name = "rich" },
-    { name = "river" },
     { name = "tenacity" },
     { name = "tiktoken" },
     { name = "trafilatura" },
@@ -439,14 +452,17 @@ langfuse = [
     { name = "langfuse" },
 ]
 mcp = [
-    { name = "mcp", version = "1.16.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "mcp", version = "1.27.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "mcp", version = "1.16.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "mcp", version = "1.27.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
 ]
 memory = [
     { name = "letta-client" },
 ]
 memory-server = [
     { name = "letta" },
+]
+ortools = [
+    { name = "ortools" },
 ]
 parsers = [
     { name = "tree-sitter-languages", marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
@@ -506,7 +522,7 @@ requires-dist = [
     { name = "opentelemetry-api", specifier = ">=1.27" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.27" },
     { name = "opentelemetry-sdk", specifier = ">=1.27" },
-    { name = "ortools", specifier = ">=9.10" },
+    { name = "ortools", marker = "extra == 'ortools'", specifier = ">=9.10" },
     { name = "pgvector", marker = "extra == 'vector'", specifier = ">=0.2" },
     { name = "prometheus-client", specifier = ">=0.21" },
     { name = "prompt-toolkit", specifier = ">=3.0" },
@@ -520,7 +536,6 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rapidfuzz", specifier = ">=3.14.5" },
     { name = "rich", specifier = ">=13.7" },
-    { name = "river", specifier = ">=0.22" },
     { name = "rope", marker = "extra == 'rename'", specifier = ">=0.23" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "tenacity", specifier = ">=9.0" },
@@ -535,7 +550,7 @@ requires-dist = [
     { name = "yarl", specifier = "==1.24.2" },
     { name = "zipp", specifier = "==4.1.0" },
 ]
-provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "postgres", "vector", "parsers", "rename", "langfuse", "dev"]
+provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "postgres", "vector", "parsers", "rename", "ortools", "langfuse", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -729,12 +744,22 @@ wheels = [
 ]
 
 [[package]]
+name = "beartype"
+version = "0.22.9"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/94/1009e248bbfbab11397abca7193bea6626806be9a327d399810d523a07cb/beartype-0.22.9.tar.gz", hash = "sha256:8f82b54aa723a2848a56008d18875f91c1db02c32ef6a62319a002e3e25a975f", size = 1608866, upload-time = "2025-12-13T06:50:30.72Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/cc/18245721fa7747065ab478316c7fea7c74777d07f37ae60db2e84f8172e8/beartype-0.22.9-py3-none-any.whl", hash = "sha256:d16c9bbc61ea14637596c5f6fbff2ee99cbe3573e46a716401734ef50c3060c2", size = 1333658, upload-time = "2025-12-13T06:50:28.266Z" },
+]
+
+[[package]]
 name = "beautifulsoup4"
 version = "4.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "soupsieve" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/43/65/318323f98dbee45d42dff61d8f047181bc6f2268a9068cfad035a46be5af/beautifulsoup4-4.15.0.tar.gz", hash = "sha256:288e3ca7d54b06f2ac191970bc275c1939cb46d450b255bf6718b04aa37ab4f7", size = 632571, upload-time = "2026-06-07T16:44:20.453Z" }
 wheels = [
@@ -915,6 +940,23 @@ wheels = [
 ]
 
 [[package]]
+name = "caio"
+version = "0.9.25"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/92/88/b8527e1b00c1811db339a1df8bd1ae49d146fcea9d6a5c40e3a80aaeb38d/caio-0.9.25.tar.gz", hash = "sha256:16498e7f81d1d0f5a4c0ad3f2540e65fe25691376e0a5bd367f558067113ed10", size = 26781, upload-time = "2025-12-26T15:21:36.501Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d3/25/79c98ebe12df31548ba4eaf44db11b7cad6b3e7b4203718335620939083c/caio-0.9.25-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:fb7ff95af4c31ad3f03179149aab61097a71fd85e05f89b4786de0359dffd044", size = 36983, upload-time = "2025-12-26T15:21:36.075Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/2b/21288691f16d479945968a0a4f2856818c1c5be56881d51d4dac9b255d26/caio-0.9.25-cp312-cp312-manylinux2010_x86_64.manylinux2014_x86_64.manylinux_2_12_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:97084e4e30dfa598449d874c4d8e0c8d5ea17d2f752ef5e48e150ff9d240cd64", size = 82012, upload-time = "2025-12-26T15:22:20.983Z" },
+    { url = "https://files.pythonhosted.org/packages/03/c4/8a1b580875303500a9c12b9e0af58cb82e47f5bcf888c2457742a138273c/caio-0.9.25-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:4fa69eba47e0f041b9d4f336e2ad40740681c43e686b18b191b6c5f4c5544bfb", size = 81502, upload-time = "2026-03-04T22:08:22.381Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/1c/0fe770b8ffc8362c48134d1592d653a81a3d8748d764bec33864db36319d/caio-0.9.25-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:6bebf6f079f1341d19f7386db9b8b1f07e8cc15ae13bfdaff573371ba0575d69", size = 80200, upload-time = "2026-03-04T22:08:23.382Z" },
+    { url = "https://files.pythonhosted.org/packages/31/57/5e6ff127e6f62c9f15d989560435c642144aa4210882f9494204bc892305/caio-0.9.25-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:d6c2a3411af97762a2b03840c3cec2f7f728921ff8adda53d7ea2315a8563451", size = 36979, upload-time = "2025-12-26T15:21:35.484Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/9f/f21af50e72117eb528c422d4276cbac11fb941b1b812b182e0a9c70d19c5/caio-0.9.25-cp313-cp313-manylinux2010_x86_64.manylinux2014_x86_64.manylinux_2_12_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:0998210a4d5cd5cb565b32ccfe4e53d67303f868a76f212e002a8554692870e6", size = 81900, upload-time = "2025-12-26T15:22:21.919Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/12/c39ae2a4037cb10ad5eb3578eb4d5f8c1a2575c62bba675f3406b7ef0824/caio-0.9.25-cp313-cp313-manylinux_2_34_aarch64.whl", hash = "sha256:1a177d4777141b96f175fe2c37a3d96dec7911ed9ad5f02bac38aaa1c936611f", size = 81523, upload-time = "2026-03-04T22:08:25.187Z" },
+    { url = "https://files.pythonhosted.org/packages/22/59/f8f2e950eb4f1a5a3883e198dca514b9d475415cb6cd7b78b9213a0dd45a/caio-0.9.25-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:9ed3cfb28c0e99fec5e208c934e5c157d0866aa9c32aa4dc5e9b6034af6286b7", size = 80243, upload-time = "2026-03-04T22:08:26.449Z" },
+    { url = "https://files.pythonhosted.org/packages/86/93/1f76c8d1bafe3b0614e06b2195784a3765bbf7b0a067661af9e2dd47fc33/caio-0.9.25-py3-none-any.whl", hash = "sha256:06c0bb02d6b929119b1cfbe1ca403c768b2013a369e2db46bfa2a5761cf82e40", size = 19087, upload-time = "2025-12-26T15:22:00.221Z" },
+]
+
+[[package]]
 name = "cbor2"
 version = "6.1.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1058,17 +1100,14 @@ name = "claude-agent-sdk"
 version = "0.1.69"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.13' and sys_platform == 'win32'",
     "python_full_version < '3.13' and sys_platform == 'win32'",
-    "python_full_version >= '3.13' and sys_platform == 'emscripten'",
     "python_full_version < '3.13' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
     "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "anyio", marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "mcp", version = "1.16.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "sniffio", marker = "extra == 'extra-7-atelier-memory-server'" },
+    { name = "anyio", marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "mcp", version = "1.16.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "sniffio", marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/4f/fa/c6913cf92796cf2d9792ebb30247880cc5740be70d0cc2663ab1d0e253f2/claude_agent_sdk-0.1.69.tar.gz", hash = "sha256:4034a1c9d550329af7aeb0615f9bd2e7b853a9a53da7be5278ee062330df223a", size = 241101, upload-time = "2026-04-28T00:43:39.873Z" }
 wheels = [
@@ -1084,14 +1123,20 @@ name = "claude-agent-sdk"
 version = "0.2.96"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "sys_platform == 'win32'",
-    "sys_platform == 'emscripten'",
-    "sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version >= '3.13' and sys_platform == 'win32' and extra != 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server'",
+    "python_full_version >= '3.13' and sys_platform == 'emscripten' and extra != 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server'",
+    "python_full_version >= '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server'",
+    "sys_platform == 'win32' and extra == 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform == 'emscripten' and extra == 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform == 'win32' and extra != 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform == 'emscripten' and extra != 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
 ]
 dependencies = [
-    { name = "anyio", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "mcp", version = "1.27.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "sniffio", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "anyio", marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "mcp", version = "1.27.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "sniffio", marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0f/e8/ce86f503f0e1548440ae3e35dbe99da6ba76715bc135c8c9f5f7c2bdd7d6/claude_agent_sdk-0.2.96.tar.gz", hash = "sha256:1932030ab114da9398e94bcc86b177b6ff579f5740238fb5c87751f8e745f572", size = 253659, upload-time = "2026-06-10T21:14:12.703Z" }
 wheels = [
@@ -1685,7 +1730,8 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "requests" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/43/fb/30ab159fd06d9e8b87059a456882e06db209abd232bd103c7812d41377d2/exa_py-2.13.2.tar.gz", hash = "sha256:f0391afbf82026aadf2717b41183a3abe3d6bbb06ab20cb21c47a62b0fcdc80c", size = 65423, upload-time = "2026-06-08T23:44:57.793Z" }
 wheels = [
@@ -1697,7 +1743,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -1742,7 +1788,8 @@ dependencies = [
     { name = "annotated-doc" },
     { name = "pydantic" },
     { name = "starlette" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "typing-inspection" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/81/2d/ff8d91d7b564d464629a0fd50a4489c97fcb836ac230bf3a7269232a9b1f/fastapi-0.136.3.tar.gz", hash = "sha256:e487fae93ad408e6f47641ee4dfe389864fd7bec92e547ea8498fc13f43e83ab", size = 396410, upload-time = "2026-05-23T18:53:15.192Z" }
@@ -1763,22 +1810,95 @@ wheels = [
 name = "fastmcp"
 version = "2.12.5"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version < '3.13' and sys_platform == 'win32'",
+    "python_full_version < '3.13' and sys_platform == 'emscripten'",
+    "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
 dependencies = [
-    { name = "authlib" },
-    { name = "cyclopts" },
-    { name = "exceptiongroup" },
-    { name = "httpx" },
-    { name = "mcp", version = "1.16.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "openapi-core" },
-    { name = "openapi-pydantic" },
-    { name = "pydantic", extra = ["email"], marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "pyperclip" },
-    { name = "python-dotenv" },
-    { name = "rich" },
+    { name = "authlib", marker = "python_full_version < '3.13'" },
+    { name = "cyclopts", marker = "python_full_version < '3.13'" },
+    { name = "exceptiongroup", marker = "python_full_version < '3.13'" },
+    { name = "httpx", marker = "python_full_version < '3.13'" },
+    { name = "mcp", version = "1.16.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "openapi-core", marker = "python_full_version < '3.13'" },
+    { name = "openapi-pydantic", marker = "python_full_version < '3.13'" },
+    { name = "pydantic", extra = ["email"], marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "pyperclip", marker = "python_full_version < '3.13'" },
+    { name = "python-dotenv", marker = "python_full_version < '3.13'" },
+    { name = "rich", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/00/a6/e3b46cd3e228635e0064c2648788b6f66a53bf0d0ddbf5fb44cca951f908/fastmcp-2.12.5.tar.gz", hash = "sha256:2dfd02e255705a4afe43d26caddbc864563036e233dbc6870f389ee523b39a6a", size = 7190263, upload-time = "2025-10-17T13:24:58.896Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d8/c1/9fb98c9649e15ea8cc691b4b09558b61dafb3dc0345f7322f8c4a8991ade/fastmcp-2.12.5-py3-none-any.whl", hash = "sha256:b1e542f9b83dbae7cecfdc9c73b062f77074785abda9f2306799116121344133", size = 329099, upload-time = "2025-10-17T13:24:57.518Z" },
+]
+
+[[package]]
+name = "fastmcp"
+version = "3.4.2"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.13' and sys_platform == 'win32'",
+    "python_full_version >= '3.13' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
+dependencies = [
+    { name = "fastmcp-slim", extra = ["client", "server"], marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/29/18/46beaec18c9f86a599ae3f9cdf6677dd6b50240cfd844d18233710b47f13/fastmcp-3.4.2.tar.gz", hash = "sha256:b468722946fc467c3796a6572f7a14d93d48c014cf8fea12910245220cbbe4e1", size = 28756849, upload-time = "2026-06-06T01:30:35.694Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/4d/8b1ba42251160e11ca34686344572121432c23a082d56ef6bbdec5888fc1/fastmcp-3.4.2-py3-none-any.whl", hash = "sha256:c87a62b029f0c5400ada85f683629345d2466c39169f0cb853e487b2f7308c08", size = 8018, upload-time = "2026-06-06T01:30:38.118Z" },
+]
+
+[[package]]
+name = "fastmcp-slim"
+version = "3.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "platformdirs", marker = "python_full_version >= '3.13'" },
+    { name = "pydantic", extra = ["email"], marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "pydantic-settings", marker = "python_full_version >= '3.13'" },
+    { name = "python-dotenv", marker = "python_full_version >= '3.13'" },
+    { name = "rich", marker = "python_full_version >= '3.13'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a3/2e/d627b28b7403ecc526991ef732921b08bde010006e6148635f053fd29f4c/fastmcp_slim-3.4.2.tar.gz", hash = "sha256:290646e0955a516235a317151034559aa48336cb843d3f006131aedad8759bb4", size = 576291, upload-time = "2026-06-06T01:30:12.553Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f7/58/22afebf18df7260b09148199cbeb90cdcc4b3a4e1b5d7460e3591c3a7add/fastmcp_slim-3.4.2-py3-none-any.whl", hash = "sha256:bdc72492212681ca502755fa8acc0457f559295da1fc3dfc0599adc1c04b82f3", size = 749195, upload-time = "2026-06-06T01:30:11.22Z" },
+]
+
+[package.optional-dependencies]
+client = [
+    { name = "authlib", marker = "python_full_version >= '3.13'" },
+    { name = "exceptiongroup", marker = "python_full_version >= '3.13'" },
+    { name = "httpx", marker = "python_full_version >= '3.13'" },
+    { name = "mcp", version = "1.27.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "opentelemetry-api", version = "1.30.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "py-key-value-aio", extra = ["filetree", "keyring", "memory"], marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "starlette", marker = "python_full_version >= '3.13'" },
+]
+server = [
+    { name = "authlib", marker = "python_full_version >= '3.13'" },
+    { name = "cyclopts", marker = "python_full_version >= '3.13'" },
+    { name = "exceptiongroup", marker = "python_full_version >= '3.13'" },
+    { name = "griffelib", marker = "python_full_version >= '3.13'" },
+    { name = "httpx", marker = "python_full_version >= '3.13'" },
+    { name = "joserfc", marker = "python_full_version >= '3.13'" },
+    { name = "jsonref", marker = "python_full_version >= '3.13'" },
+    { name = "jsonschema-path", marker = "python_full_version >= '3.13'" },
+    { name = "mcp", version = "1.27.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "openapi-pydantic", marker = "python_full_version >= '3.13'" },
+    { name = "opentelemetry-api", version = "1.30.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "packaging", marker = "python_full_version >= '3.13'" },
+    { name = "py-key-value-aio", extra = ["filetree", "keyring", "memory"], marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "pyperclip", marker = "python_full_version >= '3.13'" },
+    { name = "python-multipart", marker = "python_full_version >= '3.13'" },
+    { name = "pyyaml", marker = "python_full_version >= '3.13'" },
+    { name = "starlette", marker = "python_full_version >= '3.13'" },
+    { name = "uncalled-for", marker = "python_full_version >= '3.13'" },
+    { name = "uvicorn", marker = "python_full_version >= '3.13'" },
+    { name = "watchfiles", marker = "python_full_version >= '3.13'" },
+    { name = "websockets", marker = "python_full_version >= '3.13'" },
 ]
 
 [[package]]
@@ -2026,7 +2146,8 @@ dependencies = [
     { name = "requests" },
     { name = "sniffio" },
     { name = "tenacity" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "websockets" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5b/52/0244e310812f3063d09d60b30ae29ab7df9343bd005744cd5eeaa6ba39b4/google_genai-2.8.0.tar.gz", hash = "sha256:37a9b3cb127d763e7f4ca47452ae3562c87728773bd1b149f7b559c239da2bc1", size = 564955, upload-time = "2026-06-03T22:55:38.397Z" }
@@ -2114,7 +2235,8 @@ name = "grpcio"
 version = "1.81.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/15/f3/23f47b24f8d8c2028eba501db3acfbb2f592cbb5995eaa6e363a627b74d7/grpcio-1.81.0.tar.gz", hash = "sha256:a5acd7efd3b1fe9b4eb0bcaaa1507eed68a0ad0678b654c3f7b464df9ba9dca5", size = 13032272, upload-time = "2026-06-01T05:56:22.827Z" }
 wheels = [
@@ -2213,8 +2335,8 @@ name = "harbor"
 version = "0.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "claude-agent-sdk", version = "0.1.69", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "claude-agent-sdk", version = "0.2.96", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "claude-agent-sdk", version = "0.1.69", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "claude-agent-sdk", version = "0.2.96", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
     { name = "datasets" },
     { name = "dirhash" },
     { name = "fastapi" },
@@ -2376,7 +2498,8 @@ dependencies = [
     { name = "pyyaml" },
     { name = "tqdm" },
     { name = "typer" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/48/0f/ed994dbade67a54407c28cab96ef845e0e6d25500be56aca6394f8bfc9dd/huggingface_hub-1.16.1.tar.gz", hash = "sha256:7f1dc4c5ec21aed69be630ad0c3378616be16f3de1a47b141c0e812965d9c832", size = 792534, upload-time = "2026-05-21T18:40:00.908Z" }
 wheels = [
@@ -2550,6 +2673,39 @@ wheels = [
 ]
 
 [[package]]
+name = "jaraco-classes"
+version = "3.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "more-itertools", marker = "python_full_version >= '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/c0/ed4a27bc5571b99e3cff68f8a9fa5b56ff7df1c2251cc715a652ddd26402/jaraco.classes-3.4.0.tar.gz", hash = "sha256:47a024b51d0239c0dd8c8540c6c7f484be3b8fcf0b2d85c13825780d3b3f3acd", size = 11780, upload-time = "2024-03-31T07:27:36.643Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7f/66/b15ce62552d84bbfcec9a4873ab79d993a1dd4edb922cbfccae192bd5b5f/jaraco.classes-3.4.0-py3-none-any.whl", hash = "sha256:f662826b6bed8cace05e7ff873ce0f9283b5c924470fe664fff1c2f00f581790", size = 6777, upload-time = "2024-03-31T07:27:34.792Z" },
+]
+
+[[package]]
+name = "jaraco-context"
+version = "6.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/50/4763cd07e722bb6285316d390a164bc7e479db9d90daa769f22578f698b4/jaraco_context-6.1.2.tar.gz", hash = "sha256:f1a6c9d391e661cc5b8d39861ff077a7dc24dc23833ccee564b234b81c82dfe3", size = 16801, upload-time = "2026-03-20T22:13:33.922Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f2/58/bc8954bda5fcda97bd7c19be11b85f91973d67a706ed4a3aec33e7de22db/jaraco_context-6.1.2-py3-none-any.whl", hash = "sha256:bf8150b79a2d5d91ae48629d8b427a8f7ba0e1097dd6202a9059f29a36379535", size = 7871, upload-time = "2026-03-20T22:13:32.808Z" },
+]
+
+[[package]]
+name = "jaraco-functools"
+version = "4.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "more-itertools", marker = "python_full_version >= '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/36/cf/ea4ef2920830dea3f5ab2ea4da6fb67724e6dca80ee2553788c3607243d0/jaraco_functools-4.5.0.tar.gz", hash = "sha256:3bb5665ea4a020cf78a7040e89154c77edadb3ca74f366479669c5999aa70b03", size = 20272, upload-time = "2026-05-15T21:34:10.025Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/96/9a/982e48afcffcd727a9144506720ffd4224b6b7e355c98641866f38b7c043/jaraco_functools-4.5.0-py3-none-any.whl", hash = "sha256:79ce39246eddbde4b3a03b77ea5f0f7878dc669b166a66cf3fa8e266aa3fa2f4", size = 10594, upload-time = "2026-05-15T21:34:08.595Z" },
+]
+
+[[package]]
 name = "jedi"
 version = "0.20.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2559,6 +2715,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/46/b7/a3635f6a2d7cf5b5dd98064fc1d5fbbafcb25477bcea204a3a92145d158b/jedi-0.20.0.tar.gz", hash = "sha256:c3f4ccbd276696f4b19c54618d4fb18f9fc24b0aef02acf704b23f487daa1011", size = 3119416, upload-time = "2026-05-01T23:38:47.814Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9a/93/242e2eab5fe682ffcb8b0084bde703a41d51e17ee0f3a31ff0d9d813620a/jedi-0.20.0-py2.py3-none-any.whl", hash = "sha256:7bdd9c2634f56713299976f4cbd59cb3fa92165cc5e05ea811fb253480728b67", size = 4884812, upload-time = "2026-05-01T23:38:43.919Z" },
+]
+
+[[package]]
+name = "jeepney"
+version = "0.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7b/6f/357efd7602486741aa73ffc0617fb310a29b588ed0fd69c2399acbb85b0c/jeepney-0.9.0.tar.gz", hash = "sha256:cf0e9e845622b81e4a28df94c40345400256ec608d0e55bb8a3feaa9163f5732", size = 106758, upload-time = "2025-02-27T18:51:01.684Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b2/a3/e137168c9c44d18eff0376253da9f1e9234d0239e0ee230d2fee6cea8e55/jeepney-0.9.0-py3-none-any.whl", hash = "sha256:97e5714520c16fc0a45695e5365a2e11b81ea79bba796e26f9f1d178cb182683", size = 49010, upload-time = "2025-02-27T18:51:00.104Z" },
 ]
 
 [[package]]
@@ -2661,6 +2826,15 @@ wheels = [
 ]
 
 [[package]]
+name = "jsonref"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/aa/0d/c1f3277e90ccdb50d33ed5ba1ec5b3f0a242ed8c1b1a85d3afeb68464dca/jsonref-1.1.0.tar.gz", hash = "sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552", size = 8814, upload-time = "2023-01-16T16:10:04.455Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0c/ec/e1db9922bceb168197a558a2b8c03a7963f1afe93517ddd3cf99f202f996/jsonref-1.1.0-py3-none-any.whl", hash = "sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9", size = 9425, upload-time = "2023-01-16T16:10:02.255Z" },
+]
+
+[[package]]
 name = "jsonschema"
 version = "4.26.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2720,6 +2894,23 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/27/b8/ca7319556912f68832daa4b81425314857ec08dfccd8dbc8c0f65c992108/kaitaistruct-0.11.tar.gz", hash = "sha256:053ee764288e78b8e53acf748e9733268acbd579b8d82a427b1805453625d74b", size = 11519, upload-time = "2025-09-08T15:46:25.037Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4a/4a/cf14bf3b1f5ffb13c69cf5f0ea78031247790558ee88984a8bdd22fae60d/kaitaistruct-0.11-py2.py3-none-any.whl", hash = "sha256:5c6ce79177b4e193a577ecd359e26516d1d6d000a0bffd6e1010f2a46a62a561", size = 11372, upload-time = "2025-09-08T15:46:23.635Z" },
+]
+
+[[package]]
+name = "keyring"
+version = "25.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jaraco-classes", marker = "python_full_version >= '3.13'" },
+    { name = "jaraco-context", marker = "python_full_version >= '3.13'" },
+    { name = "jaraco-functools", marker = "python_full_version >= '3.13'" },
+    { name = "jeepney", marker = "python_full_version >= '3.13' and sys_platform == 'linux'" },
+    { name = "pywin32-ctypes", marker = "python_full_version >= '3.13' and sys_platform == 'win32'" },
+    { name = "secretstorage", marker = "python_full_version >= '3.13' and sys_platform == 'linux'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/4b/674af6ef2f97d56f0ab5153bf0bfa28ccb6c3ed4d1babf4305449668807b/keyring-25.7.0.tar.gz", hash = "sha256:fe01bd85eb3f8fb3dd0405defdeac9a5b4f6f0439edbb3149577f244a2e8245b", size = 63516, upload-time = "2025-11-16T16:26:09.482Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/db/e655086b7f3a705df045bf0933bdd9c2f79bb3c97bfef1384598bb79a217/keyring-25.7.0-py3-none-any.whl", hash = "sha256:be4a0b195f149690c166e850609a477c532ddbfbaed96a404d4e43f8d5e2689f", size = 39160, upload-time = "2025-11-16T16:26:08.402Z" },
 ]
 
 [[package]]
@@ -2858,7 +3049,8 @@ dependencies = [
     { name = "docstring-parser" },
     { name = "exa-py" },
     { name = "faker" },
-    { name = "fastmcp" },
+    { name = "fastmcp", version = "2.12.5", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "fastmcp", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "google-genai" },
     { name = "grpcio" },
     { name = "grpcio-tools" },
@@ -2871,7 +3063,8 @@ dependencies = [
     { name = "markitdown", extra = ["docx", "pdf", "pptx"], marker = "extra == 'extra-7-atelier-memory-server'" },
     { name = "marshmallow-sqlalchemy" },
     { name = "matplotlib" },
-    { name = "mcp", version = "1.16.0", source = { registry = "https://pypi.org/simple" }, extra = ["cli"], marker = "extra == 'extra-7-atelier-memory-server'" },
+    { name = "mcp", version = "1.16.0", source = { registry = "https://pypi.org/simple" }, extra = ["cli"], marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "mcp", version = "1.27.2", source = { registry = "https://pypi.org/simple" }, extra = ["cli"], marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "mistralai" },
     { name = "nltk" },
     { name = "numpy" },
@@ -2925,7 +3118,8 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "sniffio" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8e/55/34a347fb443f5797045cde591c34ee2926650e99f1f0d5f565dcefa99120/letta_client-1.12.1.tar.gz", hash = "sha256:3073adb6cc1ce3b906a40d8ce3b2b77a77ac1887ca2135770590cfe3cef6eba9", size = 396805, upload-time = "2026-06-02T00:31:12.848Z" }
 wheels = [
@@ -3034,7 +3228,8 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tinytag" },
     { name = "tqdm" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "typing-inspect" },
     { name = "wrapt" },
 ]
@@ -3089,7 +3284,8 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llama-index-instrumentation" },
     { name = "pydantic" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c4/ec/05f3db99a2e6e252e3939e7751cad2fb1322dc6d32f4cf5c795cf7ddcad3/llama_index_workflows-2.20.0.tar.gz", hash = "sha256:df2760fea9e100c97a4e919d255461e344413acac4382d17d8217337806e4772", size = 97410, upload-time = "2026-04-24T14:54:41.524Z" }
 wheels = [
@@ -3194,7 +3390,7 @@ name = "macholib"
 version = "1.16.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "altgraph" },
+    { name = "altgraph", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32') or (sys_platform == 'emscripten' and extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server') or (sys_platform == 'win32' and extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/10/2f/97589876ea967487978071c9042518d28b958d87b17dceb7cdc1d881f963/macholib-1.16.4.tar.gz", hash = "sha256:f408c93ab2e995cd2c46e34fe328b130404be143469e41bc366c807448979362", size = 59427, upload-time = "2025-11-22T08:28:38.373Z" }
 wheels = [
@@ -3421,25 +3617,22 @@ name = "mcp"
 version = "1.16.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.13' and sys_platform == 'win32'",
     "python_full_version < '3.13' and sys_platform == 'win32'",
-    "python_full_version >= '3.13' and sys_platform == 'emscripten'",
     "python_full_version < '3.13' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
     "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "anyio", marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "httpx", marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "httpx-sse", marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "jsonschema", marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "pydantic", marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "pydantic-settings", marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "python-multipart", marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "pywin32", marker = "(sys_platform == 'win32' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
-    { name = "sse-starlette", marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "starlette", marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "uvicorn", marker = "(sys_platform != 'emscripten' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "anyio", marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "httpx", marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "httpx-sse", marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "jsonschema", marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "pydantic", marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "pydantic-settings", marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "python-multipart", marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "pywin32", marker = "(python_full_version < '3.13' and sys_platform == 'win32' and extra == 'extra-7-atelier-memory-server') or (python_full_version >= '3.13' and extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server') or (sys_platform != 'win32' and extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "sse-starlette", marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "starlette", marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "uvicorn", marker = "(python_full_version < '3.13' and sys_platform != 'emscripten' and extra == 'extra-7-atelier-memory-server') or (python_full_version >= '3.13' and extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server') or (sys_platform == 'emscripten' and extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3d/a1/b1f328da3b153683d2ec34f849b4b6eac2790fb240e3aef06ff2fab3df9d/mcp-1.16.0.tar.gz", hash = "sha256:39b8ca25460c578ee2cdad33feeea122694cfdf73eef58bee76c42f6ef0589df", size = 472918, upload-time = "2025-10-02T16:58:20.631Z" }
 wheels = [
@@ -3448,8 +3641,8 @@ wheels = [
 
 [package.optional-dependencies]
 cli = [
-    { name = "python-dotenv" },
-    { name = "typer" },
+    { name = "python-dotenv", marker = "python_full_version < '3.13'" },
+    { name = "typer", marker = "python_full_version < '3.13'" },
 ]
 
 [[package]]
@@ -3457,29 +3650,42 @@ name = "mcp"
 version = "1.27.2"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "sys_platform == 'win32'",
-    "sys_platform == 'emscripten'",
-    "sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version >= '3.13' and sys_platform == 'win32' and extra != 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server'",
+    "python_full_version >= '3.13' and sys_platform == 'emscripten' and extra != 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server'",
+    "python_full_version >= '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server'",
+    "sys_platform == 'win32' and extra == 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform == 'emscripten' and extra == 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform == 'win32' and extra != 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform == 'emscripten' and extra != 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
 ]
 dependencies = [
-    { name = "anyio", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "httpx", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "httpx-sse", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "jsonschema", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "pydantic", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "pydantic-settings", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "pyjwt", extra = ["crypto"], marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "python-multipart", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "pywin32", marker = "(sys_platform == 'win32' and extra == 'extra-7-atelier-langfuse') or (sys_platform == 'win32' and extra != 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
-    { name = "sse-starlette", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "starlette", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "typing-extensions", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "typing-inspection", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
-    { name = "uvicorn", marker = "(sys_platform != 'emscripten' and extra == 'extra-7-atelier-langfuse') or (sys_platform != 'emscripten' and extra != 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "anyio", marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "httpx", marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "httpx-sse", marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "jsonschema", marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "pydantic", marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "pydantic-settings", marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "pyjwt", extra = ["crypto"], marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "python-multipart", marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "pywin32", marker = "(python_full_version >= '3.13' and sys_platform == 'win32') or (sys_platform == 'win32' and extra == 'extra-7-atelier-langfuse') or (sys_platform == 'win32' and extra != 'extra-7-atelier-memory-server') or (sys_platform != 'win32' and extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "sse-starlette", marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "starlette", marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-inspection", marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "uvicorn", marker = "(python_full_version >= '3.13' and sys_platform != 'emscripten') or (sys_platform != 'emscripten' and extra == 'extra-7-atelier-langfuse') or (sys_platform != 'emscripten' and extra != 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/27/3c/347cf965d313f5d41764e7d46bea6ffe7d9ef13b983cc429b0340962a082/mcp-1.27.2.tar.gz", hash = "sha256:8e02db104096d1c25b28e64bde29a5c32b31bc241710213e12fd4d84985bdfef", size = 621116, upload-time = "2026-05-29T17:16:04.039Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c9/11/252c6f971dc4f16af1d98a1c469d8ba523aab00d1bb76b4d3bc1ff32eacc/mcp-1.27.2-py3-none-any.whl", hash = "sha256:d6ff5160c6ca65d93013626efb3fc249de683c30b2d8570755ceddd490344de5", size = 220498, upload-time = "2026-05-29T17:16:02.442Z" },
+]
+
+[package.optional-dependencies]
+cli = [
+    { name = "python-dotenv", marker = "python_full_version >= '3.13'" },
+    { name = "typer", marker = "python_full_version >= '3.13'" },
 ]
 
 [[package]]
@@ -3537,7 +3743,7 @@ dependencies = [
     { name = "ruamel-yaml" },
     { name = "sortedcontainers" },
     { name = "tornado" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "urwid" },
     { name = "wsproto" },
     { name = "zstandard" },
@@ -3605,7 +3811,8 @@ dependencies = [
     { name = "toml" },
     { name = "types-certifi" },
     { name = "types-toml" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "watchfiles" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/59/f9/87425e60db2a8597b248417772b409c49ca3a05ff6b1282a21cd7d856f09/modal-1.5.0.tar.gz", hash = "sha256:15033cf84f5f4f9f8a3dcf47a768cfcca36d1ad38ab7b3459fd3cbc29aa84a77", size = 771722, upload-time = "2026-06-09T22:37:27.5Z" }
@@ -3765,7 +3972,8 @@ dependencies = [
     { name = "librt", marker = "platform_python_implementation != 'PyPy' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "mypy-extensions" },
     { name = "pathspec" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/82/15/cca9d88503549ed6fedeaa1d448cdddd542ee8a490232d732e278036fbf2/mypy-2.1.0.tar.gz", hash = "sha256:81e76ad12c2d804512e9b13240d1588316531bfba07558286078bfbce9613633", size = 3898359, upload-time = "2026-05-11T18:37:36.237Z" }
 wheels = [
@@ -3827,7 +4035,8 @@ name = "nexus-rpc"
 version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/35/d5/cd1ffb202b76ebc1b33c1332a3416e55a39929006982adc2b1eb069aaa9b/nexus_rpc-1.4.0.tar.gz", hash = "sha256:3b8b373d4865671789cc43623e3dc0bcbf192562e40e13727e17f1c149050fba", size = 82367, upload-time = "2026-02-25T22:01:34.053Z" }
 wheels = [
@@ -3949,7 +4158,8 @@ dependencies = [
     { name = "pydantic" },
     { name = "sniffio" },
     { name = "tqdm" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3c/a6/5815fe2e2aca74b36c650d1bd43b69827cee568073d0d2d9b6fc5aaac80c/openai-2.41.0.tar.gz", hash = "sha256:db5c362acd6604b84f076abbefa66826ea4b46ecba2954ed866e6a149a1352c0", size = 783525, upload-time = "2026-06-03T22:39:40.719Z" }
 wheels = [
@@ -3966,14 +4176,14 @@ name = "openapi-core"
 version = "0.23.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "isodate" },
-    { name = "jsonschema" },
-    { name = "jsonschema-path" },
-    { name = "more-itertools" },
-    { name = "openapi-schema-validator" },
-    { name = "openapi-spec-validator" },
-    { name = "typing-extensions" },
-    { name = "werkzeug" },
+    { name = "isodate", marker = "python_full_version < '3.13'" },
+    { name = "jsonschema", marker = "python_full_version < '3.13'" },
+    { name = "jsonschema-path", marker = "python_full_version < '3.13'" },
+    { name = "more-itertools", marker = "python_full_version < '3.13'" },
+    { name = "openapi-schema-validator", marker = "python_full_version < '3.13'" },
+    { name = "openapi-spec-validator", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "werkzeug", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/47/07/ad02621876c983308abe7bc9604b4d0141fde97fb49fb252ed9af5ad0090/openapi_core-0.23.1.tar.gz", hash = "sha256:8021c9cf5fbb356ea5694c233fbfba0dc7ec595dfbdc1d2b295ac13f3de4fdad", size = 124348, upload-time = "2026-04-02T23:47:59.177Z" }
 wheels = [
@@ -3997,12 +4207,12 @@ name = "openapi-schema-validator"
 version = "0.8.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "jsonschema" },
-    { name = "jsonschema-specifications" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "referencing" },
-    { name = "rfc3339-validator" },
+    { name = "jsonschema", marker = "python_full_version < '3.13'" },
+    { name = "jsonschema-specifications", marker = "python_full_version < '3.13'" },
+    { name = "pydantic", marker = "python_full_version < '3.13'" },
+    { name = "pydantic-settings", marker = "python_full_version < '3.13'" },
+    { name = "referencing", marker = "python_full_version < '3.13'" },
+    { name = "rfc3339-validator", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/21/4b/67b24b2b23d96ea862be2cca3632a546f67a22461200831213e80c3c6011/openapi_schema_validator-0.8.1.tar.gz", hash = "sha256:4c57266ce8cbfa37bb4eb4d62cdb7d19356c3a468e3535743c4562863e1790da", size = 23134, upload-time = "2026-03-02T08:46:29.807Z" }
 wheels = [
@@ -4014,12 +4224,12 @@ name = "openapi-spec-validator"
 version = "0.8.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "jsonschema" },
-    { name = "jsonschema-path" },
-    { name = "lazy-object-proxy" },
-    { name = "openapi-schema-validator" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
+    { name = "jsonschema", marker = "python_full_version < '3.13'" },
+    { name = "jsonschema-path", marker = "python_full_version < '3.13'" },
+    { name = "lazy-object-proxy", marker = "python_full_version < '3.13'" },
+    { name = "openapi-schema-validator", marker = "python_full_version < '3.13'" },
+    { name = "pydantic", marker = "python_full_version < '3.13'" },
+    { name = "pydantic-settings", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/79/3f/aa0c1150627b4e683ae5673486b7d5cf2623a8821601863ee389e430965a/openapi_spec_validator-0.8.5.tar.gz", hash = "sha256:93b04ef5321d5866b2502371123d86333e5c1444f051d323e02525d9e83c7622", size = 1756845, upload-time = "2026-04-24T15:25:21.334Z" }
 wheels = [
@@ -4057,7 +4267,7 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b4/1c/125e1c936c0873796771b7f04f6c93b9f1bf5d424cea90fda94a99f61da8/opentelemetry_api-1.42.1.tar.gz", hash = "sha256:56c63bea9f77b62856be8c47600474acad853b2924b99b1687c4cb6297166716", size = 72296, upload-time = "2026-05-21T16:32:49.335Z" }
 wheels = [
@@ -4107,7 +4317,7 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "opentelemetry-proto", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
+    { name = "opentelemetry-proto", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0e/9c/216acfeaedadf2e1937f4373929b20f73197c5c4a2546d4f584b7fa63813/opentelemetry_exporter_otlp_proto_common-1.42.1.tar.gz", hash = "sha256:04f1f01fb597c4249dfcd7f8b861c902c2102369d376d9d346ff38de4469a2ee", size = 21433, upload-time = "2026-05-21T16:32:55.526Z" }
 wheels = [
@@ -4168,13 +4378,13 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "googleapis-common-protos" },
-    { name = "opentelemetry-api", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "opentelemetry-exporter-otlp-proto-common", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "opentelemetry-proto", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "opentelemetry-sdk", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "requests" },
-    { name = "typing-extensions" },
+    { name = "googleapis-common-protos", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "opentelemetry-api", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "opentelemetry-exporter-otlp-proto-common", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "opentelemetry-proto", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "opentelemetry-sdk", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "requests", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/77/32/826bfa1d80ecea24f47808de03cd4a0d13c17ecc07712f45123f0f61e4ac/opentelemetry_exporter_otlp_proto_http-1.42.1.tar.gz", hash = "sha256:bf142a21035d7571ac3a09cb2e5639f49886f243972883cfe777ed3bf02b734d", size = 25406, upload-time = "2026-05-21T16:32:56.807Z" }
 wheels = [
@@ -4257,7 +4467,7 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "protobuf" },
+    { name = "protobuf", marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b4/55/63eac3e1089b768ba014091fdd2ae8a9a440c821ef5e2b786909c94c8836/opentelemetry_proto-1.42.1.tar.gz", hash = "sha256:c6a51e6b4f05ae63565f3a113217f3d2bfaec68f78c02d7a6c85f9010d1cfca6", size = 45839, upload-time = "2026-05-21T16:33:03.937Z" }
 wheels = [
@@ -4279,7 +4489,8 @@ resolution-markers = [
 dependencies = [
     { name = "opentelemetry-api", version = "1.30.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-memory-server'" },
     { name = "opentelemetry-semantic-conventions", version = "0.51b0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "typing-extensions", marker = "extra == 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/93/ee/d710062e8a862433d1be0b85920d0c653abe318878fef2d14dfe2c62ff7b/opentelemetry_sdk-1.30.0.tar.gz", hash = "sha256:c9287a9e4a7614b9946e933a67168450b9ab35f08797eb9bc77d998fa480fa18", size = 158633, upload-time = "2025-02-04T18:17:28.908Z" }
 wheels = [
@@ -4296,9 +4507,9 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "opentelemetry-api", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "opentelemetry-semantic-conventions", version = "0.63b1", source = { registry = "https://pypi.org/simple" } },
-    { name = "typing-extensions" },
+    { name = "opentelemetry-api", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "opentelemetry-semantic-conventions", version = "0.63b1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/40/f7/b390bd9bfd703bf98a68fea1f27786c6872331fd617164a54b8a59bdc008/opentelemetry_sdk-1.42.1.tar.gz", hash = "sha256:8c834e8f8c9ba4171d4ec843d0cb8a67e4c7394d3f9e9297e582cbd9456ddbf7", size = 239262, upload-time = "2026-05-21T16:33:04.641Z" }
 wheels = [
@@ -4336,8 +4547,8 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "opentelemetry-api", version = "1.42.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "typing-extensions" },
+    { name = "opentelemetry-api", version = "1.42.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/93/99/4d7dd6df64795951413ce6e815f8cf1eb191daf7196ae86574589643d5f3/opentelemetry_semantic_conventions-0.63b1.tar.gz", hash = "sha256:3daf963611334b365e98a57438183eb012d3bfb40b2d931a9af613476b8701a9", size = 148340, upload-time = "2026-05-21T16:33:05.455Z" }
 wheels = [
@@ -4787,7 +4998,7 @@ name = "psycopg"
 version = "3.3.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "tzdata", marker = "sys_platform == 'win32' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/db/2f/cb91e5502ec9de1de6f1b76cfbf69531932725361168bb06963620c77e2e/psycopg-3.3.4.tar.gz", hash = "sha256:e21207764952cff81b6b8bdacad9a3939f2793367fdac2987b3aac36a651b5bc", size = 165799, upload-time = "2026-05-01T23:31:55.179Z" }
@@ -4896,6 +5107,31 @@ wheels = [
 ]
 
 [[package]]
+name = "py-key-value-aio"
+version = "0.4.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beartype", marker = "python_full_version >= '3.13'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fb/e2/d689d922894a7ecde73b6daeaf9b13dab5aae06fe6aaaf7514722644d382/py_key_value_aio-0.4.5.tar.gz", hash = "sha256:c6563a2c6abe5da5e20f4f9e875c2a9b425a2244a54fadbf46cf140a9eea45d7", size = 107547, upload-time = "2026-05-27T16:37:08.107Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f6/95/b8ba862968712caa12a19666175334fa979e1f198b896a430adb3bacfe87/py_key_value_aio-0.4.5-py3-none-any.whl", hash = "sha256:ab862adbcb8c72547d1c57821f22cbbb71ab86509039c96f36e914e0336c8dd7", size = 170005, upload-time = "2026-05-27T16:37:06.629Z" },
+]
+
+[package.optional-dependencies]
+filetree = [
+    { name = "aiofile", marker = "python_full_version >= '3.13'" },
+    { name = "anyio", marker = "python_full_version >= '3.13'" },
+]
+keyring = [
+    { name = "keyring", marker = "python_full_version >= '3.13'" },
+]
+memory = [
+    { name = "cachetools", marker = "python_full_version >= '3.13'" },
+]
+
+[[package]]
 name = "pyarrow"
 version = "24.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4970,7 +5206,8 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-types" },
     { name = "pydantic-core" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "typing-inspection" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ae/54/ecab642b3bed45f7d5f59b38443dcb36ef50f85af192e6ece103dbfe9587/pydantic-2.11.10.tar.gz", hash = "sha256:dc280f0982fbda6c38fada4e476dc0a4f3aeaf9c6ad4c28df68a666ec3c61423", size = 788494, upload-time = "2025-10-04T10:40:41.338Z" }
@@ -4988,7 +5225,8 @@ name = "pydantic-core"
 version = "2.33.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ad/88/5f2260bdfae97aabf98f1778d43f69574390ad787afb646292a638c923d4/pydantic_core-2.33.2.tar.gz", hash = "sha256:7cb8bc3605c29176e1b105350d2e6474142d7c1bd1d9327c4a9bdb46bf827acc", size = 435195, upload-time = "2025-04-23T18:33:52.104Z" }
 wheels = [
@@ -5100,7 +5338,8 @@ dependencies = [
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pynacl" },
     { name = "requests" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "urllib3" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ab/c3/8465a311197e16cf5ab68789fe689535e90f6b61ab524cc32a39e67237ae/pygithub-2.9.1.tar.gz", hash = "sha256:59771d7ff63d54d427be2e7d0dad2208dfffc2b0a045fec959263787739b611c", size = 2594989, upload-time = "2026-04-14T07:26:13.622Z" }
@@ -5228,7 +5467,7 @@ version = "26.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1a/51/27a5ad5f939d08f690a326ef9582cda7140555180db71695f6fb747d6a36/pyopenssl-26.2.0.tar.gz", hash = "sha256:8c6fcecd1183a7fc897548dfe388b0cdb7f37e018200d8409cf33959dbe35387", size = 182195, upload-time = "2026-05-04T23:06:09.72Z" }
 wheels = [
@@ -5424,7 +5663,8 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "lxml" },
     { name = "pillow" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "xlsxwriter" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/52/a9/0c0db8d37b2b8a645666f7fd8accea4c6224e013c42b1d5c17c93590cd06/python_pptx-1.0.2.tar.gz", hash = "sha256:479a8af0eaf0f0d76b6f00b0887732874ad2e3188230315290cd1f9dd9cc7095", size = 10109297, upload-time = "2024-08-07T17:33:37.772Z" }
@@ -5609,7 +5849,8 @@ version = "2.31.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "websockets" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/df/34/54a1eaaefa24db5cb12596fd74792e08efa53ed30dc5bce2c0a68ded6146/realtime-2.31.0.tar.gz", hash = "sha256:9e641cb4d77ca0fe768515f8cf9f83550c79f49ce1550a95afc2dc0e252be8c9", size = 18716, upload-time = "2026-06-04T13:37:22.089Z" }
@@ -5624,7 +5865,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
     { name = "rpds-py" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/22/f5/df4e9027acead3ecc63e50fe1e36aca1523e1719559c499951bb4b53188f/referencing-0.37.0.tar.gz", hash = "sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8", size = 78036, upload-time = "2025-10-13T15:30:48.871Z" }
 wheels = [
@@ -5707,7 +5948,7 @@ name = "rfc3339-validator"
 version = "0.1.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "six" },
+    { name = "six", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/28/ea/a9387748e2d111c3c2b275ba970b735e04e15cdb1eb30693b6b5708c4dbd/rfc3339_validator-0.1.4.tar.gz", hash = "sha256:138a2abdf93304ad60530167e51d2dfb9549521a836871b88d7f4695d0022f6b", size = 5513, upload-time = "2021-05-12T16:37:54.178Z" }
 wheels = [
@@ -5738,31 +5979,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/57/56/3191bae66b08ccc637ea8120426068bcb361cc323c96404c310886937067/rich_rst-2.0.1.tar.gz", hash = "sha256:cbe236ed0901d1ec8427cc6a50bf0a34353ba28ad014dc24def68bfe7f3b9e68", size = 300570, upload-time = "2026-05-16T00:47:57.362Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/3d/55c17d3ebdf3cd81356002afe5bef9bb8af631db2819785b6eac845b925b/rich_rst-2.0.1-py3-none-any.whl", hash = "sha256:7ee15f345ce25fa02b582c272a6cdbaf0c21243e38061cea273cff659bf3ef61", size = 272922, upload-time = "2026-05-16T00:47:55.508Z" },
-]
-
-[[package]]
-name = "river"
-version = "0.25.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "altair" },
-    { name = "numpy" },
-    { name = "scipy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0a/20/e0e97f65260d379c1789c15f047fb1ca9dc01c1568ea0433808d85eb9299/river-0.25.0.tar.gz", hash = "sha256:8756afe90122285a6fe06c5a38fba143bd15f85d8e84f65b661a5edec3a14e3c", size = 3745426, upload-time = "2026-05-31T18:50:53.413Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/68/3e03345f7f41b6a391e318c5048bdf95cbc4206add2b246ca6891a8e7b8e/river-0.25.0-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:2a354c163c25aa00ad20c55b6a5e050ac9e47fae8f57fb00e11cf9bfc1043f01", size = 1884406, upload-time = "2026-05-31T18:50:20.332Z" },
-    { url = "https://files.pythonhosted.org/packages/9b/ac/a877e5a46f8c783cdd7603a5495393fcde06f36fdc908b2ec64715464afd/river-0.25.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:1208184f01a3b11082fb36c3edb3aadd2d1c1c85071e0cd69f3394841b27d45a", size = 1496693, upload-time = "2026-05-31T18:50:21.997Z" },
-    { url = "https://files.pythonhosted.org/packages/ae/3c/55fd66b89156749bb1b1ddd1ee40eaa592fe363a5d1c6e79b42b8af6b278/river-0.25.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:13b1d735008f2730179f858588da0a962bc3e6e4678531417288267b2e228baa", size = 1510835, upload-time = "2026-05-31T18:50:24.206Z" },
-    { url = "https://files.pythonhosted.org/packages/b5/87/afab268a0faaedcdeb8ec61b7571a88ea945afdca5712b2d56e0be6384ff/river-0.25.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:a77d67c5c9ef175e8a1012c2bb6c33d07c40dfdb31ba3e5aa6a12b67e63a46d0", size = 1562672, upload-time = "2026-05-31T18:50:26.038Z" },
-    { url = "https://files.pythonhosted.org/packages/e8/ed/c11822de53c74f437fcabedbec151ba7a94bf6bc5ff03526cfb126179aa6/river-0.25.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:b22587ec3a904e36d8d20a71d8f7913ffc8ee56091aa604349fddb3f83ecc31f", size = 1592506, upload-time = "2026-05-31T18:50:27.816Z" },
-    { url = "https://files.pythonhosted.org/packages/c1/d5/11af6234df00f386a7d08169b9be9e99547b8cf990585a7d52ef65bfc84e/river-0.25.0-cp312-cp312-win_amd64.whl", hash = "sha256:0b54a0f28b4e6a0e7f55c64dea4ae45f0861257dd7f3a62a015ddf3b7e0c6515", size = 1402975, upload-time = "2026-05-31T18:50:29.672Z" },
-    { url = "https://files.pythonhosted.org/packages/53/b3/76ca949e3a137e4cf604fc8f3f650962935c982c51f7cb1d96976c2473ff/river-0.25.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:141ef06f8d16aa6aa31629d4bdcf52ed0363934a2816b0b419aa9182bb7068ac", size = 1883933, upload-time = "2026-05-31T18:50:31.331Z" },
-    { url = "https://files.pythonhosted.org/packages/88/7d/a23693c4362ff9fb2f299adc9faea4d829d5f991633cc4ae67bdfbb4ee7c/river-0.25.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:f71c5465d3cfb06c64aeb1779f485f51fd7a9a0904da022fa8e70fc9b77e3657", size = 1496415, upload-time = "2026-05-31T18:50:33.021Z" },
-    { url = "https://files.pythonhosted.org/packages/8c/1b/5b8cc0cf39cd6ba2474b5986588e2b67545a1fc432a14d683555503f280d/river-0.25.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:89bdfdc40b50ecdf799f6f94905ad943673c1ceb67054b91239cdbd63a19da1d", size = 1510790, upload-time = "2026-05-31T18:50:34.952Z" },
-    { url = "https://files.pythonhosted.org/packages/e5/fb/1688b00afc51eb036e3583de38b54d7e127c3ea2db83f0c0f390e91a97f0/river-0.25.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:d1b670fbca3047643f85d307d12412f57a3f84fcde5153b8b31d985b67978641", size = 1562276, upload-time = "2026-05-31T18:50:36.656Z" },
-    { url = "https://files.pythonhosted.org/packages/bd/6f/f6118769c35120ce5c660f09be23f21cc4ddf253442c9c8fb6853842ee04/river-0.25.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:b106311b0dd565bea2f8817c78cdf4d22fd6135cd976d70ddff30563d98239fb", size = 1592366, upload-time = "2026-05-31T18:50:38.614Z" },
-    { url = "https://files.pythonhosted.org/packages/d9/87/a2dca574957426256bbac252118ea48eeed887215e150070fa734c20974e/river-0.25.0-cp313-cp313-win_amd64.whl", hash = "sha256:a3e3e9cda5fef136749574b5f7feaba9e1208b569f25719b88114dbe82c4fd7c", size = 1402805, upload-time = "2026-05-31T18:50:40.368Z" },
 ]
 
 [[package]]
@@ -5942,6 +6158,19 @@ wheels = [
 ]
 
 [[package]]
+name = "secretstorage"
+version = "3.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography", marker = "python_full_version >= '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "jeepney", marker = "python_full_version >= '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b7/46/f5af3402b579fd5e11573ce652019a67074317e18c1935cc0b4ba9b35552/secretstorage-3.5.0-py3-none-any.whl", hash = "sha256:0ce65888c0725fcb2c5bc0fdb8e5438eece02c523557ea40ce0703c266248137", size = 15554, upload-time = "2025-11-23T19:02:51.545Z" },
+]
+
+[[package]]
 name = "sentry-sdk"
 version = "2.19.1"
 source = { registry = "https://pypi.org/simple" }
@@ -6050,7 +6279,8 @@ version = "2.0.50"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/57/da/6fbf010c8ebb347679d0d100b22fe9ba5e13fd04046c5df7280d2f0bf706/sqlalchemy-2.0.50.tar.gz", hash = "sha256:af5607d11ef90fd6a5c0549fe0045dce1663d427426bcfb506dcb5346a85a3b9", size = 9907424, upload-time = "2026-05-24T19:20:04.018Z" }
 wheels = [
@@ -6107,7 +6337,8 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "sqlalchemy" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/64/0d/26ec1329960ea9430131fe63f63a95ea4cb8971d49c891ff7e1f3255421c/sqlmodel-0.0.38.tar.gz", hash = "sha256:d583ec237b14103809f74e8630032bc40ab68cd6b754a610f0813c56911a547b", size = 86710, upload-time = "2026-04-02T21:03:55.571Z" }
 wheels = [
@@ -6147,7 +6378,7 @@ version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/25/44/ec35f1b6e83094b997da438a02c8c9b0ade2b1e84cfc48bd4656780760a6/starlette-1.2.1.tar.gz", hash = "sha256:9b9b5ebb992e67d6093741e63c2f59e4f6fff986f81163c087867bd7b924b3f6", size = 2701854, upload-time = "2026-05-31T01:07:51.847Z" }
 wheels = [
@@ -6194,7 +6425,8 @@ dependencies = [
     { name = "starlette" },
     { name = "tenacity" },
     { name = "toml" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "uvicorn" },
     { name = "watchdog", marker = "sys_platform != 'darwin' or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
     { name = "websockets" },
@@ -6329,7 +6561,8 @@ name = "synchronicity"
 version = "0.12.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/68/38/901ed2557527541e90e89366212538463de96f9393de95fee2f7928d1321/synchronicity-0.12.4.tar.gz", hash = "sha256:f9e38d0c37d8e56b5dcb22cc0083591a535a42187d3d97ea9aef6e84bd122640", size = 60339, upload-time = "2026-06-16T15:43:06.29Z" }
 wheels = [
@@ -6367,7 +6600,8 @@ dependencies = [
     { name = "nexus-rpc" },
     { name = "protobuf" },
     { name = "types-protobuf" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d3/04/8e7cd6a203ee40700a8d3d34bca6f1da3a6083888fa5654bc05514b633fa/temporalio-1.28.0.tar.gz", hash = "sha256:eb390ee968204a9f8fda91544d6f03497a7614acbfcc9862b5bd08a2d26edb04", size = 2619977, upload-time = "2026-06-04T17:22:07.52Z" }
 wheels = [
@@ -6399,8 +6633,8 @@ dependencies = [
     { name = "inquirer" },
     { name = "jinja2" },
     { name = "litellm" },
-    { name = "mcp", version = "1.16.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-memory-server'" },
-    { name = "mcp", version = "1.27.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "mcp", version = "1.16.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "mcp", version = "1.27.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
     { name = "openai" },
     { name = "pandas" },
     { name = "psycopg2-binary" },
@@ -6615,7 +6849,7 @@ name = "tree-sitter-languages"
 version = "1.10.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tree-sitter" },
+    { name = "tree-sitter", marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8d/bf/a9bd2d6ecbd053de0a5a50c150105b69c90eb49089f9e1d4fc4937e86adc/tree_sitter_languages-1.10.2-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:c0f4c8b2734c45859edc7fcaaeaab97a074114111b5ba51ab4ec7ed52104763c", size = 8884771, upload-time = "2024-02-04T10:28:39.655Z" },
@@ -6660,7 +6894,8 @@ name = "typeguard"
 version = "4.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/67/1c/dfba5c4633cafc4c701f237d2ba63b416805047fd6d96aab4cfc40969f98/typeguard-4.5.2.tar.gz", hash = "sha256:5a16dcac23502039299c97c8941651bc33d7ea8cc4b2f7d6bbb1b528f6eea423", size = 80240, upload-time = "2026-05-14T12:59:40.857Z" }
 wheels = [
@@ -6722,9 +6957,34 @@ wheels = [
 name = "typing-extensions"
 version = "4.14.0"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version < '3.13' and sys_platform == 'win32' and extra != 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server'",
+    "python_full_version < '3.13' and sys_platform == 'emscripten' and extra != 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server'",
+    "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server'",
+    "sys_platform == 'win32' and extra == 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform == 'emscripten' and extra == 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform == 'win32' and extra != 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform == 'emscripten' and extra != 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+    "sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-atelier-langfuse' and extra != 'extra-7-atelier-memory-server'",
+]
 sdist = { url = "https://files.pythonhosted.org/packages/d1/bc/51647cd02527e87d05cb083ccc402f93e441606ff1f01739a62c8ad09ba5/typing_extensions-4.14.0.tar.gz", hash = "sha256:8676b788e32f02ab42d9e7c61324048ae4c6d844a399eebace3d4979d75ceef4", size = 107423, upload-time = "2025-06-02T14:52:11.399Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/69/e0/552843e0d356fbb5256d21449fa957fa4eff3bbc135a74a691ee70c7c5da/typing_extensions-4.14.0-py3-none-any.whl", hash = "sha256:a1514509136dd0b477638fc68d6a91497af5076466ad0fa6c338e44e359944af", size = 43839, upload-time = "2025-06-02T14:52:10.026Z" },
+]
+
+[[package]]
+name = "typing-extensions"
+version = "4.15.0"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.13' and sys_platform == 'win32'",
+    "python_full_version >= '3.13' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
+sdist = { url = "https://files.pythonhosted.org/packages/72/94/1a15dd82efb362ac84269196e94cf00f187f7ed21c242792a923cdb1c61f/typing_extensions-4.15.0.tar.gz", hash = "sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466", size = 109391, upload-time = "2025-08-25T13:49:26.313Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/18/67/36e9267722cc04a6b9f15c7f3441c2363321a3ea07da7ae0c0707beb2a9c/typing_extensions-4.15.0-py3-none-any.whl", hash = "sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548", size = 44614, upload-time = "2025-08-25T13:49:24.86Z" },
 ]
 
 [[package]]
@@ -6733,7 +6993,8 @@ version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mypy-extensions" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/dc/74/1789779d91f1961fa9438e9a8710cdae6bd138c80d7303996933d117264a/typing_inspect-0.9.0.tar.gz", hash = "sha256:b23fc42ff6f6ef6954e4852c1fb512cdd18dbea03134f91f856a95ccc9461f78", size = 13825, upload-time = "2023-05-24T20:25:47.612Z" }
 wheels = [
@@ -6745,7 +7006,8 @@ name = "typing-inspection"
 version = "0.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", version = "4.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13' or extra == 'extra-7-atelier-langfuse' or extra != 'extra-7-atelier-memory-server'" },
+    { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/55/e3/70399cb7dd41c10ac53367ae42139cf4b1ca5f36bb3dc6c9d33acdb43655/typing_inspection-0.4.2.tar.gz", hash = "sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464", size = 75949, upload-time = "2025-10-01T02:14:41.687Z" }
 wheels = [
@@ -6771,6 +7033,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8b/2e/c14812d3d4d9cd1773c6be938f89e5735a1f11a9f184ac3639b93cef35d5/tzlocal-5.3.1.tar.gz", hash = "sha256:cceffc7edecefea1f595541dbd6e990cb1ea3d19bf01b2809f362a03dd7921fd", size = 30761, upload-time = "2025-03-05T21:17:41.549Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c2/14/e2a54fabd4f08cd7af1c07030603c3356b74da07f7cc056e600436edfa17/tzlocal-5.3.1-py3-none-any.whl", hash = "sha256:eb1a66c3ef5847adf7a834f1be0800581b683b5608e74f86ecbcef8ab91bb85d", size = 18026, upload-time = "2025-03-05T21:17:39.857Z" },
+]
+
+[[package]]
+name = "uncalled-for"
+version = "0.3.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/82/345cc927f7fbdae6065e7768759932fcc827fc20b29b45dfbafa2f1f7da4/uncalled_for-0.3.2.tar.gz", hash = "sha256:89f5dbcd71e2b8f47c030b1fa302e6cce2ec795d1ac565eeb6525c5fe55cb8a2", size = 50032, upload-time = "2026-05-06T13:38:25.204Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3b/25/2c87754f3a9e692315f7b811244090e68f362979fc8886b3fbd2985a1d8c/uncalled_for-0.3.2-py3-none-any.whl", hash = "sha256:0ff60b142c7d1f8070bde9d42afaa70aedc77dcc10998c227687e9c15713418e", size = 11444, upload-time = "2026-05-06T13:38:24.025Z" },
 ]
 
 [[package]]
