@@ -245,9 +245,9 @@ def zoekt_reset(ctx: click.Context, yes: bool) -> None:
     container_ids = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     if container_ids:
         subprocess.run(["docker", "rm", "-f", *container_ids], check=False)
-    from atelier.core.foundation.paths import default_store_root
+    from atelier.core.foundation.paths import default_store_root, workspace_key
 
-    workspace_hash = sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:12]
+    workspace_hash = workspace_key(repo_root.resolve())
     runtime_root = default_store_root() / "workspaces" / workspace_hash / "zoekt"
     shutil.rmtree(runtime_root, ignore_errors=True)
     click.echo("Zoekt state removed.")
@@ -602,6 +602,80 @@ def code_index_cmd(
 
     if not no_stats:
         _print_index_stats(engine, frame_prefix=frame_prefix)
+
+
+@code_group.command("prune")
+@click.option(
+    "--store-root",
+    default=None,
+    help="Atelier store root (default: ~/.atelier).",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print what would be deleted without deleting anything.",
+)
+def code_prune_cmd(store_root: str | None, dry_run: bool) -> None:
+    """Remove workspace store dirs whose source repo no longer exists.
+
+    Scans every subdirectory of <store-root>/workspaces/ and deletes those
+    where the original workspace root (recorded in session_state.json) no
+    longer exists on disk.  Directories with no session_state.json are also
+    pruned — they are orphaned code indexes with no associated session.
+
+    Use --dry-run to preview what would be removed.
+    """
+    import json
+
+    from atelier.core.foundation.paths import default_store_root
+
+    root = Path(store_root).expanduser().resolve() if store_root else default_store_root()
+    ws_dir = root / "workspaces"
+    if not ws_dir.exists():
+        click.echo("No workspaces directory found.")
+        return
+
+    total_size = 0
+    deleted = 0
+    skipped = 0
+
+    for entry in sorted(ws_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+
+        # Compute entry size
+        entry_bytes = sum(f.stat().st_size for f in entry.rglob("*") if f.is_file())
+
+        ss = entry / "session_state.json"
+        if not ss.exists():
+            reason = "no session_state.json (orphaned index)"
+        else:
+            try:
+                data = json.loads(ss.read_text("utf-8"))
+                atelier_root = data.get("atelier_root", "")
+                transcript_path = data.get("transcript_path", "")
+                if transcript_path.startswith("/tmp"):
+                    reason = "source was in /tmp (benchmark run)"
+                elif atelier_root and not Path(atelier_root).exists():
+                    reason = f"source gone: {atelier_root}"
+                else:
+                    skipped += 1
+                    continue
+            except Exception:  # noqa: BLE001
+                reason = "unreadable session_state.json"
+
+        size_mb = entry_bytes / 1_000_000
+        if dry_run:
+            click.echo(f"  would remove  {entry.name}  ({size_mb:.0f} MB)  — {reason}")
+        else:
+            shutil.rmtree(entry, ignore_errors=True)
+            click.echo(f"  removed  {entry.name}  ({size_mb:.0f} MB)  — {reason}")
+        deleted += 1
+        total_size += entry_bytes
+
+    total_mb = total_size / 1_000_000
+    verb = "Would free" if dry_run else "Freed"
+    click.echo(f"\n{verb} {total_mb:.0f} MB across {deleted} workspace(s). {skipped} kept (source still exists).")
 
 
 def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:

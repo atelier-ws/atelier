@@ -176,7 +176,9 @@ def _session_state_path() -> Path | None:
     root_env = os.environ.get("ATELIER_ROOT") or os.environ.get("ATELIER_STORE_ROOT")
     root = Path(root_env) if root_env else Path.home() / ".atelier"
     try:
-        digest = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+        from atelier.core.foundation.paths import workspace_key
+
+        digest = workspace_key(Path(workspace).resolve())
     except OSError:
         return None
     return root / "workspaces" / digest / "session_state.json"

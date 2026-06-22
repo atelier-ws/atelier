@@ -3,9 +3,45 @@
 from __future__ import annotations
 
 import os
+import re
+from hashlib import sha256 as _sha256
 from pathlib import Path
 
 DEFAULT_STORE_DIRNAME = ".atelier"
+
+
+def workspace_key(path: Path | str) -> str:
+    """Human-readable workspace directory key.
+
+    Strips the home-directory prefix and joins remaining path parts with ``-``.
+    Characters outside ``[a-zA-Z0-9._-]`` are replaced with ``-``; consecutive
+    dashes are collapsed.  Paths not under ``$HOME`` use the full absolute path
+    (minus the leading ``/``).  Names longer than 120 chars are truncated and a
+    6-char hash suffix is appended to avoid collisions.
+
+    Examples::
+
+        /home/alice/Projects/foo  →  Projects-foo
+        /tmp/bench/bar            →  tmp-bench-bar
+    """
+    resolved = Path(path).expanduser().resolve()
+    home = Path.home().resolve()
+    try:
+        rel = resolved.relative_to(home)
+        parts = rel.parts
+    except ValueError:
+        parts = tuple(p for p in resolved.parts if p and p != "/")
+
+    sanitized = [re.sub(r"[^a-zA-Z0-9.\-_]", "-", p) for p in parts if p]
+    label = re.sub(r"-{2,}", "-", "-".join(sanitized)).strip("-")
+
+    if len(label) > 120:
+        digest = _sha256(str(resolved).encode()).hexdigest()[:6]
+        label = label[:110].rstrip("-") + "--" + digest
+
+    return label or _sha256(str(resolved).encode()).hexdigest()[:12]
+
+
 DEFAULT_LESSONS_DIRNAME = ".atelier/lessons"
 
 
@@ -72,11 +108,9 @@ def resolve_session_state_path(workspace_root: Path | str | None = None) -> Path
     Stored within the global store root under a workspace-specific subfolder
     to prevent collisions between multiple open projects.
     """
-    from hashlib import sha256
-
     root = default_store_root()
     ws = resolve_workspace_root(Path(workspace_root) if workspace_root else None)
-    h = sha256(str(ws).encode("utf-8")).hexdigest()[:12]
+    h = workspace_key(ws)
     return root / "workspaces" / h / "session_state.json"
 
 
@@ -151,12 +185,43 @@ def resolve_workspace_store_dir(root: Path | str | None = None, workspace_root: 
     one project cannot pollute another, while living in the global store rather
     than the Git-tracked ``.atelier/lessons`` (which is reserved for real knowledge).
     """
-    from hashlib import sha256
-
     store_root = Path(root).expanduser().resolve() if root is not None else default_store_root()
     ws = resolve_workspace_root(workspace_root if workspace_root is not None else root)
-    digest = sha256(str(ws).encode("utf-8")).hexdigest()[:12]
+    digest = workspace_key(ws)
     return store_root / "workspaces" / digest
+
+
+def resolve_store_root_for_workspace(workspace_root: Path | str | None = None) -> Path:
+    """Return the per-workspace store root, falling back to the global store.
+
+    When a workspace root is known this returns
+    ``<store_root>/workspaces/<workspace_key>/`` so that sessions and raw
+    artifacts live alongside the code index for the same project.  When the
+    workspace root cannot be determined the global store root is returned so
+    callers never crash.
+
+    Precedence for workspace discovery (when *workspace_root* is not given):
+    1. ``ATELIER_WORKSPACE_ROOT``
+    2. Common host env vars (``CLAUDE_WORKSPACE_ROOT``, etc.)
+    3. Current working directory — last resort
+    """
+    if workspace_root is None:
+        for env_var in _HOST_WORKSPACE_ENV_VARS:
+            configured = os.environ.get(env_var, "").strip()
+            if configured:
+                workspace_root = Path(configured)
+                break
+        else:
+            cwd = Path.cwd()
+            home = Path.home()
+            # Only use cwd when it's clearly a project dir (not home itself or
+            # a system dir), to avoid mixing personal-root sessions.
+            if cwd != home and not str(cwd).startswith(str(home / ".")) and cwd != Path("/"):
+                workspace_root = cwd
+
+    if workspace_root is not None:
+        return resolve_workspace_store_dir(workspace_root=workspace_root)
+    return default_store_root()
 
 
 __all__ = [
@@ -166,6 +231,8 @@ __all__ = [
     "default_store_root",
     "resolve_lessons_root",
     "resolve_session_state_path",
+    "resolve_store_root_for_workspace",
     "resolve_workspace_root",
     "resolve_workspace_store_dir",
+    "workspace_key",
 ]

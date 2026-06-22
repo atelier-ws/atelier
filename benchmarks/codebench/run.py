@@ -1485,6 +1485,11 @@ def run_arm(
             with contextlib.suppress(Exception):
                 mitm.wait(timeout=5)
         if not persistent_workspace:
+            with contextlib.suppress(Exception):
+                from atelier.core.foundation.paths import resolve_workspace_store_dir
+
+                store_dir = resolve_workspace_store_dir(workspace_root=ws)
+                shutil.rmtree(store_dir, ignore_errors=True)
             shutil.rmtree(ws, ignore_errors=True)
         for temp_path in locals().get("temp_paths", []):
             shutil.rmtree(temp_path, ignore_errors=True)

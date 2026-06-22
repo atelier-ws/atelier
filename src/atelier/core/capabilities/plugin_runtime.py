@@ -1463,7 +1463,9 @@ def _codex_workspace_root(payload: dict[str, Any]) -> str:
 
 def _codex_session_state_path(root: str | Path, payload: dict[str, Any]) -> Path:
     workspace = _codex_workspace_root(payload)
-    digest = hashlib.sha256(str(Path(workspace).resolve()).encode("utf-8")).hexdigest()[:12]
+    from atelier.core.foundation.paths import workspace_key
+
+    digest = workspace_key(Path(workspace).resolve())
     return Path(root) / "workspaces" / digest / "session_state.json"
 
 
