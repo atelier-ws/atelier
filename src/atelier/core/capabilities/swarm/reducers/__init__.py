@@ -20,15 +20,21 @@ from atelier.core.capabilities.swarm.reducers.base import (
 )
 from atelier.core.capabilities.swarm.reducers.best import BestReducer
 from atelier.core.capabilities.swarm.reducers.merge import MergeReducer
+from atelier.core.capabilities.swarm.reducers.union import UnionReducer
+from atelier.core.capabilities.swarm.reducers.vote import VoteReducer
 
 register_reducer(MergeReducer())
 register_reducer(BestReducer())
+register_reducer(UnionReducer())
+register_reducer(VoteReducer())
 
 __all__ = [
     "REDUCERS",
     "BestReducer",
     "MergeReducer",
     "Reducer",
+    "UnionReducer",
+    "VoteReducer",
     "WaveContext",
     "get_reducer",
     "register_reducer",
