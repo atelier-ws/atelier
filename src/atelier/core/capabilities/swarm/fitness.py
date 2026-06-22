@@ -179,6 +179,40 @@ def evaluate_candidate(spec: FitnessSpec, worktree: Path) -> CandidateFitness:
     return CandidateFitness(True, gate_detail, value, err, proc.stdout, proc.stderr, proc.returncode)
 
 
+def build_fitness_spec(
+    *,
+    metric_command: str,
+    metric_parse: str = "stdout_float",
+    direction: FitnessDirection = "min",
+    gate_command: str | None = None,
+    baseline: float | str = "auto",
+    improve_margin: float = 0.0,
+    objective: str = "",
+) -> FitnessSpec | None:
+    """Build a :class:`FitnessSpec` from loose (e.g. CLI) inputs.
+
+    Returns ``None`` when no metric command is supplied (i.e. not an optimize
+    job). ``baseline`` accepts the string ``"auto"`` or a number.
+    """
+    if not metric_command or not metric_command.strip():
+        return None
+    parsed_baseline: float | Literal["auto"]
+    if isinstance(baseline, str):
+        text = baseline.strip().lower()
+        parsed_baseline = "auto" if text in ("", "auto") else float(baseline)
+    else:
+        parsed_baseline = float(baseline)
+    return FitnessSpec(
+        objective=objective,
+        metric_command=metric_command,
+        metric_parse=metric_parse or "stdout_float",
+        direction=direction,
+        gate_command=gate_command or None,
+        baseline=parsed_baseline,
+        improve_margin=improve_margin,
+    )
+
+
 def resolve_baseline(spec: FitnessSpec) -> float | None:
     """The numeric baseline, or ``None`` if it is still ``"auto"`` (unmeasured)."""
 
@@ -217,6 +251,7 @@ __all__ = [
     "FitnessDirection",
     "FitnessSpec",
     "beats_baseline",
+    "build_fitness_spec",
     "evaluate_candidate",
     "improvement",
     "measure",
