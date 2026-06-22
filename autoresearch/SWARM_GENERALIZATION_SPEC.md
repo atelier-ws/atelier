@@ -260,4 +260,37 @@ Validated findings from the prototype (useful priors): a *persona* change (“bi
 
 ---
 
+## 13. Code organization & cleanup (where things live)
+
+### 13.1 Generic generalization → stays in `src/atelier/core/capabilities/swarm/`
+The swarm runtime is product code; ALL generic additions belong in this package. Keep `capability.py` as the orchestrator; it should *delegate* scoring/selection to a reducer rather than hardwire it. Proposed layout (refine freely):
+- `swarm/capability.py` — engine: wave planning/exec, worktrees, lifecycle, `apply_wave_candidates` (orchestration unchanged; now calls a reducer).
+- `swarm/reducers/__init__.py` — `Reducer` protocol, `ReduceOutcome`, a `REDUCERS` registry.
+- `swarm/reducers/best.py` — the heuristic (`_score_child`/`rank_children` moved here verbatim) **and** the measured-fitness scorer.
+- `swarm/reducers/merge.py` — the existing `_evaluate_wave` LLM evaluator, extracted (default for solve-task).
+- `swarm/reducers/union.py`, `swarm/reducers/vote.py` — new.
+- `swarm/fitness.py` — `FitnessSpec`, metric-command runner, parsers (`json:`/`regex:`/`stdout_float`/`exit_code`), baseline auto-measure, gate runner.
+- `swarm/generator.py` — `GeneratorSpec` (agents/matrix).
+- state types (`SwarmRunState`/`SwarmChildState`/…) extended in their current home with the `CandidateResult` fields (`metric`, `gate_passed`, `findings`, `answer`) and job fields (`job_kind`, `reducer_name`, `fitness_spec`, `exec_mode`, `generator_spec`, `search_space`).
+- read-only exec path added to the child runner (`run_child_once`/`run_provider_swarm_worker`).
+
+**Hard rule:** nothing in this package may reference Atelier benchmarks, swe-bench, or `ATELIER_*` knobs. Those are a *consumer's* fitness, never the engine.
+
+### 13.2 Atelier's self-optimization fitness → NOT in `src/`; lives with the benchmarks
+`autoresearch/eval.py` is Atelier's concrete *fitness command* — it wraps `benchmarks.codebench.multiswe_run`, so it is benchmark/test tooling, not product runtime. Relocate it out of `src/` and out of `autoresearch/`:
+- `autoresearch/{eval.py, freeze_baseline.py, make_holdout.py, baseline/, tasks/, knobs.env}` → `benchmarks/self_opt/` (or alongside `benchmarks/codebench/`).
+- This becomes the concrete `FitnessSpec` a user points the generic swarm at (§12). It is an *example consumer*, shipped as benchmark tooling.
+
+### 13.3 Fate of the `autoresearch/` directory
+It was two things; only one survives:
+- **Obsolete (delete once the swarm generalization lands):** `program.md` (loop contract), `plot.py`, `README.md`, the bespoke loop framing — all subsumed by the generic swarm + the skill front-end.
+- **Persists (relocate per §13.2):** the fitness command, frozen baseline, task sets, freeze/holdout utilities, `knobs.env` (a `matrix`-generator source).
+- **The `bench` working-tree copy is a duplicate** of branch `autoresearch/main` and may be removed anytime; only the git-ignored experiment log (`results.tsv`) and run outputs are unique to it, and the conclusions are already in §12.
+- **Source of truth:** branch `autoresearch/main` (this spec + the prototype).
+
+### 13.4 Sequencing: organize as you build, not after
+Implement to this layout from the start. Phase 1 (extract the reducer/fitness behind interfaces) **is** the organizing step — cheap to do first, and it leaves behavior identical. Do **not** build monolithically and reshuffle later. The only genuinely deferred work is mechanical: relocating the fitness (§13.2) and deleting the obsolete scaffolding (§13.3) once the generic path is proven.
+
+---
+
 *End of spec.*
