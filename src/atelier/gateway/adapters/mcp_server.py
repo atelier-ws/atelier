@@ -5498,6 +5498,44 @@ def _apply_edit_verify_gate(
         }
 
 
+def _contract_review_enabled() -> bool:
+    """Whether post-edit contract-literal discovery runs (operator off-switch, default on)."""
+    return os.environ.get("ATELIER_CONTRACT_REVIEW", "").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _attach_contract_literal_review(
+    result: dict[str, Any],
+    edits: list[dict[str, Any]],
+    *,
+    repo_root: Path,
+    touched_paths: list[str],
+) -> None:
+    """Surface remaining occurrences of contract literals this edit removed (config
+    keys, wire fields, kwarg names) in files it did NOT touch.
+
+    These parallel consumers have no call-graph edge to the edited site -- a rename
+    or deletion of a quoted literal is invisible to symbol-level callers/callees, so
+    the agent routinely fixes one site and misses the rest. Surfacing them while the
+    edit's hypothesis is still revisable is the post-edit half of finishing a change
+    at every site the contract reaches. Fail-open: a crash never affects the edit.
+    """
+    if not _contract_review_enabled():
+        return
+    try:
+        from atelier.core.capabilities.tool_supervision.edit_impact import contract_literal_impact
+
+        impact = contract_literal_impact(
+            edits,
+            engine=_code_context_engine(str(repo_root)),
+            repo_root=repo_root,
+            touched_paths=touched_paths,
+        )
+        if impact:
+            result["contract_review"] = impact
+    except Exception:
+        logging.exception("Recovered from broad exception handler")
+
+
 EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -5887,6 +5925,13 @@ def tool_smart_edit(
         result.setdefault("calls_saved", distinct_files - 1)
     if applied_entries and not result.get("failed") and not result.get("rolled_back"):
         result["applied"] = _compact_applied_entries(applied_entries)
+    if not result.get("failed") and not result.get("rolled_back"):
+        _attach_contract_literal_review(
+            result,
+            edits,
+            repo_root=repo_root,
+            touched_paths=[str(p.relative_to(repo_root)) for p in paths.values() if p.is_relative_to(repo_root)],
+        )
     return result
 
 
