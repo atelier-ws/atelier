@@ -105,3 +105,42 @@ def test_no_literal_removed_attaches_nothing(tmp_path: Path, monkeypatch: pytest
     )
     assert not result.get("failed")
     assert "contract_review" not in result
+
+
+_SIB_SCALES = (
+    "def build_legend(axis):\n"
+    "    axis.set_view_interval(0, 1)\n"
+    "    locator = axis.major.locator\n"
+    "    formatter = axis.major.formatter\n"
+    "    return formatter.format_ticks(locator())\n"
+)
+_SIB_UTILS = (
+    "def locator_to_legend_entries(locator, limits):\n"
+    "    formatter = make_scalar_formatter()\n"
+    "    return [formatter.format_ticks(x) for x in locator.tick_values(limits)]\n"
+)
+
+
+@_requires_astgrep
+def test_edit_surfaces_sibling_implementation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    (tmp_path / "pkg").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "pkg" / "scales.py").write_text(_SIB_SCALES, encoding="utf-8")
+    (tmp_path / "pkg" / "utils.py").write_text(_SIB_UTILS, encoding="utf-8")
+    result = mcp_server.tool_smart_edit(
+        {
+            "edits": [
+                {
+                    "file_path": "pkg/scales.py",
+                    "old_string": "    return formatter.format_ticks(locator())",
+                    "new_string": "    formatter.set_useoffset(False)\n    return formatter.format_ticks(locator())",
+                }
+            ],
+            "post_edit_hooks": False,
+        }
+    )
+    assert not result.get("failed")
+    review = result.get("sibling_review")
+    assert review is not None, result
+    paths = {s["path"] for s in review["sibling_implementations"]}
+    assert "pkg/utils.py" in paths

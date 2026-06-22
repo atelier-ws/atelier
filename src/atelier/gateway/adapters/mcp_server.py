@@ -5124,7 +5124,7 @@ def tool_smart_read(
         list[dict[str, Any] | str] | None,
         Field(
             description=(
-                "['path', ...] or [{path, range?, expand?, lines?}, ...]. " "Returns {files: [...]}. Use for 2+ files."
+                "['path', ...] or [{path, range?, expand?, lines?}, ...]. Returns {files: [...]}. Use for 2+ files."
             )
         ),
     ] = None,
@@ -5529,6 +5529,17 @@ def _contract_review_enabled() -> bool:
     return os.environ.get("ATELIER_CONTRACT_REVIEW", "").strip().lower() not in ("0", "false", "no", "off")
 
 
+def _sibling_review_enabled() -> bool:
+    """Whether identifier-cluster sibling discovery runs.
+
+    Similarity-based (shared rare identifiers), so fuzzier than the exact-match
+    contract-literal pass and able to surface a non-sibling the agent must dismiss.
+    Gets its own off-switch so the precise pass can stay on while this one is tuned
+    or disabled. Default on.
+    """
+    return os.environ.get("ATELIER_SIBLING_REVIEW", "").strip().lower() not in ("0", "false", "no", "off")
+
+
 def _attach_contract_literal_review(
     result: dict[str, Any],
     edits: list[dict[str, Any]],
@@ -5562,7 +5573,7 @@ def _attach_contract_literal_review(
         )
         if impact:
             result["contract_review"] = impact
-        else:
+        elif _sibling_review_enabled():
             # No quoted contract literal moved -- fall back to identifier-cluster
             # sibling discovery for parallel implementations (no embedder needed).
             sibling = sibling_symbol_impact(

@@ -15,11 +15,13 @@ import pytest
 
 from atelier.core.capabilities.tool_supervision import edit_impact
 from atelier.core.capabilities.tool_supervision.edit_impact import (
+    _candidate_identifiers,
     _combine_matches,
     _is_structural_occurrence,
     contract_literal_impact,
     literal_replacements,
     removed_literals,
+    sibling_symbol_impact,
 )
 
 
@@ -212,3 +214,110 @@ def test_text_fallback_recall_when_astgrep_unavailable(tmp_path: Path, monkeypat
     paths = {m["path"] for m in matches}
     assert "conf/db.cfg" in paths
     assert "docs/notes.md" not in paths
+
+
+# --------------------------------------------------------------------------- #
+# sibling_symbol_impact -- distinctive-identifier-cluster discovery            #
+# --------------------------------------------------------------------------- #
+
+
+def test_candidate_identifiers_filters_noise() -> None:
+    text = "def build(self, formatter):\n    return formatter.format_ticks(self.locator)\n"
+    out = set(_candidate_identifiers(text, limit=20))
+    assert {"formatter", "format_ticks", "locator"} <= out
+    assert "self" not in out and "def" not in out
+
+
+class _RepoEngine:
+    """Minimal _TextSearcher that greps real .py files under a root."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+
+    def search_text(self, query: str, *, path: str = ".", limit: int = 50, ignore_case: bool = False) -> list:
+        hits: list[_FakeMatch] = []
+        for p in sorted(self.root.rglob("*.py")):
+            rel = str(p.relative_to(self.root))
+            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+                if query in line:
+                    hits.append(_FakeMatch(rel, i, line))
+                    if len(hits) >= limit:
+                        return hits
+        return hits
+
+
+_SCALES = (
+    "def build_legend(axis):\n"
+    "    axis.set_view_interval(0, 1)\n"
+    "    locator = axis.major.locator\n"
+    "    locs = locator()\n"
+    "    formatter = axis.major.formatter\n"
+    "    labels = formatter.format_ticks(locs)\n"
+    "    return locs, labels\n"
+)
+_UTILS = (
+    "def locator_to_legend_entries(locator, limits):\n"
+    "    raw = locator.tick_values(limits)\n"
+    "    formatter = make_scalar_formatter()\n"
+    "    return [formatter.format_ticks(x) for x in raw]\n"
+)
+
+
+def test_sibling_surfaced_via_shared_rare_symbols(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "pkg/scales.py",
+        _SCALES.replace("    locs = locator()", "    locs = locator()\n    formatter.set_useoffset(False)"),
+    )
+    _write(tmp_path, "pkg/utils.py", _UTILS)
+    _write(tmp_path, "pkg/unrelated.py", "def total(rows):\n    return sum(rows)\n")
+    edits = [
+        {
+            "file_path": "pkg/scales.py",
+            "old_string": "    locs = locator()",
+            "new_string": "    formatter.set_useoffset(False)",
+        }
+    ]
+    impact = sibling_symbol_impact(
+        edits, engine=_RepoEngine(tmp_path), repo_root=tmp_path, touched_paths=["pkg/scales.py"]
+    )
+    assert impact is not None
+    assert impact["status"] == "review_required"
+    paths = {s["path"] for s in impact["sibling_implementations"]}
+    assert "pkg/utils.py" in paths  # shares formatter/locator/format_ticks
+    assert "pkg/scales.py" not in paths  # edited file excluded
+    assert "pkg/unrelated.py" not in paths  # shares nothing distinctive
+
+
+def test_sibling_none_when_few_shared(tmp_path: Path) -> None:
+    _write(tmp_path, "pkg/scales.py", _SCALES)
+    _write(tmp_path, "pkg/other.py", "def render(formatter):\n    return formatter.draw()\n")
+    edits = [
+        {
+            "file_path": "pkg/scales.py",
+            "old_string": "    return locs, labels",
+            "new_string": "    return list(locs), list(labels)",
+        }
+    ]
+    impact = sibling_symbol_impact(
+        edits, engine=_RepoEngine(tmp_path), repo_root=tmp_path, touched_paths=["pkg/scales.py"]
+    )
+    assert impact is None
+
+
+def test_sibling_common_symbol_excluded_by_rarity(tmp_path: Path) -> None:
+    _write(tmp_path, "pkg/scales.py", _SCALES)
+    _write(tmp_path, "pkg/utils.py", _UTILS)
+    for n in range(6):
+        _write(tmp_path, f"pkg/w{n}.py", "def w(formatter):\n    return formatter\n")
+    edits = [
+        {
+            "file_path": "pkg/scales.py",
+            "old_string": "    return locs, labels",
+            "new_string": "    return list(locs), labels",
+        }
+    ]
+    impact = sibling_symbol_impact(
+        edits, engine=_RepoEngine(tmp_path), repo_root=tmp_path, touched_paths=["pkg/scales.py"], max_files_per_symbol=3
+    )
+    assert impact is None  # formatter now too common; locator+format_ticks alone = 2 < 3
