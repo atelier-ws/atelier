@@ -38,10 +38,23 @@ try:
 except ImportError:  # pragma: no cover - optional dependency fallback
     nx: Any = None  # type: ignore[no-redef]
 
-try:
-    from river import stats
-except ImportError:  # pragma: no cover - optional dependency fallback
-    stats: Any = None  # type: ignore[no-redef]
+
+class _EWMean:
+    """Exponentially weighted mean — replaces river.stats.EWMean."""
+
+    def __init__(self, fading_factor: float = 0.2) -> None:
+        self._mean: float | None = None
+        self._alpha = fading_factor
+
+    def update(self, x: float) -> None:
+        if self._mean is None:
+            self._mean = x
+        else:
+            self._mean = self._mean * (1.0 - self._alpha) + x * self._alpha
+
+    def get(self) -> float:
+        return self._mean if self._mean is not None else 0.5
+
 
 try:
     from datasketch.hnsw import HNSW
@@ -230,38 +243,26 @@ def _cosine_distance(a: list[float], b: list[float]) -> float:
 
 
 class _AdaptivePriorTracker:
-    """Online prior tracker using river when available, with a pure-Python fallback."""
+    """Online prior tracker using exponentially weighted mean per domain."""
 
     def __init__(self) -> None:
-        self._by_domain: dict[str, Any] = {}
-        self._fallback_sum: dict[str, float] = {}
-        self._fallback_count: dict[str, int] = {}
+        self._by_domain: dict[str, _EWMean] = {}
 
     def observe(self, domain: str, reward: float) -> None:
         domain_key = domain or "unknown"
         clamped = min(1.0, max(0.0, reward))
-        if stats is not None:
-            metric = self._by_domain.get(domain_key)
-            if metric is None:
-                metric = stats.EWMean(fading_factor=0.2)  # type: ignore[no-untyped-call]
-                self._by_domain[domain_key] = metric
-            metric.update(clamped)
-            return
-        self._fallback_sum[domain_key] = self._fallback_sum.get(domain_key, 0.0) + clamped
-        self._fallback_count[domain_key] = self._fallback_count.get(domain_key, 0) + 1
+        metric = self._by_domain.get(domain_key)
+        if metric is None:
+            metric = _EWMean(fading_factor=0.2)
+            self._by_domain[domain_key] = metric
+        metric.update(clamped)
 
     def prior(self, domain: str) -> float:
         domain_key = domain or "unknown"
-        if stats is not None:
-            metric = self._by_domain.get(domain_key)
-            if metric is None:
-                return 0.5
-            val = getattr(metric, "get", lambda: 0.5)()
-            return float(val if val is not None else 0.5)
-        count = self._fallback_count.get(domain_key, 0)
-        if count == 0:
+        metric = self._by_domain.get(domain_key)
+        if metric is None:
             return 0.5
-        return self._fallback_sum.get(domain_key, 0.0) / count
+        return metric.get()
 
 
 class ContextReuseCapability:
