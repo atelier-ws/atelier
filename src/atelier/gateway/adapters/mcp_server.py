@@ -531,6 +531,13 @@ _search_history_sessions: dict[str, Any] = {}
 _MAX_SEARCH_HISTORY_SESSIONS = 64
 _SEARCH_HISTORY_LOCK = threading.Lock()
 
+# Per-session identical-call counters for the spiral nudge (loop_review). Mirrors
+# the SearchHistory registry above: bounded LRU-ish map, evict oldest past the
+# cap so a long-lived process seeing many session ids cannot leak trackers.
+_loop_tracker_sessions: dict[str, Any] = {}
+_MAX_LOOP_TRACKER_SESSIONS = 64
+_LOOP_TRACKER_LOCK = threading.Lock()
+
 
 def _count_search_hits(payload: dict[str, Any]) -> int:
     """Hit count for a `search` payload (items pre-view, matches post-view)."""
@@ -5540,6 +5547,41 @@ def _sibling_review_enabled() -> bool:
     return os.environ.get("ATELIER_SIBLING_REVIEW", "").strip().lower() not in ("0", "false", "no", "off")
 
 
+def _loop_review_enabled() -> bool:
+    """Whether the spiral nudge runs (operator off-switch, default on)."""
+    return os.environ.get("ATELIER_LOOP_REVIEW", "").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _loop_nudge_for_call(name: str, args: dict[str, Any]) -> str | None:
+    """Record this tool call against its per-session identical-call counter and
+    return a one-line spiral nudge once the same call repeats past threshold.
+
+    The host loop_detection capability runs in Atelier's own runtime but not at
+    this MCP boundary; this is the narrow, false-positive-free signal that can.
+    Fail-open: any error returns None so a tool call is never broken by it.
+    """
+    from atelier.core.capabilities.tool_supervision.loop_review import (
+        SessionLoopTracker,
+        call_signature,
+        repeat_nudge,
+    )
+
+    if call_signature(name, args) is None:
+        return None
+    session_id = _get_claude_session_id() or "_global"
+    with _LOOP_TRACKER_LOCK:
+        tracker = _loop_tracker_sessions.get(session_id)
+        if tracker is None:
+            tracker = SessionLoopTracker()
+            _loop_tracker_sessions[session_id] = tracker
+            if len(_loop_tracker_sessions) > _MAX_LOOP_TRACKER_SESSIONS:
+                for stale in list(_loop_tracker_sessions)[: len(_loop_tracker_sessions) - _MAX_LOOP_TRACKER_SESSIONS]:
+                    if stale != session_id:
+                        _loop_tracker_sessions.pop(stale, None)
+        count = tracker.record(name, args)
+    return repeat_nudge(name, count)
+
+
 def _attach_contract_literal_review(
     result: dict[str, Any],
     edits: list[dict[str, Any]],
@@ -9432,6 +9474,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         # override for the lifetime of this request only; absent -> unchanged.
         _prior_project = _set_request_project(_extract_request_project(params, args if isinstance(args, dict) else {}))
         rendered_text: str | None = None
+        _loop_note: str | None = None
         _call_duration_ms: int = 0
         try:
             if remote_routed:
@@ -9492,6 +9535,18 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 _args = args if isinstance(args, dict) else {}
                 rendered_text = render_tool_result_text(name, result)
 
+                # Spiral nudge: surface a soft note when the agent repeats an
+                # identical tool call. loop_detection runs in Atelier's own
+                # runtime but not at this MCP boundary; this is the narrow,
+                # false-positive-free signal that can. Fail-open; never blocks.
+                if _loop_review_enabled():
+                    with contextlib.suppress(Exception):
+                        _loop_note = _loop_nudge_for_call(name, _args)
+                        if _loop_note and isinstance(result, dict):
+                            # Carry the note as a field for JSON consumers; the
+                            # response_text below appends it for the rendered view.
+                            result.setdefault("loop_note", _loop_note)
+
                 # Per-call savings accounting (read baseline de-dup + deferred
                 # code-intel credit). Runs BEFORE budget recording so a zeroed
                 # read saving flows into both the recorder and the `saved` field.
@@ -9537,6 +9592,12 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 response_text = result
             else:
                 response_text = json.dumps(result, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+            # Spiral nudge: append once to the assembled body so it survives
+            # whichever render path produced response_text (rendered text, raw
+            # string, or JSON). Soft signal -- never replaces the result.
+            if _loop_note and _loop_note not in response_text:
+                response_text = f"{response_text}\n{_loop_note}"
 
             # Only pay the full-payload UTF-8 encode when a telemetry sink will
             # consume the byte count; otherwise approximate with the O(1) char len.
