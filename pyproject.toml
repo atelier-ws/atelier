@@ -32,7 +32,6 @@ dependencies = [
     "pyyaml>=6.0",
     "rich>=13.7",
     "prompt-toolkit>=3.0",
-    "litellm>=1.83.14",
     "tiktoken>=0.9",
     "blake3>=0.4.1",
     "tree-sitter>=0.23",
@@ -77,6 +76,7 @@ parsers = [
 ]
 rename = ["rope>=0.23"]
 ortools = ["ortools>=9.10"]
+litellm = ["litellm>=1.83.14"]
 langfuse = ["langfuse>=3"]
 dev = [
     "pytest>=8.0",

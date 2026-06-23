@@ -406,7 +406,6 @@ dependencies = [
     { name = "diff-match-patch" },
     { name = "fastapi" },
     { name = "gitpython" },
-    { name = "litellm" },
     { name = "markdown-it-py" },
     { name = "markdownify" },
     { name = "opentelemetry-api", version = "1.30.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-7-atelier-memory-server'" },
@@ -449,6 +448,9 @@ dev = [
 ]
 langfuse = [
     { name = "langfuse" },
+]
+litellm = [
+    { name = "litellm" },
 ]
 mcp = [
     { name = "mcp", version = "1.16.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and extra == 'extra-7-atelier-memory-server') or (extra == 'extra-7-atelier-langfuse' and extra == 'extra-7-atelier-memory-server')" },
@@ -509,7 +511,7 @@ requires-dist = [
     { name = "langfuse", marker = "extra == 'langfuse'", specifier = ">=3" },
     { name = "letta", marker = "extra == 'memory-server'", specifier = ">=0.16.7" },
     { name = "letta-client", marker = "extra == 'memory'", specifier = ">=1.7.12" },
-    { name = "litellm", specifier = ">=1.83.14" },
+    { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.83.14" },
     { name = "markdown-it-py", specifier = ">=3.0" },
     { name = "markdownify", specifier = ">=1.2.2" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
@@ -548,7 +550,7 @@ requires-dist = [
     { name = "yarl", specifier = "==1.24.2" },
     { name = "zipp", specifier = "==4.1.0" },
 ]
-provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "postgres", "vector", "parsers", "rename", "ortools", "langfuse", "dev"]
+provides-extras = ["mcp", "memory", "memory-server", "smart", "cloud", "postgres", "vector", "parsers", "rename", "ortools", "litellm", "langfuse", "dev"]
 
 [package.metadata.requires-dev]
 dev = [

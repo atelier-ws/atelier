@@ -4,6 +4,10 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import pytest
+
+litellm = pytest.importorskip("litellm", reason="atelier[litellm] not installed")
+
 from atelier.gateway.cli.events import AssistantMessage, ToolFinished
 from atelier.gateway.cli.runtime import InteractiveRuntime, _dispatch_tool, _get_litellm_tools
 
