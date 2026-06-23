@@ -400,7 +400,7 @@ def _skipped_oversized_footer(skipped: list[str]) -> str:
     overflow = len(skipped) - len(shown)
     if overflow > 0:
         listed += f", and {overflow} more"
-    return f"[{len(skipped)} file(s) skipped (over {cap_mb:g}MB cap): {listed}]"
+    return f"[{len(skipped)} skipped >{cap_mb:g}MB: {listed}]"
 
 
 def _line_window(lines: list[str], line_no: int, before: int, after: int) -> tuple[int, int, list[str]]:
@@ -1135,16 +1135,10 @@ def search_workspace(
     if output_mode == "file_paths_with_match_count":
         # Aggregate into a single text block — one line per hit, suppress zeros.
         agg_parts: list[str] = []
-        agg_parts.append(
-            f"# grep — output_mode=file_paths_with_match_count"
-            f" ({mc_hit_count} files with matches, {mc_zero_count} files with no matches)"
-        )
+        agg_parts.append(f"# grep ({mc_hit_count} files)")
         if mc_hit_lines:
             agg_parts.append("")
             agg_parts.extend(sorted(mc_hit_lines, key=lambda line: -int(line.rsplit("\t", 1)[-1])))
-        if mc_zero_count > 0:
-            agg_parts.append("")
-            agg_parts.append(f"... and {mc_zero_count} file(s) with no matches")
         text = "\n".join(agg_parts)
         total_chars = len(text)
         blocks.append({"type": "text", "text": text})
@@ -1153,13 +1147,13 @@ def search_workspace(
         # Aggregate paths into a single text block — one path per line.
         # Capped: an unbounded path dump (hundreds of files) permanently bloats
         # the agent context; the caller can narrow path or globs to page through.
-        agg_parts = [f"# grep — output_mode=file_paths_only ({len(fp_paths)} files)"]
+        agg_parts = [f"# grep ({len(fp_paths)} files)"]
         if fp_paths:
             agg_parts.append("")
             agg_parts.extend(fp_paths[:_FILE_PATHS_ONLY_CAP])
             overflow = len(fp_paths) - _FILE_PATHS_ONLY_CAP
             if overflow > 0:
-                agg_parts.append(f"... and {overflow} more file(s) — narrow path or file_glob_patterns to see them")
+                agg_parts.append(f"... and {overflow} more")
         text = "\n".join(agg_parts)
         total_chars = len(text)
         blocks.append({"type": "text", "text": text})

@@ -201,7 +201,13 @@ class AtelierRuntimeCore:
             "bootstrap": {
                 "status": "warm" if bootstrap_context else bootstrap_state,
                 "repo_id": bootstrap_repo_id,
-                "blocks": bootstrap_blocks,
+                # Lightweight metadata only. The repo-map markdown is already
+                # inlined into the model-facing `context` string above, so the
+                # structured echo must NOT repeat any rendered block text
+                # (`value`) — that would ship the same markdown twice.
+                "blocks": [
+                    {key: value for key, value in block.items() if key != "value"} for block in bootstrap_blocks
+                ],
             },
         }
         if not include_telemetry:

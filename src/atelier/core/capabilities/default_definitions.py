@@ -432,7 +432,17 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
             body=(
                 "You are operating inside Atelier's owned execution runtime. Keep this system prompt stable "
                 "across every phase so provider prompt caches stay warm. Treat the current phase prompt as "
-                "the only active contract. Preserve first-hand evidence. Do not broaden the task."
+                "the only active contract. Preserve first-hand evidence. Do not broaden the task.\n"
+                "Read mechanics, shared across phases: compact and outline reads are projections, not literal "
+                "source; if you need literal body text, line-sensitive context, or exact snippets, reread with "
+                "expand=true or an exact range. Capture include_meta=true when a later edit will target compact "
+                "text so the projection metadata and mapping survive the handoff; compact projection edits are "
+                "only valid for exact spans carried by that mapping, and if a projection edit returns retry_with, "
+                "follow that exact reread instead of approximating transformed spans.\n"
+                "Confirmation policy, shared across phases: proceed without confirmation only for local, reversible "
+                "reads, edits, and tests; before destructive, hard-to-reverse, shared-state, or external "
+                "side-effect actions, get user confirmation unless durable repo instructions already authorize "
+                "that exact class of action."
             ),
         ),
         "owned-explore-phase": PromptDefinition(
@@ -440,12 +450,9 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
             body=(
                 "=== PIVOT: YOU ARE NOW IN THE EXPLORE PHASE ===\n"
                 "Read only. Do not plan. Do not edit. Use prior context first, then ask targeted questions "
-                "of the code only where facts are missing. Prefer compact or outline reads for discovery; if "
-                "a projection is transformed and you need literal body text, reread with expand=true or an "
-                "exact range. If a later edit will target compact text, capture include_meta=true so the "
-                "projection metadata and mapping survive the handoff. Do not re-read the same file through "
-                "the same tool. Output only the facts, constraints, unknowns, and proving checks needed "
-                "for this task."
+                "of the code only where facts are missing. Prefer compact or outline reads for discovery. Do "
+                "not re-read the same file through the same tool. Output only the facts, constraints, "
+                "unknowns, and proving checks needed for this task."
             ),
         ),
         "owned-plan-phase": PromptDefinition(
@@ -460,10 +467,7 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
                 "later step. Use concrete verbs (add/replace/extract/delete/rename), not vague ones "
                 "(update/handle/improve), and drop anything the task did not ask for. Reread once and fix "
                 "ungrounded references, bad ordering, bundled steps, and a Files list that does not match "
-                "the steps. Treat compact and outline reads as projections; if a plan step depends on "
-                "literal body text, line-sensitive context, or exact snippets, reread with expand=true or "
-                "an exact range before naming the change. If you plan a compact projection edit, include the "
-                "expected retry_with exact-reread fallback instead of assuming transformed spans are editable."
+                "the steps."
             ),
         ),
         "owned-critique-phase": PromptDefinition(
@@ -494,12 +498,7 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
                 "=== PIVOT: YOU ARE NOW IN THE EXECUTE PHASE ===\n"
                 "Execute the approved plan sequentially. Read exact content before editing. Change only files "
                 "named by the plan unless direct evidence proves the plan missed a required target. After each "
-                "significant change, run the nearest useful check. Proceed without confirmation only for "
-                "local, reversible reads, edits, and tests; before destructive, hard-to-reverse, shared-state, "
-                "or external side-effect actions, get user confirmation unless durable repo instructions already "
-                "authorize that exact class of action. Compact projection edits are only valid for exact spans: "
-                "carry projection_mapping from include_meta=true reads, and if a projection edit returns "
-                "retry_with, follow that exact reread instead of guessing. Stop after self-verification."
+                "significant change, run the nearest useful check. Stop after self-verification."
             ),
         ),
         "owned-review-phase": PromptDefinition(
@@ -507,11 +506,9 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
             body=(
                 "=== PIVOT: YOU ARE NOW IN THE REVIEW PHASE ===\n"
                 "Do not edit. Do not trust the implementer's summary. Inspect the filesystem and run direct "
-                "checks. Treat compact and outline reads as projections; if the verdict depends on literal "
-                "body text or exact snippets, reread with expand=true or an exact range. Decide whether every "
-                "requested deliverable is satisfied. Projection edit failures should surface retry_with "
-                "guidance rather than silent approximation. If evidence is missing or ambiguous, use NEEDS_FIX. "
-                "End with exactly one JSON verdict block with keys verdict, checklist, and missing."
+                "checks. Decide whether every requested deliverable is satisfied. If evidence is missing or "
+                "ambiguous, use NEEDS_FIX. End with exactly one JSON verdict block with keys verdict, "
+                "checklist, and missing."
             ),
         ),
         "owned-fix-phase": PromptDefinition(
@@ -519,10 +516,7 @@ def _prompt_definitions() -> dict[str, PromptDefinition]:
             body=(
                 "=== PIVOT: YOU ARE NOW IN THE FIX PHASE ===\n"
                 "The review evidence is the punch list. Fix only cited gaps. Do not restart from scratch unless "
-                "the approach is proven wrong. Proceed without confirmation only for local, reversible reads, "
-                "edits, and tests; before destructive, hard-to-reverse, shared-state, or external side-effect "
-                "actions, get user confirmation unless durable repo instructions already authorize that exact "
-                "class of action. Rerun the checks tied to each gap, then stop for review."
+                "the approach is proven wrong. Rerun the checks tied to each gap, then stop for review."
             ),
         ),
     }

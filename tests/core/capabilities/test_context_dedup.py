@@ -103,7 +103,7 @@ def test_delta_first_read_emits_full_then_diff_on_change() -> None:
     out = d.delta_for(session_id="s", resource="r", content=_FILE_V2, epoch=0, force=False)
     assert out is not None
     delta, saved = out
-    assert "atelier delta" in delta
+    assert "[delta]" in delta
     assert "+line 200 EDITED" in delta
     assert saved > 0
     assert len(delta) < len(_FILE_V2) // 2

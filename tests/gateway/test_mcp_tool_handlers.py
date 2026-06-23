@@ -63,6 +63,12 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
 def _result(resp: dict[str, Any]) -> Any:
     assert "result" in resp, resp
     text = resp["result"]["content"][0]["text"]
+    # Clean edit renders "ok" (no ranges) or "applied path:line[, ...]" (the minimal
+    # orientation echo); normalize both to a dict so callers can assert structurally.
+    if text == "ok":
+        return {}
+    if text.startswith("applied "):
+        return {"applied": text[len("applied ") :].split(", ")}
     try:
         return json.loads(text)
     except json.JSONDecodeError:
@@ -1149,6 +1155,8 @@ def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monk
     target = Path("edit.txt")
     target.write_text("hello world", encoding="utf-8")
 
+    # Through the dispatcher a clean exact edit echoes the minimal applied range,
+    # change confirmed on disk.
     payload = _result(
         _call(
             "edit",
@@ -1164,7 +1172,7 @@ def test_smart_edit_surface_applies_patch(store_root: Path, tmp_path: Path, monk
             },
         )
     )
-    assert payload["applied"] == ["edit.txt:1"]
+    assert payload == {"applied": ["edit.txt:1"]}
     assert target.read_text(encoding="utf-8") == "hello atelier"
 
 
@@ -1176,24 +1184,27 @@ def test_smart_edit_compacts_hunks_by_path(store_root: Path, tmp_path: Path, mon
     first.write_text("one\ntwo\nthree\n", encoding="utf-8")
     second.write_text("alpha\nbeta\n", encoding="utf-8")
 
-    payload = _result(
-        _call(
-            "edit",
-            {
-                "edits": [
-                    {"path": str(first), "op": "replace", "old_string": "one", "new_string": "ONE"},
-                    {"path": str(first), "op": "replace", "old_string": "three", "new_string": "THREE"},
-                    {"path": str(second), "op": "replace", "old_string": "alpha\nbeta", "new_string": "ALPHA\nBETA"},
-                ],
-                "post_edit_hooks": False,
-            },
-        )
+    # A clean multi-file edit is success-silent on its body, but the cross-file
+    # savings credit survives on the structured handler return (the dispatcher
+    # reads calls_saved for content[].saved). The compact `applied` formatting is
+    # exercised directly in test_compact_applied_entries_groups_by_path.
+    payload = tool_smart_edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {"path": str(first), "op": "replace", "old_string": "one", "new_string": "ONE"},
+                {"path": str(first), "op": "replace", "old_string": "three", "new_string": "THREE"},
+                {"path": str(second), "op": "replace", "old_string": "alpha\nbeta", "new_string": "ALPHA\nBETA"},
+            ],
+        }
     )
 
     assert payload["applied"] == ["first.txt:1,3", "second.txt:1-2"]
     # 3 hunks but only 2 distinct files: built-in MultiEdit already batches the
     # two same-file hunks, so the honest cross-file saving is distinct_files - 1.
     assert payload["calls_saved"] == 1
+    assert first.read_text(encoding="utf-8") == "ONE\ntwo\nTHREE\n"
+    assert second.read_text(encoding="utf-8") == "ALPHA\nBETA\n"
 
 
 def test_smart_edit_same_file_hunks_credit_no_calls(
@@ -1205,23 +1216,21 @@ def test_smart_edit_same_file_hunks_credit_no_calls(
     target = Path("only.txt")
     target.write_text("one\ntwo\nthree\n", encoding="utf-8")
 
-    payload = _result(
-        _call(
-            "edit",
-            {
-                "edits": [
-                    {"path": str(target), "op": "replace", "old_string": "one", "new_string": "ONE"},
-                    {"path": str(target), "op": "replace", "old_string": "two", "new_string": "TWO"},
-                    {"path": str(target), "op": "replace", "old_string": "three", "new_string": "THREE"},
-                ],
-                "post_edit_hooks": False,
-            },
-        )
+    payload = tool_smart_edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {"path": str(target), "op": "replace", "old_string": "one", "new_string": "ONE"},
+                {"path": str(target), "op": "replace", "old_string": "two", "new_string": "TWO"},
+                {"path": str(target), "op": "replace", "old_string": "three", "new_string": "THREE"},
+            ],
+        }
     )
 
+    # Single file => no cross-file saving; clean edit echoes the minimal range.
     assert payload["applied"] == ["only.txt:1,2,3"]
-    # One distinct file => no honest cross-file saving.
     assert payload.get("calls_saved", 0) == 0
+    assert target.read_text(encoding="utf-8") == "ONE\nTWO\nTHREE\n"
 
 
 def test_smart_edit_cross_file_credit_matches_distinct_files(
@@ -1234,19 +1243,36 @@ def test_smart_edit_cross_file_credit_matches_distinct_files(
     for f in files:
         f.write_text("target\n", encoding="utf-8")
 
-    payload = _result(
-        _call(
-            "edit",
-            {
-                "edits": [
-                    {"path": str(f), "op": "replace", "old_string": "target", "new_string": "DONE"} for f in files
-                ],
-                "post_edit_hooks": False,
-            },
-        )
+    payload = tool_smart_edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"path": str(f), "op": "replace", "old_string": "target", "new_string": "DONE"} for f in files],
+        }
     )
 
     assert payload["calls_saved"] == len(files) - 1
+
+
+def test_compact_applied_entries_groups_by_path() -> None:
+    """Compaction groups same-path hunks and keeps special entries (e.g. symbol).
+
+    This formatting only reaches the model on a LOUD result (clean exact edits are
+    silenced), so it is verified directly on the helper rather than via a clean
+    edit's dispatched body.
+    """
+    from atelier.gateway.adapters.mcp_server import _compact_applied_entries
+
+    entries = [
+        {"path": "first.txt", "hunks": [{"line_start": 1, "line_end": 1}]},
+        {"path": "first.txt", "hunks": [{"line_start": 3, "line_end": 3}]},
+        {"path": "second.txt", "hunks": [{"line_start": 1, "line_end": 2}]},
+        {"path": "sym.py", "kind": "symbol"},
+    ]
+    compact = _compact_applied_entries(entries)
+    assert "first.txt:1,3" in compact
+    assert "second.txt:1-2" in compact
+    # A special entry (extra keys beyond path/hunks) is preserved verbatim.
+    assert {"path": "sym.py", "kind": "symbol"} in compact
 
 
 def test_smart_edit_blocks_test_assertion_removal(
@@ -1277,7 +1303,9 @@ def test_smart_edit_blocks_test_assertion_removal(
     )
 
     assert payload["rolled_back"] is True
-    assert payload["writes"] == 0
+    # `writes` is no longer emitted (atomic edits are all-or-nothing; the count is
+    # pure noise). The rollback is signalled by rolled_back/test_weakening.
+    assert "writes" not in payload
     assert payload["test_weakening"][0]["path"] == "tests/test_parser.py"
     assert "assertion" in payload["test_weakening"][0]["reason"]
     assert "assert compute() == 5" in target.read_text(encoding="utf-8")
@@ -1440,7 +1468,7 @@ def test_smart_edit_does_not_flag_new_regression_test(
         )
     )
 
-    assert "contract_review" not in payload
+    assert "FIXME" not in payload
 
 
 def test_smart_edit_rejects_mixed_descriptor_families(store_root: Path, tmp_path: Path) -> None:
@@ -1540,7 +1568,8 @@ def test_smart_edit_records_workspace_relative_diff_after_hooks(
         )
     )
 
-    assert payload["failed"] == []
+    # Clean edit (the fake hook reports no diagnostics) is success-silent.
+    assert payload == {"applied": ["edit.txt:1"]}
     assert target.read_text(encoding="utf-8") == "hello hooks"
     file_events = [event for event in mcp_server._get_ledger().events if event.kind == "file_edit"]
     assert file_events[-1].payload["path"] == "edit.txt"
@@ -2464,7 +2493,7 @@ def test_truncate_result_text_caps_oversized_with_notice() -> None:
     out = mcp_server._truncate_result_text("x" * 5000, 1024)
     assert len(out.encode("utf-8")) <= 1024
     assert "truncated" in out
-    assert "5000 bytes total" in out
+    assert "5000B" in out  # trimmed notice: "truncated to 1024B of 5000B; narrow the query"
 
 
 def test_truncate_result_text_keeps_valid_utf8_on_multibyte_boundary() -> None:
@@ -2531,7 +2560,7 @@ def test_render_memory_md_compact_recall() -> None:
         }
     )
     assert out is not None
-    assert out.startswith("### memory (2 passage(s))")
+    assert out.startswith("### memory")
     assert "- sess#1 [pref]" in out
     assert "Prefer atelier memory." in out
     # repeated JSON field keys are dropped

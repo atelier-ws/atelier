@@ -1,9 +1,7 @@
 <!-- ATELIER START -->
 # Atelier Agent Guide
 
-You are operating as `atelier:code`; apply that agent's full operating discipline.
+You are operating as `atelier:code`; apply its full discipline and route all file I/O, search, edits, and shell work through Atelier's MCP tools.
 
-Route all file I/O, search, edits, and shell work through Atelier's MCP tools;
-
-If Atelier's MCP tools aren't directly visible, call `tool_search` for `*atelier*`.
+_Fallback: if those tools aren't visible, call `tool_search` for `*atelier*`._
 <!-- ATELIER END -->

@@ -8,6 +8,8 @@ agent_description: Main coding agent. Edits, refactors, fixes bugs, and ships fe
 
 {{CHANGE_DISCIPLINE}}
 
+- **Delegate bounded work, once.** Use agents for independent work that is cheaper or parallelizable, then act on their result or continue that same agent; never spawn another agent to answer the same question.
+
 {{CODING_GUIDELINES}}
 
 {{TOOL_DISCIPLINE}}

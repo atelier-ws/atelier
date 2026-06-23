@@ -281,7 +281,9 @@ def test_mcp_edit_rich_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
     result = tool_smart_edit({"edits": [{"file_path": "a.txt", "old_string": "hello", "new_string": "hi"}]})
 
-    assert result["failed"] == []
+    # Clean exact edit echoes the minimal applied range; change confirmed on disk.
+    assert "failed" not in result
+    assert result.get("applied") == ["a.txt:1"]
     assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "hi\n"
 
 
@@ -391,11 +393,14 @@ def test_tool_code_search_can_attach_compact_rendered_block(tmp_path: Path, monk
         render_compact=True,
     )
 
-    assert "rendered" in payload
+    # Rendered markdown travels on the response-body channel only (the
+    # thread-local), never duplicated into the JSON result.
+    assert "rendered" not in payload
+    rendered = mcp_server._tool_call_rendered_text.value
     # Grouped by file: path header once, then an indented per-hit line.
-    assert "- src/orders.py" in payload["rendered"]
-    assert "  - 1 — orders.OrderService [class]" in payload["rendered"]
-    assert "class OrderService" not in payload["rendered"]
+    assert "- src/orders.py" in rendered
+    assert "  - 1 — orders.OrderService [class]" in rendered
+    assert "class OrderService" not in rendered
 
 
 def test_tool_code_schema_exposes_explore_operation() -> None:
@@ -721,11 +726,12 @@ def test_tool_code_callers_rendered_shape_excludes_source(tmp_path: Path, monkey
         render_compact=True,
     )
 
-    assert "rendered" in payload
+    assert "rendered" not in payload
+    rendered = mcp_server._tool_call_rendered_text.value
     # Grouped by file: path header once, then an indented per-hit line.
-    assert "- src/checkout.py" in payload["rendered"]
-    assert "  - 24 — checkout.place_order" in payload["rendered"]
-    assert "def place_order" not in payload["rendered"]
+    assert "- src/checkout.py" in rendered
+    assert "  - 24 — checkout.place_order" in rendered
+    assert "def place_order" not in rendered
 
 
 def test_tool_code_symbol_rendered_shape_includes_numbered_body(
@@ -760,14 +766,15 @@ def test_tool_code_symbol_rendered_shape_includes_numbered_body(
         render_compact=True,
     )
 
-    assert "rendered" in payload
-    assert "- OrderService.calculate_total [method]" in payload["rendered"]
-    assert "- location: src/orders.py:12-20" in payload["rendered"]
+    assert "rendered" not in payload
+    rendered = mcp_server._tool_call_rendered_text.value
+    assert "- OrderService.calculate_total [method]" in rendered
+    assert "- location: src/orders.py:12-20" in rendered
     # Node now returns the symbol body inline, line-numbered from its start line,
     # so an agent can cite file:line and edit without a follow-up read.
-    assert "- source:" in payload["rendered"]
-    assert "12\tdef calculate_total(self, items):" in payload["rendered"]
-    assert "13\t    total = sum(items)" in payload["rendered"]
+    assert "- source:" in rendered
+    assert "12\tdef calculate_total(self, items):" in rendered
+    assert "13\t    total = sum(items)" in rendered
 
 
 def test_tool_code_index_rendered_shape_is_compact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -790,8 +797,9 @@ def test_tool_code_index_rendered_shape_is_compact(tmp_path: Path, monkeypatch: 
 
     payload = mcp_server._op_index(repo_root=str(tmp_path), budget_tokens=220, render_compact=True)
 
-    assert "rendered" in payload
-    assert "- counts: files=3, symbols=8, imports=2" in payload["rendered"]
+    assert "rendered" not in payload
+    rendered = mcp_server._tool_call_rendered_text.value
+    assert "- counts: files=3, symbols=8, imports=2" in rendered
     fake_engine.tool_index.assert_called_once_with(
         include_globs=None, exclude_globs=None, force=False, budget_tokens=220
     )
@@ -822,9 +830,10 @@ def test_tool_code_cache_status_rendered_shape_is_compact(tmp_path: Path, monkey
         render_compact=True,
     )
 
-    assert "rendered" in payload
-    assert "- entries: 4" in payload["rendered"]
-    assert "- tools: code.search=2, code.symbol=2" in payload["rendered"]
+    assert "rendered" not in payload
+    rendered = mcp_server._tool_call_rendered_text.value
+    assert "- entries: 4" in rendered
+    assert "- tools: code.search=2, code.symbol=2" in rendered
     fake_engine.tool_cache_status.assert_called_once_with(budget_tokens=220)
 
 

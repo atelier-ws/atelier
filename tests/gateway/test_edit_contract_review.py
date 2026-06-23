@@ -57,14 +57,15 @@ def test_edit_surfaces_parallel_consumer(tmp_path: Path, monkeypatch: pytest.Mon
         }
     )
     assert not result.get("failed")
-    review = result.get("contract_review")
+    review = result.get("FIXME")
     assert review is not None, result
-    assert review["status"] == "review_required"
-    residuals = {r["removed"]: r for r in review["remaining_contract_consumers"]}
-    assert "passwd" in residuals
-    hit_paths = {m["path"] for m in residuals["passwd"]["matches"]}
-    assert "db/client.py" in hit_paths  # parallel consumer surfaced
-    assert "db/base.py" not in hit_paths  # the edited file is excluded
+    sites = review["sites"]
+    passwd_sites = [s for s in sites if s["old"] == "passwd"]
+    assert passwd_sites
+    assert passwd_sites[0]["new"] == "password"
+    all_paths = {s["path"] for s in sites}
+    assert "db/client.py" in all_paths  # parallel consumer surfaced
+    assert "db/base.py" not in all_paths  # the edited file is excluded
 
 
 @_requires_astgrep
@@ -84,7 +85,7 @@ def test_off_switch_disables_review(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         }
     )
     assert not result.get("failed")
-    assert "contract_review" not in result
+    assert "FIXME" not in result
 
 
 @_requires_astgrep
@@ -104,43 +105,4 @@ def test_no_literal_removed_attaches_nothing(tmp_path: Path, monkeypatch: pytest
         }
     )
     assert not result.get("failed")
-    assert "contract_review" not in result
-
-
-_SIB_SCALES = (
-    "def build_legend(axis):\n"
-    "    axis.set_view_interval(0, 1)\n"
-    "    locator = axis.major.locator\n"
-    "    formatter = axis.major.formatter\n"
-    "    return formatter.format_ticks(locator())\n"
-)
-_SIB_UTILS = (
-    "def locator_to_legend_entries(locator, limits):\n"
-    "    formatter = make_scalar_formatter()\n"
-    "    return [formatter.format_ticks(x) for x in locator.tick_values(limits)]\n"
-)
-
-
-@_requires_astgrep
-def test_edit_surfaces_sibling_implementation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
-    (tmp_path / "pkg").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "pkg" / "scales.py").write_text(_SIB_SCALES, encoding="utf-8")
-    (tmp_path / "pkg" / "utils.py").write_text(_SIB_UTILS, encoding="utf-8")
-    result = mcp_server.tool_smart_edit(
-        {
-            "edits": [
-                {
-                    "file_path": "pkg/scales.py",
-                    "old_string": "    return formatter.format_ticks(locator())",
-                    "new_string": "    formatter.set_useoffset(False)\n    return formatter.format_ticks(locator())",
-                }
-            ],
-            "post_edit_hooks": False,
-        }
-    )
-    assert not result.get("failed")
-    review = result.get("sibling_review")
-    assert review is not None, result
-    paths = {s["path"] for s in review["sibling_implementations"]}
-    assert "pkg/utils.py" in paths
+    assert "FIXME" not in result

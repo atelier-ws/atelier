@@ -3,8 +3,20 @@ name: orchestrate
 description: Launch a single structured run by choosing subagent versus isolated execution and compiling it into the right runtime surface.
 ---
 
-> **Already-active guard:** If you can read this, `atelier:orchestrate` is already loaded — do NOT call `Skill("atelier:orchestrate")` again. The Skill tool says "do not invoke a skill that is already running" — seeing this text IS that signal.
+> **Active** — do not call `Skill("atelier:orchestrate")` again.
 
+# Orchestrate
+
+This skill runs a **single structured multi-step task** end-to-end — think of it as "Claude with a plan": it chooses the right execution surface (a background task, a durable workflow, or a direct subagent), runs the steps, and hands back a result or a `run_id` you can track.
+
+When invoked, tell the user: "I'll coordinate this as a single structured run. Let me ask a few things to set it up correctly." Then gather inputs via `AskUserQuestion`.
+
+## Operating loop
+
+1. Ground the request: confirm the goal, expected deliverable, and acceptance signal.
+2. Ask whether the launch mode should be **`subagent`** or **`isolated`** if the user has not already decided.
+3. Choose the narrowest execution surface that matches the ask:
+   - use the **`workflow`** MCP tool for durable, prompt-driven workflow runs
    - use a direct child subagent/background task when the task does not need durable workflow state
 4. If you use `workflow`, compile the smallest valid workflow spec and call `workflow` with `op="run"`.
 5. If the user wants an isolated/background run, prefer the host's background-task surface.

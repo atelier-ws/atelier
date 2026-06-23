@@ -25,6 +25,21 @@ from pathlib import Path
 from typing import Any, Protocol
 
 _QUOTED_LITERAL_RE = re.compile(r"'((?:\\.|[^'\\])*)'|\"((?:\\.|[^\"\\])*)\"|`((?:\\.|[^`\\])*)`")
+
+# Decorators whose removal silently strips attributes/methods callers may use, with
+# no call-graph edge to surface the breakage. ``functools.lru_cache``/``cache`` add
+# ``.cache_clear``/``.cache_info``/``.cache_parameters`` to the wrapped function;
+# removing the decorator makes every ``fn.cache_clear()`` elsewhere an AttributeError.
+# Generic stdlib contract -- not project-specific. Extend this map (e.g. cached_property)
+# as other attribute-providing decorators prove worth surfacing.
+_DECORATOR_PROVIDED_ATTRS: dict[str, tuple[str, ...]] = {
+    "lru_cache": ("cache_clear", "cache_info", "cache_parameters"),
+    "cache": ("cache_clear", "cache_info", "cache_parameters"),
+}
+# A cache decorator immediately above a (possibly async) def -- captures both.
+_CACHE_DECORATED_DEF_RE = re.compile(
+    r"@(?:\w+\.)*(?P<deco>" + "|".join(_DECORATOR_PROVIDED_ATTRS) + r")\b[^\n]*\n\s*(?:async\s+)?def\s+(?P<name>\w+)"
+)
 _NOISY_LITERALS = frozenset({"", "0", "1", "false", "none", "null", "true"})
 _QUOTES = ("'", '"', "`")
 _DELIMITERS = frozenset("[]{}():,=")
@@ -113,6 +128,83 @@ def literal_replacements(edits: list[dict[str, Any]], *, limit: int = 6) -> dict
 def removed_literals(edits: list[dict[str, Any]], *, limit: int = 6) -> list[str]:
     """Return quoted literals removed, rather than merely moved, by *edits*."""
     return list(literal_replacements(edits, limit=limit))
+
+
+def _removed_cache_decorated_symbols(edits: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    """(decorator, symbol) pairs whose cache decorator this edit removed.
+
+    Flags only a decorator present above ``def NAME`` in *old* and absent above the
+    same ``def NAME`` in *new* -- i.e. genuinely stripped, not merely relocated to a
+    new helper (the helper keeps the decorator, so its own name is never flagged).
+    """
+    out: list[tuple[str, str]] = []
+    for edit in edits:
+        old = edit.get("old_string")
+        new = edit.get("new_string")
+        if not isinstance(old, str) or not isinstance(new, str):
+            continue
+        for match in _CACHE_DECORATED_DEF_RE.finditer(old):
+            deco, name = match.group("deco"), match.group("name")
+            still = re.search(
+                r"@(?:\w+\.)*" + re.escape(deco) + r"\b[^\n]*\n\s*(?:async\s+)?def\s+" + re.escape(name) + r"\b",
+                new,
+            )
+            if not still and (deco, name) not in out:
+                out.append((deco, name))
+    return out
+
+
+def decorator_contract_impact(
+    edits: list[dict[str, Any]],
+    *,
+    engine: _TextSearcher | None,
+    touched_paths: list[str],
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    """Sites in untouched files that call a decorator-provided method this edit removed.
+
+    e.g. removing ``@lru_cache`` from ``get_resolver`` breaks ``get_resolver.cache_clear()``
+    in another file -- a semantic dependency invisible to literal matching. Deterministic
+    (decorator removal is textual; the method names are a fixed stdlib vocabulary) and
+    low-noise (fires only when the decorator is removed AND its method is used elsewhere).
+    """
+    pairs = _removed_cache_decorated_symbols(edits)
+    if not pairs or engine is None:
+        return []
+    touched = set(touched_paths)
+    sites: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for deco, name in pairs:
+        for attr in _DECORATOR_PROVIDED_ATTRS.get(deco, ()):
+            access = f"{name}.{attr}"
+            try:
+                hits = engine.search_text(access, path=".", limit=20, ignore_case=False)
+            except Exception:  # noqa: BLE001 -- evidence-only; never break the edit
+                hits = []
+            for hit in hits:
+                path = getattr(hit, "file_path", None)
+                line = getattr(hit, "line", None)
+                text = getattr(hit, "text", "") or ""
+                if not isinstance(path, str) or path in touched:
+                    continue
+                if access not in text:  # precise: the actual attribute access, not a name collision
+                    continue
+                key = (path, int(line) if isinstance(line, int) else -1)
+                if key in seen:
+                    continue
+                seen.add(key)
+                sites.append(
+                    {
+                        "path": path,
+                        "line": line,
+                        "old": f"@{deco} on {name}()",
+                        "new": f"{access} no longer exists",
+                        "snippet": text.strip()[:80],
+                    }
+                )
+                if len(sites) >= limit:
+                    return sites
+    return sites
 
 
 def _is_test_path(path: str) -> bool:
@@ -272,7 +364,7 @@ def contract_literal_impact(
     engine: _TextSearcher | None,
     repo_root: Path,
     touched_paths: list[str],
-    max_matches_per_literal: int = 4,
+    max_matches_per_literal: int = 2,
     search_limit: int = 30,
 ) -> dict[str, Any] | None:
     """Return remaining occurrences of literals removed by *edits*, in untouched files.
@@ -299,7 +391,7 @@ def contract_literal_impact(
     languages = _astgrep_languages(list(touched) + candidate_paths)
     astgrep_by_literal = _astgrep_detect(literals, repo_root, touched, languages=languages, limit=search_limit)
 
-    residuals: list[dict[str, Any]] = []
+    sites: list[dict[str, Any]] = []
     for literal in literals:
         astgrep_found = astgrep_by_literal.get(literal) if astgrep_by_literal is not None else None
         found = _combine_matches(astgrep_found, text_by_literal.get(literal) or [])
@@ -307,267 +399,27 @@ def contract_literal_impact(
             continue
         # Production consumers before tests, then stable by location.
         found.sort(key=lambda match: (_is_test_path(match[0]), match[0], match[1]))
-        rendered = [
-            {"path": path, "line": line, "snippet": snippet[:240]}
-            for path, line, snippet in found[:max_matches_per_literal]
-        ]
-        residuals.append({"removed": literal, "replacement": replacements[literal], "matches": rendered})
-    if not residuals:
+        for path, line, snippet in found[:max_matches_per_literal]:
+            sites.append(
+                {
+                    "path": path,
+                    "line": line,
+                    "old": literal,
+                    "new": replacements[literal],
+                    "snippet": snippet[:80],
+                }
+            )
+    if not sites:
         return None
     return {
-        "status": "review_required",
-        "reason": (
-            "This edit removed contract literals that still occur in other files. These are "
-            "parallel consumers (config keys, wire fields, adapters, tests) with no call-graph "
-            "link to the edited site -- inspect each before concluding the change is complete. "
-            "For a compatibility rename, prefer the new key and fall back to the legacy key."
-        ),
-        "remaining_contract_consumers": residuals,
-    }
-
-
-# --------------------------------------------------------------------------- #
-# Sibling-implementation discovery                                            #
-#                                                                             #
-# Some parallel implementations of one behavior share neither a call-graph    #
-# edge nor a quoted contract literal -- only a cluster of distinctive API     #
-# identifiers (e.g. two functions that both drive a matplotlib formatter:     #
-# ``formatter``/``locator``/``format_ticks``). When an edit changes such a    #
-# function, surface the other functions that reference the same *rare*        #
-# identifier cluster so the agent can apply the change there too. Rarity is    #
-# what makes this precise: an identifier in many files carries no signal and   #
-# is dropped; only identifiers shared by a handful of files count, and a       #
-# sibling must share several of them. No embedder required (the offline        #
-# hashing backend can't rank semantic siblings); this is pure co-occurrence.   #
-# --------------------------------------------------------------------------- #
-
-_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-_CONTEXT_LINES = 30
-
-# Identifiers too common to carry a sibling signal. Rarity (file-count) filtering
-# does the real work; this just avoids spending a search on tokens we'd discard.
-_COMMON_IDENTIFIERS = frozenset(
-    {
-        "async",
-        "await",
-        "break",
-        "class",
-        "const",
-        "continue",
-        "default",
-        "except",
-        "finally",
-        "function",
-        "global",
-        "import",
-        "lambda",
-        "nonlocal",
-        "raise",
-        "return",
-        "super",
-        "while",
-        "yield",
-        "false",
-        "none",
-        "null",
-        "true",
-        "undefined",
-        "this",
-        "self",
-        "cls",
-        "append",
-        "array",
-        "bool",
-        "bytes",
-        "count",
-        "data",
-        "dict",
-        "error",
-        "errors",
-        "extend",
-        "field",
-        "fields",
-        "float",
-        "format",
-        "index",
-        "input",
-        "items",
-        "keys",
-        "kwargs",
-        "list",
-        "name",
-        "names",
-        "number",
-        "object",
-        "options",
-        "output",
-        "params",
-        "print",
-        "range",
-        "result",
-        "results",
-        "source",
-        "start",
-        "string",
-        "target",
-        "tuple",
-        "type",
-        "value",
-        "values",
-        "config",
-        "content",
-        "context",
-        "method",
-        "module",
-        "update",
-    }
-)
-
-
-def _candidate_identifiers(text: str, *, limit: int) -> list[str]:
-    """Distinctive-looking identifiers from *text*, longest first (capped at *limit*).
-
-    Drops keywords/builtins, short tokens, and private/dunder names. Rarity
-    filtering downstream removes whatever common tokens slip through.
-    """
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for match in _IDENTIFIER_RE.finditer(text):
-        token = match.group(0)
-        if len(token) < 5 or token.startswith("_"):
-            continue
-        if token.lower() in _COMMON_IDENTIFIERS:
-            continue
-        if token in seen:
-            continue
-        seen.add(token)
-        ordered.append(token)
-    # Longer identifiers are more likely to be distinctive API names.
-    ordered.sort(key=lambda token: (-len(token), token))
-    return ordered[:limit]
-
-
-def _anchor_line(lines: list[str], new_string: str) -> int:
-    """Index of the first file line that contains a substantive line of *new_string*."""
-    for raw in new_string.splitlines():
-        needle = raw.strip()
-        if len(needle) >= 4:
-            for i, line in enumerate(lines):
-                if needle in line:
-                    return i
-    return -1
-
-
-def _edit_context_windows(edits: list[dict[str, Any]], repo_root: Path, touched: set[str]) -> list[str]:
-    """Post-edit source windows (the enclosing region of each code edit)."""
-    windows: list[str] = []
-    for edit in edits:
-        path = edit.get("file_path") or edit.get("path")
-        new = edit.get("new_string")
-        if not isinstance(path, str) or not isinstance(new, str):
-            continue
-        display = path.split("#", 1)[0]
-        if Path(display).suffix.lower() not in _EXT_TO_ASTGREP_LANG:
-            continue  # code files only
-        try:
-            content = (repo_root / display).read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        if len(content) > _MAX_FILE_BYTES:
-            continue
-        lines = content.splitlines()
-        anchor = _anchor_line(lines, new)
-        if anchor < 0:
-            continue
-        lo = max(0, anchor - _CONTEXT_LINES)
-        hi = min(len(lines), anchor + _CONTEXT_LINES)
-        windows.append("\n".join(lines[lo:hi]))
-    return windows
-
-
-def _files_referencing(engine: _TextSearcher, symbol: str, touched: set[str], *, limit: int) -> set[str]:
-    """Untouched code files that reference *symbol* as a whole word."""
-    out: set[str] = set()
-    word = re.compile(rf"\b{re.escape(symbol)}\b")
-    try:
-        hits = engine.search_text(symbol, limit=limit)
-    except Exception:  # noqa: BLE001
-        return out
-    for hit in hits:
-        path = getattr(hit, "file_path", None)
-        text = getattr(hit, "text", "") or ""
-        if not isinstance(path, str) or path in touched:
-            continue
-        if Path(path).suffix.lower() not in _EXT_TO_ASTGREP_LANG:
-            continue
-        if word.search(text):
-            out.add(path)
-    return out
-
-
-def sibling_symbol_impact(
-    edits: list[dict[str, Any]],
-    *,
-    engine: _TextSearcher | None,
-    repo_root: Path,
-    touched_paths: list[str],
-    max_candidates: int = 24,
-    max_files_per_symbol: int = 8,
-    min_shared: int = 3,
-    max_siblings: int = 3,
-    search_limit: int = 80,
-) -> dict[str, Any] | None:
-    """Return untouched functions that share a distinctive identifier cluster with an edit.
-
-    A candidate identifier counts only when it is *rare* (referenced in at most
-    ``max_files_per_symbol`` untouched files) and present somewhere other than the
-    edited file; a sibling file must share at least ``min_shared`` such rare
-    identifiers. Returns ``None`` when nothing qualifies. Needs no embedder.
-    """
-    if engine is None:
-        return None
-    touched = set(touched_paths)
-    windows = _edit_context_windows(edits, repo_root, touched)
-    if not windows:
-        return None
-    candidates: list[str] = []
-    for window in windows:
-        for token in _candidate_identifiers(window, limit=max_candidates):
-            if token not in candidates:
-                candidates.append(token)
-    candidates = candidates[:max_candidates]
-    if not candidates:
-        return None
-
-    shared_by_file: dict[str, list[str]] = {}
-    for symbol in candidates:
-        files = _files_referencing(engine, symbol, touched, limit=search_limit)
-        if not files or len(files) > max_files_per_symbol:
-            continue  # absent elsewhere, or too common to signal a sibling
-        for path in files:
-            shared_by_file.setdefault(path, []).append(symbol)
-
-    siblings = [(path, syms) for path, syms in shared_by_file.items() if len(syms) >= min_shared]
-    if not siblings:
-        return None
-    siblings.sort(key=lambda item: (_is_test_path(item[0]), -len(item[1]), item[0]))
-    rendered = [{"path": path, "shared_symbols": sorted(syms)[:8]} for path, syms in siblings[:max_siblings]]
-    return {
-        "status": "review_required",
-        "reason": (
-            "This edit changed a function that shares a distinctive cluster of API symbols "
-            "with the functions below -- likely parallel implementations of the same behavior, "
-            "with no call-graph or contract-literal link to the edited site. If your change is "
-            "a behavior the codebase applies in parallel, apply it there too (or confirm it "
-            "does not belong) before concluding."
-        ),
-        "sibling_implementations": rendered,
+        "reason": ("These sites still use the old form you just changed -- update each or say why not."),
+        "sites": sites,
     }
 
 
 __all__ = [
     "contract_literal_impact",
+    "decorator_contract_impact",
     "literal_replacements",
     "removed_literals",
-    "sibling_symbol_impact",
 ]

@@ -463,6 +463,7 @@ def _push_public_rollup(
     carry_usd: float = 0.0,
     carry_tokens: int = 0,
     source: str = "claude",
+    est_cost_usd: float = 0.0,
 ) -> bool:
     """Stdlib-only public rollup push — no atelier imports, always works."""
     import hashlib
@@ -476,7 +477,8 @@ def _push_public_rollup(
     turns = max(0, int(turn_count or 0))
     carry_s = max(0.0, float(carry_usd or 0))
     carry_t = max(0, int(carry_tokens or 0))
-    if saved <= 0 and tokens <= 0 and calls <= 0 and turns <= 0 and carry_s <= 0 and carry_t <= 0:
+    cost = max(0.0, float(est_cost_usd or 0))
+    if saved <= 0 and tokens <= 0 and calls <= 0 and turns <= 0 and carry_s <= 0 and carry_t <= 0 and cost <= 0:
         return False
 
     # Stable anonymous install identifier from auth.json
@@ -513,6 +515,7 @@ def _push_public_rollup(
         "carry_usd": round(carry_s, 6),
         "carry_tokens": carry_t,
         "turn_count": turns,
+        "est_cost_usd": round(cost, 6),
         "occurred_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
     try:
@@ -738,11 +741,16 @@ def _format_stats(
     calls_str = f"{calls} tool call{'s' if calls != 1 else ''}"
     turns_str = f"{turns} turn{'s' if turns != 1 else ''}" if turns > 0 else ""
     activity = " · ".join(p for p in (turns_str, calls_str) if p)
-    lines = [
-        activity,
-        f"tokens: {_fmt_tok(fresh_in)} input ({_fmt_tok(inp)} new + {_fmt_tok(cache_write)} cW) / {_fmt_tok(cache_read)} cR / {_fmt_tok(out)} out  ({_fmt_tok(total)} total)",
-        f"{cost_prefix}${cost:.4f}",
-    ]
+    # One dense line per metric. Cost is omitted when negligible (<$0.01) -- the
+    # exact sub-cent figure is noise. tokens stays a single line with the 4
+    # Anthropic billing categories (cW/cR weighted by their real $ prominence).
+    tokens_line = (
+        f"tokens: {_fmt_tok(fresh_in)} in ({_fmt_tok(inp)} new + {_fmt_tok(cache_write)} cW) · "
+        f"{_fmt_tok(cache_read)} cR · {_fmt_tok(out)} out · {_fmt_tok(total)} total"
+    )
+    lines = [activity, tokens_line]
+    if cost >= 0.01:
+        lines.append(f"{cost_prefix}${cost:.4f}")
 
     # Always show savings — even at $0 — so the stop output shape is stable
     # across sessions. No display-time clamps; each saving was priced at the
@@ -752,14 +760,15 @@ def _format_stats(
     tokens_saved = int(savings.get("tokens_saved", 0) or 0)
     calls_avoided = int(savings.get("calls_avoided", 0) or 0)
     routing_usd = float(savings.get("routing_usd", 0.0) or 0.0)
-    lines.append(f"savings: ${saved_usd:.4f} · {tokens_saved:,} tokens saved · {calls_avoided} calls avoided")
     carry_usd = float(savings.get("carry_usd", 0.0) or 0.0)
     carry_tokens = int(savings.get("carry_tokens", 0) or 0)
+    savings_line = f"savings: ${saved_usd:.4f} · {tokens_saved:,} tok · {calls_avoided} calls avoided"
     if carry_usd > 0:
-        carry_tokens_str = f" · {carry_tokens:,} tokens" if carry_tokens > 0 else ""
-        lines.append(f"context carry: ${carry_usd:.4f}{carry_tokens_str} (cache re-reads avoided on later turns)")
+        carry_tokens_str = f"/{carry_tokens:,} tok" if carry_tokens > 0 else ""
+        savings_line += f" · carry ${carry_usd:.4f}{carry_tokens_str}"
     if routing_usd > 0:
-        lines.append(f"routing savings: ${routing_usd:.4f}")
+        savings_line += f" · routing ${routing_usd:.4f}"
+    lines.append(savings_line)
 
     lines.append(f"top tools: {tools_str}")
 
@@ -843,6 +852,7 @@ def main() -> int:
         carry_tokens=int(_s.get("carry_tokens", 0) or 0),
         turn_count=int((stats or {}).get("turns", 0) or 0),
         source="claude",
+        est_cost_usd=float((stats or {}).get("est_cost_usd", 0.0) or 0.0),
     )
 
     # ── Write session cost + carry to savings.jsonl for historical 7d/30d spend tracking
