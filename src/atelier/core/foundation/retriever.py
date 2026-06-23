@@ -30,14 +30,9 @@ from functools import lru_cache
 from typing import TypeVar
 
 import tiktoken
-from datasketch.minhash import MinHash
-
-try:
-    from datasketch.lsh import MinHashLSH
-except ImportError:
-    MinHashLSH = None
 
 from atelier.core.capabilities.archival_recall.ranking import rank_archival_passages
+from atelier.core.foundation._minhash import MinHash
 from atelier.core.foundation.memory_models import ArchivalPassage, MemoryBlock
 from atelier.core.foundation.models import Playbook
 from atelier.core.foundation.renderer import render_block_for_agent
@@ -228,12 +223,8 @@ def deduplicate_by_playbook[T](
     if len(items) < 2:
         return list(items)
 
-    if MinHashLSH is None:
-        return list(items)
-
-    lsh = MinHashLSH(threshold=threshold, num_perm=_MINHASH_PERMUTATIONS)
     kept: list[T] = []
-    kept_tokens: dict[str, set[str]] = {}
+    kept_tokens: list[set[str]] = []
 
     for item in items:
         block = block_getter(item)
@@ -241,14 +232,9 @@ def deduplicate_by_playbook[T](
         if len(tokens) < _MIN_DEDUP_TOKENS:
             kept.append(item)
             continue
-        signature = _minhash(tokens)
-        matches = lsh.query(signature)
-        if any(_jaccard_tokens(tokens, kept_tokens[key]) >= threshold for key in matches):
+        if any(_jaccard_tokens(tokens, prior) >= threshold for prior in kept_tokens):
             continue
-
-        key = f"{len(kept)}:{block.id}"
-        lsh.insert(key, signature)
-        kept_tokens[key] = tokens
+        kept_tokens.append(tokens)
         kept.append(item)
 
     return kept

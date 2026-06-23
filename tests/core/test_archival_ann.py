@@ -56,18 +56,19 @@ def _passage(
 # --------------------------------------------------------------------------
 
 
-def test_candidate_ids_includes_true_neighbour_and_recent_tail() -> None:
+def test_candidate_ids_returns_none_for_brute_force() -> None:
+    # HNSW removed: candidate_ids always returns None (all passages scored exactly).
     passages = [_passage(i) for i in range(40)]
     idx = ArchivalAnnIndex()
     query = passages[3].embedding
     assert query is not None
     cand = idx.candidate_ids(query, passages, model_id="local:hashing", dim=_DIM, top_k=5)
-    assert cand is not None
-    # The query's own passage is recovered.
-    assert "p3" in cand
-    # Most-recent-N exact tail is always present (just-stored memory).
+    assert cand is None  # None = brute-force: every passage is in scope
+    # All passages are considered, so p3 and the newest tail are implicitly covered.
+    all_ids = {p.id for p in passages}
+    assert "p3" in all_ids
     newest = {p.id for p in sorted(passages, key=lambda p: (p.created_at, p.id), reverse=True)[:8]}
-    assert newest <= cand
+    assert newest <= all_ids
 
 
 def test_n5_model_id_mismatch_falls_back_to_brute_force() -> None:
@@ -111,36 +112,36 @@ def test_brute_force_fallback_when_hnsw_unavailable(monkeypatch: pytest.MonkeyPa
     assert idx.candidate_ids(query, passages, model_id="local:hashing", dim=_DIM, top_k=5) is None
 
 
-def test_new_passages_extend_graph_incrementally() -> None:
+def test_no_graph_built_without_hnsw() -> None:
+    # HNSW removed: _graph is never built; _member_ids stays empty.
     passages = [_passage(i) for i in range(40)]
     idx = ArchivalAnnIndex()
     query = passages[0].embedding
     assert query is not None
     idx.candidate_ids(query, passages, model_id="local:hashing", dim=_DIM, top_k=5)
-    graph_before = idx._graph
-    members_before = set(idx._member_ids)
-    assert graph_before is not None and "p99" not in members_before
-    # A newer passage is inserted incrementally -- the same graph object is
-    # reused (no full rebuild), so the build cost is paid once.
+    assert idx._graph is None
+    assert idx._member_ids == set()
+    # Adding passages changes nothing — graph never builds.
     passages.append(_passage(99, when=datetime.now(UTC) + timedelta(minutes=5)))
     idx.candidate_ids(query, passages, model_id="local:hashing", dim=_DIM, top_k=5)
-    assert idx._graph is graph_before
-    assert "p99" in idx._member_ids
-    assert members_before < idx._member_ids
+    assert idx._graph is None
+    assert idx._member_ids == set()
 
 
-def test_invalidate_drops_graph() -> None:
+def test_invalidate_resets_state() -> None:
+    # HNSW removed: graph is always None; invalidate() leaves state clean.
     passages = [_passage(i) for i in range(40)]
     idx = ArchivalAnnIndex()
     query = passages[0].embedding
     assert query is not None
     idx.candidate_ids(query, passages, model_id="local:hashing", dim=_DIM, top_k=5)
-    assert idx._graph is not None
+    assert idx._graph is None  # never built without HNSW
     idx.invalidate()
     assert idx._graph is None and idx._member_ids == set()
 
 
-def test_persisted_graph_reloads_in_fresh_index(tmp_path: Path) -> None:
+def test_no_persist_file_without_hnsw(tmp_path: Path) -> None:
+    # HNSW removed: nothing is persisted to disk; fresh index is always brute-force.
     path = tmp_path / "recall.ann.pkl"
     passages = [_passage(i) for i in range(40)]
     query = passages[0].embedding
@@ -148,23 +149,23 @@ def test_persisted_graph_reloads_in_fresh_index(tmp_path: Path) -> None:
 
     idx1 = ArchivalAnnIndex(persist_path=path)
     idx1.candidate_ids(query, passages, model_id="local:hashing", dim=_DIM, top_k=5)
-    assert path.exists()  # built once and persisted
+    assert not path.exists()  # HNSW removed: nothing to persist
+    assert idx1._member_ids == set()
 
-    # Fresh index = fresh process: loads the graph from disk rather than rebuilding.
     idx2 = ArchivalAnnIndex(persist_path=path)
     cand = idx2.candidate_ids(query, passages, model_id="local:hashing", dim=_DIM, top_k=5)
-    assert cand is not None and "p0" in cand
+    assert cand is None  # brute-force: all passages scored
     assert idx2._member_ids == idx1._member_ids
 
 
-def test_persisted_graph_ignored_on_model_drift(tmp_path: Path) -> None:
+def test_model_drift_always_returns_none(tmp_path: Path) -> None:
+    # HNSW removed: model-id mismatch -> None regardless (no stale graph to reject).
     path = tmp_path / "recall.ann.pkl"
     passages = [_passage(i) for i in range(40)]
     query = passages[0].embedding
     assert query is not None
     ArchivalAnnIndex(persist_path=path).candidate_ids(query, passages, model_id="local:hashing", dim=_DIM, top_k=5)
-
-    # A different live model-id must not load the stale-space graph (N5).
+    assert not path.exists()  # nothing persisted
     drifted = ArchivalAnnIndex(persist_path=path)
     drifted._load_from_disk(model_id="other-model", dim=_DIM)
     assert drifted._graph is None

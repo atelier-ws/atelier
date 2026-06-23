@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import networkx as nx
+from atelier.core.foundation._graph import DiGraph, pagerank
 
 
 def personalized_pagerank(
-    graph: nx.DiGraph,
+    graph: DiGraph,
     seed_files: list[str],
     *,
     alpha: float = 0.85,
@@ -19,7 +19,7 @@ def personalized_pagerank(
     personalization = {node: 0.0 for node in graph.nodes}
     for seed in seeds:
         personalization[seed] = 1.0 / len(seeds)
-    return dict(nx.pagerank(graph, alpha=alpha, personalization=personalization, weight="weight"))
+    return pagerank(graph, alpha=alpha, personalization=personalization, weight="weight")
 
 
 __all__ = ["personalized_pagerank"]

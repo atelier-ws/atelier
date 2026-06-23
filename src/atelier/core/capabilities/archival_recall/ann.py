@@ -51,16 +51,8 @@ from atelier.infra.storage.vector import cosine_similarity
 
 logger = logging.getLogger(__name__)
 
+# HNSW removed (datasketch dropped); brute-force cosine is the permanent fallback.
 _HNSW: Any = None
-try:
-    from datasketch import HNSW as _HNSW_cls
-
-    _HNSW = _HNSW_cls
-except ImportError:
-    logger.warning(
-        "datasketch.HNSW unavailable; ANN archival recall will use brute-force cosine",
-        exc_info=True,
-    )
 
 # Below this many eligible passages, exact cosine is faster and exact.
 _ANN_MIN_PASSAGES = 16
@@ -135,9 +127,9 @@ class ArchivalAnnIndex:
         """Return the ANN-narrowed candidate passage ids, or None to mean "all".
 
         ``None`` signals the caller to keep every passage (small set, ineligible
-        set, or HNSW unavailable -> brute-force fallback). When an id set is
-        returned it always includes the most-recent-N passages so just-stored
-        memory is never dropped by the approximate index.
+        set, or HNSW unavailable). With HNSW permanently removed, this method
+        always returns ``None`` — the caller scores all passages via brute-force
+        cosine, which is exact (not approximate) and covers every passage.
         """
         if not query_embedding or len(query_embedding) != dim:
             return None
