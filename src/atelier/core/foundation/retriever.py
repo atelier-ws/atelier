@@ -224,7 +224,7 @@ def deduplicate_by_playbook[T](
         return list(items)
 
     kept: list[T] = []
-    kept_tokens: list[set[str]] = []
+    kept_sigs: list[MinHash] = []
 
     for item in items:
         block = block_getter(item)
@@ -232,9 +232,10 @@ def deduplicate_by_playbook[T](
         if len(tokens) < _MIN_DEDUP_TOKENS:
             kept.append(item)
             continue
-        if any(_jaccard_tokens(tokens, prior) >= threshold for prior in kept_tokens):
+        sig = _minhash(tokens)
+        if any(sig.jaccard(prior) >= threshold for prior in kept_sigs):
             continue
-        kept_tokens.append(tokens)
+        kept_sigs.append(sig)
         kept.append(item)
 
     return kept
