@@ -138,8 +138,14 @@ _warned_unknown_models: set[str] = set()
 
 
 def _load_litellm_model_cost() -> dict[str, object]:
-    """Import LiteLLM's pricing catalog without surfacing optional AWS preload noise."""
+    """Load the model pricing catalog.
+
+    Uses litellm's live ``model_cost`` dict when the package is installed
+    (fresher data, includes any runtime overrides).  Falls back to the
+    bundled ``model_prices.json`` snapshot so pricing works without litellm.
+    """
     import importlib
+    import json
 
     previous_litellm_log = os.environ.get("LITELLM_LOG")
     if previous_litellm_log is None:
@@ -147,17 +153,25 @@ def _load_litellm_model_cost() -> dict[str, object]:
 
     try:
         litellm = importlib.import_module("litellm")
-        model_cost = getattr(litellm, "model_cost", {})
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        return {}
+        model_cost = getattr(litellm, "model_cost", None)
+        if model_cost:
+            return cast(dict[str, object], model_cost)
+    except Exception:  # noqa: BLE001
+        pass  # fall through to bundled snapshot
     finally:
         if previous_litellm_log is None:
             os.environ.pop("LITELLM_LOG", None)
         else:
             os.environ["LITELLM_LOG"] = previous_litellm_log
 
-    return cast(dict[str, object], model_cost)
+    # Bundled snapshot — refreshed at release build time from the locked litellm
+    # version; always available offline, no litellm import required at runtime.
+    _bundle = Path(__file__).parent.parent.parent / "infra" / "model_prices.json"
+    try:
+        return cast(dict[str, object], json.loads(_bundle.read_text()))
+    except Exception:
+        logging.exception("Failed to load bundled model_prices.json")
+        return {}
 
 
 with_model_cost: dict[str, object] = {}  # populated lazily on first _load_pricing_table() call
@@ -544,7 +558,18 @@ def _load_pricing_table() -> dict[str, dict[str, float | tuple[PricingTier, ...]
         if pricing_entry is None:
             continue
         _register_entry(table, priorities, model_id, pricing_entry)
+        # Subscription-tier entries (GitHub Copilot, etc.) have zero per-token
+        # pricing and no input_cost_per_token field.  Their provider-stripped
+        # alias ("github_copilot/claude-sonnet-4.6" → "claude-sonnet-4.6")
+        # would shadow real Anthropic entries when litellm is not installed.
+        # Only generate the bare-name provider alias for entries with real pricing.
+        _has_token_price = bool(isinstance(raw_entry, dict) and raw_entry.get("input_cost_per_token")) or bool(
+            isinstance(raw_entry, dict) and raw_entry.get("output_cost_per_token")
+        )
         for alias in _alias_candidates(model_id):
+            _slash_alias = "/" in model_id and alias == model_id.split("/", 1)[1]
+            if _slash_alias and not _has_token_price:
+                continue
             _register_entry(table, priorities, alias, pricing_entry, priority=_alias_priority(model_id))
 
     # Apply disk-based overrides from built-in and global config

@@ -33,6 +33,13 @@ fi
 # 3. Build mypyc-compiled wheel
 # hatch_build.py hook compiles ~440 modules with mypyc (skip with ATELIER_SKIP_MYPYC=1),
 # strips .py source for compiled modules, and packages a platform-specific wheel.
+# Refresh the model pricing snapshot from the litellm version pinned in uv.lock.
+# This runs before the wheel build so the wheel ships the freshest data available
+# without requiring litellm at runtime.
+echo "◆ Refreshing model prices from litellm..."
+uv run --with "litellm>=1.83.14" python scripts/refresh_model_prices.py || \
+    echo "  (refresh skipped; bundled snapshot will be used)"
+
 echo "◆ Building mypyc wheel (this takes a few minutes)..."
 rm -rf dist/
 uv build --wheel
@@ -74,6 +81,7 @@ if [ -f "uv.lock" ]; then
         --extra parsers \
         --extra rename \
         --extra ortools \
+        --extra litellm \
         -o bundle/constraints.txt \
         >/dev/null \
         || echo "  (constraints export skipped; install will resolve from PyPI)"

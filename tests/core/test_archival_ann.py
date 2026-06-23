@@ -23,7 +23,7 @@ _DIM = 8
 
 
 def _vec(seed: int, dim: int = _DIM) -> list[float]:
-    import numpy as np
+    np = pytest.importorskip("numpy", reason="numpy not installed")
 
     rng = np.random.default_rng(seed)
     return [float(x) for x in rng.standard_normal(dim)]

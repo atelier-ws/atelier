@@ -24,7 +24,7 @@ from atelier.infra.storage.vector import cosine_similarity
 
 
 def _seeded_vectors(n: int, dim: int, *, seed: int) -> dict[str, tuple[str, list[float]]]:
-    import numpy as np
+    np = pytest.importorskip("numpy", reason="numpy not installed")
 
     rng = np.random.default_rng(seed)
     return {f"s{i}": (f"h{i}", [float(x) for x in rng.standard_normal(dim)]) for i in range(n)}
