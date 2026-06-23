@@ -7,6 +7,11 @@ conflicts = [
     [{ extra = "langfuse" }, { extra = "memory-server" }],
 ]
 
+[tool.uv.sources]
+# courlan declares babel as a hard dep but never imports it at runtime.
+# Override with a zero-content stub to save 30 MB from the production install.
+babel = { path = "vendor/babel-stub" }
+
 [project]
 name = "atelier"
 version = "0.4.25"
@@ -51,6 +56,7 @@ dependencies = [
     "yarl==1.24.2",
     "zipp==4.1.0",
     "trafilatura>=2.0.0",
+    "babel>=2.16.0",
 ]
 
 [project.optional-dependencies]

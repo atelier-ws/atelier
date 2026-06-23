@@ -89,16 +89,17 @@ def _dedupe_ranked(
     if len(ranked) < 2:
         return ranked
     kept: list[RankedProcedure] = []
-    kept_tokens: list[set[str]] = []
+    kept_sigs: list[MinHash] = []
     for item in ranked:
         block = blocks_by_id.get(item.block_id, {})
         tokens = _signature_tokens(block)
         if len(tokens) < _MIN_DEDUP_TOKENS:
             kept.append(item)
             continue
-        if any(_jaccard(tokens, prior) >= threshold for prior in kept_tokens):
+        sig = _minhash(tokens)
+        if any(sig.jaccard(prior) >= threshold for prior in kept_sigs):
             continue
-        kept_tokens.append(tokens)
+        kept_sigs.append(sig)
         kept.append(item)
     return kept
 
