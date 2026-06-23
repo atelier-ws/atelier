@@ -56,7 +56,3 @@ ALL_COMPACTION_TYPES: tuple[CompactionType, ...] = (
         default_enabled=False,
     ),
 )
-
-
-def compaction_type_map() -> dict[str, CompactionType]:
-    return {item.id: item for item in ALL_COMPACTION_TYPES}

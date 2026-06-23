@@ -5,25 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-SLASH_COMMANDS = [
-    "help",
-    "exit",
-    "quit",
-    "clear",
-    "tools",
-    "sessions",
-    "session",
-    "memory",
-    "route",
-    "context",
-    "verify",
-    "background",
-    "diff",
-    "approve",
-    "deny",
-    "bash",
-]
-
 
 @dataclass(frozen=True)
 class ParsedInput:

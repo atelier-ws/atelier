@@ -53,18 +53,5 @@ ENTERPRISE_FEATURES: frozenset[str] = frozenset(
 )
 
 
-def is_pro_feature(feature: str) -> bool:
-    return feature in PRO_FEATURES
-
-
-def is_enterprise_feature(feature: str) -> bool:
-    return feature in ENTERPRISE_FEATURES
-
-
-def pro_feature_keys() -> tuple[str, ...]:
-    """Keys a Pro (non-Enterprise) license grants."""
-    return tuple(k for k in PRO_FEATURES if k not in ENTERPRISE_FEATURES)
-
-
 def describe(feature: str) -> str:
     return PRO_FEATURES.get(feature, feature)
