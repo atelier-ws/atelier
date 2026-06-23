@@ -50,10 +50,10 @@ def test_reasoning_store_writes_lessons_to_project_directory(tmp_path: Path, mon
 
     proj_dir = resolve_workspace_store_dir(store_root)
     assert store.root == store_root.resolve()
-    # Mirrors live per-project under the global store root, not in .lessons.
+    # Mirrors live per-project under the global store root, not in .atelier/lessons.
     assert store.blocks_dir == (proj_dir / "blocks").resolve()
     assert store.rubrics_dir == (proj_dir / "rubrics").resolve()
-    assert ".lessons" not in store.blocks_dir.parts
+    assert ".atelier/lessons" not in store.blocks_dir.parts
     assert (store.blocks_dir / f"{block.id}.md").exists()
     assert (store.rubrics_dir / f"{rubric.id}.yaml").exists()
 

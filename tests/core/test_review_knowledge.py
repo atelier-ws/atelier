@@ -67,7 +67,7 @@ def test_collect_merges_overlay_and_lessons(tmp_path: Path) -> None:
         json.dumps({"notes": ["check authz"], "suppress": ["nits"], "boost": ["security"]}),
         encoding="utf-8",
     )
-    blocks = tmp_path / "repo" / ".lessons" / "blocks"
+    blocks = tmp_path / "repo" / ".atelier" / "lessons" / "blocks"
     blocks.mkdir(parents=True)
     (blocks / "l1.md").write_text("# Use DI for services\nbody text", encoding="utf-8")
     out = collect_review_context(root, tmp_path / "repo")

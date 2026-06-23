@@ -103,7 +103,7 @@ def seeded_runtime(tmp_path: Path) -> Iterator[ContextRuntime]:
     from atelier.gateway.adapters.runtime import ContextRuntime
 
     rt = ContextRuntime(root=tmp_path / "atelier")
-    lessons_root = Path(__file__).resolve().parents[1] / ".lessons"
+    lessons_root = Path(__file__).resolve().parents[1] / ".atelier" / "lessons"
     blocks_dir = lessons_root / "blocks"
     rubrics_dir = lessons_root / "rubrics"
     for p in sorted(blocks_dir.glob("template_*.md")):

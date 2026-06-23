@@ -13,7 +13,7 @@ from atelier.core.capabilities.knowledge_extract import (
 
 
 def _lessons(repo: Path, *texts: str) -> None:
-    blocks = repo / ".lessons" / "blocks"
+    blocks = repo / ".atelier" / "lessons" / "blocks"
     blocks.mkdir(parents=True)
     for i, text in enumerate(texts):
         (blocks / f"l{i}.md").write_text(text, encoding="utf-8")
@@ -137,4 +137,4 @@ def test_extract_rules_no_sources(tmp_path: Path) -> None:
     root = tmp_path / "root"
     root.mkdir()
     result = extract_rules(root, tmp_path / "empty", runner=lambda *a, **k: "[]")
-    assert result["reason"] == "no .lessons/blocks found"
+    assert result["reason"] == "no .atelier/lessons/blocks found"

@@ -199,7 +199,7 @@ class ContextStore:
         self.db_path = self.root / db_name
 
         # Blocks/rubrics are runtime *mirrors* of DB content, kept per-project under
-        # the global store root (NOT in .lessons, which is reserved for the user's
+        # the global store root (NOT in .atelier/lessons, which is reserved for the user's
         # real knowledge consumed by the knowledge-extraction KB). Per-project
         # isolation prevents one project's mirror from polluting another's. An
         # explicit lessons_root still overrides for backward compatibility.
@@ -641,7 +641,7 @@ class ContextStore:
 
     def _sync_manifest_path(self, kind: str) -> Path:
         """Return path to the incremental-sync manifest for *kind*."""
-        return self.root / f".lessons_sync_{kind}.json"
+        return self.root / f"lessons_sync_{kind}.json"
 
     def _load_sync_manifest(self, kind: str) -> dict[str, int]:
         path = self._sync_manifest_path(kind)
