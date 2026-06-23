@@ -81,10 +81,7 @@ def breaker_threshold() -> int:
     return _DEFAULT_BREAKER_THRESHOLD
 
 
-BREAKER_NOTE = (
-    "exploration budget reached -- make the change from current evidence; "
-    "stop searching and derive from code you've already read."
-)
+BREAKER_NOTE = "budget reached -- change from current evidence"
 
 
 def normalize_query(query: str) -> frozenset[str]:
@@ -150,14 +147,12 @@ class VerdictResult:
         return payload
 
 
-_MISSED = VerdictResult(
-    "missed",
-    "reformulate -- try other terms or identifiers before concluding it's absent.",
-)
-_ABSENT = VerdictResult(
-    "absent",
-    "not found after reformulation -- derive from code you've read, or broaden scope first.",
-)
+# A plain empty result, like vanilla `grep -rn`: state the absence, don't nudge a
+# retry. The model decides whether to reformulate. (The escalation from `missed`
+# to `absent` is kept for the breaker backstop -- repeated empties still trip
+# `breaker_note` -- but neither carries a per-miss "reformulate" suggestion.)
+_MISSED = VerdictResult("missed", "")
+_ABSENT = VerdictResult("absent", "")
 
 
 def compute_verdict(
@@ -178,10 +173,7 @@ def compute_verdict(
     dark = channels.dark()
     if dark:
         label = " + ".join(dark)
-        return VerdictResult(
-            "dark",
-            f"{label} channel off -- rephrase or enable it; don't trust this empty.",
-        )
+        return VerdictResult("dark", f"{label} off -- empty unreliable")
     limit = reformulation_threshold() if threshold is None else threshold
     tokens = normalize_query(query)
     distinct_area_empties = sum(1 for prior in prior_empties if _same_area(prior, tokens) and _distinct(prior, tokens))

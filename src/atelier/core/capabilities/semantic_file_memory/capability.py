@@ -296,20 +296,15 @@ class SemanticFileMemoryCapability:
             result["range"] = range_spec
             result["content"] = ""
             result["truncation_notice"] = (
-                f"[atelier: only the first {_MAX_READ_BYTES} bytes were scanned and the "
-                "requested range begins past them; request an earlier slice.]"
+                f"[scanned first {_MAX_READ_BYTES}B; range past it -- request earlier slice]"
                 if capped
-                else f"[atelier: requested range starts past the {total_read} lines in the "
-                "file. Request an earlier slice.]"
+                else f"[range past {total_read} lines -- request earlier slice]"
             )
             return result
         result["range"] = f"{start}-{start + len(kept) - 1}"
         result["content"] = "\n".join(kept)
         if capped:
-            result["truncation_notice"] = (
-                f"[atelier: stopped at the {_MAX_READ_BYTES}-byte read cap; the slice may be "
-                "incomplete for an oversized file.]"
-            )
+            result["truncation_notice"] = f"[stopped at {_MAX_READ_BYTES}B cap -- may be incomplete]"
         return result
 
     @staticmethod
@@ -504,9 +499,7 @@ class SemanticFileMemoryCapability:
             result["loc"] = f">={effective_loc}"
             result["loc_is_lower_bound"] = True
             result["truncation_notice"] = (
-                f"[atelier: only the first {_MAX_READ_BYTES} bytes were read — "
-                "file is oversized or a special/streaming file. Request a narrower "
-                'slice, e.g. read with range="L1-L400".]'
+                f'[read first {_MAX_READ_BYTES}B -- oversized; narrow range, e.g. range="L1-L400"]'
             )
 
         mode, payload, outline_payload = self._projection_payload(

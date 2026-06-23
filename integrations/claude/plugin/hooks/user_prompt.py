@@ -677,14 +677,6 @@ def main() -> int:
         ui_messages.append(compact_msg)
     _emit_ui_messages(ui_messages)
 
-    # Autopilot (M5): inject scoped context for this prompt. Fail-open.
-    try:
-        from atelier.core.capabilities.autopilot.factory import run_and_emit
-
-        run_and_emit("user_prompt", {"prompt": prompt})
-    except (ImportError, OSError, ValueError):
-        pass
-
     try:
         if not session_id:
             return 0

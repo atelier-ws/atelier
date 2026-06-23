@@ -20,7 +20,7 @@ def configure_benchmark_runtime(root: Path, *, workspace_root: Path | None = Non
     resolved_workspace = (workspace_root or resolved_root).expanduser().resolve()
 
     os.environ["ATELIER_ROOT"] = str(resolved_root / ".atelier")
-    os.environ["ATELIER_LESSONS_ROOT"] = str(resolved_root / ".lessons")
+    os.environ["ATELIER_LESSONS_ROOT"] = str(resolved_root / ".atelier/lessons")
     os.environ["ATELIER_WORKSPACE_ROOT"] = str(resolved_workspace)
     os.environ["CLAUDE_WORKSPACE_ROOT"] = str(resolved_workspace)
     os.environ["ATELIER_DEV_MODE"] = "1"

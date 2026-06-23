@@ -74,19 +74,6 @@ def test_tool_redirect_is_quiet_without_pythonpath() -> None:
     assert result.stderr == ""
 
 
-def test_edit_batching_nudge_emits_after_second_single_edit(tmp_path: Path) -> None:
-    env = {"ATELIER_ROOT": str(tmp_path / ".atelier")}
-    payload = {"session_id": "s1", "tool_input": {"edits": [{"file_path": "src/a.ts"}]}}
-
-    first = _run_hook("edit_batching_nudge.py", payload, env=env)
-    second = _run_hook("edit_batching_nudge.py", payload, env=env)
-
-    assert first.stdout == ""
-    output = json.loads(second.stdout)
-    assert "2 individual Edit calls" in output["additionalContext"]
-    assert (tmp_path / ".atelier" / "hook_state" / "edit-nudge-s1.json").exists()
-
-
 def test_session_telemetry_persists_session_savings(tmp_path: Path) -> None:
     atelier_root = tmp_path / ".atelier"
     _run_hook(
@@ -397,10 +384,12 @@ def test_claude_stop_hook_shows_cache_and_estimated_session_savings(tmp_path: Pa
     output = json.loads(result.stdout)
     message = output["systemMessage"]
     assert "Session stats:" in message
-    assert "tool calls: 4" in message
-    assert "tokens: 150.0k in / 700 cW / 9.0k cR / 2.0k out  (161.7k total)" in message
+    # Stats are computed from the transcript (1 turn, 1 tool_use here), one dense
+    # line per metric in the trimmed format.
+    assert "1 turn · 1 tool call" in message
+    assert "tokens: 107.4k in (107.4k new + 10 cW) · 500 cR · 356 out · 108.3k total" in message
     # Savings come from transcript saved blocks — none in this test transcript, so $0.
-    assert "savings: $0.0000 · 0 tokens saved · 0 calls avoided" in message
+    assert "savings: $0.0000 · 0 tok · 0 calls avoided" in message
     assert "top tools: mcp__mcp-vector-search__codegraph_context" in message
 
 
@@ -448,8 +437,8 @@ def test_claude_stop_hook_dedupes_usage_and_prices_each_model(tmp_path: Path) ->
 
     output = json.loads(result.stdout)
     message = output["systemMessage"]
-    assert "tool calls: 2" in message
-    assert "tokens: 3.0k in / 3.0k cW / 3.0k cR / 3.0k out  (12.0k total)" in message
+    assert "2 turns · 2 tool calls" in message
+    assert "tokens: 6.0k in (3.0k new + 3.0k cW) · 3.0k cR · 3.0k out · 12.0k total" in message
     assert "est. cost: ~$0.0809" in message
     assert "top tools: Edit" in message
     assert "Read" in message

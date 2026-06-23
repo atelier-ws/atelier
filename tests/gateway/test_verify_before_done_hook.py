@@ -81,13 +81,26 @@ def test_edit_with_django_runtests_allows(tmp_path: Path) -> None:
     assert not _blocked(_run(t))
 
 
-def test_code_run_counts_as_verification(tmp_path: Path) -> None:
+def test_code_run_snippet_does_not_count_as_verification(tmp_path: Path) -> None:
+    # A python -c / repro-script run is NOT a real test: it checks only what the
+    # author thought of and misses regressions, so the gate still blocks.
     t = _transcript(
         tmp_path,
         _assistant(("Edit", {"file_path": "app/core.py"})),
         _assistant(("Bash", {"command": "python repro.py"})),
     )
-    assert not _blocked(_run(t))
+    assert _blocked(_run(t))
+
+
+def test_python_c_snippet_does_not_count_as_verification(tmp_path: Path) -> None:
+    # The exact requests-2931 regression shape: a `python -c` repro that passed but
+    # missed a broken neighbor. Must block to push the model onto the real suite.
+    t = _transcript(
+        tmp_path,
+        _assistant(("mcp__atelier__edit", {"edits": [{"file_path": "requests/models.py", "new_string": "..."}]})),
+        _assistant(("mcp__atelier__bash", {"command": 'python -c "import requests; print(requests.get)"'})),
+    )
+    assert _blocked(_run(t))
 
 
 def test_docs_only_edit_allows(tmp_path: Path) -> None:

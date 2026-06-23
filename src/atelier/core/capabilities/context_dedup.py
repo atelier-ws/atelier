@@ -101,10 +101,7 @@ class ContextDedup:
             if force or seen_ordinal is None:
                 self._record(st, content_hash)
                 return None
-        stub = (
-            f"[atelier dedup] identical to read #{seen_ordinal} earlier this session "
-            f"({len(content)} chars omitted). If not in your context, re-read with force=true."
-        )
+        stub = f"[dedup] =read #{seen_ordinal} ({len(content)} chars); not in context? re-read force=true"
         return stub, len(content) - len(stub)
 
     def delta_for(
@@ -150,10 +147,7 @@ class ContextDedup:
         if not diff_lines:
             return None
         diff_text = "".join(diff_lines)
-        header = (
-            f"[atelier delta] {resource} changed since your last read — diff vs that read below "
-            f"({len(content)} chars full). If you don't have that version, re-read with force=true.\n"
-        )
+        header = f"[delta] {resource} ({len(content)} chars), diff vs last read; force=true for full\n"
         delta = header + diff_text
         if len(delta) > len(content) * _DELTA_MAX_RATIO:
             return None

@@ -77,7 +77,7 @@ def test_get_context_injects_same_agent_memory(memory_root: Path) -> None:
         }
     )
 
-    assert isinstance(payload["prefix_plan"], dict)
+    assert "prefix_plan" not in payload  # diagnostics gated off by default
     assert "tokens_breakdown" in payload
     assert payload["tokens_breakdown"]["total"] >= 0
 
@@ -98,7 +98,7 @@ def test_get_context_does_not_leak_other_agent_memory(memory_root: Path) -> None
         }
     )
 
-    assert isinstance(payload["prefix_plan"], dict)
+    assert "prefix_plan" not in payload  # diagnostics gated off by default
     assert "recalled_passages" in payload
 
 
@@ -119,5 +119,5 @@ def test_get_context_can_disable_recall(memory_root: Path) -> None:
         }
     )
 
-    assert isinstance(payload["prefix_plan"], dict)
+    assert "prefix_plan" not in payload  # diagnostics gated off by default
     assert "recalled_passages" in payload

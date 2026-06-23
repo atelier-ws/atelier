@@ -130,6 +130,10 @@ def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
     stem = registry.render_named_prompt("owned-stem-system", ROOT)
     assert "prompt caches stay warm" in stem
     assert "Do not broaden the task" in stem
+    # Confirmation policy and read mechanics are hoisted into the stem once.
+    assert "local, reversible reads, edits, and tests" in stem
+    assert "shared-state" in stem
+    assert "retry_with" in stem
 
     explore = registry.render_named_prompt("owned-explore-phase", ROOT)
     assert "Read only" in explore
@@ -156,8 +160,6 @@ def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
     execute = registry.render_named_prompt("owned-execute-phase", ROOT)
     assert "approved plan sequentially" in execute
     assert "Change only files named by the plan" in execute
-    assert "local, reversible reads, edits, and tests" in execute
-    assert "shared-state" in execute
     assert "Stop after self-verification" in execute
 
     review = registry.render_named_prompt("owned-review-phase", ROOT)
@@ -168,7 +170,6 @@ def test_owned_runtime_prompts_stay_sharp_and_phase_bound() -> None:
     fix = registry.render_named_prompt("owned-fix-phase", ROOT)
     assert "FIX PHASE" in fix
     assert "Fix only cited gaps" in fix
-    assert "local, reversible reads, edits, and tests" in fix
 
 
 def test_registry_host_projections_match_current_surface_set() -> None:

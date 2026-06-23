@@ -282,7 +282,7 @@ def _docker_run_cmd(
         # reasons over. callers/callees/usages are already hidden by default
         # (folded into `explore`), so they need not be repeated here. Keeps
         # read/grep/search/edit/shell/explore/node.
-        env["ATELIER_HIDE_TOOLS"] = "sql,memory,codemod,web_fetch"
+        env["ATELIER_HIDE_TOOLS"] = "sql,memory,web_fetch"  # codemod kept: structural multi-file edits
         # Edit-verify gate ON by default (tree-sitter parse + scoped mypy): catches
         # mechanical edit errors in-tool instead of via a shell round-trip, which
         # collapses the edit->test->error->re-edit cycle on iteration-bound tasks
@@ -299,6 +299,13 @@ def _docker_run_cmd(
         # brute-force cosine is identical). Override with CODEBENCH_CODE_EMBEDDER
         # (e.g. ollama) for a stronger neural backend.
         env["ATELIER_CODE_EMBEDDER"] = os.environ.get("CODEBENCH_CODE_EMBEDDER", "local")
+        # Verify-before-done gate ON for every persona. It is the DETERMINISTIC
+        # half of correctness: silent on the happy path (a real test ran), and
+        # actionable only on the fail/skip case (edited code, no test runner). This
+        # replaces a blanket persona "always iterate against tests" rule, which
+        # taxed easy tasks; the gate nudges once, only when a test was actually
+        # skipped. Override with CODEBENCH_VERIFY_BEFORE_DONE=0.
+        env["ATELIER_VERIFY_BEFORE_DONE"] = os.environ.get("CODEBENCH_VERIFY_BEFORE_DONE", "1")
     env.update(agent_env)
     for key, value in env.items():
         cmd += ["-e", f"{key}={value}"]

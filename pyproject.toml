@@ -193,4 +193,5 @@ dev = [
     "ruff>=0.5",
     "types-PyYAML",
     "pyinstaller>=6.10.0",
+    "vulture>=2.16",
 ]

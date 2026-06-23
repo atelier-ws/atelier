@@ -80,7 +80,7 @@ def test_expand_large_file_returns_line_aligned_prefix_with_continuation(
     # exact continuation range points at the next unread line
     assert f'range="L{payload["lines_shown"] + 1}-"' in content
     # the kept body (before the notice) stays within budget
-    body = content.split("[atelier:")[0]
+    body = content.split("\n\n[lines")[0]
     assert len(body.encode("utf-8")) <= 10240 + 16
 
 
@@ -161,7 +161,7 @@ def test_projection_edit_descriptor_round_trips_through_gateway(
         }
     )
 
-    assert payload["failed"] == []
+    assert not payload.get("failed")
     assert "fmt.Println" in target.read_text(encoding="utf-8")
 
 
@@ -204,7 +204,7 @@ def test_projection_edit_descriptor_supports_multi_span_replacements(
         }
     )
 
-    assert payload["failed"] == []
+    assert not payload.get("failed")
     assert target.read_text(encoding="utf-8").count("fmt.Println") == 2
 
 
@@ -370,6 +370,31 @@ def test_read_path_range_suffix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert results[1]["content"] == "line9\nline10"
 
 
+def test_range_read_returns_only_requested_lines_without_meta(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A ranged read strips outline/projection scaffolding -- just the lines.
+
+    The caller asked for specific lines and already knows the range, so the
+    outline/projection/language metadata is pure redundancy. include_meta=True
+    (power callers) still gets the projection, asserted elsewhere.
+    """
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    target = tmp_path / "slice.py"
+    target.write_text("".join(f"line{i} = {i}\n" for i in range(1, 11)), encoding="utf-8")
+
+    payload = tool_smart_read({"path": str(target), "range": "2-4"})
+
+    assert payload["mode"] == "range"
+    assert payload["content"] == "line2 = 2\nline3 = 3\nline4 = 4"
+    # The redundant outline/projection scaffolding is gone.
+    assert "outline" not in payload
+    assert "projection" not in payload
+    assert "language" not in payload
+
+    # include_meta still surfaces the projection for power callers.
+    meta = tool_smart_read({"path": str(target), "range": "2-4", "include_meta": True})
+    assert meta["projection"]["view"] == "range"
+
+
 def test_read_single_path_still_works_without_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     target = tmp_path / "solo.txt"
@@ -394,8 +419,9 @@ def test_edit_surfaces_inline_diff_only_for_nonexact_match(tmp_path: Path, monke
             "post_edit_hooks": False,
         }
     )
-    assert exact["failed"] == []
-    assert exact["applied"], "exact edit must still apply"
+    # A clean exact edit echoes the applied range (orientation) but no redundant diff.
+    assert "failed" not in exact
+    assert "applied" in exact
     assert "diff" not in exact, "exact edits must not surface a redundant inline diff"
     assert exact_target.read_text(encoding="utf-8") == "value = 2\n"
 
@@ -417,6 +443,10 @@ def test_edit_surfaces_inline_diff_only_for_nonexact_match(tmp_path: Path, monke
             "post_edit_hooks": False,
         }
     )
-    assert fuzzy["failed"] == []
+    # Loud via match_mode (the divergence signal), but the empty `failed` noise is
+    # stripped. The applied entry retains match_mode so the result is not silenced.
+    assert "failed" not in fuzzy
+    modes = [e.get("match_mode") for e in fuzzy.get("applied") or [] if isinstance(e, dict)]
+    assert any(m and m != "exact" for m in modes), fuzzy
     assert "diff" not in fuzzy, "edits never surface an inline diff; match_mode signals a non-exact apply"
     assert fuzzy_target.read_text(encoding="utf-8") == "start = 10\nend = 30\n"

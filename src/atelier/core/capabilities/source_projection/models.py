@@ -204,7 +204,7 @@ class SourceProjection:
             transformed=True,
             body_complete=False,
             untransformed_text=False,
-            notice="Projection: outline (structure only; bodies omitted). Use expand=true or range=Lx-Ly for body text.",
+            notice="Projection: outline",
         )
 
     @classmethod
@@ -214,7 +214,7 @@ class SourceProjection:
             transformed=True,
             body_complete=True,
             untransformed_text=False,
-            notice="Projection: compact (whitespace-transformed body). Re-read with expand=true for untransformed text.",
+            notice="Projection: compact",
         )
 
     @classmethod
@@ -224,9 +224,5 @@ class SourceProjection:
             transformed=True,
             body_complete=True,
             untransformed_text=False,
-            notice=(
-                "Projection: minified (comments, blank lines and redundant whitespace removed; "
-                "line numbers differ from disk). old_string copied from this view works with edit. "
-                "Re-read with expand=true for untransformed text."
-            ),
+            notice="Projection: minified (line numbers differ from disk)",
         )

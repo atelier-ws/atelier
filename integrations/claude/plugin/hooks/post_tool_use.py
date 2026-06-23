@@ -210,17 +210,6 @@ def main() -> int:
 
     tool_input: dict[str, Any] = payload.get("tool_input", {}) or {}
 
-    # Autopilot (M5): run scoped verification on the touched file and surface
-    # any counterexamples. Fail-open.
-    edited_path = tool_input.get("file_path") or tool_input.get("path") or tool_input.get("filename") or ""
-    if edited_path:
-        try:
-            from atelier.core.capabilities.autopilot.factory import run_and_emit
-
-            run_and_emit("post_edit", {"touched_files": [edited_path]})
-        except (ImportError, OSError, ValueError):
-            pass
-
     try:
         file_path, diff = _compute_diff(tool_name, tool_input)
         if not file_path or not diff:
