@@ -951,12 +951,14 @@ def _codex_session_start_tool_policy() -> dict[str, Any]:
 
 
 def codex_update_notification(root: str | Path, *, current_version: str) -> dict[str, Any]:
+    # Session-optimizer guidance is intentionally NOT injected here: its rules
+    # duplicate the agent persona (core-discipline / change-discipline). The
+    # offline analysis (build_trace_optimization_report) and rule data are kept.
     result = update_notification(current_version, _read_json(update_flag_path(root), None))
     if result.get("delete_flag"):
         update_flag_path(root).unlink(missing_ok=True)
     stdout = _merge_session_start_stdout(
         result.get("stdout"),
-        _session_optimizer_start_notice(root, host="codex"),
         _codex_session_start_tool_policy(),
     )
     return {**result, "stdout": stdout, "optimizer": {"host": "codex"}}
@@ -1061,30 +1063,6 @@ def _codex_native_tool_nudge(root: str | Path, payload: dict[str, Any]) -> dict[
             ]
         ),
     }
-
-
-# Shared one-shot prompt output helpers. Host adapters decide whether each
-# message belongs in model context or a host-specific UI notification.
-def _merge_progress_outputs(*items: dict[str, Any]) -> dict[str, Any]:
-    contexts: list[str] = []
-    messages: list[str] = []
-    for item in items:
-        if not item or item.get("no_output"):
-            continue
-        context = item.get("additionalContext")
-        if isinstance(context, str) and context.strip():
-            contexts.append(context.strip())
-        message = item.get("message")
-        if isinstance(message, str) and message.strip():
-            messages.append(message.strip())
-    if not contexts and not messages:
-        return {"no_output": True}
-    output: dict[str, Any] = {}
-    if contexts:
-        output["additionalContext"] = "\n\n".join(contexts)
-    if messages:
-        output["message"] = " | ".join(messages)
-    return output
 
 
 _CTX_NUDGE_DEFAULT_TOKENS = 160_000
@@ -1294,10 +1272,6 @@ def _codex_estimated_cost_usd(model: str, usage: dict[str, Any]) -> float:
     except Exception:
         logging.exception("Recovered from broad exception handler")
         return 0.0
-
-
-def _codex_top_tools(session: dict[str, Any]) -> str:
-    return _codex_tools_text(session.get("tools_used"), limit=4)
 
 
 def _codex_tools_text(raw: Any, *, limit: int | None = None) -> str:
@@ -2406,13 +2380,6 @@ def baseline_time_saved(calls_saved: int) -> dict[str, Any]:
         "time_saved_ms": calls_saved * BASELINE_TIME_SAVED_PER_CALL_MS,
         "per_call_ms": BASELINE_TIME_SAVED_PER_CALL_MS,
     }
-
-
-def efficiency_gain(actual_tool_calls: int, equivalent_baseline_calls: int) -> dict[str, Any]:
-    if equivalent_baseline_calls <= 0:
-        return {"efficiency_gain_percent": 0}
-    gain = round(100 * (equivalent_baseline_calls - actual_tool_calls) / equivalent_baseline_calls)
-    return {"efficiency_gain_percent": gain}
 
 
 def session_stats_path(root: str | Path, session_id: str) -> Path:

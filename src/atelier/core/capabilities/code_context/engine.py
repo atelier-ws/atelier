@@ -5446,19 +5446,6 @@ class CodeContextEngine:
             )
         raise ValueError(f"unknown neighborhood relation: {relation!r}")
 
-    def changed_symbols(self, *, base_ref: str = "HEAD") -> list[SymbolRecord]:
-        """Return indexed symbols whose files changed relative to a git ref."""
-        repo_class = _git_repo_class()
-        if repo_class is None:
-            return []
-        with contextlib.suppress(Exception):
-            repo = repo_class(self.repo_root, search_parent_directories=True)
-            changed = {item.a_path for item in repo.index.diff(base_ref)} | {
-                item.a_path for item in repo.index.diff(None)
-            }
-            return self._symbols_for_files(sorted(item for item in changed if item), limit=500)
-        return []
-
     def _connect(self, *, readonly: bool = False) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         if readonly:
@@ -5662,14 +5649,6 @@ class CodeContextEngine:
             raise ValueError(f"path escape denied: {value}") from exc
         return resolved
 
-    def _extract_symbols(
-        self, path: Path, rel: str, language: str, source: str, content_hash: str
-    ) -> list[_ExtractedSymbol]:
-        del rel, content_hash
-        if language == "python":
-            return self._extract_python_symbols(source)
-        return self._extract_tag_symbols(path, source, language)
-
     def _extract_python_symbols(self, source: str) -> list[_ExtractedSymbol]:
         try:
             tree = ast.parse(source)
@@ -5731,99 +5710,6 @@ class CodeContextEngine:
         walk_body(tree.body)
         return sorted(symbols, key=lambda item: (item.start_line, item.qualified_name))
 
-    def _extract_python_reference_index(
-        self,
-        rel: str,
-        source: str,
-        symbols: list[_ExtractedSymbol],
-    ) -> tuple[list[_IndexedReference], list[_IndexedCallEdge]]:
-        """Extract local references and call edges from Python AST during indexing."""
-        try:
-            tree = ast.parse(source)
-        except SyntaxError:
-            return [], []
-
-        lines = source.splitlines()
-        references: list[_IndexedReference] = []
-        call_edges: list[_IndexedCallEdge] = []
-        seen_refs: set[tuple[str, int, int, str | None]] = set()
-        seen_edges: set[tuple[str, int, int, str]] = set()
-
-        def snippet_for(line: int) -> str:
-            return lines[line - 1].strip() if 1 <= line <= len(lines) else ""
-
-        def containing_symbol(line: int) -> _ExtractedSymbol | None:
-            candidates = [
-                symbol
-                for symbol in symbols
-                if symbol.start_line <= line <= symbol.end_line
-                and symbol.kind in {"function", "async_function", "method", "class"}
-            ]
-            if not candidates:
-                return None
-            return sorted(candidates, key=lambda item: (item.end_line - item.start_line, -item.start_line))[0]
-
-        def add_reference(name: str, node: ast.AST) -> None:
-            line = int(getattr(node, "lineno", 0) or 0)
-            if line <= 0:
-                return
-            column = int(getattr(node, "col_offset", 0) or 0) + 1
-            end_column = int(getattr(node, "end_col_offset", column + len(name) - 1) or (column + len(name) - 1))
-            enclosing = containing_symbol(line)
-            key = (name, line, column, enclosing.qualified_name if enclosing else None)
-            if key in seen_refs:
-                return
-            seen_refs.add(key)
-            references.append(
-                _IndexedReference(
-                    file_path=rel,
-                    symbol_name=name,
-                    line=line,
-                    column=column,
-                    end_column=max(column, end_column),
-                    enclosing_symbol_name=enclosing.name if enclosing else None,
-                    enclosing_qualified_name=enclosing.qualified_name if enclosing else None,
-                    snippet=snippet_for(line),
-                )
-            )
-
-        class Visitor(ast.NodeVisitor):
-            def visit_Name(self, node: ast.Name) -> None:
-                if isinstance(node.ctx, ast.Load):
-                    add_reference(node.id, node)
-                self.generic_visit(node)
-
-            def visit_Attribute(self, node: ast.Attribute) -> None:
-                add_reference(node.attr, node)
-                self.generic_visit(node)
-
-            def visit_Call(self, node: ast.Call) -> None:
-                callee = CodeContextEngine._python_call_name(node.func)
-                caller = containing_symbol(int(getattr(node, "lineno", 0) or 0))
-                if callee and caller is not None:
-                    line = int(getattr(node, "lineno", caller.start_line) or caller.start_line)
-                    column = int(getattr(node, "col_offset", 0) or 0) + 1
-                    edge_key = (caller.qualified_name, line, column, callee)
-                    if edge_key not in seen_edges:
-                        seen_edges.add(edge_key)
-                        call_edges.append(
-                            _IndexedCallEdge(
-                                caller_symbol_name=caller.name,
-                                caller_qualified_name=caller.qualified_name,
-                                caller_file_path=rel,
-                                caller_start_line=caller.start_line,
-                                caller_end_line=caller.end_line,
-                                callee_name=callee,
-                                call_line=line,
-                                call_column=column,
-                                snippet=snippet_for(line),
-                            )
-                        )
-                self.generic_visit(node)
-
-        Visitor().visit(tree)
-        return references, call_edges
-
     @staticmethod
     def _python_call_name(node: ast.AST) -> str | None:
         if isinstance(node, ast.Name):
@@ -5865,23 +5751,6 @@ class CodeContextEngine:
                 )
             )
         return symbols
-
-    def _extract_imports(self, path: Path, rel: str, language: str, source: str) -> list[tuple[str, str | None]]:
-        imports: list[tuple[str, str | None]] = []
-        if language == "python":
-            imports.extend(self._python_imports(path, source))
-        elif language in {"typescript", "javascript"}:
-            imports.extend(self._javascript_imports(path, source))
-        elif language == "rust":
-            for match in _RUST_MOD_RE.finditer(source):
-                raw = match.group(1)
-                imports.append((raw, self._resolve_relative_module(path.parent, raw, [".rs"])))
-        elif language == "go":
-            for match in _GO_IMPORT_RE.finditer(source):
-                raw_block = match.group(1) or match.group(2) or ""
-                for raw in re.findall(r"\"([^\"]+)\"", raw_block) or [raw_block]:
-                    imports.append((raw, None))
-        return sorted(set((raw, target) for raw, target in imports if raw and target != rel))
 
     def _python_imports(self, path: Path, source: str) -> list[tuple[str, str | None]]:
         try:
@@ -7737,25 +7606,6 @@ class CodeContextEngine:
 
         return best_payload
 
-    def _budget_error_payload(
-        self,
-        *,
-        budget_tokens: int,
-        minimum_required_tokens: int,
-        provenance: str,
-    ) -> dict[str, Any]:
-        return self._finalize_packed_payload(
-            {
-                "error": "budget_too_small",
-                "message": "budget_tokens cannot fit the protected top-ranked essentials",
-                "budget_tokens": budget_tokens,
-                "minimum_required_tokens": minimum_required_tokens,
-                "cache_hit": False,
-                "provenance": provenance,
-            },
-            full_total_tokens=max(minimum_required_tokens, 0),
-        )
-
     def _pack_items_payload(
         self,
         items: list[dict[str, Any]],
@@ -8492,12 +8342,6 @@ class CodeContextEngine:
             "cache_hit": False,
             "provenance": _LOCAL_PROVENANCE,
         }
-
-    def _file_mtime_ns(self, file_path: str) -> int | None:
-        path = self._resolve_inside_repo(file_path)
-        with contextlib.suppress(OSError):
-            return path.stat().st_mtime_ns
-        return None
 
     def _python_text_search(self, query: str, search_path: Path, *, limit: int, ignore_case: bool) -> list[TextMatch]:
         query_cmp = query.lower() if ignore_case else query

@@ -98,17 +98,3 @@ class CommitSummary:
     summary: str  # ≤200 tokens
     summary_model: str
     prompt_version: str  # "v1"
-
-
-@dataclass(frozen=True)
-class CommitChunk:
-    """Persisted commit chunk as read back from SQLite."""
-
-    commit_sha: str
-    author_date: int
-    files_touched: list[str]  # JSON-deserialised
-    symbols_touched: list[str] | None
-    summary: str
-    summary_model: str
-    embedding: list[float] | None  # decoded from BLOB; None if not yet embedded
-    index_version: int
