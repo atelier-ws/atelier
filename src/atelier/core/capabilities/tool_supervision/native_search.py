@@ -409,6 +409,45 @@ def _line_window(lines: list[str], line_no: int, before: int, after: int) -> tup
     return start, end, lines[start - 1 : end]
 
 
+_CODEY_SUFFIXES = {".py", ".pyi", ".ts", ".tsx", ".js", ".jsx"}
+_DOCSTRING_QUOTES = ('"""', "'''")
+
+
+def _collapse_docstrings(window: list[str], *, threshold: int = 8, keep_head: int = 2) -> list[str]:
+    """Collapse long triple-quoted blocks (NumPy-style docstrings / big string
+    constants) to their summary + an elision marker, leaving signatures and code
+    untouched. The agent asked to read a function, not its 80-line param table:
+    keep the opener + first ``keep_head`` content lines, drop the prose bulk.
+
+    Only blocks longer than ``threshold`` lines are collapsed; everything else is
+    returned verbatim. Language-agnostic enough for Python/JS triple/backtick-free
+    docstrings (handles ``\"\"\"`` and ``'''``).
+    """
+    out: list[str] = []
+    i, n = 0, len(window)
+    while i < n:
+        line = window[i]
+        opener = next((q for q in _DOCSTRING_QUOTES if q in line), None)
+        # An opener that does not also close on the same line starts a block.
+        if opener is not None and line.count(opener) == 1:
+            j = i + 1
+            while j < n and opener not in window[j]:
+                j += 1
+            if j < n and (j - i + 1) > threshold:
+                out.append(line)
+                out.extend(window[i + 1 : min(i + 1 + keep_head, j)])
+                elided = j - (i + keep_head)
+                if elided > 0:
+                    indent = window[j][: len(window[j]) - len(window[j].lstrip())]
+                    out.append(f"{indent}# … {elided} docstring line(s) elided; read the range to expand …")
+                out.append(window[j])
+                i = j + 1
+                continue
+        out.append(line)
+        i += 1
+    return out
+
+
 def _truncate_line(line: str, max_line_length: int | None) -> str:
     if not max_line_length or max_line_length <= 0:
         return line
@@ -812,6 +851,11 @@ def _render_text_result(
         if (start, end) in windows_seen:
             continue
         windows_seen.add((start, end))
+        # Lean output: an agent reading a function body via grep+context does not
+        # need the 80-line NumPy docstring -- collapse it to summary + marker.
+        # summary=False (explicit raw) opts out.
+        if summary is not False and path.suffix.lower() in _CODEY_SUFFIXES and len(window) > 8:
+            window = _collapse_docstrings(window)
         rendered.append(f"@@ {start}-{end}")
         rendered.extend(_truncate_line(line, max_line_length) for line in window)
         emitted += len(window)
