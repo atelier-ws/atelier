@@ -16,7 +16,7 @@ CANONICAL_RESULTS = REPORT_ROOT / "swe30_run1_20260622T043715Z" / "results.csv"
 CSV_OUTPUT = PUBLIC_ROOT / "optimization_savings.csv"
 SVG_OUTPUT = PUBLIC_ROOT / "optimization_savings.svg"
 EXPECTED_TASKS = 30
-MIN_TASKS_PER_EXPERIMENT = 3
+MIN_TASKS_PER_EXPERIMENT = 5
 MIN_SAVINGS_PERCENT = -100.0
 
 
@@ -79,24 +79,26 @@ def collect_data() -> tuple[dict[str, object], list[dict[str, object]]]:
             continue
         report_runs.append((results_path, rows))
 
-    baseline_rows: dict[str, tuple[float, dict[str, str]]] = {}
+    baseline_samples: dict[str, list[tuple[float, dict[str, str]]]] = {task: [] for task in tasks}
     for _, rows in report_runs:
         for row in rows:
             task = row.get("task")
-            if row.get("arm") != "baseline" or task not in tasks:
+            if row.get("arm") != "baseline" or task not in baseline_samples:
                 continue
             cost = positive_cost(row)
-            if cost is None:
-                continue
-            previous = baseline_rows.get(task)
-            if previous is None or cost < previous[0]:
-                baseline_rows[task] = (cost, row)
+            if cost is not None:
+                baseline_samples[task].append((cost, row))
 
-    missing_baselines = [task for task in tasks if task not in baseline_rows]
+    missing_baselines = [task for task, samples in baseline_samples.items() if not samples]
     if missing_baselines:
         raise RuntimeError(f"missing non-zero baseline costs: {missing_baselines}")
-    baseline_cost = {task: selected[0] for task, selected in baseline_rows.items()}
-    baseline_correctness = [reported_correctness(selected[1]) for selected in baseline_rows.values()]
+    baseline_cost = {
+        task: sum(cost for cost, _ in samples) / len(samples) for task, samples in baseline_samples.items()
+    }
+    cheapest_baseline_rows = {
+        task: min(samples, key=lambda sample: sample[0])[1] for task, samples in baseline_samples.items()
+    }
+    baseline_correctness = [reported_correctness(row) for row in cheapest_baseline_rows.values()]
     baseline_reported = [value for value in baseline_correctness if value is not None]
     baseline = {
         "label": "CC",
@@ -178,6 +180,7 @@ def write_csv(
 ) -> None:
     headers = ["metric", "CC"]
     headers.extend(experiment_header(experiment) for experiment in experiments)
+    baseline_correctness = 100 * int(baseline["correct_tasks"]) / int(baseline["tasks_run"])
 
     rows = [
         [
@@ -187,9 +190,17 @@ def write_csv(
         ],
         [
             "correctness_percent",
-            f"{100 * int(baseline['correct_tasks']) / int(baseline['tasks_run']):.2f}",
+            f"{baseline_correctness:.2f}",
             *[
                 f"{100 * int(experiment['correct_tasks']) / int(experiment['tasks_run']):.2f}"
+                for experiment in experiments
+            ],
+        ],
+        [
+            "correctness_delta_vs_CC_percent",
+            "0.00",
+            *[
+                f"{100 * int(experiment['correct_tasks']) / int(experiment['tasks_run']) - baseline_correctness:+.2f}"
                 for experiment in experiments
             ],
         ],
@@ -274,7 +285,7 @@ def write_svg(
         (
             '<desc id="desc">Pooled cost savings and correctness percentage '
             "by experiment. CC is the Claude Code baseline. "
-            "Experiments require at least three tasks and savings below "
+            "Experiments require at least five tasks and savings below "
             "-100 percent are excluded.</desc>"
         ),
         '<rect width="100%" height="100%" rx="12" fill="#ffffff"/>',
@@ -288,13 +299,13 @@ def write_svg(
         ('<text class="title" x="24" y="38">Atelier cost savings and correctness by experiment</text>'),
         (
             f'<text class="subtitle" x="24" y="64">CC baseline plus '
-            f"{len(experiments)} qualifying experiments · 3+ tasks per "
+            f"{len(experiments)} qualifying experiments · 5+ tasks per "
             "experiment · savings outliers below -100% excluded</text>"
         ),
         (
-            '<text class="subtitle" x="24" y="84">Both lines use percent: '
-            "pooled cost savings and correct tasks / all tasks run x 100."
-            "</text>"
+            '<text class="subtitle" x="24" y="84">Savings: average baseline '
+            "cost vs cheapest Atelier. Correctness: correct tasks / all "
+            "tasks run x 100.</text>"
         ),
     ]
     for tick in range(percent_min, percent_max + 1, 50):
@@ -306,6 +317,20 @@ def write_svg(
             f'y2="{y:.2f}" stroke="{stroke}" stroke-width="{stroke_width}"/>'
         )
         parts.append(f'<text class="axis" x="{left - 12}" y="{y + 4:.2f}" text-anchor="end">{tick:+d}%</text>')
+
+    baseline_correctness = correctness_values[0]
+    baseline_correctness_y = y_position(baseline_correctness)
+    parts.append(
+        f'<line x1="{left}" x2="{width - right}" '
+        f'y1="{baseline_correctness_y:.2f}" '
+        f'y2="{baseline_correctness_y:.2f}" stroke="#7c3aed" '
+        'stroke-width="1.5" stroke-dasharray="8 6" opacity="0.7"/>'
+    )
+    parts.append(
+        f'<text class="axis" x="{left + 10}" '
+        f'y="{baseline_correctness_y - 7:.2f}" text-anchor="start" '
+        f'fill="#7c3aed">CC correctness {baseline_correctness:.2f}%</text>'
+    )
 
     savings_coordinates = [
         f"{x_position(index):.2f},{y_position(value):.2f}" for index, value in enumerate(savings_values)
@@ -405,7 +430,8 @@ def write_svg(
     parts.append(
         f'<text class="subtitle" x="{left}" y="{height - 20}">Blue line: '
         "cost savings (green cheaper, red more expensive). Purple line: "
-        "correct tasks / all tasks run x 100. Exact values and counts are in "
+        "correct tasks / all tasks run x 100; dashed line is CC baseline. "
+        "Exact values and deltas are in "
         "optimization_savings.csv.</text>"
     )
     parts.append("</svg>")

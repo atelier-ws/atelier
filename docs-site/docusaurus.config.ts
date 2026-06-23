@@ -40,6 +40,7 @@ const config: Config = {
   themeConfig: {
     image: "img/atelier-logo.svg",
     colorMode: {
+      defaultMode: "light",
       respectPrefersColorScheme: true,
       disableSwitch: false,
     },
