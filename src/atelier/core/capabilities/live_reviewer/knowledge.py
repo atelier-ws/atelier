@@ -2,11 +2,11 @@
 
 Three sources, mirroring baseline's repo + personal layering:
 
-- **repo lessons** — the first heading of each ``<repo>/.lessons/blocks/*.md``.
+- **repo lessons** — the first heading of each ``<repo>/.atelier/lessons/blocks/*.md``.
 - **repo overlay (team)** — ``<repo>/.atelier/review.json`` (notes/boost/suppress).
 - **personal overlay (you)** — ``<atelier_root>/review_overlay.json`` (per-user).
 
-Committing ``.lessons/`` and ``.atelier/review.json`` distributes the learned
+Committing ``.atelier/lessons/`` and ``.atelier/review.json`` distributes the learned
 rules to the whole team: every clone gets them and the reviewer applies them for
 everyone. All reads are fail-open.
 """

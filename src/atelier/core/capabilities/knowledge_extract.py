@@ -1,7 +1,7 @@
-"""Local knowledge extraction — distill durable review rules from .lessons.
+"""Local knowledge extraction — distill durable review rules from .atelier/lessons.
 
 Atelier's local analog of baseline's KB learning loop, but on the user's own
-infrastructure. It reads the repo's ``.lessons`` blocks, asks a model to distill
+infrastructure. It reads the repo's ``.atelier/lessons`` blocks, asks a model to distill
 short durable repo-specific review rules, and merges them into the review overlay
 (``review_overlay.json`` -> notes) the live reviewer already applies.
 
@@ -49,7 +49,7 @@ def gather_sources(
     max_items: int = _DEFAULT_MAX_ITEMS,
     max_chars: int = _DEFAULT_MAX_CHARS,
 ) -> list[str]:
-    """Read up to *max_items* recent .lessons blocks, bounded by *max_chars*."""
+    """Read up to *max_items* recent lessons blocks, bounded by *max_chars*."""
     blocks = Path(repo_root) / ".atelier" / "lessons" / "blocks"
     if not blocks.is_dir():
         return []
@@ -232,7 +232,7 @@ def extract_rules(
     scope: str = "repo",
     runner: Callable[..., str] | None = None,
 ) -> dict[str, Any]:
-    """Distill review rules from .lessons and merge them into the overlay.
+    """Distill review rules from .atelier/lessons and merge them into the overlay.
 
     Spend is bounded: the cost is estimated from the prompt size before any call,
     and the run aborts (no tokens spent) when it would exceed *max_spend_usd*.
