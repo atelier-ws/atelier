@@ -211,9 +211,9 @@ def register(cli: click.Group) -> None:
         _IMPORT_FAILED = True
 
     try:
-        from .profile import profile_group
+        from .perf import perf_group
 
-        cli.add_command(profile_group)
+        cli.add_command(perf_group)
     except (ModuleNotFoundError, ImportError):
         _IMPORT_FAILED = True
 
