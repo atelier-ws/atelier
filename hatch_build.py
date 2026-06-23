@@ -28,6 +28,16 @@ from typing import Any
 
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
+
+def _mypyc_importable() -> bool:
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec("mypyc") is not None
+    except Exception:  # noqa: BLE001
+        return False
+
+
 _PYDANTIC_RE = re.compile(r"class\s+\w+\s*\(.*?(?:BaseModel|RootModel)")
 _DYNAMIC_RE = re.compile(r"__import__\s*\(")
 # mypyc: "Inheriting from most builtin types is unimplemented"
@@ -86,6 +96,17 @@ class CustomBuildHook(BuildHookInterface):
         # ~296-module mypyc recompile on every `uv run` sync. Only real wheel
         # builds (uv build --wheel, version="standard") compile.
         if version == "editable":
+            return
+
+        # mypyc is shipped with mypy; skip gracefully if not installed
+        # (e.g. bare `uv build --wheel` without dev deps — use ATELIER_SKIP_MYPYC=1
+        # to suppress this warning).
+        if not shutil.which("mypyc") and not _mypyc_importable():
+            print(
+                "[hatch-mypyc] mypyc not found — skipping compilation."
+                " Install mypy or set ATELIER_SKIP_MYPYC=1 to suppress.",
+                flush=True,
+            )
             return
 
         repo = pathlib.Path(self.root)
