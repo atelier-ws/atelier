@@ -19,6 +19,8 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import os
+import queue
 import time
 import urllib.request
 from collections.abc import Callable
@@ -185,6 +187,26 @@ def _load_prior_results(out_dir: Path) -> dict[tuple[str, str, int], ArmResult]:
     return prior
 
 
+def _resolve_oauth_tokens(agent_env: dict[str, str]) -> list[str]:
+    """OAuth tokens to rotate container runs across, in priority order.
+
+    Reads CLAUDE_CODE_OAUTH_TOKEN_1 / _2 from the host env first, then the .env
+    cascade (agent_env). Whichever are set are used; both set -> both used. Falls
+    back to the single CLAUDE_CODE_OAUTH_TOKEN when neither numbered token is
+    present, preserving prior single-credential behavior.
+    """
+    tokens: list[str] = []
+    for name in ("CLAUDE_CODE_OAUTH_TOKEN_1", "CLAUDE_CODE_OAUTH_TOKEN_2"):
+        val = os.environ.get(name) or agent_env.get(name)
+        if val and val not in tokens:
+            tokens.append(val)
+    if not tokens:
+        val = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or agent_env.get("CLAUDE_CODE_OAUTH_TOKEN")
+        if val:
+            tokens.append(val)
+    return tokens
+
+
 def run(args: argparse.Namespace) -> int:
     instances, grade_fn, grade_label = _select_backend(args)
     if not instances:
@@ -204,6 +226,25 @@ def run(args: argparse.Namespace) -> int:
     _prebuild_overlays(instances, args.arms)
 
     agent_env = _load_benchmark_env()
+    # Rotate container runs across the available OAuth tokens, capping each at
+    # --jobs-per-token concurrent runs via a slot queue. With both tokens set and
+    # the default cap of 4, total parallelism is 8 (4 per token).
+    tokens = _resolve_oauth_tokens(agent_env)
+    per_token = max(1, args.jobs_per_token)
+    token_slots: queue.Queue[str] | None = None
+    if tokens:
+        token_slots = queue.Queue()
+        for tok in tokens:
+            for _ in range(per_token):
+                token_slots.put(tok)
+        effective_jobs = per_token * len(tokens)
+        print(
+            f"[auth] {len(tokens)} OAuth token(s) x {per_token} job(s)/token -> up to {effective_jobs} parallel",
+            flush=True,
+        )
+    else:
+        effective_jobs = args.jobs
+        print(f"[auth] no CLAUDE_CODE_OAUTH_TOKEN_1/_2 set; ambient creds, jobs={effective_jobs}", flush=True)
     jobs = [(inst, arm, rep) for inst in instances for arm in args.arms for rep in range(1, args.reps + 1)]
     # --resume: reuse a prior (task, arm, rep) result when its patch artifact is
     # still present, so a re-run re-executes only the missing/stripped jobs (e.g.
@@ -233,18 +274,26 @@ def run(args: argparse.Namespace) -> int:
 
     def _one(job: tuple[Any, str, int]) -> ArmResult:
         inst, arm, rep = job
-        return incontainer.run_in_container(
-            inst,
-            arm,
-            rep,
-            model=args.model,
-            out_dir=out_dir,
-            timeout=args.timeout,
-            agent_env=agent_env,
-            max_turns=args.max_turns,
-        )
+        job_env = agent_env
+        tok = token_slots.get() if token_slots is not None else None
+        if tok is not None:
+            job_env = {**agent_env, "CLAUDE_CODE_OAUTH_TOKEN": tok}
+        try:
+            return incontainer.run_in_container(
+                inst,
+                arm,
+                rep,
+                model=args.model,
+                out_dir=out_dir,
+                timeout=args.timeout,
+                agent_env=job_env,
+                max_turns=args.max_turns,
+            )
+        finally:
+            if tok is not None and token_slots is not None:
+                token_slots.put(tok)
 
-    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+    with ThreadPoolExecutor(max_workers=max(1, min(effective_jobs, len(pending) or 1))) as pool:
         futures = {pool.submit(_one, job): job for job in pending}
         for fut in as_completed(futures):
             inst, arm, rep = futures[fut]
@@ -332,7 +381,16 @@ def main() -> int:
         ),
     )
     p.add_argument("--timeout", type=int, default=1800, help="Per-run agent timeout (s)")
-    p.add_argument("--jobs", type=int, default=1, help="Parallel container runs")
+    p.add_argument(
+        "--jobs", type=int, default=1, help="Parallel container runs (used only when no OAuth tokens drive parallelism)"
+    )
+    p.add_argument(
+        "--jobs-per-token",
+        type=int,
+        default=4,
+        help="Max concurrent container runs per OAuth token (CLAUDE_CODE_OAUTH_TOKEN_1/_2). "
+        "Total parallelism = jobs-per-token x tokens available (e.g. 2 tokens -> 8).",
+    )
     p.add_argument("--grade-workers", type=int, default=4, help="multi_swe_bench eval workers")
     p.add_argument("--no-grade", action="store_true", help="Skip Docker grading (cost/turns only)")
     p.add_argument(

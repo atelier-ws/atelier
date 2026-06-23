@@ -1371,6 +1371,12 @@ def run_arm(
         # Always expose the workspace root so MCP tools and shell commands can
         # resolve relative paths without guessing.
         env.setdefault("CLAUDE_WORKSPACE_ROOT", str(ws))
+        # Per-run MCP tool-latency profile (plugin arms only -- baseline has no
+        # MCP server). One JSONL of {tool, handler_ms, total_ms, overhead_ms}
+        # per call, scoped to THIS run next to its .flow capture, so tool wait
+        # is attributable per task instead of lost in the global debug log.
+        if ARM_SPECS[arm].plugin:
+            env["ATELIER_TOOL_PROFILE_PATH"] = str(out_dir / f"{task.id}_{arm}_rep{rep}.toolprofile.jsonl")
         # For Python workspaces: if a .venv was created by setup_cmds, activate
         # it so all python/pytest commands in the workspace use the right env.
         ws_venv = ws / ".venv"
@@ -2649,10 +2655,12 @@ def _render_task_metric_tables(results: list[ArmResult]) -> str:
             rs = [r for r in clean if r.task == task and r.arm == arm]
             if len(rs) < 2:
                 continue
-            costs = sorted(_metric_value(r, "cost_usd") for r in rs)
+            by_cost = sorted(rs, key=lambda r: _metric_value(r, "cost_usd"))
+            costs = [_metric_value(r, "cost_usd") for r in by_cost]
             toks = sorted(_metric_value(r, "tokens") for r in rs)
+            correct = " / ".join("ok" if r.correct is True else ("x" if r.correct is False else "?") for r in by_cost)
             spread_lines.append(
-                f"| {task} | {arm} | {costs[0]:.4f} / {float(_median(costs) or 0.0):.4f} / {costs[-1]:.4f} | {int(toks[0]):,} / {int(_median(toks) or 0):,} / {int(toks[-1]):,} | {len(rs)} |"
+                f"| {task} | {arm} | {costs[0]:.4f} / {float(_median(costs) or 0.0):.4f} / {costs[-1]:.4f} | {int(toks[0]):,} / {int(_median(toks) or 0):,} / {int(toks[-1]):,} | {correct} | {len(rs)} |"
             )
     if spread_lines:
         lines.extend(
@@ -2660,8 +2668,8 @@ def _render_task_metric_tables(results: list[ArmResult]) -> str:
                 "",
                 "=== Per-rep spread (min / median / max -- noise check) ===",
                 "",
-                "| Task | Arm | cost_usd | tokens | reps |",
-                "| --- | --- | --- | --- | --- |",
+                "| Task | Arm | cost_usd | tokens | correct (cheap->exp) | reps |",
+                "| --- | --- | --- | --- | --- | --- |",
                 *spread_lines,
             ]
         )

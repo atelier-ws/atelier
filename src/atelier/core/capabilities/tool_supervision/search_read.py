@@ -290,18 +290,47 @@ def _save_cache(repo_root: Path, cache: dict[str, Any]) -> None:
     state_path.write_text(json.dumps(state, ensure_ascii=True), encoding="utf-8")
 
 
+# Directories rg never searches (VCS internals, virtualenvs, build/dep trees)
+# and Atelier's own state dir. Pruning them keeps the cache fingerprint aligned
+# with the set of files rg actually greps, and avoids stat-walking the thousands
+# of loose objects under .git on every search call.
+_FINGERPRINT_PRUNE_DIRS = frozenset(
+    {".git", ".atelier", ".hg", ".svn", ".venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache"}
+)
+
+
 def _fingerprint_path(search_path: Path) -> str:
-    """Create a deterministic fingerprint from file metadata under search_path."""
+    """Deterministic fingerprint of file metadata under search_path.
+
+    Used only to invalidate the grep cache when the searched files change, so it
+    must be stable across processes (cross-session cache hits) yet change when a
+    file's size/mtime changes. Walks with ``os.walk``/``os.stat`` rather than
+    ``pathlib.rglob`` + ``sorted(Path)`` -- the pathlib path objects dominated
+    the cost (millions of ``_parse_path``/``Path.__lt__`` calls), making this key
+    computation slower than the rg subprocess it guards. Pruning VCS/build dirs
+    (esp. ``.git``) removes the bulk of the stat-walk for an equivalent result.
+    """
     entries: list[str] = []
-    if search_path.is_file():
-        st = search_path.stat()
-        entries.append(f"{search_path}:{st.st_size}:{st.st_mtime_ns}")
-    elif search_path.is_dir():
-        files = sorted(p for p in search_path.rglob("*") if p.is_file() and ".atelier" not in p.parts)
-        for file_path in files:
-            st = file_path.stat()
-            entries.append(f"{file_path}:{st.st_size}:{st.st_mtime_ns}")
-    else:
+    try:
+        if search_path.is_file():
+            st = search_path.stat()
+            entries.append(f"{search_path}:{st.st_size}:{st.st_mtime_ns}")
+        elif search_path.is_dir():
+            for dirpath, dirnames, filenames in os.walk(search_path):
+                dirnames[:] = [d for d in dirnames if d not in _FINGERPRINT_PRUNE_DIRS]
+                for filename in filenames:
+                    file_path = os.path.join(dirpath, filename)
+                    try:
+                        st = os.stat(file_path)
+                    except OSError:
+                        continue
+                    entries.append(f"{file_path}:{st.st_size}:{st.st_mtime_ns}")
+            # Plain-string sort keeps the digest deterministic regardless of
+            # os.walk traversal order, without paying pathlib comparison costs.
+            entries.sort()
+        else:
+            entries.append(str(search_path))
+    except OSError:
         entries.append(str(search_path))
     return hashlib.sha256("\n".join(entries).encode("utf-8", errors="replace")).hexdigest()
 
@@ -411,11 +440,13 @@ def search_read(
     workspace_root = _workspace_root()
     search_base = _resolve_search_base(path, workspace_root)
     search_target = str(search_base)
-    cache_key = f"grep:{query}:{search_base}:{_fingerprint_path(search_base)}"
     cache_hit = False
     if _cache_disabled():
         grep_output = _run_grep(query, search_target)
     else:
+        # Compute the fingerprint-based key lazily: it walks the tree, so it must
+        # not run when the cache is disabled and the key is never consulted.
+        cache_key = f"grep:{query}:{search_base}:{_fingerprint_path(search_base)}"
         cache = _load_cache(repo_root)
         cache_hit = cache_key in cache and isinstance(cache[cache_key], str)
         if cache_hit:

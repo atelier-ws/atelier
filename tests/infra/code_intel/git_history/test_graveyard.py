@@ -210,7 +210,7 @@ def test_walk_history_default_limit_reads_env(tmp_path: Path, monkeypatch: pytes
     assert graveyard.find_deleted("OldThing", since_ts=None, language="python") == []
 
 
-def test_history_enabled_by_default_indexes_deletions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_history_when_enabled_indexes_deletions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo_root, _delete_sha = _create_delete_fixture(tmp_path)
     adapter_module = importlib.import_module("atelier.infra.code_intel.git_history.adapter")
     db_path = tmp_path / "intel.sqlite"
@@ -224,7 +224,7 @@ def test_history_enabled_by_default_indexes_deletions(tmp_path: Path, monkeypatc
     adapter = adapter_module.DeletedHistorySearchAdapter(
         repo_root=repo_root, repo_id="repo", connection_factory=conn_factory
     )
-    monkeypatch.delenv("ATELIER_HISTORY_ENABLED", raising=False)  # on by default
+    monkeypatch.setenv("ATELIER_HISTORY_ENABLED", "1")  # feature is opt-in (default off)
 
     summary = adapter._ensure_history_ready()
 

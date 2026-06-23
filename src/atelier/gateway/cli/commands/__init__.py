@@ -211,6 +211,13 @@ def register(cli: click.Group) -> None:
         _IMPORT_FAILED = True
 
     try:
+        from .profile import profile_group
+
+        cli.add_command(profile_group)
+    except (ModuleNotFoundError, ImportError):
+        _IMPORT_FAILED = True
+
+    try:
         from .route import proof_group, route_public_group
 
         cli.add_command(route_public_group)

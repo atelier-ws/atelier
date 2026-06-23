@@ -2937,6 +2937,59 @@ def _scrub_args_for_debug(args: dict[str, Any]) -> dict[str, Any]:
     return {k: _scrub_value(k, v) for k, v in args.items()}
 
 
+def _tool_profile_path() -> Path | None:
+    """Per-run tool-latency sink, or None when profiling is off.
+
+    Set ``ATELIER_TOOL_PROFILE_PATH`` to a writable JSONL path (the benchmark
+    points it at a file next to each run's .flow capture) to record per-call
+    timing scoped to a single run -- unlike the global ``mcp_debug.jsonl``, which
+    mixes every workspace and session. Unset in production -> no-op, no I/O.
+    """
+    raw = os.environ.get("ATELIER_TOOL_PROFILE_PATH", "").strip()
+    return Path(raw) if raw else None
+
+
+def _append_tool_profile(
+    *,
+    tool: str,
+    handler_ms: int,
+    total_ms: int,
+    response_size: int,
+    status: str,
+    session_id: str = "",
+    error: str | None = None,
+) -> None:
+    """Append one per-call latency record to the per-run profile sink.
+
+    ``handler_ms`` is the tool handler itself; ``total_ms`` covers the whole
+    dispatch incl. the post-handler pipeline (render/dedup/spill/compact/token
+    ledger), so ``overhead_ms = total_ms - handler_ms`` exposes server-side cost
+    the handler-only timer misses. One sub-4KB line per call -> POSIX-atomic
+    append, safe across the server's worker threads. Fail-open.
+    """
+    path = _tool_profile_path()
+    if path is None:
+        return
+    try:
+        entry: dict[str, Any] = {
+            "ts": time.time(),
+            "tool": tool,
+            "handler_ms": handler_ms,
+            "total_ms": total_ms,
+            "overhead_ms": max(0, total_ms - handler_ms),
+            "response_size": response_size,
+            "status": status,
+            "session_id": session_id,
+        }
+        if error:
+            entry["error"] = error
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, sort_keys=True) + "\n")
+    except Exception:  # noqa: BLE001
+        pass  # never disrupt the server
+
+
 def _append_mcp_debug_event(
     *,
     tool: str,
@@ -4890,6 +4943,31 @@ def _split_read_range_suffix(raw_path: str) -> tuple[str, str | None]:
     return raw_path[: match.start()], match.group(1)
 
 
+_semantic_file_memory_cache: dict[str, SemanticFileMemoryCapability] = {}
+_semantic_file_memory_lock = threading.Lock()
+
+
+def _semantic_file_memory(root: Path) -> SemanticFileMemoryCapability:
+    """Process-cached SemanticFileMemoryCapability, one per atelier root.
+
+    Constructing it builds a BM25/IDF index over the whole file-memory corpus,
+    so a fresh instance per ``read`` call rebuilt that index every time (~140ms
+    of tokenise + JSON-parse on each read). FileIndex is file-based/stateless and
+    SymbolIndex memoizes its IDF by corpus snapshot, so the instance is safe to
+    reuse across the server's worker threads and the index refreshes only when
+    the underlying files change.
+    """
+    key = str(root)
+    cap = _semantic_file_memory_cache.get(key)
+    if cap is None:
+        with _semantic_file_memory_lock:
+            cap = _semantic_file_memory_cache.get(key)
+            if cap is None:
+                cap = SemanticFileMemoryCapability(root)
+                _semantic_file_memory_cache[key] = cap
+    return cap
+
+
 def _smart_read_single(
     path: str,
     range: str | None = None,
@@ -4999,7 +5077,7 @@ def _smart_read_single(
                     "lines_shown": shown,
                 }
 
-    cap = SemanticFileMemoryCapability(_atelier_root())
+    cap = _semantic_file_memory(_atelier_root())
     try:
         payload = cap.smart_read(target, range_spec=range, expand=expand)
     except FileNotFoundError as exc:
@@ -5889,6 +5967,35 @@ def _silence_clean_edit_result(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _reindex_edited_files(repo_root: Path, touched_paths: list[str]) -> None:
+    """Immediately refresh the shared code index for files this edit touched.
+
+    Keeps ``search``/``explore`` consistent with the just-applied edit instead of
+    waiting for the engine's autosync poll (~10s). Incremental: re-extracts only
+    the touched files (O(edited files)), never a full rebuild, and runs against
+    the long-lived, process-shared engine so the next code tool call sees the
+    change.
+
+    Runs OFF the edit hot path on a daemon thread: a warm per-file reindex still
+    costs hundreds of ms, and the edit response must not block on it. The model's
+    next tool call is a network+thinking round-trip away, so the refresh lands
+    first in practice; the autosync poll is the backstop if it doesn't. Fail-open;
+    off-switch ATELIER_EDIT_REINDEX=0.
+    """
+    if not touched_paths:
+        return
+    if os.environ.get("ATELIER_EDIT_REINDEX", "").strip().lower() in ("0", "false", "no", "off"):
+        return
+
+    def _run() -> None:
+        try:
+            _code_context_engine(str(repo_root))._reindex_files(touched_paths)
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+
+    threading.Thread(target=_run, name="atelier-edit-reindex", daemon=True).start()
+
+
 @mcp_tool(
     name="edit",
     input_schema=EDIT_TOOL_INPUT_SCHEMA,
@@ -6120,6 +6227,9 @@ def tool_smart_edit(
             repo_root=repo_root,
             touched_paths=[str(p.relative_to(repo_root)) for p in paths.values() if p.is_relative_to(repo_root)],
         )
+        # Incremental: refresh the shared index for the touched files now, so a
+        # follow-up search/explore reflects this edit without the autosync lag.
+        _reindex_edited_files(repo_root, [str(p) for p in paths.values()])
     return _silence_clean_edit_result(result)
 
 
@@ -7036,7 +7146,7 @@ def _op_graph(
             result["synthesized_edges"] = _synthesize_edges_for_paths(paths)
         return _finish_code_result(result)
 
-    cap = SemanticFileMemoryCapability(_atelier_root())
+    cap = _semantic_file_memory(_atelier_root())
     if paths:
         for raw in paths:
             candidate = Path(raw)
@@ -9562,6 +9672,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         rendered_text: str | None = None
         _loop_note: str | None = None
         _call_duration_ms: int = 0
+        _call_started = time.perf_counter()
         try:
             if remote_routed:
                 _remote_start = time.perf_counter()
@@ -9865,6 +9976,15 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # This never goes on response_payload, so the MCP host's main model only
             # ever sees `content`; no structured data rides the wire to any consumer.
             _tool_call_raw_result.value = result if isinstance(result, dict) else None
+            with contextlib.suppress(Exception):
+                _append_tool_profile(
+                    tool=name,
+                    handler_ms=_call_duration_ms,
+                    total_ms=round((time.perf_counter() - _call_started) * 1000),
+                    response_size=_ok_response_size,
+                    status="ok",
+                    session_id=_ok_sid,
+                )
             return _ok(rid, response_payload)
         except Exception as exc:
             logging.exception("Recovered from broad exception handler")
@@ -9898,6 +10018,16 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         tool=name,
                         args=args if isinstance(args, dict) else {},
                         duration_ms=_call_duration_ms,
+                        response_size=0,
+                        status="error",
+                        error=type(exc).__name__,
+                        session_id=_err_session_id,
+                    )
+                with contextlib.suppress(Exception):
+                    _append_tool_profile(
+                        tool=name,
+                        handler_ms=_call_duration_ms,
+                        total_ms=round((time.perf_counter() - _call_started) * 1000),
                         response_size=0,
                         status="error",
                         error=type(exc).__name__,
