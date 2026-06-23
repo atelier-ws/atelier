@@ -161,13 +161,6 @@ def _detect_local_slm() -> str | None:
     return os.environ.get("OLLAMA_BASE_URL") or os.environ.get("ATELIER_LOCAL_SLM_URL") or None
 
 
-def _local_slm_model() -> str:
-    """Return the preferred local SLM model name from env or a sensible default."""
-    import os
-
-    return os.environ.get("ATELIER_LOCAL_SLM_MODEL", "llama3.2:3b")
-
-
 class ModelRouter:
     """Score a prospective turn into cheap, medium, or expensive model tiers."""
 

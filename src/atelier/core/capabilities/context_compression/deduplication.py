@@ -43,34 +43,6 @@ def _similarity(a: str, b: str) -> float:
     return 1.0 - d / max_len
 
 
-def collapse_similar_errors(
-    summaries: list[str],
-    *,
-    threshold: float = 0.75,
-) -> list[tuple[str, int]]:
-    """
-    Deduplicate nearly-identical summaries.
-
-    Returns a list of (representative_summary, count) tuples.
-    Entries within *threshold* similarity are collapsed into one.
-    """
-    if not summaries:
-        return []
-    used: list[bool] = [False] * len(summaries)
-    groups: list[tuple[str, int]] = []
-    for i, s_i in enumerate(summaries):
-        if used[i]:
-            continue
-        count = 1
-        used[i] = True
-        for j in range(i + 1, len(summaries)):
-            if not used[j] and _similarity(s_i, summaries[j]) >= threshold:
-                count += 1
-                used[j] = True
-        groups.append((s_i, count))
-    return groups
-
-
 def deduplicate_tool_outputs(
     events: list[dict[str, Any]],
     *,

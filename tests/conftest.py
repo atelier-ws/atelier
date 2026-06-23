@@ -12,7 +12,6 @@ import pytest
 if TYPE_CHECKING:
     from atelier.core.foundation.store import ContextStore
     from atelier.core.runtime import AtelierRuntimeCore
-    from atelier.gateway.adapters.runtime import ContextRuntime
 
 
 @pytest.fixture(autouse=True)
@@ -92,22 +91,3 @@ def store(tmp_path: Path) -> ContextStore:
     store = ContextStore(root)
     store.init()
     return store
-
-
-@pytest.fixture()
-def seeded_runtime(tmp_path: Path) -> Iterator[ContextRuntime]:
-    import yaml
-
-    from atelier.core.foundation.models import Rubric
-    from atelier.core.foundation.parser import parse_block_markdown
-    from atelier.gateway.adapters.runtime import ContextRuntime
-
-    rt = ContextRuntime(root=tmp_path / "atelier")
-    lessons_root = Path(__file__).resolve().parents[1] / ".atelier" / "lessons"
-    blocks_dir = lessons_root / "blocks"
-    rubrics_dir = lessons_root / "rubrics"
-    for p in sorted(blocks_dir.glob("template_*.md")):
-        rt.store.upsert_block(parse_block_markdown(p.read_text(encoding="utf-8")))
-    for p in sorted(rubrics_dir.glob("template_*.yaml")):
-        rt.store.upsert_rubric(Rubric.model_validate(yaml.safe_load(p.read_text(encoding="utf-8"))))
-    yield rt

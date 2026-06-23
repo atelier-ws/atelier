@@ -135,25 +135,6 @@ def iter_run_files(root: str | Path) -> list[Path]:
     return results
 
 
-def iter_session_outcomes(root: str | Path) -> list[tuple[str, Path]]:
-    """``(session_id, outcomes.json)`` for every session that captured outcomes."""
-    base = Path(root)
-    results: list[tuple[str, Path]] = []
-    # Global sessions
-    global_sessions = base / "sessions"
-    if global_sessions.is_dir():
-        results.extend((p.parent.name, p) for p in sorted(global_sessions.glob("*/outcomes.json")))
-    # Per-workspace sessions
-    workspaces_dir = base / "workspaces"
-    if workspaces_dir.is_dir():
-        for ws_dir in sorted(workspaces_dir.iterdir()):
-            if ws_dir.is_dir():
-                ws_sessions = ws_dir / "sessions"
-                if ws_sessions.is_dir():
-                    results.extend((p.parent.name, p) for p in sorted(ws_sessions.glob("*/outcomes.json")))
-    return results
-
-
 class RunLedger:
     """Append-only ledger for a single agent run."""
 
@@ -541,87 +522,6 @@ class RunLedger:
             ckpt.to_dict(),
         )
         return ckpt
-
-    # ----- trace summary --------------------------------------------------- #
-
-    def to_trace_summary(self) -> dict[str, Any]:
-        """Build enriched trace summary data from ledger events.
-
-        Returns a dict with ``tools_called``, ``files_touched``, and
-        ``commands_run`` populated with full args, diffs, and output
-        rather than just names/paths.
-        """
-        # --- Enriched tool calls ---
-        tool_call_events = [e for e in self.events if e.kind == "tool_call"]
-        merged_tools: dict[tuple[str, str], dict[str, Any]] = {}
-        for ev in tool_call_events:
-            p = ev.payload
-            name = p.get("tool", "")
-            sig = p.get("args_signature", "")
-            key = (name, sig)
-            if key not in merged_tools:
-                merged_tools[key] = {
-                    "name": name,
-                    "args_hash": sig,
-                    "count": 1,
-                    "args": p.get("args"),
-                    "result_summary": (p.get("output") or "")[:200],
-                }
-            else:
-                merged_tools[key]["count"] += 1
-
-        tools_called = list(merged_tools.values())
-
-        # --- Enriched file records ---
-        file_events = [e for e in self.events if e.kind in ("file_edit", "file_revert")]
-        files_touched: list[dict[str, Any] | str] = []
-        seen_paths: set[str] = set()
-        for ev in file_events:
-            p = ev.payload
-            path = p.get("path", "")
-            if not path or path in seen_paths:
-                continue
-            seen_paths.add(path)
-            files_touched.append(
-                {
-                    "path": path,
-                    "diff": (p.get("diff") or "")[:4096],
-                    "event": p.get("event", "edit"),
-                }
-            )
-        # Add any paths that only appear in self.files_touched (no diff event)
-        for path in self.files_touched:
-            if path not in seen_paths:
-                files_touched.append(path)
-
-        # --- Enriched command records ---
-        cmd_events = [e for e in self.events if e.kind == "command_result"]
-        commands_run: list[dict[str, Any] | str] = []
-        seen_cmds: set[str] = set()
-        for ev in cmd_events:
-            cmd = ev.summary
-            if cmd in seen_cmds:
-                continue
-            seen_cmds.add(cmd)
-            p = ev.payload
-            commands_run.append(
-                {
-                    "command": cmd,
-                    "exit_code": 0 if p.get("ok") else 1,
-                    "stdout": (p.get("stdout") or "")[:1024],
-                    "stderr": (p.get("stderr") or "")[:1024],
-                }
-            )
-        # Add any commands that only appear in self.commands_run (no result event)
-        for cmd in self.commands_run:
-            if cmd not in seen_cmds:
-                commands_run.append(cmd)
-
-        return {
-            "tools_called": tools_called,
-            "files_touched": files_touched,
-            "commands_run": commands_run,
-        }
 
     # ----- timing helpers ------------------------------------------------- #
 

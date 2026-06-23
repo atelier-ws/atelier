@@ -76,13 +76,6 @@ class ScoredBlock:
     breakdown: dict[str, float]
 
 
-@dataclass(frozen=True)
-class RecalledPassageSummary:
-    id: str
-    source: str
-    score: float
-
-
 @lru_cache(maxsize=1)
 def _encoding() -> tiktoken.Encoding:
     return tiktoken.get_encoding("cl100k_base")
