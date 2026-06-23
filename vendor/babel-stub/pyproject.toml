@@ -1,0 +1,9 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "babel"
+version = "99.0.0"
+description = "Zero-content stub: courlan declares babel as a dep but never imports it at runtime."
+requires-python = ">=3.10"
