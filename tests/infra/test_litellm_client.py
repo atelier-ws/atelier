@@ -4,6 +4,8 @@ from typing import Any
 
 import pytest
 
+pytest.importorskip("litellm", reason="atelier[litellm] not installed")
+
 from atelier.infra.internal_llm import litellm_client
 from atelier.infra.internal_llm.exceptions import LiteLLMUnavailable
 
