@@ -304,8 +304,8 @@ def test_auto_compact_is_reversible_via_spill(monkeypatch: pytest.MonkeyPatch) -
     out = mcp_server._auto_compact_result_text(text, "bash", {})
 
     assert len(out) < len(text)  # compacted
-    assert "auto-compacted" in out
-    assert "ORIGINAL preserved" in out
+    assert "compacted" in out
+    assert 'op="retrieve"' in out
     assert tool_output_spill.SPILL_REF_PREFIX in out
 
     recovered = tool_output_spill.retrieve(_extract_ref(out))

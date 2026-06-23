@@ -256,10 +256,8 @@ def summary_with_ref(
     pull the full (or a sliced) payload back instead of re-running ``tool_name``.
     """
     hint = (
-        f"\n\n[atelier: full {tool_name} output ({record.original_bytes} bytes) "
-        f"spilled to ref {record.ref_id}; recover it with the `{retrieve_op}` tool "
-        f'(op="retrieve", ref_id="{record.ref_id}"), or a window via '
-        f"slice_start/slice_length, instead of re-running {tool_name}.]"
+        f"\n\n[full output ({record.original_bytes}B) spilled to {record.ref_id}; "
+        f'{retrieve_op} op="retrieve" ref_id="{record.ref_id}" (or slice_start/length)]'
     )
     if max_chars is None:
         return f"{summary}{hint}"

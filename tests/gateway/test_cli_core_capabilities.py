@@ -122,5 +122,8 @@ def test_read_smart_and_edit_smart(tmp_path: Path) -> None:
             pytest.fail(f"Could not find JSON in output: {out}")
         edit_payload = json.loads(out[start:])
 
-    assert len(edit_payload["applied"]) == 1
+    # A clean exact-match edit echoes the minimal applied range (orientation only);
+    # the file change itself is the confirmation, no diff body.
+    assert edit_payload.get("applied")
+    assert "failed" not in edit_payload
     assert "return 2" in target.read_text(encoding="utf-8")

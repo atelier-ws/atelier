@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 """Stop hook: verify-before-done.
 
-A code change is not done until it has been *executed* against a behavioral
-check. This hook nudges once when a session edited source files but the
-transcript shows no test run and no execution of the changed code.
+A code change is not done until the project's own tests have been *run* against
+it. This hook nudges once when a session edited source files but the transcript
+shows no test-runner invocation.
+
+Only a real test runner counts -- an ad-hoc ``python -c`` / ``python repro.py``
+snippet does NOT. A snippet checks only what the author thought to check, so it
+sails past regressions in neighboring code the change quietly broke; the project
+suite catches them. (Measured: every benchmark rep that ran the suite resolved;
+every failure had run only a snippet or nothing.)
 
 Generic and language-agnostic: it keys on tool *shape* (an edit tool touched a
-code file; a shell command matched a test runner or an interpreter running
-code), never on any project, task, or framework specifics. Mechanical checks
-(type-check / lint / format) deliberately do not count as verification.
+code file; a shell command matched a test runner), never on any project, task,
+or framework specifics. Mechanical checks (type-check / lint / format) and
+ad-hoc code execution deliberately do not count as verification.
 
 Bounded and fail-open by design -- a hard iteration cap backfired here before
 (see loop_discipline_post.py), so this fires at most once per session (it
@@ -69,8 +75,7 @@ _CODE_SUFFIXES = frozenset(
 )
 
 # A shell command that runs a recognized test runner. Language-agnostic.
-_TEST_RUN = re.compile(
-    r"""(?xi)
+_TEST_RUN = re.compile(r"""(?xi)
     \b(
         pytest | py\.test | nose2? | tox | nox
       | unittest | runtests
@@ -81,19 +86,7 @@ _TEST_RUN = re.compile(
       | (rake|bundle\s+exec)\b[^\n]*\b(test|spec|rspec)
       | manage\.py\s+test
     )\b
-    """
-)
-
-# A shell command that *executes* code, e.g. `python repro.py`, `python -c ...`,
-# `node check.js`. Lenient on purpose: counting more things as "verified" biases
-# toward NOT firing, which keeps the gate from nagging legitimate work.
-_CODE_RUN = re.compile(
-    r"""(?xi)
-    (?:^|[;&|]\s*|\s)
-    (python[0-9.]*|node|deno|bun|ruby|php|perl|Rscript|julia)\s+
-    (-c\b|-e\b|-m\s+\S|[^\s;|&]+\.(py|js|mjs|ts|rb|php|pl|R|jl))
-    """
-)
+    """)
 
 
 def _disabled() -> bool:
@@ -163,17 +156,15 @@ def scan_transcript(transcript_path: str | None) -> tuple[list[str], bool]:
                 edited.extend(t for t in _edit_targets(tool_input) if _is_code_path(t))
             elif name in {"bash", "shell"}:
                 cmd = str(tool_input.get("command") or "")
-                if _TEST_RUN.search(cmd) or _CODE_RUN.search(cmd):
+                if _TEST_RUN.search(cmd):
                     verified = True
     return edited, verified
 
 
 _REASON = (
-    "verify-before-done: this session edited code ({n} file(s): {sample}) but the "
-    "transcript shows no executed test and no run of the changed code. Run the test "
-    "that exercises this change -- or reproduce the behavior in the shell -- and confirm "
-    "it passes before finishing. Mechanical checks (type-check / lint / format) do not "
-    "count. If you have already verified another way, note how and stop again."
+    "verify-before-done: edited {n} file(s) ({sample}) but ran no tests. Run the project's test "
+    "suite (pytest/runtests/...), not a python -c snippet -- a snippet misses regressions in code "
+    "you didn't think to check. Or note how you verified, then stop again."
 )
 
 

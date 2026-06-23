@@ -10,7 +10,6 @@
 
 ### [Documentation →](https://atelier.ws)
 
-[![License](https://img.shields.io/github/license/atelier-ws/atelier?style=for-the-badge)](https://github.com/atelier-ws/atelier/blob/main/LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/atelier-ws/atelier?style=for-the-badge)](https://github.com/atelier-ws/atelier/releases)
 [![Total downloads](https://img.shields.io/github/downloads/atelier-ws/atelier/total?style=for-the-badge)](https://github.com/atelier-ws/atelier/releases)
 
@@ -66,18 +65,18 @@ Already installed? Run `atelier update` to update in place.
 
 ## MCP Tools
 
-| Tool        | Use                                                             |
-| ----------- | --------------------------------------------------------------- |
-| `search`    | Semantic + keyword code search across the repo.                 |
-| `grep`      | Regex / glob / type-filtered search with token-budgeted output. |
-| `read`      | Budgeted file reads by outline, range, or full file.            |
+| Tool        | Use                                                                      |
+| ----------- | ------------------------------------------------------------------------ |
+| `search`    | Semantic + keyword code search across the repo.                          |
+| `grep`      | Regex / glob / type-filtered search with token-budgeted output.          |
+| `read`      | Budgeted file reads by outline, range, or full file.                     |
 | `explore`   | Grouped source + callers, callees, usages — for a concept or one symbol. |
-| `codemod`   | Structured, pattern-based code transforms.                      |
-| `edit`      | Deterministic file edits with optional verify gate.             |
-| `shell`     | Compact command execution when needed.                          |
-| `memory`    | Local memory read and recall.                                   |
-| `sql`       | Query the local index database directly.                        |
-| `web_fetch` | Fetch a public URL and return clean Markdown.                   |
+| `codemod`   | Structured, pattern-based code transforms.                               |
+| `edit`      | Deterministic file edits with optional verify gate.                      |
+| `shell`     | Compact command execution when needed.                                   |
+| `memory`    | Local memory read and recall.                                            |
+| `sql`       | Query the local index database directly.                                 |
+| `web_fetch` | Fetch a public URL and return clean Markdown.                            |
 
 ---
 
@@ -91,9 +90,9 @@ Packaged agents in [integrations/agents/](integrations/agents/):
 | code     | atelier:code     | Yes     | Main coding mode for edits, refactors, bug fixes, and features. | Uses Atelier MCP tools for file I/O, search, edits, and shell work; applies shared coding guidelines and validates before concluding. |
 | explore  | atelier:explore  | No      | Read-only codebase exploration.                                 | Locates files, symbols, and patterns; reports cited findings; never edits, creates, or deletes files.                                 |
 | plan     | atelier:plan     | No      | Grounded implementation planning.                               | Explores enough to produce a concrete plan with files, ordering, validation, risks, and open questions; never edits.                  |
-| execute  | atelier:execute  | Yes     | Focused execution of an accepted plan or narrow task.           | Makes the smallest code change and stops for review.                                                         |
+| execute  | atelier:execute  | Yes     | Focused execution of an accepted plan or narrow task.           | Makes the smallest code change and stops for review.                                                                                  |
 | solve    | atelier:solve    | Yes     | Autonomous end-to-end task solving.                             | Produces the required result early, iterates against real checks, and owns completion.                                                |
-| review   | atelier:review   | No      | Adversarial code review.                                        | Reads code directly, reports cited findings, and never edits source files.                              |
+| review   | atelier:review   | No      | Adversarial code review.                                        | Reads code directly, reports cited findings, and never edits source files.                                                            |
 | research | atelier:research | No      | External research.                                              | Fetches web sources, GitHub repos, and package docs; synthesizes with citations; never edits files.                                   |
 
 Packaged skills in [integrations/skills/](integrations/skills/):
@@ -124,7 +123,7 @@ Run CodeBench:
 ```bash
 atelier benchmark codebench \
   --arm baseline --arm atelier \
-  --task all \
+  --task cg_all \
   --reps 5 \
   --model claude-sonnet-4-6 \
   --cli-driver claude
@@ -143,6 +142,12 @@ End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** —
 | xarray-3305         | xarray · Python       | 31.2% cheaper     | 28.9% fewer     | 12 / 16                    | 24.9% faster    | 3/3 / 3/3                      |
 | **Overall, pooled** | **5 instances**       | **45.9% cheaper** | **57.7% fewer** | **67 / 136 (51% less)**    | **3.7% slower** | **15/15 (100%) / 14/15 (93%)** |
 
+#### Optimization and correctness history
+
+Each experiment pools only the tasks run in that experiment. For every included task, it takes the cheapest non-zero baseline rep across the corpus and the cheapest non-zero Atelier rep in that run, then calculates `(sum(baseline) - sum(Atelier)) / sum(baseline) × 100`. The first point, **CC**, is the Claude Code baseline: 0% normalized savings and correctness of `correct tasks / all 30 tasks × 100`. Each Atelier correctness point uses `correct cheapest reps / all tasks run in that experiment × 100`; unreported results are not counted as correct. Negative savings mean Atelier cost more. Experiments with fewer than three tasks, or below −100% savings—where Atelier cost more than 2× the pooled baseline—are excluded. Remaining experiments are ordered by their first captured request time. Exact percentages, task counts, pooled costs, timestamps, and run names: [optimization_savings.csv](reports/public/benchmark/codebench/optimization_savings.csv).
+
+![Atelier cost savings and correctness by experiment](reports/public/benchmark/codebench/optimization_savings.svg)
+
 Run the SWE benchmark:
 
 ```bash
@@ -160,6 +165,59 @@ uv run --project benchmarks python -m benchmarks.codebench.multiswe_run \
 ```
 
 Opt out of the defaults with `CODEBENCH_EDIT_VERIFY=0` (disable the edit-verify gate) or widen the egress allowlist with `CODEBENCH_EGRESS_ALLOW=anthropic.com,amazonaws.com,…`.
+
+#### Benchmark Setup
+
+Every knob below is identical for both arms **unless marked (atelier-only)**:**Model:**`claude-opus-4-8`, default sampling, both arms.
+
+- **Environment:** each instance's official SWE-bench Verified Docker image; the repo's conda env activated identically; agent runs as root (`IS_SANDBOX=1`). Both arms run _in-image_.
+- **Reps:** 3 per instance, median reported. **Resolved** = reps whose patch passes the hidden gold tests (official `swebench` harness; gold tests are never shown to the agent and gold test files are stripped from the model patch before grading).
+- **Turn cap / timeout:** `--max-turns 50`; per-run agent timeout 1800 s.
+- **Egress:** hermetic — only `api.anthropic.com` is reachable (no fetching answers, patches, or hints).
+- **Disabled tools (both arms):** see Tool parity below.
+- **Task set:** SWE-bench Verified instances balanced across repos, each with a substantive baseline cost (≥ $0.50); trivial and non-discriminating instances excluded. **pallets/flask is omitted** — its sole Verified instance is a 3-line change below the substance threshold. List: `benchmarks/codebench/data/verified.txt`.
+- **(atelier-only) persona:** `atelier:auto` — lean autonomous persona; it _replaces_ Claude Code's default system prompt (does not stack — see the fixed-cost note).
+
+#### Tool parity (fair comparison)
+
+Both arms run with the **same tools disabled** (`claude --disallowedTools`, applied identically to baseline and Atelier), so neither can stall, ask for help, or fetch the answer:
+
+- **`AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`** — no stalling on interactive prompts (runs are headless/unattended).
+- **`WebFetch`, `WebSearch`** (and Atelier's `mcp__atelier__web_fetch`) — no fetching answers, patches, or hints from the web.
+- **`Workflow`, `ScheduleWakeup`** — heavy orchestration tools out of scope for single-instance bug fixing.
+
+These are deferred-loaded (`ToolSearch`), so disabling them costs **neither arm any fixed prompt tokens**.
+
+#### Tool surface & per-tool token counts
+
+Every tool each arm loads, with schema token counts (cl100k proxy, read from the request flows). `Agent` / `Skill` / `ToolSearch` are **identical** Claude Code natives in both arms; heavier tools load on demand via `ToolSearch`.
+
+| Capability        | Vanilla        |       tok | Atelier                |       tok |
+| ----------------- | -------------- | --------: | ---------------------- | --------: |
+| Shell             | `Bash`         |       724 | `bash`                 |       289 |
+| Read file         | `Read`         |       446 | `read`                 |       261 |
+| Edit file         | `Edit`         |       255 | `edit`                 |       715 |
+| Create file       | `Write`        |       173 | _(folded into `edit`)_ |         — |
+| Text/path search  | _(via `Bash`)_ |         — | `grep`                 |       437 |
+| Call-graph nav    | —              |         — | `explore`              |       202 |
+| Semantic search   | —              |         — | `search`               |       283 |
+| Subagents         | `Agent`        |       615 | `Agent`                |       615 |
+| Skills            | `Skill`        |       492 | `Skill`                |       492 |
+| Deferred-load     | `ToolSearch`   |       376 | `ToolSearch`           |       376 |
+| **Tools total**   |                | **3,081** |                        | **3,670** |
+| **System prompt** |                | **1,610** |                        |   **996** |
+| **Fixed prefix**  |                | **4,691** |                        | **4,666** |
+
+Both keep `Agent`/`Skill`/`ToolSearch`, so both reach the same native deferred pool (TodoWrite, Glob, NotebookEdit, Task, …) on demand.
+
+#### Atelier's fixed cost overhead
+
+Atelier trades a small recurring overhead for fewer, better-grounded turns. Measured on SWE-bench Verified (`claude-opus-4-8`, both arms in-image, read from the captured request flows):
+
+- **The static prompt prefix is ~neutral** (per-tool breakdown in the table above): **~4,691 tok vanilla vs ~4,666 tok Atelier.** Atelier's persona system prompt is _leaner_ than Claude Code's default (996 vs 1,610 tok), offsetting its slightly heavier tool schemas (3,670 vs 3,081). Heavy tools (Workflow, ScheduleWakeup, WebSearch, …) are **deferred** — loaded on demand via `ToolSearch` — so they cost ~0 upfront for either arm.
+- **The overhead is conversation content, not the prefix.** The static prefix above is the *tool menu* — paid once and equal for both. The cost is the content Atelier *injects and generates as it works*, which is separate: from turn 1, hooks prepend **~860 tok** of bootstrap / memory / scoped context on top of the (identical) task prompt; over a short session Atelier's richer tool *results* (`explore` call graphs, semantic `search` hits, structured `read`, edit-verify diagnostics) push cached content from ~5.7k to ~9.5k tok — **~3,750 extra**, re-read each turn. On trivial tasks (baseline ≤ $0.15) this *is* essentially the entire Atelier−baseline delta: **~$0.10–0.12 absolute** (+100% relative, trivial in dollars).
+- **Per-turn cost ≈ $0.037 vs $0.027 for the baseline** (+$0.010/turn, ~38%) — larger live context and more output per turn.
+- **Net:** amortized because Atelier converges in **fewer turns** (median ~17 vs ~27). The fixed floor dominates only on trivial tasks; on substantive tasks the turn reduction wins, producing the savings above. Budget a **~$0.10 floor per task** regardless of size.
 
 ### Terminal-Bench
 
@@ -260,5 +318,5 @@ Provider/read benchmark numbers: triplet is `correctness / median tokens / media
 
 [FSL-1.1-ALv2](LICENSE) — the Functional Source License: source-available and free for any
 Permitted Purpose, converting to Apache 2.0 two years after each release. The one carve-out is
-a *Competing Use* (a commercial product or service that competes with Atelier). The
+a _Competing Use_ (a commercial product or service that competes with Atelier). The
 `services/license-issuer/` backend is proprietary and licensed separately under its own `LICENSE`.

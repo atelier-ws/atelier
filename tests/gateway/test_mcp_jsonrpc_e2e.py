@@ -66,6 +66,10 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
 def _payload(response: dict[str, Any]) -> Any:
     assert "result" in response, response
     text = response["result"]["content"][0]["text"]
+    # A success-silent edit renders the minimal token "ok" instead of a JSON
+    # body; normalize to an empty dict for uniform dict-membership assertions.
+    if text == "ok":
+        return {}
     try:
         return json.loads(text)
     except (json.JSONDecodeError, TypeError):
@@ -299,8 +303,10 @@ def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) ->
     responses = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
     assert responses[0]["result"]["serverInfo"]["name"] == "atelier-context"
 
-    edit_payload = json.loads(responses[1]["result"]["content"][0]["text"])
-    assert edit_payload["failed"] == []
+    edit_text = responses[1]["result"]["content"][0]["text"]
+    # Clean exact edit is success-silent over the wire: minimal "ok" token, and
+    # the change is confirmed on disk rather than echoed back in the body.
+    assert edit_text == "ok", edit_text
     assert target.read_text(encoding="utf-8") == "hello stdio\n"
 
     search_text = responses[2]["result"]["content"][0]["text"]
@@ -495,7 +501,8 @@ def test_read_search_edit_and_compact_e2e(mcp_env: Path) -> None:
             },
         )
     )
-    assert rich_edit["failed"] == []
+    # Clean exact edit is success-silent: no body, change confirmed on disk.
+    assert "failed" not in rich_edit
     assert "atelier" in target.read_text(encoding="utf-8")
 
     legacy_edit = _payload(
@@ -513,7 +520,7 @@ def test_read_search_edit_and_compact_e2e(mcp_env: Path) -> None:
             },
         )
     )
-    assert legacy_edit["failed"] == []
+    assert "failed" not in legacy_edit
     assert "secondary atelier" in target.read_text(encoding="utf-8")
 
     partial = mcp_env / "partial.txt"
@@ -599,8 +606,10 @@ def test_symbol_edit_descriptor_e2e(mcp_env: Path) -> None:
         )
     )
 
-    assert payload["failed"] == []
-    assert payload["applied"][0]["kind"] == "symbol"
+    # A clean symbol replace is success-silent (its applied entry is an exact
+    # match), so the model-facing body is empty; the file change is the proof.
+    assert not payload.get("failed")
+    assert "applied" not in payload
     # Post-edit hooks may run ruff format which normalises quotes; accept either.
     final = target.read_text(encoding="utf-8")
     assert "startswith('ok')" in final or 'startswith("ok")' in final

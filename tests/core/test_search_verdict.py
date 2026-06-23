@@ -51,14 +51,14 @@ def test_channel_none_is_not_dark() -> None:
 def test_first_empty_is_missed_not_absent() -> None:
     res = compute_verdict(hit_count=0, query="render template tag")
     assert res.verdict == "missed"
-    assert "reformulate" in res.next
+    assert res.next == ""  # plain empty, no reformulate nudge
 
 
 def test_second_distinct_same_area_empty_is_absent() -> None:
     prior = (normalize_query("timezone convert backend"),)
     res = compute_verdict(hit_count=0, query="timezone offset handling", prior_empties=prior)
     assert res.verdict == "absent"
-    assert "broaden scope" in res.next
+    assert res.next == ""  # plain empty, no broaden-scope nudge
 
 
 def test_second_empty_different_area_stays_missed() -> None:

@@ -634,11 +634,14 @@ def _append_search_verdict_footer(text: str | None, result: dict[str, Any]) -> s
     if isinstance(fallback, list) and fallback:
         locs = "; ".join(f"{item.get('path')}:{item.get('line')}" for item in fallback[:8] if isinstance(item, dict))
         if locs:
-            parts.append(f"[search:tfallback] ranked search empty; literal match at {locs}")
+            parts.append(f"[search:tfallback] {locs}")
     verdict = result.get("verdict")
     if isinstance(verdict, str) and verdict not in {"", "found"}:
         nxt = str(result.get("next") or "").strip()
-        parts.append(f"[search:{verdict}]" + (f" {nxt}" if nxt else ""))
+        if verdict in {"missed", "absent"}:
+            parts.append("no matches")  # minimal, vanilla-style -- no prefix, no nudge
+        else:
+            parts.append(f"[search:{verdict}]" + (f" {nxt}" if nxt else ""))
     breaker = result.get("breaker_note")
     if isinstance(breaker, str) and breaker:
         parts.append(f"[search:budget] {breaker}")
@@ -3524,65 +3527,70 @@ def tool_get_context(
         _spawn_worker_if_idle(_atelier_root())
     result["bootstrap"] = bootstrap
 
-    # Wire PrefixCachePlanner: compute static/dynamic split for this turn
-    try:
-        from atelier.core.capabilities.prefix_cache.planner import PrefixCachePlanner
-        from atelier.core.capabilities.prompt_compilation.models import (
-            BlockKind,
-            PromptBlock,
-            Stability,
-        )
-
-        context_text = result.get("context", "")
-        bootstrap_text = (
-            result.get("bootstrap", {}).get("context", "") if isinstance(result.get("bootstrap"), dict) else ""
-        )
-        _recall_count = len(result.get("recalled_passages", []))
-
-        # Build synthetic PromptBlocks from the assembled context pieces
-        blocks: list[PromptBlock] = []
-        if context_text:
-            blocks.append(
-                PromptBlock(
-                    id="context",
-                    kind=BlockKind.PLAYBOOK,
-                    stability=Stability.BRANCH,
-                    content=context_text,
-                )
-            )
-        if bootstrap_text:
-            blocks.append(
-                PromptBlock(
-                    id="bootstrap",
-                    kind=BlockKind.REPO_SUMMARY,
-                    stability=Stability.SESSION,
-                    content=bootstrap_text,
-                )
-            )
-        if task:
-            blocks.append(
-                PromptBlock(
-                    id="task",
-                    kind=BlockKind.USER_TASK,
-                    stability=Stability.TURN,
-                    content=task,
-                )
+    # Wire PrefixCachePlanner: compute the static/dynamic cache split for this
+    # turn. This is cache/token-split diagnostics the model does not act on, so
+    # it is gated behind the diagnostics opt-in and never emitted in the default
+    # model-facing result. Skipping the whole block also avoids the planner cost
+    # on the hot path.
+    if _mcp_debug_enabled():
+        try:
+            from atelier.core.capabilities.prefix_cache.planner import PrefixCachePlanner
+            from atelier.core.capabilities.prompt_compilation.models import (
+                BlockKind,
+                PromptBlock,
+                Stability,
             )
 
-        if blocks:
-            # Compare with prior hash from last llm_call event in ledger
-            prior_hash = ""
-            call_events = [e for e in led.events if e.payload.get("kind") == "llm_call"]
-            if call_events:
-                prior_hash = call_events[-1].payload.get("stable_prefix_hash", "")
+            context_text = result.get("context", "")
+            bootstrap_text = (
+                result.get("bootstrap", {}).get("context", "") if isinstance(result.get("bootstrap"), dict) else ""
+            )
+            _recall_count = len(result.get("recalled_passages", []))
 
-            planner = PrefixCachePlanner()
-            plan = planner.plan_with_history(blocks, prior_hash or None)
-            result["prefix_plan"] = plan.to_dict()
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        # Best-effort: never break tool_context due to prefix planning errors.
-        _log.debug("prefix-cache planning failed", exc_info=True)
+            # Build synthetic PromptBlocks from the assembled context pieces
+            blocks: list[PromptBlock] = []
+            if context_text:
+                blocks.append(
+                    PromptBlock(
+                        id="context",
+                        kind=BlockKind.PLAYBOOK,
+                        stability=Stability.BRANCH,
+                        content=context_text,
+                    )
+                )
+            if bootstrap_text:
+                blocks.append(
+                    PromptBlock(
+                        id="bootstrap",
+                        kind=BlockKind.REPO_SUMMARY,
+                        stability=Stability.SESSION,
+                        content=bootstrap_text,
+                    )
+                )
+            if task:
+                blocks.append(
+                    PromptBlock(
+                        id="task",
+                        kind=BlockKind.USER_TASK,
+                        stability=Stability.TURN,
+                        content=task,
+                    )
+                )
+
+            if blocks:
+                # Compare with prior hash from last llm_call event in ledger
+                prior_hash = ""
+                call_events = [e for e in led.events if e.payload.get("kind") == "llm_call"]
+                if call_events:
+                    prior_hash = call_events[-1].payload.get("stable_prefix_hash", "")
+
+                planner = PrefixCachePlanner()
+                plan = planner.plan_with_history(blocks, prior_hash or None)
+                result["prefix_plan"] = plan.to_dict()
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+            # Best-effort: never break tool_context due to prefix planning errors.
+            _log.debug("prefix-cache planning failed", exc_info=True)
 
     return result
 
@@ -4607,10 +4615,9 @@ def _render_memory_md(result: dict[str, Any]) -> str | None:
     passages = result.get("passages")
     if not isinstance(passages, list):
         return None
-    hint = str(result.get("hint") or "").strip()
     if not passages:
-        return "### memory\n- no passages" + (f"\n{hint}" if hint else "")
-    lines = [f"### memory ({len(passages)} passage(s))"]
+        return "### memory\n- no passages"
+    lines = ["### memory"]
     for passage in passages:
         if not isinstance(passage, dict):
             continue
@@ -4778,6 +4785,21 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
     elif name == "memory":
         with contextlib.suppress(Exception):
             text = _render_memory_md(payload)
+    elif name == "edit":
+        # Clean success renders a MINIMAL one-liner -- "applied path:line" -- so the
+        # model stays oriented without re-reading, and without a JSON dump of the
+        # internal `calls_saved` key. No applied ranges -> "ok". Actionable results
+        # (failures, rollbacks, diagnostics, reviews, fuzzy matches) keep their
+        # structured body and render as JSON via the dispatcher fallback.
+        keys = set(payload)
+        if keys <= {"calls_saved"}:
+            text = "ok"
+        elif keys <= {"applied", "calls_saved"}:
+            applied = payload.get("applied") or []
+            if applied and all(isinstance(a, str) for a in applied):
+                text = "applied " + ", ".join(applied)
+            elif not applied:
+                text = "ok"
     if name in {"search", "grep"} and isinstance(result, dict):
         text = _append_search_verdict_footer(text, result)
     return text or None
@@ -4916,11 +4938,7 @@ def _smart_read_single(
             "mode": "directory",
             "path": str(target),
             "entries": [(e + "/" if (target / e).is_dir() else e) for e in entries],
-            "message": (
-                "This is a directory, not a file. "
-                "Use `search` to find indexed code by name, "
-                "or `grep` with `file_glob_patterns` to list/search files."
-            ),
+            "message": "Directory, not a file. Use `search` (by name) or `grep` (file_glob_patterns) to find files.",
         }
 
     # Source-side guard: an exact full read (expand) of a very large file would
@@ -4938,11 +4956,7 @@ def _smart_read_single(
         # Tier 1: enormous file — never materialize it (a multi-MB JSON-RPC frame
         # disconnects the host). Read a bounded byte prefix straight from disk.
         if total_bytes > disconnect_cap:
-            notice = (
-                f"\n\n[atelier: result truncated — file is {total_bytes} bytes; read the "
-                f"first {disconnect_cap} bytes only to keep the MCP connection alive. "
-                'Re-request a narrower slice, e.g. read with range="L1-L400".]'
-            )
+            notice = f"\n\n[truncated to {disconnect_cap}B of {total_bytes}B; re-read narrow range=]"
             prefix_bytes = max(0, disconnect_cap - len(notice.encode("utf-8")) - 1024)
             with open(target, "rb") as fh:
                 head = fh.read(prefix_bytes)
@@ -4973,12 +4987,7 @@ def _smart_read_single(
             shown = len(kept)
             total_lines = len(lines)
             if shown < total_lines:
-                notice = (
-                    f"\n\n[atelier: showing lines 1-{shown} of {total_lines}. The full file "
-                    f"({total_bytes} bytes) exceeds the single-response budget and would be "
-                    f'truncated by the host. Continue with range="L{shown + 1}-", or request a '
-                    "specific slice. To refactor a big file, read it in these labeled chunks.]"
-                )
+                notice = f'\n\n[lines 1-{shown} of {total_lines}; range="L{shown + 1}-" for rest]'
                 return {
                     "mode": "full",
                     "content": "".join(kept) + notice,
@@ -5034,11 +5043,7 @@ def _smart_read_single(
                 _used += _lb
             _shown = len(_kept)
             if _shown < len(_src_lines):
-                _notice = (
-                    f"\n\n[atelier: showing lines 1-{_shown} of {len(_src_lines)}. The full "
-                    f"file exceeds the single-response budget and would otherwise be truncated "
-                    f'by the host. Continue with range="L{_shown + 1}-", or request a specific slice.]'
-                )
+                _notice = f'\n\n[lines 1-{_shown} of {len(_src_lines)}; range="L{_shown + 1}-" for rest]'
                 content = "".join(_kept) + _notice
                 payload["content"] = content
                 payload["truncated"] = True
@@ -5081,15 +5086,19 @@ def _smart_read_single(
             ).to_dict()
     elif mode == "range":
         projection = SourceProjection.range()
+    # Omit null fields: outline/range/language are absent for most reads (e.g. a
+    # range read carries no outline, a plain text read no language), and a null
+    # key is pure wire noise the model must skip over. Only attach them when set.
     response: dict[str, Any] = {
         "mode": mode,
-        "outline": payload.get("outline"),
         "content": content,
         "path": payload.get("path", str(target)),
-        "range": payload.get("range"),
-        "language": payload.get("language"),
         "projection": projection.to_dict(),
     }
+    for _opt_key in ("outline", "range", "language"):
+        _opt_val = payload.get(_opt_key)
+        if _opt_val is not None:
+            response[_opt_key] = _opt_val
     ts = int(payload.get("tokens_saved", 0) or 0) + projection_saved
     # Always carry the projection mapping when a projection replaced the body, so
     # downstream edits can map projected coordinates back to source even without
@@ -5097,6 +5106,18 @@ def _smart_read_single(
     # authoritative signal that the body is transformed).
     if projection_result is not None and projection_result.mapping is not None:
         response["projection_mapping"] = projection_result.mapping.to_dict()
+    # A ranged read (range=Lx-Ly / #start-end) is an exact, unprojected line
+    # slice: the model asked for specific lines and already knows the range, so
+    # the outline/language/projection scaffolding is pure redundancy. Return only
+    # the requested lines (mode/content/path/range). Full and outline reads keep
+    # their metadata; include_meta wins for power callers.
+    # NOTE (follow-up): cross-turn dedup ("the model already has these exact
+    # lines, return nothing") is handled generically by the dispatcher's
+    # _DEDUP_TOOLS path; no read-local dedup needed here.
+    if mode == "range" and not include_meta:
+        response.pop("outline", None)
+        response.pop("language", None)
+        response.pop("projection", None)
     if include_meta:
         response["cache_hit"] = bool(payload.get("cache_hit", False))
         response["tokens_saved"] = ts
@@ -5122,10 +5143,7 @@ def tool_smart_read(
     path: Annotated[
         str,
         Field(
-            description=(
-                "Workspace-relative path; may carry a '#start-end'/'#line' suffix "
-                "(e.g. 'store.py#60-100'). For 2+ files use `files`."
-            ),
+            description="Workspace path; may carry '#start-end'/'#line' (e.g. 'store.py#60-100'). 2+ files: use `files`."
         ),
     ] = "",
     range: str | None = None,
@@ -5133,14 +5151,12 @@ def tool_smart_read(
     lines: int | None = None,
     include_meta: Annotated[
         bool,
-        Field(description="Include tool metadata fields (cache and token counters)."),
+        Field(description="Include cache/token metadata."),
     ] = False,
     files: Annotated[
         list[dict[str, Any] | str] | None,
         Field(
-            description=(
-                "['path', ...] or [{path, range?, expand?, lines?}, ...]. Returns {files: [...]}. Use for 2+ files."
-            )
+            description="['path', ...] or [{path, range?, expand?, lines?}, ...] -> {files: [...]}. Use for 2+ files."
         ),
     ] = None,
     projection_kind: str | None = None,
@@ -5491,8 +5507,10 @@ def _apply_edit_verify_gate(
 ) -> None:
     """Run mechanical parse/type checks; attach counterexamples and roll back on failure.
 
-    This gate does not run behavioral tests. Fully fail-open: a gate crash never
-    blocks a legitimate edit.
+    Silent on pass: nothing is attached when the gate passes (a passing check is
+    confirmation noise). Output appears only on a failure/fail-open. This gate does
+    not run behavioral tests. Fully fail-open: a gate crash never blocks a
+    legitimate edit.
     """
     try:
         from atelier.core.capabilities.verification.edit_gate import run_edit_gate
@@ -5505,15 +5523,18 @@ def _apply_edit_verify_gate(
             timeout_s=max(1.0, timeout_ms / 1000),
         )
         errors = [c for c in counterexamples if c.severity == "error"]
-        gate_result = {
-            "passed": not errors,
+        # Silent on pass: a clean gate is the common case (~83% of edits) and its
+        # "passed" object is pure confirmation noise. Only attach output when the
+        # gate found something actionable. The rollback-on-failure behavior below
+        # is unchanged -- only the success *output* is suppressed.
+        if not errors:
+            return
+        result["mechanical_checks"] = {
+            "passed": False,
             "checks": list(checks_seq),
             "scope": "mechanical",
             "behavioral_tests_run": False,
         }
-        result["mechanical_checks"] = gate_result
-        if not errors:
-            return
         result["counterexamples"] = [c.to_dict() for c in errors]
         if rollback:
             # The gate runs outside the per-file edit locks (so verify can't
@@ -5527,7 +5548,6 @@ def _apply_edit_verify_gate(
                 result["rollback_conflicts"] = conflicts
             result["rolled_back"] = True
             result["applied"] = []
-            result["writes"] = 0
             result["mechanical_checks"]["rolled_back"] = True
     except Exception:
         logging.exception("Recovered from broad exception handler")
@@ -5542,17 +5562,6 @@ def _apply_edit_verify_gate(
 def _contract_review_enabled() -> bool:
     """Whether post-edit contract-literal discovery runs (operator off-switch, default on)."""
     return os.environ.get("ATELIER_CONTRACT_REVIEW", "").strip().lower() not in ("0", "false", "no", "off")
-
-
-def _sibling_review_enabled() -> bool:
-    """Whether identifier-cluster sibling discovery runs.
-
-    Similarity-based (shared rare identifiers), so fuzzier than the exact-match
-    contract-literal pass and able to surface a non-sibling the agent must dismiss.
-    Gets its own off-switch so the precise pass can stay on while this one is tuned
-    or disabled. Default on.
-    """
-    return os.environ.get("ATELIER_SIBLING_REVIEW", "").strip().lower() not in ("0", "false", "no", "off")
 
 
 def _loop_review_enabled() -> bool:
@@ -5610,7 +5619,7 @@ def _attach_contract_literal_review(
     try:
         from atelier.core.capabilities.tool_supervision.edit_impact import (
             contract_literal_impact,
-            sibling_symbol_impact,
+            decorator_contract_impact,
         )
 
         engine = _code_context_engine(str(repo_root))
@@ -5620,19 +5629,15 @@ def _attach_contract_literal_review(
             repo_root=repo_root,
             touched_paths=touched_paths,
         )
-        if impact:
-            result["contract_review"] = impact
-        elif _sibling_review_enabled():
-            # No quoted contract literal moved -- fall back to identifier-cluster
-            # sibling discovery for parallel implementations (no embedder needed).
-            sibling = sibling_symbol_impact(
-                edits,
-                engine=engine,
-                repo_root=repo_root,
-                touched_paths=touched_paths,
-            )
-            if sibling:
-                result["sibling_review"] = sibling
+        sites = list(impact["sites"]) if impact else []
+        # Semantic dep that literal matching misses: a removed attribute-providing
+        # decorator (e.g. @lru_cache) whose methods callers still use elsewhere.
+        sites.extend(decorator_contract_impact(edits, engine=engine, touched_paths=touched_paths))
+        if sites:
+            result["FIXME"] = {
+                "reason": "These sites still use a contract this edit changed -- update each or say why not.",
+                "sites": sites,
+            }
     except Exception:
         logging.exception("Recovered from broad exception handler")
 
@@ -5805,6 +5810,85 @@ def _compact_applied_entries(entries: list[dict[str, Any]]) -> list[str | dict[s
     return [*compact, *special]
 
 
+# Keys whose presence makes an edit result actionable -- the model must see them.
+# `calls_saved` is NOT here: it is internal savings accounting, never model-facing
+# (the dispatcher pops it before rendering), so it must not keep a result "loud".
+_EDIT_ACTIONABLE_KEYS = (
+    "diagnostics",
+    # Post-edit work-list: parallel sites still using a contract this edit changed.
+    "FIXME",
+    "test_weakening",
+    # Opt-in verify gate output. Now attached only on failure (a passing gate is
+    # silent), so its mere presence is an actionable finding.
+    "mechanical_checks",
+    "counterexamples",
+    "rollback_conflicts",
+)
+
+# Confirmation fields that are pure noise -- success is implied by the call
+# returning, rollback/failure are signalled by their own keys, and atomic writes
+# are all-or-nothing so the count carries no information. Stripped from EVERY
+# edit result, loud or silent.
+_EDIT_NOISE_KEYS = ("writes",)
+
+
+def _edit_result_is_silent_success(result: dict[str, Any]) -> bool:
+    """True when an edit succeeded with nothing the model must act on.
+
+    "Applied" is implied by the call succeeding, so the common case needs no
+    confirmation body. Still loud (returns False) for: a non-empty `failed`, a
+    `rolled_back: true`, remaining error/warning diagnostics, a contract-literal
+    review, a failed verify gate, or a fuzzy match (an `applied` entry retains
+    `match_mode` only when it was NOT an exact match -- exact ones are stripped
+    upstream -- so the agent is told to re-read and verify the divergence).
+    """
+    if result.get("rolled_back"):
+        return False
+    if result.get("failed"):  # only a NON-empty failed list is actionable
+        return False
+    for key in _EDIT_ACTIONABLE_KEYS:
+        if result.get(key):
+            return False
+    # A non-exact (fuzzy) match survives compaction as a dict still carrying
+    # `match_mode`; ordinary exact hunks compact to plain "path:line" strings.
+    for entry in result.get("applied") or []:
+        if isinstance(entry, dict) and entry.get("match_mode"):
+            return False
+    return True
+
+
+def _silence_clean_edit_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Strip confirmation noise from every edit result; empty a clean success.
+
+    A clean success carries NO body (the call returning IS the confirmation) --
+    only `calls_saved` is kept, which the dispatcher reads for savings accounting
+    and strips before rendering, so it never reaches the model. A LOUD result
+    (failure, rollback, diagnostics, review, failed gate, fuzzy match) keeps its
+    actionable content but still sheds the noise fields: `writes` always, an
+    empty `failed`, and a false `rolled_back`.
+    """
+    if _edit_result_is_silent_success(result):
+        # Keep a MINIMAL `applied` range echo (path:line, not a diff) so the model
+        # stays oriented and does not re-read the file it just edited. Everything
+        # else (writes/hooks/empty-failed) is still dropped.
+        silent: dict[str, Any] = {}
+        applied = result.get("applied")
+        # Only echo the compact "path:line" strings (exact edits). Symbol/special
+        # edits keep dict entries -- leave those silent rather than dump raw hunks.
+        if applied and all(isinstance(a, str) for a in applied):
+            silent["applied"] = applied
+        if "calls_saved" in result:
+            silent["calls_saved"] = result["calls_saved"]
+        return silent
+    for key in _EDIT_NOISE_KEYS:
+        result.pop(key, None)
+    if result.get("failed") == []:
+        result.pop("failed", None)
+    if result.get("rolled_back") is False:
+        result.pop("rolled_back", None)
+    return result
+
+
 @mcp_tool(
     name="edit",
     input_schema=EDIT_TOOL_INPUT_SCHEMA,
@@ -5872,7 +5956,6 @@ def tool_smart_edit(
     ]
     if _escaped_edit_paths:
         return {
-            "applied": [],
             "failed": [
                 {
                     "paths": _escaped_edit_paths,
@@ -5884,7 +5967,6 @@ def tool_smart_edit(
                 }
             ],
             "rolled_back": True,
-            "writes": 0,
         }
     # Serialize the snapshot/apply/write critical section per touched file so two
     # concurrent edit calls cannot read-modify-write the same file and lose one
@@ -5914,7 +5996,6 @@ def tool_smart_edit(
                 if weakenings:
                     _restore_snapshots(snapshots)
                     return {
-                        "applied": [],
                         "failed": [
                             {
                                 "paths": [w["path"] for w in weakenings],
@@ -5929,7 +6010,6 @@ def tool_smart_edit(
                             }
                         ],
                         "rolled_back": True,
-                        "writes": 0,
                         "test_weakening": weakenings,
                     }
             if hooks:
@@ -5942,7 +6022,13 @@ def tool_smart_edit(
                     hook_result = run_post_edit_hooks(
                         [str(p) for p in paths.values()],
                         repo_root=repo_root,
-                        config=HookConfig(total_timeout_s=post_edit_timeout_ms / 1000),
+                        # Disable lint-autofix: a silent linter rewriting the
+                        # agent's just-applied edit is surprising and unwanted.
+                        # Format/organize-imports stay on (idempotent, expected).
+                        config=HookConfig(
+                            total_timeout_s=post_edit_timeout_ms / 1000,
+                            run_lint_autofix=False,
+                        ),
                     )
                     result["diagnostics"] = [
                         {
@@ -6034,7 +6120,7 @@ def tool_smart_edit(
             repo_root=repo_root,
             touched_paths=[str(p.relative_to(repo_root)) for p in paths.values() if p.is_relative_to(repo_root)],
         )
-    return result
+    return _silence_clean_edit_result(result)
 
 
 SQL_TOOL_INPUT_SCHEMA: dict[str, Any] = {
@@ -6672,14 +6758,16 @@ def _maybe_attach_code_rendered(op: str, payload: dict[str, Any], *, render_comp
     rendered = render_code_payload(op, payload)
 
     # Store in thread-local so _handle can use MD text as the MCP response body.
+    # This is the single model-facing channel for the rendered markdown: for
+    # code-intel tools render_tool_result_text() returns this value as the MCP
+    # response body. Do NOT also stash it in result["rendered"] — that in-JSON
+    # copy would ship the same markdown twice to the model.
     _tool_call_rendered_text.value = rendered
+    _ = render_compact  # rendered text now travels only via the response body
 
     # Strip internal fields after rendering — LLMs get clean JSON without duplicating
     # internal bookkeeping that only Atelier needs.
     result = _strip_code_op_response(op, payload)
-
-    if render_compact and rendered:
-        result["rendered"] = rendered
 
     # Inject cold-start bootstrap note so the LLM knows results may be incomplete.
     if op not in {"index", "status", "cache_status"}:
@@ -8157,60 +8245,51 @@ def tool_grep(
             "file_paths_only",
             "file_paths_with_match_count",
         ],
-        Field(
-            description=(
-                "Default ranked_file_map = navigation pointers; file_paths_with_content adds matched lines + context."
-            )
-        ),
+        Field(description="ranked_file_map: navigation pointers; file_paths_with_content adds matched lines+context."),
     ] = "ranked_file_map",
     before: Annotated[
         int,
-        Field(description="Context lines before each match."),
+        Field(description="Lines before match."),
     ] = 0,
     after: Annotated[
         int,
-        Field(description="Context lines after each match."),
+        Field(description="Lines after match."),
     ] = 0,
     i: Annotated[
         bool,
-        Field(description="Case-insensitive matching."),
+        Field(description="Case-insensitive."),
     ] = False,
     type: Annotated[
         str | None,
-        Field(description="Language/file-type filter, e.g. `python`."),
+        Field(description="File-type filter, e.g. `python`."),
     ] = None,
     file_limit: Annotated[
         int | None,
-        Field(description="Max matching files to render."),
+        Field(description="Max files rendered."),
     ] = None,
     lines_per_file: Annotated[
         int | None,
-        Field(description="Max matched lines per file (content mode)."),
+        Field(description="Max matched lines/file (content mode)."),
     ] = 500,
     if_modified_since: Annotated[
         str | None,
-        Field(
-            description=(
-                "Timestamp from the previous result header. Files unchanged since that "
-                "moment are marked unchanged or skipped."
-            )
-        ),
+        Field(description="Prior result's timestamp; unchanged files are marked/skipped."),
     ] = None,
     multiline: Annotated[
         bool,
-        Field(description="Let the regex span newlines."),
+        Field(description="Regex spans newlines."),
     ] = False,
     summary: Annotated[
         bool | None,
-        Field(description=("Omit: auto-summarize large Python/JS/TS. `true`: signatures-only. `false`: raw lines.")),
+        Field(description="Omit: auto-summarize large code. `true`: signatures-only. `false`: raw lines."),
     ] = None,
     context_budget_tokens: Annotated[
         int,
-        Field(description="Token budget capping output size (default 2000)."),
+        Field(description="Output token budget (default 2000)."),
     ] = 2000,
     include_meta: Annotated[
         bool,
-        Field(description="Include response metadata such as file counts and caps."),
+        Field(description="Include file counts and caps."),
     ] = False,
     format: Annotated[Literal["auto", "compact", "json"], _FORMAT_FIELD] = "auto",
 ) -> dict[str, Any]:
@@ -9990,12 +10069,7 @@ def _truncate_result_text(text: str, limit: int) -> str:
     encoded = text.encode("utf-8")
     if len(encoded) <= limit:
         return text
-    notice = (
-        f"\n\n[atelier: result truncated to {limit} bytes to keep the MCP "
-        f"connection alive ({len(encoded)} bytes total). Re-request a narrower slice — "
-        'e.g. read with range="L1-L400", a tighter grep pattern, or smaller '
-        "shell output.]"
-    )
+    notice = f"\n\n[truncated to {limit}B of {len(encoded)}B; narrow the query]"
     headroom = max(0, limit - len(notice.encode("utf-8")))
     head = encoded[:headroom].decode("utf-8", "ignore")
     return head + notice
@@ -10075,10 +10149,7 @@ def _compact_result_text(text: str, tool_name: str) -> str:
     head = int(target * 0.7)
     tail = max(1, target - head)
     compacted = compress_tool_output(text, threshold_chars=target, head_chars=head, tail_chars=tail)
-    return (
-        f"{compacted}\n\n[atelier: result compacted from {len(text)} chars to protect host "
-        f"context; re-request a narrower slice (tighter {tool_name} query/range) for the full output]"
-    )
+    return f"{compacted}\n\n[compacted from {len(text)} chars; narrow {tool_name} query for full]"
 
 
 # T7/T8 — tools whose oversized output is worth spilling/compacting reversibly.
@@ -10189,9 +10260,8 @@ def _auto_compact_result_text(text: str, tool_name: str, args: dict[str, Any]) -
         # irreversibly.
         return text
     return (
-        f"{compacted_text}\n\n[atelier: result auto-compacted ({method}) from {len(text)} to "
-        f"{len(compacted_text)} chars; ORIGINAL preserved at ref {record.ref_id}. Recover it "
-        f'with the `compact` tool (op="retrieve", ref_id="{record.ref_id}").]'
+        f"{compacted_text}\n\n[compacted {method} {len(text)}→{len(compacted_text)} chars; "
+        f'full: compact op="retrieve" ref_id="{record.ref_id}"]'
     )
 
 

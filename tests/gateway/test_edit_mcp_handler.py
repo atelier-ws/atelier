@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from atelier.gateway.adapters import mcp_server
+from atelier.gateway.adapters.mcp_server import tool_smart_edit
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -37,7 +38,14 @@ def _call(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
 def _result(resp: dict[str, Any]) -> dict[str, Any]:
     assert "result" in resp, resp
-    payload = json.loads(resp["result"]["content"][0]["text"])
+    text = resp["result"]["content"][0]["text"]
+    # Clean success renders "ok" (no ranges) or "applied path:line[, ...]" (the
+    # minimal orientation echo); normalize both so callers can assert structurally.
+    if text == "ok":
+        return {}
+    if text.startswith("applied "):
+        return {"applied": text[len("applied ") :].split(", ")}
+    payload = json.loads(text)
     assert isinstance(payload, dict)
     return payload
 
@@ -45,6 +53,27 @@ def _result(resp: dict[str, Any]) -> dict[str, Any]:
 def _edit(args: dict[str, Any]) -> dict[str, Any]:
     """Shortcut: call edit and return the parsed result."""
     return _result(_call("edit", args))
+
+
+def _edit_text(args: dict[str, Any]) -> str:
+    """Call edit and return the raw model-facing text (clean success == "applied path:line")."""
+    resp = _call("edit", args)
+    assert "result" in resp, resp
+    return str(resp["result"]["content"][0]["text"])
+
+
+def _assert_silent_success(payload: dict[str, Any]) -> None:
+    """A clean exact-match edit carries only the minimal `applied` range echo.
+
+    `applied` is a list of compact "path:line" strings (orientation, not a diff)
+    so the model need not re-read the file it just edited; nothing else actionable
+    (`failed`/`rolled_back`/`writes`/`hooks`/`diagnostics`). (`calls_saved` is
+    internal accounting the dispatcher strips before rendering.)
+    """
+    assert payload.get("applied"), f"clean success must echo applied ranges: {payload}"
+    assert all(isinstance(a, str) for a in payload["applied"]), payload
+    for key in ("failed", "rolled_back", "writes", "hooks", "diagnostics"):
+        assert key not in payload, f"clean success must not carry {key!r}: {payload}"
 
 
 def _set_bench_mode(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
@@ -93,15 +122,20 @@ def test_rich_replace_basic(workspace: Path) -> None:
     f = workspace / "hello.py"
     f.write_text("def greet():\n    return HELLO\n", encoding="utf-8")
 
-    payload = _edit({"edits": [{"file_path": "hello.py", "old_string": "HELLO", "new_string": "WORLD"}]})
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "hello.py", "old_string": "HELLO", "new_string": "WORLD"}],
+        }
+    )
 
-    assert payload["failed"] == []
-    assert payload["rolled_back"] is False
+    # Clean exact-match edit echoes the minimal applied range (orientation only).
+    assert payload.get("applied") == ["hello.py:2"]
+    assert "failed" not in payload
+    assert "rolled_back" not in payload
+    assert "writes" not in payload
     assert "WORLD" in f.read_text(encoding="utf-8")
     assert "HELLO" not in f.read_text(encoding="utf-8")
-    assert len(payload["applied"]) == 1
-    # Ordinary exact replaces are reported as compact "path:line[,span]" strings.
-    assert payload["applied"][0].split(":")[0] == "hello.py"
 
 
 def test_benchmark_mode_blocks_ungrounded_edit(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -128,9 +162,14 @@ def test_benchmark_mode_allows_grounded_edit_after_read(workspace: Path, monkeyp
 
     read_response = _call("read", {"path": "grounded.py"})
     assert "result" in read_response
-    payload = _edit({"edits": [{"file_path": "grounded.py", "old_string": "alpha", "new_string": "beta"}]})
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "grounded.py", "old_string": "alpha", "new_string": "beta"}],
+        }
+    )
 
-    assert payload["failed"] == []
+    assert "failed" not in payload
     assert target.read_text(encoding="utf-8") == "beta\n"
 
 
@@ -142,9 +181,14 @@ def test_non_benchmark_edit_stays_fail_open_without_grounding(workspace: Path, m
     target = workspace / "normal.py"
     target.write_text("alpha\n", encoding="utf-8")
 
-    payload = _edit({"edits": [{"file_path": "normal.py", "old_string": "alpha", "new_string": "beta"}]})
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "normal.py", "old_string": "alpha", "new_string": "beta"}],
+        }
+    )
 
-    assert payload["failed"] == []
+    assert "failed" not in payload
     assert target.read_text(encoding="utf-8") == "beta\n"
 
 
@@ -153,12 +197,17 @@ def test_rich_create_new_file_via_overwrite(workspace: Path) -> None:
     f = workspace / "new_module.py"
     assert not f.exists()
 
-    payload = _edit({"edits": [{"file_path": "new_module.py", "new_string": "# new\n", "overwrite": True}]})
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "new_module.py", "new_string": "# new\n", "overwrite": True}],
+        }
+    )
 
-    assert payload["failed"] == []
+    # An overwrite/create is a clean success too: minimal body, file created.
+    assert "failed" not in payload
     assert f.exists()
     assert f.read_text(encoding="utf-8") == "# new\n"
-    assert payload["applied"][0]["kind"] == "overwrite"
 
 
 def test_rich_overwrite_replaces_existing_file(workspace: Path) -> None:
@@ -166,9 +215,14 @@ def test_rich_overwrite_replaces_existing_file(workspace: Path) -> None:
     f = workspace / "config.txt"
     f.write_text("old content\n", encoding="utf-8")
 
-    payload = _edit({"edits": [{"file_path": "config.txt", "new_string": "new content\n", "overwrite": True}]})
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "config.txt", "new_string": "new content\n", "overwrite": True}],
+        }
+    )
 
-    assert payload["failed"] == []
+    assert "failed" not in payload
     assert f.read_text(encoding="utf-8") == "new content\n"
 
 
@@ -205,9 +259,14 @@ def test_rich_overwrite_empty_string_allowed_for_new_file(workspace: Path) -> No
     f = workspace / "fresh.py"
     assert not f.exists()
 
-    payload = _edit({"edits": [{"file_path": "fresh.py", "new_string": "", "overwrite": True}]})
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "fresh.py", "new_string": "", "overwrite": True}],
+        }
+    )
 
-    assert payload["failed"] == []
+    assert "failed" not in payload
     assert f.exists()
     assert f.read_text(encoding="utf-8") == ""
 
@@ -218,9 +277,14 @@ def test_rich_line_anchor_restricts_scope(workspace: Path) -> None:
     f.write_text("x = 1\nx = 2\nx = 3\n", encoding="utf-8")
 
     # Only replace the x = 2 on line 2 — the other 'x = 1' must stay
-    payload = _edit({"edits": [{"file_path": "scope.py#2", "old_string": "x = 2", "new_string": "x = 99"}]})
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "scope.py#2", "old_string": "x = 2", "new_string": "x = 99"}],
+        }
+    )
 
-    assert payload["failed"] == []
+    assert "failed" not in payload
     text = f.read_text(encoding="utf-8")
     assert "x = 99" in text
     assert "x = 1" in text
@@ -234,19 +298,23 @@ def test_rich_multi_file_batch_all_applied(workspace: Path) -> None:
     f1.write_text("alpha\n", encoding="utf-8")
     f2.write_text("beta\n", encoding="utf-8")
 
-    payload = _edit(
-        {
-            "edits": [
-                {"file_path": "a.py", "old_string": "alpha", "new_string": "ALPHA"},
-                {"file_path": "b.py", "old_string": "beta", "new_string": "BETA"},
-            ]
-        }
-    )
+    edits = [
+        {"file_path": "a.py", "old_string": "alpha", "new_string": "ALPHA"},
+        {"file_path": "b.py", "old_string": "beta", "new_string": "BETA"},
+    ]
+    payload = _edit({"post_edit_hooks": False, "edits": edits})
 
-    assert payload["failed"] == []
-    assert len(payload["applied"]) == 2
+    # Clean multi-file success echoes the minimal applied ranges, one per file.
+    assert "failed" not in payload
+    assert sorted(payload.get("applied", [])) == ["a.py:1", "b.py:1"]
     assert f1.read_text(encoding="utf-8") == "ALPHA\n"
     assert f2.read_text(encoding="utf-8") == "BETA\n"
+    # ...but the internal cross-file savings credit is preserved on the
+    # structured result (the dispatcher reads calls_saved before rendering).
+    f1.write_text("alpha\n", encoding="utf-8")
+    f2.write_text("beta\n", encoding="utf-8")
+    structured = tool_smart_edit({"post_edit_hooks": False, "edits": edits})
+    assert structured == {"applied": ["a.py:1", "b.py:1"], "calls_saved": 1}
 
 
 def test_rich_multi_file_atomic_rollback(workspace: Path) -> None:
@@ -283,7 +351,9 @@ def test_rich_non_atomic_partial_success(workspace: Path) -> None:
         }
     )
 
-    assert payload["rolled_back"] is False
+    # Partial success is loud (non-empty failed) but sheds noise: a false
+    # rolled_back is stripped, while applied + the real failures stay.
+    assert "rolled_back" not in payload
     assert len(payload["applied"]) >= 1
     assert len(payload["failed"]) >= 1
     assert "KEPT" in f.read_text(encoding="utf-8")
@@ -301,7 +371,7 @@ def test_legacy_replace_through_handler(workspace: Path) -> None:
 
     payload = _edit({"edits": [{"path": str(f), "op": "replace", "old_string": "foo", "new_string": "baz"}]})
 
-    assert payload["failed"] == []
+    assert "failed" not in payload
     assert f.read_text(encoding="utf-8") == "baz bar\n"
 
 
@@ -312,7 +382,7 @@ def test_legacy_insert_after(workspace: Path) -> None:
 
     payload = _edit({"edits": [{"path": str(f), "op": "insert_after", "anchor": "line1", "new_string": "line1b"}]})
 
-    assert payload["failed"] == []
+    assert "failed" not in payload
     text = f.read_text(encoding="utf-8")
     lines = text.splitlines()
     assert lines[0] == "line1"
@@ -339,7 +409,7 @@ def test_legacy_replace_range(workspace: Path) -> None:
         }
     )
 
-    assert payload["failed"] == []
+    assert "failed" not in payload
     text = f.read_text(encoding="utf-8")
     assert "aaa" in text
     assert "REPLACED" in text
@@ -367,7 +437,11 @@ def test_legacy_fuzzy_replace(workspace: Path) -> None:
         }
     )
 
-    assert payload["failed"] == []
+    # The legacy batch path applies a fuzzy match without emitting a match_mode
+    # marker (that is a rich-edit signal), so a successful legacy fuzzy edit is
+    # silent like any other clean success. The rich-edit fuzzy path (which DOES
+    # surface match_mode) is covered by test_rich_fuzzy_match_stays_loud.
+    assert "failed" not in payload
     assert "x = 42" in f.read_text(encoding="utf-8")
 
 
@@ -412,7 +486,7 @@ def test_notebook_cell_insert_through_handler(workspace: Path) -> None:
         }
     )
 
-    assert payload["failed"] == []
+    assert "failed" not in payload
     notebook = json.loads(nb_path.read_text(encoding="utf-8"))
     assert len(notebook["cells"]) == 2
     assert notebook["cells"][1]["cell_type"] == "markdown"
@@ -444,7 +518,7 @@ def test_notebook_cell_overwrite_clears_outputs(workspace: Path) -> None:
 
     payload = _edit({"edits": [{"file_path": "out.ipynb#cell=0", "overwrite": True, "new_string": "print(2)"}]})
 
-    assert payload["failed"] == []
+    assert "failed" not in payload
     notebook = json.loads(nb_path.read_text(encoding="utf-8"))
     assert notebook["cells"][0]["source"] == "print(2)"
     assert notebook["cells"][0]["outputs"] == []
@@ -468,7 +542,7 @@ def test_post_edit_hooks_false_no_diagnostics_key(workspace: Path) -> None:
         }
     )
 
-    assert payload["failed"] == []
+    assert "failed" not in payload
     assert "diagnostics" not in payload
     assert "hooks" not in payload
 
@@ -504,7 +578,7 @@ def test_edit_result_omits_inline_diff(workspace: Path) -> None:
 
     payload = _edit({"edits": [{"file_path": "nodiff.py", "old_string": "x = 1", "new_string": "x = 2"}]})
 
-    assert payload["failed"] == []
+    assert "failed" not in payload
     assert "diff" not in payload
     assert f.read_text(encoding="utf-8") == "x = 2\n"
     led = mcp_server._get_ledger()
@@ -532,10 +606,10 @@ def test_hook_exception_does_not_fail_successful_edit(workspace: Path, monkeypat
         }
     )
 
-    # Edit must succeed even when post-edit hooks crash.
-    # Hook diagnostics are intentionally stripped from MCP payload.
-    assert payload["failed"] == []
-    assert payload["rolled_back"] is False
+    # Edit must succeed even when post-edit hooks crash. Hook diagnostics are
+    # intentionally stripped, so a crashed-hook success is still silent.
+    assert "failed" not in payload
+    assert "rolled_back" not in payload
     assert f.read_text(encoding="utf-8") == "new\n"
     assert "hooks" not in payload
 
@@ -696,3 +770,117 @@ def test_schema_documents_descriptor_variants() -> None:
         "Symbol edit",
         "Projection edit",
     }
+
+
+# ---------------------------------------------------------------------------
+# #8  Success-silent / minimal model-facing contract
+# ---------------------------------------------------------------------------
+
+
+def test_clean_exact_match_edit_is_silent(workspace: Path) -> None:
+    """A clean exact-match edit returns the minimal model-facing body.
+
+    Success is implied by the call returning, so the rendered result is a single
+    minimal token ("ok") with NO applied/failed/rolled_back/writes/hooks body.
+    """
+    f = workspace / "silent.py"
+    f.write_text("value = 1\n", encoding="utf-8")
+
+    text = _edit_text(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "silent.py", "old_string": "value = 1", "new_string": "value = 2"}],
+        }
+    )
+    assert text == "applied silent.py:1"
+    # The normalized dispatched payload carries the minimal applied echo.
+    dispatched = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "silent.py", "old_string": "value = 2", "new_string": "value = 3"}],
+        }
+    )
+    _assert_silent_success(dispatched)
+    assert f.read_text(encoding="utf-8") == "value = 3\n"
+
+    # The structured handler return is empty (single-file => no cross-file credit).
+    f.write_text("value = 1\n", encoding="utf-8")
+    structured = tool_smart_edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [{"file_path": "silent.py", "old_string": "value = 1", "new_string": "value = 2"}],
+        }
+    )
+    assert structured == {"applied": ["silent.py:1"]}
+
+
+def test_failing_edit_stays_loud(workspace: Path) -> None:
+    """A failing edit is actionable, so its structured failure body is preserved."""
+    f = workspace / "loud.py"
+    f.write_text("keep me\n", encoding="utf-8")
+
+    payload = _edit({"edits": [{"file_path": "loud.py", "old_string": "no such text", "new_string": "x"}]})
+
+    assert payload.get("rolled_back") is True
+    assert payload["failed"]
+    assert f.read_text(encoding="utf-8") == "keep me\n"
+
+
+def test_rich_fuzzy_match_stays_loud(workspace: Path) -> None:
+    """A rich-edit non-exact match keeps its applied entry + match_mode re-read warning.
+
+    A `...` placeholder forces a non-exact (placeholder) match; that is
+    actionable -- the agent should re-read to confirm the match did not diverge --
+    so the result is NOT silenced.
+    """
+    f = workspace / "fuzz.py"
+    f.write_text("start = 1\nmiddle = 2\nend = 3\n", encoding="utf-8")
+
+    # The `...` placeholder spans the middle line, so the match is not literal:
+    # rich edit resolves it as a placeholder match and stamps match_mode on the
+    # applied entry. Hooks off so the surfaced body is driven purely by match_mode.
+    payload = _edit(
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {
+                    "file_path": "fuzz.py",
+                    "old_string": "start = 1\n...\nend = 3",
+                    "new_string": "start = 10\nend = 30",
+                }
+            ],
+        }
+    )
+
+    assert "applied" in payload, payload
+    modes = [e.get("match_mode") for e in payload["applied"] if isinstance(e, dict)]
+    assert any(m and m != "exact" for m in modes), payload
+    assert "start = 10" in f.read_text(encoding="utf-8")
+
+
+def test_dispatcher_preserves_cross_file_calls_saved(workspace: Path) -> None:
+    """Silencing the body must not break the savings accounting path.
+
+    The model-facing text is silent, but the dispatcher still reads calls_saved
+    off the structured result and writes it into content[].saved before stripping.
+    """
+    f1 = workspace / "acc1.py"
+    f2 = workspace / "acc2.py"
+    f1.write_text("one\n", encoding="utf-8")
+    f2.write_text("two\n", encoding="utf-8")
+
+    resp = _call(
+        "edit",
+        {
+            "post_edit_hooks": False,
+            "edits": [
+                {"file_path": "acc1.py", "old_string": "one", "new_string": "ONE"},
+                {"file_path": "acc2.py", "old_string": "two", "new_string": "TWO"},
+            ],
+        },
+    )
+    content_item = resp["result"]["content"][0]
+    # Body is the minimal applied echo...
+    assert content_item["text"] == "applied acc1.py:1, acc2.py:1"
+    # ...but the cross-file calls_saved credit rode into content[].saved.
+    assert content_item["saved"]["calls"] == 1

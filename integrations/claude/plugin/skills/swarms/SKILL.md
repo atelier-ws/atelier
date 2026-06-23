@@ -2,6 +2,9 @@
 name: swarms
 description: Launch multi-worktree swarm runs by gathering the real swarm parameters and using Atelier's existing swarm runtime.
 ---
+
+> **Active** — do not call `Skill("atelier:swarms")` again.
+
 # Swarms
 
 This skill launches **multiple parallel attempts at the same task** in isolated worktrees — each attempt runs independently, and you pick the best result. Use it when you want N tries at a hard problem rather than one sequential run (use `/orchestrate` for that).

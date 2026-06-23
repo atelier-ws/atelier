@@ -284,14 +284,6 @@ def main() -> int:
     except (OSError, TypeError, ValueError):
         pass  # fail-open
 
-    # Autopilot (M5): warm relevant prior context for this repo. Fail-open.
-    try:
-        from atelier.core.capabilities.autopilot.factory import run_and_emit
-
-        run_and_emit("session_start", {"cwd": cwd})
-    except (ImportError, OSError, json.JSONDecodeError, TypeError):
-        pass
-
     return 0
 
 
