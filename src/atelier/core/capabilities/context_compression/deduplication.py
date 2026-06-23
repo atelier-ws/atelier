@@ -13,10 +13,7 @@ except Exception:  # pragma: no cover - optional dependency fallback
     logging.exception("Recovered from broad exception handler")
     blake3: Any = None  # type: ignore[no-redef]
 
-try:
-    from datasketch.minhash import MinHash
-except ImportError:  # pragma: no cover - optional dependency fallback
-    MinHash = None
+from atelier.core.foundation._minhash import MinHash
 
 
 def _edit_distance(a: str, b: str) -> int:

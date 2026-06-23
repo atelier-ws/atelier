@@ -8,12 +8,8 @@ from functools import lru_cache
 from typing import Any
 
 import tiktoken
-from datasketch.minhash import MinHash
 
-try:
-    from datasketch.lsh import MinHashLSH
-except ImportError:
-    MinHashLSH = None
+from atelier.core.foundation._minhash import MinHash
 
 from .bm25 import bm25_score, build_idf, tokenise
 from .dead_ends import DeadEndTracker
@@ -92,24 +88,17 @@ def _dedupe_ranked(
 ) -> list[RankedProcedure]:
     if len(ranked) < 2:
         return ranked
-    if MinHashLSH is None:
-        return ranked
-    lsh = MinHashLSH(threshold=threshold, num_perm=_MINHASH_PERMUTATIONS)
     kept: list[RankedProcedure] = []
-    kept_tokens: dict[str, set[str]] = {}
+    kept_tokens: list[set[str]] = []
     for item in ranked:
         block = blocks_by_id.get(item.block_id, {})
         tokens = _signature_tokens(block)
         if len(tokens) < _MIN_DEDUP_TOKENS:
             kept.append(item)
             continue
-        signature = _minhash(tokens)
-        matches = lsh.query(signature)
-        if any(_jaccard(tokens, kept_tokens[key]) >= threshold for key in matches):
+        if any(_jaccard(tokens, prior) >= threshold for prior in kept_tokens):
             continue
-        key = f"{len(kept)}:{item.block_id}"
-        lsh.insert(key, signature)
-        kept_tokens[key] = tokens
+        kept_tokens.append(tokens)
         kept.append(item)
     return kept
 

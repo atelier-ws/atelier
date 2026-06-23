@@ -48,18 +48,9 @@ from atelier.infra.storage.vector import cosine_similarity
 
 logger = logging.getLogger(__name__)
 
-# datasketch.HNSW is optional at runtime; a missing/old install must fall back to
-# brute-force exact cosine rather than break semantic search.
+# HNSW removed (datasketch dropped); brute-force cosine is the permanent fallback.
+# _graph and _graph_key stay None permanently; query() always uses exact cosine.
 _HNSW: Any = None
-try:
-    from datasketch import HNSW as _HNSW_cls
-
-    _HNSW = _HNSW_cls
-except ImportError:
-    logger.warning(
-        "datasketch.HNSW unavailable; ANN symbol retrieval will use brute-force cosine",
-        exc_info=True,
-    )
 
 # Below this many eligible vectors, exact cosine is both faster and exact, so the
 # graph is skipped entirely. Above it the HNSW index amortises the build cost.

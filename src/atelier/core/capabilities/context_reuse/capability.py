@@ -33,10 +33,10 @@ from atelier.infra.storage.vector import (
 
 from .dead_ends import DeadEndTracker
 
-try:
-    import networkx as nx
-except ImportError:  # pragma: no cover - optional dependency fallback
-    nx: Any = None  # type: ignore[no-redef]
+from atelier.core.foundation._graph import Graph as _Graph
+from atelier.core.foundation._graph import pagerank as _pagerank
+
+nx: Any = None  # kept as sentinel; callers guard on `nx is None`
 
 
 class _EWMean:
@@ -56,10 +56,8 @@ class _EWMean:
         return self._mean if self._mean is not None else 0.5
 
 
-try:
-    from datasketch.hnsw import HNSW
-except ImportError:  # pragma: no cover - optional dependency fallback
-    HNSW: Any = None  # type: ignore[no-redef]
+# HNSW removed (datasketch dropped); brute-force cosine is the permanent fallback.
+HNSW: Any = None
 
 # ---------------------------------------------------------------------------
 # Token budget for compact injected procedure blocks.
@@ -714,9 +712,9 @@ class ContextReuseCapability:
             item.final_score *= multiplier
 
     def _apply_graph_propagation(self, results: list[Any]) -> None:
-        if not results or nx is None:
+        if not results:
             return
-        graph = nx.Graph()
+        graph = _Graph()
         for item in results:
             graph.add_node(item.block.id)
         for i, left in enumerate(results):
@@ -738,7 +736,7 @@ class ContextReuseCapability:
         else:
             personalization = {node: 1.0 / max(graph.number_of_nodes(), 1) for node in graph.nodes}
 
-        scores = nx.pagerank(graph, alpha=0.85, personalization=personalization, weight="weight")
+        scores = _pagerank(graph, alpha=0.85, personalization=personalization, weight="weight")
         max_score = max(scores.values(), default=1.0) or 1.0
         for item in results:
             norm = scores.get(item.block.id, 0.0) / max_score

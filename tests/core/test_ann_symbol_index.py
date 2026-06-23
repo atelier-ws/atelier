@@ -152,8 +152,8 @@ def test_brute_force_fallback_when_hnsw_unavailable(monkeypatch: pytest.MonkeyPa
     assert result == _brute_force_top_k(query, vectors, 5)
 
 
-def test_graph_rebuilds_on_index_version_change() -> None:
-    """The cached HNSW graph is keyed to (version, model, dim) -- N16 rebuild."""
+def test_graph_key_always_none_without_hnsw() -> None:
+    """HNSW removed: _graph_key is always None; query() uses exact brute-force."""
     conn = sqlite3.connect(":memory:")
     idx = SymbolAnnIndex("repo")
     vectors = _seeded_vectors(40, 16, seed=4)
@@ -165,19 +165,20 @@ def test_graph_rebuilds_on_index_version_change() -> None:
     key_v1 = idx._graph_key
     idx.query(query, stored, limit=5, index_version=2, embedder_name="m1", embedding_dim=16)
     key_v2 = idx._graph_key
-    assert key_v1 != key_v2
-    assert key_v1 is not None and key_v1[0] == 1
-    assert key_v2 is not None and key_v2[0] == 2
+    assert key_v1 is None  # no HNSW graph built
+    assert key_v2 is None  # no HNSW graph built
+    assert key_v1 == key_v2  # both None — exact cosine used for both versions
 
 
-def test_invalidate_drops_cached_graph() -> None:
+def test_invalidate_resets_to_clean_state() -> None:
+    # HNSW removed: _graph is always None; invalidate() is a no-op but must leave clean state.
     conn = sqlite3.connect(":memory:")
     idx = SymbolAnnIndex("repo")
     vectors = _seeded_vectors(40, 16, seed=6)
     idx.upsert_vectors(conn, embedder_name="m1", embedding_dim=16, index_version=1, vectors=vectors)
     stored = idx.load_current_vectors(conn, embedder_name="m1", embedding_dim=16)
     idx.query(vectors["s0"][1], stored, limit=3, index_version=1, embedder_name="m1", embedding_dim=16)
-    assert idx._graph is not None
+    assert idx._graph is None  # never built without HNSW
     idx.invalidate()
     assert idx._graph is None and idx._graph_key is None
 

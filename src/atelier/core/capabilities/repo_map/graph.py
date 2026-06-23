@@ -7,9 +7,8 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-import networkx as nx
-
 from atelier.core.capabilities.repo_map.tag_cache import TagCache
+from atelier.core.foundation._graph import DiGraph
 from atelier.infra.tree_sitter.tags import Tag, detect_language, extract_tags
 
 # In-process cache: building the reference graph parses every source file with
@@ -17,7 +16,7 @@ from atelier.infra.tree_sitter.tags import Tag, detect_language, extract_tags
 # the repo root + file list, so a single dict cache makes repeated calls free.
 _REFERENCE_GRAPH_CACHE: dict[
     tuple[str, tuple[str, ...] | None],
-    tuple[nx.DiGraph, dict[str, list[Tag]]],
+    tuple[DiGraph, dict[str, list[Tag]]],
 ] = {}
 
 _SKIP_PARTS = {
@@ -140,7 +139,7 @@ def _iter_glob_source_files(
 
 def build_reference_graph(
     repo_root: str | Path, files: list[str] | None = None
-) -> tuple[nx.DiGraph, dict[str, list[Tag]]]:
+) -> tuple[DiGraph, dict[str, list[Tag]]]:
     """Build a file graph from symbol references to definitions."""
     root = Path(repo_root)
     cache_key: tuple[str, tuple[str, ...] | None] = (
@@ -176,7 +175,7 @@ def build_reference_graph(
     finally:
         cache.close()
 
-    graph = nx.DiGraph()
+    graph = DiGraph()
     for rel in tags_by_file:
         graph.add_node(rel)
     for rel, tags in tags_by_file.items():
