@@ -79,7 +79,10 @@ def load_instances(
         instance_id = str(row["instance_id"])
         gold = str(row.get("patch") or "")
         changed = changed_file_count(gold)
-        if changed < min_changed_files:
+        # Explicit --instances are deliberate requests: never drop them on the
+        # multi-file filter (mirrors multiswe.load_instances), and preserve the
+        # requested order so callers can sequence runs (e.g. shortest-first).
+        if wanted is None and changed < min_changed_files:
             continue
         out.append(
             SweBenchInstance(
@@ -94,6 +97,9 @@ def load_instances(
                 test_patch=str(row.get("test_patch") or ""),
             )
         )
-        if limit is not None and len(out) >= limit:
+        if wanted is None and limit is not None and len(out) >= limit:
             break
+    if wanted is not None:
+        rank = {iid: i for i, iid in enumerate(wanted)}
+        out.sort(key=lambda inst: rank.get(inst.instance_id, len(rank)))
     return out

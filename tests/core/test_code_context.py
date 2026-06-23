@@ -1075,8 +1075,9 @@ def test_retrieval_cache_invalidated_on_index_bump(tmp_path: Path) -> None:
 
 
 def test_tool_search_deleted_scope_returns_graveyard_items_with_provenance_and_cache_metadata(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("ATELIER_HISTORY_ENABLED", "1")  # feature is opt-in (default off)
     repo_root = tmp_path / "repo"
     delete_sha = _write_deleted_history_fixture(repo_root)
     engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
@@ -1094,8 +1095,9 @@ def test_tool_search_deleted_scope_returns_graveyard_items_with_provenance_and_c
 
 
 def test_tool_search_deleted_scope_is_rename_aware_on_current_public_identity(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("ATELIER_HISTORY_ENABLED", "1")  # feature is opt-in (default off)
     repo_root = tmp_path / "repo"
     rename_sha = _write_rename_history_fixture(repo_root)
     engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
@@ -1110,8 +1112,9 @@ def test_tool_search_deleted_scope_is_rename_aware_on_current_public_identity(
 
 
 def test_tool_search_deleted_scope_applies_temporal_and_touched_by_filters_and_widens_cache_keys(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("ATELIER_HISTORY_ENABLED", "1")  # feature is opt-in (default off)
     repo_root = tmp_path / "repo"
     _write_deleted_history_fixture(repo_root)
     engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
