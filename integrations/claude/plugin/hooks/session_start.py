@@ -276,7 +276,7 @@ def main() -> int:
         if not _apply_session_bootstrap(payload):
             _initialize_session_stats(payload)
 
-        session_id: str | None = _active_session_id() or session_id_raw
+        session_id: str | None = session_id_raw or _active_session_id()
         if not session_id:
             return 0
 
