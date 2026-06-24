@@ -356,37 +356,37 @@ def _run_code_suite_cases(
                 }
             )
         if tool_name == "node":
-            # `node` folded into explore(relation="self") -- same _op_node engine.
-            return mcp_server.tool_explore({"relation": "self", "symbol": _symbol_arg(payload)})
+            # `node` reached via the `relations` tool (kind=self) -- same _op_node engine.
+            return mcp_server.tool_relations({"kind": "self", "symbol": _symbol_arg(payload)})
         if tool_name == "callers":
-            return mcp_server.tool_explore(
+            return mcp_server.tool_relations(
                 {
-                    "relation": "callers",
+                    "kind": "callers",
                     "symbol": _symbol_arg(payload),
                     "depth": int(payload.get("depth", 1)),
                     "limit": int(payload.get("limit", 20)),
                 }
             )
         if tool_name == "callees":
-            return mcp_server.tool_explore(
+            return mcp_server.tool_relations(
                 {
-                    "relation": "callees",
+                    "kind": "callees",
                     "symbol": _symbol_arg(payload),
                     "depth": int(payload.get("depth", 1)),
                     "limit": int(payload.get("limit", 20)),
                 }
             )
         if tool_name == "usages":
-            return mcp_server.tool_explore(
-                {"relation": "usages", "symbol": _symbol_arg(payload), "limit": int(payload.get("limit", 20))}
+            return mcp_server.tool_relations(
+                {"kind": "usages", "symbol": _symbol_arg(payload), "limit": int(payload.get("limit", 20))}
             )
         if tool_name == "explore":
-            return mcp_server.tool_explore(
-                {
-                    "query": str(payload["query"]),
-                    "seed_files": payload.get("seed_files"),
-                    "max_files": int(payload.get("max_files", 8)),
-                }
+            # Concept-mode explore has no single-tool agent surface post-fold;
+            # measure the engine wrapper grep's relations route to.
+            return mcp_server._op_explore(
+                query=str(payload["query"]),
+                seed_files=payload.get("seed_files"),
+                max_files=int(payload.get("max_files", 8)),
             )
         if tool_name == "pattern":
             return mcp_server.tool_pattern(
