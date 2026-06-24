@@ -61,12 +61,12 @@ WORKLOADS: list[tuple[str, str, dict]] = [
     (
         "grep/with_count",
         "grep",
-        {"content_regex": "import os", "path": "src/atelier", "output_mode": "file_paths_with_match_count"},
+        {"content_regex": "import os", "path": "src/atelier", "mode": "counts"},
     ),
     (
         "grep/file_paths",
         "grep",
-        {"content_regex": "def _handle", "path": "src/atelier/gateway/adapters", "output_mode": "file_paths_only"},
+        {"content_regex": "def _handle", "path": "src/atelier/gateway/adapters", "mode": "paths"},
     ),
     ("grep/content", "grep", {"content_regex": "_handle", "path": "src/atelier/gateway/adapters/mcp_server.py"}),
     ("bash/echo", "bash", {"command": "echo hello"}),
@@ -75,6 +75,7 @@ WORKLOADS: list[tuple[str, str, dict]] = [
     ("read/range", "read", {"path": "src/atelier/gateway/adapters/mcp_server.py", "range": "1-200"}),
     ("read/small", "read", {"path": "src/atelier/gateway/adapters/__init__.py"}),
     ("scan/shallow", "scan", {"path": "src/atelier/gateway/adapters"}),
+    ("relations/usages", "relations", {"symbol": "_handle", "kind": "usages"}),
     ("search/kw", "search", {"query": "mcp tool handler dispatch"}),
 ]
 

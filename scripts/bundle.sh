@@ -118,7 +118,6 @@ main() {
     prompt_memory_selection
     prompt_auto_optimize_selection
     prompt_local_zoekt_selection
-
     if supports_interactive_selector; then
         print_installer_footer
     fi

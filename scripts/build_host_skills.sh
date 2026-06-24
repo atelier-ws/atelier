@@ -15,6 +15,7 @@ RENDER_SCRIPT="${SCRIPT_DIR}/sync_agent_context.py"
 
 HOST=""
 DEST=""
+INCLUDE_DEV=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --host)
@@ -33,6 +34,7 @@ while [[ $# -gt 0 ]]; do
             DEST="$2"
             shift
             ;;
+        --include-dev) INCLUDE_DEV=1 ;;
         *)
             echo "Unknown option: $1" >&2
             exit 1
@@ -84,6 +86,7 @@ is_hidden_skill() {
     done
     return 1
 }
+
 default_dest_for_host() {
     case "$1" in
         claude) printf "%s" "${ATELIER_REPO}/integrations/claude/plugin/skills" ;;
@@ -127,7 +130,6 @@ render_host_bundle() {
         if is_hidden_skill "$skill_name"; then
             continue
         fi
-
         mkdir -p "$dest_dir/$skill_name"
         cp "$skill_dir/SKILL.md" "$dest_dir/$skill_name/SKILL.md"
     done < <(find "$SKILLS_SRC" -mindepth 1 -maxdepth 1 -type d | sort)
