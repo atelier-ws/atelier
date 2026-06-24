@@ -115,8 +115,8 @@ def _compute_diff(tool_name: str, tool_input: dict) -> tuple[str, str]:  # type:
     diff = ""
 
     if tool_name == "Edit":
-        old = tool_input.get("old_string", "")
-        new = tool_input.get("new_string", "")
+        old = tool_input.get("old") or tool_input.get("old_string", "")
+        new = tool_input.get("new") or tool_input.get("new_string", "")
         if old or new:
             diff = _unified_diff(old, new, file_path)
         if not diff:
@@ -126,8 +126,8 @@ def _compute_diff(tool_name: str, tool_input: dict) -> tuple[str, str]:  # type:
         edits = tool_input.get("edits") or []
         parts: list[str] = []
         for edit in edits:
-            old = edit.get("old_string", "")
-            new = edit.get("new_string", "")
+            old = edit.get("old") or edit.get("old_string", "")
+            new = edit.get("new") or edit.get("new_string", "")
             if old or new:
                 parts.append(_unified_diff(old, new, file_path))
         diff = "\n".join(p for p in parts if p)

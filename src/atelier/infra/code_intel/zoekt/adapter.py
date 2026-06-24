@@ -123,16 +123,28 @@ class ZoektSupervisor:
             index_age_seconds=server_health.index_age_seconds,
         )
 
-    def ensure_started(self) -> ZoektClient:
+    def ensure_started(self) -> ZoektClient | None:
+        """Wire up against an existing Zoekt index and return the client.
+
+        Returns ``None`` (never raises) when Zoekt is unavailable or the
+        index hasn't been built yet.  Callers on the MCP hot path must
+        treat ``None`` as "no results" and degrade gracefully -- never
+        trigger a build from here.
+        """
         with self._lock:
             if self._client is not None:
                 return self._client
             resolution = self._resolution()
             if not resolution.available:
-                raise RuntimeError(resolution.reason or "zoekt binary unavailable")
+                logging.debug("zoekt unavailable: %s", resolution.reason)
+                return None
             self._binary_resolution = resolution
             server = get_zoekt_server(self.repo_root, resolution=resolution)
-            server.ensure_started()
+            try:
+                server.ensure_started()
+            except RuntimeError as exc:
+                logging.debug("zoekt index not ready, skipping: %s", exc)
+                return None
             self._client = ZoektClient(server)
             return self._client
 
@@ -160,6 +172,12 @@ class ZoektSupervisor:
         )
 
         client = self.ensure_started()
+        if client is None:
+            from atelier.core.capabilities.tool_supervision.search_read import SearchReadResult
+
+            return SearchReadResult(
+                matches=[], total_tokens=0, tokens_saved_vs_naive=0, cache_hit=False, backend="zoekt"
+            )
         rel_glob = _path_to_glob(self.repo_root, Path(search_path).resolve())
         raw_limit = max(max_files * 4, max_files, 20)
         raw_matches = client.search(query, num_matches=raw_limit, file_glob=rel_glob)

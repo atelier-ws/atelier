@@ -5510,6 +5510,20 @@ def _compute_and_record_diffs(
             led.record_file_event(path=path, event="edit")
 
 
+def _normalize_edit_aliases(edit: dict[str, Any]) -> dict[str, Any]:
+    """Accept ``old``/``new`` as short aliases for ``old_string``/``new_string``.
+
+    Returns the edit dict unchanged when the canonical names are already present;
+    otherwise copies the dict and promotes the short aliases so the downstream
+    apply functions always see ``old_string`` / ``new_string``.
+    """
+    if "old" in edit and "old_string" not in edit:
+        edit = {**edit, "old_string": edit["old"]}
+    if "new" in edit and "new_string" not in edit:
+        edit = {**edit, "new_string": edit["new"]}
+    return edit
+
+
 def _edit_descriptor_family(edit: dict[str, Any]) -> str:
     is_legacy = "op" in edit and "file_path" not in edit and "cell_action" not in edit
     return "legacy" if is_legacy else "rich"
@@ -5731,14 +5745,14 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                     {
                         "title": "File edit",
                         "type": "object",
-                        "required": ["path", "new_string"],
+                        "required": ["path", "new"],
                         "properties": {
                             "path": {
                                 "type": "string",
                                 "description": "Path, optionally suffixed with #line, #start-end, or #cell=N.",
                             },
-                            "old_string": {"type": "string"},
-                            "new_string": {"type": "string"},
+                            "old": {"type": "string"},
+                            "new": {"type": "string"},
                             "overwrite": {"type": "boolean"},
                         },
                     },
@@ -6049,6 +6063,7 @@ def tool_smart_edit(
     # workspace env + per-request project override) so write-confinement below
     # matches the active workspace.
     repo_root = _workspace_root()
+    edits = [_normalize_edit_aliases(e) for e in edits]
     family = _validate_edit_descriptor_families(edits)
 
     paths = _collect_touched_paths(edits, repo_root=repo_root)
@@ -7701,53 +7716,6 @@ def _parse_symbol(symbol: str) -> dict[str, Any]:
     return {"symbol_name": symbol}
 
 
-@mcp_tool(
-    name="explore",
-    description=(
-        "Code intelligence by concept or symbol. Concept mode: `query` returns grouped "
-        "source + caller/callee/usage context. Targeted mode: `relation` "
-        "(callers/callees/usages/self) + `symbol` returns that relation (SCIP). `depth` "
-        "extends transitively; `seed_files` biases concept mode."
-    ),
-)
-def tool_explore(
-    query: str | None = None,
-    relation: str | None = None,
-    symbol: str | None = None,
-    seed_files: list[str] | None = None,
-    max_files: int = 8,
-    depth: int = 1,
-    limit: int = 20,
-) -> dict[str, Any]:
-    """Grouped code intelligence for a concept or a single symbol.
-
-    Concept mode (`query`): grouped source + call-graph context across the matched
-    files in one call -- replaces chaining search -> node -> callers/callees.
-    Targeted mode (`relation` + `symbol`): the exact callers / callees / usages /
-    definition of one symbol, folding in the former node/callers/callees/usages
-    tools (a targeted call returns the same focused payload those tools did, so it
-    is far cheaper than concept mode for a known symbol). Pass `symbol` as a name,
-    qualified path, or SCIP id; `depth` extends callers/callees transitively.
-    Use `seed_files` to bias concept-mode search toward specific files.
-    """
-    if relation is not None:
-        seed = symbol if symbol is not None else query
-        target = _parse_symbol(seed) if seed else {}
-        rel = relation.strip().lower()
-        if rel == "callers":
-            return _op_callers(**target, depth=depth, limit=limit)
-        if rel == "callees":
-            return _op_callees(**target, depth=depth, limit=limit)
-        if rel in ("usages", "refs", "references"):
-            return _op_usages(**target, limit=limit)
-        if rel in ("self", "node", "definition"):
-            return _op_node(**target)
-        raise ValueError(f"unknown relation {relation!r}; use callers, callees, usages, or self")
-    if not query:
-        raise ValueError("explore requires `query` (concept mode) or `relation` + `symbol` (targeted mode)")
-    return _op_explore(query=query, seed_files=seed_files, max_files=max_files)
-
-
 @mcp_tool(name="graph")
 def tool_graph(
     kind: str = "blast_radius",
@@ -8311,12 +8279,78 @@ def _run_native_grep(
     )
 
 
+def _grep_deterministic_search(
+    *,
+    query: str | None,
+    path: str,
+    mode: str,
+    limit: int,
+    seed_files: list[str] | None,
+    budget_tokens: int,
+    include_meta: bool,
+) -> dict[str, Any]:
+    """grep's deterministic symbol-locate / repo-map modes (folded in from `search`).
+
+    mode='symbol' is an exact SCIP definition locator (name + location, no body);
+    mode='map' is a repo map expanded from `seed_files`. Both reuse the existing
+    engine/back-ends -- no embeddings (those stay in `search`).
+    """
+    workspace_root = _workspace_root()
+    if mode == "symbol":
+        if not query:
+            raise ValueError("mode='symbol' requires `regex` as the symbol query")
+        requested = Path(path)
+        resolved = requested if requested.is_absolute() else workspace_root / requested
+        resolved = resolved.resolve()
+        file_glob: str | None = None
+        if resolved != workspace_root:
+            with contextlib.suppress(ValueError):
+                relative = str(resolved.relative_to(workspace_root))
+                file_glob = relative if resolved.is_file() else f"{relative}/**"
+        return _op_search(
+            query=query,
+            mode="lexical",
+            intent="symbol",
+            view="target",
+            snippet="none",
+            limit=max(limit * 2, 20),
+            file_glob=file_glob,
+            budget_tokens=budget_tokens,
+            repo_root=str(workspace_root),
+        )
+    # mode == "map"
+    if not seed_files:
+        raise ValueError("mode='map' requires `seed_files`")
+    from atelier.core.capabilities.tool_supervision.smart_search import smart_search
+
+    payload = smart_search(
+        query=query or "",
+        path=path,
+        mode="map",
+        max_files=limit,
+        max_chars_per_file=2000,
+        include_outline=True,
+        seed_files=seed_files,
+        budget_tokens=budget_tokens,
+    )
+    ts = int(payload.pop("tokens_saved", 0) or 0)
+    if ts > 0:
+        _tool_call_tokens_saved.value = ts
+    if not include_meta:
+        payload.pop("cache_hit", None)
+        payload.pop("backend", None)
+        payload.pop("index_age_seconds", None)
+        payload.pop("total_tokens", None)
+    return payload
+
+
 @mcp_tool(
     name="grep",
     description=(
-        "Search files with regex, glob, and type filters: matching, path listing, context "
-        "lines, summaries, or incremental reruns. Set mode='file_paths_with_content' to "
-        "discover AND read matched context in one step."
+        "Deterministic code search: regex/glob/type matching plus symbol relations. "
+        "mode='file_paths_with_content' discovers AND reads matched context; "
+        "relation=callers|callees|usages|self + symbol gives SCIP call-graph relations. "
+        "mode='symbol' locates a definition; mode='map' builds a repo map from seed_files."
     ),
     hidden_params=(
         "include_meta",
@@ -8342,21 +8376,44 @@ def tool_grep(
     ] = ".",
     regex: Annotated[
         str | None,
-        Field(description="Regex to match contents. Omit for path/type listings."),
+        Field(description="Regex to match contents; for relation mode this is the symbol when `symbol` is omitted."),
     ] = None,
     glob: Annotated[
         str | list[str] | None,
         Field(description="Globs constraining candidate files (e.g. `src/**/*.py`). List or bare string."),
     ] = None,
+    relation: Annotated[
+        str | None,
+        Field(description="Symbol relation: callers|callees|usages|self. Uses `symbol` (or `regex`) as the target."),
+    ] = None,
+    symbol: Annotated[
+        str | None,
+        Field(description="Target symbol (name, qualified path, or SCIP id) for `relation`."),
+    ] = None,
+    depth: Annotated[
+        int,
+        Field(description="Transitive depth for relation=callers|callees."),
+    ] = 1,
+    seed_files: Annotated[
+        list[str] | None,
+        Field(description="Seed files for mode='map' (repo map expands from these)."),
+    ] = None,
     mode: Annotated[
         Literal[
-            "ranked_file_map",
             "file_paths_with_content",
+            "ranked_file_map",
             "file_paths_only",
             "file_paths_with_match_count",
+            "symbol",
+            "map",
         ],
-        Field(description="ranked_file_map: navigation pointers; file_paths_with_content adds matched lines+context."),
-    ] = "ranked_file_map",
+        Field(
+            description=(
+                "file_paths_with_content: matched lines+context (default); ranked_file_map: navigation "
+                "pointers; symbol: exact definition locator; map: repo map from seed_files."
+            )
+        ),
+    ] = "file_paths_with_content",
     before: Annotated[
         int,
         Field(description="Lines before match."),
@@ -8403,21 +8460,57 @@ def tool_grep(
     ] = False,
     format: Annotated[Literal["auto", "compact", "json"], _FORMAT_FIELD] = "auto",
 ) -> dict[str, Any]:
-    """Run grep-style search with regex, globs, type filters, and token-budgeted rendering.
+    """Deterministic code search: regex/glob/type matching, symbol locate/relations, and repo-map.
 
-    Use this tool when you already know the pattern, file globs, or file types you want.
-    Prefer `search` for ranked natural-language lookup and repo-map construction.
-    Returns: results shaped by `mode` (default `ranked_file_map`: token-budgeted file pointers with line ranges and symbols).
+    - Default: regex over file contents (token-budgeted, mode-shaped). Omit `regex` for path/type listings.
+    - `relation=callers|callees|usages|self` + `symbol`: exact SCIP call-graph relations of one symbol.
+    - `mode='symbol'` + `regex`: exact symbol-definition locator (name + location, no body).
+    - `mode='map'` + `seed_files`: repo map expanded from seed files.
+    Returns: results shaped by `mode`/path (default `file_paths_with_content`: matched lines plus context).
+    For natural-language/semantic ranking use `search`.
     """
+    # Symbol-relation mode: exact callers/callees/usages/definition of one symbol
+    # (folds in the former `explore` targeted path; same _op_* engine wrappers).
+    if relation is not None:
+        seed = symbol if symbol is not None else regex
+        target = _parse_symbol(seed) if seed else {}
+        rel = relation.strip().lower()
+        if rel == "callers":
+            return _op_callers(**target, depth=depth, limit=file_limit or 20)
+        if rel == "callees":
+            return _op_callees(**target, depth=depth, limit=file_limit or 20)
+        if rel in ("usages", "refs", "references"):
+            return _op_usages(**target, limit=file_limit or 20)
+        if rel in ("self", "node", "definition"):
+            return _op_node(**target)
+        raise ValueError(f"unknown relation {relation!r}; use callers, callees, usages, or self")
+    # Deterministic symbol-locate / repo-map modes (folded in from the former
+    # `search` tool's lexical paths; semantic ranking stays in `search`).
+    if mode in ("symbol", "map"):
+        return _grep_deterministic_search(
+            query=regex,
+            path=path,
+            mode=mode,
+            limit=file_limit or 10,
+            seed_files=seed_files,
+            budget_tokens=context_budget_tokens,
+            include_meta=include_meta,
+        )
     # Accept a single glob passed as a bare string -- a common shape the model
     # reaches for -- so it does not trip schema validation against the array type.
     if isinstance(glob, str):
         glob = [glob]
+    # symbol/map were handled and returned above; the remaining modes are the
+    # four native grep output modes.
+    native_mode = cast(
+        Literal["ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
+        mode,
+    )
     payload = _run_native_grep(
         path=path,
         content_regex=regex,
         file_glob_patterns=glob,
-        output_mode=mode,
+        output_mode=native_mode,
         lines_before=before,
         lines_after=after,
         ignore_case=i,
@@ -8477,53 +8570,36 @@ def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[in
 @mcp_tool(
     name="search",
     description=(
-        "Search code and docs by ranked query: relevance-ranked snippets or repo maps seeded "
-        "from known files. Use mode='symbol' to locate a symbol's definition by name (exact, "
-        "indexed; name + location, no body)."
+        "Semantic/embedding code search: relevance-ranked snippets for a natural-language query. "
+        "Hidden until an embedding backend is configured; deterministic regex/glob/symbol/map search "
+        "lives on `grep`."
     ),
     input_schema={
         "type": "object",
         "properties": {
             "query": {
                 "type": "string",
-                "description": "Ranked search query. Required for `chunks` mode.",
+                "description": "Natural-language ranked search query.",
             },
             "path": {
                 "type": "string",
                 "default": ".",
                 "description": "Workspace-relative file or directory; a single file may carry '#start-end' to scope results.",
             },
-            "mode": {
-                "type": "string",
-                "enum": ["chunks", "map", "symbol"],
-                "default": "chunks",
-                "description": (
-                    "chunks = ranked snippets; map = repo map from seed_files; "
-                    "symbol = exact definitions (name + location, no body)."
-                ),
-            },
             "limit": {
                 "type": "integer",
                 "default": 10,
                 "description": "Maximum number of ranked files to return.",
             },
-            "seed_files": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": (
-                    "Seed files that bias ranking. Required when `mode='map'` because repo-map "
-                    "mode expands outward from these files."
-                ),
-            },
         },
-        "required": [],
+        "required": ["query"],
     },
     param_aliases={"max_files": "limit"},
 )
 def tool_smart_search(
     query: Annotated[
         str | None,
-        Field(description="Ranked search query. Required for `chunks` mode."),
+        Field(description="Natural-language ranked search query."),
     ] = None,
     path: Annotated[
         str,
@@ -8534,15 +8610,6 @@ def tool_smart_search(
             ),
         ),
     ] = ".",
-    mode: Annotated[
-        Literal["chunks", "map", "symbol"],
-        Field(
-            description=(
-                "`chunks` returns ranked snippets per file, `map` builds a repo map from `seed_files`, "
-                "and `symbol` returns exact symbol definitions (name + location, no body) from the SCIP index."
-            )
-        ),
-    ] = "chunks",
     limit: Annotated[
         int,
         Field(description="Maximum number of ranked files to return."),
@@ -8555,18 +8622,9 @@ def tool_smart_search(
         bool,
         Field(description="Include outline metadata for ranked files when the backend can provide it."),
     ] = True,
-    seed_files: Annotated[
-        list[str] | None,
-        Field(
-            description=(
-                "Seed files that bias ranking. Required when `mode='map'` because repo-map "
-                "mode expands outward from these files."
-            )
-        ),
-    ] = None,
     budget_tokens: Annotated[
         int,
-        Field(description="Total token budget for ranked search output or repo-map output."),
+        Field(description="Total token budget for ranked search output."),
     ] = 2000,
     include_meta: Annotated[
         bool,
@@ -8574,14 +8632,10 @@ def tool_smart_search(
     ] = False,
     format: Annotated[str, _FORMAT_FIELD] = "auto",
 ) -> dict[str, Any]:
-    """Search by ranked query or repo-map construction, then hand off to node/explore-style code intel.
+    """Semantic/embedding ranked search over code and docs (hidden until embeddings are wired up).
 
-    - Pass `query` for relevance-ranked search over code and docs.
-    - Use `mode='chunks'` for snippets.
-    - Use `mode='map'` with `seed_files` to build a repo map.
-    - Use `grep` instead when you need regex, glob, type filters, summaries, or incremental reruns.
-    - Once grounded, use `node`, `callers`, `callees`, `usages`, or `explore` for exact code-intel follow-up.
-    - Run independent searches in parallel within a single response; don't chain them serially.
+    Returns relevance-ranked snippets for a natural-language `query`, with read/context
+    follow-up handoffs. Deterministic regex/glob/symbol-locate/repo-map search lives on `grep`.
     """
     # A "path#start-end" suffix scopes ranked results to a line window of one file.
     line_range: tuple[int, int] | None = None
@@ -8592,92 +8646,51 @@ def tool_smart_search(
         hi = int(re.sub(r"\D", "", hi_text) or 0) if hi_text else lo
         if lo:
             line_range = (lo, hi or lo)
-    if mode == "symbol":
-        # Exact symbol locator (folds in the internal `symbols`/SCIP search):
-        # name + location, no source body. Read the body with `node`.
-        if not query:
-            raise ValueError("query is required for mode='symbol'")
-        symbol_workspace_root = _workspace_root()
+    if query is None:
+        raise ValueError("query is required for semantic search; use grep for regex/glob/symbol search")
+    from atelier.core.capabilities.grounded_loop.search_first import search_first
+
+    workspace_root = _workspace_root()
+
+    def indexed_search(
+        *,
+        query: str,
+        path: str,
+        max_files: int,
+        budget_tokens: int,
+    ) -> dict[str, Any]:
         requested = Path(path)
-        resolved = requested if requested.is_absolute() else symbol_workspace_root / requested
+        resolved = requested if requested.is_absolute() else workspace_root / requested
         resolved = resolved.resolve()
-        symbol_file_glob: str | None = None
-        if resolved != symbol_workspace_root:
-            with contextlib.suppress(ValueError):
-                relative = str(resolved.relative_to(symbol_workspace_root))
-                symbol_file_glob = relative if resolved.is_file() else f"{relative}/**"
-        return _op_search(
-            query=query,
-            mode="lexical",
-            intent="symbol",
-            view="target",
-            snippet="none",
-            limit=max(limit * 2, 20),
-            file_glob=symbol_file_glob,
-            budget_tokens=budget_tokens,
-            repo_root=str(symbol_workspace_root),
+        file_glob: str | None = None
+        if resolved != workspace_root:
+            relative = str(resolved.relative_to(workspace_root))
+            file_glob = relative if resolved.is_file() else f"{relative}/**"
+        return cast(
+            dict[str, Any],
+            _code_context_engine(str(workspace_root)).tool_search(
+                query,
+                limit=max(max_files * 4, 20),
+                mode="hybrid",
+                intent="auto",
+                snippet="head",
+                snippet_lines=12,
+                file_glob=file_glob,
+                budget_tokens=budget_tokens,
+            ),
         )
-    if mode == "map":
-        if not seed_files:
-            raise ValueError("seed_files is required when mode='map'")
-        from atelier.core.capabilities.tool_supervision.smart_search import smart_search
 
-        payload = smart_search(
-            query=query or "",
-            path=path,
-            mode=mode,
-            max_files=limit,
-            max_chars_per_file=max_chars_per_file,
-            include_outline=include_outline,
-            seed_files=seed_files,
-            budget_tokens=budget_tokens,
-        )
-    elif query is None:
-        raise ValueError("query is required for ranked search; use grep for regex/glob search")
-    else:
-        from atelier.core.capabilities.grounded_loop.search_first import search_first
-
-        workspace_root = _workspace_root()
-
-        def indexed_search(
-            *,
-            query: str,
-            path: str,
-            max_files: int,
-            budget_tokens: int,
-        ) -> dict[str, Any]:
-            requested = Path(path)
-            resolved = requested if requested.is_absolute() else workspace_root / requested
-            resolved = resolved.resolve()
-            file_glob: str | None = None
-            if resolved != workspace_root:
-                relative = str(resolved.relative_to(workspace_root))
-                file_glob = relative if resolved.is_file() else f"{relative}/**"
-            return cast(
-                dict[str, Any],
-                _code_context_engine(str(workspace_root)).tool_search(
-                    query,
-                    limit=max(max_files * 4, 20),
-                    mode="hybrid",
-                    intent="auto",
-                    snippet="head",
-                    snippet_lines=12,
-                    file_glob=file_glob,
-                    budget_tokens=budget_tokens,
-                ),
-            )
-
-        payload = search_first(
-            query=query,
-            task=query,
-            path=path,
-            max_files=limit,
-            max_chars_per_file=max_chars_per_file,
-            include_outline=include_outline,
-            budget_tokens=budget_tokens,
-            indexed_search=indexed_search,
-        )
-    if line_range is not None and mode == "chunks":
+    payload = search_first(
+        query=query,
+        task=query,
+        path=path,
+        max_files=limit,
+        max_chars_per_file=max_chars_per_file,
+        include_outline=include_outline,
+        budget_tokens=budget_tokens,
+        indexed_search=indexed_search,
+    )
+    if line_range is not None:
         _scope_search_matches_to_range(payload, line_range)
     # Plumb savings via thread-local and strip from the LLM-facing payload.
     ts = int(payload.pop("tokens_saved", 0) or 0)
@@ -8780,7 +8793,7 @@ _READ_TOOLS = frozenset(
 
 # Read-style tools whose byte-identical results may be deduped within a session
 # (registered tool names, post-alias). See context_dedup for the mechanism.
-_DEDUP_TOOLS = frozenset({"read", "search", "grep", "explore"})
+_DEDUP_TOOLS = frozenset({"read", "search", "grep"})
 
 
 # Flat single-object schema. The Anthropic Messages API rejects a top-level

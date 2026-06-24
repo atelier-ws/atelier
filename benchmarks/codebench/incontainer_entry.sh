@@ -66,6 +66,17 @@ if [ "$ARM" = "atelier" ]; then
     tail -n 20 /tmp/atelier-index.log >&2 || true
     exit 4
   fi
+
+  # Prewarm Zoekt trigram index. atelier code index already ran SCIP.
+  # Zoekt's host-binary mode builds its index synchronously on first
+  # ensure_started(); we trigger it here so the MCP server's first search
+  # call returns results immediately instead of paying the build cost on the
+  # tool-call path. Failure is non-fatal: search falls back to SQLite FTS5.
+  if command -v zoekt-index >/dev/null 2>&1; then
+    atelier zoekt up 2>/tmp/atelier-zoekt.log \
+      && echo "atelier zoekt up: prewarm OK" >&2 \
+      || { echo "[warn] atelier zoekt up failed -- falling back to FTS5" >&2; tail -n 5 /tmp/atelier-zoekt.log >&2 || true; }
+  fi
 fi
 
 prompt="$(cat /mnt/prompt.txt)"

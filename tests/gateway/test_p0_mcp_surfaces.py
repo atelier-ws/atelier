@@ -40,12 +40,11 @@ def _preindex(repo_root: str | Path) -> None:
     mcp_server._op_index(repo_root=str(repo_root), force=True)
 
 
-def test_symbols_removed_in_favor_of_search() -> None:
+def test_symbols_removed_in_favor_of_grep() -> None:
     # The `symbols` tool was a redundant second face over _op_search and is
-    # fully removed (no registry entry, no handler). Agents use `search`
-    # (mode='symbol') / `grep` to find code by name and `explore`
-    # (relation='self') to read a definition. The _op_search engine survives:
-    # `search` mode='symbol' still routes through it.
+    # fully removed (no registry entry, no handler). Agents use `grep`
+    # (semantic / relation modes) to find code by name and read definitions.
+    # The _op_search engine survives: grep(semantic=True) routes through it.
     assert "symbols" not in TOOLS
     assert "symbols" not in HIDDEN_LLM_TOOLS
     assert not hasattr(mcp_server, "tool_symbols")
@@ -55,8 +54,8 @@ def test_symbols_removed_in_favor_of_search() -> None:
         transport.call_tool("code", {})
 
 
-def test_explore_relation_mode_routes_to_targeted_ops(monkeypatch: pytest.MonkeyPatch) -> None:
-    # explore(relation=...) is the agent's targeted path into the folded-in
+def test_grep_relation_mode_routes_to_targeted_ops(monkeypatch: pytest.MonkeyPatch) -> None:
+    # grep(relation=...) is the agent's targeted path into the folded-in
     # callers/callees/usages/self relations; it must route to the matching _op_*
     # with the parsed symbol, returning that op's focused payload verbatim.
     seen: dict[str, dict[str, Any]] = {}
@@ -73,42 +72,50 @@ def test_explore_relation_mode_routes_to_targeted_ops(monkeypatch: pytest.Monkey
     monkeypatch.setattr(mcp_server, "_op_usages", _rec("usages"))
     monkeypatch.setattr(mcp_server, "_op_node", _rec("self"))
 
-    assert (
-        mcp_server.tool_explore({"relation": "callers", "symbol": "OrderService", "depth": 2})["relation"] == "callers"
-    )
+    assert mcp_server.tool_grep({"relation": "callers", "symbol": "OrderService", "depth": 2})["relation"] == "callers"
     assert seen["callers"]["symbol_name"] == "OrderService"
     assert seen["callers"]["depth"] == 2
-    assert (
-        mcp_server.tool_explore({"relation": "callees", "symbol": "OrderService", "depth": 2})["relation"] == "callees"
-    )
+    assert mcp_server.tool_grep({"relation": "callees", "symbol": "OrderService", "depth": 2})["relation"] == "callees"
     assert seen["callees"]["symbol_name"] == "OrderService"
     assert seen["callees"]["depth"] == 2
-    assert mcp_server.tool_explore({"relation": "usages", "symbol": "OrderService"})["relation"] == "usages"
+    assert mcp_server.tool_grep({"relation": "usages", "symbol": "OrderService"})["relation"] == "usages"
     assert seen["usages"]["symbol_name"] == "OrderService"
-    assert mcp_server.tool_explore({"relation": "self", "symbol": "OrderService"})["relation"] == "self"
-    # Concept mode still requires a query when no relation is given.
+    assert mcp_server.tool_grep({"relation": "self", "symbol": "OrderService"})["relation"] == "self"
+    # An unknown relation is rejected.
     with pytest.raises(ValueError):
-        mcp_server.tool_explore({})
+        mcp_server.tool_grep({"relation": "bogus", "symbol": "OrderService"})
 
 
-def test_symbol_graph_relations_removed_in_favor_of_explore() -> None:
+def test_symbol_graph_relations_removed_in_favor_of_grep() -> None:
     # callers/callees/usages AND single definitions (former `node`) are no longer
-    # standalone MCP tools: they all fold into `explore` -- concept mode plus
+    # standalone MCP tools: they all fold into `grep` -- regex/semantic modes plus
     # relation=callers|callees|usages|self. The faces are gone from the registry
-    # and the hidden set; the engine ops they delegated to still exist.
-    for name in ("callers", "callees", "usages", "node"):
+    # and the hidden set; the engine ops they delegated to still exist. The
+    # standalone `search` and `explore` tools are removed too.
+    # callers/callees/usages/node/explore are removed entirely; their relations
+    # fold into grep. `search` is NOT removed -- it stays registered but hidden
+    # (semantic/embeddings tool, surfaced once embeddings are wired up).
+    for name in ("callers", "callees", "usages", "node", "explore"):
         assert name not in TOOLS
         assert name not in HIDDEN_LLM_TOOLS
-    assert "explore" in TOOLS
+    assert "grep" in TOOLS
+    assert "search" in TOOLS
+    assert "search" in HIDDEN_LLM_TOOLS
 
 
 def test_mcp_grep_native_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
     (tmp_path / "a.py").write_text("needle\n", encoding="utf-8")
 
+    # Default mode is file_paths_with_content: matched lines + context as content
+    # blocks, not a ranked_file_map payload.
     result = tool_grep({"content_regex": "needle", "file_glob_patterns": ["*.py"]})
-    assert result["matches"]
+    assert "needle" in result["content"][0]["text"]
     assert "_meta" not in result
+
+    # ranked_file_map remains available as an explicit mode.
+    ranked = tool_grep({"content_regex": "needle", "file_glob_patterns": ["*.py"], "output_mode": "ranked_file_map"})
+    assert ranked["matches"]
 
 
 def test_mcp_search_adds_backend_metadata_for_large_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -144,7 +151,7 @@ def test_mcp_search_adds_backend_metadata_for_large_repo(tmp_path: Path, monkeyp
     result = tool_smart_search(
         {
             "query": "needle token",
-            "file_path": str(tmp_path),
+            "path": str(tmp_path),
             "budget_tokens": 4000,
             "include_meta": True,
         }
@@ -158,7 +165,7 @@ def test_mcp_search_adds_backend_metadata_for_large_repo(tmp_path: Path, monkeyp
     assert result["discovery"] == {"tool": "search", "mode": "chunks"}
     assert result["handoff"]["read"] == {"tool": "read"}
     assert result["handoff"]["context"]["tool"] == "context"
-    assert result["handoff"]["explore"]["tool"] == "explore"
+    assert result["handoff"]["relations"]["tool"] == "grep"
 
 
 def test_search_tool_returns_search_first_handoffs_without_meta(
@@ -234,18 +241,21 @@ def test_search_tool_uses_cached_code_index_before_fallback(tmp_path: Path, monk
     )
 
 
-def test_search_tool_schema_prefers_path_and_documents_ranked_contract() -> None:
-    search_tool = TOOLS["search"]
-    properties = search_tool["inputSchema"]["properties"]
-
-    assert "query" in search_tool["description"]
-    assert "path" in properties
-    assert "file_path" not in properties
-    assert "content_regex" not in properties
-    assert properties["path"]["description"].startswith("Workspace-relative file or directory")
+def test_explore_removed_search_hidden_grep_owns_deterministic() -> None:
+    # `explore` is hard-removed; its relations fold into grep. `search` is NOT
+    # removed -- it stays registered but hidden (semantic/embeddings tool).
+    assert "explore" not in TOOLS
+    assert not hasattr(mcp_server, "tool_explore")
+    assert "search" in TOOLS
+    assert "search" in HIDDEN_LLM_TOOLS
+    assert hasattr(mcp_server, "tool_smart_search")
+    # grep owns deterministic relation + symbol + map modes.
+    properties = TOOLS["grep"]["inputSchema"]["properties"]
+    assert "relation" in properties
+    assert "symbol" in properties
+    assert "map" in properties["mode"]["enum"]
+    assert "symbol" in properties["mode"]["enum"]
     assert "#start-end" in properties["path"]["description"]
-    assert "repo map" in properties["mode"]["description"].lower()
-    assert "mode='map'" in properties["seed_files"]["description"]
 
 
 def test_grep_tool_schema_covers_native_contract() -> None:
@@ -253,7 +263,8 @@ def test_grep_tool_schema_covers_native_contract() -> None:
     properties = grep_tool["inputSchema"]["properties"]
 
     assert "regex" in grep_tool["description"].lower()
-    assert "context lines" in grep_tool["description"].lower()
+    assert "relation" in grep_tool["description"].lower()
+    assert "symbol" in grep_tool["description"].lower()
     assert "path" in properties
     assert "file_path" not in properties
     assert "summarize" in properties["summary"]["description"].lower()
@@ -270,9 +281,12 @@ def test_grep_tool_accepts_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert result["_meta"]["fileMatchCount"] == 1
 
 
-def test_search_tool_map_mode_requires_seed_files() -> None:
-    with pytest.raises(ValueError, match="seed_files is required when mode='map'"):
-        tool_smart_search({"mode": "map"})
+def test_repo_map_mode_moved_onto_grep() -> None:
+    # Repo-map is deterministic, so `mode='map'` moved from `search` onto `grep`.
+    grep_props = TOOLS["grep"]["inputSchema"]["properties"]
+    assert "mode" in grep_props
+    assert "map" in grep_props["mode"]["enum"]
+    assert "seed_files" in grep_props
 
 
 def test_mcp_edit_rich_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -403,10 +417,12 @@ def test_tool_code_search_can_attach_compact_rendered_block(tmp_path: Path, monk
     assert "class OrderService" not in rendered
 
 
-def test_tool_code_schema_exposes_explore_operation() -> None:
-    # `explore` is now a dedicated top-level MCP tool, not a `code` op
-    assert "explore" in mcp_server.TOOLS
-    assert mcp_server.TOOLS["explore"]["inputSchema"]["properties"]["query"]["type"] == "string"
+def test_explore_capability_folded_into_grep_relation_mode() -> None:
+    # `explore` is hard-removed as a standalone tool; its targeted call-graph
+    # relations are reached via grep(relation=...). The engine wrapper survives.
+    assert "explore" not in mcp_server.TOOLS
+    assert mcp_server.TOOLS["grep"]["inputSchema"]["properties"]["relation"]["type"] == "string"
+    assert hasattr(mcp_server, "_op_explore")
 
 
 @pytest.mark.slow
