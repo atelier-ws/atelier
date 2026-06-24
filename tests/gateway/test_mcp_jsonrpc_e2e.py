@@ -31,17 +31,17 @@ def _preindex(repo_root: str | Path) -> None:
     mcp_server._op_index(repo_root=str(repo_root), force=True)
 
 
+# Lean model-visible surface: `grep` (regex search with inline call-graph counts)
+# + `relations` (symbol drill-in), plus read/edit/bash/web_fetch. `search`
+# (semantic), `memory`, `sql`, `codemod` are registered but hidden; `explore` is
+# removed entirely.
 EXPECTED_TOOLS = {
-    "memory",
     "read",
     "edit",
     "grep",
-    "sql",
-    "search",
-    "explore",
+    "relations",
     "bash",
     "web_fetch",
-    "codemod",
 }
 
 
@@ -267,8 +267,7 @@ def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) ->
                             "name": "search",
                             "arguments": {
                                 "query": "stdio",
-                                "file_path": str(mcp_env),
-                                "mode": "chunks",
+                                "path": str(mcp_env),
                             },
                         },
                     }
@@ -461,16 +460,14 @@ def test_read_search_edit_and_compact_e2e(mcp_env: Path) -> None:
     ranged_read = _text(_call("read", {"path": str(target), "range": "2-2"}))
     assert "needle" in ranged_read
 
-    ranked_search = _text(_call("search", {"query": "needle", "path": str(mcp_env), "mode": "chunks"}))
+    # `search` is the hidden semantic tool (chunks only); callable by name.
+    ranked_search = _text(_call("search", {"query": "needle", "path": str(mcp_env)}))
     assert "needle" in ranked_search or "sample.py" in ranked_search
 
-    repo_map = _text(
-        _call(
-            "search",
-            {"query": "", "seed_files": [str(target)], "mode": "map", "budget_tokens": 200},
-        )
-    )
-    assert "sample.py" in repo_map
+    # grep's `mode='map'` is the ranked FILE map (an output shape), not the old
+    # seed-expanded repo map -- it returns ranked pointers for the regex.
+    ranked_map = _text(_call("grep", {"regex": "needle", "path": str(mcp_env), "mode": "map"}))
+    assert "sample.py" in ranked_map
 
     native_search = _text(
         _call(
@@ -479,7 +476,7 @@ def test_read_search_edit_and_compact_e2e(mcp_env: Path) -> None:
                 "path": str(mcp_env),
                 "content_regex": "secondary needle",
                 "file_glob_patterns": ["*.py"],
-                "output_mode": "file_paths_with_match_count",
+                "mode": "counts",
                 "lines_before": 1,
                 "lines_after": 1,
             },

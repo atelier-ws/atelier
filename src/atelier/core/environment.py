@@ -25,14 +25,14 @@ MEMORY_BACKENDS = frozenset({"sqlite", "letta", "openmemory"})
 
 HIDDEN_LLM_TOOLS = frozenset(
     {
-        # Statusline IPC tool — written by MCP server, read by statusline.sh.
-        # Not surfaced to agents; reachable by name for the statusline and tests.
+        # Skill-only / orchestration tools: named MCP tools not surfaced to agents.
+        "agent",
+        "workflow",
+        # Internal / CLI-only IPC and lifecycle tools.
         "statusline_segment",
         "rescue",
         "verify",
         "trace",
-        "workflow",
-        "agent",
         "compact",
         "context",
         # WS4 graph analytics (blast radius / dead code / cycles / coupling /
@@ -52,6 +52,17 @@ HIDDEN_LLM_TOOLS = frozenset(
         "blame",
         # Code-intel cache admin (status + invalidate) folded into one tool.
         "cache",
+        # Semantic/embedding search: registered and callable, but hidden until an
+        # embedding backend is wired up. Deterministic search (regex/glob, symbol
+        # locate/relations, repo-map) lives on `grep`; when embeddings land,
+        # remove `search` here to surface it as the 6th visible tool.
+        "search",
+        # Power/admin surfaces kept off the lean agent surface: durable memory
+        # writes, raw SQL, and AST-shape codemod. Callable by name (tests, CLI,
+        # power use) but not advertised to agents.
+        "memory",
+        "sql",
+        "codemod",
     }
 )
 HIDDEN_SKILLS: frozenset[str] = frozenset()

@@ -808,14 +808,12 @@ class InteractiveRuntime:
                 "edit",
                 "bash",
                 "grep",
-                "explore",
             ]
             perm_map = {
                 "edit": "ask" if not self._yolo else "allow",
                 "bash": "ask" if not self._yolo else "allow",
                 "read": "allow",
                 "grep": "allow",
-                "explore": "allow",
             }
             lines = [f"**Permissions** (mode: {mode})\n"]
             for perm_tool in perm_tools:
@@ -837,9 +835,9 @@ class InteractiveRuntime:
         elif name in ("mode", "agents"):
             mode_name = args[0].lower() if args else ""
             tools_by_mode = {
-                "code": ["read", "edit", "bash", "grep", "explore"],
-                "explore": ["read", "grep", "explore"],
-                "research": ["read", "grep", "explore"],
+                "code": ["read", "edit", "bash", "grep"],
+                "explore": ["read", "grep"],
+                "research": ["read", "grep"],
                 "plan": ["read", "grep"],
             }
             if mode_name in tools_by_mode:
@@ -1083,7 +1081,7 @@ class InteractiveRuntime:
                 old_mode = self._current_mode
                 old_tools = self._active_tools
                 self._current_mode = "explore"
-                self._active_tools = ["read", "grep", "explore"]
+                self._active_tools = ["read", "grep"]
                 yield AssistantMessage(
                     type="assistant.message",
                     text=f"**Plan mode** — exploring (read-only):\n\n> {task}",
@@ -1316,9 +1314,7 @@ Type any message to start a coding session.
 """.strip()
 _OWNED_TOOL_NAMES = (
     "read",
-    "search",
     "grep",
-    "explore",
     "edit",
     "bash",
 )
@@ -1391,7 +1387,7 @@ def _dispatch_tool(name: str, args: dict[str, Any]) -> Any:
 
 
 # Read-style tools eligible for within-session byte-identical dedup.
-_CLI_DEDUP_TOOLS = frozenset({"read", "search", "grep", "explore"})
+_CLI_DEDUP_TOOLS = frozenset({"read", "search", "grep"})
 
 
 def _render_tool_result(name: str, result: Any, args: dict[str, Any], *, session_id: str = "") -> str:

@@ -310,13 +310,9 @@ def _baseline_full_glob_read(repo_root: Path, path: str, globs: list[str]) -> st
 @pytest.mark.parametrize(
     ("tool_name", "mode", "native_tool", "baseline_builder"),
     [
+        # Only semantic chunks remain on `search`; repo-map was dropped from the
+        # agent surface (no map tool), so there is no smart_map AB case anymore.
         ("search.smart_chunks", "chunks", "grep_plus_snippets", _baseline_smart_chunks),
-        (
-            "search.smart_map",
-            "map",
-            "read_all_source_files",
-            lambda repo_root, _query, _max_files: _baseline_repo_map(repo_root),
-        ),
     ],
 )
 def test_search_ab_smart_modes(
@@ -331,18 +327,12 @@ def test_search_ab_smart_modes(
     _configure_workspace(monkeypatch, tmp_path)
 
     query = "OrderService"
-    tool_args: dict[str, object] = {"query": query, "path": "src", "budget_tokens": 4000}
-    if mode != "chunks":
-        tool_args["mode"] = mode
-    if mode == "map":
-        tool_args["seed_files"] = ["src/payments.py"]
-
     t0 = time.perf_counter()
     native_text = baseline_builder(tmp_path, query, 3)
     native_ms = (time.perf_counter() - t0) * 1000.0
 
     t1 = time.perf_counter()
-    payload = tool_smart_search(tool_args)
+    payload = tool_smart_search({"query": query, "path": "src", "budget_tokens": 4000})
     atelier_ms = (time.perf_counter() - t1) * 1000.0
     atelier_text = _flatten_smart_payload(payload)
 
@@ -363,10 +353,8 @@ def test_search_ab_smart_modes(
 
     assert atelier_text, f"{mode}: atelier payload was empty"
     assert payload["mode"] == mode
-    if mode == "map":
-        assert "OrderService" in atelier_text
-    else:
-        assert payload.get("matches"), f"{mode}: expected at least one match"
+    assert payload.get("matches"), f"{mode}: expected at least one match"
+    assert payload.get("matches"), f"{mode}: chunks mode must return matches"
     assert row.atelier_tokens > 0
 
 
@@ -378,7 +366,7 @@ def test_search_ab_native_regex_mode(tmp_path: Path, monkeypatch: pytest.MonkeyP
         "path": "docs",
         "content_regex": "NEEDLE_TOKEN",
         "file_glob_patterns": ["**/*.md"],
-        "output_mode": "file_paths_with_content",
+        "mode": "content",
         "include_meta": True,
     }
 
@@ -416,7 +404,7 @@ def test_search_ab_native_glob_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     tool_args = {
         "path": ".",
         "file_glob_patterns": globs,
-        "output_mode": "file_paths_only",
+        "mode": "paths",
         "include_meta": True,
     }
 
@@ -455,7 +443,7 @@ def test_search_ab_native_context_mode(tmp_path: Path, monkeypatch: pytest.Monke
         "path": "docs",
         "content_regex": "NEEDLE_TOKEN",
         "file_glob_patterns": ["**/*.md"],
-        "output_mode": "file_paths_with_content",
+        "mode": "content",
         "lines_before": 1,
         "lines_after": 1,
     }
@@ -547,7 +535,7 @@ def test_search_ab_summary_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         "path": ".",
         "file_glob_patterns": globs,
         "summary": True,
-        "output_mode": "file_paths_with_content",
+        "mode": "content",
     }
 
     t0 = time.perf_counter()

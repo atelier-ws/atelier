@@ -27,9 +27,10 @@ from typing import Any
 # self-contained scratch file.
 PROFILED_CALLS: list[tuple[str, dict[str, Any]]] = [
     ("read", {"path": "README.md"}),
-    ("grep", {"regex": "def ", "path": "src/atelier/core", "mode": "file_paths_only"}),
+    ("grep", {"regex": "def ", "path": "src/atelier/core", "mode": "paths"}),
+    ("grep", {"regex": "def _workspace_root", "path": "src/atelier"}),
+    ("relations", {"symbol": "_workspace_root", "kind": "usages"}),
     ("search", {"query": "edit verify gate", "path": "."}),
-    ("explore", {"query": "render tool result text"}),
     ("graph", {"path": "src/atelier/core/foundation/paths.py"}),
     ("blame", {"symbol_name": "_workspace_root"}),
     ("orient", {}),
@@ -59,7 +60,7 @@ SKIP_REASONS: dict[str, str] = {
 
 DEFAULT_HISTORY_REL = "reports/perf/mcp_latency_history.jsonl"
 # A warm-latency drift under this many ms is jitter, not a regression -- a flat
-# percentage alone flags sub-10ms tools (search/explore) on normal run noise.
+# percentage alone flags fast tools (e.g. grep) on normal run noise.
 DEFAULT_MIN_ABS_MS = 10.0
 
 

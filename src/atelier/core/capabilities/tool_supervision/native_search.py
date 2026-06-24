@@ -12,6 +12,7 @@ import os
 import re
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -769,6 +770,7 @@ def _render_text_result(
     summary: bool | None,
     if_modified_since: datetime | None,
     deadline: float | None = None,
+    badge_provider: Callable[[str, list[str]], str | None] | None = None,
 ) -> tuple[str | None, int]:
     rel = str(path.relative_to(root)) if path.is_relative_to(root) else str(path)
     mtime = datetime.fromtimestamp(path.stat().st_mtime)
@@ -841,7 +843,19 @@ def _render_text_result(
         if outline:
             return f"{rel}\n{redact_tool_output(outline)}", len(match_lines)
 
-    rendered: list[str] = [rel]
+    # When a badge provider is supplied, surface the call-graph counts for any
+    # symbol definitions the matches land in -- appended to the file header so the
+    # relational facts ride along the search the agent already ran.
+    header = rel
+    if badge_provider is not None and content_regex is not None:
+        _windows, matched_symbols = _symbol_windows(
+            path, lines, source, match_lines, lines_before=lines_before, lines_after=lines_after
+        )
+        if matched_symbols:
+            badge = badge_provider(rel, matched_symbols)
+            if badge:
+                header = f"{rel}  ·  {badge}"
+    rendered: list[str] = [header]
     emitted = 0
     windows_seen: set[tuple[int, int]] = set()
     for line_no in match_lines:
@@ -882,8 +896,15 @@ def search_workspace(
     cap_chars: int = MAX_STRUCTURED_OUTPUT_CHARS,
     context_budget_tokens: int = DEFAULT_CONTEXT_BUDGET_TOKENS,
     include_metadata: bool = True,
+    badge_provider: Callable[[str, list[str]], str | None] | None = None,
 ) -> dict[str, Any]:
-    """Search and read files in one structured response."""
+    """Search and read files in one structured response.
+
+    ``badge_provider`` (optional, content mode only) receives ``(rel_path, [symbol
+    names matched as definitions])`` and returns a short string appended to that
+    file's header -- used to ride call-graph counts along regex matches. It stays
+    SCIP-agnostic here: the caller supplies the lookup.
+    """
     # Track naive vs rendered bytes to compute tokens_saved. Naive = grep
     # output bytes (matching lines + context, not full file); rendered = what
     # Atelier actually returns after ranking/summarisation. ~4 bytes/token.
@@ -1145,6 +1166,7 @@ def search_workspace(
             summary=summary,
             if_modified_since=since,
             deadline=deadline,
+            badge_provider=badge_provider,
         )
         if _file_rendered is None:
             if _over_cap_size(candidate) is not None:

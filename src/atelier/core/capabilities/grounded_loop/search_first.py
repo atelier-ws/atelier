@@ -72,7 +72,7 @@ def search_first(
             "read": {"tool": "read"},
             "context": _context_follow_up(task=task, files=match_paths, mode="symbols"),
             "memory": _context_follow_up(task=task, files=match_paths, mode="procedures"),
-            "explore": {"tool": "explore", "query": query, "seed_files": match_paths},
+            "relations": {"tool": "grep", "relation": "usages", "symbol": query},
         },
         "backend": str(payload.get("backend") or "ripgrep"),
         "index_age_seconds": payload.get("index_age_seconds"),
