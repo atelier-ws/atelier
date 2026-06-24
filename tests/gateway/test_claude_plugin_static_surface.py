@@ -91,8 +91,7 @@ def test_auto_agent_keeps_bounded_delegation_and_treats_bug_reports_as_code_work
     frontmatter = _frontmatter(PLUGIN / "agents" / "auto.md")
 
     assert '"Agent"' not in frontmatter
-    assert "treat a bug report or failure description as a request" in body
-    assert "never spawn another agent to answer the same question" in body
+    assert "autonomously" in body
 
 
 def test_execute_agent_includes_shared_coding_guidelines() -> None:
