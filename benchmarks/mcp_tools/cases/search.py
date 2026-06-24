@@ -15,7 +15,6 @@ from typing import Any
 from benchmarks.mcp_tools.harness import BaselineMeasurement, BenchCase
 from benchmarks.mcp_tools.repo_facts import (
     benchmark_repo_root,
-    collect_repo_file_facts,
     collect_symbol_facts,
     stable_symbol_facts,
     unique_substring_queries,
@@ -100,16 +99,14 @@ def _build_search_cases() -> list[BenchCase]:
     symbol_facts, _ = collect_symbol_facts(repo_root)
     unique_symbols = stable_symbol_facts(unique_symbol_facts(symbol_facts))
     substring_pairs = unique_substring_queries(repo_root, unique_symbols)
-    file_paths = [fact.path for fact in collect_repo_file_facts(repo_root)]
 
     chunk_symbols = unique_symbols[:75]
     chunk_substrings = substring_pairs[:75]
-    map_symbols = unique_symbols[75 : 75 + _TARGET_PER_MODE]
 
     assert len(chunk_symbols) == 75, "not enough unique symbols for chunk search benchmark"
     assert len(chunk_substrings) == 75, "not enough unique substrings for chunk search benchmark"
-    assert len(map_symbols) == _TARGET_PER_MODE, "not enough unique symbols for map search benchmark"
 
+    # search is now embeddings-only: chunks (semantic) cases stay on `search`.
     cases: list[BenchCase] = []
     for index, symbol in enumerate(chunk_symbols, start=1):
         cases.append(
@@ -118,7 +115,6 @@ def _build_search_cases() -> list[BenchCase]:
                 label=f"search/chunks-symbol/{index:03d}",
                 args={
                     "query": symbol.name,
-                    "mode": "chunks",
                     "max_files": 4,
                     "include_meta": True,
                 },
@@ -135,31 +131,12 @@ def _build_search_cases() -> list[BenchCase]:
                 label=f"search/chunks-substring/{index:03d}",
                 args={
                     "query": token,
-                    "mode": "chunks",
                     "max_files": 4,
                     "include_meta": True,
                 },
                 assert_keys=["backend", "cache_hit", "matches", "mode"],
                 custom_assert=_chunks_assert(symbol.path, token),
                 baseline_builder=_rg_baseline(re.escape(token), "src"),
-                min_baseline_tokens=0,
-            )
-        )
-    for index, symbol in enumerate(map_symbols, start=1):
-        cases.append(
-            BenchCase(
-                op="search",
-                label=f"search/map/{index:03d}",
-                args={
-                    "query": symbol.name,
-                    "mode": "map",
-                    "max_files": 3,
-                    "seed_files": _seed_files(symbol.path, file_paths),
-                    "include_meta": True,
-                },
-                assert_keys=["outline", "ranked_files", "token_count", "budget_tokens", "mode"],
-                custom_assert=_map_assert(symbol.path),
-                baseline_builder=_rg_baseline(re.escape(symbol.name), "src"),
                 min_baseline_tokens=0,
             )
         )

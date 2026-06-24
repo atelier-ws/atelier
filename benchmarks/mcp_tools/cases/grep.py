@@ -123,7 +123,7 @@ def _build_grep_cases() -> list[BenchCase]:
                 args={
                     "path": "src",
                     "content_regex": pattern,
-                    "output_mode": "file_paths_only",
+                    "mode": "paths",
                     "include_meta": True,
                 },
                 assert_keys=["_meta", "content"],
@@ -141,7 +141,7 @@ def _build_grep_cases() -> list[BenchCase]:
                 args={
                     "path": "src",
                     "content_regex": pattern,
-                    "output_mode": "file_paths_with_match_count",
+                    "mode": "counts",
                     "file_glob_patterns": ["**/*.py"],
                     "include_meta": True,
                 },
@@ -160,7 +160,7 @@ def _build_grep_cases() -> list[BenchCase]:
                 args={
                     "path": "src",
                     "content_regex": pattern,
-                    "output_mode": "ranked_file_map",
+                    "mode": "map",
                     "type": "python",
                     "context_budget_tokens": 2000,
                     "include_meta": True,

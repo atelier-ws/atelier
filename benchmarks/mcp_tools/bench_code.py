@@ -85,48 +85,49 @@ def code_tool_fn() -> Any:
                 }
             )
         if tool_name == "node":
-            # `node` folded into explore(relation="self") -- the agent's only
-            # public path for a single definition now. relation-mode delegates to
-            # the same _op_node engine wrapper, so the payload (and token count)
-            # is identical to the former standalone tool.
-            return mcp_server.tool_explore({"relation": "self", "symbol": _symbol_arg(payload)})
-        # callers/callees/usages are folded into `explore(relation=...)` -- the
-        # agent's only public path now. relation-mode delegates to the same
-        # _op_* engine wrapper, so the payload (and token count) is identical to
-        # the former standalone tools; this measures what the agent can call.
+            # `node` is reached via the `relations` drill-in tool (kind=self) --
+            # the agent's only public path for a single definition now. It
+            # delegates to the same _op_node wrapper, so the payload (and token
+            # count) is identical to the former standalone tool.
+            return mcp_server.tool_relations({"kind": "self", "symbol": _symbol_arg(payload)})
+        # callers/callees/usages are reached via the `relations` tool -- the
+        # agent's only public path now. It delegates to the same _op_* wrapper,
+        # so the payload (and token count) is identical to the former standalone
+        # tools; this measures what the agent can call. (grep shows the COUNTS
+        # inline; relations expands one count into the list.)
         if tool_name == "callers":
-            return mcp_server.tool_explore(
+            return mcp_server.tool_relations(
                 {
-                    "relation": "callers",
+                    "kind": "callers",
                     "symbol": _symbol_arg(payload),
                     "depth": int(payload.get("depth", 1)),
                     "limit": int(payload.get("limit", 20)),
                 }
             )
         if tool_name == "callees":
-            return mcp_server.tool_explore(
+            return mcp_server.tool_relations(
                 {
-                    "relation": "callees",
+                    "kind": "callees",
                     "symbol": _symbol_arg(payload),
                     "depth": int(payload.get("depth", 1)),
                     "limit": int(payload.get("limit", 20)),
                 }
             )
         if tool_name == "usages":
-            return mcp_server.tool_explore(
+            return mcp_server.tool_relations(
                 {
-                    "relation": "usages",
+                    "kind": "usages",
                     "symbol": _symbol_arg(payload),
                     "limit": int(payload.get("limit", 20)),
                 }
             )
         if tool_name == "explore":
-            return mcp_server.tool_explore(
-                {
-                    "query": str(payload["query"]),
-                    "seed_files": payload.get("seed_files"),
-                    "max_files": int(payload.get("max_files", 8)),
-                }
+            # Concept-mode explore has no single-tool agent surface after the
+            # explore fold; measure the engine wrapper grep's relations route to.
+            return mcp_server._op_explore(
+                query=str(payload["query"]),
+                seed_files=payload.get("seed_files"),
+                max_files=int(payload.get("max_files", 8)),
             )
         if tool_name == "pattern":
             return mcp_server.tool_pattern(
