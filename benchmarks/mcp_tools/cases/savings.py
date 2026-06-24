@@ -533,7 +533,7 @@ def _grep_case(lang: str, path: Path, pattern: str) -> BenchCase:
         args={
             "path": str(path.parent),
             "content_regex": pattern,
-            "output_mode": "ranked_file_map",
+            "mode": "map",
             "context_budget_tokens": 3000,
             "include_meta": True,
         },
@@ -713,7 +713,7 @@ _REPO_EXTRA_GREP: list[BenchCase] = [
         args={
             "path": str(_PY_COMBINED),
             "content_regex": r"\bdef \w+",
-            "output_mode": "file_paths_only",
+            "mode": "paths",
             "include_meta": True,
         },
         assert_keys=[],
@@ -727,7 +727,7 @@ _REPO_EXTRA_GREP: list[BenchCase] = [
         args={
             "path": str(_TS_COMBINED),
             "content_regex": r"\bfunction \w+",
-            "output_mode": "file_paths_with_content",
+            "mode": "content",
             "context_budget_tokens": 3000,
             "include_meta": True,
         },
