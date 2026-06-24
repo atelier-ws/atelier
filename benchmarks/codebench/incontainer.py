@@ -76,6 +76,50 @@ _ATELIER_INSTALL = r"""
 set -e
 curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 ATELIER_SKIP_MYPYC=1 UV_TOOL_BIN_DIR=/usr/local/bin /usr/local/bin/uv tool install --force "/opt/atelier[mcp,smart,parsers,rename]"
+
+# Install SCIP indexers for Python and TypeScript/JavaScript.
+# Node.js is already present from the baseline overlay layer.
+# These binaries are resolved by ScipIndexer.index_language() which is now
+# triggered automatically from atelier code index.
+npm install -g --no-fund @sourcegraph/scip-python @sourcegraph/scip-typescript
+
+# Pre-install the ast-grep binary so the codemod MCP tool works at runtime.
+# Download NOW (overlay build time) -- the mitmproxy that runs during the actual
+# benchmark uses a CA that Python's ssl module does not trust, so any urllib call
+# at runtime fails. ast-grep is a compiled Rust CLI; there is no pip wheel for it.
+# Version/URL/SHA must stay in sync with:
+#   src/atelier/infra/code_intel/astgrep/binaries.py (_MANAGED_VERSION + _MANAGED_ASSETS)
+python3 - <<'PYEOF'
+import hashlib, io, platform, stat, sys, urllib.request, zipfile
+from pathlib import Path
+ARCH = {'amd64': 'x86_64', 'x64': 'x86_64', 'arm64': 'aarch64'}.get(
+    platform.machine().lower(), platform.machine().lower())
+ASSETS = {
+    'x86_64': (
+        'https://github.com/ast-grep/ast-grep/releases/download/0.42.2/app-x86_64-unknown-linux-gnu.zip',
+        '52aef3ed330a5fb1d9f399b83285bfcf47d92401249803f62711573e83cb47ae'),
+    'aarch64': (
+        'https://github.com/ast-grep/ast-grep/releases/download/0.42.2/app-aarch64-unknown-linux-gnu.zip',
+        'a68d7645d49dbd97b423cc8a64f7839fe5541eedf0b4bb4ab79f4ba5d53f0376'),
+}
+if ARCH not in ASSETS:
+    sys.exit(f'no pinned ast-grep asset for arch {ARCH!r}')
+url, sha256 = ASSETS[ARCH]
+dest = Path('/opt/atelier-astgrep/ast-grep')
+dest.parent.mkdir(parents=True, exist_ok=True)
+print(f'Downloading ast-grep ({ARCH}) ...', flush=True)
+with urllib.request.urlopen(url, timeout=120) as r:
+    data = r.read()
+if hashlib.sha256(data).hexdigest() != sha256:
+    sys.exit('ast-grep download: sha256 mismatch')
+with zipfile.ZipFile(io.BytesIO(data)) as z:
+    member = next((n for n in z.namelist() if Path(n).name == 'ast-grep'), None)
+    if member is None:
+        sys.exit('ast-grep binary not found in zip')
+    dest.write_bytes(z.read(member))
+dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+print(f'ast-grep installed at {dest}', flush=True)
+PYEOF
 """
 
 
@@ -128,6 +172,82 @@ def ensure_base_image(image: str, *, timeout: float = 1800) -> None:
         raise RuntimeError(f"docker pull {image} failed: {proc.stderr[-400:]}")
 
 
+def _install_zoekt_into(builder: str, *, timeout: float = 600) -> None:
+    """Copy Zoekt search binaries from the official pinned image into *builder*.
+
+    Runs on the HOST (not inside the container), so no Docker-in-Docker is
+    needed.  The four binaries go to ``/usr/local/bin/`` so
+    ``discover_zoekt_binary()`` finds them via PATH (installed mode).
+    Version is pinned in
+    ``src/atelier/infra/code_intel/zoekt/VERSIONS.toml``.
+    """
+    import tomllib
+
+    versions_path = REPO_ROOT / "src" / "atelier" / "infra" / "code_intel" / "zoekt" / "VERSIONS.toml"
+    try:
+        image_ref = tomllib.loads(versions_path.read_text())["zoekt"]["image_ref"]
+    except Exception as exc:
+        print(f"[zoekt] could not read VERSIONS.toml: {exc} -- skipping", flush=True)
+        return
+
+    # Pull image (no-op if already cached on the host).
+    if _run(["docker", "pull", image_ref], timeout=timeout).returncode != 0:
+        print("[zoekt] image pull failed -- zoekt will be unavailable in benchmarks", flush=True)
+        return
+
+    # Create a dormant container to copy from (no entrypoint runs).
+    tmp = "zoekt-extract-tmp"
+    _run(["docker", "rm", "-f", tmp])
+    if _run(["docker", "create", "--name", tmp, image_ref]).returncode != 0:
+        print("[zoekt] docker create failed -- skipping", flush=True)
+        return
+
+    try:
+        # Discover binary paths inside the image.
+        locate = _run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--entrypoint",
+                "sh",
+                image_ref,
+                "-c",
+                "which zoekt zoekt-index zoekt-git-index zoekt-webserver 2>/dev/null",
+            ],
+            timeout=30,
+        )
+        bin_paths = [p.strip() for p in locate.stdout.splitlines() if p.strip()]
+        if not bin_paths:
+            # Fallback: common location in Sourcegraph images.
+            bin_paths = [
+                "/usr/local/bin/zoekt",
+                "/usr/local/bin/zoekt-index",
+                "/usr/local/bin/zoekt-git-index",
+                "/usr/local/bin/zoekt-webserver",
+            ]
+
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as staging:
+            staging_path = Path(staging)
+            for src in bin_paths:
+                name = Path(src).name
+                dest = staging_path / name
+                cp = _run(["docker", "cp", f"{tmp}:{src}", str(dest)], timeout=30)
+                if cp.returncode != 0:
+                    print(f"[zoekt] could not copy {src} -- skipping", flush=True)
+                    continue
+                # Copy from host staging dir into builder container.
+                _run(["docker", "cp", str(dest), f"{builder}:/usr/local/bin/{name}"], timeout=30)
+                # Ensure executable bit (docker cp preserves mode, but be explicit).
+                _run(["docker", "exec", builder, "chmod", "+x", f"/usr/local/bin/{name}"], timeout=10)
+
+        print(f"[zoekt] installed {len(bin_paths)} binaries from {image_ref[:60]}", flush=True)
+    finally:
+        _run(["docker", "rm", "-f", tmp])
+
+
 def ensure_overlay(base_image: str, *, atelier: bool, build_timeout: float = 3600) -> str:
     """Build (once, then cache) the harness overlay for *base_image*.
 
@@ -157,6 +277,8 @@ def ensure_overlay(base_image: str, *, atelier: bool, build_timeout: float = 360
         proc = _run(["docker", "exec", builder, "bash", "-lc", install], timeout=build_timeout)
         if proc.returncode != 0:
             raise RuntimeError(f"overlay install failed for {tag}:\n{proc.stdout[-800:]}\n{proc.stderr[-800:]}")
+        if atelier:
+            _install_zoekt_into(builder)
         if _run(["docker", "commit", builder, tag]).returncode != 0:
             raise RuntimeError(f"docker commit {tag} failed")
     finally:
@@ -283,6 +405,9 @@ def _docker_run_cmd(
         # (folded into `explore`), so they need not be repeated here. Keeps
         # read/grep/search/edit/shell/explore/node.
         env["ATELIER_HIDE_TOOLS"] = "sql,memory,web_fetch"  # codemod kept: structural multi-file edits
+        # Point at the pre-installed binary so discover_astgrep_binary() finds it
+        # immediately via the env-var path (no runtime download attempt through proxy).
+        env["ATELIER_AST_GREP_BIN"] = "/opt/atelier-astgrep/ast-grep"
         # Edit-verify gate ON by default (tree-sitter parse + scoped mypy): catches
         # mechanical edit errors in-tool instead of via a shell round-trip, which
         # collapses the edit->test->error->re-edit cycle on iteration-bound tasks

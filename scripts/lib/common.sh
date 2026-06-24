@@ -1350,6 +1350,68 @@ install_code_tools() {
         verbose "Found cargo: $(cargo --version 2>/dev/null || echo unknown)"
     fi
 
+    # ast-grep binary (codemod tool dependency). Compiled Rust CLI; no pip wheel exists.
+    # The managed bootstrap in binaries.py lazy-installs at first use, but that fails
+    # in network-restricted environments (proxy CA not trusted by Python ssl). Install
+    # eagerly here so the binary is always available, and set ATELIER_AST_GREP_BIN to
+    # the fixed path so discover_astgrep_binary() never needs to download at runtime.
+    # Version/URL/SHA must stay in sync with:
+    #   src/atelier/infra/code_intel/astgrep/binaries.py (_MANAGED_VERSION + _MANAGED_ASSETS)
+    if command -v python3 >/dev/null 2>&1; then
+        local astgrep_dest="${ATELIER_INSTALL_DIR}/.atelier-astgrep/ast-grep"
+        if [[ ! -x "${astgrep_dest}" ]]; then
+            verbose "Installing ast-grep (codemod dependency)..."
+            if python3 - "${astgrep_dest}" <<'PYEOF'
+import hashlib, io, platform, stat, sys, urllib.request, zipfile
+from pathlib import Path
+dest = Path(sys.argv[1])
+ARCH = {'amd64': 'x86_64', 'x64': 'x86_64', 'arm64': 'aarch64'}.get(
+    platform.machine().lower(), platform.machine().lower())
+ASSETS = {
+    'x86_64': (
+        'https://github.com/ast-grep/ast-grep/releases/download/0.42.2/app-x86_64-unknown-linux-gnu.zip',
+        '52aef3ed330a5fb1d9f399b83285bfcf47d92401249803f62711573e83cb47ae'),
+    'aarch64': (
+        'https://github.com/ast-grep/ast-grep/releases/download/0.42.2/app-aarch64-unknown-linux-gnu.zip',
+        'a68d7645d49dbd97b423cc8a64f7839fe5541eedf0b4bb4ab79f4ba5d53f0376'),
+    'Darwin-x86_64': (
+        'https://github.com/ast-grep/ast-grep/releases/download/0.42.2/app-x86_64-apple-darwin.zip',
+        '6652401a9b98f7c8c528f969d34e2a42d2cb60f29fc4dc569209d16c29702d9c'),
+    'Darwin-arm64': (
+        'https://github.com/ast-grep/ast-grep/releases/download/0.42.2/app-aarch64-apple-darwin.zip',
+        '9f1522db1f7174ab0cba5a6d1df1861f9b92803fac407988177c28f744bd0f94'),
+}
+os_prefix = 'Darwin-' if platform.system() == 'Darwin' else ''
+key = os_prefix + ARCH
+if key not in ASSETS:
+    sys.exit(f'no pinned ast-grep asset for {key!r}')
+url, sha256 = ASSETS[key]
+dest.parent.mkdir(parents=True, exist_ok=True)
+with urllib.request.urlopen(url, timeout=120) as r:
+    data = r.read()
+if hashlib.sha256(data).hexdigest() != sha256:
+    sys.exit('sha256 mismatch')
+with zipfile.ZipFile(io.BytesIO(data)) as z:
+    member = next((n for n in z.namelist() if Path(n).name == 'ast-grep'), None)
+    if member is None:
+        sys.exit('ast-grep binary not found in zip')
+    dest.write_bytes(z.read(member))
+dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+print(f'ast-grep installed at {dest}', flush=True)
+PYEOF
+            then
+                info "ast-grep installed"
+                # Symlink into ATELIER_BIN_DIR so shutil.which('ast-grep') finds it
+                # without needing an env-var export in the shell profile.
+                ln -sf "${astgrep_dest}" "${ATELIER_BIN_DIR}/ast-grep" 2>/dev/null || true
+            else
+                warn "ast-grep bootstrap failed -- codemod tool will lazy-install on first use"
+            fi
+        else
+            verbose "ast-grep already present at ${astgrep_dest}"
+        fi
+    fi
+
 }
 
 # Detect the user's shell profile file

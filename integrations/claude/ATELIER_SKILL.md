@@ -62,7 +62,7 @@ memory(session_id="run_123")
 search(query="publish_product function", path="src/")
 
 # Deterministic batch edits (optional — host MultiEdit remains default)
-edit(edits=[{"path": "src/foo.py", "old_string": "...", "new_string": "..."}])
+edit(edits=[{"path": "src/foo.py", "old": "...", "new": "..."}])
 
 # Read-only SQL inspection
 sql(connection_alias="default", sql="SELECT * FROM products LIMIT 5")

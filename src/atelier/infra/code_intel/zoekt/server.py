@@ -12,7 +12,6 @@ import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
 
@@ -46,9 +45,9 @@ class ZoektServer:
         self._bridge: subprocess.Popen[str] | None = None
         self._container_id: str | None = None
         self._host_search_binary: Path | None = None
-        self._container_name = (
-            f"atelier-zoekt-{sha256(str(self.repo_root).encode('utf-8')).hexdigest()[:12]}-{os.getpid()}"
-        )
+        from atelier.core.foundation.paths import workspace_key
+
+        self._container_name = f"atelier-zoekt-{workspace_key(self.repo_root)[:40]}-{os.getpid()}"
         self._started_at: float | None = None
         self.start_count = 0
 
@@ -72,6 +71,38 @@ class ZoektServer:
         return self.runtime_root / "input"
 
     def ensure_started(self) -> str:
+        """Register this workspace against an existing Zoekt index.
+
+        Only wires up the binary handle and returns.  Never builds or
+        rebuilds the index -- that is ``build_index()``'s job, called
+        offline from ``atelier code index`` / ``atelier zoekt up``.
+        Raises ``RuntimeError`` if no index is available so the caller
+        can degrade gracefully instead of paying an inline build cost.
+        """
+        with self._lock:
+            if self._is_ready():
+                return self.handle
+            resolution = self.resolution or discover_zoekt_binary(self.repo_root)
+            if not resolution.available:
+                raise RuntimeError(resolution.reason or "zoekt runtime unavailable")
+            self.resolution = resolution
+            if resolution.runtime == "docker":
+                # Docker runtime must be started (container launch is fast).
+                self._start_docker_runtime(resolution)
+            else:
+                # Host binary mode: register against the on-disk index.
+                # _is_ready() already verified state.json + shards exist and
+                # restored _host_search_binary, so we only reach here when the
+                # disk index is genuinely absent -- surface that as an error.
+                raise RuntimeError(
+                    f"no Zoekt index found at {self.index_root} -- "
+                    "run 'atelier code index' or 'atelier zoekt up' to build it first"
+                )
+            self.start_count += 1
+            return self.handle
+
+    def ensure_started_and_build(self) -> str:
+        """Start Zoekt, building the index if missing.  For indexing routes only."""
         with self._lock:
             if self._is_ready():
                 return self.handle
@@ -82,7 +113,7 @@ class ZoektServer:
             if resolution.runtime == "docker":
                 self._start_docker_runtime(resolution)
             else:
-                self._ensure_host_index(resolution)
+                self.build_index(resolution)
                 self._started_at = self._load_started_at()
             self.start_count += 1
             return self.handle
@@ -153,7 +184,16 @@ class ZoektServer:
             return False
         if self.resolution.runtime == "docker":
             return self._container_id is not None and self._bridge is not None and self._bridge.poll() is None
-        return self.state_path.exists() and self._host_search_binary is not None
+        # Host binary mode: check on-disk state so a prior-process prewarm
+        # (entry-script or `atelier code index`) survives MCP server restart
+        # without a full rebuild.  The in-process _host_search_binary pointer
+        # is lazily restored from the resolution if disk state is present.
+        if not self.state_path.exists() or not any(self.index_root.glob("*.zoekt")):
+            return False
+        if self._host_search_binary is None and self.resolution is not None:
+            with suppress(Exception):
+                self._host_search_binary, *_ = _resolve_host_binaries(self.resolution)
+        return self._host_search_binary is not None
 
     def _start_docker_runtime(self, resolution: ZoektBinaryResolution) -> None:
         if not resolution.image_ref:
@@ -201,11 +241,39 @@ class ZoektServer:
         self._bridge = _start_bridge(self._container_id)
         self._started_at = self._load_started_at()
 
-    def _ensure_host_index(self, resolution: ZoektBinaryResolution) -> None:
-        search_binary, index_binary = _resolve_host_binaries(resolution)
+    def build_index(self, resolution: ZoektBinaryResolution) -> None:
+        """Build or incrementally update the Zoekt index for this workspace.
+
+        **Never call this on the MCP tool-call hot path.**  It is the
+        indexing route: ``atelier code index``, ``atelier zoekt up``, and
+        the benchmark prewarm script.  MCP search calls go through
+        ``ensure_started()`` which only *registers* an existing index.
+
+        For git repos ``zoekt-git-index`` is used: it stores indexed
+        git-object hashes in each shard and automatically re-indexes only
+        changed objects on subsequent runs, handling deletions correctly
+        (no stale shard accumulation).  For non-git directories
+        ``zoekt-index`` does a full rebuild.
+        """
+        search_binary, index_binary, git_index_binary = _resolve_host_binaries(resolution)
         self._prepare_runtime_dirs()
         self._refresh_input_links()
-        _run_command([str(index_binary), "-index", str(self.index_root), str(self.input_root)], timeout=300)
+
+        is_git = (self.repo_root / ".git").exists()
+        if git_index_binary is not None and is_git:
+            # Inherently incremental: first run indexes everything; subsequent
+            # runs diff against shard metadata and only touch changed objects.
+            _run_command(
+                [str(git_index_binary), "-index", str(self.index_root), str(self.repo_root)],
+                timeout=300,
+            )
+        else:
+            # No git-aware indexer available or non-git dir: full rebuild.
+            _run_command(
+                [str(index_binary), "-index", str(self.index_root), str(self.input_root)],
+                timeout=300,
+            )
+
         self.state_path.write_text(json.dumps({"started_at": int(time.time())}), encoding="utf-8")
         self._host_search_binary = search_binary
 
@@ -344,17 +412,20 @@ class ZoektServer:
         return None
 
 
-def _resolve_host_binaries(resolution: ZoektBinaryResolution) -> tuple[Path, Path]:
+def _resolve_host_binaries(resolution: ZoektBinaryResolution) -> tuple[Path, Path, Path | None]:
+    """Return (search_binary, plain_index_binary, git_index_binary|None)."""
     if resolution.path is None:
         raise RuntimeError("zoekt host runtime is missing the pinned binary path")
     root = resolution.path.parent
     search_binary = resolution.path if resolution.path.name == "zoekt" else root / "zoekt"
     index_binary = root / "zoekt-index"
+    git_index_binary = root / "zoekt-git-index"
     if not search_binary.is_file() or not os.access(search_binary, os.X_OK):
         raise RuntimeError(f"zoekt search binary is missing beside {resolution.path}")
     if not index_binary.is_file() or not os.access(index_binary, os.X_OK):
         raise RuntimeError(f"zoekt-index binary is missing beside {resolution.path}")
-    return search_binary, index_binary
+    git_idx = git_index_binary if git_index_binary.is_file() and os.access(git_index_binary, os.X_OK) else None
+    return search_binary, index_binary, git_idx
 
 
 def _run_command(

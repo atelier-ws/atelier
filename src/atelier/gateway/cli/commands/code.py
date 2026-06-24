@@ -20,7 +20,9 @@ def zoekt_group() -> None:
 
 
 def _zoekt_workspace_prefix(repo_root: Path) -> str:
-    return f"atelier-zoekt-{sha256(str(repo_root.resolve()).encode('utf-8')).hexdigest()[:12]}-"
+    from atelier.core.foundation.paths import workspace_key
+
+    return f"atelier-zoekt-{workspace_key(repo_root.resolve())[:40]}-"
 
 
 def _zoekt_default_index_dir() -> Path:
@@ -167,7 +169,7 @@ def zoekt_up(ctx: click.Context) -> None:
     if not resolution.available:
         raise click.ClickException(f"Zoekt runtime unavailable: {resolution.reason}")
     server = get_zoekt_server(repo_root, resolution=resolution)
-    handle = server.ensure_started()
+    handle = server.ensure_started_and_build()
     click.echo(f"Zoekt started: {handle}")
 
 
@@ -428,6 +430,61 @@ def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> dic
         return None
 
 
+def _trigger_zoekt_with_progress(repo_root: Path, frame_prefix: str = "") -> None:
+    """Build the per-workspace Zoekt trigram index if binaries are available."""
+    try:
+        from rich.console import Console
+        from rich.progress import Progress, TextColumn
+
+        from atelier.infra.code_intel.zoekt.binary import discover_zoekt_binary
+        from atelier.infra.code_intel.zoekt.server import get_zoekt_server
+
+        resolution = discover_zoekt_binary(repo_root)
+        if not resolution.available:
+            return  # Zoekt not installed — silent skip, FTS5 is the fallback
+
+        prefix_markup = f"[dim]{frame_prefix}[/dim]" if frame_prefix else ""
+        console = Console(stderr=True)
+        progress = Progress(TextColumn(f"{prefix_markup}{{task.description}}"), console=console, transient=False)
+        with progress:
+            task_id = progress.add_task("[green]⟳[/green]  Building Zoekt trigram index...", total=None)
+            try:
+                server = get_zoekt_server(repo_root, resolution=resolution)
+                server.ensure_started_and_build()
+                progress.update(task_id, description="[green]✓[/green]  Zoekt trigram index ready")
+            except Exception as exc:
+                progress.update(task_id, description=f"[yellow]⚠[/yellow]  Zoekt: {exc}")
+    except Exception:
+        logging.exception("Zoekt prewarm failed")
+
+
+def _trigger_scip_with_progress(engine: Any, frame_prefix: str = "") -> None:
+    """Run SCIP indexers for detected repo languages, with a Rich progress bar."""
+    try:
+        from rich.console import Console
+        from rich.progress import Progress, TextColumn
+
+        prefix_markup = f"[dim]{frame_prefix}[/dim]" if frame_prefix else ""
+        console = Console(stderr=True)
+        progress = Progress(TextColumn(f"{prefix_markup}{{task.description}}"), console=console, transient=False)
+        with progress:
+            task_id = progress.add_task("[green]⟳[/green]  Indexing SCIP symbols...", total=None)
+            results = engine.trigger_scip_indexing()
+            if not results:
+                progress.update(task_id, description="[dim]–[/dim]  SCIP: no install-time indexers detected")
+            else:
+                summary = ", ".join(f"{lang}:{status}" for lang, status in sorted(results.items()))
+                ok = all(s in ("indexed", "ready") for s in results.values())
+                icon = "[green]✓[/green]" if ok else "[yellow]⚠[/yellow]"
+                progress.update(task_id, description=f"{icon}  SCIP: {summary}")
+    except Exception:
+        logging.exception("SCIP indexing with progress failed")
+        try:
+            engine.trigger_scip_indexing()
+        except Exception:
+            logging.exception("SCIP indexing fallback failed")
+
+
 def _prewarm_embeddings_with_progress(engine: Any, frame_prefix: str = "") -> None:
     try:
         from rich.console import Console
@@ -561,8 +618,13 @@ def code_index_cmd(
         try:
             engine._deleted_history_adapter()._ensure_history_ready()
             engine._prewarm_symbol_embeddings()
+            engine.trigger_scip_indexing()
         except Exception:
             logging.exception("Failed to prepare background indexes")
+        try:
+            _trigger_zoekt_with_progress(Path(repo_root).resolve())
+        except Exception:
+            logging.exception("Failed to prewarm Zoekt index")
         _emit(payload, as_json=True)
         return
 
@@ -578,6 +640,8 @@ def code_index_cmd(
 
     git_summary = _index_git_history_with_progress(engine, frame_prefix=frame_prefix)
     _prewarm_embeddings_with_progress(engine, frame_prefix=frame_prefix)
+    _trigger_scip_with_progress(engine, frame_prefix=frame_prefix)
+    _trigger_zoekt_with_progress(Path(repo_root).resolve(), frame_prefix=frame_prefix)
 
     stats_line = (
         f"{click.style('✓', fg='green')}  Indexed {payload['files_indexed']} files, {payload['symbols_indexed']} "

@@ -35,10 +35,17 @@ def _max_requests() -> int:
     return cap if cap > 0 else 0
 
 
+def _thinking_display() -> str:
+    """Opt-in experiment hook: force thinking `display` on model requests so the
+    captured flows carry readable reasoning (e.g. "summarized"). Empty = no-op."""
+    return os.environ.get("CODEBENCH_THINKING_DISPLAY", "").strip().lower()
+
+
 class EgressGuard:
     def __init__(self) -> None:
         self._allow = _allowed_suffixes()
         self._max_requests = _max_requests()
+        self._thinking_display = _thinking_display()
         self._model_requests = 0
 
     def _ok(self, host: str | None) -> bool:
@@ -67,6 +74,20 @@ class EgressGuard:
         if not self._ok(flow.request.pretty_host):
             flow.response = self._block()
             return
+        # Opt-in experiment hook: force thinking summaries so captured flows
+        # carry readable reasoning. No-op unless CODEBENCH_THINKING_DISPLAY set.
+        # Fail-open: any parse error leaves the request untouched.
+        if self._thinking_display and flow.request.method == "POST" and "/v1/messages" in flow.request.path:
+            try:
+                import json as _json
+
+                body = _json.loads(flow.request.get_text(strict=False) or "{}")
+                th = body.get("thinking")
+                if isinstance(th, dict) and th.get("type") in ("adaptive", "enabled"):
+                    th["display"] = self._thinking_display
+                    flow.request.set_text(_json.dumps(body))
+            except Exception:
+                pass
         # Opt-in runaway backstop: a job's parent agent and every subagent it
         # spawns all route through this one proxy, so a per-process counter
         # bounds the whole agent tree (the per-agent turn cap does not). Only

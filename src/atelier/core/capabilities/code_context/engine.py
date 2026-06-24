@@ -8505,6 +8505,12 @@ class CodeContextEngine:
             except Exception:
                 logging.exception("Failed to prewarm symbol embeddings")
             self._embed_prewarmed = True
+        if not getattr(self, "_scip_triggered", False):
+            try:
+                self.trigger_scip_indexing()
+            except Exception:
+                logging.exception("Failed to trigger SCIP indexing")
+            self._scip_triggered = True
         while not self._autosync_stop.wait(self._autosync_poll_ms / 1000.0):
             try:
                 if not self.index_ready():
@@ -8516,6 +8522,59 @@ class CodeContextEngine:
             except Exception as exc:
                 logging.exception("Recovered from broad exception handler")
                 self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
+
+    def trigger_scip_indexing(self) -> dict[str, str]:
+        """Run SCIP indexers for languages detected in this repo.
+
+        Only attempts languages whose indexer binary is installed (tier:
+        ``install_time``).  Silently skips any language whose binary is absent
+        or whose SCIP module cannot be imported.  Returns ``{language: status}``
+        for each attempted language so callers can log progress.
+        """
+        try:
+            from atelier.infra.code_intel.scip.bootstrap import _BOOTSTRAP_METADATA
+            from atelier.infra.code_intel.scip.indexer import ScipIndexer
+        except ImportError:
+            return {}
+
+        indexer = ScipIndexer(self.repo_root, self.repo_id)
+        install_time = {lang for lang, m in _BOOTSTRAP_METADATA.items() if m.tier == "install_time"}
+        detected = self._detected_repo_languages() & install_time
+        if not detected:
+            return {}
+
+        results: dict[str, str] = {}
+        for lang in sorted(detected):
+            try:
+                result = indexer.index_language(lang)
+                results[lang] = result.status
+            except Exception as exc:
+                logging.exception("SCIP indexing failed for %s", lang)
+                results[lang] = f"error: {exc}"
+        return results
+
+    def _detected_repo_languages(self) -> frozenset[str]:
+        """Lightweight language detection from file extensions in the symbol index."""
+        ext_map = {
+            ".py": "python",
+            ".ts": "typescript",
+            ".tsx": "typescript",
+            ".js": "javascript",
+            ".jsx": "javascript",
+        }
+        langs: set[str] = set()
+        try:
+            with self._connect(readonly=True) as conn:
+                for row in conn.execute(
+                    "SELECT path FROM files WHERE repo_id = ? LIMIT 2000",
+                    (self.repo_id,),
+                ):
+                    ext = Path(row[0]).suffix.lower()
+                    if ext in ext_map:
+                        langs.add(ext_map[ext])
+        except sqlite3.Error:
+            pass
+        return frozenset(langs)
 
     def _prewarm_symbol_embeddings(self) -> None:
         """Pre-populate vector_cache for all indexed symbols.
