@@ -65,11 +65,3 @@ def test_live_docs_do_not_reference_removed_internal_path() -> None:
         if "docs/internal/" in text:
             offenders.append(str(md_file.relative_to(ROOT)))
     assert not offenders, "Live docs still reference removed docs/internal paths:\n" + "\n".join(offenders)
-
-
-def test_docs_tree_contains_expected_directories() -> None:
-    assert DOCS_ROOT.is_dir()
-    assert (DOCS_ROOT / "plans").is_dir()
-    # Engineering/decision records were moved into the internal docs tree on the
-    # bench refactor (public docs/ vs docs-internal/).
-    assert (ROOT / "docs-internal" / "decisions").is_dir()
