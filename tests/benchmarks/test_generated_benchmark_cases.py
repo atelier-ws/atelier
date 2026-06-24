@@ -45,8 +45,12 @@ def test_generated_repo_backed_case_counts() -> None:
     verify_module = _load("benchmarks.mcp_tools.cases.verify")
 
     assert len(read_module.READ_CASES) == 300
-    assert len(search_module.SEARCH_CASES) == 300
+    # search is now embeddings-only: 150 semantic chunk cases. Repo-map was dropped
+    # from the agent surface entirely (no map tool), so grep keeps its 300 native
+    # output-shape cases and the GREP_MAP_CASES export is gone.
+    assert len(search_module.SEARCH_CASES) == 150
     assert len(grep_module.GREP_CASES) == 300
+    assert not hasattr(search_module, "GREP_MAP_CASES")
     assert len(context_module.CONTEXT_CASES) == 300
     # Outline is no longer a code-op (measured via `read mode=outline`), so its
     # 77 generated/static cases were removed from CODE_CASES.

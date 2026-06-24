@@ -31,20 +31,17 @@ from atelier.infra.code_intel.scip.indexer import ScipIndexer
 from atelier.infra.storage.factory import create_store, make_memory_store
 from tests.helpers import init_store_at
 
+# The lean model-visible surface: `grep` (regex/glob search that rides call-graph
+# counts inline), `relations` (drill one symbol's relation into the list), plus
+# read/edit/bash/web_fetch. `search`, `explore`, `memory`, `sql`, `codemod` are
+# registered but hidden from agents (explore is removed entirely).
 EXPECTED_TOOLS = {
-    "memory",
     "read",
     "edit",
     "grep",
-    "sql",
-    "search",
+    "relations",
     "bash",
     "web_fetch",
-    # Dedicated code-intel tool (split from `code` op for LLM discoverability).
-    # callers/callees/usages AND single definitions all fold into `explore`
-    # (concept mode + relation=callers|callees|usages|self).
-    "explore",
-    "codemod",
 }
 
 
@@ -398,17 +395,27 @@ def test_tools_list_each_entry_has_schema() -> None:
         assert isinstance(tool.get("inputSchema"), dict)
 
 
-def test_tools_list_search_schema_prefers_path_and_documents_modes() -> None:
-    search_tool = TOOLS["search"]
-    properties = search_tool["inputSchema"]["properties"]
-
-    assert "query" in search_tool["description"]
-    assert "path" in properties
-    assert "file_path" not in properties
-    assert "content_regex" not in properties
-    assert properties["path"]["description"].startswith("Workspace-relative file or directory")
-    assert "#start-end" in properties["path"]["description"]
-    assert "repo map" in properties["mode"]["description"].lower()
+def test_tools_list_grep_is_lean_and_relations_is_the_drill_in() -> None:
+    # grep is a lean regex tool that rides call-graph COUNTS inline on definition
+    # matches; the dedicated `relations` tool expands a count into the list.
+    # `search` stays registered but hidden (semantic-only).
+    assert "search" in TOOLS
+    assert "search" in HIDDEN_LLM_TOOLS
+    assert "relations" in TOOLS
+    grep_tool = TOOLS["grep"]
+    grep_props = grep_tool["inputSchema"]["properties"]
+    # grep advertises the inline counts but carries no relation/symbol/map params.
+    assert "counts" in grep_tool["description"].lower()
+    assert "relation" not in grep_props
+    assert "symbol" not in grep_props
+    assert "seed_files" not in grep_props
+    assert set(grep_props["mode"]["enum"]) == {"content", "map", "paths", "counts"}
+    assert "file_path" not in grep_props
+    assert "#start-end" in grep_props["path"]["description"]
+    # relations is single-purpose: symbol + kind.
+    rel_props = TOOLS["relations"]["inputSchema"]["properties"]
+    assert "symbol" in rel_props
+    assert "kind" in rel_props
 
 
 def test_tools_list_grep_schema_covers_native_mode() -> None:
@@ -1043,8 +1050,16 @@ def test_smart_read_and_search_surfaces(store_root: Path, tmp_path: Path) -> Non
     assert "def alpha()" in read_payload
     assert "needle" in read_payload
 
+    # `search` stays callable by name (hidden semantic tool) for the embedding path.
     search_payload = _result(_call("search", {"query": "needle", "path": str(tmp_path)}))
-    assert "### " in search_payload
+    assert "sample.py" in json.dumps(search_payload)
+
+    # The `relations` drill-in tool routes a symbol's call-graph relation. (This
+    # tmp repo isn't indexed, so the symbol may be absent -- we only assert the
+    # tool is registered and dispatches cleanly, not that it finds `alpha`.)
+    assert "relations" in TOOLS
+    relations_resp = _call("relations", {"symbol": "alpha", "kind": "self"})
+    assert "result" in relations_resp or "error" in relations_resp
 
     grep_payload = _result(_call("grep", {"path": str(target), "content_regex": "needle"}))
     assert grep_payload
@@ -1697,22 +1712,20 @@ def test_code_context_workspace_symbol_filter_and_external_origin_metadata(
     assert external_payload["items"][0]["origin"] == "external"
 
 
-def test_repo_map_surface(store_root: Path, tmp_path: Path) -> None:
+def test_repo_map_and_seed_files_dropped_from_grep(store_root: Path, tmp_path: Path) -> None:
     _ = store_root
     target = tmp_path / "sample.py"
     target.write_text("def alpha():\n    return 1\n", encoding="utf-8")
 
-    payload = _result(
-        _call(
-            "search",
-            {"query": "", "seed_files": [str(target)], "mode": "map", "budget_tokens": 200},
-        )
-    )
-    # map mode now renders compact markdown (repo_map heading + file list)
-    # instead of the raw JSON payload.
-    assert isinstance(payload, str)
-    assert "### repo_map" in payload
-    assert "sample.py" in payload
+    # The repo-map capability (and its `seed_files` param) is gone from grep --
+    # grep's `mode='map'` now just means the ranked FILE map, an output shape, not
+    # a seed-expanded repo map. `seed_files` is no longer a grep param.
+    grep_props = mcp_server.TOOLS["grep"]["inputSchema"]["properties"]
+    assert "seed_files" not in grep_props
+    assert grep_props["mode"]["enum"] == ["content", "map", "paths", "counts"]
+    # `mode='map'` is a valid output shape (ranked file map), reached normally.
+    resp = _call("grep", {"regex": "alpha", "path": str(tmp_path), "mode": "map"})
+    assert "result" in resp
 
 
 def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
