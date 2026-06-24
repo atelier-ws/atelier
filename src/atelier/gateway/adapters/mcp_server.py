@@ -8255,6 +8255,7 @@ def _run_native_grep(
     summary: bool | None,
     context_budget_tokens: int,
     include_meta: bool,
+    badge_provider: Callable[[str, list[str]], str | None] | None = None,
 ) -> dict[str, Any]:
     from atelier.core.capabilities.tool_supervision.native_search import search_workspace
 
@@ -8276,81 +8277,119 @@ def _run_native_grep(
         context_budget_tokens=context_budget_tokens,
         include_metadata=include_meta,
         repo_root=os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()),
+        badge_provider=badge_provider,
     )
 
 
-def _grep_deterministic_search(
-    *,
-    query: str | None,
-    path: str,
-    mode: str,
-    limit: int,
-    seed_files: list[str] | None,
-    budget_tokens: int,
-    include_meta: bool,
-) -> dict[str, Any]:
-    """grep's deterministic symbol-locate / repo-map modes (folded in from `search`).
+# Cap on how many distinct symbols one grep call will badge with call-graph
+# counts -- keeps the SCIP lookups bounded on large result sets.
+_GREP_BADGE_SYMBOL_CAP = 8
 
-    mode='symbol' is an exact SCIP definition locator (name + location, no body);
-    mode='map' is a repo map expanded from `seed_files`. Both reuse the existing
-    engine/back-ends -- no embeddings (those stay in `search`).
+# Model-facing grep output-mode names map to the verbose internal output_mode the
+# native engine speaks. Short names keep the per-turn schema small.
+_GREP_MODE_ALIASES: dict[str, str] = {
+    "content": "file_paths_with_content",
+    "map": "ranked_file_map",
+    "paths": "file_paths_only",
+    "counts": "file_paths_with_match_count",
+}
+
+
+def _grep_symbol_badge(symbol_name: str, *, repo_root: str) -> str | None:
+    """Compact caller/callee/usage-count badge for a matched definition symbol.
+
+    Best-effort and read-only: returns ``None`` (no badge) on any failure or when
+    the SCIP index has no data, so it can never break a grep call. Counts come from
+    the cached _op_* wrappers; the actual lists are reached via the `relations` tool.
     """
-    workspace_root = _workspace_root()
-    if mode == "symbol":
-        if not query:
-            raise ValueError("mode='symbol' requires `regex` as the symbol query")
-        requested = Path(path)
-        resolved = requested if requested.is_absolute() else workspace_root / requested
-        resolved = resolved.resolve()
-        file_glob: str | None = None
-        if resolved != workspace_root:
-            with contextlib.suppress(ValueError):
-                relative = str(resolved.relative_to(workspace_root))
-                file_glob = relative if resolved.is_file() else f"{relative}/**"
-        return _op_search(
-            query=query,
-            mode="lexical",
-            intent="symbol",
-            view="target",
-            snippet="none",
-            limit=max(limit * 2, 20),
-            file_glob=file_glob,
-            budget_tokens=budget_tokens,
-            repo_root=str(workspace_root),
-        )
-    # mode == "map"
-    if not seed_files:
-        raise ValueError("mode='map' requires `seed_files`")
-    from atelier.core.capabilities.tool_supervision.smart_search import smart_search
+    _cap = 500  # high so the count is the true total in the common case
+    try:
+        callers = _op_callers(symbol_name=symbol_name, limit=_cap, repo_root=repo_root)
+        callees = _op_callees(symbol_name=symbol_name, limit=_cap, repo_root=repo_root)
+        usages = _op_usages(symbol_name=symbol_name, limit=_cap, repo_root=repo_root)
+    except Exception:  # noqa: BLE001 -- badges are advisory; never fail grep
+        return None
+    if not all(isinstance(p, dict) for p in (callers, callees, usages)):
+        return None
 
-    payload = smart_search(
-        query=query or "",
-        path=path,
-        mode="map",
-        max_files=limit,
-        max_chars_per_file=2000,
-        include_outline=True,
-        seed_files=seed_files,
-        budget_tokens=budget_tokens,
-    )
-    ts = int(payload.pop("tokens_saved", 0) or 0)
-    if ts > 0:
-        _tool_call_tokens_saved.value = ts
-    if not include_meta:
-        payload.pop("cache_hit", None)
-        payload.pop("backend", None)
-        payload.pop("index_age_seconds", None)
-        payload.pop("total_tokens", None)
-    return payload
+    def _fmt(payload: dict[str, Any], count_key: str, glyph: str, label: str) -> str | None:
+        # related_count / reference_count are true totals (not the rendered-list
+        # length), so no overflow marker is needed even when the list is capped.
+        n = int(payload.get(count_key, 0) or 0)
+        if not n:
+            return None
+        return f"{glyph}{n} {label}"
+
+    parts = [
+        p
+        for p in (
+            _fmt(callers, "related_count", "↳", "callers"),
+            _fmt(callees, "related_count", "↰", "callees"),
+            _fmt(usages, "reference_count", "⌖", "usages"),
+        )
+        if p
+    ]
+    if not parts:
+        return None
+    return f"{symbol_name}  " + " ".join(parts)
+
+
+def _grep_badge_provider(rel_path: str, symbol_names: list[str]) -> str | None:
+    """Inline relation-count line for a file's matched definition symbols.
+
+    Returns a ` · `-joined badge string (or ``None``) that `search_workspace`
+    appends to the file's header so call-graph counts ride along the regex search.
+    """
+    repo_root = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    badges: list[str] = []
+    for name in symbol_names[:_GREP_BADGE_SYMBOL_CAP]:
+        badge = _grep_symbol_badge(name, repo_root=repo_root)
+        if badge:
+            badges.append(badge)
+    if not badges:
+        return None
+    return "  ·  ".join(badges)
+
+
+@mcp_tool(
+    name="relations",
+    description=(
+        "Expand one symbol's call-graph relation into the actual list: kind=callers|callees|usages|self. "
+        "use this only to see WHICH callers/callees/usages when worth drilling into."
+    ),
+)
+def tool_relations(
+    symbol: str,
+    kind: str = "usages",
+    depth: int = 1,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Return the actual callers / callees / usages / definition of one symbol (SCIP).
+
+    `symbol` is a name, qualified path, or SCIP id. `kind` selects the relation
+    (default usages); `depth` extends callers/callees transitively. The COUNTS for
+    these already ride along on `grep` definition matches — use this only to expand
+    a count into the concrete list.
+    """
+    target = _parse_symbol(symbol)
+    rel = kind.strip().lower()
+    if rel == "callers":
+        return _op_callers(**target, depth=depth, limit=limit)
+    if rel == "callees":
+        return _op_callees(**target, depth=depth, limit=limit)
+    if rel in ("usages", "refs", "references"):
+        return _op_usages(**target, limit=limit)
+    if rel in ("self", "node", "definition"):
+        return _op_node(**target)
+    raise ValueError(f"unknown kind {kind!r}; use callers, callees, usages, or self")
 
 
 @mcp_tool(
     name="grep",
     description=(
-        "Deterministic code search: regex/glob/type matching plus symbol relations. "
-        "mode='file_paths_with_content' discovers AND reads matched context; "
-        "relation=callers|callees|usages|self + symbol gives SCIP call-graph relations. "
-        "mode='symbol' locates a definition; mode='map' builds a repo map from seed_files."
+        "Search code by regex/glob/type. mode='content' (default) discovers AND reads matched "
+        "context in one step. When a match lands on a symbol definition, its caller/callee/usage "
+        "counts ride along inline -- drill into the lists with the `relations` tool."
     ),
     hidden_params=(
         "include_meta",
@@ -8382,38 +8421,15 @@ def tool_grep(
         str | list[str] | None,
         Field(description="Globs constraining candidate files (e.g. `src/**/*.py`). List or bare string."),
     ] = None,
-    relation: Annotated[
-        str | None,
-        Field(description="Symbol relation: callers|callees|usages|self. Uses `symbol` (or `regex`) as the target."),
-    ] = None,
-    symbol: Annotated[
-        str | None,
-        Field(description="Target symbol (name, qualified path, or SCIP id) for `relation`."),
-    ] = None,
-    depth: Annotated[
-        int,
-        Field(description="Transitive depth for relation=callers|callees."),
-    ] = 1,
-    seed_files: Annotated[
-        list[str] | None,
-        Field(description="Seed files for mode='map' (repo map expands from these)."),
-    ] = None,
     mode: Annotated[
-        Literal[
-            "file_paths_with_content",
-            "ranked_file_map",
-            "file_paths_only",
-            "file_paths_with_match_count",
-            "symbol",
-            "map",
-        ],
+        Literal["content", "map", "paths", "counts"],
         Field(
             description=(
-                "file_paths_with_content: matched lines+context (default); ranked_file_map: navigation "
-                "pointers; symbol: exact definition locator; map: repo map from seed_files."
+                "content: matched lines+context (default); map: ranked file pointers; "
+                "paths: matching file paths; counts: path + match count."
             )
         ),
-    ] = "file_paths_with_content",
+    ] = "content",
     before: Annotated[
         int,
         Field(description="Lines before match."),
@@ -8460,52 +8476,27 @@ def tool_grep(
     ] = False,
     format: Annotated[Literal["auto", "compact", "json"], _FORMAT_FIELD] = "auto",
 ) -> dict[str, Any]:
-    """Deterministic code search: regex/glob/type matching, symbol locate/relations, and repo-map.
+    """Search code by regex/glob/type, with call-graph counts riding along on definition matches.
 
-    - Default: regex over file contents (token-budgeted, mode-shaped). Omit `regex` for path/type listings.
-    - `relation=callers|callees|usages|self` + `symbol`: exact SCIP call-graph relations of one symbol.
-    - `mode='symbol'` + `regex`: exact symbol-definition locator (name + location, no body).
-    - `mode='map'` + `seed_files`: repo map expanded from seed files.
-    Returns: results shaped by `mode`/path (default `file_paths_with_content`: matched lines plus context).
+    Default mode reads matched context inline. Omit `regex` for path/type listings. When a match
+    lands on a symbol's definition, its caller/callee/usage counts are appended to that file's
+    header (e.g. `orders.py  OrderService  ↳12 callers ↰3 callees ⌖8 usages`) -- no extra call or
+    param needed. To expand a non-trivial count into the actual list, use the `relations` tool.
+    Returns: results shaped by `mode` (default `content`: matched lines plus context).
     For natural-language/semantic ranking use `search`.
     """
-    # Symbol-relation mode: exact callers/callees/usages/definition of one symbol
-    # (folds in the former `explore` targeted path; same _op_* engine wrappers).
-    if relation is not None:
-        seed = symbol if symbol is not None else regex
-        target = _parse_symbol(seed) if seed else {}
-        rel = relation.strip().lower()
-        if rel == "callers":
-            return _op_callers(**target, depth=depth, limit=file_limit or 20)
-        if rel == "callees":
-            return _op_callees(**target, depth=depth, limit=file_limit or 20)
-        if rel in ("usages", "refs", "references"):
-            return _op_usages(**target, limit=file_limit or 20)
-        if rel in ("self", "node", "definition"):
-            return _op_node(**target)
-        raise ValueError(f"unknown relation {relation!r}; use callers, callees, usages, or self")
-    # Deterministic symbol-locate / repo-map modes (folded in from the former
-    # `search` tool's lexical paths; semantic ranking stays in `search`).
-    if mode in ("symbol", "map"):
-        return _grep_deterministic_search(
-            query=regex,
-            path=path,
-            mode=mode,
-            limit=file_limit or 10,
-            seed_files=seed_files,
-            budget_tokens=context_budget_tokens,
-            include_meta=include_meta,
-        )
     # Accept a single glob passed as a bare string -- a common shape the model
     # reaches for -- so it does not trip schema validation against the array type.
     if isinstance(glob, str):
         glob = [glob]
-    # symbol/map were handled and returned above; the remaining modes are the
-    # four native grep output modes.
+    # Short model-facing mode names map to the engine's verbose output_mode.
     native_mode = cast(
         Literal["ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
-        mode,
+        _GREP_MODE_ALIASES.get(mode, mode),
     )
+    # Ride call-graph counts along content-mode regex matches that land on symbol
+    # definitions (best-effort; the provider never fails the search).
+    badge_provider = _grep_badge_provider if (regex and native_mode == "file_paths_with_content") else None
     payload = _run_native_grep(
         path=path,
         content_regex=regex,
@@ -8522,6 +8513,7 @@ def tool_grep(
         summary=summary,
         context_budget_tokens=context_budget_tokens,
         include_meta=include_meta,
+        badge_provider=badge_provider,
     )
     # Plumb savings via thread-local (read by _extract_tokens_saved) and
     # strip from the LLM-facing payload to keep responses clean.

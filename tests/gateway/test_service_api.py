@@ -142,11 +142,13 @@ def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypa
     assert not {tool["tool_name"] for tool in tools if tool["mode"] == "passive"}
     assert "read" in names
     assert "grep" in names
-    assert "search" in names
-    assert "memory" in names
     assert "bash" in names
-    search_tool = next(tool for tool in tools if tool["tool_name"] == "search")
-    enum_param_names = {item["name"] for item in search_tool["enum_params"]}
+    # search/memory are registered but hidden (not on the active surface).
+    assert "search" not in names
+    assert "memory" not in names
+    # grep exposes its mode enum (folded-in deterministic search modes).
+    grep_tool = next(tool for tool in tools if tool["tool_name"] == "grep")
+    enum_param_names = {item["name"] for item in grep_tool["enum_params"]}
     assert "mode" in enum_param_names
 
 

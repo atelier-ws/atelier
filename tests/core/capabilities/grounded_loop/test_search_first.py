@@ -41,10 +41,12 @@ def test_search_first_returns_ranked_matches_and_explicit_follow_ups(tmp_path, m
         "files": [match["path"] for match in payload["matches"]],
         "recall": True,
     }
-    assert payload["handoff"]["explore"] == {
-        "tool": "explore",
-        "query": "Playbook",
-        "seed_files": [match["path"] for match in payload["matches"]],
+    # `explore` is removed; its call-graph relations folded into grep, so the
+    # search handoff points at grep's relation mode.
+    assert payload["handoff"]["relations"] == {
+        "tool": "grep",
+        "relation": "usages",
+        "symbol": "Playbook",
     }
     assert payload["matches"][0]["follow_up"]["read"] == {
         "tool": "read",
