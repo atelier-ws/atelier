@@ -137,10 +137,12 @@ def _sessions_root() -> Path:
     return root / "workspaces" / key
 
 
-def _write_token_event(stats: dict[str, Any]) -> None:
+def _write_token_event(stats: dict[str, Any], session_id: str | None = None) -> None:
     """Append a session_stats note event to the active run file."""
-    state = _load_state()
-    session_id: str | None = state.get("session_id") or state.get("active_session_id")
+    if not session_id:
+        # Fallback: read from workspace state (only when caller didn't supply it).
+        state = _load_state()
+        session_id = state.get("session_id") or state.get("active_session_id")
     if not session_id:
         return
     run_file = _sessions_root() / "sessions" / session_id / "run.json"
@@ -834,7 +836,7 @@ def main() -> int:
     # ── Always write token/cost summary to RunLedger (fail-open) ─────────────
     if stats and stats.get("total_tokens", 0) > 0:
         with contextlib.suppress(Exception):
-            _write_token_event(stats)
+            _write_token_event(stats, session_id)
 
     # ── Load per-session savings breakdown (before writing session_end so carry is persisted)
     savings: dict[str, Any] | None = None

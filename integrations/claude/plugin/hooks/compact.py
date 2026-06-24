@@ -363,7 +363,15 @@ def main() -> int:
         return 0
 
     try:
-        session_id = _active_session_id()
+        # Prefer the session_id Claude Code sends in the payload — it matches
+        # what the Stop hook will receive for the same session.  Falling back
+        # to _active_session_id() risks a mismatch when SessionStart (which
+        # updates session_state.json) fires *before* PreCompact: the state
+        # file already holds the new post-compact session_id while the payload
+        # and transcript still belong to the old session.  That mismatch causes
+        # the old session's pre_compact_usage to be written under the new
+        # session_id, inflating the new session's stop-hook cost.
+        session_id = str(payload.get("session_id") or "") or _active_session_id()
         if not session_id:
             return 0
 
