@@ -275,7 +275,7 @@ _EXPLORE_SOURCE_SECTION_MAX_CHARS = resolve_output_policy("context").max_code_bl
 # Index-free sibling skeletonization for tool_explore: when an explore result
 # pulls >=3 same-kind symbols that share a name affix (e.g. *Embedder, *Resolver),
 # the highest-scored member is kept full and the rest render signatures-only.
-# Heuristic over the already-selected symbols -- no new index/SCIP queries.
+# Heuristic over the already-selected symbols -- no new index queries.
 _SKELETON_KINDS = frozenset({"class", "struct", "interface", "trait", "protocol", "enum", "method", "function"})
 _SKELETON_STOPWORDS = frozenset(
     {
@@ -5964,7 +5964,7 @@ class CodeContextEngine:
         auto_index: bool = True,
     ) -> dict[str, Any]:
         """Unified symbol-graph access: one resolve+project entry over the shared
-        SCIP index. ``relation`` selects the projection:
+        code index. ``relation`` selects the projection:
 
         * ``self``    -- the symbol's own definition (``depth``/``group_by``/
           ``snippet_lines`` ignored).
@@ -6956,23 +6956,31 @@ class CodeContextEngine:
         start_line = int(payload["start_line"])
         end_line = int(payload["end_line"])
         source = self._read_file_slice(file_path, int(payload["start_byte"]), int(payload["end_byte"]))
-        # Look back up to 200 bytes to capture decorator lines (@decorator)
-        # that sit above the symbol's start_byte but belong to it conceptually.
-        lookback_start = max(0, int(payload["start_byte"]) - 200)
-        prefix_raw = self._read_file_slice(file_path, lookback_start, int(payload["start_byte"]))
-        decorator_lines: list[str] = []
-        for pline in reversed(prefix_raw.splitlines()):
-            stripped = pline.strip()
-            if stripped.startswith("@"):
-                decorator_lines.insert(0, pline)
-            elif stripped == "" or stripped.startswith("#"):
-                continue
-            else:
-                break
-        if decorator_lines:
-            dec_count = len(decorator_lines)
-            start_line = start_line - dec_count
-            source = "\n".join(decorator_lines) + "\n" + source
+        # Walk back through the file line by line to capture decorator /
+        # annotation lines that sit above this symbol's start_line but belong
+        # to it structurally (e.g. @functools.lru_cache, @property, @app.route).
+        # Line-based (not byte-based) so we never clip mid-token or overshoot.
+        try:
+            all_file_lines = (self.repo_root / file_path).read_text(errors="replace").splitlines()
+            decorator_prefix: list[str] = []
+            scan = start_line - 2  # 0-indexed line immediately above symbol
+            limit = max(0, scan - 10)  # never look back more than 10 lines
+            while scan >= limit:
+                raw = all_file_lines[scan]
+                stripped = raw.strip()
+                if stripped.startswith("@"):
+                    decorator_prefix.insert(0, raw)
+                    scan -= 1
+                elif stripped == "" or stripped.startswith("#"):
+                    # blank / comment between stacked decorators — skip
+                    scan -= 1
+                else:
+                    break
+        except (OSError, IndexError):
+            decorator_prefix = []
+        if decorator_prefix:
+            start_line = start_line - len(decorator_prefix)
+            source = "\n".join(decorator_prefix) + "\n" + source
         lines = source.splitlines()
         if line_numbers:
             full_content = "\n".join(f"{start_line + idx}\t{line}" for idx, line in enumerate(lines))
@@ -7003,14 +7011,21 @@ class CodeContextEngine:
                 # fraction of the cost of BPE-encoding every symbol body twice.
                 saved = estimate_tokens(full_content) - estimate_tokens(skel)
                 if saved > 0:
-                    # No read pointer: a "read file#L…" marker actively
-                    # invites an extra read call; skeleton already signals
-                    # incompleteness and the file path is in the header.
-                    section["content"] = hard_cap_chars(skel, _EXPLORE_SOURCE_SECTION_MAX_CHARS)
+                    section["content"] = hard_cap_chars(
+                        skel,
+                        _EXPLORE_SOURCE_SECTION_MAX_CHARS,
+                        start_line=start_line,
+                        end_line=end_line,
+                    )
                     section["skeleton"] = True
                     section["tokens_saved"] = saved
                     return section
-        section["content"] = hard_cap_chars(full_content, _EXPLORE_SOURCE_SECTION_MAX_CHARS)
+        section["content"] = hard_cap_chars(
+            full_content,
+            _EXPLORE_SOURCE_SECTION_MAX_CHARS,
+            start_line=start_line,
+            end_line=end_line,
+        )
         return section
 
     def _merge_nearby_source_sections(
