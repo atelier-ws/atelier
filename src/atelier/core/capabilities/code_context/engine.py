@@ -32,10 +32,7 @@ try:
 except ImportError:  # pragma: no cover - non-POSIX platforms
     fcntl = None  # type: ignore[assignment]
 
-from atelier.core.capabilities.code_context.ann_symbol_index import (
-    SymbolAnnIndex,
-    ann_retrieval_enabled,
-)
+from atelier.core.capabilities.code_context.ann_symbol_index import SymbolAnnIndex
 from atelier.core.capabilities.code_context.budget import (
     PROTECTED_TOP_RANK,
     BudgetPacker,
@@ -94,9 +91,6 @@ if TYPE_CHECKING:
     from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
 
 _MAX_FILE_BYTES = 1_000_000
-# G4: hard cap on symbols embedded/persisted for the opt-in ANN store per query,
-# bounding embed cost and graph build time on first (cold) use.
-_ANN_SYMBOL_CANDIDATE_CAP = 2000
 logger = logging.getLogger(__name__)
 
 _DB_LOCKS_GUARD = threading.Lock()
@@ -339,7 +333,11 @@ _SKELETON_MIN_BODY_LINES = 12
 _EXPLORE_FAMILY_PROBE_SYMBOLS = 12
 _EXPLORE_FAMILY_TOTAL_CAP = 12
 _EXPLORE_FAMILY_PER_FAMILY_CAP = 8
-_EXPLORE_FAMILY_FILE_CAP = 16
+# Explore relevance floor: drop ranked symbols scoring below this fraction of the
+# top hit (unless pinned -- exact match, recall anchor, or seed file). Bites only
+# when a query has a dominant hit (exact symbol >> lexical sub-token co-matches);
+# uniform low-score concept queries leave the floor near zero, keeping everything.
+_EXPLORE_SCORE_FLOOR_FRAC = 0.15
 # Definitional kinds outrank trivial variables/constants when explore decides which
 # files survive the file/budget caps -- a class/function is higher signal than a const.
 _DEFINITION_KINDS = frozenset(
@@ -768,6 +766,21 @@ def _safe_relpath(repo_root: Path, path: Path) -> str:
 # present in only 2-3 symbols (breaking recall on small indexes).
 _FTS_COMMON_TERM_DF_FRACTION = 0.10
 _FTS_COMMON_TERM_DF_FLOOR = 1500
+# Cap the FTS OR/prefix query to the rarest few discriminative terms.  The most
+# selective tokens carry the match; extra mid-frequency tokens ("data", "set")
+# only enlarge the bm25 posting-list scan.  Bounds FTS latency regardless of how
+# many tokens a messy multi-clause/regex query produces.  Bounded by TOTAL bm25
+# posting-list work (sum of doc-frequencies), rarest-first, rather than a flat
+# term count: a small repo keeps every cheap term (no recall loss), while a big
+# repo stops before a mid-frequency term would blow the budget.
+_FTS_DF_BUDGET = 5000
+
+# Persistent thread pool for parallel FTS channel execution in _search_symbols_local.
+# Each worker opens its own read connection; WAL mode allows concurrent readers.
+# sqlite3 releases the GIL inside sqlite3_step(), so threads achieve real parallelism.
+_SEARCH_CHANNEL_EXECUTOR: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=5, thread_name_prefix="atelier-fts-channel"
+)
 
 
 def _fts_or_query_from_terms(terms: list[str]) -> str:
@@ -913,6 +926,21 @@ def _query_terms(query: str) -> list[str]:
     return cleaned or _identifier_terms(query)
 
 
+# Characters that mean a query is NOT a literal path substring: whitespace (a
+# multi-term query) and regex/FTS metacharacters (an alternation/pattern query).
+# When any are present, `file_path LIKE '%<whole query>%'` can never match a real
+# path, so the path channel skips the full-query LIKE and keeps only the cheap
+# first-term LIKE.
+_NON_PATHY_QUERY_RE = re.compile(r"[\s|*()\[\]^$+?\\=<>{}]")
+
+
+def _query_is_pathy_literal(query: str) -> bool:
+    """True when the whole query could appear as a literal substring of a file
+    path (a single token with no regex/multi-term metacharacters)."""
+    q = query.strip()
+    return bool(q) and _NON_PATHY_QUERY_RE.search(q) is None
+
+
 def _is_precise_symbol_query(query: str) -> bool:
     return bool(_PRECISE_SYMBOL_QUERY_RE.fullmatch(query.strip()))
 
@@ -956,6 +984,34 @@ def _exact_symbol_hits(hits: list[SymbolRecord], query: str) -> list[SymbolRecor
 # spaces) -- the shape worth an explicit exact-name lookup. Multi-word concept
 # queries skip that lookup so they never pay an extra search.
 _SYMBOL_QUERY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+_REGEX_NOISE_RE = re.compile(r"[\^$\\().*+?\[\]{}|\s]")
+
+
+def _split_pipe_query(query: str) -> list[str]:
+    """Expand a pipe-delimited OR pattern into individual searchable terms.
+
+    Zoekt treats ``|`` as a literal character, not an OR operator, so a query
+    like ``"timezone_name|TIME_ZONE|def timezone"`` finds nothing.  This helper
+    splits on ``|``, strips leading regex anchors (``^``, ``\\b``, etc.) and
+    trailing noise, and returns the distinct non-trivial terms for individual
+    searches whose results are then unioned.
+
+    Returns an empty list when the query has no ``|``, or when fewer than two
+    meaningful terms survive cleaning (fall back to the original query).
+    """
+    if "|" not in query:
+        return []
+    seen: dict[str, None] = {}  # ordered dedup
+    for part in query.split("|"):
+        # Strip common regex anchors/metacharacters from edges
+        stripped = part.strip().lstrip("^").rstrip("$")
+        stripped = re.sub(r"\\[bBsSwWdD]", "", stripped).strip()
+        # Must contain at least one word character and be >=3 chars
+        if len(stripped) < 3 or not re.search(r"[a-zA-Z0-9_]", stripped):
+            continue
+        seen[stripped] = None
+    terms = list(seen)
+    return terms if len(terms) >= 2 else []
 
 
 def _query_implies_test_scope(query: str) -> bool:
@@ -965,7 +1021,10 @@ def _query_implies_test_scope(query: str) -> bool:
 
 def _is_test_file_path(file_path: str) -> bool:
     lowered = file_path.lower()
-    name = Path(file_path).name.lower()
+    # Cheap basename via rfind instead of Path(...).name -- this runs once per
+    # candidate row in the search hot loop, where pathlib object construction
+    # dominates the profile.  '/' is the normalized separator in stored paths.
+    name = lowered[lowered.rfind("/") + 1 :]
     return "/test" in lowered or "/tests/" in lowered or name.startswith("test_") or name.endswith("_test.py")
 
 
@@ -1645,6 +1704,11 @@ class CodeContextEngine:
         # ATELIER_ANN_RETRIEVAL; with the flag off this object is never
         # consulted and the semantic path is byte-identical to today.
         self._ann_symbol_index = SymbolAnnIndex(self.repo_id)
+        # In-memory cache of the parsed symbol vectors, keyed by
+        # (embedder_name, dim, index_version). Loading + JSON-decoding the whole
+        # store on every semantic query is the dominant hot-path cost otherwise; a
+        # reindex bumps index_version and invalidates this.
+        self._ann_vectors_cache: tuple[tuple[str, int, int], list[str], Any] | None = None
         self.intel_store = SymbolIntelStore(
             cache=self._cache,
             packer=self._budget,
@@ -1685,6 +1749,12 @@ class CodeContextEngine:
         # shared per-thread connection (via _ReusedConnection) instead of opening a
         # new one + re-running PRAGMAs for every sub-query.
         self._scoped_conn_tls = threading.local()
+        # File bytes cache: inside a _reuse_connection() scope, _read_file_slice()
+        # caches raw file bytes so the same file is read from disk only once per
+        # tool call even when multiple symbols are selected from it. Eliminates
+        # N_symbols × read_bytes() cost (e.g. 5 symbols from engine.py = 5 × 18 MB
+        # → 1 × 18 MB). Cleared on scope exit; no inter-call sharing.
+        self._file_cache_tls = threading.local()
         self._wal_primed = False
         # FTS corpus size for IDF term pruning, keyed by index_version so a reindex
         # auto-invalidates it (count(*) over symbol_fts is ~18ms -- never per query).
@@ -2102,11 +2172,23 @@ class CodeContextEngine:
                 conn.execute('DELETE FROM "references"')
                 conn.execute("DELETE FROM call_edges")
                 conn.execute("DELETE FROM files")
+                # Stale vectors are never overwritten (symbol_id encodes content),
+                # so a full rebuild must wipe them too. Created lazily -> guard.
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute("DELETE FROM symbol_vectors")
 
                 results = self._parallel_extract(all_files, total=total, progress_callback=progress_callback)
                 self._apply_file_data_batch(conn, results)
 
                 index_version = self._bump_index_version(conn)
+                # Refresh planner stats, then build per-symbol embeddings into the
+                # persistent vector store -- same index-time work as the incremental
+                # branch below, so a full/forced rebuild also produces vectors
+                # (no-op unless an embedder is configured). Keeps the query hot path
+                # read-only: it embeds only the query and ANN-reads these vectors.
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute("PRAGMA optimize")
+                self._build_symbol_embeddings(conn, index_version)
                 files_indexed = len(results)
                 symbols_indexed = sum(len(r.symbols) for r in results)
                 imports_indexed = sum(len(r.imports) for r in results)
@@ -2201,6 +2283,11 @@ class CodeContextEngine:
                     # (cheap on small incremental deltas, full ANALYZE when needed).
                     with contextlib.suppress(sqlite3.OperationalError):
                         conn.execute("PRAGMA optimize")
+                    # Build per-symbol embeddings into the persistent vector store as
+                    # part of the code index (no-op unless an embedder is configured).
+                    # Doing it here keeps the query hot path read-only -- it embeds
+                    # only the query and ANN-reads these prebuilt vectors.
+                    self._build_symbol_embeddings(conn, index_version)
                 else:
                     row = conn.execute("SELECT value FROM engine_state WHERE key = 'index_version'").fetchone()
                     index_version = int(row["value"]) if row is not None else 0
@@ -2245,6 +2332,21 @@ class CodeContextEngine:
             """,
             (self.repo_id, rel),
         )
+        # Prune persisted embeddings for this file's symbols *before* the symbols
+        # themselves. symbol_id encodes the file content hash, so an edited or
+        # removed file yields fresh ids -- without this the old vectors orphan
+        # (never overwritten, never cleaned) and pollute semantic ranking. The
+        # vector table is created lazily, so guard against its absence.
+        with contextlib.suppress(sqlite3.OperationalError):
+            conn.execute(
+                """
+                DELETE FROM symbol_vectors
+                WHERE repo_id = ? AND symbol_id IN (
+                    SELECT symbol_id FROM symbols WHERE repo_id = ? AND file_path = ?
+                )
+                """,
+                (self.repo_id, self.repo_id, rel),
+            )
         conn.execute("DELETE FROM symbols WHERE repo_id = ? AND file_path = ?", (self.repo_id, rel))
         conn.execute("DELETE FROM imports WHERE repo_id = ? AND source_file = ?", (self.repo_id, rel))
         conn.execute('DELETE FROM "references" WHERE repo_id = ? AND file_path = ?', (self.repo_id, rel))
@@ -2931,40 +3033,51 @@ class CodeContextEngine:
         if hit and cached is not None:
             return self._mark_cache_hit(cached)
 
-        raw_symbols = self.search_symbols(
-            query,
-            limit=bounded_max_symbols,
-            snippet="none",
-            auto_index=False,
-        )
-        # Winner-pipeline fusion: pull in zoekt trigram anchors. The symbol FTS
-        # ranks named symbols well but misses concept/regex queries where the
-        # right file has no lexically-matching symbol name; zoekt's trigram search
-        # surfaces those files, and seeding a couple of their definitions makes the
-        # file survive ranking. Additive and graceful (empty set when zoekt is off)
-        # -- the exact/score/seed ranking below still governs final order.
-        seeded_files = {symbol.file_path for symbol in raw_symbols}
-        anchor_files = [
-            anchor
-            for anchor in sorted(self._zoekt_candidate_files(query, max_files=max(bounded_max_files * 2, 12)))
-            if anchor not in seeded_files
-        ]
-        if anchor_files:
-            anchor_symbols = self._cap_symbols_per_file(
-                [
-                    symbol
-                    for symbol in self._symbols_for_files(anchor_files[:bounded_max_files], limit=400)
-                    if (symbol.kind or "").lower() in _DEFINITION_KINDS
-                ],
-                max_per_file=2,
-            )
-            raw_symbols = self._dedupe_symbols(raw_symbols + anchor_symbols)
-        # Exact-name guard: when the query is itself an indexed symbol name,
-        # semantic ranking can bury the exact definition behind lexical cousins
-        # (e.g. "_pack_single_payload" surfacing "_payload_looks_empty"), or the
-        # max_symbols cap can drop it outright. Pin any exact match to the front,
-        # fetching it via a lexical lookup if the ranked search missed it. Only
-        # symbol-like (single-token) queries pay that extra lookup.
+        # Winner-pipeline fusion: pull in trigram (zoekt) AND semantic anchors. The
+        # symbol FTS ranks named symbols well but misses concept/regex queries where
+        # the right file has no lexically-matching symbol name; zoekt's trigram search
+        # and the embedding nearest-neighbours surface those files, and seeding a
+        # couple of their definitions makes the file survive ranking. Both are
+        # additive and graceful (empty when zoekt is off / no embedder configured) --
+        # the exact/score/seed ranking below still governs final order.
+        #
+        # The three channels are independent and each releases the GIL during its
+        # heavy work (SQLite C calls, the zoekt subprocess, the embedding), so the
+        # zoekt + semantic recall channels run on worker threads concurrently with
+        # the lexical symbol search on this (connection-scoped) thread. Wall-clock
+        # collapses from sum-of-channels to slowest-channel. Opt out with
+        # ATELIER_EXPLORE_PARALLEL=0.
+        anchor_budget = max(bounded_max_files * 2, 12)
+        if os.environ.get("ATELIER_EXPLORE_PARALLEL", "1") != "0":
+            from concurrent.futures import ThreadPoolExecutor
+
+            with ThreadPoolExecutor(max_workers=2) as _pool:
+                _zk = _pool.submit(self._zoekt_candidate_files, query, max_files=anchor_budget)
+                _sem = _pool.submit(self._semantic_candidate_files, query, max_files=anchor_budget)
+                raw_symbols = self.search_symbols(query, limit=bounded_max_symbols, snippet="none", auto_index=False)
+                # Preserve zoekt's score-ranked order; append semantic-only files at the end.
+                _zk_list = _zk.result()  # list[str], zoekt-score ordered
+                _seen_anchors: dict[str, None] = dict.fromkeys(_zk_list)
+                for _f in _sem.result():
+                    _seen_anchors.setdefault(_f, None)
+                anchor_candidates = list(_seen_anchors)
+        else:
+            raw_symbols = self.search_symbols(query, limit=bounded_max_symbols, snippet="none", auto_index=False)
+            # Preserve zoekt's score-ranked order; append semantic-only files at the end.
+            _zk_list = self._zoekt_candidate_files(query, max_files=anchor_budget)
+            _seen_anchors_s: dict[str, None] = dict.fromkeys(_zk_list)
+            for _f in self._semantic_candidate_files(query, max_files=anchor_budget):
+                _seen_anchors_s.setdefault(_f, None)
+            anchor_candidates = list(_seen_anchors_s)
+        # Exact-name guard + anchor gate. When the query is itself an indexed symbol
+        # name, the definition (+ its family) is the answer, so two things happen:
+        # (1) the exact match is pinned to the front (semantic/lexical ranking can
+        # otherwise bury it behind cousins or drop it past the cap), and (2) the
+        # zoekt/semantic anchor recall is SKIPPED -- for an exact hit those channels
+        # only flood the payload with the many files that merely *reference* the
+        # name (grep-style over-recall, the dominant explore bloat). Anchors stay on
+        # for concept queries (no exact hit), where they are the recall mechanism.
+        # Only symbol-like (single-token) queries pay the extra lexical lookup.
         exact_hits = _exact_symbol_hits(raw_symbols, query)
         if not exact_hits and _SYMBOL_QUERY_RE.match(query.strip()):
             lexical_hits = self.search_symbols(
@@ -2976,6 +3089,23 @@ class CodeContextEngine:
             )
             exact_hits = _exact_symbol_hits(lexical_hits, query)
         exact_ids = {record.symbol_id for record in exact_hits}
+        anchor_ids: set[str] = set()
+        if not exact_hits:
+            seeded_files = {symbol.file_path for symbol in raw_symbols}
+            # anchor_candidates is zoekt-score ordered (highest relevance first);
+            # do NOT sort alphabetically — that would bury high-signal files.
+            anchor_files = [anchor for anchor in anchor_candidates if anchor not in seeded_files]
+            if anchor_files:
+                anchor_symbols = self._cap_symbols_per_file(
+                    [
+                        symbol
+                        for symbol in self._symbols_for_files(anchor_files[:bounded_max_files], limit=400)
+                        if (symbol.kind or "").lower() in _DEFINITION_KINDS
+                    ],
+                    max_per_file=2,
+                )
+                anchor_ids = {symbol.symbol_id for symbol in anchor_symbols}
+                raw_symbols = self._dedupe_symbols(raw_symbols + anchor_symbols)
         if exact_hits:
             raw_symbols = exact_hits + [record for record in raw_symbols if record.symbol_id not in exact_ids]
         ranked_symbols = sorted(
@@ -2988,6 +3118,23 @@ class CodeContextEngine:
                 record.start_line,
             ),
         )
+        # Relevance floor: when the top hit is strongly dominant (e.g. an exact
+        # symbol scoring far above the lexical sub-token co-matches that share a
+        # token like "get"/"name"), drop the near-zero tail so a precise query
+        # returns the definition, not every file that merely shares a sub-token.
+        # Pinned categories are always kept: the exact hit(s), the recall anchors
+        # (zoekt/semantic, intentionally low/zero lexical score), and seed files --
+        # so uniform low-score concept queries (floor ~ 0) keep everything.
+        if ranked_symbols:
+            top_score = max((record.score or 0.0) for record in ranked_symbols)
+            floor = top_score * _EXPLORE_SCORE_FLOOR_FRAC
+            if floor > 0:
+                pinned_ids = exact_ids | anchor_ids
+                ranked_symbols = [
+                    record
+                    for record in ranked_symbols
+                    if record.symbol_id in pinned_ids or record.file_path in seed_set or (record.score or 0.0) >= floor
+                ]
         # File diversity: cap symbols-per-file before the symbol budget so one
         # over-populated file (e.g. 8 `as_sqlite` overloads in functions.py)
         # cannot starve the other files the query also matches (the ambiguous-name
@@ -2995,7 +3142,10 @@ class CodeContextEngine:
         diverse_ranked = self._cap_symbols_per_file(ranked_symbols, max_per_file=3)
         selected_symbols = diverse_ranked[:bounded_max_symbols]
         family_member_ids: set[str] = set()
-        if effective_complete:
+        # Skip sibling-family completion for an exact-symbol query: the named
+        # definition is the answer, so pulling in related families across other
+        # files would re-bloat a grep-style lookup (the dominant explore use).
+        if effective_complete and not exact_hits:
             additions = self._complete_sibling_families(selected_symbols, query=query, seed_set=seed_set)
             if additions:
                 have = {symbol.symbol_id for symbol in selected_symbols}
@@ -3033,9 +3183,11 @@ class CodeContextEngine:
                 selected_files.append(symbol.file_path)
         # Family-completion can add files past the normal cap; allow them since the
         # extra siblings render signatures-only (cheap), but stay bounded.
-        file_cap = bounded_max_files
-        if family_member_ids:
-            file_cap = min(_EXPLORE_FAMILY_FILE_CAP, max(bounded_max_files, len(selected_files)))
+        # Hard-respect the caller's max_files. Sibling-family completion gets a small
+        # fixed headroom (a couple of extra files for cross-file families) but is no
+        # longer allowed to balloon: the old cap let an explicit max_files=1 expand
+        # to 16 files, which then truncated every section to fit the token budget.
+        file_cap = bounded_max_files + 2 if family_member_ids else bounded_max_files
         selected_files = selected_files[:file_cap]
         trimmed_symbols = [symbol for symbol in selected_symbols if symbol.file_path in set(selected_files)]
         trimmed_by_file: dict[str, list[SymbolRecord]] = {}
@@ -3167,20 +3319,33 @@ class CodeContextEngine:
                             }
                         )
 
-        additional_relevant_files = [
-            symbol.file_path for symbol in ranked_symbols if symbol.file_path not in set(selected_files)
-        ][:20]
-        full_payload = {
+        # Dedup: ranked_symbols holds many symbols per file, so the naive
+        # comprehension repeated a file once per matching symbol. Emit each related
+        # file once, capped to what the renderer surfaces (_CONTEXT_RELATED_CAP=10).
+        _extra_seen: set[str] = set(selected_files)
+        additional_relevant_files: list[str] = []
+        for _sym in ranked_symbols:
+            if _sym.file_path in _extra_seen:
+                continue
+            _extra_seen.add(_sym.file_path)
+            additional_relevant_files.append(_sym.file_path)
+            if len(additional_relevant_files) >= 10:
+                break
+        full_payload: dict[str, Any] = {
             "query": query,
             "repo_id": self.repo_id,
             "entry_points": entry_points,
             "files": files_payload,
-            "relationships": relationships,
             "additional_relevant_files": additional_relevant_files,
             "truncated": len(selected_symbols) > len(trimmed_symbols),
             "cache_hit": False,
             "provenance": _LOCAL_PROVENANCE,
         }
+        # Only ship relationships when populated -- the default explore call has
+        # include_relationships=False, and an empty {callers,callees,usages} dict
+        # was being serialised on every response for no signal.
+        if any(relationships.values()):
+            full_payload["relationships"] = relationships
         # Budget-aware file trim: drop the lowest-priority files until the payload
         # fits, so explore degrades to fewer (most-relevant) files instead of
         # collapsing to "no results" when a completed family + relationships overflow.
@@ -4029,7 +4194,7 @@ class CodeContextEngine:
                 self._attach_snippet(symbol, snippet=snippet, snippet_lines=snippet_lines) for symbol in hits[:limit]
             ]
         if scope == "repo" and resolved_mode != "semantic":
-            candidate_files = self._zoekt_candidate_files(query, max_files=max(limit * 4, 40))
+            candidate_files = set(self._zoekt_candidate_files(query, max_files=max(limit * 4, 40)))
         if resolved_mode == "lexical":
             hits = self.intel_store.search_symbols(query, limit=limit, kind=kind, language=language, scope=scope)
             if scope == "repo" and candidate_files:
@@ -4151,19 +4316,60 @@ class CodeContextEngine:
         if total <= 0:
             return unique, unique
         cap = max(_FTS_COMMON_TERM_DF_FLOOR, int(total * _FTS_COMMON_TERM_DF_FRACTION))
-        freqs: list[tuple[str, int]] = []
         try:
-            for term in unique:
-                row = conn.execute("SELECT doc FROM symbol_fts_vocab WHERE term = ?", (term,)).fetchone()
-                freqs.append((term, int(row["doc"]) if row and row["doc"] is not None else 0))
+            # One batched vocab lookup for all terms instead of a round-trip per
+            # term: a 7-8 term query (multi-term/regex) drops from ~8 executes to
+            # 1.  Terms absent from the vocab table simply return no row and
+            # default to df=0 below -- identical to the per-term lookup.
+            placeholders = ",".join("?" for _ in unique)
+            doc_rows = conn.execute(
+                f"SELECT term, doc FROM symbol_fts_vocab WHERE term IN ({placeholders})",
+                tuple(unique),
+            ).fetchall()
         except sqlite3.OperationalError:
             # Vocab table unavailable (e.g. mid-migration DB) -- skip pruning.
             return unique, unique
-        discriminative = [term for term, doc in freqs if doc <= cap]
+        doc_by_term = {str(r["term"]): int(r["doc"]) if r["doc"] is not None else 0 for r in doc_rows}
+        freqs: list[tuple[str, int]] = [(term, doc_by_term.get(term, 0)) for term in unique]
+        df_by_term = dict(freqs)
+        discriminative = sorted((t for t, d in freqs if d <= cap), key=lambda t: df_by_term[t])
         if discriminative:
-            return discriminative, discriminative
-        # Every token is common: OR on the single rarest (recall), no prefix expansion.
+            # Add rarest-first until the cumulative posting-list size hits the budget.
+            kept: list[str] = []
+            used = 0
+            for term in discriminative:
+                if kept and used + df_by_term[term] > _FTS_DF_BUDGET:
+                    break
+                kept.append(term)
+                used += df_by_term[term]
+            # Skip prefix-expansion of 1-char terms only (``"d"*`` matches every
+            # d-token); 2+ char prefixes stay (short identifiers like "fit" need them).
+            prefix_terms = [t for t in kept if len(t) >= 2]
+            return kept, prefix_terms
+        # Every token is common -- keep the single rarest so recall doesn't collapse.
         return [min(freqs, key=lambda item: item[1])[0]], []
+
+    @staticmethod
+    def _run_search_channel(db_path: Path, sql: str, params: tuple[Any, ...]) -> list[sqlite3.Row]:
+        """Execute one FTS/trigram search channel on a dedicated read connection.
+
+        Called from worker threads in _SEARCH_CHANNEL_EXECUTOR so that all five
+        channels of _search_symbols_local run concurrently.  Each invocation opens
+        its own SQLite connection (WAL mode makes reader–reader access lock-free)
+        and closes it on return.  sqlite3 releases the GIL during sqlite3_step(),
+        enabling genuine CPU-level parallelism for the FTS5 and trigram queries.
+        sqlite3.OperationalError (e.g. FTS edge-case syntax) is swallowed and
+        treated as an empty result set so it never crashes the caller.
+        """
+        conn = sqlite3.connect(str(db_path), timeout=30.0, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 30000")
+        try:
+            return conn.execute(sql, params).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        finally:
+            conn.close()
 
     def _search_symbols_local(
         self,
@@ -4222,7 +4428,13 @@ class CodeContextEngine:
             qualified_name_lower = symbol.qualified_name.lower()
             lexical_text = f"{symbol.symbol_name} {symbol.qualified_name} {symbol.signature}".lower()
             file_path_lower = symbol.file_path.lower()
-            file_name_stem = Path(symbol.file_path).stem.lower()
+            # Basename-without-extension via string slicing: Path(...).stem builds a
+            # pathlib object per candidate row (tens of thousands per query in the
+            # profile), which dominated the Python time -- this is identical output
+            # for the normalized '/'-separated stored paths.
+            _basename = file_path_lower[file_path_lower.rfind("/") + 1 :]
+            _dot = _basename.rfind(".")
+            file_name_stem = _basename[:_dot] if _dot > 0 else _basename
             coverage = sum(1 for term in terms[:8] if term and term in lexical_text)
             score += float(coverage) * 5.0
             if symbol_name_lower.startswith(normalized_query_lower):
@@ -4273,6 +4485,9 @@ class CodeContextEngine:
                 if next_value[0] > existing[0] or (next_value[0] == existing[0] and next_value[1] < existing[1]):
                     scored[symbol.symbol_id] = next_value
 
+        # Phase 1 (main thread, sequential): IDF pruning + two exact-name seeks.
+        # These must stay serial: IDF needs the fts_vocab table; exact seeks are
+        # ~1ms total (index-backed) and the results are needed before ranking.
         with self._connect() as conn:
             self._init_schema(conn)
             # IDF-pruned FTS queries: high document-frequency tokens are dropped so
@@ -4296,152 +4511,150 @@ class CodeContextEngine:
                 f"SELECT *, NULL AS score FROM symbols WHERE {where_sql} AND qualified_name = ? COLLATE NOCASE LIMIT ?",
                 tuple([*params, normalized_query_lower, strong_fetch_limit]),
             ).fetchall()
-            # Case-sensitive matches rank highest (channel 0); the rest are CI-exact.
-            exact_rows = [
-                row
-                for row in ci_exact_rows
-                if row["symbol_name"] == normalized_query or row["qualified_name"] == normalized_query
-            ]
-            consider_rows(exact_rows, channel_rank=0, base=1300.0)
-            consider_rows(ci_exact_rows, channel_rank=1, base=1180.0)
+        # Case-sensitive matches rank highest (channel 0); the rest are CI-exact.
+        exact_rows = [
+            row
+            for row in ci_exact_rows
+            if row["symbol_name"] == normalized_query or row["qualified_name"] == normalized_query
+        ]
+        consider_rows(exact_rows, channel_rank=0, base=1300.0)
+        consider_rows(ci_exact_rows, channel_rank=1, base=1180.0)
 
-            # Multi-term AND channel: symbols matching ALL distinctive query terms rank
-            # above incidental single-token OR hits.  Base 1100 sits between CI-exact
-            # (1180) and OR (980) — a multi-term simultaneous match is a stronger signal
-            # than any single-term hit but weaker than an explicit exact-name lookup.
-            # The bm25 formula is correctly oriented: higher |bm25| (more terms matched)
-            # yields a higher channel_score, unlike the legacy 1/(1+|bm25|) inversion
-            # used by the OR channels.
-            fts_and_q = _fts_and_query(normalized_query)
-            if fts_and_q:
-                try:
-                    fts_and_rows = conn.execute(
-                        f"""
-                        SELECT s.*, abs(bm25(symbol_fts)) / (10.0 + abs(bm25(symbol_fts))) AS score
-                        FROM symbol_fts
-                        JOIN symbols s ON s.symbol_id = symbol_fts.symbol_id
-                        WHERE symbol_fts MATCH ? AND s.repo_id = ?{" AND s.kind = ?" if kind else ""}{" AND s.language = ?" if language else ""}
-                        ORDER BY bm25(symbol_fts), s.file_path, s.start_line
-                        LIMIT ?
-                        """,
-                        tuple(
-                            [
-                                fts_and_q,
-                                self.repo_id,
-                                *([kind] if kind else []),
-                                *([language] if language else []),
-                                strong_fetch_limit,
-                            ]
-                        ),
-                    ).fetchall()
-                    consider_rows(fts_and_rows, channel_rank=2, base=1100.0, use_row_score=True)
-                except sqlite3.OperationalError:
-                    # AND query may fail on FTS edge-case syntax; fall through to OR.
-                    pass
+        # Phase 2 (parallel workers): channels 2-6 each run on their own read
+        # connection submitted to _SEARCH_CHANNEL_EXECUTOR.  WAL mode lets readers
+        # run concurrently with zero blocking; sqlite3 releases the GIL inside
+        # sqlite3_step() so threads achieve genuine parallelism.  Wall-clock time
+        # collapses from sum(channel_times) to max(channel_times) (~15ms vs ~45ms).
+        fts_and_q = _fts_and_query(normalized_query)
+        like_pattern = f"%{normalized_query_lower}%"
+        path_anchor = or_fts_terms[0] if or_fts_terms else first_term
+        first_term_like = f"%{path_anchor}%"
+        path_patterns = [first_term_like]
+        if _query_is_pathy_literal(normalized_query) and like_pattern != first_term_like:
+            path_patterns.insert(0, like_pattern)
 
-            if fts_query:
-                fts_rows = conn.execute(
-                    f"""
-                    SELECT s.*, 1.0 / (1.0 + abs(bm25(symbol_fts))) AS score
-                    FROM symbol_fts
-                    JOIN symbols s ON s.symbol_id = symbol_fts.symbol_id
-                    WHERE symbol_fts MATCH ? AND s.repo_id = ?{" AND s.kind = ?" if kind else ""}{" AND s.language = ?" if language else ""}
-                    ORDER BY bm25(symbol_fts), s.file_path, s.start_line
-                    LIMIT ?
-                    """,
-                    tuple(
-                        [
-                            fts_query,
-                            self.repo_id,
-                            *([kind] if kind else []),
-                            *([language] if language else []),
-                            strong_fetch_limit,
-                        ]
-                    ),
-                ).fetchall()
-                consider_rows(fts_rows, channel_rank=2, base=980.0, use_row_score=True)
+        # Frozen parameter tuples for each channel (built once, passed to workers).
+        _fts_extra = tuple([self.repo_id, *([kind] if kind else []), *([language] if language else [])])
+        _base_params = tuple(params)  # repo_id [+ kind] [+ language] [+ candidate_files]
 
-            if fts_prefix_query and fts_prefix_query != fts_query:
-                fts_prefix_rows = conn.execute(
-                    f"""
-                    SELECT s.*, 1.0 / (1.0 + abs(bm25(symbol_fts))) AS score
-                    FROM symbol_fts
-                    JOIN symbols s ON s.symbol_id = symbol_fts.symbol_id
-                    WHERE symbol_fts MATCH ? AND s.repo_id = ?{" AND s.kind = ?" if kind else ""}{" AND s.language = ?" if language else ""}
-                    ORDER BY bm25(symbol_fts), s.file_path, s.start_line
-                    LIMIT ?
-                    """,
-                    tuple(
-                        [
-                            fts_prefix_query,
-                            self.repo_id,
-                            *([kind] if kind else []),
-                            *([language] if language else []),
-                            strong_fetch_limit,
-                        ]
-                    ),
-                ).fetchall()
-                consider_rows(fts_prefix_rows, channel_rank=3, base=940.0, use_row_score=True)
+        # Each entry: (sql, params_tuple, channel_rank, base_score, use_row_score)
+        _ch: list[tuple[str, tuple[Any, ...], int, float, bool]] = []
 
-            like_pattern = f"%{normalized_query_lower}%"
-            if len(normalized_query_lower) >= 3:
-                # Trigram-indexed substring match: identical rows to the lower(...) LIKE
-                # scan (trigram is case-insensitive; same ORDER BY) but index-backed.
-                substring_rows = conn.execute(
-                    f"""
-                    SELECT s.*, NULL AS score
-                    FROM symbol_trigram t JOIN symbols s ON s.symbol_id = t.symbol_id
-                    WHERE {where_sql_s} AND (
-                        t.name LIKE ? OR t.qualified_name LIKE ? OR t.signature LIKE ?
-                    )
-                    ORDER BY s.file_path, s.start_line
-                    LIMIT ?
-                    """,
-                    tuple([*params, like_pattern, like_pattern, like_pattern, strong_fetch_limit]),
-                ).fetchall()
-            else:
-                # A pattern shorter than a trigram can't use the index; the (rare)
-                # <3-char substring query falls back to the direct scan.
-                substring_rows = conn.execute(
-                    f"""
-                    SELECT *, NULL AS score
-                    FROM symbols
-                    WHERE {where_sql} AND (
-                        lower(symbol_name) LIKE ? OR lower(qualified_name) LIKE ? OR lower(signature) LIKE ?
-                    )
-                    ORDER BY file_path, start_line
-                    LIMIT ?
-                    """,
-                    tuple([*params, like_pattern, like_pattern, like_pattern, strong_fetch_limit]),
-                ).fetchall()
-            consider_rows(substring_rows, channel_rank=4, base=860.0)
+        # Multi-term AND channel (highest FTS precision, base 1100).
+        if fts_and_q:
+            _ch.append(
+                (
+                    f"SELECT s.*, abs(bm25(symbol_fts)) / (10.0 + abs(bm25(symbol_fts))) AS score"
+                    f" FROM symbol_fts JOIN symbols s ON s.symbol_id = symbol_fts.symbol_id"
+                    f" WHERE symbol_fts MATCH ? AND s.repo_id = ?{' AND s.kind = ?' if kind else ''}{' AND s.language = ?' if language else ''}"
+                    f" ORDER BY rank LIMIT ?",
+                    (fts_and_q, *_fts_extra, strong_fetch_limit),
+                    2,
+                    1100.0,
+                    True,
+                )
+            )
 
-            first_term_like = f"%{first_term}%"
-            if len(normalized_query_lower) >= 3 and len(first_term) >= 3:
-                path_rows = conn.execute(
-                    f"""
-                    SELECT s.*, NULL AS score
-                    FROM symbol_trigram t JOIN symbols s ON s.symbol_id = t.symbol_id
-                    WHERE {where_sql_s} AND (t.file_path LIKE ? OR t.file_path LIKE ?)
-                    ORDER BY s.file_path, s.start_line
-                    LIMIT ?
-                    """,
-                    tuple([*params, like_pattern, first_term_like, strong_fetch_limit]),
-                ).fetchall()
-            else:
-                path_rows = conn.execute(
-                    f"""
-                    SELECT *, NULL AS score
-                    FROM symbols
-                    WHERE {where_sql} AND (
-                        lower(file_path) LIKE ? OR lower(file_path) LIKE ?
-                    )
-                    ORDER BY file_path, start_line
-                    LIMIT ?
-                    """,
-                    tuple([*params, like_pattern, first_term_like, strong_fetch_limit]),
-                ).fetchall()
-            consider_rows(path_rows, channel_rank=5, base=820.0)
+        # OR channel (high recall, base 980).
+        if fts_query:
+            _ch.append(
+                (
+                    f"SELECT s.*, 1.0 / (1.0 + abs(bm25(symbol_fts))) AS score"
+                    f" FROM symbol_fts JOIN symbols s ON s.symbol_id = symbol_fts.symbol_id"
+                    f" WHERE symbol_fts MATCH ? AND s.repo_id = ?{' AND s.kind = ?' if kind else ''}{' AND s.language = ?' if language else ''}"
+                    f" ORDER BY rank LIMIT ?",
+                    (fts_query, *_fts_extra, strong_fetch_limit),
+                    2,
+                    980.0,
+                    True,
+                )
+            )
+
+        # Prefix channel (partial-word match, base 940).
+        if fts_prefix_query and fts_prefix_query != fts_query:
+            _ch.append(
+                (
+                    f"SELECT s.*, 1.0 / (1.0 + abs(bm25(symbol_fts))) AS score"
+                    f" FROM symbol_fts JOIN symbols s ON s.symbol_id = symbol_fts.symbol_id"
+                    f" WHERE symbol_fts MATCH ? AND s.repo_id = ?{' AND s.kind = ?' if kind else ''}{' AND s.language = ?' if language else ''}"
+                    f" ORDER BY rank LIMIT ?",
+                    (fts_prefix_query, *_fts_extra, strong_fetch_limit),
+                    3,
+                    940.0,
+                    True,
+                )
+            )
+
+        # Substring channel via trigram index (base 860).
+        if len(normalized_query_lower) >= 3:
+            _ch.append(
+                (
+                    f"SELECT s.*, NULL AS score FROM symbol_trigram t"
+                    f" JOIN symbols s ON s.symbol_id = t.symbol_id"
+                    f" WHERE {where_sql_s} AND (t.name LIKE ? OR t.qualified_name LIKE ? OR t.signature LIKE ?)"
+                    f" ORDER BY s.file_path, s.start_line LIMIT ?",
+                    (*_base_params, like_pattern, like_pattern, like_pattern, strong_fetch_limit),
+                    4,
+                    860.0,
+                    False,
+                )
+            )
+        else:
+            # <3-char queries can't use the trigram index; rare, fall back to direct scan.
+            _ch.append(
+                (
+                    f"SELECT *, NULL AS score FROM symbols"
+                    f" WHERE {where_sql} AND"
+                    f" (lower(symbol_name) LIKE ? OR lower(qualified_name) LIKE ? OR lower(signature) LIKE ?)"
+                    f" ORDER BY file_path, start_line LIMIT ?",
+                    (*_base_params, like_pattern, like_pattern, like_pattern, strong_fetch_limit),
+                    4,
+                    860.0,
+                    False,
+                )
+            )
+
+        # Path channel via trigram index (base 820).
+        if len(normalized_query_lower) >= 3 and len(path_anchor) >= 3:
+            _path_like_sql = " OR ".join(f"t.file_path LIKE ?" for _ in path_patterns)
+            _ch.append(
+                (
+                    f"SELECT s.*, NULL AS score FROM symbol_trigram t"
+                    f" JOIN symbols s ON s.symbol_id = t.symbol_id"
+                    f" WHERE {where_sql_s} AND ({_path_like_sql})"
+                    f" ORDER BY s.file_path, s.start_line LIMIT ?",
+                    (*_base_params, *path_patterns, strong_fetch_limit),
+                    5,
+                    820.0,
+                    False,
+                )
+            )
+        else:
+            _path_like_sql = " OR ".join(f"lower(file_path) LIKE ?" for _ in path_patterns)
+            _ch.append(
+                (
+                    f"SELECT *, NULL AS score FROM symbols"
+                    f" WHERE {where_sql} AND ({_path_like_sql})"
+                    f" ORDER BY file_path, start_line LIMIT ?",
+                    (*_base_params, *path_patterns, strong_fetch_limit),
+                    5,
+                    820.0,
+                    False,
+                )
+            )
+
+        # Submit all channels in parallel; collect in submission order so that
+        # higher-priority channels (AND > OR > prefix) are merged first.
+        _db = self.db_path
+        _futures = [
+            _SEARCH_CHANNEL_EXECUTOR.submit(CodeContextEngine._run_search_channel, _db, sql, ch_params)
+            for sql, ch_params, _, _, _ in _ch
+        ]
+        for _fut, (_, _, _rank, _base_score, _use_score) in zip(_futures, _ch):
+            try:
+                consider_rows(_fut.result(), channel_rank=_rank, base=_base_score, use_row_score=_use_score)
+            except Exception:
+                pass
 
         ranked = sorted(
             scored.values(),
@@ -4463,6 +4676,55 @@ class CodeContextEngine:
         )
         return [symbol for _, _, symbol in ranked[:limit]]
 
+    def _build_symbol_embeddings(self, conn: sqlite3.Connection, index_version: int) -> None:
+        """Embed every symbol into the persistent vector store -- part of the code
+        index build, run once at index time. No-op unless an embedder is configured
+        (default Null), so non-semantic indexing is unaffected. Keeping embedding
+        here makes the query hot path read-only: it embeds only the query, never
+        documents.
+        """
+        if not self._semantic_ranker.available:
+            return
+        embedder = self._semantic_ranker.embedder
+        dim = int(getattr(embedder, "dim", 0))
+        if dim <= 0:
+            return
+        rows = conn.execute("SELECT * FROM symbols WHERE repo_id = ?", (self.repo_id,)).fetchall()
+        if not rows:
+            return
+        # Skip symbols whose vector is already current. symbol_id encodes the file
+        # content hash, so an unchanged symbol keeps its id across reindexes and is
+        # skipped here; an edited symbol gets a new id and its stale vector is pruned
+        # by _delete_file_index. index_version stays provenance-only -- gating on it
+        # would make every reindex re-embed the whole repo instead of just the delta.
+        fresh = self._ann_symbol_index.existing_stamped_ids(conn, embedder_name=embedder.name, embedding_dim=dim)
+        pending = [sym for sym in (_row_to_symbol(row) for row in rows) if sym.symbol_id not in fresh]
+        if not pending:
+            return
+        print(f"  [embed] {self.repo_root.name}: {len(pending)} symbols to embed ({embedder.name})", flush=True)
+        # Batched encoding: ceil(N/batch) model calls (embed_symbols), not one per
+        # symbol -- the difference between minutes and seconds on a large repo.
+        # Truncate source: a few symbols span enormous spans whose full token
+        # sequence blows GPU memory (attention is O(seq^2)). The head carries the
+        # semantic signal; cap chars so every input is bounded. Override via env.
+        max_chars = int(os.environ.get("ATELIER_EMBED_MAX_CHARS", "4000"))
+        source_texts = {
+            sym.symbol_id: self._read_file_slice(sym.file_path, sym.start_byte, sym.end_byte)[:max_chars]
+            for sym in pending
+        }
+        by_id = {sym.symbol_id: sym for sym in pending}
+        vectors = self._semantic_ranker.embed_symbols(pending, source_texts=source_texts)
+        print(f"  [embed] {self.repo_root.name}: got {len(vectors)} vectors", flush=True)
+        new_vectors = {sid: (by_id[sid].content_hash, vec) for sid, vec in vectors.items() if vec and len(vec) == dim}
+        if new_vectors:
+            self._ann_symbol_index.upsert_vectors(
+                conn,
+                embedder_name=embedder.name,
+                embedding_dim=dim,
+                index_version=index_version,
+                vectors=new_vectors,
+            )
+
     def _search_symbols_semantic_local(
         self,
         query: str,
@@ -4471,18 +4733,11 @@ class CodeContextEngine:
         kind: str | None = None,
         language: str | None = None,
     ) -> list[SymbolRecord]:
-        # Default path (ANN opt-in off): byte-identical to before -- positional
-        # candidate scan + brute-force cosine in SemanticSearchRanker.
-        if not ann_retrieval_enabled():
-            candidates = self._semantic_symbol_candidates(limit=limit, kind=kind, language=language)
-            return self._semantic_ranker.semantic_search(
-                query,
-                candidates=candidates,
-                limit=limit,
-                source_loader=lambda symbol: self._read_file_slice(
-                    symbol.file_path, symbol.start_byte, symbol.end_byte
-                ),
-            )
+        # Semantic search reads the index-time vector store (_build_symbol_embeddings)
+        # via ANN; the hot path embeds ONLY the query. A configured embedder is the
+        # single enable -- there is no separate ANN flag (ANN vs exact is internal).
+        if not self._semantic_ranker.available:
+            return []
         return self._search_symbols_semantic_ann(query, limit=limit, kind=kind, language=language)
 
     def _search_symbols_semantic_ann(
@@ -4493,12 +4748,13 @@ class CodeContextEngine:
         kind: str | None = None,
         language: str | None = None,
     ) -> list[SymbolRecord]:
-        """Opt-in ANN semantic search over the persistent per-symbol vector store.
+        """Opt-in semantic search over the persistent per-symbol vector store.
 
-        Replaces the positional LIMIT scan: candidates are recovered by cosine
-        proximity (HNSW, or exact brute-force as the mandatory fallback) over
-        provenance-stamped vectors. N5 (model-id/dim drift) and N16 (index_version
-        staleness) are enforced via :class:`SymbolAnnIndex`.
+        Ranks the whole store with a single vectorised cosine product over a
+        cached, unit-normalised matrix (the ``model.similarity()`` path), then
+        hydrates ONLY the winning rows -- the 40k+ non-winners are never turned
+        into records. N5 (model-id/dim drift) and N16 (index_version staleness)
+        are enforced by :class:`SymbolAnnIndex` when the vectors are loaded.
         """
         embedder = self._semantic_ranker.embedder
         embedding_dim = embedder.dim
@@ -4508,71 +4764,71 @@ class CodeContextEngine:
         if not query_vector:
             return []
         index_version = self._current_index_version()
-        # Full filtered candidate set (capped) -- the store, not a positional
-        # slice, decides relevance. Embedding is cached, so warm runs are cheap.
-        candidates = self._semantic_symbol_candidates(limit=_ANN_SYMBOL_CANDIDATE_CAP, kind=kind, language=language)
-        if not candidates:
-            return []
-        candidate_by_id = {symbol.symbol_id: symbol for symbol in candidates}
-        with self._connect() as conn:
-            self._init_schema(conn)
-            # N5: only ids already stored under the *current* model/dim/version
-            # are fresh; everything else is (re-)embedded so a model swap never
-            # leaves stale vectors in play.
-            fresh_ids = self._ann_symbol_index.existing_stamped_ids(
-                conn,
-                embedder_name=embedder.name,
-                embedding_dim=embedding_dim,
-                index_version=index_version,
-            )
-            pending = {symbol_id: symbol for symbol_id, symbol in candidate_by_id.items() if symbol_id not in fresh_ids}
-            new_vectors: dict[str, tuple[str, list[float]]] = {}
-            for symbol_id, symbol in pending.items():
-                source_text = self._read_file_slice(symbol.file_path, symbol.start_byte, symbol.end_byte)
-                vector = self._semantic_ranker.embed_symbol(symbol, source_text=source_text)
-                if vector and len(vector) == embedding_dim:
-                    new_vectors[symbol_id] = (symbol.content_hash, vector)
-            self._ann_symbol_index.upsert_vectors(
-                conn,
-                embedder_name=embedder.name,
-                embedding_dim=embedding_dim,
-                index_version=index_version,
-                vectors=new_vectors,
-            )
-            stored = self._ann_symbol_index.load_current_vectors(
-                conn,
-                embedder_name=embedder.name,
-                embedding_dim=embedding_dim,
-            )
-        # Restrict ranking to the in-scope candidate set so kind/language filters
-        # and the positional cap are honoured even though the store may hold more.
-        stored = [sv for sv in stored if sv.symbol_id in candidate_by_id]
-        ranked_ids = self._ann_symbol_index.query(
-            query_vector,
-            stored,
-            limit=limit,
-            index_version=index_version,
-            embedder_name=embedder.name,
-            embedding_dim=embedding_dim,
-        )
-        from atelier.infra.storage.vector import cosine_similarity
+        # Read-only hot path: vectors are built at index time
+        # (_build_symbol_embeddings) -- we never embed documents here, only the query
+        # (above). Load + JSON-decode the store ONCE per (model, dim, index_version)
+        # and cache it as a numpy matrix; a reindex bumps index_version -> cache miss.
+        import numpy as np
 
+        cache_key = (embedder.name, embedding_dim, index_version)
+        cached = self._ann_vectors_cache
+        if cached is not None and cached[0] == cache_key:
+            ids, matrix = cached[1], cached[2]
+        else:
+            with self._connect() as conn:
+                self._init_schema(conn)
+                stored = self._ann_symbol_index.load_current_vectors(
+                    conn,
+                    embedder_name=embedder.name,
+                    embedding_dim=embedding_dim,
+                )
+            ids = [sv.symbol_id for sv in stored]
+            matrix = (
+                np.asarray([sv.vector for sv in stored], dtype=np.float32)
+                if stored
+                else np.zeros((0, embedding_dim), dtype=np.float32)
+            )
+            self._ann_vectors_cache = (cache_key, ids, matrix)
+        if not ids:
+            return []
+        # Vectorised cosine: index-time and query vectors are unit-normalised, so a
+        # single matrix-vector product scores every symbol at once (~ms for
+        # 40k x 1536) -- the model.similarity() path, not a per-vector Python loop.
+        scores = matrix @ np.asarray(query_vector, dtype=np.float32)
+        order = np.argsort(-scores)
+        # Hydrate only the winners. With no metadata filter the top `limit` rows
+        # are the answer; with a filter, walk the ranking in windows (over-fetching
+        # to absorb rejects) until `limit` survivors are found or it is exhausted.
+        window = limit if (kind is None and language is None) else max(limit * 20, 200)
         results: list[SymbolRecord] = []
-        score_by_id = {sv.symbol_id: cosine_similarity(query_vector, sv.vector) for sv in stored}
-        for symbol_id in ranked_ids:
-            hit = candidate_by_id.get(symbol_id)
-            if hit is None:
-                continue
-            results.append(hit.model_copy(update={"score": score_by_id.get(symbol_id, 0.0)}))
+        pos = 0
+        total = int(order.shape[0])
+        while len(results) < limit and pos < total:
+            batch = order[pos : pos + window]
+            pos += window
+            batch_ids = [ids[int(i)] for i in batch]
+            hydrated = self._hydrate_symbols_by_id(batch_ids, kind=kind, language=language)
+            for i in batch:
+                rec = hydrated.get(ids[int(i)])
+                if rec is None:
+                    continue
+                results.append(rec.model_copy(update={"score": float(scores[int(i)])}))
+                if len(results) >= limit:
+                    break
         return results
 
-    def _semantic_symbol_candidates(
+    def _hydrate_symbols_by_id(
         self,
+        symbol_ids: list[str],
         *,
-        limit: int,
         kind: str | None = None,
         language: str | None = None,
-    ) -> list[SymbolRecord]:
+    ) -> dict[str, SymbolRecord]:
+        """Load full records for the given ids (the semantic-ranking winners),
+        applying the optional kind/language filter in SQL. Only the ranked top
+        slice is hydrated, so the hot path never builds records for non-winners."""
+        if not symbol_ids:
+            return {}
         filters = ["repo_id = ?"]
         params: list[Any] = [self.repo_id]
         if kind:
@@ -4581,21 +4837,19 @@ class CodeContextEngine:
         if language:
             filters.append("language = ?")
             params.append(language)
-        params.append(limit)
+        placeholders = ",".join("?" * len(symbol_ids))
+        filters.append(f"symbol_id IN ({placeholders})")
+        params.extend(symbol_ids)
         where_sql = " AND ".join(filters)
-        with self._connect() as conn:
-            self._init_schema(conn)
+        # Read-only + no _init_schema: we only reach here after vectors were loaded,
+        # so the symbols table exists. Skipping the ~15 CREATE TABLE IF NOT EXISTS
+        # statements per query is most of the semantic hot-path latency.
+        with self._connect(readonly=True) as conn:
             rows = conn.execute(
-                f"""
-                SELECT *, NULL AS score
-                FROM symbols
-                WHERE {where_sql}
-                ORDER BY file_path, start_line
-                LIMIT ?
-                """,
+                f"SELECT *, NULL AS score FROM symbols WHERE {where_sql}",
                 tuple(params),
             ).fetchall()
-        return [_row_to_symbol(row) for row in rows]
+        return {str(row["symbol_id"]): _row_to_symbol(row) for row in rows}
 
     def get_symbol(
         self,
@@ -4769,7 +5023,7 @@ class CodeContextEngine:
         context_policy = resolve_output_policy("context")
         normalized_seeds = [self._normalize_file_arg(seed) for seed in seed_files or []]
         search_query = task
-        lexical_anchor_files = sorted(self._zoekt_candidate_files(search_query, max_files=max(max_symbols * 4, 24)))
+        lexical_anchor_files = self._zoekt_candidate_files(search_query, max_files=max(max_symbols * 4, 24))
         context_seed_files = list(dict.fromkeys([*normalized_seeds, *lexical_anchor_files]))
         repo_map_payload = self.repo_map(seed_files=context_seed_files, budget_tokens=max(200, budget_tokens // 4))
         bounded_max_symbols = max(1, min(max_symbols, context_policy.max_related_symbols))
@@ -5261,22 +5515,22 @@ class CodeContextEngine:
         *,
         path: str = ".",
         max_files: int = 40,
-    ) -> set[str]:
+    ) -> list[str]:
         normalized_query = query.strip()
         if not normalized_query:
-            return set()
+            return []
         try:
             from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
         except Exception:
             logging.exception("Recovered from broad exception handler")
-            return set()
+            return []
         with contextlib.suppress(Exception):
             search_path = self._resolve_inside_repo(path)
             supervisor = get_zoekt_supervisor(self.repo_root)
             if not supervisor.should_route(search_path):
-                return set()
+                return []
             if not supervisor.health().ok:
-                return set()
+                return []
             result = supervisor.search(
                 query=normalized_query,
                 search_path=search_path,
@@ -5284,15 +5538,45 @@ class CodeContextEngine:
                 max_chars_per_file=800,
                 include_outline=False,
             )
-            files: set[str] = set()
+            # ordered dedup: zoekt returns files in descending score order;
+            # preserve that order so callers can prefer high-signal files.
+            seen: dict[str, None] = {}
             for match in result.matches:
                 raw_path = Path(match.path)
                 resolved = raw_path if raw_path.is_absolute() else (self.repo_root / raw_path)
                 with contextlib.suppress(ValueError):
                     rel = _safe_relpath(self.repo_root, resolved.resolve())
-                    files.add(rel)
-            return files
-        return set()
+                    seen[rel] = None
+            return list(seen)
+        return []
+
+    def _semantic_candidate_files(self, query: str, *, max_files: int = 40) -> set[str]:
+        """Files whose symbols are the nearest semantic (embedding) neighbours of the
+        query -- an additive recall channel for the explore fusion, mirroring
+        _zoekt_candidate_files.  Fuses ONLY when an embedder is configured and
+        available: the embedder is the gated provider, so with none configured this
+        is a silent no-op (never an error or a "pro-gated" notice).  Graceful --
+        returns an empty set when embeddings are not indexed or the search fails.
+        Opt out with ATELIER_EXPLORE_SEMANTIC=0.
+        """
+        normalized_query = query.strip()
+        if os.environ.get("ATELIER_EXPLORE_SEMANTIC", "1") == "0":
+            return set()
+        if not normalized_query or not getattr(self._semantic_ranker, "available", False):
+            return set()
+        # Cosine threshold: only use semantic anchors that are clearly similar
+        # (score >= threshold).  Without a floor the bottom-ranked neighbours
+        # are noise that displaces correct lexical/zoekt results.
+        min_score = float(os.environ.get("ATELIER_SEMANTIC_MIN_SCORE", "0.55"))
+        files: set[str] = set()
+        with contextlib.suppress(Exception):
+            for symbol in self._search_symbols_semantic_local(normalized_query, limit=max(8, max_files)):
+                if (symbol.score or 0.0) < min_score:
+                    break  # results are score-sorted; no point continuing
+                files.add(symbol.file_path)
+                if len(files) >= max_files:
+                    break
+        return files
 
     def _zoekt_text_matches(
         self,
@@ -5788,10 +6072,12 @@ class CodeContextEngine:
             return
         conn = self._connect()
         self._scoped_conn_tls.conn = conn
+        self._file_cache_tls.cache = {}  # activate per-call file cache (dict[str, bytes])
         try:
             yield
         finally:
             self._scoped_conn_tls.conn = None
+            self._file_cache_tls.cache = None  # clear file cache
             with contextlib.suppress(Exception):
                 conn.commit()
             with contextlib.suppress(Exception):
@@ -5923,6 +6209,10 @@ class CodeContextEngine:
             );
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_file ON symbols(repo_id, file_path);
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_name ON symbols(repo_id, symbol_name);
+            -- Covers _complete_sibling_families: WHERE repo_id=? AND lower(kind)=? ...
+            -- instr(lower(symbol_name),?) scans only the matching-kind rows rather than
+            -- the whole repo, cutting ~200K-row scans to ~20K (10× for 10 kinds).
+            CREATE INDEX IF NOT EXISTS idx_symbols_repo_kind ON symbols(repo_id, lower(kind));
             CREATE INDEX IF NOT EXISTS idx_imports_target ON imports(repo_id, target_file);
             CREATE INDEX IF NOT EXISTS idx_references_name ON "references"(repo_id, symbol_name);
             CREATE INDEX IF NOT EXISTS idx_references_file ON "references"(repo_id, file_path);
@@ -6652,6 +6942,16 @@ class CodeContextEngine:
             return ""
 
     def _read_file_slice(self, rel: str, start_byte: int, end_byte: int) -> str:
+        cache: dict[str, bytes] | None = getattr(self._file_cache_tls, "cache", None)
+        if cache is not None:
+            # Inside a _reuse_connection() scope: read each file at most once per
+            # tool call regardless of how many symbols are drawn from it.
+            if rel not in cache:
+                try:
+                    cache[rel] = (self.repo_root / rel).read_bytes()
+                except (OSError, ValueError):
+                    cache[rel] = b""
+            return cache[rel][start_byte:end_byte].decode("utf-8", errors="replace")
         try:
             data = (self.repo_root / rel).read_bytes()
         except (OSError, ValueError):
@@ -6816,37 +7116,58 @@ class CodeContextEngine:
             return []
         additions: list[SymbolRecord] = []
         seen_ids: set[str] = set()
+        # Batch probes by affix: one trigram FTS lookup per unique affix instead of
+        # N_kinds separate full-index scans.  The trigram index makes each lookup
+        # O(k_matches) rather than O(N_repo_kind) for instr(), and sharing the scan
+        # across kinds halves the number of SQL round-trips for query-driven probes.
+        per_family_sql_limit = _EXPLORE_FAMILY_PER_FAMILY_CAP * 3
+        affix_to_kinds: dict[str, list[str]] = {}
+        for kind, affix in probes:
+            affix_to_kinds.setdefault(affix, []).append(kind)
         try:
             with self._connect() as conn:
                 self._init_schema(conn)
-                for kind, affix in probes:
+                for affix, batch_kinds in affix_to_kinds.items():
                     if len(additions) >= _EXPLORE_FAMILY_TOTAL_CAP:
                         break
+                    like_pat = f"%{affix}%"
+                    placeholders = ",".join("?" * len(batch_kinds))
                     rows = conn.execute(
-                        """
-                        SELECT *, NULL AS score FROM symbols
-                        WHERE repo_id = ? AND lower(kind) = ? AND instr(lower(symbol_name), ?) > 0
-                        ORDER BY file_path, start_line
+                        f"""
+                        SELECT s.*, NULL AS score
+                        FROM symbol_trigram t JOIN symbols s ON s.symbol_id = t.symbol_id
+                        WHERE s.repo_id = ? AND lower(s.kind) IN ({placeholders}) AND t.name LIKE ?
+                        ORDER BY s.file_path, s.start_line
                         LIMIT ?
                         """,
-                        (self.repo_id, kind, affix, _EXPLORE_FAMILY_PER_FAMILY_CAP * 3),
+                        (self.repo_id, *batch_kinds, like_pat, len(batch_kinds) * per_family_sql_limit),
                     ).fetchall()
-                    members = [_row_to_symbol(row) for row in rows]
-                    if len({member.symbol_id for member in members}) < _SKELETON_MIN_FAMILY:
-                        continue
-                    added = 0
-                    for member in members:
-                        if added >= _EXPLORE_FAMILY_PER_FAMILY_CAP or len(additions) >= _EXPLORE_FAMILY_TOTAL_CAP:
+                    # Partition fetched rows by kind, capping each at per_family_sql_limit.
+                    kind_members: dict[str, list[SymbolRecord]] = {k: [] for k in batch_kinds}
+                    for row in rows:
+                        k = row["kind"].lower()
+                        bucket = kind_members.get(k)
+                        if bucket is not None and len(bucket) < per_family_sql_limit:
+                            bucket.append(_row_to_symbol(row))
+                    for kind in batch_kinds:
+                        if len(additions) >= _EXPLORE_FAMILY_TOTAL_CAP:
                             break
-                        if member.symbol_id in have_ids or member.symbol_id in seen_ids:
+                        members = kind_members[kind]
+                        if len({m.symbol_id for m in members}) < _SKELETON_MIN_FAMILY:
                             continue
-                        if member.file_path in seed_set:
-                            continue
-                        if int(member.end_line) - int(member.start_line) < _SKELETON_MIN_BODY_LINES:
-                            continue
-                        seen_ids.add(member.symbol_id)
-                        additions.append(member)
-                        added += 1
+                        added = 0
+                        for member in members:
+                            if added >= _EXPLORE_FAMILY_PER_FAMILY_CAP or len(additions) >= _EXPLORE_FAMILY_TOTAL_CAP:
+                                break
+                            if member.symbol_id in have_ids or member.symbol_id in seen_ids:
+                                continue
+                            if member.file_path in seed_set:
+                                continue
+                            if int(member.end_line) - int(member.start_line) < _SKELETON_MIN_BODY_LINES:
+                                continue
+                            seen_ids.add(member.symbol_id)
+                            additions.append(member)
+                            added += 1
         except (sqlite3.Error, OSError, ValueError):
             logging.exception("Recovered from broad exception handler")
             return []
@@ -7377,9 +7698,7 @@ class CodeContextEngine:
         # call_edges is denormalized (each row carries the caller's name/file/lines),
         # so we only need to recover symbol_id + kind. Do it with ONE batched join,
         # never a per-row lookup (that N+1 is catastrophic for high-fanout callees).
-        keys = [
-            (str(r["caller_file_path"]), int(r["caller_start_line"]), str(r["caller_symbol_name"])) for r in rows
-        ]
+        keys = [(str(r["caller_file_path"]), int(r["caller_start_line"]), str(r["caller_symbol_name"])) for r in rows]
         hydrated: dict[tuple[str, int, str], sqlite3.Row] = {}
         placeholders = ",".join("(?,?,?)" for _ in keys)
         flat: list[Any] = [self.repo_id]
@@ -8117,6 +8436,22 @@ class CodeContextEngine:
                 if candidate["total_tokens"] <= budget_tokens:
                     return candidate
             return build_payload([])
+
+        # Fast path: pack at the full budget_tokens in one shot.  When all optional
+        # keys are retained (the common case: explore payload ~6K < 9K budget), this
+        # is identical to the binary-search answer but costs 1 BudgetPacker call
+        # instead of log2(budget_tokens)≈14.  Each saved iteration avoids a
+        # build_payload→_finalize_packed_payload→_compute_total_tokens chain (~0.6ms),
+        # saving ~8ms per explore call.
+        fast_packed, _, _ = self._budget.pack(
+            items,
+            budget_tokens,
+            essential_keys=essential_keys,
+            optional_keys_in_drop_order=optional_keys_in_drop_order,
+        )
+        fast_candidate = build_payload(fast_packed)
+        if fast_candidate["total_tokens"] <= budget_tokens:
+            return fast_candidate
 
         low = 0
         high = max(0, budget_tokens)
@@ -8995,6 +9330,21 @@ class CodeContextEngine:
         self._autosync_reindex_count += 1
         self._record_autosync_event(event="reindex", reason="source_signature_changed", reindexed=True)
 
+    def _maybe_refresh_zoekt_index(self) -> None:
+        """Keep the git-repo Zoekt shard fresh at commit granularity.
+
+        Background-only. zoekt-git-index indexes committed git objects, so a
+        working-tree edit can't change its content -- only a HEAD move
+        (commit/checkout/merge) can. The refresh is inherently incremental and
+        no-ops when HEAD is unchanged, so calling it each poll is cheap.
+        """
+        try:
+            from atelier.infra.code_intel.zoekt.adapter import get_zoekt_supervisor
+
+            get_zoekt_supervisor(self.repo_root).refresh_index_if_head_changed()
+        except Exception:
+            logging.debug("zoekt autosync refresh skipped", exc_info=True)
+
     def _parse_autosync_poll_ms(self, raw_value: str | None) -> int:
         if raw_value is None:
             return 10000
@@ -9030,12 +9380,6 @@ class CodeContextEngine:
                 self.index_repo(force=False, block=False)
             except Exception:
                 logging.exception("autosync: initial index build failed")
-        if getattr(self, "_embed_prewarmed", False) is False:
-            try:
-                self._prewarm_symbol_embeddings()
-            except Exception:
-                logging.exception("Failed to prewarm symbol embeddings")
-            self._embed_prewarmed = True
         if not getattr(self, "_scip_triggered", False):
             try:
                 self.trigger_scip_indexing()
@@ -9050,17 +9394,30 @@ class CodeContextEngine:
                     self.index_repo(force=False, block=False)
                 else:
                     self._maybe_autosync_reindex()
+                self._maybe_refresh_zoekt_index()
             except Exception as exc:
                 logging.exception("Recovered from broad exception handler")
                 self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
 
-    def trigger_scip_indexing(self) -> dict[str, str]:
+    def trigger_scip_indexing(
+        self,
+        *,
+        on_language_start: Callable[[str, int], None] | None = None,
+        on_dir_done: Callable[[str, str, str], None] | None = None,
+        on_language_done: Callable[[str, str], None] | None = None,
+    ) -> dict[str, str]:
         """Run SCIP indexers for languages detected in this repo.
 
         Only attempts languages whose indexer binary is installed (tier:
         ``install_time``).  Silently skips any language whose binary is absent
         or whose SCIP module cannot be imported.  Returns ``{language: status}``
         for each attempted language so callers can log progress.
+
+        ``on_language_start(lang, num_dirs)`` fires before indexing with the
+        number of directories that will be indexed in parallel.
+        ``on_dir_done(lang, dir_tag, status)`` fires from a worker thread as
+        each directory finishes.  ``on_language_done(lang, status)`` fires once
+        the language is fully complete.
         """
         try:
             from atelier.infra.code_intel.scip.bootstrap import _BOOTSTRAP_METADATA
@@ -9074,14 +9431,45 @@ class CodeContextEngine:
         if not detected:
             return {}
 
+        from atelier.infra.code_intel.scip.binaries import scip_binary_spec as _scip_spec
+
         results: dict[str, str] = {}
         for lang in sorted(detected):
+            # Skip languages whose required context files are absent (e.g. tsconfig.json
+            # for TypeScript).  These would immediately return "missing_context" anyway,
+            # so there is nothing to show in the progress bar.
             try:
-                result = indexer.index_language(lang)
+                _spec = _scip_spec(lang)
+                if _spec is not None and _spec.missing_context_files(self.repo_root):
+                    results[lang] = "missing_context"
+                    continue
+            except Exception:
+                _spec = None
+            # Pre-compute source dirs so on_language_start receives the accurate total.
+            try:
+                _dirs = (
+                    indexer._git_source_dirs(lang) if _spec is not None and _spec.source_root_flag is not None else []
+                )
+            except Exception:
+                _dirs = []
+            num_dirs = len(_dirs) if _dirs else 1
+            if on_language_start is not None:
+                on_language_start(lang, num_dirs)
+            _bound_dir_done: Callable[[str, str], None] | None = None
+            if on_dir_done is not None:
+                _bound_dir_done = (lambda _l=lang: lambda dt, ds: on_dir_done(_l, dt, ds))()
+            try:
+                result = indexer.index_language(
+                    lang,
+                    on_dir_done=_bound_dir_done,
+                    source_dirs=_dirs or None,
+                )
                 results[lang] = result.status
             except Exception as exc:
                 logging.exception("SCIP indexing failed for %s", lang)
                 results[lang] = f"error: {exc}"
+            if on_language_done is not None:
+                on_language_done(lang, results[lang])
         return results
 
     def _detected_repo_languages(self) -> frozenset[str]:
@@ -9097,7 +9485,7 @@ class CodeContextEngine:
         try:
             with self._connect(readonly=True) as conn:
                 for row in conn.execute(
-                    "SELECT path FROM files WHERE repo_id = ? LIMIT 2000",
+                    "SELECT file_path FROM files WHERE repo_id = ? LIMIT 2000",
                     (self.repo_id,),
                 ):
                     ext = Path(row[0]).suffix.lower()
@@ -9106,58 +9494,6 @@ class CodeContextEngine:
         except sqlite3.Error:
             pass
         return frozenset(langs)
-
-    def _prewarm_symbol_embeddings(self) -> None:
-        """Pre-populate vector_cache for all indexed symbols.
-
-        Called once from the autosync worker after the FTS index is ready.
-        Converts the first semantic search from O(N) embed calls to a single
-        SQLite scan. Skipped when no semantic ranker is configured.
-
-        Gated behind the opt-in ANN flag: with ANN retrieval off, the default
-        semantic path must stay byte-identical and must NOT create the opt-in
-        ``symbol_vectors`` table, so the prewarm is skipped entirely.
-        """
-        if not ann_retrieval_enabled():
-            return
-        if not self._semantic_ranker.available:
-            return
-        embedder = self._semantic_ranker.embedder
-        embedding_dim = embedder.dim
-        if embedding_dim <= 0:
-            return
-        index_version = self._current_index_version()
-        candidates = self._semantic_symbol_candidates(limit=2000)
-        if not candidates:
-            return
-        with contextlib.closing(self._connect()) as conn:
-            self._init_schema(conn)
-            fresh_ids = self._ann_symbol_index.existing_stamped_ids(
-                conn,
-                embedder_name=embedder.name,
-                embedding_dim=embedding_dim,
-                index_version=index_version,
-            )
-            to_embed = [symbol for symbol in candidates if symbol.symbol_id not in fresh_ids]
-            source_texts = {
-                symbol.symbol_id: self._read_file_slice(symbol.file_path, symbol.start_byte, symbol.end_byte)
-                for symbol in to_embed
-            }
-            embedded = self._semantic_ranker.embed_symbols(to_embed, source_texts=source_texts)
-            content_hash_by_id = {symbol.symbol_id: symbol.content_hash for symbol in to_embed}
-            new_vectors: dict[str, tuple[str, list[float]]] = {
-                symbol_id: (content_hash_by_id[symbol_id], vector)
-                for symbol_id, vector in embedded.items()
-                if len(vector) == embedding_dim
-            }
-            if new_vectors:
-                self._ann_symbol_index.upsert_vectors(
-                    conn,
-                    embedder_name=embedder.name,
-                    embedding_dim=embedding_dim,
-                    index_version=index_version,
-                    vectors=new_vectors,
-                )
 
     def _record_autosync_event(self, *, event: str, reason: str, reindexed: bool) -> None:
         entry = {

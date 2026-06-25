@@ -1283,7 +1283,15 @@ _zoekt_provision_background() {
     fi
     if _install_zoekt_binaries; then
         _companion_record_version zoekt "${ATELIER_PIN_ZOEKT:-latest}"
-        echo "Zoekt ${ATELIER_PIN_ZOEKT:-latest} installed — indexed search activates on the next search."
+        echo "Zoekt ${ATELIER_PIN_ZOEKT:-latest} installed"
+        # Build the trigram index immediately so search is ready without
+        # requiring a manual 'atelier code index' re-run after installation.
+        local atelier_bin="${ATELIER_BIN_DIR:-${HOME}/.local/bin}/atelier"
+        if [[ -x "$atelier_bin" ]]; then
+            echo "Building Zoekt trigram index for $(pwd)..."
+            "$atelier_bin" code index --no-stats 2>&1 \
+                || echo "Zoekt index build failed — will be built on next 'atelier code index' run."
+        fi
     else
         echo "Zoekt build failed — search stays on ripgrep. Re-run the installer to retry."
     fi
@@ -1302,13 +1310,13 @@ install_local_zoekt_if_selected() {
 
     # Fire-and-forget: a first-time build pulls Go (~150MB) and compiles four
     # binaries — minutes of work. Detach it so the installer never blocks. Search
-    # uses ripgrep meanwhile, and the in-process Zoekt supervisor starts the
-    # webserver lazily on the first search once the binaries exist. Progress and
-    # any failure land in $log.
+    # uses ripgrep meanwhile. Once the binaries are ready, _zoekt_provision_background
+    # calls 'atelier code index' to build the trigram index automatically, so the
+    # user never needs to re-run indexing manually. Progress and any failure land in $log.
     ( _zoekt_provision_background ) >"$log" 2>&1 </dev/null &
     disown 2>/dev/null || true
 
-    info "Zoekt: building in the background"
+    info "Zoekt: building binaries and index in the background"
 }
 
 run() {
@@ -1956,7 +1964,7 @@ run_setup() {
         spin "Initializing agent runtime" "$atelier_cli" init --no-index
         if [[ -n "$index_target" ]]; then
             info "Detected project root: $index_target"
-            if "$atelier_cli" code index --repo-root "$index_target" --frame-prefix "│  " --no-stats 2>&7; then
+            if ATELIER_INDEX_LOCK_TIMEOUT_S=120 "$atelier_cli" code index --repo-root "$index_target" --frame-prefix "│  " --no-stats 2>&7; then
                 printf "%b│%b  %b✓%b  Code index ready\n" "$C_FRAME" "$C_RESET" "$C_GREEN" "$C_RESET"
             else
                 degrade "Initial code indexing failed; Atelier will continue and autosync will retry."

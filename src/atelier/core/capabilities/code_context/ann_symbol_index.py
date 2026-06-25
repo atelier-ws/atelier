@@ -224,12 +224,16 @@ class SymbolAnnIndex:
         *,
         embedder_name: str,
         embedding_dim: int,
-        index_version: int,
     ) -> set[str]:
-        """Symbol ids already stored under the exact current stamp.
+        """Symbol ids with a current-model/dim vector already stored.
 
-        Used to skip re-embedding symbols whose persisted vector is already
-        fresh for this model/dim/index_version.
+        Freshness is content-based, not version-based: ``symbol_id`` encodes the
+        file content hash, so an id present here is fresh by construction -- any
+        content change yields a new id (its stale row is pruned when the file is
+        re-indexed). ``index_version`` is provenance only and is deliberately
+        NOT a filter here -- gating on it would treat every post-bump reindex as
+        a full re-embed. This matches ``load_current_vectors``, which also keys
+        eligibility on (embedder_name, embedding_dim) alone.
         """
         if embedding_dim <= 0:
             return set()
@@ -238,9 +242,9 @@ class SymbolAnnIndex:
             rows = conn.execute(
                 """
                 SELECT symbol_id FROM symbol_vectors
-                WHERE repo_id = ? AND embedder_name = ? AND embedding_dim = ? AND index_version = ?
+                WHERE repo_id = ? AND embedder_name = ? AND embedding_dim = ?
                 """,
-                (self.repo_id, embedder_name, embedding_dim, index_version),
+                (self.repo_id, embedder_name, embedding_dim),
             ).fetchall()
         except sqlite3.Error:
             logging.exception("Recovered from broad exception handler")

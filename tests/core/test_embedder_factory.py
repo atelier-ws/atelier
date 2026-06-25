@@ -72,8 +72,8 @@ def test_null_embedder_dim_and_name() -> None:
 
 
 def test_make_code_embedder_defaults_to_null_without_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    # By default no embedding backend is configured: semantic code search is OFF and
-    # no external LLM (ollama) is contacted. Callers surface "semantic unavailable".
+    # Default: no embedding backend → NullEmbedder (semantic search off).
+    # Feature-hashing vectors hurt retrieval; BGE/openai/ollama are explicit opt-in.
     make_code_embedder.cache_clear()
     monkeypatch.delenv("ATELIER_CODE_EMBEDDER", raising=False)
     monkeypatch.delenv("ATELIER_EMBEDDER", raising=False)

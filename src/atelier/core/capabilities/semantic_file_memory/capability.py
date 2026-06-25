@@ -301,7 +301,8 @@ class SemanticFileMemoryCapability:
                 else f"[range past {total_read} lines -- request earlier slice]"
             )
             return result
-        result["range"] = f"{start}-{start + len(kept) - 1}"
+        actual_range = f"{start}-{start + len(kept) - 1}"
+        result["range"] = actual_range
         result["content"] = "\n".join(kept)
         if capped:
             result["truncation_notice"] = f"[stopped at {_MAX_READ_BYTES}B cap -- may be incomplete]"

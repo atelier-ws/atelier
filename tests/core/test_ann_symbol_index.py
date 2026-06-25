@@ -84,7 +84,7 @@ def test_n5_model_id_change_never_mixes_vector_spaces() -> None:
     # stale model. The old rows remain only under model-a.
     assert idx.load_current_vectors(conn, embedder_name="model-b", embedding_dim=16) == []
     assert len(idx.load_current_vectors(conn, embedder_name="model-a", embedding_dim=16)) == 30
-    assert idx.existing_stamped_ids(conn, embedder_name="model-b", embedding_dim=16, index_version=1) == set()
+    assert idx.existing_stamped_ids(conn, embedder_name="model-b", embedding_dim=16) == set()
 
 
 def test_n5_dim_change_never_mixes_vector_spaces() -> None:
@@ -123,17 +123,25 @@ def test_n5_re_embed_overwrites_old_stamp() -> None:
     assert len(new_rows) == 1 and new_rows[0].vector == [0.0, 1.0, 0.0, 0.0]
 
 
-def test_n16_index_version_staleness_in_existing_stamped_ids() -> None:
-    """existing_stamped_ids only counts rows at the queried index_version (N16)."""
+def test_existing_stamped_ids_is_content_not_version_gated() -> None:
+    """Freshness keys on symbol_id under the live model/dim, NOT index_version.
+
+    symbol_id encodes the file content hash, so a present id is content-fresh by
+    construction; index_version is provenance only. Gating on it would make every
+    post-bump reindex re-embed the whole repo. This mirrors load_current_vectors,
+    which also keys eligibility on (embedder_name, embedding_dim) alone.
+    """
     conn = sqlite3.connect(":memory:")
     idx = SymbolAnnIndex("repo")
     vectors = _seeded_vectors(10, 8, seed=1)
     idx.upsert_vectors(conn, embedder_name="m1", embedding_dim=8, index_version=1, vectors=vectors)
 
-    assert len(idx.existing_stamped_ids(conn, embedder_name="m1", embedding_dim=8, index_version=1)) == 10
-    # After a reindex (version bump), the v1 rows are no longer "fresh" for v2,
-    # so the caller will re-embed rather than serve stale neighbours.
-    assert idx.existing_stamped_ids(conn, embedder_name="m1", embedding_dim=8, index_version=2) == set()
+    # A later reindex bumps index_version but does not re-stamp unchanged rows;
+    # they stay fresh (same symbol_id), so the caller skips re-embedding them.
+    assert len(idx.existing_stamped_ids(conn, embedder_name="m1", embedding_dim=8)) == 10
+    # A different model or dim shares no vector space -> nothing fresh.
+    assert idx.existing_stamped_ids(conn, embedder_name="m2", embedding_dim=8) == set()
+    assert idx.existing_stamped_ids(conn, embedder_name="m1", embedding_dim=16) == set()
 
 
 def test_brute_force_fallback_when_hnsw_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -234,9 +242,12 @@ def _write_semantic_fixture_repo(root: Path) -> None:
     )
 
 
-def test_engine_default_off_path_is_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """With the flag off, semantic search reproduces today's documented result."""
-    monkeypatch.setenv("ATELIER_EMBEDDER", "local")
+def test_engine_semantic_store_built_at_index_time(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A configured embedder turns semantic search on via the index-time vector
+    store -- there is no separate flag. The store is populated during index_repo
+    (no on-the-fly embedding on the query path), so semantic search resolves the
+    expected top hit and the persistent table exists after indexing."""
+    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
     monkeypatch.delenv("ATELIER_ANN_RETRIEVAL", raising=False)
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -244,15 +255,18 @@ def test_engine_default_off_path_is_unchanged(tmp_path: Path, monkeypatch: pytes
     hits = engine.search_symbols("create login token for authenticated user", limit=5, mode="semantic")
     assert hits
     assert hits[0].symbol_name == "issue_access_token"
-    # Default-off must not create the opt-in vector table.
+    # Index-time embedding: a configured embedder builds the persistent vector
+    # store as part of the index, not lazily on the query path.
     with engine._connect() as conn:
         present = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='symbol_vectors'").fetchone()
-    assert present is None
+        count = conn.execute("SELECT COUNT(*) FROM symbol_vectors").fetchone()[0]
+    assert present is not None
+    assert count > 0
 
 
 def test_engine_ann_on_matches_brute_force_top_hit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """ANN-on returns the same top semantic hit as the default brute-force path."""
-    monkeypatch.setenv("ATELIER_EMBEDDER", "local")
+    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
     _write_semantic_fixture_repo(tmp_path)
 
     monkeypatch.delenv("ATELIER_ANN_RETRIEVAL", raising=False)
@@ -277,7 +291,7 @@ def test_engine_ann_on_matches_brute_force_top_hit(tmp_path: Path, monkeypatch: 
 
 
 def test_engine_index_version_bump_invalidates_graph(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ATELIER_EMBEDDER", "local")
+    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
     monkeypatch.setenv("ATELIER_ANN_RETRIEVAL", "1")
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -297,7 +311,7 @@ def test_engine_index_version_bump_invalidates_graph(tmp_path: Path, monkeypatch
 
 def test_engine_ann_fallback_when_hnsw_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """With HNSW unavailable, the ANN-on engine path still returns correct hits."""
-    monkeypatch.setenv("ATELIER_EMBEDDER", "local")
+    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
     monkeypatch.setenv("ATELIER_ANN_RETRIEVAL", "1")
     monkeypatch.setattr(ann_mod, "_HNSW", None)
     _write_semantic_fixture_repo(tmp_path)
@@ -305,3 +319,50 @@ def test_engine_ann_fallback_when_hnsw_unavailable(tmp_path: Path, monkeypatch: 
     engine.index_repo()
     hits = engine.search_symbols("create login token for authenticated user", limit=5, mode="semantic")
     assert hits and hits[0].symbol_name == "issue_access_token"
+
+
+def test_engine_incremental_reindex_prunes_stale_vectors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Editing a file drops its old vectors instead of orphaning them.
+
+    symbol_id encodes the file content hash, so an edit yields fresh ids; the
+    re-index must delete the superseded vectors (and re-embed only the changed
+    file) so the store stays 1:1 with live symbols -- no orphan accumulation,
+    no stale rows polluting ranking, and re-embedding stays incremental.
+    """
+    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
+    monkeypatch.delenv("ATELIER_ANN_RETRIEVAL", raising=False)
+    _write_semantic_fixture_repo(tmp_path)
+    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite", autosync_enabled=False)
+    engine.index_repo()
+
+    def counts() -> tuple[int, int, int]:
+        with engine._connect() as conn:
+            n_sym = conn.execute(
+                "SELECT COUNT(*) FROM symbols WHERE repo_id = ?", (engine.repo_id,)
+            ).fetchone()[0]
+            n_vec = conn.execute(
+                "SELECT COUNT(*) FROM symbol_vectors WHERE repo_id = ?", (engine.repo_id,)
+            ).fetchone()[0]
+            orphans = conn.execute(
+                "SELECT COUNT(*) FROM symbol_vectors v WHERE v.repo_id = ? AND NOT EXISTS ("
+                "SELECT 1 FROM symbols s WHERE s.repo_id = v.repo_id AND s.symbol_id = v.symbol_id)",
+                (engine.repo_id,),
+            ).fetchone()[0]
+        return int(n_sym), int(n_vec), int(orphans)
+
+    n_sym0, n_vec0, orphans0 = counts()
+    assert n_vec0 > 0 and orphans0 == 0 and n_vec0 == n_sym0
+
+    target = next(tmp_path.rglob("*.py"))
+    target.write_text(
+        target.read_text(encoding="utf-8") + "\n\ndef _added_helper() -> int:\n    return 42\n",
+        encoding="utf-8",
+    )
+    engine.index_repo(force=False)
+
+    n_sym1, n_vec1, orphans1 = counts()
+    assert orphans1 == 0  # stale vectors of the edited file were pruned, not orphaned
+    assert n_vec1 == n_sym1  # store stays 1:1 with live symbols
+    assert n_sym1 == n_sym0 + 1  # the newly added symbol was indexed + embedded

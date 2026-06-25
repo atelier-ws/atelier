@@ -53,6 +53,32 @@ def _no_network_sync() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _no_external_search_in_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate tests from zoekt and semantic search backends.
+
+    * ``ATELIER_ZOEKT_LOC_THRESHOLD=100000000`` — tiny test repos (< 10 k LOC)
+      never route through zoekt (which requires a built index the test fixtures
+      don't provide).  The real default is 1 (all repos).
+
+    * ``ATELIER_CODE_EMBEDDER=null`` — suppress the local feature-hashing
+      embedder so ``_build_symbol_embeddings`` is a no-op during index_repo()
+      and ``_semantic_candidate_files`` returns empty.  Without this, the ANN
+      search surfaces all sibling files, breaking tests whose intent is that
+      ``complete_families=False`` keeps only the seed file.
+
+    Tests that explicitly exercise zoekt or semantic behaviour should override
+    these env vars via their own ``monkeypatch.setenv`` call.
+    """
+    from atelier.infra.embeddings.factory import make_code_embedder
+
+    make_code_embedder.cache_clear()
+    monkeypatch.setenv("ATELIER_ZOEKT_LOC_THRESHOLD", "100000000")
+    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "null")
+    yield
+    make_code_embedder.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def _no_ollama() -> Iterator[None]:
     """Block real Ollama calls so no test waits on a local LLM.
 
