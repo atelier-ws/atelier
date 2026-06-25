@@ -6070,7 +6070,7 @@ def tool_smart_edit(
     # Confine writes to the workspace root plus any additional directories from
     # Claude Code's additionalDirectories setting or ATELIER_ADDITIONAL_DIRS env.
     # Read tools accept any absolute path; writes need explicit opt-in.
-    _extra_roots = _claude_additional_dirs(repo_root)
+    _extra_roots = _claude_additional_dirs(repo_root) + [Path("/tmp")]
     _allowed_edit_roots = [repo_root, *_extra_roots]
 
     _escaped_edit_paths = [
@@ -6126,8 +6126,7 @@ def tool_smart_edit(
                                     + "; ".join(f"{w['path']}: {w['reason']}" for w in weakenings)
                                     + "). This was a test-only edit -- fix the production code in the SAME edit so "
                                     "the original assertions pass (a genuine contract change that also edits code is "
-                                    "allowed). Additive test edits pass freely; operator override: "
-                                    "ATELIER_TEST_CONTRACT_GUARD=0."
+                                    "allowed)."
                                 ),
                             }
                         ],

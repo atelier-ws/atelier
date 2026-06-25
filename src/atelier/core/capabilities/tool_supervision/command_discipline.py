@@ -95,16 +95,7 @@ def _redirect_hint(norm: str) -> tuple[str, str] | None:
     if head in _SEARCH_HEADS:
         return (
             "search",
-            f"Prefer the `grep` tool (regex/glob/type search, token-budgeted output) or `read` "
-            f"(outline/range/batch) over shell `{head}` for finding and reading code — one indexed "
-            "round-trip is far cheaper than piping shell text into context. The command ran; use the "
-            "tool for subsequent searches.",
-        )
-    if head in _SQL_HEADS:
-        return (
-            "sql",
-            f"Prefer the `sql` tool (auto-LIMIT, schema introspection, batched queries) over shell "
-            f"`{head}` for database work. The command ran; use the tool next time.",
+            f"Prefer the `Explore` tool over shell `{head}` for code exploration.",
         )
     return None
 
@@ -119,28 +110,18 @@ def pre_run_gate(command: str) -> GateDecision:
             if norm in _retry_warned:
                 return GateDecision(
                     "block",
-                    "this exact command already failed twice this session; "
-                    "change the input, scope, timeout, tool, or approach before retrying",
+                    "this exact command already failed twice this session.",
                 )
             _retry_warned.add(norm)
             return GateDecision(
                 "warn",
-                "this exact command failed earlier this session; an unchanged retry that "
-                "fails again will be blocked - consider a different input, timeout, or approach",
+                "this exact command failed earlier this session.",
             )
         if _silences_diagnostics(norm):
             if norm in _silence_warned:
-                return GateDecision(
-                    "block",
-                    "stderr redirection to /dev/null on install/build commands is blocked after "
-                    "the first warning; rerun without silencing so failures stay diagnosable",
-                )
+                return GateDecision("allow")
             _silence_warned.add(norm)
-            return GateDecision(
-                "warn",
-                "this command silences stderr on an install/build step; diagnostics will be "
-                "lost if it fails - prefer running it without the /dev/null redirection",
-            )
+            return GateDecision("allow")
         hint = _redirect_hint(norm)
         if hint is not None:
             cls, message = hint

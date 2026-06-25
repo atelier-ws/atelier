@@ -12,11 +12,11 @@
 export interface LicensePayload {
   v: number;
   id: string;
-  email: string;
+  email?: string;
   plan: string;
   iat: number;
   exp: number | null;
-  features: string[];
+  features?: string[];
   kind?: "purchase" | "device";
   device_id?: string;
   device_public_key?: string;
@@ -93,7 +93,11 @@ export async function verifyLicense(
   const payload = JSON.parse(
     new TextDecoder().decode(b64urlToBytes(parts[0])),
   ) as LicensePayload;
-  if (payload.v !== 1 || !payload.id || !payload.email || !payload.plan) {
+  if (payload.v !== 1 || !payload.id || !payload.plan) {
+    throw new Error("invalid_license_payload");
+  }
+  // Device tokens must carry email (purchase tokens may omit it).
+  if (payload.kind === "device" && !payload.email) {
     throw new Error("invalid_license_payload");
   }
   return payload;

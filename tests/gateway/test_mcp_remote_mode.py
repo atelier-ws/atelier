@@ -144,7 +144,7 @@ def test_initialize_request_returns_server_info(service_mode: None) -> None:
     resp = _handle(req)
     assert resp is not None
     assert "result" in resp
-    assert resp["result"]["serverInfo"]["name"] == "atelier-context"
+    assert resp["result"]["serverInfo"]["name"] == "atelier"
 
 
 def test_tools_list_returns_all_tools(service_mode: None, monkeypatch: pytest.MonkeyPatch) -> None:

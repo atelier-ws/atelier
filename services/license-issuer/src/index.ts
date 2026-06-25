@@ -42,11 +42,9 @@ async function issueAndDeliver(env: IssuerEnv, input: IssueInput): Promise<strin
   const payload: LicensePayload = {
     v: 1,
     id: licenseId,
-    email: input.email,
     plan: input.plan,
     iat: nowSec,
     exp: expires,
-    features: [],
     kind: "purchase",
   };
   const token = await signLicense(payload, env.LICENSE_PRIVATE_KEY);

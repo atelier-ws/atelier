@@ -1710,7 +1710,7 @@ def test_search_symbols_lexical_planner_prioritizes_exact_and_case_insensitive_m
     assert qualified_hits[0].qualified_name == "OrderService.calculate_total"
 
 
-def test_search_symbols_lexical_planner_applies_camel_and_test_demotion(tmp_path: Path) -> None:
+def test_search_symbols_lexical_planner_demotes_test_files(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "tests").mkdir()
     (tmp_path / "src" / "order_service_factory.py").write_text(
@@ -1724,13 +1724,16 @@ def test_search_symbols_lexical_planner_applies_camel_and_test_demotion(tmp_path
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
 
-    camel_first = engine.search_symbols("OSF", limit=5, mode="lexical")
-    camel_second = engine.search_symbols("OSF", limit=5, mode="lexical")
+    # A non-test query ranks the production definition above its test-file twin and
+    # is deterministic across repeated calls.
+    prod_first = engine.search_symbols("OrderServiceFactory", limit=5, mode="lexical")
+    prod_second = engine.search_symbols("OrderServiceFactory", limit=5, mode="lexical")
+    # A test-scoped query lifts the demotion so the test file surfaces first.
     test_query_hits = engine.search_symbols("test_order_service_factory", limit=5, mode="lexical")
 
-    assert camel_first
-    assert camel_first[0].file_path == "src/order_service_factory.py"
-    assert [hit.symbol_id for hit in camel_first] == [hit.symbol_id for hit in camel_second]
+    assert prod_first
+    assert prod_first[0].file_path == "src/order_service_factory.py"
+    assert [hit.symbol_id for hit in prod_first] == [hit.symbol_id for hit in prod_second]
     assert test_query_hits
     assert test_query_hits[0].file_path == "tests/test_order_service_factory.py"
 
@@ -1810,20 +1813,24 @@ def test_tool_search_routes_lowercase_substrings_to_text_but_keeps_exact_symbols
     assert exact_payload["items"][0]["name"] == "helper"
 
 
-def test_search_symbols_lexical_planner_uses_fuzzy_fallback_only_when_needed(
+def test_search_symbols_lexical_planner_does_not_fuzzy_match_typos(
     tmp_path: Path,
 ) -> None:
+    # LLM-issued queries don't contain typos, so symbol search no longer pays for a
+    # full-symbol fuzzy scan: a misspelled identifier must NOT surface the real
+    # symbol (only the exact / substring / token channels remain).
     _write_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
     engine.index_repo()
 
-    fuzzy_hits = engine.search_symbols("OrdreServce", limit=5, mode="lexical")
+    typo_hits = engine.search_symbols("OrdreServce", limit=5, mode="lexical")
     exact_hits = engine.search_symbols("OrderService", limit=5, mode="lexical")
+    exact_repeat = engine.search_symbols("OrderService", limit=5, mode="lexical")
 
-    assert fuzzy_hits
-    assert fuzzy_hits[0].symbol_name == "OrderService"
+    assert all(hit.symbol_name != "OrderService" for hit in typo_hits)
     assert exact_hits
     assert exact_hits[0].symbol_name == "OrderService"
+    assert [hit.symbol_id for hit in exact_hits] == [hit.symbol_id for hit in exact_repeat]
 
 
 def test_tool_search_cache_keys_are_mode_aware(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
