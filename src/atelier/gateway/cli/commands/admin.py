@@ -475,7 +475,9 @@ def _parse_since_arg(value: str) -> datetime:
         delta = (
             timedelta(days=amount)
             if unit == "d"
-            else timedelta(hours=amount) if unit == "h" else timedelta(minutes=amount)
+            else timedelta(hours=amount)
+            if unit == "h"
+            else timedelta(minutes=amount)
         )
         return datetime.now(UTC) - delta
 
@@ -797,11 +799,11 @@ def quarantine(ctx: click.Context, block_id: str) -> None:
 @click.option("--token", default=None, help="Credentials JSON, base64 payload, or refresh token.")
 @click.option("--anonymous", "anonymous", is_flag=True, help="Start a local anonymous trial.")
 @click.option("--json", "as_json", is_flag=True)
+@click.option("--dev", "dev_mode", is_flag=True, help="Login against local dev server (http://localhost:4321).")
 @click.pass_context
-def login_cmd(ctx: click.Context, token: str | None, anonymous: bool, as_json: bool) -> None:
+def login_cmd(ctx: click.Context, token: str | None, anonymous: bool, as_json: bool, dev_mode: bool) -> None:
     """Create local Atelier auth state for plugin operations."""
     from atelier.core.capabilities.plugin_runtime import (
-        begin_browser_login,
         claim_anonymous_trial,
         parse_login_token,
         write_auth_state,
@@ -809,27 +811,145 @@ def login_cmd(ctx: click.Context, token: str | None, anonymous: bool, as_json: b
 
     if anonymous:
         payload = {"auth": claim_anonymous_trial(ctx.obj["root"]), "mode": "anonymous"}
+        if as_json:
+            _emit(payload, as_json=True)
+            return
+        auth_payload = payload.get("auth")
+        auth = auth_payload if isinstance(auth_payload, dict) else {}
+        label = "anonymous trial" if auth.get("isAnonymous") else auth.get("email") or auth.get("userId")
+        click.echo(f"logged in: {label}")
     elif token:
         payload = {
             "auth": write_auth_state(ctx.obj["root"], parse_login_token(token)),
             "mode": "token",
         }
-    else:
-        pending = begin_browser_login(ctx.obj["root"])
-        payload = {"mode": "browser", "pending": pending}
-    if as_json:
-        _emit(payload, as_json=True)
-        return
-    if str(payload.get("mode")) == "browser":
-        pending_payload = payload.get("pending")
-        pending = pending_payload if isinstance(pending_payload, dict) else {}
-        click.echo("Open this URL to finish login:")
-        click.echo(pending.get("url", ""))
-    else:
+        if as_json:
+            _emit(payload, as_json=True)
+            return
         auth_payload = payload.get("auth")
         auth = auth_payload if isinstance(auth_payload, dict) else {}
-        label = "anonymous trial" if auth.get("isAnonymous") else auth.get("email") or auth.get("userId")
+        label = auth.get("email") or auth.get("userId")
         click.echo(f"logged in: {label}")
+    else:
+        _oauth_login(as_json, dev_mode=dev_mode)
+
+
+def _oauth_login(as_json: bool, dev_mode: bool = False) -> None:
+    """Run the OAuth browser flow and persist the returned session token."""
+    import http.server
+    import json
+    import socket
+    import threading
+    import urllib.parse
+    import urllib.request
+    import webbrowser
+
+    from atelier.core.capabilities.licensing.store import (
+        load_or_create_device_id,
+        save_auth_base,
+        save_auth_token,
+        save_auth_user,
+    )
+
+    base = "http://localhost:4321" if dev_mode else "https://atelier.ws"
+
+    # Always open the browser — atelier login is intentional and issues a fresh device token.
+
+    # Find a free port
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+
+    import platform
+    hostname = platform.node() or "cli"
+    stable_device_id = load_or_create_device_id()
+    cli_redirect = f"http://localhost:{port}/callback"
+    oauth_url = (
+        f"{base}/account"
+        f"?cli_redirect={urllib.parse.quote(cli_redirect, safe='')}"
+        f"&device_name={urllib.parse.quote(hostname, safe='')}"
+        f"&stable_device_id={urllib.parse.quote(stable_device_id, safe='')}"
+    )
+
+    received: dict[str, str] = {}
+    server_ready = threading.Event()
+    shutdown_event = threading.Event()
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path == "/callback":
+                qs = urllib.parse.parse_qs(parsed.query)
+                received["token"] = qs.get("token", [""])[0]
+                received["email"] = qs.get("email", [""])[0]
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.end_headers()
+                self.wfile.write(
+                    b"<html><body><p>Logged in. You can close this tab.</p>"
+                    b"<script>window.close()</script></body></html>"
+                )
+            else:
+                self.send_response(404)
+                self.end_headers()
+            shutdown_event.set()
+
+        def log_message(self, *args: object) -> None:
+            pass  # suppress access log
+
+    httpd = http.server.HTTPServer(("127.0.0.1", port), _Handler)
+    httpd.timeout = 1
+
+    def _serve() -> None:
+        server_ready.set()
+        deadline = 120
+        import time
+
+        start = time.monotonic()
+        while not shutdown_event.is_set() and time.monotonic() - start < deadline:
+            httpd.handle_request()
+        httpd.server_close()
+
+    thread = threading.Thread(target=_serve, daemon=True)
+    thread.start()
+    server_ready.wait()
+
+    click.secho("Opening browser to sign in...", fg="cyan", dim=True)
+    webbrowser.open(oauth_url)
+
+    shutdown_event.wait(timeout=120)
+    thread.join(timeout=5)
+
+    session_token = received.get("token", "")
+    email = received.get("email", "")
+
+    if not session_token:
+        click.secho("✗ Login timed out or was cancelled.", fg="red", err=True)
+        raise SystemExit(1)
+
+    save_auth_token(session_token)
+
+    # Best-effort: fetch plan + device_id from server
+    plan = "free"
+    device_id = session_token[:8]
+    try:
+        req = urllib.request.Request(
+            f"{base}/api/auth/me",
+            headers={"Authorization": f"Bearer {session_token}"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data: dict[str, object] = json.loads(resp.read())
+        plan = str(data.get("plan") or plan)
+        device_id = str(data.get("device_id") or device_id)
+        save_auth_user({**data, "_base": base})
+        save_auth_base(base)
+    except Exception:  # noqa: BLE001
+        pass
+
+    if as_json:
+        _emit({"email": email, "plan": plan, "device_id": device_id, "mode": "oauth"}, as_json=True)
+        return
+    click.secho(f"✓ Logged in as {email} ({plan}) · device {device_id}", fg="green")
 
 
 @click.command("logout")
@@ -838,13 +958,17 @@ def login_cmd(ctx: click.Context, token: str | None, anonymous: bool, as_json: b
 @click.pass_context
 def logout_cmd(ctx: click.Context, no_trial: bool, as_json: bool) -> None:
     """Remove local auth and optionally activate an anonymous trial."""
+    from atelier.core.capabilities.licensing.store import delete_auth_base, delete_auth_token, delete_auth_user
     from atelier.core.capabilities.plugin_runtime import logout_local
 
+    delete_auth_token()
+    delete_auth_user()
+    delete_auth_base()
     payload = logout_local(ctx.obj["root"], claim_trial=not no_trial)
     if as_json:
         _emit(payload, as_json=True)
         return
-    click.echo("logged out" + ("; anonymous trial active" if payload.get("anonymous") else ""))
+    click.secho("✓ Logged out", fg="green")
 
 
 @click.command("status")
@@ -888,20 +1012,59 @@ def status_cmd(
         return
 
     if auth_mode:
-        from atelier.core.capabilities.plugin_runtime import auth_status, load_plugin_settings
+        from atelier.core.capabilities.licensing.store import (
+            load_auth_base,
+            load_auth_token,
+            load_auth_user,
+            save_auth_user,
+        )
 
-        payload = auth_status(root)
-        payload["settings"] = load_plugin_settings(root)
-        if as_json:
-            _emit(payload, as_json=True)
-            return
-        click.echo(f"authenticated: {payload['authenticated']}")
-        click.echo(f"anonymous: {payload['isAnonymous']}")
-        if payload.get("email"):
-            click.echo(f"email: {payload['email']}")
-        if payload.get("subscription"):
-            click.echo(f"subscription: {payload['subscription']}")
-        click.echo(f"root: {payload['root']}")
+        auth_token = load_auth_token()
+
+        # Always fetch live for status — disk cache is for background entitlement
+        # checks, not explicit status queries.
+        cached: dict[str, object] | None = None
+        if auth_token:
+            import json as _json
+            import urllib.request
+            _base_url = load_auth_base()
+            try:
+                req = urllib.request.Request(
+                    f"{_base_url}/api/auth/me",
+                    headers={"Authorization": f"Bearer {auth_token}"},
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    cached = _json.loads(resp.read())
+                save_auth_user({**cached, "_base": _base_url})
+            except Exception:  # noqa: BLE001
+                cached = load_auth_user()  # fall back to disk if offline
+
+        if auth_token and cached:
+            # OAuth session — show cached user info
+            email = str(cached.get("email") or "")
+            plan = str(cached.get("plan") or "free")
+            device_id = str(cached.get("device_id") or auth_token[:8])
+            cli_count = int(cached.get("cli_device_count") or 0)
+            cli_limit = int(cached.get("cli_device_limit") or 3)
+            if as_json:
+                _emit({"email": email, "plan": plan, "device_id": device_id,
+                       "cli_devices": f"{cli_count}/{cli_limit}", "mode": "oauth"}, as_json=True)
+                return
+            click.secho(f"✓ {email}", fg="green", bold=True)
+            click.echo(f"  plan:    {plan}")
+            click.echo(f"  device:  {device_id}")
+            click.echo(f"  devices: {cli_count} of {cli_limit} used")
+        elif auth_token and not cached:
+            # fetch failed and no disk fallback
+            if as_json:
+                _emit({"mode": "oauth", "status": "unreachable"}, as_json=True)
+                return
+            click.secho("⚠ Could not reach auth server", fg="yellow")
+        else:
+            if as_json:
+                _emit({"mode": "none", "status": "not logged in"}, as_json=True)
+                return
+            click.secho("✗ Not logged in — run: atelier login", fg="red")
         return
 
     if as_json:

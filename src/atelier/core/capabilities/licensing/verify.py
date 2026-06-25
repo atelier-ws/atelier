@@ -96,7 +96,7 @@ def verify_token(token: str) -> License:
     try:
         return License(
             license_id=str(payload["id"]),
-            email=str(payload["email"]),
+            email=str(payload.get("email", "")),
             plan=str(payload["plan"]),
             issued_at=int(payload["iat"]),
             expires_at=None if payload.get("exp") is None else int(payload["exp"]),

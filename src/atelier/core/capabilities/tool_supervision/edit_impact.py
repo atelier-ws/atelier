@@ -40,7 +40,28 @@ _DECORATOR_PROVIDED_ATTRS: dict[str, tuple[str, ...]] = {
 _CACHE_DECORATED_DEF_RE = re.compile(
     r"@(?:\w+\.)*(?P<deco>" + "|".join(_DECORATOR_PROVIDED_ATTRS) + r")\b[^\n]*\n\s*(?:async\s+)?def\s+(?P<name>\w+)"
 )
-_NOISY_LITERALS = frozenset({"", "0", "1", "false", "none", "null", "true"})
+_NOISY_LITERALS = frozenset(
+    {
+        "",
+        "0",
+        "1",
+        "false",
+        "true",
+        "none",
+        "null",
+        # Common bool synonyms -- too short and ubiquitous to be meaningful contract
+        # literals (e.g. env-var coercions like `in {"1", "true", "yes", "on"}`
+        # appear in dozens of unrelated places and generate FIXME noise).
+        "yes",
+        "no",
+        "on",
+        "off",
+    }
+)
+# A literal found in this many distinct files is ambient vocabulary (e.g. common
+# bool synonyms, status words) rather than a contract identifier. Skip it.
+_MAX_LITERAL_FILE_SPREAD = 4
+
 _QUOTES = ("'", '"', "`")
 _DELIMITERS = frozenset("[]{}():,=")
 _MAX_FILE_BYTES = 1_000_000
@@ -396,6 +417,10 @@ def contract_literal_impact(
         astgrep_found = astgrep_by_literal.get(literal) if astgrep_by_literal is not None else None
         found = _combine_matches(astgrep_found, text_by_literal.get(literal) or [])
         if not found:
+            continue
+        # Rarity gate: a literal found in many files is ambient vocabulary (common
+        # bool synonyms, generic status words), not a contract -- skip it.
+        if len({match[0] for match in found}) > _MAX_LITERAL_FILE_SPREAD:
             continue
         # Production consumers before tests, then stable by location.
         found.sort(key=lambda match: (_is_test_path(match[0]), match[0], match[1]))

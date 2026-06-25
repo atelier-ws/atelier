@@ -757,8 +757,12 @@ def start_managed_command(
         # temp-file fds straight to the kernel. A direct fd lets a runaway
         # producer (`cat /dev/zero`) fill the disk before any poll reads it; the
         # spool pump caps each temp file at `_MAX_SPOOL_BYTES` instead.
+        # stdin=DEVNULL: the MCP server's stdin is an open JSON-RPC pipe, so
+        # inheriting it causes any child that reads stdin (e.g. `sys.stdin.read()`
+        # in a python -c snippet) to block forever instead of failing fast.
         proc = subprocess.Popen(
             ["bash", "-c", command],
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -951,6 +955,7 @@ def run_command(
     try:
         proc = subprocess.Popen(
             ["bash", "-c", command],
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
