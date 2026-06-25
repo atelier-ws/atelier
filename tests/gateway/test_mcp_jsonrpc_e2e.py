@@ -31,15 +31,14 @@ def _preindex(repo_root: str | Path) -> None:
     mcp_server._op_index(repo_root=str(repo_root), force=True)
 
 
-# Lean model-visible surface: `grep` (regex search with inline call-graph counts)
-# + `relations` (symbol drill-in), plus read/edit/bash/web_fetch. `search`
-# (semantic), `memory`, `sql`, `codemod` are registered but hidden; `explore` is
-# removed entirely.
+# Single-primary retrieval surface: `explore` (ranked source + call-graph
+# relations + blast-radius in one call) + `read`, plus edit/bash/web_fetch.
+# `grep`, `relations`, `search`, `memory`, `sql`, `codemod` are registered but
+# hidden from agents (grep/relations stay callable as escape hatch / drill-in).
 EXPECTED_TOOLS = {
     "read",
     "edit",
-    "grep",
-    "relations",
+    "explore",
     "bash",
     "web_fetch",
 }
@@ -300,7 +299,7 @@ def test_stdio_server_round_trip_edits_and_searches_real_files(mcp_env: Path) ->
 
     assert result.returncode == 0, result.stderr
     responses = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
-    assert responses[0]["result"]["serverInfo"]["name"] == "atelier-context"
+    assert responses[0]["result"]["serverInfo"]["name"] == "atelier"
 
     edit_text = responses[1]["result"]["content"][0]["text"]
     # Clean exact edit is success-silent over the wire: minimal "ok" token, and

@@ -108,7 +108,7 @@ from atelier.infra.storage.memory_store import MemoryConcurrencyError, MemorySid
 logger = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_NAME = "atelier-context"
+SERVER_NAME = "atelier"
 SERVER_VERSION = atelier_version
 CONTEXT_WINDOW_TOKENS = 200_000
 COMPACT_ADVISORY_THRESHOLD = 60.0
@@ -8352,6 +8352,44 @@ def _grep_badge_provider(rel_path: str, symbol_names: list[str]) -> str | None:
 
 
 @mcp_tool(
+    name="explore",
+    description=(
+        "PRIMARY retrieval tool -- call FIRST for almost any question or before an edit: how X "
+        "works, where/what X is, a flow, or the symbols you are about to change. Returns the "
+        "relevant symbols' verbatim source grouped by file in ONE capped call (treat as already "
+        "read -- do NOT re-open those files), plus call-graph relations (callers/callees/usages) "
+        "and a blast-radius. Query: a natural-language question OR a bag of symbol/file names. "
+        "Usually the only retrieval call you need."
+    ),
+    param_aliases={"maxFiles": "max_files", "projectPath": "path"},
+)
+def tool_explore(
+    query: Annotated[
+        str,
+        Field(description="Natural-language question, or a bag of symbol/file names / code terms."),
+    ],
+    max_files: Annotated[
+        int,
+        Field(description="Max files to include source from (default 8)."),
+    ] = 8,
+    path: Annotated[
+        str | None,
+        Field(description="Optional scope: a file or directory to seed the exploration."),
+    ] = None,
+) -> dict[str, Any]:
+    """Relevant symbols' source grouped by file + call-graph relations, in one capped call.
+
+    Seeds from the symbol/text index, pins exact-name matches, expands the call graph,
+    and renders budgeted, line-numbered, skeletonized source. Treat the returned source
+    as already read -- do not re-open those files with `read`.
+    """
+    workspace_root = _workspace_root()
+    seed_files = [path] if path else None
+    engine = _code_context_engine(str(workspace_root))
+    return cast(dict[str, Any], engine.tool_explore(query, max_files=max_files, seed_files=seed_files))
+
+
+@mcp_tool(
     name="relations",
     description=(
         "Expand one symbol's call-graph relation into the actual list: kind=callers|callees|usages|self. "
@@ -10050,6 +10088,9 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         error=type(exc).__name__,
                         session_id=_err_session_id,
                     )
+            locked = _feature_locked_response(rid, exc)
+            if locked is not None:
+                return locked
             return _err(rid, _tool_error_code(exc), str(exc))
         finally:
             # Always drop the request-scoped project override (N10).
@@ -10107,6 +10148,32 @@ def _tool_error_code(exc: Exception) -> int:
     if isinstance(exc, MemorySidecarUnavailable):
         return 503
     return -32000
+
+
+def _feature_locked_response(rid: str | int | None, exc: Exception) -> dict[str, object] | None:
+    """Return a readable tool result (not a JSON-RPC error) for auth/license issues.
+
+    The LLM sees this as regular tool output and explains it naturally to the
+    user — far better than a cryptic error code.
+    """
+    from atelier.core.capabilities.licensing.models import FeatureLocked
+    from atelier.core.capabilities.licensing.store import load_auth_token
+
+    if not isinstance(exc, FeatureLocked):
+        return None
+
+    if load_auth_token():
+        msg = (
+            f"This feature ({exc.feature}) requires Atelier Pro. "
+            "You're signed in but on the free plan. "
+            "Upgrade at https://atelier.ws/account."
+        )
+    else:
+        msg = (
+            f"This feature ({exc.feature}) requires Atelier Pro and you're not signed in. "
+            "Run `atelier login` in your terminal to sign in, then try again."
+        )
+    return _ok(rid, {"content": [{"type": "text", "text": msg}]})
 
 
 def _mcp_max_workers() -> int:

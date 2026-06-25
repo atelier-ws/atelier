@@ -87,21 +87,21 @@ def test_relations_tool_routes_to_targeted_ops(monkeypatch: pytest.MonkeyPatch) 
         mcp_server.tool_relations({"kind": "bogus", "symbol": "OrderService"})
 
 
-def test_symbol_graph_relations_removed_in_favor_of_grep() -> None:
-    # callers/callees/usages AND single definitions (former `node`) are no longer
-    # standalone MCP tools: they all fold into `grep` -- regex/semantic modes plus
-    # relation=callers|callees|usages|self. The faces are gone from the registry
-    # and the hidden set; the engine ops they delegated to still exist. The
-    # standalone `search` and `explore` tools are removed too.
-    # callers/callees/usages/node/explore are removed entirely; their relations
-    # fold into grep. `search` is NOT removed -- it stays registered but hidden
-    # (semantic/embeddings tool, surfaced once embeddings are wired up).
-    for name in ("callers", "callees", "usages", "node", "explore"):
+def test_explore_is_primary_grep_relations_hidden() -> None:
+    # Single-primary retrieval surface: `explore` (ranked source + call-graph
+    # relations + blast-radius in one call) is the advertised retrieval tool.
+    # `grep` and `relations` stay registered and callable (escape hatch / drill-in
+    # / internal routing) but are HIDDEN so the agent leads with `explore`.
+    # `callers`/`callees`/`usages`/`node` remain folded away entirely; `search`
+    # stays registered-but-hidden (semantic, surfaced once embeddings are wired).
+    for name in ("callers", "callees", "usages", "node"):
         assert name not in TOOLS
         assert name not in HIDDEN_LLM_TOOLS
-    assert "grep" in TOOLS
-    assert "search" in TOOLS
-    assert "search" in HIDDEN_LLM_TOOLS
+    assert "explore" in TOOLS
+    assert "explore" not in HIDDEN_LLM_TOOLS
+    for name in ("grep", "relations", "search"):
+        assert name in TOOLS
+        assert name in HIDDEN_LLM_TOOLS
 
 
 def test_mcp_grep_native_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -242,14 +242,15 @@ def test_search_tool_uses_cached_code_index_before_fallback(tmp_path: Path, monk
     )
 
 
-def test_explore_removed_search_hidden_relations_is_the_drill_in() -> None:
-    # `explore` is hard-removed; its call-graph relations live on the dedicated
-    # `relations` tool, while grep rides the COUNTS inline. `search` is NOT
-    # removed -- it stays registered but hidden (semantic/embeddings tool).
-    assert "explore" not in TOOLS
-    assert not hasattr(mcp_server, "tool_explore")
+def test_explore_is_primary_search_and_relations_hidden() -> None:
+    # `explore` is the advertised primary retrieval tool (ranked source + relations
+    # in one call). `search` and `relations` stay registered but hidden.
+    assert "explore" in TOOLS
+    assert "explore" not in HIDDEN_LLM_TOOLS
+    assert hasattr(mcp_server, "tool_explore")
     assert "search" in TOOLS
     assert "search" in HIDDEN_LLM_TOOLS
+    assert "relations" in HIDDEN_LLM_TOOLS
     assert hasattr(mcp_server, "tool_smart_search")
     # `relations` is the single drill-in tool: just `symbol` + `kind`.
     rel_props = TOOLS["relations"]["inputSchema"]["properties"]
@@ -427,11 +428,11 @@ def test_tool_code_search_can_attach_compact_rendered_block(tmp_path: Path, monk
     assert "class OrderService" not in rendered
 
 
-def test_explore_capability_reached_via_relations_tool() -> None:
-    # `explore` is hard-removed as a standalone tool; its targeted call-graph
-    # relations are reached via the `relations` tool (kind=callers|...). grep
-    # rides the counts inline. The engine wrappers survive.
-    assert "explore" not in mcp_server.TOOLS
+def test_explore_is_primary_relations_is_hidden_drill_in() -> None:
+    # `explore` is the advertised primary retrieval tool. `relations` stays a
+    # registered-but-hidden drill-in (kind=callers|callees|usages|self).
+    assert "explore" in mcp_server.TOOLS
+    assert hasattr(mcp_server, "tool_explore")
     assert mcp_server.TOOLS["relations"]["inputSchema"]["properties"]["kind"]["type"] == "string"
     assert hasattr(mcp_server, "_op_explore")
 

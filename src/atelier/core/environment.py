@@ -25,6 +25,13 @@ MEMORY_BACKENDS = frozenset({"sqlite", "letta", "openmemory"})
 
 HIDDEN_LLM_TOOLS = frozenset(
     {
+        # Single-primary retrieval surface: `explore` (ranked source + call-graph
+        # relations + blast-radius in one call) and `read` are the only advertised
+        # retrieval tools. `grep` and `relations` stay registered and callable
+        # (escape hatch / internal routing / drill-in) but are hidden so the agent
+        # leads with `explore` instead of flailing on regex grep.
+        "grep",
+        "relations",
         # Skill-only / orchestration tools: named MCP tools not surfaced to agents.
         "agent",
         "workflow",

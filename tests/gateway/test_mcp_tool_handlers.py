@@ -31,15 +31,14 @@ from atelier.infra.code_intel.scip.indexer import ScipIndexer
 from atelier.infra.storage.factory import create_store, make_memory_store
 from tests.helpers import init_store_at
 
-# The lean model-visible surface: `grep` (regex/glob search that rides call-graph
-# counts inline), `relations` (drill one symbol's relation into the list), plus
-# read/edit/bash/web_fetch. `search`, `explore`, `memory`, `sql`, `codemod` are
-# registered but hidden from agents (explore is removed entirely).
+# Single-primary retrieval surface: `explore` (ranked source + call-graph
+# relations + blast-radius in one call) + `read`, plus edit/bash/web_fetch.
+# `grep`, `relations`, `search`, `memory`, `sql`, `codemod` are registered but
+# hidden from agents (grep/relations stay callable as escape hatch / drill-in).
 EXPECTED_TOOLS = {
     "read",
     "edit",
-    "grep",
-    "relations",
+    "explore",
     "bash",
     "web_fetch",
 }
@@ -288,7 +287,7 @@ def test_initialize_returns_server_info() -> None:
         }
     )
     assert resp is not None
-    assert resp["result"]["serverInfo"]["name"] == "atelier-context"
+    assert resp["result"]["serverInfo"]["name"] == "atelier"
     assert resp["result"]["protocolVersion"] == "2024-11-05"
 
 
