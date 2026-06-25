@@ -36,7 +36,7 @@ CodeGraph is still ahead in three areas that materially affect model uptake:
 | Symbol lookup / callers / callees / impact | Strong | Strong | Near-parity | Low |
 | One-call context for exploration | `codegraph_context` / `codegraph_explore` | `context`, `explore`, `node`, `symbols`, `callers`, `callees` | Partial parity, worse ergonomics | High |
 | Model chooses code-intel tools directly | Strong host steering | Improving, but still inconsistent outside Claude/Codex | Partial | High |
-| Fresh index / watcher / catch-up | Strong | Partial SCIP artifact refresh, weaker end-user signaling | Partial | High |
+| Fresh index / watcher / catch-up | Strong | Partial artifact refresh, weaker end-user signaling | Partial | High |
 | Staleness / pending-sync banner | Explicit | Not surfaced as a strong agent-facing contract | Missing/weak | High |
 | Framework-aware routes | Broad multi-framework | Limited / not a first-class public capability | Missing | High |
 | Cross-language mobile bridging | Swift/ObjC/RN/Expo focused | Partial cross-language plan and implementation, narrower scope | Partial | Medium-high |

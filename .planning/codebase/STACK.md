@@ -113,7 +113,7 @@
 
 **Development:**
 - Python 3.12 + `uv`; Node/Bun for frontend.
-- External code-intel binaries (bundled/invoked, not pip deps): `scip-python`, `scip-typescript`, `scip-go`, `scip-java`, `scip-ruby`, `scip-clang`, `ast-grep`, `zoekt`/`zoekt-git-index`/`zoekt-webserver`. See `infra/code_intel/scip`, `astgrep`, `zoekt`.
+- External code-intel binaries (bundled/invoked, not pip deps): `ast-grep`, `zoekt`/`zoekt-git-index`/`zoekt-webserver`. See `infra/code_intel/astgrep`, `infra/code_intel/zoekt`.
 
 **Production:**
 - Docker Compose stack (`docker-compose.yml`): `service` (FastAPI on 8787) + `frontend` (Bun/Vite on 3125), optional otel-collector (commented).

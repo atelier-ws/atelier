@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -27,7 +26,6 @@ from atelier.infra.code_intel.astgrep import (
     PatternRewriteResult,
     PatternSearchResult,
 )
-from atelier.infra.code_intel.scip.indexer import ScipIndexer
 from atelier.infra.storage.factory import create_store, make_memory_store
 from tests.helpers import init_store_at
 
@@ -104,102 +102,6 @@ def _mock_client(return_values: dict[str, dict[str, Any]]) -> MagicMock:
     for method_name, retval in return_values.items():
         getattr(client, method_name).return_value = retval
     return client
-
-
-def _write_gateway_scip_fixture(
-    repo_root: Path,
-    *,
-    symbol_id: str,
-    include_call_graph: bool = False,
-    artifact_name: str = "python.scip",
-    file_path: str = "a.py",
-    symbol_name: str = "alpha",
-    qualified_name: str = "alpha",
-    source: str | None = None,
-) -> Path:
-    engine = CodeContextEngine(repo_root)
-    symbol_source = source or (repo_root / file_path).read_text(encoding="utf-8")
-    caller_source = (repo_root / "b.py").read_text(encoding="utf-8") if (repo_root / "b.py").exists() else ""
-    artifact_dir = ScipIndexer(repo_root, engine.repo_id).cache_root
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    artifact_path: Path = artifact_dir / artifact_name
-    payload: dict[str, Any] = {
-        "version": 1,
-        "repo_id": engine.repo_id,
-        "language": "python",
-        "index_sha": "a" * 40,
-        "symbols": [
-            {
-                "symbol_id": symbol_id,
-                "repo_id": engine.repo_id,
-                "file_path": file_path,
-                "language": "python",
-                "symbol_name": symbol_name,
-                "qualified_name": qualified_name,
-                "kind": "function",
-                "signature": f"def {symbol_name}():",
-                "start_byte": 0,
-                "end_byte": len(symbol_source.encode("utf-8")),
-                "start_line": 1,
-                "end_line": len(symbol_source.splitlines()),
-                "content_hash": hashlib.sha256(symbol_source.encode("utf-8")).hexdigest(),
-                "source": symbol_source,
-                "provenance": "scip",
-            }
-        ],
-    }
-    if include_call_graph:
-        payload["symbols"].append(
-            {
-                "symbol_id": "scip-beta",
-                "repo_id": engine.repo_id,
-                "file_path": "b.py",
-                "language": "python",
-                "symbol_name": "beta",
-                "qualified_name": "beta",
-                "kind": "function",
-                "signature": "def beta():",
-                "start_byte": 0,
-                "end_byte": len(caller_source.encode("utf-8")),
-                "start_line": 3,
-                "end_line": 4,
-                "content_hash": hashlib.sha256(caller_source.encode("utf-8")).hexdigest(),
-                "source": caller_source,
-                "provenance": "scip",
-            }
-        )
-        payload["call_graph"] = {
-            "callers": {
-                symbol_id: [
-                    {
-                        "symbol_id": "scip-beta",
-                        "symbol_name": "beta",
-                        "qualified_name": "beta",
-                        "file_path": "b.py",
-                        "kind": "function",
-                        "start_line": 3,
-                        "end_line": 4,
-                        "provenance": "scip",
-                    }
-                ]
-            },
-            "callees": {
-                "scip-beta": [
-                    {
-                        "symbol_id": symbol_id,
-                        "symbol_name": "alpha",
-                        "qualified_name": "alpha",
-                        "file_path": "a.py",
-                        "kind": "function",
-                        "start_line": 1,
-                        "end_line": 2,
-                        "provenance": "scip",
-                    }
-                ]
-            },
-        }
-    artifact_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
-    return artifact_path
 
 
 def _write_bootstrap_fixture_repo(root: Path) -> None:
@@ -1591,60 +1493,6 @@ def test_smart_edit_records_workspace_relative_diff_after_hooks(
     assert "hello atelier" not in file_events[-1].payload["diff"]
 
 
-def test_code_context_external_scope_surface_returns_external_hits_only(store_root: Path, tmp_path: Path) -> None:
-    _ = store_root
-    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-    _write_gateway_scip_fixture(
-        tmp_path,
-        symbol_id="scip-requests-get",
-        artifact_name="external-python.scip",
-        file_path="external/requests/api.py",
-        symbol_name="get",
-        qualified_name="requests.get",
-        source="def get(url: str) -> str:\n    return url\n",
-    )
-
-    repo_payload = mcp_server._op_search(repo_root=str(tmp_path), query="get")
-    external_payload = mcp_server._op_search(repo_root=str(tmp_path), query="get", scope="external")
-
-    assert repo_payload["items"] == []
-    assert [item["qualified_name"] for item in external_payload["items"]] == ["requests.get"]
-    assert external_payload["items"][0]["origin"] == "external"
-
-
-def test_edit_symbol_rejects_external_target_cleanly(
-    store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _ = store_root
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-    _write_gateway_scip_fixture(
-        tmp_path,
-        symbol_id="scip-requests-get",
-        artifact_name="external-python.scip",
-        file_path="external/requests/api.py",
-        symbol_name="get",
-        qualified_name="requests.get",
-        source="def get(url: str) -> str:\n    return url\n",
-    )
-
-    payload = tool_smart_edit(
-        {
-            "edits": [
-                {
-                    "kind": "symbol",
-                    "symbol_id": "scip-requests-get",
-                    "mode": "replace",
-                    "new_body": "def get(url: str) -> str:\n    return 'patched'\n",
-                }
-            ]
-        }
-    )
-
-    assert payload["rolled_back"] is True
-    assert payload["failed"][0]["error"] == "external_symbol_edit_not_allowed"
-
-
 def test_code_context_workspace_search_returns_repo_tagged_hits_and_repo_filter(
     store_root: Path,
     tmp_path: Path,
@@ -1669,46 +1517,6 @@ def test_code_context_workspace_search_returns_repo_tagged_hits_and_repo_filter(
         ("billing", "src/config.py"),
     ]
     assert [item["repo_name"] for item in billing_only["items"]] == ["billing"]
-
-
-def test_code_context_workspace_symbol_filter_and_external_origin_metadata(
-    store_root: Path,
-    tmp_path: Path,
-) -> None:
-    _ = store_root
-    billing_root = tmp_path.parent / "billing"
-    _write_workspace_fixture_repo(tmp_path, module_name="atelier")
-    _write_workspace_fixture_repo(billing_root, module_name="billing")
-    _write_workspace_fixture_config(tmp_path, billing_root)
-    _preindex(tmp_path)
-    _write_gateway_scip_fixture(
-        billing_root,
-        symbol_id="scip-requests-get",
-        artifact_name="external-python.scip",
-        file_path="external/requests/api.py",
-        symbol_name="get",
-        qualified_name="requests.get",
-        source="def get(url: str) -> str:\n    return url\n",
-    )
-
-    default_symbol = mcp_server._op_node(repo_root=str(tmp_path), symbol_name="SharedConfig")
-    billing_symbol = mcp_server._op_node(
-        repo_root=str(tmp_path),
-        symbol_name="SharedConfig",
-        repo="billing",
-    )
-    external_payload = mcp_server._op_search(
-        repo_root=str(tmp_path),
-        query="get",
-        scope="external",
-        repo="billing",
-    )
-
-    assert default_symbol["repo_name"] == "atelier"
-    assert billing_symbol["repo_name"] == "billing"
-    assert billing_symbol["qualified_name"] == "SharedConfig"
-    assert external_payload["items"][0]["repo_name"] == "billing"
-    assert external_payload["items"][0]["origin"] == "external"
 
 
 def test_repo_map_and_seed_files_dropped_from_grep(store_root: Path, tmp_path: Path) -> None:
@@ -1765,24 +1573,6 @@ def test_code_context_mcp_surfaces(store_root: Path, tmp_path: Path) -> None:
     )
     assert isinstance(context, dict)
     assert context.get("task") == "change alpha"
-
-
-def test_code_context_mcp_routes_scip_and_invalidates_cache(store_root: Path, tmp_path: Path) -> None:
-    _ = store_root
-    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-    artifact_path = _write_gateway_scip_fixture(tmp_path, symbol_id="scip-alpha-v1")
-
-    first = _op_result("symbols", mcp_server._op_search, repo_root=str(tmp_path), query="alpha")
-    cached = _op_result("symbols", mcp_server._op_search, repo_root=str(tmp_path), query="alpha")
-    artifact_path.write_text(
-        artifact_path.read_text(encoding="utf-8").replace("scip-alpha-v1", "scip-alpha-v2"),
-        encoding="utf-8",
-    )
-    fresh = _op_result("symbols", mcp_server._op_search, repo_root=str(tmp_path), query="alpha")
-
-    assert "alpha" in first
-    assert cached == first
-    assert "alpha" in fresh
 
 
 def test_code_context_search_surface_supports_snippet_scope_and_glob(store_root: Path, tmp_path: Path) -> None:
@@ -2060,20 +1850,6 @@ def test_code_context_usages_surface_groups_references(store_root: Path, tmp_pat
     assert "checkout" in payload
 
 
-def test_code_context_mcp_falls_back_when_scip_artifact_is_invalid(store_root: Path, tmp_path: Path) -> None:
-    _ = store_root
-    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-    engine = CodeContextEngine(tmp_path)
-    artifact_dir = ScipIndexer(tmp_path, engine.repo_id).cache_root
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "python.scip").write_text("{invalid json", encoding="utf-8")
-
-    searched = _op_result("symbols", mcp_server._op_search, repo_root=str(tmp_path), query="alpha")
-
-    assert "alpha" in searched
-    assert "provenance: scip" not in searched
-
-
 def test_code_context_pattern_search_surface_is_cached(
     store_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2294,9 +2070,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert (
-        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
-    ), f"'trace_id' missing or empty in trace receipt: {payload}"
+    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
+        f"'trace_id' missing or empty in trace receipt: {payload}"
+    )
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

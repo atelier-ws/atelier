@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import subprocess
@@ -16,7 +15,6 @@ from atelier.core.capabilities.code_context.models import SymbolRecord, TextMatc
 from atelier.core.capabilities.code_context.output_policy import TRUNCATION_MARKER
 from atelier.infra.code_intel.astgrep import PatternMatch, PatternSearchResult
 from atelier.infra.code_intel.cross_lang.runner import CrossLangRunner
-from atelier.infra.code_intel.scip.indexer import ScipIndexer
 
 
 def _write_fixture_repo(root: Path) -> None:
@@ -115,149 +113,6 @@ def _write_substring_search_fixture_repo(root: Path) -> None:
         "class _AdaptivePriorTracker:\n    pass\n",
         encoding="utf-8",
     )
-
-
-def _write_call_graph_scip_fixture(engine: CodeContextEngine, *, include_call_graph: bool = True) -> None:
-    artifact_dir = ScipIndexer(engine.repo_root, engine.repo_id).cache_root
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "version": 1,
-        "repo_id": engine.repo_id,
-        "language": "python",
-        "index_sha": "0000000000000000000000000000000000000000",
-        "symbols": [],
-    }
-    symbols_payload = payload["symbols"]
-    assert isinstance(symbols_payload, list)
-    symbol_specs = [
-        ("scip-handle", "src/app.py", "handle", "handle"),
-        ("scip-alpha", "src/alpha.py", "alpha", "alpha"),
-        ("scip-beta", "src/beta.py", "beta", "beta"),
-        ("scip-gamma", "src/gamma.py", "gamma", "gamma"),
-    ]
-    for symbol_id, file_path, symbol_name, qualified_name in symbol_specs:
-        source = (engine.repo_root / file_path).read_text(encoding="utf-8")
-        symbols_payload.append(
-            {
-                "id": symbol_id,
-                "repo_id": engine.repo_id,
-                "path": file_path,
-                "language": "python",
-                "name": symbol_name,
-                "qname": qualified_name,
-                "kind": "function",
-                "signature": f"def {symbol_name}() -> int:",
-                "start_b": source.index(f"def {symbol_name}"),
-                "end_b": len(source.encode("utf-8")),
-                "line": 3,
-                "end_line": 4,
-                "content_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
-                "source": source,
-                "provenance": "scip",
-            }
-        )
-    if include_call_graph:
-        payload["call_graph"] = {
-            "callers": {
-                "scip-alpha": [
-                    {
-                        "id": "scip-handle",
-                        "name": "handle",
-                        "qname": "handle",
-                        "path": "src/app.py",
-                        "kind": "function",
-                        "line": 3,
-                        "end_line": 4,
-                        "provenance": "scip",
-                    },
-                    {
-                        "id": "scip-gamma",
-                        "name": "gamma",
-                        "qname": "gamma",
-                        "path": "src/gamma.py",
-                        "kind": "function",
-                        "line": 3,
-                        "end_line": 4,
-                        "provenance": "scip",
-                    },
-                ],
-                "scip-beta": [
-                    {
-                        "id": "scip-alpha",
-                        "name": "alpha",
-                        "qname": "alpha",
-                        "path": "src/alpha.py",
-                        "kind": "function",
-                        "line": 3,
-                        "end_line": 4,
-                        "provenance": "scip",
-                    }
-                ],
-                "scip-gamma": [
-                    {
-                        "id": "scip-beta",
-                        "name": "beta",
-                        "qname": "beta",
-                        "path": "src/beta.py",
-                        "kind": "function",
-                        "line": 3,
-                        "end_line": 4,
-                        "provenance": "scip",
-                    }
-                ],
-            },
-            "callees": {
-                "scip-handle": [
-                    {
-                        "id": "scip-alpha",
-                        "name": "alpha",
-                        "qname": "alpha",
-                        "path": "src/alpha.py",
-                        "kind": "function",
-                        "line": 3,
-                        "end_line": 4,
-                        "provenance": "scip",
-                    }
-                ],
-                "scip-alpha": [
-                    {
-                        "id": "scip-beta",
-                        "name": "beta",
-                        "qname": "beta",
-                        "path": "src/beta.py",
-                        "kind": "function",
-                        "line": 3,
-                        "end_line": 4,
-                        "provenance": "scip",
-                    }
-                ],
-                "scip-beta": [
-                    {
-                        "id": "scip-gamma",
-                        "name": "gamma",
-                        "qname": "gamma",
-                        "path": "src/gamma.py",
-                        "kind": "function",
-                        "line": 3,
-                        "end_line": 4,
-                        "provenance": "scip",
-                    }
-                ],
-                "scip-gamma": [
-                    {
-                        "id": "scip-alpha",
-                        "name": "alpha",
-                        "qname": "alpha",
-                        "path": "src/alpha.py",
-                        "kind": "function",
-                        "line": 3,
-                        "end_line": 4,
-                        "provenance": "scip",
-                    }
-                ],
-            },
-        }
-    (artifact_dir / "python.scip").write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
 
 
 def _write_cross_lang_fixture_repo(root: Path) -> None:
@@ -407,48 +262,6 @@ def _write_blame_fixture(repo_root: Path) -> tuple[str, str]:
         author_date=(now - timedelta(days=7)).isoformat(),
     )
     return indexed_sha, head_sha
-
-
-def _write_scip_fixture_for_symbol(
-    repo_root: Path,
-    *,
-    file_path: str,
-    symbol_name: str,
-    index_sha: str,
-    artifact_name: str = "python.scip",
-    qualified_name: str | None = None,
-    source: str | None = None,
-) -> None:
-    engine = CodeContextEngine(repo_root)
-    symbol_source = source or (repo_root / file_path).read_text(encoding="utf-8")
-    artifact_dir = ScipIndexer(repo_root, engine.repo_id).cache_root
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "version": 1,
-        "repo_id": engine.repo_id,
-        "language": "python",
-        "index_sha": index_sha,
-        "symbols": [
-            {
-                "id": f"scip-{symbol_name}",
-                "repo_id": engine.repo_id,
-                "path": file_path,
-                "language": "python",
-                "name": symbol_name,
-                "qname": qualified_name or symbol_name,
-                "kind": "function",
-                "signature": f"def {symbol_name}() -> int:",
-                "start_b": symbol_source.index(f"def {symbol_name}") if f"def {symbol_name}" in symbol_source else 0,
-                "end_b": len(symbol_source.encode("utf-8")),
-                "line": 1,
-                "end_line": len(symbol_source.splitlines()),
-                "content_hash": hashlib.sha256(symbol_source.encode("utf-8")).hexdigest(),
-                "source": symbol_source,
-                "provenance": "scip",
-            }
-        ],
-    }
-    (artifact_dir / artifact_name).write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
 
 
 def _write_live_temporal_fixture(repo_root: Path) -> None:
@@ -1193,42 +1006,6 @@ def test_tool_search_deleted_scope_dispatches_via_git_history_adapter(
     assert payload["provenance"] == "graveyard"
 
 
-def test_tool_blame_returns_index_stale_when_scip_symbol_freshness_lags_head(
-    tmp_path: Path,
-) -> None:
-    repo_root = tmp_path / "repo"
-    indexed_sha, head_sha = _write_blame_fixture(repo_root)
-    _write_scip_fixture_for_symbol(repo_root, file_path="service.py", symbol_name="risk_score", index_sha=indexed_sha)
-    engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
-
-    payload = engine.tool_blame(query="risk_score", budget_tokens=4000)
-
-    assert payload["error"] == "index_stale"
-    assert payload["hint"] == 'run code op="index" first'
-    assert payload["index_sha"] == indexed_sha
-    assert payload["head_sha"] == head_sha
-    assert payload["freshness"] == "stale"
-
-
-def test_tool_blame_returns_ownership_metadata_with_optional_churn(tmp_path: Path) -> None:
-    repo_root = tmp_path / "repo"
-    _indexed_sha, head_sha = _write_blame_fixture(repo_root)
-    _write_scip_fixture_for_symbol(repo_root, file_path="service.py", symbol_name="risk_score", index_sha=head_sha)
-    engine = CodeContextEngine(repo_root, db_path=tmp_path / "code.sqlite")
-
-    payload = engine.tool_blame(query="risk_score", budget_tokens=4000)
-    without_churn = engine.tool_blame(query="risk_score", include_churn=False, budget_tokens=4000)
-
-    assert payload["name"] == "risk_score"
-    assert payload["qualified_name"] == "risk_score"
-    assert payload["author"] == "carol@example.com"
-    assert payload["last_commit_sha"] == head_sha
-    assert payload["freshness"] == "fresh"
-    assert payload["churn"]["commit_count"] == 2
-    assert payload["distinct_authors"] == 2
-    assert "churn" not in without_churn or without_churn["churn"] is None
-
-
 def test_tool_search_repo_scope_applies_temporal_filters_after_ranking(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     _write_live_temporal_fixture(repo_root)
@@ -1246,56 +1023,6 @@ def test_tool_search_repo_scope_applies_temporal_filters_after_ranking(tmp_path:
 
     assert {item["path"] for item in unfiltered["items"]} == {"archived.py", "recent.py"}
     assert [item["path"] for item in filtered["items"]] == ["recent.py"]
-
-
-def test_code_context_repo_scope_excludes_external_hits_by_default(tmp_path: Path) -> None:
-    _write_fixture_repo(tmp_path)
-    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
-    engine.index_repo()
-    _write_scip_fixture_for_symbol(
-        tmp_path,
-        file_path="src/orders.py",
-        symbol_name="OrderService",
-        qualified_name="OrderService",
-        index_sha="a" * 40,
-    )
-    _write_scip_fixture_for_symbol(
-        tmp_path,
-        file_path="external/requests/api.py",
-        symbol_name="get",
-        qualified_name="requests.get",
-        index_sha="b" * 40,
-        artifact_name="external-python.scip",
-        source="def get(url: str) -> str:\n    return url\n",
-    )
-
-    repo_hits = engine.search_symbols("get", limit=5)
-
-    assert repo_hits == []
-
-
-def test_code_context_external_scope_returns_external_hits_and_origin_metadata(
-    tmp_path: Path,
-) -> None:
-    _write_fixture_repo(tmp_path)
-    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
-    engine.index_repo()
-    _write_scip_fixture_for_symbol(
-        tmp_path,
-        file_path="external/requests/api.py",
-        symbol_name="get",
-        qualified_name="requests.get",
-        index_sha="b" * 40,
-        artifact_name="external-python.scip",
-        source="def get(url: str) -> str:\n    return url\n",
-    )
-
-    external_hits = engine.search_symbols("get", limit=5, scope="external")
-    external_symbol = engine.get_symbol(symbol_id="scip-get")
-
-    assert [hit.qualified_name for hit in external_hits] == ["requests.get"]
-    assert external_hits[0].origin == "external"
-    assert external_symbol["origin"] == "external"
 
 
 def test_budget_packer_drops_optional_keys_first() -> None:
@@ -1518,59 +1245,6 @@ def test_tool_callees_resolves_indexed_targets_for_ambiguous_callee_name(tmp_pat
     assert payload["edge_count"] >= 2
 
 
-def test_tool_callers_and_callees_traverse_depth_and_handle_cycles(tmp_path: Path) -> None:
-    _write_call_graph_fixture_repo(tmp_path)
-    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
-    engine.index_repo()
-    _write_call_graph_scip_fixture(engine)
-
-    callers = engine.tool_callers(query="beta", depth=2, budget_tokens=4000)
-    callees = engine.tool_callees(query="handle", depth=2, budget_tokens=4000)
-
-    assert callers["target"]["qualified_name"] == "beta"
-    assert callers["depth"] == 2
-    assert callers["data_status"] == "available"
-    assert {item["qualified_name"] for item in callers["related"]} == {"alpha", "gamma", "handle"}
-    assert callers["edge_count"] == 3
-    assert callers["provenance"] == "scip"
-    assert callees["target"]["qualified_name"] == "handle"
-    assert {item["qualified_name"] for item in callees["related"]} == {"alpha", "beta"}
-    assert all(edge["depth"] in {1, 2} for edge in callees["edges"])
-
-
-def test_tool_callers_falls_back_to_reference_graph_when_call_graph_data_is_missing(
-    tmp_path: Path,
-) -> None:
-    _write_call_graph_fixture_repo(tmp_path)
-    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
-    engine.index_repo()
-    _write_call_graph_scip_fixture(engine, include_call_graph=False)
-
-    payload = engine.tool_callers(query="alpha", budget_tokens=4000)
-
-    assert payload["target"]["qualified_name"] == "alpha"
-    assert payload["data_status"] == "available"
-    assert payload["edge_count"] >= 1
-    assert payload["related_count"] >= 1
-    assert "fallback" in str(payload.get("message", "")).lower()
-    assert payload["provenance"] == "scip"
-
-
-def test_tool_callees_snapshot_is_opt_in_and_returns_metadata(tmp_path: Path) -> None:
-    _write_call_graph_fixture_repo(tmp_path)
-    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
-    engine.index_repo()
-    _write_call_graph_scip_fixture(engine)
-
-    default_payload = engine.tool_callees(query="handle", budget_tokens=4000)
-    snapshot_payload = engine.tool_callees(query="handle", snapshot=True, budget_tokens=4000)
-
-    assert default_payload["snapshot"] is None
-    assert snapshot_payload["snapshot"]["direction"] == "callees"
-    assert snapshot_payload["snapshot"]["target_symbol_id"] == "scip-handle"
-    assert snapshot_payload["snapshot"]["edge_count"] == snapshot_payload["edge_count"]
-
-
 def test_tool_search_snippet_none_omits_snippets_and_keeps_exact_match_first(
     tmp_path: Path,
 ) -> None:
@@ -1657,7 +1331,6 @@ def test_tool_search_deduplicates_items_before_rendering(tmp_path: Path, monkeyp
     payload = engine.tool_search("OrderService", snippet="none", budget_tokens=4000)
 
     assert len(payload["items"]) == 1
-
 
 
 def test_auto_mode_keeps_identifier_queries_on_exact_lexical_order(tmp_path: Path) -> None:

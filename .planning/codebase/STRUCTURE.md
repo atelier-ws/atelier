@@ -45,7 +45,7 @@ atelier/
 **`src/atelier/infra/`:**
 
 - Purpose: Persistence and external integrations.
-- Contains: `storage/`, `runtime/` (run ledger, cost tracker), `code_intel/` (scip/astgrep/zoekt), `embeddings/`, `memory_bridges/`, `internal_llm/`, `seed_playbooks/`, `tree_sitter/`.
+- Contains: `storage/`, `runtime/` (run ledger, cost tracker), `code_intel/` (astgrep/zoekt), `embeddings/`, `memory_bridges/`, `internal_llm/`, `seed_playbooks/`, `tree_sitter/`.
 - Key files: `storage/factory.py`, `runtime/run_ledger.py`, `internal_llm/litellm_client.py`.
 
 **`frontend/`:**

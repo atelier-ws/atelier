@@ -26,7 +26,7 @@ class CallGraphNode(BaseModel):
     kind: str
     start_line: int
     end_line: int
-    provenance: str = "scip"
+    provenance: str = "tree_sitter"
 
 
 class CallGraphEdge(BaseModel):

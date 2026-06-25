@@ -38,38 +38,28 @@ The code-intelligence subsystem routes agent queries by shape through a layered 
                              │
 ┌────────────────────────────▼─────────────────────────────────────────────┐
 │ SymbolIntelStore (routing + cache + budget + query-shape detection)      │
-│  - name query   → SCIP (microseconds, precomputed)                       │
+│  - name query   → Zoekt/ast-grep (indexed, sub-ms)                       │
 │  - pattern      → ast-grep (structural, cross-language)                  │
 │  - NL query     → embeddings (semantic, hybrid RRF)                      │
 │  - text search  → Zoekt (>500k LOC) or ripgrep (small repos)            │
 │  - deleted/hist → Git History Index (pygit2)                             │
 │  - fallback     → LocalAdapter (CodeContextEngine + tree-sitter)         │
 │  Content-addressed cache · token-budget packer · trace always on         │
-└──┬──────────┬───────────┬──────────┬────────────┬────────────────────────┘
-   │          │           │          │            │
-   ▼          ▼           ▼          ▼            ▼
-┌──────┐ ┌────────┐ ┌──────────┐ ┌──────┐ ┌─────────────────────────────┐
-│ SCIP │ │ast-grep│ │Embeddings│ │Zoekt │ │ Git History (M14, M15)      │
-│  M1  │ │   M5   │ │   M6     │ │ M16  │ │  walker.py  (pygit2)        │
-│★core │ │★core   │ │(vec+RRF) │ │scale │ │  graveyard.py  (SQLite)     │
-└──────┘ └────────┘ └──────────┘ └──────┘ │  blame.py   (churn score)  │
-   │                                       └────────────┬────────────────┘
-   ▼                                                    │
-.scip files                                ┌────────────▼────────────────┐
-precomputed once,                          │ Symbol Graveyard DB         │
-queried in µs                              │ deleted · renamed · blame   │
-(scip-python ·                             │ churn · temporal filters    │
- scip-typescript installer-managed ·       └─────────────────────────────┘
- scip-go/scip-ruby/scip-clang lazy ·
- rust-analyzer/scip-java user toolchain)
-
-SCIP provisioning tiers:
-
-| Tier | Languages | Runtime behavior |
-|------|-----------|------------------|
-| Install-time | Python, TypeScript, JavaScript | `scip-python` and `scip-typescript` install into Atelier's managed Node prefix when npm is available. |
-| Lazy checksum-gated | Go, Ruby, C, C++ | Bootstrap is fail-closed unless a checksum allowlist entry is present; env overrides and managed dirs are searched before system `PATH`. |
-| User toolchain | Rust, Java | Detected and reported with install hints; Atelier does not auto-install heavy Rust/JDK toolchains. |
+└──┬──────────┬───────────┬──────────┬──────────────────────────────────────────────┘
+   │          │           │          │
+   ▼          ▼           ▼          ▼
+┌────────┐ ┌──────────┐ ┌──────┐ ┌─────────────────────────────┐
+│ast-grep│ │Embeddings│ │Zoekt │ │ Git History (M14, M15)      │
+│   M5   │ │   M6     │ │ M16  │ │  walker.py  (pygit2)        │
+│★core   │ │(vec+RRF) │ │scale │ │  graveyard.py  (SQLite)     │
+└────────┘ └──────────┘ └──────┘ │  blame.py   (churn score)  │
+                            └──────────────────────────┬──┘
+                                                           │
+                                         ┌────────────────────────────┐
+                                         │ Symbol Graveyard DB        │
+                                         │ deleted · renamed · blame  │
+                                         │ churn · temporal filters   │
+                                         └────────────────────────────┘
 
    Cross-language edges (M17, partial):
 ┌───────────────────────────────────────┐

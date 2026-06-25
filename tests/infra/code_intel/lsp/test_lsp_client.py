@@ -128,7 +128,7 @@ def test_malformed_result_degrades() -> None:
 # --------------------------------------------------------------------------- #
 def test_registry_has_one_documented_adapter() -> None:
     assert server_command_for_language("kotlin") == ("kotlin-language-server",)
-    # A SCIP-backed / unwired language has no adapter -> graceful None.
+    # An unwired language has no adapter -> graceful None.
     assert server_command_for_language("python") is None
     assert server_command_for_language("made-up") is None
     assert "kotlin" in SERVER_COMMANDS

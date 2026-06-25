@@ -77,12 +77,6 @@ set -e
 curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 ATELIER_SKIP_MYPYC=1 UV_TOOL_BIN_DIR=/usr/local/bin /usr/local/bin/uv tool install --force "/opt/atelier[mcp,smart,parsers,rename]"
 
-# Install SCIP indexers for Python and TypeScript/JavaScript.
-# Node.js is already present from the baseline overlay layer.
-# These binaries are resolved by ScipIndexer.index_language() which is now
-# triggered automatically from atelier code index.
-npm install -g --no-fund @sourcegraph/scip-python @sourcegraph/scip-typescript
-
 # Pre-install the ast-grep binary so the codemod MCP tool works at runtime.
 # Download NOW (overlay build time) -- the mitmproxy that runs during the actual
 # benchmark uses a CA that Python's ssl module does not trust, so any urllib call

@@ -3477,7 +3477,7 @@ def tool_get_context(
 
     Call at task start to seed context with prior procedures, repo bootstrap
     knowledge, and per-agent memory. mode="symbols" returns the most relevant
-    code symbols/files from the SCIP index instead; mode="pull" returns scoped
+    code symbols/files from the code index instead; mode="pull" returns scoped
     subtask context (files/keywords/excluded_paths scope it).
 
     Args: task (required) drives ranking; domain narrows retrieval; files boost
@@ -5635,13 +5635,13 @@ def _apply_edit_verify_gate(
         # is unchanged -- only the success *output* is suppressed.
         if not errors:
             return
-        result["mechanical_checks"] = {
+        result.setdefault("FIXME", {})["mechanical_checks"] = {
             "passed": False,
-            "checks": list(checks_seq),
-            "scope": "mechanical",
-            "behavioral_tests_run": False,
+            "failures": [
+                {k: v for k, v in c.to_dict().items() if k != "severity" and v is not None}
+                for c in errors
+            ],
         }
-        result["counterexamples"] = [c.to_dict() for c in errors]
         if rollback:
             # The gate runs outside the per-file edit locks (so verify can't
             # serialize concurrent edits); re-acquire them just for the rollback
@@ -5654,13 +5654,11 @@ def _apply_edit_verify_gate(
                 result["rollback_conflicts"] = conflicts
             result["rolled_back"] = True
             result["applied"] = []
-            result["mechanical_checks"]["rolled_back"] = True
+            result["FIXME"]["mechanical_checks"]["rolled_back"] = True
     except Exception:
         logging.exception("Recovered from broad exception handler")
-        result["mechanical_checks"] = {
+        result.setdefault("FIXME", {})["mechanical_checks"] = {
             "passed": None,
-            "scope": "mechanical",
-            "behavioral_tests_run": False,
             "error": "mechanical edit gate failed open",
         }
 
@@ -5741,7 +5739,7 @@ def _attach_contract_literal_review(
         sites.extend(decorator_contract_impact(edits, engine=engine, touched_paths=touched_paths))
         if sites:
             result["FIXME"] = {
-                "reason": "These sites still use a contract this edit changed -- update each or say why not.",
+                "reason": "Must update: these callers still use the contract this edit changed.",
                 "sites": sites,
             }
     except Exception:
@@ -5920,14 +5918,11 @@ def _compact_applied_entries(entries: list[dict[str, Any]]) -> list[str | dict[s
 # `calls_saved` is NOT here: it is internal savings accounting, never model-facing
 # (the dispatcher pops it before rendering), so it must not keep a result "loud".
 _EDIT_ACTIONABLE_KEYS = (
-    "diagnostics",
-    # Post-edit work-list: parallel sites still using a contract this edit changed.
+    # All must-act signals consolidated under FIXME: contract sites, lint
+    # diagnostics, mechanical check failures. test_weakening always comes with
+    # rolled_back; rollback_conflicts is the rare restore-race edge case.
     "FIXME",
     "test_weakening",
-    # Opt-in verify gate output. Now attached only on failure (a passing gate is
-    # silent), so its mere presence is an actionable finding.
-    "mechanical_checks",
-    "counterexamples",
     "rollback_conflicts",
 )
 
@@ -6227,12 +6222,17 @@ def tool_smart_edit(
             repo_root=repo_root,
         )
 
-    # Include diagnostics inline: this IS the lint-after-edit turn.
-    # Filter to errors/warnings only — informational notes add noise.
+    # Fold lint diagnostics (errors/warnings only) into FIXME so all must-act
+    # signals surface under one key. Informational notes are dropped as noise.
     if "diagnostics" in result:
         result["diagnostics"] = [d for d in result["diagnostics"] if d.get("severity") in ("error", "warning")]
         if not result["diagnostics"]:
             result.pop("diagnostics")
+        else:
+            result.setdefault("FIXME", {})["diagnostics"] = [
+                {k: v for k, v in d.items() if k not in ("severity", "source", "col")}
+                for d in result.pop("diagnostics")
+            ]
     # Strip verbose hooks metadata — callers don't need step details.
     result.pop("hooks", None)
 
@@ -6816,7 +6816,7 @@ _CODE_OP_ITEM_STRIP: frozenset[str] = frozenset(
 
 # Extra top-level keys to drop per-op (in addition to _CODE_OP_TOP_STRIP).
 _CODE_OP_EXTRA_STRIP: dict[str, frozenset[str]] = {
-    # edges contain only SCIP hash IDs — no names or paths; `related` has the useful data
+    # edges contain only hash IDs — no names or paths; `related` has the useful data
     "callers": frozenset({"edges"}),
     "callees": frozenset({"edges"}),
     # symbol/node ops: byte offsets and hashes are useless to LLMs (same payload
@@ -7150,7 +7150,7 @@ def _op_graph(
     * ``dead_code`` / ``cycles`` / ``coupling`` -- repo-wide file-graph analytics
       over the semantic file index. Pass ``paths`` to fold those files into the
       index first; otherwise analyses whatever the index already holds.
-    * ``centrality`` -- symbol-level call-graph centrality from the SCIP engine.
+    * ``centrality`` -- symbol-level call-graph centrality from the code-intel engine.
       Pass ``synthesize=true`` with ``paths`` to additionally return
       heuristic (route/event) edges as a SEPARATE ``synthesized_edges`` list
       (N2/N3); they are never merged into the static call graph.
@@ -7825,7 +7825,7 @@ def tool_index(
     repo_root: str | None = None,
     render_compact: bool = False,
 ) -> dict[str, Any]:
-    """Build or refresh the SCIP code index for the repo (internal/admin)."""
+    """Build or refresh the code index for the repo (internal/admin)."""
     return _op_index(
         include_globs=include_globs,
         exclude_globs=exclude_globs,
@@ -8292,7 +8292,7 @@ def _run_native_grep(
 
 
 # Cap on how many distinct symbols one grep call will badge with call-graph
-# counts -- keeps the SCIP lookups bounded on large result sets.
+# counts -- keeps the symbol lookups bounded on large result sets.
 _GREP_BADGE_SYMBOL_CAP = 8
 
 # Model-facing grep output-mode names map to the verbose internal output_mode the
@@ -8309,7 +8309,7 @@ def _grep_symbol_badge(symbol_name: str, *, repo_root: str) -> str | None:
     """Compact caller/callee/usage-count badge for a matched definition symbol.
 
     Best-effort and read-only: returns ``None`` (no badge) on any failure or when
-    the SCIP index has no data, so it can never break a grep call. Counts come from
+    the code index has no data, so it can never break a grep call. Counts come from
     the cached _op_* wrappers; the actual lists are reached via the `relations` tool.
     """
     _cap = 500  # high so the count is the true total in the common case
@@ -8418,9 +8418,9 @@ def tool_relations(
     depth: int = 1,
     limit: int = 20,
 ) -> dict[str, Any]:
-    """Return the actual callers / callees / usages / definition of one symbol (SCIP).
+    """Return the actual callers / callees / usages / definition of one symbol.
 
-    `symbol` is a name, qualified path, or SCIP id. `kind` selects the relation
+    `symbol` is a name, qualified path, or symbol id. `kind` selects the relation
     (default usages); `depth` extends callers/callees transitively. The COUNTS for
     these already ride along on `grep` definition matches — use this only to expand
     a count into the concrete list.
@@ -9722,7 +9722,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 )
 
         remote_routed = name in _REMOTE_TOOLS
-        # mode="symbols" must always run locally (SCIP engine); bypass remote routing
+        # mode="symbols" must always run locally (code-intel engine); bypass remote routing
         if name == "context" and isinstance(args, dict) and args.get("mode") == "symbols":
             remote_routed = False
         # N10 — request-scoped project isolation. Honor an Mcp-Project-Path-style

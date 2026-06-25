@@ -17,7 +17,6 @@ import contextlib
 import csv
 import json
 import os
-import re
 import shutil
 import statistics
 import subprocess
@@ -39,7 +38,6 @@ from benchmarks.mcp_tools.bench_external_indexers import (
     default_benchmark_root,
     ensure_code_index_checkout,
     ensure_code_index_runtime,
-    ensure_scip_python,
     ensure_universal_ctags,
     external_workspace_root,
     install_external_tools,
@@ -134,12 +132,6 @@ SURFACE_AUDIT: dict[str, list[dict[str, str | bool]]] = {
         {"surface": "run:pattern", "family": "structural_search", "benchmarked": True},
         {"surface": "run:callers", "family": "callers", "benchmarked": True},
     ],
-    "scip-python": [
-        {"surface": "scip:definition", "family": "exact_symbol", "benchmarked": True},
-        {"surface": "scip:outline", "family": "file_outline", "benchmarked": True},
-        {"surface": "scip:references", "family": "references", "benchmarked": True},
-        {"surface": "scip:callers", "family": "callers", "benchmarked": True},
-    ],
     "universal-ctags": [
         {"surface": "readtags:exact", "family": "exact_symbol", "benchmarked": True},
         {"surface": "ctags:outline", "family": "file_outline", "benchmarked": True},
@@ -160,7 +152,6 @@ DEFAULT_PROVIDER_TOOLS = (
     "code-index-mcp",
     "jcodemunch-mcp",
     "ast-grep",
-    "scip-python",
     "universal-ctags",
 )
 
@@ -301,7 +292,7 @@ class AtelierRunner(_RunnerBase):
         self.call_code_op = call_code_op
         # Pre-warm: the first search on a fresh snapshot triggers a full lexical
         # index build (tens of seconds). The first callers/callees/usages op
-        # triggers a SCIP index build (also tens of seconds). Both happen here
+        # triggers a code index build (also tens of seconds). Both happen here
         # so measured cases reflect steady-state latency instead of folding a
         # one-time build cost into the first timed case.
         with contextlib.suppress(Exception):
@@ -335,10 +326,10 @@ class AtelierRunner(_RunnerBase):
     def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
         assert self.snapshot_root is not None and self.call_code_op is not None
         if case.family == "exact_symbol":
-            # Atelier's source-free symbol locator is the `symbols` tool: a SCIP
+            # Atelier's source-free symbol locator is the `symbols` tool:
             # search with intent=symbol, view=target, snippet=none -> name +
             # location, no body. This is the apples-to-apples peer of serena
-            # find_symbol / scip definition / ctags readtags, which all return
+            # find_symbol / ctags readtags, which return
             # location-only. (`node` is the heavier full-source view.)
             request = {
                 "op": "search",
@@ -857,153 +848,6 @@ class CtagsRunner(_RunnerBase):
         # readtags exits non-zero on a clean miss; that is a legitimate empty
         # result (scored 0), not a harness failure -- return stdout regardless.
         return json.dumps({"command": cmd[1:]}, ensure_ascii=False), proc.stdout
-
-
-_SCIP_DESCRIPTOR_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?[#.:/]")
-
-
-def _scip_leaf_name(symbol: str) -> str:
-    """Return the trailing descriptor identifier of a SCIP symbol string.
-
-    SCIP chains descriptors (e.g. ``pkg`/Class#method().``); the leaf is the last
-    identifier preceding a descriptor terminator (``# . : /`` or ``().``).
-    """
-    matches = _SCIP_DESCRIPTOR_RE.findall(symbol)
-    return matches[-1] if matches else ""
-
-
-class ScipPythonRunner(_RunnerBase):
-    """scip-python: a precise SCIP comparator (the protocol Atelier itself speaks).
-
-    Indexes ``src/atelier`` once with Pyright-grade scip-python, then loads the
-    index via the ``scip`` CLI (``print --json``) into in-memory lookups for
-    definitions, per-file outlines, and references.
-    """
-
-    tool_name = "scip-python"
-    supported_families = TOOL_SUPPORT[tool_name]
-
-    def __init__(self, repo_root: Path, workspace_root: Path, *, cache_root: Path | None, cache_key: str) -> None:
-        self.repo_root = repo_root
-        self.workspace_root = workspace_root
-        self.cache_root = cache_root
-        self.cache_key = cache_key
-        self.snapshot_root: Path | None = None
-        self.scip_python: Path | None = None
-        self.scip_cli: Path | None = None
-        self._defs_by_name: dict[str, list[str]] = {}
-        self._defs_by_doc: dict[str, list[str]] = {}
-        self._docs_by_leaf: dict[str, set[str]] = {}
-
-    def start(self) -> None:
-        self.scip_python, self.scip_cli = ensure_scip_python()
-        self.snapshot_root = _prepare_provider_snapshot(
-            self.repo_root,
-            self.workspace_root,
-            tool_name=self.tool_name,
-            cache_root=self.cache_root,
-            cache_key=self.cache_key,
-        )
-        assert self.snapshot_root is not None
-        index_path = self.snapshot_root / ".atelier-scip-index.scip"
-        if not _provider_cache_ready(self.snapshot_root, self.tool_name, self.cache_key):
-            lock_root = self.cache_root or self.snapshot_root.parent
-            with cache_lock(lock_root / f"{self.tool_name}-{self.cache_key}.lock"):
-                if not _provider_cache_ready(self.snapshot_root, self.tool_name, self.cache_key):
-                    proc = run_cmd(
-                        [
-                            str(self.scip_python),
-                            "index",
-                            "--project-name",
-                            "atelier",
-                            "--quiet",
-                            "--target-only",
-                            "src/atelier",
-                            "--output",
-                            str(index_path),
-                        ],
-                        cwd=self.snapshot_root,
-                        timeout=1800,
-                    )
-                    if proc.returncode != 0:
-                        raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
-                    _write_provider_cache_marker(self.snapshot_root, self.tool_name, self.cache_key)
-        printed = run_cmd([str(self.scip_cli), "print", "--json", str(index_path)], timeout=600)
-        if printed.returncode != 0:
-            raise RuntimeError(printed.stderr[:1200] or printed.stdout[:1200])
-        self._build_lookups(printed.stdout)
-
-    def _build_lookups(self, printed_json: str) -> None:
-        data = json.loads(printed_json)
-        for doc in data.get("documents", []):
-            rel = doc.get("relative_path", "")
-            if not rel:
-                continue
-            full = f"src/atelier/{rel}"
-            def_names: list[str] = []
-            for occ in doc.get("occurrences", []):
-                sym = occ.get("symbol", "")
-                if not sym or sym.startswith("local "):
-                    continue
-                leaf = _scip_leaf_name(sym)
-                if not leaf:
-                    continue
-                # Name-keyed occurrence index: references are answered at the same
-                # (name-based) granularity as the reference ground truth, so a
-                # precise tool is not penalised for distinguishing same-named
-                # symbols the AST-derived expected set conflates.
-                #
-                # KNOWN RECALL CEILING (references~0.06, callers~0.13 -- verified
-                # against the real index, not a parser bug): this leaf-name index is
-                # already the MOST permissive recovery this index supports.
-                # @sourcegraph/scip-python (Pyright) records in-file uses of imported
-                # names as document-scoped `local ...` symbols and emits only
-                # `is_implementation` relationships -- never `is_reference` -- so a
-                # cross-module call site carries no link back to the canonical symbol
-                # and is unrecoverable here. Keying by full canonical symbol id
-                # instead measures strictly WORSE (references 0.05 vs 0.06). Lifting
-                # these scores would require a different indexer/index, not a change
-                # to this parser.
-                self._docs_by_leaf.setdefault(leaf, set()).add(full)
-                if int(occ.get("symbol_roles", 0) or 0) & 1:  # Definition bit
-                    bucket = self._defs_by_name.setdefault(leaf, [])
-                    if full not in bucket:
-                        bucket.append(full)
-                    def_names.append(leaf)
-            if def_names:
-                self._defs_by_doc[full] = def_names
-
-    def run_case(self, case: ExternalBenchCase) -> tuple[str, str]:
-        name = case.symbol_name or case.query
-        if case.family == "exact_symbol":
-            paths = self._defs_by_name.get(name, [])
-            payload: dict[str, Any] = {
-                "provider": "scip-python",
-                "op": "definition",
-                "symbol": name,
-                "matches": [{"path": p, "name": name} for p in paths[:20]],
-            }
-        elif case.family == "file_outline":
-            payload = {
-                "provider": "scip-python",
-                "op": "outline",
-                "path": case.path,
-                "symbols": self._defs_by_doc.get(case.path or "", []),
-            }
-        elif case.family in {"references", "callers"}:
-            # SCIP resolves occurrences type-accurately; callers are the call-site
-            # subset of a symbol's references, so the reference-file set surfaces
-            # the caller files the path-based scorer checks.
-            payload = {
-                "provider": "scip-python",
-                "op": case.family,
-                "symbol": name,
-                "files": sorted(self._docs_by_leaf.get(name, set()))[:50],
-            }
-        else:
-            raise ValueError(f"unsupported family for {self.tool_name}: {case.family}")
-        request = {"family": case.family, "symbol": name, "path": case.path}
-        return json.dumps(request, ensure_ascii=False), json.dumps(payload, ensure_ascii=False)
 
 
 class CodeIndexMatrixRunner(_RunnerBase):
@@ -1569,10 +1413,6 @@ def _runner_specs(
         (
             "ast-grep",
             AstGrepRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
-        ),
-        (
-            "scip-python",
-            ScipPythonRunner(repo_root, workspace_root, cache_root=cache_root, cache_key=cache_key),
         ),
         (
             "universal-ctags",

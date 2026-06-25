@@ -903,7 +903,7 @@ def search_workspace(
     ``badge_provider`` (optional, content mode only) receives ``(rel_path, [symbol
     names matched as definitions])`` and returns a short string appended to that
     file's header -- used to ride call-graph counts along regex matches. It stays
-    SCIP-agnostic here: the caller supplies the lookup.
+    Index-agnostic here: the caller supplies the lookup.
     """
     # Track naive vs rendered bytes to compute tokens_saved. Naive = grep
     # output bytes (matching lines + context, not full file); rendered = what

@@ -2,7 +2,7 @@
 
 Savings vs baseline come from:
 - Symbol-level abstraction: return signature/location, not full file content
-- SCIP index: exact cross-language references vs. textual grep (no false positives)
+- Code index: exact cross-language references vs. textual grep (no false positives)
 - Budget packing: caller/callee/usage graphs truncated to token budget automatically
 - Funnel strategy: search→inspect→relate requires fewer tokens than read-then-grep
 

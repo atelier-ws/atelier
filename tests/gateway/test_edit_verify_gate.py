@@ -28,13 +28,12 @@ def test_verify_gate_rolls_back_syntax_break(tmp_path: Path, monkeypatch: pytest
     )
 
     assert result.get("rolled_back") is True
-    gate = result.get("mechanical_checks", {})
+    gate = (result.get("FIXME") or {}).get("mechanical_checks", {})
     assert gate.get("passed") is False
-    assert gate.get("scope") == "mechanical"
-    assert gate.get("behavioral_tests_run") is False
+    assert gate.get("rolled_back") is True
     assert "verify" not in result
-    counterexamples = result.get("counterexamples") or []
-    assert any(c.get("check") == "parse" for c in counterexamples)
+    failures = gate.get("failures") or []
+    assert any(c.get("check") == "parse" for c in failures)
     # File restored to its pre-edit content.
     assert target.read_text(encoding="utf-8") == _CLEAN_TS
 
@@ -59,6 +58,7 @@ def test_verify_gate_passes_clean_edit(tmp_path: Path, monkeypatch: pytest.Monke
     # remain). The rollback-on-failure path is covered by the syntax-break test.
     assert "mechanical_checks" not in result
     assert "counterexamples" not in result
+    assert "FIXME" not in result
     assert "rolled_back" not in result
     assert "verify" not in result
     assert "export const x = 2;" in target.read_text(encoding="utf-8")
@@ -129,6 +129,7 @@ def test_default_path_has_no_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     assert "verify" not in result
     assert "mechanical_checks" not in result
+    assert "FIXME" not in result
     assert not result.get("rolled_back")
     # No gate -> the (broken) edit is written through.
     assert target.read_text(encoding="utf-8") == _BROKEN_TS
