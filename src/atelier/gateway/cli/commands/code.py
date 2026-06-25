@@ -457,7 +457,6 @@ def _trigger_zoekt_with_progress(repo_root: Path, frame_prefix: str = "") -> Non
         logging.exception("Zoekt prewarm failed")
 
 
-
 @click.group("code")
 def code_group() -> None:
     """Code context indexing, retrieval, repo maps, and impact analysis."""

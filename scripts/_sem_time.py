@@ -26,4 +26,7 @@ for i, q in enumerate(qs):
     res = eng.search_symbols(q, limit=10, mode="semantic", auto_index=False)
     dt = (time.perf_counter() - t0) * 1000
     tag = "COLD" if i == 0 else "warm"
-    print(f"[{i:2d}] total={dt:7.1f}ms  embed={embed_ms:6.1f}ms  rank+hydrate={dt - embed_ms:6.1f}ms  {tag}  hits={len(res)}", flush=True)
+    print(
+        f"[{i:2d}] total={dt:7.1f}ms  embed={embed_ms:6.1f}ms  rank+hydrate={dt - embed_ms:6.1f}ms  {tag}  hits={len(res)}",
+        flush=True,
+    )
