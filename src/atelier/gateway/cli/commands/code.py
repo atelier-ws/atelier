@@ -451,7 +451,7 @@ def _trigger_zoekt_with_progress(repo_root: Path, frame_prefix: str = "") -> Non
                 server = get_zoekt_server(repo_root, resolution=resolution)
                 server.ensure_started_and_build()
                 progress.update(task_id, description="[green]✓[/green]  Zoekt trigram index ready")
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 progress.update(task_id, description=f"[yellow]⚠[/yellow]  Zoekt: {exc}")
     except Exception:
         logging.exception("Zoekt prewarm failed")

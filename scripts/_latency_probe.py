@@ -22,7 +22,7 @@ for q, _tid, prefix in pairs:
 
 def pct(vals, p):
     s = sorted(vals)
-    return s[min(len(s) - 1, int(round((p / 100.0) * (len(s) - 1))))]
+    return s[min(len(s) - 1, round((p / 100.0) * (len(s) - 1)))]
 
 
 all_lat = []
