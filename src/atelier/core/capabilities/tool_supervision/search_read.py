@@ -27,24 +27,14 @@ logger = logging.getLogger(__name__)
 # Token counting
 # ---------------------------------------------------------------------------
 
-_ENCODING_CACHE: Any = None
-
-
-def _encoding() -> Any:
-    global _ENCODING_CACHE
-    if _ENCODING_CACHE is None:
-        import tiktoken
-
-        _ENCODING_CACHE = tiktoken.get_encoding("cl100k_base")
-    return _ENCODING_CACHE
-
-
 def _count_tokens(text: str) -> int:
-    try:
-        return len(_encoding().encode(text))
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        return len(text) // 4  # fallback: ~4 chars/token
+    # Budget gating only -- never billed.  Exact tiktoken BPE encoding of every
+    # candidate snippet was the single largest cost in the explore/search hot
+    # path (cl100k encode dominated the profiler: up to ~2.7s per explore call).
+    # The byte/4 estimate (cl100k averages ~3.6-4 chars/token on source) is
+    # accurate enough to pack snippets to a budget and is ~1000x cheaper.
+    # Reserve real tiktoken for cost/pricing computation, not retrieval.
+    return len(text) // 4
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +59,7 @@ class FileMatch:
     snippets: list[Snippet]
     outline: dict[str, Any] | None
     tokens: int
+    score: float = 0.0  # ranking score from _rank_zoekt_file_results; 0 = unranked
 
 
 @dataclass

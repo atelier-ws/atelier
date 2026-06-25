@@ -55,7 +55,7 @@ def test_pre_tool_use_risky_edit_always_allowed(
     assert pre_tool_use.main() == 0
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"decision": "allow"}
+    assert payload == {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}
 
 
 def test_pre_tool_use_blocks_benchmark_risky_edit_without_grounding(
@@ -85,8 +85,8 @@ def test_pre_tool_use_blocks_benchmark_risky_edit_without_grounding(
     assert pre_tool_use.main() == 0
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload["decision"] == "block"
-    assert "ground" in payload["reason"].lower()
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "ground" in payload["hookSpecificOutput"]["permissionDecisionReason"].lower()
 
 
 def test_pre_tool_use_allows_grounded_benchmark_risky_edit(
@@ -130,7 +130,7 @@ def test_pre_tool_use_allows_grounded_benchmark_risky_edit(
     assert pre_tool_use.main() == 0
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"decision": "allow"}
+    assert payload == {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}
 
 
 def test_pre_tool_use_allows_benchmark_off_even_for_risky_edit(
@@ -151,7 +151,7 @@ def test_pre_tool_use_allows_benchmark_off_even_for_risky_edit(
     assert pre_tool_use.main() == 0
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"decision": "allow"}
+    assert payload == {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}
 
 
 def test_user_prompt_hook_emits_compaction_nudge_as_ui_only_system_message(

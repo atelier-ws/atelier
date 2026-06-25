@@ -24,12 +24,23 @@ def _reset_supervisors() -> Iterator[None]:
     reset_zoekt_supervisors()
 
 
+def _git_init(repo_root: Path) -> None:
+    """Initialise a minimal git repo and stage all files so git ls-files works."""
+    import subprocess
+
+    subprocess.run(["git", "init", str(repo_root)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo_root), "config", "user.email", "test@test"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo_root), "config", "user.name", "test"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo_root), "add", "."], check=True, capture_output=True)
+
+
 def _write_fixture_repo(repo_root: Path) -> None:
     (repo_root / "src").mkdir(parents=True, exist_ok=True)
     (repo_root / "src" / "main.py").write_text(
         "def alpha() -> str:\n    return 'needle token'\n\ndef beta() -> str:\n    return 'needle token again'\n",
         encoding="utf-8",
     )
+    _git_init(repo_root)
 
 
 def _write_large_repo(repo_root: Path, *, files: int = 24, lines_per_file: int = 24) -> None:
@@ -39,6 +50,7 @@ def _write_large_repo(repo_root: Path, *, files: int = 24, lines_per_file: int =
             f"def item_{index}_{line}() -> str: return 'needle token {index}'\n" for line in range(lines_per_file)
         )
         (repo_root / "src" / f"module_{index}.py").write_text(payload, encoding="utf-8")
+    _git_init(repo_root)
 
 
 @skip_docker
@@ -94,7 +106,7 @@ def test_zoekt_managed_bootstrap_provisions_manifest_when_env_is_absent(
         payload = manifest.read_text(encoding="utf-8")
         assert "ghcr.io/sourcegraph/zoekt" in payload
     else:
-        assert resolution.source == "system-local"
+        assert resolution.source in {"system-local", "go-bin"}
         assert resolution.runtime == "binary"
         assert resolution.path is not None
 
@@ -238,7 +250,8 @@ def test_default_mode_disables_zoekt_without_runtime_probes(tmp_path: Path, monk
     monkeypatch.delenv("ATELIER_ZOEKT_MODE", raising=False)
     monkeypatch.delenv("ATELIER_ZOEKT_BIN", raising=False)
     monkeypatch.delenv("ATELIER_ZOEKT_BIN_SHA256", raising=False)
-    monkeypatch.setattr(binary.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(binary.shutil, "which", lambda _name, **_kw: None)
+    monkeypatch.setattr(binary, "_GO_BIN_PROBE_DIRS", ())
 
     resolution = discover_zoekt_binary(repo_root)
 

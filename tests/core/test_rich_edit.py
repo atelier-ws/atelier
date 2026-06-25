@@ -520,6 +520,49 @@ def test_rich_edit_parse_gate_catches_misindented_insertion(tmp_path: Path) -> N
     assert path.read_text(encoding="utf-8") == original
 
 
+def test_rich_edit_range_delete_no_old_string(tmp_path: Path) -> None:
+    """file_path#start-end with new_string='' deletes those lines without old_string."""
+    path = tmp_path / "mod.py"
+    path.write_text("keep_before\ndelete_me_1\ndelete_me_2\nkeep_after\n", encoding="utf-8")
+
+    result = apply_rich_edits(
+        [{"file_path": "mod.py#2-3", "new_string": ""}],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"] == []
+    assert path.read_text(encoding="utf-8") == "keep_before\nkeep_after\n"
+
+
+def test_rich_edit_range_replace_no_old_string(tmp_path: Path) -> None:
+    """file_path#start-end with new_string replaces those lines without old_string."""
+    path = tmp_path / "mod.py"
+    path.write_text("a\nb\nc\nd\n", encoding="utf-8")
+
+    result = apply_rich_edits(
+        [{"file_path": "mod.py#2-3", "new_string": "X\nY"}],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"] == []
+    assert path.read_text(encoding="utf-8") == "a\nX\nY\nd\n"
+
+
+def test_rich_edit_range_old_string_still_uses_scoped_search(tmp_path: Path) -> None:
+    """When old_string is given alongside a range, the normal scoped search fires."""
+    path = tmp_path / "mod.py"
+    path.write_text("x = 1\nx = 2\nx = 3\n", encoding="utf-8")
+
+    # Range restricts to line 2 so only the second 'x' is replaced
+    result = apply_rich_edits(
+        [{"file_path": "mod.py#2", "old_string": "x = 2", "new_string": "x = 99"}],
+        repo_root=tmp_path,
+    )
+
+    assert result["failed"] == []
+    assert path.read_text(encoding="utf-8") == "x = 1\nx = 99\nx = 3\n"
+
+
 def test_rich_edit_ambiguous_normalized_match_fails_with_candidates(tmp_path: Path) -> None:
     path = tmp_path / "mod.py"
     original = "def a():\n    x  = 1\n\ndef b():\n    x =  1\n"

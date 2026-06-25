@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from atelier.infra.embeddings.base import Embedder, EmbedResult
+from atelier.infra.embeddings.bge import BgeEmbedder
 from atelier.infra.embeddings.factory import (
     DEFAULT_CODE_EMBED_MODEL,
     LocalEmbedder,
@@ -17,6 +18,7 @@ from atelier.infra.embeddings.factory import (
 from atelier.infra.embeddings.letta_embedder import LettaEmbedder
 
 __all__ = [
+    "BgeEmbedder",
     "DEFAULT_CODE_EMBED_MODEL",
     "EmbedResult",
     "Embedder",

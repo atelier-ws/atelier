@@ -9,6 +9,10 @@ through untouched.
 
 Edited files are recorded by loop_discipline_post.py (shared session state).
 Fail-open; opt-out via ATELIER_READ_AFTER_EDIT_GUARD=0.
+
+Note: this hook deliberately does NOT block grep/rg over source. Steering toward
+explore/search lives in the agent instructions + the strength of the indexed
+tools, not a hard PreToolUse deny (which mis-fired on legitimate searches).
 """
 
 from __future__ import annotations
@@ -61,16 +65,40 @@ def _is_read(name: str, ti: dict[str, Any]) -> bool:
     return "path" in ti and "edits" not in ti and "command" not in ti
 
 
+def _deny(reason: str) -> None:
+    """Emit a current-schema PreToolUse 'deny' (Claude Code v2.1.x).
+
+    The legacy top-level {"decision": "block"} form is deprecated for PreToolUse
+    and is silently ignored -- denial must go through hookSpecificOutput so the
+    tool call is actually blocked and the reason is shown to the agent.
+    """
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": reason,
+                }
+            }
+        )
+    )
+
+
 def main() -> int:
-    if os.environ.get("ATELIER_READ_AFTER_EDIT_GUARD", "1") == "0":
-        return 0
     try:
         payload = json.loads(sys.stdin.read() or "{}")
     except (json.JSONDecodeError, TypeError, OSError):
         return 0
     name = str(payload.get("tool_name") or "")
     ti = payload.get("tool_input") or {}
-    if not isinstance(ti, dict) or not _is_read(name, ti):
+    if not isinstance(ti, dict):
+        return 0
+
+    # Read-after-edit guard.
+    if os.environ.get("ATELIER_READ_AFTER_EDIT_GUARD", "1") == "0":
+        return 0
+    if not _is_read(name, ti):
         return 0
     raw_path = str(ti.get("path") or "")
     has_range = bool(ti.get("range")) or "#" in raw_path
@@ -83,7 +111,7 @@ def main() -> int:
         f"You edited {base} this session; re-reading the whole file re-caches it every later turn. "
         'Use range="L1-L120" for the lines you need instead of expand=true.'
     )
-    print(json.dumps({"decision": "block", "reason": reason}))
+    _deny(reason)
     return 0
 
 

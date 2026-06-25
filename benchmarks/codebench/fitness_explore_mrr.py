@@ -35,7 +35,7 @@ try:
 except Exception:
     get_zoekt_supervisor = None
 
-with open("/tmp/bench_pairs_multi.json") as fh:
+with open(os.environ.get("FITNESS_PAIRS", "/tmp/bench_pairs_multi.json")) as fh:
     data = json.load(fh)
 pairs = data["pairs"]
 true_map = data["true_map"]
@@ -87,7 +87,7 @@ runset = {p: set(qs) for p, qs in uq.items()}
 # (per-thread connections via _reuse_connection's thread-local, stubbed cache,
 # instance centrality cache pre-warmed below), so a thread pool gives near-linear
 # speedup on the I/O+sqlite-bound work. Tune with FITNESS_WORKERS.
-_WORKERS = int(os.environ.get("FITNESS_WORKERS", "0")) or min(8, (os.cpu_count() or 2))
+_WORKERS = int(os.environ.get("FITNESS_WORKERS", "0")) or max(1, min(8, (os.cpu_count() or 4) // 4))
 _lean = os.environ.get("FITNESS_LEAN") == "1"
 
 # Pre-warm per-repo centrality once (compute+persist) so concurrent workers share
@@ -108,7 +108,8 @@ def _run_explore(task):
     prefix, q = task
     eng = engines.get(prefix)
     if eng is None:
-        return prefix, q, []
+        return prefix, q, [], 0.0
+    _ts = time.perf_counter()
     try:
         r = eng.tool_explore(
             q,
@@ -116,12 +117,16 @@ def _run_explore(task):
             auto_index=False,
             **({"include_source": False, "include_relationships": False} if _lean else {}),
         )
-        return prefix, q, dedup([f.get("path", "") for f in r.get("files", [])])[:10]
+        files = dedup([f.get("path", "") for f in r.get("files", [])])[:10]
     except Exception:
-        return prefix, q, []
+        files = []
+    # Per-query wall-clock of the explore call. Accurate only with FITNESS_WORKERS=1
+    # (parallel workers contend on CPU and inflate each call's measured duration).
+    return prefix, q, files, (time.perf_counter() - _ts) * 1000.0
 
 
 filecache = {}
+latencies = []
 _done = 0
 _t0 = time.perf_counter()
 print(f"[fitness] start: {_total} explores across {len(uq)} repos, {_WORKERS} workers", file=sys.stderr, flush=True)
@@ -129,8 +134,9 @@ print(f"[fitness] start: {_total} explores across {len(uq)} repos, {_WORKERS} wo
 # share one engine instance per repo -- a process pool gives true parallelism and
 # isolates each worker's sqlite connections (fork inherits the pre-warmed engines).
 with ProcessPoolExecutor(max_workers=_WORKERS, mp_context=multiprocessing.get_context("fork")) as _ex:
-    for prefix, q, files in _ex.map(_run_explore, _tasks, chunksize=4):
+    for prefix, q, files, lat_ms in _ex.map(_run_explore, _tasks, chunksize=4):
         filecache[(prefix, q)] = files
+        latencies.append(lat_ms)
         _done += 1
         if _done % 20 == 0 or _done == _total:
             _el = time.perf_counter() - _t0
@@ -175,11 +181,25 @@ def mrr(d):
     return d["rr"] / max(d["n"], 1)
 
 
+def _pct(vals, p):
+    if not vals:
+        return 0.0
+    s = sorted(vals)
+    return s[min(len(s) - 1, int((p / 100.0) * (len(s) - 1)))]
+
+
 out = {
     "mrr": round(mrr(agg), 4),
     "hit1": round(agg["h1"] / max(agg["n"], 1), 4),
     "hit3": round(agg["h3"] / max(agg["n"], 1), 4),
     "n": agg["n"],
+    "latency_ms": {
+        "mean": round(sum(latencies) / max(len(latencies), 1), 1),
+        "p50": round(_pct(latencies, 50), 1),
+        "p95": round(_pct(latencies, 95), 1),
+        "max": round(max(latencies), 1) if latencies else 0.0,
+        "over_100ms": sum(1 for x in latencies if x > 100.0),
+    },
     "by_repo": {p: {"mrr": round(mrr(d), 4), "n": d["n"]} for p, d in sorted(by_repo.items())},
 }
 print(json.dumps(out))

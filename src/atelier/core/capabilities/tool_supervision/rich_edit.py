@@ -579,6 +579,31 @@ def apply_rich_edits(
                 applied.append({"path": raw_path, "kind": "overwrite"})
                 continue
 
+            # Line-range direct replacement: when a #start-end scope is in the
+            # path and new_string is explicitly provided (even "" to delete those
+            # lines), replace the range verbatim — old_string is not required.
+            # If old_string IS also given, fall through to _replace_in_scope so
+            # it can do its normal scoped search within the narrowed range.
+            if spec.start_line is not None and "new_string" in edit and not edit.get("old_string"):
+                lines = content.splitlines(keepends=True)
+                lo = max(0, spec.start_line - 1)  # 0-indexed inclusive start
+                hi = min(len(lines), spec.end_line or spec.start_line)  # 0-indexed exclusive end
+                new_string = str(edit.get("new_string", ""))
+                repl = new_string.splitlines(keepends=True)
+                # Ensure the last replacement line ends with \n so surrounding
+                # content stays correctly separated after the splice.
+                if repl and not repl[-1].endswith("\n"):
+                    repl[-1] += "\n"
+                file_state[path] = "".join(lines[:lo] + repl + lines[hi:])
+                applied.append(
+                    {
+                        "path": raw_path,
+                        "hunks": [{"line_start": spec.start_line, "line_end": spec.end_line or spec.start_line}],
+                        "match_mode": "range",
+                    }
+                )
+                continue
+
             old_string = str(edit.get("old_string", ""))
             if not old_string:
                 raise ValueError("old_string is required unless overwrite=true or creating a new file")
