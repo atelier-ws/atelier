@@ -474,6 +474,19 @@ def _file_preview(
     }
 
 
+def _cap_fields(returned: int, max_files: int) -> dict[str, Any]:
+    """Truncation signal: 'capped' is True when the result hit the max_files
+    limit, so the caller (LLM) knows it may be partial and can raise max_files
+    to page instead of assuming these are all the matches.
+    """
+    return {
+        "returned": returned,
+        "capped": returned >= max_files,
+        "cap_param": "max_files",
+        "cap_limit": max_files,
+    }
+
+
 def smart_search(
     *,
     query: str,
@@ -515,8 +528,9 @@ def smart_search(
         cached = cache.get(cache_key)
         if isinstance(cached, dict):
             cached_matches = [match for match in cached.get("matches", []) if isinstance(match, dict)]
+            cached_sliced = cached_matches[:max_files]
             return {
-                "matches": cached_matches[:max_files],
+                "matches": cached_sliced,
                 "match_paths": [path for path in cached.get("match_paths", []) if isinstance(path, str)][:max_files],
                 "mode": mode,
                 "backend": str(cached.get("backend") or "ripgrep"),
@@ -524,6 +538,7 @@ def smart_search(
                 "cache_hit": True,
                 "total_tokens": int(cached.get("total_tokens", 0) or 0),
                 "tokens_saved": int(cached.get("tokens_saved", 0) or 0),
+                **_cap_fields(len(cached_sliced), max_files),
                 **({"fallback": cached["fallback"]} if isinstance(cached.get("fallback"), dict) else {}),
             }
     else:
@@ -598,6 +613,7 @@ def smart_search(
             "total_tokens": payload.get("total_tokens", 0),
             "cache_hit": False,
             "tokens_saved": max(0, (zoekt_naive - zoekt_rendered) // 4),
+            **_cap_fields(len(zoekt_matches), max_files),
             **({"fallback": payload["fallback"]} if isinstance(payload.get("fallback"), dict) else {}),
         }
         if os.environ.get("ATELIER_CACHE_DISABLED") != "1":
@@ -654,6 +670,7 @@ def smart_search(
         "total_tokens": int(payload.get("total_tokens", 0) or 0),
         "cache_hit": False,
         "tokens_saved": max(0, (final_naive - final_rendered) // 4),
+        **_cap_fields(len(final_matches), max_files),
         **({"fallback": payload["fallback"]} if isinstance(payload.get("fallback"), dict) else {}),
     }
 

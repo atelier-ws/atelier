@@ -433,9 +433,9 @@ def _assert_outline(result: dict[str, Any]) -> None:
     if isinstance(outline, dict):
         symbols = outline.get("symbols") or []
         text = outline.get("text") or ""
-        assert (
-            len(symbols) > 0 or len(text) > 10
-        ), f"outline appears empty: symbols={len(symbols)}, text_len={len(text)} — likely a silent parse failure"
+        assert len(symbols) > 0 or len(text) > 10, (
+            f"outline appears empty: symbols={len(symbols)}, text_len={len(text)} — likely a silent parse failure"
+        )
 
 
 def _assert_range(result: dict[str, Any]) -> None:
@@ -468,9 +468,9 @@ def _assert_intel_callers(result: dict[str, Any]) -> None:
 
 
 def _assert_intel_search(result: dict[str, Any]) -> None:
-    assert (
-        "items" in result or "symbols" in result or "rendered" in result
-    ), f"symbols search must return items/symbols/rendered, got keys: {list(result.keys())}"
+    assert "items" in result or "symbols" in result or "rendered" in result, (
+        f"symbols search must return items/symbols/rendered, got keys: {list(result.keys())}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -893,8 +893,10 @@ def build_savings_cases() -> tuple[list[BenchCase], list[BenchCase]]:
     file_cases.extend(_REPO_EXTRA_RANGE)
     file_cases.extend(_REPO_EXTRA_GREP)
 
-    all_scip = _SCIP_SYMBOLS_CASES + _SCIP_NODE_CASES + _SCIP_CALLERS_CASES + _SCIP_CALLEES_CASES + _SCIP_SEARCH_CASES
-    return file_cases, all_scip
+    all_intel = (
+        _INTEL_SYMBOLS_CASES + _INTEL_NODE_CASES + _INTEL_CALLERS_CASES + _INTEL_CALLEES_CASES + _INTEL_SEARCH_CASES
+    )
+    return file_cases, all_intel
 
 
 # Eagerly build at import time so pytest parameterization works.

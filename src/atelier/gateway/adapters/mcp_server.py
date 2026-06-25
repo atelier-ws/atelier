@@ -5637,10 +5637,7 @@ def _apply_edit_verify_gate(
             return
         result.setdefault("FIXME", {})["mechanical_checks"] = {
             "passed": False,
-            "failures": [
-                {k: v for k, v in c.to_dict().items() if k != "severity" and v is not None}
-                for c in errors
-            ],
+            "failures": [{k: v for k, v in c.to_dict().items() if k != "severity" and v is not None} for c in errors],
         }
         if rollback:
             # The gate runs outside the per-file edit locks (so verify can't
@@ -6079,7 +6076,7 @@ def tool_smart_edit(
     # Confine writes to the workspace root plus any additional directories from
     # Claude Code's additionalDirectories setting or ATELIER_ADDITIONAL_DIRS env.
     # Read tools accept any absolute path; writes need explicit opt-in.
-    _extra_roots = _claude_additional_dirs(repo_root) + [Path("/tmp")]
+    _extra_roots = [*_claude_additional_dirs(repo_root), Path("/tmp")]
     _allowed_edit_roots = [repo_root, *_extra_roots]
 
     _escaped_edit_paths = [
@@ -10747,7 +10744,7 @@ def _warm_stdio_embedder() -> None:
         if callable(getattr(embedder, "_load", None)):
             embedder._load()  # type: ignore[union-attr]
             _log.info("Embedder pre-warmed: %s dim=%s", getattr(embedder, "name", "?"), getattr(embedder, "dim", "?"))
-    except Exception:
+    except Exception:  # noqa: BLE001
         _log.debug("Embedder pre-warm failed", exc_info=True)
 
 
@@ -10789,7 +10786,7 @@ def _warm_stdio_zoekt_webserver() -> None:
             atexit.register(server.stop)
         else:
             _log.debug("zoekt webserver did not start; using CLI fallback")
-    except Exception:
+    except Exception:  # noqa: BLE001
         _log.debug("zoekt pre-warm failed", exc_info=True)
 
 

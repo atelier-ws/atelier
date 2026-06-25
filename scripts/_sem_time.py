@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, "src")
-from atelier.core.capabilities.code_context.engine import CodeContextEngine  # noqa: E402
+from atelier.core.capabilities.code_context.engine import CodeContextEngine
 
 data = json.load(open("/tmp/bench_pairs_multi.json"))
 ws = data["repos"]["django__django"]["ws"]

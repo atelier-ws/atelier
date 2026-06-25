@@ -73,7 +73,7 @@ def main() -> int:
         print(f"{prefix}: embedding {len(uniq_q)} queries vs {len(files)} corpus syms", file=sys.stderr, flush=True)
         qvecs = embed(q_texts)
         qrank = {}
-        for q, qv in zip(uniq_q, qvecs):
+        for q, qv in zip(uniq_q, qvecs, strict=False):
             order = np.argsort(-(corpus_vecs @ qv))
             ranked_files, seen = [], set()
             for i in order:
