@@ -3128,6 +3128,25 @@ class CodeContextEngine:
                 record.start_line,
             ),
         )
+        # Path-quality filter FIRST: hard-remove minified/vendor artefacts and
+        # soft-penalise test files BEFORE computing the score floor. This matters
+        # because test files often score highest (function name appears many times
+        # in test assertions), which would otherwise set a floor that eliminates
+        # the actual implementation file. Pinned exact hits and seed files are exempt.
+        query_wants_tests = bool(re.search(r'\btest\b|\bspec\b', query, re.IGNORECASE))
+        if ranked_symbols:
+            pinned_ids = exact_ids | anchor_ids
+            pre_filtered: list[SymbolRecord] = []
+            for record in ranked_symbols:
+                fp = record.file_path or ""
+                if _MINIFIED_FILE_RE.search(fp) or _VENDOR_PATH_RE.search(fp):
+                    if record.symbol_id not in pinned_ids and fp not in seed_set:
+                        continue  # hard remove before floor
+                if not query_wants_tests and _TEST_PATH_RE.search(fp):
+                    if record.symbol_id not in pinned_ids and fp not in seed_set:
+                        record = record.model_copy(update={"score": (record.score or 0.0) * _TEST_SCORE_PENALTY})
+                pre_filtered.append(record)
+            ranked_symbols = pre_filtered
         # Relevance floor: when the top hit is strongly dominant (e.g. an exact
         # symbol scoring far above the lexical sub-token co-matches that share a
         # token like "get"/"name"), drop the near-zero tail so a precise query
@@ -3139,27 +3158,11 @@ class CodeContextEngine:
             top_score = max((record.score or 0.0) for record in ranked_symbols)
             floor = top_score * _EXPLORE_SCORE_FLOOR_FRAC
             if floor > 0:
-                pinned_ids = exact_ids | anchor_ids
                 ranked_symbols = [
                     record
                     for record in ranked_symbols
                     if record.symbol_id in pinned_ids or record.file_path in seed_set or (record.score or 0.0) >= floor
                 ]
-        # Path-quality filter: hard-remove minified/vendor artefacts; soft-penalise
-        # test files when the query isn't explicitly about tests. Applied after the
-        # score floor so pinned exact hits are never touched.
-        query_wants_tests = bool(re.search(r'\btest\b|\bspec\b', query, re.IGNORECASE))
-        filtered: list[SymbolRecord] = []
-        for record in ranked_symbols:
-            fp = record.file_path or ""
-            if _MINIFIED_FILE_RE.search(fp) or _VENDOR_PATH_RE.search(fp):
-                if record.symbol_id not in exact_ids and fp not in seed_set:
-                    continue  # hard remove
-            if not query_wants_tests and _TEST_PATH_RE.search(fp):
-                if record.symbol_id not in exact_ids and fp not in seed_set:
-                    record = record.model_copy(update={"score": (record.score or 0.0) * _TEST_SCORE_PENALTY})
-            filtered.append(record)
-        ranked_symbols = filtered
         # File diversity: cap symbols-per-file before the symbol budget so one
         # over-populated file (e.g. 8 `as_sqlite` overloads in functions.py)
         # cannot starve the other files the query also matches (the ambiguous-name
