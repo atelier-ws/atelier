@@ -77,7 +77,7 @@ from atelier.core.capabilities.code_context.output_policy import (
 )
 from atelier.core.capabilities.code_context.rerank import SearchReranker
 from atelier.core.capabilities.repo_map import build_repo_map
-from atelier.core.capabilities.repo_map.budget import count_tokens
+from atelier.core.capabilities.repo_map.budget import count_tokens, estimate_tokens
 from atelier.core.capabilities.repo_map.graph import iter_source_files, should_skip_relative_path
 from atelier.core.foundation.paths import default_store_root
 from atelier.core.service.telemetry import emit_product_local
@@ -1534,6 +1534,10 @@ class CodeContextEngine:
         self._lineage_thread: threading.Thread | None = None
         self._lineage_lock = threading.Lock()
         self._index_ready_cached = False
+        # Cache the engine_state index_version so a single tool call (which probes
+        # it ~once per sub-query) does not reopen the DB and re-query for a value
+        # that only changes on reindex. Invalidated in _bump_index_version.
+        self._index_version_cached: int | None = None
         # G6/N16: symbol-level call-graph centrality cache, keyed to the index
         # version so a graph mutation (any reindex bumps index_version) forces a
         # recompute and stale rankings are never served. Guarded by its own lock.
@@ -2731,6 +2735,28 @@ class CodeContextEngine:
             snippet="none",
             auto_index=False,
         )
+        # Winner-pipeline fusion: pull in zoekt trigram anchors. The symbol FTS
+        # ranks named symbols well but misses concept/regex queries where the
+        # right file has no lexically-matching symbol name; zoekt's trigram search
+        # surfaces those files, and seeding a couple of their definitions makes the
+        # file survive ranking. Additive and graceful (empty set when zoekt is off)
+        # -- the exact/score/seed ranking below still governs final order.
+        seeded_files = {symbol.file_path for symbol in raw_symbols}
+        anchor_files = [
+            anchor
+            for anchor in sorted(self._zoekt_candidate_files(query, max_files=max(bounded_max_files * 2, 12)))
+            if anchor not in seeded_files
+        ]
+        if anchor_files:
+            anchor_symbols = self._cap_symbols_per_file(
+                [
+                    symbol
+                    for symbol in self._symbols_for_files(anchor_files[:bounded_max_files], limit=400)
+                    if (symbol.kind or "").lower() in _DEFINITION_KINDS
+                ],
+                max_per_file=2,
+            )
+            raw_symbols = self._dedupe_symbols(raw_symbols + anchor_symbols)
         # Exact-name guard: when the query is itself an indexed symbol name,
         # semantic ranking can bury the exact definition behind lexical cousins
         # (e.g. "_pack_single_payload" surfacing "_payload_looks_empty"), or the
@@ -2760,7 +2786,12 @@ class CodeContextEngine:
                 record.start_line,
             ),
         )
-        selected_symbols = ranked_symbols[:bounded_max_symbols]
+        # File diversity: cap symbols-per-file before the symbol budget so one
+        # over-populated file (e.g. 8 `as_sqlite` overloads in functions.py)
+        # cannot starve the other files the query also matches (the ambiguous-name
+        # collapse). Exact/seed hits already sort first, so they survive the cap.
+        diverse_ranked = self._cap_symbols_per_file(ranked_symbols, max_per_file=3)
+        selected_symbols = diverse_ranked[:bounded_max_symbols]
         family_member_ids: set[str] = set()
         if effective_complete:
             additions = self._complete_sibling_families(selected_symbols, query=query, seed_set=seed_set)
@@ -2778,9 +2809,13 @@ class CodeContextEngine:
                 return -1
             if symbol.file_path in seed_set:
                 return 0
-            if symbol.symbol_id in family_member_ids:
-                return 1
+            # Direct definition hits must claim files BEFORE sibling-family
+            # completions -- otherwise a loose affix (e.g. "select" pulling the
+            # whole Select* widget family) hijacks the file slots above the
+            # actually-relevant definitions.
             if (symbol.kind or "").lower() in _DEFINITION_KINDS:
+                return 1
+            if symbol.symbol_id in family_member_ids:
                 return 2
             return 3
 
@@ -3917,6 +3952,8 @@ class CodeContextEngine:
                 params.extend(normalized_candidates)
         where_sql = " AND ".join(filters)
 
+        term_set = {term for term in terms if term}
+        centrality_map = self._symbol_centrality_map()
         scored: dict[str, tuple[float, int, SymbolRecord]] = {}
 
         def adjustment(symbol: SymbolRecord) -> float:
@@ -3939,6 +3976,24 @@ class CodeContextEngine:
             for term in terms[:6]:
                 if term and term in file_path_lower:
                     score += 6.0
+            # Per-token name match (the missing name-match bonus): reward a query
+            # TOKEN that matches the symbol's OWN name tokens, so multi-term/regex
+            # queries (e.g. "select_format|CAST") still surface the exactly-named
+            # symbol instead of losing to body-coverage / kind-boost noise.
+            name_tokens = _identifier_terms(symbol.symbol_name)
+            if name_tokens:
+                matched = sum(1 for token in name_tokens if token in term_set)
+                if matched == len(name_tokens):
+                    score += 28.0 + 6.0 * len(name_tokens)
+                elif matched:
+                    score += 9.0 * matched
+            # Structural importance (call-graph eigenvector centrality / PageRank):
+            # the signal Atelier computes but never fed into ranking. Central core
+            # symbols outrank peripheral textual matches. Normalized 0..1.
+            cscore = centrality_map.get(symbol_name_lower)
+            if cscore is None:
+                cscore = centrality_map.get(qualified_name_lower, 0.0)
+            score += cscore * 30.0
             if _is_test_file_path(symbol.file_path) and not query_mentions_tests:
                 score -= 90.0
             return score
@@ -6294,9 +6349,12 @@ class CodeContextEngine:
                 line_numbers=line_numbers,
             )
             if skel is not None:
-                from atelier.core.capabilities.repo_map.budget import count_tokens
+                from atelier.core.capabilities.repo_map.budget import estimate_tokens
 
-                saved = count_tokens(full_content) - count_tokens(skel)
+                # Gate + metadata only (use the skeleton iff it is actually
+                # shorter); a char-based estimate gives the same decision at a
+                # fraction of the cost of BPE-encoding every symbol body twice.
+                saved = estimate_tokens(full_content) - estimate_tokens(skel)
                 if saved > 0:
                     section["content"] = hard_cap_chars(skel, _EXPLORE_SOURCE_SECTION_MAX_CHARS)
                     section["skeleton"] = True
@@ -6974,6 +7032,31 @@ class CodeContextEngine:
     # G6 -- symbol-level call-graph centrality (with N16 cache guard)
     # ------------------------------------------------------------------
 
+    def _symbol_centrality_map(self) -> dict[str, float]:
+        """Symbol name -> normalized eigenvector centrality (0..1), cached by index
+        version. Feeds the call-graph importance signal into search ranking so
+        central core symbols outrank peripheral textual matches."""
+        version = self._current_index_version()
+        cached = getattr(self, "_centrality_name_map", None)
+        if cached is not None and cached[0] == version:
+            return cached[1]
+        mapping: dict[str, float] = {}
+        try:
+            ranking = self.call_graph_centrality(limit=1_000_000).get("ranking", [])
+            max_ev = max((float(item.get("eigenvector") or 0.0) for item in ranking), default=0.0) or 1.0
+            for item in ranking:
+                name = str(item.get("symbol") or "")
+                if not name:
+                    continue
+                norm_ev = float(item.get("eigenvector") or 0.0) / max_ev
+                for key in (name.lower(), name.split(".")[-1].split("::")[-1].lower()):
+                    if norm_ev > mapping.get(key, 0.0):
+                        mapping[key] = norm_ev
+        except Exception:
+            logging.exception("Recovered from broad exception handler")
+        self._centrality_name_map = (version, mapping)
+        return mapping
+
     def call_graph_centrality(self, *, limit: int = 50, use_cache: bool = True) -> dict[str, Any]:
         """Rank the most important symbols by call-graph centrality.
 
@@ -7373,10 +7456,14 @@ class CodeContextEngine:
                 _reindex_locked()
 
     def _current_index_version(self) -> int:
+        if self._index_version_cached is not None:
+            return self._index_version_cached
         with self._connect() as conn:
             self._init_schema(conn)
             row = conn.execute("SELECT value FROM engine_state WHERE key = 'index_version'").fetchone()
-        return int(row["value"]) if row is not None else 0
+        version = int(row["value"]) if row is not None else 0
+        self._index_version_cached = version
+        return version
 
     def _index_snapshot(self) -> dict[str, Any]:
         with self._connect() as conn:
@@ -7429,10 +7516,11 @@ class CodeContextEngine:
         # The cached HNSW graph is keyed to index_version, but drop it eagerly so
         # the next query rebuilds against the fresh vectors immediately.
         self._ann_symbol_index.invalidate()
+        self._index_version_cached = next_version
         return next_version
 
     def _payload_tokens(self, payload: Any) -> int:
-        return count_tokens(_canonical_json(payload))
+        return estimate_tokens(_canonical_json(payload))
 
     def _compute_total_tokens(self, payload: dict[str, Any]) -> int:
         total_tokens = 0
