@@ -4,6 +4,17 @@
 # Run from the worktree root.
 set -euo pipefail
 
+# Swarm worktrees don't share git-ignored .env files from the main repo.
+# Symlink them in so the benchmark container gets the right credentials.
+MAIN_REPO="/home/pankaj/Projects/leanchain/atelier"
+for rel in benchmarks/codebench/.env benchmarks/.env .env; do
+    src="$MAIN_REPO/$rel"
+    dst="$(pwd)/$rel"
+    if [ -f "$src" ] && [ ! -e "$dst" ]; then
+        ln -sf "$src" "$dst"
+    fi
+done
+
 OUTDIR=$(mktemp -d /tmp/swarm_bench_XXXXXX)
 trap 'rm -rf "$OUTDIR"' EXIT
 
