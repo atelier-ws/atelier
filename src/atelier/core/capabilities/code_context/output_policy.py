@@ -90,7 +90,26 @@ def resolve_output_policy(operation: str) -> OutputPolicy:
     return _POLICY_BY_OPERATION.get(operation, SEARCH_COMPACT)
 
 
-def hard_cap_chars(text: str, max_chars: int) -> str:
+def hard_cap_chars(
+    text: str,
+    max_chars: int,
+    *,
+    file_path: str | None = None,
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> str:
+    """Cap *text* to *max_chars*, appending a truncation marker.
+
+    When *start_line* and *end_line* are provided the marker includes the line
+    range so the reader knows where the missing content sits::
+
+        ... [truncated — L42-L80]
+
+    The file path is intentionally omitted from the marker — it is already
+    present in the surrounding section header, and repeating it (with the word
+    "read") caused agents to reflexively issue read calls even when the
+    skeleton they had was sufficient.
+    """
     if max_chars <= 0:
         return TRUNCATION_MARKER
     if len(text) <= max_chars:
@@ -98,6 +117,8 @@ def hard_cap_chars(text: str, max_chars: int) -> str:
     marker = TRUNCATION_MARKER
     if max_chars <= len(marker):
         return marker
+    if start_line is not None and end_line is not None:
+        marker = f"... [truncated — L{start_line}-L{end_line}]"
     available_chars = max_chars - len(marker)
     cut = text[:available_chars]
     newline_floor = int(available_chars * 0.8)
