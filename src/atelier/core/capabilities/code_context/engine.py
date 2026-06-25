@@ -3118,11 +3118,21 @@ class CodeContextEngine:
                 raw_symbols = self._dedupe_symbols(raw_symbols + anchor_symbols)
         if exact_hits:
             raw_symbols = exact_hits + [record for record in raw_symbols if record.symbol_id not in exact_ids]
+        # Token-level exact pinning: when a whitespace-delimited word in the query
+        # exactly matches a symbol name, that symbol is the definition the user is
+        # asking about. FTS5 BM25 can't surface it reliably (tokeniser splits on
+        # underscores, test files accumulate far more term hits in their bodies),
+        # so we pin those symbols explicitly before the BM25-score-based sort.
+        _query_words = frozenset(re.split(r'\s+', query.strip()))
+        token_exact_ids = {
+            r.symbol_id for r in raw_symbols
+            if r.symbol_name in _query_words or r.symbol_name.lower() in _query_words
+        }
         ranked_symbols = sorted(
             raw_symbols,
             key=lambda record: (
                 0 if record.file_path in seed_set else 1,
-                0 if record.symbol_id in exact_ids else 1,
+                0 if record.symbol_id in exact_ids or record.symbol_id in token_exact_ids else 1,
                 -(record.score or 0.0),
                 record.file_path,
                 record.start_line,
@@ -3140,21 +3150,30 @@ class CodeContextEngine:
         #     no matter how high test files score, the definition comes first.
         query_wants_tests = bool(re.search(r'\btest\b|\bspec\b', query, re.IGNORECASE))
         if ranked_symbols:
-            pinned_ids = exact_ids | anchor_ids
+            # Symbols exempt from floor cuts and the test-tier demotion:
+            # - exact_ids: full-query exact symbol-name hits
+            # - token_exact_ids: per-word exact symbol-name hits (catches multi-word
+            #   queries like "trim_docstring admindocs" where only one word is a name)
+            # anchor_ids are deliberately excluded here — they are zoekt recall helpers
+            # that may come from test files and should still be demoted if so.
+            definition_ids = exact_ids | token_exact_ids
+            all_pinned = definition_ids | anchor_ids  # kept for floor / dedup logic
 
-            # Step 1: hard-remove minified/vendor (except pinned/seed)
+            # Step 1: hard-remove minified/vendor (except definition hits / seed)
             ranked_symbols = [
                 r for r in ranked_symbols
-                if r.symbol_id in pinned_ids
+                if r.symbol_id in all_pinned
                 or r.file_path in seed_set
                 or not (_MINIFIED_FILE_RE.search(r.file_path or "") or _VENDOR_PATH_RE.search(r.file_path or ""))
             ]
 
             if not query_wants_tests:
-                # Step 2: floor derived from non-test scores only
+                # Step 2: floor derived from non-test scores only, anchored by
+                # any token-exact definition scores so the floor is never zero
+                # when the target symbol IS in the index.
                 non_test_scores = [
                     r.score or 0.0 for r in ranked_symbols
-                    if r.symbol_id in pinned_ids
+                    if r.symbol_id in definition_ids  # always include exact definitions
                     or r.file_path in seed_set
                     or not _TEST_PATH_RE.search(r.file_path or "")
                 ]
@@ -3163,17 +3182,21 @@ class CodeContextEngine:
                 if floor > 0:
                     ranked_symbols = [
                         r for r in ranked_symbols
-                        if r.symbol_id in pinned_ids
+                        if r.symbol_id in all_pinned
                         or r.file_path in seed_set
                         or (r.score or 0.0) >= floor
                     ]
 
-                # Step 3: two-tier sort — impl before test (regardless of raw score)
+                # Step 3: two-tier sort — definition + impl files first, test files
+                # appended after with a score penalty.  definition_ids are always
+                # impl tier even if they live in a test file (e.g. a helper defined
+                # inside tests/ that the user named explicitly).
                 impl_tier: list[SymbolRecord] = []
                 test_tier: list[SymbolRecord] = []
                 for r in ranked_symbols:
                     fp = r.file_path or ""
-                    if r.symbol_id not in pinned_ids and r.file_path not in seed_set and _TEST_PATH_RE.search(fp):
+                    is_test = _TEST_PATH_RE.search(fp) and r.symbol_id not in definition_ids and r.file_path not in seed_set
+                    if is_test:
                         test_tier.append(
                             r.model_copy(update={"score": (r.score or 0.0) * _TEST_SCORE_PENALTY})
                         )
@@ -3190,7 +3213,7 @@ class CodeContextEngine:
                 if floor > 0:
                     ranked_symbols = [
                         r for r in ranked_symbols
-                        if r.symbol_id in pinned_ids
+                        if r.symbol_id in all_pinned
                         or r.file_path in seed_set
                         or (r.score or 0.0) >= floor
                     ]
