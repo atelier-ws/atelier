@@ -1,4 +1,4 @@
-# 001 Code intelligence: SCIP + ast-grep
+# 001 Code intelligence: zoekt + ast-grep (SCIP removed)
 
 ## Status
 
@@ -8,7 +8,7 @@ Accepted (2026-05-23)
 
 Milestones M1–M13 delivered. Phase 6 UAT passed (2026-05-23, commit cc b40764) with:
 
-- SCIP indexer auto-fetch and `.scip` build confirmed.
+- Code index auto-build confirmed.
 - `code op="symbol"` roundtrip ≤ 2 ms on atelier repo (see `benchmarks/code_intel/bench_cost_discipline.py` baseline).
 - Multi-repo workspace routing verified: `code op="search" repo=<name>` filters correctly.
 - Bootstrap dependency-scope isolation confirmed: external packages (`scope="external"`) excluded from scope=repo queries.
@@ -37,32 +37,35 @@ cost optimisation:
 The rest of the industry (GitHub, Sourcegraph, Meta, Google) solved this same
 problem by **precomputing code intelligence into queryable artifacts** rather
 than running language servers per session. The artifact format that won is
-SCIP (Sourcegraph's open successor to LSIF). For *pattern-shaped* queries —
-"find code that looks like X", which LSP and SCIP both handle poorly — the
-industry standard is **ast-grep** (tree-sitter–native structural patterns,
-single binary, cross-language).
+precomputed, queryable artifact indexes. For *pattern-shaped* queries —
+"find code that looks like X" — the industry standard is **ast-grep**
+(tree-sitter–native structural patterns, single binary, cross-language).
+
+> **Note (2026-06-25):** SCIP (Sourcegraph Code Intelligence Protocol) was
+> initially adopted as the primary symbol artifact but was removed because it
+> has no incremental indexing step, is slow to build, and cannot be
+> parallelized. Zoekt trigram search replaced it.
 
 ## Decision
 
 Atelier's code intelligence layer is built on:
 
-1. **SCIP** as the primary symbol-intel artifact (`mcp__atelier__symbol`,
-   `usages`, `callers/callees`). Precomputed, microsecond queries,
-   deterministic, language-portable.
+1. **Zoekt** as the primary symbol-intel backend (trigram FTS, sub-ms
+   queries, incremental, parallelizable).
 2. **ast-grep** as the primary structural-pattern primitive
    (`mcp__atelier__pattern`). Search and rewrite.
 3. **A `SymbolIntelStore` composite** with content-addressed retrieval cache
    and token-budget enforcement. Routes by query shape; caches everything;
    packs the smallest sufficient payload. Mirrors the content-addressed store
    pattern from `infra/memory_bridges/`.
-4. **Function-level embeddings** layered over SCIP symbols for natural-
-   language queries ("find auth functions") — something SCIP and LSP both
+4. **Function-level embeddings** layered over indexed symbols for natural-
+   language queries ("find auth functions") — something text search alone
    cannot do.
 5. **Atelier-only fusions** that no external tool can match: symbol↔memory
    recall, persistent bootstrap blocks, external-dep indexing, multi-repo
    workspaces.
 6. **`LocalAdapter` (CodeContextEngine + LSP fallback)** as the always-on
-   safety net for languages SCIP doesn't cover.
+   always-on safety net.
 
 We do **not** adopt Serena. We do **not** rely on live LSP in the hot path.
 
@@ -73,9 +76,9 @@ We do **not** adopt Serena. We do **not** rely on live LSP in the hot path.
   `edit`, `read`, `search`, `memory`) with a new `op` or descriptor kind.
 - Agents stop reaching for `search` (text/regex) when they already know the
   name; the hardened `code op="search"` (M2) is the new default.
-- One-time SCIP indexer install per language (auto-fetched static binaries).
+- One-time Zoekt index build per repo (incremental on subsequent runs).
 - One-time ast-grep binary install (single static binary).
-- Disk: a few hundred KB to tens of MB per repo for `.scip` files.
+- Disk: a few hundred KB to tens of MB per repo for code index files.
 - Hot-path queries are subprocess-free after warm; latency in the
   microseconds.
 - Cache hits return zero-token, zero-subprocess.

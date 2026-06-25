@@ -131,16 +131,6 @@ class SymbolIntelStore:
         language: str | None = None,
         scope: Literal["repo", "external"] = "repo",
     ) -> list[SymbolRecord]:
-        for provider in self._providers:
-            if not self._provider_is_healthy(provider):
-                continue
-            try:
-                hits = provider.search_symbols(query, limit=limit, kind=kind, language=language, scope=scope)
-            except Exception:
-                logging.exception("Recovered from broad exception handler")
-                continue
-            if hits:
-                return hits[:limit]
         if scope == "external":
             return []
         return self._local_search(query, limit=limit, kind=kind, language=language)
@@ -153,21 +143,6 @@ class SymbolIntelStore:
         file_path: str | None = None,
         symbol_name: str | None = None,
     ) -> dict[str, Any]:
-        for provider in self._providers:
-            if not self._provider_is_healthy(provider):
-                continue
-            try:
-                payload = provider.get_symbol(
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    file_path=file_path,
-                    symbol_name=symbol_name,
-                )
-            except Exception:
-                logging.exception("Recovered from broad exception handler")
-                continue
-            if payload is not None:
-                return payload
         return self._local_get_symbol(
             symbol_id=symbol_id,
             qualified_name=qualified_name,
@@ -183,21 +158,6 @@ class SymbolIntelStore:
         file_path: str | None = None,
         symbol_name: str | None = None,
     ) -> list[UsageReference]:
-        for provider in self._providers:
-            if not self._provider_is_healthy(provider):
-                continue
-            try:
-                payload = provider.find_references(
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    file_path=file_path,
-                    symbol_name=symbol_name,
-                )
-            except Exception:
-                logging.exception("Recovered from broad exception handler")
-                continue
-            if payload is not None:
-                return payload
         return self._local_find_references(
             symbol_id=symbol_id,
             qualified_name=qualified_name,
@@ -213,21 +173,6 @@ class SymbolIntelStore:
         file_path: str | None = None,
         symbol_name: str | None = None,
     ) -> list[CallGraphNode] | None:
-        for provider in self._providers:
-            if not self._provider_is_healthy(provider):
-                continue
-            try:
-                payload = provider.find_callers(
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    file_path=file_path,
-                    symbol_name=symbol_name,
-                )
-            except Exception:
-                logging.exception("Recovered from broad exception handler")
-                continue
-            if payload is not None:
-                return payload
         return self._local_find_callers(
             symbol_id=symbol_id,
             qualified_name=qualified_name,
@@ -243,37 +188,12 @@ class SymbolIntelStore:
         file_path: str | None = None,
         symbol_name: str | None = None,
     ) -> list[CallGraphNode] | None:
-        for provider in self._providers:
-            if not self._provider_is_healthy(provider):
-                continue
-            try:
-                payload = provider.find_callees(
-                    symbol_id=symbol_id,
-                    qualified_name=qualified_name,
-                    file_path=file_path,
-                    symbol_name=symbol_name,
-                )
-            except Exception:
-                logging.exception("Recovered from broad exception handler")
-                continue
-            if payload is not None:
-                return payload
         return self._local_find_callees(
             symbol_id=symbol_id,
             qualified_name=qualified_name,
             file_path=file_path,
             symbol_name=symbol_name,
         )
-
-    def _provider_is_healthy(self, provider: SymbolIntelProvider) -> bool:
-        try:
-            health = provider.health()
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            return False
-        if isinstance(health, ProviderHealth):
-            return health.ok
-        return bool(health)
 
 
 __all__ = ["ProviderHealth", "SymbolIntelProvider", "SymbolIntelStore"]

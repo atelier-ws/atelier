@@ -18,7 +18,7 @@
 
 **Code Intelligence (external binaries, subprocess-invoked):**
 
-- SCIP indexers - `scip-python`, `scip-typescript`, `scip-go`, `scip-java`, `scip-ruby`, `scip-clang`. `src/atelier/infra/code_intel/scip/`.
+
   - Bin override: `ATELIER_AST_GREP_BIN` and similar `*_BIN` env vars.
 - ast-grep - Structural search/rewrite. `src/atelier/infra/code_intel/astgrep/`.
 - Zoekt - Trigram code search (`zoekt-git-index`, `zoekt-webserver`, `zoekt-query`). `src/atelier/infra/code_intel/zoekt/`.

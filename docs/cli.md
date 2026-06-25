@@ -171,7 +171,7 @@ callees, usages — fold into one `explore` call.)
 
 | Command                 | Purpose                                                |
 | ----------------------- | ------------------------------------------------------ |
-| `atelier code index`    | Build or refresh the SCIP code index for a repository. |
+| `atelier code index`    | Build or refresh the code index for a repository. |
 | `atelier tool-mode ...` | Configure smart tool replacement/shadow/suggest modes. |
 | `atelier tool-report`   | Report tool usage, savings, and redundancy patterns.   |
 | `atelier optimize`      | Show session cost optimization recommendations.        |

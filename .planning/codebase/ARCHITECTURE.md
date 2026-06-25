@@ -38,7 +38,7 @@ direction: `gateway → core → infra`.
 │              INFRA  (persistence + integrations)            │
 │  `infra/storage/`   (SQLite / Postgres / vector)            │
 │  `infra/runtime/`   (run ledger, cost tracker, realtime)    │
-│  `infra/code_intel/` (SCIP, ast-grep, Zoekt, git history)   │
+│  `infra/code_intel/` (ast-grep, Zoekt, git history)   │
 │  `infra/embeddings/` `infra/memory_bridges/`                │
 │  `infra/internal_llm/` (litellm/ollama/openai clients)      │
 └─────────────────────────────────────────────────────────────┘
@@ -101,7 +101,7 @@ orchestrator and pluggable capability modules.
 
 - Purpose: Persistence and external integrations.
 - Location: `src/atelier/infra/`
-- Contains: `storage/` (base/factory/sqlite_store/postgres_store/vector/memory_store/migrations), `runtime/` (run_ledger, cost_tracker, realtime_context, checkpoint, session_state, swarm_worktree, lifecycle), `code_intel/` (scip, astgrep, zoekt, cross_lang, git_history), `embeddings/` (local/ollama/openai/letta/null), `memory_bridges/` (letta_adapter, openmemory), `internal_llm/` (litellm/ollama/openai clients), `seed_playbooks/` (YAML reason blocks), `tree_sitter/`.
+- Contains: `storage/` (base/factory/sqlite_store/postgres_store/vector/memory_store/migrations), `runtime/` (run_ledger, cost_tracker, realtime_context, checkpoint, session_state, swarm_worktree, lifecycle), `code_intel/` (astgrep, zoekt, cross_lang, git_history), `embeddings/` (local/ollama/openai/letta/null), `memory_bridges/` (letta_adapter, openmemory), `internal_llm/` (litellm/ollama/openai clients), `seed_playbooks/` (YAML reason blocks), `tree_sitter/`.
 - Depends on: external services, filesystem.
 - Used by: `core/`
 

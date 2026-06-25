@@ -105,7 +105,7 @@ per-line audit (that is workstream WS1). Anything marked ❓/🟡 needs confirma
 
 | Family | Key packages (LOC) | Status | What's needed |
 |--------|--------------------|--------|---------------|
-| **Code intelligence** | `code_context/` (10,121, 13 modules), infra `code_intel` SCIP/astgrep/zoekt | ✅/🟡 | **WS1.2 done:** mature + **67 test files** incl. surviving A/B benchmarks. 12 sane sibling modules; god-file is isolated to `engine.py` (7,819 → WS4.1). Known SCIP-cache precision gap. Deleted `benchmarks/code_intel/` was a redundant set, not the live coverage |
+| **Code intelligence** | `code_context/` (10,121, 13 modules), infra `code_intel` astgrep/zoekt | ✅/🟡 | **WS1.2 done:** mature + **67 test files** incl. surviving A/B benchmarks. 12 sane sibling modules; god-file is isolated to `engine.py` (7,819 → WS4.1). Deleted `benchmarks/code_intel/` was a redundant set, not the live coverage |
 | **Context reuse / Playbooks** | `context_reuse/` (1,539) | ✅ | **WS1.11:** core value prop, engine-wired, 32 test files. Needs aggregate savings benchmark to quantify (D1) |
 | **Tool supervision** | `tool_supervision/` (6,764, 23f) | ✅ | **WS1.12:** backbone of agent-facing MCP tools (bash/edit/search/read/sql + path_safety/command_discipline). 27 test files. Central + well-covered |
 | **Owned-agent CLI (`atelier run`)** | `owned_agent_session/` (10 modules), `owned_execution_*`, `run.py` (463) | 🟡→✅? | **WS1.1 done:** far more complete than stale STATE.md claimed. `run start`/`resume`/`report` all wired; 10-module package (phase_runner, stem_prompt, task_primer, receipt, keepalive, checkpoint, minified_reads, gemini_cache) maps ~1:1 to SESS/CACHE/READ/RPT reqs; **has real unit tests** (owned_agent_session, owned_execution_lanes/routing, stem_prompt, task_primer, checkpoint). Remaining: end-to-end smoke (needs creds) + a savings benchmark (the relevant benchmark was deleted — see §2) |
@@ -160,7 +160,7 @@ For each 🟡/❓ family in §3, deep-verify: is it complete, partial, or dead? 
 what it claims? Produce a per-feature verdict.
 
 - [ ] WS1.1 Owned-CLI `atelier run` — end-to-end smoke (start/resume), confirm cache receipts (RPT-*), keepalive, dry-run/yolo. **(highest value, partial)**
-- [ ] WS1.2 Code intelligence — confirm SCIP/zoekt/astgrep paths, the known cache-routing gap, benchmark precision
+- [ ] WS1.2 Code intelligence — confirm zoekt/astgrep paths, benchmark precision
 - [ ] WS1.3 Memory system — exercise sqlite/letta/openmemory backends; arbitration + consolidation + archival recall
 - [ ] WS1.4 Savings / reporting / insights — confirm numbers are honest and reproducible (no unmeasured claims)
 - [ ] WS1.5 Workflow family — is it shipped or dead scaffold? Wire or remove

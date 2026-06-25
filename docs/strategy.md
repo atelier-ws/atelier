@@ -14,7 +14,7 @@ Atelier is not an AI model. It is a runtime that sits between you and the AI too
 - **Dynamic context compaction** — optimizes prompt context using task-aware hints (type, risk level, must-keep tokens) to reduce waste
 - **Persistent memory** — stores, retrieves, and manages facts across sessions with inspectable attribution and rollback
 - **Cost tracking & honest reporting** — per-session cost breakdowns, counterfactual estimates, and aggregate savings
-- **Code intelligence** — SCIP-indexed symbol search, call graphs, usages, AST pattern matching, and semantic retrieval
+- **Code intelligence** — symbol search, call graphs, usages, AST pattern matching, and semantic retrieval
 - **Outcome capture** — every routing and compaction decision gets an observable outcome score, enabling continuous optimization
 - **Cross-machine sync** — encrypted sync of memory and session state across machines
 
@@ -45,7 +45,7 @@ Direction: `core` does not depend on `gateway`. `infra` does not depend on `gate
 | Dynamic context compaction with LLM hints | Shipped |
 | Workspace state persistence | Shipped |
 | Runtime memory store (SQLite/PostgreSQL) with recall | Shipped |
-| Symbol-first code intelligence (SCIP, ast-grep, call graph) | Shipped |
+| Symbol-first code intelligence (ast-grep, zoekt, call graph) | Shipped |
 | OpenAI-compatible gateway server | Shipped |
 | CLI: runs, ledger, swarm, lessons, benchmarks, savings | Shipped |
 | Background services with auto-update | Shipped |

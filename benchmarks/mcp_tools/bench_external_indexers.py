@@ -21,13 +21,11 @@ import csv
 import hashlib
 import json
 import os
-import platform
 import shutil
 import socket
 import statistics
 import subprocess
 import sys
-import tarfile
 import tempfile
 import time
 import urllib.request
@@ -588,47 +586,6 @@ def ensure_universal_ctags() -> tuple[Path, Path]:
     if not (ctags.exists() and readtags.exists()):
         raise RuntimeError("ctags build did not produce ctags/readtags binaries")
     return ctags, readtags
-
-
-SCIP_CLI_VERSION = "v0.8.1"
-
-
-def _scip_release_asset() -> str:
-    machine = platform.machine().lower()
-    arch = "arm64" if machine in {"arm64", "aarch64"} else "amd64"
-    os_name = "darwin" if platform.system().lower() == "darwin" else "linux"
-    return f"scip-{os_name}-{arch}.tar.gz"
-
-
-def ensure_scip_python() -> tuple[Path, Path]:
-    """Install scip-python (npm) + the scip CLI (prebuilt release binary).
-
-    Returns (scip_python_bin, scip_cli). Idempotent. Requires npm on PATH. The
-    ``go install`` path is unusable (upstream go.mod replace directives), so the
-    CLI is fetched from the published release tarball.
-    """
-    root = bench_tools_root()
-    sp_dir = root / "scip-python"
-    sp_bin = sp_dir / "node_modules" / ".bin" / "scip-python"
-    if not sp_bin.exists():
-        sp_dir.mkdir(parents=True, exist_ok=True)
-        proc = run_cmd(["npm", "install", "--prefix", str(sp_dir), "@sourcegraph/scip-python"], timeout=1800)
-        if proc.returncode != 0:
-            raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
-    scip_dir = root / "scip"
-    scip_cli = scip_dir / "scip"
-    if not scip_cli.exists():
-        scip_dir.mkdir(parents=True, exist_ok=True)
-        url = f"https://github.com/scip-code/scip/releases/download/{SCIP_CLI_VERSION}/{_scip_release_asset()}"
-        archive = scip_dir / "scip.tar.gz"
-        urllib.request.urlretrieve(url, str(archive))
-        with tarfile.open(archive) as handle:
-            handle.extractall(scip_dir, filter="data")
-    if scip_cli.exists():
-        scip_cli.chmod(0o755)
-    if not (sp_bin.exists() and scip_cli.exists()):
-        raise RuntimeError("scip-python / scip CLI provisioning failed")
-    return sp_bin, scip_cli
 
 
 def bench_atelier(repo_root: Path, workspace_root: Path, query: str, iterations: int) -> ToolBenchResult:

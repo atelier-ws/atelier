@@ -35,7 +35,7 @@ _SECTIONS: dict[str, tuple[str, str]] = {
     "navigate": (
         "2. Navigate (build the call graph in your head)",
         (
-            "Once grounded, walk the code structure with the focused SCIP tools\n"
+            "Once grounded, walk the code structure with the focused code-intel tools\n"
             "instead of more grep: `node` to read a single definition and\n"
             "`explore` for grouped context -- one `explore` call returns the\n"
             "definition plus its callers, callees, and usages folded in. Prefer\n"
@@ -86,7 +86,7 @@ _OVERVIEW = (
     "Atelier tool-usage playbook. Canonical sequence:\n"
     "    explore -> navigate -> edit -> verify\n"
     "Each phase has dedicated tools; do them in order and prefer the focused\n"
-    "SCIP tools (`node` for one definition, `explore` for the call graph and\n"
+    "the exact tools (`node` for one definition, `explore` for the call graph and\n"
     "references) over repeated grep once you know the symbol."
 )
 

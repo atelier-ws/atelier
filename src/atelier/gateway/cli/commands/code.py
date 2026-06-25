@@ -457,70 +457,6 @@ def _trigger_zoekt_with_progress(repo_root: Path, frame_prefix: str = "") -> Non
         logging.exception("Zoekt prewarm failed")
 
 
-def _trigger_scip_with_progress(engine: Any, frame_prefix: str = "") -> None:
-    """Run SCIP indexers for detected repo languages, with a per-dir Rich progress bar."""
-    try:
-        from rich.console import Console
-        from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
-
-        prefix_markup = f"[dim]{frame_prefix}[/dim]" if frame_prefix else ""
-        console = Console(stderr=True)
-        progress = Progress(
-            TextColumn(f"{prefix_markup}{{task.description}}"),
-            BarColumn(
-                bar_width=32,
-                style="bright_black",
-                complete_style="cyan",
-                finished_style="green",
-                pulse_style="magenta",
-            ),
-            TextColumn("[bold cyan]{task.percentage:3.0f}%[/bold cyan]"),
-            TimeRemainingColumn(),
-            console=console,
-            transient=False,
-        )
-        task_ids: dict[str, Any] = {}
-
-        def on_start(lang: str, num_dirs: int) -> None:
-            task_ids[lang] = progress.add_task(f"[green]⟳[/green]  SCIP {lang}...", total=num_dirs, completed=0)
-
-        def on_dir(lang: str, _dir_tag: str, _dir_status: str) -> None:
-            tid = task_ids.get(lang)
-            if tid is not None:
-                progress.update(tid, advance=1)
-
-        def on_done(lang: str, status: str) -> None:
-            tid = task_ids.get(lang)
-            if tid is None:
-                return
-            ok = status in ("indexed", "ready")
-            icon = "[green]✓[/green]" if ok else "[yellow]⚠[/yellow]"
-            progress.update(tid, description=f"{icon}  SCIP {lang}: {status}")
-            # Ensure bar reaches 100 % (handles single-run path with no on_dir calls).
-            for t in progress.tasks:
-                if t.id == tid and t.total is not None and t.completed < t.total:
-                    progress.update(tid, completed=t.total)
-                    break
-
-        with progress:
-            results = engine.trigger_scip_indexing(
-                on_language_start=on_start,
-                on_dir_done=on_dir,
-                on_language_done=on_done,
-            )
-            if not results:
-                progress.add_task(
-                    "[dim]–[/dim]  SCIP: no install-time indexers detected",
-                    total=1,
-                    completed=1,
-                )
-    except Exception:
-        logging.exception("SCIP indexing with progress failed")
-        try:
-            engine.trigger_scip_indexing()
-        except Exception:
-            logging.exception("SCIP indexing fallback failed")
-
 
 @click.group("code")
 def code_group() -> None:
@@ -560,7 +496,6 @@ def code_index_cmd(
         ).model_dump(mode="json")
         try:
             engine._deleted_history_adapter()._ensure_history_ready()
-            engine.trigger_scip_indexing()
         except Exception:
             logging.exception("Failed to prepare background indexes")
         try:
@@ -581,7 +516,6 @@ def code_index_cmd(
     )
 
     git_summary = _index_git_history_with_progress(engine, frame_prefix=frame_prefix)
-    _trigger_scip_with_progress(engine, frame_prefix=frame_prefix)
     _trigger_zoekt_with_progress(Path(repo_root).resolve(), frame_prefix=frame_prefix)
 
     stats_line = (

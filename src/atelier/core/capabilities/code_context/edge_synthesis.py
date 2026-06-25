@@ -6,7 +6,7 @@ of scope. This module does the *additive, separable* part:
 * It recognises a SMALL, fixed set of common indirection patterns and emits
   synthesized edges for them.
 * Every edge is tagged ``provenance="heuristic"`` (mirroring the cross_lang
-  edge confidence/kind convention) so it is never confused with a static SCIP
+  edge confidence/kind convention) so it is never confused with a static code-intel
   edge.
 * It writes NOTHING into ``call_edges`` and is never folded into
   ``callers``/``callees`` traversal. Callers request synthesized edges

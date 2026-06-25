@@ -1,4 +1,4 @@
-"""Savings benchmark cases: read + grep across languages, plus SCIP code-intel tools.
+"""Savings benchmark cases: read + grep across languages, plus code-intel tools.
 
 ## Fixture strategy
 - **outline**: one representative individual file per language (2k-9k lines).
@@ -12,9 +12,9 @@
 All fixtures are downloaded from public GitHub refs and cached under
 ``benchmarks/mcp_tools/fixtures/downloaded/``. Delete the cache dir to re-fetch.
 
-## SCIP cases
+## Code-intel cases
 Code-intel cases (node/callers/callees/symbols) run against the Atelier repo itself
-(which already has or will build a SCIP index). Baseline = what a naive agent would
+(which already has a code index). Baseline = what a naive agent would
 consume via grep + full-file reads.
 """
 
@@ -341,7 +341,7 @@ def _baseline_claude_read(case: BenchCase) -> BaselineMeasurement:
 
 
 # ---------------------------------------------------------------------------
-# SCIP baseline helpers — grep + read matched files (what agent does without SCIP)
+# Code-intel baseline helpers — grep + read matched files (what agent does without code-intel)
 # ---------------------------------------------------------------------------
 
 
@@ -449,13 +449,13 @@ def _assert_grep_ranked(result: dict[str, Any]) -> None:
     assert "matches" in result or "content" in result, "grep must return matches or content"
 
 
-def _assert_scip_node(result: dict[str, Any]) -> None:
-    # node returns signature/id/path from SCIP index (body only with snippet=full)
+def _assert_intel_node(result: dict[str, Any]) -> None:
+    # node returns signature/id/path from code index (body only with snippet=full)
     has_content = bool(result.get("signature") or result.get("id") or result.get("name"))
     assert has_content, f"node must return a symbol record, got keys: {list(result.keys())}"
 
 
-def _assert_scip_callers(result: dict[str, Any]) -> None:
+def _assert_intel_callers(result: dict[str, Any]) -> None:
     # callers response uses 'related' (list of caller records) or 'target'
     has_refs = (
         isinstance(result.get("related"), list)
@@ -467,14 +467,14 @@ def _assert_scip_callers(result: dict[str, Any]) -> None:
     assert has_refs, f"callers must return related/target/references, got keys: {list(result.keys())}"
 
 
-def _assert_scip_search(result: dict[str, Any]) -> None:
+def _assert_intel_search(result: dict[str, Any]) -> None:
     assert (
         "items" in result or "symbols" in result or "rendered" in result
     ), f"symbols search must return items/symbols/rendered, got keys: {list(result.keys())}"
 
 
 # ---------------------------------------------------------------------------
-# Case builders: read / grep / SCIP
+# Case builders: read / grep / code-intel
 # ---------------------------------------------------------------------------
 
 
@@ -557,25 +557,25 @@ _GREP_PATTERNS: dict[str, str] = {
     "typescript": r"\bfunction \w+",  # named functions
 }
 
-# SCIP code-intel cases — run against the Atelier repo (requires SCIP index)
-_SCIP_CASES: list[BenchCase] = [
+# Code-intel cases — run against the Atelier repo (requires code index)
+_INTEL_CASES: list[BenchCase] = [
     # symbols/search: baseline = grep text + reading first matched file
     BenchCase(
         op="symbols",
-        label="scip/symbols/SemanticFileMemoryCapability",
+        label="intel/symbols/SemanticFileMemoryCapability",
         args={"op": "search", "query": "SemanticFileMemoryCapability"},
         assert_keys=[],
-        custom_assert=_assert_scip_search,
+        custom_assert=_assert_intel_search,
         baseline_builder=_make_symbols_baseline("SemanticFileMemoryCapability"),
         min_baseline_tokens=0,
     ),
     # node: baseline = read whole containing file (agent reads file to find def)
     BenchCase(
         op="symbols",
-        label="scip/node/compute_savings_summary",
+        label="intel/node/compute_savings_summary",
         args={"op": "node", "symbol_name": "compute_savings_summary"},
         assert_keys=[],
-        custom_assert=_assert_scip_node,
+        custom_assert=_assert_intel_node,
         baseline_builder=_make_node_baseline(
             "compute_savings_summary",
             "src/atelier/core/capabilities/savings_summary.py",
@@ -585,10 +585,10 @@ _SCIP_CASES: list[BenchCase] = [
     # node: function in 45k-token file — baseline = read whole mcp_server.py
     BenchCase(
         op="symbols",
-        label="scip/node/tool_smart_read",
+        label="intel/node/tool_smart_read",
         args={"op": "node", "symbol_name": "tool_smart_read"},
         assert_keys=[],
-        custom_assert=_assert_scip_node,
+        custom_assert=_assert_intel_node,
         baseline_builder=_make_node_baseline(
             "tool_smart_read",
             "src/atelier/gateway/adapters/mcp_server.py",
@@ -598,26 +598,26 @@ _SCIP_CASES: list[BenchCase] = [
     # callers: baseline = grep + read every file that mentions the symbol
     BenchCase(
         op="symbols",
-        label="scip/callers/_append_savings",
+        label="intel/callers/_append_savings",
         args={"op": "callers", "symbol_name": "_append_savings", "depth": 1, "limit": 20},
         assert_keys=[],
-        custom_assert=_assert_scip_callers,
+        custom_assert=_assert_intel_callers,
         baseline_builder=_make_callers_baseline("_append_savings"),
         min_baseline_tokens=0,
     ),
     BenchCase(
         op="symbols",
-        label="scip/callers/compute_savings_summary",
+        label="intel/callers/compute_savings_summary",
         args={"op": "callers", "symbol_name": "compute_savings_summary", "depth": 1, "limit": 20},
         assert_keys=[],
-        custom_assert=_assert_scip_callers,
+        custom_assert=_assert_intel_callers,
         baseline_builder=_make_callers_baseline("compute_savings_summary"),
         min_baseline_tokens=0,
     ),
     # callees: baseline = full capability.py (agent reads file to trace calls manually)
     BenchCase(
         op="symbols",
-        label="scip/callees/smart_read",
+        label="intel/callees/smart_read",
         args={"op": "callees", "symbol_name": "smart_read", "depth": 1, "limit": 20},
         assert_keys=[],
         custom_assert=lambda r: None,
@@ -630,10 +630,10 @@ _SCIP_CASES: list[BenchCase] = [
     # search: baseline = raw grep text for the search terms
     BenchCase(
         op="symbols",
-        label="scip/search/token-savings-computation",
+        label="intel/search/token-savings-computation",
         args={"op": "search", "query": "token savings computation outline mode", "limit": 10},
         assert_keys=[],
-        custom_assert=_assert_scip_search,
+        custom_assert=_assert_intel_search,
         baseline_builder=lambda c: BaselineMeasurement(
             payload=_rg("tokens_saved", "src/atelier"),
             commands=["rg -n tokens_saved src/atelier"],
@@ -739,7 +739,7 @@ _REPO_EXTRA_GREP: list[BenchCase] = [
 ]
 
 # ---------------------------------------------------------------------------
-# SCIP expanded cases — 10 per tool type
+# Code-intel expanded cases — 10 per tool type
 # ---------------------------------------------------------------------------
 
 _NODE_TARGETS = [
@@ -755,13 +755,13 @@ _NODE_TARGETS = [
     ("_tool_code_alias_handler", "src/atelier/gateway/adapters/mcp_server.py"),
 ]
 
-_SCIP_NODE_CASES: list[BenchCase] = [
+_INTEL_NODE_CASES: list[BenchCase] = [
     BenchCase(
         op="symbols",
-        label=f"scip/node/{sym}",
+        label=f"intel/node/{sym}",
         args={"op": "node", "symbol_name": sym},
         assert_keys=[],
-        custom_assert=_assert_scip_node,
+        custom_assert=_assert_intel_node,
         baseline_builder=_make_node_baseline(sym, f),
         min_baseline_tokens=0,
     )
@@ -781,23 +781,23 @@ _CALLERS_TARGETS = [
     "_tool_code_alias_handler",
 ]
 
-_SCIP_CALLERS_CASES: list[BenchCase] = [
+_INTEL_CALLERS_CASES: list[BenchCase] = [
     BenchCase(
         op="symbols",
-        label=f"scip/callers/{sym}",
+        label=f"intel/callers/{sym}",
         args={"op": "callers", "symbol_name": sym, "depth": 1, "limit": 20},
         assert_keys=[],
-        custom_assert=_assert_scip_callers,
+        custom_assert=_assert_intel_callers,
         baseline_builder=_make_callers_baseline(sym),
         min_baseline_tokens=0,
     )
     for sym in _CALLERS_TARGETS
 ]
 
-_SCIP_CALLEES_CASES: list[BenchCase] = [
+_INTEL_CALLEES_CASES: list[BenchCase] = [
     BenchCase(
         op="symbols",
-        label=f"scip/callees/{sym}",
+        label=f"intel/callees/{sym}",
         args={"op": "callees", "symbol_name": sym, "depth": 1, "limit": 20},
         assert_keys=[],
         custom_assert=lambda r: None,
@@ -824,13 +824,13 @@ _SYMBOLS_TARGETS = [
     ("smart-file-threshold", "smart file memory outline threshold LOC", "outline_threshold"),
 ]
 
-_SCIP_SYMBOLS_CASES: list[BenchCase] = [
+_INTEL_SYMBOLS_CASES: list[BenchCase] = [
     BenchCase(
         op="symbols",
-        label=f"scip/symbols/{lbl}",
+        label=f"intel/symbols/{lbl}",
         args={"op": "search", "query": query},
         assert_keys=[],
-        custom_assert=_assert_scip_search,
+        custom_assert=_assert_intel_search,
         baseline_builder=_make_symbols_baseline(grep_t),
         min_baseline_tokens=0,
     )
@@ -844,19 +844,19 @@ _SEARCH_TARGETS = [
     ("workspace-session-state", "workspace session state JSON path hash", "session_state"),
     ("read-outline-ast", "read file outline mode AST tree-sitter", "outline_threshold"),
     ("context-budget-recorder", "context budget recorder tokens session", "ContextBudget"),
-    ("scip-callers-graph", "SCIP index symbol call graph callers", "callers"),
+    ("intel-callers-graph", "code-intel callers", "callers"),
     ("transcript-parent-id", "transcript parent session subagent ID lookup", "sessionId"),
     ("smart-file-capability", "smart file memory capability outline threshold", "smart_read"),
     ("ranked-grep-budget", "ranked file map grep context budget tokens", "context_budget"),
 ]
 
-_SCIP_SEARCH_CASES: list[BenchCase] = [
+_INTEL_SEARCH_CASES: list[BenchCase] = [
     BenchCase(
         op="symbols",
-        label=f"scip/search/{lbl}",
+        label=f"intel/search/{lbl}",
         args={"op": "search", "query": query, "limit": 10},
         assert_keys=[],
-        custom_assert=_assert_scip_search,
+        custom_assert=_assert_intel_search,
         baseline_builder=(
             lambda c, t=grep_t: BaselineMeasurement(
                 payload=_rg(t, "src/atelier"),

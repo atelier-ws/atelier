@@ -372,7 +372,7 @@ def _collect_call_facts(
     # Names that appear as callees in more than this many files are builtins or
     # stdlib methods (e.g. 'append', 'get', 'read_text'). Their expected_paths
     # become unreliable because AST-only matching can't distinguish
-    # list.append() from MemoryAuditLog.append() -- any SCIP-based tool that
+    # list.append() from MemoryAuditLog.append() -- any code-intel tool that
     # correctly resolves to the specific method will return different callers.
     _MAX_CALLEE_POPULARITY = 50
     callers_facts: list[tuple[SymbolFact, tuple[str, ...]]] = []

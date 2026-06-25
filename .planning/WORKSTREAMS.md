@@ -53,7 +53,7 @@ final ✅/🟡/🔴 · list what testing/benchmarking it needs. Detailed verdict
 - [x] WS1.9 **SDK client** — ❓ likely abstract base (`local/remote/mcp` siblings). TODO: confirm subclasses implement all methods.
 
 ### To audit (deeper pass)
-- [x] WS1.2 **Code intelligence** — ✅ mature: **67 test files** incl. surviving A/B benchmarks (`test_code_search/explore/routes_ab_real`, `test_read_ab_real`) + quality benches; 12 sane sibling modules. Caveats: `engine.py` 7,819-line god-file (→WS4.1); known SCIP-cache precision gap. (Deleted `benchmarks/code_intel/` was a *redundant* set.)
+- [x] WS1.2 **Code intelligence** — ✅ mature: **67 test files** incl. surviving A/B benchmarks (`test_code_search/explore/routes_ab_real`, `test_read_ab_real`) + quality benches; 12 sane sibling modules. Caveats: `engine.py` 7,819-line god-file (→WS4.1). (Deleted `benchmarks/code_intel/` was a *redundant* set.)
 - [ ] WS1.3 **Memory system** (`memory/`, `archival_recall/`, `cross_vendor_memory/`, `memory_arbitration/`, `consolidation/` + letta/openmemory bridges) — exercise each backend
 - [x] WS1.4 **Savings / reporting / insights** — 🟡 numbers are **transcript-grounded (real, not synthetic)**; surviving per-tool A/B benchmarks (`test_read/edit/search/shell_ab_real`, `test_swebench_token_savings`, `mark.ab`). Gaps: aggregate replay benchmark deleted (D1) + published evidence docs missing (D6); review `reduction_pct`/baseline methodology.
 - [ ] WS1.6 **Routing** (`quality_router/`, `model_routing/`, `cross_vendor_routing/`, `providers/`) — verify decisions

@@ -593,7 +593,7 @@ def eval_retrieval(channel: str, sample: int, repo: str, workers: int, pairs: Pa
     "--providers",
     default=(
         "atelier,atelier-zoekt,zoekt,serena,codegraph,code-index-mcp,jcodemunch-mcp,"
-        "ast-grep,scip-python,universal-ctags"
+        "ast-grep,universal-ctags"
     ),
     show_default=True,
 )

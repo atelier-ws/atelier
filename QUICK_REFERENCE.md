@@ -123,7 +123,6 @@ shell              Compact supervised shell command execution
 
 - **Dedicated outlines:** Python, TypeScript, JavaScript, Go, Rust, Java, Ruby, C, C++, C#, Kotlin, PHP, Swift, Scala, Bash, SQL, YAML, TOML, and JSON.
 - **Generic/full fallback:** Markdown, unknown text, and any dedicated outline that does not beat the 25% savings guard.
-- **SCIP semantic indexing:** Python and TypeScript/JavaScript are installer-managed when npm is available; Go, Ruby, C, and C++ are checksum-gated lazy/bootstrap candidates; Rust and Java require user-managed toolchains.
 
 ## 🎯 High-Risk Domains (require rubric gate)
 

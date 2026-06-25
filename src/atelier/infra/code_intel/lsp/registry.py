@@ -9,8 +9,8 @@ stdio language server, e.g.::
 A non-empty entry only declares that an adapter exists; whether the server is
 actually installed is decided at runtime by the transport's ``is_available``.
 
-We deliberately wire exactly ONE adapter -- Kotlin, a language with NO SCIP
-indexer (see ``Language.scip_indexer is None``), where LSP escalation is the
+We deliberately wire exactly ONE adapter -- Kotlin, a language with NO code-intel
+indexer (i.e. LSP escalation is the
 only precise resolution available. The rest are intentionally absent: claiming
 30 languages we cannot test would be dishonest.
 """

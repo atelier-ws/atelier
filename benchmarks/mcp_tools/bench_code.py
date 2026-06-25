@@ -7,7 +7,7 @@ Exercises Atelier's code-intel surface against the real Atelier codebase:
 the public `explore` and `pattern` tools, plus
 `explore(relation=callers|callees|usages)` for the call graph + references
 (the former standalone tools, now folded into `explore`).
-The first run builds the SCIP index (~10-30 s); subsequent runs are cached.
+The first run builds the code index (~10-30 s); subsequent runs are cached.
 
 Baseline comparison: each case has a `baseline_tokens` estimate of what
 a naive grep / read approach would require.  Atelier should be ≤ baseline
@@ -50,7 +50,7 @@ def code_tool_fn() -> Any:
         tool_name = _tool_name_for_case_args(payload)
         payload.pop("_tool", None)
         if tool_name == "search":
-            # SCIP symbol/search via the surviving _op_search engine (the
+            # Symbol/search via the _op_search engine (the
             # `symbols` tool face was removed; `search` mode='symbol' and this
             # benchmark both route through _op_search, so the measured tokens
             # are identical to the former `symbols` tool).
