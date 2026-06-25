@@ -67,7 +67,7 @@ if [ "$ARM" = "atelier" ]; then
     exit 4
   fi
 
-  # Prewarm Zoekt trigram index. atelier code index already ran SCIP.
+  # Prewarm Zoekt trigram index.
   # Zoekt's host-binary mode builds its index synchronously on first
   # ensure_started(); we trigger it here so the MCP server's first search
   # call returns results immediately instead of paying the build cost on the

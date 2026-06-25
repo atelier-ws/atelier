@@ -57,7 +57,7 @@ def test_new_language_records_registered(name: str, extensions: set[str]) -> Non
     record = language_by_name(name)
     assert record is not None
     assert record.name == name == record.parser_name  # name == parser_name
-    assert record.scip_indexer is None
+    assert record.parser_name is not None
     assert set(record.extensions) == extensions
     assert name in ALL_LANGUAGES
     for ext in extensions:

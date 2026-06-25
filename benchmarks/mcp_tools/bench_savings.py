@@ -1,4 +1,4 @@
-"""Savings benchmark: read/grep across 8 languages (100k+ token fixtures) + SCIP code-intel.
+"""Savings benchmark: read/grep across 8 languages (100k+ token fixtures) + code-intel.
 
 First run downloads fixtures and caches them under
 ``benchmarks/mcp_tools/fixtures/downloaded/``. Subsequent runs are fast.
@@ -8,7 +8,7 @@ Run all:
 
 Run by group:
     uv run pytest benchmarks/mcp_tools/bench_savings.py -v -s -k "read or grep"
-    uv run pytest benchmarks/mcp_tools/bench_savings.py -v -s -k scip
+    uv run pytest benchmarks/mcp_tools/bench_savings.py -v -s -k intel
     uv run pytest benchmarks/mcp_tools/bench_savings.py -v -s -k python
 """
 
@@ -32,14 +32,14 @@ from benchmarks.mcp_tools.reporter import render_summary
 
 @pytest.fixture(scope="session")
 def bench_workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Isolated runtime state for read/grep tools. SCIP uses real ~/.atelier."""
+    """Isolated runtime state for read/grep tools. Code-intel uses real ~/.atelier."""
     root = tmp_path_factory.mktemp("bench_savings")
     return configure_benchmark_runtime(root, workspace_root=Path.cwd())
 
 
 @pytest.fixture(scope="session")
 def scip_workspace() -> Path:
-    """Point SCIP tool at real ~/.atelier so the cached index is reused.
+    """Point code-intel tool at real ~/.atelier so the cached index is reused.
 
     Building the index from a temp dir takes 2-3 minutes on every run.
     Using ~/.atelier means the first build is paid once and then cached.
@@ -73,7 +73,7 @@ def code_tool_fn(scip_workspace: Path) -> Any:
 
 @pytest.fixture(scope="session")
 def scip_index_built(code_tool_fn: Any) -> bool:
-    """Ensure SCIP index is up to date (incremental — fast when index exists).
+    """Ensure code index is up to date (incremental — fast when index exists).
 
     op=index now defaults to force=False (incremental), so this only indexes
     changed files. First-ever build takes ~30s; subsequent runs are near-instant.
@@ -130,7 +130,7 @@ def scip_results(
 
 @pytest.fixture(scope="session", autouse=True)
 def print_file_report(savings_results: list[CaseResult]) -> None:
-    """Print file-tool (read/grep) matrix. Always runs, never waits for SCIP."""
+    """Print file-tool (read/grep) matrix. Always runs, never waits for code-intel."""
     read_res = [r for r in savings_results if r.case.op == "read"]
     grep_res = [r for r in savings_results if r.case.op == "grep"]
     reports = []
@@ -145,10 +145,10 @@ def print_file_report(savings_results: list[CaseResult]) -> None:
 
 @pytest.fixture(scope="session")
 def print_scip_report(scip_results: list[CaseResult]) -> None:
-    """Print SCIP matrix. Not autouse — only runs when SCIP tests request it."""
+    """Print code-intel matrix. Not autouse — only runs when code-intel tests request it."""
     if not scip_results:
         return
-    reports = [ToolReport(tool_name="SCIP code-intel", results=scip_results)]
+    reports = [ToolReport(tool_name="code-intel", results=scip_results)]
     print("\n" + render_summary(reports))
     _print_table(scip_results)
 
@@ -177,7 +177,7 @@ def _print_table(results: list[CaseResult]) -> None:
         parts = r.case.label.split("/")
         if len(parts) == 3:
             tool_key, lang = f"{parts[0]}/{parts[1]}", parts[2]
-        elif len(parts) >= 2 and parts[0] == "scip":
+        elif len(parts) >= 2 and parts[0] == "atelier":
             tool_key, lang = "/".join(parts[:2]), "atelier-repo"
         else:
             continue
@@ -286,14 +286,14 @@ def test_savings_threshold(
 
 
 # ---------------------------------------------------------------------------
-# Tests: SCIP code-intel
+# Tests: code-intel
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("case", SCIP_CASES, ids=lambda c: c.label)
 def test_scip_correctness(case: BenchCase, scip_results: list[CaseResult], print_scip_report: None) -> None:
     if not scip_results:
-        pytest.skip("SCIP index unavailable")
+        pytest.skip("code index unavailable")
     result = _find(scip_results, case.label)
     assert result.passed, f"[{case.label}] FAILED: {result.failure}\nresponse keys: {list(result.response.keys())}"
 
@@ -305,7 +305,7 @@ def test_scip_correctness(case: BenchCase, scip_results: list[CaseResult], print
 )
 def test_scip_saves_tokens(case: BenchCase, scip_results: list[CaseResult]) -> None:
     if not scip_results:
-        pytest.skip("SCIP index unavailable")
+        pytest.skip("code index unavailable")
     result = _find(scip_results, case.label)
     if not result.passed:
         pytest.skip(f"op failed: {result.failure}")
@@ -314,6 +314,6 @@ def test_scip_saves_tokens(case: BenchCase, scip_results: list[CaseResult]) -> N
     # callers/symbols/search: benefit is precision over grep, not always token count
     if any(x in case.label for x in ("callers", "symbols", "search")):
         pytest.skip("callers/search savings are quality-based, not size-based")
-    assert (
-        result.atelier_tokens < result.baseline_tokens
-    ), f"[{case.label}] no savings: atelier={result.atelier_tokens:,} >= baseline={result.baseline_tokens:,}"
+    assert result.atelier_tokens < result.baseline_tokens, (
+        f"[{case.label}] no savings: atelier={result.atelier_tokens:,} >= baseline={result.baseline_tokens:,}"
+    )

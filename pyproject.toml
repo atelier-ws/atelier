@@ -190,8 +190,6 @@ disable_error_code = ["no-untyped-call", "untyped-decorator"]
 
 [tool.pyright]
 # Exclude the virtual environment and build artifacts from analysis so that
-# scip-python (which uses pyright internally) does not try to index installed
-# packages.  Without this, scip-python OOMs on large venvs.
 exclude = [".venv", "**/.venv", "**/node_modules", "**/__pycache__"]
 
 [dependency-groups]

@@ -166,7 +166,7 @@ class _CodeWarmer:
 #
 # The SERVICE path warms every active workspace via ``_CodeWarmer`` above. The
 # stdio MCP server (``mcp_server.serve``) instead owns exactly one workspace and
-# is not warmed, so it pays cold-start on Zoekt/scip/ast-grep subprocesses at
+# is not warmed, so it pays cold-start on Zoekt/ast-grep subprocesses at
 # the first code-context tool call. ``warm_stdio_workspace`` warms that single
 # workspace once on startup, reusing the same lazy-engine-construct + retain
 # pattern as ``_CodeWarmer._warm_once``. It is idempotent and fail-open.

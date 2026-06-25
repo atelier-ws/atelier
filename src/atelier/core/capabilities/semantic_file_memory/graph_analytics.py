@@ -18,7 +18,7 @@ The four file-level analytics are:
   ``I = Ce / (Ca + Ce)`` per file (Martin's instability).
 
 Symbol/call-graph *centrality* (G6) is intentionally NOT here: it requires the
-SCIP ``call_edges`` graph owned by ``CodeContextEngine`` and lives there.
+The ``call_edges`` graph owned by ``CodeContextEngine`` and lives there.
 """
 
 from __future__ import annotations

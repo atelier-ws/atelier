@@ -573,23 +573,23 @@ def test_tool_code_call_graph_dispatches_to_engine(tmp_path: Path, monkeypatch: 
     fake_engine = MagicMock()
     fake_engine.tool_callers.return_value = {
         "target": {"qualified_name": "beta"},
-        "related": [{"qualified_name": "alpha", "provenance": "scip"}],
-        "edges": [{"caller_symbol_id": "scip-alpha", "callee_symbol_id": "scip-beta", "depth": 1}],
+        "related": [{"qualified_name": "alpha", "provenance": "tree_sitter"}],
+        "edges": [{"caller_symbol_id": "ts-alpha", "callee_symbol_id": "ts-beta", "depth": 1}],
         "data_status": "available",
         "snapshot": None,
         "cache_hit": False,
-        "provenance": "scip",
+        "provenance": "tree_sitter",
         "tokens_saved": 10,
         "total_tokens": 100,
     }
     fake_engine.tool_callees.return_value = {
         "target": {"qualified_name": "handle"},
-        "related": [{"qualified_name": "alpha", "provenance": "scip"}],
-        "edges": [{"caller_symbol_id": "scip-handle", "callee_symbol_id": "scip-alpha", "depth": 1}],
+        "related": [{"qualified_name": "alpha", "provenance": "tree_sitter"}],
+        "edges": [{"caller_symbol_id": "ts-handle", "callee_symbol_id": "ts-alpha", "depth": 1}],
         "data_status": "available",
         "snapshot": {"snapshot_id": "snap"},
         "cache_hit": False,
-        "provenance": "scip",
+        "provenance": "tree_sitter",
         "tokens_saved": 10,
         "total_tokens": 100,
     }
@@ -870,11 +870,11 @@ def test_tool_code_usages_dispatches_to_engine(tmp_path: Path, monkeypatch: pyte
     fake_engine.tool_usages.return_value = {
         "target": {"qualified_name": "OrderService"},
         "references": {
-            "src/checkout.py": [{"file_path": "src/checkout.py", "line": 4, "column": 12, "provenance": "scip"}]
+            "src/checkout.py": [{"file_path": "src/checkout.py", "line": 4, "column": 12, "provenance": "tree_sitter"}]
         },
         "group_by": "file",
         "cache_hit": False,
-        "provenance": "scip",
+        "provenance": "tree_sitter",
         "tokens_saved": 10,
         "total_tokens": 80,
     }

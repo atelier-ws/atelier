@@ -39,7 +39,7 @@ class SymbolRecord(BaseModel):
     end_line: int
     parent_symbol: str | None = None
     doc_summary: str | None = None
-    documentation: list[str] | None = None  # raw SCIP SymbolInformation.documentation strings
+    documentation: list[str] | None = None  # raw symbol documentation strings
     snippet: str | None = None
     content_hash: str
     score: float | None = None

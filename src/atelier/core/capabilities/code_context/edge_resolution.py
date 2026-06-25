@@ -1,4 +1,4 @@
-"""Tiered tree-sitter -> SCIP -> LSP call-site resolution (N14).
+"""Tiered tree-sitter -> LSP call-site resolution (N14).
 
 Architecture (the *selection* logic is the deliverable here, not a live server):
 
@@ -7,18 +7,16 @@ Architecture (the *selection* logic is the deliverable here, not a live server):
    candidate call site and every ``definition`` tag as a locally-known target.
 2. A reference is **resolved locally** when its name matches a tree-sitter
    definition in the same file -> provenance ``tree_sitter``.
-3. A reference is **resolved by SCIP** when the caller supplies a set of
-   SCIP-resolved names for the file -> provenance ``scip``.
-4. Everything left is a **RESIDUAL** -- an unqualified call site neither
-   tree-sitter nor SCIP could pin down. ONLY these residuals are handed to the
-   injectable LSP-resolution hook.
-5. The hook may return a resolution tagged ``lsp_resolved`` (a definition site)
+3. Everything left is a **RESIDUAL** -- an unqualified call site tree-sitter
+   could not pin down. ONLY these residuals are handed to the injectable
+   LSP-resolution hook.
+4. The hook may return a resolution tagged ``lsp_resolved`` (a definition site)
    or ``lsp_dispatch`` (a dynamic-dispatch candidate). Heuristic synthesized
    edges fold in as ``heuristic``.
 
 Fail-open contract: with no LSP hook (the default), residuals are returned
-UNRESOLVED and tree-sitter/SCIP results are byte-for-byte unchanged. The hook
-is pure dependency-injection: a stub satisfies it, so this is fully unit-tested
+UNRESOLVED and tree-sitter results are byte-for-byte unchanged. The hook is
+pure dependency-injection: a stub satisfies it, so this is fully unit-tested
 without any language server.
 """
 
@@ -33,7 +31,6 @@ from atelier.infra.tree_sitter.tags import Tag
 
 ResolutionProvenance = Literal[
     "tree_sitter",
-    "scip",
     "lsp_resolved",
     "lsp_dispatch",
     "heuristic",
@@ -42,10 +39,9 @@ ResolutionProvenance = Literal[
 # Tier ordering: lower index = higher precedence (cheaper / more certain first).
 _TIER_ORDER: dict[ResolutionProvenance, int] = {
     "tree_sitter": 0,
-    "scip": 1,
-    "lsp_resolved": 2,
-    "lsp_dispatch": 3,
-    "heuristic": 4,
+    "lsp_resolved": 1,
+    "lsp_dispatch": 2,
+    "heuristic": 3,
 }
 
 
@@ -107,18 +103,14 @@ class ResolutionReport:
 
 def compute_residuals(
     tags: Iterable[Tag],
-    *,
-    scip_resolved_names: Iterable[str] = (),
 ) -> tuple[list[ResolvedCallSite], list[CallSite]]:
-    """Split reference tags into (locally/SCIP resolved, residual) call sites.
+    """Split reference tags into (tree-sitter resolved, residual) call sites.
 
-    A reference resolves locally (``tree_sitter``) when its name has a matching
-    definition tag in the same set; it resolves via ``scip`` when its name is in
-    *scip_resolved_names*; otherwise it is residual. Definition tags never count
-    as call sites. Deterministic ordering by (line, name).
+    A reference resolves locally when its name has a matching definition tag in
+    the same set; otherwise it is residual. Definition tags never count as call
+    sites. Deterministic ordering by (line, name).
     """
     local_defs: set[str] = {t.name for t in tags if t.kind == "definition"}
-    scip_names = set(scip_resolved_names)
     resolved: list[ResolvedCallSite] = []
     residual: list[CallSite] = []
     seen: set[tuple[str, str, int]] = set()
@@ -139,16 +131,6 @@ def compute_residuals(
                     target=tag.name,
                 )
             )
-        elif tag.name in scip_names:
-            resolved.append(
-                ResolvedCallSite(
-                    name=tag.name,
-                    file=tag.file,
-                    line=tag.line,
-                    provenance="scip",
-                    target=tag.name,
-                )
-            )
         else:
             residual.append(CallSite(name=tag.name, file=tag.file, line=tag.line))
     resolved.sort(key=lambda r: (r.line, r.name))
@@ -159,17 +141,16 @@ def compute_residuals(
 def resolve_call_sites(
     tags: Iterable[Tag],
     *,
-    scip_resolved_names: Iterable[str] = (),
     lsp_resolver: LspResolver | None = None,
 ) -> ResolutionReport:
-    """Run the full tree-sitter -> SCIP -> LSP tiering over a file's tags.
+    """Run the full tree-sitter -> LSP tiering over a file's tags.
 
     ``lsp_resolver`` is invoked ONLY for residual call sites. With no resolver
-    (default), residuals are reported unresolved and the tree-sitter/SCIP tiers
-    are unchanged -- the strict fail-open guarantee. A resolver that raises is
+    (default), residuals are reported unresolved and the tree-sitter tier is
+    unchanged -- the strict fail-open guarantee. A resolver that raises is
     swallowed per-site so one bad call site never sinks the pass.
     """
-    resolved, residual = compute_residuals(tags, scip_resolved_names=scip_resolved_names)
+    resolved, residual = compute_residuals(tags)
     if lsp_resolver is None:
         return ResolutionReport(resolved=resolved, residual=residual)
 

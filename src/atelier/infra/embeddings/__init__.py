@@ -18,8 +18,8 @@ from atelier.infra.embeddings.factory import (
 from atelier.infra.embeddings.letta_embedder import LettaEmbedder
 
 __all__ = [
-    "BgeEmbedder",
     "DEFAULT_CODE_EMBED_MODEL",
+    "BgeEmbedder",
     "EmbedResult",
     "Embedder",
     "LettaEmbedder",

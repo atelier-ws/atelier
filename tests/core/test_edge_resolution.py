@@ -1,4 +1,4 @@
-"""WS9 N14 -- tiered tree-sitter -> SCIP -> LSP call-site resolution.
+"""WS9 N14 -- tiered tree-sitter -> LSP call-site resolution.
 
 All tests use a STUB resolver; no live language server is required. The tiering
 / residual-selection logic is what is under test.
@@ -36,13 +36,6 @@ def test_local_definition_resolves_as_tree_sitter() -> None:
     assert resolved[0].target == "helper"
 
 
-def test_scip_name_resolves_as_scip() -> None:
-    tags = [_ref("externalFn", 3)]
-    resolved, residual = compute_residuals(tags, scip_resolved_names={"externalFn"})
-    assert residual == []
-    assert resolved[0].provenance == "scip"
-
-
 def test_unresolved_reference_is_residual() -> None:
     tags = [_ref("mysteryCall", 5)]
     resolved, residual = compute_residuals(tags)
@@ -58,7 +51,7 @@ def test_definition_tags_are_not_call_sites() -> None:
 
 
 def test_residual_selection_from_real_tree_sitter_extraction() -> None:
-    # Real tree-sitter extraction over Kotlin (a non-SCIP language).
+    # Real tree-sitter extraction over Kotlin (LSP-only language).
     src = "fun helper() {}\nfun main() { helper(); unknownCall() }\n"
     tags = extract_tags_from_text(src, "a.kt", language="kotlin")
     resolved, residual = compute_residuals(tags)
@@ -77,7 +70,7 @@ def test_duplicate_references_deduped() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Fail-open: no resolver -> tree-sitter/SCIP unchanged, residuals untouched.
+# Fail-open: no resolver -> tree-sitter unchanged, residuals untouched.
 # --------------------------------------------------------------------------- #
 def test_no_resolver_leaves_residuals_unresolved() -> None:
     tags = [_def("a", 1), _ref("a", 2), _ref("b", 3)]
@@ -149,10 +142,9 @@ def test_by_provenance_counts() -> None:
     tags = [
         _def("localFn", 1),
         _ref("localFn", 2),
-        _ref("scipFn", 3),
-        _ref("viaLsp", 4),
-        _ref("stillUnknown", 5),
+        _ref("viaLsp", 3),
+        _ref("stillUnknown", 4),
     ]
-    report = resolve_call_sites(tags, scip_resolved_names={"scipFn"}, lsp_resolver=stub)
+    report = resolve_call_sites(tags, lsp_resolver=stub)
     counts = report.by_provenance()
-    assert counts == {"tree_sitter": 1, "scip": 1, "lsp_resolved": 1, "residual": 1}
+    assert counts == {"tree_sitter": 1, "lsp_resolved": 1, "residual": 1}

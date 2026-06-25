@@ -27,7 +27,7 @@ This roadmap tracks shipped capabilities against what's in active development. D
 - Counterfactual pricing engine
 
 ### Code intelligence
-- Symbol-first code index (SCIP) with multi-language support
+- Symbol-first code index with multi-language support
 - AST pattern matching (ast-grep) with rewrite support
 - Call graph (callers/callees) with centrality scoring
 - Usages and reference resolution
