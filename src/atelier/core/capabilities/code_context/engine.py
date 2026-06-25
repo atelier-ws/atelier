@@ -338,6 +338,17 @@ _EXPLORE_FAMILY_PER_FAMILY_CAP = 8
 # when a query has a dominant hit (exact symbol >> lexical sub-token co-matches);
 # uniform low-score concept queries leave the floor near zero, keeping everything.
 _EXPLORE_SCORE_FLOOR_FRAC = 0.30
+# Path-quality filters for explore results.
+# Hard-remove: minified/vendor artefacts are never useful navigation targets.
+_MINIFIED_FILE_RE = re.compile(r'\.min\.(js|css)$', re.IGNORECASE)
+_VENDOR_PATH_RE = re.compile(r'(?:^|/)(?:vendor|node_modules|dist|__pycache__)/', re.IGNORECASE)
+# Soft-penalise: test/spec files rank below implementation files unless the
+# query is explicitly about tests.
+_TEST_PATH_RE = re.compile(
+    r'(?:^|/)tests?/|/test_[^/]+$|_test\.(?:py|js|ts|rb|go)$|(?:^|/)spec/',
+    re.IGNORECASE,
+)
+_TEST_SCORE_PENALTY = 0.5  # multiply test-file scores by this when query doesn't mention tests
 # Definitional kinds outrank trivial variables/constants when explore decides which
 # files survive the file/budget caps -- a class/function is higher signal than a const.
 _DEFINITION_KINDS = frozenset(
@@ -3134,6 +3145,21 @@ class CodeContextEngine:
                     for record in ranked_symbols
                     if record.symbol_id in pinned_ids or record.file_path in seed_set or (record.score or 0.0) >= floor
                 ]
+        # Path-quality filter: hard-remove minified/vendor artefacts; soft-penalise
+        # test files when the query isn't explicitly about tests. Applied after the
+        # score floor so pinned exact hits are never touched.
+        query_wants_tests = bool(re.search(r'\btest\b|\bspec\b', query, re.IGNORECASE))
+        filtered: list[SymbolRecord] = []
+        for record in ranked_symbols:
+            fp = record.file_path or ""
+            if _MINIFIED_FILE_RE.search(fp) or _VENDOR_PATH_RE.search(fp):
+                if record.symbol_id not in exact_ids and fp not in seed_set:
+                    continue  # hard remove
+            if not query_wants_tests and _TEST_PATH_RE.search(fp):
+                if record.symbol_id not in exact_ids and fp not in seed_set:
+                    record = record.model_copy(update={"score": (record.score or 0.0) * _TEST_SCORE_PENALTY})
+            filtered.append(record)
+        ranked_symbols = filtered
         # File diversity: cap symbols-per-file before the symbol budget so one
         # over-populated file (e.g. 8 `as_sqlite` overloads in functions.py)
         # cannot starve the other files the query also matches (the ambiguous-name
