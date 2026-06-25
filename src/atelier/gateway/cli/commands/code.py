@@ -4,7 +4,6 @@ import logging
 import shutil
 import sqlite3
 import subprocess
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -459,66 +458,10 @@ def _trigger_zoekt_with_progress(repo_root: Path, frame_prefix: str = "") -> Non
 
 
 def _trigger_scip_with_progress(engine: Any, frame_prefix: str = "") -> None:
-    """Run SCIP indexers for detected repo languages, with a Rich progress bar."""
+    """Run SCIP indexers for detected repo languages, with a per-dir Rich progress bar."""
     try:
         from rich.console import Console
-        from rich.progress import Progress, TextColumn
-
-        prefix_markup = f"[dim]{frame_prefix}[/dim]" if frame_prefix else ""
-        console = Console(stderr=True)
-        progress = Progress(TextColumn(f"{prefix_markup}{{task.description}}"), console=console, transient=False)
-        with progress:
-            task_id = progress.add_task("[green]⟳[/green]  Indexing SCIP symbols...", total=None)
-            results = engine.trigger_scip_indexing()
-            if not results:
-                progress.update(task_id, description="[dim]–[/dim]  SCIP: no install-time indexers detected")
-            else:
-                summary = ", ".join(f"{lang}:{status}" for lang, status in sorted(results.items()))
-                ok = all(s in ("indexed", "ready") for s in results.values())
-                icon = "[green]✓[/green]" if ok else "[yellow]⚠[/yellow]"
-                progress.update(task_id, description=f"{icon}  SCIP: {summary}")
-    except Exception:
-        logging.exception("SCIP indexing with progress failed")
-        try:
-            engine.trigger_scip_indexing()
-        except Exception:
-            logging.exception("SCIP indexing fallback failed")
-
-
-def _prewarm_embeddings_with_progress(engine: Any, frame_prefix: str = "") -> None:
-    try:
-        from rich.console import Console
-        from rich.progress import BarColumn, Progress, TextColumn
-
-        from atelier.core.capabilities.code_context.embedding import resolve_embed_batch_size
-
-        if not engine._semantic_ranker.available:
-            return
-
-        embedder = engine._semantic_ranker.embedder
-        embedding_dim = embedder.dim
-        if embedding_dim <= 0:
-            return
-
-        index_version = engine._current_index_version()
-        candidates = engine._semantic_symbol_candidates(limit=2000)
-        if not candidates:
-            return
-
-        from contextlib import closing
-
-        with closing(engine._connect()) as conn:
-            engine._init_schema(conn)
-            fresh_ids = engine._ann_symbol_index.existing_stamped_ids(
-                conn,
-                embedder_name=embedder.name,
-                embedding_dim=embedding_dim,
-                index_version=index_version,
-            )
-
-        to_embed = [c for c in candidates if c.symbol_id not in fresh_ids]
-        if not to_embed:
-            return
+        from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
 
         prefix_markup = f"[dim]{frame_prefix}[/dim]" if frame_prefix else ""
         console = Console(stderr=True)
@@ -529,54 +472,54 @@ def _prewarm_embeddings_with_progress(engine: Any, frame_prefix: str = "") -> No
                 style="bright_black",
                 complete_style="cyan",
                 finished_style="green",
+                pulse_style="magenta",
             ),
+            TextColumn("[bold cyan]{task.percentage:3.0f}%[/bold cyan]"),
+            TimeRemainingColumn(),
             console=console,
             transient=False,
         )
+        task_ids: dict[str, Any] = {}
+
+        def on_start(lang: str, num_dirs: int) -> None:
+            task_ids[lang] = progress.add_task(f"[green]⟳[/green]  SCIP {lang}...", total=num_dirs, completed=0)
+
+        def on_dir(lang: str, _dir_tag: str, _dir_status: str) -> None:
+            tid = task_ids.get(lang)
+            if tid is not None:
+                progress.update(tid, advance=1)
+
+        def on_done(lang: str, status: str) -> None:
+            tid = task_ids.get(lang)
+            if tid is None:
+                return
+            ok = status in ("indexed", "ready")
+            icon = "[green]✓[/green]" if ok else "[yellow]⚠[/yellow]"
+            progress.update(tid, description=f"{icon}  SCIP {lang}: {status}")
+            # Ensure bar reaches 100 % (handles single-run path with no on_dir calls).
+            for t in progress.tasks:
+                if t.id == tid and t.total is not None and t.completed < t.total:
+                    progress.update(tid, completed=t.total)
+                    break
+
         with progress:
-            task_id = progress.add_task(
-                f"[green]⟳[/green]  Pre-warming symbol embeddings... (0/{len(to_embed)})",
-                total=len(to_embed),
+            results = engine.trigger_scip_indexing(
+                on_language_start=on_start,
+                on_dir_done=on_dir,
+                on_language_done=on_done,
             )
-            batch_size = resolve_embed_batch_size()
-            with closing(engine._connect()) as conn:
-                engine._init_schema(conn)
-                new_vectors = {}
-                done = 0
-                for start in range(0, len(to_embed), batch_size):
-                    chunk = to_embed[start : start + batch_size]
-                    source_texts = {
-                        s.symbol_id: engine._read_file_slice(s.file_path, s.start_byte, s.end_byte) for s in chunk
-                    }
-                    embedded = engine._semantic_ranker.embed_symbols(chunk, source_texts=source_texts)
-                    for s in chunk:
-                        vector = embedded.get(s.symbol_id)
-                        if vector and len(vector) == embedding_dim:
-                            new_vectors[s.symbol_id] = (s.content_hash, vector)
-                    done += len(chunk)
-                    progress.update(
-                        task_id,
-                        completed=done,
-                        description=f"[green]⟳[/green]  Pre-warming symbol embeddings... ({done}/{len(to_embed)})",
-                    )
-                if new_vectors:
-                    engine._ann_symbol_index.upsert_vectors(
-                        conn,
-                        embedder_name=embedder.name,
-                        embedding_dim=embedding_dim,
-                        index_version=index_version,
-                        vectors=new_vectors,
-                    )
-            progress.update(
-                task_id,
-                description="[green]✓[/green]  Pre-warmed symbol embeddings",
-            )
+            if not results:
+                progress.add_task(
+                    "[dim]–[/dim]  SCIP: no install-time indexers detected",
+                    total=1,
+                    completed=1,
+                )
     except Exception:
-        logging.exception("Failed to prewarm embeddings")
+        logging.exception("SCIP indexing with progress failed")
         try:
-            engine._prewarm_symbol_embeddings()
+            engine.trigger_scip_indexing()
         except Exception:
-            logging.exception("Failed to prewarm symbol embeddings")
+            logging.exception("SCIP indexing fallback failed")
 
 
 @click.group("code")
@@ -617,7 +560,6 @@ def code_index_cmd(
         ).model_dump(mode="json")
         try:
             engine._deleted_history_adapter()._ensure_history_ready()
-            engine._prewarm_symbol_embeddings()
             engine.trigger_scip_indexing()
         except Exception:
             logging.exception("Failed to prepare background indexes")
@@ -639,7 +581,6 @@ def code_index_cmd(
     )
 
     git_summary = _index_git_history_with_progress(engine, frame_prefix=frame_prefix)
-    _prewarm_embeddings_with_progress(engine, frame_prefix=frame_prefix)
     _trigger_scip_with_progress(engine, frame_prefix=frame_prefix)
     _trigger_zoekt_with_progress(Path(repo_root).resolve(), frame_prefix=frame_prefix)
 

@@ -11,6 +11,7 @@ from atelier.core.environment import resolve_memory_backend
 from atelier.core.foundation.paths import default_store_root
 
 from .base import Embedder
+from .bge import BgeEmbedder
 from .letta_embedder import LettaEmbedder
 from .local import LocalEmbedder
 from .null_embedder import NullEmbedder
@@ -20,7 +21,7 @@ from .openai_embedder import OpenAIEmbedder
 logger = logging.getLogger(__name__)
 
 _PIN_CHOICES = frozenset({"local", "openai", "letta", "null"})
-_CODE_PIN_CHOICES = frozenset({"local", "openai", "letta", "null", "ollama"})
+_CODE_PIN_CHOICES = frozenset({"local", "openai", "letta", "null", "ollama", "bge"})
 
 
 @runtime_checkable
@@ -116,6 +117,8 @@ def make_code_embedder(pin: str | None = None, model: str | None = None) -> Embe
         return OpenAIEmbedder()
     if chosen == "letta":
         return LettaEmbedder()
+    if chosen == "bge":
+        return BgeEmbedder()
     if chosen == "ollama":
         if os.getenv("ATELIER_OFFLINE"):
             return LocalEmbedder()
@@ -123,10 +126,8 @@ def make_code_embedder(pin: str | None = None, model: str | None = None) -> Embe
             return _make_available_ollama_code_embedder(_default_code_model(model))
         except RuntimeError:
             return LocalEmbedder()
-    # Default (or explicit "null"): semantic code search is OFF unless an embedding
-    # backend is configured via ATELIER_CODE_EMBEDDER (local|openai|letta|ollama) and
-    # optionally ATELIER_CODE_EMBED_MODEL. No external LLM (ollama) is contacted by
-    # default -- callers see the null embedder and surface "semantic unavailable".
+    # Default (no pin set) or explicit opt-out (null): no semantic search.
+    # Feature-hashing (local) vectors hurt MRR; BGE/ollama/openai are opt-in.
     return NullEmbedder()
 
 

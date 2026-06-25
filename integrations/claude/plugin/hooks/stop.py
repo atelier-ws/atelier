@@ -590,22 +590,32 @@ def _merge_session_aggregate(stats: dict[str, Any] | None, aggregate: dict[str, 
     stats["cache_write_tokens"] = int(stats.get("cache_write_tokens", 0) or 0) or int(
         usage.get("cache_write_tokens", 0) or 0
     )
-    # Pre-compact usage: token totals from turns that were erased when /compact rewrote the
-    # transcript. The compact.py PreCompact hook snapshots these before the overwrite; add
-    # them on top of whatever the (now-truncated) transcript shows. This bridges the gap
-    # between the Claude Code statusline (in-process running sum) and the stop hook
-    # (transcript-derived), making reported cost match what the statusline showed.
+    # Pre-compact usage: token totals from turns that may have been erased when /compact
+    # rewrote the transcript.  The compact.py PreCompact hook stores the HIGH-WATER MARK
+    # (max across all compacts, not a running sum) so pre_compact represents the full
+    # session state at the most recent compact.
+    #
+    # Merge strategy — delta-only (add only what the transcript is missing):
+    #   • Claude Code preserves the full conversation after /compact (old turns remain
+    #     in the JSONL below compact_boundary markers), so read_transcript_stats() already
+    #     accounts for every token via msg_id dedup.  In that case pre_compact ≤ transcript
+    #     and the delta is 0 — nothing is added.
+    #   • If compact DID erase entries (older behaviour), pre_compact > transcript and we
+    #     recover only the truly missing portion.
+    #
+    # The old "unconditional add" inflated cost by up to N× (N = compact count) because
+    # it summed N growing snapshots on top of a transcript that already contained them all.
     pre_compact = aggregate.get("pre_compact_usage")
     if isinstance(pre_compact, dict):
-        stats["input_tokens"] = int(stats["input_tokens"]) + int(pre_compact.get("input_tokens", 0) or 0)
-        stats["output_tokens"] = int(stats["output_tokens"]) + int(pre_compact.get("output_tokens", 0) or 0)
-        stats["cache_read_tokens"] = int(stats["cache_read_tokens"]) + int(pre_compact.get("cache_read_tokens", 0) or 0)
-        stats["cache_write_tokens"] = int(stats["cache_write_tokens"]) + int(
-            pre_compact.get("cache_write_tokens", 0) or 0
-        )
-        stats["est_cost_usd"] = float(stats.get("est_cost_usd", 0.0) or 0.0) + float(
-            pre_compact.get("est_cost_usd", 0.0) or 0.0
-        )
+        for _field in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"):
+            _pre = int(pre_compact.get(_field, 0) or 0)
+            _cur = int(stats[_field])
+            if _pre > _cur:
+                stats[_field] = _pre  # transcript was missing tokens; use the larger snapshot
+        _pre_cost = float(pre_compact.get("est_cost_usd", 0.0) or 0.0)
+        _cur_cost = float(stats.get("est_cost_usd", 0.0) or 0.0)
+        if _pre_cost > _cur_cost:
+            stats["est_cost_usd"] = _pre_cost
     stats["total_tokens"] = (
         int(stats["input_tokens"])
         + int(stats["output_tokens"])

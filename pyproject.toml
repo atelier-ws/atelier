@@ -71,6 +71,14 @@ vector = [
     "pgvector>=0.2",
     "numpy>=1.26",
 ]
+# Local code-embedding semantic search (BGE-Code-v1 via SentenceTransformers).
+# sentence-transformers 5.x regresses bge-code-v1 loading (AutoProcessor error) --
+# pin <5. Heavy (torch); opt-in only.
+semantic = [
+    "sentence-transformers>=3,<5",
+    "torch>=2.2",
+    "numpy>=1.26",
+]
 parsers = [
     "tree-sitter-languages>=1.10; python_version < '3.13'",
 ]
@@ -179,6 +187,12 @@ module = [
     "gateway.cli.commands.*",
 ]
 disable_error_code = ["no-untyped-call", "untyped-decorator"]
+
+[tool.pyright]
+# Exclude the virtual environment and build artifacts from analysis so that
+# scip-python (which uses pyright internally) does not try to index installed
+# packages.  Without this, scip-python OOMs on large venvs.
+exclude = [".venv", "**/.venv", "**/node_modules", "**/__pycache__"]
 
 [dependency-groups]
 dev = [

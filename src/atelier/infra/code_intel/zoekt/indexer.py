@@ -130,26 +130,53 @@ class ZoektIndexer:
             pass
 
     def _build_snapshot(self) -> ZoektIndexSnapshot:
-        from atelier.core.capabilities.repo_map.graph import should_skip_path
-
         path_lines: dict[str, int] = {}
         total_lines = 0
-        for path in sorted(self.repo_root.rglob("*")):
+        for rel_str in self._git_tracked_text_files():
+            path = self.repo_root / rel_str
             if not path.is_file():
-                continue
-            rel = path.relative_to(self.repo_root).as_posix()
-            if should_skip_path(path, repo_root=self.repo_root):
-                continue
-            if path.suffix.lower() not in _TEXT_SUFFIXES:
                 continue
             try:
                 source = path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
             line_count = len(source.splitlines())
-            path_lines[rel] = line_count
+            path_lines[rel_str] = line_count
             total_lines += line_count
         return ZoektIndexSnapshot(indexed_at=time(), total_lines=total_lines, path_lines=path_lines)
+
+    def _git_tracked_text_files(self) -> list[str]:
+        """Return repo-relative paths of git-tracked text files, respecting .gitignore.
+
+        Always uses ``git ls-files`` so that .gitignore rules (including nested
+        ones) are applied uniformly.  Returns an empty list when git is
+        unavailable rather than falling back to an unfiltered filesystem walk.
+        """
+        import subprocess as _subprocess
+
+        try:
+            result = _subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(self.repo_root),
+                    "ls-files",
+                    "-z",
+                    "--cached",
+                    "--others",
+                    "--exclude-standard",
+                ],
+                capture_output=True,
+                text=False,
+                check=False,
+                timeout=30.0,
+            )
+        except OSError:
+            return []
+        if result.returncode != 0:
+            return []
+        entries = [e.decode("utf-8", errors="replace") for e in result.stdout.split(b"\x00") if e]
+        return sorted(e for e in entries if Path(e).suffix.lower() in _TEXT_SUFFIXES)
 
     def _relative_path(self, target: Path) -> str | None:
         try:

@@ -161,11 +161,7 @@ def scan_transcript(transcript_path: str | None) -> tuple[list[str], bool]:
     return edited, verified
 
 
-_REASON = (
-    "verify-before-done: edited {n} file(s) ({sample}) but ran no tests. Run the project's test "
-    "suite (pytest/runtests/...), not a python -c snippet -- a snippet misses regressions in code "
-    "you didn't think to check. Or note how you verified, then stop again."
-)
+_REASON = "verify-before-done: edited {n} file(s) ({sample}) but ran no tests. Run the project's test suite."
 
 
 def decide(payload: dict[str, Any]) -> dict[str, str] | None:

@@ -5,12 +5,16 @@ from __future__ import annotations
 import atexit
 import base64
 import json
+import logging
 import os
 import shutil
+import socket
 import subprocess
 import threading
 import time
-from contextlib import suppress
+import urllib.error
+import urllib.request
+from contextlib import closing, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -23,6 +27,10 @@ _BRIDGE_SENTINEL = "__ATELIER_ZOEKT_END__"
 _DOCKER_NOFILE = "1048576:1048576"
 _STARTUP_TIMEOUT_SECONDS = 60.0
 _POLL_INTERVAL_SECONDS = 0.25
+_WEBSERVER_ENV_VAR = "ATELIER_ZOEKT_WEBSERVER"
+_WEBSERVER_READY_TIMEOUT_SECONDS = 15.0
+_WEBSERVER_READY_POLL_SECONDS = 0.05
+_WEBSERVER_REQUEST_TIMEOUT_SECONDS = 30.0
 _SKIP_ROOTS = {".git", ".jj", ".atelier", ".venv", "node_modules", "dist", "build", "__pycache__"}
 
 
@@ -45,6 +53,17 @@ class ZoektServer:
         self._bridge: subprocess.Popen[str] | None = None
         self._container_id: str | None = None
         self._host_search_binary: Path | None = None
+        # Persistent host-mode zoekt-webserver: started lazily, reused across
+        # queries, torn down in stop().  Guarded by _webserver_lock so a
+        # concurrent first query does not race two server launches.
+        self._webserver_lock = threading.Lock()
+        self._webserver_proc: subprocess.Popen[bytes] | None = None
+        self._webserver_url: str | None = None
+        self._webserver_failed = False
+        # Set once the webserver is actually queryable; waiters block on this
+        # Event instead of holding _webserver_lock so startup never blocks a
+        # concurrent tool call.
+        self._webserver_ready: threading.Event = threading.Event()
         from atelier.core.foundation.paths import workspace_key
 
         self._container_name = f"atelier-zoekt-{workspace_key(self.repo_root)[:40]}-{os.getpid()}"
@@ -151,7 +170,7 @@ class ZoektServer:
             raise RuntimeError("Zoekt runtime has not been resolved")
         if self.resolution.runtime == "docker":
             return self._bridge_request(payload)
-        return self._run_host_search(payload)
+        return self._host_search(payload)
 
     def stop(self) -> None:
         with self._lock:
@@ -176,6 +195,8 @@ class ZoektServer:
                 container_id = self._container_id
                 self._container_id = None
                 _run_command(["docker", "stop", container_id], check=False, timeout=30)
+            with self._webserver_lock:
+                self._stop_webserver()
             self._host_search_binary = None
             self._started_at = None
 
@@ -274,7 +295,13 @@ class ZoektServer:
                 timeout=300,
             )
 
-        self.state_path.write_text(json.dumps({"started_at": int(time.time())}), encoding="utf-8")
+        state: dict[str, Any] = {"started_at": int(time.time())}
+        head = _read_git_head(self.repo_root)
+        if head is not None:
+            # Stamp the indexed commit so a background refresh can detect HEAD
+            # moves (zoekt-git-index is commit-granular -- see build_index docs).
+            state["head"] = head
+        self.state_path.write_text(json.dumps(state), encoding="utf-8")
         self._host_search_binary = search_binary
 
     def _prepare_runtime_dirs(self) -> None:
@@ -378,6 +405,154 @@ class ZoektServer:
             raise RuntimeError("zoekt bridge returned an empty response")
         return cast(dict[str, Any], json.loads(body))
 
+    def _host_search(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Host-mode search: persistent zoekt-webserver, CLI subprocess fallback.
+
+        When ``ATELIER_ZOEKT_WEBSERVER`` is enabled (default) a single
+        long-lived ``zoekt-webserver`` is started lazily and queried over
+        HTTP per call -- the index stays resident, so each query is
+        single-digit ms instead of paying Go-runtime init + index mmap on a
+        fresh ``zoekt`` subprocess.  Any start/HTTP failure degrades to the
+        per-query CLI path (`_run_host_search`) so behaviour never regresses.
+        """
+        if self._webserver_enabled():
+            url = self._ensure_webserver()
+            if url is not None:
+                try:
+                    return self._run_webserver_search(url, payload)
+                except Exception:  # noqa: BLE001 -- any HTTP/parse error degrades to the CLI path
+                    # The webserver did not answer this query.  A 4xx (e.g. a
+                    # malformed-regexp query the API rejects but the CLI
+                    # tolerates) leaves a perfectly healthy server up, so we
+                    # only tear it down when the process has actually died --
+                    # otherwise one bad query would force every later query
+                    # back onto the slow CLI path.  Either way this call
+                    # degrades to the CLI below.
+                    logging.debug("zoekt webserver search failed; using CLI fallback", exc_info=True)
+                    with self._webserver_lock:
+                        proc = self._webserver_proc
+                        if proc is None or proc.poll() is not None:
+                            self._stop_webserver()
+        return self._run_host_search(payload)
+
+    def _webserver_enabled(self) -> bool:
+        return os.environ.get(_WEBSERVER_ENV_VAR, "1").strip().lower() not in {"0", "false", "no", "off"}
+
+    def _ensure_webserver(self) -> str | None:
+        """Return the base URL of a live host zoekt-webserver, starting one lazily.
+
+        Returns ``None`` (never raises) when the webserver cannot be started
+        so the caller falls back to the per-query CLI path.
+
+        Non-blocking design
+        -------------------
+        The readiness poll (up to ~15 s) runs outside ``_webserver_lock`` so
+        a concurrent tool call is never blocked by the startup thread holding
+        the mutex.  Instead callers wait on ``_webserver_ready`` (a
+        ``threading.Event``) which costs no CPU and is released the moment the
+        server is queryable.
+        """
+        with self._webserver_lock:
+            if self._webserver_failed:
+                return None
+            proc = self._webserver_proc
+            if proc is not None and proc.poll() is None and self._webserver_url is not None:
+                # Already started — if not yet ready, wait below outside the lock.
+                url = self._webserver_url
+            else:
+                # A prior server died or first call: clear stale state.
+                self._stop_webserver()
+                try:
+                    url = self._spawn_webserver_process()
+                except Exception:  # noqa: BLE001
+                    logging.debug("zoekt webserver spawn failed; using CLI fallback", exc_info=True)
+                    self._stop_webserver()
+                    self._webserver_failed = True
+                    return None
+
+        # Non-blocking readiness check: if the daemon poll thread hasn't set
+        # the Event yet, skip zoekt this call and let the caller fall back to
+        # the CLI/SQLite path.  The next call after the Event is set will use
+        # the webserver normally.  Never block a tool call waiting for startup.
+        if not self._webserver_ready.is_set():
+            return None
+        if self._webserver_failed:
+            return None
+        return url
+
+    def _spawn_webserver_process(self) -> str:
+        """Spawn zoekt-webserver and start a daemon thread that polls readiness.
+
+        Stores ``_webserver_proc`` and ``_webserver_url`` immediately (under
+        the caller's lock) then returns the URL.  Readiness is signalled via
+        ``_webserver_ready`` once ``_wait_for_webserver_ready`` succeeds.
+        Caller must hold ``_webserver_lock``.
+        """
+        if self.resolution is None:
+            raise RuntimeError("zoekt runtime has not been resolved")
+        webserver_binary = _resolve_webserver_binary(self.resolution)
+        port = _pick_free_port()
+        proc = subprocess.Popen(
+            [
+                str(webserver_binary),
+                "-listen",
+                f"127.0.0.1:{port}",
+                "-index",
+                str(self.index_root),
+                "-rpc",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        url = f"http://127.0.0.1:{port}"
+        self._webserver_proc = proc
+        self._webserver_url = url
+        self._webserver_ready.clear()
+
+        # Readiness poll runs in a daemon thread so the caller's lock is free.
+        def _poll_ready() -> None:
+            ok = _wait_for_webserver_ready(url, proc)
+            if ok:
+                self._webserver_ready.set()
+            else:
+                with self._webserver_lock:
+                    self._stop_webserver()
+                    self._webserver_failed = True
+                self._webserver_ready.set()  # unblock any waiters so they see failed=True
+
+        threading.Thread(target=_poll_ready, daemon=True, name="zoekt-ready-poll").start()
+        return url
+
+    def _run_webserver_search(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        body = json.dumps({"Q": str(payload.get("Q") or "")}, separators=(",", ":")).encode("utf-8")
+        request = urllib.request.Request(
+            f"{url}/api/search",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=_WEBSERVER_REQUEST_TIMEOUT_SECONDS) as response:
+            raw = response.read()
+        return cast(dict[str, Any], json.loads(raw))
+
+    def _stop_webserver(self) -> None:
+        """Terminate the host webserver and clear its handles. Caller holds the lock."""
+        proc = self._webserver_proc
+        self._webserver_proc = None
+        self._webserver_url = None
+        self._webserver_ready.clear()  # reset so next _spawn waits for fresh readiness
+        if proc is None:
+            return
+        with suppress(Exception):
+            proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            with suppress(Exception):
+                proc.kill()
+            with suppress(Exception):
+                proc.wait(timeout=5)
+
     def _run_host_search(self, payload: dict[str, Any]) -> dict[str, Any]:
         search_binary = self._host_search_binary
         if search_binary is None:
@@ -410,6 +585,116 @@ class ZoektServer:
             if isinstance(value, (int, float)):
                 return float(value)
         return None
+
+    def index_present(self) -> bool:
+        """True when a host-mode shard set exists on disk (no binary needed)."""
+        return self.state_path.exists() and any(self.index_root.glob("*.zoekt"))
+
+    def current_git_head(self) -> str | None:
+        """Resolved git HEAD of the working repo, or None if not a git repo."""
+        return _read_git_head(self.repo_root)
+
+    def indexed_git_head(self) -> str | None:
+        """The git HEAD that the on-disk index was last built from, if recorded."""
+        for path in (self.index_root / ".atelier-zoekt-state.json", self.state_path):
+            if not path.exists():
+                continue
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            head = payload.get("head")
+            if isinstance(head, str) and head:
+                return head
+        return None
+
+
+def _read_git_head(repo_root: Path) -> str | None:
+    """Resolve a repo's git HEAD to a commit sha via cheap file reads.
+
+    Returns the loose-ref sha after a commit (the common case). Falls back to
+    the symbolic ref string when the ref is packed/unborn -- still a stable
+    change-detection key. None when the path is not a git repo.
+    """
+    head_file = repo_root / ".git" / "HEAD"
+    try:
+        ref = head_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if ref.startswith("ref: "):
+        ref_path = repo_root / ".git" / ref[5:]
+        try:
+            return ref_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ref
+    return ref
+
+
+def _resolve_webserver_binary(resolution: ZoektBinaryResolution) -> Path:
+    """Locate ``zoekt-webserver`` beside the pinned ``zoekt`` binary."""
+    if resolution.path is None:
+        raise RuntimeError("zoekt host runtime is missing the pinned binary path")
+    root = resolution.path.parent
+    webserver_binary = root / "zoekt-webserver"
+    if not webserver_binary.is_file() or not os.access(webserver_binary, os.X_OK):
+        raise RuntimeError(f"zoekt-webserver binary is missing beside {resolution.path}")
+    return webserver_binary
+
+
+def _pick_free_port() -> int:
+    """Reserve an ephemeral localhost port via bind(:0) and return it."""
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _wait_for_webserver_ready(url: str, proc: subprocess.Popen[bytes]) -> bool:
+    """Poll until the index is *searchable*, or the process dies / times out.
+
+    ``/healthz`` flips to 200 as soon as the HTTP listener is up -- but the
+    index shards finish loading a few ms later, and a search issued in that
+    window silently returns zero results.  The authoritative readiness signal
+    is ``/api/list`` reporting at least one loaded repository whose shard
+    Documents count is non-zero, which only happens once the shards are
+    actually mmap'd and queryable.
+    """
+    deadline = time.time() + _WEBSERVER_READY_TIMEOUT_SECONDS
+    body = json.dumps({"Q": ""}, separators=(",", ":")).encode("utf-8")
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            return False
+        try:
+            request = urllib.request.Request(
+                f"{url}/api/list",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=1.0) as response:
+                if response.status == 200 and _list_has_loaded_repo(response.read()):
+                    return True
+        except (urllib.error.URLError, OSError, ValueError):
+            pass
+        time.sleep(_WEBSERVER_READY_POLL_SECONDS)
+    return False
+
+
+def _list_has_loaded_repo(raw: bytes) -> bool:
+    """True when /api/list reports a repo with at least one indexed document."""
+    try:
+        payload = json.loads(raw)
+    except (ValueError, TypeError):
+        return False
+    repos = ((payload.get("List") or {}) if isinstance(payload, dict) else {}).get("Repos")
+    if not isinstance(repos, list):
+        return False
+    for repo in repos:
+        if not isinstance(repo, dict):
+            continue
+        stats = repo.get("Stats")
+        if isinstance(stats, dict) and int(stats.get("Documents") or 0) > 0:
+            return True
+    return False
 
 
 def _resolve_host_binaries(resolution: ZoektBinaryResolution) -> tuple[Path, Path, Path | None]:

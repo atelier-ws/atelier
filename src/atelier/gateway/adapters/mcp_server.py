@@ -4810,10 +4810,19 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
                     entry_text = _render_read_md(entry)
                     if entry_text is None:
                         entry_text = json.dumps(entry, ensure_ascii=False, separators=(",", ":"))
-                    parts.append(f"## {entry_path}\n{entry_text}")
+                    if entry.get("mode") == "range":
+                        raw_range = str(entry.get("range") or "")
+                        range_tag = ":L" + raw_range.replace("-", "-L") if raw_range else ""
+                        parts.append(f"## {entry_path}{range_tag}\n{entry_text}")
+                    else:
+                        parts.append(f"## {entry_path}\n{entry_text}")
                 text = "\n\n".join(parts) if parts else None
             else:
                 text = _render_read_md(payload)
+                if text and payload.get("mode") == "range":
+                    raw_range = str(payload.get("range") or "")
+                    if raw_range:
+                        text = "## L" + raw_range.replace("-", "-L") + "\n" + text
     elif name == "grep":
         with contextlib.suppress(Exception):
             text = _render_grep_md(payload)
@@ -4835,6 +4844,11 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
     elif name == "sql":
         with contextlib.suppress(Exception):
             text = _render_sql_md(payload)
+    elif name == "explore":
+        with contextlib.suppress(Exception):
+            from atelier.core.capabilities.code_context.renderer import _render_explore
+
+            text = _render_explore(payload) or None
     elif name == "memory":
         with contextlib.suppress(Exception):
             text = _render_memory_md(payload)
@@ -7694,7 +7708,6 @@ _CODE_INTEL_TOOLS: frozenset[str] = frozenset(
         "node",
         "callers",
         "callees",
-        "explore",
         "usages",
         "codemod",
         "index",
@@ -8369,11 +8382,17 @@ def tool_explore(
     ],
     max_files: Annotated[
         int,
-        Field(description="Max files to include source from (default 8)."),
-    ] = 8,
+        Field(description="Max files to include source from (default 12). Alias: maxFiles."),
+    ] = 12,
     path: Annotated[
         str | None,
-        Field(description="Optional scope: a file or directory to seed the exploration."),
+        Field(
+            description=(
+                "Optional scope: a file or directory WITHIN this workspace to seed the exploration. "
+                "Alias: projectPath (note: it scopes within this workspace; it does not select "
+                "another repo's index)."
+            )
+        ),
     ] = None,
 ) -> dict[str, Any]:
     """Relevant symbols' source grouped by file + call-graph relations, in one capped call.
@@ -10716,6 +10735,66 @@ def _warm_stdio_code_index() -> None:
         logging.exception("Recovered from broad exception handler")
 
 
+def _warm_stdio_embedder() -> None:
+    """Pre-load the configured embedder so the first semantic query is instant.
+
+    No-op when the default NullEmbedder is active (embedding off by default).
+    Only fires when ATELIER_CODE_EMBEDDER is set to bge/ollama/openai.
+    Fail-open: any failure is logged and ignored.
+    """
+    try:
+        from atelier.infra.embeddings.factory import get_code_embedder
+
+        embedder = get_code_embedder()
+        if callable(getattr(embedder, "_load", None)):
+            embedder._load()  # type: ignore[union-attr]
+            _log.info("Embedder pre-warmed: %s dim=%s", getattr(embedder, "name", "?"), getattr(embedder, "dim", "?"))
+    except Exception:
+        _log.debug("Embedder pre-warm failed", exc_info=True)
+
+
+def _warm_stdio_zoekt_webserver() -> None:
+    """Start the zoekt-webserver eagerly for the stdio workspace.
+
+    The persistent ``zoekt-webserver`` keeps the index resident in memory so
+    every subsequent query is single-digit-ms.  Starting it here on a daemon
+    thread at MCP startup amortises the ~1-2 s shard-load cost over the entire
+    session instead of charging it to the first search query.
+
+    Lifecycle: the webserver subprocess is owned by the ``ZoektServer`` instance
+    cached in ``get_zoekt_server()``.  ``atexit`` ensures ``server.stop()`` is
+    called on clean MCP exit so the child process is reaped properly.  If the
+    MCP process is killed, the OS reaps the subprocess via SIGHUP/SIGKILL.
+
+    Fail-open: any error (no index built yet, binary missing) is logged at
+    DEBUG and the fallback per-query CLI path remains active.
+    """
+    try:
+        from atelier.infra.code_intel.zoekt.binary import discover_zoekt_binary
+        from atelier.infra.code_intel.zoekt.server import get_zoekt_server
+
+        ws = Path(_workspace_root())
+        resolution = discover_zoekt_binary(ws)
+        if not resolution.available:
+            _log.debug("zoekt pre-warm skipped: %s", resolution.reason)
+            return
+        server = get_zoekt_server(ws, resolution=resolution)
+        # ensure_started() registers the binary handle; raises if no index built.
+        server.ensure_started()
+        # _ensure_webserver() starts the persistent HTTP server and waits until
+        # the index shards are loaded and queryable (per /api/list readiness).
+        url = server._ensure_webserver()
+        if url:
+            _log.info("zoekt webserver ready at %s", url)
+            import atexit
+
+            atexit.register(server.stop)
+        else:
+            _log.debug("zoekt webserver did not start; using CLI fallback")
+    except Exception:
+        _log.debug("zoekt pre-warm failed", exc_info=True)
+
+
 def main() -> None:
     # Phase 1: Absorb wrapper logic into `atelier mcp` (zero-config)
     os.environ.setdefault("ATELIER_SERVICE_URL", "http://127.0.0.1:8787")
@@ -10767,6 +10846,11 @@ def main() -> None:
     # ast-grep subprocesses. Off the hot path in a daemon thread; fail-open so
     # warming failure never breaks server startup.
     threading.Thread(target=_warm_stdio_code_index, daemon=True).start()
+    # Pre-load embedder if explicitly configured (no-op with default NullEmbedder).
+    threading.Thread(target=_warm_stdio_embedder, daemon=True).start()
+    # Eagerly start the zoekt-webserver so the resident index is queryable from
+    # the first explore call.  Lifecycle (atexit stop) wired inside the fn.
+    threading.Thread(target=_warm_stdio_zoekt_webserver, daemon=True).start()
 
     # One-time workspace bootstrap: seed playbooks, add .atelier/.gitignore,
     # and write the .workspace_inited marker.  Daemon thread, fail-open.

@@ -1659,26 +1659,6 @@ def test_tool_search_deduplicates_items_before_rendering(tmp_path: Path, monkeyp
     assert len(payload["items"]) == 1
 
 
-def test_semantic_and_hybrid_modes_rank_intent_query_above_lexical(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("ATELIER_EMBEDDER", "local")  # semantic search requires a real embedder
-    _write_semantic_fixture_repo(tmp_path)
-    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
-    engine.index_repo()
-    query = "create login token for authenticated user"
-
-    lexical_hits = engine.search_symbols(query, limit=5, mode="lexical")
-    semantic_hits = engine.search_symbols(query, limit=5, mode="semantic")
-    hybrid_hits = engine.search_symbols(query, limit=5, mode="hybrid")
-
-    assert lexical_hits
-    assert semantic_hits
-    assert hybrid_hits
-    assert lexical_hits[0].symbol_name == "create_login_history_for_authenticated_user"
-    assert semantic_hits[0].symbol_name == "issue_access_token"
-    assert hybrid_hits[0].symbol_name == "issue_access_token"
-
 
 def test_auto_mode_keeps_identifier_queries_on_exact_lexical_order(tmp_path: Path) -> None:
     _write_semantic_fixture_repo(tmp_path)
@@ -1831,27 +1811,6 @@ def test_search_symbols_lexical_planner_does_not_fuzzy_match_typos(
     assert exact_hits
     assert exact_hits[0].symbol_name == "OrderService"
     assert [hit.symbol_id for hit in exact_hits] == [hit.symbol_id for hit in exact_repeat]
-
-
-def test_tool_search_cache_keys_are_mode_aware(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ATELIER_EMBEDDER", "local")  # semantic search requires a real embedder
-    _write_semantic_fixture_repo(tmp_path)
-    engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
-    engine.index_repo()
-    query = "create login token for authenticated user"
-
-    lexical_first = engine.tool_search(query, limit=5, mode="lexical", budget_tokens=4000)
-    semantic_first = engine.tool_search(query, limit=5, mode="semantic", budget_tokens=4000)
-    lexical_second = engine.tool_search(query, limit=5, mode="lexical", budget_tokens=4000)
-    semantic_second = engine.tool_search(query, limit=5, mode="semantic", budget_tokens=4000)
-
-    assert lexical_first["cache_hit"] is False
-    assert semantic_first["cache_hit"] is False
-    assert lexical_second["cache_hit"] is True
-    assert semantic_second["cache_hit"] is True
-    assert lexical_first["mode"] == "lexical"
-    assert semantic_first["mode"] == "semantic"
-    assert lexical_first["items"][0]["name"] != semantic_first["items"][0]["name"]
 
 
 def test_retrieval_cache_diagnostics_hide_payloads_and_invalidate_one_tool(

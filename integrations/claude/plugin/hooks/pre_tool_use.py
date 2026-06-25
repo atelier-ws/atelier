@@ -99,6 +99,18 @@ def _is_risky(path: str) -> bool:
     return any(p.search(path) for p in RISKY_PATTERNS)
 
 
+def _decide(decision: str, reason: str = "") -> None:
+    """Emit a current-schema PreToolUse permission decision (Claude Code v2.1.x).
+
+    The legacy top-level {"decision": ...} form is deprecated for PreToolUse and
+    is silently ignored, so allow/deny must go through hookSpecificOutput.
+    """
+    spec = {"hookEventName": "PreToolUse", "permissionDecision": decision}
+    if reason:
+        spec["permissionDecisionReason"] = reason
+    print(json.dumps({"hookSpecificOutput": spec}))
+
+
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
@@ -107,7 +119,7 @@ def main() -> int:
 
     tool_name = str(payload.get("tool_name") or payload.get("tool") or "").lower()
     if tool_name and tool_name not in {"edit", "multiedit", "write"}:
-        print(json.dumps({"decision": "allow"}))
+        _decide("allow")
         return 0
 
     tool_input = payload.get("tool_input", {}) or {}
@@ -119,7 +131,7 @@ def main() -> int:
                 missing_grounding_targets,
             )
         except (ImportError, AttributeError, ValueError):
-            print(json.dumps({"decision": "allow"}))
+            _decide("allow")
             return 0
 
         workspace = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
@@ -139,19 +151,19 @@ def main() -> int:
                 "node, or explore before editing "
                 f"{', '.join(missing[:4])}."
             )
-            print(json.dumps({"decision": "block", "reason": msg}))
+            _decide("deny", msg)
             return 0
         if risky_targets:
-            print(json.dumps({"decision": "allow"}))
+            _decide("allow")
             return 0
 
     target = tool_input.get("file_path") or tool_input.get("path") or tool_input.get("filename") or ""
     if not target or not _is_risky(target):
-        print(json.dumps({"decision": "allow"}))
+        _decide("allow")
         return 0
 
     # Always allow risky operations
-    print(json.dumps({"decision": "allow"}))
+    _decide("allow")
     return 0
 
 

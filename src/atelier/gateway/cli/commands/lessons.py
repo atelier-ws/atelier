@@ -490,6 +490,81 @@ def eval_mcp(out: Path | None, tools: tuple[str, ...], jobs: int) -> None:
     click.echo(f"Results: {run_dir}")
 
 
+@eval_.command("retrieval")
+@click.option(
+    "--channel",
+    type=click.Choice(["lexical", "zoekt", "semantic"]),
+    default="lexical",
+    show_default=True,
+    help="lexical = symbol FTS/trigram; zoekt = + trigram fusion (needs zoekt on PATH); "
+    "semantic = BGE embeddings (needs sentence-transformers).",
+)
+@click.option("--sample", type=int, default=0, help="Cap unique queries per repo (0 = all).")
+@click.option("--repo", default="", metavar="PREFIX", help="Substring filter on repo prefix.")
+@click.option(
+    "-j",
+    "--workers",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Parallel workers. Keep 1 for trustworthy latency numbers.",
+)
+@click.option(
+    "--pairs",
+    type=click.Path(path_type=Path),
+    default=Path("/tmp/bench_pairs_multi.json"),
+    show_default=True,
+    help="Mined (query, gold-file) pairs JSON.",
+)
+@click.option(
+    "--python",
+    "python_bin",
+    default="python3",
+    show_default=True,
+    help="Interpreter for the semantic channel (must have sentence-transformers + torch).",
+)
+def eval_retrieval(channel: str, sample: int, repo: str, workers: int, pairs: Path, python_bin: str) -> None:
+    """Retrieval MRR + latency over mined SWE-bench pairs.
+
+    Channels: lexical (symbol FTS/trigram), zoekt (+ trigram-anchor fusion), semantic
+    (BGE embeddings). Emits one JSON line with mrr/hit@1/hit@3 + latency_ms. See
+    benchmarks/codebench/RETRIEVAL_EVAL.md for provisioning and the results table.
+    """
+    import os
+    import subprocess
+    import sys
+
+    repo_root = Path.cwd().resolve()
+    env = dict(os.environ)
+    env["FITNESS_PAIRS"] = str(pairs)
+    env["EVAL_PAIRS"] = str(pairs)
+    if channel == "semantic":
+        # The semantic eval needs sentence-transformers/torch, which live in the
+        # system interpreter, not the project venv. Running under `uv run` pollutes
+        # the env (VIRTUAL_ENV + venv on PATH) so a bare `python3` would resolve to
+        # the venv and miss those deps -- strip the venv so it uses system python3.
+        venv = env.pop("VIRTUAL_ENV", None)
+        env.pop("PYTHONPATH", None)
+        env.pop("PYTHONHOME", None)
+        if venv:
+            env["PATH"] = os.pathsep.join(
+                p for p in env.get("PATH", "").split(os.pathsep) if p and not p.startswith(venv)
+            )
+        cmd = [python_bin, "benchmarks/codebench/eval_semantic_mrr.py"]
+    else:
+        env["FITNESS_WORKERS"] = str(workers)
+        if sample:
+            env["FITNESS_SAMPLE"] = str(sample)
+        if repo:
+            env["FITNESS_REPO"] = repo
+        if channel == "zoekt":
+            env.setdefault("ATELIER_ZOEKT_MODE", "installed")
+            env["ATELIER_ZOEKT_LOC_THRESHOLD"] = "1"
+        cmd = [sys.executable, "benchmarks/codebench/fitness_explore_mrr.py"]
+    click.echo(f"[eval] channel={channel} :: {' '.join(cmd)}", err=True)
+    raise SystemExit(subprocess.run(cmd, cwd=repo_root, env=env, check=False).returncode)
+
+
 @eval_.command("providers")
 @click.option("--repo-root", type=click.Path(path_type=Path, file_okay=False), default=Path("."))
 @click.option(

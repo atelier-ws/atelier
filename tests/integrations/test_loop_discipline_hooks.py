@@ -46,7 +46,7 @@ def test_edit_tracking_then_read_after_edit_blocks_expand_reread(tmp_path: Path)
 
     expand_reread = {"tool_name": "mcp__atelier__read", "tool_input": {"path": "shop/pricing.py", "expand": True}}
     out = _run("pre_tool_discipline.py", expand_reread, tmp_path)
-    assert json.loads(out)["decision"] == "block"
+    assert json.loads(out)["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     # a targeted range read of the same file is allowed
     range_read = {"tool_name": "mcp__atelier__read", "tool_input": {"path": "shop/pricing.py", "range": "L1-L20"}}
@@ -63,3 +63,33 @@ def test_edit_tracking_then_read_after_edit_blocks_expand_reread(tmp_path: Path)
 def test_read_after_edit_no_block_without_prior_edit(tmp_path: Path) -> None:
     expand_reread = {"tool_name": "mcp__atelier__read", "tool_input": {"path": "shop/pricing.py", "expand": True}}
     assert _run("pre_tool_discipline.py", expand_reread, tmp_path) == ""
+
+
+def test_workspace_code_grep_is_not_blocked(tmp_path: Path) -> None:
+    # The grep->explore hard block was removed: steering toward explore lives in
+    # agent disallowedTools + tool descriptions, not a PreToolUse deny (which
+    # mis-fired on legitimate searches such as greps over other repos).
+    payload = {"tool_name": "mcp__atelier__bash", "tool_input": {"command": "grep -rn handleAuth src/"}}
+    assert _run("pre_tool_discipline.py", payload, tmp_path) == ""
+
+
+def test_other_repo_grep_is_not_blocked(tmp_path: Path) -> None:
+    payload = {
+        "tool_name": "mcp__atelier__bash",
+        "tool_input": {"command": "cd /srv/other-repo && grep -rn handleAuth ."},
+    }
+    assert _run("pre_tool_discipline.py", payload, tmp_path) == ""
+
+
+def test_abs_path_grep_is_not_blocked(tmp_path: Path) -> None:
+    payload = {
+        "tool_name": "Bash",
+        "tool_input": {"command": "grep -rn handleAuth /srv/other-repo/src"},
+    }
+    assert _run("pre_tool_discipline.py", payload, tmp_path) == ""
+
+
+def test_pipe_grep_is_not_blocked(tmp_path: Path) -> None:
+    # A non-leading grep (pipe filter) was never a code search anyway.
+    payload = {"tool_name": "Bash", "tool_input": {"command": "ps aux | grep python"}}
+    assert _run("pre_tool_discipline.py", payload, tmp_path) == ""
