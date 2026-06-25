@@ -7721,8 +7721,6 @@ _CODE_INTEL_TOOLS: frozenset[str] = frozenset(
 
 def _parse_symbol(symbol: str) -> dict[str, Any]:
     """Route a symbol string to the correct engine kwarg based on form."""
-    if symbol.startswith("scip-"):
-        return {"symbol_id": symbol}
     if "." in symbol:
         return {"qualified_name": symbol}
     return {"symbol_name": symbol}
@@ -8382,8 +8380,8 @@ def tool_explore(
     ],
     max_files: Annotated[
         int,
-        Field(description="Max files to include source from (default 12). Alias: maxFiles."),
-    ] = 12,
+        Field(description="Max files to include source from (default 8). Alias: maxFiles."),
+    ] = 8,
     path: Annotated[
         str | None,
         Field(
@@ -10842,8 +10840,7 @@ def main() -> None:
     _register_mcp_session()
 
     # Warm the code-context engine/index once on stdio startup (G10) so the
-    # first code-context tool call does not pay cold-start on Zoekt/scip/
-    # ast-grep subprocesses. Off the hot path in a daemon thread; fail-open so
+    # first code-context tool call does not pay cold-start on Zoekt/ast-grep subprocesses. Off the hot path in a daemon thread; fail-open so
     # warming failure never breaks server startup.
     threading.Thread(target=_warm_stdio_code_index, daemon=True).start()
     # Pre-load embedder if explicitly configured (no-op with default NullEmbedder).

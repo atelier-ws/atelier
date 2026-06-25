@@ -270,7 +270,7 @@ def _rewrite_search(tokens: list[str], command_name: str) -> CommandPolicyDecisi
         "file_path": path,
         "content_regex": pattern,
         "ignore_case": ignore_case,
-        "output_mode": "file_paths_with_content",
+        "output_mode": "content",
     }
     if file_type:
         payload["type"] = file_type
