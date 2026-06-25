@@ -1,0 +1,500 @@
+{"query": "Which class implements FunctionTransformer?", "relevant": ["sklearn.preprocessing._function_transformer::FunctionTransformer#part7"]}
+{"query": "Find the UnsetMetadataPassedError class definition", "relevant": ["sklearn.exceptions::UnsetMetadataPassedError"]}
+{"query": "Find the HistGradientBoostingClassifier class definition", "relevant": ["sklearn.ensemble._hist_gradient_boosting.gradient_boosting::HistGradientBoostingClassifier#part5"]}
+{"query": "Find the LabelEncoder class definition", "relevant": ["sklearn.preprocessing._label::LabelEncoder#part2"]}
+{"query": "How does the code handle get git grep info?", "relevant": ["build_tools.check-meson-openmp-dependencies::get_git_grep_info"]}
+{"query": "Find the BaseHistGradientBoosting class definition", "relevant": ["sklearn.ensemble._hist_gradient_boosting.gradient_boosting::BaseHistGradientBoosting#part8"]}
+{"query": "Mixin class for all transformers in scikit-learn", "relevant": ["sklearn.base::TransformerMixin#part2"]}
+{"query": "Find the AdditiveChi2Sampler class definition", "relevant": ["sklearn.kernel_approximation::AdditiveChi2Sampler#part2"]}
+{"query": "Find the StratifiedShuffleSplit class definition", "relevant": ["sklearn.model_selection._split::StratifiedShuffleSplit#part3"]}
+{"query": "Find the RidgeCV class definition", "relevant": ["sklearn.linear_model._ridge::RidgeCV#part2"]}
+{"query": "Where is safe repr implemented?", "relevant": ["sklearn.utils._pprint::_safe_repr#part1"]}
+{"query": "Set or check the `feature_names_in_` attribute of an estimator", "relevant": ["sklearn.utils.validation::_check_feature_names#part2"]}
+{"query": "Find the CallbackContext class definition", "relevant": ["sklearn.callback._callback_context::CallbackContext#part6"]}
+{"query": "Find the function that iss regressor", "relevant": ["sklearn.base::is_regressor"]}
+{"query": "Partial Dependence Plot (PDP) and Individual Conditional Expectation (ICE)", "relevant": ["sklearn.inspection._plot.partial_dependence::PartialDependenceDisplay#part9"]}
+{"query": "Gradient Boosting for regression", "relevant": ["sklearn.ensemble._gb::GradientBoostingRegressor#part7"]}
+{"query": "Where is locally linear embedding implemented?", "relevant": ["sklearn.manifold._locally_linear::locally_linear_embedding#part1"]}
+{"query": "Which class implements SpectralClustering?", "relevant": ["sklearn.cluster._spectral::SpectralClustering#part8"]}
+{"query": "Where is check is permutation implemented?", "relevant": ["sklearn.model_selection._validation::_check_is_permutation"]}
+{"query": "Nearest centroid classifier", "relevant": ["sklearn.neighbors._nearest_centroid::NearestCentroid#part3"]}
+{"query": "Find the MiniBatchNMF class definition", "relevant": ["sklearn.decomposition._nmf::MiniBatchNMF#part2"]}
+{"query": "Find the NumpyDocString class definition", "relevant": ["sklearn.externals._numpydoc.docscrape::NumpyDocString#part4"]}
+{"query": "Which class implements Pipeline?", "relevant": ["sklearn.pipeline::Pipeline#part7"]}
+{"query": "Fake regressor which will directly output the prediction", "relevant": ["sklearn.linear_model._ridge::_IdentityRegressor"]}
+{"query": "Which class implements MissingIndicator?", "relevant": ["sklearn.impute._base::MissingIndicator#part2"]}
+{"query": "How does the code handle check transformer?", "relevant": ["sklearn.utils.estimator_checks::_check_transformer#part2"]}
+{"query": "Which class implements IterativeImputer?", "relevant": ["sklearn.impute._iterative::IterativeImputer#part10"]}
+{"query": "How does the code handle write all pip lock files?", "relevant": ["build_tools.update_environments_and_lock_files::write_all_pip_lock_files"]}
+{"query": "A Mixin to ``groups`` by default", "relevant": ["sklearn.model_selection._split::GroupsConsumerMixin"]}
+{"query": "Where is solve cholesky kernel implemented?", "relevant": ["sklearn.linear_model._ridge::_solve_cholesky_kernel#part2"]}
+{"query": "Decisions boundary visualization", "relevant": ["sklearn.inspection._plot.decision_boundary::DecisionBoundaryDisplay#part4"]}
+{"query": "Which class implements RidgeClassifierCV?", "relevant": ["sklearn.linear_model._ridge::RidgeClassifierCV#part1"]}
+{"query": "Univariate imputer for completing missing values with simple strategies", "relevant": ["sklearn.impute._base::SimpleImputer#part5"]}
+{"query": "Orthogonal Matching Pursuit model (OMP)", "relevant": ["sklearn.linear_model._omp::OrthogonalMatchingPursuit#part1"]}
+{"query": "How does the code handle check requires none?", "relevant": ["sklearn.utils.estimator_checks::check_requires_y_none"]}
+{"query": "Which class implements NewtonCholeskySolver?", "relevant": ["sklearn.linear_model._glm._newton_solver::NewtonCholeskySolver#part2"]}
+{"query": "Compute binary classification positive and negative likelihood ratios", "relevant": ["sklearn.metrics._classification::class_likelihood_ratios#part4"]}
+{"query": "Logistic Regression CV (aka logit, MaxEnt) classifier", "relevant": ["sklearn.linear_model._logistic::LogisticRegressionCV#part5"]}
+{"query": "How does the code handle huber loss and gradient?", "relevant": ["sklearn.linear_model._huber::_huber_loss_and_gradient#part1"]}
+{"query": "Which class implements SGDOneClassSVM?", "relevant": ["sklearn.linear_model._stochastic_gradient::SGDOneClassSVM#part3"]}
+{"query": "Where is graph connected component implemented?", "relevant": ["sklearn.manifold._spectral_embedding::_graph_connected_component"]}
+{"query": "How does the code handle check sample weight equivalence?", "relevant": ["sklearn.utils.estimator_checks::_check_sample_weight_equivalence#part2"]}
+{"query": "An AdaBoost classifier", "relevant": ["sklearn.ensemble._weight_boosting::AdaBoostClassifier#part3"]}
+{"query": "How does the code handle grid to graph?", "relevant": ["sklearn.feature_extraction.image::grid_to_graph"]}
+{"query": "Where is label binarize implemented?", "relevant": ["sklearn.preprocessing._label::label_binarize#part4"]}
+{"query": "Which class implements SparseCoefMixin?", "relevant": ["sklearn.linear_model._base::SparseCoefMixin#part2"]}
+{"query": "Export a decision tree in DOT format", "relevant": ["sklearn.tree._export::export_graphviz#part3"]}
+{"query": "Which class implements array namespace info?", "relevant": ["sklearn.externals.array_api_compat.torch._info::__array_namespace_info__#part6"]}
+{"query": "How does the code handle hinge loss?", "relevant": ["sklearn.metrics._classification::hinge_loss#part2"]}
+{"query": "Where is affinity propagation implemented?", "relevant": ["sklearn.cluster._affinity_propagation::_affinity_propagation#part3"]}
+{"query": "Where is lazy apply implemented?", "relevant": ["sklearn.externals.array_api_extra._lib._lazy::lazy_apply"]}
+{"query": "Find the IterativeImputer class definition", "relevant": ["sklearn.impute._iterative::IterativeImputer#part14"]}
+{"query": "Which class implements BaseDiscreteNB?", "relevant": ["sklearn.naive_bayes::_BaseDiscreteNB#part4"]}
+{"query": "Fit a classifier and compute the scores for different decision thresholds", "relevant": ["sklearn.model_selection._classification_threshold::_fit_and_score_over_thresholds#part2"]}
+{"query": "How does the code handle dir?", "relevant": ["sklearn.externals.array_api_compat.common._aliases::__dir__"]}
+{"query": "Which class implements LocalOutlierFactor?", "relevant": ["sklearn.neighbors._lof::LocalOutlierFactor#part3"]}
+{"query": "Filter: Select the pvalues below alpha based on a FPR test", "relevant": ["sklearn.feature_selection._univariate_selection::SelectFpr#part2"]}
+{"query": "An extra-trees classifier", "relevant": ["sklearn.ensemble._forest::ExtraTreesClassifier#part2"]}
+{"query": "Find the QuantileTransformer class definition", "relevant": ["sklearn.preprocessing._data::QuantileTransformer#part3"]}
+{"query": "Find the MethodMetadataRequest class definition", "relevant": ["sklearn.utils._metadata_requests::MethodMetadataRequest#part3"]}
+{"query": "How does the code handle check memory?", "relevant": ["sklearn.utils.validation::check_memory"]}
+{"query": "Tree grower class used to build a tree", "relevant": ["sklearn.ensemble._hist_gradient_boosting.grower::TreeGrower#part3"]}
+{"query": "Where is compute core distances implemented?", "relevant": ["sklearn.cluster._optics::_compute_core_distances_"]}
+{"query": "Find the ElasticNetCV class definition", "relevant": ["sklearn.linear_model._coordinate_descent::ElasticNetCV#part1"]}
+{"query": "How does the code handle fft?", "relevant": ["sklearn.externals.array_api_compat.common._fft::fft"]}
+{"query": "Automatically extract clusters according to the Xi-steep method", "relevant": ["sklearn.cluster._optics::_xi_cluster#part3"]}
+{"query": "Base (Stochastic) gradient descent optimizer\n\nParameters\n----------\nlearning_rate_init : float, default=0", "relevant": ["sklearn.neural_network._stochastic_optimizers::BaseOptimizer#part2"]}
+{"query": "L2-regularized linear regression model that is robust to outliers", "relevant": ["sklearn.linear_model._huber::HuberRegressor#part2"]}
+{"query": "Which class implements StackingRegressor?", "relevant": ["sklearn.ensemble._stacking::StackingRegressor#part6"]}
+{"query": "Find the ElasticNetCV class definition", "relevant": ["sklearn.linear_model._coordinate_descent::ElasticNetCV#part5"]}
+{"query": "How does the code handle solve lbfgs?", "relevant": ["sklearn.linear_model._ridge::_solve_lbfgs#part2"]}
+{"query": "Mean Tweedie deviance regression loss", "relevant": ["sklearn.metrics._regression::mean_tweedie_deviance#part1"]}
+{"query": "Find the SelectFdr class definition", "relevant": ["sklearn.feature_selection._univariate_selection::SelectFdr#part1"]}
+{"query": "Which class implements Perceptron?", "relevant": ["sklearn.linear_model._perceptron::Perceptron#part2"]}
+{"query": "Find the OneVsRestClassifier class definition", "relevant": ["sklearn.multiclass::OneVsRestClassifier#part3"]}
+{"query": "How does the code handle check fit idempotent?", "relevant": ["sklearn.utils.estimator_checks::check_fit_idempotent"]}
+{"query": "ROC Curve visualization", "relevant": ["sklearn.metrics._plot.roc_curve::RocCurveDisplay#part4"]}
+{"query": "Iterate over columns of a matrix", "relevant": ["sklearn.feature_selection._mutual_info::_iterate_columns"]}
+{"query": "Load and return the diabetes dataset (regression)", "relevant": ["sklearn.datasets._base::load_diabetes#part1"]}
+{"query": "Which class implements BaseHistGradientBoosting?", "relevant": ["sklearn.ensemble._hist_gradient_boosting.gradient_boosting::BaseHistGradientBoosting#part10"]}
+{"query": "Find the BaseSGDRegressor class definition", "relevant": ["sklearn.linear_model._stochastic_gradient::BaseSGDRegressor#part3"]}
+{"query": "Where is compute gradient 3d implemented?", "relevant": ["sklearn.feature_extraction.image::_compute_gradient_3d"]}
+{"query": "How does the code handle update dict?", "relevant": ["sklearn.decomposition._dict_learning::_update_dict#part1"]}
+{"query": "t-SNE objective function: gradient of the KL divergence\nof p_ijs and q_ijs and the absolute error", "relevant": ["sklearn.manifold._t_sne::_kl_divergence#part2"]}
+{"query": "Where is inplace relu implemented?", "relevant": ["sklearn.neural_network._base::inplace_relu"]}
+{"query": "Approximate feature map for additive chi2 kernel", "relevant": ["sklearn.kernel_approximation::AdditiveChi2Sampler#part1"]}
+{"query": "How does the code handle single array device?", "relevant": ["sklearn.utils._array_api::_single_array_device"]}
+{"query": "Which class implements ConstantKernel?", "relevant": ["sklearn.gaussian_process.kernels::ConstantKernel#part3"]}
+{"query": "Find the RidgeCV class definition", "relevant": ["sklearn.linear_model._ridge::RidgeCV#part1"]}
+{"query": "Helper function to find unique values with support for python objects", "relevant": ["sklearn.utils._encode::_unique"]}
+{"query": "How does the code handle generate valid param?", "relevant": ["sklearn.utils._param_validation::generate_valid_param#part2"]}
+{"query": "Find the BasePCA class definition", "relevant": ["sklearn.decomposition._base::_BasePCA#part4"]}
+{"query": "Find the ExtraTreeClassifier class definition", "relevant": ["sklearn.tree._classes::ExtraTreeClassifier#part4"]}
+{"query": "Which class implements OneVsOneClassifier?", "relevant": ["sklearn.multiclass::OneVsOneClassifier#part7"]}
+{"query": "Find the array namespace info class definition", "relevant": ["sklearn.externals.array_api_compat.numpy._info::__array_namespace_info__#part5"]}
+{"query": "Gram Orthogonal Matching Pursuit (OMP)", "relevant": ["sklearn.linear_model._omp::orthogonal_mp_gram#part3"]}
+{"query": "Find the LassoCV class definition", "relevant": ["sklearn.linear_model._coordinate_descent::LassoCV#part3"]}
+{"query": "How does the code handle lazy xp function?", "relevant": ["sklearn.externals.array_api_extra.testing::lazy_xp_function#part4"]}
+{"query": "Coordinates metadata routing for a :term:`router` object", "relevant": ["sklearn.utils._metadata_requests::MetadataRouter#part4"]}
+{"query": "Implements feature hashing, aka the hashing trick", "relevant": ["sklearn.feature_extraction._hash::FeatureHasher#part2"]}
+{"query": "Find the function that loads csv data", "relevant": ["sklearn.datasets._base::load_csv_data#part2"]}
+{"query": "Where is check estimator implemented?", "relevant": ["sklearn.utils.estimator_checks::check_estimator#part3"]}
+{"query": "Where is measure score implemented?", "relevant": ["sklearn.metrics.cluster._supervised::v_measure_score#part2"]}
+{"query": "Find the EstimatorPrettyPrinter class definition", "relevant": ["sklearn.utils._pprint::_EstimatorPrettyPrinter#part3"]}
+{"query": "Which class implements RidgeCV?", "relevant": ["sklearn.linear_model._ridge::RidgeCV#part4"]}
+{"query": "Which class implements GradientBoostingRegressor?", "relevant": ["sklearn.ensemble._gb::GradientBoostingRegressor#part2"]}
+{"query": "Which class implements NewtonSolver?", "relevant": ["sklearn.linear_model._glm._newton_solver::NewtonSolver#part5"]}
+{"query": "Jaccard similarity coefficient score", "relevant": ["sklearn.metrics._classification::jaccard_score#part1"]}
+{"query": "Where is fit liblinear implemented?", "relevant": ["sklearn.svm._base::_fit_liblinear#part4"]}
+{"query": "How does the code handle get json content from openml api?", "relevant": ["sklearn.datasets._openml::_get_json_content_from_openml_api"]}
+{"query": "Find the MLPClassifier class definition", "relevant": ["sklearn.neural_network._multilayer_perceptron::MLPClassifier#part7"]}
+{"query": "Where is check get feature names out error implemented?", "relevant": ["sklearn.utils.estimator_checks::check_get_feature_names_out_error"]}
+{"query": "Load the RCV1 multilabel dataset (classification)", "relevant": ["sklearn.datasets._rcv1::fetch_rcv1#part3"]}
+{"query": "Which class implements Birch?", "relevant": ["sklearn.cluster._birch::Birch#part2"]}
+{"query": "Where is xfail implemented?", "relevant": ["sklearn.externals.array_api_extra._lib._testing::xfail"]}
+{"query": "Which class implements BaseWeightBoosting?", "relevant": ["sklearn.ensemble._weight_boosting::BaseWeightBoosting#part4"]}
+{"query": "How does the code handle fetch brute kddcup99?", "relevant": ["sklearn.datasets._kddcup99::_fetch_brute_kddcup99#part2"]}
+{"query": "Which class implements BaseThresholdClassifier?", "relevant": ["sklearn.model_selection._classification_threshold::BaseThresholdClassifier#part2"]}
+{"query": "Decorator to automatically replace xp with the corresponding array module", "relevant": ["sklearn.externals.array_api_compat._internal::get_xp"]}
+{"query": "Which class implements ShrunkCovariance?", "relevant": ["sklearn.covariance._shrunk_covariance::ShrunkCovariance#part1"]}
+{"query": "Which class implements MiniBatchKMeans?", "relevant": ["sklearn.cluster._kmeans::MiniBatchKMeans#part6"]}
+{"query": "Find the BadAttributeType class definition", "relevant": ["sklearn.externals._arff::BadAttributeType"]}
+{"query": "Where is find matching floating dtype implemented?", "relevant": ["sklearn.utils._array_api::_find_matching_floating_dtype"]}
+{"query": "Multivariate imputer that estimates each feature from all the others", "relevant": ["sklearn.impute._iterative::IterativeImputer#part11"]}
+{"query": "Find the KernelOperator class definition", "relevant": ["sklearn.gaussian_process.kernels::KernelOperator#part2"]}
+{"query": "Base class for mixture models", "relevant": ["sklearn.mixture._base::BaseMixture#part2"]}
+{"query": "Dot-Product kernel", "relevant": ["sklearn.gaussian_process.kernels::DotProduct#part1"]}
+{"query": "Given text in \"news\" format, strip lines beginning with the quote\ncharacters > or |, plus lines that often introduce ...", "relevant": ["sklearn.datasets._twenty_newsgroups::strip_newsgroup_quoting"]}
+{"query": "How does the code handle partition?", "relevant": ["sklearn.externals.array_api_extra._delegation::partition#part1"]}
+{"query": "Where is cross validate implemented?", "relevant": ["sklearn.model_selection._validation::cross_validate#part1"]}
+{"query": "Which class implements Pipeline?", "relevant": ["sklearn.pipeline::Pipeline#part3"]}
+{"query": "Find the EllipticEnvelope class definition", "relevant": ["sklearn.covariance._elliptic_envelope::EllipticEnvelope#part1"]}
+{"query": "Abstract base dispatcher for pairwise distance computation & reduction", "relevant": ["sklearn.metrics._pairwise_distances_reduction._dispatcher::BaseDistancesReductionDispatcher#part1"]}
+{"query": "Ward clustering based on a Feature matrix", "relevant": ["sklearn.cluster._agglomerative::ward_tree#part1"]}
+{"query": "Where is check cv implemented?", "relevant": ["sklearn.model_selection._split::check_cv#part1"]}
+{"query": "Estimator that wraps a fitted estimator to prevent re-fitting", "relevant": ["sklearn.frozen._frozen::FrozenEstimator#part2"]}
+{"query": "Compute Detection Error Tradeoff (DET) for different probability thresholds", "relevant": ["sklearn.metrics._ranking::det_curve#part2"]}
+{"query": "Which class implements RandomTreesEmbedding?", "relevant": ["sklearn.ensemble._forest::RandomTreesEmbedding#part6"]}
+{"query": "Where is check implemented?", "relevant": ["sklearn.utils.validation::check_X_y#part2"]}
+{"query": "Exp-Sine-Squared kernel (aka periodic kernel)", "relevant": ["sklearn.gaussian_process.kernels::ExpSineSquared#part2"]}
+{"query": "How does the code handle vecdot?", "relevant": ["sklearn.externals.array_api_compat.torch._aliases::vecdot"]}
+{"query": "Where is average implemented?", "relevant": ["sklearn.utils._array_api::_average#part1"]}
+{"query": "Where is compute mi cc implemented?", "relevant": ["sklearn.feature_selection._mutual_info::_compute_mi_cc#part2"]}
+{"query": "Which class implements GaussianRandomProjection?", "relevant": ["sklearn.random_projection::GaussianRandomProjection#part2"]}
+{"query": "How does the code handle ledoit wolf?", "relevant": ["sklearn.covariance._shrunk_covariance::_ledoit_wolf"]}
+{"query": "How does the code handle chi2?", "relevant": ["sklearn.feature_selection._univariate_selection::chi2#part2"]}
+{"query": "How does the code handle parse version parts?", "relevant": ["sklearn.externals._packaging.version::_parse_version_parts"]}
+{"query": "Scale each feature by its maximum absolute value", "relevant": ["sklearn.preprocessing._data::MaxAbsScaler#part5"]}
+{"query": "Where is take along axis implemented?", "relevant": ["sklearn.externals.array_api_compat.torch._aliases::take_along_axis"]}
+{"query": "Find the GradientBoostingRegressor class definition", "relevant": ["sklearn.ensemble._gb::GradientBoostingRegressor#part6"]}
+{"query": "Regression based on k-nearest neighbors", "relevant": ["sklearn.neighbors._regression::KNeighborsRegressor#part5"]}
+{"query": "Find the AdditiveChi2Sampler class definition", "relevant": ["sklearn.kernel_approximation::AdditiveChi2Sampler#part3"]}
+{"query": "Mixin for linear classifiers", "relevant": ["sklearn.linear_model._base::LinearClassifierMixin#part2"]}
+{"query": "Tree grower class used to build a tree", "relevant": ["sklearn.ensemble._hist_gradient_boosting.grower::TreeGrower#part2"]}
+{"query": "Find the AdaBoostRegressor class definition", "relevant": ["sklearn.ensemble._weight_boosting::AdaBoostRegressor#part5"]}
+{"query": "Mini-Batch Non-Negative Matrix Factorization (NMF)", "relevant": ["sklearn.decomposition._nmf::MiniBatchNMF#part8"]}
+{"query": "Univariate imputer for completing missing values with simple strategies", "relevant": ["sklearn.impute._base::SimpleImputer#part10"]}
+{"query": "Base class for PCA methods", "relevant": ["sklearn.decomposition._base::_BasePCA#part2"]}
+{"query": "Where is logistic regression path implemented?", "relevant": ["sklearn.linear_model._logistic::_logistic_regression_path#part6"]}
+{"query": "Which class implements RocCurveDisplay?", "relevant": ["sklearn.metrics._plot.roc_curve::RocCurveDisplay#part9"]}
+{"query": "How does the code handle check outliers train?", "relevant": ["sklearn.utils.estimator_checks::check_outliers_train#part2"]}
+{"query": "Transform X into a (weighted) graph of k nearest neighbors", "relevant": ["sklearn.neighbors._graph::KNeighborsTransformer#part1"]}
+{"query": "Which class implements RocCurveDisplay?", "relevant": ["sklearn.metrics._plot.roc_curve::RocCurveDisplay#part11"]}
+{"query": "How does the code handle validate params?", "relevant": ["sklearn.utils._param_validation::validate_params#part2"]}
+{"query": "How does the code handle check array api input?", "relevant": ["sklearn.utils.estimator_checks::check_array_api_input#part1"]}
+{"query": "How does the code handle create expansion?", "relevant": ["sklearn.preprocessing._polynomial::_create_expansion"]}
+{"query": "Find the RepeatedStratifiedKFold class definition", "relevant": ["sklearn.model_selection._split::RepeatedStratifiedKFold#part1"]}
+{"query": "Find the KNeighborsTransformer class definition", "relevant": ["sklearn.neighbors._graph::KNeighborsTransformer#part2"]}
+{"query": "Generate univariate B-spline bases for features", "relevant": ["sklearn.preprocessing._polynomial::SplineTransformer#part5"]}
+{"query": "Which class implements LocalOutlierFactor?", "relevant": ["sklearn.neighbors._lof::LocalOutlierFactor#part1"]}
+{"query": "Which class implements BisectingKMeans?", "relevant": ["sklearn.cluster._bisect_k_means::BisectingKMeans#part3"]}
+{"query": "Perform Affinity Propagation Clustering of data", "relevant": ["sklearn.cluster._affinity_propagation::AffinityPropagation#part1"]}
+{"query": "Which class implements NeighborhoodComponentsAnalysis?", "relevant": ["sklearn.neighbors._nca::NeighborhoodComponentsAnalysis#part6"]}
+{"query": "Where is adjusted rand score implemented?", "relevant": ["sklearn.metrics.cluster._supervised::adjusted_rand_score#part1"]}
+{"query": "Logistic Regression (aka logit, MaxEnt) classifier", "relevant": ["sklearn.linear_model._logistic::LogisticRegression#part3"]}
+{"query": "Where is center scale xy implemented?", "relevant": ["sklearn.cross_decomposition._pls::_center_scale_xy"]}
+{"query": "Gaussian process regression (GPR)", "relevant": ["sklearn.gaussian_process._gpr::GaussianProcessRegressor#part5"]}
+{"query": "How does the code handle check fetch lfw?", "relevant": ["sklearn.datasets._lfw::_check_fetch_lfw"]}
+{"query": "Where is check targets implemented?", "relevant": ["sklearn.metrics._classification::_check_targets#part1"]}
+{"query": "Find the SGDRegressor class definition", "relevant": ["sklearn.linear_model._stochastic_gradient::SGDRegressor#part6"]}
+{"query": "Rational Quadratic kernel", "relevant": ["sklearn.gaussian_process.kernels::RationalQuadratic#part2"]}
+{"query": "Build a text report showing the main classification metrics", "relevant": ["sklearn.metrics._classification::classification_report#part2"]}
+{"query": "Where is jaccard score implemented?", "relevant": ["sklearn.metrics._classification::jaccard_score#part3"]}
+{"query": "Where is entropy implemented?", "relevant": ["sklearn.metrics.cluster._supervised::entropy"]}
+{"query": "Find the RadiusNeighborsClassifier class definition", "relevant": ["sklearn.neighbors._classification::RadiusNeighborsClassifier#part2"]}
+{"query": "Where is check nonsquare error implemented?", "relevant": ["sklearn.utils.estimator_checks::check_nonsquare_error"]}
+{"query": "Measure the similarity of two clusterings of a set of points", "relevant": ["sklearn.metrics.cluster._supervised::fowlkes_mallows_score#part2"]}
+{"query": "Partial Dependence Plot (PDP) and Individual Conditional Expectation (ICE)", "relevant": ["sklearn.inspection._plot.partial_dependence::PartialDependenceDisplay#part14"]}
+{"query": "How does the code handle average?", "relevant": ["sklearn.utils._array_api::_average#part2"]}
+{"query": "How does the code handle check pairwise arrays?", "relevant": ["sklearn.metrics.pairwise::check_pairwise_arrays#part3"]}
+{"query": "Which class implements HDBSCAN?", "relevant": ["sklearn.cluster._hdbscan.hdbscan::HDBSCAN#part2"]}
+{"query": "Where is check estimator name implemented?", "relevant": ["sklearn.utils.validation::_check_estimator_name"]}
+{"query": "Helper to get function arguments", "relevant": ["sklearn.utils._testing::_get_args"]}
+{"query": "Find the AdaBoostRegressor class definition", "relevant": ["sklearn.ensemble._weight_boosting::AdaBoostRegressor#part6"]}
+{"query": "Where is full implemented?", "relevant": ["sklearn.externals.array_api_compat.torch._aliases::full"]}
+{"query": "Compute a truncated randomized SVD", "relevant": ["sklearn.utils.extmath::randomized_svd#part2"]}
+{"query": "Rand index adjusted for chance", "relevant": ["sklearn.metrics.cluster._supervised::adjusted_rand_score#part1"]}
+{"query": "Fit a single binary classifier", "relevant": ["sklearn.linear_model._stochastic_gradient::fit_binary#part1"]}
+{"query": "Where is class likelihood ratios implemented?", "relevant": ["sklearn.metrics._classification::class_likelihood_ratios#part4"]}
+{"query": "How does the code handle split sparse columns?", "relevant": ["sklearn.datasets._arff_parser::_split_sparse_columns"]}
+{"query": "Where is check regressors train implemented?", "relevant": ["sklearn.utils.estimator_checks::check_regressors_train"]}
+{"query": "Where is device implemented?", "relevant": ["sklearn.externals.array_api_compat.common._helpers::device#part2"]}
+{"query": "Which class implements LassoLarsIC?", "relevant": ["sklearn.linear_model._least_angle::LassoLarsIC#part1"]}
+{"query": "How does the code handle logit?", "relevant": ["sklearn.utils._array_api::_logit"]}
+{"query": "Precision Recall visualization", "relevant": ["sklearn.metrics._plot.precision_recall_curve::PrecisionRecallDisplay#part13"]}
+{"query": "How does the code handle load iris?", "relevant": ["sklearn.datasets._base::load_iris#part1"]}
+{"query": "Which class implements LassoLarsCV?", "relevant": ["sklearn.linear_model._least_angle::LassoLarsCV#part3"]}
+{"query": "Find the TransformedTargetRegressor class definition", "relevant": ["sklearn.compose._target::TransformedTargetRegressor#part4"]}
+{"query": "Which class implements FitFailedWarning?", "relevant": ["sklearn.exceptions::FitFailedWarning"]}
+{"query": "Decorator to mark a function or class as deprecated", "relevant": ["sklearn.utils.deprecation::deprecated#part2"]}
+{"query": "Which class implements RocCurveDisplay?", "relevant": ["sklearn.metrics._plot.roc_curve::RocCurveDisplay#part5"]}
+{"query": "Which class implements KBinsDiscretizer?", "relevant": ["sklearn.preprocessing._discretization::KBinsDiscretizer#part9"]}
+{"query": "Find the FitCallback class definition", "relevant": ["sklearn.callback._base::FitCallback#part1"]}
+{"query": "Soft Voting/Majority Rule classifier for unfitted estimators", "relevant": ["sklearn.ensemble._voting::VotingClassifier#part5"]}
+{"query": "Which class implements RocCurveDisplay?", "relevant": ["sklearn.metrics._plot.roc_curve::RocCurveDisplay#part10"]}
+{"query": "When is Raise ImportError with detailed error message if rich is not installed raised?", "relevant": ["sklearn.utils._optional_dependencies::check_rich_support"]}
+{"query": "Where is estimate bandwidth implemented?", "relevant": ["sklearn.cluster._mean_shift::estimate_bandwidth#part1"]}
+{"query": "Which class implements PinballLoss?", "relevant": ["sklearn._loss.loss::PinballLoss#part1"]}
+{"query": "General class for loss functions with raw_prediction = X @ coef + intercept", "relevant": ["sklearn.linear_model._linear_loss::LinearModelLoss#part6"]}
+{"query": "Where is scale implemented?", "relevant": ["sklearn.preprocessing._data::scale#part3"]}
+{"query": "Which class implements TreeNode?", "relevant": ["sklearn.ensemble._hist_gradient_boosting.grower::TreeNode#part1"]}
+{"query": "Find the NuSVC class definition", "relevant": ["sklearn.svm._classes::NuSVC#part5"]}
+{"query": "Where is human readable data quantity implemented?", "relevant": ["build_tools.circle.list_versions::human_readable_data_quantity"]}
+{"query": "An AdaBoost classifier", "relevant": ["sklearn.ensemble._weight_boosting::AdaBoostClassifier#part2"]}
+{"query": "Which class implements DummyClassifier?", "relevant": ["sklearn.dummy::DummyClassifier#part2"]}
+{"query": "Generalized Linear Model with a Poisson distribution", "relevant": ["sklearn.linear_model._glm.glm::PoissonRegressor#part3"]}
+{"query": "Determine a link to online source for a class/method/function\n\nThis is called by sphinx", "relevant": ["doc.sphinxext.github_link::_linkcode_resolve"]}
+{"query": "Find the ElasticNet class definition", "relevant": ["sklearn.linear_model._coordinate_descent::ElasticNet#part6"]}
+{"query": "Root mean squared error regression loss", "relevant": ["sklearn.metrics._regression::root_mean_squared_error#part2"]}
+{"query": "Where is normalized mutual info score implemented?", "relevant": ["sklearn.metrics.cluster._supervised::normalized_mutual_info_score#part1"]}
+{"query": "Find the RBFSampler class definition", "relevant": ["sklearn.kernel_approximation::RBFSampler#part1"]}
+{"query": "Which class implements LeavePOut?", "relevant": ["sklearn.model_selection._split::LeavePOut#part1"]}
+{"query": "Find the BaseDiscreteNB class definition", "relevant": ["sklearn.naive_bayes::_BaseDiscreteNB#part3"]}
+{"query": "Find the SplineTransformer class definition", "relevant": ["sklearn.preprocessing._polynomial::SplineTransformer#part4"]}
+{"query": "Find the EmpiricalCovariance class definition", "relevant": ["sklearn.covariance._empirical_covariance::EmpiricalCovariance#part5"]}
+{"query": "Where is pickle flatten implemented?", "relevant": ["sklearn.externals.array_api_extra._lib._utils._helpers::pickle_flatten#part2"]}
+{"query": "Which class implements JustInt?", "relevant": ["sklearn.externals.array_api_compat.common._typing::JustInt"]}
+{"query": "How does the code handle contingency matrix?", "relevant": ["sklearn.metrics.cluster._supervised::contingency_matrix#part2"]}
+{"query": "Where is pickle flatten implemented?", "relevant": ["sklearn.externals.array_api_extra._lib._utils._helpers::pickle_flatten#part1"]}
+{"query": "Find the OrthogonalMatchingPursuitCV class definition", "relevant": ["sklearn.linear_model._omp::OrthogonalMatchingPursuitCV#part2"]}
+{"query": "How does the code handle check chunk size?", "relevant": ["sklearn.metrics.pairwise::_check_chunk_size"]}
+{"query": "Which class implements BaseTreeExporter?", "relevant": ["sklearn.tree._export::_BaseTreeExporter#part1"]}
+{"query": "How does the code handle check class weight balanced linear classifier?", "relevant": ["sklearn.utils.estimator_checks::check_class_weight_balanced_linear_classifier"]}
+{"query": "Utilizes the openml dataset listing api to find a dataset by\nname/version\nOpenML api function:\nhttps://www", "relevant": ["sklearn.datasets._openml::_get_data_info_by_name#part1"]}
+{"query": "Mean shift clustering using a flat kernel", "relevant": ["sklearn.cluster._mean_shift::MeanShift#part2"]}
+{"query": "Which class implements FastICA?", "relevant": ["sklearn.decomposition._fastica::FastICA#part6"]}
+{"query": "Where is mean absolute percentage error implemented?", "relevant": ["sklearn.metrics._regression::mean_absolute_percentage_error#part2"]}
+{"query": "Computes pairwise similarity matrix", "relevant": ["sklearn.metrics.cluster._bicluster::_pairwise_similarity"]}
+{"query": "Where is make friedman1 implemented?", "relevant": ["sklearn.datasets._samples_generator::make_friedman1#part1"]}
+{"query": "Which class implements Tags?", "relevant": ["sklearn.utils._tags::Tags#part1"]}
+{"query": "Which class implements KMeans?", "relevant": ["sklearn.cluster._kmeans::KMeans#part4"]}
+{"query": "Which class implements GroupsConsumerMixin?", "relevant": ["sklearn.model_selection._split::GroupsConsumerMixin"]}
+{"query": "Which class implements BinMapper?", "relevant": ["sklearn.ensemble._hist_gradient_boosting.binning::_BinMapper#part4"]}
+{"query": "Base class for histogram-based gradient boosting estimators", "relevant": ["sklearn.ensemble._hist_gradient_boosting.gradient_boosting::BaseHistGradientBoosting#part18"]}
+{"query": "Which class implements ParameterGrid?", "relevant": ["sklearn.model_selection._search::ParameterGrid#part3"]}
+{"query": "Where is is xp namespace implemented?", "relevant": ["sklearn.utils._array_api::_is_xp_namespace"]}
+{"query": "Orthogonal Matching Pursuit (OMP)", "relevant": ["sklearn.linear_model._omp::orthogonal_mp#part2"]}
+{"query": "Find the LarsCV class definition", "relevant": ["sklearn.linear_model._least_angle::LarsCV#part6"]}
+{"query": "Where is strip accents unicode implemented?", "relevant": ["sklearn.feature_extraction.text::strip_accents_unicode"]}
+{"query": "Which class implements LeaveOneGroupOut?", "relevant": ["sklearn.model_selection._split::LeaveOneGroupOut#part1"]}
+{"query": "Where is oneway implemented?", "relevant": ["sklearn.feature_selection._univariate_selection::f_oneway#part2"]}
+{"query": "Check that two arrays are equal", "relevant": ["sklearn.externals.array_api_extra.testing::assert_equal#part2"]}
+{"query": "One-hot encode the given indices", "relevant": ["sklearn.externals.array_api_extra._delegation::one_hot#part1"]}
+{"query": "Find the PartialDependenceDisplay class definition", "relevant": ["sklearn.inspection._plot.partial_dependence::PartialDependenceDisplay#part17"]}
+{"query": "How does the code handle compute mi?", "relevant": ["sklearn.feature_selection._mutual_info::_compute_mi"]}
+{"query": "Get the array API inspection namespace for Dask", "relevant": ["sklearn.externals.array_api_compat.dask.array._info::__array_namespace_info__#part6"]}
+{"query": "Get the rst to refer to user/developer guide", "relevant": ["doc.api_reference::_get_guide"]}
+{"query": "Compute the F-beta score", "relevant": ["sklearn.metrics._classification::fbeta_score#part2"]}
+{"query": "How does the code handle check optimize result?", "relevant": ["sklearn.utils.optimize::_check_optimize_result"]}
+{"query": "Same as line_search_wolfe1, but fall back to line_search_wolfe2 if\nsuitable step length is not found, and raise an ex...", "relevant": ["sklearn.utils.optimize::_line_search_wolfe12#part1"]}
+{"query": "Where is matplotlib to rgb implemented?", "relevant": ["sklearn.tree._export::_matplotlib_to_rgb"]}
+{"query": "How does the code handle spectral embedding?", "relevant": ["sklearn.manifold._spectral_embedding::_spectral_embedding#part4"]}
+{"query": "Automatically extract clusters according to the Xi-steep method", "relevant": ["sklearn.cluster._optics::cluster_optics_xi#part2"]}
+{"query": "Find the BaseScorer class definition", "relevant": ["sklearn.metrics._scorer::_BaseScorer#part2"]}
+{"query": "Where is initialize nmf implemented?", "relevant": ["sklearn.decomposition._nmf::_initialize_nmf#part1"]}
+{"query": "Helper of :func:`jax_autojit`", "relevant": ["sklearn.externals.array_api_extra._lib._utils._helpers::_AutoJITWrapper"]}
+{"query": "Find the Pipeline class definition", "relevant": ["sklearn.pipeline::Pipeline#part20"]}
+{"query": "Tree grower class used to build a tree", "relevant": ["sklearn.ensemble._hist_gradient_boosting.grower::TreeGrower#part10"]}
+{"query": "A version of the HalfMultinomialLoss that is compatible with the array API", "relevant": ["sklearn._loss.loss::HalfMultinomialLossArrayAPI#part1"]}
+{"query": "What does the function return when True if the given estimator is (probably) an outlier detector?", "relevant": ["sklearn.base::is_outlier_detector"]}
+{"query": "A decision tree classifier", "relevant": ["sklearn.tree._classes::DecisionTreeClassifier#part1"]}
+{"query": "Where is fast mcd implemented?", "relevant": ["sklearn.covariance._robust_covariance::fast_mcd#part2"]}
+{"query": "Find the BaseSearchCV class definition", "relevant": ["sklearn.model_selection._search::BaseSearchCV#part3"]}
+{"query": "SAG solver for Ridge and LogisticRegression", "relevant": ["sklearn.linear_model._sag::sag_solver#part4"]}
+{"query": "Which class implements RealNotInt?", "relevant": ["sklearn.utils._param_validation::RealNotInt"]}
+{"query": "How does the code handle available if?", "relevant": ["sklearn.utils._available_if::available_if"]}
+{"query": "Which class implements BaseGradientBoosting?", "relevant": ["sklearn.ensemble._gb::BaseGradientBoosting#part14"]}
+{"query": "Find the GradientBoostingClassifier class definition", "relevant": ["sklearn.ensemble._gb::GradientBoostingClassifier#part9"]}
+{"query": "Where is lars path solver implemented?", "relevant": ["sklearn.linear_model._least_angle::_lars_path_solver#part4"]}
+{"query": "Scale each feature by its maximum absolute value", "relevant": ["sklearn.preprocessing._data::MaxAbsScaler#part3"]}
+{"query": "What does the function return when patched ``xp?", "relevant": ["sklearn.externals.array_api_extra._lib._utils._helpers::capabilities"]}
+{"query": "Find the NominalConversor class definition", "relevant": ["sklearn.externals._arff::NominalConversor"]}
+{"query": "How does the code handle fetch openml?", "relevant": ["sklearn.datasets._openml::fetch_openml#part5"]}
+{"query": "Where is clip implemented?", "relevant": ["sklearn.externals.array_api_compat.dask.array._aliases::clip"]}
+{"query": "Where is load coverage implemented?", "relevant": ["sklearn.datasets._species_distributions::_load_coverage"]}
+{"query": "Multi-task L1/L2 ElasticNet with built-in cross-validation", "relevant": ["sklearn.linear_model._coordinate_descent::MultiTaskElasticNetCV#part4"]}
+{"query": "Where is fetch openml implemented?", "relevant": ["sklearn.datasets._openml::fetch_openml#part1"]}
+{"query": "A random forest regressor", "relevant": ["sklearn.ensemble._forest::RandomForestRegressor#part6"]}
+{"query": "How does the code handle concat?", "relevant": ["sklearn.externals.array_api_compat.torch._aliases::concat"]}
+{"query": "Find the ShrunkCovariance class definition", "relevant": ["sklearn.covariance._shrunk_covariance::ShrunkCovariance#part1"]}
+{"query": "Which class implements SelectFromModel?", "relevant": ["sklearn.feature_selection._from_model::SelectFromModel#part4"]}
+{"query": "Which class implements BaseNB?", "relevant": ["sklearn.naive_bayes::_BaseNB#part2"]}
+{"query": "Find the MissingIndicator class definition", "relevant": ["sklearn.impute._base::MissingIndicator#part3"]}
+{"query": "How does the code handle homogeneity score?", "relevant": ["sklearn.metrics.cluster._supervised::homogeneity_score#part2"]}
+{"query": "Which class implements OneHotEncoder?", "relevant": ["sklearn.preprocessing._encoders::OneHotEncoder#part10"]}
+{"query": "Compute Least Angle Regression or Lasso path using the LARS algorithm", "relevant": ["sklearn.linear_model._least_angle::lars_path#part1"]}
+{"query": "Which class implements DataListMixin?", "relevant": ["sklearn.externals._arff::_DataListMixin"]}
+{"query": "Validation Curve visualization", "relevant": ["sklearn.model_selection._plot::ValidationCurveDisplay#part1"]}
+{"query": "Naive Bayes classifier for multinomial models", "relevant": ["sklearn.naive_bayes::MultinomialNB#part2"]}
+{"query": "Self-training classifier", "relevant": ["sklearn.semi_supervised._self_training::SelfTrainingClassifier#part7"]}
+{"query": "Mixin for converting coef_ to and from CSR format", "relevant": ["sklearn.linear_model._base::SparseCoefMixin#part2"]}
+{"query": "Validate input data and set or check feature names and counts of the input", "relevant": ["sklearn.utils.validation::validate_data#part3"]}
+{"query": "Encode categorical features as an integer array", "relevant": ["sklearn.preprocessing._encoders::OrdinalEncoder#part1"]}
+{"query": "Find the function that gets equivalent estimator", "relevant": ["sklearn.ensemble._hist_gradient_boosting.utils::get_equivalent_estimator#part3"]}
+{"query": "How does the code handle check precisions?", "relevant": ["sklearn.mixture._gaussian_mixture::_check_precisions"]}
+{"query": "Select features according to the k highest scores", "relevant": ["sklearn.feature_selection._univariate_selection::SelectKBest#part1"]}
+{"query": "Compute the sample mean of the log_likelihood under a covariance model", "relevant": ["sklearn.covariance._empirical_covariance::log_likelihood"]}
+{"query": "Wrapper for kernels in sklearn", "relevant": ["sklearn.gaussian_process.kernels::PairwiseKernel#part2"]}
+{"query": "Search over specified parameter values with successive halving", "relevant": ["sklearn.model_selection._search_successive_halving::HalvingGridSearchCV#part6"]}
+{"query": "Naive Bayes classifier for categorical features", "relevant": ["sklearn.naive_bayes::CategoricalNB#part4"]}
+{"query": "How does the code handle check estimator tags renamed?", "relevant": ["sklearn.utils.estimator_checks::check_estimator_tags_renamed"]}
+{"query": "Find the at class definition", "relevant": ["sklearn.externals.array_api_extra._lib._at::at#part5"]}
+{"query": "How does the code handle reconstruct from patches 2d?", "relevant": ["sklearn.feature_extraction.image::reconstruct_from_patches_2d#part2"]}
+{"query": "How does the code handle get data description by id?", "relevant": ["sklearn.datasets._openml::_get_data_description_by_id"]}
+{"query": "Find the ComplementNB class definition", "relevant": ["sklearn.naive_bayes::ComplementNB#part3"]}
+{"query": "Tree class used for predictions", "relevant": ["sklearn.ensemble._hist_gradient_boosting.predictor::TreePredictor#part1"]}
+{"query": "Where is mean squared log error implemented?", "relevant": ["sklearn.metrics._regression::mean_squared_log_error#part2"]}
+{"query": "Which class implements ConstantKernel?", "relevant": ["sklearn.gaussian_process.kernels::ConstantKernel#part2"]}
+{"query": "How does the code handle norm?", "relevant": ["sklearn.decomposition._nmf::norm"]}
+{"query": "Which class implements BaseCrossValidator?", "relevant": ["sklearn.model_selection._split::BaseCrossValidator#part1"]}
+{"query": "Which class implements KMeans?", "relevant": ["sklearn.cluster._kmeans::KMeans#part5"]}
+{"query": "Find the function that loads breast cancer", "relevant": ["sklearn.datasets._base::load_breast_cancer#part2"]}
+{"query": "Where is make classification implemented?", "relevant": ["sklearn.datasets._samples_generator::make_classification#part1"]}
+{"query": "Exhaustive search over specified parameter values for an estimator", "relevant": ["sklearn.model_selection._search::GridSearchCV#part4"]}
+{"query": "Which class implements PLS?", "relevant": ["sklearn.cross_decomposition._pls::_PLS#part6"]}
+{"query": "How does the code handle locally linear embedding?", "relevant": ["sklearn.manifold._locally_linear::locally_linear_embedding#part2"]}
+{"query": "Find the OPTICS class definition", "relevant": ["sklearn.cluster._optics::OPTICS#part6"]}
+{"query": "How does the code handle download 20newsgroups?", "relevant": ["sklearn.datasets._twenty_newsgroups::_download_20newsgroups"]}
+{"query": "Find the HistGradientBoostingRegressor class definition", "relevant": ["sklearn.ensemble._hist_gradient_boosting.gradient_boosting::HistGradientBoostingRegressor#part6"]}
+{"query": "Returns the MSE for the models computed by 'path'", "relevant": ["sklearn.linear_model._coordinate_descent::_path_residuals#part2"]}
+{"query": "Where is d2 pinball score implemented?", "relevant": ["sklearn.metrics._regression::d2_pinball_score#part2"]}
+{"query": "Which class implements LarsCV?", "relevant": ["sklearn.linear_model._least_angle::LarsCV#part1"]}
+{"query": "Find the ParameterGrid class definition", "relevant": ["sklearn.model_selection._search::ParameterGrid#part1"]}
+{"query": "Which class implements RadiusNeighborsTransformer?", "relevant": ["sklearn.neighbors._graph::RadiusNeighborsTransformer#part4"]}
+{"query": "Compute Area Under the Receiver Operating Characteristic Curve (ROC AUC)     from prediction scores", "relevant": ["sklearn.metrics._ranking::roc_auc_score#part2"]}
+{"query": "Which class implements FactorAnalysis?", "relevant": ["sklearn.decomposition._factor_analysis::FactorAnalysis#part5"]}
+{"query": "Find the function that gets profile", "relevant": ["build_tools.generate_authors_table::get_profile"]}
+{"query": "Theil-Sen Estimator: robust multivariate regression model", "relevant": ["sklearn.linear_model._theil_sen::TheilSenRegressor#part1"]}
+{"query": "Which class implements LinearSVR?", "relevant": ["sklearn.svm._classes::LinearSVR#part1"]}
+{"query": "Which class implements BaseTreeExporter?", "relevant": ["sklearn.tree._export::_BaseTreeExporter#part3"]}
+{"query": "Where is export graphviz implemented?", "relevant": ["sklearn.tree._export::export_graphviz#part3"]}
+{"query": "Find the ListenerHandle class definition", "relevant": ["sklearn.callback._transport::ListenerHandle"]}
+{"query": "How does the code handle additive chi2 kernel?", "relevant": ["sklearn.metrics.pairwise::additive_chi2_kernel#part1"]}
+{"query": "Bayesian ARD regression", "relevant": ["sklearn.linear_model._bayes::ARDRegression#part4"]}
+{"query": "How does the code handle update doc distribution?", "relevant": ["sklearn.decomposition._lda::_update_doc_distribution#part1"]}
+{"query": "How does the code handle split node?", "relevant": ["sklearn.cluster._birch::_split_node#part1"]}
+{"query": "Extracts patches from a collection of images", "relevant": ["sklearn.feature_extraction.image::PatchExtractor#part2"]}
+{"query": "Feature ranking with recursive feature elimination", "relevant": ["sklearn.feature_selection._rfe::RFE#part9"]}
+{"query": "Which class implements HalvingRandomSearchCV?", "relevant": ["sklearn.model_selection._search_successive_halving::HalvingRandomSearchCV#part2"]}
+{"query": "Estimator for which we can turn on/off the prediction methods", "relevant": ["sklearn.utils._mocking::_MockEstimatorOnOffPrediction"]}
+{"query": "Find the BayesianGaussianMixture class definition", "relevant": ["sklearn.mixture._bayesian_mixture::BayesianGaussianMixture#part3"]}
+{"query": "Which class implements FunctionTransformer?", "relevant": ["sklearn.preprocessing._function_transformer::FunctionTransformer#part2"]}
+{"query": "Which class implements RadiusNeighborsClassMode?", "relevant": ["sklearn.metrics._pairwise_distances_reduction._dispatcher::RadiusNeighborsClassMode#part3"]}
+{"query": "Perform Affinity Propagation Clustering of data", "relevant": ["sklearn.cluster._affinity_propagation::AffinityPropagation#part3"]}
+{"query": "Find the BaggingClassifier class definition", "relevant": ["sklearn.ensemble._bagging::BaggingClassifier#part2"]}
+{"query": "How does the code handle confusion matrix?", "relevant": ["sklearn.metrics._classification::confusion_matrix#part2"]}
+{"query": "Average one-versus-one scores for multiclass classification", "relevant": ["sklearn.metrics._base::_average_multiclass_ovo_score#part2"]}
+{"query": "Find the QuantileTransformer class definition", "relevant": ["sklearn.preprocessing._data::QuantileTransformer#part7"]}
+{"query": "How does the code handle isclose?", "relevant": ["sklearn.externals.array_api_extra._lib._funcs::isclose"]}
+{"query": "How does the code handle get submodule?", "relevant": ["doc.api_reference::_get_submodule"]}
+{"query": "How does the code handle safe sparse dot?", "relevant": ["sklearn.utils.extmath::safe_sparse_dot#part1"]}
+{"query": "Which class implements RidgeGCV?", "relevant": ["sklearn.linear_model._ridge::_RidgeGCV#part5"]}
+{"query": "How does the code handle one hot encoding binary target?", "relevant": ["sklearn.metrics._classification::_one_hot_encoding_binary_target"]}
+{"query": "An AdaBoost regressor", "relevant": ["sklearn.ensemble._weight_boosting::AdaBoostRegressor#part3"]}
+{"query": "Where is multiplicative update implemented?", "relevant": ["sklearn.decomposition._nmf::_multiplicative_update_h#part2"]}
+{"query": "Base class for nearest neighbors estimators", "relevant": ["sklearn.neighbors._base::NeighborsBase#part6"]}
+{"query": "What does the function return when True if pandas extension pd_dtype need to be converted early?", "relevant": ["sklearn.utils.validation::_pandas_dtype_needs_early_conversion"]}
+{"query": "Which class implements ColumnTransformer?", "relevant": ["sklearn.compose._column_transformer::ColumnTransformer#part2"]}
+{"query": "Self-training classifier", "relevant": ["sklearn.semi_supervised._self_training::SelfTrainingClassifier#part5"]}
+{"query": "Spectral biclustering (Kluger, 2003) [1]_", "relevant": ["sklearn.cluster._bicluster::SpectralBiclustering#part1"]}
+{"query": "Which class implements NewtonSolver?", "relevant": ["sklearn.linear_model._glm._newton_solver::NewtonSolver#part4"]}
+{"query": "Which class implements TruncatedSVD?", "relevant": ["sklearn.decomposition._truncated_svd::TruncatedSVD#part3"]}
+{"query": "How does the code handle logsumexp?", "relevant": ["sklearn.utils._array_api::_logsumexp"]}
+{"query": "Where is enet path implemented?", "relevant": ["sklearn.linear_model._coordinate_descent::enet_path#part5"]}
+{"query": "Find the PassiveAggressiveRegressor class definition", "relevant": ["sklearn.linear_model._passive_aggressive::PassiveAggressiveRegressor#part3"]}
+{"query": "Where is nan to num implemented?", "relevant": ["sklearn.externals.array_api_extra._delegation::nan_to_num#part2"]}
+{"query": "How does the code handle get additional lbfgs options dict?", "relevant": ["sklearn.utils.fixes::_get_additional_lbfgs_options_dict"]}
+{"query": "How does the code handle argsort?", "relevant": ["sklearn.externals.array_api_compat.common._aliases::argsort"]}
+{"query": "Solve a dictionary learning matrix factorization problem online", "relevant": ["sklearn.decomposition._dict_learning::dict_learning_online#part4"]}
+{"query": "Extract missing values from `values`", "relevant": ["sklearn.utils._encode::_extract_missing"]}
+{"query": "Where is joint probabilities implemented?", "relevant": ["sklearn.manifold._t_sne::_joint_probabilities"]}
+{"query": "Where is dict learning implemented?", "relevant": ["sklearn.decomposition._dict_learning::_dict_learning#part2"]}
+{"query": "Numerically stable version of log(1 + exp(x)) that is compatible with\nthe array API", "relevant": ["sklearn._loss.loss::_log1pexp#part2"]}
+{"query": "Where is robust scale implemented?", "relevant": ["sklearn.preprocessing._data::robust_scale#part1"]}
+{"query": "Find the BaseSearchCV class definition", "relevant": ["sklearn.model_selection._search::BaseSearchCV#part15"]}
+{"query": "Find the QRResult class definition", "relevant": ["sklearn.externals.array_api_compat.common._linalg::QRResult"]}
+{"query": "How does the code handle sparse random matrix?", "relevant": ["sklearn.random_projection::_sparse_random_matrix#part1"]}
+{"query": "Where is is classifier implemented?", "relevant": ["sklearn.base::is_classifier"]}
+{"query": "Find the ArgKminClassMode class definition", "relevant": ["sklearn.metrics._pairwise_distances_reduction._dispatcher::ArgKminClassMode#part1"]}
+{"query": "Mini-batch dictionary learning", "relevant": ["sklearn.decomposition._dict_learning::MiniBatchDictionaryLearning#part10"]}
+{"query": "Find the AttrsDict class definition", "relevant": ["sklearn.utils._repr_html.fitted_attributes::AttrsDict"]}
+{"query": "Generate a random regression problem", "relevant": ["sklearn.datasets._samples_generator::make_regression#part1"]}
+{"query": "Which class implements XT CenterStackOp?", "relevant": ["sklearn.linear_model._ridge::_XT_CenterStackOp"]}
+{"query": "Which class implements ExponentialLoss?", "relevant": ["sklearn._loss.loss::ExponentialLoss#part1"]}
+{"query": "Which class implements MultimetricScorer?", "relevant": ["sklearn.metrics._scorer::_MultimetricScorer#part1"]}
+{"query": "Which class implements Reader?", "relevant": ["sklearn.externals._numpydoc.docscrape::Reader#part2"]}
+{"query": "Where is nan euclidean distances implemented?", "relevant": ["sklearn.metrics.pairwise::nan_euclidean_distances#part1"]}
+{"query": "Evaluate a score by cross-validation", "relevant": ["sklearn.model_selection._validation::cross_val_score#part2"]}
+{"query": "Which class implements StackingClassifier?", "relevant": ["sklearn.ensemble._stacking::StackingClassifier#part4"]}
+{"query": "Find the MultiTaskLassoCV class definition", "relevant": ["sklearn.linear_model._coordinate_descent::MultiTaskLassoCV#part2"]}
+{"query": "Which class implements BaggingClassifier?", "relevant": ["sklearn.ensemble._bagging::BaggingClassifier#part5"]}
+{"query": "Which class implements LogisticRegressionCV?", "relevant": ["sklearn.linear_model._logistic::LogisticRegressionCV#part8"]}
+{"query": "Gaussian Mixture", "relevant": ["sklearn.mixture._gaussian_mixture::GaussianMixture#part5"]}
+{"query": "Where is load descr implemented?", "relevant": ["sklearn.datasets._base::load_descr"]}
+{"query": "Find the MetadataRouter class definition", "relevant": ["sklearn.utils._metadata_requests::MetadataRouter#part3"]}
+{"query": "Where is sparse encode implemented?", "relevant": ["sklearn.decomposition._dict_learning::_sparse_encode#part1"]}
+{"query": "Mixin class for all outlier detection estimators in scikit-learn", "relevant": ["sklearn.base::OutlierMixin#part1"]}
+{"query": "Which class implements MLPClassifier?", "relevant": ["sklearn.neural_network._multilayer_perceptron::MLPClassifier#part8"]}
+{"query": "Which class implements IterativeImputer?", "relevant": ["sklearn.impute._iterative::IterativeImputer#part12"]}
+{"query": "Which class implements TreePredictor?", "relevant": ["sklearn.ensemble._hist_gradient_boosting.predictor::TreePredictor#part2"]}
+{"query": "Where is assert close implemented?", "relevant": ["sklearn.externals.array_api_extra.testing::assert_close#part1"]}
+{"query": "Which class implements ArrayAPILossMixin?", "relevant": ["sklearn._loss.loss::ArrayAPILossMixin#part3"]}
+{"query": "Same as the builtin _safe_repr, with added support for Estimator\nobjects", "relevant": ["sklearn.utils._pprint::_safe_repr#part2"]}
+{"query": "How does the code handle jaccard score?", "relevant": ["sklearn.metrics._classification::jaccard_score#part4"]}
+{"query": "Find the PrecisionRecallDisplay class definition", "relevant": ["sklearn.metrics._plot.precision_recall_curve::PrecisionRecallDisplay#part1"]}
+{"query": "How does the code handle brute mst?", "relevant": ["sklearn.cluster._hdbscan.hdbscan::_brute_mst"]}
+{"query": "Where is load svmlight files implemented?", "relevant": ["sklearn.datasets._svmlight_format_io::load_svmlight_files#part1"]}
+{"query": "Find the Isomap class definition", "relevant": ["sklearn.manifold._isomap::Isomap#part2"]}
+{"query": "Where is confusion matrix at thresholds implemented?", "relevant": ["sklearn.metrics._ranking::confusion_matrix_at_thresholds#part1"]}
+{"query": "Where is extend region implemented?", "relevant": ["sklearn.cluster._optics::_extend_region#part1"]}
+{"query": "ROC Curve visualization", "relevant": ["sklearn.metrics._plot.roc_curve::RocCurveDisplay#part10"]}
+{"query": "Incremental update of the centers for the Minibatch K-Means algorithm", "relevant": ["sklearn.cluster._kmeans::_mini_batch_step#part2"]}
+{"query": "Where is log loss implemented?", "relevant": ["sklearn.metrics._classification::_log_loss"]}
+{"query": "Find the RidgeClassifier class definition", "relevant": ["sklearn.linear_model._ridge::RidgeClassifier#part4"]}
+{"query": "Which class implements TargetEncoder?", "relevant": ["sklearn.preprocessing._target_encoder::TargetEncoder#part6"]}
+{"query": "Which class implements MPLTreeExporter?", "relevant": ["sklearn.tree._export::_MPLTreeExporter#part1"]}
+{"query": "Encode categorical features as an integer array", "relevant": ["sklearn.preprocessing._encoders::OrdinalEncoder#part3"]}
+{"query": "Find the DictVectorizer class definition", "relevant": ["sklearn.feature_extraction._dict_vectorizer::DictVectorizer#part3"]}
+{"query": "Where is unique indicator implemented?", "relevant": ["sklearn.utils.multiclass::_unique_indicator"]}
+{"query": "Binary indicators for missing values", "relevant": ["sklearn.impute._base::MissingIndicator#part6"]}
+{"query": "Where is estimators has implemented?", "relevant": ["sklearn.multiclass::_estimators_has"]}
+{"query": "Transform between iterable of iterables and a multilabel format", "relevant": ["sklearn.preprocessing._label::MultiLabelBinarizer#part5"]}
+{"query": "Find the GeneralizedLinearRegressor class definition", "relevant": ["sklearn.linear_model._glm.glm::_GeneralizedLinearRegressor#part6"]}
+{"query": "Find the at class definition", "relevant": ["sklearn.externals.array_api_extra._lib._at::at#part1"]}
+{"query": "Where is multiplicative update implemented?", "relevant": ["sklearn.decomposition._nmf::_multiplicative_update_w#part1"]}
+{"query": "Find the AutoJITWrapper class definition", "relevant": ["sklearn.externals.array_api_extra._lib._utils._helpers::_AutoJITWrapper"]}
+{"query": "Compute true and predicted probabilities for a calibration curve", "relevant": ["sklearn.calibration::calibration_curve#part3"]}
+{"query": "Where is generate sample indices implemented?", "relevant": ["sklearn.ensemble._forest::_generate_sample_indices"]}
+{"query": "Which class implements BaseStacking?", "relevant": ["sklearn.ensemble._stacking::_BaseStacking#part3"]}
+{"query": "Which class implements Pipeline?", "relevant": ["sklearn.pipeline::Pipeline#part13"]}
+{"query": "Find the FastICA class definition", "relevant": ["sklearn.decomposition._fastica::FastICA#part1"]}
+{"query": "Protocol for the callbacks evaluated on tasks during the fit of an estimator", "relevant": ["sklearn.callback._base::FitCallback#part1"]}
+{"query": "Which class implements HDBSCAN?", "relevant": ["sklearn.cluster._hdbscan.hdbscan::HDBSCAN#part6"]}
+{"query": "Find the MiniBatchNMF class definition", "relevant": ["sklearn.decomposition._nmf::MiniBatchNMF#part9"]}
+{"query": "Which class implements HalfMultinomialLoss?", "relevant": ["sklearn._loss.loss::HalfMultinomialLoss#part2"]}
+{"query": "Where is fit calibrator implemented?", "relevant": ["sklearn.calibration::_fit_calibrator#part1"]}
+{"query": "How does the code handle safe split?", "relevant": ["sklearn.utils.metaestimators::_safe_split#part1"]}
+{"query": "Which class implements PLSCanonical?", "relevant": ["sklearn.cross_decomposition._pls::PLSCanonical#part3"]}
+{"query": "Histogram-based Gradient Boosting Classification Tree", "relevant": ["sklearn.ensemble._hist_gradient_boosting.gradient_boosting::HistGradientBoostingClassifier#part3"]}
+{"query": "Where is check estimators dtypes implemented?", "relevant": ["sklearn.utils.estimator_checks::check_estimators_dtypes"]}
+{"query": "Mean shift clustering using a flat kernel", "relevant": ["sklearn.cluster._mean_shift::MeanShift#part1"]}
+{"query": "Find the CheckingClassifier class definition", "relevant": ["sklearn.utils._mocking::CheckingClassifier#part3"]}
+{"query": "Find the Callables class definition", "relevant": ["sklearn.utils._param_validation::_Callables"]}
+{"query": "How does the code handle barycenter kneighbors graph?", "relevant": ["sklearn.manifold._locally_linear::barycenter_kneighbors_graph"]}
+{"query": "Get namespace of arrays", "relevant": ["sklearn.utils._array_api::get_namespace#part2"]}
+{"query": "Where is retry with clean cache implemented?", "relevant": ["sklearn.datasets._openml::_retry_with_clean_cache"]}
+{"query": "How does the code handle fetch openml?", "relevant": ["sklearn.datasets._openml::fetch_openml#part1"]}
+{"query": "Where is beta divergence implemented?", "relevant": ["sklearn.decomposition._nmf::_beta_divergence#part2"]}
+{"query": "Find the BayesianRidge class definition", "relevant": ["sklearn.linear_model._bayes::BayesianRidge#part4"]}
+{"query": "Which class implements BaseGradientBoosting?", "relevant": ["sklearn.ensemble._gb::BaseGradientBoosting#part12"]}
+{"query": "Computational component for initialization of n_clusters by\nk-means++", "relevant": ["sklearn.cluster._kmeans::_kmeans_plusplus#part2"]}
+{"query": "Which class implements PLSCanonical?", "relevant": ["sklearn.cross_decomposition._pls::PLSCanonical#part1"]}
+{"query": "Find the CFSubcluster class definition", "relevant": ["sklearn.cluster._birch::_CFSubcluster#part2"]}
+{"query": "Find the DetCurveDisplay class definition", "relevant": ["sklearn.metrics._plot.det_curve::DetCurveDisplay#part6"]}
+{"query": "ROC Curve visualization", "relevant": ["sklearn.metrics._plot.roc_curve::RocCurveDisplay#part2"]}
+{"query": "Find the LocalOutlierFactor class definition", "relevant": ["sklearn.neighbors._lof::LocalOutlierFactor#part4"]}
+{"query": "Find the OneClassSVM class definition", "relevant": ["sklearn.svm._classes::OneClassSVM#part2"]}
+{"query": "Check the output of the `predict_proba` method for classifiers supporting\nmultilabel-indicator targets", "relevant": ["sklearn.utils.estimator_checks::check_classifiers_multilabel_output_format_predict_proba#part2"]}
+{"query": "Kernel ridge regression", "relevant": ["sklearn.kernel_ridge::KernelRidge#part1"]}
+{"query": "Pipeline-like chaining a fitted classifier and its fitted calibrators", "relevant": ["sklearn.calibration::_CalibratedClassifier#part2"]}
+{"query": "Which class implements MultiOutputLinearModel?", "relevant": ["sklearn.linear_model._base::MultiOutputLinearModel"]}
+{"query": "Find the LinearModel class definition", "relevant": ["sklearn.linear_model._base::LinearModel"]}
+{"query": "A sequence of data transformers with an optional final predictor", "relevant": ["sklearn.pipeline::Pipeline#part9"]}
+{"query": "Assign X2 to X1 where cond is True", "relevant": ["sklearn.impute._iterative::_assign_where"]}
+{"query": "Locally Linear Embedding", "relevant": ["sklearn.manifold._locally_linear::LocallyLinearEmbedding#part5"]}
+{"query": "Which class implements QuadraticDiscriminantAnalysis?", "relevant": ["sklearn.discriminant_analysis::QuadraticDiscriminantAnalysis#part3"]}
+{"query": "Where is astype implemented?", "relevant": ["sklearn.externals.array_api_compat.torch._aliases::astype"]}
+{"query": "How does the code handle pairwise kernels?", "relevant": ["sklearn.metrics.pairwise::pairwise_kernels#part2"]}
+{"query": "Where is isotonic regression implemented?", "relevant": ["sklearn.isotonic::isotonic_regression#part2"]}
+{"query": "Which class implements PartialDependenceDisplay?", "relevant": ["sklearn.inspection._plot.partial_dependence::PartialDependenceDisplay#part21"]}
+{"query": "Where is weighted mode implemented?", "relevant": ["sklearn.utils.extmath::weighted_mode#part2"]}
+{"query": "Which class implements AutoJITWrapper?", "relevant": ["sklearn.externals.array_api_extra._lib._utils._helpers::_AutoJITWrapper"]}
+{"query": "Where is safe accumulator op implemented?", "relevant": ["sklearn.utils.extmath::_safe_accumulator_op"]}
+{"query": "Find the PrecisionRecallDisplay class definition", "relevant": ["sklearn.metrics._plot.precision_recall_curve::PrecisionRecallDisplay#part12"]}
+{"query": "Where is can reuse listener implemented?", "relevant": ["sklearn.callback._transport::can_reuse_listener"]}
+{"query": "Which class implements HalfPoissonLossArrayAPI?", "relevant": ["sklearn._loss.loss::HalfPoissonLossArrayAPI#part2"]}
+{"query": "Find the RidgeGCV class definition", "relevant": ["sklearn.linear_model._ridge::_RidgeGCV#part4"]}
+{"query": "How does the code handle learning curve?", "relevant": ["sklearn.model_selection._validation::learning_curve#part5"]}
+{"query": "Base class for histogram-based gradient boosting estimators", "relevant": ["sklearn.ensemble._hist_gradient_boosting.gradient_boosting::BaseHistGradientBoosting#part6"]}
+{"query": "How does the code handle check array api same namespace?", "relevant": ["sklearn.utils.estimator_checks::check_array_api_same_namespace"]}

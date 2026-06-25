@@ -1,0 +1,500 @@
+{"query": "How does the code handle requires fsspec?", "relevant": ["astropy.utils.data::_requires_fsspec"]}
+{"query": "Which class implements TableFormatter?", "relevant": ["astropy.table.pprint::TableFormatter#part8"]}
+{"query": "A scalar value or array of values with associated mask", "relevant": ["astropy.utils.masked.core::Masked#part4"]}
+{"query": "What does the function return when a list of unique items in the list provided, preserving the order in which they are found?", "relevant": ["astropy.wcs.utils::_unique_with_order_preserved"]}
+{"query": "Which class implements SAMPClient?", "relevant": ["astropy.samp.client::SAMPClient#part3"]}
+{"query": "Which class implements FixedWidthData?", "relevant": ["astropy.io.ascii.fixedwidth::FixedWidthData"]}
+{"query": "Find the TimeBase class definition", "relevant": ["astropy.time.core::TimeBase#part19"]}
+{"query": "Which class implements DeprecatedUnitAction?", "relevant": ["astropy.units.enums::DeprecatedUnitAction"]}
+{"query": "Find the LRParser class definition", "relevant": ["astropy.extern.ply.yacc::LRParser#part7"]}
+{"query": "Where is generate stub implemented?", "relevant": ["astropy.units.typing_utils::generate_stub"]}
+{"query": "A joint formatter/locator", "relevant": ["astropy.visualization.wcsaxes.formatter_locator::AngleFormatterLocator#part5"]}
+{"query": "Find the FLRW class definition", "relevant": ["astropy.cosmology._src.flrw.base::FLRW#part19"]}
+{"query": "Where is def unit implemented?", "relevant": ["astropy.units.core::def_unit"]}
+{"query": "A class to represent tables of heterogeneous data", "relevant": ["astropy.table.table::Table#part40"]}
+{"query": "Which class implements ListHandler?", "relevant": ["astropy.logger::ListHandler"]}
+{"query": "How does the code handle coord matrix?", "relevant": ["astropy.modeling.separable::_coord_matrix"]}
+{"query": "Which class implements ValidHDU?", "relevant": ["astropy.io.fits.hdu.base::_ValidHDU#part12"]}
+{"query": "Which class implements SkyCoord?", "relevant": ["astropy.coordinates.sky_coordinate::SkyCoord#part8"]}
+{"query": "Base for representing a point in a 3D coordinate system", "relevant": ["astropy.coordinates.representation.base::BaseRepresentation#part10"]}
+{"query": "Which class implements ServerProxyPoolMethod?", "relevant": ["astropy.samp.utils::_ServerProxyPoolMethod"]}
+{"query": "Which class implements BoxLeastSquares?", "relevant": ["astropy.timeseries.periodograms.bls.core::BoxLeastSquares#part13"]}
+{"query": "Which class implements E04?", "relevant": ["astropy.io.votable.exceptions::E04"]}
+{"query": "Which class implements Polynomial2D?", "relevant": ["astropy.modeling.polynomial::Polynomial2D#part4"]}
+{"query": "Find the Index class definition", "relevant": ["astropy.table.index::Index#part6"]}
+{"query": "How does the code handle helper copysign?", "relevant": ["astropy.units.quantity_helper.helpers::helper_copysign"]}
+{"query": "Find the function that gets auto format func", "relevant": ["astropy.table.pprint::get_auto_format_func#part2"]}
+{"query": "A scalar value or array values with associated uncertainty distribution", "relevant": ["astropy.uncertainty.core::Distribution#part5"]}
+{"query": "Which class implements MivotBlock?", "relevant": ["astropy.io.votable.tree::MivotBlock#part2"]}
+{"query": "Find the BoxLeastSquares class definition", "relevant": ["astropy.timeseries.periodograms.bls.core::BoxLeastSquares#part12"]}
+{"query": "Airy - sky to pixel", "relevant": ["astropy.modeling.projections::Sky2Pix_Airy"]}
+{"query": "How does the code handle aggregate downsample?", "relevant": ["astropy.timeseries.downsample::aggregate_downsample#part2"]}
+{"query": "Where is from model implemented?", "relevant": ["astropy.cosmology._src.io.builtin.model::from_model"]}
+{"query": "Which class implements BaseInputter?", "relevant": ["astropy.io.ascii.core::BaseInputter#part2"]}
+{"query": "Make commonly used Masked subclasses and their info classes importable for ASDF support", "relevant": ["astropy.utils.masked.core::__getattr__"]}
+{"query": "Where is parse shape implemented?", "relevant": ["astropy.nddata.covariance::_parse_shape"]}
+{"query": "FITS Random Groups HDU class", "relevant": ["astropy.io.fits.hdu.groups::GroupsHDU#part2"]}
+{"query": "How does the code handle pytest unconfigure?", "relevant": ["astropy.conftest::pytest_unconfigure"]}
+{"query": "Which class implements FITS rec?", "relevant": ["astropy.io.fits.fitsrec::FITS_rec#part9"]}
+{"query": "Append the header/data to FITS file if filename exists, create if not", "relevant": ["astropy.io.fits.convenience::append#part1"]}
+{"query": "Where is check download cache implemented?", "relevant": ["astropy.utils.data::check_download_cache#part2"]}
+{"query": "Find the WCS class definition", "relevant": ["astropy.wcs.wcs::WCS#part4"]}
+{"query": "Find the StdDevUncertainty class definition", "relevant": ["astropy.nddata.nduncertainty::StdDevUncertainty#part3"]}
+{"query": "Find the UnitsWarning class definition", "relevant": ["astropy.units.errors::UnitsWarning"]}
+{"query": "How does the code handle support nddata?", "relevant": ["astropy.nddata.decorators::support_nddata#part2"]}
+{"query": "Which class implements BaseGroups?", "relevant": ["astropy.table.groups::BaseGroups#part1"]}
+{"query": "Which class implements Header?", "relevant": ["astropy.io.fits.header::Header#part14"]}
+{"query": "Which class implements NDArrayShapeMethods?", "relevant": ["astropy.utils.shapes::NDArrayShapeMethods#part3"]}
+{"query": "Which class implements SlicedLowLevelWCS?", "relevant": ["astropy.wcs.wcsapi.wrappers.sliced_wcs::SlicedLowLevelWCS#part1"]}
+{"query": "How does the code handle strptime?", "relevant": ["astropy.extern._strptime::_strptime#part1"]}
+{"query": "Where is shorten implemented?", "relevant": ["astropy.coordinates.jparser::shorten"]}
+{"query": "Returns a list of equivalence pairs that handle the conversion\nbetween mass and energy", "relevant": ["astropy.units.equivalencies::mass_energy"]}
+{"query": "Find the MaskedNDArray class definition", "relevant": ["astropy.utils.masked.core::MaskedNDArray#part8"]}
+{"query": "Support for data types that JSON default encoder\ndoes not do", "relevant": ["astropy.utils.misc::JsonCustomEncoder"]}
+{"query": "A one-dimensional distance", "relevant": ["astropy.coordinates.distances::Distance#part2"]}
+{"query": "This warning indicates the standard cache directory is not accessible, with\nthe first argument providing the warning ...", "relevant": ["astropy.utils.data::CacheMissingWarning"]}
+{"query": "Which class implements Table?", "relevant": ["astropy.table.table::Table#part29"]}
+{"query": "The value supplied was of the correct type, but was too short", "relevant": ["astropy.extern.configobj.validate::VdtValueTooShortError"]}
+{"query": "Split possibly masked array into unmasked and mask", "relevant": ["astropy.utils.masked.core::get_data_and_mask"]}
+{"query": "How does the code handle parallel fit dask?", "relevant": ["astropy.modeling._fitting_parallel::parallel_fit_dask#part1"]}
+{"query": "How does the code handle get running hubs?", "relevant": ["astropy.samp.lockfile_helpers::get_running_hubs"]}
+{"query": "Find the HCRS class definition", "relevant": ["astropy.coordinates.builtin_frames.hcrs::HCRS"]}
+{"query": "Decorator to wrap functions that could accept an NDData instance with\nits properties passed as function arguments", "relevant": ["astropy.nddata.decorators::support_nddata#part5"]}
+{"query": "Binary table HDU class", "relevant": ["astropy.io.fits.hdu.table::BinTableHDU#part10"]}
+{"query": "Which class implements BlackBody?", "relevant": ["astropy.modeling.physical_models::BlackBody#part1"]}
+{"query": "Which class implements Simplex?", "relevant": ["astropy.modeling.optimizers::Simplex#part1"]}
+{"query": "How does the code handle from row?", "relevant": ["astropy.cosmology._src.io.builtin.row::from_row#part3"]}
+{"query": "Find the Pix2Sky Mercator class definition", "relevant": ["astropy.modeling.projections::Pix2Sky_Mercator"]}
+{"query": "How does the code handle format doc?", "relevant": ["astropy.utils.decorators::format_doc#part2"]}
+{"query": "Use the ``inverse`` argument to get the inverse transformation, matrix and\noffsets to go from Galactocentric to ICRS", "relevant": ["astropy.coordinates.builtin_frames.galactocentric::get_matrix_vectors"]}
+{"query": "Which class implements TableLikeHDU?", "relevant": ["astropy.io.fits.hdu.table::_TableLikeHDU#part2"]}
+{"query": "Where is parse format implemented?", "relevant": ["astropy.cosmology._src.funcs.comparison::_parse_format"]}
+{"query": "Serialize the |Cosmology| into a HTML table", "relevant": ["astropy.cosmology._src.io.builtin.html::write_html_table#part1"]}
+{"query": "FITS header class", "relevant": ["astropy.io.fits.header::Header#part2"]}
+{"query": "Base class for model exceptions", "relevant": ["astropy.modeling.fitting::ModelsError"]}
+{"query": "Add two 1D kernel arrays of different size", "relevant": ["astropy.convolution.utils::add_kernel_arrays_1D"]}
+{"query": "Which class implements YamlParseError?", "relevant": ["astropy.table.meta::YamlParseError"]}
+{"query": "How does the code handle next fast len?", "relevant": ["astropy.timeseries.periodograms.lombscargle.implementations.utils::next_fast_len"]}
+{"query": "Which class implements ErrList?", "relevant": ["astropy.io.fits.verify::_ErrList"]}
+{"query": "Represent and manipulate times and dates for astronomy", "relevant": ["astropy.time.core::Time#part6"]}
+{"query": "Which class implements RST?", "relevant": ["astropy.io.ascii.rst::RST#part1"]}
+{"query": "Where is circcorrcoef implemented?", "relevant": ["astropy.stats.circstats::circcorrcoef#part1"]}
+{"query": "Find the Tangent1D class definition", "relevant": ["astropy.modeling.functional_models::Tangent1D#part1"]}
+{"query": "Find the InvalidHDUException class definition", "relevant": ["astropy.io.fits.hdu.base::InvalidHDUException"]}
+{"query": "Find the Group class definition", "relevant": ["astropy.io.votable.tree::Group#part1"]}
+{"query": "Find the function that iss float list", "relevant": ["astropy.extern.configobj.validate::is_float_list"]}
+{"query": "A class to represent tables of heterogeneous data", "relevant": ["astropy.table.table::Table#part61"]}
+{"query": "Which class implements DatasetOrigin?", "relevant": ["astropy.io.votable.dataorigin::DatasetOrigin#part3"]}
+{"query": "How does the code handle high level objects to values?", "relevant": ["astropy.wcs.wcsapi.high_level_api::high_level_objects_to_values#part1"]}
+{"query": "Which class implements BaseCoordinateFrame?", "relevant": ["astropy.coordinates.baseframe::BaseCoordinateFrame#part29"]}
+{"query": "Which class implements HighLevelWCSWrapper?", "relevant": ["astropy.wcs.wcsapi.high_level_wcs_wrapper::HighLevelWCSWrapper#part2"]}
+{"query": "How does the code handle def unit?", "relevant": ["astropy.units.core::def_unit#part2"]}
+{"query": "How does the code handle histogram bin edges?", "relevant": ["astropy.units.quantity_helper.function_helpers::histogram_bin_edges"]}
+{"query": "Which class implements Column?", "relevant": ["astropy.table.column::Column#part3"]}
+{"query": "Compute the false positive probability for the Kuiper statistic", "relevant": ["astropy.stats.funcs::kuiper_false_positive_probability#part2"]}
+{"query": "Discretize model by performing a linear interpolation", "relevant": ["astropy.convolution.utils::discretize_linear_1D"]}
+{"query": "Which class implements LinearLSQFitter?", "relevant": ["astropy.modeling.fitting::LinearLSQFitter#part4"]}
+{"query": "Which class implements StandardDeviations?", "relevant": ["astropy.modeling.fitting::StandardDeviations"]}
+{"query": "Find the WGS72GeodeticRepresentation class definition", "relevant": ["astropy.coordinates.representation.geodetic::WGS72GeodeticRepresentation"]}
+{"query": "Upper limit on a poisson count rate", "relevant": ["astropy.stats.funcs::_mpmath_kraft_burrows_nousek#part1"]}
+{"query": "How does the code handle lombscargle?", "relevant": ["astropy.timeseries.periodograms.lombscargle.implementations.main::lombscargle#part1"]}
+{"query": "Where is block implemented?", "relevant": ["astropy.utils.masked.function_helpers::block"]}
+{"query": "Base time class from which Time and TimeDelta inherit", "relevant": ["astropy.time.core::TimeBase#part1"]}
+{"query": "Enter your birthday as an `astropy", "relevant": ["astropy.coordinates.calculation::horoscope#part1"]}
+{"query": "Which class implements Header?", "relevant": ["astropy.io.fits.header::Header#part2"]}
+{"query": "Which class implements Result?", "relevant": ["astropy.io.votable.validator.result::Result#part4"]}
+{"query": "How does the code handle discretize bilinear 2D?", "relevant": ["astropy.convolution.utils::discretize_bilinear_2D"]}
+{"query": "Find the Sky2Pix ConicEquidistant class definition", "relevant": ["astropy.modeling.projections::Sky2Pix_ConicEquidistant"]}
+{"query": "Which class implements WCS?", "relevant": ["astropy.wcs.wcs::WCS#part46"]}
+{"query": "Which class implements solar system ephemeris?", "relevant": ["astropy.coordinates.solar_system::solar_system_ephemeris#part1"]}
+{"query": "Support the `Centre de Donn\u00e9es astronomiques de Strasbourg\n<https://cds", "relevant": ["astropy.units.format.cds::CDS#part3"]}
+{"query": "Compute the box least squares periodogram", "relevant": ["astropy.timeseries.periodograms.bls.core::BoxLeastSquares#part1"]}
+{"query": "Map domain into window by shifting and scaling", "relevant": ["astropy.modeling.utils::poly_map_domain"]}
+{"query": "Where is hide inverse implemented?", "relevant": ["astropy.modeling.core::hide_inverse"]}
+{"query": "Find the Table class definition", "relevant": ["astropy.table.table::Table#part47"]}
+{"query": "How does the code handle parse coordinate arg?", "relevant": ["astropy.coordinates.sky_coordinate_parsers::_parse_coordinate_arg#part4"]}
+{"query": "Which class implements CompImageHDU?", "relevant": ["astropy.io.fits.hdu.compressed.compressed::CompImageHDU#part6"]}
+{"query": "Find the SimplexLSQFitter class definition", "relevant": ["astropy.modeling.fitting::SimplexLSQFitter#part1"]}
+{"query": "Mixin class to add arithmetic to an NDData object", "relevant": ["astropy.nddata.mixins.ndarithmetic::NDArithmeticMixin#part2"]}
+{"query": "Find the LRGeneratedTable class definition", "relevant": ["astropy.extern.ply.yacc::LRGeneratedTable#part1"]}
+{"query": "A class to represent tables of heterogeneous data", "relevant": ["astropy.table.table::Table#part8"]}
+{"query": "How does the code handle setval?", "relevant": ["astropy.io.fits.convenience::setval#part2"]}
+{"query": "How does the code handle leastsquare 2d?", "relevant": ["astropy.modeling.statistic::leastsquare_2d"]}
+{"query": "What does the function return when if object is a Parameter or dataclass field thereof?", "relevant": ["astropy.cosmology._src.parameter.utils::is_parameter_or_field"]}
+{"query": "How does the code handle is unedited config file?", "relevant": ["astropy.config.configuration::is_unedited_config_file"]}
+{"query": "How does the code handle biweight midcovariance?", "relevant": ["astropy.stats.biweight::biweight_midcovariance#part4"]}
+{"query": "Generate a random sampling of points on the surface of the unit sphere", "relevant": ["astropy.coordinates.angles.utils::uniform_spherical_random_surface"]}
+{"query": "How does the code handle lex?", "relevant": ["astropy.extern.ply.lex::lex#part1"]}
+{"query": "An ``NDData`` object with arithmetic", "relevant": ["astropy.nddata.compat::NDDataArray#part1"]}
+{"query": "How does the code handle check join type?", "relevant": ["astropy.table.operations::_check_join_type"]}
+{"query": "Where is convert global time implemented?", "relevant": ["astropy.io.fits.fitstime::_convert_global_time"]}
+{"query": "Find the Sky2Pix ConicEqualArea class definition", "relevant": ["astropy.modeling.projections::Sky2Pix_ConicEqualArea"]}
+{"query": "Find the LRParser class definition", "relevant": ["astropy.extern.ply.yacc::LRParser#part2"]}
+{"query": "How does the code handle cdf from intervals?", "relevant": ["astropy.stats.funcs::cdf_from_intervals"]}
+{"query": "Find the RedshiftScaleFactor class definition", "relevant": ["astropy.modeling.functional_models::RedshiftScaleFactor"]}
+{"query": "Which class implements Sky2Pix SlantZenithalPerspective?", "relevant": ["astropy.modeling.projections::Sky2Pix_SlantZenithalPerspective"]}
+{"query": "Which class implements CompoundModel?", "relevant": ["astropy.modeling.core::CompoundModel#part9"]}
+{"query": "Which class implements Time?", "relevant": ["astropy.time.core::Time#part8"]}
+{"query": "How does the code handle circmoment?", "relevant": ["astropy.stats.circstats::circmoment"]}
+{"query": "Which class implements E16?", "relevant": ["astropy.io.votable.exceptions::E16"]}
+{"query": "How does the code handle allclose?", "relevant": ["astropy.units.quantity::allclose"]}
+{"query": "FITS record array class", "relevant": ["astropy.io.fits.fitsrec::FITS_rec#part18"]}
+{"query": "Which class implements TrapezoidDisk2DKernel?", "relevant": ["astropy.convolution.kernels::TrapezoidDisk2DKernel"]}
+{"query": "Find the VerifyError class definition", "relevant": ["astropy.io.fits.verify::VerifyError"]}
+{"query": "Where is clear download cache implemented?", "relevant": ["astropy.utils.data::clear_download_cache#part2"]}
+{"query": "Which class implements CoordinateHelper?", "relevant": ["astropy.visualization.wcsaxes.coordinate_helpers::CoordinateHelper#part27"]}
+{"query": "Find the TickLabels class definition", "relevant": ["astropy.visualization.wcsaxes.ticklabels::TickLabels#part6"]}
+{"query": "Which class implements FunctionUnitBase?", "relevant": ["astropy.units.function.core::FunctionUnitBase#part2"]}
+{"query": "Find the BaseColumnInfo class definition", "relevant": ["astropy.utils.data_info::BaseColumnInfo#part2"]}
+{"query": "How does the code handle biweight midvariance?", "relevant": ["astropy.stats.biweight::biweight_midvariance#part3"]}
+{"query": "A class to represent tables of heterogeneous data", "relevant": ["astropy.table.table::Table#part43"]}
+{"query": "Standard deviation uncertainty assuming first order gaussian error\npropagation", "relevant": ["astropy.nddata.nduncertainty::StdDevUncertainty#part1"]}
+{"query": "Serialize the cosmology into a ECSV", "relevant": ["astropy.cosmology._src.io.builtin.ecsv::write_ecsv#part3"]}
+{"query": "Which class implements Model?", "relevant": ["astropy.modeling.core::Model#part24"]}
+{"query": "Find the ImageBaseHDU class definition", "relevant": ["astropy.io.fits.hdu.image::_ImageBaseHDU#part10"]}
+{"query": "Which class implements Model2DKernel?", "relevant": ["astropy.convolution.kernels::Model2DKernel#part2"]}
+{"query": "Invalid boolean value", "relevant": ["astropy.io.votable.exceptions::E05"]}
+{"query": "How does the code handle replace temperatures with kelvin?", "relevant": ["astropy.units.physical::_replace_temperatures_with_kelvin"]}
+{"query": "WCS objects perform standard WCS transformations, and correct for\n`SIP`_ and `distortion paper`_ table-lookup transfo...", "relevant": ["astropy.wcs.wcs::WCS#part47"]}
+{"query": "Write a Table object to a Parquet file", "relevant": ["astropy.io.misc.parquet::write_table_parquet#part1"]}
+{"query": "Where is available methods implemented?", "relevant": ["astropy.timeseries.periodograms.lombscargle_multiband.implementations.main::available_methods"]}
+{"query": "Which class implements Field?", "relevant": ["astropy.io.votable.tree::Field#part4"]}
+{"query": "FLRW cosmology with a cosmological constant and curvature", "relevant": ["astropy.cosmology._src.flrw.lambdacdm::LambdaCDM#part1"]}
+{"query": "Find the IllegalSecondWarning class definition", "relevant": ["astropy.coordinates.angles.errors::IllegalSecondWarning"]}
+{"query": "Which class implements CompoundBoundingBox?", "relevant": ["astropy.modeling.bounding_box::CompoundBoundingBox#part3"]}
+{"query": "How does the code handle lookup by attr factory?", "relevant": ["astropy.io.votable.tree::_lookup_by_attr_factory#part1"]}
+{"query": "Which class implements FlatLambdaCDM?", "relevant": ["astropy.cosmology._src.flrw.lambdacdm::FlatLambdaCDM#part2"]}
+{"query": "Find the WCS class definition", "relevant": ["astropy.wcs.wcs::WCS#part36"]}
+{"query": "FITS header class", "relevant": ["astropy.io.fits.header::Header#part12"]}
+{"query": "Which class implements AstropyLogger?", "relevant": ["astropy.logger::AstropyLogger#part6"]}
+{"query": "How does the code handle has even axis?", "relevant": ["astropy.convolution.utils::has_even_axis"]}
+{"query": "Which class implements EarthLocation?", "relevant": ["astropy.coordinates.earth::EarthLocation#part11"]}
+{"query": "High-level object providing a flexible interface for celestial coordinate\nrepresentation, manipulation, and transform...", "relevant": ["astropy.coordinates.sky_coordinate::SkyCoord#part21"]}
+{"query": "A class to represent time series data in tabular form", "relevant": ["astropy.timeseries.sampled::TimeSeries#part1"]}
+{"query": "Which class implements GRS80GeodeticRepresentation?", "relevant": ["astropy.coordinates.representation.geodetic::GRS80GeodeticRepresentation"]}
+{"query": "Find the Preprocessor class definition", "relevant": ["astropy.extern.ply.cpp::Preprocessor#part1"]}
+{"query": "How does the code handle write ecsv?", "relevant": ["astropy.io.misc.ecsv::write_ecsv"]}
+{"query": "Which class implements Pix2Sky CylindricalPerspective?", "relevant": ["astropy.modeling.projections::Pix2Sky_CylindricalPerspective"]}
+{"query": "Find the ImageBaseHDU class definition", "relevant": ["astropy.io.fits.hdu.image::_ImageBaseHDU#part15"]}
+{"query": "A model's compound bounding box", "relevant": ["astropy.modeling.bounding_box::CompoundBoundingBox#part4"]}
+{"query": "Where is helper degree to dimensionless implemented?", "relevant": ["astropy.units.quantity_helper.scipy_special::helper_degree_to_dimensionless"]}
+{"query": "Find the function that gets wcslib cfg", "relevant": ["astropy.wcs.setup_package::get_wcslib_cfg#part2"]}
+{"query": "Where is write result implemented?", "relevant": ["astropy.io.votable.validator.html::write_result"]}
+{"query": "A class to represent one row of a Table object", "relevant": ["astropy.table.row::Row#part2"]}
+{"query": "How does the code handle assert not strictly equal?", "relevant": ["astropy.timeseries.periodograms.lombscargle._testing::assert_not_strictly_equal"]}
+{"query": "A base wrapper class for things that modify Low Level WCSes", "relevant": ["astropy.wcs.wcsapi.wrappers.base::BaseWCSWrapper#part1"]}
+{"query": "Find the W28 class definition", "relevant": ["astropy.io.votable.exceptions::W28"]}
+{"query": "Which class implements NDDataArray?", "relevant": ["astropy.nddata.compat::NDDataArray#part4"]}
+{"query": "Find the BaseInterval class definition", "relevant": ["astropy.visualization.interval::BaseInterval#part1"]}
+{"query": "Descriptor to define custom attribute which gets stored in the object\n``meta`` dict and can have a defined default", "relevant": ["astropy.utils.metadata.core::MetaAttribute#part1"]}
+{"query": "Find the Quantity class definition", "relevant": ["astropy.units.quantity::Quantity#part7"]}
+{"query": "Find the RipleysKEstimator class definition", "relevant": ["astropy.stats.spatial::RipleysKEstimator#part1"]}
+{"query": "Abstract base class for the high-level WCS interface", "relevant": ["astropy.wcs.wcsapi.high_level_api::BaseHighLevelWCS#part1"]}
+{"query": "TABLE_ element: optionally contains data", "relevant": ["astropy.io.votable.tree::TableElement#part4"]}
+{"query": "Compute the number of outputs of two models", "relevant": ["astropy.modeling.separable::_compute_n_outputs"]}
+{"query": "Find the BaseData class definition", "relevant": ["astropy.io.ascii.core::BaseData#part3"]}
+{"query": "Find the function that sets enabled aliases", "relevant": ["astropy.units.core::set_enabled_aliases"]}
+{"query": "Where is compress tile implemented?", "relevant": ["astropy.io.fits.hdu.compressed._tiled_compression::_compress_tile"]}
+{"query": "Where is helper pvtob implemented?", "relevant": ["astropy.units.quantity_helper.erfa::helper_pvtob"]}
+{"query": "Find the QuantityInfo class definition", "relevant": ["astropy.units.quantity::QuantityInfo#part1"]}
+{"query": "Where is setup logging implemented?", "relevant": ["astropy.io.fits.scripts.fitscheck::setup_logging"]}
+{"query": "Which class implements CCDData?", "relevant": ["astropy.nddata.ccddata::CCDData#part2"]}
+{"query": "A linear map map of red, blue, green intensities into uint8 values", "relevant": ["astropy.visualization.lupton_rgb::LinearMapping"]}
+{"query": "Where is represent mixins as columns implemented?", "relevant": ["astropy.table.serialize::represent_mixins_as_columns#part1"]}
+{"query": "Base class for all fitters", "relevant": ["astropy.modeling.fitting::Fitter#part2"]}
+{"query": "One dimensional Ricker Wavelet model (sometimes known as a \"Mexican Hat\"\nmodel)", "relevant": ["astropy.modeling.functional_models::RickerWavelet1D#part2"]}
+{"query": "Which class implements Time?", "relevant": ["astropy.time.core::Time#part7"]}
+{"query": "Where is array str implemented?", "relevant": ["astropy.utils.masked.function_helpers::array_str"]}
+{"query": "Where is getattr implemented?", "relevant": ["astropy.utils.compat.__init__::__getattr__"]}
+{"query": "Where is biweight midvariance implemented?", "relevant": ["astropy.stats.biweight::biweight_midvariance#part4"]}
+{"query": "How does the code handle join?", "relevant": ["astropy.table.operations::join#part2"]}
+{"query": "One dimensional model for the Voigt profile", "relevant": ["astropy.modeling.functional_models::Voigt1D#part4"]}
+{"query": "Splitter for tdat data", "relevant": ["astropy.io.ascii.tdat::TdatDataSplitter#part2"]}
+{"query": "Find the Conf class definition", "relevant": ["astropy.table.jsviewer::Conf"]}
+{"query": "How does the code handle itrs to hadec mat?", "relevant": ["astropy.coordinates.builtin_frames.itrs_observed_transforms::itrs_to_hadec_mat"]}
+{"query": "Which class implements Spline1D?", "relevant": ["astropy.modeling.spline::Spline1D#part4"]}
+{"query": "Find the Header class definition", "relevant": ["astropy.io.fits.header::Header#part25"]}
+{"query": "How does the code handle is tuple?", "relevant": ["astropy.extern.configobj.validate::is_tuple"]}
+{"query": "Which class implements Field?", "relevant": ["astropy.io.votable.tree::Field#part5"]}
+{"query": "Where is import file to cache implemented?", "relevant": ["astropy.utils.data::import_file_to_cache#part2"]}
+{"query": "Which class implements Conf?", "relevant": ["astropy.logger::Conf"]}
+{"query": "Which class implements TETE?", "relevant": ["astropy.coordinates.builtin_frames.equatorial::TETE"]}
+{"query": "How does the code handle nufft1 lra?", "relevant": ["astropy.timeseries.periodograms.lombscargle.implementations.utils::nufft1_lra"]}
+{"query": "Find the NonRotationTransformationWarning class definition", "relevant": ["astropy.coordinates.errors::NonRotationTransformationWarning"]}
+{"query": "Which class implements UnicodeArrayEncodeError?", "relevant": ["astropy.io.fits.fitsrec::_UnicodeArrayEncodeError"]}
+{"query": "The base class for all the integral datatypes", "relevant": ["astropy.io.votable.converters::Integer#part1"]}
+{"query": "How does the code handle expand user in arg0?", "relevant": ["astropy.io.registry.core::_expand_user_in_arg0"]}
+{"query": "Represents a multi-dimensional Numpy array flattened onto a single line", "relevant": ["astropy.modeling.utils::array_repr_oneline"]}
+{"query": "How does the code handle get tables from qdp file?", "relevant": ["astropy.io.ascii.qdp::_get_tables_from_qdp_file#part2"]}
+{"query": "Where is make function with signature implemented?", "relevant": ["astropy.utils.codegen::make_function_with_signature#part2"]}
+{"query": "Base class for all models", "relevant": ["astropy.modeling.core::Model#part4"]}
+{"query": "How does the code handle check multidim table?", "relevant": ["astropy.io.ascii.core::_check_multidim_table"]}
+{"query": "Find the Card class definition", "relevant": ["astropy.io.fits.card::Card#part14"]}
+{"query": "How does the code handle solve?", "relevant": ["astropy.units.quantity_helper.function_helpers::solve"]}
+{"query": "Which class implements FITSDiff?", "relevant": ["astropy.io.fits.diff::FITSDiff#part4"]}
+{"query": "TABLE_ element: optionally contains data", "relevant": ["astropy.io.votable.tree::TableElement#part9"]}
+{"query": "How does the code handle is reserved keyword?", "relevant": ["astropy.io.fits.hdu.compressed.header::_is_reserved_keyword"]}
+{"query": "Find the Const2D class definition", "relevant": ["astropy.modeling.functional_models::Const2D"]}
+{"query": "Determine the size of a FITS header block if a non-blank separator is used\nbetween cards", "relevant": ["astropy.io.fits.header::_block_size"]}
+{"query": "Find the TimeEpochDate class definition", "relevant": ["astropy.time.formats::TimeEpochDate"]}
+{"query": "Where is periodic fit implemented?", "relevant": ["astropy.timeseries.periodograms.lombscargle_multiband.implementations.mle::periodic_fit#part2"]}
+{"query": "Find the Masked class definition", "relevant": ["astropy.utils.masked.core::Masked#part1"]}
+{"query": "Which class implements LRParser?", "relevant": ["astropy.extern.ply.yacc::LRParser#part5"]}
+{"query": "Find the LuptonAsinhStretch class definition", "relevant": ["astropy.visualization.lupton_rgb::LuptonAsinhStretch#part2"]}
+{"query": "How does the code handle itrs to cirs?", "relevant": ["astropy.coordinates.builtin_frames.intermediate_rotation_transforms::itrs_to_cirs"]}
+{"query": "IPAC table header", "relevant": ["astropy.io.ascii.ipac::IpacHeader#part1"]}
+{"query": "How does the code handle frame attrs from set?", "relevant": ["astropy.coordinates.transformations.graph::frame_attrs_from_set"]}
+{"query": "Behaves like string", "relevant": ["astropy.extern.configobj.configobj::TemplateInterpolation"]}
+{"query": "Provide the parser used by Generic, FITS and VOUnit", "relevant": ["astropy.units.format.generic::_GenericParserMixin#part2"]}
+{"query": "Mixin class to add arithmetic to an NDData object", "relevant": ["astropy.nddata.mixins.ndarithmetic::NDArithmeticMixin#part8"]}
+{"query": "Read a Table object from an HDF5 file", "relevant": ["astropy.io.misc.hdf5::read_table_hdf5#part2"]}
+{"query": "WCS objects perform standard WCS transformations, and correct for\n`SIP`_ and `distortion paper`_ table-lookup transfo...", "relevant": ["astropy.wcs.wcs::WCS#part27"]}
+{"query": "TDAT table header", "relevant": ["astropy.io.ascii.tdat::TdatHeader#part5"]}
+{"query": "How does the code handle init log?", "relevant": ["astropy.logger::_init_log"]}
+{"query": "How does the code handle timedelta representer?", "relevant": ["astropy.io.misc.yaml::_timedelta_representer"]}
+{"query": "Construct a callable piecewise-linear CDF from a pair of arrays", "relevant": ["astropy.stats.funcs::cdf_from_intervals"]}
+{"query": "Used to mark a function or class as deprecated", "relevant": ["astropy.utils.decorators::deprecated#part1"]}
+{"query": "How does the code handle from model?", "relevant": ["astropy.cosmology._src.io.builtin.model::from_model"]}
+{"query": "Find the Table class definition", "relevant": ["astropy.table.table::Table#part55"]}
+{"query": "Where is report platform implemented?", "relevant": ["astropy.utils.system_info::_report_platform"]}
+{"query": "Which class implements FLRW?", "relevant": ["astropy.cosmology._src.flrw.base::FLRW#part1"]}
+{"query": "One dimensional smoothly broken power law model", "relevant": ["astropy.modeling.powerlaws::SmoothlyBrokenPowerLaw1D#part2"]}
+{"query": "A square root stretch", "relevant": ["astropy.visualization.stretch::SqrtStretch#part1"]}
+{"query": "How does the code handle write parquet votable?", "relevant": ["astropy.io.misc.parquet::write_parquet_votable#part1"]}
+{"query": "Which class implements StoreListAction?", "relevant": ["astropy.io.fits.scripts.fitsdiff::StoreListAction"]}
+{"query": "What does the function return when the optimal histogram bin width using Knuth's rule?", "relevant": ["astropy.stats.histogram::knuth_bin_width#part1"]}
+{"query": "Where is apply slices implemented?", "relevant": ["astropy.visualization.wcsaxes.wcsapi::apply_slices"]}
+{"query": "Where is nanstd implemented?", "relevant": ["astropy.units.quantity_helper.function_helpers::nanstd"]}
+{"query": "Class that provides the column-level interface for index operations", "relevant": ["astropy.table.index::SlicedIndex#part2"]}
+{"query": "Find the WCSAxes class definition", "relevant": ["astropy.visualization.wcsaxes.core::WCSAxes#part7"]}
+{"query": "Which class implements Spline1D?", "relevant": ["astropy.modeling.spline::Spline1D#part3"]}
+{"query": "How does the code handle redshift hubble?", "relevant": ["astropy.cosmology._src.units_equivalencies::redshift_hubble#part2"]}
+{"query": "How does the code handle getdata?", "relevant": ["astropy.io.fits.convenience::getdata#part2"]}
+{"query": "Which class implements TimeBase?", "relevant": ["astropy.time.core::TimeBase#part20"]}
+{"query": "Where is quantity asanyarray implemented?", "relevant": ["astropy.modeling.utils::quantity_asanyarray"]}
+{"query": "Search the online Astropy documentation for the given query", "relevant": ["astropy.utils.misc::online_help"]}
+{"query": "How does the code handle setup logging?", "relevant": ["astropy.io.fits.scripts.fitscheck::setup_logging"]}
+{"query": "Where is to df implemented?", "relevant": ["astropy.table._dataframes::to_df#part2"]}
+{"query": "FITS header class", "relevant": ["astropy.io.fits.header::Header#part24"]}
+{"query": "Which class implements LuptonAsinhStretch?", "relevant": ["astropy.visualization.lupton_rgb::LuptonAsinhStretch#part2"]}
+{"query": "How does the code handle try url open?", "relevant": ["astropy.utils.data::_try_url_open"]}
+{"query": "How does the code handle support nddata?", "relevant": ["astropy.nddata.decorators::support_nddata#part3"]}
+{"query": "How does the code handle write table parquet?", "relevant": ["astropy.io.misc.parquet::write_table_parquet#part1"]}
+{"query": "A class to represent tables of heterogeneous data", "relevant": ["astropy.table.table::Table#part16"]}
+{"query": "The main axes class that can be used to show world coordinates from a WCS", "relevant": ["astropy.visualization.wcsaxes.core::WCSAxes#part7"]}
+{"query": "Find the Optimization class definition", "relevant": ["astropy.modeling.optimizers::Optimization#part1"]}
+{"query": "Apply names, include_names and exclude_names to a table or BaseHeader", "relevant": ["astropy.io.ascii.core::_apply_include_exclude_names"]}
+{"query": "Where is print headers as table implemented?", "relevant": ["astropy.io.fits.scripts.fitsheader::print_headers_as_table"]}
+{"query": "How does the code handle fqn class?", "relevant": ["astropy.coordinates.representation.base::_fqn_class"]}
+{"query": "Where is pyarrow zero implemented?", "relevant": ["astropy.io.misc.pyarrow.csv::pyarrow_zero"]}
+{"query": "Where is read write help implemented?", "relevant": ["astropy.io.ascii.ui::_read_write_help"]}
+{"query": "Compressed Image HDU class", "relevant": ["astropy.io.fits.hdu.compressed.compressed::CompImageHDU#part11"]}
+{"query": "Which class implements Covariance?", "relevant": ["astropy.nddata.covariance::Covariance#part7"]}
+{"query": "How does the code handle copy with new parameters?", "relevant": ["astropy.modeling._fitting_parallel::_copy_with_new_parameters"]}
+{"query": "Write this Cosmology object out in the specified format", "relevant": ["astropy.cosmology._src.io.connect::CosmologyWrite"]}
+{"query": "How does the code handle to model?", "relevant": ["astropy.cosmology._src.io.builtin.model::to_model#part1"]}
+{"query": "Which class implements BaseDiff?", "relevant": ["astropy.io.fits.diff::_BaseDiff#part3"]}
+{"query": "Base class for compound models", "relevant": ["astropy.modeling.core::CompoundModel#part16"]}
+{"query": "Find the TRFLSQFitter class definition", "relevant": ["astropy.modeling.fitting::TRFLSQFitter"]}
+{"query": "Find the Conf class definition", "relevant": ["astropy.samp.__init__::Conf"]}
+{"query": "A Low Level WCS wrapper which applies an array slice to a WCS", "relevant": ["astropy.wcs.wcsapi.wrappers.sliced_wcs::SlicedLowLevelWCS#part3"]}
+{"query": "Find the SAMPClient class definition", "relevant": ["astropy.samp.client::SAMPClient#part5"]}
+{"query": "Find the Table class definition", "relevant": ["astropy.table.table::Table#part24"]}
+{"query": "Which class implements Validator?", "relevant": ["astropy.extern.configobj.validate::Validator#part4"]}
+{"query": "How does the code handle converters and unit?", "relevant": ["astropy.units.quantity_helper.converters::converters_and_unit#part2"]}
+{"query": "Find the Distribution class definition", "relevant": ["astropy.uncertainty.core::Distribution#part3"]}
+{"query": "Clears the data file cache by deleting the local file(s)", "relevant": ["astropy.utils.data::clear_download_cache#part1"]}
+{"query": "A 2D Ellipse model", "relevant": ["astropy.modeling.functional_models::Ellipse2D#part1"]}
+{"query": "Which class implements AstropyLogger?", "relevant": ["astropy.logger::AstropyLogger#part7"]}
+{"query": "Find the Quantity class definition", "relevant": ["astropy.units.quantity::Quantity#part24"]}
+{"query": "How does the code handle linspace?", "relevant": ["astropy.time.time_helper.function_helpers::linspace"]}
+{"query": "How does the code handle read csv?", "relevant": ["astropy.io.misc.pyarrow.csv::read_csv#part1"]}
+{"query": "Find the Index class definition", "relevant": ["astropy.table.index::Index#part7"]}
+{"query": "Context manager to temporarily override individual\ncolumn info", "relevant": ["astropy.table.info::serialize_method_as#part2"]}
+{"query": "Find the SAMPIntegratedClient class definition", "relevant": ["astropy.samp.integrated_client::SAMPIntegratedClient#part2"]}
+{"query": "Which class implements CoordinateHelper?", "relevant": ["astropy.visualization.wcsaxes.coordinate_helpers::CoordinateHelper#part16"]}
+{"query": "Which class implements Sersic2D?", "relevant": ["astropy.modeling.functional_models::Sersic2D#part3"]}
+{"query": "Which class implements CosmologyFromFormat?", "relevant": ["astropy.cosmology._src.io.connect::CosmologyFromFormat#part3"]}
+{"query": "Mixin class to create a subclasses such as MaskedQuantityInfo", "relevant": ["astropy.utils.masked.core::MaskedArraySubclassInfo"]}
+{"query": "2D Airy disk kernel", "relevant": ["astropy.convolution.kernels::AiryDisk2DKernel#part1"]}
+{"query": "Where is coord matrix implemented?", "relevant": ["astropy.modeling.separable::_coord_matrix"]}
+{"query": "Find the Card class definition", "relevant": ["astropy.io.fits.card::Card#part15"]}
+{"query": "How does the code handle bayesian info criterion lsq?", "relevant": ["astropy.stats.info_theory::bayesian_info_criterion_lsq#part1"]}
+{"query": "Which class implements FValidateField?", "relevant": ["astropy.cosmology._src.parameter.core::_FValidateField"]}
+{"query": "Find the NLLSQFitter class definition", "relevant": ["astropy.modeling.fitting::_NLLSQFitter#part1"]}
+{"query": "FITS table extension base HDU class", "relevant": ["astropy.io.fits.hdu.table::_TableBaseHDU#part6"]}
+{"query": "Which class implements PointMeasures?", "relevant": ["astropy.stats.bayesian_blocks::PointMeasures"]}
+{"query": "Find the FITS rec class definition", "relevant": ["astropy.io.fits.fitsrec::FITS_rec#part7"]}
+{"query": "Which class implements W44?", "relevant": ["astropy.io.votable.exceptions::W44"]}
+{"query": "Which class implements RGBImageMappingLupton?", "relevant": ["astropy.visualization.lupton_rgb::RGBImageMappingLupton#part2"]}
+{"query": "Which class implements LambdaCDM?", "relevant": ["astropy.cosmology._src.flrw.lambdacdm::LambdaCDM#part4"]}
+{"query": "Compute the box least squares periodogram", "relevant": ["astropy.timeseries.periodograms.bls.core::BoxLeastSquares#part6"]}
+{"query": "Which class implements DynamicMatrixTransform?", "relevant": ["astropy.coordinates.transformations.affine::DynamicMatrixTransform"]}
+{"query": "How does the code handle ecliptic to iau76 icrs?", "relevant": ["astropy.coordinates.builtin_frames.ecliptic_transforms::ecliptic_to_iau76_icrs"]}
+{"query": "Which class implements Zenithal?", "relevant": ["astropy.modeling.projections::Zenithal"]}
+{"query": "How does the code handle bind bounding box?", "relevant": ["astropy.modeling.core::bind_bounding_box"]}
+{"query": "Convert quantities between redshift and distance", "relevant": ["astropy.cosmology._src.units_equivalencies::redshift_distance#part2"]}
+{"query": "How does the code handle cross like posonly?", "relevant": ["astropy.units.quantity_helper.function_helpers::cross_like_a_b_posonly"]}
+{"query": "How does the code handle RA DEC ORDER?", "relevant": ["astropy.wcs.docstrings::RA_DEC_ORDER"]}
+{"query": "Find the ShapedLikeNDArray class definition", "relevant": ["astropy.utils.shapes::ShapedLikeNDArray#part1"]}
+{"query": "Given a list of sequences, modules or dictionaries of units, or\nsingle units, return a flat set of all the units found", "relevant": ["astropy.units.core::_flatten_units_collection"]}
+{"query": "How does the code handle is bool list?", "relevant": ["astropy.extern.configobj.validate::is_bool_list"]}
+{"query": "How does the code handle discretize integrate 1D?", "relevant": ["astropy.convolution.utils::discretize_integrate_1D"]}
+{"query": "Helper class to control one of the coordinates in the\n:class:`~astropy", "relevant": ["astropy.visualization.wcsaxes.coordinate_helpers::CoordinateHelper#part1"]}
+{"query": "How does the code handle is list?", "relevant": ["astropy.extern.configobj.validate::is_list"]}
+{"query": "A scalar value or array values with associated uncertainty distribution", "relevant": ["astropy.uncertainty.core::Distribution#part6"]}
+{"query": "Where is kuiper two implemented?", "relevant": ["astropy.stats.funcs::kuiper_two"]}
+{"query": "Which class implements UnitsMapping?", "relevant": ["astropy.modeling.mappings::UnitsMapping#part1"]}
+{"query": "A container for a units equivalency", "relevant": ["astropy.units.equivalencies::Equivalency"]}
+{"query": "Chandra X-ray Center seconds from 1998-01-01 00:00:00 TT", "relevant": ["astropy.time.formats::TimeCxcSec"]}
+{"query": "A descriptor for classes that have a ``meta`` property", "relevant": ["astropy.utils.metadata.core::MetaData#part1"]}
+{"query": "A frame attribute that is a quantity with specified units and shape\n(optionally)", "relevant": ["astropy.coordinates.attributes::QuantityAttribute#part1"]}
+{"query": "How does the code handle words group?", "relevant": ["astropy.io.fits.util::_words_group"]}
+{"query": "Write this CCDData object out in the specified format", "relevant": ["astropy.nddata.mixins.ndio::NDDataWrite"]}
+{"query": "Find the Table class definition", "relevant": ["astropy.table.table::Table#part49"]}
+{"query": "Which class implements CompoundModel?", "relevant": ["astropy.modeling.core::CompoundModel#part19"]}
+{"query": "Where is to skycoord implemented?", "relevant": ["astropy.coordinates.jparser::to_skycoord"]}
+{"query": "Where is table meta as dict implemented?", "relevant": ["astropy.io.misc.ecsv::table_meta_as_dict"]}
+{"query": "Conic orthomorphic projection - pixel to sky", "relevant": ["astropy.modeling.projections::Pix2Sky_ConicOrthomorphic"]}
+{"query": "Which class implements Planar2D?", "relevant": ["astropy.modeling.functional_models::Planar2D"]}
+{"query": "Find the CCDData class definition", "relevant": ["astropy.nddata.ccddata::CCDData#part3"]}
+{"query": "Basic table Header Reader", "relevant": ["astropy.io.ascii.basic::BasicHeader"]}
+{"query": "Find the HTMLInputter class definition", "relevant": ["astropy.io.ascii.html::HTMLInputter"]}
+{"query": "Find the TableLite class definition", "relevant": ["astropy.table.serialize::_TableLite"]}
+{"query": "Find the function that hass units", "relevant": ["astropy.timeseries.periodograms.lombscargle_multiband.core::has_units"]}
+{"query": "Default ephemerides for calculating positions of Solar-System bodies", "relevant": ["astropy.coordinates.solar_system::solar_system_ephemeris#part2"]}
+{"query": "Which class implements FunctionUnitBase?", "relevant": ["astropy.units.function.core::FunctionUnitBase#part5"]}
+{"query": "How does the code handle get pyarrow?", "relevant": ["astropy.io.misc.parquet::get_pyarrow"]}
+{"query": "An equatorial coordinate or frame using the True Equator and True Equinox (TETE)", "relevant": ["astropy.coordinates.builtin_frames.equatorial::TETE"]}
+{"query": "How does the code handle strip comment lines?", "relevant": ["astropy.io.misc.pyarrow.csv::strip_comment_lines#part1"]}
+{"query": "Which class implements Mesa?", "relevant": ["astropy.io.ascii.mesa::Mesa#part1"]}
+{"query": "Which class implements CCDData?", "relevant": ["astropy.nddata.ccddata::CCDData#part4"]}
+{"query": "Which class implements IORegistryError?", "relevant": ["astropy.io.registry.base::IORegistryError"]}
+{"query": "Which class implements TimeSeries?", "relevant": ["astropy.timeseries.sampled::TimeSeries#part1"]}
+{"query": "How does the code handle compress tile?", "relevant": ["astropy.io.fits.hdu.compressed._tiled_compression::_compress_tile"]}
+{"query": "Find the NDArrayShapeMethods class definition", "relevant": ["astropy.utils.shapes::NDArrayShapeMethods#part2"]}
+{"query": "Find the UnitSphericalRepresentation class definition", "relevant": ["astropy.coordinates.representation.spherical::UnitSphericalRepresentation#part1"]}
+{"query": "Parabolic projection - sky to pixel", "relevant": ["astropy.modeling.projections::Sky2Pix_Parabolic"]}
+{"query": "How does the code handle kuiper false positive probability?", "relevant": ["astropy.stats.funcs::kuiper_false_positive_probability#part1"]}
+{"query": "Where is vstack implemented?", "relevant": ["astropy.table.operations::vstack#part2"]}
+{"query": "How does the code handle convolve fft?", "relevant": ["astropy.convolution.convolve::convolve_fft#part6"]}
+{"query": "This is used to reconstruct units when passed around by\nmultiprocessing", "relevant": ["astropy.units.core::_recreate_irreducible_unit"]}
+{"query": "Allows inputs to be reordered, duplicated or dropped", "relevant": ["astropy.modeling.mappings::Mapping#part2"]}
+{"query": "The base class for coordinate frames", "relevant": ["astropy.coordinates.baseframe::BaseCoordinateFrame#part11"]}
+{"query": "How does the code handle write mrt?", "relevant": ["astropy.cosmology._src.io.builtin.mrt::write_mrt#part1"]}
+{"query": "How does the code handle get extensions?", "relevant": ["astropy.timeseries.periodograms.lombscargle.setup_package::get_extensions"]}
+{"query": "How does the code handle fk4 terms?", "relevant": ["astropy.coordinates.builtin_frames.fk4::fk4_e_terms"]}
+{"query": "Where is overlap slices implemented?", "relevant": ["astropy.nddata.utils::overlap_slices#part2"]}
+{"query": "Where is circstd implemented?", "relevant": ["astropy.stats.circstats::circstd#part2"]}
+{"query": "Parses the various angle formats including:\n\n   * 01:02:30", "relevant": ["astropy.coordinates.angles.formats::_AngleParser#part2"]}
+{"query": "Reader for table header without a header", "relevant": ["astropy.io.ascii.basic::NoHeaderHeader"]}
+{"query": "Retrieves a data file from the standard locations for the package and\nprovides a local filename for the data", "relevant": ["astropy.utils.data::get_pkg_data_filename#part3"]}
+{"query": "Where is get name implemented?", "relevant": ["astropy.modeling.bounding_box::get_name"]}
+{"query": "Which class implements VariancePropagationMixin?", "relevant": ["astropy.nddata.nduncertainty::_VariancePropagationMixin#part6"]}
+{"query": "Where is check has pyarrow implemented?", "relevant": ["astropy.io.misc.pyarrow.csv::check_has_pyarrow"]}
+{"query": "Which class implements Card?", "relevant": ["astropy.io.fits.card::Card#part12"]}
+{"query": "Which class implements SpectralQuantity?", "relevant": ["astropy.coordinates.spectral_quantity::SpectralQuantity#part1"]}
+{"query": "Find the BinTableHDU class definition", "relevant": ["astropy.io.fits.hdu.table::BinTableHDU#part7"]}
+{"query": "Find the Mapping class definition", "relevant": ["astropy.visualization.lupton_rgb::Mapping#part3"]}
+{"query": "Which class implements MaskedRecarray?", "relevant": ["astropy.utils.masked.core::MaskedRecarray"]}
+{"query": "Which class implements StreamingHDU?", "relevant": ["astropy.io.fits.hdu.streaming::StreamingHDU#part1"]}
+{"query": "Find the BinnedTimeSeries class definition", "relevant": ["astropy.timeseries.binned::BinnedTimeSeries#part1"]}
+{"query": "A representation of a (scaled) function of a number with a unit", "relevant": ["astropy.units.function.core::FunctionQuantity#part1"]}
+{"query": "Where is resolve id implemented?", "relevant": ["astropy.io.votable.tree::resolve_id"]}
+{"query": "Compute the Lomb-Scargle Periodogram", "relevant": ["astropy.timeseries.periodograms.lombscargle_multiband.core::LombScargleMultiband#part3"]}
+{"query": "Where is construct indices implemented?", "relevant": ["astropy.table.connect::construct_indices"]}
+{"query": "Which class implements Card?", "relevant": ["astropy.io.fits.card::Card#part11"]}
+{"query": "Which class implements HTML?", "relevant": ["astropy.io.ascii.html::HTML#part2"]}
+{"query": "Which class implements Attribute?", "relevant": ["astropy.coordinates.attributes::Attribute#part1"]}
+{"query": "Which class implements SpectralQuantity?", "relevant": ["astropy.coordinates.spectral_quantity::SpectralQuantity#part6"]}
+{"query": "How does the code handle simple table?", "relevant": ["astropy.table.table_helpers::simple_table#part1"]}
+{"query": "Find the function that gets null values per column", "relevant": ["astropy.io.misc.ecsv::get_null_values_per_column#part2"]}
+{"query": "Find the FixedWidthData class definition", "relevant": ["astropy.io.ascii.fixedwidth::FixedWidthData"]}
+{"query": "How does the code handle bitfield to boolean mask?", "relevant": ["astropy.nddata.bitmask::bitfield_to_boolean_mask#part5"]}
+{"query": "Find the CompoundModel class definition", "relevant": ["astropy.modeling.core::CompoundModel#part5"]}
+{"query": "Where is human time implemented?", "relevant": ["astropy.utils.console::human_time"]}
+{"query": "Which class implements TimeAstropyTime?", "relevant": ["astropy.time.formats::TimeAstropyTime#part1"]}
+{"query": "The column fields as defined using ``FIELD`` elements do not match\nthose in the headers of the embedded FITS file", "relevant": ["astropy.io.votable.exceptions::W19"]}
+{"query": "How does the code handle info?", "relevant": ["astropy.io.fits.convenience::info"]}
+{"query": "How does the code handle linear wcs fit?", "relevant": ["astropy.wcs.utils::_linear_wcs_fit"]}
+{"query": "Which class implements ColumnAttribute?", "relevant": ["astropy.io.fits.column::ColumnAttribute#part1"]}
+{"query": "Find the NFW class definition", "relevant": ["astropy.modeling.physical_models::NFW#part3"]}
+{"query": "How does the code handle read mrt?", "relevant": ["astropy.cosmology._src.io.builtin.mrt::read_mrt#part1"]}
+{"query": "Find the SigmaClip class definition", "relevant": ["astropy.stats.sigma_clipping::SigmaClip#part3"]}
+{"query": "Create a cutout object from a 2D array", "relevant": ["astropy.nddata.utils::Cutout2D#part4"]}
+{"query": "Which class implements Table?", "relevant": ["astropy.table.table::Table#part13"]}
+{"query": "Where is iscomplex implemented?", "relevant": ["astropy.utils.masked.function_helpers::iscomplex"]}
+{"query": "A model's bounding box", "relevant": ["astropy.modeling.bounding_box::ModelBoundingBox#part3"]}
+{"query": "Which class implements CoordinateFrameInfo?", "relevant": ["astropy.coordinates.baseframe::CoordinateFrameInfo#part3"]}
+{"query": "Which class implements WCS?", "relevant": ["astropy.wcs.wcs::WCS#part34"]}
+{"query": "How does the code handle resize?", "relevant": ["astropy.io.votable.tree::_resize"]}
+{"query": "The main axes class that can be used to show world coordinates from a WCS", "relevant": ["astropy.visualization.wcsaxes.core::WCSAxes#part8"]}
+{"query": "Find the W06 class definition", "relevant": ["astropy.io.votable.exceptions::W06"]}
+{"query": "Two dimensional Box model", "relevant": ["astropy.modeling.functional_models::Box2D#part1"]}
+{"query": "Find the FITS rec class definition", "relevant": ["astropy.io.fits.fitsrec::FITS_rec#part1"]}
+{"query": "Where is call errorfunc implemented?", "relevant": ["astropy.extern.ply.yacc::call_errorfunc"]}
+{"query": "One or more value(s) with spectral units", "relevant": ["astropy.coordinates.spectral_quantity::SpectralQuantity#part6"]}
+{"query": "Split a long string into parts where each part is no longer than ``width``\nand no word is cut into two pieces", "relevant": ["astropy.io.fits.util::_words_group"]}
+{"query": "Find the LMLSQFitter class definition", "relevant": ["astropy.modeling.fitting::LMLSQFitter#part1"]}
+{"query": "Find the FastOptionsError class definition", "relevant": ["astropy.io.ascii.core::FastOptionsError"]}
+{"query": "How does the code handle no angle subclass?", "relevant": ["astropy.coordinates.angles.core::_no_angle_subclass"]}
+{"query": "Find the SlicedLowLevelWCS class definition", "relevant": ["astropy.wcs.wcsapi.wrappers.sliced_wcs::SlicedLowLevelWCS#part2"]}
+{"query": "Which class implements SlicedIndex?", "relevant": ["astropy.table.index::SlicedIndex#part1"]}
+{"query": "Boolean mask array that is always False", "relevant": ["astropy.table.column::FalseArray"]}
+{"query": "How does the code handle icrs to baryecliptic?", "relevant": ["astropy.coordinates.builtin_frames.ecliptic_transforms::icrs_to_baryecliptic"]}
+{"query": "Find the Time class definition", "relevant": ["astropy.time.core::Time#part13"]}
+{"query": "Where is get header from yaml implemented?", "relevant": ["astropy.table.meta::get_header_from_yaml"]}
+{"query": "Gets the configuration object or section associated with a particular\npackage or module", "relevant": ["astropy.config.configuration::get_config#part2"]}
+{"query": "Which class implements Header?", "relevant": ["astropy.io.fits.header::Header#part17"]}
+{"query": "Where is array repr implemented?", "relevant": ["astropy.units.quantity_helper.function_helpers::array_repr"]}
+{"query": "Base class for frames, which are collections of\n:class:`~astropy", "relevant": ["astropy.visualization.wcsaxes.frame::BaseFrame#part3"]}
+{"query": "Find the solar system ephemeris class definition", "relevant": ["astropy.coordinates.solar_system::solar_system_ephemeris#part2"]}
+{"query": "Find the Header class definition", "relevant": ["astropy.io.fits.header::Header#part22"]}
+{"query": "Which class implements Short?", "relevant": ["astropy.io.votable.converters::Short"]}
+{"query": "Find the XMLWriter class definition", "relevant": ["astropy.utils.xml.writer::XMLWriter#part6"]}
+{"query": "Where is check id implemented?", "relevant": ["astropy.utils.xml.check::check_id"]}
+{"query": "Where is trig sum implemented?", "relevant": ["astropy.timeseries.periodograms.lombscargle.implementations.utils::trig_sum#part3"]}
+{"query": "Find the SCEngine class definition", "relevant": ["astropy.table.soco::SCEngine#part2"]}
+{"query": "Where is array str scalar implemented?", "relevant": ["astropy.utils.masked.function_helpers::_array_str_scalar"]}
+{"query": "Which class implements BoundingDomain?", "relevant": ["astropy.modeling.bounding_box::_BoundingDomain#part2"]}
+{"query": "How does the code handle reduceat?", "relevant": ["astropy.timeseries.downsample::reduceat"]}
+{"query": "Default Parameter value validator", "relevant": ["astropy.cosmology._src.parameter.converter::validate_with_unit"]}
+{"query": "How does the code handle putmask impl?", "relevant": ["astropy.units.quantity_helper.function_helpers::putmask_impl"]}
+{"query": "How does the code handle bls fast?", "relevant": ["astropy.timeseries.periodograms.bls.methods::bls_fast"]}
+{"query": "Find the FixedWidthHeader class definition", "relevant": ["astropy.io.ascii.fixedwidth::FixedWidthHeader#part1"]}
+{"query": "Find the TimeBase class definition", "relevant": ["astropy.time.core::TimeBase#part9"]}
+{"query": "Find the QDPSplitter class definition", "relevant": ["astropy.io.ascii.qdp::QDPSplitter"]}
+{"query": "Find the FastBasic class definition", "relevant": ["astropy.io.ascii.fastbasic::FastBasic#part1"]}
+{"query": "How does the code handle add refraction?", "relevant": ["astropy.coordinates.builtin_frames.itrs_observed_transforms::add_refraction"]}
+{"query": "Find the Section class definition", "relevant": ["astropy.io.fits.hdu.image::Section#part3"]}
+{"query": "Descriptor that data classes use to add an ``info`` attribute for storing\ndata attributes in a uniform and portable way", "relevant": ["astropy.utils.data_info::DataInfo#part1"]}
+{"query": "Recursively normalize, inferring upper level names for unadorned tuples", "relevant": ["astropy.units.structured::_normalize_names"]}
+{"query": "A classic rectangular frame", "relevant": ["astropy.visualization.wcsaxes.frame::RectangularFrame1D"]}
+{"query": "Which class implements BinnedTimeSeries?", "relevant": ["astropy.timeseries.binned::BinnedTimeSeries#part5"]}
+{"query": "Colles' conic perspective projection - pixel to sky", "relevant": ["astropy.modeling.projections::Pix2Sky_ConicPerspective"]}
+{"query": "Where is rayleightest implemented?", "relevant": ["astropy.stats.circstats::rayleightest#part1"]}
+{"query": "Write-only Registry", "relevant": ["astropy.io.registry.core::UnifiedOutputRegistry#part3"]}
+{"query": "Which class implements NonLinearLSQFitter?", "relevant": ["astropy.modeling.fitting::_NonLinearLSQFitter#part1"]}
+{"query": "Handles a fixed-size array of complex numbers", "relevant": ["astropy.io.votable.converters::ComplexArray"]}
+{"query": "Find the Time class definition", "relevant": ["astropy.time.core::Time#part6"]}
+{"query": "Find the NDData class definition", "relevant": ["astropy.nddata.nddata::NDData#part2"]}
+{"query": "Where is custom model inputs implemented?", "relevant": ["astropy.modeling.core::_custom_model_inputs"]}
+{"query": "Which class implements DaophotHeader?", "relevant": ["astropy.io.ascii.daophot::DaophotHeader#part1"]}
+{"query": "How does the code handle observed to icrs?", "relevant": ["astropy.coordinates.builtin_frames.icrs_observed_transforms::observed_to_icrs"]}
+{"query": "DAOphot format table", "relevant": ["astropy.io.ascii.daophot::Daophot#part1"]}
+{"query": "How does the code handle read table fits?", "relevant": ["astropy.io.fits.connect::read_table_fits#part4"]}
+{"query": "Variance uncertainty assuming first order Gaussian error\npropagation", "relevant": ["astropy.nddata.nduncertainty::VarianceUncertainty#part2"]}
+{"query": "Which class implements BaseCoordinateFrame?", "relevant": ["astropy.coordinates.baseframe::BaseCoordinateFrame#part3"]}
+{"query": "Find the WCS class definition", "relevant": ["astropy.wcs.wcs::WCS#part23"]}
+{"query": "Find the SphericalCircle class definition", "relevant": ["astropy.visualization.wcsaxes.patches::SphericalCircle#part1"]}
+{"query": "FLRW cosmology with a variable dark energy EoS and curvature", "relevant": ["astropy.cosmology._src.flrw.w0wzcdm::w0wzCDM#part1"]}
+{"query": "Which class implements FlatFLRWMixin?", "relevant": ["astropy.cosmology._src.flrw.base::FlatFLRWMixin#part1"]}
+{"query": "Where is is float list implemented?", "relevant": ["astropy.extern.configobj.validate::is_float_list"]}
+{"query": "Geocentric mean ecliptic coordinates", "relevant": ["astropy.coordinates.builtin_frames.ecliptic::GeocentricMeanEcliptic"]}
+{"query": "Find the Quantity class definition", "relevant": ["astropy.units.quantity::Quantity#part17"]}
+{"query": "Find the Table class definition", "relevant": ["astropy.table.table::Table#part56"]}
+{"query": "Find the PhysicsSphericalDifferential class definition", "relevant": ["astropy.coordinates.representation.spherical::PhysicsSphericalDifferential#part2"]}
+{"query": "Which class implements SAMPProxyError?", "relevant": ["astropy.samp.errors::SAMPProxyError"]}
+{"query": "A general utility for storing, manipulating, and I/O of covariance matrices", "relevant": ["astropy.nddata.covariance::Covariance#part7"]}
+{"query": "Which class implements W04?", "relevant": ["astropy.io.votable.exceptions::W04"]}
+{"query": "How does the code handle runmain?", "relevant": ["astropy.extern.ply.lex::runmain"]}

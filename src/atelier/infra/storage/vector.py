@@ -31,10 +31,9 @@ try:
 
     _numpy = _numpy_module
 except ImportError:
-    logger.warning(
-        "Suppressed exception at vector.py:30",
-        exc_info=True,
-    )
+    # numpy is an optional dependency; vector/semantic features stay disabled when
+    # it is absent. This is an expected configuration, not an error -- stay silent.
+    _numpy = None
 
 
 def is_vector_enabled() -> bool:

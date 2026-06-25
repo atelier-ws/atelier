@@ -32,9 +32,6 @@ try:
 except ImportError:  # pragma: no cover - non-POSIX platforms
     fcntl = None  # type: ignore[assignment]
 
-from rapidfuzz import process as rapidfuzz_process
-from rapidfuzz.distance import DamerauLevenshtein
-
 from atelier.core.capabilities.code_context.ann_symbol_index import (
     SymbolAnnIndex,
     ann_retrieval_enabled,
@@ -116,9 +113,49 @@ def _shared_db_lock(db_path: Path) -> threading.RLock:
         return lock
 
 
+class _ReusedConnection:
+    """Wraps a shared sqlite connection so per-call ``with self._connect()`` and
+    ``contextlib.closing(...)`` blocks reuse it instead of opening a new one.
+    ``close()`` and ``__exit__`` are no-ops -- the owning ``_reuse_connection``
+    scope commits and closes the real connection once. Confined to a single
+    thread via the engine's thread-local, matching sqlite's per-thread rule."""
+
+    __slots__ = ("_conn",)
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        object.__setattr__(self, "_conn", conn)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(object.__getattribute__(self, "_conn"), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(object.__getattribute__(self, "_conn"), name, value)
+
+    def __enter__(self) -> sqlite3.Connection:
+        conn: sqlite3.Connection = object.__getattribute__(self, "_conn")
+        return conn
+
+    def __exit__(self, *exc: object) -> Literal[False]:
+        # Mirror sqlite3.Connection.__exit__: commit on success / rollback on error
+        # so an inner ``with self._connect()`` write block releases its lock promptly
+        # instead of holding it open for the whole reuse scope. The connection itself
+        # stays open (that's the reuse); only close() is neutralized.
+        conn: sqlite3.Connection = object.__getattribute__(self, "_conn")
+        if exc[0] is None:
+            conn.commit()
+        else:
+            conn.rollback()
+        return False
+
+    def close(self) -> None:
+        return None
+
+
 _FTS_TERM_RE = re.compile(r"[A-Za-z0-9_]+")
 _CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _PRECISE_SYMBOL_QUERY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+# Code-query leading keywords used by the AND-channel guard in _fts_and_query.
+_CODE_LEADING_KW = frozenset({"def", "class", "import", "from", "return", "async", "yield"})
 _SINCE_RELATIVE_RE = re.compile(r"^(?P<amount>\d+)(?P<unit>[dwmy])$")
 _JS_IMPORT_RE = re.compile(
     r"(?:from\s+['\"]([^'\"]+)['\"]|import\s*\(\s*['\"]([^'\"]+)['\"]\s*\)|require\(\s*['\"]([^'\"]+)['\"]\s*\))"
@@ -720,47 +757,164 @@ def _safe_relpath(repo_root: Path, path: Path) -> str:
         return str(resolved)
 
 
+# IDF pruning cap for the FTS OR/prefix channels: a query token present in more
+# than this fraction of all indexed symbols (e.g. "get", "name", "field") is
+# non-discriminative -- it contributes a huge bm25 posting-list scan while the
+# rarer tokens decide the match. Such tokens are dropped from the FTS MATCH (see
+# CodeContextEngine._discriminative_fts_terms). ~10% is the elbow where common
+# code tokens start dominating scan cost. The absolute floor disables pruning on
+# small corpora: a posting list under ~1500 docs scans in a few ms, so there is
+# nothing to prune, and a percentage cap on a tiny repo would wrongly drop tokens
+# present in only 2-3 symbols (breaking recall on small indexes).
+_FTS_COMMON_TERM_DF_FRACTION = 0.10
+_FTS_COMMON_TERM_DF_FLOOR = 1500
+
+
+def _fts_or_query_from_terms(terms: list[str]) -> str:
+    return " OR ".join(f'"{term[:64]}"' for term in terms[:12] if term)
+
+
+def _fts_prefix_query_from_terms(terms: list[str]) -> str:
+    return " OR ".join(f'"{term[:64]}"*' for term in terms[:12] if term)
+
+
 def _safe_fts_query(query: str) -> str:
     # Quote each term as an FTS5 string literal so natural-language queries whose
     # words happen to be FTS operators (or/and/near/not) are treated as literal
     # terms instead of breaking the MATCH grammar. Terms are [A-Za-z0-9_]+ only,
-    # so no embedded-quote escaping is required.
-    terms = _FTS_TERM_RE.findall(query)
-    return " OR ".join(f'"{term[:64]}"' for term in terms[:12] if term)
+    # so no embedded-quote escaping is required. Use the cleaned query terms
+    # (snake/camel subtokens, code/regex noise dropped) so messy queries
+    # (`def foo|def bar`, `^class Baz`) match on real identifiers, not "def".
+    return _fts_or_query_from_terms(_query_terms(query))
 
 
 def _fts_prefix_query(query: str) -> str:
-    terms = _FTS_TERM_RE.findall(query)
-    return " OR ".join(f'"{term[:64]}"*' for term in terms[:12] if term)
+    return _fts_prefix_query_from_terms(_query_terms(query))
+
+
+def _fts_and_query(query: str) -> str:
+    """FTS5 implicit-AND query for code/identifier queries with 2+ distinctive terms.
+
+    Multi-term AND finds symbols whose indexed text contains ALL distinctive terms,
+    a stronger hit signal than the OR fallback.  Guards against natural-language
+    queries (e.g. "create login token for authenticated user") that would otherwise
+    match a symbol's docstring text and blur the lexical/semantic boundary.  Only
+    fires when the query contains structural code markers: pipe separators,
+    underscores, CamelCase terms, ALL_CAPS identifiers, or a code-keyword prefix.
+    Returns empty string when the guard rejects the query or fewer than two
+    distinctive terms (length ≥ 4) are present.
+    """
+    if os.environ.get("ABLATE_B"):  # ablation switch (benchmark attribution only)
+        return ""
+    terms_raw = _FTS_TERM_RE.findall(query)
+    if not terms_raw:
+        return ""
+
+    # Natural-language guard: skip the AND channel unless the query has at least one
+    # structural code marker.  Without |/_/CamelCase/ALL_CAPS/code-kw, the query is
+    # almost certainly a concept description, not a code/identifier search.
+    if "|" not in query and "_" not in query:
+        has_code_kw = terms_raw[0].lower() in _CODE_LEADING_KW
+        has_mixed_case = any(any(c.isupper() for c in t) and any(c.islower() for c in t) for t in terms_raw)
+        has_all_caps = any(len(t) >= 4 and t.isupper() for t in terms_raw)
+        if not (has_code_kw or has_mixed_case or has_all_caps):
+            return ""
+
+    seen_lower: set[str] = set()
+    distinctive: list[str] = []
+    for t in terms_raw:
+        tl = t.lower()
+        if len(t) >= 4 and tl not in seen_lower:
+            seen_lower.add(tl)
+            distinctive.append(t)
+    if len(distinctive) < 2:
+        return ""
+    # FTS5 implicit AND: space-separated quoted phrases without the OR keyword.
+    return " ".join(f'"{t[:64]}"' for t in distinctive[:4])
 
 
 def _identifier_terms(text: str) -> list[str]:
     terms: list[str] = []
     for raw in _FTS_TERM_RE.findall(text):
-        for split in _CAMEL_BOUNDARY_RE.split(raw):
-            lowered = split.strip().lower()
-            if lowered:
-                terms.append(lowered)
+        for camel in _CAMEL_BOUNDARY_RE.split(raw):
+            # Split snake_case / dotted pieces too, so `_sqlite_datetime_parse`
+            # yields sqlite/datetime/parse (matches a query naming those) instead
+            # of only the whole underscore-joined token.
+            for piece in camel.split("_"):
+                lowered = piece.strip().lower()
+                if lowered:
+                    terms.append(lowered)
     return terms
 
 
-# Damerau-Levenshtein normalized-similarity floor for fuzzy symbol recovery. A
-# single transposition/typo in a >=4-char name stays above this; shorter noise is
-# rejected. Scale is 0..1 (1.0 == identical).
-_FUZZY_SIMILARITY_CUTOFF = 0.75
+# Python keywords / regex-ish noise that carry no symbol signal -- dropped from
+# QUERY term extraction so messy queries (grep regexes, `def foo`, `^class Bar`)
+# don't flood FTS with "def"/"class" or stall on metacharacters. Symbol-name
+# tokenization (_identifier_terms) is deliberately left untouched.
+_QUERY_STOPWORDS = frozenset(
+    {
+        "def",
+        "class",
+        "return",
+        "self",
+        "cls",
+        "import",
+        "from",
+        "lambda",
+        "async",
+        "await",
+        "yield",
+        "pass",
+        "raise",
+        "with",
+        "for",
+        "while",
+        "if",
+        "elif",
+        "else",
+        "try",
+        "except",
+        "finally",
+        "and",
+        "or",
+        "not",
+        "none",
+        "true",
+        "false",
+        "del",
+        "global",
+        "nonlocal",
+        "assert",
+        "break",
+        "continue",
+        "in",
+        "is",
+        "as",
+        "the",
+        "this",
+    }
+)
+
+
+def _trigrams(text: str) -> list[str]:
+    """Overlapping lowercased 3-char sequences, matching the FTS5 trigram tokenizer
+    so the index can serve approximate (typo) lookups -- candidates sharing trigrams
+    with the query -- instead of a full-table edit-distance scan (the pg_trgm idea)."""
+    s = text.lower()
+    return [s[i : i + 3] for i in range(len(s) - 2)] if len(s) >= 3 else []
+
+
+def _query_terms(query: str) -> list[str]:
+    """Identifier subtokens of a query with keyword/regex noise removed. Falls
+    back to the raw identifier terms if filtering would empty the query."""
+    if os.environ.get("ABLATE_A"):  # ablation switch (benchmark attribution only)
+        return _identifier_terms(query)
+    cleaned = [t for t in _identifier_terms(query) if len(t) >= 2 and t not in _QUERY_STOPWORDS]
+    return cleaned or _identifier_terms(query)
 
 
 def _is_precise_symbol_query(query: str) -> bool:
     return bool(_PRECISE_SYMBOL_QUERY_RE.fullmatch(query.strip()))
-
-
-def _should_run_full_fuzzy_symbol_scan(query: str) -> bool:
-    normalized = query.strip()
-    if not _is_precise_symbol_query(normalized):
-        return False
-    # Digit-bearing generated identifiers are common no-hit probes and rare
-    # typo targets; avoid the expensive full-symbol fuzzy scan for them.
-    return not any(char.isdigit() for char in normalized)
 
 
 def _matches_file_glob(path: str, pattern: str) -> bool:
@@ -813,22 +967,6 @@ def _is_test_file_path(file_path: str) -> bool:
     lowered = file_path.lower()
     name = Path(file_path).name.lower()
     return "/test" in lowered or "/tests/" in lowered or name.startswith("test_") or name.endswith("_test.py")
-
-
-def _camel_case_match(query: str, symbol_name: str, qualified_name: str) -> bool:
-    query_terms = _identifier_terms(query)
-    if not query_terms:
-        return False
-    symbol_terms = _identifier_terms(f"{symbol_name}.{qualified_name}")
-    if not symbol_terms:
-        return False
-    if all(any(term.startswith(query_term) for term in symbol_terms) for query_term in query_terms):
-        return True
-    initials = "".join(term[0] for term in symbol_terms if term)
-    query_compact = "".join(query_terms)
-    if not initials or not query_compact:
-        return False
-    return initials.startswith(query_compact)
 
 
 def _parse_since_filter(value: str | None) -> int | None:
@@ -1543,6 +1681,14 @@ class CodeContextEngine:
         # recompute and stale rankings are never served. Guarded by its own lock.
         self._centrality_cache: dict[tuple[int, int], dict[str, Any]] = {}
         self._centrality_cache_lock = threading.Lock()
+        # Connection reuse: inside a _reuse_connection() scope, _connect() returns a
+        # shared per-thread connection (via _ReusedConnection) instead of opening a
+        # new one + re-running PRAGMAs for every sub-query.
+        self._scoped_conn_tls = threading.local()
+        self._wal_primed = False
+        # FTS corpus size for IDF term pruning, keyed by index_version so a reindex
+        # auto-invalidates it (count(*) over symbol_fts is ~18ms -- never per query).
+        self._fts_doc_count_cache: dict[int, int] = {}
         self._lineage_rebuild_full = False
         self._lineage_score_penalty: float = float(
             os.getenv("ATELIER_LINEAGE_COMMIT_SCORE_PENALTY", str(_LINEAGE_DEFAULT_SCORE_PENALTY))
@@ -1765,6 +1911,10 @@ class CodeContextEngine:
             "INSERT INTO symbol_fts(symbol_id, name, qualified_name, signature, file_path, source) VALUES (?, ?, ?, ?, ?, ?)",
             fts_rows,
         )
+        conn.executemany(
+            "INSERT INTO symbol_trigram(symbol_id, name, qualified_name, signature, file_path) VALUES (?, ?, ?, ?, ?)",
+            [(row[0], row[1], row[2], row[3], row[4]) for row in fts_rows],
+        )
 
         # --- line text + FTS ---
         line_rows: list[tuple[str, str, int, str]] = []
@@ -1810,7 +1960,7 @@ class CodeContextEngine:
         )
 
         # --- call_edges ---
-        edge_rows: list[tuple[str, str, str, str, int, int, str, int, int, str]] = []
+        edge_rows: list[tuple[str, str, str, str, int, int, str, str, int, int, str]] = []
         for d in results:
             edge_rows.extend(
                 (
@@ -1821,6 +1971,7 @@ class CodeContextEngine:
                     e.caller_start_line,
                     e.caller_end_line,
                     e.callee_name,
+                    e.callee_name.rsplit(".", 1)[-1],
                     e.call_line,
                     e.call_column,
                     e.snippet,
@@ -1830,8 +1981,9 @@ class CodeContextEngine:
         conn.executemany(
             """INSERT OR IGNORE INTO call_edges(
                 repo_id, caller_symbol_name, caller_qualified_name, caller_file_path,
-                caller_start_line, caller_end_line, callee_name, call_line, call_column, snippet
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                caller_start_line, caller_end_line, callee_name, callee_short_name,
+                call_line, call_column, snippet
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             edge_rows,
         )
 
@@ -1944,6 +2096,7 @@ class CodeContextEngine:
                 # --- Full rebuild: wipe everything, then parallel-extract + batch-write ---
                 conn.execute("DELETE FROM file_line_fts")
                 conn.execute("DELETE FROM symbol_fts")
+                conn.execute("DELETE FROM symbol_trigram")
                 conn.execute("DELETE FROM symbols")
                 conn.execute("DELETE FROM imports")
                 conn.execute('DELETE FROM "references"')
@@ -2040,6 +2193,14 @@ class CodeContextEngine:
 
                 if to_extract or removed_paths:
                     index_version = self._bump_index_version(conn)
+                    # Refresh query-planner statistics after a (re)index so
+                    # call-graph/symbol lookups use the selective composite
+                    # indexes. Without stats SQLite mis-picks the repo_id-only
+                    # index for caller-keyed call_edges queries and full-scans
+                    # the table on every traversal. PRAGMA optimize self-throttles
+                    # (cheap on small incremental deltas, full ANALYZE when needed).
+                    with contextlib.suppress(sqlite3.OperationalError):
+                        conn.execute("PRAGMA optimize")
                 else:
                     row = conn.execute("SELECT value FROM engine_state WHERE key = 'index_version'").fetchone()
                     index_version = int(row["value"]) if row is not None else 0
@@ -2066,6 +2227,15 @@ class CodeContextEngine:
 
     def _delete_file_index(self, conn: sqlite3.Connection, rel: str) -> None:
         conn.execute("DELETE FROM file_line_fts WHERE repo_id = ? AND file_path = ?", (self.repo_id, rel))
+        conn.execute(
+            """
+            DELETE FROM symbol_trigram
+            WHERE symbol_id IN (
+                SELECT symbol_id FROM symbols WHERE repo_id = ? AND file_path = ?
+            )
+            """,
+            (self.repo_id, rel),
+        )
         conn.execute(
             """
             DELETE FROM symbol_fts
@@ -2691,7 +2861,7 @@ class CodeContextEngine:
         max_files: int = 6,
         max_symbols: int = 20,
         include_source: bool = True,
-        include_relationships: bool = True,
+        include_relationships: bool = False,
         line_numbers: bool = True,
         skeletonize: bool = True,
         complete_families: bool | None = None,
@@ -2702,6 +2872,38 @@ class CodeContextEngine:
         if auto_index:
             self._ensure_indexed()
         self._sync_symbol_intel()
+        # One shared connection for the whole explore (search + relationship
+        # hydration + packing are reads, plus a one-time centrality persist).
+        with self._reuse_connection():
+            return self._tool_explore_impl(
+                query,
+                seed_files=seed_files,
+                max_files=max_files,
+                max_symbols=max_symbols,
+                include_source=include_source,
+                include_relationships=include_relationships,
+                line_numbers=line_numbers,
+                skeletonize=skeletonize,
+                complete_families=complete_families,
+                depth=depth,
+                budget_tokens=budget_tokens,
+            )
+
+    def _tool_explore_impl(
+        self,
+        query: str,
+        *,
+        seed_files: list[str] | None = None,
+        max_files: int = 6,
+        max_symbols: int = 20,
+        include_source: bool = True,
+        include_relationships: bool = False,
+        line_numbers: bool = True,
+        skeletonize: bool = True,
+        complete_families: bool | None = None,
+        depth: int = 1,
+        budget_tokens: int = 9000,
+    ) -> dict[str, Any]:
         effective_skeletonize = skeletonize and _explore_skeleton_enabled()
         effective_complete = (
             bool(complete_families if complete_families is not None else skeletonize) and _explore_skeleton_enabled()
@@ -3905,6 +4107,64 @@ class CodeContextEngine:
         )
         return [self._attach_snippet(symbol, snippet=snippet, snippet_lines=snippet_lines) for symbol in hits[:limit]]
 
+    def _fts_document_count(self, conn: sqlite3.Connection) -> int:
+        """Total indexed-symbol count, cached per index_version (a reindex bumps the
+        version and invalidates the entry).  Denominator for IDF term pruning;
+        count(*) over the FTS is ~18ms so it must never run per query."""
+        version = self._current_index_version()
+        cached = self._fts_doc_count_cache.get(version)
+        if cached is not None:
+            return cached
+        row = conn.execute("SELECT count(*) FROM symbol_fts").fetchone()
+        total = int(row[0]) if row else 0
+        self._fts_doc_count_cache[version] = total
+        return total
+
+    def _discriminative_fts_terms(self, conn: sqlite3.Connection, terms: list[str]) -> tuple[list[str], list[str]]:
+        """IDF pruning of FTS query terms -> (or_terms, prefix_terms).
+
+        Tokens whose document frequency exceeds _FTS_COMMON_TERM_DF_FRACTION of the
+        corpus (``get``, ``name``, ``field`` -- present in a large fraction of all
+        symbols) bloat the bm25 posting-list scan without adding precision: the
+        rarer tokens decide the match, and the exact/substring channels already
+        cover the common token.
+
+        - ``or_terms`` drives the FTS OR channel and is never empty -- when every
+          token is common it keeps the single rarest so a lone common token (e.g.
+          ``field``) still matches via FTS.
+        - ``prefix_terms`` drives the prefix-completion channel and keeps ONLY
+          discriminative tokens (may be empty -> the channel is skipped).  A common
+          token's prefix expansion (``field*`` -> field/fields/fieldname/...) is the
+          single most expensive variant and is already covered by the substring
+          channel, so it is never prefix-expanded.
+
+        Frequencies come from the fts5vocab index (one ~0.03ms lookup per term)."""
+        unique: list[str] = []
+        seen: set[str] = set()
+        for term in terms[:12]:
+            if term and term not in seen:
+                seen.add(term)
+                unique.append(term)
+        if not unique:
+            return [], []
+        total = self._fts_document_count(conn)
+        if total <= 0:
+            return unique, unique
+        cap = max(_FTS_COMMON_TERM_DF_FLOOR, int(total * _FTS_COMMON_TERM_DF_FRACTION))
+        freqs: list[tuple[str, int]] = []
+        try:
+            for term in unique:
+                row = conn.execute("SELECT doc FROM symbol_fts_vocab WHERE term = ?", (term,)).fetchone()
+                freqs.append((term, int(row["doc"]) if row and row["doc"] is not None else 0))
+        except sqlite3.OperationalError:
+            # Vocab table unavailable (e.g. mid-migration DB) -- skip pruning.
+            return unique, unique
+        discriminative = [term for term, doc in freqs if doc <= cap]
+        if discriminative:
+            return discriminative, discriminative
+        # Every token is common: OR on the single rarest (recall), no prefix expansion.
+        return [min(freqs, key=lambda item: item[1])[0]], []
+
     def _search_symbols_local(
         self,
         query: str,
@@ -3918,9 +4178,7 @@ class CodeContextEngine:
         if not normalized_query:
             return []
         normalized_query_lower = normalized_query.lower()
-        fts_query = _safe_fts_query(normalized_query)
-        fts_prefix_query = _fts_prefix_query(normalized_query)
-        terms = _identifier_terms(normalized_query)
+        terms = _query_terms(normalized_query)
         first_term = terms[0] if terms else normalized_query_lower[:4]
         strong_fetch_limit = max(limit * 8, 80)
         query_mentions_tests = _query_implies_test_scope(normalized_query)
@@ -3951,6 +4209,8 @@ class CodeContextEngine:
                 filters.append(f"file_path IN ({','.join('?' for _ in normalized_candidates)})")
                 params.extend(normalized_candidates)
         where_sql = " AND ".join(filters)
+        # Same predicates, aliased for joins against the trigram FTS table (alias s).
+        where_sql_s = " AND ".join(f"s.{f}" for f in filters)
 
         term_set = {term for term in terms if term}
         centrality_map = self._symbol_centrality_map()
@@ -4015,29 +4275,69 @@ class CodeContextEngine:
 
         with self._connect() as conn:
             self._init_schema(conn)
-            exact_rows = conn.execute(
-                f"""
-                SELECT *, NULL AS score
-                FROM symbols
-                WHERE {where_sql} AND (symbol_name = ? OR qualified_name = ?)
-                ORDER BY file_path, start_line
-                LIMIT ?
-                """,
-                tuple([*params, normalized_query, normalized_query, strong_fetch_limit]),
-            ).fetchall()
-            consider_rows(exact_rows, channel_rank=0, base=1300.0)
-
+            # IDF-pruned FTS queries: high document-frequency tokens are dropped so
+            # the OR/prefix bm25 scan stays small (see _discriminative_fts_terms).
+            or_fts_terms, prefix_fts_terms = self._discriminative_fts_terms(conn, terms)
+            fts_query = _fts_or_query_from_terms(or_fts_terms)
+            fts_prefix_query = _fts_prefix_query_from_terms(prefix_fts_terms)
+            # Exact + case-insensitive name lookup.  Split into one index-backed seek
+            # per column: an `OR` across symbol_name/qualified_name lets SQLite use
+            # NEITHER NOCASE index (it falls back to a full repo scan), and the old
+            # `ORDER BY file_path, start_line` forced a temp-b-tree sort on top.  The
+            # final ranking re-sorts everything by score, so per-channel order only
+            # ever decided an arbitrary LIMIT cut -- drop it.  Two seeks against
+            # idx_symbols_repo_name_nocase / idx_symbols_repo_qual_nocase return the
+            # (tiny) set of name matches directly.
             ci_exact_rows = conn.execute(
-                f"""
-                SELECT *, NULL AS score
-                FROM symbols
-                WHERE {where_sql} AND (lower(symbol_name) = ? OR lower(qualified_name) = ?)
-                ORDER BY file_path, start_line
-                LIMIT ?
-                """,
-                tuple([*params, normalized_query_lower, normalized_query_lower, strong_fetch_limit]),
+                f"SELECT *, NULL AS score FROM symbols WHERE {where_sql} AND symbol_name = ? COLLATE NOCASE LIMIT ?",
+                tuple([*params, normalized_query_lower, strong_fetch_limit]),
             ).fetchall()
+            ci_exact_rows += conn.execute(
+                f"SELECT *, NULL AS score FROM symbols WHERE {where_sql} AND qualified_name = ? COLLATE NOCASE LIMIT ?",
+                tuple([*params, normalized_query_lower, strong_fetch_limit]),
+            ).fetchall()
+            # Case-sensitive matches rank highest (channel 0); the rest are CI-exact.
+            exact_rows = [
+                row
+                for row in ci_exact_rows
+                if row["symbol_name"] == normalized_query or row["qualified_name"] == normalized_query
+            ]
+            consider_rows(exact_rows, channel_rank=0, base=1300.0)
             consider_rows(ci_exact_rows, channel_rank=1, base=1180.0)
+
+            # Multi-term AND channel: symbols matching ALL distinctive query terms rank
+            # above incidental single-token OR hits.  Base 1100 sits between CI-exact
+            # (1180) and OR (980) — a multi-term simultaneous match is a stronger signal
+            # than any single-term hit but weaker than an explicit exact-name lookup.
+            # The bm25 formula is correctly oriented: higher |bm25| (more terms matched)
+            # yields a higher channel_score, unlike the legacy 1/(1+|bm25|) inversion
+            # used by the OR channels.
+            fts_and_q = _fts_and_query(normalized_query)
+            if fts_and_q:
+                try:
+                    fts_and_rows = conn.execute(
+                        f"""
+                        SELECT s.*, abs(bm25(symbol_fts)) / (10.0 + abs(bm25(symbol_fts))) AS score
+                        FROM symbol_fts
+                        JOIN symbols s ON s.symbol_id = symbol_fts.symbol_id
+                        WHERE symbol_fts MATCH ? AND s.repo_id = ?{" AND s.kind = ?" if kind else ""}{" AND s.language = ?" if language else ""}
+                        ORDER BY bm25(symbol_fts), s.file_path, s.start_line
+                        LIMIT ?
+                        """,
+                        tuple(
+                            [
+                                fts_and_q,
+                                self.repo_id,
+                                *([kind] if kind else []),
+                                *([language] if language else []),
+                                strong_fetch_limit,
+                            ]
+                        ),
+                    ).fetchall()
+                    consider_rows(fts_and_rows, channel_rank=2, base=1100.0, use_row_score=True)
+                except sqlite3.OperationalError:
+                    # AND query may fail on FTS edge-case syntax; fall through to OR.
+                    pass
 
             if fts_query:
                 fts_rows = conn.execute(
@@ -4084,107 +4384,64 @@ class CodeContextEngine:
                 consider_rows(fts_prefix_rows, channel_rank=3, base=940.0, use_row_score=True)
 
             like_pattern = f"%{normalized_query_lower}%"
-            substring_rows = conn.execute(
-                f"""
-                SELECT *, NULL AS score
-                FROM symbols
-                WHERE {where_sql} AND (
-                    lower(symbol_name) LIKE ?
-                    OR lower(qualified_name) LIKE ?
-                    OR lower(signature) LIKE ?
-                )
-                ORDER BY file_path, start_line
-                LIMIT ?
-                """,
-                tuple([*params, like_pattern, like_pattern, like_pattern, strong_fetch_limit]),
-            ).fetchall()
+            if len(normalized_query_lower) >= 3:
+                # Trigram-indexed substring match: identical rows to the lower(...) LIKE
+                # scan (trigram is case-insensitive; same ORDER BY) but index-backed.
+                substring_rows = conn.execute(
+                    f"""
+                    SELECT s.*, NULL AS score
+                    FROM symbol_trigram t JOIN symbols s ON s.symbol_id = t.symbol_id
+                    WHERE {where_sql_s} AND (
+                        t.name LIKE ? OR t.qualified_name LIKE ? OR t.signature LIKE ?
+                    )
+                    ORDER BY s.file_path, s.start_line
+                    LIMIT ?
+                    """,
+                    tuple([*params, like_pattern, like_pattern, like_pattern, strong_fetch_limit]),
+                ).fetchall()
+            else:
+                # A pattern shorter than a trigram can't use the index; the (rare)
+                # <3-char substring query falls back to the direct scan.
+                substring_rows = conn.execute(
+                    f"""
+                    SELECT *, NULL AS score
+                    FROM symbols
+                    WHERE {where_sql} AND (
+                        lower(symbol_name) LIKE ? OR lower(qualified_name) LIKE ? OR lower(signature) LIKE ?
+                    )
+                    ORDER BY file_path, start_line
+                    LIMIT ?
+                    """,
+                    tuple([*params, like_pattern, like_pattern, like_pattern, strong_fetch_limit]),
+                ).fetchall()
             consider_rows(substring_rows, channel_rank=4, base=860.0)
 
-            path_rows = conn.execute(
-                f"""
-                SELECT *, NULL AS score
-                FROM symbols
-                WHERE {where_sql} AND (
-                    lower(file_path) LIKE ?
-                    OR lower(file_path) LIKE ?
-                )
-                ORDER BY file_path, start_line
-                LIMIT ?
-                """,
-                tuple([*params, like_pattern, f"%{first_term}%", strong_fetch_limit]),
-            ).fetchall()
-            consider_rows(path_rows, channel_rank=5, base=820.0)
-
-            camel_seed_rows = conn.execute(
-                f"""
-                SELECT *, NULL AS score
-                FROM symbols
-                WHERE {where_sql}
-                ORDER BY file_path, start_line
-                LIMIT ?
-                """,
-                tuple([*params, strong_fetch_limit]),
-            ).fetchall()
-            camel_rows = [
-                row
-                for row in camel_seed_rows
-                if _camel_case_match(
-                    normalized_query,
-                    str(row["symbol_name"]),
-                    str(row["qualified_name"]),
-                )
-            ]
-            consider_rows(camel_rows, channel_rank=6, base=790.0)
-
-            # Fuzzy recovery (RapidFuzz / Damerau-Levenshtein). Fires whenever the
-            # strong channels found no EXACT name match -- not only on a total miss --
-            # so a stray partial-token hit no longer suppresses the real target.
-            # Damerau-Levenshtein scores transpositions (``make_ram_env`` ->
-            # ``make_arm_env``) and insert/delete/substitute typos in one pass; the
-            # scan covers EVERY in-scope symbol so recall is independent of fetch
-            # order, and matches merge below exact/strong hits, ranked by similarity.
-            has_exact_name_match = any(
-                record.symbol_name.lower() == normalized_query_lower
-                or record.qualified_name.lower() == normalized_query_lower
-                for _, _, record in scored.values()
-            )
-            if not has_exact_name_match and _should_run_full_fuzzy_symbol_scan(normalized_query):
-                fuzzy_name_rows = conn.execute(
-                    f"SELECT symbol_id, symbol_name FROM symbols WHERE {where_sql}",
-                    tuple(params),
+            first_term_like = f"%{first_term}%"
+            if len(normalized_query_lower) >= 3 and len(first_term) >= 3:
+                path_rows = conn.execute(
+                    f"""
+                    SELECT s.*, NULL AS score
+                    FROM symbol_trigram t JOIN symbols s ON s.symbol_id = t.symbol_id
+                    WHERE {where_sql_s} AND (t.file_path LIKE ? OR t.file_path LIKE ?)
+                    ORDER BY s.file_path, s.start_line
+                    LIMIT ?
+                    """,
+                    tuple([*params, like_pattern, first_term_like, strong_fetch_limit]),
                 ).fetchall()
-                if fuzzy_name_rows:
-                    candidate_names = [str(row["symbol_name"]).lower() for row in fuzzy_name_rows]
-                    matched_ids: list[str] = []
-                    similarity_by_id: dict[str, float] = {}
-                    for _matched, similarity, index in rapidfuzz_process.extract(
-                        normalized_query_lower,
-                        candidate_names,
-                        scorer=DamerauLevenshtein.normalized_similarity,
-                        score_cutoff=_FUZZY_SIMILARITY_CUTOFF,
-                        limit=strong_fetch_limit,
-                    ):
-                        if candidate_names[index] == normalized_query_lower:
-                            continue
-                        symbol_id = str(fuzzy_name_rows[index]["symbol_id"])
-                        matched_ids.append(symbol_id)
-                        similarity_by_id[symbol_id] = float(similarity)
-                    if matched_ids:
-                        placeholders = ",".join("?" for _ in matched_ids)
-                        matched_rows = conn.execute(
-                            f"""
-                            SELECT *, NULL AS score FROM symbols
-                            WHERE repo_id = ? AND symbol_id IN ({placeholders})
-                            """,
-                            tuple([self.repo_id, *matched_ids]),
-                        ).fetchall()
-                        for row in matched_rows:
-                            symbol_id = str(row["symbol_id"])
-                            consider_rows(
-                                [row],
-                                channel_rank=7,
-                                base=600.0 + similarity_by_id.get(symbol_id, 0.0) * 60.0,
-                            )
+            else:
+                path_rows = conn.execute(
+                    f"""
+                    SELECT *, NULL AS score
+                    FROM symbols
+                    WHERE {where_sql} AND (
+                        lower(file_path) LIKE ? OR lower(file_path) LIKE ?
+                    )
+                    ORDER BY file_path, start_line
+                    LIMIT ?
+                    """,
+                    tuple([*params, like_pattern, first_term_like, strong_fetch_limit]),
+                ).fetchall()
+            consider_rows(path_rows, channel_rank=5, base=820.0)
 
         ranked = sorted(
             scored.values(),
@@ -5354,7 +5611,9 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found" if merged_status == "empty" else None
+                else "no related call edges were found"
+                if merged_status == "empty"
+                else None
             )
             merged_snapshot = None
             if snapshot:
@@ -5502,6 +5761,9 @@ class CodeContextEngine:
         raise ValueError(f"unknown neighborhood relation: {relation!r}")
 
     def _connect(self, *, readonly: bool = False) -> sqlite3.Connection:
+        scoped = getattr(self._scoped_conn_tls, "conn", None)
+        if scoped is not None:
+            return _ReusedConnection(scoped)  # type: ignore[return-value]
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         if readonly:
             conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=30.0)
@@ -5511,10 +5773,40 @@ class CodeContextEngine:
         conn.row_factory = sqlite3.Row
         return conn
 
+    @contextlib.contextmanager
+    def _reuse_connection(self) -> Iterator[None]:
+        """Within this scope all _connect() calls on this thread share one
+        connection, removing per-query connect + PRAGMA overhead. Reentrant (a
+        nested scope is a no-op). Commits then closes the shared connection on
+        exit; per-call ``with``/``closing`` blocks inside get a proxy whose
+        close()/__exit__ are no-ops, so they cannot tear it down early."""
+        if os.environ.get("NO_REUSE"):  # diagnostic bypass
+            yield
+            return
+        if getattr(self._scoped_conn_tls, "conn", None) is not None:
+            yield
+            return
+        conn = self._connect()
+        self._scoped_conn_tls.conn = conn
+        try:
+            yield
+        finally:
+            self._scoped_conn_tls.conn = None
+            with contextlib.suppress(Exception):
+                conn.commit()
+            with contextlib.suppress(Exception):
+                conn.close()
+
     def _apply_pragmas(self, conn: sqlite3.Connection, *, readonly: bool = False) -> None:
         conn.execute("PRAGMA busy_timeout = 30000")
         if readonly:
             return
+        if self._wal_primed:
+            conn.execute("PRAGMA synchronous = NORMAL")
+            return
+        # journal_mode=WAL is a persistent DB-level setting; probe/set it once per
+        # engine instead of on every read-write connection.
+        self._wal_primed = True
         row = conn.execute("PRAGMA journal_mode").fetchone()
         current_mode = str(row[0]).lower() if row else ""
         if current_mode != "wal":
@@ -5576,6 +5868,21 @@ class CodeContextEngine:
                 file_path UNINDEXED,
                 source
             );
+            -- Read-only term->document-frequency view over the FTS index (zero write
+            -- cost, auto-maintained). Powers IDF pruning of common query tokens.
+            CREATE VIRTUAL TABLE IF NOT EXISTS symbol_fts_vocab USING fts5vocab(symbol_fts, 'row');
+            CREATE VIRTUAL TABLE IF NOT EXISTS symbol_trigram USING fts5(
+                symbol_id UNINDEXED,
+                name,
+                qualified_name,
+                signature,
+                file_path,
+                tokenize='trigram'
+            );
+            CREATE INDEX IF NOT EXISTS idx_symbols_repo_name_nocase
+                ON symbols(repo_id, symbol_name COLLATE NOCASE);
+            CREATE INDEX IF NOT EXISTS idx_symbols_repo_qual_nocase
+                ON symbols(repo_id, qualified_name COLLATE NOCASE);
             CREATE VIRTUAL TABLE IF NOT EXISTS file_line_fts USING fts5(
                 repo_id UNINDEXED,
                 file_path UNINDEXED,
@@ -5633,6 +5940,13 @@ class CodeContextEngine:
             );
             CREATE INDEX IF NOT EXISTS idx_commit_author_date ON commit_chunks(author_date);
             CREATE INDEX IF NOT EXISTS idx_commit_files ON commit_chunks(files_touched);
+            CREATE TABLE IF NOT EXISTS centrality_map (
+                repo_id        TEXT NOT NULL,
+                name_key       TEXT NOT NULL,
+                score          REAL NOT NULL,
+                index_version  INTEGER NOT NULL,
+                PRIMARY KEY (repo_id, name_key)
+            );
             """)
         # Migration: older DBs predate the files.mtime_ns column used to fast-skip
         # unchanged files during incremental reindex. CREATE TABLE IF NOT EXISTS
@@ -5640,7 +5954,46 @@ class CodeContextEngine:
         file_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(files)")}
         if "mtime_ns" not in file_columns:
             conn.execute("ALTER TABLE files ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0")
+        # Migration: indexed last-segment of callee_name. The callers lookup needs
+        # "callee_name == name OR callee_name endswith '.name'"; the trailing-wildcard
+        # LIKE is unindexable and full-scans call_edges. A persisted short-name column
+        # turns that into an indexed equality. Backfill existing rows once; new edges
+        # are populated on insert (see _apply_file_data_batch).
+        call_edge_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(call_edges)")}
+        if "callee_short_name" not in call_edge_columns:
+            # Idempotent: another engine/connection on a shared DB may add the column
+            # first (the guard above is read-then-write, so it can race). Suppress the
+            # duplicate-column error and only backfill when this caller did the ALTER.
+            added = False
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("ALTER TABLE call_edges ADD COLUMN callee_short_name TEXT NOT NULL DEFAULT ''")
+                added = True
+            if added:
+                backfill = [
+                    (str(name).rsplit(".", 1)[-1], rowid)
+                    for rowid, name in conn.execute("SELECT rowid, callee_name FROM call_edges")
+                ]
+                if backfill:
+                    conn.executemany("UPDATE call_edges SET callee_short_name = ? WHERE rowid = ?", backfill)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_call_edges_callee_short ON call_edges(repo_id, callee_short_name)")
+        # Backfill the substring trigram index for DBs built before it existed, so the
+        # substring/path channels use the index instead of full-scanning symbols.
+        if conn.execute("SELECT 1 FROM symbol_trigram LIMIT 1").fetchone() is None:
+            if conn.execute("SELECT 1 FROM symbols LIMIT 1").fetchone() is not None:
+                conn.execute(
+                    "INSERT INTO symbol_trigram(symbol_id, name, qualified_name, signature, file_path) "
+                    "SELECT symbol_id, symbol_name, qualified_name, signature, file_path FROM symbols"
+                )
         conn.execute("INSERT OR IGNORE INTO engine_state(key, value) VALUES ('index_version', '0')")
+        # Self-heal DBs built before planner statistics were collected: with data
+        # but no sqlite_stat1, SQLite full-scans call_edges (it mis-picks the
+        # repo_id-only index for caller-keyed queries). A one-time guarded ANALYZE
+        # fixes existing DBs without requiring a reindex; new indexes get stats
+        # via PRAGMA optimize at the end of _index_repo_unsafe.
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'sqlite_stat1'").fetchone() is None:
+            if conn.execute("SELECT 1 FROM call_edges LIMIT 1").fetchone() is not None:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute("ANALYZE")
         self._schema_ready = True
 
     def index_ready(self) -> bool:
@@ -6958,6 +7311,7 @@ class CodeContextEngine:
                 FROM "references"
                 WHERE repo_id = ? AND symbol_name = ?
                 ORDER BY file_path, line, column
+                LIMIT 1000
                 """,
                 (self.repo_id, target_name),
             ).fetchall()
@@ -7012,21 +7366,68 @@ class CodeContextEngine:
                 SELECT DISTINCT caller_symbol_name, caller_qualified_name, caller_file_path,
                        caller_start_line, caller_end_line
                 FROM call_edges
-                WHERE repo_id = ? AND (callee_name = ? OR callee_name LIKE ?)
+                WHERE repo_id = ? AND callee_short_name = ?
                 ORDER BY caller_file_path, caller_start_line
+                LIMIT 1000
                 """,
-                (self.repo_id, target_name, f"%.{target_name}"),
+                (self.repo_id, target_name),
             ).fetchall()
-        return [
-            self._call_graph_node_from_indexed_row(
-                file_path=str(row["caller_file_path"]),
-                start_line=int(row["caller_start_line"]),
-                end_line=int(row["caller_end_line"]),
-                symbol_name=str(row["caller_symbol_name"]),
-                qualified_name=str(row["caller_qualified_name"]),
-            )
-            for row in rows
+        if not rows:
+            return []
+        # call_edges is denormalized (each row carries the caller's name/file/lines),
+        # so we only need to recover symbol_id + kind. Do it with ONE batched join,
+        # never a per-row lookup (that N+1 is catastrophic for high-fanout callees).
+        keys = [
+            (str(r["caller_file_path"]), int(r["caller_start_line"]), str(r["caller_symbol_name"])) for r in rows
         ]
+        hydrated: dict[tuple[str, int, str], sqlite3.Row] = {}
+        placeholders = ",".join("(?,?,?)" for _ in keys)
+        flat: list[Any] = [self.repo_id]
+        for cf, cs, cn in keys:
+            flat.extend((cf, cs, cn))
+        with self._connect() as conn:
+            self._init_schema(conn)
+            for srow in conn.execute(
+                f"SELECT symbol_id, file_path, start_line, end_line, symbol_name, qualified_name, kind "
+                f"FROM symbols WHERE repo_id = ? AND (file_path, start_line, symbol_name) IN (VALUES {placeholders})",
+                tuple(flat),
+            ).fetchall():
+                hydrated[(str(srow["file_path"]), int(srow["start_line"]), str(srow["symbol_name"]))] = srow
+        nodes: list[CallGraphNode] = []
+        for row in rows:
+            cf = str(row["caller_file_path"])
+            cs = int(row["caller_start_line"])
+            cn = str(row["caller_symbol_name"])
+            cq = str(row["caller_qualified_name"])
+            srow = hydrated.get((cf, cs, cn))
+            if srow is not None:
+                nodes.append(
+                    CallGraphNode(
+                        symbol_id=str(srow["symbol_id"]),
+                        symbol_name=str(srow["symbol_name"]),
+                        qualified_name=str(srow["qualified_name"]),
+                        file_path=str(srow["file_path"]),
+                        kind=str(srow["kind"]),
+                        start_line=int(srow["start_line"]),
+                        end_line=int(srow["end_line"]),
+                        provenance="local_index",
+                    )
+                )
+            else:
+                synthetic_id = "local-call::" + hashlib.sha1(f"{cf}:{cs}:{cq}".encode()).hexdigest()[:16]
+                nodes.append(
+                    CallGraphNode(
+                        symbol_id=synthetic_id,
+                        symbol_name=cn,
+                        qualified_name=cq,
+                        file_path=cf,
+                        kind="function",
+                        start_line=cs,
+                        end_line=int(row["caller_end_line"]),
+                        provenance="local_index",
+                    )
+                )
+        return nodes
 
     # ------------------------------------------------------------------
     # G6 -- symbol-level call-graph centrality (with N16 cache guard)
@@ -7035,11 +7436,20 @@ class CodeContextEngine:
     def _symbol_centrality_map(self) -> dict[str, float]:
         """Symbol name -> normalized eigenvector centrality (0..1), cached by index
         version. Feeds the call-graph importance signal into search ranking so
-        central core symbols outrank peripheral textual matches."""
+        central core symbols outrank peripheral textual matches.
+
+        Persisted to the ``centrality_map`` table (keyed by index_version) so a
+        cold engine -- a server restart, a benchmark rerun, a parallel worker --
+        loads the map instead of recomputing the O(edges) power iteration. A
+        reindex bumps index_version, which invalidates the persisted rows."""
         version = self._current_index_version()
         cached = getattr(self, "_centrality_name_map", None)
         if cached is not None and cached[0] == version:
             return cached[1]
+        loaded = self._load_centrality_map(version)
+        if loaded is not None:
+            self._centrality_name_map = (version, loaded)
+            return loaded
         mapping: dict[str, float] = {}
         try:
             ranking = self.call_graph_centrality(limit=1_000_000).get("ranking", [])
@@ -7054,8 +7464,41 @@ class CodeContextEngine:
                         mapping[key] = norm_ev
         except Exception:
             logging.exception("Recovered from broad exception handler")
+        self._persist_centrality_map(version, mapping)
         self._centrality_name_map = (version, mapping)
         return mapping
+
+    def _load_centrality_map(self, version: int) -> dict[str, float] | None:
+        """Load the persisted centrality map for the current index_version, or None
+        if absent (first run after an index, or a pre-persistence DB)."""
+        try:
+            with self._connect(readonly=True) as conn:
+                rows = conn.execute(
+                    "SELECT name_key, score FROM centrality_map WHERE repo_id = ? AND index_version = ?",
+                    (self.repo_id, version),
+                ).fetchall()
+        except sqlite3.OperationalError:
+            return None
+        if not rows:
+            return None
+        return {str(row["name_key"]): float(row["score"]) for row in rows}
+
+    def _persist_centrality_map(self, version: int, mapping: dict[str, float]) -> None:
+        """Persist the centrality map (best-effort) so future cold engines skip the
+        power iteration. Replaces any prior rows for this repo."""
+        if not mapping:
+            return
+        try:
+            with self._connect() as conn:
+                self._init_schema(conn)
+                conn.execute("DELETE FROM centrality_map WHERE repo_id = ?", (self.repo_id,))
+                conn.executemany(
+                    "INSERT OR REPLACE INTO centrality_map(repo_id, name_key, score, index_version) "
+                    "VALUES (?, ?, ?, ?)",
+                    [(self.repo_id, key, value, version) for key, value in mapping.items()],
+                )
+        except sqlite3.OperationalError:
+            logging.exception("Recovered from broad exception handler")
 
     def call_graph_centrality(self, *, limit: int = 50, use_cache: bool = True) -> dict[str, Any]:
         """Rank the most important symbols by call-graph centrality.

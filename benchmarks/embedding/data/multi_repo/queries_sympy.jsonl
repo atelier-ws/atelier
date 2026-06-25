@@ -1,0 +1,500 @@
+{"query": "Where is sympify implemented?", "relevant": ["sympy.core.sympify::sympify#part1"]}
+{"query": "How does the code handle bounds?", "relevant": ["sympy.matrices.expressions.blockmatrix::bounds"]}
+{"query": "The inverse secant function", "relevant": ["sympy.functions.elementary.trigonometric::asec#part3"]}
+{"query": "Find the RootSum class definition", "relevant": ["sympy.polys.rootoftools::RootSum#part2"]}
+{"query": "How does the code handle evalf prod?", "relevant": ["sympy.core.evalf::evalf_prod"]}
+{"query": "Which class implements LogisticDistribution?", "relevant": ["sympy.stats.crv_types::LogisticDistribution"]}
+{"query": "Find the DUP Flint class definition", "relevant": ["sympy.polys.polyclasses::DUP_Flint#part6"]}
+{"query": "How does the code handle filter symbols?", "relevant": ["sympy.utilities.iterables::filter_symbols"]}
+{"query": "Generates a binary function that supports broadcasting on numpy arrays", "relevant": ["sympy.utilities.autowrap::ufuncify#part3"]}
+{"query": "How does the code handle div poly monom?", "relevant": ["sympy.polys.puiseux::_div_poly_monom"]}
+{"query": "How does the code handle sas?", "relevant": ["sympy.geometry.polygon::_sas"]}
+{"query": "Bosonic creation operator", "relevant": ["sympy.physics.secondquant::CreateBoson"]}
+{"query": "Where is meijerint indefinite implemented?", "relevant": ["sympy.integrals.meijerint::_meijerint_indefinite_1#part1"]}
+{"query": "How does the code handle gamma as comb?", "relevant": ["sympy.simplify.combsimp::_gamma_as_comb"]}
+{"query": "Where is get sub ndim implemented?", "relevant": ["sympy.tensor.array.expressions.array_expressions::_get_sub_ndim"]}
+{"query": "Where is forward jacobian cse implemented?", "relevant": ["sympy.simplify._cse_diff::_forward_jacobian_cse#part1"]}
+{"query": "Which class implements MatrixBase?", "relevant": ["sympy.matrices.matrixbase::MatrixBase#part31"]}
+{"query": "Find the MeijerShiftD class definition", "relevant": ["sympy.simplify.hyperexpand::MeijerShiftD"]}
+{"query": "Body is a common representation of either a RigidBody or a Particle SymPy\nobject depending on what is passed in durin...", "relevant": ["sympy.physics.mechanics.body::Body#part8"]}
+{"query": "Where is is ipython implemented?", "relevant": ["sympy.interactive.printing::_is_ipython"]}
+{"query": "Where is BetaNoncentral implemented?", "relevant": ["sympy.stats.crv_types::BetaNoncentral#part1"]}
+{"query": "Find the FreeGroupElement class definition", "relevant": ["sympy.combinatorics.free_groups::FreeGroupElement#part9"]}
+{"query": "Where is test implemented?", "relevant": ["sympy.ntheory.primetest::_test"]}
+{"query": "Where is preview implemented?", "relevant": ["sympy.printing.preview::preview#part2"]}
+{"query": "What does the function return when ``eq`` with non-commutative objects replaced with Dummy symbols?", "relevant": ["sympy.core.exprtools::_mask_nc#part1"]}
+{"query": "Find the AntihermitianPredicate class definition", "relevant": ["sympy.assumptions.predicates.sets::AntihermitianPredicate"]}
+{"query": "Torque-producing actuator", "relevant": ["sympy.physics.mechanics.actuator::TorqueActuator#part6"]}
+{"query": "Find the AutolevParser class definition", "relevant": ["sympy.parsing.autolev._antlr.autolevparser::AutolevParser#part8"]}
+{"query": "Find the catalan class definition", "relevant": ["sympy.functions.combinatorial.numbers::catalan#part3"]}
+{"query": "Which class implements CosetTable?", "relevant": ["sympy.combinatorics.coset_table::CosetTable#part13"]}
+{"query": "Where is smith normal form implemented?", "relevant": ["sympy.matrices.normalforms::smith_normal_form"]}
+{"query": "Find the Ellipse class definition", "relevant": ["sympy.geometry.ellipse::Ellipse#part9"]}
+{"query": "Where is generate gate rules implemented?", "relevant": ["sympy.physics.quantum.identitysearch::generate_gate_rules#part2"]}
+{"query": "How does the code handle scalar potential difference?", "relevant": ["sympy.vector.functions::scalar_potential_difference#part1"]}
+{"query": "How does the code handle diag?", "relevant": ["sympy.matrices.dense::diag"]}
+{"query": "Returns the roots of characteristic equation of constant coefficient\nlinear ODE and list of collectterms which is lat...", "relevant": ["sympy.solvers.ode.nonhomogeneous::_get_const_characteristic_eq_sols#part2"]}
+{"query": "How does the code handle handle positive dimensional?", "relevant": ["sympy.solvers.solveset::_handle_positive_dimensional"]}
+{"query": "What does the function return when sequence ``l`` partitioned into ``k`` bins?", "relevant": ["sympy.utilities.iterables::kbins#part1"]}
+{"query": "Where is trigsimp inverse implemented?", "relevant": ["sympy.simplify.trigsimp::_trigsimp_inverse"]}
+{"query": "How does the code handle totient?", "relevant": ["sympy.ntheory.factor_::totient"]}
+{"query": "Find the Cbrt class definition", "relevant": ["sympy.codegen.cfunctions::Cbrt"]}
+{"query": "A permutation, alternatively known as an 'arrangement number' or 'ordering'\nis an arrangement of the elements of an o...", "relevant": ["sympy.combinatorics.permutations::Permutation#part31"]}
+{"query": "Base class for all SymPy objects", "relevant": ["sympy.core.basic::Basic#part5"]}
+{"query": "Which class implements IRule?", "relevant": ["sympy.integrals.manualintegrate::IRule"]}
+{"query": "Find the cot class definition", "relevant": ["sympy.functions.elementary.trigonometric::cot#part2"]}
+{"query": "Submodule of a quotient module", "relevant": ["sympy.polys.agca.modules::SubQuotientModule#part2"]}
+{"query": "A class for calculating the Macaulay resultant", "relevant": ["sympy.polys.multivariate_resultants::MacaulayResultant#part2"]}
+{"query": "Lagrange's method for forming the equations of motion of a multibody\nsystem", "relevant": ["sympy.physics.mechanics.lagrange::LagrangesMethod#part1"]}
+{"query": "Where is inverse trig rule implemented?", "relevant": ["sympy.integrals.manualintegrate::inverse_trig_rule#part1"]}
+{"query": "Find the AxisOrienter class definition", "relevant": ["sympy.vector.orienters::AxisOrienter#part2"]}
+{"query": "Find the Body class definition", "relevant": ["sympy.physics.mechanics.body::Body#part11"]}
+{"query": "Where is typed implemented?", "relevant": ["sympy.strategies.tools::typed"]}
+{"query": "Which class implements DimensionSystem?", "relevant": ["sympy.physics.units.dimensions::DimensionSystem#part3"]}
+{"query": "Multiply together several polynomials in ``K[x]``", "relevant": ["sympy.polys.densearith::dup_expand"]}
+{"query": "Find the MathMLContentPrinter class definition", "relevant": ["sympy.printing.mathml::MathMLContentPrinter#part8"]}
+{"query": "Find the Truss class definition", "relevant": ["sympy.physics.continuum_mechanics.truss::Truss#part9"]}
+{"query": "Where is udivisors implemented?", "relevant": ["sympy.ntheory.factor_::udivisors"]}
+{"query": "How does the code handle centers of segments?", "relevant": ["sympy.plotting.series::centers_of_segments"]}
+{"query": "Find the UndefinedPredicate class definition", "relevant": ["sympy.assumptions.assume::UndefinedPredicate"]}
+{"query": "Where is unify implemented?", "relevant": ["sympy.unify.usympy::unify"]}
+{"query": "Where is is sequence implemented?", "relevant": ["sympy.utilities.iterables::is_sequence"]}
+{"query": "Calculate exact roots of a solvable irreducible quintic with rational coefficients", "relevant": ["sympy.polys.polyroots::roots_quintic#part1"]}
+{"query": "Merge explicit MatrixBase arguments\n\n>>> from sympy import MatrixSymbol, Matrix, MatMul, pprint\n>>> from sympy", "relevant": ["sympy.matrices.expressions.matmul::merge_explicit"]}
+{"query": "Where is dup random implemented?", "relevant": ["sympy.polys.densebasic::dup_random"]}
+{"query": "How does the code handle dup schur conditions?", "relevant": ["sympy.polys.rootconditions::_dup_schur_conditions"]}
+{"query": "Where is dmp apply pairs implemented?", "relevant": ["sympy.polys.densebasic::dmp_apply_pairs"]}
+{"query": "Find the C99CodePrinter class definition", "relevant": ["sympy.printing.c::C99CodePrinter#part2"]}
+{"query": "Hypergeometric algorithm for computing Formal Power Series", "relevant": ["sympy.series.formal::hyper_algorithm"]}
+{"query": "How does the code handle purestr?", "relevant": ["sympy.printing.dot::purestr#part2"]}
+{"query": "Where is eval is eq implemented?", "relevant": ["sympy.sets.handlers.comparison::_eval_is_eq"]}
+{"query": "Where is egypt graham jewett implemented?", "relevant": ["sympy.ntheory.egyptian_fraction::egypt_graham_jewett"]}
+{"query": "Where is plot implemented?", "relevant": ["sympy.plotting.plot::plot#part3"]}
+{"query": "Where is is gaussian prime implemented?", "relevant": ["sympy.ntheory.primetest::is_gaussian_prime"]}
+{"query": "How does the code handle pred to binrel?", "relevant": ["sympy.assumptions.lra_satask::_pred_to_binrel"]}
+{"query": "Sampling version of E", "relevant": ["sympy.stats.rv::sampling_E"]}
+{"query": "Pauli sigma minus operator\n\nParameters\n==========\n\nname : str\n    An optional string that labels the operator", "relevant": ["sympy.physics.quantum.pauli::SigmaMinus#part1"]}
+{"query": "Convert Mathematica's named characters to SymPy equivalents", "relevant": ["sympy.parsing.mathematica::named_characters_to_unicode"]}
+{"query": "Montgomery form of Points in an elliptic curve", "relevant": ["sympy.ntheory.ecm::Point#part3"]}
+{"query": "Where is debugf implemented?", "relevant": ["sympy.utilities.misc::debugf"]}
+{"query": "Which class implements DomainMatrix?", "relevant": ["sympy.polys.matrices.domainmatrix::DomainMatrix#part38"]}
+{"query": "How does the code handle convolution?", "relevant": ["sympy.discrete.convolutions::convolution#part1"]}
+{"query": "Find the C89CodePrinter class definition", "relevant": ["sympy.printing.c::C89CodePrinter#part9"]}
+{"query": "Which class implements DUP Flint?", "relevant": ["sympy.polys.polyclasses::DUP_Flint#part5"]}
+{"query": "Which class implements SeqBase?", "relevant": ["sympy.series.sequences::SeqBase#part6"]}
+{"query": "Where is equal valued implemented?", "relevant": ["sympy.core.numbers::equal_valued#part1"]}
+{"query": "How does the code handle symarray?", "relevant": ["sympy.matrices.dense::symarray#part2"]}
+{"query": "An accumulation bounds", "relevant": ["sympy.calculus.accumulationbounds::AccumulationBounds#part3"]}
+{"query": "Where is partition implemented?", "relevant": ["sympy.ntheory.partitions_::_partition#part1"]}
+{"query": "Find the DomainMatrix class definition", "relevant": ["sympy.polys.matrices.domainmatrix::DomainMatrix#part60"]}
+{"query": "Where is RubikGroup implemented?", "relevant": ["sympy.combinatorics.named_groups::RubikGroup"]}
+{"query": "Create a numpy ndarray of symbols (as an object array)", "relevant": ["sympy.matrices.dense::symarray#part1"]}
+{"query": "The forward quantum Fourier transform", "relevant": ["sympy.physics.quantum.qft::QFT"]}
+{"query": "Which class implements Ket?", "relevant": ["sympy.physics.quantum.state::Ket#part2"]}
+{"query": "Where is unflatten implemented?", "relevant": ["sympy.utilities.iterables::unflatten"]}
+{"query": "Where is roots real complex implemented?", "relevant": ["sympy.integrals.rationaltools::_roots_real_complex"]}
+{"query": "Where is handle Integral implemented?", "relevant": ["sympy.solvers.pde::_handle_Integral"]}
+{"query": "Find the SymPyExpression class definition", "relevant": ["sympy.parsing.sym_expr::SymPyExpression#part4"]}
+{"query": "Find the Intersection class definition", "relevant": ["sympy.sets.sets::Intersection#part1"]}
+{"query": "Where is indent implemented?", "relevant": ["doc.ext.docscrape::indent"]}
+{"query": "Find the MathMLPresentationPrinter class definition", "relevant": ["sympy.printing.mathml::MathMLPresentationPrinter#part17"]}
+{"query": "Where is useries neg implemented?", "relevant": ["sympy.polys.series.ringpython::_useries_neg"]}
+{"query": "How does the code handle dmp sqf list?", "relevant": ["sympy.polys.sqfreetools::dmp_sqf_list#part1"]}
+{"query": "Which class implements PlotGrid?", "relevant": ["sympy.plotting.plotgrid::PlotGrid#part1"]}
+{"query": "Represents the natural numbers (or counting numbers) which are all\npositive integers starting from 1", "relevant": ["sympy.sets.fancysets::Naturals#part1"]}
+{"query": "Which class implements HomogeneousCoeffSubsIndepDivDep?", "relevant": ["sympy.solvers.ode.single::HomogeneousCoeffSubsIndepDivDep#part2"]}
+{"query": "How does the code handle q3?", "relevant": ["doc.src.tutorials.physics.control.generate_plots::q3_4"]}
+{"query": "Truncate a power series to the first n terms", "relevant": ["sympy.polys.series.ringpython::_useries_truncate"]}
+{"query": "Algebraic number field :ref:`QQ(a)`\n\nA :ref:`QQ(a)` domain represents an `algebraic number field`_\n`\\mathbb{Q}(a)` as...", "relevant": ["sympy.polys.domains.algebraicfield::AlgebraicField#part6"]}
+{"query": "Abstract base class for module homomoprhisms", "relevant": ["sympy.polys.agca.homomorphisms::ModuleHomomorphism#part2"]}
+{"query": "Find the PrettyPrinter class definition", "relevant": ["sympy.printing.pretty.pretty::PrettyPrinter#part10"]}
+{"query": "Find the Lambdifier class definition", "relevant": ["sympy.plotting.experimental_lambdify::Lambdifier#part4"]}
+{"query": "Which class implements bessely?", "relevant": ["sympy.functions.special.bessel::bessely#part1"]}
+{"query": "How does the code handle mangle docstrings?", "relevant": ["doc.ext.numpydoc::mangle_docstrings"]}
+{"query": "Represents a basic subset object", "relevant": ["sympy.combinatorics.subsets::Subset#part8"]}
+{"query": "Which class implements CreateOneQubitGate?", "relevant": ["sympy.physics.quantum.circuitplot::CreateOneQubitGate"]}
+{"query": "How does the code handle moment?", "relevant": ["sympy.stats.rv_interface::moment"]}
+{"query": "Returns ``True`` if range of values attained by ``lhs`` AccumulationBounds\nobject is less that the range of values at...", "relevant": ["sympy.calculus.accumulationbounds::_eval_is_ge"]}
+{"query": "Find the RealElement class definition", "relevant": ["sympy.polys.domains.mpelements::RealElement"]}
+{"query": "Where is checkodesol implemented?", "relevant": ["sympy.solvers.ode.subscheck::checkodesol#part3"]}
+{"query": "Multivariate distributed rational function field", "relevant": ["sympy.polys.fields::FracField#part4"]}
+{"query": "Find the DMNonSquareMatrixError class definition", "relevant": ["sympy.polys.matrices.exceptions::DMNonSquareMatrixError"]}
+{"query": "Where is express implemented?", "relevant": ["sympy.vector.functions::express#part2"]}
+{"query": "Where is nontrivBool implemented?", "relevant": ["sympy.core.relational::_nontrivBool"]}
+{"query": "Find the Lambdifier class definition", "relevant": ["sympy.plotting.experimental_lambdify::Lambdifier#part1"]}
+{"query": "How does the code handle vsolve?", "relevant": ["sympy.solvers.solvers::_vsolve"]}
+{"query": "What does the function return when the number of combinations of ``n`` items taken ``k`` at a time?", "relevant": ["sympy.functions.combinatorial.numbers::nC#part1"]}
+{"query": "Where is coherent state implemented?", "relevant": ["sympy.physics.qho_1d::coherent_state"]}
+{"query": "Find the ImplicitSeries class definition", "relevant": ["sympy.plotting.series::ImplicitSeries#part2"]}
+{"query": "How does the code handle row structure symbolic cholesky?", "relevant": ["sympy.matrices.decompositions::_row_structure_symbolic_cholesky"]}
+{"query": "Find the AiryBase class definition", "relevant": ["sympy.functions.special.bessel::AiryBase"]}
+{"query": "Provides basic quaternion operations", "relevant": ["sympy.algebras.quaternion::Quaternion#part14"]}
+{"query": "Which class implements Collector?", "relevant": ["sympy.combinatorics.pc_groups::Collector#part6"]}
+{"query": "Find the Idx class definition", "relevant": ["sympy.tensor.indexed::Idx#part3"]}
+{"query": "Where is dup eval implemented?", "relevant": ["sympy.polys.densetools::dup_eval"]}
+{"query": "Multiply dense polynomials in ``K[[x]]`` modulo ``x**n``", "relevant": ["sympy.polys.densearith::dup_series_mul"]}
+{"query": "A little class to represent an interior node in the tree\n\nThis is analogous to SymPy", "relevant": ["sympy.unify.core::Compound"]}
+{"query": "Find the FermionState class definition", "relevant": ["sympy.physics.secondquant::FermionState#part2"]}
+{"query": "Where is is int implemented?", "relevant": ["sympy.polys.numberfields.utilities::is_int"]}
+{"query": "How does the code handle get integer part?", "relevant": ["sympy.core.evalf::get_integer_part#part2"]}
+{"query": "Compute ``x**n * f(1/x)``, i", "relevant": ["sympy.polys.densebasic::dup_reverse"]}
+{"query": "Returns the Bode phase plot of a continuous-time system", "relevant": ["sympy.physics.control.control_plots::bode_phase_plot"]}
+{"query": "Find the TSeriesElement class definition", "relevant": ["sympy.polys.series.tring::TSeriesElement"]}
+{"query": "Find the PolyElement class definition", "relevant": ["sympy.polys.rings::PolyElement#part23"]}
+{"query": "Where is prime decomp split ideal implemented?", "relevant": ["sympy.polys.numberfields.primes::_prime_decomp_split_ideal"]}
+{"query": "Which class implements GroupHomomorphism?", "relevant": ["sympy.combinatorics.homomorphisms::GroupHomomorphism#part4"]}
+{"query": "How does the code handle traverse quadrants?", "relevant": ["sympy.polys.rootisolation::_traverse_quadrants#part1"]}
+{"query": "Where is lfsr autocorrelation implemented?", "relevant": ["sympy.crypto.crypto::lfsr_autocorrelation"]}
+{"query": "Which class implements NumExprPrinter?", "relevant": ["sympy.printing.lambdarepr::NumExprPrinter#part1"]}
+{"query": "* Real*Real               -> Real\n* Real*Imaginary          -> !Real\n* Imaginary*Imaginary     -> Real", "relevant": ["sympy.assumptions.handlers.sets::_"]}
+{"query": "Butler-Portugal algorithm for tensor canonicalization with dummy indices", "relevant": ["sympy.combinatorics.tensor_can::double_coset_can_rep#part6"]}
+{"query": "Which class implements Cable?", "relevant": ["sympy.physics.continuum_mechanics.cable::Cable#part4"]}
+{"query": "Returns a 4-tuple `(a, b, c, d)` such that `a^2 + b^2 + c^2 + d^2 = n`", "relevant": ["sympy.solvers.diophantine.diophantine::sum_of_four_squares#part2"]}
+{"query": "Find the PolyElement class definition", "relevant": ["sympy.polys.rings::PolyElement#part41"]}
+{"query": "Which class implements Plane?", "relevant": ["sympy.geometry.plane::Plane#part5"]}
+{"query": "Where is is abundant implemented?", "relevant": ["sympy.ntheory.factor_::is_abundant"]}
+{"query": "Find the Str class definition", "relevant": ["sympy.core.symbol::Str"]}
+{"query": "Compared to the OutputChecker from the stdlib our OutputChecker class\nsupports numerical comparison of floats occurri...", "relevant": ["sympy.testing.runtests::SymPyOutputChecker#part2"]}
+{"query": "Find the erfc class definition", "relevant": ["sympy.functions.special.error_functions::erfc#part1"]}
+{"query": "How does the code handle aug assign?", "relevant": ["sympy.codegen.ast::aug_assign"]}
+{"query": "How does the code handle GeneralizedMultivariateLogGamma?", "relevant": ["sympy.stats.joint_rv_types::GeneralizedMultivariateLogGamma"]}
+{"query": "What does the function return when the series expansion for an integral curve of the field?", "relevant": ["sympy.diffgeom.diffgeom::intcurve_series#part1"]}
+{"query": "Where is double coset can rep implemented?", "relevant": ["sympy.combinatorics.tensor_can::double_coset_can_rep#part2"]}
+{"query": "Bernoulli numbers / Bernoulli polynomials / Bernoulli function\n\nThe Bernoulli numbers are a sequence of rational numb...", "relevant": ["sympy.functions.combinatorial.numbers::bernoulli#part4"]}
+{"query": "A column is a structural element that withstands axial\nloading primarily through compression", "relevant": ["sympy.physics.continuum_mechanics.column::Column#part4"]}
+{"query": "Find the Point class definition", "relevant": ["sympy.geometry.point::Point#part11"]}
+{"query": "Which class implements LatexPrinter?", "relevant": ["sympy.printing.latex::LatexPrinter#part15"]}
+{"query": "This function applies the time-scaling rule of the Laplace transform in\na straight-forward way", "relevant": ["sympy.integrals.laplace::_laplace_rule_timescale"]}
+{"query": "Represents a coordinate system in 3-D space", "relevant": ["sympy.vector.coordsysrect::CoordSys3D#part16"]}
+{"query": "Which class implements ExpressionDomain?", "relevant": ["sympy.polys.domains.expressiondomain::ExpressionDomain#part2"]}
+{"query": "How does the code handle fwht?", "relevant": ["sympy.discrete.transforms::fwht"]}
+{"query": "Has methods to ``enumerate`` and ``count`` the partitions of a multiset", "relevant": ["sympy.utilities.enumerative::MultisetPartitionTraverser#part9"]}
+{"query": "How does the code handle is special case of?", "relevant": ["sympy.solvers.ode.ode::_is_special_case_of#part1"]}
+{"query": "Find the GateIdentity class definition", "relevant": ["sympy.physics.quantum.identitysearch::GateIdentity"]}
+{"query": "Where is dmp LC implemented?", "relevant": ["sympy.polys.densebasic::dmp_LC"]}
+{"query": "Which class implements Ei?", "relevant": ["sympy.functions.special.error_functions::Ei#part3"]}
+{"query": "The class defining a Permutation group", "relevant": ["sympy.combinatorics.perm_groups::PermutationGroup#part76"]}
+{"query": "Find the MatrixBase class definition", "relevant": ["sympy.matrices.matrixbase::MatrixBase#part26"]}
+{"query": "Where is linsolve implemented?", "relevant": ["sympy.solvers.solveset::linsolve#part3"]}
+{"query": "How does the code handle is nilpotent number?", "relevant": ["sympy.combinatorics.group_numbers::_is_nilpotent_number"]}
+{"query": "Where is quantity simplify implemented?", "relevant": ["sympy.physics.units.util::quantity_simplify#part2"]}
+{"query": "Detects and returns a recurrence relation from a sequence of several integer\n(or rational) terms", "relevant": ["sympy.concrete.guess::find_simple_recurrence"]}
+{"query": "Which class implements TensExpr?", "relevant": ["sympy.tensor.tensor::TensExpr#part8"]}
+{"query": "Matrix exponential $\\exp(A*t)$ for the matrix ``A`` and scalar ``t``", "relevant": ["sympy.solvers.ode.systems::matrix_exp#part1"]}
+{"query": "Where is meijerint definite implemented?", "relevant": ["sympy.integrals.meijerint::meijerint_definite#part2"]}
+{"query": "Carmichael Numbers:\n\nCertain cryptographic algorithms make use of big prime numbers", "relevant": ["sympy.functions.combinatorial.numbers::carmichael#part3"]}
+{"query": "How does the code handle hyperplane parameters?", "relevant": ["sympy.integrals.intpoly::hyperplane_parameters"]}
+{"query": "This class handles loads applied in any direction of a 3D space along\nwith unequal values of Second moment along diff...", "relevant": ["sympy.physics.continuum_mechanics.beam::Beam3D#part22"]}
+{"query": "Reduce expression by combining powers with similar bases and exponents", "relevant": ["sympy.simplify.powsimp::powsimp#part2"]}
+{"query": "Find the Qasm class definition", "relevant": ["sympy.physics.quantum.qasm::Qasm#part2"]}
+{"query": "Where is checkpdesol implemented?", "relevant": ["sympy.solvers.pde::checkpdesol#part1"]}
+{"query": "Returns the numerical values of the points in the impulse response plot\nof a SISO continuous-time system", "relevant": ["sympy.physics.control.control_plots::impulse_response_numerical_data#part2"]}
+{"query": "Where is check time compatibility implemented?", "relevant": ["sympy.physics.control.lti::_check_time_compatibility"]}
+{"query": "How does the code handle dup deflate?", "relevant": ["sympy.polys.densebasic::dup_deflate"]}
+{"query": "Find the Commutator class definition", "relevant": ["sympy.diffgeom.diffgeom::Commutator#part2"]}
+{"query": "Where is af parity implemented?", "relevant": ["sympy.combinatorics.permutations::_af_parity"]}
+{"query": "Which class implements FlintPowerSeriesRingQQ?", "relevant": ["sympy.polys.series.ringflint::FlintPowerSeriesRingQQ#part8"]}
+{"query": "Where is pdsolve implemented?", "relevant": ["sympy.solvers.pde::pdsolve#part2"]}
+{"query": "Parses Autolev code (version 4", "relevant": ["sympy.parsing.autolev.__init__::parse_autolev#part1"]}
+{"query": "Find the ZeroPredicate class definition", "relevant": ["sympy.assumptions.predicates.order::ZeroPredicate"]}
+{"query": "Which class implements SDM?", "relevant": ["sympy.polys.matrices.sdm::SDM#part10"]}
+{"query": "This function generates a LaTeX equation with a multiline right-hand side\nin an ``align*``, ``eqnarray`` or ``IEEEeqn...", "relevant": ["sympy.printing.latex::multiline_latex#part1"]}
+{"query": "How does the code handle sdm monomial mul?", "relevant": ["sympy.polys.distributedmodules::sdm_monomial_mul"]}
+{"query": "How does the code handle trigsimp?", "relevant": ["sympy.simplify.trigsimp::__trigsimp#part3"]}
+{"query": "A column is a structural element that withstands axial\nloading primarily through compression", "relevant": ["sympy.physics.continuum_mechanics.column::Column#part6"]}
+{"query": "How does the code handle get possible outcomes?", "relevant": ["sympy.physics.quantum.qubit::_get_possible_outcomes"]}
+{"query": "How does the code handle dup extract?", "relevant": ["sympy.polys.densetools::dup_extract"]}
+{"query": "How does the code handle expand complex?", "relevant": ["sympy.core.function::expand_complex"]}
+{"query": "Which class implements Quaternion?", "relevant": ["sympy.algebras.quaternion::Quaternion#part17"]}
+{"query": "Contraction operation of array axes", "relevant": ["sympy.tensor.array.expressions.array_expressions::ArrayContraction#part5"]}
+{"query": "Where is vfree group implemented?", "relevant": ["sympy.combinatorics.free_groups::vfree_group"]}
+{"query": "Find the DDM class definition", "relevant": ["sympy.polys.matrices.ddm::DDM#part12"]}
+{"query": "Where is linodesolve implemented?", "relevant": ["sympy.solvers.ode.systems::linodesolve#part3"]}
+{"query": "The FpGroup would take a FreeGroup and a list/tuple of relators, the\nrelators would be specified in such a way that e...", "relevant": ["sympy.combinatorics.fp_groups::FpGroup#part1"]}
+{"query": "Helper for futrig", "relevant": ["sympy.simplify.trigsimp::_futrig#part1"]}
+{"query": "Reconstruct a polynomial `h_p` in `\\mathbb{Z}_p[x_0, \\ldots, x_{k-1}]`\nfrom a list of evaluation points in `\\mathbb{Z...", "relevant": ["sympy.polys.modulargcd::_interpolate_multivariate#part2"]}
+{"query": "Which class implements InfinitePredicate?", "relevant": ["sympy.assumptions.predicates.calculus::InfinitePredicate"]}
+{"query": "Printer, which converts an expression into 2D ASCII-art figure", "relevant": ["sympy.printing.pretty.pretty::PrettyPrinter#part19"]}
+{"query": "Which class implements TorchPrinter?", "relevant": ["sympy.printing.pytorch::TorchPrinter#part4"]}
+{"query": "Which class implements Tensor?", "relevant": ["sympy.tensor.tensor::Tensor#part2"]}
+{"query": "Which class implements Transpose?", "relevant": ["sympy.matrices.expressions.transpose::Transpose#part2"]}
+{"query": "Where is hyperplane parameters implemented?", "relevant": ["sympy.integrals.intpoly::hyperplane_parameters"]}
+{"query": "How does the code handle encipher affine?", "relevant": ["sympy.crypto.crypto::encipher_affine#part1"]}
+{"query": "Where is generate involutions implemented?", "relevant": ["sympy.utilities.iterables::generate_involutions"]}
+{"query": "Which class implements PolynomialRing?", "relevant": ["sympy.polys.domains.polynomialring::PolynomialRing#part1"]}
+{"query": "How does the code handle gcd terms?", "relevant": ["sympy.core.exprtools::gcd_terms#part3"]}
+{"query": "Internal class to handle the queries of expectation and probability\nby substitution", "relevant": ["sympy.stats.stochastic_process_types::_SubstituteRV#part1"]}
+{"query": "Represents a physical constant, eg", "relevant": ["sympy.physics.units.quantities::PhysicalConstant"]}
+{"query": "Class to denote sum of Vector instances", "relevant": ["sympy.vector.vector::VectorAdd"]}
+{"query": "Find the MediumN class definition", "relevant": ["sympy.physics.optics.medium::MediumN"]}
+{"query": "Which class implements ImaginaryUnit?", "relevant": ["sympy.core.numbers::ImaginaryUnit#part2"]}
+{"query": "Simplify bessel-type functions", "relevant": ["sympy.simplify.simplify::besselsimp#part2"]}
+{"query": "Which class implements SparseNDimArray?", "relevant": ["sympy.tensor.array.sparse_ndim_array::SparseNDimArray#part2"]}
+{"query": "Which class implements XBra?", "relevant": ["sympy.physics.quantum.cartesian::XBra"]}
+{"query": "Represents an indexed complex root of a polynomial", "relevant": ["sympy.polys.rootoftools::ComplexRootOf#part10"]}
+{"query": "How does the code handle parse autolev?", "relevant": ["sympy.parsing.autolev.__init__::parse_autolev#part1"]}
+{"query": "Find the DomainMatrix class definition", "relevant": ["sympy.polys.matrices.domainmatrix::DomainMatrix#part6"]}
+{"query": "Where is get resolvent by lookup implemented?", "relevant": ["sympy.polys.numberfields.galois_resolvents::get_resolvent_by_lookup"]}
+{"query": "Where is parse mathematica implemented?", "relevant": ["sympy.parsing.mathematica::parse_mathematica"]}
+{"query": "Where is igcd lehmer implemented?", "relevant": ["sympy.core.intfunc::igcd_lehmer#part3"]}
+{"query": "How does the code handle dup sqr?", "relevant": ["sympy.polys.densearith::dup_sqr"]}
+{"query": "Find the Add class definition", "relevant": ["sympy.core.add::Add#part8"]}
+{"query": "Rabin's polynomial irreducibility test over finite fields", "relevant": ["sympy.polys.galoistools::gf_irred_p_rabin"]}
+{"query": "Find the ImageSet class definition", "relevant": ["sympy.sets.fancysets::ImageSet#part2"]}
+{"query": "Where is implicit multiplication implemented?", "relevant": ["sympy.parsing.sympy_parser::implicit_multiplication"]}
+{"query": "Computes the limit of an expression term-wise", "relevant": ["sympy.series.limits::heuristics"]}
+{"query": "Find the KanesMethod class definition", "relevant": ["sympy.physics.mechanics.kane::KanesMethod#part8"]}
+{"query": "How does the code handle dup qq heu gcd?", "relevant": ["sympy.polys.euclidtools::dup_qq_heu_gcd"]}
+{"query": "How does the code handle declare points?", "relevant": ["sympy.parsing.autolev._listener_autolev_antlr::declare_points"]}
+{"query": "Find the TensMul class definition", "relevant": ["sympy.tensor.tensor::TensMul#part1"]}
+{"query": "Find the ArrayAdd class definition", "relevant": ["sympy.tensor.array.expressions.array_expressions::ArrayAdd"]}
+{"query": "A line segment in space", "relevant": ["sympy.geometry.line::Segment#part2"]}
+{"query": "How does the code handle mexpand?", "relevant": ["sympy.core.function::_mexpand"]}
+{"query": "Returns the real roots of ``f`` with multiplicities", "relevant": ["sympy.polys.polytools::real_roots#part4"]}
+{"query": "Which class implements airybi?", "relevant": ["sympy.functions.special.bessel::airybi#part3"]}
+{"query": "Where is bode phase numerical data implemented?", "relevant": ["sympy.physics.control.control_plots::bode_phase_numerical_data#part1"]}
+{"query": "Find the Vector class definition", "relevant": ["sympy.physics.vector.vector::Vector#part1"]}
+{"query": "Find the OctaveCodeGen class definition", "relevant": ["sympy.utilities.codegen::OctaveCodeGen#part3"]}
+{"query": "The class used to define vectors", "relevant": ["sympy.physics.vector.vector::Vector#part7"]}
+{"query": "Where is make wilds implemented?", "relevant": ["sympy.integrals.manualintegrate::make_wilds"]}
+{"query": "Find the UnhandledInput class definition", "relevant": ["sympy.logic.algorithms.lra_theory::UnhandledInput"]}
+{"query": "Create a Finite Random Variable representing a Beta-binomial distribution", "relevant": ["sympy.stats.frv_types::BetaBinomial"]}
+{"query": "The cotangent function", "relevant": ["sympy.functions.elementary.trigonometric::cot#part3"]}
+{"query": "Which class implements Cable?", "relevant": ["sympy.physics.continuum_mechanics.cable::Cable#part12"]}
+{"query": "How does the code handle check frame?", "relevant": ["sympy.physics.vector.frame::_check_frame"]}
+{"query": "Find the AutolevParser class definition", "relevant": ["sympy.parsing.autolev._antlr.autolevparser::AutolevParser#part35"]}
+{"query": "Where is nextprime implemented?", "relevant": ["sympy.ntheory.generate::nextprime"]}
+{"query": "Where is dup sqr implemented?", "relevant": ["sympy.polys.densearith::dup_sqr"]}
+{"query": "Which class implements LRARational?", "relevant": ["sympy.logic.algorithms.lra_theory::LRARational"]}
+{"query": "Which class implements Parabola?", "relevant": ["sympy.geometry.parabola::Parabola#part3"]}
+{"query": "What does the function return when spline of degree *d*, passing through the given *X* and *Y* values?", "relevant": ["sympy.functions.special.bsplines::interpolating_spline#part2"]}
+{"query": "Which class implements Compound?", "relevant": ["sympy.unify.core::Compound"]}
+{"query": "This object represents a point in a dynamic system", "relevant": ["sympy.physics.vector.point::Point#part6"]}
+{"query": "Where is real gaunt implemented?", "relevant": ["sympy.physics.wigner::real_gaunt#part1"]}
+{"query": "Approximates sum by neglecting small terms", "relevant": ["sympy.codegen.approximations::SumApprox#part2"]}
+{"query": "How does the code handle substitution?", "relevant": ["sympy.solvers.solveset::substitution#part1"]}
+{"query": "How does the code handle mag?", "relevant": ["sympy.plotting.pygletplot.plot_rotation::mag"]}
+{"query": "Find the VarBosonicBasis class definition", "relevant": ["sympy.physics.secondquant::VarBosonicBasis#part1"]}
+{"query": "Which class implements Segment?", "relevant": ["sympy.geometry.line::Segment#part1"]}
+{"query": "Given a :class:`~", "relevant": ["sympy.categories.diagram_drawing::XypicDiagramDrawer#part10"]}
+{"query": "Where is mueller matrix implemented?", "relevant": ["sympy.physics.optics.polarization::mueller_matrix#part1"]}
+{"query": "Find the HolonomicFunction class definition", "relevant": ["sympy.holonomic.holonomic::HolonomicFunction#part20"]}
+{"query": "We evaluate KroneckerDelta symbols in the expression assuming Einstein summation", "relevant": ["sympy.physics.secondquant::evaluate_deltas#part1"]}
+{"query": "Which class implements DomainMatrix?", "relevant": ["sympy.polys.matrices.domainmatrix::DomainMatrix#part23"]}
+{"query": "Reduces a polynomial ``f`` modulo a set of polynomials ``G``", "relevant": ["sympy.polys.polytools::reduced"]}
+{"query": "Printer, which converts an expression into 2D ASCII-art figure", "relevant": ["sympy.printing.pretty.pretty::PrettyPrinter#part1"]}
+{"query": "Where is sdm berk implemented?", "relevant": ["sympy.polys.matrices.sdm::sdm_berk#part2"]}
+{"query": "Which class implements SubModule?", "relevant": ["sympy.polys.agca.modules::SubModule#part5"]}
+{"query": "Find the PrettyPrinter class definition", "relevant": ["sympy.printing.pretty.pretty::PrettyPrinter#part13"]}
+{"query": "Find the FCodePrinter class definition", "relevant": ["sympy.printing.fortran::FCodePrinter#part9"]}
+{"query": "Find the Boolean class definition", "relevant": ["sympy.logic.boolalg::Boolean#part3"]}
+{"query": "Find a rational isolating interval for a real algebraic number", "relevant": ["sympy.polys.numberfields.utilities::isolate#part2"]}
+{"query": "Find the NthLinearConstantCoeffUndeterminedCoefficients class definition", "relevant": ["sympy.solvers.ode.single::NthLinearConstantCoeffUndeterminedCoefficients#part2"]}
+{"query": "An elliptical GeometryEntity", "relevant": ["sympy.geometry.ellipse::Ellipse#part11"]}
+{"query": "Find the DMF class definition", "relevant": ["sympy.polys.polyclasses::DMF#part6"]}
+{"query": "Which class implements conjugate?", "relevant": ["sympy.functions.elementary.complexes::conjugate#part1"]}
+{"query": "Dense Multivariate Fractions over `K`", "relevant": ["sympy.polys.polyclasses::DMF#part1"]}
+{"query": "Which class implements DiracDelta?", "relevant": ["sympy.functions.special.delta_functions::DiracDelta#part1"]}
+{"query": "How does the code handle smith normal form?", "relevant": ["sympy.polys.matrices.normalforms::smith_normal_form"]}
+{"query": "Where is reduce order meijer implemented?", "relevant": ["sympy.simplify.hyperexpand::reduce_order_meijer"]}
+{"query": "Find the Fourier class definition", "relevant": ["sympy.physics.quantum.qft::Fourier#part2"]}
+{"query": "How does the code handle minor submatrix?", "relevant": ["sympy.matrices.determinant::_minor_submatrix"]}
+{"query": "Which class implements cos?", "relevant": ["sympy.functions.elementary.trigonometric::cos#part3"]}
+{"query": "Where is handle limit implemented?", "relevant": ["sympy.parsing.latex._parse_latex_antlr::handle_limit"]}
+{"query": "How does the code handle int valued?", "relevant": ["sympy.core.numbers::int_valued"]}
+{"query": "Find the PowerSeriesRingProto class definition", "relevant": ["sympy.polys.series.base::PowerSeriesRingProto#part2"]}
+{"query": "Find the function that iss matmul valid", "relevant": ["sympy.matrices.expressions._shape::is_matmul_valid"]}
+{"query": "Find the Polyhedron class definition", "relevant": ["sympy.combinatorics.polyhedron::Polyhedron#part7"]}
+{"query": "Converts the reduced Groebner basis ``F`` of a zero-dimensional\nideal w", "relevant": ["sympy.polys.fglmtools::matrix_fglm#part2"]}
+{"query": "Which class implements DiagramGrid?", "relevant": ["sympy.categories.diagram_drawing::DiagramGrid#part4"]}
+{"query": "How does the code handle primefactors?", "relevant": ["sympy.ntheory.factor_::primefactors#part1"]}
+{"query": "Find the BaseSeries class definition", "relevant": ["sympy.plotting.series::BaseSeries#part7"]}
+{"query": "Convert a list of truth values of some boolean expression\nto the list of coefficients of the polynomial mod 2 (exclus...", "relevant": ["sympy.logic.boolalg::anf_coeffs"]}
+{"query": "Which class implements MatMul?", "relevant": ["sympy.matrices.expressions.matmul::MatMul#part3"]}
+{"query": "Which class implements ExtendedNegativePredicate?", "relevant": ["sympy.assumptions.predicates.order::ExtendedNegativePredicate"]}
+{"query": "Find the log class definition", "relevant": ["sympy.functions.elementary.exponential::log#part6"]}
+{"query": "Representation for a gaussian ray in the Ray Transfer Matrix formalism", "relevant": ["sympy.physics.optics.gaussopt::BeamParameter#part1"]}
+{"query": "Find the MethodBase class definition", "relevant": ["sympy.physics.mechanics.method::MethodBase#part4"]}
+{"query": "With no = 1, computes ceiling(expr)\nWith no = -1, computes floor(expr)\n\nNote: this function either gives the exact re...", "relevant": ["sympy.core.evalf::get_integer_part#part2"]}
+{"query": "How does the code handle equal valued?", "relevant": ["sympy.core.numbers::equal_valued#part1"]}
+{"query": "Find the GroebnerBasis class definition", "relevant": ["sympy.polys.polytools::GroebnerBasis#part1"]}
+{"query": "Find the FiniteSet class definition", "relevant": ["sympy.sets.sets::FiniteSet#part1"]}
+{"query": "How does the code handle rot ccw axis2?", "relevant": ["sympy.matrices.dense::rot_ccw_axis2"]}
+{"query": "Find the Polygon class definition", "relevant": ["sympy.geometry.polygon::Polygon#part1"]}
+{"query": "Which class implements Expr?", "relevant": ["sympy.core.expr::Expr#part27"]}
+{"query": "Find the Expr class definition", "relevant": ["sympy.core.expr::Expr#part33"]}
+{"query": "Find the Variable class definition", "relevant": ["sympy.codegen.ast::Variable#part1"]}
+{"query": "Find the CCodeGen class definition", "relevant": ["sympy.utilities.codegen::CCodeGen#part1"]}
+{"query": "Only apply rule if condition is true", "relevant": ["sympy.strategies.core::condition"]}
+{"query": "Represents a basic subset object", "relevant": ["sympy.combinatorics.subsets::Subset#part6"]}
+{"query": "Code printer which creates Theano symbolic expression graphs", "relevant": ["sympy.printing.theanocode::TheanoPrinter#part3"]}
+{"query": "p, q are polynomials in Z[x] or Q[x]", "relevant": ["sympy.polys.subresultants_qq_zz::sturm_pg#part3"]}
+{"query": "Element of multivariate distributed polynomial ring", "relevant": ["sympy.polys.rings::PolyElement#part14"]}
+{"query": "How does the code handle get truthtable?", "relevant": ["sympy.logic.boolalg::_get_truthtable"]}
+{"query": "Find the Equality class definition", "relevant": ["sympy.core.relational::Equality#part4"]}
+{"query": "Find the function that gets authors from git", "relevant": ["bin.mailmap_check::get_authors_from_git"]}
+{"query": "How does the code handle nc simplify?", "relevant": ["sympy.simplify.simplify::nc_simplify#part3"]}
+{"query": "Where is solve system implemented?", "relevant": ["sympy.solvers.solvers::_solve_system#part3"]}
+{"query": "Where is expand power base implemented?", "relevant": ["sympy.core.function::expand_power_base#part2"]}
+{"query": "Where is is sq maxrank HNF implemented?", "relevant": ["sympy.polys.numberfields.modules::is_sq_maxrank_HNF"]}
+{"query": "Class representing unevaluated Fourier transforms", "relevant": ["sympy.integrals.transforms::FourierTransform"]}
+{"query": "How does the code handle scipy sparse to sympy?", "relevant": ["sympy.physics.quantum.matrixutils::scipy_sparse_to_sympy"]}
+{"query": "Where is minsolve linear system implemented?", "relevant": ["sympy.solvers.solvers::minsolve_linear_system#part1"]}
+{"query": "How does the code handle getenv?", "relevant": ["sympy.core.cache::_getenv"]}
+{"query": "Where is denest pow implemented?", "relevant": ["sympy.simplify.powsimp::_denest_pow#part2"]}
+{"query": "Find the MatrixElement class definition", "relevant": ["sympy.matrices.expressions.matexpr::MatrixElement#part1"]}
+{"query": "Which class implements atan2?", "relevant": ["sympy.functions.elementary.trigonometric::atan2#part2"]}
+{"query": "How does the code handle pde 1st linear constant coeff homogeneous?", "relevant": ["sympy.solvers.pde::pde_1st_linear_constant_coeff_homogeneous#part1"]}
+{"query": "Which class implements RecurrenceOperator?", "relevant": ["sympy.holonomic.recurrence::RecurrenceOperator#part4"]}
+{"query": "Which class implements GMPYInteger?", "relevant": ["sympy.polys.domains.groundtypes::_GMPYInteger"]}
+{"query": "The tribonacci constant", "relevant": ["sympy.core.numbers::TribonacciConstant#part2"]}
+{"query": "Converts an expr to a string of fortran code\n\nParameters\n==========\n\nexpr : Expr\n    A SymPy expression to be converted", "relevant": ["sympy.printing.codeprinter::fcode#part1"]}
+{"query": "Where is is strong lucas prp implemented?", "relevant": ["sympy.external.ntheory::is_strong_lucas_prp"]}
+{"query": "Put an expression over a common denominator, cancel and reduce", "relevant": ["sympy.simplify.ratsimp::ratsimp"]}
+{"query": "Find the HomogeneousCoeffSubsIndepDivDep class definition", "relevant": ["sympy.solvers.ode.single::HomogeneousCoeffSubsIndepDivDep#part2"]}
+{"query": "Where is concat reduced array forms implemented?", "relevant": ["sympy.combinatorics.free_groups::_concat_reduced_array_forms"]}
+{"query": "Turn a rule into a branching rule", "relevant": ["sympy.strategies.branch.core::yieldify"]}
+{"query": "Find the FinitePSpace class definition", "relevant": ["sympy.stats.frv::FinitePSpace#part2"]}
+{"query": "Where is Lagrangian implemented?", "relevant": ["sympy.physics.mechanics.functions::Lagrangian"]}
+{"query": "How does the code handle is reducible?", "relevant": ["sympy.physics.quantum.identitysearch::is_reducible"]}
+{"query": "Which class implements ClosureFailure?", "relevant": ["sympy.polys.numberfields.exceptions::ClosureFailure"]}
+{"query": "Which class implements PyTestReporter?", "relevant": ["sympy.testing.runtests::PyTestReporter#part5"]}
+{"query": "A printer to convert SymPy expressions to strings of Rust code", "relevant": ["sympy.printing.rust::RustCodePrinter#part6"]}
+{"query": "Represents a mathematical object with indices", "relevant": ["sympy.tensor.indexed::Indexed#part3"]}
+{"query": "Find the ExpressionDomain class definition", "relevant": ["sympy.polys.domains.expressiondomain::ExpressionDomain#part1"]}
+{"query": "Which class implements Poly?", "relevant": ["sympy.polys.polytools::Poly#part51"]}
+{"query": "Abstract base class for all musculotendon classes to inherit from", "relevant": ["sympy.physics.biomechanics.musculotendon::MusculotendonBase#part8"]}
+{"query": "Calculate the Moore-Penrose pseudoinverse of the matrix", "relevant": ["sympy.matrices.inverse::_pinv#part1"]}
+{"query": "Find the MatplotlibBackend class definition", "relevant": ["sympy.plotting.backends.matplotlibbackend.matplotlib::MatplotlibBackend#part5"]}
+{"query": "Create a nice table representation of data", "relevant": ["sympy.printing.tableform::TableForm#part5"]}
+{"query": "Find the TensorManager class definition", "relevant": ["sympy.tensor.tensor::_TensorManager#part2"]}
+{"query": "Element of multivariate distributed rational function field", "relevant": ["sympy.polys.fields::FracElement#part3"]}
+{"query": "Find the Set class definition", "relevant": ["sympy.sets.sets::Set#part3"]}
+{"query": "Represent the Levi-Civita symbol", "relevant": ["sympy.functions.special.tensor_functions::Eijk"]}
+{"query": "Generator for Octave code", "relevant": ["sympy.utilities.codegen::OctaveCodeGen#part2"]}
+{"query": "Where is eigenspace implemented?", "relevant": ["sympy.matrices.eigen::_eigenspace"]}
+{"query": "Find the function that iss primitive root", "relevant": ["sympy.ntheory.residue_ntheory::is_primitive_root#part1"]}
+{"query": "Returns the cross-product of vectors (v2 - v1) and (v3 - v1)\nThat is : (v2 - v1) X (v3 - v1)", "relevant": ["sympy.integrals.intpoly::cross_product"]}
+{"query": "Which class implements intervalMembership?", "relevant": ["sympy.plotting.intervalmath.interval_membership::intervalMembership#part2"]}
+{"query": "A Stokes vector corresponding to a polarization ellipse with ``psi``\ntilt, and ``chi`` circularity", "relevant": ["sympy.physics.optics.polarization::stokes_vector#part2"]}
+{"query": "How does the code handle dup isolate real roots list?", "relevant": ["sympy.polys.rootisolation::dup_isolate_real_roots_list"]}
+{"query": "Compute the sine of a power series", "relevant": ["sympy.polys.series.ringpython::_useries_sin"]}
+{"query": "Which class implements ANP?", "relevant": ["sympy.polys.polyclasses::ANP#part6"]}
+{"query": "How does the code handle solve trig2?", "relevant": ["sympy.solvers.solveset::_solve_trig2#part2"]}
+{"query": "How does the code handle simplify patterns and3?", "relevant": ["sympy.logic.boolalg::_simplify_patterns_and3"]}
+{"query": "Where is set function implemented?", "relevant": ["sympy.sets.sets::set_function"]}
+{"query": "How does the code handle binomial mod prime power?", "relevant": ["sympy.ntheory.residue_ntheory::_binomial_mod_prime_power#part2"]}
+{"query": "How does the code handle monotonic sign?", "relevant": ["sympy.core.exprtools::_monotonic_sign#part4"]}
+{"query": "Performs factorization using Self-Initializing Quadratic Sieve", "relevant": ["sympy.ntheory.qs::qs"]}
+{"query": "Construct vertical object of a given height\n\nsee: xobj", "relevant": ["sympy.printing.pretty.pretty_symbology::vobj"]}
+{"query": "Find the periodic continued fraction expansion of a quadratic irrational", "relevant": ["sympy.ntheory.continued_fraction::continued_fraction_periodic#part1"]}
+{"query": "Where is glob at depth implemented?", "relevant": ["sympy.utilities._compilation.util::glob_at_depth"]}
+{"query": "Where is gf from dict implemented?", "relevant": ["sympy.polys.galoistools::gf_from_dict"]}
+{"query": "Where is get conversion matrix for expr implemented?", "relevant": ["sympy.physics.units.util::_get_conversion_matrix_for_expr"]}
+{"query": "What does the function return when the differential equation for an integral curve of the field?", "relevant": ["sympy.diffgeom.diffgeom::intcurve_diffequ#part1"]}
+{"query": "Where is jordan form implemented?", "relevant": ["sympy.matrices.eigen::_jordan_form#part4"]}
+{"query": "Class to denote a body-orienter", "relevant": ["sympy.vector.orienters::BodyOrienter#part1"]}
+{"query": "Find the Symbol class definition", "relevant": ["sympy.core.symbol::Symbol#part1"]}
+{"query": "Find the elliptic pi class definition", "relevant": ["sympy.functions.special.elliptic_integrals::elliptic_pi#part1"]}
+{"query": "Which class implements DUP Flint?", "relevant": ["sympy.polys.polyclasses::DUP_Flint#part9"]}
+{"query": "Which class implements SingleDomain?", "relevant": ["sympy.stats.rv::SingleDomain"]}
+{"query": "How does the code handle udivisors?", "relevant": ["sympy.ntheory.factor_::udivisors"]}
+{"query": "Find the Relational class definition", "relevant": ["sympy.core.relational::Relational#part4"]}
+{"query": "Which class implements LatexPrinter?", "relevant": ["sympy.printing.latex::LatexPrinter#part37"]}
+{"query": "Where is wicks implemented?", "relevant": ["sympy.physics.secondquant::wicks#part1"]}
+{"query": "This class is used to solve problems related to a three hinged arch(determinate) structure", "relevant": ["sympy.physics.continuum_mechanics.arch::Arch#part8"]}
+{"query": "Which class implements PrettyPrinter?", "relevant": ["sympy.printing.pretty.pretty::PrettyPrinter#part23"]}
+{"query": "Where is apart list full decomposition implemented?", "relevant": ["sympy.polys.partfrac::apart_list_full_decomposition#part1"]}
+{"query": "Where is pat sincos implemented?", "relevant": ["sympy.integrals.trigonometry::_pat_sincos"]}
+{"query": "Ring of Puiseux polynomials", "relevant": ["sympy.polys.puiseux::PuiseuxRing#part2"]}
+{"query": "Find the function that gets integer part", "relevant": ["sympy.core.evalf::get_integer_part#part1"]}
+{"query": "Which class implements Poly?", "relevant": ["sympy.polys.polytools::Poly#part28"]}
+{"query": "Find the FreeGroupElement class definition", "relevant": ["sympy.combinatorics.free_groups::FreeGroupElement#part18"]}
+{"query": "Which class implements union?", "relevant": ["sympy.codegen.cnodes::union"]}
+{"query": "Find the primenu class definition", "relevant": ["sympy.functions.combinatorial.numbers::primenu"]}
+{"query": "Find the Curve class definition", "relevant": ["sympy.geometry.curve::Curve#part2"]}
+{"query": "Where is simplify logic implemented?", "relevant": ["sympy.logic.boolalg::simplify_logic#part2"]}
+{"query": "Find the optical setup conjugating the object/image waists", "relevant": ["sympy.physics.optics.gaussopt::conjugate_gauss_beams#part2"]}
+{"query": "Apply operators to states in a quantum expression", "relevant": ["sympy.physics.quantum.qapply::qapply#part2"]}
+{"query": "Find the Poly class definition", "relevant": ["sympy.polys.polytools::Poly#part64"]}
+{"query": "Apply the Gram-Schmidt process to a set of vectors", "relevant": ["sympy.matrices.dense::GramSchmidt"]}
+{"query": "The single qubit Hadamard gate", "relevant": ["sympy.physics.quantum.gate::HadamardGate"]}
+{"query": "Find the MIMOFeedback class definition", "relevant": ["sympy.physics.control.lti::MIMOFeedback#part4"]}
+{"query": "Which class implements ExpressionDomain?", "relevant": ["sympy.polys.domains.expressiondomain::ExpressionDomain#part3"]}
+{"query": "Find the HolonomicFunction class definition", "relevant": ["sympy.holonomic.holonomic::HolonomicFunction#part28"]}
+{"query": "Remove terms with zero coefficients from ``f`` in ``K[X]``", "relevant": ["sympy.polys.distributedmodules::sdm_strip"]}
+{"query": "Gives a power series solution to a second order homogeneous differential\nequation with polynomial coefficients at a r...", "relevant": ["sympy.solvers.ode.ode::ode_2nd_power_series_regular#part3"]}
+{"query": "Rebuild a SymPy tree", "relevant": ["sympy.strategies.rl::rebuild"]}
+{"query": "Where is forward jacobian implemented?", "relevant": ["sympy.simplify._cse_diff::_forward_jacobian#part2"]}
+{"query": "Returns the radial wavefunction R_{nl} for a 3d isotropic harmonic\noscillator", "relevant": ["sympy.physics.sho::R_nl"]}
+{"query": "How does the code handle real roots?", "relevant": ["sympy.polys.polytools::real_roots#part3"]}
+{"query": "A Truss is an assembly of members such as beams,\nconnected by nodes, that create a rigid structure", "relevant": ["sympy.physics.continuum_mechanics.truss::Truss#part10"]}
+{"query": "How does the code handle find executable?", "relevant": ["sympy.utilities.misc::find_executable"]}
+{"query": "Find the Quaternion class definition", "relevant": ["sympy.algebras.quaternion::Quaternion#part18"]}
+{"query": "Find the MultinomialDistribution class definition", "relevant": ["sympy.stats.joint_rv_types::MultinomialDistribution"]}
+{"query": "Find the MaxTriesException class definition", "relevant": ["sympy.polys.numberfields.galoisgroups::MaxTriesException"]}
+{"query": "Abstract base class for modules", "relevant": ["sympy.polys.agca.modules::Module#part2"]}
+{"query": "Decorator to reset the eom_method if a property is changed", "relevant": ["sympy.physics.mechanics.system::_reset_eom_method"]}
+{"query": "Dense matrix based on polys domain elements\n\nThis is a list subclass and is a wrapper for a list of lists that suppor...", "relevant": ["sympy.polys.matrices.ddm::DDM#part4"]}
+{"query": "Which class implements PermutationGroup?", "relevant": ["sympy.combinatorics.perm_groups::PermutationGroup#part57"]}
+{"query": "Find the MpmathPrinter class definition", "relevant": ["sympy.printing.pycode::MpmathPrinter#part1"]}
+{"query": "How does the code handle encipher bifid5?", "relevant": ["sympy.crypto.crypto::encipher_bifid5#part2"]}
+{"query": "Find the ArrayDiagonal class definition", "relevant": ["sympy.tensor.array.expressions.array_expressions::ArrayDiagonal#part4"]}
+{"query": "Which class implements WildStar?", "relevant": ["sympy.utilities.matchpy_connector::WildStar"]}
+{"query": "Find the betainc class definition", "relevant": ["sympy.functions.special.beta_functions::betainc#part1"]}
+{"query": "Which class implements PermutationGroup?", "relevant": ["sympy.combinatorics.perm_groups::PermutationGroup#part43"]}
+{"query": "Which class implements assoc laguerre?", "relevant": ["sympy.functions.special.polynomials::assoc_laguerre#part2"]}
+{"query": "Find the Permutation class definition", "relevant": ["sympy.combinatorics.permutations::Permutation#part2"]}
+{"query": "Where is is sqrt implemented?", "relevant": ["sympy.simplify.sqrtdenest::is_sqrt"]}
+{"query": "Given a sentence ``expr`` consisting of conjunctions and disjunctions\nof literals, return an equivalent sentence in DNF", "relevant": ["sympy.logic.boolalg::distribute_or_over_and"]}
+{"query": "Represents a set of variables and the values which they can take", "relevant": ["sympy.stats.rv::RandomDomain"]}
+{"query": "Where is encipher affine implemented?", "relevant": ["sympy.crypto.crypto::encipher_affine#part2"]}
+{"query": "Compute functional composition ``f(g)``", "relevant": ["sympy.polys.polytools::compose"]}
+{"query": "How does the code handle init printing?", "relevant": ["sympy.interactive.printing::init_printing#part2"]}
+{"query": "What does the function return when the number of combinations of ``n`` items taken ``k`` at a time?", "relevant": ["sympy.functions.combinatorial.numbers::nC#part2"]}
+{"query": "How does the code handle centroid?", "relevant": ["sympy.geometry.util::centroid#part2"]}
+{"query": "Abstract base class for module homomoprhisms", "relevant": ["sympy.polys.agca.homomorphisms::ModuleHomomorphism#part6"]}
+{"query": "The second heuristic uses the following two assumptions on `\\xi` and `\\eta`", "relevant": ["sympy.solvers.ode.lie_group::lie_heuristic_abaco1_product#part2"]}
+{"query": "How does the code handle cse?", "relevant": ["sympy.simplify.cse_main::cse#part2"]}
+{"query": "Find the DenseMatrix class definition", "relevant": ["sympy.matrices.dense::DenseMatrix#part1"]}
+{"query": "How does the code handle special function rule?", "relevant": ["sympy.integrals.manualintegrate::special_function_rule"]}
+{"query": "How does the code handle stirling2?", "relevant": ["sympy.functions.combinatorial.numbers::_stirling2"]}
+{"query": "Where is bidiagonalize implemented?", "relevant": ["sympy.matrices.eigen::_bidiagonalize"]}
+{"query": "Where is construct expression implemented?", "relevant": ["sympy.polys.constructor::_construct_expression"]}
+{"query": "How does the code handle fourier series?", "relevant": ["sympy.series.fourier::fourier_series#part1"]}
+{"query": "Which class implements MIMOParallel?", "relevant": ["sympy.physics.control.lti::MIMOParallel#part3"]}
+{"query": "Which class implements Prufer?", "relevant": ["sympy.combinatorics.prufer::Prufer#part6"]}
+{"query": "Where is dup sqf norm implemented?", "relevant": ["sympy.polys.sqfreetools::dup_sqf_norm#part1"]}
+{"query": "Symbolic class Central Moment\n\nExamples\n========\n\n>>> from sympy import Symbol, Integral\n>>> from sympy", "relevant": ["sympy.stats.symbolic_probability::CentralMoment"]}
+{"query": "How does the code handle normalize applied predicates?", "relevant": ["sympy.assumptions.ask::_normalize_applied_predicates"]}
+{"query": "Where is repeated decimals implemented?", "relevant": ["sympy.parsing.sympy_parser::repeated_decimals#part2"]}
+{"query": "Field of Gaussian rationals ``QQ_I``\n\nThe :ref:`QQ_I` domain represents the `Gaussian rationals`_ `\\mathbb{Q}(i)`\nas ...", "relevant": ["sympy.polys.domains.gaussiandomains::GaussianRationalField#part2"]}
+{"query": "Greatest common divisor of tuples representing monomials", "relevant": ["sympy.polys.monomials::monomial_gcd"]}
+{"query": "Find the DMP class definition", "relevant": ["sympy.polys.polyclasses::DMP#part15"]}
+{"query": "Where is halt ordering implemented?", "relevant": ["sympy.multipledispatch.dispatcher::halt_ordering"]}
+{"query": "Gives solution of the Bessel differential equation", "relevant": ["sympy.solvers.ode.single::SecondLinearBessel#part1"]}
+{"query": "Find the Ray3D class definition", "relevant": ["sympy.geometry.line::Ray3D#part2"]}
+{"query": "Pollard's Rho algorithm for computing the discrete logarithm of ``a`` to\nthe base ``b`` modulo ``n``", "relevant": ["sympy.ntheory.residue_ntheory::_discrete_log_pollard_rho#part1"]}
+{"query": "How does the code handle token callable?", "relevant": ["sympy.parsing.sympy_parser::_token_callable"]}
+{"query": "Use Pollard's p-1 method to try to extract a nontrivial factor\nof ``n``", "relevant": ["sympy.ntheory.factor_::pollard_pm1#part1"]}
+{"query": "How does the code handle mathematica?", "relevant": ["sympy.parsing.mathematica::mathematica"]}
+{"query": "Which class implements ReplaceOptim?", "relevant": ["sympy.codegen.rewriting::ReplaceOptim"]}
+{"query": "Find the TensAdd class definition", "relevant": ["sympy.tensor.tensor::TensAdd#part1"]}
+{"query": "Find the binomial class definition", "relevant": ["sympy.functions.combinatorial.factorials::binomial#part1"]}
+{"query": "How does the code handle integrate hyperexponential polynomial?", "relevant": ["sympy.integrals.risch::integrate_hyperexponential_polynomial"]}
+{"query": "Where is sqrt mod prime power implemented?", "relevant": ["sympy.ntheory.residue_ntheory::_sqrt_mod_prime_power#part2"]}
+{"query": "Find the EndomorphismRing class definition", "relevant": ["sympy.polys.numberfields.modules::EndomorphismRing#part2"]}
+{"query": "process the generators of ``poly``, returning the set of generators that\nhave ``symbol``", "relevant": ["sympy.solvers.bivariate::_filtered_gens"]}
+{"query": "Find the CodeSignature class definition", "relevant": ["sympy.printing.llvmjitcode::CodeSignature"]}
+{"query": "How does the code handle factorint?", "relevant": ["sympy.ntheory.factor_::factorint#part2"]}
+{"query": "Find the LinearEntity class definition", "relevant": ["sympy.geometry.line::LinearEntity#part10"]}
+{"query": "Which class implements MatrixEigen?", "relevant": ["sympy.matrices.matrices::MatrixEigen#part2"]}
+{"query": "Where is Die implemented?", "relevant": ["sympy.stats.frv_types::Die"]}
+{"query": "Where is intlike interval implemented?", "relevant": ["sympy.sets.handlers.intersection::_intlike_interval"]}
+{"query": "Associate Matrix with :py:class:`~", "relevant": ["sympy.polys.matrices.domainmatrix::DomainMatrix#part36"]}
+{"query": "Where is dmp mul implemented?", "relevant": ["sympy.polys.densearith::dmp_mul"]}
+{"query": "Find the Abs class definition", "relevant": ["sympy.functions.elementary.complexes::Abs#part1"]}
+{"query": "How does the code handle gf frobenius monomial base?", "relevant": ["sympy.polys.galoistools::gf_frobenius_monomial_base"]}
+{"query": "Defines the expression x**y as \"x raised to a power y\"", "relevant": ["sympy.core.power::Pow#part4"]}
+{"query": "Where is randrange implemented?", "relevant": ["sympy.core.random::_randrange"]}
+{"query": "Which class implements Logic?", "relevant": ["sympy.core.logic::Logic#part1"]}

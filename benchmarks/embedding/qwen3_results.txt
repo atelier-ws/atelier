@@ -1,0 +1,2040 @@
+Corpus: 4975  Queries: 2000
+Indexing corpus ...
+embed 16/4975embed 32/4975embed 48/4975embed 64/4975embed 80/4975embed 96/4975embed 112/4975embed 128/4975embed 144/4975embed 160/4975embed 176/4975embed 192/4975embed 208/4975embed 224/4975embed 240/4975embed 256/4975embed 272/4975embed 288/4975embed 304/4975embed 320/4975embed 336/4975embed 352/4975embed 368/4975embed 384/4975embed 400/4975embed 416/4975embed 432/4975embed 448/4975embed 464/4975embed 480/4975embed 496/4975embed 512/4975embed 528/4975embed 544/4975embed 560/4975embed 576/4975embed 592/4975embed 608/4975embed 624/4975embed 640/4975embed 656/4975embed 672/4975embed 688/4975embed 704/4975embed 720/4975embed 736/4975embed 752/4975embed 768/4975embed 784/4975embed 800/4975embed 816/4975embed 832/4975embed 848/4975embed 864/4975embed 880/4975embed 896/4975embed 912/4975embed 928/4975embed 944/4975embed 960/4975embed 976/4975embed 992/4975embed 1008/4975embed 1024/4975embed 1040/4975embed 1056/4975embed 1072/4975embed 1088/4975embed 1104/4975embed 1120/4975embed 1136/4975embed 1152/4975embed 1168/4975embed 1184/4975embed 1200/4975embed 1216/4975embed 1232/4975embed 1248/4975embed 1264/4975embed 1280/4975embed 1296/4975embed 1312/4975embed 1328/4975embed 1344/4975embed 1360/4975embed 1376/4975embed 1392/4975embed 1408/4975embed 1424/4975embed 1440/4975embed 1456/4975embed 1472/4975embed 1488/4975embed 1504/4975embed 1520/4975embed 1536/4975embed 1552/4975embed 1568/4975embed 1584/4975embed 1600/4975embed 1616/4975embed 1632/4975embed 1648/4975embed 1664/4975embed 1680/4975embed 1696/4975embed 1712/4975embed 1728/4975embed 1744/4975embed 1760/4975embed 1776/4975embed 1792/4975embed 1808/4975embed 1824/4975embed 1840/4975embed 1856/4975embed 1872/4975embed 1888/4975embed 1904/4975embed 1920/4975embed 1936/4975embed 1952/4975embed 1968/4975embed 1984/4975embed 2000/4975embed 2016/4975embed 2032/4975embed 2048/4975embed 2064/4975embed 2080/4975embed 2096/4975embed 2112/4975embed 2128/4975embed 2144/4975embed 2160/4975embed 2176/4975embed 2192/4975embed 2208/4975embed 2224/4975embed 2240/4975embed 2256/4975embed 2272/4975embed 2288/4975embed 2304/4975embed 2320/4975embed 2336/4975embed 2352/4975embed 2368/4975embed 2384/4975embed 2400/4975embed 2416/4975embed 2432/4975embed 2448/4975embed 2464/4975embed 2480/4975embed 2496/4975embed 2512/4975embed 2528/4975embed 2544/4975embed 2560/4975embed 2576/4975embed 2592/4975embed 2608/4975embed 2624/4975embed 2640/4975embed 2656/4975embed 2672/4975embed 2688/4975embed 2704/4975embed 2720/4975embed 2736/4975embed 2752/4975embed 2768/4975embed 2784/4975embed 2800/4975embed 2816/4975embed 2832/4975embed 2848/4975embed 2864/4975embed 2880/4975embed 2896/4975embed 2912/4975embed 2928/4975embed 2944/4975embed 2960/4975embed 2976/4975embed 2992/4975embed 3008/4975embed 3024/4975embed 3040/4975embed 3056/4975embed 3072/4975embed 3088/4975embed 3104/4975embed 3120/4975embed 3136/4975embed 3152/4975embed 3168/4975embed 3184/4975embed 3200/4975embed 3216/4975embed 3232/4975embed 3248/4975embed 3264/4975embed 3280/4975embed 3296/4975embed 3312/4975embed 3328/4975embed 3344/4975embed 3360/4975embed 3376/4975embed 3392/4975embed 3408/4975embed 3424/4975embed 3440/4975embed 3456/4975embed 3472/4975embed 3488/4975embed 3504/4975embed 3520/4975embed 3536/4975embed 3552/4975embed 3568/4975embed 3584/4975embed 3600/4975embed 3616/4975embed 3632/4975embed 3648/4975embed 3664/4975embed 3680/4975embed 3696/4975embed 3712/4975embed 3728/4975embed 3744/4975embed 3760/4975embed 3776/4975embed 3792/4975embed 3808/4975embed 3824/4975embed 3840/4975embed 3856/4975embed 3872/4975embed 3888/4975embed 3904/4975embed 3920/4975embed 3936/4975embed 3952/4975embed 3968/4975embed 3984/4975embed 4000/4975embed 4016/4975embed 4032/4975embed 4048/4975embed 4064/4975embed 4080/4975embed 4096/4975embed 4112/4975embed 4128/4975embed 4144/4975embed 4160/4975embed 4176/4975embed 4192/4975embed 4208/4975embed 4224/4975embed 4240/4975embed 4256/4975embed 4272/4975embed 4288/4975embed 4304/4975embed 4320/4975embed 4336/4975embed 4352/4975embed 4368/4975embed 4384/4975embed 4400/4975embed 4416/4975embed 4432/4975embed 4448/4975embed 4464/4975embed 4480/4975embed 4496/4975embed 4512/4975embed 4528/4975embed 4544/4975embed 4560/4975embed 4576/4975embed 4592/4975embed 4608/4975embed 4624/4975embed 4640/4975embed 4656/4975embed 4672/4975embed 4688/4975embed 4704/4975embed 4720/4975embed 4736/4975embed 4752/4975embed 4768/4975embed 4784/4975embed 4800/4975embed 4816/4975embed 4832/4975embed 4848/4975embed 4864/4975embed 4880/4975embed 4896/4975embed 4912/4975embed 4928/4975embed 4944/4975embed 4960/4975embed 4975/4975
+  dim=4096  19.1 ch/s  260.1s
+  saved corpus embeddings (77.7 MB)
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 100/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 200/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 300/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 400/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 500/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 600/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 700/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 800/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 900/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 1000/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 1100/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 1200/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 1300/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 1400/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 1500/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 1600/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 1700/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 1800/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 1900/2000
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+embed 1/1
+  query 2000/2000
+
+============================================================
+Metric                     Qwen3-Embedding-8B (4975×2000)
+============================================================
+  recall@1                  0.5820  (58.20%)
+  recall@5                  0.7865  (78.65%)
+  recall@10                 0.8280  (82.80%)
+  recall@20                 0.8660  (86.60%)
+  mrr@10                    0.6697  (66.97%)
+  ndcg@10                   0.7084  (70.84%)
+  latency_p50_ms            102.8
+  latency_p95_ms            141.0
+  dimensions                4096
+  index_size_mb             77.7
+

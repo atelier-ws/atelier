@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+import functools
 import json
 from typing import Any
 
 from atelier.core.capabilities.repo_map.budget import count_tokens
+
+
+@functools.lru_cache(maxsize=1024)
+def _count_tokens_cached(payload_json: str) -> int:
+    # The budget binary search (``_fit_items_to_budget``) re-packs the same item
+    # sets ~log2(budget) times, each calling _token_count on identical JSON; an
+    # exact BPE encode is the per-explore tiktoken hotspot. Memoize the pure
+    # text->int count so the repeated identical counts collapse to cache hits.
+    return count_tokens(payload_json)
+
 
 FROZEN_DROP_STAGES = (
     "drop_optional_below_top3",
@@ -18,7 +29,9 @@ PROTECTED_TOP_RANK = 3
 
 
 def _token_count(items: list[dict[str, Any]]) -> int:
-    return count_tokens(json.dumps(items, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str))
+    return _count_tokens_cached(
+        json.dumps(items, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    )
 
 
 class BudgetPacker:

@@ -1,0 +1,500 @@
+{"query": "How does the code handle wordwrap?", "relevant": ["django.template.defaultfilters::wordwrap"]}
+{"query": "Which class implements AdminReadonlyField?", "relevant": ["django.contrib.admin.helpers::AdminReadonlyField#part1"]}
+{"query": "Find the BoundaryIter class definition", "relevant": ["django.http.multipartparser::BoundaryIter#part2"]}
+{"query": "Find the MigrationAutodetector class definition", "relevant": ["django.db.migrations.autodetector::MigrationAutodetector#part9"]}
+{"query": "Find the URLPattern class definition", "relevant": ["django.urls.resolvers::URLPattern#part1"]}
+{"query": "Find the SpatialReference class definition", "relevant": ["django.contrib.gis.gdal.srs::SpatialReference#part1"]}
+{"query": "Encapsulate all admin options and functionality for a given model", "relevant": ["django.contrib.admin.options::ModelAdmin#part23"]}
+{"query": "How does the code handle get key func?", "relevant": ["django.core.cache.backends.base::get_key_func"]}
+{"query": "BaseHTTPServer that implements the Python WSGI protocol", "relevant": ["django.core.servers.basehttp::WSGIServer"]}
+{"query": "Find the Action class definition", "relevant": ["django.contrib.admin.options::Action"]}
+{"query": "Find the RedisCacheClient class definition", "relevant": ["django.core.cache.backends.redis::RedisCacheClient#part2"]}
+{"query": "Where is bad request implemented?", "relevant": ["django.views.defaults::bad_request"]}
+{"query": "Which class implements BaseDatabaseIntrospection?", "relevant": ["django.db.backends.base.introspection::BaseDatabaseIntrospection#part4"]}
+{"query": "A collection of errors that knows how to display itself in various formats", "relevant": ["django.forms.utils::ErrorList#part2"]}
+{"query": "Which class implements BaseCache?", "relevant": ["django.core.cache.backends.base::BaseCache#part1"]}
+{"query": "Which class implements WSGIRequestHandler?", "relevant": ["django.core.servers.basehttp::WSGIRequestHandler#part2"]}
+{"query": "Given a list of dicts, return that list sorted in reverse order by the\nproperty given in the argument", "relevant": ["django.template.defaultfilters::dictsortreversed"]}
+{"query": "How does the code handle get callable parameters?", "relevant": ["django.utils.inspect::_get_callable_parameters"]}
+{"query": "Which class implements Command?", "relevant": ["django.core.management.commands.shell::Command#part1"]}
+{"query": "Where is empty implemented?", "relevant": ["django.db.models.fields.__init__::_empty"]}
+{"query": "Provide a generic many-to-one relation through the ``content_type`` and\n``object_id`` fields", "relevant": ["django.contrib.contenttypes.fields::GenericForeignKey#part3"]}
+{"query": "Middleware for web-server provided authentication on logon pages", "relevant": ["django.contrib.auth.middleware::PersistentRemoteUserMiddleware"]}
+{"query": "Display the row of buttons for delete and save", "relevant": ["django.contrib.admin.templatetags.admin_modify::submit_row"]}
+{"query": "How does the code handle create forward many to many manager?", "relevant": ["django.db.models.fields.related_descriptors::create_forward_many_to_many_manager#part1"]}
+{"query": "Find the ModelAdminChecks class definition", "relevant": ["django.contrib.admin.checks::ModelAdminChecks#part4"]}
+{"query": "Find the BitXor class definition", "relevant": ["django.db.models.aggregates::BitXor"]}
+{"query": "Find the BinaryField class definition", "relevant": ["django.db.models.fields.__init__::BinaryField#part1"]}
+{"query": "The base Geometry field -- maps to the OpenGIS Specification Geometry type", "relevant": ["django.contrib.gis.db.models.fields::GeometryField#part2"]}
+{"query": "Where is get user implemented?", "relevant": ["django.contrib.auth.__init__::get_user"]}
+{"query": "Find the DateInput class definition", "relevant": ["django.forms.widgets::DateInput"]}
+{"query": "How does the code handle acheck password with timing attack mitigation?", "relevant": ["django.contrib.auth.__init__::acheck_password_with_timing_attack_mitigation"]}
+{"query": "Which class implements BaseCache?", "relevant": ["django.core.cache.backends.base::BaseCache#part3"]}
+{"query": "How does the code handle get cache key?", "relevant": ["django.utils.cache::get_cache_key"]}
+{"query": "Which class implements TypedMultipleChoiceField?", "relevant": ["django.forms.fields::TypedMultipleChoiceField"]}
+{"query": "Which class implements SearchQueryCombinable?", "relevant": ["django.contrib.postgres.search::SearchQueryCombinable"]}
+{"query": "Where is get formats implemented?", "relevant": ["django.views.i18n::get_formats"]}
+{"query": "The base class for all migrations", "relevant": ["django.db.migrations.migration::Migration#part4"]}
+{"query": "Encapsulate backend-specific differences, such as the way a backend\nperforms ordering or calculates the ID of a recen...", "relevant": ["django.db.backends.base.operations::BaseDatabaseOperations#part1"]}
+{"query": "Which class implements GeomOutput?", "relevant": ["django.contrib.gis.geos.prototypes.geom::GeomOutput"]}
+{"query": "Find the DatabaseClient class definition", "relevant": ["django.db.backends.oracle.client::DatabaseClient"]}
+{"query": "Generate the actual list of data", "relevant": ["django.contrib.admin.templatetags.admin_list::items_for_result#part2"]}
+{"query": "Find the BaseConstraint class definition", "relevant": ["django.db.models.constraints::BaseConstraint#part1"]}
+{"query": "Find the Polygon class definition", "relevant": ["django.contrib.gis.geos.polygon::Polygon#part4"]}
+{"query": "Where is gdal version info implemented?", "relevant": ["django.contrib.gis.gdal.libgdal::gdal_version_info"]}
+{"query": "Find the function that gets child with renamed prefix", "relevant": ["django.db.models.sql.query::get_child_with_renamed_prefix"]}
+{"query": "Find the function that gets language from path", "relevant": ["django.utils.translation.trans_null::get_language_from_path"]}
+{"query": "Which class implements DatabaseCreation?", "relevant": ["django.db.backends.mysql.creation::DatabaseCreation#part1"]}
+{"query": "Find the Centroid class definition", "relevant": ["django.contrib.gis.db.models.functions::Centroid"]}
+{"query": "Represent a change with the order_with_respect_to option", "relevant": ["django.db.migrations.operations.models::AlterOrderWithRespectTo#part2"]}
+{"query": "Where is check csp settings implemented?", "relevant": ["django.core.checks.security.base::check_csp_settings"]}
+{"query": "Which class implements Urlizer?", "relevant": ["django.utils.html::Urlizer#part3"]}
+{"query": "Find the Apps class definition", "relevant": ["django.apps.registry::Apps#part7"]}
+{"query": "How does the code handle get recent commit count?", "relevant": ["scripts.pr_quality.check_pr::get_recent_commit_count"]}
+{"query": "A widget that splits date input into three <select> boxes", "relevant": ["django.forms.widgets::SelectDateWidget#part3"]}
+{"query": "How does the code handle dsn?", "relevant": ["django.db.backends.oracle.utils::dsn"]}
+{"query": "Find the MediaDefiningClass class definition", "relevant": ["django.forms.widgets::MediaDefiningClass"]}
+{"query": "What does the function return when a path to a builtin template?", "relevant": ["django.views.csrf::builtin_template_path"]}
+{"query": "Which class implements StreamingBuffer?", "relevant": ["django.utils.text::StreamingBuffer"]}
+{"query": "Which class implements GDALRaster?", "relevant": ["django.contrib.gis.gdal.raster.source::GDALRaster#part4"]}
+{"query": "How does the code handle register?", "relevant": ["django.db.backends.sqlite3._functions::register#part1"]}
+{"query": "Find the WhereNode class definition", "relevant": ["django.db.models.sql.where::WhereNode#part6"]}
+{"query": "Find the DatabaseWrapper class definition", "relevant": ["django.db.backends.sqlite3.base::DatabaseWrapper#part1"]}
+{"query": "Base class for all syndication feeds", "relevant": ["django.utils.feedgenerator::SyndicationFeed#part3"]}
+{"query": "Find the SettingsReferenceSerializer class definition", "relevant": ["django.db.migrations.serializer::SettingsReferenceSerializer"]}
+{"query": "How does the code handle add domain?", "relevant": ["django.contrib.syndication.views::add_domain"]}
+{"query": "Which class implements UUIDIStartsWith?", "relevant": ["django.db.models.lookups::UUIDIStartsWith"]}
+{"query": "Find the Model class definition", "relevant": ["django.db.models.base::Model#part4"]}
+{"query": "Which class implements DatabaseWrapper?", "relevant": ["django.db.backends.postgresql.base::DatabaseWrapper#part6"]}
+{"query": "Undo the effects of quote()", "relevant": ["django.contrib.admin.utils::unquote"]}
+{"query": "Find the AlterIndexTogether class definition", "relevant": ["django.db.migrations.operations.models::AlterIndexTogether"]}
+{"query": "Which class implements GEOSCoordSeq?", "relevant": ["django.contrib.gis.geos.coordseq::GEOSCoordSeq#part4"]}
+{"query": "Where is mapping implemented?", "relevant": ["django.contrib.gis.utils.ogrinspect::mapping"]}
+{"query": "How does the code handle get default renderer?", "relevant": ["django.forms.renderers::get_default_renderer"]}
+{"query": "Which class implements RenameIndex?", "relevant": ["django.db.migrations.operations.models::RenameIndex#part3"]}
+{"query": "Convert bytestrings from Python's sqlite3 interface to a regular string", "relevant": ["django.db.backends.sqlite3.base::decoder"]}
+{"query": "Where is raise last exception implemented?", "relevant": ["django.utils.autoreload::raise_last_exception"]}
+{"query": "Where is reset cache implemented?", "relevant": ["django.utils.translation.trans_real::reset_cache"]}
+{"query": "Which class implements Model?", "relevant": ["django.db.models.base::Model#part23"]}
+{"query": "How does the code handle sanitize strftime format?", "relevant": ["django.utils.formats::sanitize_strftime_format"]}
+{"query": "Which class implements ContainsLookup?", "relevant": ["django.contrib.gis.db.models.lookups::ContainsLookup"]}
+{"query": "Where is list resources with updates implemented?", "relevant": ["scripts.manage_translations::list_resources_with_updates#part1"]}
+{"query": "Which class implements SQLCompiler?", "relevant": ["django.db.models.sql.compiler::SQLCompiler#part14"]}
+{"query": "Where is debug transaction implemented?", "relevant": ["django.db.backends.utils::debug_transaction"]}
+{"query": "How does the code handle lower?", "relevant": ["django.template.defaultfilters::lower"]}
+{"query": "How does the code handle parse http date?", "relevant": ["django.utils.http::parse_http_date"]}
+{"query": "Which class implements Query?", "relevant": ["django.db.models.sql.query::Query#part37"]}
+{"query": "Convert multiple spaces to single and strip from both sides", "relevant": ["django.contrib.postgres.search::normalize_spaces"]}
+{"query": "Find the RawQuery class definition", "relevant": ["django.db.models.sql.query::RawQuery#part2"]}
+{"query": "Which class implements ContentTypeManager?", "relevant": ["django.contrib.contenttypes.models::ContentTypeManager#part3"]}
+{"query": "A wrapper for the OGRSpatialReference object", "relevant": ["django.contrib.gis.gdal.srs::SpatialReference#part5"]}
+{"query": "Find the ModelAdmin class definition", "relevant": ["django.contrib.admin.options::ModelAdmin#part8"]}
+{"query": "Which class implements DatabaseOperations?", "relevant": ["django.db.backends.sqlite3.operations::DatabaseOperations#part2"]}
+{"query": "Find the DatabaseCache class definition", "relevant": ["django.core.cache.backends.db::DatabaseCache#part5"]}
+{"query": "What does the function return when the executable?", "relevant": ["django.utils.autoreload::get_child_arguments"]}
+{"query": "Which class implements FindReleaseArtifactsTests?", "relevant": ["scripts.tests::FindReleaseArtifactsTests"]}
+{"query": "Find the function that creates forward many to many manager", "relevant": ["django.db.models.fields.related_descriptors::create_forward_many_to_many_manager#part5"]}
+{"query": "Which class implements StringAgg?", "relevant": ["django.contrib.postgres.aggregates.general::StringAgg"]}
+{"query": "Where is sqlite time extract implemented?", "relevant": ["django.db.backends.sqlite3._functions::_sqlite_time_extract"]}
+{"query": "Find the MigrationWriter class definition", "relevant": ["django.db.migrations.writer::MigrationWriter#part4"]}
+{"query": "Find the EmailBackend class definition", "relevant": ["django.core.mail.backends.smtp::EmailBackend#part1"]}
+{"query": "Metaclass for all models", "relevant": ["django.db.models.base::ModelBase#part2"]}
+{"query": "Which class implements ProjectState?", "relevant": ["django.db.migrations.state::ProjectState#part6"]}
+{"query": "Where is identify hasher implemented?", "relevant": ["django.contrib.auth.hashers::identify_hasher"]}
+{"query": "Where is select template implemented?", "relevant": ["django.template.loader::select_template"]}
+{"query": "Where is do timezone implemented?", "relevant": ["django.templatetags.tz::do_timezone"]}
+{"query": "Which class implements TupleLessThan?", "relevant": ["django.db.models.fields.tuple_lookups::TupleLessThan"]}
+{"query": "Where is watch for translation changes implemented?", "relevant": ["django.utils.translation.reloader::watch_for_translation_changes"]}
+{"query": "Which class implements ForeignObjectRel?", "relevant": ["django.db.models.fields.reverse_related::ForeignObjectRel#part4"]}
+{"query": "Where is flatten choices implemented?", "relevant": ["django.utils.choices::flatten_choices"]}
+{"query": "Update the en/LC_MESSAGES/django", "relevant": ["scripts.manage_translations::update_catalogs"]}
+{"query": "Find the GeoFunc class definition", "relevant": ["django.contrib.gis.db.models.functions::GeoFunc"]}
+{"query": "Find the BooleanField class definition", "relevant": ["django.db.models.fields.__init__::BooleanField"]}
+{"query": "Which class implements BlankChoiceIterator?", "relevant": ["django.utils.choices::BlankChoiceIterator"]}
+{"query": "Find the MultipleObjectMixin class definition", "relevant": ["django.views.generic.list::MultipleObjectMixin#part3"]}
+{"query": "Which class implements BaseModelForm?", "relevant": ["django.forms.models::BaseModelForm#part3"]}
+{"query": "Find the SQLUpdateCompiler class definition", "relevant": ["django.db.models.sql.compiler::SQLUpdateCompiler#part4"]}
+{"query": "How does the code handle swappable dependency?", "relevant": ["django.db.migrations.migration::swappable_dependency"]}
+{"query": "Find the function that creates forward many to many manager", "relevant": ["django.db.models.fields.related_descriptors::create_forward_many_to_many_manager#part4"]}
+{"query": "Where is to path implemented?", "relevant": ["django.utils._os::to_path"]}
+{"query": "Find the MultiWidget class definition", "relevant": ["django.forms.widgets::MultiWidget#part2"]}
+{"query": "Which class implements ImageField?", "relevant": ["django.forms.fields::ImageField"]}
+{"query": "How does the code handle render flatpage?", "relevant": ["django.contrib.flatpages.views::render_flatpage"]}
+{"query": "Find the function that loads backend", "relevant": ["django.contrib.auth.__init__::load_backend"]}
+{"query": "Find the function that creates forward many to many manager", "relevant": ["django.db.models.fields.related_descriptors::create_forward_many_to_many_manager#part10"]}
+{"query": "Which class implements BoundField?", "relevant": ["django.forms.boundfield::BoundField#part6"]}
+{"query": "Which class implements FromWKB?", "relevant": ["django.contrib.gis.db.models.functions::FromWKB"]}
+{"query": "How does the code handle decoder?", "relevant": ["django.db.backends.sqlite3.base::decoder"]}
+{"query": "Find the OrderBy class definition", "relevant": ["django.db.models.expressions::OrderBy#part2"]}
+{"query": "A SplitDateTime Widget that has some admin-specific styling", "relevant": ["django.contrib.admin.widgets::AdminSplitDateTime"]}
+{"query": "Find the Apps class definition", "relevant": ["django.apps.registry::Apps#part6"]}
+{"query": "Which class implements MultiPointField?", "relevant": ["django.contrib.gis.forms.fields::MultiPointField"]}
+{"query": "Which class implements NotGreaterThan?", "relevant": ["django.contrib.postgres.fields.ranges::NotGreaterThan"]}
+{"query": "Find the BaseDatabaseSchemaEditor class definition", "relevant": ["django.db.backends.base.schema::BaseDatabaseSchemaEditor#part1"]}
+{"query": "Find the Query class definition", "relevant": ["django.db.models.sql.query::Query#part36"]}
+{"query": "Cycle among the given strings each time this tag is encountered", "relevant": ["django.template.defaulttags::cycle#part1"]}
+{"query": "Find the Field class definition", "relevant": ["django.db.models.fields.__init__::Field#part17"]}
+{"query": "Which class implements classproperty?", "relevant": ["django.utils.functional::classproperty"]}
+{"query": "Find the AlterField class definition", "relevant": ["django.db.migrations.operations.fields::AlterField#part2"]}
+{"query": "Which class implements DatabaseWrapper?", "relevant": ["django.db.backends.mysql.base::DatabaseWrapper#part6"]}
+{"query": "Functionality common to both ModelAdmin and InlineAdmin", "relevant": ["django.contrib.admin.options::BaseModelAdmin#part1"]}
+{"query": "Find the function that finds command", "relevant": ["django.core.management.utils::find_command"]}
+{"query": "Which class implements Index?", "relevant": ["django.db.models.indexes::Index#part2"]}
+{"query": "How does the code handle get path info?", "relevant": ["django.core.handlers.wsgi::get_path_info"]}
+{"query": "Find the BaseDatabaseCreation class definition", "relevant": ["django.db.backends.base.creation::BaseDatabaseCreation#part5"]}
+{"query": "Find the DatabaseCreation class definition", "relevant": ["django.db.backends.dummy.base::DatabaseCreation"]}
+{"query": "Cache middleware that provides basic behavior for many simple sites", "relevant": ["django.middleware.cache::CacheMiddleware"]}
+{"query": "Which class implements SessionStore?", "relevant": ["django.contrib.sessions.backends.file::SessionStore#part2"]}
+{"query": "Which class implements Envelope?", "relevant": ["django.contrib.gis.gdal.envelope::Envelope#part2"]}
+{"query": "Find the BadMigrationError class definition", "relevant": ["django.db.migrations.exceptions::BadMigrationError"]}
+{"query": "Exactly one AI disclosure checkbox must be selected", "relevant": ["scripts.pr_quality.check_pr::check_ai_disclosure"]}
+{"query": "How does the code handle check async unsafe?", "relevant": ["django.core.checks.async_checks::check_async_unsafe"]}
+{"query": "Which class implements OracleSpatialAdapter?", "relevant": ["django.contrib.gis.db.backends.oracle.adapter::OracleSpatialAdapter"]}
+{"query": "Which class implements KeyTransformLt?", "relevant": ["django.db.models.fields.json::KeyTransformLt"]}
+{"query": "Where is resolve callables implemented?", "relevant": ["django.db.models.utils::resolve_callables"]}
+{"query": "How does the code handle validate host?", "relevant": ["django.http.request::validate_host"]}
+{"query": "Find the RenameIndex class definition", "relevant": ["django.db.migrations.operations.models::RenameIndex#part1"]}
+{"query": "Which class implements FilteredSelectMultiple?", "relevant": ["django.contrib.admin.widgets::FilteredSelectMultiple"]}
+{"query": "Mark a view function as being exempt from the CSRF view protection", "relevant": ["django.views.decorators.csrf::csrf_exempt"]}
+{"query": "Convert quoted string literals to unquoted strings with escaped quotes and\nbackslashes unquoted::\n\n    >>> unescape_s...", "relevant": ["django.utils.text::unescape_string_literal"]}
+{"query": "Find the UploadFileException class definition", "relevant": ["django.core.files.uploadhandler::UploadFileException"]}
+{"query": "Find the Redirect class definition", "relevant": ["django.contrib.redirects.models::Redirect"]}
+{"query": "Which class implements Model?", "relevant": ["django.db.models.base::Model#part18"]}
+{"query": "Find the FieldFetchBlocked class definition", "relevant": ["django.core.exceptions::FieldFetchBlocked"]}
+{"query": "Which class implements ModelAdmin?", "relevant": ["django.contrib.admin.options::ModelAdmin#part21"]}
+{"query": "How does the code handle main?", "relevant": ["scripts.do_django_release::main#part1"]}
+{"query": "Remove an index using PostgreSQL's DROP INDEX CONCURRENTLY syntax", "relevant": ["django.contrib.postgres.operations::RemoveIndexConcurrently"]}
+{"query": "Which class implements CreateError?", "relevant": ["django.contrib.sessions.backends.base::CreateError"]}
+{"query": "Find the AuthConfig class definition", "relevant": ["django.contrib.auth.apps::AuthConfig"]}
+{"query": "Add a field to a model", "relevant": ["django.db.migrations.operations.fields::AddField#part2"]}
+{"query": "Which class implements DataError?", "relevant": ["django.db.utils::DataError"]}
+{"query": "Find the Command class definition", "relevant": ["django.core.management.commands.loaddata::Command#part1"]}
+{"query": "Find the name of the directory that contains a module, if possible", "relevant": ["django.utils.module_loading::module_dir"]}
+{"query": "Which class implements FileDescriptor?", "relevant": ["django.db.models.fields.files::FileDescriptor#part2"]}
+{"query": "Which class implements RedirectFallbackMiddleware?", "relevant": ["django.contrib.redirects.middleware::RedirectFallbackMiddleware"]}
+{"query": "Find the Info class definition", "relevant": ["django.core.checks.messages::Info"]}
+{"query": "Find the TimestampSigner class definition", "relevant": ["django.core.signing::TimestampSigner"]}
+{"query": "Find the ModelState class definition", "relevant": ["django.db.migrations.state::ModelState#part4"]}
+{"query": "Which class implements ChunkIter?", "relevant": ["django.http.multipartparser::ChunkIter"]}
+{"query": "Which class implements GEOSCoordSeq?", "relevant": ["django.contrib.gis.geos.libgeos::GEOSCoordSeq_t"]}
+{"query": "Find the BaseDatabaseOperations class definition", "relevant": ["django.db.backends.base.operations::BaseDatabaseOperations#part5"]}
+{"query": "Find the OGREnvelope class definition", "relevant": ["django.contrib.gis.gdal.envelope::OGREnvelope"]}
+{"query": "What does the function return when an HTML string with all help texts of all configured validators in an <ul>?", "relevant": ["django.contrib.auth.password_validation::_password_validators_help_text_html"]}
+{"query": "Find the ATan class definition", "relevant": ["django.db.models.functions.math::ATan"]}
+{"query": "Find the GenericForeignKey class definition", "relevant": ["django.contrib.contenttypes.fields::GenericForeignKey#part1"]}
+{"query": "How does the code handle urlizetrunc?", "relevant": ["django.template.defaultfilters::urlizetrunc"]}
+{"query": "Which class implements InvalidTemplateEngineError?", "relevant": ["django.template.utils::InvalidTemplateEngineError"]}
+{"query": "Functionality common to both ModelAdmin and InlineAdmin", "relevant": ["django.contrib.admin.options::BaseModelAdmin#part4"]}
+{"query": "Find the FilePathField class definition", "relevant": ["django.forms.fields::FilePathField"]}
+{"query": "Mark a view function as excluded from CommonMiddleware's APPEND_SLASH\nredirection", "relevant": ["django.views.decorators.common::no_append_slash"]}
+{"query": "Which class implements OFTWideStringList?", "relevant": ["django.contrib.gis.gdal.field::OFTWideStringList"]}
+{"query": "Find the FullyLessThan class definition", "relevant": ["django.contrib.postgres.fields.ranges::FullyLessThan"]}
+{"query": "How does the code handle random?", "relevant": ["django.template.defaultfilters::random"]}
+{"query": "Where is get app label and model name implemented?", "relevant": ["django.db.migrations.state::_get_app_label_and_model_name"]}
+{"query": "Where is sqlite sha224 implemented?", "relevant": ["django.db.backends.sqlite3._functions::_sqlite_sha224"]}
+{"query": "Find the AppCommand class definition", "relevant": ["django.core.management.base::AppCommand"]}
+{"query": "How does the code handle get finder?", "relevant": ["django.contrib.staticfiles.finders::get_finder"]}
+{"query": "Write a Markdown job summary to the given file path (if provided)", "relevant": ["scripts.pr_quality.check_pr::write_job_summary"]}
+{"query": "Convert all newlines in a piece of plain text to HTML line breaks\n(``<br>``)", "relevant": ["django.template.defaultfilters::linebreaksbr"]}
+{"query": "Base class for all query expressions", "relevant": ["django.db.models.expressions::BaseExpression#part6"]}
+{"query": "Given a token (assumed to be a string of CSRF_ALLOWED_CHARS, of length\nCSRF_TOKEN_LENGTH, and that its first half is ...", "relevant": ["django.middleware.csrf::_unmask_cipher_token"]}
+{"query": "Which class implements DjangoTemplates?", "relevant": ["django.template.backends.django::DjangoTemplates#part1"]}
+{"query": "How does the code handle does token match?", "relevant": ["django.middleware.csrf::_does_token_match"]}
+{"query": "Which class implements ModelBase?", "relevant": ["django.db.models.base::ModelBase#part4"]}
+{"query": "Which class implements TrigramSimilar?", "relevant": ["django.contrib.postgres.lookups::TrigramSimilar"]}
+{"query": "A basic HTTP request", "relevant": ["django.http.request::HttpRequest#part6"]}
+{"query": "Where is default storage implemented?", "relevant": ["django.contrib.messages.storage.__init__::default_storage"]}
+{"query": "Find the DayMixin class definition", "relevant": ["django.views.generic.dates::DayMixin"]}
+{"query": "Which class implements MessagesTestMixin?", "relevant": ["django.contrib.messages.test::MessagesTestMixin"]}
+{"query": "Which class implements Node?", "relevant": ["django.utils.tree::Node#part2"]}
+{"query": "Find the Lookup class definition", "relevant": ["django.db.models.lookups::Lookup#part1"]}
+{"query": "Find the Model class definition", "relevant": ["django.db.models.base::Model#part34"]}
+{"query": "How does the code handle session app?", "relevant": ["django.core.checks.security.sessions::_session_app"]}
+{"query": "Groups are a generic way of categorizing users to apply permissions, or\nsome other label, to those users", "relevant": ["django.contrib.auth.models::Group"]}
+{"query": "Where is run with reloader implemented?", "relevant": ["django.utils.autoreload::run_with_reloader"]}
+{"query": "How does the code handle strip tags?", "relevant": ["django.utils.html::strip_tags"]}
+{"query": "Which class implements BasePasswordHasher?", "relevant": ["django.contrib.auth.hashers::BasePasswordHasher#part1"]}
+{"query": "Find the DjangoHelpFormatter class definition", "relevant": ["django.core.management.base::DjangoHelpFormatter"]}
+{"query": "Which class implements GenericForeignKeyDescriptor?", "relevant": ["django.contrib.contenttypes.fields::GenericForeignKeyDescriptor#part2"]}
+{"query": "Find the ExtractSecond class definition", "relevant": ["django.db.models.functions.datetime::ExtractSecond"]}
+{"query": "Which class implements Command?", "relevant": ["django.contrib.staticfiles.management.commands.runserver::Command"]}
+{"query": "A widget that is composed of multiple widgets", "relevant": ["django.forms.widgets::MultiWidget#part1"]}
+{"query": "Where is strip tags implemented?", "relevant": ["django.utils.html::strip_tags"]}
+{"query": "Find the OuterRef class definition", "relevant": ["django.db.models.expressions::OuterRef"]}
+{"query": "Find the BaseCommand class definition", "relevant": ["django.core.management.base::BaseCommand#part4"]}
+{"query": "Find the TimeFormat class definition", "relevant": ["django.utils.dateformat::TimeFormat#part1"]}
+{"query": "Find the ChangeList class definition", "relevant": ["django.contrib.admin.views.main::ChangeList#part3"]}
+{"query": "Which class implements FormView?", "relevant": ["django.views.generic.edit::FormView"]}
+{"query": "Find the Command class definition", "relevant": ["django.core.management.commands.squashmigrations::Command#part2"]}
+{"query": "Which class implements Extract?", "relevant": ["django.db.models.functions.datetime::Extract#part1"]}
+{"query": "Where is urlizetrunc implemented?", "relevant": ["django.template.defaultfilters::urlizetrunc"]}
+{"query": "For the attribute 'through_attr' on the given instance, find\nan object that has a get_prefetch_querysets()", "relevant": ["django.db.models.query::get_prefetcher#part1"]}
+{"query": "Where is create reverse many to one manager implemented?", "relevant": ["django.db.models.fields.related_descriptors::create_reverse_many_to_one_manager#part6"]}
+{"query": "Find the RequireDebugFalse class definition", "relevant": ["django.utils.log::RequireDebugFalse"]}
+{"query": "Find the IntegrityError class definition", "relevant": ["django.db.utils::IntegrityError"]}
+{"query": "Where is make middleware decorator implemented?", "relevant": ["django.utils.decorators::make_middleware_decorator#part2"]}
+{"query": "Where is resolve url implemented?", "relevant": ["django.shortcuts::resolve_url"]}
+{"query": "Which class implements UninitializedOperatorsDescriptor?", "relevant": ["django.db.backends.oracle.base::_UninitializedOperatorsDescriptor"]}
+{"query": "Analyze the request to find what language the user wants the system to\nshow", "relevant": ["django.utils.translation.trans_real::get_language_from_request"]}
+{"query": "Find the Widget class definition", "relevant": ["django.forms.widgets::Widget#part2"]}
+{"query": "Provide a many-to-many relation by using an intermediary model that\nholds two ForeignKey fields pointed at the two si...", "relevant": ["django.db.models.fields.related::ManyToManyField#part5"]}
+{"query": "Find the DatabaseWrapper class definition", "relevant": ["django.db.backends.oracle.base::DatabaseWrapper#part5"]}
+{"query": "Which class implements ForeignKeyRawIdWidget?", "relevant": ["django.contrib.admin.widgets::ForeignKeyRawIdWidget#part1"]}
+{"query": "A field for HStore data which accepts dictionary JSON input", "relevant": ["django.contrib.postgres.forms.hstore::HStoreField"]}
+{"query": "Find the SingleZipReader class definition", "relevant": ["django.core.management.commands.loaddata::SingleZipReader"]}
+{"query": "Where is resolve relation implemented?", "relevant": ["django.db.models.fields.related::resolve_relation"]}
+{"query": "How does the code handle int output?", "relevant": ["django.contrib.gis.gdal.prototypes.generation::int_output"]}
+{"query": "Which class implements TrigramStrictWordSimilar?", "relevant": ["django.contrib.postgres.lookups::TrigramStrictWordSimilar"]}
+{"query": "Find the GEOSGeometryBase class definition", "relevant": ["django.contrib.gis.geos.geometry::GEOSGeometryBase#part3"]}
+{"query": "Find the TextChoices class definition", "relevant": ["django.db.models.enums::TextChoices"]}
+{"query": "How does the code handle title?", "relevant": ["django.template.defaultfilters::title"]}
+{"query": "Which class implements Command?", "relevant": ["django.core.management.commands.loaddata::Command#part3"]}
+{"query": "Which class implements HasAnyKeys?", "relevant": ["django.contrib.postgres.lookups::HasAnyKeys"]}
+{"query": "Find the Command class definition", "relevant": ["django.core.management.commands.loaddata::Command#part6"]}
+{"query": "Find the CheckConstraint class definition", "relevant": ["django.db.models.constraints::CheckConstraint#part3"]}
+{"query": "Find the AdminSite class definition", "relevant": ["django.contrib.admin.sites::AdminSite#part7"]}
+{"query": "A single SQL query", "relevant": ["django.db.models.sql.query::Query#part31"]}
+{"query": "What does the function return when the hash of password using pbkdf2?", "relevant": ["django.utils.crypto::pbkdf2"]}
+{"query": "Which class implements HttpRequest?", "relevant": ["django.http.request::HttpRequest#part4"]}
+{"query": "Where is get script prefix implemented?", "relevant": ["django.core.handlers.asgi::get_script_prefix"]}
+{"query": "How does the code handle check errors?", "relevant": ["django.utils.autoreload::check_errors"]}
+{"query": "Was something modified since the user last downloaded it?\n\nheader\n  This is the value of the If-Modified-Since header", "relevant": ["django.views.static::was_modified_since"]}
+{"query": "Escape the unsafe characters from the path portion of a Uniform Resource\nIdentifier (URI)", "relevant": ["django.utils.encoding::escape_uri_path"]}
+{"query": "How does the code handle linebreak iter?", "relevant": ["django.template.base::linebreak_iter"]}
+{"query": "Find the GDALBand class definition", "relevant": ["django.contrib.gis.gdal.raster.band::GDALBand#part4"]}
+{"query": "Which class implements ChoiceWidget?", "relevant": ["django.forms.widgets::ChoiceWidget#part1"]}
+{"query": "Find the DatabaseIntrospection class definition", "relevant": ["django.db.backends.sqlite3.introspection::DatabaseIntrospection#part5"]}
+{"query": "Which class implements SQLCompiler?", "relevant": ["django.db.models.sql.compiler::SQLCompiler#part26"]}
+{"query": "How does the code handle replace named groups?", "relevant": ["django.urls.utils::replace_named_groups"]}
+{"query": "Which class implements BaseDatabaseOperations?", "relevant": ["django.db.backends.base.operations::BaseDatabaseOperations#part6"]}
+{"query": "Which class implements AdminBigIntegerFieldWidget?", "relevant": ["django.contrib.admin.widgets::AdminBigIntegerFieldWidget"]}
+{"query": "Where is duration string implemented?", "relevant": ["django.utils.duration::duration_string"]}
+{"query": "This class that wraps an OGR Feature, needs to be instantiated\nfrom a Layer object", "relevant": ["django.contrib.gis.gdal.feature::Feature#part1"]}
+{"query": "Which class implements SetPasswordMixin?", "relevant": ["django.contrib.auth.forms::SetPasswordMixin#part1"]}
+{"query": "Which class implements ResolverMatch?", "relevant": ["django.urls.resolvers::ResolverMatch#part2"]}
+{"query": "Encapsulate backend-specific introspection utilities", "relevant": ["django.db.backends.base.introspection::BaseDatabaseIntrospection#part3"]}
+{"query": "Find the Command class definition", "relevant": ["django.core.management.commands.dbshell::Command"]}
+{"query": "Find the DatabaseIntrospection class definition", "relevant": ["django.db.backends.mysql.introspection::DatabaseIntrospection#part6"]}
+{"query": "Find the MultiJoin class definition", "relevant": ["django.db.models.sql.datastructures::MultiJoin"]}
+{"query": "Find the UniqueConstraint class definition", "relevant": ["django.db.models.constraints::UniqueConstraint#part5"]}
+{"query": "Which class implements SearchHeadline?", "relevant": ["django.contrib.postgres.search::SearchHeadline#part2"]}
+{"query": "What does the function return when the name of the currently active time zone?", "relevant": ["django.utils.timezone::get_current_timezone_name"]}
+{"query": "What does the function return when hstore and hstore array OIDs?", "relevant": ["django.contrib.postgres.signals::get_hstore_oids"]}
+{"query": "The public interface to Django's WSGI support", "relevant": ["django.core.wsgi::get_wsgi_application"]}
+{"query": "Find the Command class definition", "relevant": ["django.core.management.commands.makemigrations::Command#part3"]}
+{"query": "How does the code handle check request?", "relevant": ["django.views.decorators.cache::_check_request"]}
+{"query": "Find the InteractiveMigrationQuestioner class definition", "relevant": ["django.db.migrations.questioner::InteractiveMigrationQuestioner#part4"]}
+{"query": "A collection of instances of the same Form class", "relevant": ["django.forms.formsets::BaseFormSet#part2"]}
+{"query": "Find the Task class definition", "relevant": ["django.tasks.base::Task#part2"]}
+{"query": "How does the code handle get locale dirs?", "relevant": ["scripts.manage_translations::_get_locale_dirs"]}
+{"query": "Where is gettext noop implemented?", "relevant": ["django.conf.global_settings::gettext_noop"]}
+{"query": "Find the TruncWeek class definition", "relevant": ["django.db.models.functions.datetime::TruncWeek"]}
+{"query": "How does the code handle make hashable?", "relevant": ["django.utils.hashable::make_hashable"]}
+{"query": "Which class implements Http404?", "relevant": ["django.http.response::Http404"]}
+{"query": "How does the code handle make password?", "relevant": ["django.contrib.auth.hashers::make_password"]}
+{"query": "Find the BitAnd class definition", "relevant": ["django.db.models.aggregates::BitAnd"]}
+{"query": "Which class implements IndexTransformFactory?", "relevant": ["django.contrib.postgres.fields.array::IndexTransformFactory"]}
+{"query": "Which class implements SQLCompiler?", "relevant": ["django.db.models.sql.compiler::SQLCompiler#part4"]}
+{"query": "Where is is protected type implemented?", "relevant": ["django.utils.encoding::is_protected_type"]}
+{"query": "How does the code handle phone2numeric?", "relevant": ["django.utils.text::phone2numeric"]}
+{"query": "Find the function that gets deserializer", "relevant": ["django.core.serializers.__init__::get_deserializer"]}
+{"query": "Find the InteractiveMigrationQuestioner class definition", "relevant": ["django.db.migrations.questioner::InteractiveMigrationQuestioner#part2"]}
+{"query": "Which class implements Migration?", "relevant": ["django.contrib.auth.migrations.0001_initial::Migration#part4"]}
+{"query": "Find the HashedFilesMixin class definition", "relevant": ["django.contrib.staticfiles.storage::HashedFilesMixin#part3"]}
+{"query": "Which class implements Apps?", "relevant": ["django.apps.registry::Apps#part7"]}
+{"query": "Where is main implemented?", "relevant": ["scripts.archive_eol_stable_branches::main"]}
+{"query": "What does the function return when a FormSet class for the given Django model class?", "relevant": ["django.forms.models::modelformset_factory#part1"]}
+{"query": "Parse a variable token and its optional filters (all as a single string),\nand return a list of tuples of the filter n...", "relevant": ["django.template.base::FilterExpression#part2"]}
+{"query": "Find the JsonResponse class definition", "relevant": ["django.http.response::JsonResponse"]}
+{"query": "Which class implements BoundVar?", "relevant": ["django.db.backends.oracle.utils::BoundVar"]}
+{"query": "Find the ManagerDescriptor class definition", "relevant": ["django.db.models.manager::ManagerDescriptor"]}
+{"query": "How does the code handle mask hash?", "relevant": ["django.contrib.auth.hashers::mask_hash"]}
+{"query": "Enable a given time zone just for this block", "relevant": ["django.templatetags.tz::timezone_tag"]}
+{"query": "Find the DayArchiveView class definition", "relevant": ["django.views.generic.dates::DayArchiveView"]}
+{"query": "Which class implements URLInput?", "relevant": ["django.forms.widgets::URLInput"]}
+{"query": "Find the RangeContainedBy class definition", "relevant": ["django.contrib.postgres.fields.ranges::RangeContainedBy"]}
+{"query": "An RFC 7578 multipart/form-data parser", "relevant": ["django.http.multipartparser::MultiPartParser#part2"]}
+{"query": "Which class implements BaseCommand?", "relevant": ["django.core.management.base::BaseCommand#part6"]}
+{"query": "Base class for all signals\n\nInternal attributes:\n\n    receivers:\n        [\n            (\n                (id(receiver...", "relevant": ["django.dispatch.dispatcher::Signal#part6"]}
+{"query": "How does the code handle get hashers?", "relevant": ["django.contrib.auth.hashers::get_hashers"]}
+{"query": "Find the function that gets script prefix", "relevant": ["django.core.handlers.asgi::get_script_prefix"]}
+{"query": "The requested TaskResult does not exist", "relevant": ["django.tasks.exceptions::TaskResultDoesNotExist"]}
+{"query": "How does the code handle check sts preload?", "relevant": ["django.core.checks.security.base::check_sts_preload"]}
+{"query": "Secure password hashing using the argon2 algorithm", "relevant": ["django.contrib.auth.hashers::Argon2PasswordHasher#part1"]}
+{"query": "Find the WSGIRequestHandler class definition", "relevant": ["django.core.servers.basehttp::WSGIRequestHandler#part1"]}
+{"query": "Which class implements ASGIHandler?", "relevant": ["django.core.handlers.asgi::ASGIHandler#part2"]}
+{"query": "The SpatialRefSysMixin is a class used by the database-dependent\nSpatialRefSys objects to reduce redundant code", "relevant": ["django.contrib.gis.db.backends.base.models::SpatialRefSysMixin#part3"]}
+{"query": "How does the code handle check string?", "relevant": ["django.contrib.gis.geos.prototypes.errcheck::check_string"]}
+{"query": "Find the Truncator class definition", "relevant": ["django.utils.text::Truncator#part1"]}
+{"query": "How does the code handle make csp decorator?", "relevant": ["django.views.decorators.csp::_make_csp_decorator"]}
+{"query": "Serialize a QuerySet to XML", "relevant": ["django.core.serializers.xml_serializer::Serializer#part4"]}
+{"query": "Find the Serializer class definition", "relevant": ["django.core.serializers.base::Serializer#part3"]}
+{"query": "Take a pair of ProjectStates and compare them to see what the first would\nneed doing to make it match the second (the...", "relevant": ["django.db.migrations.autodetector::MigrationAutodetector#part4"]}
+{"query": "Find the Command class definition", "relevant": ["django.core.management.commands.loaddata::Command#part7"]}
+{"query": "Find the function that gets resolver", "relevant": ["django.urls.resolvers::get_resolver"]}
+{"query": "Find the LoginRequiredMixin class definition", "relevant": ["django.contrib.auth.mixins::LoginRequiredMixin"]}
+{"query": "Which class implements ModelAdmin?", "relevant": ["django.contrib.admin.options::ModelAdmin#part17"]}
+{"query": "Find the Substr class definition", "relevant": ["django.db.models.functions.text::Substr"]}
+{"query": "Find the BaseFormSet class definition", "relevant": ["django.forms.formsets::BaseFormSet#part7"]}
+{"query": "Find the ModelChoiceField class definition", "relevant": ["django.forms.models::ModelChoiceField#part2"]}
+{"query": "Find the RenderableFormMixin class definition", "relevant": ["django.forms.utils::RenderableFormMixin"]}
+{"query": "A Field plus data", "relevant": ["django.forms.boundfield::BoundField#part1"]}
+{"query": "Where is make csp decorator implemented?", "relevant": ["django.views.decorators.csp::_make_csp_decorator"]}
+{"query": "Find the AdminReadonlyField class definition", "relevant": ["django.contrib.admin.helpers::AdminReadonlyField#part1"]}
+{"query": "Find the FeedDoesNotExist class definition", "relevant": ["django.contrib.syndication.views::FeedDoesNotExist"]}
+{"query": "Encapsulate the logic of the django-admin and manage", "relevant": ["django.core.management.__init__::ManagementUtility#part3"]}
+{"query": "Which class implements Model?", "relevant": ["django.db.models.base::Model#part26"]}
+{"query": "Where is check for language implemented?", "relevant": ["django.utils.translation.trans_real::check_for_language"]}
+{"query": "Which class implements SQLCompiler?", "relevant": ["django.db.models.sql.compiler::SQLCompiler#part7"]}
+{"query": "A subclass of dictionary customized to handle multiple values for the\nsame key", "relevant": ["django.utils.datastructures::MultiValueDict#part2"]}
+{"query": "Which class implements CountsDict?", "relevant": ["django.utils.html::CountsDict"]}
+{"query": "Where is reset format cache implemented?", "relevant": ["django.utils.formats::reset_format_cache"]}
+{"query": "Find the Point class definition", "relevant": ["django.contrib.gis.geos.point::Point#part1"]}
+{"query": "What does the function return when the index of dotted class path (or a subclass of that class) in a list of candidate paths?", "relevant": ["django.contrib.auth.checks::_subclass_index"]}
+{"query": "Find the DebugNode class definition", "relevant": ["django.template.defaulttags::DebugNode"]}
+{"query": "Find the KeyTransformNumericLookupMixin class definition", "relevant": ["django.db.models.fields.json::KeyTransformNumericLookupMixin"]}
+{"query": "Find the UUIDConverter class definition", "relevant": ["django.urls.converters::UUIDConverter"]}
+{"query": "Which class implements BitAggregate?", "relevant": ["django.db.models.aggregates::BitAggregate"]}
+{"query": "Where is normalize implemented?", "relevant": ["django.utils.regex_helper::normalize#part2"]}
+{"query": "Represent the entire project's overall state", "relevant": ["django.db.migrations.state::ProjectState#part9"]}
+{"query": "How does the code handle route to regex?", "relevant": ["django.urls.resolvers::_route_to_regex"]}
+{"query": "Find the InvalidMailer class definition", "relevant": ["django.core.mail.exceptions::InvalidMailer"]}
+{"query": "How does the code handle do block translate?", "relevant": ["django.templatetags.i18n::do_block_translate#part3"]}
+{"query": "How does the code handle cell count?", "relevant": ["django.contrib.admin.templatetags.admin_modify::cell_count"]}
+{"query": "Which class implements BaseDatabaseSchemaEditor?", "relevant": ["django.db.backends.base.schema::BaseDatabaseSchemaEditor#part33"]}
+{"query": "Find the IntegerLessThanOrEqual class definition", "relevant": ["django.db.models.lookups::IntegerLessThanOrEqual"]}
+{"query": "Find the function that gets warning for invalid pattern", "relevant": ["django.core.checks.urls::get_warning_for_invalid_pattern"]}
+{"query": "What does the function return when a dictionary mapping command names to their callback applications?", "relevant": ["django.core.management.__init__::get_commands"]}
+{"query": "Where is normalize prefetch lookups implemented?", "relevant": ["django.db.models.query::normalize_prefetch_lookups"]}
+{"query": "How does the code handle sanitize separators?", "relevant": ["django.utils.formats::sanitize_separators"]}
+{"query": "Which class implements SplitDateTimeField?", "relevant": ["django.forms.fields::SplitDateTimeField"]}
+{"query": "Remove a field from a model", "relevant": ["django.db.migrations.operations.fields::RemoveField"]}
+{"query": "Which class implements GDALRasterBase?", "relevant": ["django.contrib.gis.gdal.raster.base::GDALRasterBase#part1"]}
+{"query": "Which class implements Chr?", "relevant": ["django.db.models.functions.text::Chr"]}
+{"query": "Where is truncatechars implemented?", "relevant": ["django.template.defaultfilters::truncatechars"]}
+{"query": "Where is check lazy references implemented?", "relevant": ["django.core.checks.model_checks::check_lazy_references"]}
+{"query": "Find the TextField class definition", "relevant": ["django.db.models.fields.__init__::TextField#part1"]}
+{"query": "Find the QuerySet class definition", "relevant": ["django.db.models.query::QuerySet#part26"]}
+{"query": "Where is date hierarchy implemented?", "relevant": ["django.contrib.admin.templatetags.admin_list::date_hierarchy#part1"]}
+{"query": "Proxy for accessing a connection object's attributes", "relevant": ["django.utils.connection::ConnectionProxy"]}
+{"query": "Find the ProxyModelWarning class definition", "relevant": ["django.core.management.commands.dumpdata::ProxyModelWarning"]}
+{"query": "Where is build object from lookup parameters implemented?", "relevant": ["django.contrib.admin.utils::build_q_object_from_lookup_parameters"]}
+{"query": "Format a number into a string with the requisite number of digits and\ndecimal places", "relevant": ["django.db.backends.utils::format_number"]}
+{"query": "How does the code handle sensitive post parameters?", "relevant": ["django.views.decorators.debug::sensitive_post_parameters#part2"]}
+{"query": "How does the code handle timeuntil filter?", "relevant": ["django.template.defaultfilters::timeuntil_filter"]}
+{"query": "Which class implements ModelAdminChecks?", "relevant": ["django.contrib.admin.checks::ModelAdminChecks#part8"]}
+{"query": "Find the ASGIStaticFilesHandler class definition", "relevant": ["django.contrib.staticfiles.handlers::ASGIStaticFilesHandler"]}
+{"query": "Find the GistIndex class definition", "relevant": ["django.contrib.postgres.indexes::GistIndex"]}
+{"query": "Which class implements SafeMIMEMultipart?", "relevant": ["django.core.mail.message::SafeMIMEMultipart"]}
+{"query": "Find the Command class definition", "relevant": ["django.core.management.commands.makemigrations::Command#part2"]}
+{"query": "Find the Envelope class definition", "relevant": ["django.contrib.gis.gdal.envelope::Envelope#part1"]}
+{"query": "Find the DatabaseOperations class definition", "relevant": ["django.db.backends.sqlite3.operations::DatabaseOperations#part7"]}
+{"query": "Where is naturaltime implemented?", "relevant": ["django.contrib.humanize.templatetags.humanize::naturaltime"]}
+{"query": "Where is get api response implemented?", "relevant": ["scripts.manage_translations::get_api_response"]}
+{"query": "Find the NotSupportedError class definition", "relevant": ["django.db.utils::NotSupportedError"]}
+{"query": "Adjust commit message lines for a potential backport", "relevant": ["scripts.prepare_commit_msg::process_commit_message#part1"]}
+{"query": "Find the ForeignKey class definition", "relevant": ["django.db.models.fields.related::ForeignKey#part1"]}
+{"query": "How does the code handle upper?", "relevant": ["django.template.defaultfilters::upper"]}
+{"query": "Replace line breaks in plain text with appropriate HTML; a single\nnewline becomes an HTML line break (``<br>``) and a...", "relevant": ["django.template.defaultfilters::linebreaks_filter"]}
+{"query": "Find the HttpResponseBase class definition", "relevant": ["django.http.response::HttpResponseBase#part5"]}
+{"query": "Which class implements IfChangedNode?", "relevant": ["django.template.defaulttags::IfChangedNode"]}
+{"query": "Which class implements NegatedExpression?", "relevant": ["django.db.models.expressions::NegatedExpression"]}
+{"query": "Where is avoid wrapping implemented?", "relevant": ["django.utils.html::avoid_wrapping"]}
+{"query": "Which class implements SyndicationFeed?", "relevant": ["django.utils.feedgenerator::SyndicationFeed#part2"]}
+{"query": "Roll back the most recent savepoint (if one exists)", "relevant": ["django.db.transaction::savepoint_rollback"]}
+{"query": "Find the MigrationLoader class definition", "relevant": ["django.db.migrations.loader::MigrationLoader#part4"]}
+{"query": "Where is sqlite cos implemented?", "relevant": ["django.db.backends.sqlite3._functions::_sqlite_cos"]}
+{"query": "How does the code handle mapping?", "relevant": ["django.contrib.gis.utils.ogrinspect::mapping"]}
+{"query": "Which class implements FileSystemStorage?", "relevant": ["django.core.files.storage.filesystem::FileSystemStorage#part3"]}
+{"query": "Where is sqlite time diff implemented?", "relevant": ["django.db.backends.sqlite3._functions::_sqlite_time_diff"]}
+{"query": "A single SQL query", "relevant": ["django.db.models.sql.query::Query#part41"]}
+{"query": "Find the BaseCommand class definition", "relevant": ["django.core.management.base::BaseCommand#part3"]}
+{"query": "Which class implements RasterBandTransform?", "relevant": ["django.contrib.gis.db.models.lookups::RasterBandTransform"]}
+{"query": "A collection of instances of the same Form class", "relevant": ["django.forms.formsets::BaseFormSet#part6"]}
+{"query": "Find the Union class definition", "relevant": ["django.contrib.gis.db.models.aggregates::Union"]}
+{"query": "Which class implements InvalidBasesError?", "relevant": ["django.db.migrations.exceptions::InvalidBasesError"]}
+{"query": "Which class implements ForeignObject?", "relevant": ["django.db.models.fields.related::ForeignObject#part6"]}
+{"query": "How does the code handle get paths from expression?", "relevant": ["django.db.models.sql.query::get_paths_from_expression"]}
+{"query": "Find the OGRGeometry class definition", "relevant": ["django.contrib.gis.gdal.geometries::OGRGeometry#part7"]}
+{"query": "Where is DO NOTHING implemented?", "relevant": ["django.db.models.deletion::DO_NOTHING"]}
+{"query": "Provide a many-to-many relation by using an intermediary model that\nholds two ForeignKey fields pointed at the two si...", "relevant": ["django.db.models.fields.related::ManyToManyField#part8"]}
+{"query": "Which class implements Field?", "relevant": ["django.db.models.fields.__init__::Field#part15"]}
+{"query": "Where is get password validators implemented?", "relevant": ["django.contrib.auth.password_validation::get_password_validators"]}
+{"query": "Find the GeoFuncMixin class definition", "relevant": ["django.contrib.gis.db.models.functions::GeoFuncMixin#part1"]}
+{"query": "Mixin for views manipulating day-based data", "relevant": ["django.views.generic.dates::DayMixin"]}
+{"query": "Which class implements VerbatimNode?", "relevant": ["django.template.defaulttags::VerbatimNode"]}
+{"query": "Find the DecimalSerializer class definition", "relevant": ["django.db.migrations.serializer::DecimalSerializer"]}
+{"query": "Find the KeyTransformIn class definition", "relevant": ["django.db.models.fields.json::KeyTransformIn"]}
+{"query": "Which class implements PathConverter?", "relevant": ["django.urls.converters::PathConverter"]}
+{"query": "Find the ArrayOverlap class definition", "relevant": ["django.contrib.postgres.fields.array::ArrayOverlap"]}
+{"query": "How does the code handle fromfile?", "relevant": ["django.contrib.gis.geos.factory::fromfile"]}
+{"query": "Where is load backend implemented?", "relevant": ["django.db.utils::load_backend"]}
+{"query": "Where is validate ipv4 address implemented?", "relevant": ["django.core.validators::validate_ipv4_address"]}
+{"query": "Find the AllowAllUsersModelBackend class definition", "relevant": ["django.contrib.auth.backends::AllowAllUsersModelBackend"]}
+{"query": "Which class implements Model?", "relevant": ["django.db.models.base::Model#part12"]}
+{"query": "The 'strictly_below' operator returns true if A's bounding box is strictly\nbelow B's bounding box", "relevant": ["django.contrib.gis.db.models.lookups::StrictlyBelowLookup"]}
+{"query": "Find the UUIDIContains class definition", "relevant": ["django.db.models.lookups::UUIDIContains"]}
+{"query": "Find the OracleToleranceMixin class definition", "relevant": ["django.contrib.gis.db.models.functions::OracleToleranceMixin"]}
+{"query": "Find the Migration class definition", "relevant": ["django.contrib.auth.migrations.0002_alter_permission_name_max_length::Migration"]}
+{"query": "List of objects published in a given year", "relevant": ["django.views.generic.dates::YearArchiveView"]}
+{"query": "Which class implements BaseBackend?", "relevant": ["django.contrib.auth.backends::BaseBackend"]}
+{"query": "Which class implements Action?", "relevant": ["django.contrib.admin.options::Action"]}
+{"query": "Pack data into hex string with little endian format", "relevant": ["django.contrib.gis.db.backends.postgis.pgraster::pack"]}
+{"query": "Which class implements ValidateConstraint?", "relevant": ["django.contrib.postgres.operations::ValidateConstraint"]}
+{"query": "Which class implements InvalidTaskBackend?", "relevant": ["django.tasks.exceptions::InvalidTaskBackend"]}
+{"query": "Which class implements BaseRangeField?", "relevant": ["django.contrib.postgres.forms.ranges::BaseRangeField"]}
+{"query": "Which class implements Distance?", "relevant": ["django.contrib.gis.measure::Distance#part2"]}
+{"query": "A PR quality check message bound to its runtime formatting kwargs", "relevant": ["scripts.pr_quality.errors::Message"]}
+{"query": "Where is sentence implemented?", "relevant": ["django.utils.lorem_ipsum::sentence"]}
+{"query": "How does the code handle get object or 404?", "relevant": ["django.shortcuts::get_object_or_404"]}
+{"query": "Class encapsulating the behavior specific to a GIS operation (used by\nlookups)", "relevant": ["django.contrib.gis.db.backends.utils::SpatialOperator"]}
+{"query": "Find the CheckRegistry class definition", "relevant": ["django.core.checks.registry::CheckRegistry#part2"]}
+{"query": "How does the code handle send mail?", "relevant": ["django.core.mail.__init__::send_mail#part2"]}
+{"query": "Which class implements JSONField?", "relevant": ["django.db.models.fields.json::JSONField#part3"]}
+{"query": "Find the TaskResultDoesNotExist class definition", "relevant": ["django.tasks.exceptions::TaskResultDoesNotExist"]}
+{"query": "Where is deactivate all implemented?", "relevant": ["django.utils.translation.trans_real::deactivate_all"]}
+{"query": "Where is get resolver implemented?", "relevant": ["django.urls.resolvers::get_resolver"]}
+{"query": "How does the code handle tx resource for name?", "relevant": ["scripts.manage_translations::_tx_resource_for_name"]}
+{"query": "Find the DecimalRangeField class definition", "relevant": ["django.contrib.postgres.fields.ranges::DecimalRangeField"]}
+{"query": "Which class implements CreateChecksumFileTests?", "relevant": ["scripts.tests::CreateChecksumFileTests"]}
+{"query": "Find the Serializer class definition", "relevant": ["django.core.serializers.xml_serializer::Serializer#part1"]}
+{"query": "Base class for all field types", "relevant": ["django.db.models.fields.__init__::Field#part16"]}
+{"query": "Find the function that gets bytes from wsgi", "relevant": ["django.core.handlers.wsgi::get_bytes_from_wsgi"]}
+{"query": "Find the MySQLOperations class definition", "relevant": ["django.contrib.gis.db.backends.mysql.operations::MySQLOperations#part1"]}
+{"query": "Find the ChoiceWidget class definition", "relevant": ["django.forms.widgets::ChoiceWidget#part3"]}
+{"query": "Where is check programs implemented?", "relevant": ["django.core.management.commands.makemessages::check_programs"]}
+{"query": "A SelectMultiple with a JavaScript filter interface", "relevant": ["django.contrib.admin.widgets::FilteredSelectMultiple"]}
+{"query": "Which class implements DatabaseSchemaEditor?", "relevant": ["django.db.backends.postgresql.schema::DatabaseSchemaEditor#part3"]}
+{"query": "How does the code handle ngettext?", "relevant": ["django.utils.translation.trans_null::ngettext"]}
+{"query": "RelatedPopulator is used for select_related() object instantiation", "relevant": ["django.db.models.query::RelatedPopulator#part1"]}
+{"query": "Find the TaskException class definition", "relevant": ["django.tasks.exceptions::TaskException"]}
+{"query": "Find the KeyTransformLte class definition", "relevant": ["django.db.models.fields.json::KeyTransformLte"]}
+{"query": "Where is get exception info implemented?", "relevant": ["django.template.backends.jinja2::get_exception_info"]}
+{"query": "Find the PatternLookup class definition", "relevant": ["django.db.models.lookups::PatternLookup"]}
+{"query": "Store timedelta objects", "relevant": ["django.db.models.fields.__init__::DurationField"]}
+{"query": "Which class implements Power?", "relevant": ["django.db.models.functions.math::Power"]}
+{"query": "Find the OracleSpatialRefSys class definition", "relevant": ["django.contrib.gis.db.backends.oracle.models::OracleSpatialRefSys"]}
+{"query": "Find the CumeDist class definition", "relevant": ["django.db.models.functions.window::CumeDist"]}
+{"query": "How does the code handle ignore?", "relevant": ["django.db.backends.dummy.base::ignore"]}
+{"query": "Which class implements BitXor?", "relevant": ["django.contrib.postgres.aggregates.general::BitXor"]}
+{"query": "Which class implements BaseDatabaseOperations?", "relevant": ["django.db.backends.base.operations::BaseDatabaseOperations#part10"]}
+{"query": "Find the TruncMonth class definition", "relevant": ["django.db.models.functions.datetime::TruncMonth"]}
+{"query": "A custom authentication form used in the admin app", "relevant": ["django.contrib.admin.forms::AdminAuthenticationForm"]}
+{"query": "How does the code handle get blank choice label?", "relevant": ["django.db.models.utils::get_blank_choice_label"]}
+{"query": "Find the DatabaseOnDelete class definition", "relevant": ["django.db.models.deletion::DatabaseOnDelete"]}
+{"query": "Find the function that gets current timezone name", "relevant": ["django.utils.timezone::get_current_timezone_name"]}
+{"query": "Where is rollback implemented?", "relevant": ["django.db.transaction::rollback"]}
+{"query": "Which class implements LTrim?", "relevant": ["django.db.models.functions.text::LTrim"]}
+{"query": "Represent a database connection", "relevant": ["django.db.backends.base.base::BaseDatabaseWrapper#part9"]}
+{"query": "Which class implements Combinable?", "relevant": ["django.db.models.expressions::Combinable#part3"]}
+{"query": "Find the FormView class definition", "relevant": ["django.views.generic.edit::FormView"]}
+{"query": "Copy either a Django application layout template or a Django project\nlayout template into the specified directory", "relevant": ["django.core.management.templates::TemplateCommand#part4"]}
+{"query": "What does the function return when True or False depending on whether the ``path`` should be ignored (if it matches any pattern in ``ignore_patterns``)?", "relevant": ["django.contrib.staticfiles.utils::matches_patterns"]}
+{"query": "What does the function return when True if function 'func' accepts positional arguments *args?", "relevant": ["django.utils.inspect::func_accepts_var_args"]}
+{"query": "Which class implements BtreeGistExtension?", "relevant": ["django.contrib.postgres.operations::BtreeGistExtension"]}
+{"query": "A logging filter that checks the return value of a given callable (which\ntakes the record-to-be-logged as its only pa...", "relevant": ["django.utils.log::CallbackFilter"]}
+{"query": "Which class implements SQLAggregateCompiler?", "relevant": ["django.db.models.sql.compiler::SQLAggregateCompiler"]}
+{"query": "How does the code handle verify password?", "relevant": ["django.contrib.auth.hashers::verify_password"]}
+{"query": "Which class implements Paginator?", "relevant": ["django.core.paginator::Paginator"]}
+{"query": "Which class implements OperationWriter?", "relevant": ["django.db.migrations.writer::OperationWriter#part1"]}
+{"query": "SQLite adapter for geometry objects", "relevant": ["django.contrib.gis.db.backends.spatialite.adapter::SpatiaLiteAdapter"]}

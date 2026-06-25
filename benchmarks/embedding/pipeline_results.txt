@@ -1,0 +1,15 @@
+============================================================
+Phase 1: Building chunkers
+============================================================
+  function: building ... 4976 chunks
+  file: building ... Traceback (most recent call last):
+  File "/home/pankaj/Projects/leanchain/atelier/benchmarks/embedding/bench_pipeline.py", line 583, in <module>
+    main()
+    ~~~~^^
+  File "/home/pankaj/Projects/leanchain/atelier/benchmarks/embedding/bench_pipeline.py", line 356, in main
+    chunks = CHUNK_BUILDERS[ck]()
+  File "/home/pankaj/Projects/leanchain/atelier/benchmarks/embedding/bench_pipeline.py", line 110, in build_file_chunks
+    d = ast.get_docstring(node)
+  File "/usr/lib/python3.14/ast.py", line 304, in get_docstring
+    raise TypeError("%r can't have docstrings" % node.__class__.__name__)
+TypeError: 'Expr' can't have docstrings

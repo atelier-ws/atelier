@@ -1,0 +1,500 @@
+{"query": "Which class implements CoordinateTransform?", "relevant": ["xarray.core.coordinate_transform::CoordinateTransform#part1"]}
+{"query": "N-dimensional array with labeled coordinates and dimensions", "relevant": ["xarray.core.dataarray::DataArray#part73"]}
+{"query": "Where is cast to int if safe implemented?", "relevant": ["xarray.coding.times::cast_to_int_if_safe"]}
+{"query": "How does the code handle create nan agg method?", "relevant": ["xarray.core.duck_array_ops::_create_nan_agg_method"]}
+{"query": "How does the code handle call possibly missing method?", "relevant": ["xarray.computation.ops::_call_possibly_missing_method"]}
+{"query": "Which class implements DatasetResampleAggregations?", "relevant": ["xarray.core._aggregations::DatasetResampleAggregations#part25"]}
+{"query": "Which class implements AlwaysGreaterThan?", "relevant": ["xarray.namedarray.dtypes::AlwaysGreaterThan"]}
+{"query": "How does the code handle label from attrs?", "relevant": ["xarray.plot.utils::label_from_attrs"]}
+{"query": "How does the code handle decompose outer indexer?", "relevant": ["xarray.core.indexing::_decompose_outer_indexer#part2"]}
+{"query": "Where is datatree child repr implemented?", "relevant": ["xarray.core.formatting_html::datatree_child_repr"]}
+{"query": "How does the code handle summarize attrs?", "relevant": ["xarray.core.formatting_html::summarize_attrs"]}
+{"query": "Find the DataArrayAggregations class definition", "relevant": ["xarray.core._aggregations::DataArrayAggregations#part4"]}
+{"query": "How does the code handle is datetime like?", "relevant": ["xarray.core.dtypes::is_datetime_like"]}
+{"query": "Which class implements unary ufunc?", "relevant": ["xarray.ufuncs::_unary_ufunc"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part109"]}
+{"query": "Implements all the complex logic for the re-indexing and alignment of Xarray\nobjects", "relevant": ["xarray.structure.alignment::Aligner#part6"]}
+{"query": "Which class implements DatasetStateMachine?", "relevant": ["properties.test_index_manipulation::DatasetStateMachine#part2"]}
+{"query": "Where is plot1d implemented?", "relevant": ["xarray.plot.dataarray_plot::_plot1d#part1"]}
+{"query": "Find the DataTree class definition", "relevant": ["xarray.core.datatree::DataTree#part25"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part74"]}
+{"query": "Which class implements DataArrayRolling?", "relevant": ["xarray.computation.rolling::DataArrayRolling#part5"]}
+{"query": "How does the code handle unique variable?", "relevant": ["xarray.structure.merge::unique_variable#part2"]}
+{"query": "Where is split path implemented?", "relevant": [".github.workflows.configure-testpypi-version::split_path"]}
+{"query": "Which class implements Dataset?", "relevant": ["xarray.core.dataset::Dataset#part67"]}
+{"query": "Where is open dataset implemented?", "relevant": ["xarray.backends.api::open_dataset#part1"]}
+{"query": "Transform a time-indexed Dataset or DataArray to one that uses another calendar", "relevant": ["xarray.coding.calendar_ops::convert_calendar#part2"]}
+{"query": "Where is create transform da implemented?", "relevant": ["properties.test_coordinate_transform::create_transform_da"]}
+{"query": "Find the DataArrayAggregations class definition", "relevant": ["xarray.core._aggregations::DataArrayAggregations#part17"]}
+{"query": "Parse one or more dimensions", "relevant": ["xarray.core.utils::parse_ordered_dims"]}
+{"query": "Where is interpnd implemented?", "relevant": ["xarray.core.missing::_interpnd"]}
+{"query": "Which class implements RangeCoordinateTransform?", "relevant": ["xarray.indexes.range_index::RangeCoordinateTransform#part1"]}
+{"query": "How does the code handle decode string data?", "relevant": ["xarray.testing.assertions::_decode_string_data"]}
+{"query": "Custom Index for working with CF calendars and dates\n\nAll elements of a CFTimeIndex must be cftime", "relevant": ["xarray.coding.cftimeindex::CFTimeIndex#part8"]}
+{"query": "Where is normalize label implemented?", "relevant": ["xarray.core.indexes::normalize_label"]}
+{"query": "How does the code handle push?", "relevant": ["xarray.core.duck_array_ops::_push"]}
+{"query": "How does the code handle unpack dict tuples?", "relevant": ["xarray.computation.apply_ufunc::_unpack_dict_tuples"]}
+{"query": "Which class implements Dataset?", "relevant": ["xarray.core.dataset::Dataset#part2"]}
+{"query": "Find the set options class definition", "relevant": ["xarray.core.options::set_options#part2"]}
+{"query": "Generates only those numpy dtypes which xarray can handle", "relevant": ["xarray.testing.strategies::supported_dtypes"]}
+{"query": "Which class implements CachingFileManager?", "relevant": ["xarray.backends.file_manager::CachingFileManager#part5"]}
+{"query": "Which class implements AbstractArray?", "relevant": ["xarray.core.common::AbstractArray#part1"]}
+{"query": "How does the code handle as shared dtype?", "relevant": ["xarray.core.duck_array_ops::as_shared_dtype"]}
+{"query": "Handle custom logic to safely encode and decode fill values in Zarr", "relevant": ["xarray.backends.zarr::FillValueCoder#part1"]}
+{"query": "How does the code handle interp na?", "relevant": ["xarray.core.missing::interp_na#part2"]}
+{"query": "How does the code handle cftime range?", "relevant": ["xarray.coding.cftime_offsets::cftime_range#part4"]}
+{"query": "One-dimensional smoothing spline fit to a given set of data points", "relevant": ["xarray.core.missing::SplineInterpolator"]}
+{"query": "Find the DataArrayResampleAggregations class definition", "relevant": ["xarray.core._aggregations::DataArrayResampleAggregations#part6"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part135"]}
+{"query": "Where is test outer indexing implemented?", "relevant": ["properties.test_coordinate_transform::test_outer_indexing"]}
+{"query": "How does the code handle get pos infinity?", "relevant": ["xarray.namedarray.dtypes::get_pos_infinity"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part142"]}
+{"query": "Where is result type implemented?", "relevant": ["xarray.compat.array_api_compat::result_type"]}
+{"query": "Find the NamedArray class definition", "relevant": ["xarray.namedarray.core::NamedArray#part5"]}
+{"query": "Backend for netCDF files based on the netCDF4 package", "relevant": ["xarray.backends.netCDF4_::NetCDF4BackendEntrypoint#part3"]}
+{"query": "Find the FacetGrid class definition", "relevant": ["xarray.plot.facetgrid::FacetGrid#part17"]}
+{"query": "How does the code handle open mfdataset?", "relevant": ["xarray.backends.api::open_mfdataset#part2"]}
+{"query": "Add a common docstring by reusing the DataArray one", "relevant": ["xarray.plot.dataset_plot::_update_doc_to_dataset"]}
+{"query": "Mixin class that allows getting keys with attribute access", "relevant": ["xarray.core.common::TreeAttrAccessMixin"]}
+{"query": "Which class implements DaskManager?", "relevant": ["xarray.namedarray.daskmanager::DaskManager#part5"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part163"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part70"]}
+{"query": "Which class implements DatasetAggregations?", "relevant": ["xarray.core._aggregations::DatasetAggregations#part3"]}
+{"query": "Where is indexes repr implemented?", "relevant": ["xarray.core.formatting::indexes_repr"]}
+{"query": "Explicitly combine an N-dimensional grid of datasets into one by using a\nsuccession of concat and merge operations al...", "relevant": ["xarray.structure.combine::combine_nested#part4"]}
+{"query": "How does the code handle assert dataarray invariants?", "relevant": ["xarray.testing.assertions::_assert_dataarray_invariants"]}
+{"query": "Where is decompose outer indexer implemented?", "relevant": ["xarray.core.indexing::_decompose_outer_indexer#part3"]}
+{"query": "Where is ensure dtype not object implemented?", "relevant": ["xarray.backends.common::ensure_dtype_not_object"]}
+{"query": "How does the code handle format cftime datetime?", "relevant": ["xarray.coding.times::format_cftime_datetime"]}
+{"query": "What does the function return when the given values as a numpy array, or as an individual item if it's a 0d datetime64 or timedelta64 array?", "relevant": ["xarray.core.variable::_as_array_or_item"]}
+{"query": "Find the Indexes class definition", "relevant": ["xarray.core.indexes::Indexes#part4"]}
+{"query": "Generates an arbitrary list of valid dimension names", "relevant": ["xarray.testing.strategies::dimension_names"]}
+{"query": "N-dimensional array with labeled coordinates and dimensions", "relevant": ["xarray.core.dataarray::DataArray#part119"]}
+{"query": "How does the code handle open datatree?", "relevant": ["xarray.backends.api::open_datatree#part4"]}
+{"query": "Determine x and y labels", "relevant": ["xarray.plot.utils::_infer_xy_labels"]}
+{"query": "How does the code handle test iso8601 decode?", "relevant": ["properties.test_encode_decode::test_iso8601_decode"]}
+{"query": "Where is to offset implemented?", "relevant": ["xarray.coding.cftime_offsets::to_offset"]}
+{"query": "How does the code handle get data namespace?", "relevant": ["xarray.namedarray._array_api::_get_data_namespace"]}
+{"query": "Find the StringAccessor class definition", "relevant": ["xarray.core.accessor_str::StringAccessor#part35"]}
+{"query": "Where is maybe wrap array implemented?", "relevant": ["xarray.core.utils::maybe_wrap_array"]}
+{"query": "How does the code handle get breaks cached?", "relevant": ["xarray.structure.chunks::_get_breaks_cached"]}
+{"query": "Where is merge implemented?", "relevant": ["xarray.structure.merge::merge#part1"]}
+{"query": "N-dimensional array with labeled coordinates and dimensions", "relevant": ["xarray.core.dataarray::DataArray#part5"]}
+{"query": "How does the code handle infer meta data?", "relevant": ["xarray.plot.utils::_infer_meta_data#part2"]}
+{"query": "Which class implements Dataset?", "relevant": ["xarray.core.dataset::Dataset#part42"]}
+{"query": "A netcdf-like variable consisting of dimensions, data and attributes\nwhich describe a single Array", "relevant": ["xarray.core.variable::Variable#part39"]}
+{"query": "Which class implements DataArray?", "relevant": ["xarray.core.dataarray::DataArray#part104"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part150"]}
+{"query": "Combines an N-dimensional structure of datasets into one by applying a\nseries of either concat and merge operations a...", "relevant": ["xarray.structure.combine::_combine_nd"]}
+{"query": "Which class implements StringAccessor?", "relevant": ["xarray.core.accessor_str::StringAccessor#part24"]}
+{"query": "Build output coordinates and indexes for an operation", "relevant": ["xarray.computation.apply_ufunc::build_output_coords_and_indexes#part1"]}
+{"query": "How does the code handle date range?", "relevant": ["xarray.coding.cftime_offsets::date_range#part4"]}
+{"query": "Which class implements IndexCallable?", "relevant": ["xarray.core.indexing::IndexCallable"]}
+{"query": "Where is is weak scalar type implemented?", "relevant": ["xarray.compat.array_api_compat::is_weak_scalar_type"]}
+{"query": "How does the code handle determine coords?", "relevant": ["xarray.structure.merge::determine_coords"]}
+{"query": "Indirectly access rounding functions by wrapping data\nas a Series or CFTimeIndex\n\nParameters\n----------\nvalues : np", "relevant": ["xarray.core.accessor_dt::_round_field"]}
+{"query": "Where is get range edges implemented?", "relevant": ["xarray.core.resample_cftime::_get_range_edges"]}
+{"query": "Base class representing a node of a tree, with methods for traversing and altering the tree", "relevant": ["xarray.core.treenode::TreeNode#part7"]}
+{"query": "Where is has zarr async index implemented?", "relevant": ["xarray.backends.zarr::has_zarr_async_index"]}
+{"query": "How does the code handle determine cmap params?", "relevant": ["xarray.plot.utils::_determine_cmap_params#part2"]}
+{"query": "Where is validate attrs implemented?", "relevant": ["xarray.backends.writers::_validate_attrs#part1"]}
+{"query": "Where is list chunkmanagers implemented?", "relevant": ["xarray.namedarray.parallelcompat::list_chunkmanagers"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part154"]}
+{"query": "Which class implements DatasetCoarsen?", "relevant": ["xarray.computation.rolling::DatasetCoarsen#part1"]}
+{"query": "Step plot of DataArray values", "relevant": ["xarray.plot.dataarray_plot::step#part2"]}
+{"query": "Find the DataArrayResampleAggregations class definition", "relevant": ["xarray.core._aggregations::DataArrayResampleAggregations#part24"]}
+{"query": "Where is unify chunks implemented?", "relevant": ["xarray.structure.chunks::unify_chunks"]}
+{"query": "Find the NamedArrayAggregations class definition", "relevant": ["xarray.namedarray._aggregations::NamedArrayAggregations#part3"]}
+{"query": "How does the code handle polyfit?", "relevant": ["xarray.computation.fit::polyfit#part1"]}
+{"query": "Which class implements GroupBy?", "relevant": ["xarray.core.groupby::GroupBy#part5"]}
+{"query": "Find the H5NetCDFStore class definition", "relevant": ["xarray.backends.h5netcdf_::H5NetCDFStore#part5"]}
+{"query": "How does the code handle set file cache maxsize?", "relevant": ["xarray.core.options::_set_file_cache_maxsize"]}
+{"query": "What does the function return when index to use for x values in interpolation or curve fitting?", "relevant": ["xarray.core.missing::get_clean_interp_index#part2"]}
+{"query": "Which class implements Normalize?", "relevant": ["xarray.plot.utils::_Normalize#part2"]}
+{"query": "Find the chunkedarrayapi class definition", "relevant": ["xarray.namedarray._typing::_chunkedarrayapi"]}
+{"query": "How does the code handle strftime through cftimeindex?", "relevant": ["xarray.core.accessor_dt::_strftime_through_cftimeindex"]}
+{"query": "How does the code handle pd timedelta to float?", "relevant": ["xarray.core.duck_array_ops::pd_timedelta_to_float"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part52"]}
+{"query": "An object that implements weighted operations", "relevant": ["xarray.computation.weighted::Weighted#part7"]}
+{"query": "Find the DataTreeAggregations class definition", "relevant": ["xarray.core._aggregations::DataTreeAggregations#part18"]}
+{"query": "Find the LazilyVectorizedIndexedArray class definition", "relevant": ["xarray.core.indexing::LazilyVectorizedIndexedArray#part1"]}
+{"query": "How does the code handle apply dataarray vfunc?", "relevant": ["xarray.computation.apply_ufunc::apply_dataarray_vfunc#part2"]}
+{"query": "A object that implements the split-apply-combine pattern", "relevant": ["xarray.core.groupby::GroupBy#part11"]}
+{"query": "Where is as integer or none implemented?", "relevant": ["xarray.core.indexing::as_integer_or_none"]}
+{"query": "Interface between a particular parallel computing framework and xarray", "relevant": ["xarray.namedarray.parallelcompat::ChunkManagerEntrypoint#part4"]}
+{"query": "How does the code handle decode datetime with pandas?", "relevant": ["xarray.coding.times::_decode_datetime_with_pandas#part2"]}
+{"query": "How does the code handle create default index implicit?", "relevant": ["xarray.core.indexes::create_default_index_implicit"]}
+{"query": "N-dimensional array with labeled coordinates and dimensions", "relevant": ["xarray.core.dataarray::DataArray#part40"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part91"]}
+{"query": "Find the StringAccessor class definition", "relevant": ["xarray.core.accessor_str::StringAccessor#part13"]}
+{"query": "Dictionary like container for DataArray coordinates (variables + indexes)", "relevant": ["xarray.core.coordinates::DataArrayCoordinates#part1"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part4"]}
+{"query": "How does the code handle dim summary limited?", "relevant": ["xarray.core.formatting::dim_summary_limited"]}
+{"query": "Where is scatter implemented?", "relevant": ["xarray.plot.dataset_plot::scatter"]}
+{"query": "A tree-like hierarchical collection of xarray objects", "relevant": ["xarray.core.datatree::DataTree#part32"]}
+{"query": "Which class implements HiddenKeyDict?", "relevant": ["xarray.core.utils::HiddenKeyDict"]}
+{"query": "Find the MergeResult class definition", "relevant": ["xarray.structure.merge::_MergeResult"]}
+{"query": "Find the SeasonResampler class definition", "relevant": ["xarray.groupers::SeasonResampler#part1"]}
+{"query": "Where is binops overload implemented?", "relevant": ["xarray.util.generate_ops::binops_overload"]}
+{"query": "Find the NDPointIndex class definition", "relevant": ["xarray.indexes.nd_point_index::NDPointIndex#part2"]}
+{"query": "Where is multi file closer implemented?", "relevant": ["xarray.backends.api::_multi_file_closer"]}
+{"query": "How does the code handle datatree node sections?", "relevant": ["xarray.core.formatting_html::_datatree_node_sections"]}
+{"query": "Which class implements DefaultFillvalueCoder?", "relevant": ["xarray.coding.variables::DefaultFillvalueCoder"]}
+{"query": "Decompose outer indexer to the successive two indexers, where the\nfirst indexer will be used to index backend arrays,...", "relevant": ["xarray.core.indexing::_decompose_outer_indexer#part2"]}
+{"query": "Base class representing a node of a tree, with methods for traversing and altering the tree", "relevant": ["xarray.core.treenode::TreeNode#part5"]}
+{"query": "Which class implements AbstractStyle?", "relevant": ["xarray.core.datatree_render::AbstractStyle"]}
+{"query": "Shared base class for Dataset and DataArray", "relevant": ["xarray.core.common::DataWithCoords#part4"]}
+{"query": "Where is to netcdf implemented?", "relevant": ["xarray.backends.writers::to_netcdf"]}
+{"query": "Where is get axis implemented?", "relevant": ["xarray.plot.utils::get_axis"]}
+{"query": "Where is check alignment implemented?", "relevant": ["xarray.core.datatree::check_alignment"]}
+{"query": "Find the function that iss duck array", "relevant": ["xarray.namedarray.utils::is_duck_array"]}
+{"query": "A wrapper around duck arrays with named dimensions\nand attributes which describe a single Array", "relevant": ["xarray.namedarray.core::NamedArray#part3"]}
+{"query": "Find the function that gets pos infinity", "relevant": ["xarray.namedarray.dtypes::get_pos_infinity"]}
+{"query": "Where is subset dataset to block implemented?", "relevant": ["xarray.core.parallel::subset_dataset_to_block#part1"]}
+{"query": "How does the code handle get keep attrs?", "relevant": ["xarray.core.options::_get_keep_attrs"]}
+{"query": "Find the DatasetArithmetic class definition", "relevant": ["xarray.computation.arithmetic::DatasetArithmetic"]}
+{"query": "How does the code handle decode cf?", "relevant": ["xarray.conventions::decode_cf#part1"]}
+{"query": "Which class implements Variable?", "relevant": ["xarray.core.variable::Variable#part24"]}
+{"query": "Which class implements DataTreeAggregations?", "relevant": ["xarray.core._aggregations::DataTreeAggregations#part20"]}
+{"query": "What does the function return when a fixed frequency CFTimeIndex?", "relevant": ["xarray.coding.cftime_offsets::_cftime_range#part1"]}
+{"query": "Which class implements StringAccessor?", "relevant": ["xarray.core.accessor_str::StringAccessor#part40"]}
+{"query": "How does the code handle adjust dates anchored?", "relevant": ["xarray.core.resample_cftime::_adjust_dates_anchored#part2"]}
+{"query": "Where is array any implemented?", "relevant": ["xarray.core.duck_array_ops::array_any"]}
+{"query": "Where is check dimension depth tile ids implemented?", "relevant": ["xarray.structure.combine::_check_dimension_depth_tile_ids"]}
+{"query": "Find the PydapDataStore class definition", "relevant": ["xarray.backends.pydap_::PydapDataStore#part1"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part17"]}
+{"query": "Where is reindex implemented?", "relevant": ["xarray.structure.alignment::reindex"]}
+{"query": "Where is get interpolator nd implemented?", "relevant": ["xarray.core.missing::_get_interpolator_nd"]}
+{"query": "Where is is monotonic implemented?", "relevant": ["xarray.plot.utils::_is_monotonic"]}
+{"query": "Error class used when we can't safely guess a dimension name", "relevant": ["xarray.core.variable::MissingDimensionsError"]}
+{"query": "How does the code handle summarize variable?", "relevant": ["xarray.core.formatting_html::summarize_variable"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part98"]}
+{"query": "How does the code handle datatree repr?", "relevant": ["xarray.core.formatting_html::datatree_repr"]}
+{"query": "Find the Frozen class definition", "relevant": ["xarray.core.utils::Frozen"]}
+{"query": "Find the NamedArray class definition", "relevant": ["xarray.namedarray.core::NamedArray#part3"]}
+{"query": "Where is ndim implemented?", "relevant": ["xarray.core.duck_array_ops::ndim"]}
+{"query": "N-dimensional array with labeled coordinates and dimensions", "relevant": ["xarray.core.dataarray::DataArray#part10"]}
+{"query": "Find the DataArrayGroupByAggregations class definition", "relevant": ["xarray.core._aggregations::DataArrayGroupByAggregations#part15"]}
+{"query": "Where is numpy bytes to char implemented?", "relevant": ["xarray.coding.strings::_numpy_bytes_to_char"]}
+{"query": "Which class implements DataTree?", "relevant": ["xarray.core.datatree::DataTree#part12"]}
+{"query": "Which class implements StringAccessor?", "relevant": ["xarray.core.accessor_str::StringAccessor#part15"]}
+{"query": "Where is datatree node sections implemented?", "relevant": ["xarray.core.formatting_html::_datatree_node_sections"]}
+{"query": "Set initial guess and bounds for curvefit", "relevant": ["xarray.computation.fit::_initialize_curvefit_params"]}
+{"query": "Find the function that saves mfdataset", "relevant": ["xarray.backends.writers::save_mfdataset#part1"]}
+{"query": "Find the StringAccessor class definition", "relevant": ["xarray.core.accessor_str::StringAccessor#part19"]}
+{"query": "Find the PandasMultiIndex class definition", "relevant": ["xarray.core.indexes::PandasMultiIndex#part4"]}
+{"query": "1-dimensional coordinate transform representing a simple bounded interval\nwith evenly spaced, floating-point values", "relevant": ["xarray.indexes.range_index::RangeCoordinateTransform#part3"]}
+{"query": "Which class implements NetCDF4DataStore?", "relevant": ["xarray.backends.netCDF4_::NetCDF4DataStore#part1"]}
+{"query": "Where is diff treestructure implemented?", "relevant": ["xarray.core.formatting::diff_treestructure"]}
+{"query": "Which class implements CFTimeIndex?", "relevant": ["xarray.coding.cftimeindex::CFTimeIndex#part9"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part3"]}
+{"query": "Apply a function to each block of a DataArray or Dataset", "relevant": ["xarray.core.parallel::map_blocks#part1"]}
+{"query": "Where is calc max rows last implemented?", "relevant": ["xarray.core.formatting::calc_max_rows_last"]}
+{"query": "Where is set file cache maxsize implemented?", "relevant": ["xarray.core.options::_set_file_cache_maxsize"]}
+{"query": "How does the code handle infer xy labels 3d?", "relevant": ["xarray.plot.utils::_infer_xy_labels_3d#part2"]}
+{"query": "How does the code handle adjust years?", "relevant": ["xarray.coding.cftime_offsets::_adjust_n_years"]}
+{"query": "The `normalize_chunks` algorithm takes a size `limit` in bytes, but will not\nwork for object dtypes", "relevant": ["xarray.namedarray.utils::fake_target_chunksize"]}
+{"query": "How does the code handle open zarr?", "relevant": ["xarray.backends.zarr::open_zarr#part4"]}
+{"query": "Find the DataTree class definition", "relevant": ["xarray.core.datatree::DataTree#part3"]}
+{"query": "Which class implements ScipyDataStore?", "relevant": ["xarray.backends.scipy_::ScipyDataStore#part3"]}
+{"query": "What does the function return when a day of year in the new calendar?", "relevant": ["xarray.coding.calendar_ops::_random_day_of_year"]}
+{"query": "Store for reading and writing data via zarr", "relevant": ["xarray.backends.zarr::ZarrStore#part10"]}
+{"query": "Initialize the Matplotlib figure and FacetGrid object", "relevant": ["xarray.plot.facetgrid::FacetGrid#part5"]}
+{"query": "Where is open groups implemented?", "relevant": ["xarray.backends.api::open_groups#part5"]}
+{"query": "How does the code handle contour?", "relevant": ["xarray.plot.dataarray_plot::contour"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part61"]}
+{"query": "Find the function that gets neg infinity", "relevant": ["xarray.core.dtypes::get_neg_infinity"]}
+{"query": "Which class implements DataArray?", "relevant": ["xarray.core.dataarray::DataArray#part70"]}
+{"query": "Shared base class for Dataset and DataArray", "relevant": ["xarray.core.common::DataWithCoords#part2"]}
+{"query": "Which class implements CFScaleOffsetCoder?", "relevant": ["xarray.coding.variables::CFScaleOffsetCoder#part1"]}
+{"query": "Find the StoreBackendEntrypoint class definition", "relevant": ["xarray.backends.store::StoreBackendEntrypoint"]}
+{"query": "Find the StringAccessor class definition", "relevant": ["xarray.core.accessor_str::StringAccessor#part32"]}
+{"query": "How does the code handle contour?", "relevant": ["xarray.plot.dataarray_plot::contour"]}
+{"query": "How does the code handle FrozenDict?", "relevant": ["xarray.core.utils::FrozenDict"]}
+{"query": "Find the TreeNode class definition", "relevant": ["xarray.core.treenode::TreeNode#part9"]}
+{"query": "Where is vars as keys implemented?", "relevant": ["xarray.structure.combine::vars_as_keys"]}
+{"query": "Merge variables/indexes from coordinates without automatic alignments", "relevant": ["xarray.structure.merge::merge_coordinates_without_align"]}
+{"query": "Where is broadcast implemented?", "relevant": ["xarray.structure.alignment::broadcast"]}
+{"query": "Vectorized string functions for string-like arrays", "relevant": ["xarray.core.accessor_str::StringAccessor#part34"]}
+{"query": "Cast given object to a Timestamp and return a nicely formatted string", "relevant": ["xarray.core.formatting::format_timestamp"]}
+{"query": "How does the code handle logical any?", "relevant": ["xarray.core.indexing::_logical_any"]}
+{"query": "Class for keeping track of grouped dimensions without coordinates", "relevant": ["xarray.core.groupby::_DummyGroup#part2"]}
+{"query": "Find the Default class definition", "relevant": ["xarray.namedarray._typing::Default"]}
+{"query": "How does the code handle open groups?", "relevant": ["xarray.backends.api::open_groups#part2"]}
+{"query": "Find the Variable class definition", "relevant": ["xarray.core.variable::Variable#part39"]}
+{"query": "Which class implements TreeNode?", "relevant": ["xarray.core.treenode::TreeNode#part1"]}
+{"query": "Where is reindex like implemented?", "relevant": ["xarray.structure.alignment::reindex_like"]}
+{"query": "Where is result name implemented?", "relevant": ["xarray.core.utils::result_name"]}
+{"query": "How does the code handle open zarr?", "relevant": ["xarray.backends.zarr::open_zarr#part2"]}
+{"query": "Where is polyval implemented?", "relevant": ["xarray.computation.computation::polyval"]}
+{"query": "Where is merge collected implemented?", "relevant": ["xarray.structure.merge::merge_collected#part2"]}
+{"query": "Find the PydapBackendEntrypoint class definition", "relevant": ["xarray.backends.pydap_::PydapBackendEntrypoint#part1"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part66"]}
+{"query": "Find the LogicalOperatorTransformer class definition", "relevant": ["xarray.core.eval::LogicalOperatorTransformer#part2"]}
+{"query": "Where is apply ufunc implemented?", "relevant": ["xarray.computation.apply_ufunc::apply_ufunc#part5"]}
+{"query": "How does the code handle linkcode resolve?", "relevant": ["doc.conf::linkcode_resolve"]}
+{"query": "Encode Enum into variable dtype metadata", "relevant": ["xarray.coding.variables::NativeEnumCoder"]}
+{"query": "Where is variables implemented?", "relevant": ["xarray.testing.strategies::variables#part3"]}
+{"query": "How does the code handle build datatree displays?", "relevant": ["xarray.core.formatting_html::_build_datatree_displays"]}
+{"query": "Where is maybe wrap data implemented?", "relevant": ["xarray.core.variable::_maybe_wrap_data"]}
+{"query": "Find the function that gets op", "relevant": ["xarray.computation.ops::get_op"]}
+{"query": "Possibly increment or decrement the number of periods to shift\nbased on rollforward/rollbackward conventions", "relevant": ["xarray.coding.cftime_offsets::roll_qtrday"]}
+{"query": "Where is read attributes implemented?", "relevant": ["xarray.backends.h5netcdf_::_read_attributes"]}
+{"query": "Parameters\n----------\nfunc : plotting function\ndata : ndarray,\n    Data values\n\nReturns\n-------\ncmap_params : dict\ncb...", "relevant": ["xarray.plot.utils::_process_cmap_cbar_kwargs#part1"]}
+{"query": "What does the function return when an appropriate positive infinity for this dtype?", "relevant": ["xarray.core.dtypes::get_pos_infinity"]}
+{"query": "Which class implements Dataset?", "relevant": ["xarray.core.dataset::Dataset#part4"]}
+{"query": "How does the code handle summarize vars?", "relevant": ["xarray.core.formatting_html::summarize_vars"]}
+{"query": "Converts all datetime64 variables to float64\n\nParameters\n----------\ndata : DataArray or Dataset\n    Variables with po...", "relevant": ["xarray.computation.computation::_ensure_numeric"]}
+{"query": "How does the code handle calc concat over?", "relevant": ["xarray.structure.concat::_calc_concat_over#part4"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part77"]}
+{"query": "Where is broadcast implemented?", "relevant": ["xarray.structure.alignment::broadcast"]}
+{"query": "Which class implements DatasetGroupByAggregations?", "relevant": ["xarray.core._aggregations::DatasetGroupByAggregations#part18"]}
+{"query": "Like :py:func:`numpy", "relevant": ["xarray.testing.assertions::assert_allclose#part1"]}
+{"query": "Which class implements Weighted?", "relevant": ["xarray.computation.weighted::Weighted#part1"]}
+{"query": "Find the function that creates coords with default indexes", "relevant": ["xarray.core.coordinates::create_coords_with_default_indexes#part2"]}
+{"query": "How does the code handle guess chunkmanager?", "relevant": ["xarray.namedarray.parallelcompat::guess_chunkmanager"]}
+{"query": "Where is encode cf timedelta within map blocks implemented?", "relevant": ["xarray.coding.times::_encode_cf_timedelta_within_map_blocks"]}
+{"query": "Find the Row class definition", "relevant": ["xarray.core.datatree_render::Row"]}
+{"query": "Find the Coarsen class definition", "relevant": ["xarray.computation.rolling::Coarsen#part4"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part94"]}
+{"query": "Where is is bytes dtype implemented?", "relevant": ["xarray.coding.strings::is_bytes_dtype"]}
+{"query": "Wrapper for accommodating a pandas", "relevant": ["xarray.core.variable::IndexVariable#part2"]}
+{"query": "How does the code handle test roundtrip pandas series?", "relevant": ["properties.test_pandas_roundtrip::test_roundtrip_pandas_series"]}
+{"query": "Determine x and y labels for showing RGB images", "relevant": ["xarray.plot.utils::_infer_xy_labels_3d#part1"]}
+{"query": "Explicitly combine an N-dimensional grid of datasets into one by using a\nsuccession of concat and merge operations al...", "relevant": ["xarray.structure.combine::combine_nested#part2"]}
+{"query": "Which class implements Dataset?", "relevant": ["xarray.core.dataset::Dataset#part137"]}
+{"query": "Where is open scipy netcdf implemented?", "relevant": ["xarray.backends.scipy_::_open_scipy_netcdf#part1"]}
+{"query": "Where is nanmin implemented?", "relevant": ["xarray.computation.nanops::nanmin"]}
+{"query": "inverse of ffill", "relevant": ["xarray.core.missing::_bfill"]}
+{"query": "How does the code handle build output coords and indexes?", "relevant": ["xarray.computation.apply_ufunc::build_output_coords_and_indexes#part1"]}
+{"query": "Find the Resample class definition", "relevant": ["xarray.core.resample::Resample#part3"]}
+{"query": "Which class implements Weighted?", "relevant": ["xarray.computation.weighted::Weighted#part4"]}
+{"query": "How does the code handle protect datatree variables inplace?", "relevant": ["xarray.backends.api::_protect_datatree_variables_inplace"]}
+{"query": "Implementation of `DataTree", "relevant": ["xarray.backends.writers::_datatree_to_netcdf#part2"]}
+{"query": "Where is zeros like implemented?", "relevant": ["xarray.core.common::zeros_like#part2"]}
+{"query": "Find the VariableOpsMixin class definition", "relevant": ["xarray.core._typed_ops::VariableOpsMixin#part8"]}
+{"query": "Which class implements DatasetResampleAggregations?", "relevant": ["xarray.core._aggregations::DatasetResampleAggregations#part13"]}
+{"query": "Where is select along axis implemented?", "relevant": ["xarray.core.nputils::_select_along_axis"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part20"]}
+{"query": "Which class implements DaskIndexingAdapter?", "relevant": ["xarray.core.indexing::DaskIndexingAdapter#part2"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part71"]}
+{"query": "Which class implements LocIndexer?", "relevant": ["xarray.core.dataarray::_LocIndexer"]}
+{"query": "N-dimensional array with labeled coordinates and dimensions", "relevant": ["xarray.core.dataarray::DataArray#part7"]}
+{"query": "Where is full like implemented?", "relevant": ["xarray.core.common::full_like"]}
+{"query": "How does the code handle diff dim summary?", "relevant": ["xarray.core.formatting::diff_dim_summary"]}
+{"query": "Where is lazy array equiv implemented?", "relevant": ["xarray.core.duck_array_ops::lazy_array_equiv"]}
+{"query": "How does the code handle plot1d?", "relevant": ["xarray.plot.dataarray_plot::_plot1d#part6"]}
+{"query": "How does the code handle align nd chunks?", "relevant": ["xarray.backends.chunks::align_nd_chunks#part3"]}
+{"query": "Xarray index for irregular, n-dimensional data", "relevant": ["xarray.indexes.nd_point_index::NDPointIndex#part3"]}
+{"query": "Convert a DataArray into an Iris Cube", "relevant": ["xarray.convert::to_iris"]}
+{"query": "Where is trailing optional implemented?", "relevant": ["xarray.coding.times::trailing_optional"]}
+{"query": "Shared base class for Dataset and DataArray", "relevant": ["xarray.core.common::DataWithCoords#part12"]}
+{"query": "Find the array class definition", "relevant": ["xarray.namedarray._typing::_array"]}
+{"query": "Manager for acquiring and closing a file object", "relevant": ["xarray.backends.file_manager::FileManager"]}
+{"query": "Store for reading and writing data via h5netcdf", "relevant": ["xarray.backends.h5netcdf_::H5NetCDFStore#part4"]}
+{"query": "Which class implements TimeAccessor?", "relevant": ["xarray.core.accessor_dt::TimeAccessor#part2"]}
+{"query": "Where is dimension sizes implemented?", "relevant": ["xarray.testing.strategies::dimension_sizes"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part1"]}
+{"query": "Where is combine nested implemented?", "relevant": ["xarray.structure.combine::combine_nested#part2"]}
+{"query": "Which class implements Dataset?", "relevant": ["xarray.core.dataset::Dataset#part51"]}
+{"query": "Find the RollingExp class definition", "relevant": ["xarray.computation.rolling_exp::RollingExp#part2"]}
+{"query": "Find the function that iss valid numpy dtype", "relevant": ["xarray.core.utils::is_valid_numpy_dtype"]}
+{"query": "Where is infix dims implemented?", "relevant": ["xarray.namedarray.utils::infix_dims"]}
+{"query": "How does the code handle new tile id?", "relevant": ["xarray.structure.combine::_new_tile_id"]}
+{"query": "This is required for determining the bin edges resampling with\nmonth end, quarter end, and year end frequencies", "relevant": ["xarray.core.resample_cftime::_adjust_bin_edges"]}
+{"query": "Decode a single CF-encoded scalar to ``np", "relevant": ["xarray.coding.times::_decode_to_timedelta"]}
+{"query": "Find the DataArrayResampleAggregations class definition", "relevant": ["xarray.core._aggregations::DataArrayResampleAggregations#part1"]}
+{"query": "Where is decode datetime with pandas implemented?", "relevant": ["xarray.coding.times::_decode_datetime_with_pandas#part2"]}
+{"query": "Generate vectorized (fancy) indexers where all arrays are broadcastable", "relevant": ["xarray.testing.strategies::vectorized_indexers#part1"]}
+{"query": "Where is extension duck array astype implemented?", "relevant": ["xarray.core.extension_array::__extension_duck_array__astype"]}
+{"query": "Find the DataTreeAggregations class definition", "relevant": ["xarray.core._aggregations::DataTreeAggregations#part20"]}
+{"query": "A netcdf-like variable consisting of dimensions, data and attributes\nwhich describe a single Array", "relevant": ["xarray.core.variable::Variable#part24"]}
+{"query": "How does the code handle surface?", "relevant": ["xarray.plot.dataarray_plot::surface"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part92"]}
+{"query": "Where is determine zarr chunks implemented?", "relevant": ["xarray.backends.zarr::_determine_zarr_chunks#part1"]}
+{"query": "How does the code handle line?", "relevant": ["xarray.plot.dataarray_plot::line#part3"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part71"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part83"]}
+{"query": "Where is plot1d implemented?", "relevant": ["xarray.plot.dataarray_plot::_plot1d#part7"]}
+{"query": "Find the Day class definition", "relevant": ["xarray.coding.cftime_offsets::Day"]}
+{"query": "Which class implements OuterIndexer?", "relevant": ["xarray.core.indexing::OuterIndexer"]}
+{"query": "How does the code handle finalize store?", "relevant": ["xarray.backends.api::_finalize_store"]}
+{"query": "Vectorized string functions for string-like arrays", "relevant": ["xarray.core.accessor_str::StringAccessor#part28"]}
+{"query": "Iterate over selections of an xarray object in the provided order", "relevant": ["xarray.computation.apply_ufunc::_iter_over_selections"]}
+{"query": "Where is test roundtrip 1d pandas extension array implemented?", "relevant": ["properties.test_pandas_roundtrip::test_roundtrip_1d_pandas_extension_array"]}
+{"query": "Xarray index implementing a simple bounded 1-dimension interval with\nevenly spaced, monotonic floating-point values", "relevant": ["xarray.indexes.range_index::RangeIndex#part4"]}
+{"query": "How does the code handle time units to timedelta?", "relevant": ["xarray.coding.times::_time_units_to_timedelta"]}
+{"query": "Where is check all return values implemented?", "relevant": ["xarray.core.datatree_mapping::_check_all_return_values"]}
+{"query": "Store for reading and writing data via zarr", "relevant": ["xarray.backends.zarr::ZarrStore#part9"]}
+{"query": "Shared base class for Dataset and DataArray", "relevant": ["xarray.core.common::DataWithCoords#part16"]}
+{"query": "Find the DatasetArgs class definition", "relevant": ["xarray.core.datatree::_DatasetArgs"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part11"]}
+{"query": "How does the code handle zarr v3?", "relevant": ["xarray.backends.zarr::_zarr_v3"]}
+{"query": "Coder for CF Timedelta coding", "relevant": ["xarray.coding.times::CFTimedeltaCoder#part1"]}
+{"query": "Which class implements DataArrayGroupByAggregations?", "relevant": ["xarray.core._aggregations::DataArrayGroupByAggregations#part15"]}
+{"query": "Helper function to deal with an xarray consisting of pd", "relevant": ["xarray.plot.utils::_interval_to_double_bound_points"]}
+{"query": "Interface between a particular parallel computing framework and xarray", "relevant": ["xarray.namedarray.parallelcompat::ChunkManagerEntrypoint#part2"]}
+{"query": "Find the RangeIndex class definition", "relevant": ["xarray.indexes.range_index::RangeIndex#part6"]}
+{"query": "How does the code handle update bounds encoding?", "relevant": ["xarray.conventions::_update_bounds_encoding"]}
+{"query": "Where is apply dict of variables vfunc implemented?", "relevant": ["xarray.computation.apply_ufunc::apply_dict_of_variables_vfunc"]}
+{"query": "Find the Indexes class definition", "relevant": ["xarray.core.indexes::Indexes#part1"]}
+{"query": "How does the code handle ensure same types?", "relevant": ["xarray.structure.combine::_ensure_same_types"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part64"]}
+{"query": "Cast given object to a Timestamp and return a nicely formatted string", "relevant": ["xarray.core.formatting::format_timedelta"]}
+{"query": "Get a list of dimensions to squeeze out", "relevant": ["xarray.core.common::get_squeeze_dims"]}
+{"query": "How does the code handle normalize filename or obj?", "relevant": ["xarray.backends.scipy_::_normalize_filename_or_obj"]}
+{"query": "Which class implements DataArrayOpsMixin?", "relevant": ["xarray.core._typed_ops::DataArrayOpsMixin#part7"]}
+{"query": "Which class implements DataArrayResampleAggregations?", "relevant": ["xarray.core._aggregations::DataArrayResampleAggregations#part15"]}
+{"query": "How does the code handle quiver?", "relevant": ["xarray.plot.dataset_plot::quiver"]}
+{"query": "Find the DataArrayRolling class definition", "relevant": ["xarray.computation.rolling::DataArrayRolling#part6"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part50"]}
+{"query": "Which class implements BaseCFTimeOffset?", "relevant": ["xarray.coding.cftime_offsets::BaseCFTimeOffset#part1"]}
+{"query": "Find the DaskManager class definition", "relevant": ["xarray.namedarray.daskmanager::DaskManager#part1"]}
+{"query": "Which class implements StringAccessor?", "relevant": ["xarray.core.accessor_str::StringAccessor#part39"]}
+{"query": "How does the code handle filter indexes from coords?", "relevant": ["xarray.core.indexes::filter_indexes_from_coords"]}
+{"query": "Where is check higher resolution implemented?", "relevant": ["xarray.coding.times::_check_higher_resolution"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part72"]}
+{"query": "How does the code handle get time bins?", "relevant": ["xarray.core.resample_cftime::_get_time_bins#part2"]}
+{"query": "Lazily computed array holding values of elemwise-function", "relevant": ["xarray.coding.common::_ElementwiseFunctionArray"]}
+{"query": "How does the code handle slice size?", "relevant": ["properties.test_indexing::_slice_size"]}
+{"query": "Where is legend elements implemented?", "relevant": ["xarray.plot.utils::legend_elements#part4"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part6"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part113"]}
+{"query": "Summarize a variable in one line, e", "relevant": ["xarray.core.formatting::summarize_variable"]}
+{"query": "Where is encode zarr attr value implemented?", "relevant": ["xarray.backends.zarr::encode_zarr_attr_value"]}
+{"query": "Which class implements PydapBackendEntrypoint?", "relevant": ["xarray.backends.pydap_::PydapBackendEntrypoint#part3"]}
+{"query": "Which class implements Variable?", "relevant": ["xarray.core.variable::Variable#part28"]}
+{"query": "A tree-like hierarchical collection of xarray objects", "relevant": ["xarray.core.datatree::DataTree#part16"]}
+{"query": "Which class implements Minute?", "relevant": ["xarray.coding.cftime_offsets::Minute"]}
+{"query": "Interface between a particular parallel computing framework and xarray", "relevant": ["xarray.namedarray.parallelcompat::ChunkManagerEntrypoint#part3"]}
+{"query": "How does the code handle scatter example dataset?", "relevant": ["xarray.tutorial::scatter_example_dataset"]}
+{"query": "Which class implements AbstractCoordinates?", "relevant": ["xarray.core.coordinates::AbstractCoordinates#part2"]}
+{"query": "Wrap an array API array to use explicit indexing", "relevant": ["xarray.core.indexing::ArrayApiIndexingAdapter"]}
+{"query": "Where is open dataset implemented?", "relevant": ["xarray.backends.api::open_dataset#part2"]}
+{"query": "Dictionary like container for Xarray coordinates (variables + indexes)", "relevant": ["xarray.core.coordinates::Coordinates#part11"]}
+{"query": "Which class implements FacetGrid?", "relevant": ["xarray.plot.facetgrid::FacetGrid#part15"]}
+{"query": "How does the code handle numbers to timedelta?", "relevant": ["xarray.coding.times::_numbers_to_timedelta#part1"]}
+{"query": "Which class implements DataArrayGroupByAggregations?", "relevant": ["xarray.core._aggregations::DataArrayGroupByAggregations#part13"]}
+{"query": "Open and decode a file or file-like object, creating a dictionary containing one xarray Dataset for each group in the...", "relevant": ["xarray.backends.api::open_groups#part2"]}
+{"query": "Where is netcdf and hdf5 versions implemented?", "relevant": ["xarray.util.print_versions::netcdf_and_hdf5_versions"]}
+{"query": "Plot streamlines of Dataset variables", "relevant": ["xarray.plot.dataset_plot::streamplot#part1"]}
+{"query": "Where is validate datatypes for zarr append implemented?", "relevant": ["xarray.backends.zarr::_validate_datatypes_for_zarr_append"]}
+{"query": "Find the NoDefault class definition", "relevant": ["xarray.compat.pdcompat::_NoDefault"]}
+{"query": "Which class implements DataArrayAggregations?", "relevant": ["xarray.core._aggregations::DataArrayAggregations#part11"]}
+{"query": "Where is sections repr implemented?", "relevant": ["xarray.core.formatting_html::_sections_repr"]}
+{"query": "How does the code handle check reduce dims?", "relevant": ["xarray.core.groupby::check_reduce_dims"]}
+{"query": "Where is streamplot implemented?", "relevant": ["xarray.plot.dataset_plot::streamplot"]}
+{"query": "Where is drop indexed coords implemented?", "relevant": ["xarray.core.coordinates::drop_indexed_coords"]}
+{"query": "How does the code handle concat?", "relevant": ["xarray.structure.concat::concat#part1"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part167"]}
+{"query": "Find the DatasetCoordinates class definition", "relevant": ["xarray.core.coordinates::DatasetCoordinates#part1"]}
+{"query": "Which class implements Grouper?", "relevant": ["xarray.groupers::Grouper"]}
+{"query": "Find the SerializationWarning class definition", "relevant": ["xarray.coding.common::SerializationWarning"]}
+{"query": "Convert a datetime DataArray to decimal years according to its calendar", "relevant": ["xarray.coding.calendar_ops::_decimal_year"]}
+{"query": "Apply an ndarray level function over Variable and/or ndarray objects", "relevant": ["xarray.computation.apply_ufunc::apply_variable_ufunc#part3"]}
+{"query": "Which class implements DataTree?", "relevant": ["xarray.core.datatree::DataTree#part18"]}
+{"query": "Wrapper for accommodating a pandas", "relevant": ["xarray.core.variable::IndexVariable#part3"]}
+{"query": "Which class implements PandasIndex?", "relevant": ["xarray.core.indexes::PandasIndex#part2"]}
+{"query": "Find the VariableOpsMixin class definition", "relevant": ["xarray.core._typed_ops::VariableOpsMixin#part7"]}
+{"query": "What does the function return when a new object of zeros with the same shape and type as a given dataarray or dataset?", "relevant": ["xarray.core.common::zeros_like#part1"]}
+{"query": "N-dimensional array with labeled coordinates and dimensions", "relevant": ["xarray.core.dataarray::DataArray#part25"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part31"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part41"]}
+{"query": "Test basic indexing produces identical results for transform and pandas index", "relevant": ["properties.test_coordinate_transform::test_basic_indexing"]}
+{"query": "Where is extract zarr variable encoding implemented?", "relevant": ["xarray.backends.zarr::extract_zarr_variable_encoding#part1"]}
+{"query": "How does the code handle get range edges?", "relevant": ["xarray.core.resample_cftime::_get_range_edges"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part49"]}
+{"query": "Which class implements ScipyBackendEntrypoint?", "relevant": ["xarray.backends.scipy_::ScipyBackendEntrypoint#part1"]}
+{"query": "Attempt to auto-magically combine the given datasets (or data arrays)\ninto one by using dimension coordinates", "relevant": ["xarray.structure.combine::combine_by_coords#part3"]}
+{"query": "Which class implements Variable?", "relevant": ["xarray.core.variable::Variable#part8"]}
+{"query": "Which class implements H5netcdfBackendEntrypoint?", "relevant": ["xarray.backends.h5netcdf_::H5netcdfBackendEntrypoint#part3"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part74"]}
+{"query": "Which class implements Dataset?", "relevant": ["xarray.core.dataset::Dataset#part147"]}
+{"query": "A netcdf-like variable consisting of dimensions, data and attributes\nwhich describe a single Array", "relevant": ["xarray.core.variable::Variable#part3"]}
+{"query": "Where is expand slice implemented?", "relevant": ["xarray.core.indexing::_expand_slice"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part149"]}
+{"query": "Which class implements DataTreeCoordinates?", "relevant": ["xarray.core.coordinates::DataTreeCoordinates#part1"]}
+{"query": "Store for reading and writing data via the Python-NetCDF4 library", "relevant": ["xarray.backends.netCDF4_::NetCDF4DataStore#part1"]}
+{"query": "How does the code handle remove incompatible items?", "relevant": ["xarray.core.utils::remove_incompatible_items"]}
+{"query": "Where is asarray tuplesafe implemented?", "relevant": ["xarray.core.indexes::_asarray_tuplesafe"]}
+{"query": "How does the code handle get priority vars and indexes?", "relevant": ["xarray.structure.merge::_get_priority_vars_and_indexes"]}
+{"query": "How does the code handle test basic indexing?", "relevant": ["properties.test_coordinate_transform::test_basic_indexing"]}
+{"query": "N-dimensional array with labeled coordinates and dimensions", "relevant": ["xarray.core.dataarray::DataArray#part110"]}
+{"query": "Find the UFuncSignature class definition", "relevant": ["xarray.computation.apply_ufunc::_UFuncSignature#part2"]}
+{"query": "How does the code handle combine nested?", "relevant": ["xarray.structure.combine::combine_nested#part3"]}
+{"query": "Where is consolidate slices implemented?", "relevant": ["xarray.core.groupby::_consolidate_slices"]}
+{"query": "Where is as variables or variable implemented?", "relevant": ["xarray.computation.apply_ufunc::_as_variables_or_variable"]}
+{"query": "Which class implements DatasetResampleAggregations?", "relevant": ["xarray.core._aggregations::DatasetResampleAggregations#part9"]}
+{"query": "Where is check data shape implemented?", "relevant": ["xarray.core.dataarray::_check_data_shape"]}
+{"query": "Where is wrap index equals implemented?", "relevant": ["xarray.core.indexes::_wrap_index_equals"]}
+{"query": "Which class implements NamedArrayAggregations?", "relevant": ["xarray.namedarray._aggregations::NamedArrayAggregations#part16"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part103"]}
+{"query": "Generates datetime objects including both standard library datetimes and cftime datetimes", "relevant": ["xarray.testing.strategies::datetimes"]}
+{"query": "How does the code handle open mfdataset?", "relevant": ["xarray.backends.api::open_mfdataset#part1"]}
+{"query": "Where is array notnull equiv implemented?", "relevant": ["xarray.core.duck_array_ops::array_notnull_equiv"]}
+{"query": "How does the code handle nc4 require group?", "relevant": ["xarray.backends.netCDF4_::_nc4_require_group"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part64"]}
+{"query": "Where is pytest addoption implemented?", "relevant": ["conftest::pytest_addoption"]}
+{"query": "A multi-dimensional, in memory, array database", "relevant": ["xarray.core.dataset::Dataset#part107"]}
+{"query": "N-dimensional array with labeled coordinates and dimensions", "relevant": ["xarray.core.dataarray::DataArray#part41"]}
+{"query": "How does the code handle codes to group indices?", "relevant": ["xarray.core.groupby::_codes_to_group_indices"]}
+{"query": "Where is parse size implemented?", "relevant": ["xarray.plot.utils::_parse_size"]}
+{"query": "How does the code handle is nested tuple?", "relevant": ["xarray.core.indexes::_is_nested_tuple"]}
+{"query": "Xarray index implementing a simple bounded 1-dimension interval with\nevenly spaced, monotonic floating-point values", "relevant": ["xarray.indexes.range_index::RangeIndex#part1"]}
+{"query": "Fill missing values in this object with data from the other object", "relevant": ["xarray.computation.ops::fillna"]}
+{"query": "How does the code handle get neg infinity?", "relevant": ["xarray.core.dtypes::get_neg_infinity"]}
+{"query": "Find the CFMaskCoder class definition", "relevant": ["xarray.coding.variables::CFMaskCoder#part3"]}
+{"query": "How does the code handle merge collected?", "relevant": ["xarray.structure.merge::merge_collected#part1"]}
+{"query": "N-dimensional array with labeled coordinates and dimensions", "relevant": ["xarray.core.dataarray::DataArray#part111"]}
+{"query": "Find the DataTreeAggregations class definition", "relevant": ["xarray.core._aggregations::DataTreeAggregations#part4"]}
+{"query": "How does the code handle gradient?", "relevant": ["xarray.core.duck_array_ops::gradient"]}
+{"query": "Which class implements DataWithCoords?", "relevant": ["xarray.core.common::DataWithCoords#part15"]}
+{"query": "Find the DatasetPlotAccessor class definition", "relevant": ["xarray.plot.accessor::DatasetPlotAccessor#part5"]}
+{"query": "Find the ScipyInterpolator class definition", "relevant": ["xarray.core.missing::ScipyInterpolator#part1"]}
+{"query": "Interpolate values according to different methods", "relevant": ["xarray.core.missing::interp_na#part2"]}
+{"query": "Guess what coords to plot if some of the values in coords_to_plot are None which\nhappens when the user has not define...", "relevant": ["xarray.plot.utils::_guess_coords_to_plot#part2"]}
+{"query": "Where is alias implemented?", "relevant": ["xarray.core.utils::alias"]}
+{"query": "Determine the dask scheduler that is being used", "relevant": ["xarray.backends.locks::get_dask_scheduler"]}
+{"query": "Where is decode cf variable implemented?", "relevant": ["xarray.conventions::decode_cf_variable#part2"]}
+{"query": "Find the DataArrayGroupByAggregations class definition", "relevant": ["xarray.core._aggregations::DataArrayGroupByAggregations#part24"]}
+{"query": "How does the code handle datasets 1d vars?", "relevant": ["properties.test_pandas_roundtrip::datasets_1d_vars"]}
+{"query": "Where is merge sel results implemented?", "relevant": ["xarray.core.indexing::merge_sel_results"]}
+{"query": "Find the Tick class definition", "relevant": ["xarray.coding.cftime_offsets::Tick"]}
+{"query": "How does the code handle save mfdataset?", "relevant": ["xarray.backends.writers::save_mfdataset#part3"]}
+{"query": "Where is encode datetime with cftime implemented?", "relevant": ["xarray.coding.times::_encode_datetime_with_cftime"]}
+{"query": "Where is format times implemented?", "relevant": ["xarray.coding.cftimeindex::format_times"]}
+{"query": "How does the code handle is contiguous?", "relevant": ["xarray.core.nputils::_is_contiguous"]}
+{"query": "How does the code handle ravel?", "relevant": ["xarray.core.duck_array_ops::ravel"]}
+{"query": "Where is nanvar object implemented?", "relevant": ["xarray.computation.nanops::_nanvar_object"]}
+{"query": "How does the code handle format row?", "relevant": ["xarray.coding.cftimeindex::format_row"]}
+{"query": "Determine whether `v` can be hashed", "relevant": ["xarray.core.utils::hashable"]}
+{"query": "Apply a variable level function over DataArray, Variable and/or ndarray\nobjects", "relevant": ["xarray.computation.apply_ufunc::apply_dataarray_vfunc#part1"]}
+{"query": "How does the code handle scatter?", "relevant": ["xarray.plot.dataarray_plot::scatter"]}
+{"query": "How does the code handle combine all along first dim?", "relevant": ["xarray.structure.combine::_combine_all_along_first_dim"]}
+{"query": "Find the StringAccessor class definition", "relevant": ["xarray.core.accessor_str::StringAccessor#part41"]}
+{"query": "Open a DataArray from a file or file-like object containing a single\ndata variable", "relevant": ["xarray.backends.api::open_dataarray#part3"]}
+{"query": "Find the Dataset class definition", "relevant": ["xarray.core.dataset::Dataset#part36"]}
+{"query": "Find the DatasetPlotAccessor class definition", "relevant": ["xarray.plot.accessor::DatasetPlotAccessor#part4"]}
+{"query": "Which class implements UFuncSignature?", "relevant": ["xarray.computation.apply_ufunc::_UFuncSignature#part3"]}
+{"query": "How does the code handle map over datasets?", "relevant": ["xarray.core.datatree_mapping::map_over_datasets#part1"]}
+{"query": "A netcdf-like variable consisting of dimensions, data and attributes\nwhich describe a single Array", "relevant": ["xarray.core.variable::Variable#part40"]}
+{"query": "Which class implements DataArray?", "relevant": ["xarray.core.dataarray::DataArray#part45"]}
+{"query": "Apply a vectorized function for unlabeled arrays on xarray objects", "relevant": ["xarray.computation.apply_ufunc::apply_ufunc#part6"]}
+{"query": "Find the DataArrayRolling class definition", "relevant": ["xarray.computation.rolling::DataArrayRolling#part4"]}
+{"query": "Find the FacetGrid class definition", "relevant": ["xarray.plot.facetgrid::FacetGrid#part11"]}
+{"query": "Which class implements ScipyDataStore?", "relevant": ["xarray.backends.scipy_::ScipyDataStore#part2"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part97"]}
+{"query": "Which class implements DataArrayGroupByAggregations?", "relevant": ["xarray.core._aggregations::DataArrayGroupByAggregations#part17"]}
+{"query": "Find the Variable class definition", "relevant": ["xarray.core.variable::Variable#part1"]}
+{"query": "A object that implements the split-apply-combine pattern", "relevant": ["xarray.core.groupby::GroupBy#part4"]}
+{"query": "Where is dsplot implemented?", "relevant": ["xarray.plot.dataset_plot::_dsplot#part3"]}
+{"query": "Where is dataset concat implemented?", "relevant": ["xarray.structure.concat::_dataset_concat#part3"]}
+{"query": "Which class implements DatasetView?", "relevant": ["xarray.core.datatree::DatasetView#part4"]}
+{"query": "Find the function that loads dataset", "relevant": ["xarray.tutorial::load_dataset"]}
+{"query": "Which class implements DataArrayResampleAggregations?", "relevant": ["xarray.core._aggregations::DataArrayResampleAggregations#part16"]}
+{"query": "Which class implements set options?", "relevant": ["xarray.core.options::set_options#part2"]}
+{"query": "Find the AbstractStyle class definition", "relevant": ["xarray.core.datatree_render::AbstractStyle"]}
+{"query": "Which class implements DataArrayResampleAggregations?", "relevant": ["xarray.core._aggregations::DataArrayResampleAggregations#part17"]}
+{"query": "Find the function that gets writable zarr store", "relevant": ["xarray.backends.writers::get_writable_zarr_store"]}
+{"query": "Find the DatasetResampleAggregations class definition", "relevant": ["xarray.core._aggregations::DatasetResampleAggregations#part1"]}
+{"query": "Find the DataArray class definition", "relevant": ["xarray.core.dataarray::DataArray#part15"]}

@@ -1,0 +1,500 @@
+{"query": "How does the code handle test unittest not shown in traceback?", "relevant": ["testing.test_unittest::test_unittest_not_shown_in_traceback"]}
+{"query": "Find the SysCapture class definition", "relevant": ["src._pytest.capture::SysCapture"]}
+{"query": "Where is test fixtures in conftest implemented?", "relevant": ["testing.python.show_fixtures_per_test::test_fixtures_in_conftest"]}
+{"query": "Where is test def online implemented?", "relevant": ["testing.code.test_source::test_def_online"]}
+{"query": "Where is load config dict from file implemented?", "relevant": ["src._pytest.config.findpaths::load_config_dict_from_file#part1"]}
+{"query": "How does the code handle isset?", "relevant": ["src._pytest.assertion._guards::isset"]}
+{"query": "Where is test tmp path fallback tox env implemented?", "relevant": ["testing.test_tmpdir::test_tmp_path_fallback_tox_env"]}
+{"query": "Where is test root testsuites tag implemented?", "relevant": ["testing.test_junitxml::test_root_testsuites_tag"]}
+{"query": "How does the code handle test samefile?", "relevant": ["testing._py.test_local::test_samefile"]}
+{"query": "Which class implements RaisesGroup?", "relevant": ["src._pytest.raises::RaisesGroup#part4"]}
+{"query": "Find the TestFillFixtures class definition", "relevant": ["testing.python.fixtures::TestFillFixtures#part4"]}
+{"query": "Which class implements FixtureManager?", "relevant": ["src._pytest.fixtures::FixtureManager#part8"]}
+{"query": "After each session, remove base directory if all the tests passed,\nthe policy is \"failed\", and the basetemp is not sp...", "relevant": ["src._pytest.tmpdir::pytest_sessionfinish"]}
+{"query": "How does the code handle test recursive namespace shows ellipsis?", "relevant": ["testing.io.test_pprint::test_recursive_namespace_shows_ellipsis"]}
+{"query": "Yield specialised explanations for some operators/operands", "relevant": ["src._pytest.assertion.util::assertrepr_compare#part1"]}
+{"query": "Where is test log file mode cli implemented?", "relevant": ["testing.logging.test_reporting::test_log_file_mode_cli"]}
+{"query": "How does the code handle format repr exception?", "relevant": ["src._pytest._io.saferepr::_format_repr_exception"]}
+{"query": "Find the StashKey class definition", "relevant": ["src._pytest.stash::StashKey"]}
+{"query": "Where is test call fixture function error implemented?", "relevant": ["testing.python.fixtures::test_call_fixture_function_error"]}
+{"query": "How does the code handle check raisesexc init?", "relevant": ["testing.typing_raises_group::check_raisesexc_init"]}
+{"query": "Where is pytest warning recorded implemented?", "relevant": ["src._pytest.hookspec::pytest_warning_recorded"]}
+{"query": "Where is locate config implemented?", "relevant": ["src._pytest.config.findpaths::locate_config"]}
+{"query": "How does the code handle ismapping?", "relevant": ["src._pytest.assertion._guards::ismapping"]}
+{"query": "Which class implements LocalPath?", "relevant": ["src._pytest._py.path::LocalPath#part3"]}
+{"query": "Find the TestRootdir class definition", "relevant": ["testing.test_config::TestRootdir#part4"]}
+{"query": "Where is compare eq text implemented?", "relevant": ["src._pytest.assertion.compare_text::_compare_eq_text"]}
+{"query": "How does the code handle test summary list after errors?", "relevant": ["testing.test_skipping::test_summary_list_after_errors"]}
+{"query": "How does the code handle test date format percentf log?", "relevant": ["testing.logging.test_reporting::test_date_format_percentf_log"]}
+{"query": "Find the function that gets empty parameterset mark", "relevant": ["src._pytest.mark.structures::get_empty_parameterset_mark"]}
+{"query": "Find the TeeCaptureIO class definition", "relevant": ["src._pytest.capture::TeeCaptureIO"]}
+{"query": "How does the code handle pytest leave pdb?", "relevant": ["src._pytest.hookspec::pytest_leave_pdb"]}
+{"query": "Find the ReprEntry class definition", "relevant": ["src._pytest._code.code::ReprEntry#part1"]}
+{"query": "Where is test warning when init trumps pyproject toml implemented?", "relevant": ["testing.test_terminal::test_warning_when_init_trumps_pyproject_toml"]}
+{"query": "Find the XFailed class definition", "relevant": ["src._pytest.outcomes::XFailed"]}
+{"query": "Relevant information about a plugin to generate the summary", "relevant": ["scripts.update-plugin-list::PluginInfo"]}
+{"query": "How does the code handle test traceback pruning?", "relevant": ["testing.test_unittest::test_traceback_pruning"]}
+{"query": "Record all hooks called in a plugin manager", "relevant": ["src._pytest.pytester::HookRecorder#part4"]}
+{"query": "Find the RaisesGroup class definition", "relevant": ["src._pytest.raises::RaisesGroup#part1"]}
+{"query": "How does the code handle init runner class?", "relevant": ["src._pytest.doctest::_init_runner_class"]}
+{"query": "Find the ApproxTimedelta class definition", "relevant": ["src._pytest.python_api::ApproxTimedelta#part1"]}
+{"query": "Which class implements TestAssertionRewrite?", "relevant": ["testing.test_assertrewrite::TestAssertionRewrite#part14"]}
+{"query": "Where is test module full path without drive implemented?", "relevant": ["testing.test_main::test_module_full_path_without_drive"]}
+{"query": "Find the TestOverlappingCollectionArguments class definition", "relevant": ["testing.test_collection::TestOverlappingCollectionArguments#part3"]}
+{"query": "Where is pytest configure implemented?", "relevant": ["testing.example_scripts.conftest_usageerror.conftest::pytest_configure"]}
+{"query": "Which class implements TestTerminal?", "relevant": ["testing.test_terminal::TestTerminal#part3"]}
+{"query": "Find the TestConftestVisibility class definition", "relevant": ["testing.test_conftest::TestConftestVisibility#part2"]}
+{"query": "Skeleton command line program", "relevant": ["src._pytest.main::wrap_session"]}
+{"query": "Process a warning captured by the internal pytest warnings plugin", "relevant": ["src._pytest.hookspec::pytest_warning_recorded"]}
+{"query": "How does the code handle test saferepr dict preserves insertion order?", "relevant": ["testing.io.test_saferepr::test_saferepr_dict_preserves_insertion_order"]}
+{"query": "Traceback objects encapsulate and offer higher level access to Traceback entries", "relevant": ["src._pytest._code.code::Traceback#part1"]}
+{"query": "How does the code handle show fixtures per test?", "relevant": ["src._pytest.fixtures::_show_fixtures_per_test"]}
+{"query": "How does the code handle test unicode args?", "relevant": ["testing.test_pytester::test_unicode_args"]}
+{"query": "Object oriented interface to os", "relevant": ["src._pytest._py.path::LocalPath#part18"]}
+{"query": "Which class implements LocalPath?", "relevant": ["src._pytest._py.path::LocalPath#part18"]}
+{"query": "Assertion rewriting implementation", "relevant": ["src._pytest.assertion.rewrite::AssertionRewriter#part8"]}
+{"query": "Where is test it implemented?", "relevant": ["bench.manyparam::test_it"]}
+{"query": "Find the TestParameterizedSubRequest class definition", "relevant": ["testing.python.fixtures::TestParameterizedSubRequest#part1"]}
+{"query": "Where is getreportopt implemented?", "relevant": ["src._pytest.terminal::getreportopt"]}
+{"query": "Where is test keyword option custom implemented?", "relevant": ["testing.test_mark::test_keyword_option_custom"]}
+{"query": "Which class implements TerminalReporter?", "relevant": ["src._pytest.terminal::TerminalReporter#part15"]}
+{"query": "How does the code handle test raises group?", "relevant": ["testing.python.raises_group::test_raises_group"]}
+{"query": "Find the TestMaxWarnings class definition", "relevant": ["testing.test_warnings::TestMaxWarnings#part1"]}
+{"query": "Where is pytest unconfigure implemented?", "relevant": ["src._pytest.pastebin::pytest_unconfigure"]}
+{"query": "Which class implements TestAssert reprcompare?", "relevant": ["testing.test_assertion::TestAssert_reprcompare#part9"]}
+{"query": "Where is broken pytester implemented?", "relevant": ["testing.test_stepwise::broken_pytester"]}
+{"query": "Which class implements TestSorting?", "relevant": ["testing.python.collect::TestSorting#part2"]}
+{"query": "Which class implements TestRmRf?", "relevant": ["testing.test_tmpdir::TestRmRf#part1"]}
+{"query": "Where is extract suffixes implemented?", "relevant": ["src._pytest.pathlib::extract_suffixes"]}
+{"query": "Warning category used to denote experiments in pytest", "relevant": ["src._pytest.warning_types::PytestExperimentalApiWarning"]}
+{"query": "How does the code handle pytest configure?", "relevant": ["src._pytest.terminalprogress::pytest_configure"]}
+{"query": "Where is test package ordering implemented?", "relevant": ["testing.python.collect::test_package_ordering"]}
+{"query": "How does the code handle test parameterset for parametrize bad markname?", "relevant": ["testing.test_mark::test_parameterset_for_parametrize_bad_markname"]}
+{"query": "How does the code handle pytest report header?", "relevant": ["src._pytest.cacheprovider::pytest_report_header"]}
+{"query": "Where is plugin nameversions implemented?", "relevant": ["src._pytest.terminal::_plugin_nameversions"]}
+{"query": "Which class implements TestDebugging?", "relevant": ["testing.test_subtests::TestDebugging#part2"]}
+{"query": "How does the code handle pytest terminal summary?", "relevant": ["src._pytest.pastebin::pytest_terminal_summary"]}
+{"query": "Try to install the rewrite hook, raise SystemError if it fails", "relevant": ["src._pytest.assertion.__init__::install_importhook"]}
+{"query": "How does the code handle test captures for all stages?", "relevant": ["testing.logging.test_fixture::test_captures_for_all_stages"]}
+{"query": "Where is pytest collect file implemented?", "relevant": ["src._pytest.hookspec::pytest_collect_file"]}
+{"query": "Find the TestAssertionRewrite class definition", "relevant": ["testing.test_assertrewrite::TestAssertionRewrite#part16"]}
+{"query": "Find the TestMockDecoration class definition", "relevant": ["testing.python.integration::TestMockDecoration#part1"]}
+{"query": "How does the code handle create new paste?", "relevant": ["src._pytest.pastebin::create_new_paste"]}
+{"query": "Where is infer parametrize scope implemented?", "relevant": ["src._pytest.python::_infer_parametrize_scope"]}
+{"query": "Find the LogCaptureFixture class definition", "relevant": ["src._pytest.logging::LogCaptureFixture#part4"]}
+{"query": "Find the TestConftestValueAccessGlobal class definition", "relevant": ["testing.test_conftest::TestConftestValueAccessGlobal#part2"]}
+{"query": "Where is test implemented?", "relevant": ["testing.example_scripts.fixtures.fill_fixtures.test_conftest_funcargs_only_available_in_subdir.sub1.test_in_sub1::test_1"]}
+{"query": "How does the code handle test delitem?", "relevant": ["testing.test_monkeypatch::test_delitem"]}
+{"query": "Where is test root logger affected implemented?", "relevant": ["testing.logging.test_reporting::test_root_logger_affected"]}
+{"query": "Where is mangle test address implemented?", "relevant": ["src._pytest.junitxml::mangle_test_address"]}
+{"query": "Where is test frame leak on failing test implemented?", "relevant": ["testing.acceptance_test::test_frame_leak_on_failing_test"]}
+{"query": "Where is teardown module implemented?", "relevant": ["doc.en.example.assertion.test_setup_flow_example::teardown_module"]}
+{"query": "Which class implements TestExceptionInfoFormatter?", "relevant": ["testing.code.test_excinfo::TestExceptionInfoFormatter#part11"]}
+{"query": "Which class implements Testdir?", "relevant": ["src._pytest.legacypath::Testdir#part3"]}
+{"query": "Where is async fail implemented?", "relevant": ["src._pytest.python::async_fail"]}
+{"query": "Find the CaptureFixture class definition", "relevant": ["src._pytest.capture::CaptureFixture#part2"]}
+{"query": "Called for keyboard interrupt", "relevant": ["src._pytest.hookspec::pytest_keyboard_interrupt"]}
+{"query": "Find the TestAssertionPass class definition", "relevant": ["testing.test_assertrewrite::TestAssertionPass#part1"]}
+{"query": "Check getfuncargnames for methods defined with functools", "relevant": ["testing.python.fixtures::test_getfuncargnames_partial"]}
+{"query": "Test native TOML configuration parsing", "relevant": ["testing.test_config::TestNativeTomlConfig#part2"]}
+{"query": "Find the TestLastFailed class definition", "relevant": ["testing.test_cacheprovider::TestLastFailed#part3"]}
+{"query": "Where is format lines implemented?", "relevant": ["src._pytest.assertion.util::_format_lines"]}
+{"query": "Where is test unraisable warning without filter still wraps implemented?", "relevant": ["testing.test_unraisableexception::test_unraisable_warning_without_filter_still_wraps"]}
+{"query": "Which class implements LsofFdLeakChecker?", "relevant": ["src._pytest.pytester::LsofFdLeakChecker#part1"]}
+{"query": "Where is test modulecol roundtrip implemented?", "relevant": ["testing.python.collect::test_modulecol_roundtrip"]}
+{"query": "How does the code handle pytest fixture post finalizer?", "relevant": ["src._pytest.hookspec::pytest_fixture_post_finalizer"]}
+{"query": "Find the TestSysModulesSnapshot class definition", "relevant": ["testing.test_pytester::TestSysModulesSnapshot#part2"]}
+{"query": "Where is test xfail implemented?", "relevant": ["testing.test_subtests::test_xfail#part2"]}
+{"query": "How does the code handle test unicode issue368?", "relevant": ["testing.test_junitxml::test_unicode_issue368"]}
+{"query": "Which class implements PrettyPrinter?", "relevant": ["src._pytest._io.pprint::PrettyPrinter#part6"]}
+{"query": "Find the function that gets assertion text diff style", "relevant": ["src._pytest.assertion.util::get_assertion_text_diff_style"]}
+{"query": "Do not show the summary banner when --quiet is given (#13700)", "relevant": ["testing.test_junitxml::test_no_message_quiet"]}
+{"query": "How does the code handle test logging passing tests disabled logs output for failing test issue5430?", "relevant": ["testing.test_junitxml::test_logging_passing_tests_disabled_logs_output_for_failing_test_issue5430"]}
+{"query": "Where is test package unimportable implemented?", "relevant": ["testing.test_pathlib::test_package_unimportable"]}
+{"query": "Where is test repr on newstyle implemented?", "relevant": ["testing.io.test_saferepr::test_repr_on_newstyle"]}
+{"query": "How does the code handle compare eq iterable?", "relevant": ["src._pytest.assertion._compare_sequence::_compare_eq_iterable"]}
+{"query": "How does the code handle test mangle test address?", "relevant": ["testing.test_junitxml::test_mangle_test_address"]}
+{"query": "Where is test errors in xfail skip expressions implemented?", "relevant": ["testing.test_skipping::test_errors_in_xfail_skip_expressions"]}
+{"query": "Where is test threadexception warning multiple errors implemented?", "relevant": ["testing.test_threadexception::test_threadexception_warning_multiple_errors"]}
+{"query": "Where is prepend pythonpath implemented?", "relevant": ["testing.acceptance_test::prepend_pythonpath"]}
+{"query": "How does the code handle test multiline?", "relevant": ["testing.code.test_source::test_multiline"]}
+{"query": "Where is sess implemented?", "relevant": ["doc.en.example.fixtures.test_fixtures_order_scope::sess"]}
+{"query": "How does the code handle write docstring?", "relevant": ["src._pytest.fixtures::write_docstring"]}
+{"query": "Where is running on ci implemented?", "relevant": ["src._pytest.compat::running_on_ci"]}
+{"query": "Find the TerminalReporter class definition", "relevant": ["src._pytest.terminal::TerminalReporter#part9"]}
+{"query": "How does the code handle test mktemp?", "relevant": ["testing.test_tmpdir::test_mktemp"]}
+{"query": "Which class implements FDCaptureBase?", "relevant": ["src._pytest.capture::FDCaptureBase#part2"]}
+{"query": "Which class implements TestRewriteOnImport?", "relevant": ["testing.test_assertrewrite::TestRewriteOnImport#part2"]}
+{"query": "Where is evaluate condition implemented?", "relevant": ["src._pytest.skipping::evaluate_condition#part1"]}
+{"query": "Where is test collect short file windows implemented?", "relevant": ["testing.test_collection::test_collect_short_file_windows"]}
+{"query": "Where is spam implemented?", "relevant": ["testing.example_scripts.fixtures.fill_fixtures.test_extend_fixture_conftest_module.test_extend_fixture_conftest_module::spam"]}
+{"query": "Find the TestClassicOutputStyle class definition", "relevant": ["testing.test_terminal::TestClassicOutputStyle"]}
+{"query": "Which class implements RequestFixtureDef?", "relevant": ["src._pytest.fixtures::RequestFixtureDef"]}
+{"query": "Find the TestAssert reprcompare class definition", "relevant": ["testing.test_assertion::TestAssert_reprcompare#part8"]}
+{"query": "Where is repr callable implemented?", "relevant": ["src._pytest.raises::repr_callable"]}
+{"query": "Where is test logging while collecting implemented?", "relevant": ["testing.test_capture::test_logging_while_collecting"]}
+{"query": "How does the code handle test invalid options show extra information?", "relevant": ["testing.test_config::test_invalid_options_show_extra_information"]}
+{"query": "Test native TOML configuration parsing", "relevant": ["testing.test_config::TestNativeTomlConfig#part3"]}
+{"query": "Object oriented interface to os", "relevant": ["src._pytest._py.path::LocalPath#part15"]}
+{"query": "Find the TestMockDecoration class definition", "relevant": ["testing.python.integration::TestMockDecoration#part2"]}
+{"query": "Find the TestReportInfo class definition", "relevant": ["testing.python.collect::TestReportInfo#part1"]}
+{"query": "Which class implements ThreadExceptionMeta?", "relevant": ["src._pytest.threadexception::ThreadExceptionMeta"]}
+{"query": "How does the code handle test mark expressions no smear?", "relevant": ["testing.test_mark::test_mark_expressions_no_smear"]}
+{"query": "Which class implements PytestDeprecationWarning?", "relevant": ["src._pytest.warning_types::PytestDeprecationWarning"]}
+{"query": "Allow plugins and conftest files to perform initial configuration", "relevant": ["src._pytest.hookspec::pytest_configure"]}
+{"query": "Object oriented interface to os", "relevant": ["src._pytest._py.path::LocalPath#part3"]}
+{"query": "Where is test without date format log implemented?", "relevant": ["testing.logging.test_reporting::test_without_date_format_log"]}
+{"query": "Find the Scope class definition", "relevant": ["src._pytest.scope::Scope#part1"]}
+{"query": "Where is report implemented?", "relevant": ["extra.get_issues::report"]}
+{"query": "Find the TestMarkDecorator class definition", "relevant": ["testing.test_mark::TestMarkDecorator"]}
+{"query": "Find the TestReportSerialization class definition", "relevant": ["testing.test_reports::TestReportSerialization#part6"]}
+{"query": "Where is test unittest skip issue1169 implemented?", "relevant": ["testing.test_unittest::test_unittest_skip_issue1169"]}
+{"query": "Where is get default arg names implemented?", "relevant": ["src._pytest.compat::get_default_arg_names"]}
+{"query": "Which class implements TestDoctestSkips?", "relevant": ["testing.test_doctest::TestDoctestSkips#part2"]}
+{"query": "Check whether the call raised an exception that should be reported as\ninteractive", "relevant": ["src._pytest.runner::check_interactive_exception"]}
+{"query": "Where is parse ini config implemented?", "relevant": ["src._pytest.config.findpaths::_parse_ini_config"]}
+{"query": "How does the code handle byte offset to character offset?", "relevant": ["src._pytest._code.code::_byte_offset_to_character_offset"]}
+{"query": "Which class implements AssertionRewriter?", "relevant": ["src._pytest.assertion.rewrite::AssertionRewriter#part8"]}
+{"query": "Which class implements LocalPath?", "relevant": ["src._pytest._py.path::LocalPath#part11"]}
+{"query": "Find the TerminalReporter class definition", "relevant": ["src._pytest.terminal::TerminalReporter#part12"]}
+{"query": "Which class implements TestWarns?", "relevant": ["testing.test_recwarn::TestWarns#part1"]}
+{"query": "Where is importorskip implemented?", "relevant": ["src._pytest.outcomes::importorskip#part2"]}
+{"query": "How does the code handle test assertion failure when terminalreporter is disabled?", "relevant": ["testing.test_assertrewrite::test_assertion_failure_when_terminalreporter_is_disabled"]}
+{"query": "Find the TestImportModeImportlib class definition", "relevant": ["testing.test_collection::TestImportModeImportlib#part2"]}
+{"query": "Which class implements LocalPath?", "relevant": ["src._pytest._py.path::LocalPath#part4"]}
+{"query": "Where is test debug implemented?", "relevant": ["testing.test_helpconfig::test_debug"]}
+{"query": "Where is test code highlight implemented?", "relevant": ["testing.io.test_terminalwriter::test_code_highlight"]}
+{"query": "Find the TestAssert reprcompare class definition", "relevant": ["testing.test_assertion::TestAssert_reprcompare#part5"]}
+{"query": "How does the code handle mp?", "relevant": ["testing.test_monkeypatch::mp"]}
+{"query": "Where is test conftests in invocation dir tests is initial implemented?", "relevant": ["testing.test_conftest::test_conftests_in_invocation_dir_tests_is_initial"]}
+{"query": "Check that with live logging enable we are printing the correct headers during\nstart/setup/call/teardown/finish", "relevant": ["testing.logging.test_reporting::test_live_logs_unknown_sections#part1"]}
+{"query": "Where is test fixture closure handles circular dependencies implemented?", "relevant": ["testing.python.fixtures::test_fixture_closure_handles_circular_dependencies"]}
+{"query": "What does the function return when a directory path object with the given name?", "relevant": ["src._pytest.legacypath::Cache_makedir"]}
+{"query": "Where is test is fs root implemented?", "relevant": ["testing.test_findpaths::test_is_fs_root"]}
+{"query": "Find the TestVerbosity class definition", "relevant": ["testing.test_config::TestVerbosity#part2"]}
+{"query": "Which class implements TestStdCapture?", "relevant": ["testing.test_capture::TestStdCapture#part1"]}
+{"query": "import_file() should not raise ImportPathMismatchError if the paths are exactly\nequal on Windows", "relevant": ["testing.test_pathlib::test_samefile_false_negatives"]}
+{"query": "Where is windowsconsoleio workaround implemented?", "relevant": ["src._pytest.capture::_windowsconsoleio_workaround"]}
+{"query": "Where is test assertion text diff style block for single line strings implemented?", "relevant": ["testing.test_assertion::test_assertion_text_diff_style_block_for_single_line_strings"]}
+{"query": "How does the code handle test plugin nameversion?", "relevant": ["testing.test_terminal::test_plugin_nameversion"]}
+{"query": "Assertion rewriting implementation", "relevant": ["src._pytest.assertion.rewrite::AssertionRewriter#part5"]}
+{"query": "Where is test asynctest support implemented?", "relevant": ["testing.test_unittest::test_asynctest_support"]}
+{"query": "Which class implements TestMetafunc?", "relevant": ["testing.python.metafunc::TestMetafunc#part19"]}
+{"query": "Where is test assert message implemented?", "relevant": ["testing.python.raises_group::test_assert_message#part1"]}
+{"query": "Try to make a symlink from \"path\" to \"to_path\", skipping in case this platform\ndoes not support it or we don't have s...", "relevant": ["testing.test_legacypath::attempt_symlink_to"]}
+{"query": "How does the code handle test change level undo?", "relevant": ["testing.logging.test_fixture::test_change_level_undo"]}
+{"query": "Where is arg2 implemented?", "relevant": ["testing.example_scripts.fixtures.fill_fixtures.test_conftest_funcargs_only_available_in_subdir.sub2.conftest::arg2"]}
+{"query": "Which class implements TestMetafuncFunctional?", "relevant": ["testing.python.metafunc::TestMetafuncFunctional#part2"]}
+{"query": "Which class implements pytestPDB?", "relevant": ["src._pytest.debugging::pytestPDB#part3"]}
+{"query": "Find the TestCommonAncestor class definition", "relevant": ["testing.test_findpaths::TestCommonAncestor"]}
+{"query": "Which class implements TestTracebackCutting?", "relevant": ["testing.python.collect::TestTracebackCutting#part1"]}
+{"query": "Find the TestFixtureMarker class definition", "relevant": ["testing.python.fixtures::TestFixtureMarker#part13"]}
+{"query": "Assert that code raises a particular class of warning", "relevant": ["src._pytest.recwarn::warns#part1"]}
+{"query": "Find the TestEvaluation class definition", "relevant": ["testing.test_skipping::TestEvaluation#part4"]}
+{"query": "Which class implements TestMetafunc?", "relevant": ["testing.python.metafunc::TestMetafunc#part5"]}
+{"query": "Where is test code from function with class implemented?", "relevant": ["testing.code.test_code::test_code_from_function_with_class"]}
+{"query": "How does the code handle test filterwarnings mark?", "relevant": ["testing.test_warnings::test_filterwarnings_mark"]}
+{"query": "Ensure that the broken pipe error message is suppressed", "relevant": ["testing.acceptance_test::test_no_brokenpipeerror_message"]}
+{"query": "Where is test unicode implemented?", "relevant": ["testing.test_warnings::test_unicode"]}
+{"query": "Where is test raise unprintable assertion error implemented?", "relevant": ["testing.test_assertion::test_raise_unprintable_assertion_error"]}
+{"query": "How does the code handle test testcase totally incompatible exception info?", "relevant": ["testing.test_unittest::test_testcase_totally_incompatible_exception_info"]}
+{"query": "Where is test assert message nested implemented?", "relevant": ["testing.python.raises_group::test_assert_message_nested#part2"]}
+{"query": "Find the TestImportLibMode class definition", "relevant": ["testing.test_pathlib::TestImportLibMode#part11"]}
+{"query": "Where is pytest addoption implemented?", "relevant": ["src._pytest.fixtures::pytest_addoption"]}
+{"query": "Find the TestParser class definition", "relevant": ["testing.test_parseopt::TestParser#part5"]}
+{"query": "How does the code handle running on ci?", "relevant": ["src._pytest.compat::running_on_ci"]}
+{"query": "How does the code handle test frame getsourcelineno myself?", "relevant": ["testing.code.test_code::test_frame_getsourcelineno_myself"]}
+{"query": "How does the code handle test incorrect number exceptions?", "relevant": ["testing.python.raises_group::test_incorrect_number_exceptions#part2"]}
+{"query": "Which class implements LogXML?", "relevant": ["src._pytest.junitxml::LogXML#part4"]}
+{"query": "Find the TestRmRf class definition", "relevant": ["testing.test_tmpdir::TestRmRf#part1"]}
+{"query": "Find the function that gets user", "relevant": ["src._pytest.tmpdir::get_user"]}
+{"query": "Which class implements MatcherNameAdapter?", "relevant": ["src._pytest.mark.expression::MatcherNameAdapter"]}
+{"query": "How does the code handle split explanation?", "relevant": ["src._pytest.assertion.util::_split_explanation"]}
+{"query": "Which class implements TestKeywordSelection?", "relevant": ["testing.test_mark::TestKeywordSelection#part1"]}
+{"query": "Find the TestAssertionRewrite class definition", "relevant": ["testing.test_assertrewrite::TestAssertionRewrite#part13"]}
+{"query": "How does the code handle pytest sessionfinish?", "relevant": ["src._pytest.assertion.__init__::pytest_sessionfinish"]}
+{"query": "How does the code handle test pytester subprocess with string plugins?", "relevant": ["testing.test_pytester::test_pytester_subprocess_with_string_plugins"]}
+{"query": "Where is test oneline and comment implemented?", "relevant": ["testing.code.test_source::test_oneline_and_comment"]}
+{"query": "Runs sphinx-build to check links", "relevant": ["scripts.release::check_links"]}
+{"query": "Where is test parametrized collected from command line implemented?", "relevant": ["testing.test_mark::test_parametrized_collected_from_command_line"]}
+{"query": "Called at plugin registration time to allow adding new hooks via a call to\n:func:`pluginmanager", "relevant": ["src._pytest.hookspec::pytest_addhooks"]}
+{"query": "Where is exceptiongroup common implemented?", "relevant": ["testing.code.test_excinfo::_exceptiongroup_common#part2"]}
+{"query": "How does the code handle test fail extra reporting?", "relevant": ["testing.test_terminal::test_fail_extra_reporting"]}
+{"query": "Which class implements TestLastFailed?", "relevant": ["testing.test_cacheprovider::TestLastFailed#part11"]}
+{"query": "Find the cmdline class definition", "relevant": ["src._pytest.config.__init__::cmdline"]}
+{"query": "Where is pytest addoption implemented?", "relevant": ["src._pytest.terminal::pytest_addoption#part2"]}
+{"query": "Where is test stop iteration from collect implemented?", "relevant": ["testing.acceptance_test::test_stop_iteration_from_collect"]}
+{"query": "Where is test next lower implemented?", "relevant": ["testing.test_scope::test_next_lower"]}
+{"query": "How does the code handle test annotations deferred future?", "relevant": ["testing.test_collection::test_annotations_deferred_future"]}
+{"query": "Find the SafeRepr class definition", "relevant": ["src._pytest._io.saferepr::SafeRepr#part2"]}
+{"query": "How does the code handle test getreportopt?", "relevant": ["testing.test_terminal::test_getreportopt"]}
+{"query": "Where is test pdb teardown skipped for classes implemented?", "relevant": ["testing.test_unittest::test_pdb_teardown_skipped_for_classes"]}
+{"query": "Which class implements TestPython?", "relevant": ["testing.test_junitxml::TestPython#part10"]}
+{"query": "Factory for temporary directories under the common base temp directory,\nas discussed at :ref:`temporary directory loc...", "relevant": ["src._pytest.tmpdir::TempPathFactory#part2"]}
+{"query": "Find the TestGeneralUsage class definition", "relevant": ["testing.acceptance_test::TestGeneralUsage#part8"]}
+{"query": "Where is test unittest expected failure for failing test is xfail implemented?", "relevant": ["testing.test_unittest::test_unittest_expected_failure_for_failing_test_is_xfail"]}
+{"query": "Which class implements XFailed?", "relevant": ["src._pytest.outcomes::XFailed"]}
+{"query": "Find the TestTerminalFunctional class definition", "relevant": ["testing.test_terminal::TestTerminalFunctional#part7"]}
+{"query": "Which class implements TerminalReporter?", "relevant": ["src._pytest.terminal::TerminalReporter#part3"]}
+{"query": "Which class implements TestExecution?", "relevant": ["testing._py.test_local::TestExecution#part2"]}
+{"query": "When collect_imported_tests is enabled (the default), all names in the\ntest modules are collected as tests", "relevant": ["testing.test_collect_imported_tests::test_collect_imports_enabled"]}
+{"query": "Find the function that gets dirs from args", "relevant": ["src._pytest.config.findpaths::get_dirs_from_args"]}
+{"query": "Which class implements LoggingPlugin?", "relevant": ["src._pytest.logging::LoggingPlugin#part3"]}
+{"query": "Which class implements TestTerminalFunctional?", "relevant": ["testing.test_terminal::TestTerminalFunctional#part8"]}
+{"query": "Where is test disabled stepwise xdist dont clear cache implemented?", "relevant": ["testing.test_stepwise::test_disabled_stepwise_xdist_dont_clear_cache"]}
+{"query": "Where is test pass reporting on fail implemented?", "relevant": ["testing.test_terminal::test_pass_reporting_on_fail"]}
+{"query": "pytest fixture definitions and information is stored and managed\nfrom this class", "relevant": ["src._pytest.fixtures::FixtureManager#part7"]}
+{"query": "Where is pytest runtest teardown implemented?", "relevant": ["src._pytest.runner::pytest_runtest_teardown"]}
+{"query": "How does the code handle reorder items atscope?", "relevant": ["src._pytest.fixtures::reorder_items_atscope#part2"]}
+{"query": "Find the TestArgComplete class definition", "relevant": ["testing.test_argcomplete::TestArgComplete"]}
+{"query": "How does the code handle test get user?", "relevant": ["testing.test_tmpdir::test_get_user"]}
+{"query": "How does the code handle get checker?", "relevant": ["src._pytest.doctest::_get_checker"]}
+{"query": "Access to configuration values, pluginmanager and plugin hooks", "relevant": ["src._pytest.config.__init__::Config#part13"]}
+{"query": "Where is test paramset empty no idfunc implemented?", "relevant": ["testing.test_mark::test_paramset_empty_no_idfunc"]}
+{"query": "Where is test terminal summary implemented?", "relevant": ["testing.test_terminal::test_terminal_summary"]}
+{"query": "Which class implements TestContextManagerFixtureFuncs?", "relevant": ["testing.python.fixtures::TestContextManagerFixtureFuncs#part2"]}
+{"query": "How does the code handle test dontreadfrominput has encoding?", "relevant": ["testing.test_capture::test_dontreadfrominput_has_encoding"]}
+{"query": "How does the code handle test collection hierarchy?", "relevant": ["testing.python.collect::test_collection_hierarchy#part2"]}
+{"query": "How does the code handle test python25 compile issue257?", "relevant": ["testing.test_assertion::test_python25_compile_issue257"]}
+{"query": "How does the code handle test pytest plugins as module?", "relevant": ["testing.acceptance_test::test_pytest_plugins_as_module"]}
+{"query": "Find the TestAssertionRewrite class definition", "relevant": ["testing.test_assertrewrite::TestAssertionRewrite#part8"]}
+{"query": "Which class implements TestClassCleanupErrors?", "relevant": ["testing.test_unittest::TestClassCleanupErrors#part1"]}
+{"query": "Where is test unorderable types implemented?", "relevant": ["testing.test_unittest::test_unorderable_types"]}
+{"query": "Where is test import sets module as attribute regression implemented?", "relevant": ["testing.test_pathlib::test_import_sets_module_as_attribute_regression"]}
+{"query": "How does the code handle pytester?", "relevant": ["src._pytest.pytester::pytester"]}
+{"query": "How does the code handle pytestconfig?", "relevant": ["src._pytest.fixtures::pytestconfig"]}
+{"query": "How does the code handle FixtureRequest fspath?", "relevant": ["src._pytest.legacypath::FixtureRequest_fspath"]}
+{"query": "How does the code handle changelog?", "relevant": ["scripts.release::changelog"]}
+{"query": "A convenient fixture for monkey-patching", "relevant": ["src._pytest.monkeypatch::monkeypatch"]}
+{"query": "How does the code handle test mark regex escape?", "relevant": ["testing.test_warnings::test_mark_regex_escape"]}
+{"query": "Where is test excinfo no python sourcecode implemented?", "relevant": ["testing.code.test_excinfo::test_excinfo_no_python_sourcecode"]}
+{"query": "Which class implements TestMetafunc?", "relevant": ["testing.python.metafunc::TestMetafunc#part13"]}
+{"query": "Which class implements PytestPluginManager?", "relevant": ["src._pytest.config.__init__::PytestPluginManager#part1"]}
+{"query": "Where is test stop on collection errors implemented?", "relevant": ["testing.test_stepwise::test_stop_on_collection_errors"]}
+{"query": "Find the TestShowFixtures class definition", "relevant": ["testing.python.fixtures::TestShowFixtures#part1"]}
+{"query": "How does the code handle test module level skip with allow module level?", "relevant": ["testing.test_skipping::test_module_level_skip_with_allow_module_level"]}
+{"query": "Find the TestHooks class definition", "relevant": ["testing.test_reports::TestHooks#part2"]}
+{"query": "Find the PytestRemovedIn10Warning class definition", "relevant": ["src._pytest.warning_types::PytestRemovedIn10Warning"]}
+{"query": "Find the TestWarns class definition", "relevant": ["testing.test_recwarn::TestWarns#part2"]}
+{"query": "How does the code handle test access denied during cleanup?", "relevant": ["testing.test_pathlib::test_access_denied_during_cleanup"]}
+{"query": "How does the code handle mock config?", "relevant": ["testing.test_assertion::mock_config"]}
+{"query": "Find the LocalPath class definition", "relevant": ["src._pytest._py.path::LocalPath#part3"]}
+{"query": "Find the TestCollectonly class definition", "relevant": ["testing.test_terminal::TestCollectonly#part1"]}
+{"query": "How does the code handle test issue156 undo staticmethod?", "relevant": ["testing.test_monkeypatch::test_issue156_undo_staticmethod"]}
+{"query": "Where is test package collection infinite recursion implemented?", "relevant": ["testing.python.collect::test_package_collection_infinite_recursion"]}
+{"query": "Find the TestTerminalWriter class definition", "relevant": ["testing.io.test_terminalwriter::TestTerminalWriter#part1"]}
+{"query": "Test that when multiple collection args are specified on the command line\nfor the same module, only a single Module c...", "relevant": ["testing.test_session::test_collection_args_do_not_duplicate_modules"]}
+{"query": "Where is test typing exported implemented?", "relevant": ["testing.test_subtests::test_typing_exported"]}
+{"query": "What does the function return when True if a TracebackEntry instance should be included in tracebacks?", "relevant": ["src._pytest._code.code::filter_traceback"]}
+{"query": "Find the TestParseIni class definition", "relevant": ["testing.test_config::TestParseIni#part10"]}
+{"query": "How does the code handle spam?", "relevant": ["testing.example_scripts.fixtures.fill_fixtures.test_extend_fixture_module_class::spam"]}
+{"query": "Where is test exclude implemented?", "relevant": ["testing.test_session::test_exclude"]}
+{"query": "How does the code handle test no message quiet?", "relevant": ["testing.test_junitxml::test_no_message_quiet"]}
+{"query": "How does the code handle test linematcher no matching after match?", "relevant": ["testing.test_pytester::test_linematcher_no_matching_after_match"]}
+{"query": "How does the code handle test deprecated?", "relevant": ["testing.test_compat::test_deprecated"]}
+{"query": "Find the FixtureManager class definition", "relevant": ["src._pytest.fixtures::FixtureManager#part8"]}
+{"query": "Where is assert attr implemented?", "relevant": ["testing.test_junitxml::assert_attr"]}
+{"query": "Find the TestFixtureManagerParseFactories class definition", "relevant": ["testing.python.fixtures::TestFixtureManagerParseFactories#part5"]}
+{"query": "Test that applying @pytest", "relevant": ["testing.test_mark::test_fixture_disallow_on_marked_functions"]}
+{"query": "Where is test unraisable implemented?", "relevant": ["testing.test_unraisableexception::test_unraisable"]}
+{"query": "How does the code handle get default arg names?", "relevant": ["src._pytest.compat::get_default_arg_names"]}
+{"query": "Where is test collect pyargs with testpaths implemented?", "relevant": ["testing.test_collection::test_collect_pyargs_with_testpaths"]}
+{"query": "How does the code handle pytest runtest makereport?", "relevant": ["src._pytest.hookspec::pytest_runtest_makereport"]}
+{"query": "Find the DoctestItem class definition", "relevant": ["src._pytest.doctest::DoctestItem#part1"]}
+{"query": "Where is pytest addoption implemented?", "relevant": ["src._pytest.setupplan::pytest_addoption"]}
+{"query": "Where is test pytester runs with plugin implemented?", "relevant": ["testing.test_pytester::test_pytester_runs_with_plugin"]}
+{"query": "Called at the end of running the runtest protocol for a single item", "relevant": ["src._pytest.hookspec::pytest_runtest_logfinish"]}
+{"query": "What does the function return when the current process's real user id or None if it could not be determined?", "relevant": ["src._pytest.compat::get_user_id"]}
+{"query": "Which class implements TestPaste?", "relevant": ["testing.test_pastebin::TestPaste#part2"]}
+{"query": "Where is get allow unicode flag implemented?", "relevant": ["src._pytest.doctest::_get_allow_unicode_flag"]}
+{"query": "Where is iter plugins implemented?", "relevant": ["scripts.update-plugin-list::iter_plugins"]}
+{"query": "How does the code handle tw mock?", "relevant": ["testing.conftest::tw_mock"]}
+{"query": "How does the code handle test saferepr unlimited?", "relevant": ["testing.io.test_saferepr::test_saferepr_unlimited"]}
+{"query": "Ensure tearDown() is always called when --pdb is given in the command-line", "relevant": ["testing.test_unittest::test_pdb_teardown_called"]}
+{"query": "How does the code handle test do class cleanups on teardownclass failure?", "relevant": ["testing.test_unittest::test_do_class_cleanups_on_teardownclass_failure"]}
+{"query": "Where is check fixture ids callable implemented?", "relevant": ["testing.typing_checks::check_fixture_ids_callable"]}
+{"query": "Find the TerminalReporter class definition", "relevant": ["src._pytest.terminal::TerminalReporter#part4"]}
+{"query": "Helper to conveniently monkeypatch attributes/items/environment\nvariables/syspath", "relevant": ["src._pytest.monkeypatch::MonkeyPatch#part3"]}
+{"query": "How does the code handle test call fixture function error?", "relevant": ["testing.python.fixtures::test_call_fixture_function_error"]}
+{"query": "How does the code handle parts?", "relevant": ["src._pytest.pathlib::parts"]}
+{"query": "Where is test tmp path factory doesnt follow symlinks implemented?", "relevant": ["testing.test_tmpdir::test_tmp_path_factory_doesnt_follow_symlinks"]}
+{"query": "Which class implements TestMetafunc?", "relevant": ["testing.python.metafunc::TestMetafunc#part16"]}
+{"query": "Which class implements TestPython?", "relevant": ["testing.test_junitxml::TestPython#part4"]}
+{"query": "Which class implements TestReportSerialization?", "relevant": ["testing.test_reports::TestReportSerialization#part4"]}
+{"query": "How does the code handle getreportopt?", "relevant": ["src._pytest.terminal::getreportopt"]}
+{"query": "How does the code handle compare eq any?", "relevant": ["src._pytest.assertion._compare_any::_compare_eq_any"]}
+{"query": "Attaches to the logging module and captures log messages for each test", "relevant": ["src._pytest.logging::LoggingPlugin#part3"]}
+{"query": "How does the code handle test setup function failure no teardown?", "relevant": ["testing.test_runner_xunit::test_setup_function_failure_no_teardown"]}
+{"query": "Which class implements SetupState?", "relevant": ["src._pytest.runner::SetupState#part2"]}
+{"query": "Display cachedir with --cache-show and if non-default", "relevant": ["src._pytest.cacheprovider::pytest_report_header"]}
+{"query": "How does the code handle dummy yaml custom test?", "relevant": ["testing.conftest::dummy_yaml_custom_test"]}
+{"query": "How does the code handle capturing logs?", "relevant": ["src._pytest.subtests::capturing_logs"]}
+{"query": "Regression test for #10811: previously import_path with ImportMode", "relevant": ["testing.acceptance_test::test_doctest_and_normal_imports_with_importlib"]}
+{"query": "Where is test should not show direct param fixtures implemented?", "relevant": ["testing.python.show_fixtures_per_test::test_should_not_show_direct_param_fixtures"]}
+{"query": "Where is pytest report from serializable implemented?", "relevant": ["src._pytest.reports::pytest_report_from_serializable"]}
+{"query": "Facilities to write tests/configuration files, execute pytest in isolation, and match\nagainst expected output, perfec...", "relevant": ["src._pytest.pytester::Pytester#part12"]}
+{"query": "Find the Config class definition", "relevant": ["src._pytest.config.__init__::Config#part1"]}
+{"query": "How does the code handle test log disabling works with log cli?", "relevant": ["testing.logging.test_reporting::test_log_disabling_works_with_log_cli"]}
+{"query": "How does the code handle test record fixtures without junitxml?", "relevant": ["testing.test_junitxml::test_record_fixtures_without_junitxml"]}
+{"query": "Find the TestLastFailed class definition", "relevant": ["testing.test_cacheprovider::TestLastFailed#part2"]}
+{"query": "Where is test is setup py is setup py implemented?", "relevant": ["testing.test_doctest::test_is_setup_py_is_a_setup_py"]}
+{"query": "Where is test exceptions implemented?", "relevant": ["testing.io.test_saferepr::test_exceptions"]}
+{"query": "Where is format session duration implemented?", "relevant": ["src._pytest.terminal::format_session_duration"]}
+{"query": "Find the Metafunc class definition", "relevant": ["src._pytest.python::Metafunc#part1"]}
+{"query": "Find the TestFixtureMarker class definition", "relevant": ["testing.python.fixtures::TestFixtureMarker#part1"]}
+{"query": "pytest fixture definitions and information is stored and managed\nfrom this class", "relevant": ["src._pytest.fixtures::FixtureManager#part6"]}
+{"query": "How does the code handle test sessionfinish with start?", "relevant": ["testing.test_session::test_sessionfinish_with_start"]}
+{"query": "Where is test fixture closure with complex override and shared deps implemented?", "relevant": ["testing.python.fixtures::test_fixture_closure_with_complex_override_and_shared_deps"]}
+{"query": "A traceback in native style", "relevant": ["src._pytest._code.code::ReprTracebackNative"]}
+{"query": "Which class implements TestLastFailed?", "relevant": ["testing.test_cacheprovider::TestLastFailed#part3"]}
+{"query": "Where is convert rst to md implemented?", "relevant": ["scripts.generate-gh-release-notes::convert_rst_to_md"]}
+{"query": "How does the code handle test comment in statement?", "relevant": ["testing.code.test_source::test_comment_in_statement"]}
+{"query": "How does the code handle test conftests in invocation dir tests is initial?", "relevant": ["testing.test_conftest::test_conftests_in_invocation_dir_tests_is_initial"]}
+{"query": "Which class implements FilesCompleter?", "relevant": ["testing.test_argcomplete::FilesCompleter"]}
+{"query": "Where is test check no patched repr implemented?", "relevant": ["testing.python.raises_group::test_check_no_patched_repr"]}
+{"query": "How does the code handle test hello7?", "relevant": ["doc.en.example.xfail_demo::test_hello7"]}
+{"query": "Where is test pythonwarnings not duplicated implemented?", "relevant": ["testing.test_warnings::test_pythonwarnings_not_duplicated"]}
+{"query": "(deprecated) returns a legacy_path copy of self", "relevant": ["src._pytest.legacypath::Node_fspath"]}
+{"query": "How does the code handle get exit on timeout config value?", "relevant": ["src._pytest.faulthandler::get_exit_on_timeout_config_value"]}
+{"query": "How does the code handle test foo?", "relevant": ["testing.example_scripts.warnings.test_group_warnings_by_message_summary.test_1::test_foo"]}
+{"query": "Async functions in plain unittest", "relevant": ["testing.test_unittest::test_plain_unittest_does_not_support_async"]}
+{"query": "Which class implements Mark?", "relevant": ["src._pytest.mark.structures::Mark#part1"]}
+{"query": "When using `--pyargs`, the collection tree of a pyargs collection\nargument should only include parents in the import ...", "relevant": ["testing.test_collection::test_pyargs_collection_tree"]}
+{"query": "Where is plugin definitions implemented?", "relevant": ["scripts.update-plugin-list::plugin_definitions"]}
+{"query": "Which class implements TestPDB?", "relevant": ["testing.test_debugging::TestPDB#part1"]}
+{"query": "Given an iterable of file names in a source distribution, return the \"names\" that should\nbe marked for assertion rewrite", "relevant": ["src._pytest.config.__init__::_iter_rewritable_modules#part1"]}
+{"query": "How does the code handle test source fallback?", "relevant": ["testing.code.test_source::test_source_fallback"]}
+{"query": "Which class implements ExceptionInfo?", "relevant": ["src._pytest._code.code::ExceptionInfo#part3"]}
+{"query": "Find the TestGenericReporting class definition", "relevant": ["testing.test_terminal::TestGenericReporting#part2"]}
+{"query": "Where is test flatten subgroups implemented?", "relevant": ["testing.python.raises_group::test_flatten_subgroups#part3"]}
+{"query": "Where is test pypkgdir implemented?", "relevant": ["testing._py.test_local::test_pypkgdir"]}
+{"query": "How does the code handle test collector respects tbstyle?", "relevant": ["testing.test_collection::test_collector_respects_tbstyle"]}
+{"query": "Which class implements TestPython?", "relevant": ["testing.test_junitxml::TestPython#part6"]}
+{"query": "Most of the tests here were copied from py lib's tests for \"py", "relevant": ["testing.test_pathlib::TestImportPath#part5"]}
+{"query": "How does the code handle handle twisted exc info?", "relevant": ["src._pytest.unittest::_handle_twisted_exc_info"]}
+{"query": "Which class implements TestConfigAPI?", "relevant": ["testing.test_config::TestConfigAPI#part9"]}
+{"query": "Which class implements TerminalWriter?", "relevant": ["src._pytest._io.terminalwriter::TerminalWriter#part4"]}
+{"query": "Find the TestPyCacheDir class definition", "relevant": ["testing.test_assertrewrite::TestPyCacheDir"]}
+{"query": "How does the code handle pytest addoption?", "relevant": ["src._pytest.helpconfig::pytest_addoption#part1"]}
+{"query": "Where is pytest runtest protocol implemented?", "relevant": ["src._pytest.faulthandler::pytest_runtest_protocol"]}
+{"query": "Where is pytest pycollect makeitem implemented?", "relevant": ["src._pytest.hookspec::pytest_pycollect_makeitem"]}
+{"query": "Which class implements CommonFSTests?", "relevant": ["testing._py.test_local::CommonFSTests#part6"]}
+{"query": "Which class implements TestConfigAPI?", "relevant": ["testing.test_config::TestConfigAPI#part4"]}
+{"query": "Which class implements TempPathFactory?", "relevant": ["src._pytest.tmpdir::TempPathFactory#part2"]}
+{"query": "Which class implements PytestUnhandledThreadExceptionWarning?", "relevant": ["src._pytest.warning_types::PytestUnhandledThreadExceptionWarning"]}
+{"query": "Ensure generator test functions with 'yield' fail collection (#12960)", "relevant": ["testing.test_collection::test_yield_disallowed_in_tests"]}
+{"query": "How does the code handle test log level not changed by default?", "relevant": ["testing.logging.test_reporting::test_log_level_not_changed_by_default"]}
+{"query": "Which class implements ExceptionRepr?", "relevant": ["src._pytest._code.code::ExceptionRepr"]}
+{"query": "How does the code handle getuserid?", "relevant": ["src._pytest._py.path::getuserid"]}
+{"query": "Find the SafeRepr class definition", "relevant": ["src._pytest._io.saferepr::SafeRepr#part1"]}
+{"query": "Find the TestDoctests class definition", "relevant": ["testing.test_doctest::TestDoctests#part7"]}
+{"query": "Which class implements ImportMode?", "relevant": ["src._pytest.pathlib::ImportMode"]}
+{"query": "How does the code handle test log file ini level?", "relevant": ["testing.logging.test_reporting::test_log_file_ini_level"]}
+{"query": "How does the code handle test pdb can be rewritten?", "relevant": ["testing.acceptance_test::test_pdb_can_be_rewritten"]}
+{"query": "Which class implements TestExceptionInfoFormatter?", "relevant": ["testing.code.test_excinfo::TestExceptionInfoFormatter#part9"]}
+{"query": "How does the code handle get assertion exprs?", "relevant": ["src._pytest.assertion.rewrite::_get_assertion_exprs"]}
+{"query": "How does the code handle test non unittest no setupclass support?", "relevant": ["testing.test_unittest::test_non_unittest_no_setupclass_support"]}
+{"query": "How does the code handle test should not do markup NO COLOR?", "relevant": ["testing.io.test_terminalwriter::test_should_not_do_markup_NO_COLOR"]}
+{"query": "Represents a configuration value with its origin and parsing mode", "relevant": ["src._pytest.config.findpaths::ConfigValue"]}
+{"query": "How does the code handle test exceptiongroup?", "relevant": ["testing.code.test_excinfo::test_exceptiongroup"]}
+{"query": "Find the TestFixtureNodeidDeprecations class definition", "relevant": ["testing.deprecated_test::TestFixtureNodeidDeprecations#part4"]}
+{"query": "How does the code handle test getfuncargnames staticmethod inherited?", "relevant": ["testing.python.fixtures::test_getfuncargnames_staticmethod_inherited"]}
+{"query": "Where is pytest collect directory implemented?", "relevant": ["doc.en.example.customdirectory.conftest::pytest_collect_directory"]}
+{"query": "How does the code handle test pypkgdir unimportable?", "relevant": ["testing._py.test_local::test_pypkgdir_unimportable"]}
+{"query": "Which class implements TestNamespacePackages?", "relevant": ["testing.test_pathlib::TestNamespacePackages#part2"]}
+{"query": "Find the TestApprox class definition", "relevant": ["testing.python.approx::TestApprox#part16"]}
+{"query": "How does the code handle is collection argument subsumed by?", "relevant": ["src._pytest.main::is_collection_argument_subsumed_by"]}
+{"query": "Class of tests that ensure fixtures are ordered based on their scopes (#2405)", "relevant": ["testing.python.fixtures::TestScopeOrdering#part2"]}
+{"query": "Find the TestMetafunc class definition", "relevant": ["testing.python.metafunc::TestMetafunc#part7"]}
+{"query": "Where is test setUpModule implemented?", "relevant": ["testing.test_unittest::test_setUpModule"]}
+{"query": "Where is test strtobool implemented?", "relevant": ["testing.test_config::test_strtobool"]}
+{"query": "Where is deprecated call implemented?", "relevant": ["src._pytest.recwarn::deprecated_call"]}
+{"query": "How does the code handle test flatten subgroups?", "relevant": ["testing.python.raises_group::test_flatten_subgroups#part2"]}
+{"query": "Which class implements TerminalWriter?", "relevant": ["src._pytest._io.terminalwriter::TerminalWriter#part1"]}
+{"query": "Find the IdMaker class definition", "relevant": ["src._pytest.python::IdMaker#part3"]}
+{"query": "Where is test comparing two different data classes implemented?", "relevant": ["testing.example_scripts.dataclasses.test_compare_two_different_dataclasses::test_comparing_two_different_data_classes"]}
+{"query": "How does the code handle test unraisable warning error?", "relevant": ["testing.test_unraisableexception::test_unraisable_warning_error"]}
+{"query": "Find the TerminalRepr class definition", "relevant": ["src._pytest._code.code::TerminalRepr"]}
+{"query": "Which class implements FNMatcher?", "relevant": ["src._pytest._py.path::FNMatcher"]}
+{"query": "Where is write docstring implemented?", "relevant": ["src._pytest.fixtures::write_docstring"]}
+{"query": "Add command-line options for cache functionality", "relevant": ["src._pytest.cacheprovider::pytest_addoption#part2"]}
+{"query": "Parser for command line arguments and config-file values", "relevant": ["src._pytest.config.argparsing::Parser#part1"]}
+{"query": "Where is test raisesexc match implemented?", "relevant": ["testing.python.raises_group::test_raisesexc_match"]}
+{"query": "Where is some implemented?", "relevant": ["testing.example_scripts.fixtures.fill_fixtures.test_funcarg_basic::some"]}
+{"query": "Where is check mark xfail raises implemented?", "relevant": ["testing.typing_checks::check_mark_xfail_raises"]}
+{"query": "Flexible matching of text", "relevant": ["src._pytest.pytester::LineMatcher#part4"]}
+{"query": "Where is runtestprotocol implemented?", "relevant": ["src._pytest.runner::runtestprotocol"]}
+{"query": "How does the code handle cls?", "relevant": ["doc.en.example.fixtures.test_fixtures_order_scope::cls"]}
+{"query": "Where is test disable plugin autoload implemented?", "relevant": ["testing.test_config::test_disable_plugin_autoload#part2"]}
+{"query": "Where is test conftestcutdir inplace considered implemented?", "relevant": ["testing.test_conftest::test_conftestcutdir_inplace_considered"]}
+{"query": "Which class implements InvalidFeatureRelease?", "relevant": ["scripts.prepare-release-pr::InvalidFeatureRelease"]}
+{"query": "Where is caplog implemented?", "relevant": ["src._pytest.logging::caplog"]}
+{"query": "How does the code handle test multiline message?", "relevant": ["testing.logging.test_formatter::test_multiline_message#part1"]}
+{"query": "Where is stringify exception implemented?", "relevant": ["src._pytest._code.code::stringify_exception"]}
+{"query": "Find the ManifestDirectory class definition", "relevant": ["doc.en.example.customdirectory.conftest::ManifestDirectory"]}
+{"query": "How does the code handle test removed in warning as error?", "relevant": ["testing.test_warnings::test_removed_in_x_warning_as_error"]}
+{"query": "Where is test hidden param implemented?", "relevant": ["testing.typing_checks::test_hidden_param"]}
+{"query": "Find the TestApprox class definition", "relevant": ["testing.python.approx::TestApprox#part2"]}
+{"query": "Where is test should do markup PY COLORS eq implemented?", "relevant": ["testing.io.test_terminalwriter::test_should_do_markup_PY_COLORS_eq_1"]}
+{"query": "(Return a) decorator to mark a yield-fixture factory function", "relevant": ["src._pytest.fixtures::yield_fixture"]}
+{"query": "Format the given seconds in a human readable manner to show in the test progress", "relevant": ["src._pytest.terminal::format_node_duration"]}
+{"query": "How does the code handle pytest plugin registered?", "relevant": ["src._pytest.legacypath::pytest_plugin_registered"]}
+{"query": "Which class implements TestKeywordSelection?", "relevant": ["testing.test_mark::TestKeywordSelection#part3"]}
+{"query": "Where is call fixture func implemented?", "relevant": ["src._pytest.fixtures::call_fixture_func"]}
+{"query": "Which class implements TestRaises?", "relevant": ["testing.python.raises::TestRaises#part9"]}
+{"query": "How does the code handle Config rootdir?", "relevant": ["src._pytest.legacypath::Config_rootdir"]}
+{"query": "Which class implements TestLocalPath?", "relevant": ["testing._py.test_local::TestLocalPath#part3"]}
+{"query": "Find the TestJunitHelpers class definition", "relevant": ["testing.test_junitxml::TestJunitHelpers"]}
+{"query": "Which class implements TestAssert reprcompare?", "relevant": ["testing.test_assertion::TestAssert_reprcompare#part12"]}
+{"query": "This tests that pytest's config setup handles \"-p no:X\"", "relevant": ["testing.test_config::test_config_does_not_load_blocked_plugin_from_args"]}
+{"query": "Tests for datetime/timedelta support in approx (issue #8395)", "relevant": ["testing.python.approx::TestApproxDatetime#part5"]}
+{"query": "Where is pytest runtest makereport implemented?", "relevant": ["src._pytest.unittest::pytest_runtest_makereport"]}
+{"query": "How does the code handle capsys?", "relevant": ["src._pytest.capture::capsys"]}
+{"query": "How does the code handle test accept unknown category?", "relevant": ["testing.test_warnings::test_accept_unknown_category"]}
+{"query": "Which class implements TestDoctests?", "relevant": ["testing.test_doctest::TestDoctests#part4"]}
+{"query": "How does the code handle test log cli default level multiple tests?", "relevant": ["testing.logging.test_reporting::test_log_cli_default_level_multiple_tests"]}
+{"query": "Base class of all test invocation items", "relevant": ["src._pytest.nodes::Item#part2"]}
+{"query": "Where is test fixture values leak implemented?", "relevant": ["testing.acceptance_test::test_fixture_values_leak"]}
+{"query": "How does the code handle test sleep?", "relevant": ["testing.plugins_integration.pytest_asyncio_integration::test_sleep"]}
+{"query": "Find the TestEvaluation class definition", "relevant": ["testing.test_skipping::TestEvaluation#part2"]}
+{"query": "Test that pytest", "relevant": ["testing.python.metafunc::TestHiddenParam#part1"]}
+{"query": "How does the code handle test strict prohibits unregistered markers?", "relevant": ["testing.test_mark::test_strict_prohibits_unregistered_markers"]}
+{"query": "Where is test all entries hidden implemented?", "relevant": ["testing.code.test_excinfo::test_all_entries_hidden"]}
+{"query": "How does the code handle compare eq mapping?", "relevant": ["src._pytest.assertion._compare_mapping::_compare_eq_mapping"]}
+{"query": "Where is test recursive dataclasses implemented?", "relevant": ["testing.example_scripts.dataclasses.test_compare_recursive_dataclasses::test_recursive_dataclasses"]}
+{"query": "Where is test pytest fail implemented?", "relevant": ["testing.test_runner::test_pytest_fail"]}
+{"query": "How does the code handle test format node duration?", "relevant": ["testing.test_terminal::test_format_node_duration"]}
+{"query": "Where is test unicode handling implemented?", "relevant": ["testing.code.test_code::test_unicode_handling"]}
+{"query": "Where is pytest load initial conftests implemented?", "relevant": ["src._pytest.warnings::pytest_load_initial_conftests"]}
+{"query": "How does the code handle test setup teardown function level with optional argument?", "relevant": ["testing.test_runner_xunit::test_setup_teardown_function_level_with_optional_argument"]}
+{"query": "Where is test hello4 implemented?", "relevant": ["doc.en.example.xfail_demo::test_hello4"]}
+{"query": "How does the code handle test keyword option considers mark?", "relevant": ["testing.test_mark::test_keyword_option_considers_mark"]}
+{"query": "Access to configuration values, pluginmanager and plugin hooks", "relevant": ["src._pytest.config.__init__::Config#part14"]}
+{"query": "How does the code handle test tmp path factory doesnt follow symlinks?", "relevant": ["testing.test_tmpdir::test_tmp_path_factory_doesnt_follow_symlinks"]}
+{"query": "Where is test plugin specify implemented?", "relevant": ["testing.test_session::test_plugin_specify"]}
+{"query": "Where is check if assertion pass impl implemented?", "relevant": ["src._pytest.assertion.rewrite::_check_if_assertion_pass_impl"]}
+{"query": "Which class implements ExceptionInfo?", "relevant": ["src._pytest._code.code::ExceptionInfo#part6"]}
+{"query": "Which class implements Metafunc?", "relevant": ["src._pytest.python::Metafunc#part2"]}
+{"query": "Where is compare eq any implemented?", "relevant": ["src._pytest.assertion._compare_any::_compare_eq_any"]}
+{"query": "Where is test staticmethod classmethod fixture instance implemented?", "relevant": ["testing.python.fixtures::test_staticmethod_classmethod_fixture_instance"]}
+{"query": "What does the function return when number of arguments used up by mock arguments (if any)?", "relevant": ["src._pytest.compat::num_mock_patch_args"]}
+{"query": "Which class implements ApproxScalar?", "relevant": ["src._pytest.python_api::ApproxScalar#part2"]}
+{"query": "Where is test fancy items regression implemented?", "relevant": ["testing.test_junitxml::test_fancy_items_regression"]}
+{"query": "Where is runpdb and get report implemented?", "relevant": ["testing.test_debugging::runpdb_and_get_report"]}
+{"query": "Where is test failure with changed cwd implemented?", "relevant": ["testing.test_nodes::test_failure_with_changed_cwd"]}
+{"query": "Make sure that we are cancelling any scheduled traceback dumping due\nto timeout before entering pdb (pytest-dev/pytes...", "relevant": ["testing.test_faulthandler::test_cancel_timeout_on_hook"]}
+{"query": "Where is test parameterset for fail at collect implemented?", "relevant": ["testing.test_mark::test_parameterset_for_fail_at_collect"]}
+{"query": "How does the code handle test entrysource Queue example?", "relevant": ["testing.code.test_excinfo::test_entrysource_Queue_example"]}
+{"query": "How does the code handle test sections single new line after test outcome?", "relevant": ["testing.logging.test_reporting::test_sections_single_new_line_after_test_outcome#part2"]}
+{"query": "Which class implements TestBinReprIntegration?", "relevant": ["testing.test_assertion::TestBinReprIntegration"]}
+{"query": "Where is test cleanup functions implemented?", "relevant": ["testing.test_unittest::test_cleanup_functions"]}
+{"query": "Find the AssertionRewritingHook class definition", "relevant": ["src._pytest.assertion.rewrite::AssertionRewritingHook#part3"]}
+{"query": "Where is test fixture arg ordering implemented?", "relevant": ["testing.python.fixtures::test_fixture_arg_ordering"]}
+{"query": "How does the code handle test order and?", "relevant": ["doc.en.example.fixtures.test_fixtures_order_autouse::test_order_and_g"]}
+{"query": "Where is linecomp implemented?", "relevant": ["src._pytest.pytester::linecomp"]}
+{"query": "Helper object to format ExceptionInfo's and individual exception parts\ninto TerminalRepr's", "relevant": ["src._pytest._code.code::ExceptionInfoFormatter#part3"]}
+{"query": "Test fails file is run twice that contains marked class", "relevant": ["testing.test_mark::test_marked_class_run_twice"]}
+{"query": "Find the TestExceptionInfoFormatter class definition", "relevant": ["testing.code.test_excinfo::TestExceptionInfoFormatter#part18"]}
+{"query": "`pythonpath` kicks early enough to load plugins via -p (#11118)", "relevant": ["testing.test_python_path::test_local_plugin"]}
+{"query": "Which class implements Dir?", "relevant": ["src._pytest.main::Dir"]}
+{"query": "Find the TestShortLogReport class definition", "relevant": ["src._pytest.terminal::TestShortLogReport"]}

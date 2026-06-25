@@ -1,0 +1,5 @@
+{
+  "num_queries": 2000,
+  "model": "qwen3-embedding:8b",
+  "dimensions": 4096
+}
