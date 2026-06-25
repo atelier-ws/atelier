@@ -337,7 +337,7 @@ _EXPLORE_FAMILY_PER_FAMILY_CAP = 8
 # top hit (unless pinned -- exact match, recall anchor, or seed file). Bites only
 # when a query has a dominant hit (exact symbol >> lexical sub-token co-matches);
 # uniform low-score concept queries leave the floor near zero, keeping everything.
-_EXPLORE_SCORE_FLOOR_FRAC = 0.15
+_EXPLORE_SCORE_FLOOR_FRAC = 0.30
 # Definitional kinds outrank trivial variables/constants when explore decides which
 # files survive the file/budget caps -- a class/function is higher signal than a const.
 _DEFINITION_KINDS = frozenset(
@@ -1769,7 +1769,6 @@ class CodeContextEngine:
         # an override of match quality. It defaults to unset so ranking never
         # incurs git/blame cost in the hot path; callers/tests may inject one.
         self._churn_score_provider: Callable[[list[SymbolRecord]], dict[str, float]] | None = None
-        self._register_symbol_intel_providers()
         if self._autosync_enabled:
             self._start_autosync_worker()
 
@@ -2968,7 +2967,7 @@ class CodeContextEngine:
         skeletonize: bool = True,
         complete_families: bool | None = None,
         depth: int = 1,
-        budget_tokens: int = 9000,
+        budget_tokens: int = 2000,
         auto_index: bool = True,
     ) -> dict[str, Any]:
         if auto_index:
@@ -3948,9 +3947,7 @@ class CodeContextEngine:
 
         provider_thresholds = {
             "required_health_status": "ok",
-            "require_index_head_match_for_scip": True,
         }
-        head_sha = self._safe_current_head_sha()
         warnings: list[dict[str, Any]] = []
         provider_counts = {"ok": 0, "degraded": 0, "unhealthy": 0}
         providers: list[dict[str, Any]] = []
@@ -3989,27 +3986,7 @@ class CodeContextEngine:
                     index_sha = index_sha_fn()
                     if index_sha:
                         entry["index_sha"] = str(index_sha)
-            if provider_name == "scip":
-                if head_sha is not None:
-                    entry["head_sha"] = head_sha
-                index_sha = entry.get("index_sha")
-                if isinstance(index_sha, str) and head_sha:
-                    if index_sha == head_sha:
-                        entry["freshness"] = "fresh"
-                    else:
-                        entry["freshness"] = "stale"
-                        warnings.append(
-                            {
-                                "code": "provider_index_stale",
-                                "level": "warning",
-                                "provider": provider_name,
-                                "message": "SCIP index SHA does not match HEAD; reindex recommended.",
-                            }
-                        )
-                else:
-                    entry["freshness"] = "unknown"
-            else:
-                entry["freshness"] = "unknown"
+            entry["freshness"] = "unknown"
             providers.append(entry)
 
         payload = {
@@ -4616,7 +4593,7 @@ class CodeContextEngine:
 
         # Path channel via trigram index (base 820).
         if len(normalized_query_lower) >= 3 and len(path_anchor) >= 3:
-            _path_like_sql = " OR ".join(f"t.file_path LIKE ?" for _ in path_patterns)
+            _path_like_sql = " OR ".join("t.file_path LIKE ?" for _ in path_patterns)
             _ch.append(
                 (
                     f"SELECT s.*, NULL AS score FROM symbol_trigram t"
@@ -4630,7 +4607,7 @@ class CodeContextEngine:
                 )
             )
         else:
-            _path_like_sql = " OR ".join(f"lower(file_path) LIKE ?" for _ in path_patterns)
+            _path_like_sql = " OR ".join("lower(file_path) LIKE ?" for _ in path_patterns)
             _ch.append(
                 (
                     f"SELECT *, NULL AS score FROM symbols"
@@ -7009,11 +6986,23 @@ class CodeContextEngine:
                 # fraction of the cost of BPE-encoding every symbol body twice.
                 saved = estimate_tokens(full_content) - estimate_tokens(skel)
                 if saved > 0:
-                    section["content"] = hard_cap_chars(skel, _EXPLORE_SOURCE_SECTION_MAX_CHARS)
+                    section["content"] = hard_cap_chars(
+                        skel,
+                        _EXPLORE_SOURCE_SECTION_MAX_CHARS,
+                        file_path=file_path,
+                        start_line=start_line,
+                        end_line=end_line,
+                    )
                     section["skeleton"] = True
                     section["tokens_saved"] = saved
                     return section
-        section["content"] = hard_cap_chars(full_content, _EXPLORE_SOURCE_SECTION_MAX_CHARS)
+        section["content"] = hard_cap_chars(
+            full_content,
+            _EXPLORE_SOURCE_SECTION_MAX_CHARS,
+            file_path=file_path,
+            start_line=start_line,
+            end_line=end_line,
+        )
         return section
 
     def _merge_nearby_source_sections(
@@ -7071,8 +7060,17 @@ class CodeContextEngine:
             return hard_cap_chars(
                 "\n".join(f"{start_line + idx}\t{line}" for idx, line in enumerate(segment)),
                 _EXPLORE_SOURCE_SECTION_MAX_CHARS,
+                file_path=file_path,
+                start_line=start_line,
+                end_line=end_line,
             )
-        return hard_cap_chars("\n".join(segment), _EXPLORE_SOURCE_SECTION_MAX_CHARS)
+        return hard_cap_chars(
+            "\n".join(segment),
+            _EXPLORE_SOURCE_SECTION_MAX_CHARS,
+            file_path=file_path,
+            start_line=start_line,
+            end_line=end_line,
+        )
 
     def _complete_sibling_families(
         self, symbols: list[SymbolRecord], *, query: str, seed_set: set[str]
@@ -9224,20 +9222,6 @@ class CodeContextEngine:
                         return matches
         return matches
 
-    def _register_symbol_intel_providers(self) -> None:
-        try:
-            from atelier.infra.code_intel.scip import ScipSymbolIntelProvider
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            return
-        self.intel_store.register(
-            ScipSymbolIntelProvider(
-                repo_root=self.repo_root,
-                repo_id=self.repo_id,
-                state_sync=self._sync_external_artifact_state,
-            )
-        )
-
     def _sync_symbol_intel(self) -> None:
         self.intel_store.refresh()
 
@@ -9380,12 +9364,6 @@ class CodeContextEngine:
                 self.index_repo(force=False, block=False)
             except Exception:
                 logging.exception("autosync: initial index build failed")
-        if not getattr(self, "_scip_triggered", False):
-            try:
-                self.trigger_scip_indexing()
-            except Exception:
-                logging.exception("Failed to trigger SCIP indexing")
-            self._scip_triggered = True
         while not self._autosync_stop.wait(self._autosync_poll_ms / 1000.0):
             try:
                 if not self.index_ready():
@@ -9398,79 +9376,6 @@ class CodeContextEngine:
             except Exception as exc:
                 logging.exception("Recovered from broad exception handler")
                 self._record_autosync_event(event="worker_error", reason=str(exc), reindexed=False)
-
-    def trigger_scip_indexing(
-        self,
-        *,
-        on_language_start: Callable[[str, int], None] | None = None,
-        on_dir_done: Callable[[str, str, str], None] | None = None,
-        on_language_done: Callable[[str, str], None] | None = None,
-    ) -> dict[str, str]:
-        """Run SCIP indexers for languages detected in this repo.
-
-        Only attempts languages whose indexer binary is installed (tier:
-        ``install_time``).  Silently skips any language whose binary is absent
-        or whose SCIP module cannot be imported.  Returns ``{language: status}``
-        for each attempted language so callers can log progress.
-
-        ``on_language_start(lang, num_dirs)`` fires before indexing with the
-        number of directories that will be indexed in parallel.
-        ``on_dir_done(lang, dir_tag, status)`` fires from a worker thread as
-        each directory finishes.  ``on_language_done(lang, status)`` fires once
-        the language is fully complete.
-        """
-        try:
-            from atelier.infra.code_intel.scip.bootstrap import _BOOTSTRAP_METADATA
-            from atelier.infra.code_intel.scip.indexer import ScipIndexer
-        except ImportError:
-            return {}
-
-        indexer = ScipIndexer(self.repo_root, self.repo_id)
-        install_time = {lang for lang, m in _BOOTSTRAP_METADATA.items() if m.tier == "install_time"}
-        detected = self._detected_repo_languages() & install_time
-        if not detected:
-            return {}
-
-        from atelier.infra.code_intel.scip.binaries import scip_binary_spec as _scip_spec
-
-        results: dict[str, str] = {}
-        for lang in sorted(detected):
-            # Skip languages whose required context files are absent (e.g. tsconfig.json
-            # for TypeScript).  These would immediately return "missing_context" anyway,
-            # so there is nothing to show in the progress bar.
-            try:
-                _spec = _scip_spec(lang)
-                if _spec is not None and _spec.missing_context_files(self.repo_root):
-                    results[lang] = "missing_context"
-                    continue
-            except Exception:
-                _spec = None
-            # Pre-compute source dirs so on_language_start receives the accurate total.
-            try:
-                _dirs = (
-                    indexer._git_source_dirs(lang) if _spec is not None and _spec.source_root_flag is not None else []
-                )
-            except Exception:
-                _dirs = []
-            num_dirs = len(_dirs) if _dirs else 1
-            if on_language_start is not None:
-                on_language_start(lang, num_dirs)
-            _bound_dir_done: Callable[[str, str], None] | None = None
-            if on_dir_done is not None:
-                _bound_dir_done = (lambda _l=lang: lambda dt, ds: on_dir_done(_l, dt, ds))()
-            try:
-                result = indexer.index_language(
-                    lang,
-                    on_dir_done=_bound_dir_done,
-                    source_dirs=_dirs or None,
-                )
-                results[lang] = result.status
-            except Exception as exc:
-                logging.exception("SCIP indexing failed for %s", lang)
-                results[lang] = f"error: {exc}"
-            if on_language_done is not None:
-                on_language_done(lang, results[lang])
-        return results
 
     def _detected_repo_languages(self) -> frozenset[str]:
         """Lightweight language detection from file extensions in the symbol index."""
