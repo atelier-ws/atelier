@@ -9,8 +9,10 @@ next time-sensitive lease boundary.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from types import ModuleType
 
 from atelier.core.capabilities.licensing import store
@@ -46,6 +48,61 @@ def _now() -> int:
     return int(time.time())
 
 
+def _resolve_oauth(now: int) -> _Resolved | None:
+    """Best-effort OAuth session token check.
+
+    Loads the full /api/auth/me response from the 24 h disk cache if fresh;
+    otherwise fetches live (which also renews the server-side CLI token),
+    persists the response, and updates the cache.
+    Returns None on any failure (fail-open for offline users).
+    """
+    import json
+    import urllib.request
+
+    auth_token = store.load_auth_token()
+    if not auth_token:
+        return None
+
+    # 1. Try disk cache first (avoids a network call on every process)
+    data: dict[str, object] | None = store.load_auth_user()
+
+    if data is None:
+        # 2. Cache miss or stale — fetch live and persist
+        try:
+            req = urllib.request.Request(
+                "https://atelier.ws/api/auth/me",
+                headers={"Authorization": f"Bearer {auth_token}"},
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read())
+            store.save_auth_user(data)  # type: ignore[arg-type]
+        except Exception:  # noqa: BLE001
+            return None  # offline — fail open
+
+    plan = str(data.get("plan") or "")  # type: ignore[union-attr]
+    email = str(data.get("email") or "")
+
+    if plan not in PRO_PLANS:
+        # Valid session but free plan — not a pro license
+        return None
+
+    lic = License(
+        license_id=str(data.get("user_id") or ""),
+        email=email,
+        plan=plan,
+        issued_at=now,
+        expires_at=None,
+        features=(),
+        kind="oauth",
+    )
+    return _Resolved(
+        token=auth_token,
+        license=lic,
+        reason="oauth",
+        next_check_at=now + store.AUTH_USER_CACHE_TTL,  # 24 h
+    )
+
+
 def _resolve() -> _Resolved:
     global _cache
     token = store.load_token()
@@ -53,6 +110,11 @@ def _resolve() -> _Resolved:
     if _cache is not None and _cache.token == token and (_cache.next_check_at is None or now < _cache.next_check_at):
         return _cache
     if token is None:
+        # Check OAuth auth token as fallback
+        auth_result = _resolve_oauth(now)
+        if auth_result is not None:
+            _cache = auth_result
+            return _cache
         _cache = _Resolved(token=None, license=None, reason="no license activated")
         return _cache
     try:
@@ -105,9 +167,42 @@ def is_pro() -> bool:
     return lic is not None and lic.plan in PRO_PLANS
 
 
+def _detect_pro_source_tree() -> bool:
+    """True only in a source monorepo: the proprietary overlay SOURCE tree
+    (``pro/src/atelier_pro``) is checked out next to the core."""
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pro" / "src" / "atelier_pro" / "__init__.py").is_file():
+            return True
+    return False
+
+
+_PRO_SOURCE_TREE = _detect_pro_source_tree()
+
+
+def _dev_unlock() -> bool:
+    """Dev affordance with NO production attack surface.
+
+    Unlocks Pro only in a source monorepo, detected by the proprietary overlay
+    SOURCE tree (``pro/src/atelier_pro``) sitting next to the core. There is
+    deliberately **no env var or config flag** -- so a distributed build cannot be
+    tricked into unlocking Pro. A distributed build never has that source tree:
+    the OSS snapshot strips ``pro/`` entirely, and the Pro wheel installs
+    ``atelier_pro`` into site-packages (never as ``<repo>/pro/src``). To unlock
+    one would need the proprietary source itself -- at which point the license is
+    moot anyway. Suppressed under the test runner so the licensing suite still
+    exercises real gating.
+    """
+    if "pytest" in sys.modules:
+        return False
+    return _PRO_SOURCE_TREE
+
+
 def has_feature(feature: str) -> bool:
     """True if ``feature`` is unlocked. Non-Pro features are always allowed."""
     if feature not in PRO_FEATURES:
+        return True
+    if _dev_unlock():
         return True
     lic = current_license()
     return lic is not None and lic.grants(feature)
@@ -130,6 +225,10 @@ def feature_active(feature: str) -> bool:
     if not has_feature(feature):
         return False
     if feature not in PRO_FEATURES:
+        return True
+    if _dev_unlock():
+        # Dev: skip the overlay-presence half too, so source checkouts run Pro
+        # paths whose runtime is in the open-core (e.g. swarm) without the wheel.
         return True
     from atelier.core.capabilities import pro_bridge
 
