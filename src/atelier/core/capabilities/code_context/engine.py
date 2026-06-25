@@ -6956,6 +6956,23 @@ class CodeContextEngine:
         start_line = int(payload["start_line"])
         end_line = int(payload["end_line"])
         source = self._read_file_slice(file_path, int(payload["start_byte"]), int(payload["end_byte"]))
+        # Look back up to 200 bytes to capture decorator lines (@decorator)
+        # that sit above the symbol's start_byte but belong to it conceptually.
+        lookback_start = max(0, int(payload["start_byte"]) - 200)
+        prefix_raw = self._read_file_slice(file_path, lookback_start, int(payload["start_byte"]))
+        decorator_lines: list[str] = []
+        for pline in reversed(prefix_raw.splitlines()):
+            stripped = pline.strip()
+            if stripped.startswith("@"):
+                decorator_lines.insert(0, pline)
+            elif stripped == "" or stripped.startswith("#"):
+                continue
+            else:
+                break
+        if decorator_lines:
+            dec_count = len(decorator_lines)
+            start_line = start_line - dec_count
+            source = "\n".join(decorator_lines) + "\n" + source
         lines = source.splitlines()
         if line_numbers:
             full_content = "\n".join(f"{start_line + idx}\t{line}" for idx, line in enumerate(lines))
@@ -6986,23 +7003,14 @@ class CodeContextEngine:
                 # fraction of the cost of BPE-encoding every symbol body twice.
                 saved = estimate_tokens(full_content) - estimate_tokens(skel)
                 if saved > 0:
-                    section["content"] = hard_cap_chars(
-                        skel,
-                        _EXPLORE_SOURCE_SECTION_MAX_CHARS,
-                        file_path=file_path,
-                        start_line=start_line,
-                        end_line=end_line,
-                    )
+                    # No read pointer: a "read file#L…" marker actively
+                    # invites an extra read call; skeleton already signals
+                    # incompleteness and the file path is in the header.
+                    section["content"] = hard_cap_chars(skel, _EXPLORE_SOURCE_SECTION_MAX_CHARS)
                     section["skeleton"] = True
                     section["tokens_saved"] = saved
                     return section
-        section["content"] = hard_cap_chars(
-            full_content,
-            _EXPLORE_SOURCE_SECTION_MAX_CHARS,
-            file_path=file_path,
-            start_line=start_line,
-            end_line=end_line,
-        )
+        section["content"] = hard_cap_chars(full_content, _EXPLORE_SOURCE_SECTION_MAX_CHARS)
         return section
 
     def _merge_nearby_source_sections(
