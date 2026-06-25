@@ -3128,41 +3128,72 @@ class CodeContextEngine:
                 record.start_line,
             ),
         )
-        # Path-quality filter FIRST: hard-remove minified/vendor artefacts and
-        # soft-penalise test files BEFORE computing the score floor. This matters
-        # because test files often score highest (function name appears many times
-        # in test assertions), which would otherwise set a floor that eliminates
-        # the actual implementation file. Pinned exact hits and seed files are exempt.
+        # ── Path-quality filter + relevance floor ──────────────────────────────
+        # Design constraint: test files over-mention function names (in test
+        # method names, calls, assertions), so their BM25 scores are inflated.
+        # A naïve score-floor uses the test-file score as the ceiling, which can
+        # eliminate the actual implementation file.  Fix:
+        #  1. Hard-remove minified/vendor artefacts (never useful navigation targets).
+        #  2. When the query isn't about tests, compute the relevance floor from
+        #     NON-test scores only, so the floor is grounded in the impl files.
+        #  3. Two-tier sort: impl files always precede test files in the output;
+        #     no matter how high test files score, the definition comes first.
         query_wants_tests = bool(re.search(r'\btest\b|\bspec\b', query, re.IGNORECASE))
         if ranked_symbols:
             pinned_ids = exact_ids | anchor_ids
-            pre_filtered: list[SymbolRecord] = []
-            for record in ranked_symbols:
-                fp = record.file_path or ""
-                if _MINIFIED_FILE_RE.search(fp) or _VENDOR_PATH_RE.search(fp):
-                    if record.symbol_id not in pinned_ids and fp not in seed_set:
-                        continue  # hard remove before floor
-                if not query_wants_tests and _TEST_PATH_RE.search(fp):
-                    if record.symbol_id not in pinned_ids and fp not in seed_set:
-                        record = record.model_copy(update={"score": (record.score or 0.0) * _TEST_SCORE_PENALTY})
-                pre_filtered.append(record)
-            ranked_symbols = pre_filtered
-        # Relevance floor: when the top hit is strongly dominant (e.g. an exact
-        # symbol scoring far above the lexical sub-token co-matches that share a
-        # token like "get"/"name"), drop the near-zero tail so a precise query
-        # returns the definition, not every file that merely shares a sub-token.
-        # Pinned categories are always kept: the exact hit(s), the recall anchors
-        # (zoekt/semantic, intentionally low/zero lexical score), and seed files --
-        # so uniform low-score concept queries (floor ~ 0) keep everything.
-        if ranked_symbols:
-            top_score = max((record.score or 0.0) for record in ranked_symbols)
-            floor = top_score * _EXPLORE_SCORE_FLOOR_FRAC
-            if floor > 0:
-                ranked_symbols = [
-                    record
-                    for record in ranked_symbols
-                    if record.symbol_id in pinned_ids or record.file_path in seed_set or (record.score or 0.0) >= floor
+
+            # Step 1: hard-remove minified/vendor (except pinned/seed)
+            ranked_symbols = [
+                r for r in ranked_symbols
+                if r.symbol_id in pinned_ids
+                or r.file_path in seed_set
+                or not (_MINIFIED_FILE_RE.search(r.file_path or "") or _VENDOR_PATH_RE.search(r.file_path or ""))
+            ]
+
+            if not query_wants_tests:
+                # Step 2: floor derived from non-test scores only
+                non_test_scores = [
+                    r.score or 0.0 for r in ranked_symbols
+                    if r.symbol_id in pinned_ids
+                    or r.file_path in seed_set
+                    or not _TEST_PATH_RE.search(r.file_path or "")
                 ]
+                top_score = max(non_test_scores) if non_test_scores else 0.0
+                floor = top_score * _EXPLORE_SCORE_FLOOR_FRAC
+                if floor > 0:
+                    ranked_symbols = [
+                        r for r in ranked_symbols
+                        if r.symbol_id in pinned_ids
+                        or r.file_path in seed_set
+                        or (r.score or 0.0) >= floor
+                    ]
+
+                # Step 3: two-tier sort — impl before test (regardless of raw score)
+                impl_tier: list[SymbolRecord] = []
+                test_tier: list[SymbolRecord] = []
+                for r in ranked_symbols:
+                    fp = r.file_path or ""
+                    if r.symbol_id not in pinned_ids and r.file_path not in seed_set and _TEST_PATH_RE.search(fp):
+                        test_tier.append(
+                            r.model_copy(update={"score": (r.score or 0.0) * _TEST_SCORE_PENALTY})
+                        )
+                    else:
+                        impl_tier.append(r)
+                ranked_symbols = (
+                    sorted(impl_tier, key=lambda r: -(r.score or 0.0))
+                    + sorted(test_tier, key=lambda r: -(r.score or 0.0))
+                )
+            else:
+                # Standard floor when query explicitly asks about tests
+                top_score = max((r.score or 0.0) for r in ranked_symbols) if ranked_symbols else 0.0
+                floor = top_score * _EXPLORE_SCORE_FLOOR_FRAC
+                if floor > 0:
+                    ranked_symbols = [
+                        r for r in ranked_symbols
+                        if r.symbol_id in pinned_ids
+                        or r.file_path in seed_set
+                        or (r.score or 0.0) >= floor
+                    ]
         # File diversity: cap symbols-per-file before the symbol budget so one
         # over-populated file (e.g. 8 `as_sqlite` overloads in functions.py)
         # cannot starve the other files the query also matches (the ambiguous-name
