@@ -10,6 +10,7 @@ EXPECTED_TOOLS = {
     "memory",
     "read",
     "edit",
+    "explore",
     "grep",
     "relations",
     "sql",
