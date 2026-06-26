@@ -8055,6 +8055,16 @@ def _run_bash_tool(
     if not command.strip():
         raise ValueError("command is required for shell action=run")
 
+    # A trailing `&` (but not `&&`) means "run in background": strip it and
+    # force background mode so the command runs as a managed Atelier session
+    # with a session_id + pid the model can poll/cancel.  Passing the `&`
+    # verbatim to `bash -c "cmd &"` would fork an untracked grandchild that
+    # exits from bash immediately with empty output and no handle to follow.
+    _stripped = command.rstrip()
+    if _stripped.endswith("&") and not _stripped.endswith("&&"):
+        command = _stripped[:-1].rstrip()
+        background = True
+
     _shell_workspace_root = Path(workspace).resolve()
     policy = classify_command(
         command,
@@ -8420,7 +8430,8 @@ def _grep_badge_provider(rel_path: str, symbol_names: list[str]) -> str | None:
         "and a blast-radius. Query: a natural-language question OR a bag of symbol/file names. "
         "Usually the only retrieval call you need."
     ),
-    param_aliases={"maxFiles": "max_files", "projectPath": "path"},
+    param_aliases={"maxFiles": "max_files", "projectPath": "paths", "path": "paths"},
+    hidden_params=("path",),
 )
 def tool_explore(
     query: Annotated[
@@ -8431,16 +8442,18 @@ def tool_explore(
         int,
         Field(description="Max files to include source from (default 8). Alias: maxFiles."),
     ] = 8,
-    path: Annotated[
-        str | None,
+    paths: Annotated[
+        str | list[str] | None,
         Field(
             description=(
-                "Optional scope: a file or directory WITHIN this workspace to seed the exploration. "
-                "Alias: projectPath (note: it scopes within this workspace; it does not select "
-                "another repo's index)."
+                "Optional scope: a file or directory path, a list of paths, or a "
+                "comma-separated string of paths WITHIN this workspace. "
+                "When a single file is given the search is restricted to that file's symbols. "
+                "Alias: projectPath."
             )
         ),
     ] = None,
+    path: str | None = None,  # backward-compat alias, hidden from schema
 ) -> dict[str, Any]:
     """Relevant symbols' source grouped by file + call-graph relations, in one capped call.
 
@@ -8449,7 +8462,16 @@ def tool_explore(
     as already read -- do not re-open those files with `read`.
     """
     workspace_root = _workspace_root()
-    seed_files = [path] if path else None
+    # Normalise: paths param accepts list, comma-sep string, or single path.
+    # Fall back to legacy `path` kwarg for callers that haven't switched yet.
+    raw = paths or path
+    if isinstance(raw, list):
+        seed_list = [p.strip() for p in raw if p and p.strip()]
+    elif isinstance(raw, str):
+        seed_list = [p.strip() for p in raw.split(",") if p.strip()]
+    else:
+        seed_list = []
+    seed_files = seed_list or None
     engine = _code_context_engine(str(workspace_root))
     return cast(dict[str, Any], engine.tool_explore(query, max_files=max_files, seed_files=seed_files))
 
