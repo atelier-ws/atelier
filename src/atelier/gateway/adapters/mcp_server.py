@@ -6118,6 +6118,16 @@ def tool_smart_edit(
 
             result = apply_batch_edit(edits, atomic=atomic, repo_root=repo_root, allowed_roots=_extra_roots)
 
+        # Sync the long-lived engine's index-version cache so the next explore
+        # call gets a cache miss and re-queries the FTS5 index (which the
+        # background reindex thread and apply_rich_edits both keep up to date).
+        # Without this the cached version never changes between tool calls, so
+        # explore returns stale pre-edit results on every subsequent invocation.
+        try:
+            _code_context_engine(str(repo_root))._index_version_cached = None
+        except Exception:  # noqa: BLE001
+            pass
+
         if not result.get("failed") and not result.get("rolled_back"):
             if _test_contract_guard_enabled():
                 weakenings = _detect_test_weakening(snapshots)
@@ -8051,6 +8061,15 @@ def _run_bash_tool(
         allowed_write_roots=[_shell_workspace_root, *_claude_additional_dirs(_shell_workspace_root)],
     )
 
+    if policy.action == "block":
+        return {
+            "status": "blocked",
+            "stderr": policy.reason,
+            "exit_code": -1,
+            "blocked": True,
+            "blocked_reason": policy.reason,
+        }
+
     if policy.action == "rewrite" and policy.rewrite_target == "read" and policy.rewrite_payload:
         raw_file_path = str(policy.rewrite_payload.get("file_path") or "").strip()
         if raw_file_path:
@@ -8199,10 +8218,11 @@ def _render_bash_text(result: dict[str, Any]) -> str:
     elif status:
         parts.append(f"status={status} session_id={session_id}")
     if blocked:
-        header = "blocked"
-        if exit_code is not None:
-            header = f"{header} (exit_code={exit_code})"
-        parts.append(header)
+        if status != "blocked":
+            header = "blocked"
+            if exit_code is not None:
+                header = f"{header} (exit_code={exit_code})"
+            parts.append(header)
         if blocked_reason:
             parts.append(blocked_reason)
     elif exit_code not in (None, 0):

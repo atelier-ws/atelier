@@ -1343,8 +1343,8 @@ install_code_tools() {
     # require npm.
     if command -v npm >/dev/null 2>&1; then
         mkdir -p "$ATELIER_NODE_DIR" "$ATELIER_NODE_DIR/bin"
-        verbose "Installing JS/TS tools..."
-        spin "Installing JS/TS tools" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund eslint ts-morph typescript
+        verbose "Installing Language tools..."
+        spin "Installing Language tools" npm install -g --prefix "$ATELIER_NODE_DIR" --no-fund eslint ts-morph typescript
     else
         warn "npm not found - skipping JS/TS tools. Install Node.js 20+ to enable."
     fi
@@ -1364,7 +1364,7 @@ install_code_tools() {
     # Version/URL/SHA must stay in sync with:
     #   src/atelier/infra/code_intel/astgrep/binaries.py (_MANAGED_VERSION + _MANAGED_ASSETS)
     if command -v python3 >/dev/null 2>&1; then
-        local astgrep_dest="${ATELIER_INSTALL_DIR}/.atelier-astgrep/ast-grep"
+        local astgrep_dest="${ATELIER_INSTALL_DIR}/.atelier/ast-grep"
         if [[ ! -x "${astgrep_dest}" ]]; then
             verbose "Installing ast-grep (codemod dependency)..."
             if python3 - "${astgrep_dest}" <<'PYEOF'

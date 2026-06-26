@@ -616,8 +616,24 @@ def apply_rich_edits(
                 "hunks": [{"line_start": line_start, "line_end": line_end}],
                 "match_mode": match_mode,
             }
+            # Include the resulting file lines around the change so callers
+            # can confirm the edit without a separate read/explore turn.
+            _ctx_lines = new_content.splitlines()
+            _ctx_start = max(0, line_start - 2)
+            _ctx_end = min(len(_ctx_lines), line_end + 3)
+            _ctx_snippet = "\n".join(_ctx_lines[_ctx_start:_ctx_end])
             if match_mode == "noop":
                 applied_entry["already_applied"] = True
+                # Explicit note with current file content: prevents the model
+                # from retrying an edit that already succeeded on a prior call.
+                applied_entry["note"] = (
+                    f"edit already applied — do NOT retry this edit. "
+                    f"File already contains new_string at line {line_start}. "
+                    f"Current file content around that line:\n{_ctx_snippet}"
+                )
+            else:
+                # Show the result of the change for immediate verification.
+                applied_entry["result"] = _ctx_snippet
             if resolved_symbol_edits and raw_path == resolved_symbol_edits[-1].scoped_file_path:
                 applied_entry["kind"] = "symbol"
                 applied_entry["symbol_id"] = resolved_symbol_edits[-1].symbol_id
@@ -637,15 +653,19 @@ def apply_rich_edits(
             _atomic_write(path, content)
         if file_state:
             command_discipline.note_workspace_changed()
+        # Synchronously reindex every written file so the DB index_version is
+        # bumped before the edit response is returned. Combined with the
+        # _index_version_cached = None reset in mcp_server.py this ensures the
+        # next explore call gets a cache miss and re-queries the fresh FTS5
+        # index rather than returning stale pre-edit results.
+        if file_state:
+            try:
+                from atelier.core.capabilities.code_context import CodeContextEngine
+                _idx_engine = CodeContextEngine(root, autosync_enabled=False)
+                _idx_engine._reindex_files(list(file_state.keys()))
+            except Exception:
+                logging.exception("Non-fatal: post-edit reindex failed")
         if resolved_symbol_edits:
-            from atelier.core.capabilities.code_context import CodeContextEngine
-
-            # autosync_enabled=False: this short-lived engine only runs the
-            # targeted _reindex_files below, so it must not spin up a background
-            # autosync worker per edit. The shared cross-process index lock keeps
-            # it coordinated with the long-lived MCP engine on the same DB.
-            engine = CodeContextEngine(root, autosync_enabled=False)
-            engine._reindex_files([item.repo_file_path for item in resolved_symbol_edits])
             for resolved in resolved_symbol_edits:
                 record_symbol_edit_memory(resolved)
         return {"applied": applied, "failed": [], "rolled_back": False, "writes": len(file_state)}
