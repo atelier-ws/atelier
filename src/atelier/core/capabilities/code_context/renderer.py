@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any
+
+# Matches the "\d+\t" line-number prefix baked into explore source sections.
+_LINE_NUM_RE = re.compile(r"^\d+\t")
 
 _CONTEXT_ENTRY_CAP = 8
 _CONTEXT_RELATED_CAP = 10
@@ -458,26 +462,11 @@ def _render_explore(payload: Mapping[str, Any]) -> str:
     files = payload.get("files")
     if not isinstance(files, list) or not files:
         return _render_explore_items(payload)
-    lines: list[str] = []
+    parts: list[str] = []
     for file_entry in files:
         if not isinstance(file_entry, Mapping):
             continue
         file_path = str(file_entry.get("file_path") or file_entry.get("path") or "?")
-        language = str(file_entry.get("language") or "")
-        labels: list[str] = []
-        symbols = file_entry.get("symbols")
-        if isinstance(symbols, list):
-            for sym in symbols:
-                if not isinstance(sym, Mapping):
-                    continue
-                name = str(sym.get("qualified_name") or sym.get("symbol_name") or sym.get("name") or "")
-                kind = str(sym.get("kind") or "")
-                if name:
-                    labels.append(f"{name} [{kind}]" if kind else name)
-        header = f"#### {file_path}"
-        if labels:
-            header += " — " + ", ".join(labels[:_EXPLORE_FILE_SYMBOL_CAP])
-        lines.append(header)
         sections = file_entry.get("source_sections")
         if not isinstance(sections, list):
             continue
@@ -487,18 +476,39 @@ def _render_explore(payload: Mapping[str, Any]) -> str:
             content = str(section.get("content") or "").rstrip("\n")
             if not content:
                 continue
+            # Build the range-tagged header:  #### path:Lstart-Lend — name [kind]
+            start_line = int(section.get("start_line", 0))
+            end_line = int(section.get("end_line", 0))
+            range_tag = ""
+            if start_line and end_line:
+                range_tag = f":L{start_line}-{end_line}"
+            elif start_line:
+                range_tag = f":L{start_line}"
+            label = ""
+            sym_name = str(section.get("symbol_name") or section.get("qualified_name") or "")
+            sym_kind = str(section.get("kind") or "")
+            if sym_name:
+                label = f" — {sym_name} [{sym_kind}]" if sym_kind else f" — {sym_name}"
+            header = f"#### {file_path}{range_tag}{label}"
+            # Skip the file-level symbol list — each section carries its own
+            # symbol info via the header.
+            # Skeleton notice is an inline italic comment on the header.
             if section.get("skeleton"):
-                lines.append("… · skeleton (signatures only; read for full body)")
-            lines.append(f"```{language}" if language else "```")
-            lines.append(content)
-            lines.append("```")
-    lines.extend(_render_explore_relationships(payload.get("relationships")))
+                header += " · skeleton"
+            lines: list[str] = [header]
+            cleaned = "\n".join(_LINE_NUM_RE.sub("", ln) for ln in content.splitlines())
+            lines.append(cleaned)
+            parts.append("\n".join(lines))
+    if parts:
+        rel_lines = _render_explore_relationships(payload.get("relationships"))
+        if rel_lines:
+            parts.append("\n".join(rel_lines))
     extra = payload.get("additional_relevant_files")
     if isinstance(extra, list) and extra:
-        lines.append("#### additional_relevant_files")
-        for path in extra[:_CONTEXT_RELATED_CAP]:
-            lines.append(f"- {path}")
-    return "\n".join(lines) if lines else "no results"
+        extra_block = ["#### additional_relevant_files"]
+        extra_block.extend(f"- {path}" for path in extra[:_CONTEXT_RELATED_CAP])
+        parts.append("\n".join(extra_block))
+    return "\n\n".join(parts) if parts else "no results"
 
 
 def _render_explore_relationships(relationships: Any) -> list[str]:
