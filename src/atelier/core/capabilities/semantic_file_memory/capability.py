@@ -25,7 +25,7 @@ from .typescript_ast import analyze_typescript
 from .typescript_ast import outline as typescript_outline
 
 _logger = logging.getLogger(__name__)
-_DEFAULT_OUTLINE_THRESHOLD = 0
+_DEFAULT_OUTLINE_THRESHOLD = 500
 
 # Hard cap on how many bytes ``smart_read`` will pull into memory for a single
 # file. Without it an unconditional ``read_text`` of a multi-GB log, or a read
@@ -83,11 +83,11 @@ def _read_source_bounded(file_path: Path) -> tuple[str, bool]:
 
 
 def default_outline_threshold() -> int:
-    """Outline LOC threshold: ``ATELIER_OUTLINE_THRESHOLD`` env override, else 0.
+    """Outline LOC threshold: ``ATELIER_OUTLINE_THRESHOLD`` env override, else 500.
 
-    Files with effective LOC above the threshold are outline-eligible. The
-    default of 0 makes every non-empty file outline-eligible — the 25% savings
-    guard still decides whether the outline actually ships.
+    Files with effective LOC above the threshold are outline-eligible; files at
+    or below are always read in full. The 25% savings guard still decides
+    whether an eligible file's outline actually ships.
     """
     raw = os.environ.get("ATELIER_OUTLINE_THRESHOLD", "").strip()
     if raw:
