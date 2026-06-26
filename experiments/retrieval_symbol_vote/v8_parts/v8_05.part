@@ -1,0 +1,140 @@
+        for entry in payload["files"]:
+            if not isinstance(entry, dict):
+                continue
+            file_path = str(entry.get("path") or entry.get("file_path") or "")
+            if file_path and file_path not in baseline_entries:
+                baseline_entries[file_path] = entry
+                baseline_files.append(file_path)
+        captured = self.__dict__.get("_v8_zoekt_capture")
+        full_zoekt = list(captured[1]) if isinstance(captured, tuple) and captured and captured[0] == query else []
+        plan = _parse_query(engine_mod, query)
+        exact_files, exact_details, token_df = exact_symbol_candidates(self, plan)
+        anchor_files, anchor_details = anchor_zoekt_candidates(self, plan)
+        seed_files = list(dict.fromkeys([*baseline_files, *full_zoekt[:140], *exact_files, *anchor_files]))
+        fielded_files, fielded_details, line_files = fielded_file_candidates(self, plan, seed_files)
+        semantic_files, semantic_details = semantic_candidates(self, query)
+        structural_files, structural_details = structural_candidates(self, plan, token_df)
+        channels = {
+            "baseline": baseline_files, "zoekt": full_zoekt, "exact": exact_files,
+            "anchors": anchor_files, "fielded": fielded_files, "line": line_files,
+            "semantic": semantic_files, "structural": structural_files,
+        }
+        rank_weights = {
+            "definition": {"baseline": 1.00, "zoekt": .90, "exact": 1.45, "anchors": 1.00, "fielded": 1.30, "line": .45, "semantic": .25, "structural": .30},
+            "symbol": {"baseline": 1.10, "zoekt": 1.00, "exact": 1.30, "anchors": 1.00, "fielded": 1.35, "line": .45, "semantic": .25, "structural": .30},
+            "code": {"baseline": .90, "zoekt": .90, "exact": .80, "anchors": 1.00, "fielded": 1.55, "line": .55, "semantic": .45, "structural": .25},
+            "prose": {"baseline": .80, "zoekt": .90, "exact": .25, "anchors": .30, "fielded": 1.75, "line": .65, "semantic": .75, "structural": .00},
+        }[plan.intent]
+        confidence_weights = {
+            "definition": {"exact": 1.05, "anchors": .40, "fielded": 1.15, "semantic": .15, "structural": .20, "learned": .22},
+            "symbol": {"exact": .95, "anchors": .40, "fielded": 1.10, "semantic": .15, "structural": .18, "learned": .22},
+            "code": {"exact": .45, "anchors": .50, "fielded": 1.35, "semantic": .25, "structural": .16, "learned": .20},
+            "prose": {"exact": .10, "anchors": .12, "fielded": 1.50, "semantic": .40, "structural": .00, "learned": .18},
+        }[plan.intent]
+        scores: dict[str, float] = {}
+        ranks: dict[str, dict[str, int]] = {}
+        for channel, files in channels.items():
+            ranks[channel] = {file_path: rank for rank, file_path in enumerate(files, 1)}
+            for rank, file_path in enumerate(files, 1):
+                scores[file_path] = scores.get(file_path, 0.0) + rank_weights[channel] / (12.0 + rank)
+        for file_path, detail in exact_details.items():
+            scores[file_path] = scores.get(file_path, 0.0) + confidence_weights["exact"] * float(detail["confidence"])
+        for file_path, detail in anchor_details.items():
+            scores[file_path] = scores.get(file_path, 0.0) + confidence_weights["anchors"] * float(detail["confidence"])
+        for file_path, detail in fielded_details.items():
+            scores[file_path] = scores.get(file_path, 0.0) + confidence_weights["fielded"] * float(detail["confidence"])
+        for file_path, confidence in semantic_details.items():
+            scores[file_path] = scores.get(file_path, 0.0) + confidence_weights["semantic"] * max(0.0, min(1.0, float(confidence)))
+        for file_path, detail in structural_details.items():
+            scores[file_path] = scores.get(file_path, 0.0) + confidence_weights["structural"] * float(detail["confidence"])
+        model_weights = self_supervised_model(self)
+        learned_scores: dict[str, float] = {}
+        for file_path, detail in fielded_details.items():
+            probability = learned_score(model_weights, file_path, detail)
+            learned_scores[file_path] = probability
+            scores[file_path] = scores.get(file_path, 0.0) + confidence_weights["learned"] * probability
+        top_sets = {channel: set(files[:40]) for channel, files in channels.items()}
+        explicit_names = {name.lower() for _kind, name in plan.definitions}
+        identifier_names = {token.lower() for token in [*plan.identifiers, *plan.components]}
+        for file_path in list(scores):
+            support = sum(file_path in top_set for top_set in top_sets.values())
+            if support >= 2:
+                scores[file_path] += .065 * (support - 1)
+            kind_matches = set(exact_details.get(file_path, {}).get("kind_matches", ()))
+            if explicit_names and kind_matches:
+                scores[file_path] += .82 * len(explicit_names & kind_matches)
+            path_overlap = len(identifier_names & _path_parts(file_path))
+            if path_overlap:
+                scores[file_path] += .028 * min(path_overlap, 4)
+            scores[file_path] *= _safe_path_penalty(
+                engine_mod, plan, file_path,
+                unsupported=not (support >= 2 or file_path in baseline_entries),
+            )
+        raw_order = sorted(scores, key=lambda file_path: (
+            -scores[file_path], ranks["baseline"].get(file_path, 10_000),
+            ranks["fielded"].get(file_path, 10_000), ranks["zoekt"].get(file_path, 10_000),
+            ranks["exact"].get(file_path, 10_000), file_path,
+        ))
+        selected: list[str] = []
+        remaining = list(raw_order)
+        covered_families: set[str] = set()
+        family_map = {
+            "baseline": "baseline", "zoekt": "lexical", "anchors": "lexical",
+            "exact": "symbol", "fielded": "content", "line": "content",
+            "semantic": "semantic", "structural": "structural",
+        }
+        while remaining and len(selected) < max_files:
+            raw_choice = remaining[0]
+            if len(selected) >= 3:
+                choice = raw_choice
+            else:
+                threshold = scores[raw_choice] * .97
+                eligible = [file_path for file_path in remaining[:16] if scores[file_path] >= threshold]
+                def slate_value(file_path: str) -> tuple[float, float, str]:
+                    families = {family_map[channel] for channel, top_set in top_sets.items() if file_path in top_set}
+                    return (scores[file_path] + .012 * len(families - covered_families), scores[file_path], file_path)
+                choice = max(eligible, key=slate_value)
+            selected.append(choice)
+            remaining.remove(choice)
+            covered_families.update(family_map[channel] for channel, top_set in top_sets.items() if choice in top_set)
+        fused_entries = [
+            baseline_entries.get(file_path, {"path": file_path, "language": "unknown", "symbols": [], "source_sections": []})
+            for file_path in selected
+        ]
+        diagnostic_top = raw_order[:24]
+        _append_diagnostic({
+            "version": "v8_comprehensive",
+            "repo_root": str(self.repo_root.resolve()),
+            "repo_id": str(getattr(self, "repo_id", "")),
+            "query": query,
+            "plan": {
+                "intent": plan.intent, "definitions": plan.definitions,
+                "identifiers": plan.identifiers, "components": plan.components,
+                "anchors": plan.anchors, "prose_terms": plan.prose_terms,
+                "terms": plan.terms, "literals": plan.literals,
+                "wants_tests": plan.wants_tests, "wants_auxiliary": plan.wants_auxiliary,
+            },
+            "channels": {name: files[:80] for name, files in channels.items()},
+            "final": selected,
+            "raw_order": raw_order[:80],
+            "scores": {file_path: round(scores[file_path], 6) for file_path in diagnostic_top},
+            "learned_scores": {file_path: round(learned_scores.get(file_path, 0.0), 6) for file_path in diagnostic_top},
+            "model_weights": model_weights,
+            "rank_weights": rank_weights,
+            "confidence_weights": confidence_weights,
+            "exact_details": {file_path: exact_details[file_path] for file_path in exact_files[:16]},
+            "fielded_details": {file_path: fielded_details[file_path] for file_path in fielded_files[:24]},
+            "structural_details": {file_path: structural_details[file_path] for file_path in structural_files[:12]},
+        })
+        result = dict(payload)
+        result["files"] = fused_entries
+        result["experiment"] = {"name": "generic_comprehensive_hybrid_v8", "intent": plan.intent}
+        return result
+
+    engine_cls._zoekt_candidate_files = capturing_zoekt
+    engine_cls._v8_original_tool_explore = original_tool_explore
+    engine_cls.tool_explore = fused_tool_explore
+    engine_cls._comprehensive_v8_installed = True
+
+
+__all__ = ["install"]
