@@ -4759,7 +4759,14 @@ class CodeContextEngine:
             if name_tokens:
                 matched = sum(1 for token in name_tokens if token in term_set)
                 if matched == len(name_tokens):
-                    score += 28.0 + 6.0 * len(name_tokens)
+                    # IDF boost: symbols with longer, multi-token names that fully match
+                    # query terms are more discriminative (e.g., "RewriteContext" vs "get").
+                    # Amplify the bonus for complete multi-token matches.
+                    base_bonus = 28.0 + 6.0 * len(name_tokens)
+                    if len(name_tokens) >= 2:
+                        # Extra boost for multi-token discriminative names
+                        base_bonus += 12.0 * (len(name_tokens) - 1)
+                    score += base_bonus
                 elif matched:
                     score += 9.0 * matched
             # Structural importance (call-graph eigenvector centrality / PageRank):
