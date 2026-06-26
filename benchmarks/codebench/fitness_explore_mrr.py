@@ -19,6 +19,7 @@ faster signal. Emits one JSON line:
   {"mrr":float,"hit1":float,"hit3":float,"n":int,"by_repo":{prefix:{mrr,n}}}
 """
 
+import contextlib
 import json
 import multiprocessing
 import os
@@ -35,13 +36,52 @@ try:
 except Exception:
     get_zoekt_supervisor = None
 
+import argparse as _ap
+
+_parser = _ap.ArgumentParser(description="Explore MRR benchmark")
+_parser.add_argument(
+    "--full",
+    action="store_true",
+    help="Run all available query pairs (no cap).",
+)
+_parser.add_argument(
+    "--sample",
+    nargs="?",
+    const=50,
+    type=int,
+    default=None,
+    metavar="N",
+    help="Total queries to sample across repos (default 50 when flag given).",
+)
+_parser.add_argument(
+    "--repo",
+    default=os.environ.get("FITNESS_REPO", ""),
+    metavar="SUBSTR",
+    help="Filter to repos whose prefix contains SUBSTR.",
+)
+_args, _ = _parser.parse_known_args()
+
 with open(os.environ.get("FITNESS_PAIRS", "/tmp/bench_pairs_multi.json")) as fh:
     data = json.load(fh)
 pairs = data["pairs"]
 true_map = data["true_map"]
 repos = data["repos"]
-SAMPLE = int(os.environ.get("FITNESS_SAMPLE", "0"))  # 0 = all
-REPO = os.environ.get("FITNESS_REPO", "")  # substring filter on repo prefix; "" = all
+# Backward-compat env vars; CLI flags take precedence.
+_env_sample = int(os.environ.get("FITNESS_SAMPLE", "0"))
+REPO = _args.repo
+# Resolve final total-query cap:
+#   --full  → 0 (no cap)
+#   --sample N  → N  (or 50 if flag given without value)
+#   default (no flags)  → 500
+#   FITNESS_SAMPLE env var  → still honoured if no CLI flag given
+if _args.full:
+    SAMPLE = 0
+elif _args.sample is not None:
+    SAMPLE = _args.sample
+elif _env_sample:
+    SAMPLE = _env_sample
+else:
+    SAMPLE = 500  # default: 500 diverse queries across repos
 
 
 def norm(p):
@@ -65,10 +105,8 @@ for prefix, meta in repos.items():
     eng._cache_get = lambda *a, **k: (False, None)  # force recompute (no cross-candidate cache)
     eng._cache_set = lambda *a, **k: None
     if get_zoekt_supervisor is not None:
-        try:
+        with contextlib.suppress(Exception):
             get_zoekt_supervisor(Path(meta["ws"]))
-        except Exception:
-            pass
     engines[prefix] = eng
 
 # unique queries per repo (deterministic optional sample)
@@ -80,7 +118,10 @@ for q, _tid, prefix in pairs:
 if REPO:
     uq = {p: qs for p, qs in uq.items() if REPO in p}
 if SAMPLE:
-    uq = {p: sorted(qs)[:SAMPLE] for p, qs in uq.items()}
+    # Spread SAMPLE evenly across repos so each repo is represented.
+    n_repos = max(len(uq), 1)
+    per_repo = max(1, SAMPLE // n_repos)
+    uq = {p: sorted(qs)[:per_repo] for p, qs in uq.items()}
 runset = {p: set(qs) for p, qs in uq.items()}
 
 # Parallel: explores are independent reads. The engine is thread-safe per call
@@ -95,10 +136,8 @@ _lean = os.environ.get("FITNESS_LEAN") == "1"
 for _prefix in list(uq):
     _eng = engines.get(_prefix)
     if _eng is not None:
-        try:
+        with contextlib.suppress(Exception):
             _eng._symbol_centrality_map()
-        except Exception:
-            pass
 
 _tasks = [(prefix, q) for prefix, qs in uq.items() for q in qs]
 _total = len(_tasks)
