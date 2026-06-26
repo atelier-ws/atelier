@@ -108,14 +108,12 @@ def _render_symbol(payload: Mapping[str, Any], *, include_source: bool = True) -
     symbol = str(payload.get("qualified_name") or payload.get("name") or payload.get("symbol_name") or symbol_id or "?")
     kind = str(payload.get("kind") or "?")
     signature = str(payload.get("signature") or "").strip()
-    lines: list[str] = []
+    # Header: same format as explore sections — #### path:Lx-Ly — name [kind]
+    range_tag = f":L{start_line}-L{end_line}" if start_line and end_line >= start_line else (f":L{start_line}" if start_line else "")
+    header = f"#### {file_path}{range_tag} — {symbol} [{kind}]"
+    lines: list[str] = [header]
     if symbol_id:
         lines.append(f"- id: {symbol_id}")
-    lines.append(f"- {symbol} [{kind}]")
-    if start_line > 0 and end_line >= start_line:
-        lines.append(f"- location: {file_path}:L{start_line}-L{end_line}")
-    else:
-        lines.append(f"- location: {file_path}")
     if signature:
         lines.append(f"- signature: {signature}")
     source = str(payload.get("source") or "")
@@ -124,12 +122,11 @@ def _render_symbol(payload: Mapping[str, Any], *, include_source: bool = True) -
         body_lines = source.splitlines()
         if len(body_lines) <= _NODE_BODY_MAX_LINES:
             kept = body_lines
-            lines.append("- source:")
         else:
             kept = body_lines[:_NODE_BODY_HEAD_LINES]
             lines.append(
-                f"- source (first {_NODE_BODY_HEAD_LINES} of {len(body_lines)} lines; "
-                f"read range L{start_line}-L{end_line} for the rest):"
+                f"*first {_NODE_BODY_HEAD_LINES} of {len(body_lines)} lines; "
+                f"read L{start_line}-L{end_line} for the rest*"
             )
         if start_line > 0:
             body = "\n".join(f"{start_line + idx}\t{line}" for idx, line in enumerate(kept))
