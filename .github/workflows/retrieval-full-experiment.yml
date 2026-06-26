@@ -1,23 +1,27 @@
-name: retrieval-full-experiment
+name: retrieval-file-fusion-experiments
 
 on:
   push:
     branches:
       - bench
     paths-ignore:
-      - "bench-results/line-fts/**"
+      - "bench-results/file-fusion/**"
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: retrieval-file-fusion-bench
+  cancel-in-progress: true
+
 jobs:
-  retrieval-ab:
+  retrieval-experiments:
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
     steps:
-      - name: Check out mirrored bench branch
+      - name: Check out bench branch
         uses: actions/checkout@v4
         with:
           ref: bench
@@ -41,13 +45,15 @@ jobs:
           set -euo pipefail
           uv run atelier eval --help | grep -q retrieval
           ATELIER_EXPERIMENT_LINE_FTS=1 \
+          ATELIER_EXPERIMENT_FUSION_MODE=conservative \
           PYTHONPATH="$GITHUB_WORKSPACE/experiments/retrieval_line_fts" \
           uv run python - <<'PY'
           from atelier.core.capabilities.code_context.engine import CodeContextEngine
 
           assert getattr(CodeContextEngine, "_line_fts_experiment_installed", False)
           assert hasattr(CodeContextEngine, "_line_fts_candidate_files")
-          print("retrieval CLI and line-FTS experiment hook verified")
+          assert hasattr(CodeContextEngine, "_file_fusion_original_tool_explore")
+          print("retrieval CLI and post-retrieval file-fusion hook verified")
           PY
 
       - name: Provision repositories and SQLite indexes
@@ -60,47 +66,69 @@ jobs:
           uv run python scripts/provision_retrieval_ci.py 2>&1 | tee artifacts/provision.txt
           cp benchmarks/codebench/data/bench_pairs_multi.json artifacts/bench_pairs_runtime.json
 
-      - name: Run baseline
+      - name: Run experiment sweep only
         shell: bash
         run: |
-          set -o pipefail
-          uv run atelier eval retrieval --full 2>&1 | tee artifacts/baseline.txt
-
-      - name: Run line-FTS fusion experiment
-        shell: bash
-        env:
-          ATELIER_EXPERIMENT_LINE_FTS: "1"
-        run: |
-          set -o pipefail
+          set -euo pipefail
+          export ATELIER_EXPERIMENT_LINE_FTS=1
           export PYTHONPATH="$GITHUB_WORKSPACE/experiments/retrieval_line_fts${PYTHONPATH:+:$PYTHONPATH}"
-          uv run atelier eval retrieval --full 2>&1 | tee artifacts/line-fts.txt
+          for mode in conservative balanced aggressive; do
+            echo "===== file-fusion mode: ${mode} ====="
+            ATELIER_EXPERIMENT_FUSION_MODE="$mode" \
+              uv run atelier eval retrieval --full 2>&1 | tee "artifacts/${mode}.txt"
+          done
 
-      - name: Upload provisioning and A/B logs
+      - name: Build compact result summary
+        if: always()
+        shell: bash
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+
+          results = {}
+          for mode in ("conservative", "balanced", "aggressive"):
+              path = Path("artifacts") / f"{mode}.txt"
+              if not path.exists():
+                  continue
+              for line in reversed(path.read_text(errors="replace").splitlines()):
+                  try:
+                      payload = json.loads(line)
+                  except Exception:
+                      continue
+                  if isinstance(payload, dict) and "mrr" in payload:
+                      results[mode] = payload
+                      break
+          Path("artifacts/summary.json").write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
+          print(json.dumps({k: {"mrr": v.get("mrr"), "hit1": v.get("hit1"), "p95": v.get("latency_ms", {}).get("p95")} for k, v in results.items()}, indent=2))
+          PY
+
+      - name: Upload experiment logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: retrieval-line-fts-ab-${{ github.sha }}
+          name: retrieval-file-fusion-${{ github.sha }}
           path: artifacts/
           if-no-files-found: warn
 
-      - name: Persist logs on bench branch
+      - name: Persist experiment logs on bench branch
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p bench-results/line-fts
-          for name in provision baseline line-fts bench_pairs_runtime; do
+          mkdir -p bench-results/file-fusion
+          for name in provision conservative balanced aggressive summary bench_pairs_runtime; do
             if [[ -f "artifacts/${name}.txt" ]]; then
-              cp "artifacts/${name}.txt" "bench-results/line-fts/${name}.txt"
+              cp "artifacts/${name}.txt" "bench-results/file-fusion/${name}.txt"
             elif [[ -f "artifacts/${name}.json" ]]; then
-              cp "artifacts/${name}.json" "bench-results/line-fts/${name}.json"
+              cp "artifacts/${name}.json" "bench-results/file-fusion/${name}.json"
             fi
           done
           printf 'source_sha=%s\nrun_id=%s\nrun_attempt=%s\n' \
             "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
-            > bench-results/line-fts/metadata.txt
+            > bench-results/file-fusion/metadata.txt
           git config user.name "atelier-bench-bot"
           git config user.email "atelier-bench-bot@users.noreply.github.com"
-          git add bench-results/line-fts
-          git commit -m "bench: persist retrieval A/B results [skip ci]" || exit 0
+          git add bench-results/file-fusion
+          git commit -m "bench: persist file-fusion experiment results [skip ci]" || exit 0
           git push origin HEAD:bench
