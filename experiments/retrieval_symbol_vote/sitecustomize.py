@@ -1,16 +1,15 @@
-"""Opt-in retrieval experiment: generic code-aware multi-channel fusion.
+"""Opt-in retrieval experiment: generic score-aware hybrid code retrieval.
 
 Activate with ``ATELIER_EXPERIMENT_SYMBOL_VOTE=1`` and put this directory on
 ``PYTHONPATH``. This module is benchmark-only; production retrieval is untouched.
 
-The retrieval design is benchmark-agnostic:
-* parse a query into definitions, identifiers, literals, and prose terms;
-* retrieve independently from baseline, Zoekt, exact symbols, decomposed anchors,
-  and line-level FTS;
-* combine ranked lists with intent-routed reciprocal-rank fusion (RRF).
+The design is repository- and benchmark-agnostic:
+* preserve complete code identifiers during query analysis;
+* retrieve from baseline, Zoekt, exact symbols, decomposed anchors, and line FTS;
+* retain each channel's internal confidence instead of flattening everything to rank;
+* combine robust rank evidence with normalized coverage, proximity, and kind signals.
 
-The module does not import benchmark pairs, issue IDs, repositories, or gold files.
-Diagnostics contain only query plans, candidate channels, and final scores.
+No benchmark pairs, issue IDs, repository names, or gold files are imported.
 """
 
 from __future__ import annotations
@@ -43,6 +42,13 @@ _STOP = {
     "for", "from", "if", "import", "in", "is", "lambda", "none", "not",
     "or", "pass", "raise", "return", "self", "super", "true", "try",
     "while", "with", "yield",
+}
+_PROSE_STOP = _STOP | {
+    "the", "this", "that", "these", "those", "then", "than", "into", "onto",
+    "when", "where", "which", "what", "with", "without", "within", "should",
+    "could", "would", "have", "has", "had", "does", "did", "done", "make",
+    "using", "used", "use", "value", "values", "result", "results", "file",
+    "files", "code", "name", "string", "object", "method", "function",
 }
 _DIAGNOSTIC_FD: int | None = None
 
@@ -100,23 +106,23 @@ def _parse_query(engine_mod: Any, query: str) -> QueryPlan:
     )
     definition_names = [name for _kind, name in definitions]
 
-    raw_identifiers: list[str] = []
+    identifiers: list[str] = []
+    alternatives: list[str] = []
+    for segment in query.split("|"):
+        match = _DEFINITION_RE.search(segment)
+        if match:
+            alternatives.append(match.group("name"))
+        else:
+            bare = _bare_alternative(segment)
+            if bare is not None:
+                alternatives.append(bare)
+
     for token in _IDENTIFIER_RE.findall(query):
         low = token.lower()
         if low in _STOP or len(token) < 3:
             continue
         if _is_code_shaped(token):
-            raw_identifiers.append(token)
-
-    alternatives: list[str] = []
-    for segment in query.split("|"):
-        definition_match = _DEFINITION_RE.search(segment)
-        if definition_match:
-            alternatives.append(definition_match.group("name"))
-            continue
-        bare = _bare_alternative(segment)
-        if bare is not None and bare.lower() not in _STOP:
-            alternatives.append(bare)
+            identifiers.append(token)
 
     normalized = query.strip()
     if engine_mod._is_precise_symbol_query(normalized):
@@ -127,22 +133,39 @@ def _parse_query(engine_mod: Any, query: str) -> QueryPlan:
         for match in _QUOTED_RE.finditer(query)
         if match.group("value").strip()
     ]
-    terms = [
+    prose_terms = [
         str(term)
         for term in engine_mod._query_terms(query)
-        if len(str(term)) >= 2
+        if len(str(term)) >= 3 and str(term).lower() not in _PROSE_STOP
     ]
 
-    identifiers = _dedupe(
-        [*definition_names, *raw_identifiers, *alternatives],
-        limit=16,
+    identifier_tuple = _dedupe(
+        [*definition_names, *alternatives, *identifiers],
+        limit=18,
     )
-    anchors = _dedupe(
-        [*definition_names, *alternatives, *raw_identifiers],
+    anchor_tuple = _dedupe(
+        [*definition_names, *alternatives, *identifiers],
         limit=10,
     )
-    term_tuple = _dedupe(terms, limit=16)
     literal_tuple = _dedupe(literals, limit=8)
+
+    if definitions:
+        intent = "definition"
+    elif engine_mod._is_precise_symbol_query(normalized):
+        intent = "symbol"
+    elif identifier_tuple or "|" in query:
+        intent = "code"
+    else:
+        intent = "prose"
+
+    # Preserve complete identifiers. Splitting file_path into file/path destroys
+    # the strongest lexical signal and creates broad false positives.
+    if intent in {"definition", "symbol"}:
+        term_values = [*identifier_tuple, *literal_tuple]
+    elif intent == "code":
+        term_values = [*identifier_tuple, *literal_tuple, *prose_terms]
+    else:
+        term_values = [*literal_tuple, *prose_terms]
 
     wants_tests = bool(
         re.search(
@@ -160,22 +183,12 @@ def _parse_query(engine_mod: Any, query: str) -> QueryPlan:
             re.IGNORECASE,
         )
     )
-
-    if definitions:
-        intent = "definition"
-    elif engine_mod._is_precise_symbol_query(normalized):
-        intent = "symbol"
-    elif identifiers or "|" in query:
-        intent = "code"
-    else:
-        intent = "prose"
-
     return QueryPlan(
         intent=intent,
         definitions=definitions,
-        identifiers=identifiers,
-        anchors=anchors,
-        terms=term_tuple,
+        identifiers=identifier_tuple,
+        anchors=anchor_tuple,
+        terms=_dedupe(term_values, limit=16),
         literals=literal_tuple,
         wants_tests=wants_tests,
         wants_auxiliary=wants_auxiliary,
@@ -183,7 +196,15 @@ def _parse_query(engine_mod: Any, query: str) -> QueryPlan:
 
 
 def _path_parts(file_path: str) -> set[str]:
-    return {part for part in re.split(r"[/._-]+", file_path.lower()) if part}
+    return {
+        part
+        for part in re.split(r"[/._-]+", file_path.lower())
+        if part
+    }
+
+
+def _fts_phrase(term: str) -> str:
+    return '"' + term.replace('"', '""') + '"'
 
 
 def _append_diagnostic(payload: dict[str, Any]) -> None:
@@ -229,14 +250,13 @@ def _install() -> None:
         path: str = ".",
         max_files: int = 40,
     ) -> list[str]:
-        overfetch = max(max_files, 96)
         files = original_zoekt(
             self,
             query,
             path=path,
-            max_files=overfetch,
+            max_files=max(max_files, 96),
         )
-        self.__dict__["_generic_fusion_zoekt_capture"] = (query, files)
+        self.__dict__["_hybrid_zoekt_capture"] = (query, files)
         return files[:max_files]
 
     def exact_symbol_candidates(
@@ -246,11 +266,8 @@ def _install() -> None:
         if not plan.identifiers:
             return [], {}
 
-        token_by_lower = {
-            token.lower(): token
-            for token in plan.identifiers
-        }
-        placeholders = ",".join("?" for _ in token_by_lower)
+        tokens = {token.lower(): token for token in plan.identifiers}
+        placeholders = ",".join("?" for _ in tokens)
         try:
             with self._connect(readonly=True) as conn:
                 rows = conn.execute(
@@ -276,7 +293,7 @@ def _install() -> None:
                     JOIN frequencies USING (token)
                     ORDER BY matched.file_path, matched.token, matched.kind
                     """,
-                    (self.repo_id, *token_by_lower),
+                    (self.repo_id, *tokens),
                 ).fetchall()
         except Exception:
             return [], {}
@@ -288,7 +305,7 @@ def _install() -> None:
                 {"class", "function", "method"},
             )
         )
-        explicit = {
+        expected = {
             name.lower(): kind
             for kind, name in plan.definitions
         }
@@ -307,15 +324,13 @@ def _install() -> None:
                 continue
             seen.add(key)
 
-            is_definition = kind in definition_kinds
-            expected_kind = explicit.get(token)
+            expected_kind = expected.get(token)
             kind_match = (
                 expected_kind == "class" and kind == "class"
             ) or (
                 expected_kind == "def"
                 and kind in {"function", "method"}
             )
-            idf = math.log1p(1.0 + 1.0 / df)
             item = per_file.setdefault(
                 file_path,
                 {
@@ -327,25 +342,40 @@ def _install() -> None:
                 },
             )
             item["tokens"].add(token)
-            if is_definition:
+            if kind in definition_kinds:
                 item["definition_tokens"].add(token)
             if kind_match:
                 item["kind_matches"].add(token)
-            item["idf"] += idf
+            item["idf"] += math.log1p(1.0 + 1.0 / df)
             item["best_df"] = min(int(item["best_df"]), df)
 
-        def key(file_path: str) -> tuple[Any, ...]:
-            item = per_file[file_path]
-            return (
-                -len(item["kind_matches"]),
-                -len(item["tokens"]),
-                -len(item["definition_tokens"]),
-                -float(item["idf"]),
-                int(item["best_df"]),
-                file_path,
+        identifier_count = max(1, len(plan.identifiers))
+        definition_count = max(1, len(plan.definitions))
+        for item in per_file.values():
+            token_coverage = len(item["tokens"]) / identifier_count
+            kind_coverage = len(item["kind_matches"]) / definition_count
+            definition_coverage = (
+                len(item["definition_tokens"]) / identifier_count
+            )
+            rarity = min(1.0, float(item["idf"]) / identifier_count)
+            item["confidence"] = min(
+                1.0,
+                0.42 * token_coverage
+                + 0.30 * kind_coverage
+                + 0.16 * definition_coverage
+                + 0.12 * rarity,
             )
 
-        ordered = sorted(per_file, key=key)
+        ordered = sorted(
+            per_file,
+            key=lambda file_path: (
+                -float(per_file[file_path]["confidence"]),
+                -len(per_file[file_path]["kind_matches"]),
+                -len(per_file[file_path]["tokens"]),
+                int(per_file[file_path]["best_df"]),
+                file_path,
+            ),
+        )
         details = {
             file_path: {
                 "tokens": sorted(per_file[file_path]["tokens"]),
@@ -357,6 +387,10 @@ def _install() -> None:
                 ),
                 "idf": round(float(per_file[file_path]["idf"]), 6),
                 "best_df": int(per_file[file_path]["best_df"]),
+                "confidence": round(
+                    float(per_file[file_path]["confidence"]),
+                    6,
+                ),
             }
             for file_path in ordered
         }
@@ -370,7 +404,7 @@ def _install() -> None:
             return [], {}
 
         cache: dict[str, list[str]] = self.__dict__.setdefault(
-            "_generic_fusion_anchor_cache",
+            "_hybrid_anchor_cache",
             {},
         )
         per_file: dict[str, dict[str, Any]] = {}
@@ -397,14 +431,27 @@ def _install() -> None:
                     },
                 )
                 item["anchors"].add(anchor.lower())
-                item["rrf"] += 1.0 / (20.0 + rank)
-                item["best_rank"] = min(int(item["best_rank"]), rank)
+                item["rrf"] += 1.0 / (8.0 + rank)
+                item["best_rank"] = min(
+                    int(item["best_rank"]),
+                    rank,
+                )
+
+        anchor_count = max(1, len(plan.anchors))
+        max_rrf = sum(1.0 / 9.0 for _ in plan.anchors)
+        for item in per_file.values():
+            coverage = len(item["anchors"]) / anchor_count
+            normalized_rrf = min(1.0, float(item["rrf"]) / max_rrf)
+            item["confidence"] = min(
+                1.0,
+                0.72 * coverage + 0.28 * normalized_rrf,
+            )
 
         ordered = sorted(
             per_file,
             key=lambda file_path: (
+                -float(per_file[file_path]["confidence"]),
                 -len(per_file[file_path]["anchors"]),
-                -float(per_file[file_path]["rrf"]),
                 int(per_file[file_path]["best_rank"]),
                 file_path,
             ),
@@ -414,6 +461,10 @@ def _install() -> None:
                 "anchors": sorted(per_file[file_path]["anchors"]),
                 "rrf": round(float(per_file[file_path]["rrf"]), 6),
                 "best_rank": int(per_file[file_path]["best_rank"]),
+                "confidence": round(
+                    float(per_file[file_path]["confidence"]),
+                    6,
+                ),
             }
             for file_path in ordered
         }
@@ -421,26 +472,21 @@ def _install() -> None:
 
     def line_fts_candidates(
         self: Any,
-        query: str,
         plan: QueryPlan,
     ) -> tuple[list[str], dict[str, dict[str, Any]]]:
-        or_query = engine_mod._safe_fts_query(query)
-        if not or_query:
-            return [], {}
-        and_query = engine_mod._fts_and_query(query)
-        term_set = {term.lower() for term in plan.terms}
-        if not term_set:
-            term_set = {
-                token.lower()
-                for token in plan.identifiers
-            }
-        if not term_set:
+        if not plan.terms:
             return [], {}
 
-        rows: list[tuple[Any, str]] = []
+        terms = [term.lower() for term in plan.terms]
+        or_query = " OR ".join(_fts_phrase(term) for term in terms)
+        and_query = " AND ".join(
+            _fts_phrase(term)
+            for term in terms[: min(8, len(terms))]
+        )
+        rows: list[tuple[Any, bool]] = []
         try:
             with self._connect(readonly=True) as conn:
-                if and_query:
+                if len(terms) >= 2:
                     and_rows = conn.execute(
                         """
                         SELECT file_path,
@@ -455,7 +501,7 @@ def _install() -> None:
                         """,
                         (and_query, self.repo_id),
                     ).fetchall()
-                    rows.extend((row, "and") for row in and_rows)
+                    rows.extend((row, True) for row in and_rows)
 
                 or_rows = conn.execute(
                     """
@@ -471,12 +517,14 @@ def _install() -> None:
                     """,
                     (or_query, self.repo_id),
                 ).fetchall()
-                rows.extend((row, "or") for row in or_rows)
+                rows.extend((row, False) for row in or_rows)
         except Exception:
             return [], {}
 
+        term_set = set(terms)
+        literal_set = {literal.lower() for literal in plan.literals}
         per_file: dict[str, dict[str, Any]] = {}
-        for row, source in rows:
+        for row, from_and in rows:
             file_path = str(row["file_path"] or "")
             if not file_path:
                 continue
@@ -488,14 +536,11 @@ def _install() -> None:
                 continue
 
             text = str(row["text"] or "").lower()
-            covered = {
-                term
-                for term in term_set
-                if term in text
-            }
+            covered = {term for term in term_set if term in text}
             if not covered:
                 continue
-
+            line_coverage = len(covered) / max(1, len(term_set))
+            literal_hits = sum(1 for literal in literal_set if literal in text)
             item = per_file.setdefault(
                 file_path,
                 {
@@ -503,61 +548,89 @@ def _install() -> None:
                     "hit_count": 0,
                     "and_hit": False,
                     "best_rank": float(row["rank"] or 0.0),
+                    "max_line_coverage": 0.0,
+                    "multi_term_lines": 0,
+                    "literal_hits": 0,
                 },
             )
             item["covered"].update(covered)
             item["hit_count"] += 1
-            item["and_hit"] = bool(
-                item["and_hit"] or source == "and"
-            )
+            item["and_hit"] = bool(item["and_hit"] or from_and)
             item["best_rank"] = min(
                 float(item["best_rank"]),
                 float(row["rank"] or 0.0),
             )
+            item["max_line_coverage"] = max(
+                float(item["max_line_coverage"]),
+                line_coverage,
+            )
+            if len(covered) >= 2:
+                item["multi_term_lines"] += 1
+            item["literal_hits"] += literal_hits
 
-        def key(file_path: str) -> tuple[Any, ...]:
-            item = per_file[file_path]
-            test_bucket = (
-                1
-                if not plan.wants_tests and _TEST_RE.search(file_path)
-                else 0
+        for file_path, item in per_file.items():
+            file_coverage = len(item["covered"]) / max(1, len(term_set))
+            repeat_conf = min(
+                1.0,
+                math.log1p(int(item["hit_count"])) / math.log(13.0),
             )
-            aux_bucket = (
-                1
-                if not plan.wants_auxiliary and _AUX_RE.search(file_path)
-                else 0
+            proximity_conf = min(
+                1.0,
+                float(item["max_line_coverage"])
+                + 0.08 * min(int(item["multi_term_lines"]), 4),
             )
-            coverage = (
-                len(item["covered"])
-                / max(1, len(term_set))
+            literal_conf = min(
+                1.0,
+                int(item["literal_hits"]) / max(1, len(literal_set)),
+            ) if literal_set else 0.0
+            confidence = (
+                0.44 * file_coverage
+                + 0.26 * proximity_conf
+                + 0.12 * repeat_conf
+                + 0.10 * float(bool(item["and_hit"]))
+                + 0.08 * literal_conf
             )
-            return (
-                test_bucket,
-                aux_bucket,
-                -int(item["and_hit"]),
-                -coverage,
-                -min(int(item["hit_count"]), 12),
-                float(item["best_rank"]),
+            if not plan.wants_tests and _TEST_RE.search(file_path):
+                confidence *= 0.78
+            if not plan.wants_auxiliary and _AUX_RE.search(file_path):
+                confidence *= 0.68
+            item["file_coverage"] = file_coverage
+            item["confidence"] = min(1.0, confidence)
+
+        ordered = sorted(
+            per_file,
+            key=lambda file_path: (
+                -float(per_file[file_path]["confidence"]),
+                -float(per_file[file_path]["file_coverage"]),
+                -float(per_file[file_path]["max_line_coverage"]),
+                -int(per_file[file_path]["and_hit"]),
+                float(per_file[file_path]["best_rank"]),
                 file_path,
-            )
-
-        ordered = sorted(per_file, key=key)
+            ),
+        )
         details = {
             file_path: {
                 "covered": sorted(per_file[file_path]["covered"]),
-                "coverage": round(
-                    len(per_file[file_path]["covered"])
-                    / max(1, len(term_set)),
+                "file_coverage": round(
+                    float(per_file[file_path]["file_coverage"]),
                     6,
                 ),
-                "hit_count": int(
-                    per_file[file_path]["hit_count"]
+                "max_line_coverage": round(
+                    float(per_file[file_path]["max_line_coverage"]),
+                    6,
                 ),
-                "and_hit": bool(
-                    per_file[file_path]["and_hit"]
+                "multi_term_lines": int(
+                    per_file[file_path]["multi_term_lines"]
                 ),
+                "hit_count": int(per_file[file_path]["hit_count"]),
+                "and_hit": bool(per_file[file_path]["and_hit"]),
+                "literal_hits": int(per_file[file_path]["literal_hits"]),
                 "best_rank": round(
                     float(per_file[file_path]["best_rank"]),
+                    6,
+                ),
+                "confidence": round(
+                    float(per_file[file_path]["confidence"]),
                     6,
                 ),
             }
@@ -571,10 +644,7 @@ def _install() -> None:
         *args: Any,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        self.__dict__.pop(
-            "_generic_fusion_zoekt_capture",
-            None,
-        )
+        self.__dict__.pop("_hybrid_zoekt_capture", None)
         payload = original_tool_explore(
             self,
             query,
@@ -605,9 +675,7 @@ def _install() -> None:
                 baseline_entries[file_path] = entry
                 baseline_files.append(file_path)
 
-        captured = self.__dict__.get(
-            "_generic_fusion_zoekt_capture"
-        )
+        captured = self.__dict__.get("_hybrid_zoekt_capture")
         full_zoekt = (
             list(captured[1])
             if isinstance(captured, tuple)
@@ -616,50 +684,10 @@ def _install() -> None:
             else []
         )
         plan = _parse_query(engine_mod, query)
-        exact_files, exact_details = exact_symbol_candidates(
-            self,
-            plan,
-        )
-        anchor_files, anchor_details = anchor_zoekt_candidates(
-            self,
-            plan,
-        )
-        line_files, line_details = line_fts_candidates(
-            self,
-            query,
-            plan,
-        )
+        exact_files, exact_details = exact_symbol_candidates(self, plan)
+        anchor_files, anchor_details = anchor_zoekt_candidates(self, plan)
+        line_files, line_details = line_fts_candidates(self, plan)
 
-        weights = {
-            "definition": {
-                "baseline": 1.0,
-                "zoekt": 1.0,
-                "exact": 2.4,
-                "anchors": 1.5,
-                "line": 0.7,
-            },
-            "symbol": {
-                "baseline": 1.0,
-                "zoekt": 1.1,
-                "exact": 1.9,
-                "anchors": 1.3,
-                "line": 0.8,
-            },
-            "code": {
-                "baseline": 1.0,
-                "zoekt": 1.0,
-                "exact": 1.3,
-                "anchors": 1.4,
-                "line": 1.1,
-            },
-            "prose": {
-                "baseline": 1.0,
-                "zoekt": 1.0,
-                "exact": 0.5,
-                "anchors": 0.6,
-                "line": 1.8,
-            },
-        }[plan.intent]
         channels = {
             "baseline": baseline_files,
             "zoekt": full_zoekt,
@@ -667,87 +695,155 @@ def _install() -> None:
             "anchors": anchor_files,
             "line": line_files,
         }
+        # Intent routing is semantic, not repository-specific. Rank evidence is
+        # deliberately modest; confidence features below carry the fine ordering.
+        rank_weights = {
+            "definition": {
+                "baseline": 1.0,
+                "zoekt": 0.9,
+                "exact": 1.4,
+                "anchors": 1.1,
+                "line": 1.2,
+            },
+            "symbol": {
+                "baseline": 1.2,
+                "zoekt": 1.1,
+                "exact": 1.4,
+                "anchors": 1.1,
+                "line": 0.8,
+            },
+            "code": {
+                "baseline": 0.9,
+                "zoekt": 0.9,
+                "exact": 0.9,
+                "anchors": 1.1,
+                "line": 1.5,
+            },
+            "prose": {
+                "baseline": 0.8,
+                "zoekt": 1.0,
+                "exact": 0.3,
+                "anchors": 0.4,
+                "line": 1.8,
+            },
+        }[plan.intent]
+        confidence_weights = {
+            "definition": {
+                "exact": 1.25,
+                "anchors": 0.60,
+                "line": 1.05,
+            },
+            "symbol": {
+                "exact": 1.10,
+                "anchors": 0.55,
+                "line": 0.55,
+            },
+            "code": {
+                "exact": 0.70,
+                "anchors": 0.75,
+                "line": 1.20,
+            },
+            "prose": {
+                "exact": 0.15,
+                "anchors": 0.20,
+                "line": 1.40,
+            },
+        }[plan.intent]
 
-        rrf_k = 24.0
         scores: dict[str, float] = {}
         channel_ranks: dict[str, dict[str, int]] = {}
+        rrf_k = 8.0
         for channel, files in channels.items():
             channel_ranks[channel] = {
                 file_path: rank
                 for rank, file_path in enumerate(files, 1)
             }
-            weight = weights[channel]
+            weight = rank_weights[channel]
             for rank, file_path in enumerate(files, 1):
                 scores[file_path] = (
                     scores.get(file_path, 0.0)
                     + weight / (rrf_k + rank)
                 )
 
+        for file_path, detail in exact_details.items():
+            scores[file_path] = (
+                scores.get(file_path, 0.0)
+                + confidence_weights["exact"]
+                * float(detail["confidence"])
+            )
+        for file_path, detail in anchor_details.items():
+            scores[file_path] = (
+                scores.get(file_path, 0.0)
+                + confidence_weights["anchors"]
+                * float(detail["confidence"])
+            )
+        for file_path, detail in line_details.items():
+            scores[file_path] = (
+                scores.get(file_path, 0.0)
+                + confidence_weights["line"]
+                * float(detail["confidence"])
+            )
+
+        top_sets = {
+            channel: set(files[:32])
+            for channel, files in channels.items()
+        }
         explicit_names = {
             name.lower()
             for _kind, name in plan.definitions
         }
+        identifier_names = {
+            token.lower()
+            for token in plan.identifiers
+        }
         for file_path in list(scores):
-            exact_detail = exact_details.get(file_path, {})
-            kind_matches = set(
-                exact_detail.get("kind_matches", ())
+            support = sum(
+                file_path in top_set
+                for top_set in top_sets.values()
             )
+            if support >= 2:
+                scores[file_path] += 0.08 * (support - 1)
+
+            exact_detail = exact_details.get(file_path, {})
+            kind_matches = set(exact_detail.get("kind_matches", ()))
             if explicit_names and kind_matches:
                 scores[file_path] += (
-                    1.4 * len(explicit_names & kind_matches)
+                    0.90 * len(explicit_names & kind_matches)
                 )
 
             path_overlap = len(
-                {token.lower() for token in plan.identifiers}
-                & _path_parts(file_path)
+                identifier_names & _path_parts(file_path)
             )
             if path_overlap:
-                scores[file_path] += (
-                    0.025 * path_overlap
-                )
+                scores[file_path] += 0.035 * path_overlap
 
             if (
                 not plan.wants_tests
                 and _TEST_RE.search(file_path)
                 and file_path not in baseline_entries
             ):
-                scores[file_path] *= 0.82
+                scores[file_path] *= 0.78
             if (
                 not plan.wants_auxiliary
                 and _AUX_RE.search(file_path)
                 and file_path not in baseline_entries
             ):
-                scores[file_path] *= 0.75
+                scores[file_path] *= 0.68
             if (
                 file_path.endswith(".pyi")
                 and not re.search(r"\bpyi|stub\b", query, re.I)
             ):
-                scores[file_path] *= 0.84
+                scores[file_path] *= 0.82
 
         ordered = sorted(
             scores,
             key=lambda file_path: (
                 -scores[file_path],
-                channel_ranks["baseline"].get(
-                    file_path,
-                    10_000,
-                ),
-                channel_ranks["zoekt"].get(
-                    file_path,
-                    10_000,
-                ),
-                channel_ranks["exact"].get(
-                    file_path,
-                    10_000,
-                ),
-                channel_ranks["anchors"].get(
-                    file_path,
-                    10_000,
-                ),
-                channel_ranks["line"].get(
-                    file_path,
-                    10_000,
-                ),
+                channel_ranks["baseline"].get(file_path, 10_000),
+                channel_ranks["zoekt"].get(file_path, 10_000),
+                channel_ranks["exact"].get(file_path, 10_000),
+                channel_ranks["anchors"].get(file_path, 10_000),
+                channel_ranks["line"].get(file_path, 10_000),
                 file_path,
             ),
         )[:max_files]
@@ -786,13 +882,11 @@ def _install() -> None:
                 },
                 "final": ordered,
                 "scores": {
-                    file_path: round(
-                        scores[file_path],
-                        6,
-                    )
+                    file_path: round(scores[file_path], 6)
                     for file_path in ordered
                 },
-                "weights": weights,
+                "rank_weights": rank_weights,
+                "confidence_weights": confidence_weights,
                 "exact_details": {
                     file_path: exact_details[file_path]
                     for file_path in exact_files[:12]
@@ -811,15 +905,13 @@ def _install() -> None:
         result = dict(payload)
         result["files"] = fused_entries
         result["experiment"] = {
-            "name": "generic_code_aware_rrf_v5",
+            "name": "generic_score_aware_hybrid_v6",
             "intent": plan.intent,
         }
         return result
 
     engine_cls._zoekt_candidate_files = capturing_zoekt
-    engine_cls._generic_fusion_original_tool_explore = (
-        original_tool_explore
-    )
+    engine_cls._generic_fusion_original_tool_explore = original_tool_explore
     engine_cls.tool_explore = fused_tool_explore
     engine_cls._symbol_vote_experiment_installed = True
 
