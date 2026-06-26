@@ -76,30 +76,43 @@ def main() -> None:
     for q, tid, prefix in pairs:
         existing.setdefault((prefix, tid), set()).add(q.lower())
 
-    # How many synthetic pairs do we need to reach ~TARGET total?
-    TARGET = int(os.environ.get("AUGMENT_TARGET", "1200"))
-    budget = max(0, TARGET - len(pairs))
+    # Per-repo cap: no repo may exceed MAX_REPO_SHARE of the final total.
+    # Since we don't know the final total upfront, we fix a per-repo ceiling:
+    #   per_repo_cap = max natural count across all repos  (so we lift others to match)
+    # This guarantees every repo <= 1/n_repos of the total (<=~17% for 6 repos),
+    # well inside the 30% limit.  Override with AUGMENT_PER_REPO_CAP env var.
+    repo_natural: dict[str, int] = {}
+    for _, _, p in pairs:
+        repo_natural[p] = repo_natural.get(p, 0) + 1
+    default_cap = max(repo_natural.values()) if repo_natural else 400
+    PER_REPO_CAP = int(os.environ.get("AUGMENT_PER_REPO_CAP", str(default_cap)))
+    print(f"[augment] per-repo cap: {PER_REPO_CAP} (natural max: {default_cap})", flush=True)
+    for p, n in sorted(repo_natural.items()):
+        print(f"  {p}: {n} natural", flush=True)
+
+    # Track how many pairs exist per repo after augmentation
+    repo_count: dict[str, int] = dict(repo_natural)
 
     new_pairs: list[list[str]] = []
     skipped_missing = 0
 
     for tid, gold_files in true_map.items():
-        if len(new_pairs) >= budget:
-            break
         prefix = tid_prefix.get(tid, "")
         if not prefix:
+            continue
+        if repo_count.get(prefix, 0) >= PER_REPO_CAP:
             continue
         ws = pathlib.Path(repos[prefix]["ws"])
         ex = existing.get((prefix, tid), set())
         for rel in gold_files:
-            if len(new_pairs) >= budget:
+            if repo_count.get(prefix, 0) >= PER_REPO_CAP:
                 break
             full = ws / rel
             if not full.exists() or not rel.endswith(".py"):
                 skipped_missing += 1
                 continue
             for name in _extract_names(full):
-                if len(new_pairs) >= budget:
+                if repo_count.get(prefix, 0) >= PER_REPO_CAP:
                     break
                 if len(name) < 4 or len(name) > 60:
                     continue
@@ -109,11 +122,19 @@ def main() -> None:
                     continue
                 new_pairs.append([name, tid, prefix])
                 ex.add(name.lower())
+                repo_count[prefix] = repo_count.get(prefix, 0) + 1
 
     print(
-        f"[augment] +{len(new_pairs)} synthetic pairs (target {TARGET}, budget was {budget}, skipped {skipped_missing} missing/non-py)",
+        f"[augment] +{len(new_pairs)} synthetic pairs (skipped {skipped_missing} missing/non-py)",
         flush=True,
     )
+    print("[augment] final per-repo counts:", flush=True)
+    final: dict[str, int] = dict(repo_natural)
+    for _, _, p in new_pairs:
+        final[p] = final.get(p, 0) + 1
+    total_final = sum(final.values())
+    for p, n in sorted(final.items()):
+        print(f"  {p}: {n} ({100*n/total_final:.1f}%)", flush=True)
     merged = pairs + new_pairs
     uniq = len({(q, p) for q, _, p in merged})
     print(f"[augment] total: {len(merged)} pairs | {uniq} unique (query,repo)", flush=True)
