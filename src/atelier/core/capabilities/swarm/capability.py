@@ -914,13 +914,9 @@ def _compose_wave_spec_text(
         if child.metric is None:
             continue  # no fitness measured — not informative
         summary_snippet = (child.summary or "")[:120].replace("\n", " ")
-        rejected_entries.append(
-            f"  - {child.child_id} (metric={child.metric:.4f}): {summary_snippet}"
-        )
+        rejected_entries.append(f"  - {child.child_id} (metric={child.metric:.4f}): {summary_snippet}")
     if rejected_entries:
-        lines.append(
-            "- Approaches already tried that did NOT beat the baseline — DO NOT repeat these:"
-        )
+        lines.append("- Approaches already tried that did NOT beat the baseline — DO NOT repeat these:")
         lines.extend(rejected_entries[-12:])  # cap at last 12 to avoid bloat
     directives = state.next_wave_directives[:]
     if directives:
@@ -1061,7 +1057,7 @@ def _relative_git_status(worktree: Path) -> list[str]:
         path_text = text[3:]
         if " -> " in path_text:
             path_text = path_text.split(" -> ", 1)[1]
-        if path_text == ".atelier-swarm/" or path_text.startswith(".atelier-swarm/"):
+        if path_text == ".atelier/swarm/" or path_text.startswith(".atelier/swarm/"):
             continue
         filtered.append(text)
     return filtered
@@ -1679,13 +1675,19 @@ def read_swarm_log(
     state = load_swarm_state(resolve_state_path(root, run_id))
     if child_id is None:
         log_path = Path(state.coordinator_log_path or swarm_run_dir(root, run_id) / "coordinator.log")
+        source_label = f"coordinator log: {log_path}"
     else:
         child = next((item for item in state.children if item.child_id == child_id), None)
         if child is None:
             raise RuntimeError(f"unknown child id: {child_id}")
         log_path = Path(child.stderr_path if stderr else child.stdout_path)
+        stream_label = "stderr" if stderr else "stdout"
+        source_label = f"{child_id} {stream_label}: {log_path}"
     content = _tail_lines(log_path, tail).strip()
-    return content or f"No log output yet at {log_path}"
+    if not content:
+        return f"No log output yet at {log_path}"
+    child_cmd = " ".join(state.child_command)
+    return f"# {source_label}\n# command: {child_cmd}\n\n" + content
 
 
 def build_swarm_export_payload(state: SwarmRunState) -> dict[str, object]:
@@ -2016,7 +2018,7 @@ def _prepare_wave(state: SwarmRunState, root: Path, wave_index: int) -> SwarmWav
             child_id=child_id,
             ref=state.integration_base_ref,
         )
-        child_spec_path = worktree_path / ".atelier-swarm" / "PROGRAM.md"
+        child_spec_path = worktree_path / ".atelier/swarm" / "PROGRAM.md"
         child_spec_path.parent.mkdir(parents=True, exist_ok=True)
         child_spec_path.write_text(
             (
@@ -2848,54 +2850,61 @@ def format_swarm_summary(state: SwarmRunState) -> str:
     current_wave = next((wave for wave in state.waves if wave.wave_index == state.current_wave), None)
     planned_runs = current_wave.planned_runs if current_wave is not None else len(state.accepted_child_ids)
     planned_total = current_wave.max_runs if current_wave is not None else len(state.children)
+    running_children = sum(1 for child in state.children if child.status == "running")
+    failed_children = sum(1 for child in state.children if child.status == "failed")
+
+    evaluator_label = state.evaluator_backend
+    if state.evaluator_model:
+        evaluator_label += f" ({state.evaluator_model})"
+
     lines = [
-        f"run_id: {state.run_id}",
-        f"status: {state.status}",
-        f"mode: {state.mode}",
-        f"runner: {state.runner_name} ({state.runner_model or 'default'})",
-        f"runner_model: {state.runner_model or 'default'}",
-        f"evaluator: {state.evaluator_backend} ({state.evaluator_model or 'default'})",
-        f"evaluator_backend: {state.evaluator_backend}",
-        f"current_wave: {state.current_wave}",
-        f"accepted_children: {len(state.accepted_child_ids)}",
-        f"total_children: {len(state.children)}",
-        f"planned={planned_runs}/{planned_total}",
+        f"  run_id:      {state.run_id}",
+        f"  status:      {state.status}",
+        f"  mode:        {state.mode or 'single'}",
+        f"  runner:      {state.runner_name}{' (' + state.runner_model + ')' if state.runner_model else ''}",
+        f"  evaluator:   {evaluator_label}",
+        f"  wave:        {state.current_wave}",
+        f"  children:    {len(state.accepted_child_ids)} accepted / {len(state.children)} total / {failed_children} failed ({running_children} live)",
+        f"  planned:     {planned_runs}/{planned_total}",
+        f"  created:     {state.created_at.strftime('%Y-%m-%d %H:%M:%S')}",
     ]
+
     primary_winner = state.primary_winner_child_id or state.winner_child_id
     if primary_winner is None and state.accepted_child_ids:
         primary_winner = state.accepted_child_ids[0]
     if primary_winner:
-        lines.append(f"primary_winner: {primary_winner}")
+        lines.append(f"  winner:      {primary_winner}")
 
     if state.base_ref:
-        lines.append(f"base_ref: {state.base_ref}")
+        lines.append(f"  base:        {state.base_ref}")
     if state.integration_base_ref:
-        lines.append(f"integration_base_ref: {state.integration_base_ref}")
+        lines.append(f"  int_base:    {state.integration_base_ref}")
     if state.integration_worktree:
-        lines.append(f"integration_worktree: {state.integration_worktree}")
+        lines.append(f"  worktree:    {state.integration_worktree}")
 
     if state.stop_reason:
-        lines.append(f"stop_reason: {state.stop_reason}")
+        lines.append(f"  stopped:     {state.stop_reason}")
     if state.convergence_status and state.convergence_status != "continue":
-        lines.append(f"convergence_status: {state.convergence_status}")
-        lines.append(f"convergence: {state.convergence_status}")
+        lines.append(f"  converge:    {state.convergence_status}")
     if state.convergence_summary:
-        lines.append(f"convergence_summary: {state.convergence_summary}")
-    failed_children = sum(1 for child in state.children if child.status == "failed")
-    lines.append(f"failed_children: {failed_children}")
+        lines.append(f"  converge_notes: {state.convergence_summary}")
+
+    if state.coordinator_log_path:
+        lines.append(f"  log:         {state.coordinator_log_path}")
 
     if state.accepted_commits:
-        lines.append("\nACCEPTED COMMITS:")
+        lines.append("")
+        lines.append("  ACCEPTED COMMITS:")
         for accepted in state.accepted_commits:
-            header = f"  {accepted.order}. {accepted.child_id} -> {accepted.commit_ref[:8]}"
+            header = f"    {accepted.order}. {accepted.child_id} -> {accepted.commit_ref[:8]}"
             if accepted.score is not None:
                 header += f" (score: {accepted.score:.1f})"
             lines.append(header)
             if accepted.summary:
                 for s_line in accepted.summary.strip().splitlines():
-                    lines.append(f"     {s_line}")
+                    lines.append(f"      {s_line}")
             if accepted.files_changed:
-                lines.append(f"     files: {', '.join(accepted.files_changed)}")
+                lines.append(f"      files: {', '.join(accepted.files_changed)}")
 
     # Group children by wave
     children_by_wave: dict[int, list[SwarmChildState]] = {}
@@ -2903,23 +2912,26 @@ def format_swarm_summary(state: SwarmRunState) -> str:
         children_by_wave.setdefault(child.wave_index, []).append(child)
 
     if children_by_wave:
-        lines.append("\nWAVES & CHILDREN:")
+        lines.append("")
+        lines.append("  WAVES & CHILDREN:")
         for wave_idx in sorted(children_by_wave.keys()):
             wave_state = next((w for w in state.waves if w.wave_index == wave_idx), None)
-            wave_info = f"Wave {wave_idx}"
+            wave_info = f"    Wave {wave_idx}"
             if wave_state:
                 wave_info += f" [{wave_state.status}]"
                 if wave_state.summary:
                     wave_info += f": {wave_state.summary}"
-            lines.append(f"  {wave_info}")
+            lines.append(wave_info)
 
             for child in children_by_wave[wave_idx]:
-                status_icon = "✓" if child.accepted else "✗" if child.status in ("failed", "stopped") else "●"
+                status_icon = (
+                    "\u2713" if child.accepted else "\u2717" if child.status in ("failed", "stopped") else "\u25cf"
+                )
                 status_label: str = child.status
                 if child.status == "running" and child.current_activity:
                     status_label = f"running ({child.current_activity})"
 
-                info = f"    {status_icon} {child.child_id:<15} {status_label:<15}"
+                info = f"      {status_icon} {child.child_id:<15} {status_label:<15}"
                 if child.accepted_commit_ref:
                     info += f" commit={child.accepted_commit_ref[:8]}"
                 if child.score is not None:
@@ -2929,19 +2941,20 @@ def format_swarm_summary(state: SwarmRunState) -> str:
                 detail = child.summary or child.error or child.acceptance_note
                 if detail:
                     for d_line in detail.strip().splitlines():
-                        # Cap detail lines to keep it readable
                         capped = d_line if len(d_line) < 120 else d_line[:117] + "..."
-                        lines.append(f"      {capped}")
+                        lines.append(f"        {capped}")
 
     if state.next_wave_directives:
-        lines.append("\nNEXT WAVE DIRECTIVES:")
+        lines.append("")
+        lines.append("  NEXT WAVE DIRECTIVES:")
         for directive in state.next_wave_directives:
-            lines.append(f"  - {directive}")
+            lines.append(f"    - {directive}")
 
     if state.transplant_commands:
-        lines.append("\nTRANSPLANT COMMANDS:")
+        lines.append("")
+        lines.append("  TRANSPLANT COMMANDS:")
         for command in state.transplant_commands:
-            lines.append(f"  {command}")
+            lines.append(f"    {command}")
 
     return "\n".join(lines)
 

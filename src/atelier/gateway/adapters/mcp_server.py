@@ -5225,9 +5225,10 @@ def _smart_read_single(
     name="read",
     hidden_params=("projection_kind", "format", "include_meta", "filePath"),
     description=(
-        "Read a file (or batch) with automatic source projection. Modes: outline "
-        "(default for files >200 LOC), range (range='L42-L118' or 'L42-'), full "
-        "(expand=true), compact. Batch 2+ files via files=[{path, range?}, ...]."
+        "Read a file (or batch) by path, or a single symbol by name. "
+        "symbol='name' or ['a','b'] → exact source for one or more symbols, no FTS/graph noise. "
+        "File modes: outline (default for files >200 LOC), range (range='L42-L118' or 'L42-'), "
+        "full (expand=true), compact. Batch 2+ files via files=[{path, range?}, ...]."
     ),
     param_aliases={"max_lines": "lines"},
 )
@@ -5251,13 +5252,23 @@ def tool_smart_read(
             description="['path', ...] or [{path, range?, expand?, lines?}, ...] -> {files: [...]}. Use for 2+ files."
         ),
     ] = None,
+    symbol: Annotated[
+        str | list[str] | None,
+        Field(
+            description="Symbol name, qualified path, or list of names — returns exact source for each, no expansion."
+        ),
+    ] = None,
     projection_kind: str | None = None,
     format: Annotated[Literal["auto", "compact", "json"], _FORMAT_FIELD] = "auto",
     filePath: str = "",  # accepted alias for `path` (hidden from the published schema)
 ) -> dict[str, Any]:
-    """Read a file (or batch of files) with automatic source projection.
+    """Read a file (or batch of files) by path, or a single symbol by name.
 
-    Modes: outline (structure only — default for files >200 LOC), range
+    Symbol mode: read(symbol="name") or read(symbol="pkg.Class.method") returns the
+    verbatim source of exactly that symbol — direct index lookup, no FTS expansion.
+    Pass a list to fetch multiple: read(symbol=["Foo", "Bar.baz"]).
+
+    File modes: outline (structure only — default for files >200 LOC), range
     (range="42-118", "L42-L118", or open-ended "L42-" for an exact line slice),
     full (small files, or any file with expand=true), and compact (safe
     whitespace-only transformation of full reads — not byte-identical source).
@@ -5279,6 +5290,12 @@ def tool_smart_read(
     # in before any dispatch so both name the same file.
     if not path and filePath:
         path = filePath
+
+    # Symbol addressing: direct index lookup, no file I/O or FTS expansion.
+    if symbol is not None:
+        if isinstance(symbol, list):
+            return {"symbols": [_op_node(**_parse_symbol(s)) for s in symbol]}
+        return _op_node(**_parse_symbol(symbol))
 
     # Batch mode: process each file spec and return aggregated results.
     if files is not None:
@@ -10833,7 +10850,8 @@ def _warm_stdio_zoekt_webserver() -> None:
     Lifecycle: the webserver subprocess is owned by the ``ZoektServer`` instance
     cached in ``get_zoekt_server()``.  ``atexit`` ensures ``server.stop()`` is
     called on clean MCP exit so the child process is reaped properly.  If the
-    MCP process is killed, the OS reaps the subprocess via SIGHUP/SIGKILL.
+    MCP process is killed or crashes, ``prctl(PR_SET_PDEATHSIG)`` in the child
+    ensures the kernel delivers ``SIGTERM`` to the webserver subprocess.
 
     Fail-open: any error (no index built yet, binary missing) is logged at
     DEBUG and the fallback per-query CLI path remains active.

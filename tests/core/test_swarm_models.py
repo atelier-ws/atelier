@@ -18,7 +18,7 @@ def _legacy_state_payload() -> dict[str, object]:
         "integration_worktree": "/repo-swarmed/integration",
         "integration_base_ref": "def456",
         "spec_source_path": "/repo/spec.md",
-        "copied_spec_path": "/repo/.atelier-swarm/spec.md",
+        "copied_spec_path": "/repo/.atelier/swarm/spec.md",
         "runner_name": "claude",
         "runner_model": "sonnet",
         "child_command": ["python", "-m", "child"],
