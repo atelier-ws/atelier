@@ -287,6 +287,7 @@ _EXPLORE_ESSENTIAL_KEYS = [
     "query",
     "entry_points",
     "files",
+    "exact_match",
     "truncated",
     "provenance",
 ]
@@ -3642,6 +3643,7 @@ class CodeContextEngine:
             "entry_points": entry_points,
             "files": files_payload,
             "additional_relevant_files": additional_relevant_files,
+            "exact_match": bool(exact_hits),
             "truncated": len(selected_symbols) > len(trimmed_symbols),
             "cache_hit": False,
             "provenance": _LOCAL_PROVENANCE,
