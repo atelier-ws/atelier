@@ -429,6 +429,11 @@ def _rewrite_search(tokens: list[str], command_name: str) -> CommandPolicyDecisi
         return CommandPolicyDecision(category="search", action="allow")
 
     pattern = cleaned[0]
+    # GNU grep BRE treats \| as alternation (extension); rg uses Rust regex
+    # where \| is a literal backslash+pipe.  Convert so patterns like
+    # "foo\|bar" work as expected via the rg backend.
+    if command_name == "grep" and r"\|" in pattern:
+        pattern = pattern.replace(r"\|", "|")
     path = cleaned[1] if len(cleaned) > 1 else "."
     if (
         command_name == "rg"
@@ -950,6 +955,13 @@ def start_managed_command(
         # stdin=DEVNULL: the MCP server's stdin is an open JSON-RPC pipe, so
         # inheriting it causes any child that reads stdin (e.g. `sys.stdin.read()`
         # in a python -c snippet) to block forever instead of failing fast.
+        # start_new_session=True calls setsid() in the child, placing it in
+        # its own session and process group.  This has two effects:
+        #   1. The child is detached from the MCP server's process group --
+        #      if the MCP process dies the child is NOT sent SIGHUP and keeps
+        #      running (safe background / long-lived server use-case).
+        #   2. _terminate_process_group() can cleanly kill the whole subtree
+        #      via SIGTERM/SIGKILL to the child's own pgid.
         proc = subprocess.Popen(
             ["bash", "-c", command],
             stdin=subprocess.DEVNULL,

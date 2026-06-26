@@ -248,7 +248,8 @@ _LINEAGE_DEFAULT_SCORE_PENALTY = 0.1
 _WATCHER_HARD_SKIP_DIRS: frozenset[str] = frozenset({".git"})
 # Source file extensions to watch, built from the canonical language registry.
 _WATCHER_SOURCE_EXTENSIONS: frozenset[str] = frozenset(
-    ext for lang in __import__("atelier.infra.code_intel.languages", fromlist=["LANGUAGES"]).LANGUAGES
+    ext
+    for lang in __import__("atelier.infra.code_intel.languages", fromlist=["LANGUAGES"]).LANGUAGES
     for ext in lang.extensions
 )
 _DELETED_SEARCH_COMPACT_DEFAULT_KEYS = set(
@@ -1768,7 +1769,8 @@ def _watcher_load_gitignore_patterns(repo_root: Path) -> Any | None:
         if core_excludes:
             try:
                 global_patterns.extend(
-                    line.strip() for line in Path(core_excludes).read_text("utf-8").splitlines()
+                    line.strip()
+                    for line in Path(core_excludes).read_text("utf-8").splitlines()
                     if line.strip() and not line.startswith("#")
                 )
             except OSError:
@@ -1810,7 +1812,9 @@ def _git_core_excludes_file() -> str | None:
     try:
         result = subprocess.run(
             ["git", "config", "--global", "--get", "core.excludesFile"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
@@ -3206,13 +3210,35 @@ class CodeContextEngine:
         # collapses from sum-of-channels to slowest-channel. Opt out with
         # ATELIER_EXPLORE_PARALLEL=0.
         anchor_budget = max(bounded_max_files * 2, 12)
+        # When the caller passes a single *file* (not directory) as the scope,
+        # restrict FTS5 to that file so its symbols surface even when globally-
+        # higher-scoring symbols from other files would crowd them out.  Fall back
+        # to a global search if the file-scoped pass returns nothing (e.g. the
+        # file has no indexed symbols yet).
+        _single_file_seed = (
+            normalized_seeds[0]
+            if len(normalized_seeds) == 1 and not (Path(self.repo_root) / normalized_seeds[0]).is_dir()
+            else None
+        )
         if os.environ.get("ATELIER_EXPLORE_PARALLEL", "1") != "0":
             from concurrent.futures import ThreadPoolExecutor
 
             with ThreadPoolExecutor(max_workers=2) as _pool:
                 _zk = _pool.submit(self._zoekt_candidate_files, query, max_files=anchor_budget)
                 _sem = _pool.submit(self._semantic_candidate_files, query, max_files=anchor_budget)
-                raw_symbols = self.search_symbols(query, limit=bounded_max_symbols, snippet="none", auto_index=False)
+                raw_symbols = self.search_symbols(
+                    query,
+                    limit=bounded_max_symbols,
+                    snippet="none",
+                    auto_index=False,
+                    file_glob=_single_file_seed,
+                )
+                if _single_file_seed and not raw_symbols:
+                    # File-scoped search empty — fall back to global so a poor
+                    # query doesn't silently return nothing.
+                    raw_symbols = self.search_symbols(
+                        query, limit=bounded_max_symbols, snippet="none", auto_index=False
+                    )
                 # Preserve zoekt's score-ranked order; append semantic-only files at the end.
                 _zk_list = _zk.result()  # list[str], zoekt-score ordered
                 _seen_anchors: dict[str, None] = dict.fromkeys(_zk_list)
@@ -3220,7 +3246,15 @@ class CodeContextEngine:
                     _seen_anchors.setdefault(_f, None)
                 anchor_candidates = list(_seen_anchors)
         else:
-            raw_symbols = self.search_symbols(query, limit=bounded_max_symbols, snippet="none", auto_index=False)
+            raw_symbols = self.search_symbols(
+                query,
+                limit=bounded_max_symbols,
+                snippet="none",
+                auto_index=False,
+                file_glob=_single_file_seed,
+            )
+            if _single_file_seed and not raw_symbols:
+                raw_symbols = self.search_symbols(query, limit=bounded_max_symbols, snippet="none", auto_index=False)
             # Preserve zoekt's score-ranked order; append semantic-only files at the end.
             _zk_list = self._zoekt_candidate_files(query, max_files=anchor_budget)
             _seen_anchors_s: dict[str, None] = dict.fromkeys(_zk_list)
@@ -9657,7 +9691,8 @@ class CodeContextEngine:
             self._file_watcher.start()
             logger.debug(
                 "File watcher started on %s (debounce=%dms, gitignore=%s)",
-                self.repo_root, self._watcher_debounce_ms,
+                self.repo_root,
+                self._watcher_debounce_ms,
                 "loaded" if self._watcher_gitignore_spec is not None else "none",
             )
         except OSError as exc:
@@ -9665,7 +9700,8 @@ class CodeContextEngine:
             # CI. Fall back to polling gracefully.
             logger.warning(
                 "File watcher unavailable on %s (OSError: %s), falling back to polling",
-                self.repo_root, exc,
+                self.repo_root,
+                exc,
             )
             self._file_watcher = None
             self._watcher_enabled = False
