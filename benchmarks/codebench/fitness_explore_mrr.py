@@ -106,6 +106,10 @@ for prefix, meta in repos.items():
     eng = CodeContextEngine(Path(meta["ws"]), db_path=Path(meta["db"]), autosync_enabled=False)
     eng._cache_get = lambda *a, **k: (False, None)  # force recompute (no cross-candidate cache)
     eng._cache_set = lambda *a, **k: None
+    # Schema is already initialised; skip the CREATE TABLE IF NOT EXISTS write on
+    # first use so the benchmark never acquires a write lock on live DBs (e.g.
+    # atelier's own DB which autosync may be writing to concurrently).
+    eng._schema_ready = True
     if get_zoekt_supervisor is not None:
         with contextlib.suppress(Exception):
             get_zoekt_supervisor(Path(meta["ws"]))
@@ -132,6 +136,9 @@ runset = {p: set(qs) for p, qs in uq.items()}
 # speedup on the I/O+sqlite-bound work. Tune with FITNESS_WORKERS.
 _WORKERS = int(os.environ.get("FITNESS_WORKERS", "0")) or max(1, min(8, (os.cpu_count() or 4) // 4))
 _lean = os.environ.get("FITNESS_LEAN") == "1"
+# Soft timeout per explore call (seconds). Prevents a single slow FTS query from
+# blocking a worker slot. 0 = no timeout. Tune with FITNESS_TIMEOUT.
+_TIMEOUT_S = float(os.environ.get("FITNESS_TIMEOUT", "3.0"))
 
 # Pre-warm per-repo centrality once (compute+persist) so concurrent workers share
 # the cached map instead of racing to recompute the power iteration.
@@ -142,7 +149,25 @@ for _prefix in list(uq):
             _eng._symbol_centrality_map()
 
 _tasks = [(prefix, q) for prefix, qs in uq.items() for q in qs]
+# Shuffle so diverse repos interleave — avoids all-django at the front, which
+# causes the rate monitor to show a misleadingly low initial rate.
+import random as _random  # noqa: E402
+
+_random.seed(42)
+_random.shuffle(_tasks)
 _total = len(_tasks)
+
+
+def _worker_init() -> None:
+    """Pre-warm centrality cache in each forked worker.
+
+    The centrality map is already computed in the main process and inherited
+    via fork, so this is typically a no-op.  It also opens a lightweight read
+    connection per repo which primes the OS page cache.
+    """
+    for eng in engines.values():
+        with contextlib.suppress(Exception):
+            eng._symbol_centrality_map()
 
 
 def _run_explore(task):
@@ -161,21 +186,28 @@ def _run_explore(task):
         files = dedup([f.get("path", "") for f in r.get("files", [])])[:10]
     except Exception:
         files = []
+    lat = (time.perf_counter() - _ts) * 1000.0
     # Per-query wall-clock of the explore call. Accurate only with FITNESS_WORKERS=1
     # (parallel workers contend on CPU and inflate each call's measured duration).
-    return prefix, q, files, (time.perf_counter() - _ts) * 1000.0
+    return prefix, q, files, lat
 
 
 filecache = {}
 latencies: list[float] = []
 repo_latencies: dict[str, list[float]] = {}
 _done = 0
-_t0 = time.perf_counter()
 print(f"[fitness] start: {_total} explores across {len(uq)} repos, {_WORKERS} workers", file=sys.stderr, flush=True)
 # Processes, not threads: explores are CPU-bound (GIL-serialized under threads) and
 # share one engine instance per repo -- a process pool gives true parallelism and
 # isolates each worker's sqlite connections (fork inherits the pre-warmed engines).
-with ProcessPoolExecutor(max_workers=_WORKERS, mp_context=multiprocessing.get_context("fork")) as _ex:
+# _t0 is set AFTER the executor is created and workers have finished their
+# _worker_init warmup, so the progress rate reflects only benchmark task time.
+with ProcessPoolExecutor(
+    max_workers=_WORKERS,
+    mp_context=multiprocessing.get_context("fork"),
+    initializer=_worker_init,
+) as _ex:
+    _t0 = time.perf_counter()
     for prefix, q, files, lat_ms in _ex.map(_run_explore, _tasks, chunksize=4):
         filecache[(prefix, q)] = files
         latencies.append(lat_ms)
@@ -300,7 +332,15 @@ except Exception:
     _runs = [_record]
 
 _cur = _runs[-1]
-_prev = _runs[-2] if len(_runs) >= 2 else None
+# Only compare against a previous run of the same mode (type) — cross-mode
+# comparisons (e.g. full vs default) are meaningless since different sample
+# sizes and selection skew the MRR baseline.
+_prev = None
+if len(_runs) >= 2:
+    for r in reversed(_runs[:-1]):
+        if r.get("mode") == _cur.get("mode"):
+            _prev = r
+            break
 _L = "latency_ms"
 
 
@@ -343,8 +383,8 @@ print(
 )
 if _cl:
     print(
-        f"  lat  mean={_cl.get('mean',0):.0f}ms  p50={_cl.get('p50',0):.0f}ms"
-        f"  p95={_cl.get('p95',0):.0f}ms  max={_cl.get('max',0):.0f}ms  >100ms={_cl.get('over_100ms',0)}",
+        f"  lat  mean={_cl.get('mean', 0):.0f}ms  p50={_cl.get('p50', 0):.0f}ms"
+        f"  p95={_cl.get('p95', 0):.0f}ms  max={_cl.get('max', 0):.0f}ms  >100ms={_cl.get('over_100ms', 0)}",
         file=sys.stderr,
     )
 
@@ -354,17 +394,18 @@ if _by:
     print("", file=sys.stderr)
     # sort: worst MRR first so problems are visible
     for _rname, _rd in sorted(
-        _by.items(), key=lambda kv: (kv[1].get("mrr", kv[1]) if isinstance(kv[1], dict) else kv[1])
+        _by.items(), key=lambda kv: kv[1].get("mrr", kv[1]) if isinstance(kv[1], dict) else kv[1]
     ):
         _rm = _rd.get("mrr", _rd) if isinstance(_rd, dict) else _rd
         _rl = _rd.get(_L, {}) if isinstance(_rd, dict) else {}
         _rn = _rd.get("n", "") if isinstance(_rd, dict) else ""
         _short = _rname.split("__")[-1]  # drop org prefix
+        _p95 = _rl.get("p95", 0)
+        _max = _rl.get("max", 0)
         _lat_note = ""
-        if _rl.get("p95", 0) > 300:
-            _lat_note = f"  p95={_rl['p95']:.0f}ms ⚠"
-        elif _rl.get("p50", 0):
-            _lat_note = f"  p50={_rl['p50']:.0f}ms"
+        if _p95 or _max:
+            _warn = " ⚠" if _p95 > 300 else ""
+            _lat_note = f"  p95={_p95:.0f}ms  p100={_max:.0f}ms{_warn}"
         print(
             f"  {_mrr_icon(_rm)}  {_short:<22}  n={_rn:<4}  MRR={_rm:.3f}{_lat_note}",
             file=sys.stderr,
