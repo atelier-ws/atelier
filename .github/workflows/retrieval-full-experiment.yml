@@ -1,0 +1,84 @@
+name: retrieval-full-experiment
+
+on:
+  push:
+    branches:
+      - bench
+    paths-ignore:
+      - "bench-results/line-fts/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retrieval-ab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Check out mirrored bench branch
+        uses: actions/checkout@v4
+        with:
+          ref: bench
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Sync environment
+        run: uv sync --frozen
+
+      - name: Verify retrieval CLI and experiment hook
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run atelier eval --help | grep -q retrieval
+          ATELIER_EXPERIMENT_LINE_FTS=1 \
+          PYTHONPATH="$GITHUB_WORKSPACE/experiments/retrieval_line_fts" \
+          uv run python - <<'PY'
+          from atelier.core.capabilities.code_context.engine import CodeContextEngine
+
+          assert getattr(CodeContextEngine, "_line_fts_experiment_installed", False)
+          assert hasattr(CodeContextEngine, "_line_fts_candidate_files")
+          print("retrieval CLI and line-FTS experiment hook verified")
+          PY
+
+      - name: Provision repositories and SQLite indexes
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+        run: |
+          mkdir -p artifacts
+          set -o pipefail
+          uv run python scripts/provision_retrieval_ci.py 2>&1 | tee artifacts/provision.txt
+          cp benchmarks/codebench/data/bench_pairs_multi.json artifacts/bench_pairs_runtime.json
+
+      - name: Run baseline
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run atelier eval retrieval --full 2>&1 | tee artifacts/baseline.txt
+
+      - name: Run line-FTS fusion experiment
+        shell: bash
+        env:
+          ATELIER_EXPERIMENT_LINE_FTS: "1"
+        run: |
+          set -o pipefail
+          export PYTHONPATH="$GITHUB_WORKSPACE/experiments/retrieval_line_fts${PYTHONPATH:+:$PYTHONPATH}"
+          uv run atelier eval retrieval --full 2>&1 | tee artifacts/line-fts.txt
+
+      - name: Upload provisioning and A/B logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrieval-line-fts-ab-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: warn
