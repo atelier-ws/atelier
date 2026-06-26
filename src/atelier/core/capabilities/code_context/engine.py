@@ -4724,6 +4724,9 @@ class CodeContextEngine:
         term_set = {term for term in terms if term}
         centrality_map = self._symbol_centrality_map()
         scored: dict[str, tuple[float, int, SymbolRecord]] = {}
+        # Idea D: importing_files will be populated after the first DB query;
+        # the adjustment function will check this set via closure.
+        importing_files_for_boost: set[str] = set()
 
         def adjustment(symbol: SymbolRecord) -> float:
             score = kind_boosts.get(symbol.kind, 0.0)
@@ -4776,6 +4779,10 @@ class CodeContextEngine:
             if cscore is None:
                 cscore = centrality_map.get(qualified_name_lower, 0.0)
             score += cscore * 30.0
+            # Idea D: boost symbols whose file imports a seed file.
+            # Files that explicitly import the seed are closely related.
+            if symbol.file_path in importing_files_for_boost:
+                score += 50.0
             if _is_test_file_path(symbol.file_path) and not query_mentions_tests:
                 score -= 90.0
             return score
@@ -4827,6 +4834,17 @@ class CodeContextEngine:
             for row in ci_exact_rows
             if row["symbol_name"] == normalized_query or row["qualified_name"] == normalized_query
         ]
+        # Idea D: Collect seed files from exact hits to find their importers.
+        # Files that import a seed file are likely closely related to the query.
+        seed_files = {row["file_path"] for row in ci_exact_rows if row["file_path"]}
+        if seed_files:
+            # Query imports table: find files (source_file) that import any seed file (target_file)
+            placeholders = ",".join("?" for _ in seed_files)
+            importer_rows = conn.execute(
+                f"SELECT DISTINCT source_file FROM imports WHERE repo_id = ? AND target_file IN ({placeholders})",
+                tuple([self.repo_id, *seed_files]),
+            ).fetchall()
+            importing_files_for_boost.update(row["source_file"] for row in importer_rows if row["source_file"])
         consider_rows(exact_rows, channel_rank=0, base=1300.0)
         consider_rows(ci_exact_rows, channel_rank=1, base=1180.0)
 
