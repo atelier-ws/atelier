@@ -24,6 +24,25 @@ def test_extract_tags_python_symbols(tmp_path: Path) -> None:
     assert {"CheckoutService", "apply_coupon", "helper"}.issubset(names)
 
 
+def test_extract_tags_python_module_level_constants(tmp_path: Path) -> None:
+    """Module-level assignments must be indexed as definitions."""
+    path = tmp_path / "constants.py"
+    path.write_text(
+        "ESSENTIAL_KEYS: list[str] = ['query', 'files']\n"
+        "_OPTIONAL_KEYS = ['relationships', 'skeletonized']\n"
+        "MAX_RETRIES = 3\n"
+        "\n"
+        "def helper() -> None:\n"
+        "    local_var = 1  # should NOT be a definition\n",
+        encoding="utf-8",
+    )
+
+    tags = extract_tags(path)
+    defs = {t.name for t in tags if t.kind == "definition"}
+    assert {"ESSENTIAL_KEYS", "_OPTIONAL_KEYS", "MAX_RETRIES", "helper"}.issubset(defs)
+    assert "local_var" not in defs
+
+
 def test_extract_tags_javascript_symbols(tmp_path: Path) -> None:
     path = tmp_path / "utils.js"
     path.write_text(
