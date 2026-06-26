@@ -47,7 +47,7 @@ def norm(p: str) -> str:
 
 
 def main() -> int:
-    data = json.load(open("/tmp/bench_pairs_multi.json"))
+    data = json.load(open("benchmarks/codebench/data/bench_pairs_multi.json"))
     pairs, true_map = data["pairs"], data["true_map"]
     print("loading BAAI/bge-code-v1 (cached)...", file=sys.stderr, flush=True)
     model = SentenceTransformer("BAAI/bge-code-v1", trust_remote_code=True, device="cpu")

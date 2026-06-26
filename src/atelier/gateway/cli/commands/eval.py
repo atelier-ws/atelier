@@ -315,7 +315,7 @@ def eval_mcp(out: Path | None, tools: tuple[str, ...], jobs: int) -> None:
 @click.option(
     "--pairs",
     type=click.Path(path_type=Path),
-    default=Path("/tmp/bench_pairs_multi.json"),
+    default=Path("benchmarks/codebench/data/bench_pairs_multi.json"),
     show_default=True,
     help="Mined (query, gold-file) pairs JSON.",
 )

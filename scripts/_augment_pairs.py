@@ -21,7 +21,7 @@ import os
 import pathlib
 import sys
 
-OUT = pathlib.Path("/tmp/bench_pairs_multi.json")
+OUT = pathlib.Path("benchmarks/codebench/data/bench_pairs_multi.json")
 
 
 def _extract_names(path: pathlib.Path) -> list[str]:

@@ -8,7 +8,7 @@ Requires ``codegraph`` on PATH (``npm install -g @colbymchenry/codegraph``).
 Per-repo index is auto-built on first query (``codegraph init``).
 
 Environment variables (same as fitness_explore_mrr):
-  FITNESS_PAIRS     Path to pairs JSON  (default: /tmp/bench_pairs_multi.json)
+  FITNESS_PAIRS     Path to pairs JSON  (default: benchmarks/codebench/data/bench_pairs_multi.json)
   FITNESS_SAMPLE    Cap unique queries per repo  (default: 0 = all)
   FITNESS_REPO      Substring filter on repo prefix
 """
@@ -22,7 +22,7 @@ import sys
 import time
 from pathlib import Path
 
-DATA = os.environ.get("FITNESS_PAIRS", "/tmp/bench_pairs_multi.json")
+DATA = os.environ.get("FITNESS_PAIRS", "benchmarks/codebench/data/bench_pairs_multi.json")
 SAMPLE = int(os.environ.get("FITNESS_SAMPLE", "0"))
 REPO_FILTER = os.environ.get("FITNESS_REPO", "")
 
@@ -97,8 +97,7 @@ total_unique = sum(len(qs) for qs in uq.values())
 pair_count = sum(1 for q, _, p in pairs if q in runset.get(p, set()))
 
 print(
-    f"[cg] {total_unique} unique queries across {len(uq)} repos, "
-    f"scoring {pair_count} pairs",
+    f"[cg] {total_unique} unique queries across {len(uq)} repos, " f"scoring {pair_count} pairs",
     file=sys.stderr,
 )
 
@@ -121,7 +120,9 @@ for prefix, queries in sorted(uq.items()):
         t1 = time.time()
         r = subprocess.run(
             ["codegraph", "init", "-i", ws],
-            capture_output=True, text=True, timeout=600,
+            capture_output=True,
+            text=True,
+            timeout=600,
         )
         if r.returncode != 0:
             print(f"[cg] init FAILED for {prefix}: {r.stderr[:500]}", file=sys.stderr)
@@ -132,7 +133,9 @@ for prefix, queries in sorted(uq.items()):
         t1 = time.time()
         r = subprocess.run(
             ["codegraph", "query", "-p", ws, "-l", "20", "-j", query],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         latencies.append((time.time() - t1) * 1000)
 
@@ -149,9 +152,9 @@ for prefix, queries in sorted(uq.items()):
             rate = done / elapsed_total if elapsed_total else 0
             eta = (total_unique - done) / rate if rate else 0
             print(
-                f"[cg] queries {done}/{total_unique} "
-                f"elapsed={elapsed_total:.0f}s rate={rate:.1f}/s eta={eta:.0f}s",
-                file=sys.stderr, flush=True,
+                f"[cg] queries {done}/{total_unique} " f"elapsed={elapsed_total:.0f}s rate={rate:.1f}/s eta={eta:.0f}s",
+                file=sys.stderr,
+                flush=True,
             )
 
 
@@ -200,9 +203,6 @@ out = {
         "max": round(max(latencies), 1) if latencies else 0,
         "over_100ms": sum(1 for x in latencies if x > 100.0),
     },
-    "by_repo": {
-        p: {"mrr": round(mrr(d), 4), "n": d["n"]}
-        for p, d in sorted(by_repo.items())
-    },
+    "by_repo": {p: {"mrr": round(mrr(d), 4), "n": d["n"]} for p, d in sorted(by_repo.items())},
 }
 print(json.dumps(out))

@@ -34,17 +34,19 @@ cannot be scored there.
 ## Provisioning (one-time)
 
 - **Pairs + per-repo index DBs**: `scripts/_provision_repos.py` writes
-  `/tmp/bench_pairs_multi.json` (maps each repo to a prebuilt read-only `(ws, db)`).
-  Override the path with `EVAL_PAIRS` / the harness reads `/tmp/bench_pairs_multi.json`.
+  `benchmarks/codebench/data/bench_pairs_multi.json` (maps each repo to a prebuilt read-only `(ws, db)`).
+  Override the path with `EVAL_PAIRS` / the harness reads `benchmarks/codebench/data/bench_pairs_multi.json`.
 - **Zoekt (channel 2)**: install the binaries on `PATH` and build per-repo indexes:
+
   ```bash
   GOBIN=$HOME/go/bin go install github.com/sourcegraph/zoekt/cmd/{zoekt,zoekt-index,zoekt-git-index,zoekt-webserver}@latest
   # build an index per repo workspace (ws): ZoektSupervisor(ws).server.ensure_started_and_build()
   ```
+
 - **BGE corpus (channel 3)**: pre-built vectors live in
   `benchmarks/embedding/data/multi_repo/emb_bge_<repo>.npy` + `corpus_<repo>.jsonl`
   (built by `benchmarks/embedding/bench_multi_repo.py`). Needs `sentence-transformers`
-  + `torch` (see `benchmarks/embedding/requirements_hf.txt`) — NOT the project venv.
+  - `torch` (see `benchmarks/embedding/requirements_hf.txt`) — NOT the project venv.
 
 ## Running
 

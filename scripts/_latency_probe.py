@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, "src")
 from atelier.core.capabilities.code_context.engine import CodeContextEngine
 
-data = json.load(open("/tmp/bench_pairs_multi.json"))
+data = json.load(open("benchmarks/codebench/data/bench_pairs_multi.json"))
 pairs, repos = data["pairs"], data["repos"]
 
 uniq = {}
