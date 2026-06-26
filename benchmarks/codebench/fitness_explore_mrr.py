@@ -293,73 +293,106 @@ _record = {
 with _HISTORY.open("a") as _fh:
     _fh.write(json.dumps(_record) + "\n")
 
-# Show last 8 runs as a comparison table
+# ── Pretty summary: current run + delta vs previous ─────────────────────────
 try:
     _runs = [json.loads(line) for line in _HISTORY.read_text().splitlines() if line.strip()]
 except Exception:
     _runs = [_record]
-_tail = _runs[-8:]
-_ref_mrr = _tail[0]["mrr"] if len(_tail) > 1 else None
 
-_LAT = "latency_ms"  # shorthand
-_REPO_COL = 30
-_RUN_HDR = (
-    f"  {'repo':{_REPO_COL}}  {'n':>5}  {'MRR':>6}  {'hit1':>6}  {'hit3':>6}"
-    f"  {'mean':>7}  {'p50':>7}  {'p95':>7}  {'max':>8}  {'>100ms':>6}"
-)
-_RUN_SEP = "-" * len(_RUN_HDR)
+_cur = _runs[-1]
+_prev = _runs[-2] if len(_runs) >= 2 else None
+_L = "latency_ms"
 
 
-def _lat_row(lat: dict) -> str:
-    p50 = lat.get("p50") or lat.get("lat_p50") or 0.0
-    return (
-        f"  {lat.get('mean', 0):>7.1f}  {p50:>7.1f}"
-        f"  {lat.get('p95', 0):>7.1f}  {lat.get('max', 0):>8.1f}  {lat.get('over_100ms', 0):>6}"
-    )
+def _glat(rec: dict) -> dict:
+    return rec.get(_L) or {}
 
 
+def _p50(rec: dict) -> float:
+    g = _glat(rec)
+    return g.get("p50") or rec.get("lat_p50") or 0.0
+
+
+def _mrr_icon(m: float) -> str:
+    if m >= 0.80:
+        return "✓"
+    if m >= 0.60:
+        return "~"
+    return "✗"
+
+
+def _delta_str(new: float, old: float) -> str:
+    d = new - old
+    return f"+{d:.3f}" if d >= 0 else f"{d:.3f}"
+
+
+_W = 60
+_sep = "─" * _W
 print("", file=sys.stderr)
-for _i, _r in enumerate(_tail):
-    _delta = ""
-    if _ref_mrr is not None and _r is not _tail[0]:
-        _d = _r["mrr"] - _ref_mrr
-        _delta = f" ({_d:+.4f})"
-    elif _r is _tail[0] and len(_tail) > 1:
-        _delta = " (base)"
-    _global_lat = _r.get(_LAT) or {}
-    _p50g = _global_lat.get("p50") or _r.get("lat_p50") or 0.0
-    # Run header line
+print(_sep, file=sys.stderr)
+
+# ── Current run ──
+_cl = _glat(_cur)
+print(
+    f"  {_cur['ts'][:16]}  {_cur['sha']}  [{_cur['mode']}]  n={_cur['n']}",
+    file=sys.stderr,
+)
+print(
+    f"  MRR {_cur['mrr']:.4f}   hit@1 {_cur['hit1']:.4f}   hit@3 {_cur['hit3']:.4f}",
+    file=sys.stderr,
+)
+if _cl:
     print(
-        f"[{_i+1}/{len(_tail)}] {_r['ts']}  sha={_r['sha']}  mode={_r['mode']}"
-        f"  n={_r['n']}  MRR={_r['mrr']:.4f}{_delta}"
-        f"  hit1={_r['hit1']:.4f}  hit3={_r['hit3']:.4f}",
+        f"  lat  mean={_cl.get('mean',0):.0f}ms  p50={_cl.get('p50',0):.0f}ms"
+        f"  p95={_cl.get('p95',0):.0f}ms  max={_cl.get('max',0):.0f}ms  >100ms={_cl.get('over_100ms',0)}",
         file=sys.stderr,
     )
-    # Global latency
+
+# ── Per-repo highlights ──
+_by = _cur.get("by_repo") or {}
+if _by:
+    print("", file=sys.stderr)
+    # sort: worst MRR first so problems are visible
+    for _rname, _rd in sorted(
+        _by.items(), key=lambda kv: (kv[1].get("mrr", kv[1]) if isinstance(kv[1], dict) else kv[1])
+    ):
+        _rm = _rd.get("mrr", _rd) if isinstance(_rd, dict) else _rd
+        _rl = _rd.get(_L, {}) if isinstance(_rd, dict) else {}
+        _rn = _rd.get("n", "") if isinstance(_rd, dict) else ""
+        _short = _rname.split("__")[-1]  # drop org prefix
+        _lat_note = ""
+        if _rl.get("p95", 0) > 300:
+            _lat_note = f"  p95={_rl['p95']:.0f}ms ⚠"
+        elif _rl.get("p50", 0):
+            _lat_note = f"  p50={_rl['p50']:.0f}ms"
+        print(
+            f"  {_mrr_icon(_rm)}  {_short:<22}  n={_rn:<4}  MRR={_rm:.3f}{_lat_note}",
+            file=sys.stderr,
+        )
+
+# ── Delta vs previous ──
+if _prev:
+    print("", file=sys.stderr)
+    _pmrr = _prev["mrr"]
+    _dmrr = _cur["mrr"] - _pmrr
+    _sign = "+" if _dmrr >= 0 else ""
     print(
-        f"     latency (global):  mean={_global_lat.get('mean',0):.1f}ms"
-        f"  p50={_p50g:.1f}ms  p95={_global_lat.get('p95',0):.1f}ms"
-        f"  max={_global_lat.get('max',0):.1f}ms  >100ms={_global_lat.get('over_100ms',0)}",
+        f"  vs {_prev['ts'][:16]} [{_prev['mode']}]  MRR {_pmrr:.4f} → {_cur['mrr']:.4f}  ({_sign}{_dmrr:.4f})",
         file=sys.stderr,
     )
-    # Per-repo breakdown
-    _by_repo = _r.get("by_repo") or {}
-    if _by_repo:
-        print(_RUN_HDR, file=sys.stderr)
-        print(_RUN_SEP, file=sys.stderr)
-        for _repo, _rd in sorted(_by_repo.items()):
-            if isinstance(_rd, dict):
-                _rlat = _rd.get(_LAT) or {}
-                _rmrr = _rd.get("mrr", _rd) if isinstance(_rd, dict) else _rd
-                print(
-                    f"  {_repo:{_REPO_COL}}  {_rd.get('n',0):>5}"
-                    f"  {_rd.get('mrr',0):>6.4f}  {_rd.get('hit1',0):>6.4f}  {_rd.get('hit3',0):>6.4f}"
-                    + _lat_row(_rlat),
-                    file=sys.stderr,
-                )
-            else:
-                # old record: by_repo was {repo: mrr_float}
-                print(f"  {_repo:{_REPO_COL}}  {'':>5}  {_rd:>6.4f}", file=sys.stderr)
-    if _i < len(_tail) - 1:
-        print("", file=sys.stderr)
+    # per-repo deltas — only show movers
+    _pby = _prev.get("by_repo") or {}
+    _movers = []
+    for _rname in set(list(_by.keys()) + list(_pby.keys())):
+        _cm = (_by.get(_rname) or {}).get("mrr", 0) if isinstance(_by.get(_rname), dict) else (_by.get(_rname) or 0)
+        _pm = (_pby.get(_rname) or {}).get("mrr", 0) if isinstance(_pby.get(_rname), dict) else (_pby.get(_rname) or 0)
+        if _cm != _pm:
+            _movers.append((_rname.split("__")[-1], _pm, _cm, _cm - _pm))
+    if _movers:
+        _movers.sort(key=lambda x: x[3])
+        for _rn, _pm, _cm, _dd in _movers:
+            _sign2 = "+" if _dd >= 0 else ""
+            print(f"    {_rn:<22}  {_pm:.3f} → {_cm:.3f}  ({_sign2}{_dd:.3f})", file=sys.stderr)
+
+print(_sep, file=sys.stderr)
 print("", file=sys.stderr)
