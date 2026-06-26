@@ -1,0 +1,150 @@
+    anchors = _dedupe([*definition_names, *alternatives, *code_identifiers], 8)
+    literal_tuple = _dedupe(literals, 8)
+    prose_tuple = _dedupe(prose_terms, 14)
+    if definitions:
+        intent = "definition"
+    elif engine_mod._is_precise_symbol_query(normalized):
+        intent = "symbol"
+    elif identifiers or "|" in query:
+        intent = "code"
+    else:
+        intent = "prose"
+    if intent in {"definition", "symbol"}:
+        terms = _dedupe([*identifiers, *components, *literal_tuple], 18)
+    elif intent == "code":
+        terms = _dedupe([*identifiers, *components, *literal_tuple, *prose_tuple], 20)
+    else:
+        terms = _dedupe([*literal_tuple, *prose_tuple], 18)
+    wants_tests = bool(re.search(
+        r"\btest(?:_|s\b|ing\b)|\bspec(?:_|s\b)|pytest|unittest|tearDown|setUp|TestCase|Tests\b",
+        query,
+        re.I,
+    ))
+    wants_auxiliary = bool(re.search(
+        r"\bdocs?|documentation|example|gallery|benchmark|frontend|javascript|typescript|readme|notebook\b",
+        query,
+        re.I,
+    ))
+    return QueryPlan(
+        intent=intent,
+        definitions=definitions,
+        identifiers=identifiers,
+        components=components,
+        anchors=anchors,
+        prose_terms=prose_tuple,
+        terms=terms,
+        literals=literal_tuple,
+        wants_tests=wants_tests,
+        wants_auxiliary=wants_auxiliary,
+    )
+
+
+def _ngrams(value: str, size: int = 3) -> set[str]:
+    normalized = re.sub(r"[^a-z0-9]+", "", value.lower())
+    if len(normalized) < size:
+        return {normalized} if normalized else set()
+    return {normalized[index:index + size] for index in range(len(normalized) - size + 1)}
+
+
+def _ngram_similarity(left: str, right: str) -> float:
+    left_set = _ngrams(left)
+    right_set = _ngrams(right)
+    if not left_set or not right_set:
+        return 0.0
+    return len(left_set & right_set) / len(left_set | right_set)
+
+
+def _term_coverage(text: str, terms: Sequence[str]) -> float:
+    if not terms:
+        return 0.0
+    lowered = text.lower()
+    return sum(1 for term in terms if term.lower() in lowered) / len(terms)
+
+
+def _path_parts(file_path: str) -> set[str]:
+    return {part for part in re.split(r"[/._-]+", file_path.lower()) if part}
+
+
+def _fts_phrase(term: str) -> str:
+    return '"' + term.replace('"', '""')[:96] + '"'
+
+
+def _safe_path_penalty(engine_mod: Any, plan: QueryPlan, file_path: str, *, unsupported: bool) -> float:
+    if engine_mod.is_generated_path(file_path) or engine_mod._MINIFIED_FILE_RE.search(file_path):
+        return 0.05
+    if engine_mod._VENDOR_PATH_RE.search(file_path):
+        return 0.15
+    factor = 1.0
+    if not plan.wants_tests and _TEST_RE.search(file_path) and unsupported:
+        factor *= 0.76
+    if not plan.wants_auxiliary and _AUX_RE.search(file_path) and unsupported:
+        factor *= 0.68
+    if file_path.endswith(".pyi"):
+        factor *= 0.84
+    return factor
+
+
+def _append_diagnostic(payload: dict[str, Any]) -> None:
+    global _DIAGNOSTIC_FD
+    target = os.environ.get("ATELIER_EXPERIMENT_DIAGNOSTICS", "").strip()
+    if not target:
+        return
+    try:
+        if _DIAGNOSTIC_FD is None:
+            _DIAGNOSTIC_FD = os.open(target, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
+        os.write(_DIAGNOSTIC_FD, (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode())
+    except Exception:
+        pass
+
+
+def _walk_file_items(value: Any) -> Iterable[dict[str, Any]]:
+    if isinstance(value, dict):
+        if value.get("file_path") or value.get("path"):
+            yield value
+        for child in value.values():
+            yield from _walk_file_items(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            yield from _walk_file_items(child)
+
+
+def _sigmoid(value: float) -> float:
+    return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, value))))
+
+
+def install() -> None:
+    if os.environ.get("ATELIER_EXPERIMENT_SYMBOL_VOTE") != "1":
+        return
+    from atelier.core.capabilities.code_context import engine as engine_mod
+
+    engine_cls = engine_mod.CodeContextEngine
+    if getattr(engine_cls, "_comprehensive_v8_installed", False):
+        return
+    original_tool_explore = engine_cls.tool_explore
+    original_zoekt = engine_cls._zoekt_candidate_files
+
+    def capturing_zoekt(self: Any, query: str, *, path: str = ".", max_files: int = 40) -> list[str]:
+        files = original_zoekt(self, query, path=path, max_files=max(max_files, 140))
+        self.__dict__["_v8_zoekt_capture"] = (query, files)
+        return files[:max_files]
+
+    def exact_symbol_candidates(self: Any, plan: QueryPlan) -> tuple[list[str], dict[str, dict[str, Any]], dict[str, int]]:
+        if not plan.identifiers:
+            return [], {}, {}
+        tokens = {token.lower(): token for token in plan.identifiers}
+        marks = ",".join("?" for _ in tokens)
+        try:
+            with self._connect(readonly=True) as conn:
+                rows = conn.execute(
+                    f"""
+                    WITH matched AS (
+                        SELECT file_path, lower(symbol_name) token, lower(kind) kind,
+                               signature, doc_summary
+                        FROM symbols
+                        WHERE repo_id = ? AND lower(symbol_name) IN ({marks})
+                    ), frequencies AS (
+                        SELECT token, COUNT(DISTINCT file_path) df FROM matched GROUP BY token
+                    )
+                    SELECT matched.file_path, matched.token, matched.kind,
+                           matched.signature, matched.doc_summary, frequencies.df
+                    FROM matched JOIN frequencies USING(token)
