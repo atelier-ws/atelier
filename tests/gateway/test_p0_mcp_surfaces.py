@@ -796,12 +796,12 @@ def test_tool_code_symbol_rendered_shape_includes_numbered_body(
 
     assert "rendered" not in payload
     rendered = mcp_server._tool_call_rendered_text.value
-    assert "- OrderService.calculate_total [method]" in rendered
-    assert "- location: src/orders.py:12-20" in rendered
+    assert "OrderService.calculate_total [method]" in rendered
+    assert "src/orders.py:L12-L20" in rendered
     # Node now returns the symbol body inline, line-numbered from its start line,
     # so an agent can cite file:line and edit without a follow-up read.
-    assert "- source:" in rendered
     assert "12\tdef calculate_total(self, items):" in rendered
+    assert "#### " in rendered  # header present
     assert "13\t    total = sum(items)" in rendered
 
 
