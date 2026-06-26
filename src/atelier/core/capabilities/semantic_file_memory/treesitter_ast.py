@@ -360,6 +360,46 @@ _LANG_CONFIG: dict[str, LangCfg] = {
         body_kinds=frozenset({"statement_block", "class_body", "interface_body", "enum_body"}),
         unwrap=frozenset({"export_statement"}),
     ),
+    # ── Lua ────────────────────────────────────────────────────────────────────
+    # Outline shows all top-level function declarations (local, module-dot, and
+    # colon-method forms) as signatures plus local variable first lines.
+    "lua": LangCfg(
+        keep_first_line=frozenset({"variable_declaration"}),
+        keep_signature=frozenset({"function_declaration"}),
+        body_kinds=frozenset({"block"}),
+    ),
+    # ── HTML ───────────────────────────────────────────────────────────────────
+    # Flatten the element tree via unwrap so every opening/self-closing tag is
+    # surfaced as a first-line snippet. doctype is shown verbatim.
+    "html": LangCfg(
+        keep_full=frozenset({"doctype"}),
+        keep_first_line=frozenset({"start_tag", "self_closing_tag"}),
+        unwrap=frozenset({"element", "script_element", "style_element"}),
+    ),
+    # ── CSS ────────────────────────────────────────────────────────────────────
+    # Rule-sets and at-rules get signature-trimmed (selector/query kept, block
+    # body replaced with { ... }). Import/charset/namespace kept verbatim.
+    "css": LangCfg(
+        keep_full=frozenset({"import_statement", "charset_statement", "namespace_statement"}),
+        keep_signature=frozenset(
+            {
+                "rule_set",
+                "media_statement",
+                "keyframes_statement",
+                "supports_statement",
+            }
+        ),
+        body_kinds=frozenset({"block", "keyframe_block_list"}),
+    ),
+    # ── Markdown ───────────────────────────────────────────────────────────────
+    # Headings (ATX and setext) and fenced code-block openers are surfaced;
+    # paragraph prose is dropped. section wrappers are unwrapped so nested
+    # headings at any depth are captured.
+    "markdown": LangCfg(
+        keep_first_line=frozenset({"atx_heading", "fenced_code_block"}),
+        keep_full=frozenset({"setext_heading"}),
+        unwrap=frozenset({"section"}),
+    ),
 }
 
 # Languages that have a configured outliner. Imported by capability.py to gate
