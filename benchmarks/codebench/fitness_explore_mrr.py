@@ -302,29 +302,64 @@ _tail = _runs[-8:]
 _ref_mrr = _tail[0]["mrr"] if len(_tail) > 1 else None
 
 _LAT = "latency_ms"  # shorthand
-print("", file=sys.stderr)
-print(
-    f"{'Date':19} {'SHA':8} {'mode':14} {'n':>5}  {'MRR':>6}  {'delta':>7}"
-    f"  {'hit1':>6}  {'hit3':>6}  {'mean':>6}  {'p50':>6}  {'p95':>6}  {'max':>7}  {'>100ms':>6}",
-    file=sys.stderr,
+_REPO_COL = 30
+_RUN_HDR = (
+    f"  {'repo':{_REPO_COL}}  {'n':>5}  {'MRR':>6}  {'hit1':>6}  {'hit3':>6}"
+    f"  {'mean':>7}  {'p50':>7}  {'p95':>7}  {'max':>8}  {'>100ms':>6}"
 )
-print("-" * 120, file=sys.stderr)
-for _r in _tail:
+_RUN_SEP = "-" * len(_RUN_HDR)
+
+
+def _lat_row(lat: dict) -> str:
+    p50 = lat.get("p50") or lat.get("lat_p50") or 0.0
+    return (
+        f"  {lat.get('mean', 0):>7.1f}  {p50:>7.1f}"
+        f"  {lat.get('p95', 0):>7.1f}  {lat.get('max', 0):>8.1f}  {lat.get('over_100ms', 0):>6}"
+    )
+
+
+print("", file=sys.stderr)
+for _i, _r in enumerate(_tail):
     _delta = ""
     if _ref_mrr is not None and _r is not _tail[0]:
         _d = _r["mrr"] - _ref_mrr
-        _delta = f"{_d:+.4f}"
+        _delta = f" ({_d:+.4f})"
     elif _r is _tail[0] and len(_tail) > 1:
-        _delta = "(base) "
-    _lat = _r.get(_LAT) or {}
-    # support old records that only had lat_p50
-    _p50 = _lat.get("p50") or _r.get("lat_p50") or 0.0
+        _delta = " (base)"
+    _global_lat = _r.get(_LAT) or {}
+    _p50g = _global_lat.get("p50") or _r.get("lat_p50") or 0.0
+    # Run header line
     print(
-        f"{_r['ts']:19} {_r['sha']:8} {_r['mode']:14} {_r['n']:>5}"
-        f"  {_r['mrr']:.4f}  {_delta:>7}"
-        f"  {_r['hit1']:.4f}  {_r['hit3']:.4f}"
-        f"  {_lat.get('mean', 0):>6.1f}  {_p50:>6.1f}  {_lat.get('p95', 0):>6.1f}"
-        f"  {_lat.get('max', 0):>7.1f}  {_lat.get('over_100ms', 0):>6}",
+        f"[{_i+1}/{len(_tail)}] {_r['ts']}  sha={_r['sha']}  mode={_r['mode']}"
+        f"  n={_r['n']}  MRR={_r['mrr']:.4f}{_delta}"
+        f"  hit1={_r['hit1']:.4f}  hit3={_r['hit3']:.4f}",
         file=sys.stderr,
     )
+    # Global latency
+    print(
+        f"     latency (global):  mean={_global_lat.get('mean',0):.1f}ms"
+        f"  p50={_p50g:.1f}ms  p95={_global_lat.get('p95',0):.1f}ms"
+        f"  max={_global_lat.get('max',0):.1f}ms  >100ms={_global_lat.get('over_100ms',0)}",
+        file=sys.stderr,
+    )
+    # Per-repo breakdown
+    _by_repo = _r.get("by_repo") or {}
+    if _by_repo:
+        print(_RUN_HDR, file=sys.stderr)
+        print(_RUN_SEP, file=sys.stderr)
+        for _repo, _rd in sorted(_by_repo.items()):
+            if isinstance(_rd, dict):
+                _rlat = _rd.get(_LAT) or {}
+                _rmrr = _rd.get("mrr", _rd) if isinstance(_rd, dict) else _rd
+                print(
+                    f"  {_repo:{_REPO_COL}}  {_rd.get('n',0):>5}"
+                    f"  {_rd.get('mrr',0):>6.4f}  {_rd.get('hit1',0):>6.4f}  {_rd.get('hit3',0):>6.4f}"
+                    + _lat_row(_rlat),
+                    file=sys.stderr,
+                )
+            else:
+                # old record: by_repo was {repo: mrr_float}
+                print(f"  {_repo:{_REPO_COL}}  {'':>5}  {_rd:>6.4f}", file=sys.stderr)
+    if _i < len(_tail) - 1:
+        print("", file=sys.stderr)
 print("", file=sys.stderr)
