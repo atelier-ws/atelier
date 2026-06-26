@@ -2,7 +2,7 @@
 
 Produces (query, tid, prefix) pairs for the Atelier repo using session_id as
 task_id and edited src/ files as gold files.
-Appends the atelier__atelier repo to /tmp/bench_pairs_multi.json.
+Appends the atelier__atelier repo to benchmarks/codebench/data/bench_pairs_multi.json.
 
 Usage:
   uv run python scripts/_mine_sessions.py
@@ -13,7 +13,7 @@ import pathlib
 import sys
 
 SESSION_DIR = pathlib.Path("/home/pankaj/.claude/projects/-home-pankaj-Projects-leanchain-atelier")
-OUT = pathlib.Path("/tmp/bench_pairs_multi.json")
+OUT = pathlib.Path("benchmarks/codebench/data/bench_pairs_multi.json")
 ATELIER_WS = pathlib.Path("/home/pankaj/Projects/leanchain/atelier")
 ATELIER_DB = pathlib.Path("/home/pankaj/.atelier/workspaces/Projects-leanchain-atelier/code_context.sqlite")
 PREFIX = "atelier__atelier"

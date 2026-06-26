@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, "src")
 from atelier.core.capabilities.code_context.engine import CodeContextEngine
 
-data = json.load(open("/tmp/bench_pairs_multi.json"))
+data = json.load(open("benchmarks/codebench/data/bench_pairs_multi.json"))
 ws = data["repos"]["django__django"]["ws"]
 qs = [q for q, _, p in data["pairs"] if p == "django__django"][:16]
 

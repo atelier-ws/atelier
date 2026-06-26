@@ -88,7 +88,7 @@ def migrate(db_path: str) -> dict[str, int]:
 
 
 def main() -> None:
-    pairs_file = Path("/tmp/bench_pairs_multi.json")
+    pairs_file = Path("benchmarks/codebench/data/bench_pairs_multi.json")
     if not pairs_file.exists():
         print(f"Pairs file not found: {pairs_file}", file=sys.stderr)
         sys.exit(1)
