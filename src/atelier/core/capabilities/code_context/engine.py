@@ -3178,9 +3178,20 @@ class CodeContextEngine:
         bounded_depth = max(1, depth)
         normalized_seeds = [self._normalize_file_arg(seed) for seed in seed_files or []]
         seed_set = set(normalized_seeds)
+        # When the caller passes a single *file* (not directory) as the scope,
+        # restrict FTS5 to that file so its symbols surface even when globally-
+        # higher-scoring symbols from other files would crowd them out.  Computed
+        # here so the cache_args key reflects the scoping behaviour change.
+        _single_file_seed = (
+            normalized_seeds[0]
+            if len(normalized_seeds) == 1 and not (Path(self.repo_root) / normalized_seeds[0]).is_dir()
+            else None
+        )
         cache_args = {
             "query": query,
             "seed_files": normalized_seeds,
+            # v4: inject all seed-file defs + restrict per-file cap + filter family completions.
+            "_scope_v": 4 if _single_file_seed else 1,
             "max_files": bounded_max_files,
             "max_symbols": bounded_max_symbols,
             "include_source": include_source,
@@ -3210,16 +3221,6 @@ class CodeContextEngine:
         # collapses from sum-of-channels to slowest-channel. Opt out with
         # ATELIER_EXPLORE_PARALLEL=0.
         anchor_budget = max(bounded_max_files * 2, 12)
-        # When the caller passes a single *file* (not directory) as the scope,
-        # restrict FTS5 to that file so its symbols surface even when globally-
-        # higher-scoring symbols from other files would crowd them out.  Fall back
-        # to a global search if the file-scoped pass returns nothing (e.g. the
-        # file has no indexed symbols yet).
-        _single_file_seed = (
-            normalized_seeds[0]
-            if len(normalized_seeds) == 1 and not (Path(self.repo_root) / normalized_seeds[0]).is_dir()
-            else None
-        )
         if os.environ.get("ATELIER_EXPLORE_PARALLEL", "1") != "0":
             from concurrent.futures import ThreadPoolExecutor
 
@@ -3231,14 +3232,7 @@ class CodeContextEngine:
                     limit=bounded_max_symbols,
                     snippet="none",
                     auto_index=False,
-                    file_glob=_single_file_seed,
                 )
-                if _single_file_seed and not raw_symbols:
-                    # File-scoped search empty — fall back to global so a poor
-                    # query doesn't silently return nothing.
-                    raw_symbols = self.search_symbols(
-                        query, limit=bounded_max_symbols, snippet="none", auto_index=False
-                    )
                 # Preserve zoekt's score-ranked order; append semantic-only files at the end.
                 _zk_list = _zk.result()  # list[str], zoekt-score ordered
                 _seen_anchors: dict[str, None] = dict.fromkeys(_zk_list)
@@ -3251,16 +3245,34 @@ class CodeContextEngine:
                 limit=bounded_max_symbols,
                 snippet="none",
                 auto_index=False,
-                file_glob=_single_file_seed,
             )
-            if _single_file_seed and not raw_symbols:
-                raw_symbols = self.search_symbols(query, limit=bounded_max_symbols, snippet="none", auto_index=False)
             # Preserve zoekt's score-ranked order; append semantic-only files at the end.
             _zk_list = self._zoekt_candidate_files(query, max_files=anchor_budget)
             _seen_anchors_s: dict[str, None] = dict.fromkeys(_zk_list)
             for _f in self._semantic_candidate_files(query, max_files=anchor_budget):
                 _seen_anchors_s.setdefault(_f, None)
             anchor_candidates = list(_seen_anchors_s)
+        # Single-file scope: restrict results to that file only.
+        # FTS5 indexes the signature head -- body-only terms (e.g. 'nohup', 'pid')
+        # won't appear in a signature and would cause a miss.  Instead:
+        #   1. Discard FTS5 hits from OTHER files (they'd crowd out the target).
+        #   2. Inject all definition symbols from the seed file directly.
+        #      Injected symbols bypass the score floor via seed_set.
+        #   3. Sort injected symbols by name-query token overlap so the most
+        #      relevant definitions surface first even without a body score.
+        if _single_file_seed:
+            anchor_candidates = [f for f in anchor_candidates if f == _single_file_seed]
+            seed_fts_hits = [s for s in raw_symbols if s.file_path == _single_file_seed]
+            _qt = set(re.split(r"\W+", query.lower())) - {"", "the", "a", "in", "of"}
+            # Score each injected symbol by name-token overlap so the ranking
+            # sort (-(score or 0.0), start_line) surfaces query-relevant symbols
+            # first rather than just the earliest-in-file ones.
+            seed_file_syms = [
+                s.model_copy(update={"score": float(sum(1 for t in _qt if t in (s.symbol_name or "").lower())) * 0.001})
+                for s in self._symbols_for_files([_single_file_seed], limit=5000)
+                if (s.kind or "").lower() in _DEFINITION_KINDS
+            ]
+            raw_symbols = self._dedupe_symbols(seed_fts_hits + seed_file_syms)
         # Exact-name guard + anchor gate. When the query is itself an indexed symbol
         # name, the definition (+ its family) is the answer, so two things happen:
         # (1) the exact match is pinned to the front (semantic/lexical ranking can
@@ -3385,7 +3397,11 @@ class CodeContextEngine:
         # over-populated file (e.g. 8 `as_sqlite` overloads in functions.py)
         # cannot starve the other files the query also matches (the ambiguous-name
         # collapse). Exact/seed hits already sort first, so they survive the cap.
-        diverse_ranked = self._cap_symbols_per_file(ranked_symbols, max_per_file=3)
+        # Single-file scope: the caller explicitly restricted to one file, so there
+        # are no other files to protect -- let the full symbol budget apply without
+        # the per-file cap that would otherwise truncate to just 3 symbols.
+        _per_file_cap = bounded_max_symbols if _single_file_seed else 3
+        diverse_ranked = self._cap_symbols_per_file(ranked_symbols, max_per_file=_per_file_cap)
         selected_symbols = diverse_ranked[:bounded_max_symbols]
         family_member_ids: set[str] = set()
         # Skip sibling-family completion for an exact-symbol query: the named
@@ -3394,6 +3410,9 @@ class CodeContextEngine:
         if effective_complete and not exact_hits:
             additions = self._complete_sibling_families(selected_symbols, query=query, seed_set=seed_set)
             if additions:
+                # Single-file scope: keep family completions inside the target file.
+                if _single_file_seed:
+                    additions = [s for s in additions if s.file_path == _single_file_seed]
                 have = {symbol.symbol_id for symbol in selected_symbols}
                 fresh = [symbol for symbol in additions if symbol.symbol_id not in have]
                 selected_symbols = selected_symbols + fresh
