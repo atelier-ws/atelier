@@ -477,15 +477,15 @@ def _render_explore(payload: Mapping[str, Any]) -> str:
             if not content:
                 continue
             # Build the range-tagged header:  #### path:Lstart-Lend — name [kind]
-            start_line = int(section.get("start_line", 0))
-            end_line = int(section.get("end_line", 0))
+            start_line = int(section.get("start_line") or section.get("line") or 0)
+            end_line = int(section.get("end_line") or 0)
             range_tag = ""
             if start_line and end_line:
                 range_tag = f":L{start_line}-{end_line}"
             elif start_line:
                 range_tag = f":L{start_line}"
             label = ""
-            sym_name = str(section.get("symbol_name") or section.get("qualified_name") or "")
+            sym_name = str(section.get("symbol_name") or section.get("name") or section.get("qualified_name") or "")
             sym_kind = str(section.get("kind") or "")
             if sym_name:
                 label = f" — {sym_name} [{sym_kind}]" if sym_kind else f" — {sym_name}"
