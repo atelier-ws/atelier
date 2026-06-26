@@ -905,6 +905,23 @@ def _compose_wave_spec_text(
         lines.append("- No prior improvements have been accepted yet.")
     if state.convergence_summary:
         lines.append(f"- Latest evaluator summary: {state.convergence_summary}")
+    # Carry forward rejected attempts so workers don't repeat them.
+    rejected_entries: list[str] = []
+    accepted_ids = {c.child_id for c in state.accepted_commits}
+    for child in state.children:
+        if child.child_id in accepted_ids:
+            continue
+        if child.metric is None:
+            continue  # no fitness measured — not informative
+        summary_snippet = (child.summary or "")[:120].replace("\n", " ")
+        rejected_entries.append(
+            f"  - {child.child_id} (metric={child.metric:.4f}): {summary_snippet}"
+        )
+    if rejected_entries:
+        lines.append(
+            "- Approaches already tried that did NOT beat the baseline — DO NOT repeat these:"
+        )
+        lines.extend(rejected_entries[-12:])  # cap at last 12 to avoid bloat
     directives = state.next_wave_directives[:]
     if directives:
         if child_index is None:
