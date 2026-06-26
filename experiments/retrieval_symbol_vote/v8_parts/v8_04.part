@@ -1,0 +1,150 @@
+            "definition_score": round(float(per_file[p]["definition_score"]), 6),
+            "import_score": round(float(per_file[p]["import_score"]), 6),
+            "file_coverage": round(float(per_file[p]["file_coverage"]), 6),
+            "line_hits": int(per_file[p]["line_hits"]),
+            "and_hit": bool(per_file[p]["and_hit"]),
+        } for p in ordered}
+        return ordered[:180], details, line_order[:140]
+
+    def semantic_candidates(self: Any, query: str) -> tuple[list[str], dict[str, float]]:
+        if not getattr(getattr(self, "_semantic_ranker", None), "available", False):
+            return [], {}
+        per_file: dict[str, float] = {}
+        try:
+            for symbol in self._search_symbols_semantic_local(query, limit=100):
+                score = float(symbol.score or 0.0)
+                if score >= 0.45:
+                    per_file[symbol.file_path] = max(per_file.get(symbol.file_path, 0.0), score)
+        except Exception:
+            return [], {}
+        ordered = sorted(per_file, key=lambda p: (-per_file[p], p))
+        return ordered[:80], per_file
+
+    def structural_candidates(self: Any, plan: QueryPlan, token_df: dict[str, int]) -> tuple[list[str], dict[str, dict[str, Any]]]:
+        if plan.intent == "prose" or not plan.anchors:
+            return [], {}
+        rare_anchors = [anchor for anchor in plan.anchors if token_df.get(anchor.lower(), 10_000) <= 12][:2]
+        if not rare_anchors:
+            return [], {}
+        cache: dict[str, dict[str, Any]] = self.__dict__.setdefault("_v8_reference_cache", {})
+        per_file: dict[str, dict[str, Any]] = {}
+        for anchor in rare_anchors:
+            payload = cache.get(anchor)
+            if payload is None:
+                try:
+                    payload = self.find_references(query=anchor, group_by="none", snippet_lines=0, limit=40, auto_index=False, budget_tokens=12000)
+                except Exception:
+                    payload = {}
+                cache[anchor] = payload
+            position = 0
+            seen_paths: set[str] = set()
+            for item in _walk_file_items(payload):
+                file_path = str(item.get("file_path") or item.get("path") or "")
+                if not file_path or file_path in seen_paths:
+                    continue
+                seen_paths.add(file_path)
+                position += 1
+                record = per_file.setdefault(file_path, {"anchors": set(), "rrf": 0.0, "best_rank": position, "max_confidence": 0.0})
+                record["anchors"].add(anchor.lower())
+                record["rrf"] += 1.0 / (10.0 + position)
+                record["best_rank"] = min(int(record["best_rank"]), position)
+                try:
+                    record["max_confidence"] = max(float(record["max_confidence"]), float(item.get("confidence") or 0.0))
+                except Exception:
+                    pass
+        anchor_count = max(1, len(rare_anchors))
+        for file_path, record in per_file.items():
+            confidence = .55 * len(record["anchors"]) / anchor_count + .25 * min(1.0, float(record["rrf"]) * 7.0) + .20 * float(record["max_confidence"])
+            confidence *= _safe_path_penalty(engine_mod, plan, file_path, unsupported=True)
+            record["confidence"] = min(1.0, confidence)
+        ordered = sorted(per_file, key=lambda p: (-float(per_file[p]["confidence"]), -len(per_file[p]["anchors"]), int(per_file[p]["best_rank"]), p))
+        details = {p: {
+            "anchors": sorted(per_file[p]["anchors"]),
+            "best_rank": int(per_file[p]["best_rank"]),
+            "max_confidence": round(float(per_file[p]["max_confidence"]), 6),
+            "confidence": round(float(per_file[p]["confidence"]), 6),
+        } for p in ordered}
+        return ordered[:80], details
+
+    def self_supervised_model(self: Any) -> list[float]:
+        cached = self.__dict__.get("_v8_self_supervised_weights")
+        if isinstance(cached, list):
+            return cached
+        try:
+            with self._connect(readonly=True) as conn:
+                rows = conn.execute(
+                    """SELECT symbol_name,file_path,lower(kind) kind,signature,doc_summary
+                       FROM symbols WHERE repo_id=? AND lower(kind) IN ('class','function','method')
+                       AND length(symbol_name) BETWEEN 4 AND 80
+                       ORDER BY symbol_name,file_path LIMIT 160""",
+                    (self.repo_id,),
+                ).fetchall()
+        except Exception:
+            rows = []
+        samples = [{
+            "name": str(row["symbol_name"] or ""), "path": str(row["file_path"] or ""),
+            "kind": str(row["kind"] or ""), "signature": str(row["signature"] or ""),
+            "doc": str(row["doc_summary"] or ""),
+        } for row in rows if row["symbol_name"] and row["file_path"]]
+        fallback = [-0.5, 1.5, 0.5, 0.7, 0.5, 0.6, -0.4, -0.3]
+        if len(samples) < 8:
+            self.__dict__["_v8_self_supervised_weights"] = fallback
+            return fallback
+
+        def features(query_name: str, query_terms: Sequence[str], expected_kind: str, candidate: dict[str, str]) -> list[float]:
+            return [
+                1.0,
+                _ngram_similarity(query_name, candidate["name"]),
+                _ngram_similarity(query_name, Path(candidate["path"]).stem),
+                _term_coverage(candidate["signature"], query_terms),
+                _term_coverage(candidate["doc"], query_terms),
+                float(candidate["kind"] == expected_kind),
+                float(bool(_TEST_RE.search(candidate["path"]))),
+                float(bool(_AUX_RE.search(candidate["path"]))),
+            ]
+
+        examples: list[tuple[list[float], float]] = []
+        for positive in samples[:96]:
+            symbol_terms = _dedupe([positive["name"], *_identifier_parts(positive["name"]), *_compound_terms(positive["name"])], 8)
+            negatives = sorted((c for c in samples if c["path"] != positive["path"]), key=lambda c: (-_ngram_similarity(positive["name"], c["name"]), c["path"]))[:4]
+            examples.append((features(positive["name"], symbol_terms, positive["kind"], positive), 1.0))
+            examples.extend((features(positive["name"], symbol_terms, positive["kind"], negative), 0.0) for negative in negatives)
+            doc_terms = _dedupe((token.lower() for token in _IDENTIFIER_RE.findall(positive["doc"]) if len(token) >= 4 and token.lower() not in _PROSE_STOP), 8)
+            if len(doc_terms) >= 2:
+                doc_negatives = sorted((c for c in samples if c["path"] != positive["path"]), key=lambda c: (-_term_coverage(c["doc"], doc_terms), c["path"]))[:4]
+                examples.append((features(positive["name"], doc_terms, positive["kind"], positive), 1.0))
+                examples.extend((features(positive["name"], doc_terms, positive["kind"], negative), 0.0) for negative in doc_negatives)
+        weights = [0.0] * 8
+        for epoch in range(10):
+            lr = .18 / (1.0 + .20 * epoch)
+            for feature_vector, label in examples:
+                prediction = _sigmoid(sum(w * x for w, x in zip(weights, feature_vector)))
+                error = (label - prediction) * (3.0 if label > .5 else 1.0)
+                for index, feature in enumerate(feature_vector):
+                    regularization = .004 * weights[index] if index else 0.0
+                    weights[index] += lr * (error * feature - regularization)
+        weights = [round(max(-5.0, min(5.0, weight)), 6) for weight in weights]
+        self.__dict__["_v8_self_supervised_weights"] = weights
+        return weights
+
+    def learned_score(weights: Sequence[float], file_path: str, detail: dict[str, Any]) -> float:
+        features = [
+            1.0,
+            float(detail.get("symbol_score", 0.0)),
+            float(detail.get("path_score", 0.0)),
+            float(detail.get("signature_score", 0.0)),
+            float(detail.get("doc_score", 0.0)),
+            float(detail.get("kind_match", 0.0)),
+            float(bool(_TEST_RE.search(file_path))),
+            float(bool(_AUX_RE.search(file_path))),
+        ]
+        return _sigmoid(sum(weight * feature for weight, feature in zip(weights, features)))
+
+    def fused_tool_explore(self: Any, query: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        self.__dict__.pop("_v8_zoekt_capture", None)
+        payload = original_tool_explore(self, query, *args, **kwargs)
+        if not isinstance(payload, dict) or not isinstance(payload.get("files"), list) or not payload["files"]:
+            return payload
+        max_files = max(1, min(int(kwargs.get("max_files", 6)), 10))
+        baseline_entries: dict[str, dict[str, Any]] = {}
+        baseline_files: list[str] = []
