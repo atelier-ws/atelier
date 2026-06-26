@@ -1,0 +1,6 @@
+# Ignore all raw run data (large dump dirs, per-run JSONLs)
+*
+
+# Keep the MRR history so trend comparisons survive across sessions
+!.gitignore
+!mrr_history.jsonl
