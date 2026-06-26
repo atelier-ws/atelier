@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   retrieval-ab:
@@ -82,3 +82,25 @@ jobs:
           name: retrieval-line-fts-ab-${{ github.sha }}
           path: artifacts/
           if-no-files-found: warn
+
+      - name: Persist logs on bench branch
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bench-results/line-fts
+          for name in provision baseline line-fts bench_pairs_runtime; do
+            if [[ -f "artifacts/${name}.txt" ]]; then
+              cp "artifacts/${name}.txt" "bench-results/line-fts/${name}.txt"
+            elif [[ -f "artifacts/${name}.json" ]]; then
+              cp "artifacts/${name}.json" "bench-results/line-fts/${name}.json"
+            fi
+          done
+          printf 'source_sha=%s\nrun_id=%s\nrun_attempt=%s\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            > bench-results/line-fts/metadata.txt
+          git config user.name "atelier-bench-bot"
+          git config user.email "atelier-bench-bot@users.noreply.github.com"
+          git add bench-results/line-fts
+          git commit -m "bench: persist retrieval A/B results [skip ci]" || exit 0
+          git push origin HEAD:bench
