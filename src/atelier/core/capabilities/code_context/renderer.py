@@ -487,11 +487,11 @@ def _render_explore(payload: Mapping[str, Any]) -> str:
             if sym_name:
                 label = f" — {sym_name} [{sym_kind}]" if sym_kind else f" — {sym_name}"
             header = f"#### {file_path}{range_tag}{label}"
-            # Skip the file-level symbol list — each section carries its own
-            # symbol info via the header.
-            # Skeleton notice is an inline italic comment on the header.
+            # Skeleton notice and query-match tag are inline on the header.
             if section.get("skeleton"):
                 header += " · skeleton"
+            if section.get("matched"):
+                header += " · match"
             lines: list[str] = [header]
             cleaned = "\n".join(_LINE_NUM_RE.sub("", ln) for ln in content.splitlines())
             lines.append(cleaned)
@@ -508,7 +508,9 @@ def _render_explore(payload: Mapping[str, Any]) -> str:
     if not parts:
         return "no results"
     if payload.get("exact_match") is False:
-        parts.append("*no exact-name match — results are nearest FTS*")
+        query = str(payload.get("query") or "")
+        note = f'*no exact-name match for "{query}"' if query else "*no exact-name match"
+        parts.append(note + " — results are nearest FTS; try _node for direct symbol lookup*")
     return "\n\n".join(parts)
 
 
