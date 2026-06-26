@@ -3569,6 +3569,10 @@ class CodeContextEngine:
                             skeleton=symbol.symbol_id in skeleton_ids,
                         ),
                         "_score": symbol.score or 0.0,
+                        # matched=True when symbol had an FTS/exact score (not just
+                        # seed-injected). Kept after _score is stripped so the
+                        # renderer can tag query-relevant sections.
+                        "matched": (symbol.score or 0.0) > 0.001,
                     }
                     for symbol in source_order
                 ]
@@ -3687,7 +3691,7 @@ class CodeContextEngine:
                 sections.sort(key=lambda s: int(s.get("start_line") or 0))
                 files_payload[0]["source_sections"] = sections
                 full_payload["files"] = files_payload
-            # Strip the internal _score annotation before packing.
+            # Strip the internal _score annotation before packing (matched stays).
             for fe in files_payload:
                 for sec in fe.get("source_sections", []):
                     sec.pop("_score", None)
