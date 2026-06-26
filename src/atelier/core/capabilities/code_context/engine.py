@@ -86,6 +86,22 @@ from atelier.infra.code_intel.cross_lang import CrossLangEdge, CrossLangEdgeStor
 from atelier.infra.internal_llm.exceptions import OllamaUnavailable
 from atelier.infra.tree_sitter.tags import Tag, detect_language, extract_tags
 
+# watchdog for OS-native file watching (inotify/FSEvents/ReadDirectoryChangesW).
+# Falls back gracefully when the package is not installed.
+try:
+    from watchdog.events import (
+        FileCreatedEvent,
+        FileDeletedEvent,
+        FileModifiedEvent,
+        FileMovedEvent,
+        FileSystemEvent,
+        FileSystemEventHandler,
+    )
+    from watchdog.observers import Observer
+except ImportError:
+    Observer = None  # type: ignore[assignment]
+    FileSystemEventHandler = object  # type: ignore[assignment]
+
 if TYPE_CHECKING:
     from atelier.core.capabilities.code_context.search_verdict import ChannelHealth
     from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
@@ -224,6 +240,17 @@ _DELETED_SEARCH_OPTIONAL_KEYS = [
 _SEARCH_COMPACT_DEFAULT_KEYS = set([*_SEARCH_ESSENTIAL_KEYS, "score", "commit_sha"])
 _LINEAGE_INDEX_VERSION = 2
 _LINEAGE_DEFAULT_SCORE_PENALTY = 0.1
+
+# --- File-watcher constants ---
+# Minimal set of directories that are *never* source code, regardless of .gitignore.
+# The watcher relies primarily on .gitignore (loaded via pathspec) for file filtering;
+# this is just a fast-path guard for paths that git doesn't even track.
+_WATCHER_HARD_SKIP_DIRS: frozenset[str] = frozenset({".git"})
+# Source file extensions to watch, built from the canonical language registry.
+_WATCHER_SOURCE_EXTENSIONS: frozenset[str] = frozenset(
+    ext for lang in __import__("atelier.infra.code_intel.languages", fromlist=["LANGUAGES"]).LANGUAGES
+    for ext in lang.extensions
+)
 _DELETED_SEARCH_COMPACT_DEFAULT_KEYS = set(
     [*_DELETED_SEARCH_ESSENTIAL_KEYS, "score", "matched_on", "rename_target", "rename_note"]
 )
@@ -1697,6 +1724,112 @@ def _javascript_imports_worker(repo_root: Path, path: Path, source: str) -> list
     return imports
 
 
+class _SourceFileEventHandler(FileSystemEventHandler):
+    """Watchdog event handler that schedules a debounced reindex on source-file changes.
+
+    Filters events by file extension and .gitignore rules (loaded recursively).
+    Holds a weak reference to the engine so it does not prevent GC.
+    """
+
+    def __init__(self, engine: CodeContextEngine) -> None:
+        super().__init__()
+        self._engine_ref = weakref.ref(engine)
+
+    def dispatch(self, event: FileSystemEvent) -> None:
+        if event.is_directory:
+            return
+        src_path = event.src_path
+        # Fast path: skip non-source extensions before any other work.
+        ext = Path(src_path).suffix.lower()
+        if ext not in _WATCHER_SOURCE_EXTENSIONS:
+            return
+        # Check against .gitignore rules (loaded and cached by the engine).
+        engine = self._engine_ref()
+        if engine is not None and engine._watcher_path_is_ignored(src_path):
+            return
+        if engine is not None:
+            engine._notify_watcher_event()
+
+
+def _watcher_load_gitignore_patterns(repo_root: Path) -> Any | None:
+    """Load all .gitignore files under *repo_root* and return a pathspec PathSpec.
+
+    Returns None when pathspec is not installed or no .gitignore files are found.
+    """
+    try:
+        import pathspec
+    except ImportError:
+        return None
+    try:
+        # Also check the user's global gitignore (~/.config/git/ignore or
+        # core.excludesFile) for patterns like .DS_Store, *.pyc, etc.
+        global_patterns: list[str] = []
+        core_excludes = _git_core_excludes_file()
+        if core_excludes:
+            try:
+                global_patterns.extend(
+                    line.strip() for line in Path(core_excludes).read_text("utf-8").splitlines()
+                    if line.strip() and not line.startswith("#")
+                )
+            except OSError:
+                pass
+
+        gitignore_files = list(repo_root.rglob(".gitignore"))
+        if not gitignore_files and not global_patterns:
+            return None
+
+        spec_lines: list[str] = []
+        # Global gitignore patterns apply at the repo root.
+        for pat in global_patterns:
+            spec_lines.append(pat)
+
+        for gi_path in gitignore_files:
+            try:
+                rel_dir = gi_path.parent.relative_to(repo_root).as_posix()
+                for line in gi_path.read_text("utf-8").splitlines():
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("#"):
+                        continue
+                    # PathSpec expects patterns relative to root; prefix with
+                    # the directory of the .gitignore file.
+                    if rel_dir == ".":
+                        spec_lines.append(stripped)
+                    else:
+                        spec_lines.append(f"/{rel_dir}/{stripped}")
+            except (OSError, ValueError):
+                continue
+
+        return pathspec.PathSpec.from_lines("gitignore", spec_lines)
+    except Exception:
+        logger.debug("Failed to load gitignore patterns", exc_info=True)
+        return None
+
+
+def _git_core_excludes_file() -> str | None:
+    """Return the path to the user's global gitignore file, or None."""
+    try:
+        result = subprocess.run(
+            ["git", "config", "--global", "--get", "core.excludesFile"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    # Fallback: XDG default location
+    xdg = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    candidate = Path(xdg) / "git" / "ignore"
+    return str(candidate) if candidate.is_file() else None
+
+
+def _watcher_check_ignored_fast(path: str, hard_skip_dirs: frozenset[str]) -> bool:
+    """Pure-string check against the hard-coded skip directories (fast path)."""
+    for part in path.replace("\\", "/").split("/"):
+        if part in hard_skip_dirs:
+            return True
+    return False
+
+
 class CodeContextEngine:
     """Local code intelligence using tree-sitter tags, SQLite FTS5, rg, and repo-map ranking."""
 
@@ -1785,7 +1918,17 @@ class CodeContextEngine:
         # an override of match quality. It defaults to unset so ranking never
         # incurs git/blame cost in the hot path; callers/tests may inject one.
         self._churn_score_provider: Callable[[list[SymbolRecord]], dict[str, float]] | None = None
+        # --- File watcher (event-driven via watchdog) ---
+        self._watcher_enabled = self._parse_watcher_enabled(os.getenv("ATELIER_CODE_FILE_WATCHER"))
+        self._watcher_debounce_ms = self._parse_watcher_debounce(os.getenv("ATELIER_CODE_WATCHER_DEBOUNCE_MS"))
+        self._file_watcher: Observer | None = None
+        self._watcher_event_handler: _SourceFileEventHandler | None = None
+        self._watcher_gitignore_spec: Any = None  # pathspec.PathSpec or None
+        self._watcher_gitignore_mtime: float = 0  # last load mtime of gitignore files
+        self._watcher_last_event_ms: float = 0
         if self._autosync_enabled:
+            if self._watcher_enabled and Observer is not None:
+                self._start_file_watcher()
             self._start_autosync_worker()
 
     def index_repo(
@@ -3113,16 +3256,28 @@ class CodeContextEngine:
             token_hits: list[SymbolRecord] = []
             seen_ids: set[str] = set()
             for token in query.strip().split():
-                if len(token) <= 3 or not _SYMBOL_QUERY_RE.match(token) or not _COMPOUND_IDENT_RE.search(token):
+                if not _SYMBOL_QUERY_RE.match(token):
+                    continue
+                # Strip class prefix: "DataArray.quantile" → probe "quantile".
+                # The compound-identifier guard applies to the probe name so
+                # plain English words are still skipped, but "Variable.quantile"
+                # is no longer dropped because the dot broke the CamelCase check.
+                has_dot = "." in token
+                probe = token.rsplit(".", 1)[-1] if has_dot else token
+                if len(probe) <= 3:
+                    continue
+                # For plain (non-dotted) tokens keep the compound-ident filter so
+                # bare English words like "find" or "get" are not probed.
+                if not has_dot and not _COMPOUND_IDENT_RE.search(token):
                     continue
                 lhits = self.search_symbols(
-                    token,
+                    probe,
                     limit=max(bounded_max_symbols, 10),
                     mode="lexical",
                     snippet="none",
                     auto_index=False,
                 )
-                for r in _exact_symbol_hits(lhits, token):
+                for r in _exact_symbol_hits(lhits, probe):
                     if r.symbol_id not in seen_ids:
                         seen_ids.add(r.symbol_id)
                         token_hits.append(r)
@@ -3219,15 +3374,11 @@ class CodeContextEngine:
         if exact_ids and not query_wants_tests:
             _have = {s.symbol_id for s in selected_symbols}
             _exact_fn_names_lower = {
-                r.symbol_name.lower()
-                for r in selected_symbols
-                if r.symbol_id in exact_ids and r.symbol_name
+                r.symbol_name.lower() for r in selected_symbols if r.symbol_id in exact_ids and r.symbol_name
             }
             for _fn_name in _exact_fn_names_lower:
                 _test_sym = f"test_{_fn_name}"
-                _test_hits = self.search_symbols(
-                    _test_sym, limit=5, mode="lexical", snippet="none", auto_index=False
-                )
+                _test_hits = self.search_symbols(_test_sym, limit=5, mode="lexical", snippet="none", auto_index=False)
                 for _tr in _exact_symbol_hits(_test_hits, _test_sym):
                     if _tr.symbol_id not in _have and _TEST_PATH_RE.search(_tr.file_path or ""):
                         selected_symbols = [*selected_symbols, _tr]
@@ -4584,7 +4735,14 @@ class CodeContextEngine:
         # run concurrently with zero blocking; sqlite3 releases the GIL inside
         # sqlite3_step() so threads achieve genuine parallelism.  Wall-clock time
         # collapses from sum(channel_times) to max(channel_times) (~15ms vs ~45ms).
-        fts_and_q = _fts_and_query(normalized_query)
+        # Build the AND query from the IDF-pruned terms rather than the raw
+        # query string.  Zero-hit tokens (e.g. a parameter name the agent wants
+        # to ADD, like 'keep_attrs') have df=0 in the vocab and are not in
+        # or_fts_terms, so they can't kill AND semantics.  We reconstruct a
+        # query string from or_fts_terms (already rarest-first, already pruned)
+        # so _fts_and_query's natural-language guard and length checks still apply.
+        _and_input = " ".join(or_fts_terms) if or_fts_terms else normalized_query
+        fts_and_q = _fts_and_query(_and_input)
         like_pattern = f"%{normalized_query_lower}%"
         path_anchor = or_fts_terms[0] if or_fts_terms else first_term
         first_term_like = f"%{path_anchor}%"
@@ -9356,6 +9514,7 @@ class CodeContextEngine:
         return 500
 
     def _autosync_status(self) -> dict[str, Any]:
+        watcher_alive = self._file_watcher is not None and self._file_watcher.is_alive()
         return {
             "enabled": self._autosync_enabled,
             "state": self._autosync_state,
@@ -9366,6 +9525,12 @@ class CodeContextEngine:
             "last_event_at": self._autosync_last_event_at,
             "reindex_count": self._autosync_reindex_count,
             "history": list(self._autosync_history),
+            "file_watcher": {
+                "enabled": self._watcher_enabled,
+                "alive": watcher_alive,
+                "debounce_ms": self._watcher_debounce_ms,
+                "gitignore_loaded": self._watcher_gitignore_spec is not None,
+            },
         }
 
     def _source_tree_signature(self) -> str:
@@ -9383,15 +9548,28 @@ class CodeContextEngine:
         digest_input = "\n".join(sorted(parts)).encode("utf-8")
         return hashlib.sha256(digest_input).hexdigest()
 
-    def _maybe_autosync_reindex(self) -> None:
+    def _maybe_autosync_reindex(self, *, _from_watcher: bool = False) -> None:
         if not self._autosync_lock.acquire(blocking=False):
             return
         try:
-            self._maybe_autosync_reindex_locked()
+            self._maybe_autosync_reindex_locked(_from_watcher=_from_watcher)
         finally:
             self._autosync_lock.release()
 
-    def _maybe_autosync_reindex_locked(self) -> None:
+    def _maybe_autosync_reindex_locked(self, *, _from_watcher: bool = False) -> None:
+        # When called from the file watcher we already know a change happened,
+        # so skip the expensive _source_tree_signature() stat walk entirely.
+        if _from_watcher:
+            self._autosync_state = "syncing"
+            self.index_repo(force=False, block=False)
+            self._autosync_signature = self._source_tree_signature()
+            self._autosync_last_sync_ms = int(time.time() * 1000)
+            self._autosync_pending_events = 0
+            self._autosync_state = "idle"
+            self._autosync_reindex_count += 1
+            self._record_autosync_event(event="reindex", reason="watcher_triggered", reindexed=True)
+            return
+
         current_signature = self._source_tree_signature()
         if self._autosync_signature is None:
             self._autosync_signature = current_signature
@@ -9454,6 +9632,142 @@ class CodeContextEngine:
 
     def _stop_autosync_worker(self) -> None:
         self._autosync_stop.set()
+        self._stop_file_watcher()
+
+    # --- File watcher (event-driven via watchdog) ---
+
+    def _start_file_watcher(self) -> None:
+        """Start a watchdog Observer that monitors the repo root for source-file changes."""
+        if self._file_watcher is not None:
+            return
+        if Observer is None:
+            self._watcher_enabled = False
+            return
+        try:
+            # Load .gitignore patterns at startup so the handler can filter in-process.
+            self._watcher_gitignore_spec = _watcher_load_gitignore_patterns(self.repo_root)
+            self._watcher_gitignore_mtime = time.time()
+            self._watcher_event_handler = _SourceFileEventHandler(self)
+            self._file_watcher = Observer(timeout=0.5)
+            self._file_watcher.schedule(
+                self._watcher_event_handler,
+                str(self.repo_root),
+                recursive=True,
+            )
+            self._file_watcher.start()
+            logger.debug(
+                "File watcher started on %s (debounce=%dms, gitignore=%s)",
+                self.repo_root, self._watcher_debounce_ms,
+                "loaded" if self._watcher_gitignore_spec is not None else "none",
+            )
+        except OSError as exc:
+            # Common: inotify instance limit (EMFILE/ENOSPC) in containers or
+            # CI. Fall back to polling gracefully.
+            logger.warning(
+                "File watcher unavailable on %s (OSError: %s), falling back to polling",
+                self.repo_root, exc,
+            )
+            self._file_watcher = None
+            self._watcher_enabled = False
+        except Exception:
+            logger.exception("Failed to start file watcher on %s, falling back to polling", self.repo_root)
+            self._file_watcher = None
+            self._watcher_enabled = False
+
+    def _stop_file_watcher(self) -> None:
+        """Stop the watchdog Observer if running."""
+        watcher = self._file_watcher
+        if watcher is not None and watcher.is_alive():
+            try:
+                watcher.stop()
+                watcher.join(timeout=3)
+            except Exception:
+                logger.exception("Error stopping file watcher")
+        self._file_watcher = None
+        self._watcher_event_handler = None
+        self._watcher_gitignore_spec = None
+
+    def _watcher_path_is_ignored(self, path: str) -> bool:
+        """Check if *path* should be ignored by the file watcher.
+
+        Fast path: check hard-skip dirs (.git, etc.) without any I/O.
+        Slow path: consult the loaded .gitignore pathspec (reloaded periodically).
+        """
+        if _watcher_check_ignored_fast(path, _WATCHER_HARD_SKIP_DIRS):
+            return True
+        spec = self._watcher_gitignore_spec
+        if spec is not None:
+            try:
+                rel = os.path.relpath(path, str(self.repo_root))
+                if rel.startswith(".."):
+                    return True  # outside repo root
+                return spec.match_file(rel.replace("\\", "/"))
+            except ValueError:
+                return True
+        # No gitignore spec: conservatively keep the file (reindex on any source change).
+        return False
+
+    def _watcher_reload_gitignore_if_stale(self) -> None:
+        """Reload .gitignore patterns if any .gitignore file has changed on disk."""
+        now = time.time()
+        if now - self._watcher_gitignore_mtime < 30:
+            return  # check at most every 30s
+        self._watcher_gitignore_mtime = now
+        # Quick check: has any .gitignore mtime changed?
+        try:
+            repo_root = self.repo_root
+            for gi in repo_root.rglob(".gitignore"):
+                cached = getattr(self, "_watcher_gi_mtimes", None)
+                current_mtime = gi.stat().st_mtime_ns
+                if cached is None:
+                    self._watcher_gi_mtimes = {}
+                if cached is None or self._watcher_gi_mtimes.get(str(gi)) != current_mtime:
+                    # At least one gitignore changed — full reload.
+                    new_spec = _watcher_load_gitignore_patterns(repo_root)
+                    if new_spec is not None:
+                        self._watcher_gitignore_spec = new_spec
+                        if cached is None:
+                            self._watcher_gi_mtimes = {}
+                        # Update cached mtimes
+                        for gi2 in repo_root.rglob(".gitignore"):
+                            try:
+                                self._watcher_gi_mtimes[str(gi2)] = gi2.stat().st_mtime_ns
+                            except OSError:
+                                pass
+                    return
+        except Exception:
+            logger.debug("gitignore reload check failed", exc_info=True)
+
+    def _notify_watcher_event(self) -> None:
+        """Called by the watchdog event handler when a source file changes.
+
+        Schedules a debounced reindex via the existing autosync machinery.
+        """
+        if not self._autosync_enabled:
+            return
+        # Check if .gitignore files have changed (cheap mtime probe every 30s).
+        self._watcher_reload_gitignore_if_stale()
+        # Respect the watcher-specific debounce window.
+        now_ms = int(time.time() * 1000)
+        last = self._watcher_last_event_ms
+        if now_ms - last < self._watcher_debounce_ms:
+            return  # still within debounce window
+        self._watcher_last_event_ms = now_ms
+        self._autosync_last_event_at = datetime.now(UTC).isoformat()
+        self._autosync_pending_events = max(1, self._autosync_pending_events + 1)
+        self._maybe_autosync_reindex(_from_watcher=True)
+
+    def _parse_watcher_enabled(self, raw_value: str | None) -> bool:
+        if raw_value is None:
+            return Observer is not None  # default: enabled when watchdog is available
+        return raw_value.strip().lower() not in {"0", "false", "no", "off"}
+
+    def _parse_watcher_debounce(self, raw_value: str | None) -> int:
+        if raw_value is None:
+            return 2000  # default 2s, matching CodeGraph
+        with contextlib.suppress(ValueError):
+            return max(100, int(raw_value))
+        return 2000
 
     def _autosync_worker_loop(self) -> None:
         try:
@@ -9469,14 +9783,22 @@ class CodeContextEngine:
                 self.index_repo(force=False, block=False)
             except Exception:
                 logging.exception("autosync: initial index build failed")
-        while not self._autosync_stop.wait(self._autosync_poll_ms / 1000.0):
+        # When the file watcher is active, the polling interval is a safety net
+        # only — the watcher handles real-time change detection. Extend to 60s.
+        poll_ms = self._autosync_poll_ms
+        if self._file_watcher is not None and self._file_watcher.is_alive():
+            poll_ms = max(poll_ms, 60000)
+        while not self._autosync_stop.wait(poll_ms / 1000.0):
             try:
                 if not self.index_ready():
                     # Still empty (e.g. the initial build lost an index-lock race
                     # with a concurrent prewarm). Keep retrying until it exists.
                     self.index_repo(force=False, block=False)
                 else:
-                    self._maybe_autosync_reindex()
+                    # Polling-based check is the safety net; skip when watcher is
+                    # active (the watcher already triggers reindex on change).
+                    if self._file_watcher is None or not self._file_watcher.is_alive():
+                        self._maybe_autosync_reindex()
                 self._maybe_refresh_zoekt_index()
             except Exception as exc:
                 logging.exception("Recovered from broad exception handler")

@@ -221,27 +221,205 @@ def _rewrite_cat(tokens: list[str]) -> CommandPolicyDecision:
     )
 
 
+# Flags that are structural/formatting and safe to silently ignore during rewrite
+# (they don't change what lines are matched or how many).
+_GREP_SAFE_IGNORE_FLAGS: frozenset[str] = frozenset(
+    {
+        "-r",
+        "-R",
+        "--recursive",
+        "--dereference-recursive",
+        "-n",
+        "--line-number",
+        "-H",
+        "--with-filename",
+        "-h",
+        "--no-filename",
+        "-E",
+        "--extended-regexp",
+        "-P",
+        "--perl-regexp",
+        "-s",
+        "--no-messages",
+        "-a",
+        "--text",
+        "-I",  # rg: skip binary
+        "-u",
+        "-uu",
+        "-uuu",  # rg: --unrestricted
+        "--no-ignore",
+        "--no-ignore-vcs",
+        "--no-ignore-parent",
+        "--hidden",
+        "--follow",
+        "-L",
+        "--color",
+        "--colour",
+        "--colors",
+        "--no-color",
+        "--no-colour",
+        "--color=never",
+        "--color=always",
+        "--color=auto",
+        "--null",  # grep: NUL-terminate output paths (not content)
+        "-p",  # rg: --no-ignore-parent short form
+    }
+)
+
+# Flags that alter which lines are output or their format — we can't faithfully
+# replicate these in the MCP grep tool, so fall back to real shell execution.
+_GREP_FALLBACK_FLAGS: frozenset[str] = frozenset(
+    {
+        "-o",
+        "--only-matching",
+        "-v",
+        "--invert-match",
+        "-c",
+        "--count",
+        "-q",
+        "--quiet",
+        "--silent",
+        "-x",
+        "--line-regexp",
+        "-w",
+        "--word-regexp",
+        "-F",
+        "--fixed-strings",
+        "-z",
+        "--null-data",
+        "-Z",
+        "-p",  # rg --replace short (conflicts with safe ignore above, but -p is rare)
+        "--replace",
+    }
+)
+
+
 def _rewrite_search(tokens: list[str], command_name: str) -> CommandPolicyDecision:
+    # Split on the first shell pipe token so we can rewrite the grep part and
+    # feed its output through the remainder (e.g. ``grep -A5 pat file | head -20``).
+    pipe_idx: int | None = None
+    for idx, tok in enumerate(tokens):
+        if tok == "|":
+            pipe_idx = idx
+            break
+    if pipe_idx is not None:
+        grep_tokens = tokens[:pipe_idx]
+        # Reconstruct the pipe tail as a single shell string.
+        pipe_remainder: str | None = (
+            " ".join(shlex.quote(t) for t in tokens[pipe_idx + 1 :]) if pipe_idx + 1 < len(tokens) else None
+        )
+    else:
+        grep_tokens = tokens
+        pipe_remainder = None
+
     ignore_case = False
     file_type: str | None = None
+    lines_after = 0
+    lines_before = 0
+    globs: list[str] = []
+    list_files_only = False
     cleaned: list[str] = []
     seen_double_dash = False
     i = 1
-    while i < len(tokens):
-        tok = tokens[i]
+    while i < len(grep_tokens):
+        tok = grep_tokens[i]
         if tok == "--":
             seen_double_dash = True
             i += 1
             continue
         if tok.startswith("-") and not seen_double_dash:
-            # Handle --type=python or --type python or -t python
+            # Flags that alter output semantics we can't replicate → fall back so
+            # the agent gets correct (not silently wrong) results.
+            flag_stem = tok.split("=", 1)[0]  # strip =value suffix for lookup
+            if flag_stem in _GREP_FALLBACK_FLAGS or tok in _GREP_FALLBACK_FLAGS:
+                return CommandPolicyDecision(category="search", action="allow")
+            # Safe structural/formatting flags — skip quietly.
+            if tok in _GREP_SAFE_IGNORE_FLAGS or flag_stem in _GREP_SAFE_IGNORE_FLAGS:
+                i += 1
+                continue
+            # --type=python or --type python or -t python
             if tok.startswith("--type="):
                 file_type = tok.split("=", 1)[1]
-            elif tok in {"--type", "-t"} and i + 1 < len(tokens):
+            elif tok in {"--type", "-t"} and i + 1 < len(grep_tokens):
                 i += 1
-                file_type = tokens[i]
-            elif "i" in tok and tok != "-":
+                file_type = grep_tokens[i]
+            # -A N / --after-context N  (lines after match)
+            elif tok in {"-A", "--after-context"} and i + 1 < len(grep_tokens):
+                i += 1
+                try:
+                    lines_after = int(grep_tokens[i])
+                except ValueError:
+                    pass
+            elif tok.startswith("-A") and tok[2:].isdigit():
+                lines_after = int(tok[2:])
+            elif tok.startswith("--after-context="):
+                try:
+                    lines_after = int(tok.split("=", 1)[1])
+                except ValueError:
+                    pass
+            # -B N / --before-context N  (lines before match)
+            elif tok in {"-B", "--before-context"} and i + 1 < len(grep_tokens):
+                i += 1
+                try:
+                    lines_before = int(grep_tokens[i])
+                except ValueError:
+                    pass
+            elif tok.startswith("-B") and tok[2:].isdigit():
+                lines_before = int(tok[2:])
+            elif tok.startswith("--before-context="):
+                try:
+                    lines_before = int(tok.split("=", 1)[1])
+                except ValueError:
+                    pass
+            # -C N / --context N  (symmetric context)
+            elif tok in {"-C", "--context"} and i + 1 < len(grep_tokens):
+                i += 1
+                try:
+                    n = int(grep_tokens[i])
+                    lines_before = lines_after = n
+                except ValueError:
+                    pass
+            elif tok.startswith("-C") and tok[2:].isdigit():
+                n = int(tok[2:])
+                lines_before = lines_after = n
+            elif tok.startswith("--context="):
+                try:
+                    n = int(tok.split("=", 1)[1])
+                    lines_before = lines_after = n
+                except ValueError:
+                    pass
+            # -l / --files-with-matches / --files-with-match (rg)
+            elif tok in {"-l", "--files-with-matches", "--files-with-match"}:
+                list_files_only = True
+            # --include=glob (grep) or -g glob (rg)
+            elif tok.startswith("--include="):
+                globs.append(tok.split("=", 1)[1])
+            elif tok in {"-g", "--glob"} and i + 1 < len(grep_tokens):
+                i += 1
+                globs.append(grep_tokens[i])
+            elif tok.startswith("-g") and len(tok) > 2:
+                globs.append(tok[2:])
+            # -i case-insensitive (guard: not a multi-char flag like --include)
+            elif "i" in tok and len(tok) <= 3:
                 ignore_case = True
+            # Bundled short flags (-rn, -rni, -rniA …): expand char-by-char.
+            # Any fallback char → fall back; any unknown char → fall back;
+            # all safe → continue.  Value-in-flag forms (-A90) are already
+            # handled above and never reach this branch.
+            elif not tok.startswith("--") and len(tok) > 2:
+                for ch in tok[1:]:
+                    single = f"-{ch}"
+                    if single in _GREP_FALLBACK_FLAGS:
+                        return CommandPolicyDecision(category="search", action="allow")
+                    if single not in _GREP_SAFE_IGNORE_FLAGS:
+                        # Check -i specially (case-insensitive embedded in bundle)
+                        if ch == "i":
+                            ignore_case = True
+                        else:
+                            return CommandPolicyDecision(category="search", action="allow")
+            # Unknown flag: fall back so we don't silently produce wrong output.
+            else:
+                return CommandPolicyDecision(category="search", action="allow")
             i += 1
             continue
         cleaned.append(tok)
@@ -256,6 +434,11 @@ def _rewrite_search(tokens: list[str], command_name: str) -> CommandPolicyDecisi
         command_name == "rg"
         and not ignore_case
         and file_type is None
+        and not globs
+        and not list_files_only
+        and lines_after == 0
+        and lines_before == 0
+        and pipe_remainder is None
         and len(cleaned) <= 2
         and not _SEARCH_REGEX_METACHARS.search(pattern)
     ):
@@ -266,14 +449,21 @@ def _rewrite_search(tokens: list[str], command_name: str) -> CommandPolicyDecisi
             rewrite_target="search",
             rewrite_payload={"query": pattern, "path": path},
         )
+    output_mode = "file_paths_only" if list_files_only else "content"
     payload: dict[str, Any] = {
         "file_path": path,
         "content_regex": pattern,
         "ignore_case": ignore_case,
-        "output_mode": "content",
+        "output_mode": output_mode,
+        "lines_after": lines_after,
+        "lines_before": lines_before,
     }
     if file_type:
         payload["type"] = file_type
+    if globs:
+        payload["glob"] = globs
+    if pipe_remainder:
+        payload["pipe_remainder"] = pipe_remainder
     return CommandPolicyDecision(
         category="search",
         action="rewrite",

@@ -8097,7 +8097,15 @@ def _run_bash_tool(
         resolved_search_path = Path(raw_search_path)
         if not resolved_search_path.is_absolute():
             resolved_search_path = (Path(effective_cwd) / resolved_search_path).resolve()
-        glob_patterns = ["**/*"] if resolved_search_path.is_dir() else None
+        # Glob patterns from the payload (e.g. --include / -g flags) take
+        # precedence; fall back to "**/*" for directory-wide searches.
+        payload_globs = policy.rewrite_payload.get("glob")
+        if payload_globs:
+            glob_patterns = payload_globs if isinstance(payload_globs, list) else [payload_globs]
+        elif resolved_search_path.is_dir():
+            glob_patterns = ["**/*"]
+        else:
+            glob_patterns = None
         grep_args: dict[str, Any] = {
             # Pass the cwd-resolved absolute path: tool_grep resolves a relative
             # path against CLAUDE_WORKSPACE_ROOT, which would search the wrong
@@ -8116,12 +8124,36 @@ def _run_bash_tool(
                 ],
                 policy.rewrite_payload.get("output_mode", "file_paths_with_content"),
             ),
+            "lines_before": int(policy.rewrite_payload.get("lines_before", 0)),
+            "lines_after": int(policy.rewrite_payload.get("lines_after", 0)),
         }
         if file_type:
             grep_args["type"] = file_type
         grep_handler: Callable[[dict[str, Any]], Any] = TOOLS["grep"]["handler"]
         rewritten = cast(dict[str, Any], grep_handler(grep_args))
         rewritten_stdout = _render_grep_stdout(rewritten)
+
+        # If the original command had a pipe tail (e.g. ``grep ... | head -20``),
+        # feed the grep output through it so the agent gets the trimmed result
+        # rather than the full unpiped output.
+        pipe_remainder = str(policy.rewrite_payload.get("pipe_remainder") or "")
+        if pipe_remainder:
+            try:
+                import subprocess as _sp
+
+                pipe_proc = _sp.run(
+                    ["bash", "-c", pipe_remainder],
+                    input=rewritten_stdout,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                rewritten_stdout = pipe_proc.stdout
+                if pipe_proc.returncode != 0 and pipe_proc.stderr:
+                    rewritten_stdout = rewritten_stdout + pipe_proc.stderr
+            except (OSError, ValueError, _sp.TimeoutExpired):  # type: ignore[possibly-undefined]
+                pass  # fall through with unpiped output on any error
+
         return {
             "stdout": rewritten_stdout,
             "stderr": "",
