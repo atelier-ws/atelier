@@ -28,6 +28,7 @@ from atelier.core.capabilities.host_runners import (
 from atelier.core.capabilities.host_runners import (
     resolve_swarm_runner_command as _resolve_swarm_runner_command,
 )
+from atelier.core.capabilities.swarm.fitness import FitnessSpec
 from atelier.core.capabilities.swarm.models import (
     Finding,
     SwarmAcceptedCommit,
@@ -44,7 +45,6 @@ from atelier.core.capabilities.swarm.models import (
     SwarmWaveState,
 )
 from atelier.core.capabilities.swarm.reducers import WaveContext, get_reducer
-from atelier.core.capabilities.swarm.fitness import FitnessSpec
 from atelier.core.capabilities.swarm.reducers.best import (
     _has_non_structural_passing_validation,
     _score_child,
@@ -139,6 +139,18 @@ _SWARM_EVALUATION_SCHEMA: dict[str, Any] = {
         "next_wave_directives": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["summary", "verdict", "candidate_order", "decisions", "next_wave_directives"],
+}
+_SWARM_APPROACH_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "approaches": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "One distinct implementation approach per child run, in child order.",
+        }
+    },
+    "required": ["approaches"],
 }
 
 
@@ -1870,6 +1882,73 @@ def build_child_env(child: SwarmChildState, state: SwarmRunState) -> dict[str, s
     return env
 
 
+def _plan_wave_approaches(state: SwarmRunState, planned_runs: int) -> list[str]:
+    """Run a single planning LLM call to generate ``planned_runs`` orthogonal approaches.
+
+    Returns one approach string per child so that ``state.next_wave_directives``
+    can be seeded before wave-1 children are launched — preventing every run from
+    independently converging on the same obvious solution.
+
+    Falls back to an empty list on any error so the swarm continues normally.
+    """
+    if planned_runs <= 1:
+        return []
+    # Only provider-backed launches (openai/litellm) can return structured output.
+    # CLI-mode children run as full claude subprocesses where we can't easily
+    # parse structured output, so skip planning for that mode — the children
+    # are capable enough to self-direct from the spec.
+    if state.launch_provider not in {"openai", "litellm"}:
+        return []
+    backend = state.launch_provider
+
+    from atelier.infra import internal_llm
+
+    spec_text = _spec_text(state).strip()
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a swarm planning agent. Given a task specification and a requested number of "
+                "parallel implementation runs, produce exactly that many distinct, non-overlapping "
+                "implementation approaches. Each approach must differ meaningfully from the others: "
+                "different algorithms, data structures, entry points, or architectural patterns. "
+                "Avoid paraphrasing the same idea. Be concrete and specific — one or two sentences "
+                "each. Return only the 'approaches' array."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {"task": spec_text, "num_approaches": planned_runs},
+                ensure_ascii=False,
+            ),
+        },
+    ]
+    env_key = "ATELIER_LLM_BACKEND"
+    previous_backend = os.environ.get(env_key)
+    os.environ[env_key] = backend
+    try:
+        response = internal_llm.chat(
+            messages,
+            model=state.runner_model or None,
+            json_schema=_SWARM_APPROACH_SCHEMA,
+        )
+    except internal_llm.InternalLLMError:
+        return []
+    finally:
+        if previous_backend is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = previous_backend
+
+    if not isinstance(response, dict):
+        return []
+    approaches = response.get("approaches")
+    if not isinstance(approaches, list):
+        return []
+    return [str(a) for a in approaches if a][:planned_runs]
+
+
 def _prepare_wave(state: SwarmRunState, root: Path, wave_index: int) -> SwarmWaveState:
     manager = SwarmWorktreeManager(
         repo_root=Path(state.repo_root),
@@ -1904,6 +1983,13 @@ def _prepare_wave(state: SwarmRunState, root: Path, wave_index: int) -> SwarmWav
         metadata={"wave_index": wave.wave_index},
     )
     _upsert_run_artifact(state, wave.synthesized_spec_artifact)
+    # Seed diverse approaches before children launch so wave-1 runs don't
+    # independently converge on the same solution.  Only runs when no prior
+    # evaluator feedback exists (i.e. the very first wave or a fresh swarm).
+    if not state.next_wave_directives and planned_runs > 1:
+        approaches = _plan_wave_approaches(state, planned_runs)
+        if approaches:
+            state.next_wave_directives = approaches
     for index in range(1, wave.planned_runs + 1):
         child_id = f"wave-{wave_index:02d}-run-{index:02d}"
         child_dir = _child_run_dir(root, state.run_id, child_id)
@@ -1918,7 +2004,7 @@ def _prepare_wave(state: SwarmRunState, root: Path, wave_index: int) -> SwarmWav
         child_spec_path.write_text(
             (
                 _compose_wave_spec_text(state, wave, child_index=index, planned_runs=wave.planned_runs)
-                if state.mode == "continuous"
+                if state.mode == "continuous" or bool(state.next_wave_directives)
                 else spec_copy.read_text(encoding="utf-8")
             ),
             encoding="utf-8",
