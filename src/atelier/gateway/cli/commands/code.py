@@ -254,11 +254,11 @@ def zoekt_reset(ctx: click.Context, yes: bool) -> None:
     click.echo("Zoekt state removed.")
 
 
-def _code_context_engine(repo_root: str) -> Any:
+def _code_context_engine(repo_root: str, db_path: Path | None = None) -> Any:
     from atelier.core.capabilities.code_context import CodeContextEngine
 
     # One-shot CLI commands don't need background autosync threads
-    return CodeContextEngine(repo_root, autosync_enabled=False)
+    return CodeContextEngine(repo_root, db_path=db_path, autosync_enabled=False)
 
 
 def _index_repo_with_progress(
@@ -470,6 +470,7 @@ def code_group() -> None:
 @click.option("--json", "as_json", is_flag=True)
 @click.option("--frame-prefix", default="", hidden=True, help="Prefix for progress output (used by dev.sh)")
 @click.option("--no-stats", is_flag=True, help="Do not print indexing statistics.")
+@click.option("--db-path", default=None, type=click.Path(), help="Override default SQLite DB path.")
 def code_index_cmd(
     repo_root: str,
     include_globs: tuple[str, ...],
@@ -478,13 +479,14 @@ def code_index_cmd(
     as_json: bool,
     no_stats: bool,
     frame_prefix: str,
+    db_path: str | None,
 ) -> None:
     """Index a repository into the SQLite FTS5 symbol store.
 
     Incremental by default (only re-indexes changed files). Use --reindex
     for a full rebuild from scratch.
     """
-    engine = _code_context_engine(repo_root)
+    engine = _code_context_engine(repo_root, db_path=Path(db_path) if db_path else None)
     force = reindex
     if as_json:
         payload = engine.index_repo(

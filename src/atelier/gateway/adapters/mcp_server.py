@@ -318,6 +318,7 @@ def mcp_tool(
             # Convert to format expected by create_model: (type, default/Field)
             field_defs = {k: (v[0], v[1]) for k, v in fields.items()}
             known_params = frozenset(field_defs)
+            visible_params = frozenset(k for k in field_defs if k not in hidden_params)
             ArgsModel = create_model(f"{func.__name__}_Args", **field_defs)  # type: ignore[call-overload]
             schema = ArgsModel.model_json_schema()
             # Niche params stay accepted by the handler but are not published to LLMs.
@@ -351,11 +352,9 @@ def mcp_tool(
                 if isinstance(args, dict):
                     unknown = [key for key in args if key not in known_params and key not in aliases]
                     if unknown:
-                        logger.warning(
-                            "tool %s received unknown argument(s) %s (ignored; known: %s)",
-                            tool_name,
-                            sorted(unknown),
-                            sorted(known_params),
+                        raise ValueError(
+                            f"tool {tool_name!r} received unknown argument(s) {sorted(unknown)}; "
+                            f"known: {sorted(visible_params)}"
                         )
                 try:
                     validated = ArgsModel.model_validate(_coerce_json_strings(args, param_annotations))
@@ -4942,7 +4941,7 @@ def _suggest_paths_for_missing(workspace_root: Path, missing: str, *, limit: int
 # range specs models naturally emit, e.g. "store.py#60-100"). Optional "L"
 # prefixes mirror the read tool's own range syntax. A non-numeric "#..." tail is
 # left intact so genuine '#' filenames still resolve.
-_READ_RANGE_SUFFIX = re.compile(r"#(L?\d+(?:[-,:](?:L?\d+)?)?)$", re.IGNORECASE)
+_READ_RANGE_SUFFIX = re.compile(r"[#:](L?\d+(?:[-,:](?:L?\d+)?)?)$", re.IGNORECASE)
 
 
 def _split_read_range_suffix(raw_path: str) -> tuple[str, str | None]:
@@ -5283,7 +5282,7 @@ def _split_file_opts(s: str) -> tuple[str, str | None, bool, int | None, int | N
         "Read files or symbols. "
         "files=['a.py', 'b.py:L10-L20', 'c.py:expand', 'c.py:head=50', 'd.py:tail=20']"
         "symbol='name' or ['a','b'] → exact source, no FTS noise. "
-        "File modes: outline (>500 LOC default), full via :expand, range via :Lx-Ly, head/tail via :head=N/:tail=N."
+        "File modes: outline (>200 LOC default), full via :expand, range via :Lx-Ly, head/tail via :head=N/:tail=N."
     ),
     param_aliases={"max_lines": "lines"},
 )
@@ -5295,6 +5294,8 @@ def tool_smart_read(
         ),
     ] = "",
     range: str | None = None,
+    start_line: Annotated[int | None, Field(description="Start line (1-based). Alias for range='start-end'.")] = None,
+    end_line: Annotated[int | None, Field(description="End line (1-based, inclusive).")] = None,
     expand: bool = False,
     lines: int | None = None,
     include_meta: Annotated[
@@ -5306,8 +5307,7 @@ def tool_smart_read(
         Field(
             description=(
                 "List of file paths to read. Each item is a path string with optional suffixes: "
-                ":L10-L20 for a line range, :expand for full source, :head=N for first N lines, :tail=N for last N lines. "
-                "Returns {files: [...]}."
+                ":L10-L20 for a line range, :expand for full source, :head=N for first N lines, :tail=N for last N lines."
             )
         ),
     ] = None,
@@ -5326,7 +5326,7 @@ def tool_smart_read(
     verbatim source of exactly that symbol — direct index lookup, no FTS expansion.
     Pass a list to fetch multiple: read(symbol=["Foo", "Bar.baz"]).
 
-    File modes: outline (structure only — default for files >500 LOC), range
+    File modes: outline (structure only — default for files >200 LOC), range
     (range="42-118", "L42-L118", or open-ended "L42-" for an exact line slice),
     full (small files, or any file with expand=true), and compact (safe
     whitespace-only transformation of full reads — not byte-identical source).
@@ -5348,6 +5348,10 @@ def tool_smart_read(
     # in before any dispatch so both name the same file.
     if not path and filePath:
         path = filePath
+    # start_line/end_line integer aliases → range string (wins over any suffix in path).
+    if start_line is not None and range is None:
+        end = end_line or start_line
+        range = f"{start_line}-{end}"
 
     # Symbol addressing: direct index lookup, no file I/O or FTS expansion.
     if symbol is not None:
@@ -8517,7 +8521,7 @@ def _grep_badge_provider(rel_path: str, symbol_names: list[str]) -> str | None:
         "and a blast-radius. Query: a natural-language question OR a bag of symbol/file names. "
         "Usually the only retrieval call you need."
     ),
-    param_aliases={"maxFiles": "max_files", "projectPath": "paths", "path": "paths"},
+    param_aliases={"maxFiles": "max_files", "projectPath": "paths", "path": "paths", "include_paths": "paths"},
     hidden_params=("path",),
 )
 def tool_explore(
@@ -8560,7 +8564,15 @@ def tool_explore(
         seed_list = []
     seed_files = seed_list or None
     engine = _code_context_engine(str(workspace_root))
-    return cast(dict[str, Any], engine.tool_explore(query, max_files=max_files, seed_files=seed_files))
+    result = cast(dict[str, Any], engine.tool_explore(query, max_files=max_files, seed_files=seed_files))
+    # When seed_files are given, sort matching files to the top so the caller
+    # sees the scoped content first rather than buried in additional_relevant_files.
+    if seed_files and isinstance(result.get("files"), list):
+        seed_set = {Path(p).resolve() for p in seed_files}
+        pinned = [f for f in result["files"] if Path(_workspace_path(f.get("path", ""))).resolve() in seed_set]
+        rest = [f for f in result["files"] if f not in pinned]
+        result["files"] = pinned + rest
+    return result
 
 
 @mcp_tool(

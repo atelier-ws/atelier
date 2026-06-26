@@ -258,7 +258,7 @@ def test_engine_semantic_store_built_at_index_time(tmp_path: Path, monkeypatch: 
     # Index-time embedding: a configured embedder builds the persistent vector
     # store as part of the index, not lazily on the query path.
     with engine._connect() as conn:
-        present = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='symbol_vectors'").fetchone()
+        present = conn.execute("SELECT name FROM vectors.sqlite_master WHERE type='table' AND name='symbol_vectors'").fetchone()
         count = conn.execute("SELECT COUNT(*) FROM symbol_vectors").fetchone()[0]
     assert present is not None
     assert count > 0

@@ -336,3 +336,4 @@ benchmarks/codebench/data/*.jsonl
 
 # Wrangler local cache (account cache, build cache)
 .wrangler/
+.aider*

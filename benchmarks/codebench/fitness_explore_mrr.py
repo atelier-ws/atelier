@@ -61,6 +61,11 @@ _parser.add_argument(
     metavar="SUBSTR",
     help="Filter to repos whose prefix contains SUBSTR.",
 )
+_parser.add_argument(
+    "--reindex",
+    action="store_true",
+    help="Re-index all repos via 'atelier code index --reindex' before benchmarking.",
+)
 _args, _ = _parser.parse_known_args()
 
 with open(os.environ.get("FITNESS_PAIRS", "/tmp/bench_pairs_multi.json")) as fh:
@@ -101,9 +106,60 @@ def dedup(fs):
     return out
 
 
+def _db_path_for(ws_path: Path) -> Path:
+    from atelier.core.foundation.paths import workspace_key as _wk
+
+    p = Path("/tmp") / _wk(ws_path.resolve()) / "code_context.sqlite"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _index_one(prefix: str, meta: dict) -> tuple:
+    ws_path = Path(meta["ws"])
+    db_path = _db_path_for(ws_path)
+    print(f"[indexing] {prefix} ...", file=sys.stderr, flush=True)
+    t0 = time.perf_counter()
+    result = _sp.run(
+        [
+            "uv",
+            "run",
+            "atelier",
+            "code",
+            "index",
+            "--repo-root",
+            str(ws_path),
+            "--db-path",
+            str(db_path),
+            "--reindex",
+            "--no-stats",
+        ],
+        stderr=sys.stderr,
+        check=False,
+    )
+    elapsed = time.perf_counter() - t0
+    if result.returncode != 0:
+        raise RuntimeError(f"{prefix}: atelier code index failed (rc={result.returncode})")
+    print(f"[indexed]  {prefix} in {elapsed:.1f}s", file=sys.stderr, flush=True)
+    return prefix, db_path
+
+
+if _args.reindex:
+    print(f"[discovering] indexing {len(repos)} repos ...", file=sys.stderr, flush=True)
+    for _pfx, _meta in repos.items():
+        if REPO and REPO not in _pfx:
+            continue
+        _index_one(_pfx, _meta)
+
+
 engines = {}
 for prefix, meta in repos.items():
-    eng = CodeContextEngine(Path(meta["ws"]), db_path=Path(meta["db"]), autosync_enabled=False)
+    if REPO and REPO not in prefix:
+        continue
+    if _args.reindex:
+        _db = _db_path_for(Path(meta["ws"]))
+    else:
+        _db = Path(meta["db"])
+    eng = CodeContextEngine(Path(meta["ws"]), db_path=_db, autosync_enabled=False)
     eng._cache_get = lambda *a, **k: (False, None)  # force recompute (no cross-candidate cache)
     eng._cache_set = lambda *a, **k: None
     # Schema is already initialised; skip the CREATE TABLE IF NOT EXISTS write on
@@ -167,22 +223,33 @@ def _worker_init() -> None:
     fresh pool in each child process before any task runs.
     """
     import concurrent.futures as _cf
+
     import atelier.core.capabilities.code_context.engine as _eng_mod
 
-    _eng_mod._SEARCH_CHANNEL_EXECUTOR = _cf.ThreadPoolExecutor(
-        max_workers=5, thread_name_prefix="atelier-fts-channel"
-    )
+    _eng_mod._SEARCH_CHANNEL_EXECUTOR = _cf.ThreadPoolExecutor(max_workers=5, thread_name_prefix="atelier-fts-channel")
     for eng in engines.values():
         with contextlib.suppress(Exception):
             eng._symbol_centrality_map()
 
 
 def _run_explore(task):
+    import signal
+
     prefix, q = task
     eng = engines.get(prefix)
     if eng is None:
         return prefix, q, [], 0.0
     _ts = time.perf_counter()
+    timed_out = False
+
+    if _TIMEOUT_S > 0:
+
+        def _on_alarm(signum, frame):
+            raise TimeoutError
+
+        _prev = signal.signal(signal.SIGALRM, _on_alarm)
+        signal.alarm(max(1, int(_TIMEOUT_S) + 1))
+
     try:
         r = eng.tool_explore(
             q,
@@ -191,11 +258,21 @@ def _run_explore(task):
             **({"include_source": False, "include_relationships": False} if _lean else {}),
         )
         files = dedup([f.get("path", "") for f in r.get("files", [])])[:10]
+    except TimeoutError:
+        files = []
+        timed_out = True
     except Exception:
         files = []
+    finally:
+        if _TIMEOUT_S > 0:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, _prev)
+
     lat = (time.perf_counter() - _ts) * 1000.0
-    # Per-query wall-clock of the explore call. Accurate only with FITNESS_WORKERS=1
-    # (parallel workers contend on CPU and inflate each call's measured duration).
+    if timed_out:
+        print(f"[timeout] {prefix} {q!r} {lat:.0f}ms", file=sys.stderr, flush=True)
+    elif lat > 500:
+        print(f"[slow] {lat:.0f}ms [{prefix}] {q!r}", file=sys.stderr, flush=True)
     return prefix, q, files, lat
 
 
@@ -215,7 +292,7 @@ with ProcessPoolExecutor(
     initializer=_worker_init,
 ) as _ex:
     _t0 = time.perf_counter()
-    for prefix, q, files, lat_ms in _ex.map(_run_explore, _tasks, chunksize=4):
+    for prefix, q, files, lat_ms in _ex.map(_run_explore, _tasks, chunksize=1):
         filecache[(prefix, q)] = files
         latencies.append(lat_ms)
         repo_latencies.setdefault(prefix, []).append(lat_ms)
