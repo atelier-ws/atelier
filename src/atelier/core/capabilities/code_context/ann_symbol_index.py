@@ -94,8 +94,16 @@ def ensure_symbol_vector_schema(conn: sqlite3.Connection) -> None:
     The ``embedder_name`` + ``embedding_dim`` columns are the N5 drift stamp;
     ``index_version`` is the N16 staleness key.
     """
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS symbol_vectors (
+    # Use the vectors. schema prefix when that DB is attached (normal engine path);
+    # fall back to the unqualified name for standalone in-memory connections used
+    # in tests that don't go through the engine's _attach_secondary_dbs().
+    try:
+        _attached = {row[1] for row in conn.execute("PRAGMA database_list")}
+    except Exception:
+        _attached = set()
+    _prefix = "vectors." if "vectors" in _attached else ""
+    conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS {_prefix}symbol_vectors (
             repo_id        TEXT NOT NULL,
             symbol_id      TEXT NOT NULL,
             content_hash   TEXT NOT NULL,
@@ -107,8 +115,8 @@ def ensure_symbol_vector_schema(conn: sqlite3.Connection) -> None:
         )
         """)
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_symbol_vectors_provenance "
-        "ON symbol_vectors(repo_id, embedder_name, embedding_dim, index_version)"
+        f"CREATE INDEX IF NOT EXISTS {_prefix}idx_symbol_vectors_provenance "
+        f"ON symbol_vectors(repo_id, embedder_name, embedding_dim, index_version)"
     )
 
 
