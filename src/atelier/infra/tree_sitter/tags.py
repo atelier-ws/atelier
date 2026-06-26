@@ -230,6 +230,17 @@ def _python_tags(path: Path, text: str) -> list[Tag]:
     offsets = _line_offsets(text)
     tags: list[Tag] = []
     tree = ast.parse(text)
+    # Module-level assignments: index as definitions so constants and type
+    # aliases are findable by exact name (e.g. _EXPLORE_ESSENTIAL_KEYS).
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign):
+            for target in stmt.targets:
+                if isinstance(target, ast.Name):
+                    line = int(target.lineno)
+                    tags.append(Tag(target.id, "definition", str(path), line, (offsets[line - 1], offsets[line])))
+        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+            line = int(stmt.target.lineno)
+            tags.append(Tag(stmt.target.id, "definition", str(path), line, (offsets[line - 1], offsets[line])))
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
             line = int(getattr(node, "lineno", 1))
