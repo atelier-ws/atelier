@@ -1,0 +1,88 @@
+diff --git a/src/atelier/gateway/adapters/mcp_server.py b/src/atelier/gateway/adapters/mcp_server.py
+--- a/src/atelier/gateway/adapters/mcp_server.py
++++ b/src/atelier/gateway/adapters/mcp_server.py
+@@ -29,7 +29,7 @@ from functools import wraps
+ from hashlib import sha256
+ from pathlib import Path
+ from typing import Annotated, Any, Literal, Union, cast, get_args, get_origin, get_type_hints
+ 
+-from pydantic import Field, ValidationError, create_model
++from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
+ 
+ from atelier import __version__ as atelier_version
+ from atelier.core.capabilities.archival_recall import ArchivalRecallCapability
+@@ -5049,6 +5049,37 @@ def _smart_read_single(
+     return response
+ 
+ 
++class ReadFileSpec(BaseModel):
++    """One structured entry accepted by ``read(files=[...])``."""
++
++    model_config = ConfigDict(extra="forbid")
++
++    path: Annotated[
++        str,
++        Field(
++            min_length=1,
++            description=(
++                "Workspace-relative file path; may carry a '#start-end'/'#line' suffix "
++                "(for example 'store.py#60-100')."
++            ),
++        ),
++    ]
++    range: Annotated[
++        str | None,
++        Field(description="Optional exact line range such as 'L10-L20' or open-ended 'L10-'."),
++    ] = None
++    expand: Annotated[
++        bool | None,
++        Field(description="Per-file override for returning full source instead of automatic projection."),
++    ] = None
++    max_lines: Annotated[
++        int | None,
++        Field(ge=1, description="Per-file override for the maximum number of returned lines."),
++    ] = None
++
++
+ @mcp_tool(
+     name="read",
+     hidden_params=("projection_kind", "format", "include_meta"),
+@@ -5077,11 +5108,10 @@ def tool_smart_read(
+     ] = False,
+     files: Annotated[
+-        list[dict[str, Any] | str] | None,
++        list[ReadFileSpec] | None,
+         Field(
+             description=(
+-                "Batch read: ['path', ...] or [{path, range?, expand?, max_lines?}, ...] "
+-                "(strings and dicts may mix; a '#start-end'/'#line' suffix on a path scopes it). "
++                "Batch read as an array of objects: [{path, range?, expand?, max_lines?}, ...]. "
++                "A '#start-end'/'#line' suffix on path scopes that entry. "
+                 "Returns {files: [...]}. Use for 2+ files — one round trip instead of N."
+             )
+         ),
+@@ -5115,8 +5145,6 @@ def tool_smart_read(
+         results = []
+         batch_saved = 0
+         for spec in files:
+-            if isinstance(spec, str):
+-                spec = {"path": spec}
+             spec_path = str(spec.get("path") or "")
+             if not spec_path:
+                 results.append({"error": "path is required in each files entry"})
+@@ -5128,12 +5156,14 @@ def tool_smart_read(
+             # the rest. Reset between iterations so a stale value can't bleed in.
+             _tool_call_tokens_saved.value = 0
+             try:
++                spec_expand = spec.get("expand")
++                spec_max_lines = spec.get("max_lines")
+                 single = _smart_read_single(
+                     path=spec_path,
+                     range=spec.get("range"),
+-                    expand=bool(spec.get("expand", expand)),
+-                    max_lines=spec.get("max_lines", max_lines),
++                    expand=expand if spec_expand is None else bool(spec_expand),
++                    max_lines=max_lines if spec_max_lines is None else spec_max_lines,
+                     include_meta=include_meta,
+                     projection_kind=spec.get("projection_kind", projection_kind),
+                 )
