@@ -10848,8 +10848,10 @@ def _warm_stdio_zoekt_webserver() -> None:
             _log.debug("zoekt pre-warm skipped: %s", resolution.reason)
             return
         server = get_zoekt_server(ws, resolution=resolution)
-        # ensure_started() registers the binary handle; raises if no index built.
-        server.ensure_started()
+        # ensure_started_and_build() registers the binary handle and builds the
+        # index if it is missing (e.g. a fresh swarm worktree). Runs on a daemon
+        # thread so the build doesn't block the first MCP response.
+        server.ensure_started_and_build()
         # _ensure_webserver() starts the persistent HTTP server and waits until
         # the index shards are loaded and queryable (per /api/list readiness).
         url = server._ensure_webserver()
