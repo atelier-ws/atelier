@@ -1,0 +1,150 @@
+                    ORDER BY matched.file_path, matched.token, matched.kind
+                    """,
+                    (self.repo_id, *tokens),
+                ).fetchall()
+        except Exception:
+            return [], {}, {}
+        definition_kinds = set(getattr(engine_mod, "_DEFINITION_KINDS", {"class", "function", "method"}))
+        expected = {name.lower(): kind for kind, name in plan.definitions}
+        per_file: dict[str, dict[str, Any]] = {}
+        token_df: dict[str, int] = {}
+        seen: set[tuple[str, str, str]] = set()
+        for row in rows:
+            file_path = str(row["file_path"] or "")
+            token = str(row["token"] or "")
+            kind = str(row["kind"] or "").lower()
+            df = max(1, int(row["df"] or 1))
+            if not file_path or not token or (file_path, token, kind) in seen:
+                continue
+            seen.add((file_path, token, kind))
+            token_df[token] = df
+            expected_kind = expected.get(token)
+            kind_match = (expected_kind == "class" and kind == "class") or (
+                expected_kind == "def" and kind in {"function", "method"}
+            )
+            item = per_file.setdefault(file_path, {
+                "tokens": set(), "definition_tokens": set(), "kind_matches": set(),
+                "idf": 0.0, "best_df": df, "signature_coverage": 0.0,
+                "doc_coverage": 0.0,
+            })
+            item["tokens"].add(token)
+            if kind in definition_kinds:
+                item["definition_tokens"].add(token)
+            if kind_match:
+                item["kind_matches"].add(token)
+            item["idf"] += math.log1p(1.0 + 1.0 / df)
+            item["best_df"] = min(int(item["best_df"]), df)
+            item["signature_coverage"] = max(float(item["signature_coverage"]), _term_coverage(str(row["signature"] or ""), plan.terms))
+            item["doc_coverage"] = max(float(item["doc_coverage"]), _term_coverage(str(row["doc_summary"] or ""), plan.prose_terms))
+        ni = max(1, len(plan.identifiers))
+        nd = max(1, len(plan.definitions))
+        for item in per_file.values():
+            token_coverage = len(item["tokens"]) / ni
+            kind_coverage = len(item["kind_matches"]) / nd
+            definition_coverage = len(item["definition_tokens"]) / ni
+            rarity = min(1.0, float(item["idf"]) / ni)
+            item["confidence"] = min(1.0,
+                0.38 * token_coverage + 0.26 * kind_coverage + 0.14 * definition_coverage
+                + 0.10 * rarity + 0.07 * float(item["signature_coverage"])
+                + 0.05 * float(item["doc_coverage"])
+            )
+        ordered = sorted(per_file, key=lambda p: (
+            -float(per_file[p]["confidence"]), -len(per_file[p]["kind_matches"]),
+            -len(per_file[p]["tokens"]), int(per_file[p]["best_df"]), p,
+        ))
+        details = {
+            p: {
+                "tokens": sorted(per_file[p]["tokens"]),
+                "definition_tokens": sorted(per_file[p]["definition_tokens"]),
+                "kind_matches": sorted(per_file[p]["kind_matches"]),
+                "idf": round(float(per_file[p]["idf"]), 6),
+                "best_df": int(per_file[p]["best_df"]),
+                "signature_coverage": round(float(per_file[p]["signature_coverage"]), 6),
+                "doc_coverage": round(float(per_file[p]["doc_coverage"]), 6),
+                "confidence": round(float(per_file[p]["confidence"]), 6),
+            }
+            for p in ordered
+        }
+        return ordered[:120], details, token_df
+
+    def anchor_zoekt_candidates(self: Any, plan: QueryPlan) -> tuple[list[str], dict[str, dict[str, Any]]]:
+        if not plan.anchors:
+            return [], {}
+        cache: dict[str, list[str]] = self.__dict__.setdefault("_v8_anchor_cache", {})
+        per_file: dict[str, dict[str, Any]] = {}
+        for anchor in plan.anchors:
+            files = cache.get(anchor)
+            if files is None:
+                try:
+                    files = original_zoekt(self, anchor, path=".", max_files=48)
+                except Exception:
+                    files = []
+                cache[anchor] = files
+            for rank, file_path in enumerate(files, 1):
+                item = per_file.setdefault(file_path, {"anchors": set(), "rrf": 0.0, "best_rank": rank})
+                item["anchors"].add(anchor.lower())
+                item["rrf"] += 1.0 / (8.0 + rank)
+                item["best_rank"] = min(int(item["best_rank"]), rank)
+        anchor_count = max(1, len(plan.anchors))
+        max_rrf = anchor_count / 9.0
+        for item in per_file.values():
+            coverage = len(item["anchors"]) / anchor_count
+            item["confidence"] = min(1.0, 0.72 * coverage + 0.28 * min(1.0, float(item["rrf"]) / max_rrf))
+        ordered = sorted(per_file, key=lambda p: (-float(per_file[p]["confidence"]), -len(per_file[p]["anchors"]), int(per_file[p]["best_rank"]), p))
+        details = {p: {
+            "anchors": sorted(per_file[p]["anchors"]),
+            "rrf": round(float(per_file[p]["rrf"]), 6),
+            "best_rank": int(per_file[p]["best_rank"]),
+            "confidence": round(float(per_file[p]["confidence"]), 6),
+        } for p in ordered}
+        return ordered[:120], details
+
+    def fielded_file_candidates(self: Any, plan: QueryPlan, seed_files: Sequence[str]) -> tuple[list[str], dict[str, dict[str, Any]], list[str]]:
+        per_file: dict[str, dict[str, Any]] = {}
+
+        def ensure(file_path: str) -> dict[str, Any]:
+            return per_file.setdefault(file_path, {
+                "covered_terms": set(), "line_hits": 0, "and_hit": False,
+                "best_line_rank": 0.0, "max_line_coverage": 0.0,
+                "multi_term_lines": 0, "definition_lines": 0, "import_lines": 0,
+                "doc_lines": 0, "literal_hits": 0, "symbol_names": set(),
+                "kinds": set(), "symbol_score": 0.0, "signature_score": 0.0,
+                "doc_score": 0.0, "path_score": 0.0, "fuzzy_score": 0.0,
+                "kind_match": 0.0,
+            })
+
+        for file_path in seed_files[:420]:
+            if file_path:
+                ensure(file_path)
+        terms = [term.lower() for term in plan.terms if len(term) >= 2]
+        term_set = set(terms)
+        literal_set = {literal.lower() for literal in plan.literals}
+        rows: list[tuple[Any, bool]] = []
+        if terms:
+            or_query = " OR ".join(_fts_phrase(term) for term in terms[:16])
+            and_terms = terms[:min(6, len(terms))]
+            and_query = " AND ".join(_fts_phrase(term) for term in and_terms)
+            try:
+                with self._connect(readonly=True) as conn:
+                    if len(and_terms) >= 2:
+                        rows.extend((row, True) for row in conn.execute(
+                            """SELECT file_path,line,text,bm25(file_line_fts) rank
+                               FROM file_line_fts WHERE file_line_fts MATCH ? AND repo_id=?
+                               ORDER BY rank ASC,file_path ASC,line ASC LIMIT 900""",
+                            (and_query, self.repo_id),
+                        ).fetchall())
+                    rows.extend((row, False) for row in conn.execute(
+                        """SELECT file_path,line,text,bm25(file_line_fts) rank
+                           FROM file_line_fts WHERE file_line_fts MATCH ? AND repo_id=?
+                           ORDER BY rank ASC,file_path ASC,line ASC LIMIT 4200""",
+                        (or_query, self.repo_id),
+                    ).fetchall())
+            except Exception:
+                rows = []
+        for row, from_and in rows:
+            file_path = str(row["file_path"] or "")
+            if not file_path or engine_mod.is_generated_path(file_path) or engine_mod._MINIFIED_FILE_RE.search(file_path) or engine_mod._VENDOR_PATH_RE.search(file_path):
+                continue
+            text = str(row["text"] or "")
+            lowered = text.lower()
+            covered = {term for term in term_set if term in lowered}
