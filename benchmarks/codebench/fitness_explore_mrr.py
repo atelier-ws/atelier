@@ -167,7 +167,8 @@ def _run_explore(task):
 
 
 filecache = {}
-latencies = []
+latencies: list[float] = []
+repo_latencies: dict[str, list[float]] = {}
 _done = 0
 _t0 = time.perf_counter()
 print(f"[fitness] start: {_total} explores across {len(uq)} repos, {_WORKERS} workers", file=sys.stderr, flush=True)
@@ -178,6 +179,7 @@ with ProcessPoolExecutor(max_workers=_WORKERS, mp_context=multiprocessing.get_co
     for prefix, q, files, lat_ms in _ex.map(_run_explore, _tasks, chunksize=4):
         filecache[(prefix, q)] = files
         latencies.append(lat_ms)
+        repo_latencies.setdefault(prefix, []).append(lat_ms)
         _done += 1
         if _done % 20 == 0 or _done == _total:
             _el = time.perf_counter() - _t0
@@ -241,7 +243,22 @@ out = {
         "max": round(max(latencies), 1) if latencies else 0.0,
         "over_100ms": sum(1 for x in latencies if x > 100.0),
     },
-    "by_repo": {p: {"mrr": round(mrr(d), 4), "n": d["n"]} for p, d in sorted(by_repo.items())},
+    "by_repo": {
+        p: {
+            "mrr": round(mrr(d), 4),
+            "hit1": round(d["h1"] / max(d["n"], 1), 4),
+            "hit3": round(d["h3"] / max(d["n"], 1), 4),
+            "n": d["n"],
+            "latency_ms": {
+                "mean": round(sum(repo_latencies.get(p, [0])) / max(len(repo_latencies.get(p, [1])), 1), 1),
+                "p50": round(_pct(repo_latencies.get(p, [0]), 50), 1),
+                "p95": round(_pct(repo_latencies.get(p, [0]), 95), 1),
+                "max": round(max(repo_latencies.get(p, [0])), 1),
+                "over_100ms": sum(1 for x in repo_latencies.get(p, []) if x > 100.0),
+            },
+        }
+        for p, d in sorted(by_repo.items())
+    },
 }
 print(json.dumps(out))
 
@@ -270,8 +287,8 @@ _record = {
     "hit1": out["hit1"],
     "hit3": out["hit3"],
     "n": out["n"],
-    "lat_p50": out["latency_ms"]["p50"],
-    "by_repo": {p: d["mrr"] for p, d in out["by_repo"].items()},
+    "latency_ms": out["latency_ms"],
+    "by_repo": out["by_repo"],
 }
 with _HISTORY.open("a") as _fh:
     _fh.write(json.dumps(_record) + "\n")
@@ -284,22 +301,30 @@ except Exception:
 _tail = _runs[-8:]
 _ref_mrr = _tail[0]["mrr"] if len(_tail) > 1 else None
 
+_LAT = "latency_ms"  # shorthand
 print("", file=sys.stderr)
 print(
-    f"{'Date':19} {'SHA':8} {'mode':18} {'n':>5}  {'MRR':>6}  {'delta':>6}  {'hit1':>6}  {'hit3':>6}  {'p50ms':>6}",
+    f"{'Date':19} {'SHA':8} {'mode':14} {'n':>5}  {'MRR':>6}  {'delta':>7}"
+    f"  {'hit1':>6}  {'hit3':>6}  {'mean':>6}  {'p50':>6}  {'p95':>6}  {'max':>7}  {'>100ms':>6}",
     file=sys.stderr,
 )
-print("-" * 95, file=sys.stderr)
+print("-" * 120, file=sys.stderr)
 for _r in _tail:
     _delta = ""
     if _ref_mrr is not None and _r is not _tail[0]:
         _d = _r["mrr"] - _ref_mrr
         _delta = f"{_d:+.4f}"
     elif _r is _tail[0] and len(_tail) > 1:
-        _delta = "(base)"
+        _delta = "(base) "
+    _lat = _r.get(_LAT) or {}
+    # support old records that only had lat_p50
+    _p50 = _lat.get("p50") or _r.get("lat_p50") or 0.0
     print(
-        f"{_r['ts']:19} {_r['sha']:8} {_r['mode']:18} {_r['n']:>5}"
-        f"  {_r['mrr']:.4f}  {_delta:>6}  {_r['hit1']:.4f}  {_r['hit3']:.4f}  {_r.get('lat_p50', 0):>6.1f}",
+        f"{_r['ts']:19} {_r['sha']:8} {_r['mode']:14} {_r['n']:>5}"
+        f"  {_r['mrr']:.4f}  {_delta:>7}"
+        f"  {_r['hit1']:.4f}  {_r['hit3']:.4f}"
+        f"  {_lat.get('mean', 0):>6.1f}  {_p50:>6.1f}  {_lat.get('p95', 0):>6.1f}"
+        f"  {_lat.get('max', 0):>7.1f}  {_lat.get('over_100ms', 0):>6}",
         file=sys.stderr,
     )
 print("", file=sys.stderr)
