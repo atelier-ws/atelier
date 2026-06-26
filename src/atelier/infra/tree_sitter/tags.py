@@ -15,13 +15,16 @@ from atelier.infra.code_intel.languages import language_for_path
 TagKind = Literal["definition", "reference"]
 _LEGACY_REGEX_LANGUAGES = frozenset({"javascript", "typescript", "go", "rust"})
 _DATA_LANGUAGES = frozenset({"json", "toml", "yaml"})
-_NO_REFERENCE_LANGUAGES = _DATA_LANGUAGES | frozenset({"bash", "sql"})
+# Markup / style / prose languages: references are not meaningful code symbols.
+_MARKUP_LANGUAGES = frozenset({"html", "css", "markdown"})
+_NO_REFERENCE_LANGUAGES = _DATA_LANGUAGES | _MARKUP_LANGUAGES | frozenset({"bash", "sql"})
 _IDENTIFIER_KINDS = frozenset(
     {
         "bare_key",
         "constant",
         "dotted_key",
         "field_identifier",
+        "id_name",  # CSS id-selector names: #foo → id_name "foo"
         "identifier",
         "name",
         "namespace_identifier",
@@ -126,6 +129,19 @@ def _definition_name_node(node: Any, language: str) -> Any | None:
         return _child_by_field_name(node, "key") or (_children(node)[0] if _children(node) else None)
     if language == "sql":
         return _first_descendant(node, frozenset({"identifier"}))
+    if language == "lua":
+        if kind == "function_declaration":
+            for child in _children(node):
+                ck = _kind(child)
+                if ck in {"dot_index_expression", "method_index_expression"}:
+                    # function M.greet() / function Cls:method() — last identifier
+                    # is the function name; the first is the table/object.
+                    ids = [c for c in _children(child) if _kind(c) == "identifier"]
+                    return ids[-1] if ids else None
+                if ck == "identifier":
+                    # local function foo() or function foo()
+                    return child
+        return _first_descendant(node, _IDENTIFIER_KINDS)
 
     for field_name in ("name", "declarator"):
         field_node = _child_by_field_name(node, field_name)
