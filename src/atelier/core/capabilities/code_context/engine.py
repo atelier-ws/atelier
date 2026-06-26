@@ -286,17 +286,18 @@ _CONTEXT_ESSENTIAL_KEYS = [
 _EXPLORE_ESSENTIAL_KEYS = [
     "query",
     "entry_points",
+    "files",
     "truncated",
     "provenance",
 ]
-# `files` is the primary content -- drop it LAST (after relationships/metadata) so a
-# budget-pressured explore degrades to fewer files rather than collapsing to nothing.
+# `files` is essential (never dropped by the packer). Budget pressure is handled
+# earlier: multi-file explores drop whole files, single-file explores trim source
+# sections -- so the renderer always has content to display.
 _EXPLORE_OPTIONAL_KEYS = [
     "relationships",
     "additional_relevant_files",
     "skeletonized",
     "skeleton_tokens_saved",
-    "files",
 ]
 _EXPLORE_SOURCE_SECTION_MAX_CHARS = resolve_output_policy("context").max_code_block_chars
 
@@ -3350,11 +3351,19 @@ class CodeContextEngine:
                 raw_symbols = self._dedupe_symbols(raw_symbols + anchor_symbols)
         if exact_hits:
             raw_symbols = exact_hits + [record for record in raw_symbols if record.symbol_id not in exact_ids]
+        # Token-level exact pinning: any whitespace-delimited word in the query that
+        # exactly matches a symbol name is pinned alongside full-query exact hits.
+        # FTS5 BM25 misses this for multi-word queries because test files accumulate
+        # far more term hits in assertion bodies than the single definition file.
+        _query_words = frozenset(re.split(r"\s+", query.strip()))
+        token_exact_ids = {
+            r.symbol_id for r in raw_symbols if r.symbol_name in _query_words or r.symbol_name.lower() in _query_words
+        }
         ranked_symbols = sorted(
             raw_symbols,
             key=lambda record: (
                 0 if record.file_path in seed_set else 1,
-                0 if record.symbol_id in exact_ids else 1,
+                0 if record.symbol_id in exact_ids or record.symbol_id in token_exact_ids else 1,
                 -(record.score or 0.0),
                 record.file_path,
                 record.start_line,
@@ -3367,7 +3376,7 @@ class CodeContextEngine:
         # the actual implementation file. Pinned exact hits and seed files are exempt.
         query_wants_tests = bool(re.search(r"\btest\b|\bspec\b", query, re.IGNORECASE))
         if ranked_symbols:
-            pinned_ids = exact_ids | anchor_ids
+            pinned_ids = exact_ids | anchor_ids | token_exact_ids
             pre_filtered: list[SymbolRecord] = []
             for record in ranked_symbols:
                 fp = record.file_path or ""
@@ -3533,13 +3542,22 @@ class CodeContextEngine:
                 ],
             }
             if include_source:
+                # Single-file scope: generate sections in score-DESC order so the
+                # budget trim (which pops from the tail) keeps the most query-relevant
+                # source rather than the earliest-in-file symbol.
+                source_order = (
+                    sorted(symbols, key=lambda s: -(s.score or 0.0)) if file_path == _single_file_seed else symbols
+                )
                 sections = [
-                    self._source_section_for_symbol(
-                        symbol,
-                        line_numbers=line_numbers,
-                        skeleton=symbol.symbol_id in skeleton_ids,
-                    )
-                    for symbol in symbols
+                    {
+                        **self._source_section_for_symbol(
+                            symbol,
+                            line_numbers=line_numbers,
+                            skeleton=symbol.symbol_id in skeleton_ids,
+                        ),
+                        "_score": symbol.score or 0.0,
+                    }
+                    for symbol in source_order
                 ]
                 merged_sections = self._merge_nearby_source_sections(sections)
                 file_entry["source_sections"] = merged_sections
@@ -3641,6 +3659,24 @@ class CodeContextEngine:
                 files_payload.pop()
                 full_payload["files"] = files_payload
                 full_payload["truncated"] = True
+            # Single-file / last-file fallback: trim sections by score (stored in
+            # _score) so the most query-relevant source survives, not the
+            # earliest-in-file. Restore file order for display after trimming.
+            if _single_file_seed and files_payload and self._compute_total_tokens(full_payload) > budget_tokens:
+                sections = files_payload[0].get("source_sections") or []
+                sections.sort(key=lambda s: -(s.get("_score") or 0.0))
+                while len(sections) > 1 and self._compute_total_tokens(full_payload) > budget_tokens:
+                    sections.pop()
+                    files_payload[0]["source_sections"] = sections
+                    full_payload["files"] = files_payload
+                    full_payload["truncated"] = True
+                sections.sort(key=lambda s: int(s.get("start_line") or 0))
+                files_payload[0]["source_sections"] = sections
+                full_payload["files"] = files_payload
+            # Strip the internal _score annotation before packing.
+            for fe in files_payload:
+                for sec in fe.get("source_sections", []):
+                    sec.pop("_score", None)
         skeletonized_meta: list[dict[str, Any]] = []
         tokens_saved_total = 0
         for file_entry in files_payload:
