@@ -327,6 +327,7 @@ _LANG_CONFIG: dict[str, LangCfg] = {
     # IIFE-wrapped files (e.g. UMD bundles) produce no outline; guard falls through to full.
     "javascript": LangCfg(
         keep_full=frozenset({"import_statement"}),
+        keep_first_line=frozenset({"lexical_declaration", "variable_declaration"}),
         keep_signature=frozenset({"function_declaration", "generator_function_declaration"}),
         container=frozenset({"class_declaration"}),
         member=frozenset({"method_definition", "field_definition"}),
@@ -337,8 +338,9 @@ _LANG_CONFIG: dict[str, LangCfg] = {
     # so the inner node is processed by keep_signature / container rules.
     # import_statement uses keep_first_line (not keep_full) because TS compiler
     # files have massive multi-import blocks that would bloat the outline.
+    # lexical_declaration covers const/let; variable_declaration covers var.
     "typescript": LangCfg(
-        keep_first_line=frozenset({"import_statement"}),
+        keep_first_line=frozenset({"import_statement", "lexical_declaration", "variable_declaration"}),
         keep_signature=frozenset(
             {
                 "function_declaration",

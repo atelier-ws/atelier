@@ -508,7 +508,11 @@ def _render_explore(payload: Mapping[str, Any]) -> str:
         extra_block = ["#### additional_relevant_files"]
         extra_block.extend(f"- {path}" for path in extra[:_CONTEXT_RELATED_CAP])
         parts.append("\n".join(extra_block))
-    return "\n\n".join(parts) if parts else "no results"
+    if not parts:
+        return "no results"
+    if payload.get("exact_match") is False:
+        parts.append("*no exact-name match — results are nearest FTS*")
+    return "\n\n".join(parts)
 
 
 def _render_explore_relationships(relationships: Any) -> list[str]:
