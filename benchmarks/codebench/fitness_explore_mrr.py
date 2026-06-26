@@ -20,9 +20,11 @@ faster signal. Emits one JSON line:
 """
 
 import contextlib
+import datetime as _dt
 import json
 import multiprocessing
 import os
+import subprocess as _sp
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
@@ -242,3 +244,62 @@ out = {
     "by_repo": {p: {"mrr": round(mrr(d), 4), "n": d["n"]} for p, d in sorted(by_repo.items())},
 }
 print(json.dumps(out))
+
+# ── History: persist this run and show trend ──────────────────────────────────
+_HISTORY = Path("reports/benchmark/mrr_history.jsonl")
+_HISTORY.parent.mkdir(parents=True, exist_ok=True)
+
+# Collect git SHA + dirty flag (best-effort)
+try:
+    _sha = _sp.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+    _dirty = bool(_sp.check_output(["git", "status", "--porcelain"], text=True).strip())
+    _sha_label = _sha + ("+" if _dirty else "")
+except Exception:
+    _sha_label = "unknown"
+
+# Encode the CLI mode used
+_mode = "full" if _args.full else (f"sample={_args.sample}" if _args.sample else "default")
+if REPO:
+    _mode += f" repo={REPO}"
+
+_record = {
+    "ts": _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds"),
+    "sha": _sha_label,
+    "mode": _mode,
+    "mrr": out["mrr"],
+    "hit1": out["hit1"],
+    "hit3": out["hit3"],
+    "n": out["n"],
+    "lat_p50": out["latency_ms"]["p50"],
+    "by_repo": {p: d["mrr"] for p, d in out["by_repo"].items()},
+}
+with _HISTORY.open("a") as _fh:
+    _fh.write(json.dumps(_record) + "\n")
+
+# Show last 8 runs as a comparison table
+try:
+    _runs = [json.loads(line) for line in _HISTORY.read_text().splitlines() if line.strip()]
+except Exception:
+    _runs = [_record]
+_tail = _runs[-8:]
+_ref_mrr = _tail[0]["mrr"] if len(_tail) > 1 else None
+
+print("", file=sys.stderr)
+print(
+    f"{'Date':19} {'SHA':8} {'mode':18} {'n':>5}  {'MRR':>6}  {'delta':>6}  {'hit1':>6}  {'hit3':>6}  {'p50ms':>6}",
+    file=sys.stderr,
+)
+print("-" * 95, file=sys.stderr)
+for _r in _tail:
+    _delta = ""
+    if _ref_mrr is not None and _r is not _tail[0]:
+        _d = _r["mrr"] - _ref_mrr
+        _delta = f"{_d:+.4f}"
+    elif _r is _tail[0] and len(_tail) > 1:
+        _delta = "(base)"
+    print(
+        f"{_r['ts']:19} {_r['sha']:8} {_r['mode']:18} {_r['n']:>5}"
+        f"  {_r['mrr']:.4f}  {_delta:>6}  {_r['hit1']:.4f}  {_r['hit3']:.4f}  {_r.get('lat_p50', 0):>6.1f}",
+        file=sys.stderr,
+    )
+print("", file=sys.stderr)

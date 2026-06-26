@@ -317,7 +317,9 @@ exports/
 # CocoIndex Code (ccc)
 /.cocoindex_code/
 /reports/*.md
-/reports/benchmark/
+/reports/benchmark/*
+!/reports/benchmark/.gitignore
+!/reports/benchmark/mrr_history.jsonl
 /reports/**/*.flow
 .eval
 /installer/
