@@ -1,0 +1,63 @@
+Provisioning 10 repositories: astropy__astropy, atelier__atelier, django__django, matplotlib__matplotlib, mwaskom__seaborn, pallets__flask, pydata__xarray, pylint-dev__pylint, pytest-dev__pytest, scikit-learn__scikit-learn
++ git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/astropy/astropy.git /tmp/retrieval-corpus/astropy__astropy
++ git -C /tmp/retrieval-corpus/astropy__astropy fetch --quiet --filter=blob:none --depth=1 origin 6500928dc0e57be8f06d1162eacc3ba5e2eff692
++ git -C /tmp/retrieval-corpus/astropy__astropy checkout --quiet --detach FETCH_HEAD
+[astropy__astropy] indexing /tmp/retrieval-corpus/astropy__astropy -> /tmp/retrieval-indexes/astropy__astropy.db
+[astropy__astropy] ready: 41853 symbols
+[atelier__atelier] indexing /home/runner/work/atelier/atelier -> /tmp/retrieval-indexes/atelier__atelier.db
+[atelier__atelier] ready: 23414 symbols
++ git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/django/django.git /tmp/retrieval-corpus/django__django
++ git -C /tmp/retrieval-corpus/django__django fetch --quiet --filter=blob:none --depth=1 origin f387d024fc75569d2a4a338bfda76cc2f328f627
++ git -C /tmp/retrieval-corpus/django__django checkout --quiet --detach FETCH_HEAD
+[django__django] indexing /tmp/retrieval-corpus/django__django -> /tmp/retrieval-indexes/django__django.db
+[django__django] ready: 38914 symbols
++ git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/matplotlib/matplotlib.git /tmp/retrieval-corpus/matplotlib__matplotlib
++ git -C /tmp/retrieval-corpus/matplotlib__matplotlib checkout --quiet --detach HEAD
+[matplotlib__matplotlib] indexing /tmp/retrieval-corpus/matplotlib__matplotlib -> /tmp/retrieval-indexes/matplotlib__matplotlib.db
+[matplotlib__matplotlib] ready: 31269 symbols
++ git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/mwaskom/seaborn.git /tmp/retrieval-corpus/mwaskom__seaborn
++ git -C /tmp/retrieval-corpus/mwaskom__seaborn checkout --quiet --detach HEAD
+[mwaskom__seaborn] indexing /tmp/retrieval-corpus/mwaskom__seaborn -> /tmp/retrieval-indexes/mwaskom__seaborn.db
+[mwaskom__seaborn] ready: 3113 symbols
++ git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/pallets/flask.git /tmp/retrieval-corpus/pallets__flask
++ git -C /tmp/retrieval-corpus/pallets__flask checkout --quiet --detach HEAD
+[pallets__flask] indexing /tmp/retrieval-corpus/pallets__flask -> /tmp/retrieval-indexes/pallets__flask.db
+[pallets__flask] ready: 1184 symbols
++ git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/pydata/xarray.git /tmp/retrieval-corpus/pydata__xarray
++ git -C /tmp/retrieval-corpus/pydata__xarray fetch --quiet --filter=blob:none --depth=1 origin 8cc34cb412ba89ebca12fc84f76a9e452628f1bc
++ git -C /tmp/retrieval-corpus/pydata__xarray checkout --quiet --detach FETCH_HEAD
+[pydata__xarray] indexing /tmp/retrieval-corpus/pydata__xarray -> /tmp/retrieval-indexes/pydata__xarray.db
+[pydata__xarray] ready: 5236 symbols
++ git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/pylint-dev/pylint.git /tmp/retrieval-corpus/pylint-dev__pylint
++ git -C /tmp/retrieval-corpus/pylint-dev__pylint checkout --quiet --detach HEAD
+[pylint-dev__pylint] indexing /tmp/retrieval-corpus/pylint-dev__pylint -> /tmp/retrieval-indexes/pylint-dev__pylint.db
+<unknown>:1: SyntaxWarning: invalid escape sequence '\z'
+<unknown>:1: SyntaxWarning: invalid escape sequence '\u'
+<unknown>:4: SyntaxWarning: invalid escape sequence '\z'
+<unknown>:5: SyntaxWarning: invalid escape sequence '\z'
+<unknown>:6: SyntaxWarning: invalid escape sequence '\z'
+<unknown>:8: SyntaxWarning: invalid escape sequence '\z'
+<unknown>:12: SyntaxWarning: invalid escape sequence '\z'
+<unknown>:15: SyntaxWarning: invalid escape sequence '\z'
+<unknown>:5: SyntaxWarning: invalid escape sequence '\u'
+<unknown>:6: SyntaxWarning: invalid escape sequence '\U'
+<unknown>:8: SyntaxWarning: invalid escape sequence '\N'
+<unknown>:7: SyntaxWarning: invalid escape sequence '\['
+<unknown>:8: SyntaxWarning: invalid escape sequence '\/'
+<unknown>:9: SyntaxWarning: invalid escape sequence '\`'
+<unknown>:16: SyntaxWarning: invalid escape sequence '\o'
+<unknown>:18: SyntaxWarning: invalid escape sequence '\8'
+<unknown>:31: SyntaxWarning: invalid escape sequence '\P'
+<unknown>:5: SyntaxWarning: invalid escape sequence '\u'
+[pylint-dev__pylint] ready: 12767 symbols
++ git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/pytest-dev/pytest.git /tmp/retrieval-corpus/pytest-dev__pytest
++ git -C /tmp/retrieval-corpus/pytest-dev__pytest fetch --quiet --filter=blob:none --depth=1 origin 955e54221008aba577ecbaefa15679f6777d3bf8
++ git -C /tmp/retrieval-corpus/pytest-dev__pytest checkout --quiet --detach FETCH_HEAD
+[pytest-dev__pytest] indexing /tmp/retrieval-corpus/pytest-dev__pytest -> /tmp/retrieval-indexes/pytest-dev__pytest.db
+[pytest-dev__pytest] ready: 4160 symbols
++ git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/scikit-learn/scikit-learn.git /tmp/retrieval-corpus/scikit-learn__scikit-learn
++ git -C /tmp/retrieval-corpus/scikit-learn__scikit-learn fetch --quiet --filter=blob:none --depth=1 origin d360ffa7c5896a91ae498b3fb9cf464464ce8f34
++ git -C /tmp/retrieval-corpus/scikit-learn__scikit-learn checkout --quiet --detach FETCH_HEAD
+[scikit-learn__scikit-learn] indexing /tmp/retrieval-corpus/scikit-learn__scikit-learn -> /tmp/retrieval-indexes/scikit-learn__scikit-learn.db
+[scikit-learn__scikit-learn] ready: 13160 symbols
+Rewrote benchmarks/codebench/data/bench_pairs_multi.json with CI-local workspace and index paths

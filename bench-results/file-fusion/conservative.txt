@@ -1,0 +1,126 @@
+[eval] channel=lexical :: /home/runner/work/atelier/atelier/.venv/bin/python benchmarks/codebench/fitness_explore_mrr.py --full
+[fitness] start: 1924 explores across 10 repos, 1 workers
+[fitness] 20/1924 elapsed=2s rate=11.3/s eta=169s
+[fitness] 40/1924 elapsed=3s rate=12.8/s eta=148s
+[fitness] 60/1924 elapsed=4s rate=13.7/s eta=136s
+[fitness] 80/1924 elapsed=6s rate=14.5/s eta=127s
+[fitness] 100/1924 elapsed=7s rate=15.0/s eta=122s
+[fitness] 120/1924 elapsed=8s rate=15.3/s eta=118s
+[fitness] 140/1924 elapsed=9s rate=15.4/s eta=116s
+[fitness] 160/1924 elapsed=10s rate=15.4/s eta=115s
+[fitness] 180/1924 elapsed=11s rate=15.8/s eta=111s
+[fitness] 200/1924 elapsed=13s rate=15.8/s eta=109s
+[fitness] 220/1924 elapsed=14s rate=15.8/s eta=108s
+[fitness] 240/1924 elapsed=15s rate=15.7/s eta=107s
+[fitness] 260/1924 elapsed=16s rate=16.0/s eta=104s
+[fitness] 280/1924 elapsed=18s rate=15.8/s eta=104s
+[fitness] 300/1924 elapsed=19s rate=15.8/s eta=103s
+[fitness] 320/1924 elapsed=20s rate=15.8/s eta=101s
+[fitness] 340/1924 elapsed=21s rate=15.9/s eta=100s
+[fitness] 360/1924 elapsed=23s rate=16.0/s eta=98s
+[fitness] 380/1924 elapsed=24s rate=15.6/s eta=99s
+[fitness] 400/1924 elapsed=25s rate=15.8/s eta=96s
+[fitness] 420/1924 elapsed=26s rate=16.0/s eta=94s
+[fitness] 440/1924 elapsed=27s rate=16.2/s eta=92s
+[fitness] 460/1924 elapsed=28s rate=16.3/s eta=90s
+[fitness] 480/1924 elapsed=30s rate=16.2/s eta=89s
+[fitness] 500/1924 elapsed=31s rate=16.2/s eta=88s
+[fitness] 520/1924 elapsed=32s rate=16.2/s eta=87s
+[fitness] 540/1924 elapsed=34s rate=15.9/s eta=87s
+[timeout] atelier__atelier 'login_cmd|logout_cmd|def login|def logout' 4001ms
+[fitness] 560/1924 elapsed=39s rate=14.3/s eta=96s
+[fitness] 580/1924 elapsed=40s rate=14.5/s eta=93s
+[fitness] 600/1924 elapsed=41s rate=14.5/s eta=91s
+[fitness] 620/1924 elapsed=42s rate=14.6/s eta=89s
+[fitness] 640/1924 elapsed=43s rate=14.7/s eta=87s
+[fitness] 660/1924 elapsed=44s rate=14.9/s eta=85s
+[fitness] 680/1924 elapsed=46s rate=14.8/s eta=84s
+[fitness] 700/1924 elapsed=47s rate=14.9/s eta=82s
+[fitness] 720/1924 elapsed=48s rate=15.0/s eta=80s
+[fitness] 740/1924 elapsed=49s rate=15.0/s eta=79s
+[fitness] 760/1924 elapsed=51s rate=15.0/s eta=77s
+[fitness] 780/1924 elapsed=51s rate=15.2/s eta=75s
+[fitness] 800/1924 elapsed=53s rate=15.2/s eta=74s
+[fitness] 820/1924 elapsed=54s rate=15.2/s eta=73s
+[fitness] 840/1924 elapsed=55s rate=15.2/s eta=71s
+[fitness] 860/1924 elapsed=56s rate=15.3/s eta=69s
+[fitness] 880/1924 elapsed=57s rate=15.3/s eta=68s
+[fitness] 900/1924 elapsed=59s rate=15.3/s eta=67s
+[fitness] 920/1924 elapsed=60s rate=15.4/s eta=65s
+[fitness] 940/1924 elapsed=61s rate=15.4/s eta=64s
+[fitness] 960/1924 elapsed=62s rate=15.4/s eta=63s
+[fitness] 980/1924 elapsed=63s rate=15.4/s eta=61s
+[fitness] 1000/1924 elapsed=65s rate=15.5/s eta=60s
+[fitness] 1020/1924 elapsed=66s rate=15.5/s eta=58s
+[slow] 549ms [django__django] 'class Window\\b'
+[fitness] 1040/1924 elapsed=68s rate=15.4/s eta=57s
+[fitness] 1060/1924 elapsed=69s rate=15.4/s eta=56s
+[fitness] 1080/1924 elapsed=70s rate=15.4/s eta=55s
+[fitness] 1100/1924 elapsed=71s rate=15.4/s eta=53s
+[fitness] 1120/1924 elapsed=73s rate=15.4/s eta=52s
+[fitness] 1140/1924 elapsed=74s rate=15.4/s eta=51s
+[fitness] 1160/1924 elapsed=75s rate=15.5/s eta=49s
+[fitness] 1180/1924 elapsed=76s rate=15.5/s eta=48s
+[fitness] 1200/1924 elapsed=77s rate=15.5/s eta=47s
+[fitness] 1220/1924 elapsed=79s rate=15.5/s eta=45s
+[fitness] 1240/1924 elapsed=80s rate=15.5/s eta=44s
+[fitness] 1260/1924 elapsed=81s rate=15.5/s eta=43s
+[fitness] 1280/1924 elapsed=83s rate=15.5/s eta=42s
+[fitness] 1300/1924 elapsed=84s rate=15.5/s eta=40s
+[fitness] 1320/1924 elapsed=85s rate=15.5/s eta=39s
+[fitness] 1340/1924 elapsed=87s rate=15.5/s eta=38s
+[fitness] 1360/1924 elapsed=88s rate=15.4/s eta=37s
+[fitness] 1380/1924 elapsed=89s rate=15.4/s eta=35s
+[fitness] 1400/1924 elapsed=91s rate=15.4/s eta=34s
+[fitness] 1420/1924 elapsed=92s rate=15.5/s eta=33s
+[fitness] 1440/1924 elapsed=93s rate=15.5/s eta=31s
+[fitness] 1460/1924 elapsed=94s rate=15.5/s eta=30s
+[fitness] 1480/1924 elapsed=95s rate=15.5/s eta=29s
+[fitness] 1500/1924 elapsed=97s rate=15.5/s eta=27s
+[fitness] 1520/1924 elapsed=98s rate=15.5/s eta=26s
+[fitness] 1540/1924 elapsed=99s rate=15.5/s eta=25s
+[fitness] 1560/1924 elapsed=100s rate=15.5/s eta=23s
+[fitness] 1580/1924 elapsed=102s rate=15.5/s eta=22s
+[fitness] 1600/1924 elapsed=103s rate=15.5/s eta=21s
+[fitness] 1620/1924 elapsed=104s rate=15.5/s eta=20s
+[fitness] 1640/1924 elapsed=106s rate=15.5/s eta=18s
+[fitness] 1660/1924 elapsed=107s rate=15.5/s eta=17s
+[fitness] 1680/1924 elapsed=109s rate=15.5/s eta=16s
+[fitness] 1700/1924 elapsed=110s rate=15.5/s eta=14s
+[fitness] 1720/1924 elapsed=111s rate=15.5/s eta=13s
+[fitness] 1740/1924 elapsed=112s rate=15.5/s eta=12s
+[fitness] 1760/1924 elapsed=114s rate=15.4/s eta=11s
+[fitness] 1780/1924 elapsed=115s rate=15.4/s eta=9s
+[fitness] 1800/1924 elapsed=116s rate=15.5/s eta=8s
+[fitness] 1820/1924 elapsed=117s rate=15.5/s eta=7s
+[fitness] 1840/1924 elapsed=118s rate=15.5/s eta=5s
+[fitness] 1860/1924 elapsed=120s rate=15.5/s eta=4s
+[fitness] 1880/1924 elapsed=121s rate=15.5/s eta=3s
+[fitness] 1900/1924 elapsed=122s rate=15.6/s eta=2s
+[fitness] 1920/1924 elapsed=123s rate=15.6/s eta=0s
+[fitness] 1924/1924 elapsed=123s rate=15.6/s eta=0s
+
+────────────────────────────────────────────────────────────
+  2026-06-26T19:10  8e20725+  [full]  n=2306
+  MRR 0.6450   hit@1 0.6058   hit@3 0.6869
+  lat  mean=64ms  p50=51ms  p95=136ms  max=4001ms  >100ms=235
+
+  ✗  django                  n=335   MRR=0.415  p95=306ms  p100=549ms ⚠
+  ✗  flask                   n=19    MRR=0.500  p95=74ms  p100=83ms
+  ✗  atelier                 n=335   MRR=0.503  p95=167ms  p100=4001ms
+  ~  pylint                  n=226   MRR=0.640  p95=132ms  p100=197ms
+  ~  astropy                 n=220   MRR=0.647  p95=106ms  p100=199ms
+  ~  matplotlib              n=335   MRR=0.703  p95=95ms  p100=315ms
+  ~  pytest                  n=304   MRR=0.761  p95=73ms  p100=100ms
+  ~  xarray                  n=335   MRR=0.777  p95=65ms  p100=120ms
+  ~  seaborn                 n=164   MRR=0.787  p95=135ms  p100=170ms
+  ✓  scikit-learn            n=33    MRR=0.823  p95=128ms  p100=180ms
+
+  vs 2026-06-26T17:19 [full]  MRR 0.6435 → 0.6450  (+0.0015)
+    astropy                 0.656 → 0.647  (-0.009)
+    xarray                  0.786 → 0.777  (-0.009)
+    matplotlib              0.701 → 0.703  (+0.001)
+    django                  0.391 → 0.415  (+0.024)
+────────────────────────────────────────────────────────────
+
+{"mrr": 0.645, "hit1": 0.6058, "hit3": 0.6869, "n": 2306, "latency_ms": {"mean": 64.0, "p50": 50.6, "p95": 135.6, "max": 4001.0, "over_100ms": 235}, "by_repo": {"astropy__astropy": {"mrr": 0.6473, "hit1": 0.5818, "hit3": 0.7227, "n": 220, "latency_ms": {"mean": 68.1, "p50": 62.2, "p95": 105.8, "max": 198.7, "over_100ms": 14}}, "atelier__atelier": {"mrr": 0.503, "hit1": 0.4985, "hit3": 0.5075, "n": 335, "latency_ms": {"mean": 93.7, "p50": 73.1, "p95": 167.1, "max": 4001.0, "over_100ms": 88}}, "django__django": {"mrr": 0.4149, "hit1": 0.4, "hit3": 0.4299, "n": 335, "latency_ms": {"mean": 102.8, "p50": 73.6, "p95": 306.3, "max": 549.1, "over_100ms": 68}}, "matplotlib__matplotlib": {"mrr": 0.7028, "hit1": 0.6269, "hit3": 0.7791, "n": 335, "latency_ms": {"mean": 55.3, "p50": 51.1, "p95": 94.9, "max": 315.1, "over_100ms": 14}}, "mwaskom__seaborn": {"mrr": 0.7866, "hit1": 0.7866, "hit3": 0.7866, "n": 164, "latency_ms": {"mean": 56.8, "p50": 31.2, "p95": 135.4, "max": 170.4, "over_100ms": 22}}, "pallets__flask": {"mrr": 0.5, "hit1": 0.4211, "hit3": 0.5789, "n": 19, "latency_ms": {"mean": 52.1, "p50": 51.4, "p95": 74.3, "max": 83.1, "over_100ms": 0}}, "pydata__xarray": {"mrr": 0.7774, "hit1": 0.6925, "hit3": 0.8716, "n": 335, "latency_ms": {"mean": 34.6, "p50": 31.9, "p95": 65.4, "max": 119.7, "over_100ms": 1}}, "pylint-dev__pylint": {"mrr": 0.6405, "hit1": 0.6372, "hit3": 0.6416, "n": 226, "latency_ms": {"mean": 53.3, "p50": 36.8, "p95": 132.1, "max": 197.2, "over_100ms": 22}}, "pytest-dev__pytest": {"mrr": 0.7607, "hit1": 0.7171, "hit3": 0.8092, "n": 304, "latency_ms": {"mean": 33.2, "p50": 30.7, "p95": 73.2, "max": 99.6, "over_100ms": 0}}, "scikit-learn__scikit-learn": {"mrr": 0.8232, "hit1": 0.8182, "hit3": 0.8182, "n": 33, "latency_ms": {"mean": 57.8, "p50": 38.5, "p95": 127.7, "max": 180.3, "over_100ms": 6}}}}

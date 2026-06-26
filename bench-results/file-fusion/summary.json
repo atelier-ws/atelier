@@ -1,0 +1,437 @@
+{
+  "aggressive": {
+    "by_repo": {
+      "astropy__astropy": {
+        "hit1": 0.5818,
+        "hit3": 0.7227,
+        "latency_ms": {
+          "max": 196.9,
+          "mean": 68.1,
+          "over_100ms": 16,
+          "p50": 61.4,
+          "p95": 106.4
+        },
+        "mrr": 0.6473,
+        "n": 220
+      },
+      "atelier__atelier": {
+        "hit1": 0.4985,
+        "hit3": 0.5075,
+        "latency_ms": {
+          "max": 4001.0,
+          "mean": 90.7,
+          "over_100ms": 80,
+          "p50": 70.8,
+          "p95": 161.8
+        },
+        "mrr": 0.503,
+        "n": 335
+      },
+      "django__django": {
+        "hit1": 0.4,
+        "hit3": 0.4299,
+        "latency_ms": {
+          "max": 532.6,
+          "mean": 101.1,
+          "over_100ms": 64,
+          "p50": 72.7,
+          "p95": 312.2
+        },
+        "mrr": 0.4149,
+        "n": 335
+      },
+      "matplotlib__matplotlib": {
+        "hit1": 0.6269,
+        "hit3": 0.7791,
+        "latency_ms": {
+          "max": 286.1,
+          "mean": 54.1,
+          "over_100ms": 13,
+          "p50": 50.1,
+          "p95": 93.2
+        },
+        "mrr": 0.7028,
+        "n": 335
+      },
+      "mwaskom__seaborn": {
+        "hit1": 0.7866,
+        "hit3": 0.7866,
+        "latency_ms": {
+          "max": 160.2,
+          "mean": 55.0,
+          "over_100ms": 23,
+          "p50": 30.7,
+          "p95": 128.3
+        },
+        "mrr": 0.7866,
+        "n": 164
+      },
+      "pallets__flask": {
+        "hit1": 0.4211,
+        "hit3": 0.5789,
+        "latency_ms": {
+          "max": 77.6,
+          "mean": 51.1,
+          "over_100ms": 0,
+          "p50": 53.1,
+          "p95": 73.4
+        },
+        "mrr": 0.5,
+        "n": 19
+      },
+      "pydata__xarray": {
+        "hit1": 0.6925,
+        "hit3": 0.8716,
+        "latency_ms": {
+          "max": 116.1,
+          "mean": 33.2,
+          "over_100ms": 1,
+          "p50": 30.5,
+          "p95": 64.8
+        },
+        "mrr": 0.7774,
+        "n": 335
+      },
+      "pylint-dev__pylint": {
+        "hit1": 0.6372,
+        "hit3": 0.6416,
+        "latency_ms": {
+          "max": 189.0,
+          "mean": 51.3,
+          "over_100ms": 21,
+          "p50": 36.2,
+          "p95": 127.9
+        },
+        "mrr": 0.6405,
+        "n": 226
+      },
+      "pytest-dev__pytest": {
+        "hit1": 0.7171,
+        "hit3": 0.8092,
+        "latency_ms": {
+          "max": 93.9,
+          "mean": 32.2,
+          "over_100ms": 0,
+          "p50": 29.8,
+          "p95": 71.4
+        },
+        "mrr": 0.7607,
+        "n": 304
+      },
+      "scikit-learn__scikit-learn": {
+        "hit1": 0.8182,
+        "hit3": 0.8182,
+        "latency_ms": {
+          "max": 169.3,
+          "mean": 56.7,
+          "over_100ms": 6,
+          "p50": 37.8,
+          "p95": 127.9
+        },
+        "mrr": 0.8232,
+        "n": 33
+      }
+    },
+    "hit1": 0.6058,
+    "hit3": 0.6869,
+    "latency_ms": {
+      "max": 4001.0,
+      "mean": 62.4,
+      "over_100ms": 224,
+      "p50": 49.9,
+      "p95": 130.4
+    },
+    "mrr": 0.645,
+    "n": 2306
+  },
+  "balanced": {
+    "by_repo": {
+      "astropy__astropy": {
+        "hit1": 0.5818,
+        "hit3": 0.7227,
+        "latency_ms": {
+          "max": 195.7,
+          "mean": 68.1,
+          "over_100ms": 16,
+          "p50": 61.2,
+          "p95": 101.4
+        },
+        "mrr": 0.6473,
+        "n": 220
+      },
+      "atelier__atelier": {
+        "hit1": 0.4985,
+        "hit3": 0.5075,
+        "latency_ms": {
+          "max": 4001.0,
+          "mean": 92.2,
+          "over_100ms": 88,
+          "p50": 72.1,
+          "p95": 165.4
+        },
+        "mrr": 0.503,
+        "n": 335
+      },
+      "django__django": {
+        "hit1": 0.4,
+        "hit3": 0.4299,
+        "latency_ms": {
+          "max": 528.4,
+          "mean": 102.1,
+          "over_100ms": 66,
+          "p50": 74.3,
+          "p95": 315.9
+        },
+        "mrr": 0.4149,
+        "n": 335
+      },
+      "matplotlib__matplotlib": {
+        "hit1": 0.6269,
+        "hit3": 0.7791,
+        "latency_ms": {
+          "max": 299.4,
+          "mean": 54.8,
+          "over_100ms": 13,
+          "p50": 50.4,
+          "p95": 96.4
+        },
+        "mrr": 0.7028,
+        "n": 335
+      },
+      "mwaskom__seaborn": {
+        "hit1": 0.7866,
+        "hit3": 0.7866,
+        "latency_ms": {
+          "max": 166.2,
+          "mean": 56.1,
+          "over_100ms": 23,
+          "p50": 31.0,
+          "p95": 128.2
+        },
+        "mrr": 0.7866,
+        "n": 164
+      },
+      "pallets__flask": {
+        "hit1": 0.4211,
+        "hit3": 0.5789,
+        "latency_ms": {
+          "max": 82.3,
+          "mean": 51.8,
+          "over_100ms": 0,
+          "p50": 51.6,
+          "p95": 74.0
+        },
+        "mrr": 0.5,
+        "n": 19
+      },
+      "pydata__xarray": {
+        "hit1": 0.6925,
+        "hit3": 0.8716,
+        "latency_ms": {
+          "max": 120.4,
+          "mean": 34.1,
+          "over_100ms": 1,
+          "p50": 31.4,
+          "p95": 64.9
+        },
+        "mrr": 0.7774,
+        "n": 335
+      },
+      "pylint-dev__pylint": {
+        "hit1": 0.6372,
+        "hit3": 0.6416,
+        "latency_ms": {
+          "max": 184.8,
+          "mean": 52.5,
+          "over_100ms": 23,
+          "p50": 37.0,
+          "p95": 129.8
+        },
+        "mrr": 0.6405,
+        "n": 226
+      },
+      "pytest-dev__pytest": {
+        "hit1": 0.7171,
+        "hit3": 0.8092,
+        "latency_ms": {
+          "max": 96.1,
+          "mean": 32.9,
+          "over_100ms": 0,
+          "p50": 30.4,
+          "p95": 70.1
+        },
+        "mrr": 0.7607,
+        "n": 304
+      },
+      "scikit-learn__scikit-learn": {
+        "hit1": 0.8182,
+        "hit3": 0.8182,
+        "latency_ms": {
+          "max": 168.8,
+          "mean": 57.5,
+          "over_100ms": 6,
+          "p50": 37.1,
+          "p95": 127.1
+        },
+        "mrr": 0.8232,
+        "n": 33
+      }
+    },
+    "hit1": 0.6058,
+    "hit3": 0.6869,
+    "latency_ms": {
+      "max": 4001.0,
+      "mean": 63.3,
+      "over_100ms": 236,
+      "p50": 50.4,
+      "p95": 131.2
+    },
+    "mrr": 0.645,
+    "n": 2306
+  },
+  "conservative": {
+    "by_repo": {
+      "astropy__astropy": {
+        "hit1": 0.5818,
+        "hit3": 0.7227,
+        "latency_ms": {
+          "max": 198.7,
+          "mean": 68.1,
+          "over_100ms": 14,
+          "p50": 62.2,
+          "p95": 105.8
+        },
+        "mrr": 0.6473,
+        "n": 220
+      },
+      "atelier__atelier": {
+        "hit1": 0.4985,
+        "hit3": 0.5075,
+        "latency_ms": {
+          "max": 4001.0,
+          "mean": 93.7,
+          "over_100ms": 88,
+          "p50": 73.1,
+          "p95": 167.1
+        },
+        "mrr": 0.503,
+        "n": 335
+      },
+      "django__django": {
+        "hit1": 0.4,
+        "hit3": 0.4299,
+        "latency_ms": {
+          "max": 549.1,
+          "mean": 102.8,
+          "over_100ms": 68,
+          "p50": 73.6,
+          "p95": 306.3
+        },
+        "mrr": 0.4149,
+        "n": 335
+      },
+      "matplotlib__matplotlib": {
+        "hit1": 0.6269,
+        "hit3": 0.7791,
+        "latency_ms": {
+          "max": 315.1,
+          "mean": 55.3,
+          "over_100ms": 14,
+          "p50": 51.1,
+          "p95": 94.9
+        },
+        "mrr": 0.7028,
+        "n": 335
+      },
+      "mwaskom__seaborn": {
+        "hit1": 0.7866,
+        "hit3": 0.7866,
+        "latency_ms": {
+          "max": 170.4,
+          "mean": 56.8,
+          "over_100ms": 22,
+          "p50": 31.2,
+          "p95": 135.4
+        },
+        "mrr": 0.7866,
+        "n": 164
+      },
+      "pallets__flask": {
+        "hit1": 0.4211,
+        "hit3": 0.5789,
+        "latency_ms": {
+          "max": 83.1,
+          "mean": 52.1,
+          "over_100ms": 0,
+          "p50": 51.4,
+          "p95": 74.3
+        },
+        "mrr": 0.5,
+        "n": 19
+      },
+      "pydata__xarray": {
+        "hit1": 0.6925,
+        "hit3": 0.8716,
+        "latency_ms": {
+          "max": 119.7,
+          "mean": 34.6,
+          "over_100ms": 1,
+          "p50": 31.9,
+          "p95": 65.4
+        },
+        "mrr": 0.7774,
+        "n": 335
+      },
+      "pylint-dev__pylint": {
+        "hit1": 0.6372,
+        "hit3": 0.6416,
+        "latency_ms": {
+          "max": 197.2,
+          "mean": 53.3,
+          "over_100ms": 22,
+          "p50": 36.8,
+          "p95": 132.1
+        },
+        "mrr": 0.6405,
+        "n": 226
+      },
+      "pytest-dev__pytest": {
+        "hit1": 0.7171,
+        "hit3": 0.8092,
+        "latency_ms": {
+          "max": 99.6,
+          "mean": 33.2,
+          "over_100ms": 0,
+          "p50": 30.7,
+          "p95": 73.2
+        },
+        "mrr": 0.7607,
+        "n": 304
+      },
+      "scikit-learn__scikit-learn": {
+        "hit1": 0.8182,
+        "hit3": 0.8182,
+        "latency_ms": {
+          "max": 180.3,
+          "mean": 57.8,
+          "over_100ms": 6,
+          "p50": 38.5,
+          "p95": 127.7
+        },
+        "mrr": 0.8232,
+        "n": 33
+      }
+    },
+    "hit1": 0.6058,
+    "hit3": 0.6869,
+    "latency_ms": {
+      "max": 4001.0,
+      "mean": 64.0,
+      "over_100ms": 235,
+      "p50": 50.6,
+      "p95": 135.6
+    },
+    "mrr": 0.645,
+    "n": 2306
+  }
+}
