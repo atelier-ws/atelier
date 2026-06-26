@@ -814,7 +814,13 @@ _FTS_COMMON_TERM_DF_FLOOR = 1500
 # posting-list work (sum of doc-frequencies), rarest-first, rather than a flat
 # term count: a small repo keeps every cheap term (no recall loss), while a big
 # repo stops before a mid-frequency term would blow the budget.
-_FTS_DF_BUDGET = 5000
+# Maximum cumulative document-frequency across all OR-query terms.  When a term
+# would push the total above this, it is dropped.  Capping at ~500 prevents a
+# handful of moderately-common tokens (e.g. "import", df≈1000 in django) from
+# forcing FTS5 to score thousands of rows when rarer, more-discriminative terms
+# are already present.  The budget never drops ALL terms: the first (rarest) term
+# is always kept regardless of its df (see _discriminative_fts_terms).
+_FTS_DF_BUDGET = 500
 
 # Persistent thread pool for parallel FTS channel execution in _search_symbols_local.
 # Each worker opens its own read connection; WAL mode allows concurrent readers.
@@ -3356,7 +3362,10 @@ class CodeContextEngine:
         # exactly matches a symbol name is pinned alongside full-query exact hits.
         # FTS5 BM25 misses this for multi-word queries because test files accumulate
         # far more term hits in assertion bodies than the single definition file.
-        _query_words = frozenset(re.split(r"\s+", query.strip()))
+        # Split on whitespace AND pipe (|) so pipe-separated multi-term queries
+        # like "_get_timezone_name|get_current_timezone_name" correctly yield each
+        # term as a candidate for exact-symbol pinning.
+        _query_words = frozenset(re.split(r"[\s|]+", query.strip()))
         token_exact_ids = {
             r.symbol_id for r in raw_symbols if r.symbol_name in _query_words or r.symbol_name.lower() in _query_words
         }
@@ -3498,6 +3507,33 @@ class CodeContextEngine:
         # to 16 files, which then truncated every section to fit the token budget.
         file_cap = bounded_max_files + 2 if family_member_ids else bounded_max_files
         selected_files = selected_files[:file_cap]
+        # Path-alignment reranking: stable re-sort by query-word overlap with file path
+        # parts + symbol names. Surfaces files whose paths/symbols match query terms
+        # (e.g. 'timezone.py' for a timezone query) with zero latency and no API calls.
+        # Only fires when ATELIER_RERANK=1 and there are enough candidates to reorder.
+        if os.environ.get("ATELIER_RERANK") == "1" and len(selected_files) > 3:
+            _stop = {"the", "a", "an", "in", "of", "to", "for", "is", "it", "on", "at", "fix", "bug", "issue"}
+            _qwords = frozenset(re.split(r"[\s\W]+", query.lower())) - _stop - {""}
+            # Build symbol-name lookup for each file from already-ranked symbols
+            _file_syms: dict[str, set[str]] = {}
+            for _sym in ranked_symbols:
+                if _sym.file_path in set(selected_files) and _sym.symbol_name:
+                    _file_syms.setdefault(_sym.file_path, set()).update(re.split(r"[_A-Z]", _sym.symbol_name.lower()))
+
+            def _align_score(fp: str) -> float:
+                path_parts = frozenset(re.split(r"[/._-]+", fp.lower()))
+                sym_parts = _file_syms.get(fp, set())
+                return len(_qwords & (path_parts | sym_parts))
+
+            _max_align = max((_align_score(f) for f in selected_files), default=0)
+            if _max_align > 0:
+                selected_files = [
+                    f
+                    for f, _ in sorted(
+                        ((f, _align_score(f)) for f in selected_files),
+                        key=lambda x: -x[1],
+                    )
+                ]
         trimmed_symbols = [symbol for symbol in selected_symbols if symbol.file_path in set(selected_files)]
         trimmed_by_file: dict[str, list[SymbolRecord]] = {}
         for symbol in trimmed_symbols:
@@ -4680,9 +4716,17 @@ class CodeContextEngine:
         sqlite3.OperationalError (e.g. FTS edge-case syntax) is swallowed and
         treated as an empty result set so it never crashes the caller.
         """
-        conn = sqlite3.connect(str(db_path), timeout=30.0, check_same_thread=False)
+        # Open read-only: all FTS/trigram channels are pure SELECTs.  WAL mode
+        # allows unlimited concurrent readers and a read-only URI connection
+        # never competes with the writer (autosync, reindex) for the write lock,
+        # eliminating the 30 s timeout cliff on active repositories.
+        conn = sqlite3.connect(
+            f"file:{db_path}?mode=ro",
+            uri=True,
+            timeout=5.0,
+            check_same_thread=False,
+        )
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout = 30000")
         try:
             return conn.execute(sql, params).fetchall()
         except sqlite3.OperationalError:
