@@ -4987,6 +4987,7 @@ def _smart_read_single(
     range: str | None = None,
     expand: bool = False,
     max_lines: int | None = None,
+    tail_lines: int | None = None,
     include_meta: bool = False,
     projection_kind: str | None = None,
 ) -> dict[str, Any]:
@@ -4999,6 +5000,15 @@ def _smart_read_single(
     target_path, suffix_range = _split_read_range_suffix(target_path)
     if range is None and suffix_range is not None:
         range = suffix_range
+    # tail=N: resolve to a concrete line range so the rest of the read path
+    # handles it uniformly (range read is already bounded and efficient).
+    if tail_lines is not None and range is None and not expand:
+        try:
+            total = sum(1 for _ in open(_workspace_path(target_path), encoding="utf-8", errors="ignore"))
+            start = max(1, total - tail_lines + 1)
+            range = f"{start}-"
+        except OSError:
+            pass
     # Reads may target any path the host process can access — a coding agent
     # legitimately reads configs / sibling repos outside the project, and the
     # host's own permission layer gates the tool call. Writes/edits, by contrast,
@@ -5221,14 +5231,59 @@ def _smart_read_single(
     return response
 
 
+# Matches range tokens like L10-L20, 10-20, L10-, 10-, L10, 10
+_RANGE_TOKEN_RE = re.compile(r"^L?\d+(-L?\d*)?$", re.IGNORECASE)
+
+
+def _split_file_opts(s: str) -> tuple[str, str | None, bool, int | None, int | None]:
+    """Parse colon-suffixed options off a file path string.
+
+    Recognised suffixes (applied right-to-left, stops at first unknown token):
+      :L10-L20 / :10-20 / :L10-  — line range
+      :expand                     — full source expansion
+      :head=N                     — first N lines
+      :tail=N                     — last N lines
+
+    Keeps paths that happen to contain colons intact.
+    """
+    expand_out = False
+    range_out: str | None = None
+    head_out: int | None = None
+    tail_out: int | None = None
+    parts = s.split(":")
+    while len(parts) > 1:
+        tok = parts[-1]
+        if tok in ("expand", "expand=true", "expand=1"):
+            expand_out = True
+            parts.pop()
+        elif tok.startswith("head="):
+            try:
+                head_out = int(tok[5:])
+                parts.pop()
+            except ValueError:
+                break
+        elif tok.startswith("tail="):
+            try:
+                tail_out = int(tok[5:])
+                parts.pop()
+            except ValueError:
+                break
+        elif _RANGE_TOKEN_RE.match(tok):
+            range_out = tok
+            parts.pop()
+        else:
+            break
+    return ":".join(parts), range_out, expand_out, head_out, tail_out
+
+
 @mcp_tool(
     name="read",
-    hidden_params=("projection_kind", "format", "include_meta", "filePath"),
+    hidden_params=("path", "range", "expand", "lines", "projection_kind", "format", "include_meta", "filePath"),
     description=(
-        "Read a file (or batch) by path, or a single symbol by name. "
-        "symbol='name' or ['a','b'] → exact source for one or more symbols, no FTS/graph noise. "
-        "File modes: outline (default for files >200 LOC), range (range='L42-L118' or 'L42-'), "
-        "full (expand=true), compact. Batch 2+ files via files=[{path, range?}, ...]."
+        "Read files or symbols. "
+        "files=['a.py', 'b.py:L10-L20', 'c.py:expand', 'c.py:head=50', 'd.py:tail=20']"
+        "symbol='name' or ['a','b'] → exact source, no FTS noise. "
+        "File modes: outline (>500 LOC default), full via :expand, range via :Lx-Ly, head/tail via :head=N/:tail=N."
     ),
     param_aliases={"max_lines": "lines"},
 )
@@ -5247,9 +5302,13 @@ def tool_smart_read(
         Field(description="Include cache/token metadata."),
     ] = False,
     files: Annotated[
-        list[dict[str, Any] | str] | None,
+        list[str] | None,
         Field(
-            description="['path', ...] or [{path, range?, expand?, lines?}, ...] -> {files: [...]}. Use for 2+ files."
+            description=(
+                "List of file paths to read. Each item is a path string with optional suffixes: "
+                ":L10-L20 for a line range, :expand for full source, :head=N for first N lines, :tail=N for last N lines. "
+                "Returns {files: [...]}."
+            )
         ),
     ] = None,
     symbol: Annotated[
@@ -5259,7 +5318,6 @@ def tool_smart_read(
         ),
     ] = None,
     projection_kind: str | None = None,
-    format: Annotated[Literal["auto", "compact", "json"], _FORMAT_FIELD] = "auto",
     filePath: str = "",  # accepted alias for `path` (hidden from the published schema)
 ) -> dict[str, Any]:
     """Read a file (or batch of files) by path, or a single symbol by name.
@@ -5268,7 +5326,7 @@ def tool_smart_read(
     verbatim source of exactly that symbol — direct index lookup, no FTS expansion.
     Pass a list to fetch multiple: read(symbol=["Foo", "Bar.baz"]).
 
-    File modes: outline (structure only — default for files >200 LOC), range
+    File modes: outline (structure only — default for files >500 LOC), range
     (range="42-118", "L42-L118", or open-ended "L42-" for an exact line slice),
     full (small files, or any file with expand=true), and compact (safe
     whitespace-only transformation of full reads — not byte-identical source).
@@ -5301,9 +5359,20 @@ def tool_smart_read(
     if files is not None:
         results = []
         batch_saved = 0
-        for spec in files:
-            if isinstance(spec, str):
-                spec = {"path": spec}
+        for item in files:
+            if isinstance(item, str):
+                raw_path, item_range, item_expand, item_head, item_tail = _split_file_opts(item)
+                spec: dict[str, Any] = {"path": raw_path}
+                if item_range is not None:
+                    spec["range"] = item_range
+                if item_expand:
+                    spec["expand"] = True
+                if item_head is not None:
+                    spec["lines"] = item_head
+                if item_tail is not None:
+                    spec["tail"] = item_tail
+            else:
+                spec = item  # dict passthrough for internal callers
             spec_path = str(spec.get("path") or "")
             if not spec_path:
                 results.append({"error": "path is required in each files entry"})
@@ -5320,6 +5389,7 @@ def tool_smart_read(
                     range=spec.get("range"),
                     expand=bool(spec.get("expand", expand)),
                     max_lines=spec.get("lines", spec.get("max_lines", lines)),
+                    tail_lines=spec.get("tail"),
                     include_meta=include_meta,
                     projection_kind=spec.get("projection_kind", projection_kind),
                 )
