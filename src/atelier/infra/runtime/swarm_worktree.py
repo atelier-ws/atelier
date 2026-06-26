@@ -101,6 +101,30 @@ _SKIP_UNTRACKED_FILE_SUFFIXES = frozenset(
 )
 _SKIP_UNTRACKED_FILE_NAMES = frozenset({"semantic_file_index.json"})
 
+# Gitignored files commonly required to run experiments — secrets, local
+# config, TLS material, cloud credentials, etc.  Matched by exact name,
+# name prefix, or suffix against every file found in the base worktree.
+_SECRET_FILE_NAMES: frozenset[str] = frozenset(
+    {
+        ".env",
+        ".envrc",
+        ".netrc",
+        ".secrets",
+        ".secret",
+        ".pgpass",
+        ".my.cnf",
+        "credentials.json",
+        "secrets.json",
+        "service-account.json",
+        "serviceaccount.json",
+        "gcloud-credentials.json",
+    }
+)
+_SECRET_FILE_PREFIXES: tuple[str, ...] = (".env.",)
+_SECRET_FILE_SUFFIXES: frozenset[str] = frozenset(
+    {".pem", ".key", ".crt", ".cert", ".p12", ".pfx", ".secret", ".secrets"}
+)
+
 
 def _should_skip_untracked_path(path: str) -> bool:
     parts = Path(path).parts
@@ -113,6 +137,34 @@ def _should_skip_untracked_path(path: str) -> bool:
         return True
     candidate = Path(path)
     return candidate.name in _SKIP_UNTRACKED_FILE_NAMES or candidate.suffix in _SKIP_UNTRACKED_FILE_SUFFIXES
+
+
+def _is_secret_file(name: str, suffix: str) -> bool:
+    return (
+        name in _SECRET_FILE_NAMES
+        or any(name.startswith(p) for p in _SECRET_FILE_PREFIXES)
+        or suffix in _SECRET_FILE_SUFFIXES
+    )
+
+
+def _sync_secret_files(*, base_worktree: Path, child_worktree: Path) -> None:
+    """Copy commonly gitignored secret/config files into the child worktree.
+
+    ``git worktree add`` and ``git status`` both skip ignored files, so we
+    glob directly in the base worktree.  Only files that already exist in
+    the base are copied; we never create paths that aren't there.
+    """
+    for src in base_worktree.rglob("*"):
+        if not src.is_file():
+            continue
+        rel = src.relative_to(base_worktree)
+        # Skip anything nested inside dirs we already exclude (e.g. .venv)
+        if any(part in _SKIP_UNTRACKED_DIR_NAMES for part in rel.parts[:-1]):
+            continue
+        if _is_secret_file(src.name, src.suffix):
+            dst = child_worktree / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
 
 
 class SwarmWorktreeManager:
@@ -145,6 +197,7 @@ class SwarmWorktreeManager:
                 continue
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
+        _sync_secret_files(base_worktree=base_worktree, child_worktree=child_worktree)
 
     def remove_worktree(self, worktree_path: Path) -> None:
         path = Path(worktree_path)

@@ -127,3 +127,32 @@ def test_worktree_manager_copies_allowlisted_hidden_directories(tmp_path: Path) 
 
     manager.remove_worktree(child)
     assert not child.exists()
+
+
+def test_worktree_manager_copies_secret_files(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
+    _commit_all(repo, "base")
+
+    # Add secret files (gitignored) after the commit
+    (repo / ".gitignore").write_text(".env\n.env.*\ncredentials.json\n*.pem\n", encoding="utf-8")
+    (repo / ".env").write_text("SECRET=abc\n", encoding="utf-8")
+    (repo / ".env.local").write_text("LOCAL=xyz\n", encoding="utf-8")
+    subdir = repo / "subdir"
+    subdir.mkdir()
+    (subdir / "credentials.json").write_text('{"key": "val"}\n', encoding="utf-8")
+    (repo / "cert.pem").write_text("-----BEGIN CERTIFICATE-----\n", encoding="utf-8")
+
+    manager = SwarmWorktreeManager(repo_root=repo, pool_root=tmp_path / "pool")
+    child = manager.create_worktree(run_id="swarm-test", child_id="run-01")
+    manager.sync_dirty_state(base_worktree=repo, child_worktree=child)
+
+    assert (child / ".env").read_text(encoding="utf-8") == "SECRET=abc\n"
+    assert (child / ".env.local").read_text(encoding="utf-8") == "LOCAL=xyz\n"
+    assert (child / "subdir" / "credentials.json").read_text(encoding="utf-8") == '{"key": "val"}\n'
+    assert (child / "cert.pem").read_text(encoding="utf-8") == "-----BEGIN CERTIFICATE-----\n"
+
+    manager.remove_worktree(child)
+    assert not child.exists()
