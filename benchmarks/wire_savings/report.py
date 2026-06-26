@@ -95,7 +95,7 @@ def flow_records(path: str) -> Iterator[tuple[str, bytes]]:
         try:
             flows = FlowReader(fh).stream()
         except Exception:
-            logger.warning("flow_records: unable to open %s", path, exc_info=True)
+            logger.warning("flow_records: unable to read %s (corrupted at prefix)", path, exc_info=True)
             return
         while True:
             try:
@@ -103,7 +103,10 @@ def flow_records(path: str) -> Iterator[tuple[str, bytes]]:
             except StopIteration:
                 return
             except Exception:
-                logger.warning("flow_records: skipping corrupted flow entry in %s", path, exc_info=True)
+                logger.warning(
+                    "flow_records: corrupted entry in %s — yielded entries retained, can't read further",
+                    path,
+                )
                 return
             req = getattr(flow, "request", None)
             resp = getattr(flow, "response", None)

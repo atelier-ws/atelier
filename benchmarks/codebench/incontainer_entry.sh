@@ -100,7 +100,8 @@ fi
 # agent enter plan mode and plan instead of execute. The flag is variadic, so it
 # MUST stay last in args. Denying a tool an arm doesn't have is a harmless no-op
 # (e.g. baseline has no mcp__* tools).
-args+=(--disallowedTools AskUserQuestion EnterPlanMode ExitPlanMode WebFetch WebSearch mcp__atelier__web_fetch mcp__plugin_atelier_atelier__web_fetch Workflow ScheduleWakeup)
+disallowed=(AskUserQuestion EnterPlanMode ExitPlanMode WebFetch WebSearch mcp__atelier__web_fetch mcp__plugin_atelier_atelier__web_fetch Workflow ScheduleWakeup)
+args+=(--disallowedTools "${disallowed[@]}")
 
 claude "${args[@]}"
 
