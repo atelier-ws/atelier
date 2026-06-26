@@ -579,6 +579,14 @@ def apply_rich_edits(
                 applied.append({"path": raw_path, "kind": "overwrite"})
                 continue
 
+            # Guard: replacement edits (old_string or line-scoped) on a
+            # non-existent file are always an error — the caller must use
+            # overwrite=true or omit old_string to create a new file.
+            if not path.exists():
+                raise ValueError(
+                    f"file {spec.path!r} does not exist — use overwrite=true or omit " "old_string to create a new file"
+                )
+
             # Line-range direct replacement: when a #start-end scope is in the
             # path and new_string is explicitly provided (even "" to delete those
             # lines), replace the range verbatim — old_string is not required.
@@ -661,6 +669,7 @@ def apply_rich_edits(
         if file_state:
             try:
                 from atelier.core.capabilities.code_context import CodeContextEngine
+
                 _idx_engine = CodeContextEngine(root, autosync_enabled=False)
                 _idx_engine._reindex_files(list(file_state.keys()))
             except Exception:
