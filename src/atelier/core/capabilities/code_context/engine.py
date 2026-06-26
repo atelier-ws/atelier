@@ -877,7 +877,12 @@ def _fts_and_query(query: str) -> str:
         has_code_kw = terms_raw[0].lower() in _CODE_LEADING_KW
         has_mixed_case = any(any(c.isupper() for c in t) and any(c.islower() for c in t) for t in terms_raw)
         has_all_caps = any(len(t) >= 4 and t.isupper() for t in terms_raw)
-        if not (has_code_kw or has_mixed_case or has_all_caps):
+        # n-gram compound tokens (e.g. 'donothingaction', 'preprocessable') are
+        # always code-derived and never appear in natural-language docstrings.
+        # The n-gram pipeline strips underscores so they won't have |/_ markers;
+        # use a minimum length of 12 chars as a reliable compound-token signal.
+        has_long_compound = len(terms_raw) >= 2 and len(terms_raw[0]) >= 12
+        if not (has_code_kw or has_mixed_case or has_all_caps or has_long_compound):
             return ""
 
     seen_lower: set[str] = set()
