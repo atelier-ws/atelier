@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import threading
@@ -32,6 +33,32 @@ _WEBSERVER_READY_TIMEOUT_SECONDS = 15.0
 _WEBSERVER_READY_POLL_SECONDS = 0.05
 _WEBSERVER_REQUEST_TIMEOUT_SECONDS = 30.0
 _SKIP_ROOTS = {".git", ".jj", ".atelier", ".venv", "node_modules", "dist", "build", "__pycache__"}
+
+
+def _set_pdeathsig() -> None:
+    """Ensure the child process receives SIGTERM if this parent dies.
+
+    Uses Linux ``prctl(PR_SET_PDEATHSIG)`` so even ``SIGKILL`` of the
+    parent propagates — ``atexit`` alone is unreliable for subprocess
+    lifecycle.
+    """
+    import ctypes
+    import ctypes.util
+
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6", use_errno=True)
+        PR_SET_PDEATHSIG = 1  # linux/prctl.h
+        libc.prctl(PR_SET_PDEATHSIG, signal.SIGTERM, 0, 0, 0)
+    except (OSError, AttributeError, ctypes.CDLLError):
+        pass
+
+
+def _get_pgid_safely(pid: int) -> int | None:
+    """Return the process group ID for *pid*, or None if the process is gone."""
+    try:
+        return os.getpgid(pid)
+    except (OSError, ProcessLookupError):
+        return None
 
 
 @dataclass(frozen=True)
@@ -148,7 +175,18 @@ class ZoektServer:
         return f"binary://{self.index_root}"
 
     def health(self) -> ZoektHealth:
-        self.ensure_started()
+        if not self._is_ready():
+            runtime_ref = None
+            if self.resolution is not None:
+                runtime_ref = self.resolution.image_ref or (
+                    str(self.resolution.path) if self.resolution.path is not None else None
+                )
+            return ZoektHealth(
+                ok=False,
+                backend="zoekt",
+                binary_path=runtime_ref,
+                index_age_seconds=None,
+            )
         runtime_ref = None
         if self.resolution is not None:
             runtime_ref = self.resolution.image_ref or (
@@ -503,6 +541,8 @@ class ZoektServer:
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            preexec_fn=_set_pdeathsig,
         )
         url = f"http://127.0.0.1:{port}"
         self._webserver_proc = proc
@@ -536,20 +576,34 @@ class ZoektServer:
         return cast(dict[str, Any], json.loads(raw))
 
     def _stop_webserver(self) -> None:
-        """Terminate the host webserver and clear its handles. Caller holds the lock."""
+        """Terminate the host webserver and clear its handles. Caller holds the lock.
+
+        Kills the entire process group (``start_new_session=True`` in
+        ``_spawn_webserver_process`` puts the child in its own session, so
+        ``os.killpg`` reaches the webserver and any grandchild processes).
+        """
         proc = self._webserver_proc
         self._webserver_proc = None
         self._webserver_url = None
         self._webserver_ready.clear()  # reset so next _spawn waits for fresh readiness
         if proc is None:
             return
-        with suppress(Exception):
-            proc.terminate()
+        pgid = _get_pgid_safely(proc.pid)
+        if pgid is not None:
+            with suppress(Exception):
+                os.killpg(pgid, signal.SIGTERM)
+        else:
+            with suppress(Exception):
+                proc.terminate()
         try:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            with suppress(Exception):
-                proc.kill()
+            if pgid is not None:
+                with suppress(Exception):
+                    os.killpg(pgid, signal.SIGKILL)
+            else:
+                with suppress(Exception):
+                    proc.kill()
             with suppress(Exception):
                 proc.wait(timeout=5)
 

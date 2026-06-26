@@ -159,12 +159,19 @@ _total = len(_tasks)
 
 
 def _worker_init() -> None:
-    """Pre-warm centrality cache in each forked worker.
+    """Prepare each forked worker for benchmark use.
 
-    The centrality map is already computed in the main process and inherited
-    via fork, so this is typically a no-op.  It also opens a lightweight read
-    connection per repo which primes the OS page cache.
+    Thread pools do NOT survive fork() safely: the inherited
+    _SEARCH_CHANNEL_EXECUTOR has dead parent threads and potentially locked
+    internal state, causing silent deadlocks on submit().  Replace it with a
+    fresh pool in each child process before any task runs.
     """
+    import concurrent.futures as _cf
+    import atelier.core.capabilities.code_context.engine as _eng_mod
+
+    _eng_mod._SEARCH_CHANNEL_EXECUTOR = _cf.ThreadPoolExecutor(
+        max_workers=5, thread_name_prefix="atelier-fts-channel"
+    )
     for eng in engines.values():
         with contextlib.suppress(Exception):
             eng._symbol_centrality_map()

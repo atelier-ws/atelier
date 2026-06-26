@@ -27,13 +27,31 @@ PREFIX2REPO = [
 ]
 
 
+# Grep patterns that expand to huge FTS hits and only slow down the benchmark.
+# These are regex anchors / operators that are meaningless as FTS terms.
+_JUNK_RE = re.compile(r"(\^|\$|\|\^|\|\$|\^from\b|\^import\b|\bimport\b|\bfrom\b)")
+
+
+def _is_noisy_query(q: str) -> bool:
+    """True if the query contains regex anchors or ultra-common words."""
+    # Contains regex anchor syntax used in grep but useless for FTS
+    if re.search(r"[\^\$]|\|\s*\^|\|\s*\$", q):
+        return True
+    # Pure common English/Python keywords that match thousands of symbols
+    tokens = re.split(r"[\s|]+", q)
+    noisy = {"from", "import", "class", "def", "return", "self", "pass", "true", "false", "none"}
+    if all(t.lower().strip() in noisy for t in tokens if t.strip()):
+        return True
+    return False
+
+
 def mine_grep_queries(dump: pathlib.Path) -> list[str]:
     out = []
     for blob in GREP_RE.findall(dump.read_text(errors="replace")):
         m = re.search(r'"regex":\s*"((?:[^"\\]|\\.)*)"', blob)
         if m:
             q = m.group(1).encode().decode("unicode_escape", "replace")
-            if 3 <= len(q) <= 80:
+            if 3 <= len(q) <= 80 and not _is_noisy_query(q):
                 out.append(q)
     return out
 

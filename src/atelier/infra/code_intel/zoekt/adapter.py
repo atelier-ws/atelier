@@ -109,8 +109,18 @@ class ZoektSupervisor:
                 index_age_seconds=None,
                 reason=resolution.reason,
             )
+        if self.ensure_started() is None:
+            # ensure_started returned None because Zoekt isn't ready
+            # (no index built yet).  Return non-ok health instead of
+            # forwarding to server.health() which would raise.
+            return ZoektBackendHealth(
+                ok=False,
+                backend="zoekt",
+                binary_path=str(resolution.path) if resolution.path is not None else None,
+                index_age_seconds=None,
+                reason="Zoekt index not built yet",
+            )
         try:
-            self.ensure_started()
             server_health = self.server.health()
         except Exception as exc:
             logging.exception("Recovered from broad exception handler")

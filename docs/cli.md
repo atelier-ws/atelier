@@ -106,7 +106,7 @@ What the harness guarantees today:
 
 - one detached git worktree per child under a deterministic `*-swarm-worktrees/<run_id>/` pool
 - one isolated `ATELIER_ROOT` plus `ATELIER_WORKSPACE_ROOT` / `CLAUDE_WORKSPACE_ROOT` per child
-- a copied program spec at `.atelier-swarm/program.md` in each child worktree
+- a copied program spec at `.atelier/swarm/program.md` in each child worktree
 - structured child artifacts with summary, files changed, validations, cost/tokens (when available), final status, and live stdout/stderr previews
 - persisted coordinator state under `--root/swarm/runs/<run_id>/state.json`
 - a dedicated integration worktree whose accepted patches become the base for the next wave
