@@ -28,8 +28,11 @@ EXTERNAL_PERIODS ?= today week month
 #    * To build and install a local production binary:
 #         make prod
 
-dev: ## Install Atelier in editable/dev mode
+dev: ## Install Atelier in editable/dev mode; run /mcp reconnect in Claude Code after
 	bash scripts/local.sh --non-interactive
+	@echo ''
+	@echo '\033[0;32m✓ Done. Source is live (editable install).\033[0m'
+	@echo '  Run /mcp reconnect in Claude Code to pick up schema/code changes.'
 
 build: ## Build and package for production distribution
 	bash scripts/build.sh
