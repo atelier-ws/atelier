@@ -150,7 +150,16 @@ class _ReusedConnection:
         # so an inner ``with self._connect()`` write block releases its lock promptly
         # instead of holding it open for the whole reuse scope. The connection itself
         # stays open (that's the reuse); only close() is neutralized.
+        #
+        # Skip the commit/rollback when no transaction is pending (i.e. the inner
+        # block was read-only).  ``conn.commit()`` on a connection with no pending
+        # changes still acquires the write lock briefly in WAL mode, which can
+        # block for the full busy_timeout (~30 s) when another process holds the
+        # write lock (e.g. atelier autosync on the same DB).  The outer
+        # ``_reuse_connection`` scope handles the final commit/close.
         conn: sqlite3.Connection = object.__getattribute__(self, "_conn")
+        if not conn.in_transaction:
+            return False
         if exc[0] is None:
             conn.commit()
         else:
@@ -911,7 +920,7 @@ def _ngram_tokens(name: str) -> list[str]:
         → bigrams: 'gettimezone', 'timezonename'
         → full:    'gettimezonename'
 
-    These are highly specific (df ≈ 1–3) so they are cheap to scan and give
+    These are highly specific (df ≈ 1-3) so they are cheap to scan and give
     precise BM25 signal.  Used both when indexing symbols and when extracting
     query terms, so the two sides stay in sync.
     """
@@ -1312,16 +1321,28 @@ def _get_index_process_pool() -> concurrent.futures.ProcessPoolExecutor:
         return _PROCESS_POOL
     with _PROCESS_POOL_LOCK:
         if _PROCESS_POOL is None:
-            mp_ctx = multiprocessing.get_context("spawn")
-            _PROCESS_POOL = concurrent.futures.ProcessPoolExecutor(
-                max_workers=_resolve_index_max_workers(),
-                mp_context=mp_ctx,
-                # Recycle each worker after N tasks so accumulated garbage
-                # (AST nodes, interned strings, module caches) is freed by
-                # the OS rather than growing indefinitely.
-                max_tasks_per_child=256,
-                initializer=_worker_memory_guard,
-            )
+            # fork: safe on Linux — workers only read source files, no DB
+            # connections or locks are open at pool-creation time.  Avoids the
+            # spawn overhead (~1-2s per pool create) AND the "__main__ not
+            # importable" error that spawn triggers in benchmark/CLI scripts
+            # that run at module level.  Fall back to spawn on macOS/Windows
+            # where fork is unsafe or unavailable.
+            _ctx_name = os.environ.get("ATELIER_INDEX_POOL_CONTEXT", "")
+            if not _ctx_name:
+                import platform
+
+                _ctx_name = "fork" if platform.system() == "Linux" else "spawn"
+            mp_ctx = multiprocessing.get_context(_ctx_name)
+            _pool_kwargs: dict = {
+                "max_workers": _resolve_index_max_workers(),
+                "mp_context": mp_ctx,
+                "initializer": _worker_memory_guard,
+            }
+            # max_tasks_per_child recycles workers to free AST/string
+            # garbage, but is incompatible with the 'fork' start method.
+            if _ctx_name != "fork":
+                _pool_kwargs["max_tasks_per_child"] = 256
+            _PROCESS_POOL = concurrent.futures.ProcessPoolExecutor(**_pool_kwargs)
             atexit.register(_shutdown_index_process_pool)
     return _PROCESS_POOL
 
@@ -2160,6 +2181,7 @@ class CodeContextEngine:
             ]
         ] = []
         fts_rows: list[tuple[str, str, str, str, str, str]] = []
+        trigram_rows: list[tuple[str, str, str, str]] = []  # (symbol_id, name_plain, qualified_name, file_path)
         for d in results:
             for i, sym in enumerate(d.symbols):
                 raw_id = f"{self.repo_id}:{d.rel}:{sym.qualified_name}:{sym.start_byte}:{d.content_hash}"
@@ -2190,6 +2212,10 @@ class CodeContextEngine:
                 _ngrams = _ngram_tokens(sym.name)
                 _fts_name = (sym.name + " " + " ".join(_ngrams)) if _ngrams else sym.name
                 fts_rows.append((sid, _fts_name, sym.qualified_name, sym.signature, d.rel, d.symbol_sources[i]))
+                # Trigram table uses the PLAIN name (no n-gram expansion) — the trigram
+                # tokenizer handles substring matching natively, so pre-expansion only wastes
+                # space. Signature is omitted: 5× size amplification, rarely unique over name.
+                trigram_rows.append((sid, sym.name, sym.qualified_name, d.rel))
 
         conn.executemany(
             """
@@ -2206,8 +2232,8 @@ class CodeContextEngine:
             fts_rows,
         )
         conn.executemany(
-            "INSERT INTO symbol_trigram(symbol_id, name, qualified_name, signature, file_path) VALUES (?, ?, ?, ?, ?)",
-            [(row[0], row[1], row[2], row[3], row[4]) for row in fts_rows],
+            "INSERT INTO symbol_trigram(symbol_id, name, qualified_name, file_path) VALUES (?, ?, ?, ?)",
+            trigram_rows,
         )
 
         # --- line text + FTS ---
@@ -2519,6 +2545,16 @@ class CodeContextEngine:
                 files_indexed = len(to_extract)
                 symbols_indexed = sum(len(r.symbols) for r in results)
                 imports_indexed = sum(len(r.imports) for r in results)
+
+        if force:
+            # Compact all DBs after a full rebuild — DELETE + re-insert leaves free pages
+            # that inflate file size until VACUUMed (e.g. 87 MB → 31 MB for pylint).
+            for _vac_db in (self.db_path, self.intel_db_path, self.vectors_db_path, self.fts_db_path):
+                if _vac_db.exists():
+                    with contextlib.suppress(Exception):
+                        _vc = sqlite3.connect(str(_vac_db))
+                        _vc.execute("VACUUM")
+                        _vc.close()
 
         emit_product_local(
             "code_index_completed",
@@ -3268,6 +3304,22 @@ class CodeContextEngine:
         if hit and cached is not None:
             return self._mark_cache_hit(cached)
 
+        # Pipe-separated queries: pre-compute the extra word set for token-pin
+        # ranking.  Actual OR-expansion happens lazily after the main search returns
+        # (see the merge block after the parallel phase) so it only runs when the
+        # primary FTS AND search yields too few results, avoiding serial overhead on
+        # queries where FTS AND already finds the right file.
+        _pipe_query_extra_words: frozenset[str] = frozenset()
+        _pipe_clean_terms: list[str] = []
+        _pipe_extra_symbols: list[SymbolRecord] = []
+        if "|" in query:
+            _pipe_terms = _split_pipe_query(query)
+            if _pipe_terms:
+                _pipe_query_extra_words = frozenset(re.sub(r"[^A-Za-z0-9_.]", "", t) for t in _pipe_terms) - {""}
+                _pipe_clean_terms = sorted((t for t in _pipe_query_extra_words if len(t) >= 3), key=len, reverse=True)[
+                    :5
+                ]
+
         # Winner-pipeline fusion: pull in trigram (zoekt) AND semantic anchors. The
         # symbol FTS ranks named symbols well but misses concept/regex queries where
         # the right file has no lexically-matching symbol name; zoekt's trigram search
@@ -3286,21 +3338,41 @@ class CodeContextEngine:
         if os.environ.get("ATELIER_EXPLORE_PARALLEL", "1") != "0":
             from concurrent.futures import ThreadPoolExecutor
 
-            with ThreadPoolExecutor(max_workers=2) as _pool:
-                _zk = _pool.submit(self._zoekt_candidate_files, query, max_files=anchor_budget)
-                _sem = _pool.submit(self._semantic_candidate_files, query, max_files=anchor_budget)
-                raw_symbols = self.search_symbols(
-                    query,
-                    limit=bounded_max_symbols,
-                    snippet="none",
-                    auto_index=False,
-                )
-                # Preserve zoekt's score-ranked order; append semantic-only files at the end.
-                _zk_list = _zk.result()  # list[str], zoekt-score ordered
-                _seen_anchors: dict[str, None] = dict.fromkeys(_zk_list)
-                for _f in _sem.result():
+            # Do NOT use "with _pool" here: its __exit__ calls shutdown(wait=True)
+            # which blocks until zoekt/semantic threads finish even if we've
+            # already timed out and moved on.  shutdown(wait=False) lets slow
+            # threads drain in the background (they terminate within 2 s once
+            # the HTTP timeout fires in _WEBSERVER_REQUEST_TIMEOUT_SECONDS).
+            _pool = ThreadPoolExecutor(max_workers=2)
+            _zk = _pool.submit(self._zoekt_candidate_files, query, max_files=anchor_budget)
+            _sem = _pool.submit(self._semantic_candidate_files, query, max_files=anchor_budget)
+            # Pass _candidate_files=set() to skip the duplicate zoekt call inside
+            # search_symbols -- we already have _zk running in the pool above.
+            # search_symbols returns immediately (~50-150 ms), freeing the 0.8 s
+            # zoekt timeout budget for the _zk future already in flight.
+            raw_symbols = self.search_symbols(
+                query,
+                limit=bounded_max_symbols,
+                snippet="none",
+                auto_index=False,
+                _candidate_files=set(),
+            )
+            # Collect zoekt results; cap at 800 ms.  By the time search_symbols
+            # returns (~100 ms), zoekt has had most of that budget already.
+            try:
+                _zk_list: list[str] = _zk.result(timeout=0.8)
+            except Exception:
+                _zk_list = []
+            _seen_anchors: dict[str, None] = dict.fromkeys(_zk_list)
+            try:
+                # _sem has been running in parallel since T=0; by the time we
+                # reach here it is almost certainly done.  50 ms is enough.
+                for _f in _sem.result(timeout=0.05):
                     _seen_anchors.setdefault(_f, None)
-                anchor_candidates = list(_seen_anchors)
+            except Exception:
+                pass
+            _pool.shutdown(wait=False)  # don't block; slow threads drain in bg
+            anchor_candidates = list(_seen_anchors)
         else:
             raw_symbols = self.search_symbols(
                 query,
@@ -3354,6 +3426,7 @@ class CodeContextEngine:
                 mode="lexical",
                 snippet="none",
                 auto_index=False,
+                _candidate_files=set(),  # zoekt already ran above; skip duplicate
             )
             exact_hits = _exact_symbol_hits(lexical_hits, query)
         elif not exact_hits and " " in query.strip():
@@ -3386,6 +3459,7 @@ class CodeContextEngine:
                     mode="lexical",
                     snippet="none",
                     auto_index=False,
+                    _candidate_files=set(),  # zoekt already ran above; skip duplicate
                 )
                 for r in _exact_symbol_hits(lhits, probe):
                     if r.symbol_id not in seen_ids:
@@ -3393,6 +3467,9 @@ class CodeContextEngine:
                         token_hits.append(r)
             exact_hits = token_hits
         exact_ids = {record.symbol_id for record in exact_hits}
+        # No extra searches needed for pipe queries: _pipe_query_extra_words is
+        # already merged into _query_words for token-pin ranking, and the file-level
+        # coverage boost below rewards files that match more pipe terms.
         anchor_ids: set[str] = set()
         if not exact_hits:
             seeded_files = {symbol.file_path for symbol in raw_symbols}
@@ -3410,6 +3487,51 @@ class CodeContextEngine:
                 )
                 anchor_ids = {symbol.symbol_id for symbol in anchor_symbols}
                 raw_symbols = self._dedupe_symbols(raw_symbols + anchor_symbols)
+        # ── Reference-file expansion ──────────────────────────────────────
+        # For concept queries (no exact hit yet), find files that REFERENCE
+        # the top-ranked FTS symbols.  Catches the "subclass override" pattern:
+        # FTS finds the base-class definition (e.g. base/base.py for
+        # timezone_name) but the gold file is the concrete backend override
+        # (e.g. mysql/operations.py) which only REFERENCES that symbol.
+        # Uses the intel.sqlite 'references' table which is already attached
+        # to the shared connection – no extra connection overhead.
+        _ref_anchor_ids: set[str] = set()
+        if not exact_hits:
+            _top_sym_names = list(
+                dict.fromkeys(
+                    r.symbol_name
+                    for r in raw_symbols[:24]
+                    if r.symbol_name
+                    and len(r.symbol_name) >= 5
+                    and not r.symbol_name.lower().startswith(("test_", "assert_", "mock_"))
+                )
+            )[:6]
+            if _top_sym_names:
+                try:
+                    _ref_ph = ",".join("?" * len(_top_sym_names))
+                    with self._connect(readonly=True) as _rconn:
+                        _ref_file_rows = _rconn.execute(
+                            f"SELECT file_path, COUNT(DISTINCT symbol_name) AS cnt "
+                            f'FROM "references" '
+                            f"WHERE repo_id=? AND symbol_name IN ({_ref_ph}) "
+                            f"GROUP BY file_path ORDER BY cnt DESC LIMIT 12",
+                            [self.repo_id, *_top_sym_names],
+                        ).fetchall()
+                    _known_ref_fps = {r.file_path for r in raw_symbols if r.file_path}
+                    _new_ref_fps = [row[0] for row in _ref_file_rows if row[0] not in _known_ref_fps][:8]
+                    if _new_ref_fps:
+                        _ref_syms = self._cap_symbols_per_file(
+                            [
+                                s
+                                for s in self._symbols_for_files(_new_ref_fps, limit=200)
+                                if (s.kind or "").lower() in _DEFINITION_KINDS
+                            ],
+                            max_per_file=2,
+                        )
+                        _ref_anchor_ids = {s.symbol_id for s in _ref_syms}
+                        raw_symbols = self._dedupe_symbols(raw_symbols + _ref_syms)
+                except Exception:
+                    pass
         if exact_hits:
             raw_symbols = exact_hits + [record for record in raw_symbols if record.symbol_id not in exact_ids]
         # Token-level exact pinning: any whitespace-delimited word in the query that
@@ -3419,15 +3541,34 @@ class CodeContextEngine:
         # Split on whitespace AND pipe (|) so pipe-separated multi-term queries
         # like "_get_timezone_name|get_current_timezone_name" correctly yield each
         # term as a candidate for exact-symbol pinning.
-        _query_words = frozenset(re.split(r"[\s|]+", query.strip()))
+        # Merge original pipe terms so symbols matching any pipe-token are pinned
+        # even though the primary FTS search used only the longest identifier.
+        _query_words = frozenset(re.split(r"[\s|]+", query.strip())) | _pipe_query_extra_words
         token_exact_ids = {
             r.symbol_id for r in raw_symbols if r.symbol_name in _query_words or r.symbol_name.lower() in _query_words
         }
+        # Pipe-query file coverage: count how many DISTINCT pipe terms have an exact
+        # symbol-name match in each file.  Files that cover more pipe terms (e.g.
+        # `expressions.py` matching both ExpressionWrapper and DurationField) rank
+        # ahead of files that cover only one term.  Free: no extra searches needed.
+        _file_pipe_coverage: dict[str, int] = {}
+        if _pipe_query_extra_words:
+            _fp_terms: dict[str, set[str]] = {}
+            for _r in raw_symbols:
+                _rname = _r.symbol_name or ""
+                _rlow = _rname.lower()
+                for _w in _pipe_query_extra_words:
+                    if _rname == _w or _rlow == _w.lower():
+                        _fp = _r.file_path or ""
+                        if _fp:
+                            _fp_terms.setdefault(_fp, set()).add(_w)
+            _file_pipe_coverage = {fp: len(ws) for fp, ws in _fp_terms.items()}
         ranked_symbols = sorted(
             raw_symbols,
             key=lambda record: (
                 0 if record.file_path in seed_set else 1,
                 0 if record.symbol_id in exact_ids or record.symbol_id in token_exact_ids else 1,
+                -_file_pipe_coverage.get(record.file_path or "", 0),  # more pipe coverage = rank first
                 -(record.score or 0.0),
                 record.file_path,
                 record.start_line,
@@ -3440,7 +3581,7 @@ class CodeContextEngine:
         # the actual implementation file. Pinned exact hits and seed files are exempt.
         query_wants_tests = bool(re.search(r"\btest\b|\bspec\b", query, re.IGNORECASE))
         if ranked_symbols:
-            pinned_ids = exact_ids | anchor_ids | token_exact_ids
+            pinned_ids = exact_ids | anchor_ids | token_exact_ids | _ref_anchor_ids
             pre_filtered: list[SymbolRecord] = []
             for record in ranked_symbols:
                 fp = record.file_path or ""
@@ -3490,6 +3631,19 @@ class CodeContextEngine:
         _per_file_cap = bounded_max_symbols if _single_file_seed else 3
         diverse_ranked = self._cap_symbols_per_file(ranked_symbols, max_per_file=_per_file_cap)
         selected_symbols = diverse_ranked[:bounded_max_symbols]
+        # Ensure reference-expansion symbols are not silently dropped by the
+        # symbol-budget cap above.  They rank low (score=None) so they fall
+        # after all FTS hits in diverse_ranked; without this injection they
+        # would be cut off when the FTS budget is already full.  Keep at most
+        # one symbol per reference file to minimise token cost.
+        if _ref_anchor_ids:
+            _have_sel = {s.symbol_id for s in selected_symbols}
+            _ref_missing_by_file: dict[str, SymbolRecord] = {}
+            for _rs in raw_symbols:
+                if _rs.symbol_id in _ref_anchor_ids and _rs.symbol_id not in _have_sel:
+                    _ref_missing_by_file.setdefault(_rs.file_path or "", _rs)
+            if _ref_missing_by_file:
+                selected_symbols = selected_symbols + list(_ref_missing_by_file.values())[:8]
         family_member_ids: set[str] = set()
         # Skip sibling-family completion for an exact-symbol query: the named
         # definition is the answer, so pulling in related families across other
@@ -3518,7 +3672,9 @@ class CodeContextEngine:
             }
             for _fn_name in _exact_fn_names_lower:
                 _test_sym = f"test_{_fn_name}"
-                _test_hits = self.search_symbols(_test_sym, limit=5, mode="lexical", snippet="none", auto_index=False)
+                _test_hits = self.search_symbols(
+                    _test_sym, limit=5, mode="lexical", snippet="none", auto_index=False, _candidate_files=set()
+                )  # zoekt already ran above
                 for _tr in _exact_symbol_hits(_test_hits, _test_sym):
                     if _tr.symbol_id not in _have and _TEST_PATH_RE.search(_tr.file_path or ""):
                         selected_symbols = [*selected_symbols, _tr]
@@ -4568,6 +4724,7 @@ class CodeContextEngine:
         touched_by: str | None = None,
         auto_index: bool = True,
         provenance_filter: str | None = None,
+        _candidate_files: set[str] | None = None,
     ) -> list[SymbolRecord] | list[DeletedHistoryItem]:
         """Deterministic multi-channel symbol search with routed-provider fallback."""
         if auto_index and scope != "deleted":
@@ -4603,7 +4760,23 @@ class CodeContextEngine:
                 self._attach_snippet(symbol, snippet=snippet, snippet_lines=snippet_lines) for symbol in hits[:limit]
             ]
         if scope == "repo" and resolved_mode != "semantic":
-            candidate_files = set(self._zoekt_candidate_files(query, max_files=max(limit * 4, 40)))
+            if _candidate_files is not None:
+                # Caller pre-computed (or deliberately skipped) zoekt; reuse it.
+                candidate_files = _candidate_files
+            else:
+                # Hard 800 ms cap: zoekt-webserver can take 2-4 s on complex
+                # regex queries against large repos.  Daemon thread means a slow
+                # search drains in the background without blocking the caller.
+                _cf_box: list[list[str]] = [[]]
+
+                def _fetch_cf() -> None:
+                    with contextlib.suppress(Exception):
+                        _cf_box[0] = self._zoekt_candidate_files(query, max_files=max(limit * 4, 40))
+
+                _cf_t = threading.Thread(target=_fetch_cf, daemon=True)
+                _cf_t.start()
+                _cf_t.join(0.8)
+                candidate_files = set(_cf_box[0])
         if resolved_mode == "lexical":
             hits = self.intel_store.search_symbols(query, limit=limit, kind=kind, language=language, scope=scope)
             if scope == "repo" and candidate_files:
@@ -5043,9 +5216,9 @@ class CodeContextEngine:
                 (
                     f"SELECT s.*, NULL AS score FROM symbol_trigram t"
                     f" JOIN symbols s ON s.symbol_id = t.symbol_id"
-                    f" WHERE {where_sql_s} AND (t.name LIKE ? OR t.qualified_name LIKE ? OR t.signature LIKE ?)"
+                    f" WHERE {where_sql_s} AND (t.name LIKE ? OR t.qualified_name LIKE ?)"
                     f" ORDER BY s.file_path, s.start_line LIMIT ?",
-                    (*_base_params, like_pattern, like_pattern, like_pattern, strong_fetch_limit),
+                    (*_base_params, like_pattern, like_pattern, strong_fetch_limit),
                     4,
                     860.0,
                     False,
@@ -6355,9 +6528,7 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found"
-                if merged_status == "empty"
-                else None
+                else "no related call edges were found" if merged_status == "empty" else None
             )
             merged_snapshot = None
             if snapshot:
@@ -6504,6 +6675,128 @@ class CodeContextEngine:
             )
         raise ValueError(f"unknown neighborhood relation: {relation!r}")
 
+    @property
+    def intel_db_path(self) -> Path:
+        return self.db_path.parent / "intel.sqlite"
+
+    @property
+    def vectors_db_path(self) -> Path:
+        return self.db_path.parent / "vectors.sqlite"
+
+    @property
+    def fts_db_path(self) -> Path:
+        return self.db_path.parent / "fts.sqlite"
+
+    def _init_secondary_schemas(self) -> None:
+        """Create schema in secondary DBs using dedicated connections.
+
+        Each secondary DB is initialised separately (no ATTACH needed here)
+        so table names need no schema prefix.
+        """
+        # --- intel.sqlite ---
+        self.intel_db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.intel_db_path, timeout=30.0) as ic:
+            ic.execute("PRAGMA journal_mode = WAL")
+            ic.executescript("""
+                CREATE TABLE IF NOT EXISTS \"references\" (
+                    repo_id TEXT NOT NULL,
+                    symbol_name TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    line INTEGER NOT NULL,
+                    column INTEGER NOT NULL,
+                    end_column INTEGER NOT NULL,
+                    enclosing_symbol_name TEXT,
+                    enclosing_qualified_name TEXT,
+                    snippet TEXT NOT NULL,
+                    UNIQUE(repo_id, symbol_name, file_path, line, column, enclosing_qualified_name)
+                );
+                CREATE TABLE IF NOT EXISTS call_edges (
+                    repo_id TEXT NOT NULL,
+                    caller_symbol_name TEXT NOT NULL,
+                    caller_qualified_name TEXT NOT NULL,
+                    caller_file_path TEXT NOT NULL,
+                    caller_start_line INTEGER NOT NULL,
+                    caller_end_line INTEGER NOT NULL,
+                    callee_name TEXT NOT NULL,
+                    callee_short_name TEXT NOT NULL DEFAULT '',
+                    call_line INTEGER NOT NULL,
+                    call_column INTEGER NOT NULL,
+                    snippet TEXT NOT NULL,
+                    UNIQUE(repo_id, caller_qualified_name, caller_file_path, call_line, call_column, callee_name)
+                );
+                CREATE TABLE IF NOT EXISTS centrality_map (
+                    repo_id        TEXT NOT NULL,
+                    name_key       TEXT NOT NULL,
+                    score          REAL NOT NULL,
+                    index_version  INTEGER NOT NULL,
+                    PRIMARY KEY (repo_id, name_key)
+                );
+                CREATE INDEX IF NOT EXISTS idx_references_name ON \"references\"(repo_id, symbol_name);
+                CREATE INDEX IF NOT EXISTS idx_references_file ON \"references\"(repo_id, file_path);
+                CREATE INDEX IF NOT EXISTS idx_call_edges_callee ON call_edges(repo_id, callee_name);
+                CREATE INDEX IF NOT EXISTS idx_call_edges_callee_short ON call_edges(repo_id, callee_short_name);
+                CREATE INDEX IF NOT EXISTS idx_call_edges_caller ON call_edges(repo_id, caller_file_path, caller_start_line);
+            """)
+
+        # --- vectors.sqlite ---
+        self.vectors_db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.vectors_db_path, timeout=30.0) as vc:
+            vc.execute("PRAGMA journal_mode = WAL")
+            vc.executescript("""
+                CREATE TABLE IF NOT EXISTS symbol_vectors (
+                    repo_id        TEXT NOT NULL,
+                    symbol_id      TEXT NOT NULL,
+                    content_hash   TEXT NOT NULL,
+                    embedder_name  TEXT NOT NULL,
+                    embedding_dim  INTEGER NOT NULL,
+                    index_version  INTEGER NOT NULL,
+                    vector_json    TEXT NOT NULL,
+                    PRIMARY KEY (repo_id, symbol_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_symbol_vectors_provenance
+                    ON symbol_vectors(repo_id, embedder_name, embedding_dim, index_version);
+            """)
+
+        # --- fts.sqlite ---
+        self.fts_db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.fts_db_path, timeout=30.0) as fc:
+            fc.execute("PRAGMA journal_mode = WAL")
+            fc.executescript("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS file_line_fts USING fts5(
+                    repo_id UNINDEXED,
+                    file_path UNINDEXED,
+                    line UNINDEXED,
+                    text
+                );
+            """)
+
+    def _attach_secondary_dbs(self, conn: sqlite3.Connection, *, readonly: bool = False) -> None:
+        """Attach intel, vectors, and fts secondary databases to *conn*.
+
+        Read-only connections are opened with uri=True, so URI-mode ATTACH works.
+        Write-mode connections use plain file paths because they are not opened
+        in URI mode (plain sqlite3.connect(path)).  Suppresses errors for missing
+        files (e.g. read-only open before the first write-mode open has created them).
+        """
+        for alias, path in (
+            ("intel", self.intel_db_path),
+            ("vectors", self.vectors_db_path),
+            ("fts", self.fts_db_path),
+        ):
+            if readonly:
+                # Read-only main connection uses uri=True so URI ATTACH works.
+                attach_target = f"file:{path}?mode=ro"
+            else:
+                # Write-mode main connection is not opened with uri=True;
+                # use a plain path so SQLite doesn't reject the URI.
+                attach_target = str(path)
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute(f"ATTACH DATABASE ? AS {alias}", (attach_target,))
+            if not readonly:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute(f"PRAGMA {alias}.journal_mode = WAL")
+                    conn.execute(f"PRAGMA {alias}.synchronous = NORMAL")
+
     def _connect(self, *, readonly: bool = False) -> sqlite3.Connection:
         scoped = getattr(self._scoped_conn_tls, "conn", None)
         if scoped is not None:
@@ -6513,8 +6806,11 @@ class CodeContextEngine:
             conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=30.0)
         else:
             conn = sqlite3.connect(self.db_path, timeout=30.0)
+            # Ensure secondary DBs are initialised before attaching.
+            self._init_secondary_schemas()
         self._apply_pragmas(conn, readonly=readonly)
         conn.row_factory = sqlite3.Row
+        self._attach_secondary_dbs(conn, readonly=readonly)
         return conn
 
     @contextlib.contextmanager
@@ -6621,7 +6917,6 @@ class CodeContextEngine:
                 symbol_id UNINDEXED,
                 name,
                 qualified_name,
-                signature,
                 file_path,
                 tokenize='trigram'
             );
@@ -6629,43 +6924,12 @@ class CodeContextEngine:
                 ON symbols(repo_id, symbol_name COLLATE NOCASE);
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_qual_nocase
                 ON symbols(repo_id, qualified_name COLLATE NOCASE);
-            CREATE VIRTUAL TABLE IF NOT EXISTS file_line_fts USING fts5(
-                repo_id UNINDEXED,
-                file_path UNINDEXED,
-                line UNINDEXED,
-                text
-            );
             CREATE TABLE IF NOT EXISTS imports (
                 repo_id TEXT NOT NULL,
                 source_file TEXT NOT NULL,
                 raw_import TEXT NOT NULL,
                 target_file TEXT,
                 UNIQUE(repo_id, source_file, raw_import, target_file)
-            );
-            CREATE TABLE IF NOT EXISTS "references" (
-                repo_id TEXT NOT NULL,
-                symbol_name TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                line INTEGER NOT NULL,
-                column INTEGER NOT NULL,
-                end_column INTEGER NOT NULL,
-                enclosing_symbol_name TEXT,
-                enclosing_qualified_name TEXT,
-                snippet TEXT NOT NULL,
-                UNIQUE(repo_id, symbol_name, file_path, line, column, enclosing_qualified_name)
-            );
-            CREATE TABLE IF NOT EXISTS call_edges (
-                repo_id TEXT NOT NULL,
-                caller_symbol_name TEXT NOT NULL,
-                caller_qualified_name TEXT NOT NULL,
-                caller_file_path TEXT NOT NULL,
-                caller_start_line INTEGER NOT NULL,
-                caller_end_line INTEGER NOT NULL,
-                callee_name TEXT NOT NULL,
-                call_line INTEGER NOT NULL,
-                call_column INTEGER NOT NULL,
-                snippet TEXT NOT NULL,
-                UNIQUE(repo_id, caller_qualified_name, caller_file_path, call_line, call_column, callee_name)
             );
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_file ON symbols(repo_id, file_path);
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_name ON symbols(repo_id, symbol_name);
@@ -6674,10 +6938,6 @@ class CodeContextEngine:
             -- the whole repo, cutting ~200K-row scans to ~20K (10× for 10 kinds).
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_kind ON symbols(repo_id, lower(kind));
             CREATE INDEX IF NOT EXISTS idx_imports_target ON imports(repo_id, target_file);
-            CREATE INDEX IF NOT EXISTS idx_references_name ON "references"(repo_id, symbol_name);
-            CREATE INDEX IF NOT EXISTS idx_references_file ON "references"(repo_id, file_path);
-            CREATE INDEX IF NOT EXISTS idx_call_edges_callee ON call_edges(repo_id, callee_name);
-            CREATE INDEX IF NOT EXISTS idx_call_edges_caller ON call_edges(repo_id, caller_file_path, caller_start_line);
             CREATE TABLE IF NOT EXISTS commit_chunks (
                 commit_sha     TEXT PRIMARY KEY,
                 author_date    INTEGER NOT NULL,
@@ -6690,13 +6950,6 @@ class CodeContextEngine:
             );
             CREATE INDEX IF NOT EXISTS idx_commit_author_date ON commit_chunks(author_date);
             CREATE INDEX IF NOT EXISTS idx_commit_files ON commit_chunks(files_touched);
-            CREATE TABLE IF NOT EXISTS centrality_map (
-                repo_id        TEXT NOT NULL,
-                name_key       TEXT NOT NULL,
-                score          REAL NOT NULL,
-                index_version  INTEGER NOT NULL,
-                PRIMARY KEY (repo_id, name_key)
-            );
             """)
         # Migration: older DBs predate the files.mtime_ns column used to fast-skip
         # unchanged files during incremental reindex. CREATE TABLE IF NOT EXISTS
@@ -6704,35 +6957,26 @@ class CodeContextEngine:
         file_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(files)")}
         if "mtime_ns" not in file_columns:
             conn.execute("ALTER TABLE files ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0")
-        # Migration: indexed last-segment of callee_name. The callers lookup needs
-        # "callee_name == name OR callee_name endswith '.name'"; the trailing-wildcard
-        # LIKE is unindexable and full-scans call_edges. A persisted short-name column
-        # turns that into an indexed equality. Backfill existing rows once; new edges
-        # are populated on insert (see _apply_file_data_batch).
-        call_edge_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(call_edges)")}
-        if "callee_short_name" not in call_edge_columns:
-            # Idempotent: another engine/connection on a shared DB may add the column
-            # first (the guard above is read-then-write, so it can race). Suppress the
-            # duplicate-column error and only backfill when this caller did the ALTER.
-            added = False
-            with contextlib.suppress(sqlite3.OperationalError):
-                conn.execute("ALTER TABLE call_edges ADD COLUMN callee_short_name TEXT NOT NULL DEFAULT ''")
-                added = True
-            if added:
-                backfill = [
-                    (str(name).rsplit(".", 1)[-1], rowid)
-                    for rowid, name in conn.execute("SELECT rowid, callee_name FROM call_edges")
-                ]
-                if backfill:
-                    conn.executemany("UPDATE call_edges SET callee_short_name = ? WHERE rowid = ?", backfill)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_call_edges_callee_short ON call_edges(repo_id, callee_short_name)")
+        # Migration: old trigram schema had 5 content columns (name, qualified_name,
+        # signature, file_path). Drop and rebuild with the slim 3-column schema
+        # (name, qualified_name, file_path) — signature added ~5x size bloat and
+        # is covered by symbol_fts anyway.
+        with contextlib.suppress(Exception):
+            _trig_cols = {str(row[1]) for row in conn.execute("PRAGMA table_info(symbol_trigram)")}
+            if "signature" in _trig_cols:
+                conn.execute("DROP TABLE IF EXISTS symbol_trigram")
+                conn.execute(
+                    "CREATE VIRTUAL TABLE symbol_trigram USING fts5("
+                    " symbol_id UNINDEXED, name, qualified_name, file_path,"
+                    " tokenize='trigram')"
+                )
         # Backfill the substring trigram index for DBs built before it existed, so the
         # substring/path channels use the index instead of full-scanning symbols.
         if conn.execute("SELECT 1 FROM symbol_trigram LIMIT 1").fetchone() is None:
             if conn.execute("SELECT 1 FROM symbols LIMIT 1").fetchone() is not None:
                 conn.execute(
-                    "INSERT INTO symbol_trigram(symbol_id, name, qualified_name, signature, file_path) "
-                    "SELECT symbol_id, symbol_name, qualified_name, signature, file_path FROM symbols"
+                    "INSERT INTO symbol_trigram(symbol_id, name, qualified_name, file_path) "
+                    "SELECT symbol_id, symbol_name, qualified_name, file_path FROM symbols"
                 )
         conn.execute("INSERT OR IGNORE INTO engine_state(key, value) VALUES ('index_version', '0')")
         # Self-heal DBs built before planner statistics were collected: with data
@@ -6744,6 +6988,21 @@ class CodeContextEngine:
             if conn.execute("SELECT 1 FROM call_edges LIMIT 1").fetchone() is not None:
                 with contextlib.suppress(sqlite3.OperationalError):
                     conn.execute("ANALYZE")
+        # Migration: if these tables still exist in the main DB (old monolithic schema),
+        # move their data to the appropriate secondary DB and drop from main.
+        _main_tables = {
+            str(r[0]) for r in conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table','index')").fetchall()
+        }
+        for _tbl in ('"references"', "call_edges", "centrality_map"):
+            _bare = _tbl.strip('"')
+            if _bare in _main_tables:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute(f"INSERT OR IGNORE INTO intel.{_tbl} SELECT * FROM {_tbl}")
+                    conn.execute(f"DROP TABLE IF EXISTS {_tbl}")
+        if "file_line_fts" in _main_tables:
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("INSERT INTO fts.file_line_fts SELECT repo_id, file_path, line, text FROM file_line_fts")
+                conn.execute("DROP TABLE IF EXISTS file_line_fts")
         self._schema_ready = True
 
     def index_ready(self) -> bool:
