@@ -1,12 +1,14 @@
-"""Opt-in retrieval experiment: fast consensus symbol/Zoekt fusion.
+"""Opt-in retrieval experiment: aggressive multi-channel quality fusion.
 
 Activate with ``ATELIER_EXPERIMENT_SYMBOL_VOTE=1`` and put this directory on
 ``PYTHONPATH``. This module is benchmark-only; production retrieval is untouched.
 
-V3 removes the expensive line-FTS and Zoekt-overfetch paths. It keeps only the
-normal Zoekt candidate list plus cached exact-symbol evidence. Exact matches are
-routed by identifier confidence so generic SQL words/acronyms cannot overwhelm
-the shipped ranker.
+V4 optimizes ranking quality first:
+* exact definition/symbol coverage,
+* full-query and decomposed Zoekt searches,
+* whole-file line co-occurrence for prose, literals, and regex-like queries.
+
+Benchmark gold data is used only for diagnostics after ranking.
 """
 
 from __future__ import annotations
@@ -34,9 +36,15 @@ _STOP = {
     "continue", "def", "del", "do", "else", "except", "false", "finally",
     "for", "from", "if", "import", "in", "is", "lambda", "none", "not",
     "or", "pass", "raise", "return", "self", "super", "true", "try",
-    "while", "with", "yield",
+    "while", "with", "yield", "self", "cls",
 }
-# Fallback is diagnostics-only. Ranking never consults benchmark gold data.
+_PROSE_STOP = _STOP | {
+    "the", "this", "that", "these", "those", "then", "than", "into", "onto",
+    "when", "where", "which", "what", "with", "without", "within", "should",
+    "could", "would", "have", "has", "had", "does", "did", "done", "make",
+    "using", "used", "use", "value", "values", "result", "results", "return",
+    "file", "files", "code", "name", "string", "object", "method", "function",
+}
 _KNOWN_PREFIX_BY_REPO_ID = {
     "221445b350fc9bcf": "atelier__atelier",
     "0451fa59ffee9c3e": "matplotlib__matplotlib",
@@ -50,57 +58,91 @@ _KNOWN_PREFIX_BY_REPO_ID = {
     "b784d1fff1f95286": "pallets__flask",
 }
 _GOLD_CACHE: dict[tuple[str, str], list[str]] | None = None
+_DIAGNOSTIC_FD: int | None = None
 
 
-def _identifier_strength(token: str, explicit: bool) -> float:
-    """Return confidence that *token* is a real code identifier."""
-    if "_" in token:
-        return 1.0
-    has_lower = any(ch.islower() for ch in token)
-    has_upper = any(ch.isupper() for ch in token)
-    if has_lower and has_upper:
-        return 0.92
-    # Bare SQL words/acronyms such as CAST, NUMERIC, CLI and MCP were a major
-    # false-positive source in the previous diagnostic run.
-    if token.isupper():
-        return 0.38 if len(token) >= 5 else 0.28
-    if explicit:
-        return 0.76
-    return 0.0
+def _is_code_shaped(token: str) -> bool:
+    return (
+        "_" in token
+        or token.isupper()
+        or any(ch.isupper() for ch in token[1:])
+        or token.startswith("__")
+        or token.endswith("__")
+    )
 
 
-def _explicit_identifier_tokens(query: str) -> set[str]:
-    explicit: set[str] = set()
-    for segment in query.split("|"):
-        segment = segment.strip()
-        match = re.search(r"\b(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)", segment)
-        if match:
-            explicit.add(match.group(1).lower())
-        cleaned = re.sub(r"\\[bBAZz]$", "", segment)
-        cleaned = re.sub(r"\(\??.*$", "", cleaned).strip()
-        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", cleaned):
-            explicit.add(cleaned.lower())
-    return explicit
+def _explicit_targets(query: str) -> dict[str, str]:
+    targets: dict[str, str] = {}
+    for kind, token in re.findall(
+        r"\b(def|class)\s+([A-Za-z_][A-Za-z0-9_]*)",
+        query,
+    ):
+        targets[token.lower()] = kind
+    return targets
 
 
-def _query_tokens(query: str) -> tuple[list[str], set[str], dict[str, float]]:
-    explicit = _explicit_identifier_tokens(query)
+def _query_tokens(query: str) -> tuple[list[str], dict[str, str]]:
+    explicit = _explicit_targets(query)
     out: list[str] = []
-    strengths: dict[str, float] = {}
     seen: set[str] = set()
     for token in _IDENTIFIER_RE.findall(query):
         low = token.lower()
         if low in seen or low in _STOP or len(token) < 3:
             continue
-        if low in {"__init__", "__call__", "__new__", "tests", "testing"}:
+        if not _is_code_shaped(token) and low not in explicit and len(token) < 6:
             continue
-        strength = _identifier_strength(token, low in explicit)
-        if strength <= 0:
+        if low in {"__init__", "__call__", "__new__"} and low not in explicit:
             continue
         seen.add(low)
         out.append(token)
-        strengths[low] = max(strengths.get(low, 0.0), strength)
-    return out[:14], explicit, strengths
+    return out[:18], explicit
+
+
+def _line_terms(query: str, tokens: list[str]) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for token in tokens + _IDENTIFIER_RE.findall(query):
+        low = token.lower()
+        if low in seen or low in _PROSE_STOP or len(low) < 3:
+            continue
+        if low.isdigit():
+            continue
+        seen.add(low)
+        terms.append(low)
+    order = {term: index for index, term in enumerate(terms)}
+    terms.sort(
+        key=lambda term: (
+            0 if _is_code_shaped(next((t for t in tokens if t.lower() == term), term)) else 1,
+            -len(term),
+            order[term],
+        )
+    )
+    return terms[:12]
+
+
+def _zoekt_subqueries(query: str, tokens: list[str], explicit: dict[str, str]) -> list[str]:
+    candidates: list[str] = []
+    candidates.extend(explicit)
+    candidates.extend(token for token in tokens if _is_code_shaped(token))
+    for segment in query.split("|"):
+        segment = segment.strip()
+        segment = re.sub(r"\\[bBAZz]", "", segment)
+        match = re.search(r"\b(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)", segment)
+        if match:
+            candidates.append(match.group(1))
+            continue
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", segment):
+            candidates.append(segment)
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        low = candidate.lower()
+        if low in seen or low in _STOP or len(candidate) < 3:
+            continue
+        seen.add(low)
+        out.append(candidate)
+    return out[:10]
 
 
 def _path_parts(file_path: str) -> set[str]:
@@ -110,7 +152,8 @@ def _path_parts(file_path: str) -> set[str]:
 def _query_wants_tests(query: str) -> bool:
     return bool(
         re.search(
-            r"\btest(?:_|s\b|ing\b)|\bspec(?:_|s\b)|pytest|unittest|tearDown|setUp",
+            r"\btest(?:_|s\b|ing\b)|\bspec(?:_|s\b)|pytest|unittest|"
+            r"tearDown|setUp|TestCase|Tests\b",
             query,
             re.IGNORECASE,
         )
@@ -141,7 +184,6 @@ def _load_gold_diagnostics() -> dict[tuple[str, str], list[str]]:
     global _GOLD_CACHE
     if _GOLD_CACHE is not None:
         return _GOLD_CACHE
-
     gold_map: dict[tuple[str, str], set[str]] = defaultdict(set)
     try:
         data = json.loads(
@@ -159,9 +201,6 @@ def _load_gold_diagnostics() -> dict[tuple[str, str], list[str]]:
     return _GOLD_CACHE
 
 
-_DIAGNOSTIC_FD: int | None = None
-
-
 def _append_diagnostic(payload: dict[str, Any]) -> None:
     global _DIAGNOSTIC_FD
     target = os.environ.get("ATELIER_EXPERIMENT_DIAGNOSTICS", "").strip()
@@ -172,10 +211,10 @@ def _append_diagnostic(payload: dict[str, Any]) -> None:
             _DIAGNOSTIC_FD = os.open(
                 target, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644
             )
-        line = (
-            json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
-        ).encode()
-        os.write(_DIAGNOSTIC_FD, line)
+        os.write(
+            _DIAGNOSTIC_FD,
+            (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode(),
+        )
     except Exception:
         pass
 
@@ -200,22 +239,22 @@ def _install() -> None:
         path: str = ".",
         max_files: int = 40,
     ) -> list[str]:
-        # Do not overfetch. The uploaded diagnostics showed that almost every
-        # useful newly selected file was already in Zoekt's first ten results.
-        files = original_zoekt(self, query, path=path, max_files=max_files)
+        overfetch = max(max_files, 120)
+        files = original_zoekt(self, query, path=path, max_files=overfetch)
         self.__dict__["_symbol_vote_zoekt_capture"] = (query, files)
-        return files
+        return files[:max_files]
 
-    def _load_missing_token_rows(
+    def exact_file_evidence(
         self: Any,
-        missing: list[str],
-        cache: dict[str, tuple[int, list[tuple[str, str]]]],
-    ) -> None:
-        if not missing:
-            return
-        placeholders = ",".join("?" for _ in missing)
-        for token in missing:
-            cache[token] = (0, [])
+        query: str,
+        tokens: list[str],
+        explicit: dict[str, str],
+    ) -> tuple[dict[str, float], dict[str, int], dict[str, dict[str, Any]]]:
+        if not tokens:
+            return {}, {}, {}
+
+        token_by_lower = {token.lower(): token for token in tokens}
+        placeholders = ",".join("?" for _ in token_by_lower)
         try:
             with self._connect(readonly=True) as conn:
                 rows = conn.execute(
@@ -235,51 +274,13 @@ def _install() -> None:
                            frequencies.df
                     FROM matched
                     JOIN frequencies USING (token)
-                    WHERE frequencies.df <= 64
-                    ORDER BY matched.token, matched.file_path
+                    WHERE frequencies.df <= 96
+                    ORDER BY matched.file_path, matched.token
                     """,
-                    (self.repo_id, *missing),
+                    (self.repo_id, *token_by_lower),
                 ).fetchall()
         except Exception:
-            return
-
-        grouped: dict[str, list[tuple[str, str]]] = defaultdict(list)
-        frequencies: dict[str, int] = {}
-        seen: set[tuple[str, str, str]] = set()
-        for row in rows:
-            file_path = str(row["file_path"] or "")
-            token = str(row["token"] or "")
-            kind = str(row["kind"] or "").lower()
-            if not file_path or not token:
-                continue
-            key = (token, file_path, kind)
-            if key in seen:
-                continue
-            seen.add(key)
-            grouped[token].append((file_path, kind))
-            frequencies[token] = int(row["df"] or 0)
-        for token in missing:
-            cache[token] = (frequencies.get(token, 0), grouped.get(token, []))
-
-    def exact_file_evidence(
-        self: Any,
-        query: str,
-    ) -> tuple[
-        list[str],
-        dict[str, float],
-        dict[str, int],
-        dict[str, dict[str, Any]],
-    ]:
-        tokens, explicit, strengths = _query_tokens(query)
-        if not tokens:
-            return [], {}, {}, {}
-
-        token_by_lower = {token.lower(): token for token in tokens}
-        cache: dict[str, tuple[int, list[tuple[str, str]]]] = self.__dict__.setdefault(
-            "_symbol_vote_token_cache", {}
-        )
-        missing = [token for token in token_by_lower if token not in cache]
-        _load_missing_token_rows(self, missing, cache)
+            return {}, {}, {}
 
         definition_kinds = set(
             getattr(
@@ -288,56 +289,258 @@ def _install() -> None:
                 {"class", "function", "method"},
             )
         )
-        per_file_token: dict[str, dict[str, float]] = {}
+        per_file: dict[str, dict[str, float]] = defaultdict(dict)
         details: dict[str, dict[str, Any]] = {}
         frequencies: dict[str, int] = {}
+        seen: set[tuple[str, str, str]] = set()
 
-        for token, original in token_by_lower.items():
-            df, token_rows = cache.get(token, (0, []))
-            frequencies[token] = df
-            if not token_rows or df <= 0:
+        for row in rows:
+            file_path = str(row["file_path"] or "")
+            token = str(row["token"] or "")
+            kind = str(row["kind"] or "").lower()
+            df = int(row["df"] or 0)
+            if not file_path or not token or df <= 0:
                 continue
-            strength = strengths.get(token, 0.0)
+            dedup_key = (file_path, token, kind)
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+            frequencies[token] = df
+
+            original = token_by_lower.get(token, token)
+            shaped = _is_code_shaped(original)
+            is_definition = kind in definition_kinds
+            target_kind = explicit.get(token)
+            if not shaped and not is_definition and not target_kind:
+                continue
+
             rarity = 1.0 / math.log2(df + 1.0)
-            for file_path, kind in token_rows:
-                is_definition = kind in definition_kinds
-                if not is_definition and strength < 0.90:
-                    continue
-                kind_boost = 1.22 if is_definition else 0.62
-                vote = 0.30 * strength * rarity * kind_boost
-                current = per_file_token.setdefault(file_path, {}).get(token, 0.0)
-                if vote > current:
-                    per_file_token[file_path][token] = vote
-                item = details.setdefault(
-                    file_path,
-                    {
-                        "tokens": set(),
-                        "strong_tokens": set(),
-                        "definitions": set(),
-                    },
-                )
-                item["tokens"].add(token)
-                if strength >= 0.75:
-                    item["strong_tokens"].add(token)
-                if is_definition:
-                    item["definitions"].add(token)
+            shape = 1.0
+            if "_" in original:
+                shape += 0.28
+            if original.isupper() or any(ch.isupper() for ch in original[1:]):
+                shape += 0.20
+            shape += min(len(original), 24) / 120.0
+
+            kind_boost = 1.28 if is_definition else 0.62
+            if target_kind == "class":
+                kind_boost *= 2.2 if kind == "class" else 0.35
+            elif target_kind == "def":
+                kind_boost *= 1.9 if kind in {"function", "method"} else 0.40
+
+            base = 0.42 if shaped or target_kind else 0.14
+            vote = base * shape * rarity * kind_boost
+            per_file[file_path][token] = max(
+                per_file[file_path].get(token, 0.0),
+                vote,
+            )
+
+            item = details.setdefault(
+                file_path,
+                {
+                    "tokens": set(),
+                    "definitions": set(),
+                    "explicit": set(),
+                    "kinds": set(),
+                },
+            )
+            item["tokens"].add(token)
+            if is_definition:
+                item["definitions"].add(token)
+            if target_kind:
+                item["explicit"].add(token)
+            item["kinds"].add(kind)
 
         votes: dict[str, float] = {}
-        for file_path, token_votes in per_file_token.items():
-            strongest = sorted(token_votes.values(), reverse=True)[:3]
-            strong_count = len(details[file_path]["strong_tokens"])
+        for file_path, token_votes in per_file.items():
+            values = sorted(token_votes.values(), reverse=True)[:5]
+            token_count = len(token_votes)
             definition_count = len(details[file_path]["definitions"])
-            score = sum(strongest)
-            score += 0.075 * max(0, strong_count - 1)
-            score += 0.025 * max(0, definition_count - 1)
+            explicit_count = len(details[file_path]["explicit"])
+            score = sum(values)
+            score += 0.14 * max(0, token_count - 1)
+            score += 0.06 * max(0, definition_count - 1)
+            score += 0.60 * explicit_count
             votes[file_path] = score
             details[file_path] = {
                 "tokens": sorted(details[file_path]["tokens"]),
-                "strong_tokens": sorted(details[file_path]["strong_tokens"]),
                 "definitions": sorted(details[file_path]["definitions"]),
+                "explicit": sorted(details[file_path]["explicit"]),
+                "kinds": sorted(details[file_path]["kinds"]),
                 "score": round(score, 6),
             }
-        return tokens, votes, frequencies, details
+        return votes, frequencies, details
+
+    def decomposed_zoekt_evidence(
+        self: Any,
+        query: str,
+        tokens: list[str],
+        explicit: dict[str, str],
+    ) -> tuple[list[str], dict[str, dict[str, Any]]]:
+        subqueries = _zoekt_subqueries(query, tokens, explicit)
+        if not subqueries:
+            return [], {}
+
+        cache: dict[str, list[str]] = self.__dict__.setdefault(
+            "_quality_zoekt_subquery_cache", {}
+        )
+        evidence: dict[str, dict[str, Any]] = {}
+        for subquery in subqueries:
+            files = cache.get(subquery)
+            if files is None:
+                try:
+                    files = original_zoekt(
+                        self,
+                        subquery,
+                        path=".",
+                        max_files=32,
+                    )
+                except Exception:
+                    files = []
+                cache[subquery] = files
+            for rank, file_path in enumerate(files, 1):
+                item = evidence.setdefault(
+                    file_path,
+                    {"queries": set(), "rrf": 0.0, "best_rank": rank},
+                )
+                item["queries"].add(subquery.lower())
+                item["rrf"] += 1.0 / (8.0 + rank)
+                item["best_rank"] = min(int(item["best_rank"]), rank)
+
+        ordered = sorted(
+            evidence,
+            key=lambda file_path: (
+                -len(evidence[file_path]["queries"]),
+                -float(evidence[file_path]["rrf"]),
+                int(evidence[file_path]["best_rank"]),
+                file_path,
+            ),
+        )
+        serializable = {
+            file_path: {
+                "queries": sorted(evidence[file_path]["queries"]),
+                "rrf": round(float(evidence[file_path]["rrf"]), 6),
+                "best_rank": int(evidence[file_path]["best_rank"]),
+            }
+            for file_path in ordered
+        }
+        return ordered[:80], serializable
+
+    def line_file_evidence(
+        self: Any,
+        query: str,
+        tokens: list[str],
+    ) -> tuple[list[str], dict[str, dict[str, Any]]]:
+        terms = _line_terms(query, tokens)
+        if not terms:
+            return [], {}
+
+        if len(terms) == 1 and not _is_code_shaped(
+            next((token for token in tokens if token.lower() == terms[0]), terms[0])
+        ):
+            return [], {}
+
+        or_query = " OR ".join(f'"{term}"' for term in terms)
+        and_query = " AND ".join(f'"{term}"' for term in terms[:8])
+        rows: list[tuple[Any, bool]] = []
+        try:
+            with self._connect(readonly=True) as conn:
+                if len(terms) >= 2:
+                    and_rows = conn.execute(
+                        """
+                        SELECT file_path, line, text, bm25(file_line_fts) AS rank
+                        FROM file_line_fts
+                        WHERE file_line_fts MATCH ? AND repo_id = ?
+                        ORDER BY rank ASC, file_path ASC, line ASC
+                        LIMIT 500
+                        """,
+                        (and_query, self.repo_id),
+                    ).fetchall()
+                    rows.extend((row, True) for row in and_rows)
+                or_rows = conn.execute(
+                    """
+                    SELECT file_path, line, text, bm25(file_line_fts) AS rank
+                    FROM file_line_fts
+                    WHERE file_line_fts MATCH ? AND repo_id = ?
+                    ORDER BY rank ASC, file_path ASC, line ASC
+                    LIMIT 2400
+                    """,
+                    (or_query, self.repo_id),
+                ).fetchall()
+                rows.extend((row, False) for row in or_rows)
+        except Exception:
+            return [], {}
+
+        wants_tests = _query_wants_tests(query)
+        wants_aux = _query_wants_aux(query)
+        evidence: dict[str, dict[str, Any]] = {}
+        term_set = set(terms)
+        for row, from_and in rows:
+            file_path = str(row["file_path"] or "")
+            if not file_path:
+                continue
+            if engine_mod.is_generated_path(file_path):
+                continue
+            if engine_mod._MINIFIED_FILE_RE.search(file_path):
+                continue
+            if engine_mod._VENDOR_PATH_RE.search(file_path):
+                continue
+            text = str(row["text"] or "").lower()
+            covered = {term for term in term_set if term in text}
+            if not covered:
+                continue
+            item = evidence.setdefault(
+                file_path,
+                {
+                    "covered": set(),
+                    "hits": 0,
+                    "and_hit": False,
+                    "best_rank": float(row["rank"] or 0.0),
+                },
+            )
+            item["covered"].update(covered)
+            item["hits"] += 1
+            item["and_hit"] = bool(item["and_hit"] or from_and)
+            item["best_rank"] = min(
+                float(item["best_rank"]),
+                float(row["rank"] or 0.0),
+            )
+
+        scored: list[tuple[float, str]] = []
+        for file_path, item in evidence.items():
+            coverage_count = len(item["covered"])
+            coverage = coverage_count / max(1, len(term_set))
+            repeated = min(math.log1p(int(item["hits"])), 4.5)
+            path_overlap = len(term_set & _path_parts(file_path))
+            score = (
+                2.20 * coverage
+                + 0.22 * repeated
+                + 0.34 * path_overlap
+                + (0.85 if item["and_hit"] else 0.0)
+            )
+            if not wants_tests and _TEST_RE.search(file_path):
+                score *= 0.70
+            if not wants_aux and _AUX_RE.search(file_path):
+                score *= 0.55
+            scored.append((-score, file_path))
+        scored.sort()
+
+        files = [file_path for _score, file_path in scored[:100]]
+        serializable = {
+            file_path: {
+                "covered": sorted(evidence[file_path]["covered"]),
+                "coverage": round(
+                    len(evidence[file_path]["covered"]) / max(1, len(term_set)),
+                    6,
+                ),
+                "hits": int(evidence[file_path]["hits"]),
+                "and_hit": bool(evidence[file_path]["and_hit"]),
+                "best_rank": round(float(evidence[file_path]["best_rank"]), 6),
+                "score": round(-score, 6),
+            }
+            for score, file_path in scored[:100]
+        }
+        return files, serializable
 
     def fused_tool_explore(
         self: Any,
@@ -365,64 +568,116 @@ def _install() -> None:
                 baseline_files.append(file_path)
 
         captured = self.__dict__.get("_symbol_vote_zoekt_capture")
-        zoekt_files = (
+        full_zoekt = (
             list(captured[1])
             if isinstance(captured, tuple) and captured and captured[0] == query
             else []
         )
-        tokens, exact_votes, frequencies, exact_details = exact_file_evidence(
-            self, query
+        tokens, explicit = _query_tokens(query)
+        exact_votes, frequencies, exact_details = exact_file_evidence(
+            self,
+            query,
+            tokens,
+            explicit,
         )
+        subquery_files, subquery_details = decomposed_zoekt_evidence(
+            self,
+            query,
+            tokens,
+            explicit,
+        )
+        line_files, line_details = line_file_evidence(self, query, tokens)
+
+        scores: dict[str, float] = {}
+        reasons: dict[str, dict[str, float]] = defaultdict(dict)
+
+        def add(file_path: str, channel: str, value: float) -> None:
+            scores[file_path] = scores.get(file_path, 0.0) + value
+            reasons[file_path][channel] = reasons[file_path].get(channel, 0.0) + value
+
+        for rank, file_path in enumerate(baseline_files, 1):
+            add(file_path, "baseline", 1.05 / (8.0 + rank))
+        for rank, file_path in enumerate(full_zoekt, 1):
+            add(file_path, "zoekt", 0.85 / (16.0 + rank))
+        for rank, file_path in enumerate(subquery_files, 1):
+            detail = subquery_details[file_path]
+            coverage = len(detail["queries"])
+            add(
+                file_path,
+                "subquery",
+                0.38 * float(detail["rrf"]) + 0.11 * min(coverage, 5),
+            )
+        for rank, file_path in enumerate(line_files, 1):
+            detail = line_details[file_path]
+            add(
+                file_path,
+                "line",
+                0.24 * float(detail["score"]) + 0.35 / (10.0 + rank),
+            )
+        for file_path, value in exact_votes.items():
+            add(file_path, "exact", value)
 
         baseline_set = set(baseline_files)
-        zoekt_set = set(zoekt_files)
-        scores: dict[str, float] = {}
-        for rank, file_path in enumerate(baseline_files, start=1):
-            scores[file_path] = scores.get(file_path, 0.0) + 1.0 / (8.0 + rank)
-        for rank, file_path in enumerate(zoekt_files, start=1):
-            scores[file_path] = scores.get(file_path, 0.0) + 0.78 / (18.0 + rank)
-
-        for file_path, raw_vote in exact_votes.items():
-            detail = exact_details[file_path]
-            strong_count = len(detail["strong_tokens"])
-            definition_count = len(detail["definitions"])
-            in_baseline = file_path in baseline_set
-            in_zoekt = file_path in zoekt_set
-
-            multiplier = 1.0
-            if in_baseline and in_zoekt:
-                multiplier = 1.18
-            elif in_baseline or in_zoekt:
-                multiplier = 1.06
-            elif strong_count >= 2:
-                multiplier = 0.90
-            elif strong_count == 1 and definition_count:
-                multiplier = 0.62
-            else:
-                multiplier = 0.22
-            scores[file_path] = scores.get(file_path, 0.0) + raw_vote * multiplier
-
-        query_lowers = {token.lower() for token in tokens}
+        zoekt_set = set(full_zoekt)
+        subquery_set = set(subquery_files)
+        line_set = set(line_files)
+        exact_set = set(exact_votes)
         wants_tests = _query_wants_tests(query)
         wants_aux = _query_wants_aux(query)
+        query_lowers = {token.lower() for token in tokens}
+
         for file_path in list(scores):
-            path_overlap = len(query_lowers & _path_parts(file_path))
-            scores[file_path] += 0.026 * path_overlap
-            if file_path in exact_votes and file_path in zoekt_set:
-                scores[file_path] += 0.050
-            unsupported = file_path not in baseline_set and file_path not in zoekt_set
-            if unsupported and not wants_aux and _AUX_RE.search(file_path):
-                scores[file_path] *= 0.25
+            overlap = len(query_lowers & _path_parts(file_path))
+            if overlap:
+                add(file_path, "path", 0.045 * overlap)
+
+            channel_count = sum(
+                file_path in channel
+                for channel in (
+                    baseline_set,
+                    zoekt_set,
+                    subquery_set,
+                    line_set,
+                    exact_set,
+                )
+            )
+            if channel_count >= 2:
+                add(file_path, "consensus", 0.10 * (channel_count - 1))
+
+            detail = exact_details.get(file_path, {})
+            explicit_count = len(detail.get("explicit", ()))
+            token_count = len(detail.get("tokens", ()))
+            definition_count = len(detail.get("definitions", ()))
+            if explicit_count:
+                add(file_path, "explicit_pin", 1.20 * explicit_count)
+            if token_count >= 2:
+                add(file_path, "exact_coverage", 0.22 * (token_count - 1))
+            if definition_count >= 2:
+                add(file_path, "definition_coverage", 0.08 * (definition_count - 1))
+
+            if file_path.endswith(".pyi") and not re.search(r"\bpyi|stub\b", query, re.I):
+                scores[file_path] *= 0.72
+            unsupported = (
+                file_path not in baseline_set
+                and file_path not in zoekt_set
+                and file_path not in subquery_set
+            )
             if unsupported and not wants_tests and _TEST_RE.search(file_path):
-                scores[file_path] *= 0.50
+                scores[file_path] *= 0.48
+            if unsupported and not wants_aux and _AUX_RE.search(file_path):
+                scores[file_path] *= 0.38
 
         baseline_rank = {
-            file_path: rank
-            for rank, file_path in enumerate(baseline_files, start=1)
+            file_path: rank for rank, file_path in enumerate(baseline_files, 1)
         }
         zoekt_rank = {
-            file_path: rank
-            for rank, file_path in enumerate(zoekt_files, start=1)
+            file_path: rank for rank, file_path in enumerate(full_zoekt, 1)
+        }
+        subquery_rank = {
+            file_path: rank for rank, file_path in enumerate(subquery_files, 1)
+        }
+        line_rank = {
+            file_path: rank for rank, file_path in enumerate(line_files, 1)
         }
         ordered = sorted(
             scores,
@@ -430,6 +685,8 @@ def _install() -> None:
                 -scores[file_path],
                 baseline_rank.get(file_path, 10_000),
                 zoekt_rank.get(file_path, 10_000),
+                subquery_rank.get(file_path, 10_000),
+                line_rank.get(file_path, 10_000),
                 file_path,
             ),
         )[:max_files]
@@ -462,37 +719,55 @@ def _install() -> None:
                 "prefix": prefix,
                 "query": query,
                 "tokens": tokens,
+                "explicit": explicit,
                 "token_df": frequencies,
                 "baseline": baseline_files[:10],
-                "zoekt": zoekt_files[:20],
-                "exact": exact_files[:20],
+                "zoekt": full_zoekt[:30],
+                "subquery": subquery_files[:30],
+                "exact": exact_files[:30],
+                "line": line_files[:30],
                 "final": ordered,
                 "gold": gold,
                 "ranks": {
                     "baseline": _rank(baseline_files, gold),
-                    "zoekt": _rank(zoekt_files, gold),
+                    "zoekt": _rank(full_zoekt, gold),
+                    "subquery": _rank(subquery_files, gold),
                     "exact": _rank(exact_files, gold),
+                    "line": _rank(line_files, gold),
                     "final": _rank(ordered, gold),
                 },
                 "exact_details": {
                     file_path: exact_details[file_path]
-                    for file_path in exact_files[:12]
+                    for file_path in exact_files[:15]
+                },
+                "subquery_details": {
+                    file_path: subquery_details[file_path]
+                    for file_path in subquery_files[:15]
+                },
+                "line_details": {
+                    file_path: line_details[file_path]
+                    for file_path in line_files[:15]
                 },
                 "scores": {
                     file_path: round(scores[file_path], 6)
                     for file_path in ordered
                 },
-                "token_cache_size": len(
-                    self.__dict__.get("_symbol_vote_token_cache", {})
-                ),
+                "reasons": {
+                    file_path: {
+                        channel: round(value, 6)
+                        for channel, value in reasons[file_path].items()
+                    }
+                    for file_path in ordered
+                },
             }
         )
 
         result = dict(payload)
         result["files"] = fused_entries
         result["experiment"] = {
-            "name": "fast_consensus_symbol_zoekt_v3",
+            "name": "aggressive_quality_fusion_v4",
             "tokens": tokens,
+            "explicit": explicit,
         }
         return result
 
