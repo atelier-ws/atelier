@@ -94,7 +94,7 @@ def test_render_node_includes_line_numbered_body() -> None:
     out = render_code_payload("node", payload)
     assert out is not None
     assert "- signature: def bar(self) -> int" in out
-    assert "- source:" in out
+    assert "#### " in out  # header present
     assert "10\tdef bar(self):" in out
     assert "11\t    x = 1" in out
     assert "12\t    return x" in out
