@@ -3253,13 +3253,15 @@ class CodeContextEngine:
                 _seen_anchors_s.setdefault(_f, None)
             anchor_candidates = list(_seen_anchors_s)
         # Single-file scope: restrict results to that file only.
-        # FTS5 indexes the signature head -- body-only terms (e.g. 'nohup', 'pid')
-        # won't appear in a signature and would cause a miss.  Instead:
-        #   1. Discard FTS5 hits from OTHER files (they'd crowd out the target).
-        #   2. Inject all definition symbols from the seed file directly.
+        # FTS5 indexes the full symbol body (start_byte:end_byte), so concept
+        # queries do match body content. However, a body-match in a DIFFERENT
+        # file would crowd out the target file's symbols. Instead:
+        #   1. Discard FTS5 hits from OTHER files.
+        #   2. Inject all definition symbols from the seed file directly so
+        #      every definition is visible even when the query has no FTS match.
         #      Injected symbols bypass the score floor via seed_set.
         #   3. Sort injected symbols by name-query token overlap so the most
-        #      relevant definitions surface first even without a body score.
+        #      relevant definitions surface first.
         if _single_file_seed:
             anchor_candidates = [f for f in anchor_candidates if f == _single_file_seed]
             seed_fts_hits = [s for s in raw_symbols if s.file_path == _single_file_seed]
