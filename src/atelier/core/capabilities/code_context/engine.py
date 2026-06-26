@@ -3397,7 +3397,19 @@ class CodeContextEngine:
         # (zoekt/semantic, intentionally low/zero lexical score), and seed files --
         # so uniform low-score concept queries (floor ~ 0) keep everything.
         if ranked_symbols:
-            top_score = max((record.score or 0.0) for record in ranked_symbols)
+            # Idea C: Compute floor from definition-kind symbols in non-test files only.
+            # Test files can have inflated BM25 scores from repeated assertions/references,
+            # causing the floor to exclude the actual implementation file.
+            definition_scores = [
+                record.score or 0.0
+                for record in ranked_symbols
+                if (record.kind or "").lower() in _DEFINITION_KINDS and not _is_test_file_path(record.file_path)
+            ]
+            if definition_scores:
+                top_score = max(definition_scores)
+            else:
+                # Fallback: no definition symbols in non-test files, use overall max
+                top_score = max((record.score or 0.0) for record in ranked_symbols)
             floor = top_score * _EXPLORE_SCORE_FLOOR_FRAC
             if floor > 0:
                 ranked_symbols = [
