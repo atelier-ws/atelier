@@ -103,7 +103,7 @@ Move `_COMPOUND_IDENT_RE` to module level (near `_SYMBOL_QUERY_RE`) if you prefe
 ## Fitness measurement
 
 ```bash
-bash scripts/swarm_explore_fitness.sh
+uv run python scripts/swarm_explore_fitness.py
 ```
 
 Outputs the benchmark `cost_usd` as a float (lower = better). Exits 1 if the

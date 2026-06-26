@@ -340,15 +340,15 @@ _EXPLORE_FAMILY_PER_FAMILY_CAP = 8
 _EXPLORE_SCORE_FLOOR_FRAC = 0.30
 # Path-quality filters for explore results.
 # Hard-remove: minified/vendor artefacts are never useful navigation targets.
-_MINIFIED_FILE_RE = re.compile(r'\.min\.(js|css)$', re.IGNORECASE)
-_VENDOR_PATH_RE = re.compile(r'(?:^|/)(?:vendor|node_modules|dist|__pycache__)/', re.IGNORECASE)
+_MINIFIED_FILE_RE = re.compile(r"\.min\.(js|css)$", re.IGNORECASE)
+_VENDOR_PATH_RE = re.compile(r"(?:^|/)(?:vendor|node_modules|dist|__pycache__)/", re.IGNORECASE)
 # Soft-penalise: test/spec files rank below implementation files unless the
 # query is explicitly about tests.
 _TEST_PATH_RE = re.compile(
-    r'(?:^|/)tests?/|/test_[^/]+$|_test\.(?:py|js|ts|rb|go)$|(?:^|/)spec/',
+    r"(?:^|/)tests?/|/test_[^/]+$|_test\.(?:py|js|ts|rb|go)$|(?:^|/)spec/",
     re.IGNORECASE,
 )
-_TEST_SCORE_PENALTY = 0.5  # multiply test-file scores by this when query doesn't mention tests
+_TEST_SCORE_PENALTY = 0.75  # multiply test-file scores by this when query doesn't mention tests
 # Definitional kinds outrank trivial variables/constants when explore decides which
 # files survive the file/budget caps -- a class/function is higher signal than a const.
 _DEFINITION_KINDS = frozenset(
@@ -995,6 +995,11 @@ def _exact_symbol_hits(hits: list[SymbolRecord], query: str) -> list[SymbolRecor
 # spaces) -- the shape worth an explicit exact-name lookup. Multi-word concept
 # queries skip that lookup so they never pay an extra search.
 _SYMBOL_QUERY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+# A token looks like a code identifier when it has an internal underscore
+# (trim_docstring) or a camelCase boundary (MyClass) -- the shape worth an
+# exact symbol-name probe in multi-word queries. Plain English words
+# (admindocs, default, role) never match, staying on the anchor/recall path.
+_COMPOUND_IDENT_RE = re.compile(r"[A-Za-z0-9]_[A-Za-z0-9]|[a-z][A-Z]")
 _REGEX_NOISE_RE = re.compile(r"[\^$\\().*+?\[\]{}|\s]")
 
 
@@ -3098,6 +3103,30 @@ class CodeContextEngine:
                 auto_index=False,
             )
             exact_hits = _exact_symbol_hits(lexical_hits, query)
+        elif not exact_hits and " " in query.strip():
+            # Multi-word query: probe each compound-identifier token for an
+            # exact symbol-name match. FTS5 BM25 tokenises on underscores, so
+            # a test class that references sub-tokens many times can outscore
+            # the one definition. E.g. 'trim_docstring admindocs' → probe
+            # 'trim_docstring' → pin utils.py::trim_docstring to the front so
+            # it survives the floor and appears first.
+            token_hits: list[SymbolRecord] = []
+            seen_ids: set[str] = set()
+            for token in query.strip().split():
+                if len(token) <= 3 or not _SYMBOL_QUERY_RE.match(token) or not _COMPOUND_IDENT_RE.search(token):
+                    continue
+                lhits = self.search_symbols(
+                    token,
+                    limit=max(bounded_max_symbols, 10),
+                    mode="lexical",
+                    snippet="none",
+                    auto_index=False,
+                )
+                for r in _exact_symbol_hits(lhits, token):
+                    if r.symbol_id not in seen_ids:
+                        seen_ids.add(r.symbol_id)
+                        token_hits.append(r)
+            exact_hits = token_hits
         exact_ids = {record.symbol_id for record in exact_hits}
         anchor_ids: set[str] = set()
         if not exact_hits:
@@ -3133,7 +3162,7 @@ class CodeContextEngine:
         # because test files often score highest (function name appears many times
         # in test assertions), which would otherwise set a floor that eliminates
         # the actual implementation file. Pinned exact hits and seed files are exempt.
-        query_wants_tests = bool(re.search(r'\btest\b|\bspec\b', query, re.IGNORECASE))
+        query_wants_tests = bool(re.search(r"\btest\b|\bspec\b", query, re.IGNORECASE))
         if ranked_symbols:
             pinned_ids = exact_ids | anchor_ids
             pre_filtered: list[SymbolRecord] = []
@@ -3180,6 +3209,30 @@ class CodeContextEngine:
                 fresh = [symbol for symbol in additions if symbol.symbol_id not in have]
                 selected_symbols = selected_symbols + fresh
                 family_member_ids = {symbol.symbol_id for symbol in fresh}
+
+        # Test-coverage pinning: for each exact-hit function F, also include the
+        # corresponding test_F symbol so the agent sees the test alongside the
+        # implementation on the very first explore call. This eliminates the
+        # secondary grep/read step that agents use to discover which test to run.
+        # Uses an explicit lexical probe so the test is found even when the
+        # BM25 top-N (max_symbols=20) didn't include it.
+        if exact_ids and not query_wants_tests:
+            _have = {s.symbol_id for s in selected_symbols}
+            _exact_fn_names_lower = {
+                r.symbol_name.lower()
+                for r in selected_symbols
+                if r.symbol_id in exact_ids and r.symbol_name
+            }
+            for _fn_name in _exact_fn_names_lower:
+                _test_sym = f"test_{_fn_name}"
+                _test_hits = self.search_symbols(
+                    _test_sym, limit=5, mode="lexical", snippet="none", auto_index=False
+                )
+                for _tr in _exact_symbol_hits(_test_hits, _test_sym):
+                    if _tr.symbol_id not in _have and _TEST_PATH_RE.search(_tr.file_path or ""):
+                        selected_symbols = [*selected_symbols, _tr]
+                        _have.add(_tr.symbol_id)
+                        break  # one test per function is enough
 
         # Rank so the highest-signal symbols claim the files that survive the file
         # and budget caps: seed files, then the query's completed family, then
