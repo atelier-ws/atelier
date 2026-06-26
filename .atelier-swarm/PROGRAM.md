@@ -91,9 +91,11 @@ Metric to maximize: `mrr`.
 - Bench pairs are at /tmp/bench_pairs_multi.json (shared, read-only)
 
 ## Swarm convergence context
-- Wave: 1 of a continuous swarm run.
-- No prior improvements have been accepted yet.
+- Wave: 2 of a continuous swarm run.
+- Accepted improvements already integrated into the current base:
+  - wave-01-run-02: The change successfully implements the spirit of Idea B by using token-count as a proxy for IDF - longer multi-token names that match are inherently more discriminative than common single-token names, and boosting them improves retrieval quality.
+- Latest evaluator summary: Accepted measured winner wave-01-run-02 (metric 0.3825 vs baseline 0.379, improvement +0.0035).
 - Primary focus for this child: explore the best remaining improvement opportunity without duplicating already accepted work.
-- This is candidate 2 of 3; bias toward a distinct angle rather than repeating another likely attempt.
+- This is candidate 3 of 3; bias toward a distinct angle rather than repeating another likely attempt.
 - Prefer independent improvements that can stack with already accepted changes.
 - If you detect a conflict with accepted work, choose a compatible alternative rather than reverting the base.
