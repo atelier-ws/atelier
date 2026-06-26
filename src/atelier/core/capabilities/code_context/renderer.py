@@ -113,7 +113,7 @@ def _render_symbol(payload: Mapping[str, Any], *, include_source: bool = True) -
         lines.append(f"- id: {symbol_id}")
     lines.append(f"- {symbol} [{kind}]")
     if start_line > 0 and end_line >= start_line:
-        lines.append(f"- location: {file_path}:{start_line}-{end_line}")
+        lines.append(f"- location: {file_path}:L{start_line}-L{end_line}")
     else:
         lines.append(f"- location: {file_path}")
     if signature:
@@ -129,7 +129,7 @@ def _render_symbol(payload: Mapping[str, Any], *, include_source: bool = True) -
             kept = body_lines[:_NODE_BODY_HEAD_LINES]
             lines.append(
                 f"- source (first {_NODE_BODY_HEAD_LINES} of {len(body_lines)} lines; "
-                f"read range L{start_line}- for the rest):"
+                f"read range L{start_line}-L{end_line} for the rest):"
             )
         if start_line > 0:
             body = "\n".join(f"{start_line + idx}\t{line}" for idx, line in enumerate(kept))
@@ -366,12 +366,12 @@ def _render_context(payload: Mapping[str, Any]) -> str:
     if entry_points:
         lines.append("#### entry_points")
         for row in (entry_points or [])[:_CONTEXT_ENTRY_CAP]:
-            lines.append(f"- {row['file_path']}:{row['start_line']} — {row['qualified_name']} [{row['kind']}]")
+            lines.append(f"- {row['file_path']}:L{row['start_line']} — {row['qualified_name']} [{row['kind']}]")
 
     if related_symbols:
         lines.append("#### related_symbols")
         for row in related_symbols[:_CONTEXT_RELATED_CAP]:
-            lines.append(f"- {row['file_path']}:{row['start_line']} — {row['qualified_name']} [{row['kind']}]")
+            lines.append(f"- {row['file_path']}:L{row['start_line']} — {row['qualified_name']} [{row['kind']}]")
     elif isinstance(import_neighbors, list) and import_neighbors:
         lines.append("#### related_symbols")
         for item in sorted(str(value) for value in import_neighbors[:_CONTEXT_RELATED_CAP]):
@@ -381,7 +381,7 @@ def _render_context(payload: Mapping[str, Any]) -> str:
         lines.append("#### code_blocks")
         for block in code_blocks[:_CONTEXT_CODE_BLOCK_CAP]:
             lines.append(
-                f"- {block['qualified_name']} ({block['file_path']}:{block['start_line']}-{block['end_line']})"
+                f"- {block['qualified_name']} ({block['file_path']}:L{block['start_line']}-L{block['end_line']})"
             )
             language = str(block.get("language") or "")
             fence = f"```{language}" if language else "```"
@@ -481,7 +481,7 @@ def _render_explore(payload: Mapping[str, Any]) -> str:
             end_line = int(section.get("end_line") or 0)
             range_tag = ""
             if start_line and end_line:
-                range_tag = f":L{start_line}-{end_line}"
+                range_tag = f":L{start_line}-L{end_line}"
             elif start_line:
                 range_tag = f":L{start_line}"
             label = ""
