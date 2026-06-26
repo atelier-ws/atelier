@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, "src")
 from atelier.core.capabilities.code_context.engine import CodeContextEngine  # noqa: E402
 
-data = json.load(open("/tmp/bench_pairs_multi.json"))
+data = json.load(open("benchmarks/codebench/data/bench_pairs_multi.json"))
 pairs, true_map, repos = data["pairs"], data["true_map"], data["repos"]
 REPOS = ["django__django", "astropy__astropy", "pydata__xarray", "pytest-dev__pytest", "scikit-learn__scikit-learn"]
 

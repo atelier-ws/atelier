@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, "src")
 from atelier.core.capabilities.code_context.engine import CodeContextEngine
 
-d = json.load(open("/tmp/bench_pairs_multi.json"))
+d = json.load(open("benchmarks/codebench/data/bench_pairs_multi.json"))
 meta = d["repos"]["django__django"]
 eng = CodeContextEngine(Path(meta["ws"]), db_path=Path(meta["db"]), autosync_enabled=False)
 eng._cache_get = lambda *a, **k: (False, None)

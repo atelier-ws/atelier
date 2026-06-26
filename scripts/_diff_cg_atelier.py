@@ -18,7 +18,7 @@ except Exception:
     get_zoekt_supervisor = None
 
 CG = "/tmp/" + open("/tmp/cgdir.txt").read().strip() + "/dist/bin/codegraph.js"
-data = json.load(open("/tmp/bench_pairs_multi.json"))
+data = json.load(open("benchmarks/codebench/data/bench_pairs_multi.json"))
 pairs, true_map, repos = data["pairs"], data["true_map"], data["repos"]
 PER_REPO = 14
 

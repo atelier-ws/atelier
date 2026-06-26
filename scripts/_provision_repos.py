@@ -3,7 +3,7 @@
 Per repo: pick the dump-mined task with the most queries as the snapshot anchor,
 clone + checkout its base_commit (Django reuses the existing checkout/index), build
 the Atelier symbol index into /tmp/idx_<repo>.db, warm zoekt. Emits
-/tmp/bench_pairs_multi.json: {pairs:[[query,tid,prefix]], true_map:{tid:[files]},
+benchmarks/codebench/data/bench_pairs_multi.json: {pairs:[[query,tid,prefix]], true_map:{tid:[files]},
 repos:{prefix:{ws,db,anchor}}}. Idempotent: skips clone/index when present.
 
 The main work is guarded by ``if __name__ == "__main__"`` so that index_repo()'s
@@ -124,7 +124,10 @@ def main():
         repos_meta[prefix] = {"ws": str(ws), "db": str(db), "anchor": anchor, "base_commit": base_commit}
         print(f"[{prefix}] ready: {kept} pairs, symbols={symbol_count(db)}", flush=True)
 
-    json.dump({"pairs": pairs, "true_map": true_map, "repos": repos_meta}, open("/tmp/bench_pairs_multi.json", "w"))
+    json.dump(
+        {"pairs": pairs, "true_map": true_map, "repos": repos_meta},
+        open("benchmarks/codebench/data/bench_pairs_multi.json", "w"),
+    )
     uniq = len({(q, p) for q, _, p in pairs})
     print(f"\nDONE: {len(pairs)} pairs | {uniq} unique (query,repo) | {len(repos_meta)} repos", flush=True)
 

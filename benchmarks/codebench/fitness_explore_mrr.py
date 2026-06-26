@@ -2,7 +2,7 @@
 pairs across the diverse-6 SWE-bench repos. Optimizes the SHIPPED tool (explore,
 the only advertised retrieval tool), scored by rank-of-gold-true-file.
 
-Routing: /tmp/bench_pairs_multi.json (scripts/_provision_repos.py) maps each
+Routing: benchmarks/codebench/data/bench_pairs_multi.json (scripts/_provision_repos.py) maps each
 (query, tid, repo-prefix) and each repo-prefix to a prebuilt read-only index
 (ws, db). One engine per repo.
 
@@ -68,7 +68,7 @@ _parser.add_argument(
 )
 _args, _ = _parser.parse_known_args()
 
-with open(os.environ.get("FITNESS_PAIRS", "/tmp/bench_pairs_multi.json")) as fh:
+with open(os.environ.get("FITNESS_PAIRS", "benchmarks/codebench/data/bench_pairs_multi.json")) as fh:
     data = json.load(fh)
 pairs = data["pairs"]
 true_map = data["true_map"]

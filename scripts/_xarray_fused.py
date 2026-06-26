@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, "src")
 from atelier.core.capabilities.code_context.engine import CodeContextEngine  # noqa: E402
 
-data = json.load(open("/tmp/bench_pairs_multi.json"))
+data = json.load(open("benchmarks/codebench/data/bench_pairs_multi.json"))
 m = data["repos"]["pydata__xarray"]
 pairs, true_map = data["pairs"], data["true_map"]
 src = m["db"]

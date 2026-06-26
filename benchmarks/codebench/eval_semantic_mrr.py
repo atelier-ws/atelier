@@ -17,7 +17,7 @@ Env knobs:
   EVAL_EMB_DEVICE  cuda|cpu (default: auto)
   EVAL_EMB_DATA    dir with emb_<tag>_<repo>.npy + corpus_<repo>.jsonl
   EVAL_EMB_TAG     embedding tag in the npy filename (default: bge)
-  EVAL_PAIRS       mined (query, gold-file) pairs json (default /tmp/bench_pairs_multi.json)
+  EVAL_PAIRS       mined (query, gold-file) pairs json (default benchmarks/codebench/data/bench_pairs_multi.json)
 
 Requires sentence-transformers + torch + numpy (NOT in the project venv; use the
 benchmark env, e.g. system python3 with `pip install -r ../embedding/requirements_hf.txt`).
@@ -46,7 +46,7 @@ INSTRUCT = "<instruct>Given a natural language query, retrieve relevant code.\n<
 DATA = Path(os.environ.get("EVAL_EMB_DATA", "benchmarks/embedding/data/multi_repo"))
 TAG = os.environ.get("EVAL_EMB_TAG", "bge")
 MODEL_ID = os.environ.get("EVAL_EMB_MODEL", "BAAI/bge-code-v1")
-PAIRS = os.environ.get("EVAL_PAIRS", "/tmp/bench_pairs_multi.json")
+PAIRS = os.environ.get("EVAL_PAIRS", "benchmarks/codebench/data/bench_pairs_multi.json")
 
 
 def _norm(p: str) -> str:

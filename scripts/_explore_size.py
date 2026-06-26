@@ -12,7 +12,7 @@ sys.path.insert(0, "src")
 from atelier.core.capabilities.code_context.engine import CodeContextEngine
 from atelier.core.capabilities.code_context.renderer import _render_explore
 
-data = json.load(open("/tmp/bench_pairs_multi.json"))
+data = json.load(open("benchmarks/codebench/data/bench_pairs_multi.json"))
 ws = data["repos"]["django__django"]["ws"]
 eng = CodeContextEngine(Path(ws), db_path=Path("/tmp/fused_django__django.db"), autosync_enabled=False)
 eng._cache_get = lambda *a, **k: (False, None)  # bypass persisted retrieval cache (stale pre-edit results)
@@ -54,4 +54,6 @@ from atelier.core.capabilities.code_context.engine import _exact_symbol_hits  # 
 q = "get_current_timezone_name"
 rs = eng.search_symbols(q, limit=20, snippet="none", auto_index=False)
 eh = _exact_symbol_hits(rs, q)
-print(f"\nDEBUG exact: search_symbols->{len(rs)}  exact_hits->{len(eh)}  top5_names={[s.symbol_name for s in rs[:5]]}  top5_scores={[round(s.score or 0, 1) for s in rs[:5]]}")
+print(
+    f"\nDEBUG exact: search_symbols->{len(rs)}  exact_hits->{len(eh)}  top5_names={[s.symbol_name for s in rs[:5]]}  top5_scores={[round(s.score or 0, 1) for s in rs[:5]]}"
+)
