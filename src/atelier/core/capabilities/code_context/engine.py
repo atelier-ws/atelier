@@ -893,9 +893,46 @@ def _fts_and_query(query: str) -> str:
     return " ".join(f'"{t[:64]}"' for t in distinctive[:4])
 
 
+def _ngram_tokens(name: str) -> list[str]:
+    """Stripped-join n-gram tokens for a compound identifier.
+
+    The FTS5 unicode61 tokenizer splits on ``_`` so 'get_timezone' stored in
+    the index is silently broken into 'get' + 'timezone' -- the compound form
+    is lost.  By joining sub-tokens WITHOUT a separator we get tokens that the
+    tokenizer treats as a single unit::
+
+        _get_timezone_name
+        → pieces: ['get', 'timezone', 'name']
+        → bigrams: 'gettimezone', 'timezonename'
+        → full:    'gettimezonename'
+
+    These are highly specific (df ≈ 1–3) so they are cheap to scan and give
+    precise BM25 signal.  Used both when indexing symbols and when extracting
+    query terms, so the two sides stay in sync.
+    """
+    pieces: list[str] = []
+    for raw in _FTS_TERM_RE.findall(name):
+        for camel in _CAMEL_BOUNDARY_RE.split(raw):
+            for piece in camel.split("_"):
+                p = piece.strip().lower()
+                if p:
+                    pieces.append(p)
+    if len(pieces) < 2:
+        return []
+    out: list[str] = []
+    # Bigrams (consecutive pairs)
+    for i in range(len(pieces) - 1):
+        out.append(pieces[i] + pieces[i + 1])
+    # Full compound (3+ parts only; 2-part already covered by the single bigram)
+    if len(pieces) >= 3:
+        out.append("".join(pieces))
+    return out
+
+
 def _identifier_terms(text: str) -> list[str]:
     terms: list[str] = []
     for raw in _FTS_TERM_RE.findall(text):
+        pieces: list[str] = []
         for camel in _CAMEL_BOUNDARY_RE.split(raw):
             # Split snake_case / dotted pieces too, so `_sqlite_datetime_parse`
             # yields sqlite/datetime/parse (matches a query naming those) instead
@@ -903,7 +940,13 @@ def _identifier_terms(text: str) -> list[str]:
             for piece in camel.split("_"):
                 lowered = piece.strip().lower()
                 if lowered:
+                    pieces.append(lowered)
                     terms.append(lowered)
+        # Emit stripped-join bigrams and full compound so that a query for
+        # '_get_timezone_name' also searches 'gettimezone timezonename
+        # gettimezonename', matching only the one symbol that defines the exact
+        # compound name instead of every file that contains 'get'/'timezone'.
+        terms.extend(_ngram_tokens(raw))
     return terms
 
 
@@ -2135,7 +2178,13 @@ class CodeContextEngine:
                         d.content_hash,
                     )
                 )
-                fts_rows.append((sid, sym.name, sym.qualified_name, sym.signature, d.rel, d.symbol_sources[i]))
+                # Augment the FTS 'name' field with stripped-join bigrams and
+                # the full compound form so queries for '_get_timezone_name'
+                # also match the unique token 'gettimezonename', not just
+                # the noisy sub-tokens 'get'/'timezone'/'name'.
+                _ngrams = _ngram_tokens(sym.name)
+                _fts_name = (sym.name + " " + " ".join(_ngrams)) if _ngrams else sym.name
+                fts_rows.append((sid, _fts_name, sym.qualified_name, sym.signature, d.rel, d.symbol_sources[i]))
 
         conn.executemany(
             """
@@ -4865,7 +4914,10 @@ class CodeContextEngine:
         # Phase 1 (main thread, sequential): IDF pruning + two exact-name seeks.
         # These must stay serial: IDF needs the fts_vocab table; exact seeks are
         # ~1ms total (index-backed) and the results are needed before ranking.
-        with self._connect() as conn:
+        # Read-only connection: all phase-1 work is pure SELECT.  WAL mode lets
+        # readers run concurrently with no write-lock wait (eliminates the 30 s
+        # timeout cliff when autosync is writing to a live repo DB).
+        with self._connect(readonly=True) as conn:
             self._init_schema(conn)
             # IDF-pruned FTS queries: high document-frequency tokens are dropped so
             # the OR/prefix bm25 scan stays small (see _discriminative_fts_terms).
@@ -5047,7 +5099,15 @@ class CodeContextEngine:
         ]
         for _fut, (_, _, _rank, _base_score, _use_score) in zip(_futures, _ch):
             try:
-                consider_rows(_fut.result(), channel_rank=_rank, base=_base_score, use_row_score=_use_score)
+                # 8 s timeout: a timed-out channel contributes no rows (graceful
+                # degradation) instead of blocking the caller indefinitely.  Normal
+                # queries finish in <200 ms; 8 s is 40x headroom.
+                consider_rows(
+                    _fut.result(timeout=8.0),
+                    channel_rank=_rank,
+                    base=_base_score,
+                    use_row_score=_use_score,
+                )
             except Exception:
                 pass
 
