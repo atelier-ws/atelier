@@ -499,7 +499,8 @@ def eval_mcp(out: Path | None, tools: tuple[str, ...], jobs: int) -> None:
     help="lexical = symbol FTS/trigram; zoekt = + trigram fusion (needs zoekt on PATH); "
     "semantic = BGE embeddings (needs sentence-transformers).",
 )
-@click.option("--sample", type=int, default=0, help="Cap unique queries per repo (0 = all).")
+@click.option("--full", is_flag=True, default=False, help="Run all available query pairs (no cap).")
+@click.option("--sample", type=int, default=0, help="Total queries to sample across repos (0 = default 500).")
 @click.option("--repo", default="", metavar="PREFIX", help="Substring filter on repo prefix.")
 @click.option(
     "-j",
@@ -523,7 +524,9 @@ def eval_mcp(out: Path | None, tools: tuple[str, ...], jobs: int) -> None:
     show_default=True,
     help="Interpreter for the semantic channel (must have sentence-transformers + torch).",
 )
-def eval_retrieval(channel: str, sample: int, repo: str, workers: int, pairs: Path, python_bin: str) -> None:
+def eval_retrieval(
+    channel: str, full: bool, sample: int, repo: str, workers: int, pairs: Path, python_bin: str
+) -> None:
     """Retrieval MRR + latency over mined SWE-bench pairs.
 
     Channels: lexical (symbol FTS/trigram), zoekt (+ trigram-anchor fusion), semantic
@@ -553,14 +556,16 @@ def eval_retrieval(channel: str, sample: int, repo: str, workers: int, pairs: Pa
         cmd = [python_bin, "benchmarks/codebench/eval_semantic_mrr.py"]
     else:
         env["FITNESS_WORKERS"] = str(workers)
-        if sample:
-            env["FITNESS_SAMPLE"] = str(sample)
-        if repo:
-            env["FITNESS_REPO"] = repo
         if channel == "zoekt":
             env.setdefault("ATELIER_ZOEKT_MODE", "installed")
             env["ATELIER_ZOEKT_LOC_THRESHOLD"] = "1"
         cmd = [sys.executable, "benchmarks/codebench/fitness_explore_mrr.py"]
+        if full:
+            cmd.append("--full")
+        elif sample:
+            cmd += ["--sample", str(sample)]
+        if repo:
+            cmd += ["--repo", repo]
     click.echo(f"[eval] channel={channel} :: {' '.join(cmd)}", err=True)
     raise SystemExit(subprocess.run(cmd, cwd=repo_root, env=env, check=False).returncode)
 
@@ -591,10 +596,7 @@ def eval_retrieval(channel: str, sample: int, repo: str, workers: int, pairs: Pa
 )
 @click.option(
     "--providers",
-    default=(
-        "atelier,atelier-zoekt,zoekt,serena,codegraph,code-index-mcp,jcodemunch-mcp,"
-        "ast-grep,universal-ctags"
-    ),
+    default=("atelier,atelier-zoekt,zoekt,serena,codegraph,code-index-mcp,jcodemunch-mcp," "ast-grep,universal-ctags"),
     show_default=True,
 )
 @click.option(
