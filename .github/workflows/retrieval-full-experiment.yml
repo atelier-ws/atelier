@@ -1,0 +1,66 @@
+name: retrieval-full-experiment
+
+on:
+  push:
+    branches:
+      - retrieval-experiments-line-fts
+    paths-ignore:
+      - "bench-results/line-fts/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  retrieval-ab:
+    runs-on: self-hosted
+    timeout-minutes: 240
+    steps:
+      - name: Check out experiment branch
+        uses: actions/checkout@v4
+        with:
+          ref: retrieval-experiments-line-fts
+
+      - name: Verify local benchmark corpus
+        shell: bash
+        run: |
+          command -v uv
+          test -f "${FITNESS_PAIRS:-/tmp/bench_pairs_multi.json}"
+
+      - name: Run baseline
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          set -o pipefail
+          uv run atelier eval retrieval --full 2>&1 | tee artifacts/baseline.txt
+
+      - name: Run line-FTS fusion experiment
+        shell: bash
+        env:
+          ATELIER_EXPERIMENT_LINE_FTS: "1"
+        run: |
+          set -o pipefail
+          export PYTHONPATH="$GITHUB_WORKSPACE/experiments/retrieval_line_fts${PYTHONPATH:+:$PYTHONPATH}"
+          uv run atelier eval retrieval --full 2>&1 | tee artifacts/line-fts.txt
+
+      - name: Upload A/B logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrieval-line-fts-ab-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: warn
+
+      - name: Persist A/B logs on experiment branch
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p bench-results/line-fts
+          test -f artifacts/baseline.txt && cp artifacts/baseline.txt bench-results/line-fts/baseline.txt
+          test -f artifacts/line-fts.txt && cp artifacts/line-fts.txt bench-results/line-fts/line-fts.txt
+          printf "commit=%s\nrun_id=%s\n" "$GITHUB_SHA" "$GITHUB_RUN_ID" > bench-results/line-fts/metadata.txt
+          git config user.name "atelier-bench-bot"
+          git config user.email "atelier-bench-bot@users.noreply.github.com"
+          git add bench-results/line-fts
+          git commit -m "bench: persist line-FTS A/B for ${GITHUB_SHA::8}" || exit 0
+          git push origin HEAD:retrieval-experiments-line-fts
