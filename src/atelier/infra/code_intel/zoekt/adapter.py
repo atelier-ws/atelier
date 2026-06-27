@@ -224,6 +224,7 @@ class ZoektSupervisor:
         max_snippets_per_file: int | None = None,
         skip_noise: bool = True,
         prefer_source: bool = True,
+        _include_index_age: bool = True,
     ) -> SearchReadResult:
         from atelier.core.capabilities.tool_supervision.search_read import (
             FileMatch,
@@ -334,14 +335,16 @@ class ZoektSupervisor:
                     score=_score,
                 )
             )
-        health = self.health()
+        index_age_seconds: int | None = None
+        if _include_index_age:
+            index_age_seconds = self.health().index_age_seconds
         return SearchReadResult(
             matches=file_matches,
             total_tokens=total_tokens,
             tokens_saved_vs_naive=max(0, naive_tokens - total_tokens),
             cache_hit=False,
             backend="zoekt",
-            index_age_seconds=health.index_age_seconds,
+            index_age_seconds=index_age_seconds,
         )
 
 
