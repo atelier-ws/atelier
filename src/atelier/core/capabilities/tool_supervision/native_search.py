@@ -937,11 +937,17 @@ def search_workspace(
         compile_engine = _regex_module or re
         try:
             regex = compile_engine.compile(content_regex, flags)
-        except compile_engine.error as exc:
-            return {
-                "isError": True,
-                "content": [{"type": "text", "text": f"Invalid content_regex: {exc}"}],
-            }
+        except compile_engine.error:
+            # Pattern failed as a regex (e.g. unbalanced `(` from a shell grep
+            # command where `(` is a literal).  Fall back to a literal-string
+            # match so `grep -n "print(" file.py` works as it would in a shell.
+            try:
+                regex = re.compile(re.escape(content_regex), flags)
+            except re.error as exc:
+                return {
+                    "isError": True,
+                    "content": [{"type": "text", "text": f"Invalid content_regex: {exc}"}],
+                }
     else:
         regex = None
     # Bound total time spent running a user-supplied regex across files so a
