@@ -86,7 +86,7 @@ class BgeEmbedder:
         from sentence_transformers import SentenceTransformer
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        kw = {"torch_dtype": torch.float16} if device == "cuda" else {}
+        kw = {"dtype": torch.float16} if device == "cuda" else {}
         logger.info("Loading BGE model %s on %s (FP16=%s)", self._model_name, device, device == "cuda")
         model = SentenceTransformer(
             self._model_name,
