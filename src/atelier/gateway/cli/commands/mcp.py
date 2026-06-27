@@ -51,24 +51,41 @@ def _read_tool_call_events(root: Path, since_seconds: float, filter_tool: str | 
 def _read_debug_entries(
     root: Path, since_seconds: float, filter_tool: str | None = None
 ) -> list[tuple[int, dict[str, Any]]]:
-    """Read debug log entries as (1-indexed-line-number, entry) pairs."""
-    path = _debug_log_path(root)
-    if not path.exists():
-        return []
+    """Read debug log entries as (1-indexed-line-number, entry) pairs.
+
+    Reads from per-session files (sessions/*/mcp_debug.jsonl) written by the
+    current server, with a fallback to the legacy global path for older installs.
+    """
     cutoff = time.time() - since_seconds
     result: list[tuple[int, dict[str, Any]]] = []
-    with path.open(encoding="utf-8", errors="replace") as fh:
-        for idx, line in enumerate(fh, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                e = json.loads(line)
-                if float(e.get("ts", 0)) >= cutoff:
-                    if filter_tool is None or e.get("tool") == filter_tool:
-                        result.append((idx, e))
-            except (json.JSONDecodeError, TypeError, ValueError):
-                pass
+
+    # Collect paths: per-session files first, then the legacy global file.
+    sessions_dir = root / "sessions"
+    debug_paths: list[Path] = []
+    if sessions_dir.is_dir():
+        debug_paths.extend(sorted(sessions_dir.glob("*/mcp_debug.jsonl")))
+    legacy = _debug_log_path(root)
+    if legacy.exists():
+        debug_paths.append(legacy)
+
+    global_idx = 0
+    for path in debug_paths:
+        try:
+            with path.open(encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    global_idx += 1
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        e = json.loads(line)
+                        if float(e.get("ts", 0)) >= cutoff:
+                            if filter_tool is None or e.get("tool") == filter_tool:
+                                result.append((global_idx, e))
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        pass
+        except OSError:
+            pass
     return result
 
 

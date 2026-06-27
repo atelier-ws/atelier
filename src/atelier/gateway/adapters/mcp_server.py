@@ -2895,31 +2895,43 @@ def _mcp_debug_enabled() -> bool:
     return _dev_mode_cache
 
 
-def _mcp_debug_path() -> Path:
-    return _atelier_root() / "mcp_debug.jsonl"
+def _mcp_debug_path(session_id: str = "") -> Path:
+    """Return the per-session debug log path.
 
+    When a session_id is known, writes land at::
 
-_DEBUG_LARGE_KEYS = frozenset({"new_string", "old_string", "content", "prompt", "task", "query"})
+        ~/.atelier/sessions/<session_id>/mcp_debug.jsonl
+
+    so each Claude Code session has its own isolated log that can be read,
+    tailed, or deleted independently.  Falls back to a top-level
+    ``mcp_debug_unknown.jsonl`` for the rare case where the session id is not
+    yet resolved (early boot calls).
+    """
+    root = _atelier_root()
+    if session_id:
+        return root / "sessions" / session_id / "mcp_debug.jsonl"
+    return root / "mcp_debug_unknown.jsonl"
+
 
 # Argument keys whose values carry credentials/PII (DSNs, tokens, passwords).
 # These are masked regardless of length before anything is written to the debug
-# log or shipped to telemetry — the 300-char large-value threshold misses short
-# secrets such as a sql `connection_string` or a bearer token.
+# log or shipped to telemetry.
 _DEBUG_SECRET_KEY_RE = re.compile(
     r"(connection_string|dsn|api[_-]?key|token|secret|password|authorization)",
     re.IGNORECASE,
 )
 
+# Keys whose large values are still truncated in the *telemetry* path
+# (Langfuse / OTel) to keep event payloads small.  The local mcp_debug.jsonl
+# always logs full content — only secrets are redacted there.
+_DEBUG_LARGE_KEYS = frozenset({"new_string", "old_string", "content", "prompt", "task", "query"})
+
 
 def _scrub_args_for_debug(args: dict[str, Any]) -> dict[str, Any]:
-    """Sanitize tool args before they are logged or emitted as telemetry.
+    """Sanitize tool args before logging or telemetry emission.
 
-    Two transforms, applied in order:
-      1. Secret-bearing keys (connection_string/dsn/api_key/token/secret/
-         password/authorization, case-insensitive) have their value masked
-         regardless of length so short DSNs/tokens never leak verbatim.
-      2. Remaining large string values (>300 chars, or known large-value keys)
-         are replaced with ``<N chars>`` to keep the debug log small.
+    Secrets (connection_string / dsn / api_key / token / secret / password /
+    authorization) are always masked, regardless of value length.
     """
 
     def _scrub_value(key: str | None, value: Any) -> Any:
@@ -2929,11 +2941,50 @@ def _scrub_args_for_debug(args: dict[str, Any]) -> dict[str, Any]:
             return {kk: _scrub_value(kk, vv) for kk, vv in value.items()}
         if isinstance(value, list):
             return [_scrub_value(None, item) for item in value]
-        if isinstance(value, str) and (key in _DEBUG_LARGE_KEYS or len(value) > 300):
-            return f"<{len(value)} chars>"
         return value
 
     return {k: _scrub_value(k, v) for k, v in args.items()}
+
+
+# Cleanup: remove mcp_debug.jsonl files from sessions older than this many days.
+_MCP_DEBUG_RETENTION_DAYS = 7
+# Track last prune time to avoid pruning every single tool call.
+_mcp_debug_last_prune: float = 0.0
+_MCP_DEBUG_PRUNE_INTERVAL_S = 3600.0  # prune at most once per hour
+
+
+def _prune_mcp_debug_logs() -> None:
+    """Delete per-session mcp_debug.jsonl files older than _MCP_DEBUG_RETENTION_DAYS.
+
+    Runs at most once per hour (guarded by ``_mcp_debug_last_prune``).  Only
+    the debug file itself is removed — the session directory and its other
+    artefacts (savings.jsonl, etc.) are left untouched.  Fail-open.
+    """
+    global _mcp_debug_last_prune
+    now = time.time()
+    if now - _mcp_debug_last_prune < _MCP_DEBUG_PRUNE_INTERVAL_S:
+        return
+    _mcp_debug_last_prune = now
+    try:
+        sessions_dir = _atelier_root() / "sessions"
+        if not sessions_dir.is_dir():
+            return
+        cutoff = now - _MCP_DEBUG_RETENTION_DAYS * 86400
+        for debug_file in sessions_dir.glob("*/mcp_debug.jsonl"):
+            try:
+                if debug_file.stat().st_mtime < cutoff:
+                    debug_file.unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
+        # Also prune the fallback unknown-session file if it is old.
+        unknown = _atelier_root() / "mcp_debug_unknown.jsonl"
+        try:
+            if unknown.exists() and unknown.stat().st_mtime < cutoff:
+                unknown.unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception:  # noqa: BLE001
+        pass  # never disrupt the server
 
 
 def _tool_profile_path() -> Path | None:
@@ -2998,11 +3049,14 @@ def _append_mcp_debug_event(
     status: str,
     error: str | None = None,
     session_id: str = "",
+    rid: str | None = None,
 ) -> None:
-    """Write a per-call debug record to ~/.atelier/mcp_debug.jsonl.
+    """Write a per-call debug record to sessions/<session_id>/mcp_debug.jsonl.
 
-    Only active when ATELIER_MCP_DEBUG=1. Fail-open: errors are swallowed
-    so the MCP server is never disrupted by the debug log writer.
+    Only active when ATELIER_MCP_DEBUG=1 (or in dev-mode installs).  Each
+    session writes to its own file so logs are isolated, greppable per-session,
+    and cleaned up independently.  Args are fully logged (only credentials are
+    redacted) so the debug log is genuinely useful.  Fail-open.
     """
     if not _mcp_debug_enabled():
         return
@@ -3010,18 +3064,23 @@ def _append_mcp_debug_event(
         entry: dict[str, Any] = {
             "ts": time.time(),
             "tool": tool,
+            "mcp_tool": f"mcp__{SERVER_NAME}__{tool}",
             "args": _scrub_args_for_debug(args),
             "duration_ms": duration_ms,
             "response_size_bytes": response_size,
             "status": status,
             "session_id": session_id,
         }
+        if rid is not None:
+            entry["rid"] = rid
         if error:
             entry["error"] = error
-        path = _mcp_debug_path()
+        path = _mcp_debug_path(session_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, sort_keys=True) + "\n")
+        # Opportunistic cleanup -- at most once per hour, non-blocking.
+        _prune_mcp_debug_logs()
     except Exception:  # noqa: BLE001
         pass  # never disrupt the server
 
@@ -4553,6 +4612,22 @@ def _render_read_md(result: dict[str, Any]) -> str | None:
     return None
 
 
+def _render_symbol_read_md(sym: dict[str, Any]) -> str | None:
+    sym_path = str(sym.get("path") or "")
+    sym_kind = str(sym.get("kind") or "symbol")
+    start = int(sym.get("line") or 0)
+    end = int(sym.get("end_line") or start)
+    if not sym_path or not start:
+        return None
+    try:
+        src_lines = Path(sym_path).read_text(encoding="utf-8", errors="ignore").splitlines()
+        body = "\n".join(src_lines[start - 1 : end])
+    except OSError:
+        return None
+    range_tag = f"L{start}-L{end}" if end > start else f"L{start}"
+    return f"### {sym_path}:{range_tag} ({sym_kind})\n{body}"
+
+
 def _render_read_outline_md(path: str, outline: dict[str, Any], language: str) -> str:
     # Treesitter/generic: has pre-formatted `text` field
     text = str(outline.get("text") or "").strip()
@@ -4822,6 +4897,13 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
                     raw_range = str(payload.get("range") or "")
                     if raw_range:
                         text = "## L" + raw_range.replace("-", "-L") + "\n" + text
+                if text is None:
+                    symbols_list = payload.get("symbols")
+                    if isinstance(symbols_list, list):
+                        sym_parts = [_render_symbol_read_md(s) for s in symbols_list if isinstance(s, dict)]
+                        text = "\n\n".join(p for p in sym_parts if p) or None
+                    elif "kind" in payload and "line" in payload and "path" in payload:
+                        text = _render_symbol_read_md(payload)
     elif name == "grep":
         with contextlib.suppress(Exception):
             text = _render_grep_md(payload)
@@ -5277,48 +5359,48 @@ def _split_file_opts(s: str) -> tuple[str, str | None, bool, int | None, int | N
 
 @mcp_tool(
     name="read",
-    hidden_params=("path", "range", "expand", "lines", "projection_kind", "format", "include_meta", "filePath"),
-    description=(
-        "Read files or symbols. "
-        "files=['a.py', 'b.py:L10-L20', 'c.py:expand', 'c.py:head=50', 'd.py:tail=20']"
-        "symbol='name' or ['a','b'] → exact source, no FTS noise. "
-        "File modes: outline (>200 LOC default), full via :expand, range via :Lx-Ly, head/tail via :head=N/:tail=N."
+    hidden_params=(
+        "path",
+        "range",
+        "start_line",
+        "end_line",
+        "expand",
+        "lines",
+        "projection_kind",
+        "format",
+        "include_meta",
+        "filePath",
     ),
-    param_aliases={"max_lines": "lines"},
+    description=(
+        "Read files or exact symbols. Files over 200 lines default to outline; "
+        "use :expand for full source or :Lx-Ly for exact lines. "
+        "files=['a.py', 'b.py:L10-L20', 'c.py:expand', "
+        "'d.py:head=50', 'e.py:tail=20']. "
+        "symbol='name' or ['a', 'b']. Use either files or symbol."
+    ),
+    param_aliases={
+        "max_lines": "lines",
+        "filePath": "path",
+    },
 )
 def tool_smart_read(
-    path: Annotated[
-        str,
-        Field(
-            description="Workspace path; may carry '#start-end'/'#line' (e.g. 'store.py#60-100'). 2+ files: use `files`."
-        ),
-    ] = "",
+    path: str = "",
     range: str | None = None,
-    start_line: Annotated[int | None, Field(description="Start line (1-based). Alias for range='start-end'.")] = None,
-    end_line: Annotated[int | None, Field(description="End line (1-based, inclusive).")] = None,
+    start_line: int | None = None,
+    end_line: int | None = None,
     expand: bool = False,
     lines: int | None = None,
-    include_meta: Annotated[
-        bool,
-        Field(description="Include cache/token metadata."),
-    ] = False,
+    include_meta: bool = False,
     files: Annotated[
         list[str] | None,
-        Field(
-            description=(
-                "List of file paths to read. Each item is a path string with optional suffixes: "
-                ":L10-L20 for a line range, :expand for full source, :head=N for first N lines, :tail=N for last N lines."
-            )
-        ),
+        Field(description="Files to read."),
     ] = None,
     symbol: Annotated[
         str | list[str] | None,
-        Field(
-            description="Symbol name, qualified path, or list of names — returns exact source for each, no expansion."
-        ),
+        Field(description="Exact symbol name or names."),
     ] = None,
     projection_kind: str | None = None,
-    filePath: str = "",  # accepted alias for `path` (hidden from the published schema)
+    filePath: str = "",
 ) -> dict[str, Any]:
     """Read a file (or batch of files) by path, or a single symbol by name.
 
@@ -5344,6 +5426,8 @@ def tool_smart_read(
     holds something, use `grep` with output_mode="file_paths_with_content" to
     discover and read in one step instead of grep-then-read.
     """
+    if files is not None and symbol is not None:
+        raise ValueError("provide either files or symbol, not both")
     # `filePath` is an accepted alias for `path` (host Read-tool habit); fold it
     # in before any dispatch so both name the same file.
     if not path and filePath:
@@ -8512,37 +8596,33 @@ def _grep_badge_provider(rel_path: str, symbol_names: list[str]) -> str | None:
 
 
 @mcp_tool(
-    name="explore",
+    name="code_search",
     description=(
-        "PRIMARY retrieval tool -- call FIRST for almost any question or before an edit: how X "
-        "works, where/what X is, a flow, or the symbols you are about to change. Returns the "
-        "relevant symbols' verbatim source grouped by file in ONE capped call (treat as already "
-        "read -- do NOT re-open those files), plus call-graph relations (callers/callees/usages) "
-        "and a blast-radius. Query: a natural-language question OR a bag of symbol/file names. "
-        "Usually the only retrieval call you need."
+        "Search the indexed codebase for implementations, symbols, references, "
+        "call flow, or relevant source. Use instead of bash, grep, or rg when "
+        "locating code. Returns source grouped by file plus callers, callees, "
+        "usages, and blast radius. Treat returned source as already read. "
+        "Use read when the exact file or symbol is already known."
     ),
-    param_aliases={"maxFiles": "max_files", "projectPath": "paths", "path": "paths", "include_paths": "paths"},
-    hidden_params=("path",),
+    param_aliases={
+        "maxFiles": "max_files",
+        "projectPath": "paths",
+        "path": "paths",
+        "include_paths": "paths",
+    },
 )
-def tool_explore(
+def tool_code_search(
     query: Annotated[
         str,
-        Field(description="Natural-language question, or a bag of symbol/file names / code terms."),
+        Field(description="Question, symbol/file names, code terms, or regex."),
     ],
     max_files: Annotated[
         int,
-        Field(description="Max files to include source from (default 8). Alias: maxFiles."),
+        Field(ge=1, description="Maximum source files to return."),
     ] = 8,
     paths: Annotated[
         str | list[str] | None,
-        Field(
-            description=(
-                "Optional scope: a file or directory path, a list of paths, or a "
-                "comma-separated string of paths WITHIN this workspace. "
-                "When a single file is given the search is restricted to that file's symbols. "
-                "Alias: projectPath."
-            )
-        ),
+        Field(description="Optional file or directory scope."),
     ] = None,
     path: str | None = None,  # backward-compat alias, hidden from schema
 ) -> dict[str, Any]:
@@ -10039,6 +10119,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                     response_size=_ok_response_size,
                     status="ok",
                     session_id=_ok_sid,
+                    rid=str(rid) if rid is not None else None,
                 )
             with contextlib.suppress(Exception):
                 from atelier.gateway.integrations.langfuse import emit_tool_call as _lf_emit_tool
@@ -10251,6 +10332,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                         status="error",
                         error=type(exc).__name__,
                         session_id=_err_session_id,
+                        rid=str(rid) if rid is not None else None,
                     )
                 with contextlib.suppress(Exception):
                     _append_tool_profile(
