@@ -1107,17 +1107,10 @@ stop_existing_atelier_processes() {
         [[ -n "${pid:-}" && -n "${args:-}" ]] || continue
         [[ "$pid" == "$current_pid" || "$pid" == "$parent_pid" ]] && continue
 
-        # Dev/source installs (local.sh sets ATELIER_LOCAL=1): never kill any running
-        # MCP server. Claude Code owns the MCP process lifecycle — it spawns and kills
-        # the server as part of its own session. Killing it here disconnects the live
-        # session without an auto-reconnect. servicectl/stack are still cleaned.
-        if [[ "${ATELIER_LOCAL:-0}" == "1" ]]; then
-            case "$args" in
-                *"atelier mcp --host"*|*"/atelier mcp "*|*" atelier mcp "*)
-                    continue ;;
-            esac
-        fi
-
+        # Kill MCP servers on both dev (local.sh) and prod (bundle.sh) installs.
+        # After reinstall the old process has stale modules in memory; killing it
+        # here means the next /mcp reconnect starts a fresh process with the new
+        # code. The user needs to do /mcp after make dev — that's expected.
         case "$args" in
             *"atelier mcp --host"*|\
             *"/atelier mcp "*|\
