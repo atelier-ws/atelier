@@ -242,7 +242,7 @@ def _parse_pattern(pattern: str) -> PatternSpec:
         pattern = pattern[: -len("#imported-by")]
         graph_mode = "imported_by"
 
-    match = re.search(r"#(\d+)(?:-(\d+))?$", pattern)
+    match = re.search(r":L(\d+)(?:-L(\d+))?$", pattern, re.IGNORECASE)
     if not match:
         return PatternSpec(pattern=pattern, graph_mode=graph_mode)
     start_line = int(match.group(1))
@@ -937,14 +937,14 @@ def _render_text_result(
         return None, 0
 
     lines = source.splitlines()
-    # A "#start-end" suffix with no pattern is a range read via grep: return the
+    # A ":Lx-Ly" suffix with no pattern is a range read via grep: return the
     # raw slice. With a pattern, the range instead scopes which matches report.
     if spec.start_line is not None and regex is None and content_regex is None:
         start = spec.start_line
         end = spec.end_line or start
         selected = lines[start - 1 : end]
         body = redact_tool_output("\n".join(_truncate_line(line, max_line_length) for line in selected))
-        return f"{rel}#{start}-{end}\n{body}", len(selected)
+        return f"{rel}:L{start}-L{end}\n{body}", len(selected)
 
     include_all = regex is None and content_regex is None
     if precomputed_match_lines is not None:
@@ -1053,8 +1053,8 @@ def search_workspace(
     root = _repo_root(repo_root)
     base_spec = _parse_pattern(path)
     base = _safe_resolve(root, base_spec.pattern or ".")
-    # Resolve the base first (which strips any "#start-end" line-range suffix)
-    # so a bare "file.py#60-100" path is accepted as a single-file search rather
+    # Resolve the base first (which strips any ":Lx-Ly" line-range suffix)
+    # so a bare "file.py:L60-L100" path is accepted as a single-file search rather
     # than rejected for having no pattern.
     if not (content_regex or file_glob_patterns or type or base.is_file()):
         return {
