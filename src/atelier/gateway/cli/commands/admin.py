@@ -1044,8 +1044,8 @@ def status_cmd(
             email = str(cached.get("email") or "")
             plan = str(cached.get("plan") or "free")
             device_id = str(cached.get("device_id") or auth_token[:8])
-            cli_count = int(cached.get("cli_device_count") or 0)
-            cli_limit = int(cached.get("cli_device_limit") or 3)
+            cli_count = int(cached.get("cli_device_count") or 0)  # type: ignore[call-overload]
+            cli_limit = int(cached.get("cli_device_limit") or 3)  # type: ignore[call-overload]
             if as_json:
                 _emit(
                     {
