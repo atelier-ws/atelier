@@ -9,7 +9,7 @@ Per-repo index is auto-built on first query (``codegraph init``).
 
 Environment variables (same as fitness_explore_mrr):
   FITNESS_PAIRS     Path to pairs JSON  (default: benchmarks/codebench/data/bench_pairs_multi.json)
-  FITNESS_SAMPLE    Cap unique queries per repo  (default: 0 = all)
+  FITNESS_SAMPLE    Cap total unique queries across all repos (default: 0 = all)
   FITNESS_REPO      Substring filter on repo prefix
 """
 
@@ -90,7 +90,11 @@ for q, _tid, prefix in pairs:
 if REPO_FILTER:
     uq = {p: qs for p, qs in uq.items() if REPO_FILTER in p}
 if SAMPLE:
-    uq = {p: sorted(qs)[:SAMPLE] for p, qs in uq.items()}
+    # Spread SAMPLE evenly across repos (matches fitness_explore_mrr behavior),
+    # so FITNESS_SAMPLE=N caps total unique queries to ~N, not N per repo.
+    n_repos = max(len(uq), 1)
+    per_repo = max(1, SAMPLE // n_repos)
+    uq = {p: sorted(qs)[:per_repo] for p, qs in uq.items()}
 
 runset = {p: set(qs) for p, qs in uq.items()}
 total_unique = sum(len(qs) for qs in uq.values())
