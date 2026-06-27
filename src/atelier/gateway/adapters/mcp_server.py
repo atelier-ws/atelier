@@ -5403,6 +5403,7 @@ def tool_smart_read(
     ] = None,
     projection_kind: str | None = None,
     filePath: str = "",
+    force: bool = False,
 ) -> dict[str, Any]:
     """Read a file (or batch of files) by path, or a single symbol by name.
 
@@ -5922,95 +5923,48 @@ def _attach_contract_literal_review(
 
 EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
+    "required": ["edits"],
+    "additionalProperties": False,
     "properties": {
         "edits": {
             "type": "array",
             "minItems": 1,
+            "description": "File edits to apply in one batch.",
             "items": {
-                "anyOf": [
-                    {
-                        "title": "File edit",
-                        "type": "object",
-                        "required": ["path", "new"],
-                        "properties": {
-                            "path": {
-                                "type": "string",
-                                "description": "File path, optionally suffixed with :Lx or :Lx-Ly.",
-                            },
-                            "old": {"type": "string", "description": "Exact text to replace."},
-                            "new": {"type": "string", "description": "Replacement or new file content."},
-                            "overwrite": {"type": "boolean", "description": "Create or replace the whole file."},
-                        },
+                "type": "object",
+                "required": ["path", "new"],
+                "additionalProperties": False,
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path, optionally suffixed with :Lx or :Lx-Ly.",
                     },
-                    {
-                        "title": "Notebook cell edit",
-                        "type": "object",
-                        "required": ["path", "cell_action"],
-                        "properties": {
-                            "path": {"type": "string"},
-                            "cell_action": {
-                                "enum": [
-                                    "insert_after",
-                                    "insert_before",
-                                    "delete",
-                                    "move_after",
-                                    "move_before",
-                                ]
-                            },
-                            "cell_type": {"enum": ["code", "markdown"]},
-                            "cell_move_target": {"type": "integer"},
-                            "new_string": {"type": "string"},
-                        },
+                    "old": {
+                        "type": "string",
+                        "description": "Exact text to replace.",
                     },
-                    {
-                        "title": "Symbol edit",
-                        "type": "object",
-                        "required": ["kind"],
-                        "properties": {
-                            "kind": {"const": "symbol"},
-                            "qualified_name": {"type": "string"},
-                            "name": {"type": "string"},
-                            "path": {"type": "string"},
-                            "mode": {"enum": ["replace", "prepend", "append"]},
-                            "new_body": {"type": "string"},
-                            "preserve_signature": {"type": "boolean"},
-                        },
+                    "new": {
+                        "type": "string",
+                        "description": "Replacement or new file content.",
                     },
-                    {
-                        "title": "Projection edit",
-                        "type": "object",
-                        "required": ["kind", "path", "projection_mapping"],
-                        "properties": {
-                            "kind": {"const": "projection"},
-                            "path": {"type": "string"},
-                            "projection_mapping": {
-                                "type": "object",
-                                "description": "Mapping returned by a compact read with include_meta=true.",
-                            },
-                            "projected_start": {"type": "integer"},
-                            "projected_end": {"type": "integer"},
-                            "new_string": {"type": "string"},
-                            "projected_ranges": {
-                                "type": "array",
-                                "description": "Multiple non-overlapping exact spans from the same mapping; each item replaces one span.",
-                                "items": {
-                                    "type": "object",
-                                    "required": ["projected_start", "projected_end", "new_string"],
-                                    "properties": {
-                                        "projected_start": {"type": "integer"},
-                                        "projected_end": {"type": "integer"},
-                                        "new_string": {"type": "string"},
-                                    },
-                                },
-                            },
-                        },
+                    "overwrite": {
+                        "type": "boolean",
+                        "description": "Create or replace the whole file.",
                     },
-                ]
+                },
             },
         },
+        "atomic": {
+            "type": "boolean",
+            "default": True,
+            "description": "Roll back all edits if any one fails.",
+        },
+        "hooks": {
+            "type": "boolean",
+            "default": True,
+            "description": "Run formatter/linter on touched files; error/warning diagnostics appear in the result.",
+        },
     },
-    "required": ["edits"],
-    "additionalProperties": False,
 }
 
 
@@ -6070,6 +6024,12 @@ def _compact_applied_entries(entries: list[dict[str, Any]]) -> list[str | dict[s
     _ORDINARY_KEYS = frozenset({"path", "hunks", "match_mode", "result"})
     for entry in entries:
         if set(entry) - _ORDINARY_KEYS:
+            special.append(entry)
+            continue
+        # Non-exact fuzzy matches are actionable: keep as dicts so the model
+        # sees match_mode and knows to re-read and verify the divergence.
+        match_mode = entry.get("match_mode")
+        if match_mode and match_mode != "exact":
             special.append(entry)
             continue
         path = str(entry.get("path", ""))
