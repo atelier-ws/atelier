@@ -10,6 +10,8 @@ import logging
 import mimetypes
 import os
 import re
+import shutil
+import subprocess
 import tempfile
 import time
 from collections.abc import Callable
@@ -60,6 +62,11 @@ _MAX_SEARCH_FILE_BYTES = int(os.environ.get("ATELIER_SEARCH_MAX_FILE_BYTES", str
 # caller `file_limit` (default 100) with margin. Skipped for graph modes that
 # need the full candidate set (e.g. `#imported-by`).
 _MAX_SEARCH_CANDIDATES = int(os.environ.get("ATELIER_SEARCH_MAX_CANDIDATES", str(20_000)))
+# Fast grep backends — ripgrep is strongly preferred; system grep is the
+# fallback. The Python directory-walk path is not used for content_regex
+# searches on any Mac/Linux system where one of these is always available.
+_RG_BIN: str | None = shutil.which("rg")
+_GREP_BIN: str | None = shutil.which("grep")
 SKIP_DIRS: frozenset[str] = frozenset(
     {
         # VCS
@@ -755,6 +762,133 @@ def _symbol_windows(
     return _merge_ranges(windows), dedup_symbols
 
 
+def _rg_candidate_files(
+    *,
+    pattern: str,
+    base: Path,
+    glob_patterns: list[str],
+    ignore_case: bool,
+    timeout: float,
+) -> list[Path] | None:
+    """Return files matching *pattern* via ``rg -l``. None = error / timeout."""
+    assert _RG_BIN is not None
+    cmd: list[str] = [_RG_BIN, "--files-with-matches", "--no-messages"]
+    if ignore_case:
+        cmd.append("-i")
+    for g in glob_patterns:
+        cmd.extend(["--glob", g])
+    cmd.extend(["--", pattern, str(base)])
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None
+    if proc.returncode not in (0, 1):  # 0=found, 1=no match, other=error
+        return None
+    return [Path(line) for line in proc.stdout.splitlines() if line]
+
+
+def _grep_candidate_files(
+    *,
+    pattern: str,
+    base: Path,
+    glob_patterns: list[str],
+    ignore_case: bool,
+    timeout: float,
+) -> list[Path] | None:
+    """Return files matching *pattern* via ``grep -rl``. None = error / timeout."""
+    assert _GREP_BIN is not None
+    cmd: list[str] = [_GREP_BIN, "-rl", "-H"]
+    if ignore_case:
+        cmd.append("-i")
+    for g in glob_patterns:
+        cmd.extend(["--include", Path(g).name if "/" not in g else g])
+    cmd.extend(["--", pattern, str(base)])
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None
+    if proc.returncode not in (0, 1):
+        return None
+    return [Path(line) for line in proc.stdout.splitlines() if line]
+
+
+def _rg_line_numbers(
+    *,
+    pattern: str,
+    base: Path,
+    glob_patterns: list[str],
+    ignore_case: bool,
+    timeout: float,
+) -> dict[str, list[int]] | None:
+    """Return {abs_path: [1-based line nos]} via ``rg -n``. None = error / timeout."""
+    assert _RG_BIN is not None
+    cmd: list[str] = [
+        _RG_BIN,
+        "--line-number",
+        "--no-heading",
+        "--with-filename",
+        "--no-messages",
+    ]
+    if ignore_case:
+        cmd.append("-i")
+    for g in glob_patterns:
+        cmd.extend(["--glob", g])
+    cmd.extend(["--", pattern, str(base)])
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None
+    if proc.returncode not in (0, 1):
+        return None
+    result: dict[str, list[int]] = {}
+    for line in proc.stdout.splitlines():
+        # format: /abs/path:lineno:content
+        parts = line.split(":", 2)
+        if len(parts) < 2:
+            continue
+        try:
+            lineno = int(parts[1])
+        except ValueError:
+            continue
+        result.setdefault(parts[0], []).append(lineno)
+    return result
+
+
+def _grep_line_numbers(
+    *,
+    pattern: str,
+    base: Path,
+    glob_patterns: list[str],
+    ignore_case: bool,
+    timeout: float,
+) -> dict[str, list[int]] | None:
+    """Return {abs_path: [1-based line nos]} via ``grep -rn``. None = error / timeout."""
+    assert _GREP_BIN is not None
+    cmd: list[str] = [_GREP_BIN, "-rn", "-H"]
+    if ignore_case:
+        cmd.append("-i")
+    for g in glob_patterns:
+        cmd.extend(["--include", Path(g).name if "/" not in g else g])
+    cmd.extend(["--", pattern, str(base)])
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None
+    if proc.returncode not in (0, 1):
+        return None
+    result: dict[str, list[int]] = {}
+    for line in proc.stdout.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) < 2:
+            continue
+        try:
+            lineno = int(parts[1])
+        except ValueError:
+            continue
+        result.setdefault(parts[0], []).append(lineno)
+    return result
+
+
 def _render_text_result(
     path: Path,
     root: Path,
@@ -771,6 +905,7 @@ def _render_text_result(
     if_modified_since: datetime | None,
     deadline: float | None = None,
     badge_provider: Callable[[str, list[str]], str | None] | None = None,
+    precomputed_match_lines: list[int] | None = None,
 ) -> tuple[str | None, int]:
     rel = str(path.relative_to(root)) if path.is_relative_to(root) else str(path)
     mtime = datetime.fromtimestamp(path.stat().st_mtime)
@@ -812,9 +947,12 @@ def _render_text_result(
         return f"{rel}#{start}-{end}\n{body}", len(selected)
 
     include_all = regex is None and content_regex is None
-    match_lines = _match_line_numbers(
-        lines, regex, content_regex, include_all_when_no_regex=include_all, deadline=deadline
-    )
+    if precomputed_match_lines is not None:
+        match_lines = precomputed_match_lines
+    else:
+        match_lines = _match_line_numbers(
+            lines, regex, content_regex, include_all_when_no_regex=include_all, deadline=deadline
+        )
     if spec.start_line is not None:
         lo, hi = spec.start_line, spec.end_line or spec.start_line
         match_lines = [n for n in match_lines if lo <= n <= hi]
@@ -954,7 +1092,66 @@ def search_workspace(
     # catastrophic-backtracking pattern cannot hang the worker indefinitely.
     deadline = time.monotonic() + _REGEX_DEADLINE_SECONDS if regex is not None else None
     since = _parse_when(if_modified_since)
-    candidates = _iter_files(root, base if base.is_dir() else root, specs, type)
+    # Fast grep path: delegate content_regex matching to rg/grep subprocess to
+    # avoid the ~1200ms _iter_files walk + ~5s Python re-scan on large repos.
+    _rg_line_map: dict[str, list[int]] | None = None
+    _fast_candidates: list[tuple[Path, PatternSpec]] | None = None
+    _fast_eligible = (
+        regex is not None
+        and not multiline
+        and since is None
+        and not any(s.graph_mode for s in specs)
+        and (_RG_BIN is not None or _GREP_BIN is not None)
+    )
+    if _fast_eligible:
+        assert content_regex is not None
+        _use_rg = _RG_BIN is not None
+        _fast_globs: list[str] = [s.pattern for s in specs if s.pattern and _has_glob(s.pattern)]
+        if not _fast_globs and type is not None:
+            _fast_globs = _TYPE_ALIASES.get(type.lower(), [])
+        _grep_kw: dict[str, Any] = dict(
+            pattern=content_regex,
+            base=base,
+            glob_patterns=_fast_globs,
+            ignore_case=ignore_case,
+            timeout=_REGEX_DEADLINE_SECONDS + 2.0,
+        )
+        if output_mode == "file_paths_only":
+            _found_l = _rg_candidate_files(**_grep_kw) if _use_rg else _grep_candidate_files(**_grep_kw)
+            if _found_l is not None:
+                _fp_list: list[str] = []
+                for _p in _found_l:
+                    try:
+                        _fp_list.append(str(_p.relative_to(root)))
+                    except ValueError:
+                        _fp_list.append(str(_p))
+                _agg_parts = [f"# grep ({len(_fp_list)} files)"]
+                if _fp_list:
+                    _agg_parts.append("")
+                    _agg_parts.extend(_fp_list[:_FILE_PATHS_ONLY_CAP])
+                    _ov = len(_fp_list) - _FILE_PATHS_ONLY_CAP
+                    if _ov > 0:
+                        _agg_parts.append(f"... and {_ov} more")
+                _fast_resp: dict[str, Any] = {
+                    "content": [{"type": "text", "text": "\n".join(_agg_parts)}],
+                    "tokens_saved": 0,
+                }
+                if include_metadata:
+                    _fast_resp["_meta"] = {"fileMatchCount": len(_fp_list), "capChars": cap_chars}
+                return _fast_resp
+        else:
+            _line_fn = _rg_line_numbers if _use_rg else _grep_line_numbers
+            _line_map = _line_fn(**_grep_kw)
+            if _line_map is not None:
+                _rg_line_map = _line_map
+                _dummy_spec = specs[0] if specs else base_spec
+                _fast_candidates = [(Path(k), _dummy_spec) for k in _rg_line_map]
+                deadline = time.monotonic() + _REGEX_DEADLINE_SECONDS  # reset deadline
+    candidates = (
+        _fast_candidates
+        if _fast_candidates is not None
+        else _iter_files(root, base if base.is_dir() else root, specs, type)
+    )
     limit = file_limit or 100
     blocks: list[dict[str, str]] = []
     total_chars = 0
@@ -1013,9 +1210,14 @@ def search_workspace(
                 )
                 continue
 
-            line_nos = _match_line_numbers(
-                lines, regex, content_regex, include_all_when_no_regex=regex is None, deadline=deadline
-            )
+            _ckey = str(candidate)
+            _pre = _rg_line_map.get(_ckey) if _rg_line_map else None
+            if _pre is not None:
+                line_nos = _pre
+            else:
+                line_nos = _match_line_numbers(
+                    lines, regex, content_regex, include_all_when_no_regex=regex is None, deadline=deadline
+                )
             if spec.start_line is not None:
                 lo, hi = spec.start_line, spec.end_line or spec.start_line
                 line_nos = [n for n in line_nos if lo <= n <= hi]
@@ -1158,6 +1360,8 @@ def search_workspace(
             total_chars += len(text)
             blocks.append({"type": "text", "text": text})
             continue
+        _ckey = str(candidate)
+        _pre = _rg_line_map.get(_ckey) if _rg_line_map else None
         _file_rendered, _count = _render_text_result(
             candidate,
             root,
@@ -1173,6 +1377,7 @@ def search_workspace(
             if_modified_since=since,
             deadline=deadline,
             badge_provider=badge_provider,
+            precomputed_match_lines=_pre,
         )
         if _file_rendered is None:
             if _over_cap_size(candidate) is not None:
