@@ -52,7 +52,7 @@ def _parse_target(raw_path: str) -> TargetSpec:
     if "#cell=" in raw_path:
         path, cell = raw_path.split("#cell=", 1)
         return TargetSpec(path=path, cell=cell)
-    match = re.search(r"#(\d+)(?:-(\d+))?$", raw_path)
+    match = re.search(r":L(\d+)(?:-L(\d+))?$", raw_path, re.IGNORECASE)
     if match:
         return TargetSpec(
             path=raw_path[: match.start()],
@@ -397,9 +397,9 @@ def _build_retry_hint(
     start = anchor_positions[0]
     end = min(len(disk_lines), start + n_lines + 2)
     excerpt = "".join(disk_lines[start:end])
-    clean_path = raw_path.split("#")[0]
+    clean_path = re.sub(r":L\d+.*$", "", raw_path, flags=re.IGNORECASE)
     return {
-        "path": f"{clean_path}#L{start + 1}-{end}",
+        "path": f"{clean_path}:L{start + 1}-L{end}",
         "old_string": excerpt,
         "hint": "exact disk content at nearest anchor — replace old_string with this",
     }
@@ -436,7 +436,7 @@ def _parse_gate_message(
         f" — edit rolled back{fuzzy_note}. Would-be content around the error:\n{snippet}\n"
         "Do NOT resend the same edit. Extend old_string to cover the full region you are"
         " replacing (e.g. the entire block through its closing brace); scope with"
-        ' "file.py#start-end" to disambiguate, or rewrite the whole file with overwrite=true.'
+        ' "file.py:L10-L20" to disambiguate, or rewrite the whole file with overwrite=true.'
     )
 
 
@@ -555,9 +555,9 @@ def apply_rich_edits(
                 # it loudly rather than truncate the file the caller meant to scope.
                 if edit.get("overwrite") and spec.start_line is not None:
                     rng = (
-                        f"#{spec.start_line}"
+                        f":L{spec.start_line}"
                         if spec.start_line == spec.end_line
-                        else f"#{spec.start_line}-{spec.end_line}"
+                        else f":L{spec.start_line}-L{spec.end_line}"
                     )
                     raise ValueError(
                         f"overwrite=true replaces the entire file and ignores the {rng} line "
@@ -584,10 +584,10 @@ def apply_rich_edits(
             # overwrite=true or omit old_string to create a new file.
             if not path.exists():
                 raise ValueError(
-                    f"file {spec.path!r} does not exist — use overwrite=true or omit " "old_string to create a new file"
+                    f"file {spec.path!r} does not exist — use overwrite=true or omit old_string to create a new file"
                 )
 
-            # Line-range direct replacement: when a #start-end scope is in the
+            # Line-range direct replacement: when a :Lx-Ly scope is in the
             # path and new_string is explicitly provided (even "" to delete those
             # lines), replace the range verbatim — old_string is not required.
             # If old_string IS also given, fall through to _replace_in_scope so

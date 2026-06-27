@@ -97,8 +97,8 @@ def test_explore_is_primary_grep_relations_hidden() -> None:
     for name in ("callers", "callees", "usages", "node"):
         assert name not in TOOLS
         assert name not in HIDDEN_LLM_TOOLS
-    assert "explore" in TOOLS
-    assert "explore" not in HIDDEN_LLM_TOOLS
+    assert "code_search" in TOOLS
+    assert "code_search" not in HIDDEN_LLM_TOOLS
     for name in ("grep", "relations", "search"):
         assert name in TOOLS
         assert name in HIDDEN_LLM_TOOLS
@@ -245,9 +245,9 @@ def test_search_tool_uses_cached_code_index_before_fallback(tmp_path: Path, monk
 def test_explore_is_primary_search_and_relations_hidden() -> None:
     # `explore` is the advertised primary retrieval tool (ranked source + relations
     # in one call). `search` and `relations` stay registered but hidden.
-    assert "explore" in TOOLS
-    assert "explore" not in HIDDEN_LLM_TOOLS
-    assert hasattr(mcp_server, "tool_explore")
+    assert "code_search" in TOOLS
+    assert "code_search" not in HIDDEN_LLM_TOOLS
+    assert hasattr(mcp_server, "tool_code_search")
     assert "search" in TOOLS
     assert "search" in HIDDEN_LLM_TOOLS
     assert "relations" in HIDDEN_LLM_TOOLS
@@ -263,7 +263,7 @@ def test_explore_is_primary_search_and_relations_hidden() -> None:
     assert "symbol" not in grep_props
     assert "seed_files" not in grep_props
     assert set(grep_props["mode"]["enum"]) == {"content", "map", "paths", "counts"}
-    assert "#start-end" in grep_props["path"]["description"]
+    assert ":Lx-Ly" in grep_props["path"]["description"]
 
 
 def test_grep_tool_schema_covers_native_contract() -> None:
@@ -431,8 +431,8 @@ def test_tool_code_search_can_attach_compact_rendered_block(tmp_path: Path, monk
 def test_explore_is_primary_relations_is_hidden_drill_in() -> None:
     # `explore` is the advertised primary retrieval tool. `relations` stays a
     # registered-but-hidden drill-in (kind=callers|callees|usages|self).
-    assert "explore" in mcp_server.TOOLS
-    assert hasattr(mcp_server, "tool_explore")
+    assert "code_search" in mcp_server.TOOLS
+    assert hasattr(mcp_server, "tool_code_search")
     assert mcp_server.TOOLS["relations"]["inputSchema"]["properties"]["kind"]["type"] == "string"
     assert hasattr(mcp_server, "_op_explore")
 
