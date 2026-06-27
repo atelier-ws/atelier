@@ -66,6 +66,14 @@ _parser.add_argument(
     action="store_true",
     help="Re-index all repos via 'atelier code index --reindex' before benchmarking.",
 )
+_parser.add_argument(
+    "--channel",
+    default=os.environ.get("FITNESS_CHANNEL", "lexical+zoekt"),
+    choices=["lexical", "zoekt", "lexical+zoekt"],
+    help="lexical = pure FTS5 symbol search (no Zoekt); "
+    "zoekt = pure Zoekt trigram search; "
+    "lexical+zoekt = explore pipeline with both FTS5 + Zoekt parallel (default).",
+)
 _args, _ = _parser.parse_known_args()
 
 with open(os.environ.get("FITNESS_PAIRS", "benchmarks/codebench/data/bench_pairs_multi.json")) as fh:
@@ -151,14 +159,24 @@ if _args.reindex:
         _index_one(_pfx, _meta)
 
 
+# ── Channel ──────────────────────────────────────────────────────
+CHANNEL = _args.channel
+if CHANNEL not in ("lexical", "zoekt", "lexical+zoekt"):
+    print(f"[fitness] ERROR: unknown channel {CHANNEL!r}", file=sys.stderr, flush=True)
+    sys.exit(1)
+if CHANNEL == "zoekt" and get_zoekt_supervisor is None:
+    print("[fitness] WARNING: zoekt adapter not importable; zoekt channel will return empty results.", file=sys.stderr, flush=True)
+
 engines = {}
 for prefix, meta in repos.items():
     if REPO and REPO not in prefix:
         continue
     if _args.reindex:
         _db = _db_path_for(Path(meta["ws"]))
-    else:
+    elif meta.get("db"):
         _db = Path(meta["db"])
+    else:
+        _db = None  # engine will use default db path for the workspace
     eng = CodeContextEngine(Path(meta["ws"]), db_path=_db, autosync_enabled=False)
     eng._cache_get = lambda *a, **k: (False, None)  # force recompute (no cross-candidate cache)
     eng._cache_set = lambda *a, **k: None
@@ -217,16 +235,25 @@ _total = len(_tasks)
 def _worker_init() -> None:
     """Prepare each forked worker for benchmark use.
 
-    Thread pools do NOT survive fork() safely: the inherited
-    _SEARCH_CHANNEL_EXECUTOR has dead parent threads and potentially locked
-    internal state, causing silent deadlocks on submit().  Replace it with a
-    fresh pool in each child process before any task runs.
+    Process pools (and thread pools) do NOT survive fork() safely: the
+    inherited _SEARCH_CHANNEL_EXECUTOR has dead parent processes/threads and
+    potentially locked internal state, causing silent deadlocks on submit().
+    Replace it with a fresh pool in each child process before any task runs.
     """
     import concurrent.futures as _cf
 
     import atelier.core.capabilities.code_context.engine as _eng_mod
 
-    _eng_mod._SEARCH_CHANNEL_EXECUTOR = _cf.ThreadPoolExecutor(max_workers=5, thread_name_prefix="atelier-fts-channel")
+    # Shut down the inherited executor (broken after fork) and create a fresh
+    # process pool for the FTS5 search channels.
+    _eng_mod._SEARCH_CHANNEL_EXECUTOR.shutdown(wait=False)
+    _eng_mod._SEARCH_CHANNEL_EXECUTOR = _cf.ProcessPoolExecutor(max_workers=5)
+
+    # Disable Zoekt in workers for pure lexical channel so tool_explore
+    # skips the Zoekt parallel recall hook entirely.
+    if CHANNEL == "lexical":
+        os.environ["ATELIER_ZOEKT_MODE"] = "off"
+
     for eng in engines.values():
         with contextlib.suppress(Exception):
             eng._symbol_centrality_map()
@@ -251,13 +278,24 @@ def _run_explore(task):
         signal.alarm(max(1, int(_TIMEOUT_S) + 1))
 
     try:
-        r = eng.tool_explore(
-            q,
-            max_files=10,
-            auto_index=False,
-            **({"include_source": False, "include_relationships": False} if _lean else {}),
-        )
-        files = dedup([f.get("path", "") for f in r.get("files", [])])[:10]
+        if CHANNEL == "zoekt":
+            # Pure Zoekt: call the Zoekt candidate channel directly.
+            # Returns empty list when Zoekt is unavailable, avoiding
+            # the ~0.8s timeout that tool_explore's parallel Zoekt
+            # thread would incur.
+            files = eng._zoekt_candidate_files(q, max_files=10)
+            files = dedup(files)[:10]
+        else:
+            # lexical or lexical+zoekt: use the full explore pipeline.
+            # For pure lexical, ATELIER_ZOEKT_MODE=off is set in
+            # _worker_init so Zoekt is skipped internally.
+            r = eng.tool_explore(
+                q,
+                max_files=10,
+                auto_index=False,
+                **({"include_source": False, "include_relationships": False} if _lean else {}),
+            )
+            files = dedup([f.get("path", "") for f in r.get("files", [])])[:10]
     except TimeoutError:
         files = []
         timed_out = True
