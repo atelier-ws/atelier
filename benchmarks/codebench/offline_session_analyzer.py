@@ -1,32 +1,37 @@
-"""Offline session analyzer — mine Claude Code session files for search patterns.
+"""Offline session analyzer — mine Claude Code & Codex session files for search patterns.
 
-Reads session JSONL files from ``~/.claude/projects/`` (or a user-provided path),
-extracts all search tool calls (grep, explore, ToolSearch), groups them into
-"search episodes" between user messages, and produces:
+Automatically detects the current repo from your working directory and scans
+both Claude Code and Codex CLI sessions:
+
+* **Claude Code** — ``~/.claude/projects/<repo-dir-name>/*.jsonl``
+* **Codex CLI** — ``~/.codex/sessions/**/*.jsonl``
+
+Extracts all Atelier MCP search tool calls (grep, explore, ToolSearch), groups
+them into "search episodes" between user messages, and produces:
 
 1. **Savings report** — how many individual grep calls each explore replaced,
    and how many turns were saved per session.
 2. **Benchmark pairs** — ``(query, gold_file)`` pairs mined from grep results,
-   compatible with the existing ``fitness_explore_mrr.py`` and ``eval_cg_mrr.py``
-   MRR eval scripts.
+   compatible with ``fitness_explore_mrr.py`` / ``eval_cg_mrr.py`` MRR eval.
 
 Usage::
 
-    # Analyze and generate pairs JSON for a specific session directory
+    # Run from any repo — auto-detects everything
+    python benchmarks/codebench/offline_session_analyzer.py --run-eval
+
+    # Override filter for a different project
+    python benchmarks/codebench/offline_session_analyzer.py \\
+        --repo-filter my-other-project --run-eval
+
+    # Specify a specific Claude Code session directory
     python benchmarks/codebench/offline_session_analyzer.py \\
         --session-dir ~/.claude/projects/-my-project \\
         --out /tmp/session_pairs.json
 
-    # Analyze all atelier sessions and run the retrieval benchmark
-    python benchmarks/codebench/offline_session_analyzer.py \\
-        --repo-filter atelier \\
-        --run-eval \\
-        --channel lexical
-
 Environment variables:
-    SESSION_ROOT      Path to scan for session files (default: ~/.claude/projects/)
-    SESSION_REPO_FILTER  Substring filter on project directory name
-    SESSION_PAIRS_OUT    Output path for mined pairs JSON
+    SESSION_ROOT          Override Claude Code session root
+    SESSION_REPO_FILTER   Override repo filter (default: auto-detected from cwd)
+    SESSION_PAIRS_OUT     Output path for mined pairs JSON
 """
 
 from __future__ import annotations
@@ -39,6 +44,405 @@ import sys
 from pathlib import Path
 
 SEARCH_TOOLS = {"mcp__atelier__grep", "mcp__atelier__explore", "ToolSearch", "Grep", "mcp__plugin_atelier_atelier__grep"}
+
+# Regex for detecting grep/rg/ag etc. run via bash exec_command in Codex
+_GREP_CMD_RE = re.compile(
+    r'^(?:grep|rg|ripgrep|ag|ack|git\s+grep)\b',
+    re.IGNORECASE,
+)
+# Extract the pattern from a grep command (heuristic)
+_GREP_PATTERN_RE = re.compile(
+    r"""
+    (?:grep|rg|ripgrep|ag|ack)
+    (?:\s+-\w+)*               # flags like -r, -n, -i, --include
+    \s+
+    (?:
+        ["']([^"']+?)["']      # quoted pattern
+        |
+        (\S+?)                  # unquoted pattern
+    )
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+
+def _detect_repo_info() -> tuple[str, str]:
+    """Detect current repo directory name and git-based owner__repo prefix.
+
+    Returns (dirname, owner__repo_prefix).
+    """
+    cwd = Path.cwd().resolve()
+    dirname = cwd.name
+
+    # Try git remote to derive owner__repo prefix
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=5,
+            cwd=str(cwd),
+        )
+        if result.returncode == 0:
+            url = result.stdout.strip()
+            # git@github.com:owner/repo.git  or  https://github.com/owner/repo.git
+            m = re.search(r"(?:github\.com[/:])([\w.-]+)/([\w.-]+?)(?:\.git)?$", url)
+            if m:
+                owner, repo = m.group(1), m.group(2)
+                return dirname, f"{owner}__{repo}"
+    except Exception:
+        pass
+
+    # Fallback: just use dirname as both
+    return dirname, dirname
+
+
+# ---------------------------------------------------------------------------
+# Codex session scanning
+# ---------------------------------------------------------------------------
+
+_CODEX_SESSION_ROOT = Path("~/.codex/sessions").expanduser()
+
+
+def _find_codex_session_files() -> list[Path]:
+    """Walk ~/.codex/sessions/ and return all JSONL session files."""
+    if not _CODEX_SESSION_ROOT.is_dir():
+        return []
+    return sorted(_CODEX_SESSION_ROOT.rglob("*.jsonl"))
+
+
+def _extract_grep_pattern(command: str) -> str | None:
+    """Extract the search pattern from a bash grep/rg command."""
+    m = _GREP_PATTERN_RE.search(command)
+    if m:
+        return (m.group(1) or m.group(2)).strip()
+    # Fallback: try to extract pattern from "grep -r PATTERN" unquoted
+    # after stripping flags
+    parts = command.split()
+    for i, part in enumerate(parts):
+        if part in ("grep", "rg", "ripgrep", "ag", "ack"):
+            # Skip flags, take the first non-flag argument after the tool
+            for j in range(i + 1, len(parts)):
+                p = parts[j]
+                if p.startswith("-"):
+                    continue
+                if p in ("rg", "ripgrep"):
+                    continue
+                return p.strip("\"'")
+    return None
+
+
+def _check_codex_session_cwd(path: Path, repo_path: Path) -> bool:
+    """Peek at a Codex session file to see if its cwd matches repo_path.
+
+    Returns True if the session belongs to this repo (or cwd is unset).
+    """
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for _ in range(30):  # check first 30 lines
+                line = fh.readline()
+                if not line:
+                    break
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    ev = json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+                # Format A: session_meta has cwd in payload
+                if ev.get("type") == "session_meta":
+                    cwd = str(ev.get("payload", {}).get("cwd", "") or "")
+                    if cwd:
+                        return Path(cwd).resolve() == repo_path
+                # Format A: also check event_msg / user_message for cwd
+                payload = ev.get("payload") or {}
+                cwd = str(payload.get("cwd", "") or "")
+                if cwd:
+                    return Path(cwd).resolve() == repo_path
+                # Format B: first line may have cwd at top level
+                cwd = str(ev.get("cwd", "") or "")
+                if cwd:
+                    return Path(cwd).resolve() == repo_path
+                # Format B: instructions line may have cwd
+                if "instructions" in ev:
+                    cwd = str(ev.get("cwd", "") or "")
+                    if cwd:
+                        return Path(cwd).resolve() == repo_path
+    except Exception:
+        pass
+    # No cwd found — include the session (can't rule it out)
+    return True
+
+
+def _scan_codex_session_file(path: Path, repo_path: Path | None = None) -> list[dict]:
+    """Parse a Codex JSONL session file, extract search tool calls.
+
+    Detects both Atelier MCP search tools AND bash grep/rg/ag commands
+    run via ``exec_command``. Skips sessions whose ``cwd`` does not match
+    the current repo.
+
+    Returns the same event format as scan_project_dir():
+    ``{"type":"call", "tool":..., "id":..., "query":..., "result_files": [...]}``.
+    """
+    # Filter by repo cwd first
+    if repo_path is not None and not _check_codex_session_cwd(path, repo_path):
+        return []
+
+    size = path.stat().st_size
+    if size < 1000 or size > 50_000_000:
+        return []
+
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return []
+
+    # Detect format
+    is_event_msg = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            ev = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        t = ev.get("type", "")
+        if t in ("message", "reasoning"):
+            break  # flat format B
+        elif t in ("event_msg", "response_item"):
+            is_event_msg = True
+            break
+        elif t == "session_meta":
+            is_event_msg = True
+            break
+
+    pending_calls: dict[str, dict] = {}  # call_id -> call event
+    pending_execs: list[dict] = []       # ordered exec_command calls (Format A)
+    session_events: list[dict] = []
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            ev = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+
+        if is_event_msg:
+            _scan_codex_format_a(ev, pending_calls, pending_execs, session_events)
+        else:
+            _scan_codex_format_b(ev, pending_calls, session_events)
+
+    return session_events
+
+
+def _resolve_codex_search_call(
+    name: str,
+    namespace: str,
+    args: dict,
+    call_id: str,
+) -> dict | None:
+    """Check if a Codex function_call is a search tool and extract query.
+
+    Handles both Codex namespace+name format (``namespace="mcp__atelier",
+    name="grep"``) and Claude Code dotted format (``name="mcp__atelier__grep"``).
+
+    Returns a call dict with ``tool``, ``id``, ``query``, and ``file_pattern``,
+    or ``None`` if this is not a search call.
+    """
+    # Build the dotted name that SEARCH_TOOLS uses
+    dotted = f"{namespace}__{name}" if namespace else name
+
+    # Check all name forms against SEARCH_TOOLS
+    effective = (
+        name if name in SEARCH_TOOLS
+        else (dotted if dotted in SEARCH_TOOLS else None)
+    )
+    # Codex also has native grep/explore tools under mcp__atelier namespace
+    # (not dotted — separate namespace and name fields)
+    if effective is None:
+        if namespace == "mcp__atelier" and name in ("grep", "explore", "search"):
+            effective = f"{namespace}/{name}"
+        elif name in ("grep", "explore", "search", "Grep"):
+            effective = name
+
+    if effective is None or not call_id:
+        return None
+
+    # Extract query — content regex, or fall back to file glob patterns
+    query = str(args.get("query", args.get("content_regex", args.get("pattern", args.get("regex", ""))))).strip()
+    if not query:
+        patterns = args.get("file_glob_patterns", [])
+        if isinstance(patterns, list) and patterns:
+            query = ", ".join(str(p) for p in patterns)
+        elif isinstance(patterns, str) and patterns:
+            query = patterns
+        elif args.get("path"):
+            query = str(args.get("path", ""))
+    if not query:
+        return None
+
+    return {
+        "tool": effective,
+        "id": f"codex_{call_id}",
+        "query": query[:500],
+        "file_pattern": args.get("file_glob_patterns", ""),
+    }
+
+
+def _scan_codex_format_a(
+    ev: dict,
+    pending_calls: dict[str, dict],
+    pending_execs: list[dict],
+    session_events: list[dict],
+) -> None:
+    """Process a single Codex Format A line (event_msg wrapper).
+
+    Handles:
+    - Atelier MCP search tools (mcp__atelier__grep etc.) via function_call + function_call_output
+    - Bash grep/rg/ag via exec_command + exec_command_end
+    """
+    ev_type = ev.get("type", "")
+    payload = ev.get("payload") or {}
+    pt = payload.get("type", "")
+
+    if ev_type == "response_item" and pt == "function_call":
+        name = str(payload.get("name", ""))
+        namespace = str(payload.get("namespace", ""))
+        call_id = str(payload.get("call_id", "") or payload.get("id", ""))
+        args_raw = payload.get("arguments", "{}")
+        args = _coerce_args(args_raw)
+
+        call = _resolve_codex_search_call(name, namespace, args, call_id)
+        if call is not None:
+            pending_calls[call_id] = call
+            return
+
+        # Bash grep via exec_command
+            cmd = str(args.get("command", args.get("cmd", args_raw)))
+            if _GREP_CMD_RE.match(cmd.strip()):
+                pattern = _extract_grep_pattern(cmd)
+                if pattern:
+                    tag = call_id or f"exec_{len(pending_execs)}"
+                    pending_execs.append({
+                        "call_id": tag,
+                        "call": {
+                            "tool": "bash_grep",
+                            "id": f"codex_{tag}",
+                            "query": pattern[:500],
+                            "file_pattern": "",
+                        },
+                    })
+
+    elif ev_type == "event_msg" and pt == "function_call_output":
+        call_id = str(payload.get("call_id", ""))
+        call = pending_calls.pop(call_id, None)
+        if call is None:
+            # Could be an exec_command result in function_call_output too
+            # (some Codex versions route exec results through here)
+            for i, ec in enumerate(pending_execs):
+                if ec["call_id"] == call_id:
+                    call = ec["call"]
+                    pending_execs.pop(i)
+                    break
+        if call is None:
+            return
+        output = payload.get("output", "")
+        output_text = str(output) if isinstance(output, str) else json.dumps(output)
+        files = parse_tool_result_files(output_text)
+        call["result_files"] = files
+        call["result_count"] = len(files)
+        session_events.append({"type": "call", **call})
+
+    elif ev_type == "response_item" and pt == "function_call_output":
+        # Codex routes MCP tool results through response_item too (not just event_msg)
+        call_id = str(payload.get("call_id", ""))
+        call = pending_calls.pop(call_id, None)
+        if call is not None:
+            output = payload.get("output", "")
+            output_text = str(output) if isinstance(output, str) else json.dumps(output)
+            files = parse_tool_result_files(output_text)
+            call["result_files"] = files
+            call["result_count"] = len(files)
+            session_events.append({"type": "call", **call})
+
+    elif ev_type == "event_msg" and pt == "exec_command_end":
+        # Match to the oldest pending exec_command (sequential order)
+        if not pending_execs:
+            return
+        ec = pending_execs.pop(0)
+        call = ec["call"]
+        output = payload.get("output", "")
+        output_text = str(output) if isinstance(output, str) else json.dumps(output)
+        files = parse_tool_result_files(output_text)
+        call["result_files"] = files
+        call["result_count"] = len(files)
+        session_events.append({"type": "call", **call})
+
+
+def _scan_codex_format_b(
+    ev: dict,
+    pending_calls: dict[str, dict],
+    session_events: list[dict],
+) -> None:
+    """Process a single Codex Format B line (flat).
+
+    Handles both Atelier MCP tools and bash grep exec_command.
+    """
+    ev_type = ev.get("type", "")
+
+    if ev_type == "function_call":
+        name = str(ev.get("name", ""))
+        namespace = str(ev.get("namespace", ""))
+        call_id = str(ev.get("call_id", "") or ev.get("id", ""))
+        args_raw = ev.get("arguments", "{}")
+        args = _coerce_args(args_raw)
+
+        call = _resolve_codex_search_call(name, namespace, args, call_id)
+        if call is not None:
+            pending_calls[call_id] = call
+            return
+
+        # Bash grep via exec_command
+        if name == "exec_command":
+            cmd = str(args.get("command", args.get("cmd", args_raw)))
+            if _GREP_CMD_RE.match(cmd.strip()):
+                pattern = _extract_grep_pattern(cmd)
+                if pattern and call_id:
+                    pending_calls[call_id] = {
+                        "tool": "bash_grep",
+                        "id": f"codex_{call_id}",
+                        "query": pattern[:500],
+                        "file_pattern": "",
+                    }
+
+    elif ev_type == "function_call_output":
+        call_id = str(ev.get("call_id", ""))
+        call = pending_calls.pop(call_id, None)
+        if call is None:
+            return
+        output = ev.get("output", "")
+        output_text = str(output) if isinstance(output, str) else json.dumps(output)
+        files = parse_tool_result_files(output_text)
+        call["result_files"] = files
+        call["result_count"] = len(files)
+        session_events.append({"type": "call", **call})
+
+
+def _coerce_args(raw: str | dict) -> dict:
+    """Parse function call arguments that may be a JSON string or already a dict."""
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# Original Claude Code session scanning
+# ---------------------------------------------------------------------------
 
 
 def parse_tool_result_files(content) -> list[str]:
@@ -66,7 +470,64 @@ def parse_tool_result_files(content) -> list[str]:
         # possibly prefixed with `## `, `### `, or `# grep` headers
     _FILE_RE = re.compile(r"^(?:#+\s+)?([\w./-]+/(?:[\w./-]+\.\w+))")
 
+    # Spill-file pattern: results were too large and written to /tmp/atelier-spill/search-*.json
+    _SPILL_RE = re.compile(r"/tmp/atelier-spill/search-\d+\.json")
+
     for chunk in chunks:
+        # Check for spilled results — recover from spill file
+        if isinstance(chunk, str) and ("spilled" in chunk or "/tmp/atelier-spill/" in chunk):
+            spill_m = _SPILL_RE.search(chunk)
+            if spill_m:
+                spill_path = spill_m.group(0)
+                try:
+                    with open(spill_path) as _sfh:
+                        spill_data = json.load(_sfh)
+                    # Spill files contain the same format as grep output
+                    # Try standard grep fields: ranked_file_map, files, content, text
+                    spilled_files = parse_tool_result_files(json.dumps(spill_data))
+                    if spilled_files:
+                        for fp in spilled_files:
+                            if fp not in seen:
+                                seen.add(fp)
+                                files.append(fp)
+                        continue  # skip further plain-text parsing of spill message
+                except (FileNotFoundError, json.JSONDecodeError, PermissionError):
+                    pass  # spill file may have been cleaned up
+                # If the spill file is gone, fall through to normal text parsing
+
+        # Codex MCP output format: "Wall time: Xs\nOutput:\n[{content_blocks}]"
+        # The inner JSON text field may contain unescaped newlines, so we
+        # extract file paths directly from the raw text rather than re-parsing.
+        if isinstance(chunk, str):
+            _output_marker = "\nOutput:\n"
+            idx = chunk.find(_output_marker)
+            if idx != -1:
+                rest = chunk[idx + len(_output_marker):].strip()
+                # Remove leading [ and trailing ] if present
+                if rest.startswith("[") and rest.endswith("]"):
+                    rest = rest[1:-1]
+                # Try to parse as JSON object (for well-formed cases)
+                try:
+                    obj = json.loads(rest)
+                    if isinstance(obj, dict) and obj.get("type") == "text":
+                        inner = obj.get("text", "")
+                        if inner:
+                            files.extend(parse_tool_result_files(inner))
+                            continue
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                # Fallback: extract "text" field content via regex
+                m = re.search(r'"text"\s*:\s*"((?:[^"\\]|\\.)*)"', rest, re.DOTALL)
+                if m:
+                    inner = m.group(1)
+                    # Unescape JSON-style escapes in the extracted text
+                    inner = inner.replace("\\n", "\n").replace("\\t", "\t").replace('\\"', '"').replace("\\\\", "\\")
+                    files.extend(parse_tool_result_files(inner))
+                    continue
+                # Last resort: parse file paths directly from the rest text
+                files.extend(parse_tool_result_files(rest))
+                continue
+
         # JSON format: {"ranked_file_map": [...]} or {"cached":..., "path":"..."}
         first = chunk.strip()
         if first.startswith("{"):
@@ -226,7 +687,16 @@ def scan_project_dir(project_dir: str) -> list[dict]:
                         inp = block.get("input", {})
                         if not isinstance(inp, dict):
                             continue
-                        query = inp.get("query", inp.get("content_regex", ""))
+                        query = inp.get("query", inp.get("content_regex", inp.get("pattern", inp.get("regex", ""))))
+                        # Handle __unparsedToolInput — raw JSON string that failed to parse
+                        if not query and isinstance(inp.get("__unparsedToolInput"), dict):
+                            raw = inp["__unparsedToolInput"].get("raw", "")
+                            try:
+                                reparsed = json.loads(raw)
+                                if isinstance(reparsed, dict):
+                                    query = reparsed.get("query", reparsed.get("content_regex", reparsed.get("pattern", reparsed.get("regex", ""))))
+                            except (json.JSONDecodeError, TypeError):
+                                pass
                         tool_id = block.get("id", "")
                         session_events.append({
                             "type": "call",
@@ -260,14 +730,23 @@ def build_search_episodes(events: list[dict]) -> list[list[dict]]:
     return episodes
 
 
-def generate_pairs(events: list[dict]) -> tuple[list[tuple[str, str, str]], dict[str, list[str]], list[dict]]:
+def generate_pairs(
+    events: list[dict],
+    repo_prefix: str = "",
+) -> tuple[list[tuple[str, str, str]], dict[str, list[str]], list[dict]]:
     """Generate (query, tid, prefix) pairs from grep calls that have result files.
+
+    Args:
+        events: Extracted tool-call events with result_files.
+        repo_prefix: Owner__repo prefix (auto-detected from git if empty).
 
     Returns (pairs, true_map, savings_report) where:
     - pairs: [(query, tid, prefix), ...] — each query maps to its result files
     - true_map: {tid: [file_paths...]} — the actual files the grep returned
     - savings: list of per-episode search statistics
     """
+    if not repo_prefix:
+        _dirname, repo_prefix = _detect_repo_info()
     episodes = build_search_episodes(events)
 
     pairs: list[tuple[str, str, str]] = []
@@ -287,10 +766,9 @@ def generate_pairs(events: list[dict]) -> tuple[list[tuple[str, str, str]], dict
                 continue
             # Use the grep's own result files as the gold files
             tid = f"session_{pair_id}"
-            prefix = "atelier__atelier"  # assume atelier repo for these pairs
             pair_id += 1
             true_map[tid] = files[:10]  # top 10 result files
-            pairs.append((query, tid, prefix))
+            pairs.append((query, tid, repo_prefix))
 
         # Generate savings metric for this episode
         if grep_calls:
@@ -356,16 +834,26 @@ def generate_savings_report(savings: list[dict]) -> dict:
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="Mine Claude Code session files for search patterns")
+    # Auto-detect repo info from cwd
+    repo_dirname, git_prefix = _detect_repo_info()
+    env_filter = os.environ.get("SESSION_REPO_FILTER", "")
+    auto_filter = env_filter if env_filter else repo_dirname
+
+    parser = argparse.ArgumentParser(
+        description="Mine Claude Code & Codex session files for search patterns"
+    )
     parser.add_argument(
         "--session-dir", "-d",
-        default=os.environ.get("SESSION_ROOT", os.path.expanduser("~/.claude/projects/")),
-        help="Directory to scan for session files (default: ~/.claude/projects/)",
+        default=os.environ.get("SESSION_ROOT", ""),
+        help="Claude Code session directory (default: ~/.claude/projects/<auto-repo>/)",
     )
     parser.add_argument(
         "--repo-filter", "-f",
-        default=os.environ.get("SESSION_REPO_FILTER", ""),
-        help="Substring filter on project directory name (e.g. 'atelier')",
+        default=auto_filter,
+        help=(
+            f"Substring filter on project directory name "
+            f"(default: auto-detected '{auto_filter}')"
+        ),
     )
     parser.add_argument(
         "--out", "-o",
@@ -377,57 +865,114 @@ def main():
         help="Run the retrieval benchmark after generating pairs",
     )
     parser.add_argument(
-        "--channel", choices=["lexical", "cg"],
+        "--channel", choices=["lexical", "zoekt", "cg", "lexical+zoekt"],
         default="lexical",
-        help="Which retrieval eval to run (default: lexical/explore)",
+        help="Which retrieval eval to run (default: lexical/explore without Zoekt)",
     )
     parser.add_argument(
         "--full", action="store_true",
         help="Run the eval on all mined pairs (no sample cap)",
     )
+    parser.add_argument(
+        "--synthetic", "-s", action="store_true",
+        help="Augment mined pairs with synthetic queries mined from the repo source",
+    )
+    parser.add_argument(
+        "--synthetic-per-file", type=int, default=4,
+        help="Max synthetic queries per file (default: 4, only with --synthetic)",
+    )
     args = parser.parse_args()
 
-    session_root = Path(args.session_dir)
-    if not session_root.is_dir():
-        print(f"[session] ERROR: session dir not found: {session_root}", file=sys.stderr)
-        sys.exit(1)
+    repo_prefix = git_prefix  # owner__repo for the output JSON
 
-    # Find project directories matching the filter
-    project_dirs = sorted(
-        d for d in session_root.iterdir()
-        if d.is_dir() and (not args.repo_filter or args.repo_filter in d.name)
-    )
+    # -----------------------------------------------------------------------
+    # 1. Scan Claude Code sessions
+    # -----------------------------------------------------------------------
+    claude_root = Path(args.session_dir) if args.session_dir else Path.home() / ".claude" / "projects"
+    claude_events: list[dict] = []
+    scanned_claude_dirs: list[str] = []
 
-    if not project_dirs:
-        print(f"[session] No project dirs found matching filter '{args.repo_filter}'", file=sys.stderr)
-        print(f"[session] Root: {session_root}", file=sys.stderr)
-        sys.exit(1)
+    if claude_root.is_dir():
+        project_dirs = sorted(
+            d for d in claude_root.iterdir()
+            if d.is_dir() and (not args.repo_filter or args.repo_filter in d.name)
+        )
+        for proj_dir in project_dirs:
+            events = scan_project_dir(str(proj_dir))
+            if events:
+                claude_events.extend(events)
+                scanned_claude_dirs.append(proj_dir.name)
+                print(
+                    f"[claude] {proj_dir.name}: "
+                    f"{sum(1 for e in events if e['type']=='call')} search calls",
+                    file=sys.stderr,
+                )
 
-    print(f"[session] Scanning {len(project_dirs)} project directories under {session_root}", file=sys.stderr)
-    print(f"[session] Filter: '{args.repo_filter}'", file=sys.stderr)
+        print(
+            f"[claude] Scanned {len(project_dirs)} project dir(s) "
+            f"matching '{args.repo_filter}' under {claude_root}",
+            file=sys.stderr,
+        )
+    else:
+        print(f"[claude] Session dir not found: {claude_root} (skipping)", file=sys.stderr)
 
-    # Scan all sessions
-    all_events: list[dict] = []
-    scanned_sessions = 0
-    for proj_dir in project_dirs:
-        events = scan_project_dir(str(proj_dir))
+    # -----------------------------------------------------------------------
+    # 2. Scan Codex sessions (filtered by repo cwd)
+    # -----------------------------------------------------------------------
+    codex_events: list[dict] = []
+    scanned_codex_files = 0
+    scanned_codex_sessions = 0
+    skipped_codex_sessions = 0
+    repo_path = Path.cwd().resolve()
+
+    codex_files = _find_codex_session_files()
+    scanned_codex_files = len(codex_files)
+    for cpath in codex_files:
+        events = _scan_codex_session_file(cpath, repo_path=repo_path)
+        if events is not None:
+            # events is empty list = scanned but no calls found
+            # None would mean skipped by cwd filter — but we return [] for both
+            pass
         if events:
-            all_events.extend(events)
-            scanned_sessions += 1
-            print(f"[session] {proj_dir.name}: {sum(1 for e in events if e['type']=='call')} search calls", file=sys.stderr)
+            codex_events.extend(events)
+            scanned_codex_sessions += 1
 
-    # Generate pairs and savings report
-    pairs, true_map, savings = generate_pairs(all_events)
+    if codex_files:
+        print(
+            f"[codex] Scanned {scanned_codex_files} session file(s) "
+            f"under {_CODEX_SESSION_ROOT}, "
+            f"{scanned_codex_sessions} with search calls "
+            f"(filtered to repo: {repo_path.name})",
+            file=sys.stderr,
+        )
+    else:
+        print(f"[codex] No sessions found under {_CODEX_SESSION_ROOT} (skipping)", file=sys.stderr)
+
+    # -----------------------------------------------------------------------
+    # 3. Merge and generate pairs
+    # -----------------------------------------------------------------------
+    all_events = claude_events + codex_events
+    total_sessions = len(scanned_claude_dirs) + scanned_codex_sessions
+
+    if not all_events:
+        print("[session] No search tool calls found in any session.", file=sys.stderr)
+        print("[session] Tried:", file=sys.stderr)
+        print(f"  Claude: {claude_root}", file=sys.stderr)
+        print(f"  Codex:  {_CODEX_SESSION_ROOT}", file=sys.stderr)
+        sys.exit(1)
+
+    pairs, true_map, savings = generate_pairs(all_events, repo_prefix=repo_prefix)
     report = generate_savings_report(savings)
 
     print(f"\n{'='*60}", file=sys.stderr)
     print("OFFLINE SESSION ANALYSIS", file=sys.stderr)
-    print(f"  Projects scanned: {len(project_dirs)}", file=sys.stderr)
-    print(f"  Sessions with search calls: {scanned_sessions}", file=sys.stderr)
+    print(f"  Repo prefix: {repo_prefix}", file=sys.stderr)
+    print(f"  Claude project dirs with calls: {len(scanned_claude_dirs)}", file=sys.stderr)
+    print(f"  Codex sessions with calls:      {scanned_codex_sessions}", file=sys.stderr)
     print(f"  Total search tool calls: {report['total_search_calls']}", file=sys.stderr)
-    print(f"    - mcp__atelier__grep calls:  {report['total_grep_calls']}", file=sys.stderr)
-    print(f"    - mcp__atelier__explore calls: {report['total_explore_calls']}", file=sys.stderr)
-    print(f"    - ToolSearch calls:           {report['total_toolsearch_calls']}", file=sys.stderr)
+    print(f"    - grep calls:  {report['total_grep_calls']}", file=sys.stderr)
+    print(f"    - explore calls: {report['total_explore_calls']}", file=sys.stderr)
+    print(f"    - ToolSearch calls: {report['total_toolsearch_calls']}", file=sys.stderr)
     print(f"  Search episodes: {report['total_episodes']}", file=sys.stderr)
     print(f"  Episodes WITH explore: {report['episodes_with_explore']}", file=sys.stderr)
     print(f"  Episodes WITHOUT explore (grep-only): {report['episodes_without_explore']}", file=sys.stderr)
@@ -446,11 +991,40 @@ def main():
             seen_pairs.add(key)
             deduped_pairs.append((q, tid, prefix))
 
+    # -----------------------------------------------------------------------
+    # 4. (Optional) Augment with synthetic pairs mined from repo source
+    # -----------------------------------------------------------------------
+    if args.synthetic:
+        try:
+            from synthetic_pair_miner import mine_synthetic_pairs as _mine_synthetic
+            _syn_pairs, _syn_true = _mine_synthetic(
+                repo_dir=Path.cwd(),
+                repo_prefix=repo_prefix,
+                max_queries_per_file=args.synthetic_per_file,
+                verbose=True,
+            )
+            if _syn_pairs:
+                print(f"[synthetic] Adding {len(_syn_pairs)} synthetic pairs + "
+                      f"{len(_syn_true)} true_map entries", file=sys.stderr)
+                deduped_pairs.extend(_syn_pairs)
+                true_map.update(_syn_true)
+        except ImportError:
+            print("[synthetic] WARNING: synthetic_pair_miner module not found. Skipping.",
+                  file=sys.stderr)
+        except Exception as exc:
+            print(f"[synthetic] WARNING: synthetic mining failed: {exc}", file=sys.stderr)
+
+    total_pairs = len(deduped_pairs)
+    print(f"  Total pairs after all mining: {total_pairs}", file=sys.stderr)
+    if args.synthetic:
+        syn_count = total_pairs - len(pairs)
+        print(f"    ({len(pairs)} from sessions + {syn_count} synthetic)", file=sys.stderr)
+
     out_data = {
         "pairs": deduped_pairs,
         "true_map": true_map,
         "repos": {
-            "atelier__atelier": {
+            repo_prefix: {
                 "ws": str(Path.cwd().resolve()),
             }
         },
@@ -458,7 +1032,8 @@ def main():
 
     with open(args.out, "w") as f:
         json.dump(out_data, f, indent=2)
-    print(f"[session] Pairs written to {args.out} ({len(deduped_pairs)} pairs)", file=sys.stderr)
+    print(f"[session] Pairs written to {args.out} ({len(deduped_pairs)} pairs"
+          f"{', includes synthetic' if args.synthetic else ''})", file=sys.stderr)
 
     # Run eval if requested
     if args.run_eval and len(deduped_pairs) > 0:
@@ -467,6 +1042,7 @@ def main():
         if args.channel == "cg":
             cmd = [sys.executable, "benchmarks/codebench/eval_cg_mrr.py"]
         else:
+            env["FITNESS_CHANNEL"] = args.channel
             cmd = [sys.executable, "benchmarks/codebench/fitness_explore_mrr.py"]
             if args.full:
                 cmd.append("--full")
