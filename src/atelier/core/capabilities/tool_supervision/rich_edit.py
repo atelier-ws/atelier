@@ -423,7 +423,7 @@ def _parse_gate_message(
     snippet = "\n".join(f"{i + 1}: {lines[i]}" for i in range(lo, hi))
     fuzzy_note = ""
     for entry in applied:
-        entry_path = str(entry.get("path", "")).split("#")[0]
+        entry_path = re.sub(r":L\d+(-L\d+)?$", "", str(entry.get("path", "")), flags=re.IGNORECASE).split("#")[0]
         mode = entry.get("match_mode")
         if entry_path.endswith(path.name) and mode in ("normalized", "placeholder", "fuzzy"):
             fuzzy_note = (

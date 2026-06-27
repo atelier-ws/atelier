@@ -5990,7 +5990,8 @@ def _applied_entry_path(entry: str | dict[str, Any]) -> str | None:
         return None
     if not raw:
         return None
-    # Drop a "#10-20" / "#cell=..." line/cell scope suffix so same-file scopes merge.
+    # Drop a ":L10-L20" / "#cell=..." line/cell scope suffix so same-file scopes merge.
+    raw = re.sub(r":L\d+(-L\d+)?$", "", raw, flags=re.IGNORECASE)
     return raw.split("#", 1)[0] or raw
 
 
