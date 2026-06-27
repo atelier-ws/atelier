@@ -6,6 +6,7 @@ Usage:
 
 Saves results to multi_repo/results_<repo>.json (per-repo, never overwritten).
 """
+
 from __future__ import annotations
 
 import ast
@@ -40,7 +41,7 @@ def log(msg):
 def _source_segment(source: str, node: ast.AST) -> str:
     lines = source.splitlines(keepends=True)
     start = node.lineno - 1 if hasattr(node, "lineno") else 0
-    end = (node.end_lineno if hasattr(node, "end_lineno") and node.end_lineno else start)
+    end = node.end_lineno if hasattr(node, "end_lineno") and node.end_lineno else start
     return "".join(lines[start:end])
 
 
@@ -59,15 +60,26 @@ def extract_chunks(filepath: str, src_root: pathlib.Path) -> list[dict]:
         return chunks
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            kind = "async_function" if isinstance(node, ast.AsyncFunctionDef) else \
-                   "class" if isinstance(node, ast.ClassDef) else "function"
+            kind = (
+                "async_function"
+                if isinstance(node, ast.AsyncFunctionDef)
+                else "class"
+                if isinstance(node, ast.ClassDef)
+                else "function"
+            )
             chunk_id = f"{rel_str}::{node.name}"
             text = _source_segment(source, node)
             doc = ast.get_docstring(node) or ""
-            chunks.append({
-                "id": chunk_id, "file": str(rel), "symbol": node.name,
-                "type": kind, "text": text, "docstring": doc,
-            })
+            chunks.append(
+                {
+                    "id": chunk_id,
+                    "file": str(rel),
+                    "symbol": node.name,
+                    "type": kind,
+                    "text": text,
+                    "docstring": doc,
+                }
+            )
     return chunks
 
 
@@ -81,7 +93,7 @@ def split_long_chunks(chunks: list[dict], max_lines: int = 60) -> list[dict]:
             n = (len(lines) + max_lines - 1) // max_lines
             for i in range(n):
                 a, b = i * max_lines, min((i + 1) * max_lines, len(lines))
-                out.append({**c, "id": f"{c['id']}#part{i+1}", "text": "\n".join(lines[a:b])})
+                out.append({**c, "id": f"{c['id']}#part{i + 1}", "text": "\n".join(lines[a:b])})
     return out
 
 
@@ -137,7 +149,23 @@ def build_repo_corpus(repo_name: str) -> tuple[list[dict], list[dict]]:
         log(f"  SKIP: {repo_name} not found")
         return [], []
 
-    exclude_dirs = {"tests", "test", "docs", "examples", "benchmarks", "build", "dist", ".git", "__pycache__", "env", "venv", ".tox", ".eggs", "*.egg-info", "node_modules"}
+    exclude_dirs = {
+        "tests",
+        "test",
+        "docs",
+        "examples",
+        "benchmarks",
+        "build",
+        "dist",
+        ".git",
+        "__pycache__",
+        "env",
+        "venv",
+        ".tox",
+        ".eggs",
+        "*.egg-info",
+        "node_modules",
+    }
     py_files = sorted(repo_path.rglob("*.py"))
     filtered = []
     for f in py_files:
@@ -159,16 +187,23 @@ def build_repo_corpus(repo_name: str) -> tuple[list[dict], list[dict]]:
     before = len(all_chunks)
     all_chunks = [c for c in all_chunks if len(c["text"]) > MIN_CHUNK_CHARS]
     all_chunks = split_long_chunks(all_chunks)
-    log(f"  {repo_name}: {len(all_chunks)} chunks ({before - len(all_chunks)} tiny filtered) from {len(filtered)} files")
+    log(
+        f"  {repo_name}: {len(all_chunks)} chunks ({before - len(all_chunks)} tiny filtered) from {len(filtered)} files"
+    )
     if not all_chunks:
         return [], []
 
     with open(corpus_path, "w", encoding="utf-8") as f:
         for c in all_chunks:
-            f.write(json.dumps({
-                "id": c["id"],
-                "text": f"Path: {c['file']}\nSymbol: {c['symbol']}\n\n{c['text']}",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "id": c["id"],
+                        "text": f"Path: {c['file']}\nSymbol: {c['symbol']}\n\n{c['text']}",
+                    }
+                )
+                + "\n"
+            )
 
     all_queries = []
     for c in all_chunks:
@@ -187,14 +222,14 @@ def build_repo_corpus(repo_name: str) -> tuple[list[dict], list[dict]]:
 # ── Embedding ────────────────────────────────────────────────────────
 device = "cuda" if torch.cuda.is_available() else "cpu"
 # Use FP16 to halve GPU memory
-model_kwargs = {"torch_dtype": torch.float16} if device == "cuda" else {}
+model_kwargs = {"dtype": torch.float16} if device == "cuda" else {}
 log(f"\n── Loading BGE-Code-v1 on {device} (FP16) ──")
 t0 = time.time()
 bge_model = SentenceTransformer("BAAI/bge-code-v1", trust_remote_code=True, device=device, model_kwargs=model_kwargs)
 bge_model.eval()
 if device == "cuda":
     bge_model.half()
-log(f"  Loaded in {time.time()-t0:.1f}s")
+log(f"  Loaded in {time.time() - t0:.1f}s")
 
 
 def bge_embed(texts, batch_size=8):
@@ -274,13 +309,15 @@ def run_repo(repo: str, skip_qwen: bool = False):
         log(f"  Embedding ({len(chunks)} chunks) with BGE (batch_size={bs})...")
         t0 = time.time()
         corpus_bge = bge_embed(corp_texts, batch_size=bs)
-        log(f"    Done: {corpus_bge.shape}, {time.time()-t0:.1f}s")
+        log(f"    Done: {corpus_bge.shape}, {time.time() - t0:.1f}s")
         np.save(bge_path, corpus_bge)
 
     log(f"  Evaluating BGE on {len(eval_queries)} queries...")
     res_bge = evaluate(corpus_bge, bge_embed, eval_queries, cid, use_instruction=True)
-    log(f"    BGE:  hit@1={res_bge['hit@1']:.2%}  hit@5={res_bge['hit@5']:.2%}  hit@10={res_bge['hit@10']:.2%}  "
-        f"MRR={res_bge['mrr@10']:.2%}  nDCG={res_bge['ndcg@10']:.2%}")
+    log(
+        f"    BGE:  hit@1={res_bge['hit@1']:.2%}  hit@5={res_bge['hit@5']:.2%}  hit@10={res_bge['hit@10']:.2%}  "
+        f"MRR={res_bge['mrr@10']:.2%}  nDCG={res_bge['ndcg@10']:.2%}"
+    )
 
     result = {"bge": res_bge}
 
@@ -295,7 +332,7 @@ def run_repo(repo: str, skip_qwen: bool = False):
             try:
                 t0 = time.time()
                 corpus_qwen = qwen_embed(corp_texts)
-                log(f"    Done: {corpus_qwen.shape}, {time.time()-t0:.1f}s")
+                log(f"    Done: {corpus_qwen.shape}, {time.time() - t0:.1f}s")
                 np.save(qwen_path, corpus_qwen)
             except Exception as e:
                 log(f"    Qwen failed: {e}")
@@ -306,13 +343,14 @@ def run_repo(repo: str, skip_qwen: bool = False):
         log("  Evaluating Qwen...")
         try:
             res_q = evaluate(corpus_qwen, qwen_embed, eval_queries, cid, use_instruction=True)
-            log(f"    Qwen: hit@1={res_q['hit@1']:.2%}  hit@5={res_q['hit@5']:.2%}  hit@10={res_q['hit@10']:.2%}  "
-                f"MRR={res_q['mrr@10']:.2%}  nDCG={res_q['ndcg@10']:.2%}")
+            log(
+                f"    Qwen: hit@1={res_q['hit@1']:.2%}  hit@5={res_q['hit@5']:.2%}  hit@10={res_q['hit@10']:.2%}  "
+                f"MRR={res_q['mrr@10']:.2%}  nDCG={res_q['ndcg@10']:.2%}"
+            )
             result["qwen"] = res_q
         except Exception as e:
             log(f"    Qwen eval failed: {e}")
             result["qwen"] = {"error": str(e)}
-
 
     json.dump(result, open(result_path, "w"), indent=2)
     return result
