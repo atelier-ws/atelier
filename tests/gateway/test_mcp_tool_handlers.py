@@ -387,29 +387,17 @@ def test_grep_param_aliases_reach_handler(monkeypatch: pytest.MonkeyPatch) -> No
     assert captured["content_regex"] == "winner"
 
 
-def test_tools_list_edit_schema_documents_descriptor_variants() -> None:
+def test_tools_list_edit_schema_documents_flat_shape() -> None:
     edit_tool = TOOLS["edit"]
     schema = edit_tool["inputSchema"]
     edits_schema = schema["properties"]["edits"]
-    variants = edits_schema["items"]["anyOf"]
+    item_props = edits_schema["items"]["properties"]
 
     assert schema["required"] == ["edits"]
-    assert len(variants) == 4
-    assert {variant["title"] for variant in variants} == {
-        "File edit",
-        "Notebook cell edit",
-        "Symbol edit",
-        "Projection edit",
-    }
-    symbol_variant = next(v for v in variants if v["title"] == "Symbol edit")
-    assert "symbol_id" not in symbol_variant["properties"]
-    assert "symbol_name" not in symbol_variant["properties"]
-    projection_variant = next(v for v in variants if v["title"] == "Projection edit")
-    assert "projection_mapping" in projection_variant["properties"]
-    assert "projected_ranges" in projection_variant["properties"]
-    assert "description" not in edits_schema
-    file_variant = next(v for v in variants if v["title"] == "File edit")
-    path_desc = file_variant["properties"]["path"]["description"]
+    assert "anyOf" not in edits_schema["items"]
+    assert set(item_props) == {"path", "old", "new", "overwrite"}
+    assert edits_schema["items"].get("additionalProperties") is False
+    path_desc = item_props["path"]["description"]
     assert ":Lx" in path_desc and ":Lx-Ly" in path_desc
 
 
@@ -2080,9 +2068,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert (
-        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
-    ), f"'trace_id' missing or empty in trace receipt: {payload}"
+    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
+        f"'trace_id' missing or empty in trace receipt: {payload}"
+    )
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

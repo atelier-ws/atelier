@@ -232,11 +232,11 @@ def test_rich_overwrite_with_line_range_rejected(workspace: Path) -> None:
     original = "".join(f"line_{i} = {i}\n" for i in range(1, 21))
     f.write_text(original, encoding="utf-8")
 
-    payload = _edit({"edits": [{"file_path": "big.py#5-10", "new_string": "replacement\n", "overwrite": True}]})
+    payload = _edit({"edits": [{"file_path": "big.py:L5-L10", "new_string": "replacement\n", "overwrite": True}]})
 
     assert payload["rolled_back"] is True
     assert payload["failed"]
-    assert "ignores the #5-10 line range" in payload["failed"][0]["error"]
+    assert "ignores the :L5-L10 line range" in payload["failed"][0]["error"]
     # The file must be untouched — not emptied, not partially overwritten.
     assert f.read_text(encoding="utf-8") == original
 
@@ -280,7 +280,7 @@ def test_rich_line_anchor_restricts_scope(workspace: Path) -> None:
     payload = _edit(
         {
             "post_edit_hooks": False,
-            "edits": [{"file_path": "scope.py#2", "old_string": "x = 2", "new_string": "x = 99"}],
+            "edits": [{"file_path": "scope.py:L2", "old_string": "x = 2", "new_string": "x = 99"}],
         }
     )
 
@@ -738,11 +738,8 @@ def test_schema_registered_as_edit_tool() -> None:
 
     assert "edit" in TOOLS
     desc = TOOLS["edit"]["description"]
-    assert "famil" in desc.lower(), "description should mention the descriptor families"
-    assert "applied" in desc and "re-read to verify" not in desc
-    # Legacy path+op descriptors stay accepted by the handler but are no longer
-    # advertised in the description (resident-context trim); see
-    # test_schema_documents_descriptor_variants.
+    assert "batch" in desc.lower(), "description should mention batching"
+    assert "re-read to verify" not in desc and "re-read after" in desc.lower()
 
 
 def test_schema_edits_array_requires_min_one_item() -> None:
@@ -752,24 +749,19 @@ def test_schema_edits_array_requires_min_one_item() -> None:
     assert EDIT_TOOL_INPUT_SCHEMA["properties"]["edits"].get("minItems") == 1
 
 
-def test_schema_documents_descriptor_variants() -> None:
-    """The edits array items schema defines the published descriptor variants.
+def test_schema_documents_flat_item_shape() -> None:
+    """The edits array items schema is a flat object with path/old/new/overwrite.
 
-    The schema advertises the rich-style descriptor families via ``anyOf``
-    (File / Notebook cell / Symbol / Projection). Legacy op/path descriptors
-    remain accepted by the handler but are no longer published in the schema.
+    The schema is intentionally lean — notebook/symbol/projection edits are
+    accepted by the handler but not enumerated in the schema.
     """
     from atelier.gateway.adapters.mcp_server import EDIT_TOOL_INPUT_SCHEMA
 
-    variants = EDIT_TOOL_INPUT_SCHEMA["properties"]["edits"]["items"]["anyOf"]
-    titles = {v["title"] for v in variants}
-    assert len(variants) == 4
-    assert titles == {
-        "File edit",
-        "Notebook cell edit",
-        "Symbol edit",
-        "Projection edit",
-    }
+    items = EDIT_TOOL_INPUT_SCHEMA["properties"]["edits"]["items"]
+    assert "anyOf" not in items
+    assert set(items["properties"]) == {"path", "old", "new", "overwrite"}
+    assert items.get("additionalProperties") is False
+    assert ":Lx" in items["properties"]["path"]["description"]
 
 
 # ---------------------------------------------------------------------------
