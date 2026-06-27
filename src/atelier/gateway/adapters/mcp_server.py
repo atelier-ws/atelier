@@ -5018,24 +5018,26 @@ def _suggest_paths_for_missing(workspace_root: Path, missing: str, *, limit: int
     return hits
 
 
-# A trailing "#start-end" / "#line" suffix on a read path is parsed as a line
-# range (parity with the edit tool's `file_path#start-end` form and with the
-# range specs models naturally emit, e.g. "store.py#60-100"). Optional "L"
-# prefixes mirror the read tool's own range syntax. A non-numeric "#..." tail is
-# left intact so genuine '#' filenames still resolve.
-_READ_RANGE_SUFFIX = re.compile(r"[#:](L?\d+(?:[-,:](?:L?\d+)?)?)$", re.IGNORECASE)
+# A trailing ":Lx" / ":Lx-Ly" suffix on a read path is parsed as a line
+# range (parity with the edit tool's `file_path:Lx-Ly` form). The canonical
+# form requires a colon separator and an "L" prefix on every number
+# (e.g. "store.py:L60-L100").
+_READ_RANGE_SUFFIX = re.compile(r":L(\d+)(?:-L(\d+))?$", re.IGNORECASE)
 
 
 def _split_read_range_suffix(raw_path: str) -> tuple[str, str | None]:
-    """Split a trailing line-range suffix off a read path.
+    """Split a trailing :Lx / :Lx-Ly suffix off a read path.
 
     Returns (path, range_spec) where range_spec is in the read tool's range
-    syntax (e.g. "60-100"), or (raw_path, None) when there is no numeric suffix.
+    syntax (e.g. "L60-L100"), or (raw_path, None) when there is no suffix.
     """
     match = _READ_RANGE_SUFFIX.search(raw_path)
     if match is None:
         return raw_path, None
-    return raw_path[: match.start()], match.group(1)
+    start = match.group(1)
+    end = match.group(2)
+    range_spec = f"L{start}-L{end}" if end else f"L{start}"
+    return raw_path[: match.start()], range_spec
 
 
 _semantic_file_memory_cache: dict[str, SemanticFileMemoryCapability] = {}
@@ -5076,8 +5078,8 @@ def _smart_read_single(
     target_path = path
     if not target_path:
         raise ValueError("provide path")
-    # Support a trailing "#start-end" / "#line" line-range suffix on the path
-    # itself (e.g. "store.py#60-100"); an explicit range= argument wins.
+    # Support a trailing ":Lx-Ly" line-range suffix on the path
+    # itself (e.g. "store.py:L60-L100"); an explicit range= argument wins.
     target_path, suffix_range = _split_read_range_suffix(target_path)
     if range is None and suffix_range is not None:
         range = suffix_range
@@ -5289,7 +5291,7 @@ def _smart_read_single(
     # authoritative signal that the body is transformed).
     if projection_result is not None and projection_result.mapping is not None:
         response["projection_mapping"] = projection_result.mapping.to_dict()
-    # A ranged read (range=Lx-Ly / #start-end) is an exact, unprojected line
+    # A ranged read (range=Lx-Ly / :Lx-Ly) is an exact, unprojected line
     # slice: the model asked for specific lines and already knows the range, so
     # the outline/language/projection scaffolding is pure redundancy. Return only
     # the requested lines (mode/content/path/range). Full and outline reads keep
@@ -5392,8 +5394,8 @@ def tool_smart_read(
     lines: int | None = None,
     include_meta: bool = False,
     files: Annotated[
-        list[str] | None,
-        Field(description="Files to read."),
+        list[str | dict[str, Any]] | None,
+        Field(description="Files to read. Each entry is a path string or {path, range?, expand?, ...} dict."),
     ] = None,
     symbol: Annotated[
         str | list[str] | None,
@@ -5933,11 +5935,11 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                         "properties": {
                             "path": {
                                 "type": "string",
-                                "description": "Path, optionally suffixed with #line, #start-end, or #cell=N.",
+                                "description": "File path, optionally suffixed with :Lx or :Lx-Ly.",
                             },
-                            "old": {"type": "string"},
-                            "new": {"type": "string"},
-                            "overwrite": {"type": "boolean"},
+                            "old": {"type": "string", "description": "Exact text to replace."},
+                            "new": {"type": "string", "description": "Replacement or new file content."},
+                            "overwrite": {"type": "boolean", "description": "Create or replace the whole file."},
                         },
                     },
                     {
@@ -6006,16 +6008,6 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                 ]
             },
         },
-        "atomic": {
-            "type": "boolean",
-            "default": True,
-            "description": "Roll back all edits if any one fails.",
-        },
-        "hooks": {
-            "type": "boolean",
-            "default": True,
-            "description": "Run formatter/linter on touched files; error/warning diagnostics appear in the result.",
-        },
     },
     "required": ["edits"],
     "additionalProperties": False,
@@ -6071,8 +6063,13 @@ def _compact_applied_entries(entries: list[dict[str, Any]]) -> list[str | dict[s
     """Group ordinary edit hunks by path while retaining special edit metadata."""
     grouped: dict[str, list[str]] = {}
     special: list[dict[str, Any]] = []
+    # "result" (context snippet) and "match_mode" are informational fields added
+    # by apply_rich_edits to every edit entry; they do NOT make an entry "special".
+    # Special entries are structural variants (notebook, symbol edits, fuzzy matches
+    # that still carry match_mode after the exact-match strip, etc.).
+    _ORDINARY_KEYS = frozenset({"path", "hunks", "match_mode", "result"})
     for entry in entries:
-        if set(entry) - {"path", "hunks"}:
+        if set(entry) - _ORDINARY_KEYS:
             special.append(entry)
             continue
         path = str(entry.get("path", ""))
@@ -6195,11 +6192,10 @@ def _reindex_edited_files(repo_root: Path, touched_paths: list[str]) -> None:
     name="edit",
     input_schema=EDIT_TOOL_INPUT_SCHEMA,
     description=(
-        "Apply many mechanical edits across files in one deterministic call. Each edit is a "
-        "descriptor in `edits`; all must share a family. Families: file replace, create, "
-        "line-scoped (`path='foo.py#10-20'`), notebook cell, symbol, projection -- exact "
-        "shapes in inputSchema. Returns compact `{applied}` ranges confirming exact writes; "
-        "failures stay structured. Re-read only after a fuzzy match or when changed content is needed."
+        "Apply exact file edits in one batch. "
+        "Replace with {path, old, new}; use path:Lx-Ly for exact lines. "
+        "Create or replace a file with {path, new, overwrite:true}. "
+        "Include all planned edits in one call. Do not re-read after exact success."
     ),
     param_aliases={"post_edit_hooks": "hooks"},
 )
@@ -6220,7 +6216,7 @@ def tool_smart_edit(
     Rich (preferred) — ``file_path`` required:
       - Replace text:    {file_path, old_string, new_string}
       - Create/overwrite:{file_path, new_string, overwrite: true}
-      - Line-scoped:     {file_path: "foo.py#10-20", old_string, new_string}
+      - Line-scoped:     {file_path: "foo.py:L10-L20", old_string, new_string}
       - Notebook cell:   {file_path, cell_action: insert_after|delete|..., new_string}
       - Symbol:          {kind: "symbol", qualified_name|name, mode, new_body}
       - Projection:      {kind: "projection", file_path, projection_mapping, projected_start+projected_end+new_string or projected_ranges}
@@ -8715,7 +8711,7 @@ def tool_relations(
 def tool_grep(
     path: Annotated[
         str,
-        Field(description="Workspace path; single file may carry '#start-end' (e.g. 'store.py#60-100') to scope."),
+        Field(description="Workspace path; single file may carry ':Lx-Ly' (e.g. 'store.py:L60-L100') to scope."),
     ] = ".",
     regex: Annotated[
         str | None,
@@ -8834,7 +8830,7 @@ def tool_grep(
 def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[int, int]) -> None:
     """Restrict ranked-search matches to snippets overlapping [lo, hi].
 
-    A "path#start-end" search scopes results to that line window. Snippets carry
+    A "path:Lx-Ly" search scopes results to that line window. Snippets carry
     line_start/line_end; matches with no overlapping snippet are dropped. Matches
     lacking snippet line data are kept (they cannot be filtered).
     """
@@ -8880,7 +8876,7 @@ def _scope_search_matches_to_range(payload: dict[str, Any], line_range: tuple[in
             "path": {
                 "type": "string",
                 "default": ".",
-                "description": "Workspace-relative file or directory; a single file may carry '#start-end' to scope results.",
+                "description": "Workspace-relative file or directory; a single file may carry ':Lx-Ly' to scope results.",
             },
             "limit": {
                 "type": "integer",
@@ -8902,7 +8898,7 @@ def tool_smart_search(
         Field(
             description=(
                 "Workspace-relative file or directory to search. A single file may carry a "
-                "'#start-end' suffix (e.g. 'store.py#60-100') to scope ranked results to that line range."
+                "':Lx-Ly' suffix (e.g. 'store.py:L60-L100') to scope ranked results to that line range."
             ),
         ),
     ] = ".",
@@ -8933,7 +8929,7 @@ def tool_smart_search(
     Returns relevance-ranked snippets for a natural-language `query`, with read/context
     follow-up handoffs. Deterministic regex/glob/symbol-locate/repo-map search lives on `grep`.
     """
-    # A "path#start-end" suffix scopes ranked results to a line window of one file.
+    # A "path:Lx-Ly" suffix scopes ranked results to a line window of one file.
     line_range: tuple[int, int] | None = None
     path, suffix_range = _split_read_range_suffix(path)
     if suffix_range is not None:
@@ -10653,8 +10649,8 @@ def _read_path_arg(args: dict[str, Any]) -> str:
     """Best-effort extraction of the path a read-style call targeted."""
     raw = args.get("path") if isinstance(args, dict) else None
     if isinstance(raw, str) and raw:
-        # A read path may carry a '#start-end' line-range suffix; strip it.
-        return raw.split("#", 1)[0]
+        # A read path may carry a ':Lx-Ly' line-range suffix; strip it.
+        return _split_read_range_suffix(raw)[0]
     return ""
 
 

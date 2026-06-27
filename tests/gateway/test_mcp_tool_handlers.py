@@ -36,7 +36,7 @@ from tests.helpers import init_store_at
 EXPECTED_TOOLS = {
     "read",
     "edit",
-    "explore",
+    "code_search",
     "bash",
     "web_fetch",
 }
@@ -312,7 +312,7 @@ def test_tools_list_grep_is_lean_and_relations_is_the_drill_in() -> None:
     assert "seed_files" not in grep_props
     assert set(grep_props["mode"]["enum"]) == {"content", "map", "paths", "counts"}
     assert "file_path" not in grep_props
-    assert "#start-end" in grep_props["path"]["description"]
+    assert ":Lx-Ly" in grep_props["path"]["description"]
     # relations is single-purpose: symbol + kind.
     rel_props = TOOLS["relations"]["inputSchema"]["properties"]
     assert "symbol" in rel_props
@@ -408,6 +408,9 @@ def test_tools_list_edit_schema_documents_descriptor_variants() -> None:
     assert "projection_mapping" in projection_variant["properties"]
     assert "projected_ranges" in projection_variant["properties"]
     assert "description" not in edits_schema
+    file_variant = next(v for v in variants if v["title"] == "File edit")
+    path_desc = file_variant["properties"]["path"]["description"]
+    assert ":Lx" in path_desc and ":Lx-Ly" in path_desc
 
 
 def test_tools_list_memory_schema_describes_ops_and_required_fields() -> None:
@@ -1007,11 +1010,14 @@ def test_smart_read_batch_honors_top_level_expand(store_root: Path, tmp_path: Pa
     """
     _ = store_root
     big = tmp_path / "big_module.py"
-    # >200 LOC so the default projection is outline (bodies omitted). The marker
+    # >500 LOC so the default projection is outline (bodies omitted). The marker
     # lives inside a function body, which outline drops and expand keeps.
-    body = ["def head():", "    return 0", ""]
-    body += [f"const_{i} = {i}" for i in range(250)]
-    body += ["", "def carries_marker():", "    leaf = 'UNIQUE_BODY_TOKEN'", "    return leaf", ""]
+    # Use long function bodies (not module-level constants) so the outline omits
+    # 75%+ of the source and passes the _outline_saves_enough guard.
+    body = ["def head():"]
+    body += [f"    x_{i} = {i}" for i in range(510)]
+    body += ["    return x_0", ""]
+    body += ["def carries_marker():", "    leaf = 'UNIQUE_BODY_TOKEN'", "    return leaf", ""]
     big.write_text("\n".join(body), encoding="utf-8")
 
     # Without expand: outline projection, the in-body marker is omitted.
@@ -1023,7 +1029,11 @@ def test_smart_read_batch_honors_top_level_expand(store_root: Path, tmp_path: Pa
     assert "UNIQUE_BODY_TOKEN" in expanded
 
     # A per-file expand still works and overrides the top-level default.
-    per_file = _result(_call("read", {"files": [{"path": str(big), "expand": True}]}))
+    # Use a second file (same content, different path) so the response text
+    # differs from the prior `expanded` call and dedup does not fire.
+    big2 = tmp_path / "big_module2.py"
+    big2.write_text(big.read_text(encoding="utf-8"), encoding="utf-8")
+    per_file = _result(_call("read", {"files": [{"path": str(big2), "expand": True}]}))
     assert "UNIQUE_BODY_TOKEN" in per_file
 
 
@@ -2070,9 +2080,9 @@ def test_trace_compact_receipt_always_present(store_root: Path) -> None:
         )
     )
     assert payload.get("event_recorded") is True, f"'event_recorded' missing or False in trace receipt: {payload}"
-    assert isinstance(payload.get("trace_id"), str) and payload["trace_id"], (
-        f"'trace_id' missing or empty in trace receipt: {payload}"
-    )
+    assert (
+        isinstance(payload.get("trace_id"), str) and payload["trace_id"]
+    ), f"'trace_id' missing or empty in trace receipt: {payload}"
 
 
 def test_shell_failure_preserves_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
