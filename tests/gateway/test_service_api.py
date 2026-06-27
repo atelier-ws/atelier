@@ -141,16 +141,16 @@ def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypa
     assert {tool["tool_name"] for tool in tools if tool["mode"] == "active"} == names
     assert not {tool["tool_name"] for tool in tools if tool["mode"] == "passive"}
     assert "read" in names
-    assert "explore" in names
+    assert "code_search" in names
     assert "bash" in names
     # grep/relations/search/memory are registered but hidden (not on the active
-    # surface); explore is the single advertised retrieval primary.
+    # surface); code_search is the single advertised retrieval primary.
     assert "grep" not in names
     assert "relations" not in names
     assert "search" not in names
     assert "memory" not in names
-    # explore is the single advertised retrieval primary.
-    assert next(tool for tool in tools if tool["tool_name"] == "explore")["mode"] == "active"
+    # code_search is the single advertised retrieval primary.
+    assert next(tool for tool in tools if tool["tool_name"] == "code_search")["mode"] == "active"
 
 
 def test_workflow_current_and_snapshot_actions(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> None:

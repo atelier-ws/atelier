@@ -95,7 +95,7 @@ def _redirect_hint(norm: str) -> tuple[str, str] | None:
     if head in _SEARCH_HEADS:
         return (
             "search",
-            f"Prefer the `Explore` tool over shell `{head}` for code exploration.",
+            f"Prefer the `code_search` tool over shell `{head}` for code exploration.",
         )
     return None
 

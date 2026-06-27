@@ -56,9 +56,10 @@ def test_render_explore_files_shape_with_numbers_and_skeleton_notice() -> None:
     out = render_code_payload("explore", payload)
     assert out is not None
     assert "#### src/alpha.py" in out
-    assert "AlphaEmbedder [class]" in out
-    assert "1\tclass AlphaEmbedder:" in out  # line numbers preserved verbatim
-    assert "… · skeleton (signatures only; read for full body)" in out
+    assert ":L1-L2" in out  # line range in header
+    assert "AlphaEmbedder" in out  # symbol name present
+    assert "class AlphaEmbedder:" in out  # no tab prefix in new format
+    assert "· skeleton" in out  # skeleton marker in header
     assert "#### callers" in out
     assert "- src/factory.py" in out
     assert "  - 5 — factory.make" in out
