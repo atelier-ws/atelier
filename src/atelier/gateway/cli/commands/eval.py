@@ -1,237 +1,9 @@
-# The eval.py file has been successfully created with all the evaluation-related content
-# from src/atelier/gateway/cli/commands/lessons.py
-
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
-from typing import Any
 
 import click
-
-from atelier.gateway.cli.commands._shared import _emit, _load_store
-
-
-def _lesson_promoter(root: Path) -> Any:
-    from atelier.core.capabilities.lesson_promotion import LessonPromoterCapability
-
-    store = _load_store(root)
-    return LessonPromoterCapability(store)
-
-
-def _lesson_pr_bot(root: Path) -> Any:
-    from atelier.core.capabilities.lesson_promotion import LessonPrBot
-
-    store = _load_store(root)
-    return LessonPrBot(store=store, root=root)
-
-
-def _emit_lesson_inbox(ctx: click.Context, domain: str | None, limit: int, as_json: bool) -> None:
-    lessons = _lesson_promoter(ctx.obj["root"]).inbox(domain=domain, limit=limit)
-    if as_json:
-        _emit([item.model_dump(mode="json") for item in lessons], as_json=True)
-        return
-    if not lessons:
-        click.echo("(no inbox lessons)")
-        return
-    for item in lessons:
-        click.echo(f"{item.id}\t{item.domain}\t{item.kind}\t{item.confidence:.2f}\t{item.cluster_fingerprint[:48]}")
-
-
-@click.group()
-def lesson() -> None:
-    """Lesson candidate review workflow."""
-
-
-@lesson.command("list")
-@click.option("--domain", default=None)
-@click.option("--limit", default=25, show_default=True, type=int)
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def lesson_list(ctx: click.Context, domain: str | None, limit: int, as_json: bool) -> None:
-    _emit_lesson_inbox(ctx, domain, limit, as_json)
-
-
-@lesson.command("inbox")
-@click.option("--domain", default=None)
-@click.option("--limit", default=25, show_default=True, type=int)
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def lesson_inbox(ctx: click.Context, domain: str | None, limit: int, as_json: bool) -> None:
-    """List lesson candidates currently waiting in the inbox."""
-    _emit_lesson_inbox(ctx, domain, limit, as_json)
-
-
-@lesson.command("approve")
-@click.argument("lesson_id")
-@click.option("--reviewer", required=True)
-@click.option("--reason", required=True)
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def lesson_approve(
-    ctx: click.Context,
-    lesson_id: str,
-    reviewer: str,
-    reason: str,
-    as_json: bool,
-) -> None:
-    payload = _lesson_promoter(ctx.obj["root"]).decide(
-        lesson_id=lesson_id,
-        decision="approve",
-        reviewer=reviewer,
-        reason=reason,
-    )
-    if as_json:
-        _emit(payload, as_json=True)
-        return
-    click.echo(f"approved {lesson_id}")
-
-
-@lesson.command("reject")
-@click.argument("lesson_id")
-@click.option("--reviewer", required=True)
-@click.option("--reason", required=True)
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def lesson_reject(
-    ctx: click.Context,
-    lesson_id: str,
-    reviewer: str,
-    reason: str,
-    as_json: bool,
-) -> None:
-    payload = _lesson_promoter(ctx.obj["root"]).decide(
-        lesson_id=lesson_id,
-        decision="reject",
-        reviewer=reviewer,
-        reason=reason,
-    )
-    if as_json:
-        _emit(payload, as_json=True)
-        return
-    click.echo(f"rejected {lesson_id}")
-
-
-@lesson.command("decide")
-@click.argument("lesson_id")
-@click.argument("decision", type=click.Choice(["approve", "reject"]))
-@click.option("--reviewer", required=True)
-@click.option("--reason", required=True)
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def lesson_decide(
-    ctx: click.Context,
-    lesson_id: str,
-    decision: str,
-    reviewer: str,
-    reason: str,
-    as_json: bool,
-) -> None:
-    """Approve or reject a lesson candidate."""
-    payload = _lesson_promoter(ctx.obj["root"]).decide(
-        lesson_id=lesson_id,
-        decision=decision,
-        reviewer=reviewer,
-        reason=reason,
-    )
-    if as_json:
-        _emit(payload, as_json=True)
-        return
-    verb = "approved" if decision == "approve" else "rejected"
-    click.echo(f"{verb} {lesson_id}")
-
-
-@lesson.group("active")
-def lesson_active_group() -> None:
-    """Inspect and manage active typed lessons."""
-
-
-@lesson_active_group.command("list")
-@click.option("--include-inactive", is_flag=True, default=False)
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def lesson_active_list(ctx: click.Context, include_inactive: bool, as_json: bool) -> None:
-    from atelier.core.capabilities.lesson_promotion.store import TypedLessonStore
-
-    lessons = TypedLessonStore(ctx.obj["root"], create=False).list_lessons()
-    if not include_inactive:
-        lessons = [lesson for lesson in lessons if lesson.enabled]
-    if as_json:
-        _emit([lesson.model_dump(mode="json") for lesson in lessons], as_json=True)
-        return
-    if not lessons:
-        click.echo("(no active lessons)")
-        return
-    for lesson in lessons:
-        last_applied = lesson.last_applied_at.isoformat() if lesson.last_applied_at else "-"
-        click.echo(
-            f"{lesson.id}\t{lesson.kind}\t{lesson.scope}\t{lesson.effective_confidence_at():.2f}\t"
-            f"{'enabled' if lesson.enabled else 'disabled'}\t{last_applied}"
-        )
-
-
-@lesson_active_group.command("show")
-@click.argument("lesson_id")
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def lesson_active_show(ctx: click.Context, lesson_id: str, as_json: bool) -> None:
-    from atelier.core.capabilities.lesson_promotion.store import TypedLessonStore
-
-    lesson = TypedLessonStore(ctx.obj["root"], create=False).get_lesson(lesson_id)
-    if lesson is None:
-        raise click.ClickException(f"typed lesson not found: {lesson_id}")
-    if as_json:
-        _emit(lesson.model_dump(mode="json"), as_json=True)
-        return
-    click.echo(json.dumps(lesson.model_dump(mode="json"), indent=2, ensure_ascii=False, default=str))
-
-
-@lesson_active_group.command("disable")
-@click.argument("lesson_id")
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def lesson_active_disable(ctx: click.Context, lesson_id: str, as_json: bool) -> None:
-    from atelier.core.capabilities.lesson_promotion.store import TypedLessonStore
-
-    lesson = TypedLessonStore(ctx.obj["root"]).set_enabled(lesson_id, False)
-    if as_json:
-        _emit(lesson.model_dump(mode="json"), as_json=True)
-        return
-    click.echo(f"disabled {lesson_id}")
-
-
-@lesson_active_group.command("enable")
-@click.argument("lesson_id")
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def lesson_active_enable(ctx: click.Context, lesson_id: str, as_json: bool) -> None:
-    from atelier.core.capabilities.lesson_promotion.store import TypedLessonStore
-
-    lesson = TypedLessonStore(ctx.obj["root"]).set_enabled(lesson_id, True)
-    if as_json:
-        _emit(lesson.model_dump(mode="json"), as_json=True)
-        return
-    click.echo(f"enabled {lesson_id}")
-
-
-@lesson.command("sync-pr")
-@click.argument("lesson_id")
-@click.option("--dry-run", is_flag=True)
-@click.option("--json", "as_json", is_flag=True)
-@click.pass_context
-def lesson_sync_pr(ctx: click.Context, lesson_id: str, dry_run: bool, as_json: bool) -> None:
-    payload = _lesson_pr_bot(ctx.obj["root"]).sync_pr(lesson_id=lesson_id, dry_run=dry_run)
-    if as_json:
-        _emit(payload, as_json=True)
-        return
-    if payload.get("skipped"):
-        click.echo(f"skipped: {payload.get('reason', 'unknown')}")
-        return
-    if dry_run:
-        click.echo(payload.get("diff", ""))
-        return
-    click.echo(f"created {payload.get('pr_url', '').strip()}")
 
 
 @click.group(name="eval")
@@ -294,12 +66,14 @@ def eval_mcp(out: Path | None, tools: tuple[str, ...], jobs: int) -> None:
 @eval_.command("retrieval")
 @click.option(
     "--channel",
-    type=click.Choice(["lexical", "zoekt", "semantic", "cg"]),
+    type=click.Choice(["lexical", "zoekt", "semantic", "cg", "lexical+zoekt"]),
     default="lexical",
     show_default=True,
-    help="lexical = symbol FTS/trigram; zoekt = + trigram fusion (needs zoekt on PATH); "
+    help="lexical = pure FTS5 symbol search (no Zoekt); "
+    "zoekt = pure Zoekt trigram search; "
     "semantic = BGE embeddings (needs sentence-transformers); "
-    "cg = CodeGraph FTS5+graph scoring (needs codegraph on PATH).",
+    "cg = CodeGraph FTS5+graph scoring (needs codegraph on PATH); "
+    "lexical+zoekt = explore pipeline with both FTS5 + Zoekt parallel.",
 )
 @click.option("--full", is_flag=True, default=False, help="Run all available query pairs (no cap).")
 @click.option("--sample", type=int, default=0, help="Total queries to sample across repos (0 = default 500).")
@@ -344,9 +118,11 @@ def eval_retrieval(
 ) -> None:
     """Retrieval MRR + latency over mined SWE-bench pairs.
 
-    Channels: lexical (symbol FTS/trigram), zoekt (+ trigram-anchor fusion), semantic
-    (BGE embeddings). Emits one JSON line with mrr/hit@1/hit@3 + latency_ms. See
-    benchmarks/codebench/RETRIEVAL_EVAL.md for provisioning and the results table.
+    Channels: lexical (pure FTS5, no Zoekt), zoekt (pure Zoekt trigram),
+    lexical+zoekt (FTS5 + Zoekt parallel, the default explore pipeline),
+    semantic (BGE embeddings), cg (CodeGraph). Emits one JSON line with
+    mrr/hit@1/hit@3 + latency_ms. See benchmarks/codebench/RETRIEVAL_EVAL.md
+    for provisioning and the results table.
     """
     import os
     import subprocess
@@ -382,6 +158,11 @@ def eval_retrieval(
         if channel == "zoekt":
             env.setdefault("ATELIER_ZOEKT_MODE", "installed")
             env["ATELIER_ZOEKT_LOC_THRESHOLD"] = "1"
+            env["FITNESS_CHANNEL"] = "zoekt"
+        elif channel == "lexical+zoekt":
+            env["FITNESS_CHANNEL"] = "lexical+zoekt"
+        else:
+            env["FITNESS_CHANNEL"] = "lexical"
         cmd = [sys.executable, "benchmarks/codebench/fitness_explore_mrr.py"]
         if full:
             cmd.append("--full")
@@ -419,7 +200,7 @@ def eval_retrieval(
 @click.option("--run-eval", is_flag=True, default=False, help="Run the retrieval benchmark after mining.")
 @click.option(
     "--channel",
-    type=click.Choice(["lexical", "cg"]),
+    type=click.Choice(["lexical", "zoekt", "cg", "lexical+zoekt"]),
     default="lexical",
     show_default=True,
     help="Which retrieval eval to run after mining pairs.",
@@ -433,18 +214,21 @@ def eval_sessions(
     channel: str,
     full: bool,
 ) -> None:
-    """Offline: mine search patterns from Claude Code session files, show
-    savings analysis, and optionally run the retrieval benchmark.
+    """Offline: mine search patterns from Claude Code & Codex session files,
+    show savings analysis, and optionally run the retrieval benchmark.
 
     This reads your real session history to quantify how many individual
     grep calls Atelier's ``explore`` collapses, and generates query pairs
     for the MRR retrieval eval.
+
+    The repo filter is auto-detected from your current working directory
+    (basename). Both ``~/.claude/projects/`` and ``~/.codex/sessions/`` are
+    scanned automatically.
     """
     import subprocess
 
     from atelier.gateway.cli.commands import benchmark as _bm
 
-    repo_root = Path.cwd().resolve()
     bench_root = _bm._bench_source_root()
     env = dict(os.environ)
     env["FITNESS_PAIRS"] = str(out)
@@ -587,8 +371,5 @@ def eval_providers(
 
 
 __all__ = [
-    "checkpoint",
     "eval_",
-    "ledger",
-    "lesson",
 ]
