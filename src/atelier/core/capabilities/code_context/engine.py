@@ -11,6 +11,7 @@ import hashlib
 import itertools
 import json
 import logging
+import math
 import multiprocessing
 import os
 import re
@@ -831,12 +832,39 @@ _FTS_COMMON_TERM_DF_FLOOR = 1500
 # is always kept regardless of its df (see _discriminative_fts_terms).
 _FTS_DF_BUDGET = 500
 
-# Persistent thread pool for parallel FTS channel execution in _search_symbols_local.
-# Each worker opens its own read connection; WAL mode allows concurrent readers.
-# sqlite3 releases the GIL inside sqlite3_step(), so threads achieve real parallelism.
-_SEARCH_CHANNEL_EXECUTOR: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(
-    max_workers=5, thread_name_prefix="atelier-fts-channel"
-)
+# Persistent process pool for parallel FTS channel execution in _search_symbols_local.
+# Each worker opens its own read connection in a separate process with its own GIL,
+# so channels achieve true CPU-level parallelism without GIL contention.
+_SEARCH_CHANNEL_EXECUTOR: concurrent.futures.ProcessPoolExecutor = concurrent.futures.ProcessPoolExecutor(max_workers=5)
+
+
+def _run_search_channel(db_path: Path, sql: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
+    """Execute one FTS/trigram search channel on a dedicated read connection.
+
+    Called from worker processes in _SEARCH_CHANNEL_EXECUTOR so that all five
+    channels of _search_symbols_local run concurrently.  Each invocation opens
+    its own SQLite connection (WAL mode makes reader–reader access lock-free)
+    and closes it on return.  Since each worker is a separate OS process,
+    there is no GIL contention between channels — genuine CPU-level parallelism
+    across cores.
+    sqlite3.OperationalError (e.g. FTS edge-case syntax) is swallowed and
+    treated as an empty result set so it never crashes the caller.
+    Returns dicts (not sqlite3.Row): ProcessPoolExecutor workers pickle results
+    back to the parent, and sqlite3.Row is not picklable with forkserver start.
+    """
+    conn = sqlite3.connect(
+        f"file:{db_path}?mode=ro",
+        uri=True,
+        timeout=5.0,
+        check_same_thread=False,
+    )
+    conn.row_factory = sqlite3.Row
+    try:
+        return [dict(row) for row in conn.execute(sql, params).fetchall()]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
 
 
 def _fts_or_query_from_terms(terms: list[str]) -> str:
@@ -1028,6 +1056,337 @@ def _query_terms(query: str) -> list[str]:
         return _identifier_terms(query)
     cleaned = [t for t in _identifier_terms(query) if len(t) >= 2 and t not in _QUERY_STOPWORDS]
     return cleaned or _identifier_terms(query)
+
+
+# ---------------------------------------------------------------------------
+# Explore top-5 reranker: feature extraction + linear scoring
+# ---------------------------------------------------------------------------
+# Features are computed purely from what _tool_explore_impl already returned
+# (file path, symbol list, source sections). No DB I/O, no network calls.
+
+_ER_FEATURE_NAMES: tuple[str, ...] = (
+    "reciprocal_rank",
+    "rank_one",
+    "path_term_coverage",
+    "path_identifier_exact",
+    "basename_similarity",
+    "symbol_term_coverage",
+    "symbol_identifier_exact",
+    "source_term_coverage",
+    "source_best_line_coverage",
+    "test_scope_match",
+    "test_scope_mismatch",
+    "doc_scope_match",
+    "doc_scope_mismatch",
+    "path_depth",
+)
+_ER_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "as",
+        "at",
+        "by",
+        "class",
+        "def",
+        "for",
+        "from",
+        "in",
+        "is",
+        "of",
+        "on",
+        "or",
+        "return",
+        "self",
+        "the",
+        "to",
+        "with",
+    }
+)
+_ER_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_ER_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
+_ER_CAMEL_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_ER_TEST_PATH_RE = re.compile(
+    r"(^|/)(tests?|testing|specs?)(/|$)|(^|/)test_[^/]+$|_test\.[^/]+$",
+    re.IGNORECASE,
+)
+_ER_DOC_PATH_RE = re.compile(
+    r"(^|/)(docs?|documentation|examples?|galleries)(/|$)|\.(?:md|rst|ipynb)$",
+    re.IGNORECASE,
+)
+
+# --- Hybrid explore fusion (v6) ---
+_HEF_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_HEF_DEFINITION_RE = re.compile(r"\b(?P<kind>def|class)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)")
+_HEF_QUOTED_RE = re.compile(r"""(?P<quote>["'])(?P<value>.*?)(?P=quote)""")
+_HEF_TEST_RE = re.compile(
+    r"(^|/)(tests?|testing|specs?)(/|$)|(^|/)test_[^/]+$",
+    re.IGNORECASE,
+)
+_HEF_AUX_RE = re.compile(
+    r"(^|/)(docs?(?:-internal)?|documentation|examples?|galleries|benchmarks?|"
+    r"frontend|vendor|third_party)(/|$)|\.(?:md|rst|ipynb|json|lock)$",
+    re.IGNORECASE,
+)
+_HEF_STOP: frozenset[str] = frozenset(
+    {
+        "and",
+        "as",
+        "assert",
+        "async",
+        "await",
+        "break",
+        "case",
+        "class",
+        "continue",
+        "def",
+        "del",
+        "do",
+        "else",
+        "except",
+        "false",
+        "finally",
+        "for",
+        "from",
+        "if",
+        "import",
+        "in",
+        "is",
+        "lambda",
+        "none",
+        "not",
+        "or",
+        "pass",
+        "raise",
+        "return",
+        "self",
+        "super",
+        "true",
+        "try",
+        "while",
+        "with",
+        "yield",
+    }
+)
+_HEF_PROSE_STOP: frozenset[str] = _HEF_STOP | frozenset(
+    {
+        "the",
+        "this",
+        "that",
+        "these",
+        "those",
+        "then",
+        "than",
+        "into",
+        "onto",
+        "when",
+        "where",
+        "which",
+        "what",
+        "with",
+        "without",
+        "within",
+        "should",
+        "could",
+        "would",
+        "have",
+        "has",
+        "had",
+        "does",
+        "did",
+        "done",
+        "make",
+        "using",
+        "used",
+        "use",
+        "value",
+        "values",
+        "result",
+        "results",
+        "file",
+        "files",
+        "code",
+        "name",
+        "string",
+        "object",
+        "method",
+        "function",
+    }
+)
+
+_ER_QUERY_TEST_RE = re.compile(
+    r"\btests?\b|\btesting\b|\bpytest\b|\bunittest\b|\bspecs?\b|\btest_[A-Za-z0-9_]+",
+    re.IGNORECASE,
+)
+_ER_QUERY_DOC_RE = re.compile(
+    r"\bdocs?\b|\bdocumentation\b|\bexamples?\b|\bgallery\b|\breadme\b",
+    re.IGNORECASE,
+)
+
+
+def _er_identifier_parts(value: str) -> list[str]:
+    parts: list[str] = []
+    for raw in re.split(r"[./:_-]+", value):
+        for part in _ER_CAMEL_RE.split(raw):
+            normalized = part.strip().lower()
+            if len(normalized) >= 2 and normalized not in _ER_STOPWORDS:
+                parts.append(normalized)
+    return parts
+
+
+def _er_dedupe(values: list[str], limit: int) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for v in values:
+        n = v.strip().lower()
+        if not n or n in seen:
+            continue
+        seen.add(n)
+        out.append(n)
+        if len(out) >= limit:
+            break
+    return tuple(out)
+
+
+def _er_query_features(
+    query: str,
+) -> tuple[tuple[str, ...], tuple[str, ...], bool, bool]:
+    identifiers = [
+        t
+        for t in _ER_IDENTIFIER_RE.findall(query)
+        if len(t) >= 3
+        and t.lower() not in _ER_STOPWORDS
+        and ("_" in t or "." in t or t.isupper() or any(c.isupper() for c in t[1:]))
+    ]
+    terms: list[str] = []
+    for raw in _ER_TOKEN_RE.findall(query):
+        terms.extend(_er_identifier_parts(raw))
+        n = raw.lower()
+        if len(n) >= 3 and n not in _ER_STOPWORDS:
+            terms.append(n)
+    return (
+        _er_dedupe(terms, 20),
+        _er_dedupe(identifiers, 12),
+        bool(_ER_QUERY_TEST_RE.search(query)),
+        bool(_ER_QUERY_DOC_RE.search(query)),
+    )
+
+
+def _er_flatten_text(value: Any, limit: int = 12_000) -> str:
+    chunks: list[str] = []
+    remaining = limit
+
+    def _visit(item: Any) -> None:
+        nonlocal remaining
+        if remaining <= 0 or item is None:
+            return
+        if isinstance(item, str):
+            text = item[:remaining]
+            chunks.append(text)
+            remaining -= len(text)
+        elif isinstance(item, dict):
+            for k, child in item.items():
+                if str(k) in {"content_hash", "symbol_id", "repo_id"}:
+                    continue
+                _visit(child)
+                if remaining <= 0:
+                    break
+        elif isinstance(item, (list, tuple)):
+            for child in item:
+                _visit(child)
+                if remaining <= 0:
+                    break
+
+    _visit(value)
+    return "\n".join(chunks)
+
+
+def _er_coverage(text: str, terms: tuple[str, ...]) -> float:
+    if not terms:
+        return 0.0
+    lowered = text.lower()
+    return sum(t in lowered for t in terms) / len(terms)
+
+
+def _er_char_trigrams(value: str) -> set[str]:
+    """Character trigrams for Jaccard similarity (not the FTS tokenizer)."""
+    n = re.sub(r"[^a-z0-9]+", "", value.lower())
+    if not n:
+        return set()
+    if len(n) < 3:
+        return {n}
+    return {n[i : i + 3] for i in range(len(n) - 2)}
+
+
+def _er_trisim(left: str, right: str) -> float:
+    lg, rg = _er_char_trigrams(left), _er_char_trigrams(right)
+    if not lg or not rg:
+        return 0.0
+    return len(lg & rg) / len(lg | rg)
+
+
+def _er_entry_features(
+    query: str,
+    entry: dict[str, Any],
+    rank: int,
+) -> list[float]:
+    terms, identifiers, wants_tests, wants_docs = _er_query_features(query)
+    raw_path = str(entry.get("file_path") or entry.get("path") or "")
+    file_path = raw_path.replace("\\", "/")
+    path_text = file_path.lower()
+    basename = Path(file_path).stem
+
+    symbol_text = _er_flatten_text(entry.get("symbols"))
+    source_text = _er_flatten_text(entry.get("source_sections"))
+    source_lines = source_text.splitlines()
+    best_line = max(
+        (_er_coverage(ln, terms) for ln in source_lines[:400]),
+        default=0.0,
+    )
+
+    path_id_exact = max(
+        (float(ident in path_text) for ident in identifiers),
+        default=0.0,
+    )
+    sym_id_exact = max(
+        (float(ident in symbol_text.lower()) for ident in identifiers),
+        default=0.0,
+    )
+    basename_sim = max(
+        (_er_trisim(ident, basename) for ident in identifiers),
+        default=0.0,
+    )
+
+    is_test = bool(_ER_TEST_PATH_RE.search(file_path))
+    is_doc = bool(_ER_DOC_PATH_RE.search(file_path))
+    depth = min(1.0, file_path.count("/") / 12.0)
+
+    return [
+        1.0 / max(1, rank),
+        float(rank == 1),
+        _er_coverage(path_text, terms),
+        path_id_exact,
+        basename_sim,
+        _er_coverage(symbol_text, terms),
+        sym_id_exact,
+        _er_coverage(source_text, terms),
+        best_line,
+        float(wants_tests and is_test),
+        float(not wants_tests and is_test),
+        float(wants_docs and is_doc),
+        float(not wants_docs and is_doc),
+        depth,
+    ]
+
+
+def _er_entry_path(entry: dict[str, Any]) -> str:
+    """Extract the file path from an explore file entry."""
+    return str(entry.get("file_path") or entry.get("path") or "")
+
+
+def _er_linear_score(weights: list[float], features: list[float]) -> float:
+    return sum(w * f for w, f in zip(weights, features, strict=True))
 
 
 # Characters that mean a query is NOT a literal path substring: whitespace (a
@@ -1909,6 +2268,65 @@ def _watcher_check_ignored_fast(path: str, hard_skip_dirs: frozenset[str]) -> bo
         if part in hard_skip_dirs:
             return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Hybrid explore fusion (v6) — module-level helpers
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _HefQueryPlan:
+    intent: str
+    definitions: tuple[tuple[str, str], ...]
+    identifiers: tuple[str, ...]
+    anchors: tuple[str, ...]
+    terms: tuple[str, ...]
+    literals: tuple[str, ...]
+    wants_tests: bool
+    wants_auxiliary: bool
+
+
+def _hef_is_code_shaped(token: str) -> bool:
+    return (
+        "_" in token
+        or token.isupper()
+        or any(ch.isupper() for ch in token[1:])
+        or token.startswith("__")
+        or token.endswith("__")
+    )
+
+
+def _hef_dedupe(values: list[str], *, limit: int) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        value = value.strip()
+        low = value.lower()
+        if not value or low in seen:
+            continue
+        seen.add(low)
+        out.append(value)
+        if len(out) >= limit:
+            break
+    return tuple(out)
+
+
+def _hef_bare_alternative(segment: str) -> str | None:
+    segment = segment.strip()
+    segment = re.sub(r"\\[bBAZz]$", "", segment)
+    segment = re.sub(r"^\^|\$$", "", segment)
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", segment):
+        return segment
+    return None
+
+
+def _hef_path_parts(file_path: str) -> set[str]:
+    return {part for part in re.split(r"[/._-]+", file_path.lower()) if part}
+
+
+def _hef_fts_phrase(term: str) -> str:
+    return '"' + term.replace('"', '""') + '"'
 
 
 class CodeContextEngine:
@@ -3237,7 +3655,7 @@ class CodeContextEngine:
         # One shared connection for the whole explore (search + relationship
         # hydration + packing are reads, plus a one-time centrality persist).
         with self._reuse_connection():
-            return self._tool_explore_impl(
+            result, precomputed_zoekt = self._tool_explore_impl(
                 query,
                 seed_files=seed_files,
                 max_files=max_files,
@@ -3250,6 +3668,616 @@ class CodeContextEngine:
                 depth=depth,
                 budget_tokens=budget_tokens,
             )
+        fused = self._fused_explore_hybrid(query, result, max_files=max_files, precomputed_zoekt=precomputed_zoekt)
+        return self._rerank_explore_result(query, fused)
+
+    @property
+    def explore_reranker_model_path(self) -> Path:
+        """Per-workspace path for the trained explore reranker model."""
+        return self.db_path.parent / "explore_reranker.json"
+
+    def _load_explore_reranker(self) -> dict[str, Any] | None:
+        """Load and validate the per-workspace explore reranker model.
+
+        Returns the model dict when present and valid, ``None`` otherwise.
+        Caches on the instance so the JSON is only parsed once per process.
+
+        Checks two candidate paths so that benchmark repos whose db files
+        share a common parent directory (e.g. ``/tmp``) don't collide:
+
+        1. ``db_path.parent / "explore_reranker.json"``  — legacy / production
+           workspaces where each repo has its own directory.
+        2. ``db_path.with_suffix(".explore_reranker.json")``  — db-stem-keyed,
+           collision-free for benchmark repos in ``/tmp``.
+        """
+        if hasattr(self, "_er_model_loaded"):
+            return self._er_model_cache  # type: ignore[attr-defined]
+        self._er_model_loaded: bool = True
+        candidates = [
+            self.explore_reranker_model_path,
+            self.db_path.with_suffix(".explore_reranker.json"),
+        ]
+        for path in dict.fromkeys(candidates):  # deduplicate while preserving order
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, TypeError):
+                continue
+            if (
+                not isinstance(raw, dict)
+                or not raw.get("enabled")
+                or raw.get("feature_names") != list(_ER_FEATURE_NAMES)
+                or len(raw.get("weights", [])) != len(_ER_FEATURE_NAMES)
+            ):
+                continue
+            self._er_model_cache: dict[str, Any] | None = raw
+            return raw
+        self._er_model_cache = None
+        return None
+
+    def _rerank_explore_result(
+        self,
+        query: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Rerank the top-5 files in an explore payload using the per-workspace
+        linear model.  Returns *payload* unchanged when no model is available
+        or the top file would not change.
+        """
+        raw_entries = payload.get("files")
+        if not isinstance(raw_entries, list) or len(raw_entries) < 2:
+            return payload
+
+        model = self._load_explore_reranker()
+        if model is None:
+            return payload
+
+        window = min(5, len(raw_entries))
+        weights = [float(w) for w in model["weights"]]
+        blend = float(model.get("blend", 1.0))
+        margin = float(model.get("margin", 0.0))
+
+        scored: list[tuple[float, int, dict[str, Any]]] = []
+        for rank, entry in enumerate(raw_entries[:window], 1):
+            if not isinstance(entry, dict):
+                return payload  # unexpected shape; skip reranking
+            features = _er_entry_features(query, entry, rank)
+            learned = sum(w * f for w, f in zip(weights, features, strict=True))
+            combined = blend * learned + (1.0 - blend) * (1.0 / rank)
+            scored.append((combined, rank, entry))
+
+        proposed = sorted(scored, key=lambda item: (-item[0], item[1]))
+        if proposed[0][1] == 1:
+            return payload  # top file unchanged
+
+        original_top = next(s for s, r, _e in scored if r == 1)
+        if proposed[0][0] - original_top < margin:
+            return payload  # margin guard: new top not confident enough
+
+        reranked = [e for _s, _r, e in proposed] + list(raw_entries[window:])
+        result = dict(payload)
+        result["files"] = reranked
+        result["experiment"] = {
+            "name": "explore_reranker_v1",
+            "base": payload.get("experiment"),
+        }
+        return result
+
+    # -----------------------------------------------------------------------
+    # Hybrid explore fusion (v6) — instance methods
+    # -----------------------------------------------------------------------
+
+    def _hef_parse_query(self, query: str) -> _HefQueryPlan:
+        definitions = tuple((match.group("kind"), match.group("name")) for match in _HEF_DEFINITION_RE.finditer(query))
+        definition_names = [name for _kind, name in definitions]
+        identifiers: list[str] = []
+        alternatives: list[str] = []
+        for segment in query.split("|"):
+            match = _HEF_DEFINITION_RE.search(segment)
+            if match:
+                alternatives.append(match.group("name"))
+            else:
+                bare = _hef_bare_alternative(segment)
+                if bare is not None:
+                    alternatives.append(bare)
+        for token in _HEF_IDENTIFIER_RE.findall(query):
+            low = token.lower()
+            if low in _HEF_STOP or len(token) < 3:
+                continue
+            if _hef_is_code_shaped(token):
+                identifiers.append(token)
+        normalized = query.strip()
+        with contextlib.suppress(Exception):
+            if _is_precise_symbol_query(normalized):
+                alternatives.append(normalized.rsplit(".", 1)[-1])
+        literals = [
+            match.group("value").strip() for match in _HEF_QUOTED_RE.finditer(query) if match.group("value").strip()
+        ]
+        prose_terms: list[str] = []
+        with contextlib.suppress(Exception):
+            prose_terms = [
+                str(term)
+                for term in _query_terms(query)
+                if len(str(term)) >= 3 and str(term).lower() not in _HEF_PROSE_STOP
+            ]
+        identifier_tuple = _hef_dedupe([*definition_names, *alternatives, *identifiers], limit=18)
+        anchor_tuple = _hef_dedupe([*definition_names, *alternatives, *identifiers], limit=10)
+        literal_tuple = _hef_dedupe(literals, limit=8)
+        if definitions:
+            intent = "definition"
+        elif normalized and _is_precise_symbol_query(normalized):
+            intent = "symbol"
+        elif identifier_tuple or "|" in query:
+            intent = "code"
+        else:
+            intent = "prose"
+        if intent in {"definition", "symbol"}:
+            term_values = [*identifier_tuple, *literal_tuple]
+        elif intent == "code":
+            term_values = [*identifier_tuple, *literal_tuple, *prose_terms]
+        else:
+            term_values = [*literal_tuple, *prose_terms]
+        wants_tests = bool(
+            re.search(
+                r"\btest(?:_|s\b|ing\b)|\bspec(?:_|s\b)|pytest|unittest|"
+                r"tearDown|setUp|TestCase|Tests\b",
+                query,
+                re.IGNORECASE,
+            )
+        )
+        wants_auxiliary = bool(
+            re.search(
+                r"\bdocs?|documentation|example|gallery|benchmark|frontend|"
+                r"javascript|typescript|readme\b",
+                query,
+                re.IGNORECASE,
+            )
+        )
+        return _HefQueryPlan(
+            intent=intent,
+            definitions=definitions,
+            identifiers=identifier_tuple,
+            anchors=anchor_tuple,
+            terms=_hef_dedupe(term_values, limit=16),
+            literals=literal_tuple,
+            wants_tests=wants_tests,
+            wants_auxiliary=wants_auxiliary,
+        )
+
+    def _hef_exact_symbol_candidates(
+        self,
+        plan: _HefQueryPlan,
+    ) -> tuple[list[str], dict[str, dict[str, Any]]]:
+        if not plan.identifiers:
+            return [], {}
+        tokens = {token.lower(): token for token in plan.identifiers}
+        placeholders = ",".join("?" for _ in tokens)
+        try:
+            with self._connect(readonly=True) as conn:
+                rows = conn.execute(
+                    f"""
+                    WITH matched AS (
+                        SELECT file_path,
+                               lower(symbol_name) AS token,
+                               lower(kind) AS kind
+                        FROM symbols
+                        WHERE repo_id = ?
+                          AND lower(symbol_name) IN ({placeholders})
+                    ),
+                    frequencies AS (
+                        SELECT token, COUNT(DISTINCT file_path) AS df
+                        FROM matched
+                        GROUP BY token
+                    )
+                    SELECT matched.file_path,
+                           matched.token,
+                           matched.kind,
+                           frequencies.df
+                    FROM matched
+                    JOIN frequencies USING (token)
+                    ORDER BY matched.file_path, matched.token, matched.kind
+                    """,
+                    (self.repo_id, *tokens),
+                ).fetchall()
+        except Exception:  # noqa: BLE001
+            return [], {}
+        expected = {name.lower(): kind for kind, name in plan.definitions}
+        per_file: dict[str, dict[str, Any]] = {}
+        seen: set[tuple[str, str, str]] = set()
+        for row in rows:
+            file_path = str(row["file_path"] or "")
+            token = str(row["token"] or "")
+            kind = str(row["kind"] or "").lower()
+            df = max(1, int(row["df"] or 1))
+            if not file_path or not token:
+                continue
+            key = (file_path, token, kind)
+            if key in seen:
+                continue
+            seen.add(key)
+            expected_kind = expected.get(token)
+            kind_match = (expected_kind == "class" and kind == "class") or (
+                expected_kind == "def" and kind in {"function", "method"}
+            )
+            item = per_file.setdefault(
+                file_path,
+                {
+                    "tokens": set(),
+                    "definition_tokens": set(),
+                    "kind_matches": set(),
+                    "idf": 0.0,
+                    "best_df": df,
+                },
+            )
+            item["tokens"].add(token)
+            if kind in {"class", "function", "method", "async_function"}:
+                item["definition_tokens"].add(token)
+            if kind_match:
+                item["kind_matches"].add(token)
+            item["idf"] += math.log1p(1.0 + 1.0 / df)
+            item["best_df"] = min(int(item["best_df"]), df)
+        identifier_count = max(1, len(plan.identifiers))
+        definition_count = max(1, len(plan.definitions))
+        for item in per_file.values():
+            token_coverage = len(item["tokens"]) / identifier_count
+            kind_coverage = len(item["kind_matches"]) / definition_count
+            definition_coverage = len(item["definition_tokens"]) / identifier_count
+            rarity = min(1.0, float(item["idf"]) / identifier_count)
+            item["confidence"] = min(
+                1.0,
+                0.42 * token_coverage + 0.30 * kind_coverage + 0.16 * definition_coverage + 0.12 * rarity,
+            )
+        ordered = sorted(
+            per_file,
+            key=lambda p: (
+                -float(per_file[p]["confidence"]),
+                -len(per_file[p]["kind_matches"]),
+                -len(per_file[p]["tokens"]),
+                int(per_file[p]["best_df"]),
+                p,
+            ),
+        )
+        details = {
+            p: {
+                "tokens": sorted(per_file[p]["tokens"]),
+                "definition_tokens": sorted(per_file[p]["definition_tokens"]),
+                "kind_matches": sorted(per_file[p]["kind_matches"]),
+                "idf": round(float(per_file[p]["idf"]), 6),
+                "best_df": int(per_file[p]["best_df"]),
+                "confidence": round(float(per_file[p]["confidence"]), 6),
+            }
+            for p in ordered
+        }
+        return ordered[:96], details
+
+    def _hef_anchor_zoekt_candidates(
+        self,
+        plan: _HefQueryPlan,
+    ) -> tuple[list[str], dict[str, dict[str, Any]]]:
+        if not plan.anchors:
+            return [], {}
+        from concurrent.futures import ThreadPoolExecutor as _AnchorThreadPool
+
+        cache: dict[str, list[str]] = self.__dict__.setdefault("_hef_anchor_cache", {})
+        uncached_anchors = [a for a in plan.anchors if a not in cache]
+        if uncached_anchors:
+            # Run all cache-missing anchor searches concurrently — each is an
+            # independent Zoekt HTTP call; parallelism collapses N sequential
+            # round-trips to one wall-clock slot.
+            def _fetch(anchor: str) -> list[str]:
+                try:
+                    return self._zoekt_candidate_files(anchor, path=".", max_files=40)
+                except Exception:  # noqa: BLE001
+                    return []
+
+            with _AnchorThreadPool(max_workers=min(len(uncached_anchors), 4)) as _pool:
+                for anchor, files in zip(uncached_anchors, _pool.map(_fetch, uncached_anchors), strict=True):
+                    cache[anchor] = files
+        per_file: dict[str, dict[str, Any]] = {}
+        for anchor in plan.anchors:
+            files = cache.get(anchor, [])
+            for rank, file_path in enumerate(files, 1):
+                item = per_file.setdefault(
+                    file_path,
+                    {
+                        "anchors": set(),
+                        "rrf": 0.0,
+                        "best_rank": rank,
+                    },
+                )
+                item["anchors"].add(anchor.lower())
+                item["rrf"] += 1.0 / (8.0 + rank)
+                item["best_rank"] = min(int(item["best_rank"]), rank)
+        anchor_count = max(1, len(plan.anchors))
+        max_rrf = sum(1.0 / 9.0 for _ in plan.anchors)
+        for item in per_file.values():
+            coverage = len(item["anchors"]) / anchor_count
+            normalized_rrf = min(1.0, float(item["rrf"]) / max_rrf)
+            item["confidence"] = min(1.0, 0.72 * coverage + 0.28 * normalized_rrf)
+        ordered = sorted(
+            per_file,
+            key=lambda p: (
+                -float(per_file[p]["confidence"]),
+                -len(per_file[p]["anchors"]),
+                int(per_file[p]["best_rank"]),
+                p,
+            ),
+        )
+        details = {
+            p: {
+                "anchors": sorted(per_file[p]["anchors"]),
+                "rrf": round(float(per_file[p]["rrf"]), 6),
+                "best_rank": int(per_file[p]["best_rank"]),
+                "confidence": round(float(per_file[p]["confidence"]), 6),
+            }
+            for p in ordered
+        }
+        return ordered[:96], details
+
+    def _hef_line_fts_candidates(
+        self,
+        plan: _HefQueryPlan,
+    ) -> tuple[list[str], dict[str, dict[str, Any]]]:
+        if not plan.terms:
+            return [], {}
+        terms = [term.lower() for term in plan.terms]
+        or_query = " OR ".join(_hef_fts_phrase(term) for term in terms)
+        and_query = " AND ".join(_hef_fts_phrase(term) for term in terms[: min(8, len(terms))])
+        rows: list[tuple[Any, bool]] = []
+        try:
+            with self._connect(readonly=True) as conn:
+                if len(terms) >= 2:
+                    and_rows = conn.execute(
+                        """
+                        SELECT file_path, line, text, bm25(file_line_fts) AS rank
+                        FROM file_line_fts
+                        WHERE file_line_fts MATCH ? AND repo_id = ?
+                        ORDER BY rank ASC, file_path ASC, line ASC
+                        LIMIT 700
+                        """,
+                        (and_query, self.repo_id),
+                    ).fetchall()
+                    rows.extend((row, True) for row in and_rows)
+                or_rows = conn.execute(
+                    """
+                    SELECT file_path, line, text, bm25(file_line_fts) AS rank
+                    FROM file_line_fts
+                    WHERE file_line_fts MATCH ? AND repo_id = ?
+                    ORDER BY rank ASC, file_path ASC, line ASC
+                    LIMIT 2600
+                    """,
+                    (or_query, self.repo_id),
+                ).fetchall()
+                rows.extend((row, False) for row in or_rows)
+        except Exception:  # noqa: BLE001
+            return [], {}
+        term_set = set(terms)
+        literal_set = {literal.lower() for literal in plan.literals}
+        per_file: dict[str, dict[str, Any]] = {}
+        for row, from_and in rows:
+            file_path = str(row["file_path"] or "")
+            if not file_path:
+                continue
+            with contextlib.suppress(Exception):
+                if is_generated_path(file_path):
+                    continue
+            if _MINIFIED_FILE_RE.search(file_path):
+                continue
+            if _VENDOR_PATH_RE.search(file_path):
+                continue
+            text = str(row["text"] or "").lower()
+            covered = {term for term in term_set if term in text}
+            if not covered:
+                continue
+            line_coverage = len(covered) / max(1, len(term_set))
+            literal_hits = sum(1 for literal in literal_set if literal in text)
+            item = per_file.setdefault(
+                file_path,
+                {
+                    "covered": set(),
+                    "hit_count": 0,
+                    "and_hit": False,
+                    "best_rank": float(row["rank"] or 0.0),
+                    "max_line_coverage": 0.0,
+                    "multi_term_lines": 0,
+                    "literal_hits": 0,
+                },
+            )
+            item["covered"].update(covered)
+            item["hit_count"] += 1
+            item["and_hit"] = bool(item["and_hit"] or from_and)
+            item["best_rank"] = min(float(item["best_rank"]), float(row["rank"] or 0.0))
+            item["max_line_coverage"] = max(float(item["max_line_coverage"]), line_coverage)
+            if len(covered) >= 2:
+                item["multi_term_lines"] += 1
+            item["literal_hits"] += literal_hits
+        for file_path, item in per_file.items():
+            file_coverage = len(item["covered"]) / max(1, len(term_set))
+            repeat_conf = min(1.0, math.log1p(int(item["hit_count"])) / math.log(13.0))
+            proximity_conf = min(
+                1.0,
+                float(item["max_line_coverage"]) + 0.08 * min(int(item["multi_term_lines"]), 4),
+            )
+            literal_conf = min(1.0, int(item["literal_hits"]) / max(1, len(literal_set))) if literal_set else 0.0
+            confidence = (
+                0.44 * file_coverage
+                + 0.26 * proximity_conf
+                + 0.12 * repeat_conf
+                + 0.10 * float(bool(item["and_hit"]))
+                + 0.08 * literal_conf
+            )
+            if not plan.wants_tests and _HEF_TEST_RE.search(file_path):
+                confidence *= 0.78
+            if not plan.wants_auxiliary and _HEF_AUX_RE.search(file_path):
+                confidence *= 0.68
+            item["file_coverage"] = file_coverage
+            item["confidence"] = min(1.0, confidence)
+        ordered = sorted(
+            per_file,
+            key=lambda p: (
+                -float(per_file[p]["confidence"]),
+                -float(per_file[p]["file_coverage"]),
+                -float(per_file[p]["max_line_coverage"]),
+                -int(per_file[p]["and_hit"]),
+                float(per_file[p]["best_rank"]),
+                p,
+            ),
+        )
+        details = {
+            p: {
+                "covered": sorted(per_file[p]["covered"]),
+                "file_coverage": round(float(per_file[p]["file_coverage"]), 6),
+                "max_line_coverage": round(float(per_file[p]["max_line_coverage"]), 6),
+                "multi_term_lines": int(per_file[p]["multi_term_lines"]),
+                "hit_count": int(per_file[p]["hit_count"]),
+                "and_hit": bool(per_file[p]["and_hit"]),
+                "literal_hits": int(per_file[p]["literal_hits"]),
+                "best_rank": round(float(per_file[p]["best_rank"]), 6),
+                "confidence": round(float(per_file[p]["confidence"]), 6),
+            }
+            for p in ordered
+        }
+        return ordered[:128], details
+
+    def _fused_explore_hybrid(
+        self,
+        query: str,
+        baseline_payload: dict[str, Any],
+        max_files: int,
+        precomputed_zoekt: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Apply the V6 multi-channel fusion on top of the baseline explore result.
+
+        Adds exact-symbol, anchor-Zoekt, and line-FTS channels to the baseline
+        and Zoekt results, fuses them with intent-aware RRF + confidence weights,
+        and returns a new payload with the fused file list.
+
+        ``precomputed_zoekt`` is the already-fetched Zoekt file list from
+        ``_tool_explore_impl`` (same query, up to 96 files).  When provided it
+        is reused directly, skipping a redundant second Zoekt search.
+        """
+        raw_files = baseline_payload.get("files")
+        if not isinstance(raw_files, list) or not raw_files:
+            return baseline_payload
+
+        baseline_entries: dict[str, dict[str, Any]] = {}
+        baseline_files: list[str] = []
+        for entry in raw_files:
+            if not isinstance(entry, dict):
+                continue
+            file_path = str(entry.get("path") or entry.get("file_path") or "")
+            if file_path and file_path not in baseline_entries:
+                baseline_entries[file_path] = entry
+                baseline_files.append(file_path)
+
+        # Get full Zoekt results (up to 96) independent of baseline truncation.
+        # Reuse the list already fetched by _tool_explore_impl when available so
+        # we never search the same query twice on the same code_search call.
+        if precomputed_zoekt is not None:
+            full_zoekt: list[str] = precomputed_zoekt
+        else:
+            full_zoekt = []
+            with contextlib.suppress(Exception):
+                full_zoekt = self._zoekt_candidate_files(query, path=".", max_files=96)
+
+        plan = self._hef_parse_query(query)
+        exact_files, exact_details = self._hef_exact_symbol_candidates(plan)
+        anchor_files, anchor_details = self._hef_anchor_zoekt_candidates(plan)
+        line_files, line_details = self._hef_line_fts_candidates(plan)
+
+        channels: dict[str, list[str]] = {
+            "baseline": baseline_files,
+            "zoekt": full_zoekt,
+            "exact": exact_files,
+            "anchors": anchor_files,
+            "line": line_files,
+        }
+        rank_weights: dict[str, float] = {
+            "definition": {"baseline": 1.0, "zoekt": 0.9, "exact": 1.4, "anchors": 1.1, "line": 1.2},
+            "symbol": {"baseline": 1.2, "zoekt": 1.1, "exact": 1.4, "anchors": 1.1, "line": 0.8},
+            "code": {"baseline": 0.9, "zoekt": 0.9, "exact": 0.9, "anchors": 1.1, "line": 1.5},
+            "prose": {"baseline": 0.8, "zoekt": 1.0, "exact": 0.3, "anchors": 0.4, "line": 1.8},
+        }[plan.intent]
+        confidence_weights: dict[str, float] = {
+            "definition": {"exact": 1.25, "anchors": 0.60, "line": 1.05},
+            "symbol": {"exact": 1.10, "anchors": 0.55, "line": 0.55},
+            "code": {"exact": 0.70, "anchors": 0.75, "line": 1.20},
+            "prose": {"exact": 0.15, "anchors": 0.20, "line": 1.40},
+        }[plan.intent]
+
+        scores: dict[str, float] = {}
+        channel_ranks: dict[str, dict[str, int]] = {}
+        rrf_k = 8.0
+        for channel, files in channels.items():
+            channel_ranks[channel] = {p: r for r, p in enumerate(files, 1)}
+            weight = rank_weights[channel]
+            for rank, file_path in enumerate(files, 1):
+                scores[file_path] = scores.get(file_path, 0.0) + weight / (rrf_k + rank)
+
+        for file_path, detail in exact_details.items():
+            scores[file_path] = scores.get(file_path, 0.0) + confidence_weights["exact"] * float(detail["confidence"])
+        for file_path, detail in anchor_details.items():
+            scores[file_path] = scores.get(file_path, 0.0) + confidence_weights["anchors"] * float(detail["confidence"])
+        for file_path, detail in line_details.items():
+            scores[file_path] = scores.get(file_path, 0.0) + confidence_weights["line"] * float(detail["confidence"])
+
+        top_sets = {channel: set(files[:32]) for channel, files in channels.items()}
+        explicit_names = {name.lower() for _kind, name in plan.definitions}
+        identifier_names = {token.lower() for token in plan.identifiers}
+
+        for file_path in list(scores):
+            support = sum(file_path in ts for ts in top_sets.values())
+            if support >= 2:
+                scores[file_path] += 0.08 * (support - 1)
+            exact_detail = exact_details.get(file_path, {})
+            kind_matches = set(exact_detail.get("kind_matches", ()))
+            if explicit_names and kind_matches:
+                scores[file_path] += 0.90 * len(explicit_names & kind_matches)
+            path_overlap = len(identifier_names & _hef_path_parts(file_path))
+            if path_overlap:
+                scores[file_path] += 0.035 * path_overlap
+            if not plan.wants_tests and _HEF_TEST_RE.search(file_path) and file_path not in baseline_entries:
+                scores[file_path] *= 0.78
+            if not plan.wants_auxiliary and _HEF_AUX_RE.search(file_path) and file_path not in baseline_entries:
+                scores[file_path] *= 0.68
+            if file_path.endswith(".pyi") and not re.search(r"\bpyi|stub\b", query, re.I):
+                scores[file_path] *= 0.82
+
+        ordered = sorted(
+            scores,
+            key=lambda p: (
+                -scores[p],
+                channel_ranks["baseline"].get(p, 10_000),
+                channel_ranks["zoekt"].get(p, 10_000),
+                channel_ranks["exact"].get(p, 10_000),
+                channel_ranks["anchors"].get(p, 10_000),
+                channel_ranks["line"].get(p, 10_000),
+                p,
+            ),
+        )[:max_files]
+
+        fused_entries: list[dict[str, Any]] = []
+        for file_path in ordered:
+            existing = baseline_entries.get(file_path)
+            if existing is not None:
+                fused_entries.append(existing)
+            else:
+                fused_entries.append(
+                    {
+                        "path": file_path,
+                        "language": "unknown",
+                        "symbols": [],
+                        "source_sections": [],
+                    }
+                )
+
+        result = dict(baseline_payload)
+        result["files"] = fused_entries
+        result["experiment"] = {
+            "name": "fused_explore_hybrid_v6",
+            "intent": plan.intent,
+            "base": baseline_payload.get("experiment"),
+        }
+        return result
 
     def _tool_explore_impl(
         self,
@@ -3265,7 +4293,7 @@ class CodeContextEngine:
         complete_families: bool | None = None,
         depth: int = 1,
         budget_tokens: int = 9000,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], list[str]]:
         effective_skeletonize = skeletonize and _explore_skeleton_enabled()
         effective_complete = (
             bool(complete_families if complete_families is not None else skeletonize) and _explore_skeleton_enabled()
@@ -3302,7 +4330,7 @@ class CodeContextEngine:
         }
         hit, cached = self._cache_get("code.explore", cache_args)
         if hit and cached is not None:
-            return self._mark_cache_hit(cached)
+            return self._mark_cache_hit(cached), []
 
         # Pipe-separated queries: pre-compute the extra word set for token-pin
         # ranking.  Actual OR-expansion happens lazily after the main search returns
@@ -3328,11 +4356,10 @@ class CodeContextEngine:
         # additive and graceful (empty when zoekt is off / no embedder configured) --
         # the exact/score/seed ranking below still governs final order.
         #
-        # The three channels are independent and each releases the GIL during its
-        # heavy work (SQLite C calls, the zoekt subprocess, the embedding), so the
-        # zoekt + semantic recall channels run on worker threads concurrently with
-        # the lexical symbol search on this (connection-scoped) thread. Wall-clock
-        # collapses from sum-of-channels to slowest-channel. Opt out with
+        # The three pipelines are independent: the FTS5 search channels run in a
+        # dedicated process pool (true CPU parallelism without GIL contention), while
+        # the Zoekt recall runs on a worker thread whose HTTP I/O releases the GIL.
+        # Wall-clock collapses from sum-of-channels to slowest-channel. Opt out with
         # ATELIER_EXPLORE_PARALLEL=0.
         anchor_budget = max(bounded_max_files * 2, 12)
         if os.environ.get("ATELIER_EXPLORE_PARALLEL", "1") != "0":
@@ -3344,7 +4371,10 @@ class CodeContextEngine:
             # threads drain in the background (they terminate within 2 s once
             # the HTTP timeout fires in _WEBSERVER_REQUEST_TIMEOUT_SECONDS).
             _pool = ThreadPoolExecutor(max_workers=2)
-            _zk = _pool.submit(self._zoekt_candidate_files, query, max_files=anchor_budget)
+            # Fetch up to 96 files so _fused_explore_hybrid can reuse this
+            # list without a redundant second search call on the same query.
+            _zk_fetch_limit = max(anchor_budget, 96)
+            _zk = _pool.submit(self._zoekt_candidate_files, query, max_files=_zk_fetch_limit)
             _sem = _pool.submit(self._semantic_candidate_files, query, max_files=anchor_budget)
             # Pass _candidate_files=set() to skip the duplicate zoekt call inside
             # search_symbols -- we already have _zk running in the pool above.
@@ -3363,7 +4393,12 @@ class CodeContextEngine:
                 _zk_list: list[str] = _zk.result(timeout=0.8)
             except Exception:
                 _zk_list = []
-            _seen_anchors: dict[str, None] = dict.fromkeys(_zk_list)
+            # _zk_list may have up to 96 entries (for the fusion channel).
+            # Limit baseline anchors to anchor_budget to match V6 behaviour:
+            # the capturing wrapper in the experiment only returned the first
+            # anchor_budget files to _tool_explore_impl, keeping baseline scoring
+            # calibrated while the fusion channel still sees the full 96.
+            _seen_anchors: dict[str, None] = dict.fromkeys(_zk_list[:anchor_budget])
             try:
                 # _sem has been running in parallel since T=0; by the time we
                 # reach here it is almost certainly done.  50 ms is enough.
@@ -3381,8 +4416,10 @@ class CodeContextEngine:
                 auto_index=False,
             )
             # Preserve zoekt's score-ranked order; append semantic-only files at the end.
-            _zk_list = self._zoekt_candidate_files(query, max_files=anchor_budget)
-            _seen_anchors_s: dict[str, None] = dict.fromkeys(_zk_list)
+            # Fetch up to 96 so _fused_explore_hybrid can reuse without re-searching.
+            # Limit baseline anchors to anchor_budget (same as V6 capturing_zoekt behaviour).
+            _zk_list = self._zoekt_candidate_files(query, max_files=max(anchor_budget, 96))
+            _seen_anchors_s: dict[str, None] = dict.fromkeys(_zk_list[:anchor_budget])
             for _f in self._semantic_candidate_files(query, max_files=anchor_budget):
                 _seen_anchors_s.setdefault(_f, None)
             anchor_candidates = list(_seen_anchors_s)
@@ -3419,6 +4456,14 @@ class CodeContextEngine:
         # for concept queries (no exact hit), where they are the recall mechanism.
         # Only symbol-like (single-token) queries pay the extra lexical lookup.
         exact_hits = _exact_symbol_hits(raw_symbols, query)
+        # Save the strict full-query exact match for the anchor gate below.
+        # The multi-word token probe (elif branch) overwrites exact_hits with
+        # token-level matches — using those would skip the anchor merge even
+        # though the full query is not an indexed symbol name (e.g. a multi-word
+        # query whose only exact match is a sub-token like "aggregate_session_stats"
+        # inside "def aggregate_session_stats").  The anchor gate should only
+        # fire when the query itself is an exact symbol name.
+        _anchor_gate_exact_hits = True if exact_hits else False
         if not exact_hits and _SYMBOL_QUERY_RE.match(query.strip()):
             lexical_hits = self.search_symbols(
                 query,
@@ -3471,7 +4516,7 @@ class CodeContextEngine:
         # already merged into _query_words for token-pin ranking, and the file-level
         # coverage boost below rewards files that match more pipe terms.
         anchor_ids: set[str] = set()
-        if not exact_hits:
+        if not _anchor_gate_exact_hits:
             seeded_files = {symbol.file_path for symbol in raw_symbols}
             # anchor_candidates is zoekt-score ordered (highest relevance first);
             # do NOT sort alphabetically — that would bury high-signal files.
@@ -3644,6 +4689,20 @@ class CodeContextEngine:
                     _ref_missing_by_file.setdefault(_rs.file_path or "", _rs)
             if _ref_missing_by_file:
                 selected_symbols = selected_symbols + list(_ref_missing_by_file.values())[:8]
+        # Zoekt/semantic anchor symbols suffer the same problem: they rank low
+        # (score=None from direct file-path lookup) so the symbol-budget cap at
+        # bounded_max_symbols cuts them before any anchor file gets a slot in the
+        # file list.  Inject one symbol per anchor file that missed the budget.
+        _anchor_injected: dict[str, SymbolRecord] = {}
+        if anchor_ids:
+            _have_sel = {s.symbol_id for s in selected_symbols}
+            _anchor_missing_by_file: dict[str, SymbolRecord] = {}
+            for _rs in raw_symbols:
+                if _rs.symbol_id in anchor_ids and _rs.symbol_id not in _have_sel:
+                    _anchor_missing_by_file.setdefault(_rs.file_path or "", _rs)
+            if _anchor_missing_by_file:
+                selected_symbols = selected_symbols + list(_anchor_missing_by_file.values())[:bounded_max_files]
+                _anchor_injected = _anchor_missing_by_file
         family_member_ids: set[str] = set()
         # Skip sibling-family completion for an exact-symbol query: the named
         # definition is the answer, so pulling in related families across other
@@ -3717,6 +4776,15 @@ class CodeContextEngine:
         # to 16 files, which then truncated every section to fit the token budget.
         file_cap = bounded_max_files + 2 if family_member_ids else bounded_max_files
         selected_files = selected_files[:file_cap]
+        # Zoekt anchor files get injected to selected_symbols above, but the
+        # file cap cuts them (they sort last because score=None).  Promote the
+        # first anchor file into the file list so Zoekt's unique surface recall
+        # (files FTS5 missed entirely) reaches the caller's result.
+        if _anchor_injected:
+            _anchor_in_cap = {f for f in selected_files if f in _anchor_injected}
+            if not _anchor_in_cap:
+                _first = next(iter(_anchor_injected.keys()))
+                selected_files[-1:] = [_first]
         # Path-alignment reranking: stable re-sort by query-word overlap with file path
         # parts + symbol names. Surfaces files whose paths/symbols match query terms
         # (e.g. 'timezone.py' for a timezone query) with zero latency and no API calls.
@@ -3919,24 +4987,35 @@ class CodeContextEngine:
         # fits, so explore degrades to fewer (most-relevant) files instead of
         # collapsing to "no results" when a completed family + relationships overflow.
         if include_source:
-            while len(files_payload) > 1 and self._compute_total_tokens(full_payload) > budget_tokens:
-                files_payload.pop()
-                full_payload["files"] = files_payload
-                full_payload["truncated"] = True
+            # Budget-aware file trim: measure total once, then subtract per-file
+            # token costs instead of re-serialising the full payload on every pop.
+            # Old loop was O(N x payload_size); this is O(N + payload_size).
+            _trim_total = self._compute_total_tokens(full_payload)
+            if len(files_payload) > 1 and _trim_total > budget_tokens:
+                _per_file_tokens = [estimate_tokens(_canonical_json(fe)) for fe in files_payload]
+                while len(files_payload) > 1 and _trim_total > budget_tokens:
+                    _trim_total -= _per_file_tokens.pop()
+                    files_payload.pop()
+                    full_payload["files"] = files_payload
+                    full_payload["truncated"] = True
             # Single-file / last-file fallback: trim sections by score (stored in
             # _score) so the most query-relevant source survives, not the
             # earliest-in-file. Restore file order for display after trimming.
-            if _single_file_seed and files_payload and self._compute_total_tokens(full_payload) > budget_tokens:
-                sections = files_payload[0].get("source_sections") or []
-                sections.sort(key=lambda s: -(s.get("_score") or 0.0))
-                while len(sections) > 1 and self._compute_total_tokens(full_payload) > budget_tokens:
-                    sections.pop()
+            if _single_file_seed and files_payload:
+                _trim_total = self._compute_total_tokens(full_payload)
+                if _trim_total > budget_tokens:
+                    sections = files_payload[0].get("source_sections") or []
+                    sections.sort(key=lambda s: -(s.get("_score") or 0.0))
+                    _per_sec_tokens = [estimate_tokens(_canonical_json(s)) for s in sections]
+                    while len(sections) > 1 and _trim_total > budget_tokens:
+                        _trim_total -= _per_sec_tokens.pop()
+                        sections.pop()
+                        files_payload[0]["source_sections"] = sections
+                        full_payload["files"] = files_payload
+                        full_payload["truncated"] = True
+                    sections.sort(key=lambda s: int(s.get("start_line") or 0))
                     files_payload[0]["source_sections"] = sections
                     full_payload["files"] = files_payload
-                    full_payload["truncated"] = True
-                sections.sort(key=lambda s: int(s.get("start_line") or 0))
-                files_payload[0]["source_sections"] = sections
-                full_payload["files"] = files_payload
             # Strip the internal _score annotation before packing (matched stays).
             for fe in files_payload:
                 for sec in fe.get("source_sections", []):
@@ -3967,7 +5046,7 @@ class CodeContextEngine:
             optional_keys_in_drop_order=_EXPLORE_OPTIONAL_KEYS,
         )
         self._cache_set("code.explore", cache_args, packed)
-        return packed
+        return packed, _zk_list
 
     def tool_routes(
         self,
@@ -4759,15 +5838,19 @@ class CodeContextEngine:
             return [
                 self._attach_snippet(symbol, snippet=snippet, snippet_lines=snippet_lines) for symbol in hits[:limit]
             ]
+        _cf_t: threading.Thread | None = None
+        _cf_box: list[list[str]] = [[]]
+        _t0 = 0.0
         if scope == "repo" and resolved_mode != "semantic":
             if _candidate_files is not None:
                 # Caller pre-computed (or deliberately skipped) zoekt; reuse it.
                 candidate_files = _candidate_files
             else:
-                # Hard 800 ms cap: zoekt-webserver can take 2-4 s on complex
-                # regex queries against large repos.  Daemon thread means a slow
-                # search drains in the background without blocking the caller.
-                _cf_box: list[list[str]] = [[]]
+                # Start zoekt in a background thread but defer the join until
+                # AFTER lexical search runs — both proceed in parallel so
+                # wall-clock = max(zoekt, lexical) instead of zoekt + lexical.
+                # The candidate_files filter is applied post-hoc once both finish.
+                _t0 = time.monotonic()
 
                 def _fetch_cf() -> None:
                     with contextlib.suppress(Exception):
@@ -4775,20 +5858,26 @@ class CodeContextEngine:
 
                 _cf_t = threading.Thread(target=_fetch_cf, daemon=True)
                 _cf_t.start()
-                _cf_t.join(0.8)
-                candidate_files = set(_cf_box[0])
+                # candidate_files resolved after lexical returns below
         if resolved_mode == "lexical":
             hits = self.intel_store.search_symbols(query, limit=limit, kind=kind, language=language, scope=scope)
-            if scope == "repo" and candidate_files:
-                hits = [hit for hit in hits if hit.file_path in candidate_files]
             if scope == "repo" and not hits:
+                # Run local FTS while zoekt is still in flight — parallel.
                 hits = self._search_symbols_local(
                     query,
                     limit=limit,
                     kind=kind,
                     language=language,
-                    candidate_files=candidate_files,
+                    candidate_files=None,  # zoekt filter applied post-hoc
                 )
+            # Collect zoekt results — has been running in parallel since T=0.
+            if scope == "repo" and _cf_t is not None:
+                _cf_t.join(max(0.0, 0.8 - (time.monotonic() - _t0)))
+                candidate_files = set(_cf_box[0] or [])
+            if scope == "repo" and candidate_files:
+                _filtered = [hit for hit in hits if hit.file_path in candidate_files]
+                if _filtered:  # guard: don't discard all results if zoekt is cold
+                    hits = _filtered
         else:
             candidate_limit = semantic_candidate_limit(rerank_limit)
             if scope == "external":
@@ -4807,16 +5896,23 @@ class CodeContextEngine:
                     language=language,
                     scope="repo",
                 )
-                if candidate_files:
-                    lexical_hits = [hit for hit in lexical_hits if hit.file_path in candidate_files]
                 if not lexical_hits:
+                    # Run local FTS while zoekt is still in flight — parallel.
                     lexical_hits = self._search_symbols_local(
                         query,
                         limit=candidate_limit,
                         kind=kind,
                         language=language,
-                        candidate_files=candidate_files,
+                        candidate_files=None,  # zoekt filter applied post-hoc
                     )
+                # Collect zoekt results — has been running in parallel since T=0.
+                if _cf_t is not None:
+                    _cf_t.join(max(0.0, 0.8 - (time.monotonic() - _t0)))
+                    candidate_files = set(_cf_box[0] or [])
+                if candidate_files:
+                    _filtered_hits = [hit for hit in lexical_hits if hit.file_path in candidate_files]
+                    if _filtered_hits:  # guard: don't discard all results if zoekt is cold
+                        lexical_hits = _filtered_hits
                 try:
                     semantic_hits = self._search_symbols_semantic_local(
                         query,
@@ -4930,36 +6026,6 @@ class CodeContextEngine:
             return kept, prefix_terms
         # Every token is common -- keep the single rarest so recall doesn't collapse.
         return [min(freqs, key=lambda item: item[1])[0]], []
-
-    @staticmethod
-    def _run_search_channel(db_path: Path, sql: str, params: tuple[Any, ...]) -> list[sqlite3.Row]:
-        """Execute one FTS/trigram search channel on a dedicated read connection.
-
-        Called from worker threads in _SEARCH_CHANNEL_EXECUTOR so that all five
-        channels of _search_symbols_local run concurrently.  Each invocation opens
-        its own SQLite connection (WAL mode makes reader–reader access lock-free)
-        and closes it on return.  sqlite3 releases the GIL during sqlite3_step(),
-        enabling genuine CPU-level parallelism for the FTS5 and trigram queries.
-        sqlite3.OperationalError (e.g. FTS edge-case syntax) is swallowed and
-        treated as an empty result set so it never crashes the caller.
-        """
-        # Open read-only: all FTS/trigram channels are pure SELECTs.  WAL mode
-        # allows unlimited concurrent readers and a read-only URI connection
-        # never competes with the writer (autosync, reindex) for the write lock,
-        # eliminating the 30 s timeout cliff on active repositories.
-        conn = sqlite3.connect(
-            f"file:{db_path}?mode=ro",
-            uri=True,
-            timeout=5.0,
-            check_same_thread=False,
-        )
-        conn.row_factory = sqlite3.Row
-        try:
-            return conn.execute(sql, params).fetchall()
-        except sqlite3.OperationalError:
-            return []
-        finally:
-            conn.close()
 
     def _search_symbols_local(
         self,
@@ -5140,9 +6206,10 @@ class CodeContextEngine:
 
         # Phase 2 (parallel workers): channels 2-6 each run on their own read
         # connection submitted to _SEARCH_CHANNEL_EXECUTOR.  WAL mode lets readers
-        # run concurrently with zero blocking; sqlite3 releases the GIL inside
-        # sqlite3_step() so threads achieve genuine parallelism.  Wall-clock time
-        # collapses from sum(channel_times) to max(channel_times) (~15ms vs ~45ms).
+        # run concurrently with zero blocking; each channel runs in a dedicated OS
+        # process, so channels achieve genuine CPU-level parallelism without GIL
+        # contention.  Wall-clock time collapses from sum(channel_times) to
+        # max(channel_times) (~15ms vs ~45ms).
         # Build the AND query from the IDF-pruned terms rather than the raw
         # query string.  Zero-hit tokens (e.g. a parameter name the agent wants
         # to ADD, like 'keep_attrs') have df=0 in the vocab and are not in
@@ -5157,6 +6224,12 @@ class CodeContextEngine:
         path_patterns = [first_term_like]
         if _query_is_pathy_literal(normalized_query) and like_pattern != first_term_like:
             path_patterns.insert(0, like_pattern)
+
+        # Substring (trigram + direct-scan) LIKE pattern: use the full raw query
+        # only for pathy literals (no |, *, or other regex metacharacters).  For
+        # regex/pipe multi-term queries, the raw query with embedded wildcards
+        # would scan the entire trigram table; fall back to the rarest IDF term.
+        substring_pattern = like_pattern if _query_is_pathy_literal(normalized_query) else first_term_like
 
         # Frozen parameter tuples for each channel (built once, passed to workers).
         _fts_extra = tuple([self.repo_id, *([kind] if kind else []), *([language] if language else [])])
@@ -5218,7 +6291,7 @@ class CodeContextEngine:
                     f" JOIN symbols s ON s.symbol_id = t.symbol_id"
                     f" WHERE {where_sql_s} AND (t.name LIKE ? OR t.qualified_name LIKE ?)"
                     f" ORDER BY s.file_path, s.start_line LIMIT ?",
-                    (*_base_params, like_pattern, like_pattern, strong_fetch_limit),
+                    (*_base_params, substring_pattern, substring_pattern, strong_fetch_limit),
                     4,
                     860.0,
                     False,
@@ -5232,7 +6305,7 @@ class CodeContextEngine:
                     f" WHERE {where_sql} AND"
                     f" (lower(symbol_name) LIKE ? OR lower(qualified_name) LIKE ? OR lower(signature) LIKE ?)"
                     f" ORDER BY file_path, start_line LIMIT ?",
-                    (*_base_params, like_pattern, like_pattern, like_pattern, strong_fetch_limit),
+                    (*_base_params, substring_pattern, substring_pattern, substring_pattern, strong_fetch_limit),
                     4,
                     860.0,
                     False,
@@ -5272,8 +6345,7 @@ class CodeContextEngine:
         # higher-priority channels (AND > OR > prefix) are merged first.
         _db = self.db_path
         _futures = [
-            _SEARCH_CHANNEL_EXECUTOR.submit(CodeContextEngine._run_search_channel, _db, sql, ch_params)
-            for sql, ch_params, _, _, _ in _ch
+            _SEARCH_CHANNEL_EXECUTOR.submit(_run_search_channel, _db, sql, ch_params) for sql, ch_params, _, _, _ in _ch
         ]
         for _fut, (_, _, _rank, _base_score, _use_score) in zip(_futures, _ch):
             try:
@@ -5334,7 +6406,7 @@ class CodeContextEngine:
         pending = [sym for sym in (_row_to_symbol(row) for row in rows) if sym.symbol_id not in fresh]
         if not pending:
             return
-        print(f"  [embed] {self.repo_root.name}: {len(pending)} symbols to embed ({embedder.name})", flush=True)
+        logger.debug("[embed] %s: %d symbols to embed (%s)", self.repo_root.name, len(pending), embedder.name)
         # Batched encoding: ceil(N/batch) model calls (embed_symbols), not one per
         # symbol -- the difference between minutes and seconds on a large repo.
         # Truncate source: a few symbols span enormous spans whose full token
@@ -5347,7 +6419,7 @@ class CodeContextEngine:
         }
         by_id = {sym.symbol_id: sym for sym in pending}
         vectors = self._semantic_ranker.embed_symbols(pending, source_texts=source_texts)
-        print(f"  [embed] {self.repo_root.name}: got {len(vectors)} vectors", flush=True)
+        logger.debug("[embed] %s: got %d vectors", self.repo_root.name, len(vectors))
         new_vectors = {sid: (by_id[sid].content_hash, vec) for sid, vec in vectors.items() if vec and len(vec) == dim}
         if new_vectors:
             self._ann_symbol_index.upsert_vectors(
@@ -6162,14 +7234,13 @@ class CodeContextEngine:
             supervisor = get_zoekt_supervisor(self.repo_root)
             if not supervisor.should_route(search_path):
                 return []
-            if not supervisor.health().ok:
-                return []
             result = supervisor.search(
                 query=normalized_query,
                 search_path=search_path,
                 max_files=max(1, min(max_files, 200)),
                 max_chars_per_file=800,
                 include_outline=False,
+                _include_index_age=False,
             )
             # ordered dedup: zoekt returns files in descending score order;
             # preserve that order so callers can prefer high-signal files.
@@ -6528,7 +7599,9 @@ class CodeContextEngine:
             merged_message = (
                 "routed call edge data is unavailable"
                 if merged_status == "unavailable"
-                else "no related call edges were found" if merged_status == "empty" else None
+                else "no related call edges were found"
+                if merged_status == "empty"
+                else None
             )
             merged_snapshot = None
             if snapshot:
