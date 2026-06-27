@@ -354,17 +354,17 @@ def test_read_path_range_suffix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     target = tmp_path / "store.py"
     target.write_text("".join(f"line{i}\n" for i in range(1, 11)), encoding="utf-8")
 
-    # Single read: "path#start-end" is parsed as a line range.
-    payload = tool_smart_read({"path": f"{target}#2-4"})
+    # Single read: "path:Lstart-Lend" is parsed as a line range.
+    payload = tool_smart_read({"path": f"{target}:L2-L4"})
     assert payload["mode"] == "range"
     assert payload["content"] == "line2\nline3\nline4"
 
     # Explicit range= wins over the suffix.
-    payload = tool_smart_read({"path": f"{target}#2-4", "range": "6-7"})
+    payload = tool_smart_read({"path": f"{target}:L2-L4", "range": "6-7"})
     assert payload["content"] == "line6\nline7"
 
     # Batch: plain-string specs may carry the suffix (the failing case).
-    batch = tool_smart_read({"files": [f"{target}#1-2", {"path": f"{target}#9-10"}]})
+    batch = tool_smart_read({"files": [f"{target}:L1-L2", {"path": f"{target}:L9-L10"}]})
     results = batch["files"]
     assert results[0]["content"] == "line1\nline2"
     assert results[1]["content"] == "line9\nline10"

@@ -31,14 +31,14 @@ def _preindex(repo_root: str | Path) -> None:
     mcp_server._op_index(repo_root=str(repo_root), force=True)
 
 
-# Single-primary retrieval surface: `explore` (ranked source + call-graph
+# Single-primary retrieval surface: `code_search` (ranked source + call-graph
 # relations + blast-radius in one call) + `read`, plus edit/bash/web_fetch.
 # `grep`, `relations`, `search`, `memory`, `sql`, `codemod` are registered but
 # hidden from agents (grep/relations stay callable as escape hatch / drill-in).
 EXPECTED_TOOLS = {
     "read",
     "edit",
-    "explore",
+    "code_search",
     "bash",
     "web_fetch",
 }
@@ -489,7 +489,7 @@ def test_read_search_edit_and_compact_e2e(mcp_env: Path) -> None:
             {
                 "edits": [
                     {
-                        "file_path": "sample.py#2",
+                        "file_path": "sample.py:L2",
                         "old_string": "return 'needle'",
                         "new_string": "return 'atelier'",
                     }

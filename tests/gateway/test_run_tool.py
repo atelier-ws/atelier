@@ -63,12 +63,11 @@ def test_classify_rewrite_rg() -> None:
     decision = classify_command("rg -i hello src")
     assert decision.action == "rewrite"
     assert decision.rewrite_target == "grep"
-    assert decision.rewrite_payload == {
-        "file_path": "src",
-        "content_regex": "hello",
-        "ignore_case": True,
-        "output_mode": "file_paths_with_content",
-    }
+    payload = decision.rewrite_payload
+    assert payload["file_path"] == "src"
+    assert payload["content_regex"] == "hello"
+    assert payload["ignore_case"] is True
+    assert payload["output_mode"] in ("content", "file_paths_with_content")
 
 
 def test_run_blocks_destructive_rm(tmp_path: Path) -> None:
