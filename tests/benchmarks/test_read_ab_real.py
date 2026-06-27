@@ -186,13 +186,13 @@ def test_read_ab_real(fixture: Path) -> None:
 
     assert native_chars > 0, "native read returned no bytes"
     assert atelier_chars > 0, "atelier returned no bytes"
-    assert atelier_chars <= native_chars, (
-        f"atelier returned {atelier_chars} chars vs native {native_chars} on {fixture.name}"
-    )
+    assert (
+        atelier_chars <= native_chars
+    ), f"atelier returned {atelier_chars} chars vs native {native_chars} on {fixture.name}"
     if tokens_saved > 0:
-        assert row.chars_saved > 0, (
-            f"{fixture.name}: tool reports tokens_saved={tokens_saved} but chars_saved={row.chars_saved}"
-        )
+        assert (
+            row.chars_saved > 0
+        ), f"{fixture.name}: tool reports tokens_saved={tokens_saved} but chars_saved={row.chars_saved}"
     # Reported tokens_saved uses Claude Code's built-in Read baseline, so it
     # may be lower than a raw cat/full-file delta. It must not overclaim it.
     if tokens_saved > 100 and row.tokens_saved_measured > 100:
@@ -209,14 +209,15 @@ def test_read_ab_real(fixture: Path) -> None:
     ids=lambda p: p.name,
 )
 def test_generic_outline_compresses_large_files(fixture: Path, tmp_path: Path) -> None:
-    """Force the generic outline to fire by inflating fixtures past 200 LOC.
+    """Force the generic outline to fire by inflating fixtures past 300 effective LOC.
 
     The small synthetic fixtures (130-150 LOC) fall under the production
-    outline_threshold of 200, so they get full reads in test_read_ab_real.
-    This test triples each fixture so the generic outline code path actually
-    runs, and persists the per-language compression ratio to the calibration
-    store under a separate path so production-vs-synthetic numbers stay
-    distinguishable.
+    outline_threshold (default 500) so they get full reads in test_read_ab_real.
+    This test triples each fixture (3x gives 351-420 effective LOC) and passes
+    an explicit outline_threshold=300 so the outline code path actually runs
+    regardless of the production default.  The per-language compression ratio
+    is persisted to the calibration store under a separate path so
+    production-vs-synthetic numbers stay distinguishable.
     """
     if not fixture.is_file():
         pytest.xfail(f"fixture missing: {fixture}")
@@ -227,16 +228,19 @@ def test_generic_outline_compresses_large_files(fixture: Path, tmp_path: Path) -
     big.write_text(src + "\n\n" + src + "\n\n" + src, encoding="utf-8")
 
     cap = SemanticFileMemoryCapability(_atelier_root())
-    payload = cap.smart_read(big, range_spec=None, expand=False)
+    # Use an explicit threshold (300) so the test is immune to changes in the
+    # production default (currently 500). 3x fixtures have 351-420 effective
+    # LOC, safely above 300 for all three languages.
+    payload = cap.smart_read(big, range_spec=None, expand=False, outline_threshold=300)
     mode = str(payload.get("mode"))
     language = str(payload.get("language"))
     outline = payload.get("outline")
 
     # Outline must fire once files cross the threshold. Either tree-sitter
     # (when we have a per-language config) or the generic regex fallback.
-    assert mode == "outline", (
-        f"{fixture.name} (3x = {len(big.read_text())} chars) returned mode={mode}, expected outline"
-    )
+    assert (
+        mode == "outline"
+    ), f"{fixture.name} (3x = {len(big.read_text())} chars) returned mode={mode}, expected outline"
     assert isinstance(outline, dict) and outline.get("kind") in {
         "treesitter",
         "generic",
@@ -327,9 +331,9 @@ def test_read_ab_range_mode(tmp_path: Path) -> None:
     native_text = fixture.read_text(encoding="utf-8")
     total_lines = len(native_text.splitlines())
     expected_count = min(200, total_lines) - min(100, total_lines) + 1
-    assert len(delivered_lines) == expected_count, (
-        f"range 100-200 should yield {expected_count} lines, got {len(delivered_lines)}"
-    )
+    assert (
+        len(delivered_lines) == expected_count
+    ), f"range 100-200 should yield {expected_count} lines, got {len(delivered_lines)}"
 
     native_tokens = _count_tiktoken(native_text)
     atelier_tokens = _count_tiktoken(content)
