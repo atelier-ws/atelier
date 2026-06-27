@@ -24,4 +24,6 @@ def test_classify_flagged_rg_stays_on_grep_for_explicit_pattern_search() -> None
         "content_regex": "OrderService",
         "ignore_case": True,
         "output_mode": "file_paths_with_content",
+        "lines_after": 0,
+        "lines_before": 0,
     }

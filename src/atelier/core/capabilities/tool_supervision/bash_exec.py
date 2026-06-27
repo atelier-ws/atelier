@@ -435,6 +435,12 @@ def _rewrite_search(tokens: list[str], command_name: str) -> CommandPolicyDecisi
     if command_name == "grep" and r"\|" in pattern:
         pattern = pattern.replace(r"\|", "|")
     path = cleaned[1] if len(cleaned) > 1 else "."
+    # Single-file targets: fall through to shell grep/rg.  The Python rewrite
+    # adds value only for directory-wide searches (ranking, context, file caps).
+    # For a specific file, real grep is faster, handles pipes/redirections
+    # natively, and avoids any Python overhead or GIL contention.
+    if path != "." and Path(path).is_file():
+        return CommandPolicyDecision(category="search", action="allow")
     if (
         command_name == "rg"
         and not ignore_case
@@ -454,7 +460,7 @@ def _rewrite_search(tokens: list[str], command_name: str) -> CommandPolicyDecisi
             rewrite_target="search",
             rewrite_payload={"query": pattern, "path": path},
         )
-    output_mode = "file_paths_only" if list_files_only else "content"
+    output_mode = "file_paths_only" if list_files_only else "file_paths_with_content"
     payload: dict[str, Any] = {
         "file_path": path,
         "content_regex": pattern,
