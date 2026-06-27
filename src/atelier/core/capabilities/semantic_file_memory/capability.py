@@ -453,7 +453,42 @@ class SemanticFileMemoryCapability:
         expand: bool = False,
         outline_threshold: int | None = None,
     ) -> dict[str, Any]:
-        """Read file in full/range/outline mode with token-savings accounting."""
+        """Read a file and project it down to the cheapest representation that
+        preserves meaning.  The full cascade runs on every call:
+
+        1. **Range read** (if ``range_spec`` is set): stream only the requested
+           lines — no outline, no projection, just exact bytes.  Returns early.
+
+        2. **Outline** (large files only, ``expand=False``):
+           If ``effective_loc > outline_threshold`` (default 500), try, in order:
+           - Python AST outline (Python only) — class/function signatures.
+           - Tree-sitter outline (Go, Rust, Java, TS, …) — grammar-level
+             structural extraction.
+           - Generic regex outline — function/class heads for any language.
+           Each candidate must save ≥ 25 % over the raw source or it is
+           skipped.  Returns mode="outline".
+
+        3. **Minified** (all files, fires when outline did not):
+           ``build_minified_projection`` uses tree-sitter to strip docstrings,
+           inline comments, and runs of blank lines while keeping every
+           executable line intact.  Only applied when a supported language
+           grammar is available.  Returns mode="minified".
+
+        4. **Compact** (conservative fallback):
+           ``build_compact_projection`` collapses multiple consecutive blank
+           lines into one and trims trailing whitespace — language-agnostic.
+           Returns mode="compact".
+
+        5. **Full** (last resort):
+           No projection saved anything meaningful; raw source is returned.
+           Returns mode="full".
+
+        ``expand=True`` skips steps 2-4 and always returns the raw source.
+        Steps 3-4 are applied in the MCP layer (``mcp_server._smart_read_single``)
+        after this method returns, so the ``mode`` field here reflects only the
+        outline/full decision; the final delivery to the model may still be
+        minified or compact even when this returns mode="full".
+        """
         if outline_threshold is None:
             outline_threshold = default_outline_threshold()
         file_path = Path(path)
