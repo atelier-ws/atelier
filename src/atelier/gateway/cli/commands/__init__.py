@@ -226,9 +226,9 @@ def register(cli: click.Group) -> None:
         _IMPORT_FAILED = True
 
     try:
+        from .eval import eval_
         from .lessons import (
             checkpoint,
-            eval_,
             ledger,
             lesson,
         )
