@@ -475,9 +475,7 @@ def _parse_since_arg(value: str) -> datetime:
         delta = (
             timedelta(days=amount)
             if unit == "d"
-            else timedelta(hours=amount)
-            if unit == "h"
-            else timedelta(minutes=amount)
+            else timedelta(hours=amount) if unit == "h" else timedelta(minutes=amount)
         )
         return datetime.now(UTC) - delta
 
@@ -861,6 +859,7 @@ def _oauth_login(as_json: bool, dev_mode: bool = False) -> None:
         port = s.getsockname()[1]
 
     import platform
+
     hostname = platform.node() or "cli"
     stable_device_id = load_or_create_device_id()
     cli_redirect = f"http://localhost:{port}/callback"
@@ -1027,6 +1026,7 @@ def status_cmd(
         if auth_token:
             import json as _json
             import urllib.request
+
             _base_url = load_auth_base()
             try:
                 req = urllib.request.Request(
@@ -1047,8 +1047,17 @@ def status_cmd(
             cli_count = int(cached.get("cli_device_count") or 0)
             cli_limit = int(cached.get("cli_device_limit") or 3)
             if as_json:
-                _emit({"email": email, "plan": plan, "device_id": device_id,
-                       "cli_devices": f"{cli_count}/{cli_limit}", "mode": "oauth"}, as_json=True)
+                _emit(
+                    {
+                        "authenticated": True,
+                        "email": email,
+                        "plan": plan,
+                        "device_id": device_id,
+                        "cli_devices": f"{cli_count}/{cli_limit}",
+                        "mode": "oauth",
+                    },
+                    as_json=True,
+                )
                 return
             click.secho(f"✓ {email}", fg="green", bold=True)
             click.echo(f"  plan:    {plan}")
@@ -1061,10 +1070,31 @@ def status_cmd(
                 return
             click.secho("⚠ Could not reach auth server", fg="yellow")
         else:
-            if as_json:
-                _emit({"mode": "none", "status": "not logged in"}, as_json=True)
-                return
-            click.secho("✗ Not logged in — run: atelier login", fg="red")
+            # No OAuth token — check plugin-runtime auth state (written by `login --token`),
+            # which lives at root/auth.json and is distinct from the global licensing store.
+            import json as _json2
+
+            from atelier.core.capabilities.plugin_runtime import auth_state_path as _auth_state_path
+
+            _plugin_auth: dict[str, Any] | None = None
+            try:
+                _plugin_auth_path = _auth_state_path(root)
+                if _plugin_auth_path.exists():
+                    _plugin_auth = _json2.loads(_plugin_auth_path.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                pass
+
+            if isinstance(_plugin_auth, dict) and _plugin_auth.get("authenticated") and _plugin_auth.get("email"):
+                email = str(_plugin_auth["email"])
+                if as_json:
+                    _emit({"authenticated": True, "email": email, "mode": "token"}, as_json=True)
+                    return
+                click.secho(f"✓ {email}", fg="green", bold=True)
+            else:
+                if as_json:
+                    _emit({"mode": "none", "status": "not logged in"}, as_json=True)
+                    return
+                click.secho("✗ Not logged in — run: atelier login", fg="red")
         return
 
     if as_json:

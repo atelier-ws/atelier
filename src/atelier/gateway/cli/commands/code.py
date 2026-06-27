@@ -429,18 +429,24 @@ def _index_git_history_with_progress(engine: Any, frame_prefix: str = "") -> dic
         return None
 
 
-def _trigger_zoekt_with_progress(repo_root: Path, frame_prefix: str = "") -> None:
+def _trigger_zoekt_with_progress(repo_root: Path, frame_prefix: str = "", *, quiet: bool = False) -> None:
     """Build the per-workspace Zoekt trigram index if binaries are available."""
     try:
-        from rich.console import Console
-        from rich.progress import Progress, TextColumn
-
         from atelier.infra.code_intel.zoekt.binary import discover_zoekt_binary
         from atelier.infra.code_intel.zoekt.server import get_zoekt_server
 
         resolution = discover_zoekt_binary(repo_root)
         if not resolution.available:
             return  # Zoekt not installed — silent skip, FTS5 is the fallback
+
+        if quiet:
+            # Skip Rich progress (avoids stderr pollution in --json mode).
+            server = get_zoekt_server(repo_root, resolution=resolution)
+            server.ensure_started_and_build()
+            return
+
+        from rich.console import Console
+        from rich.progress import Progress, TextColumn
 
         prefix_markup = f"[dim]{frame_prefix}[/dim]" if frame_prefix else ""
         console = Console(stderr=True)
@@ -500,7 +506,7 @@ def code_index_cmd(
         except Exception:
             logging.exception("Failed to prepare background indexes")
         try:
-            _trigger_zoekt_with_progress(Path(repo_root).resolve())
+            _trigger_zoekt_with_progress(Path(repo_root).resolve(), quiet=True)
         except Exception:
             logging.exception("Failed to prewarm Zoekt index")
         _emit(payload, as_json=True)

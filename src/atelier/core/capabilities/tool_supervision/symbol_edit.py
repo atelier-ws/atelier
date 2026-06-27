@@ -95,7 +95,7 @@ def resolve_symbol_edit(edit: dict[str, Any], *, repo_root: str | Path | None = 
         preserve_signature=preserve_signature,
         header_indent=header_indent,
     )
-    scoped_file_path = f"{repo_file_path}#{int(symbol['start_line'])}-{int(symbol['end_line'])}"
+    scoped_file_path = f"{repo_file_path}:L{int(symbol['start_line'])}-L{int(symbol['end_line'])}"
     return ResolvedSymbolEdit(
         symbol_id=str(symbol["symbol_id"]),
         repo_file_path=repo_file_path,
