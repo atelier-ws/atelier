@@ -18,6 +18,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
 import weakref
@@ -91,10 +92,6 @@ from atelier.infra.tree_sitter.tags import Tag, detect_language, extract_tags
 # Falls back gracefully when the package is not installed.
 try:
     from watchdog.events import (
-        FileCreatedEvent,
-        FileDeletedEvent,
-        FileModifiedEvent,
-        FileMovedEvent,
         FileSystemEvent,
         FileSystemEventHandler,
     )
@@ -11240,6 +11237,43 @@ class CodeContextEngine:
         digest_input = "\n".join(sorted(parts)).encode("utf-8")
         return hashlib.sha256(digest_input).hexdigest()
 
+    def _run_index_subprocess(self, *, force: bool = False) -> bool:
+        """Delegate index building to a fresh child process.
+
+        Keeps the ProcessPoolExecutor and its gigabytes of CoW-forked heap out
+        of the MCP / servicectl parent process. The subprocess runs
+        ``atelier code index``, acquires the SQLite write-lock independently,
+        and exits — releasing all indexing memory on completion.
+
+        Returns True on success, False on error (caller retries on next poll).
+        """
+        cmd = [
+            sys.executable,
+            "-m",
+            "atelier.gateway.cli",
+            "code",
+            "index",
+            "--repo-root",
+            str(self.repo_root),
+            "--no-stats",
+        ]
+        if force:
+            cmd.append("--reindex")
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=600)
+            if result.returncode != 0:
+                stderr_tail = result.stderr[-500:].decode("utf-8", errors="replace").strip()
+                logging.warning(
+                    "code index subprocess failed (rc=%d): %s",
+                    result.returncode,
+                    stderr_tail,
+                )
+                return False
+            return True
+        except Exception:
+            logging.exception("code index subprocess error for %s", self.repo_root)
+            return False
+
     def _maybe_autosync_reindex(self, *, _from_watcher: bool = False) -> None:
         if not self._autosync_lock.acquire(blocking=False):
             return
@@ -11253,7 +11287,7 @@ class CodeContextEngine:
         # so skip the expensive _source_tree_signature() stat walk entirely.
         if _from_watcher:
             self._autosync_state = "syncing"
-            self.index_repo(force=False, block=False)
+            self._run_index_subprocess()
             self._autosync_signature = self._source_tree_signature()
             self._autosync_last_sync_ms = int(time.time() * 1000)
             self._autosync_pending_events = 0
@@ -11281,7 +11315,7 @@ class CodeContextEngine:
             self._record_autosync_event(event="change_detected", reason="within_debounce_window", reindexed=False)
             return
         self._autosync_state = "syncing"
-        self.index_repo(force=False, block=False)
+        self._run_index_subprocess()
         self._autosync_signature = self._source_tree_signature()
         self._autosync_last_sync_ms = int(time.time() * 1000)
         self._autosync_pending_events = 0
@@ -11474,7 +11508,7 @@ class CodeContextEngine:
         # request path.
         if not self.index_ready():
             try:
-                self.index_repo(force=False, block=False)
+                self._run_index_subprocess()
             except Exception:
                 logging.exception("autosync: initial index build failed")
         # When the file watcher is active, the polling interval is a safety net
@@ -11487,7 +11521,7 @@ class CodeContextEngine:
                 if not self.index_ready():
                     # Still empty (e.g. the initial build lost an index-lock race
                     # with a concurrent prewarm). Keep retrying until it exists.
-                    self.index_repo(force=False, block=False)
+                    self._run_index_subprocess()
                 else:
                     # Polling-based check is the safety net; skip when watcher is
                     # active (the watcher already triggers reindex on change).
