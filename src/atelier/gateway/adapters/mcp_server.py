@@ -518,6 +518,10 @@ _STATE_LOCK = threading.RLock()
 # path to its Lock; _EDIT_PATH_LOCKS_GUARD serializes registry mutation only.
 _EDIT_PATH_LOCKS: dict[str, threading.Lock] = {}
 _EDIT_PATH_LOCKS_GUARD = threading.Lock()
+# Per-session-id cache for the savings sidecar path; set on first write so the
+# path stays stable if the process runs past midnight (date partition fixed at
+# session-start time, not re-derived on every call).
+_SAVINGS_SIDECAR_PATH_BY_SID: dict[str, Path] = {}
 _DEFAULT_MCP_MAX_WORKERS = 16
 
 # --------------------------------------------------------------------------- #
@@ -2668,7 +2672,11 @@ def _get_host_session_sidecar_path() -> Path:
     """
     sid = _resolved_host_session_id()
     if sid:
-        return _atelier_root() / "sessions" / sid / "savings.jsonl"
+        if sid not in _SAVINGS_SIDECAR_PATH_BY_SID:
+            from atelier.infra.runtime.run_ledger import session_run_dir as _srd
+
+            _SAVINGS_SIDECAR_PATH_BY_SID[sid] = _srd(_atelier_root(), sid) / "savings.jsonl"
+        return _SAVINGS_SIDECAR_PATH_BY_SID[sid]
     return _workspace_savings_path()
 
 
@@ -2823,6 +2831,14 @@ def _append_savings(tool_name: str, tokens_saved: int, calls_saved: int, rid: st
             entry["rid"] = rid
         with path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry) + "\n")
+        # Invalidate the in-memory historical savings cache so the next
+        # statusline_segment call picks up the new savings row immediately.
+        try:
+            from atelier.core.capabilities.savings_summary import _invalidate_historical_savings_cache as _inval_cache
+
+            _inval_cache()
+        except ImportError:
+            pass
     except Exception:
         logging.exception("Recovered from broad exception handler")
         # Best-effort savings sidecar; a failed write must not break the tool call.
@@ -5702,17 +5718,61 @@ def _compute_and_record_diffs(
             led.record_file_event(path=path, event="edit")
 
 
-def _normalize_edit_aliases(edit: dict[str, Any]) -> dict[str, Any]:
-    """Accept ``old``/``new`` as short aliases for ``old_string``/``new_string``.
+# All spellings an LLM might hallucinate for the old/new pair, in priority order.
+# The first key found wins; canonical ``old_string``/``new_string`` is always
+# tried last (it is the source of truth and is never overwritten by the alias
+# logic — see the guard below).
+_OLD_ALIASES = (
+    "old",
+    "old_str",
+    "oldStr",
+    "old_text",
+    "oldText",
+    "oldString",
+    "search",
+    "find",
+    "original",
+    "before",
+    "source",
+)
+_NEW_ALIASES = (
+    "new",
+    "new_str",
+    "newStr",
+    "new_text",
+    "newText",
+    "newString",
+    "replace",
+    "replacement",
+    "after",
+    "target",
+    "result",
+)
 
-    Returns the edit dict unchanged when the canonical names are already present;
-    otherwise copies the dict and promotes the short aliases so the downstream
-    apply functions always see ``old_string`` / ``new_string``.
+
+def _normalize_edit_aliases(edit: dict[str, Any]) -> dict[str, Any]:
+    """Silently promote any LLM alias for old/new to the canonical names.
+
+    The tool advertises ``old``/``new`` (short aliases for the canonical
+    ``old_string``/``new_string``), but LLMs frequently hallucinate other
+    spellings: ``oldStr``, ``old_str``, ``oldText``, ``old_text``,
+    ``oldString``, ``search``/``replace``, ``original``/``replacement``, etc.
+    This function maps every known alias to the canonical pair so the
+    downstream apply functions always see ``old_string`` / ``new_string``.
+
+    Returns the edit dict unchanged when the canonical names are already
+    present; otherwise copies the dict and promotes the first alias found.
     """
-    if "old" in edit and "old_string" not in edit:
-        edit = {**edit, "old_string": edit["old"]}
-    if "new" in edit and "new_string" not in edit:
-        edit = {**edit, "new_string": edit["new"]}
+    if "old_string" not in edit:
+        for key in _OLD_ALIASES:
+            if key in edit:
+                edit = {**edit, "old_string": edit[key]}
+                break
+    if "new_string" not in edit:
+        for key in _NEW_ALIASES:
+            if key in edit:
+                edit = {**edit, "new_string": edit[key]}
+                break
     return edit
 
 
@@ -8135,6 +8195,7 @@ def _run_bash_tool(
     """Execute a shell command and return compact structured output."""
     from atelier.core.capabilities.tool_supervision.bash_exec import (
         classify_command,
+        execute_inline_op,
         poll_managed_command,
         start_managed_command,
     )
@@ -8210,6 +8271,17 @@ def _run_bash_tool(
             "exit_code": -1,
             "blocked": True,
             "blocked_reason": policy.reason,
+        }
+
+    if policy.action == "rewrite" and policy.rewrite_target in {"head", "tail", "wc"} and policy.rewrite_payload:
+        _stdout, _stderr, _exit = execute_inline_op(policy.rewrite_target, policy.rewrite_payload, effective_cwd)
+        return {
+            "stdout": _stdout,
+            "stderr": _stderr,
+            "exit_code": _exit,
+            "truncated": False,
+            "lines_omitted": 0,
+            "duration_ms": 0,
         }
 
     if policy.action == "rewrite" and policy.rewrite_target == "read" and policy.rewrite_payload:
@@ -8496,60 +8568,39 @@ _GREP_MODE_ALIASES: dict[str, str] = {
 }
 
 
-def _grep_symbol_badge(symbol_name: str, *, repo_root: str) -> str | None:
-    """Compact caller/callee/usage-count badge for a matched definition symbol.
-
-    Best-effort and read-only: returns ``None`` (no badge) on any failure or when
-    the code index has no data, so it can never break a grep call. Counts come from
-    the cached _op_* wrappers; the actual lists are reached via the `relations` tool.
-    """
-    _cap = 500  # high so the count is the true total in the common case
-    try:
-        callers = _op_callers(symbol_name=symbol_name, limit=_cap, repo_root=repo_root)
-        callees = _op_callees(symbol_name=symbol_name, limit=_cap, repo_root=repo_root)
-        usages = _op_usages(symbol_name=symbol_name, limit=_cap, repo_root=repo_root)
-    except Exception:  # noqa: BLE001 -- badges are advisory; never fail grep
-        return None
-    if not all(isinstance(p, dict) for p in (callers, callees, usages)):
-        return None
-
-    def _fmt(payload: dict[str, Any], count_key: str, glyph: str, label: str) -> str | None:
-        # related_count / reference_count are true totals (not the rendered-list
-        # length), so no overflow marker is needed even when the list is capped.
-        n = int(payload.get(count_key, 0) or 0)
-        if not n:
-            return None
-        return f"{glyph}{n} {label}"
-
-    parts = [
-        p
-        for p in (
-            _fmt(callers, "related_count", "↳", "callers"),
-            _fmt(callees, "related_count", "↰", "callees"),
-            _fmt(usages, "reference_count", "⌖", "usages"),
-        )
-        if p
-    ]
-    if not parts:
-        return None
-    return f"{symbol_name}  " + " ".join(parts)
-
-
 def _grep_badge_provider(rel_path: str, symbol_names: list[str]) -> str | None:
     """Inline relation-count line for a file's matched definition symbols.
 
     Returns a ` · `-joined badge string (or ``None``) that `search_workspace`
-    appends to the file's header so call-graph counts ride along the regex search.
+    appends to the file's header so call-graph counts ride along the regex
+    search. Uses badge_counts_batch: 3 SQL queries for all symbols instead
+    of 3×N serial queries.
     """
-    repo_root = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
-    badges: list[str] = []
-    for name in symbol_names[:_GREP_BADGE_SYMBOL_CAP]:
-        badge = _grep_symbol_badge(name, repo_root=repo_root)
-        if badge:
-            badges.append(badge)
-    if not badges:
+    if not symbol_names:
         return None
-    return "  ·  ".join(badges)
+    repo_root = os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd())
+    names = symbol_names[:_GREP_BADGE_SYMBOL_CAP]
+    try:
+        engine = _code_context_engine(repo_root)
+        counts = engine.badge_counts_batch(names)
+    except Exception:  # noqa: BLE001 -- badges are advisory; never fail grep
+        return None
+    badges: list[str] = []
+    for name in names:
+        c = counts.get(name, {})
+        parts: list[str] = []
+        n_callers = int(c.get("callers") or 0)
+        n_callees = int(c.get("callees") or 0)
+        n_usages = int(c.get("usages") or 0)
+        if n_callers:
+            parts.append(f"↳{n_callers} callers")
+        if n_callees:
+            parts.append(f"↰{n_callees} callees")
+        if n_usages:
+            parts.append(f"⌖{n_usages} usages")
+        if parts:
+            badges.append(f"{name}  " + " ".join(parts))
+    return "  ·  ".join(badges) if badges else None
 
 
 @mcp_tool(
@@ -8967,8 +9018,7 @@ def tool_compact(
                 'Operation: "compact" (default) compresses the run ledger into a compact '
                 'session-state block; "consolidate" (T6) distills recent findings AND prunes '
                 "stale history via the same compaction entrypoint — call it as an autonomous "
-                'compaction lever when context is heavy; "retrieve" (T7/T8) reads a spilled '
-                "tool-output payload back by ref_id (use slice_start/slice_length to window it)."
+                "compaction lever when context is heavy."
             )
         ),
     ] = "compact",
@@ -8976,33 +9026,13 @@ def tool_compact(
         str | None,
         Field(description="Optional run-ledger session ID override. Usually omit."),
     ] = None,
-    ref_id: Annotated[
-        str | None,
-        Field(description='For op="retrieve": the spill ref id ("spill:...") to read back.'),
-    ] = None,
-    slice_start: Annotated[
-        int,
-        Field(description='For op="retrieve": start character offset into the spilled content.'),
-    ] = 0,
-    slice_length: Annotated[
-        int,
-        Field(description='For op="retrieve": chars to return from slice_start; <=0 means to the end.'),
-    ] = 0,
 ) -> dict[str, Any]:
     """Compress the full run ledger into a compact session state block.
 
-    Ops: "compact" (default, unchanged behavior), "consolidate" (distill + prune,
-    reusing the same compaction entrypoint), and "retrieve" (read a spilled
-    oversized tool output back by ref id).
+    Ops: "compact" (default) and "consolidate" (distill + prune, reusing the
+    same compaction entrypoint). To read a spilled tool output, use ``retrieve``.
     """
     normalized = (op or "compact").strip().lower()
-    if normalized == "retrieve":
-        if not ref_id:
-            return {"error": 'op="retrieve" requires ref_id'}
-        from atelier.core.capabilities.tool_supervision import tool_output_spill
-
-        window = (slice_start, slice_length) if (slice_start or slice_length) else None
-        return tool_output_spill.retrieve(ref_id, slice=window)
     # "compact" and "consolidate" share the existing compaction entrypoint
     # (ContextCompressor().compress, via _compress_context) — do NOT reimplement
     # compression here. consolidate distills recent findings AND prunes history;
@@ -10154,7 +10184,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             # re-pays for on every later turn). The legacy char-compaction path
             # (_compact_result_text) is deterministic and prefix-cache stable
             # across identical calls; the T7 spill summary below is intentionally
-            # NOT -- it embeds a unique ref_id (timestamp+random), so two identical
+            # NOT -- it embeds a unique filename (timestamp+random), so two identical
             # capped-tool calls yield different host text (spill summaries are
             # <4096 chars and so never get the cache_control marker below anyway).
             # T8 (ATELIER_AUTO_COMPACT_OUTPUT, default off): auto-compact an
@@ -10615,6 +10645,16 @@ def _read_path_arg(args: dict[str, Any]) -> str:
     return ""
 
 
+def _is_spill_path(path: str) -> bool:
+    """True when ``path`` resolves to a file inside the shared spill directory."""
+    from atelier.core.capabilities.tool_supervision.tool_output_spill import _spill_dir
+
+    try:
+        return Path(path).resolve().parent == _spill_dir().resolve()
+    except (ValueError, OSError):
+        return False
+
+
 def _auto_compact_result_text(text: str, tool_name: str, args: dict[str, Any]) -> str:
     """T8 — auto-apply compaction to an oversized result, reversibly.
 
@@ -10623,9 +10663,9 @@ def _auto_compact_result_text(text: str, tool_name: str, args: dict[str, Any]) -
     head+tail compaction (``compact_output.compact``) for everything else.
 
     REVERSIBLE: the untransformed original is written to the T7 spill store and a
-    recovery hint naming the ``compact`` retrieve op is appended, so the dropped
-    detail is never lost. Flag-gated by ``ATELIER_AUTO_COMPACT_OUTPUT`` (off ->
-    returns ``text`` unchanged).
+    recovery hint naming ``read <path>`` is appended, so the dropped detail is
+    never lost. Flag-gated by ``ATELIER_AUTO_COMPACT_OUTPUT`` (off -> returns
+    ``text`` unchanged).
     """
     if not _auto_compact_output_enabled():
         return text
@@ -10679,7 +10719,6 @@ def _auto_compact_result_text(text: str, tool_name: str, args: dict[str, Any]) -
         text,
         tool_name=tool_name,
         kind="original",
-        meta={"method": method, "path": _read_path_arg(args), "lang": lang},
     )
     if record is None:
         # Could not preserve the original -> do NOT lossily compact; return as-is
@@ -10688,7 +10727,7 @@ def _auto_compact_result_text(text: str, tool_name: str, args: dict[str, Any]) -
         return text
     return (
         f"{compacted_text}\n\n[compacted {method} {len(text)}→{len(compacted_text)} chars; "
-        f'full: compact op="retrieve" ref_id="{record.ref_id}"]'
+        f"full: read {record.path}]"
     )
 
 
@@ -10705,9 +10744,11 @@ def _spill_oversized_result_text(
 
     When a ``bash``/``sql``/``read``/``web_fetch`` result exceeds the budget, the
     legacy path truncates/compacts and the middle is *lost*. Here the full,
-    UNTRANSFORMED payload is written to the spill store and the host-facing text
-    becomes a head/tail summary + the spill ref id + a retrieve hint, so the
-    agent can pull the rest back without re-running the tool.
+    UNTRANSFORMED payload is written to the spill store as plain text and the
+    host-facing text becomes a head/tail summary + the path + a ``read`` hint,
+    so the agent can pull the rest back without re-running the tool. If the
+    target of a ``read`` call is itself a spill file, re-spilling is skipped and
+    normal truncation applies instead — no recursive spill chain.
 
     M1 — the gate ``unit`` selects the budget basis: ``"chars"`` (compared
     against ``len(text)``) lets the spill fire at the legacy char threshold
@@ -10722,6 +10763,10 @@ def _spill_oversized_result_text(
     """
     if not _tool_output_spill_enabled() or tool_name not in tools:
         return text
+    # Don't re-spill a read that targets an already-spilled file: let normal
+    # truncation apply so there is no recursive spill chain.
+    if tool_name == "read" and _is_spill_path(_read_path_arg(args)):
+        return text
     measured = len(text) if unit == "chars" else len(text.encode("utf-8"))
     if limit <= 0 or measured <= limit:
         return text
@@ -10733,13 +10778,12 @@ def _spill_oversized_result_text(
         text,
         tool_name=tool_name,
         kind="tool_output",
-        meta={"path": _read_path_arg(args), "limit": limit, "unit": unit},
     )
     if record is None:
         return text  # spill failed -> fall back to the legacy compaction/truncation.
 
     # A compact head+tail summary. summary_with_ref applies the final strict cap
-    # after reserving room for the recovery reference and instructions.
+    # after reserving room for the recovery path and instructions.
     summary_budget = limit if unit == "chars" else limit // 8
     target = max(256, min(summary_budget, 16384))
     head = int(target * 0.7)
@@ -10749,7 +10793,6 @@ def _spill_oversized_result_text(
         summary,
         record,
         tool_name=tool_name,
-        retrieve_op="compact",
         max_chars=limit if unit == "chars" else None,
     )
 

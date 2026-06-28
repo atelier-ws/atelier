@@ -451,7 +451,7 @@ def test_background_install_integrates_zoekt_into_stack_unit(tmp_path: Path, mon
 
     assert res.exit_code == 0, res.output
     stack_unit = (unit_dir / "atelier-stack.service").read_text(encoding="utf-8")
-    assert "Environment=ATELIER_ZOEKT_MODE=managed" in stack_unit
+    assert "Environment=ATELIER_ZOEKT_MODE=installed" in stack_unit
     assert "zoekt up" not in stack_unit
     assert not stale_zoekt_unit.exists()
     assert ["systemctl", "--user", "disable", "--now", "atelier-zoekt.service"] in commands

@@ -170,6 +170,12 @@ _DETECTORS: tuple[tuple[str, Any], ...] = (
 )
 
 
+# Mtime-keyed cache for replay_session: the result only changes when the
+# transcript file changes (a new Claude turn is appended). Avoids re-running
+# all detectors on every statusline poll when the transcript is stable.
+_replay_session_cache: dict[str, tuple[float, dict[str, Any]]] = {}  # path_str → (mtime, result)
+
+
 def replay_session(transcript_path: str | Path) -> dict[str, Any]:
     """Replay one transcript through every detector and sum all hits.
 
@@ -178,7 +184,19 @@ def replay_session(transcript_path: str | Path) -> dict[str, Any]:
     read_batch). Returns the final savings shape::
 
         {"calls_saved", "time_saved_ms", "tokens_saved", "cost_saved_usd"}
+
+    Results are cached by transcript mtime so repeated statusline polls during
+    the same Claude turn are fast (< 1ms instead of ~20ms).
     """
+    _path = Path(transcript_path)
+    try:
+        _mtime = _path.stat().st_mtime
+    except OSError:
+        _mtime = 0.0
+    _key = str(_path)
+    _cached = _replay_session_cache.get(_key)
+    if _cached is not None and _cached[0] == _mtime:
+        return _cached[1]
     turns = build_turns(transcript_path)
     consumed: set[str] = set()
 
@@ -196,13 +214,15 @@ def replay_session(transcript_path: str | Path) -> dict[str, Any]:
     stats = read_transcript_stats(transcript_path)
     per_call_tokens, per_call_cost = price_avoided_call(stats, stats.model if stats else "")
 
-    return {
+    _result = {
         "calls_saved": calls_saved,
         "time_saved_ms": baseline_time_saved(calls_saved)["time_saved_ms"],
         "tokens_saved": round(calls_saved * per_call_tokens),
         "cost_saved_usd": round(calls_saved * per_call_cost, 6),
         "by_detector": by_detector,
     }
+    _replay_session_cache[_key] = (_mtime, _result)
+    return _result
 
 
 def price_avoided_call(stats: TranscriptStats | None, model: str) -> tuple[int, float]:

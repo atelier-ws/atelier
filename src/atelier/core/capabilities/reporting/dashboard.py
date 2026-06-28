@@ -164,7 +164,7 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
         if candidate.exists():
             ledger_path = str(candidate)
     elif sessions_dir.is_dir():
-        files = sorted(sessions_dir.glob("*/run.json"), key=os.path.getmtime, reverse=True)
+        files = sorted(sessions_dir.glob("**/run.json"), key=os.path.getmtime, reverse=True)
         if files:
             ledger_path = str(files[0])
     if not ledger_path:
@@ -182,7 +182,7 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
     compaction_total = 0.0
     sessions_root = root / "sessions"
     if sessions_root.is_dir():
-        for sidecar in sessions_root.glob("*/savings.jsonl"):
+        for sidecar in sessions_root.glob("**/savings.jsonl"):
             rid = sidecar.parent.name
             try:
                 sidecar_lines = sidecar.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -349,7 +349,7 @@ def _render_dashboard_impl(root: Path, line_mode: bool, n_runs: int, session_id:
     seen_ids: set[str] = set()
 
     if sessions_dir.is_dir():
-        for rf in sorted(sessions_dir.glob("*/run.json"), key=os.path.getmtime, reverse=True):
+        for rf in sorted(sessions_dir.glob("**/run.json"), key=os.path.getmtime, reverse=True):
             try:
                 d = json.loads(rf.read_text())
                 rid = d.get("session_id") or rf.stem

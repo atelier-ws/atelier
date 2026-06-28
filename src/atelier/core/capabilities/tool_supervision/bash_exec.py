@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import uuid
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -219,6 +220,260 @@ def _rewrite_cat(tokens: list[str]) -> CommandPolicyDecision:
         rewrite_target="read",
         rewrite_payload={"file_path": tokens[1]},
     )
+
+
+def _parse_head_tail_n(tokens: list[str], i: int) -> tuple[int | None, int]:
+    """Parse a ``-n N`` / ``--lines=N`` / ``-N`` count from *tokens* at position *i*.
+
+    Returns ``(n, new_i)`` where *n* is ``None`` when the token is unrecognised
+    (caller should fall back to subprocess) and *new_i* is the next index to
+    process.  Negative N and ``+N`` (from-line) forms return ``None``.
+    """
+    tok = tokens[i]
+    if tok in {"-n", "--lines"}:
+        if i + 1 >= len(tokens):
+            return None, i + 1
+        val = tokens[i + 1]
+        if val.startswith("+") or not val.lstrip("-").isdigit():
+            return None, i + 2
+        n = int(val)
+        return (None if n < 0 else n), i + 2
+    if tok.startswith("--lines="):
+        val = tok.split("=", 1)[1]
+        if val.startswith("+") or not val.lstrip("-").isdigit():
+            return None, i + 1
+        n = int(val)
+        return (None if n < 0 else n), i + 1
+    if tok.startswith("-n") and tok[2:].isdigit():
+        # Bundled form: -n80
+        return int(tok[2:]), i + 1
+    if len(tok) >= 2 and tok[1:].isdigit():
+        # GNU legacy short form: head -80 file
+        return int(tok[1:]), i + 1
+    return None, i + 1  # unrecognised
+
+
+def _rewrite_head(tokens: list[str]) -> CommandPolicyDecision:
+    """Rewrite ``head [-n N] file`` to a Python inline op (no subprocess)."""
+    n = 10
+    files: list[str] = []
+    i = 1
+    seen_double_dash = False
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "--" and not seen_double_dash:
+            seen_double_dash = True
+            i += 1
+            continue
+        if tok.startswith("-") and not seen_double_dash:
+            if tok in {"-q", "--quiet", "--silent", "-v", "--verbose",
+                       "-z", "--zero-terminated", "-c", "--bytes"}:
+                return CommandPolicyDecision(category="file-read", action="allow")
+            parsed_n, i = _parse_head_tail_n(tokens, i)
+            if parsed_n is None:
+                return CommandPolicyDecision(category="file-read", action="allow")
+            n = parsed_n
+            continue
+        files.append(tok)
+        i += 1
+    if len(files) != 1:
+        return CommandPolicyDecision(category="file-read", action="allow")
+    return CommandPolicyDecision(
+        category="file-read",
+        action="rewrite",
+        rewrite_target="head",
+        rewrite_payload={"file": files[0], "n": n},
+    )
+
+
+def _rewrite_tail(tokens: list[str]) -> CommandPolicyDecision:
+    """Rewrite ``tail [-n N] file`` to a Python inline op (no subprocess)."""
+    n = 10
+    files: list[str] = []
+    i = 1
+    seen_double_dash = False
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "--" and not seen_double_dash:
+            seen_double_dash = True
+            i += 1
+            continue
+        if tok.startswith("-") and not seen_double_dash:
+            # -f/--follow, -s, --pid, --retry, --sleep-interval and byte-mode
+            # all require real tail behaviour.
+            if tok in {"-f", "-F", "--follow", "--retry",
+                       "-q", "--quiet", "--silent",
+                       "-v", "--verbose",
+                       "-z", "--zero-terminated",
+                       "-c", "--bytes", "-s", "--sleep-interval", "--pid"}:
+                return CommandPolicyDecision(category="file-read", action="allow")
+            parsed_n, i = _parse_head_tail_n(tokens, i)
+            if parsed_n is None:
+                return CommandPolicyDecision(category="file-read", action="allow")
+            n = parsed_n
+            continue
+        files.append(tok)
+        i += 1
+    if len(files) != 1:
+        return CommandPolicyDecision(category="file-read", action="allow")
+    return CommandPolicyDecision(
+        category="file-read",
+        action="rewrite",
+        rewrite_target="tail",
+        rewrite_payload={"file": files[0], "n": n},
+    )
+
+
+def _rewrite_wc(tokens: list[str]) -> CommandPolicyDecision:
+    """Rewrite ``wc [-l|-c|-w] file`` to a Python inline op (no subprocess)."""
+    count_lines = False
+    count_bytes = False
+    count_words = False
+    files: list[str] = []
+    i = 1
+    seen_double_dash = False
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "--" and not seen_double_dash:
+            seen_double_dash = True
+            i += 1
+            continue
+        if tok.startswith("-") and not seen_double_dash:
+            if tok in {"-l", "--lines"}:
+                count_lines = True
+            elif tok in {"-c", "--bytes"}:
+                count_bytes = True
+            elif tok in {"-w", "--words"}:
+                count_words = True
+            elif tok in {"-m", "--chars"}:
+                # Character vs byte count differs for multibyte content;
+                # fall back to subprocess for correctness.
+                return CommandPolicyDecision(category="file-read", action="allow")
+            elif not tok.startswith("--") and len(tok) > 1:
+                # Bundled short flags: -lw, -lc, -lwc …
+                for ch in tok[1:]:
+                    if ch == "l":
+                        count_lines = True
+                    elif ch == "c":
+                        count_bytes = True
+                    elif ch == "w":
+                        count_words = True
+                    else:
+                        return CommandPolicyDecision(category="file-read", action="allow")
+            else:
+                return CommandPolicyDecision(category="file-read", action="allow")
+            i += 1
+            continue
+        files.append(tok)
+        i += 1
+    if len(files) != 1:
+        # stdin or multiple files → subprocess
+        return CommandPolicyDecision(category="file-read", action="allow")
+    return CommandPolicyDecision(
+        category="file-read",
+        action="rewrite",
+        rewrite_target="wc",
+        rewrite_payload={
+            "file": files[0],
+            "count_lines": count_lines,
+            "count_bytes": count_bytes,
+            "count_words": count_words,
+        },
+    )
+
+
+def execute_inline_op(
+    rewrite_target: str,
+    payload: dict[str, Any],
+    cwd: str | None = None,
+) -> tuple[str, str, int]:
+    """Execute a fast-path file-read op in Python, returning (stdout, stderr, exit_code).
+
+    Covers ``head``, ``tail``, and ``wc``.  No subprocess is spawned; latency
+    is O(microseconds) rather than O(30–50 ms) for fork+exec of bash+head.
+    Called from both ``run_command`` and the MCP adapter so they share the same
+    implementation.
+    """
+    file_arg = str(payload.get("file") or "")
+    path = Path(file_arg)
+    if not path.is_absolute() and cwd:
+        path = Path(cwd) / path
+
+    if rewrite_target == "head":
+        n = int(payload.get("n") or 10)
+        try:
+            with path.open(encoding="utf-8", errors="replace") as fh:
+                lines: list[str] = []
+                for _ in range(n):
+                    line = fh.readline()
+                    if not line:
+                        break
+                    lines.append(line)
+            return "".join(lines), "", 0
+        except FileNotFoundError:
+            return "", f"head: cannot open '{file_arg}' for reading: No such file or directory\n", 1
+        except PermissionError:
+            return "", f"head: cannot open '{file_arg}' for reading: Permission denied\n", 1
+        except OSError as exc:
+            return "", f"head: {file_arg}: {exc}\n", 1
+
+    if rewrite_target == "tail":
+        n = int(payload.get("n") or 10)
+        _TAIL_CHUNK = 65536
+        try:
+            with path.open("rb") as fh:
+                fh.seek(0, 2)
+                size = fh.tell()
+                if size == 0:
+                    return "", "", 0
+                buf = b""
+                pos = size
+                # Read backward in chunks until we have n+1 newlines
+                # (+1 because the first chunk may start mid-line).
+                while pos > 0:
+                    chunk = min(_TAIL_CHUNK, pos)
+                    pos -= chunk
+                    fh.seek(pos)
+                    buf = fh.read(chunk) + buf
+                    if buf.count(b"\n") >= n + 1:
+                        break
+            text = buf.decode("utf-8", errors="replace")
+            lines = text.splitlines()
+            tail_lines = lines[-n:] if len(lines) >= n else lines
+            return ("\n".join(tail_lines) + "\n") if tail_lines else "", "", 0
+        except FileNotFoundError:
+            return "", f"tail: cannot open '{file_arg}' for reading: No such file or directory\n", 1
+        except PermissionError:
+            return "", f"tail: cannot open '{file_arg}' for reading: Permission denied\n", 1
+        except OSError as exc:
+            return "", f"tail: {file_arg}: {exc}\n", 1
+
+    if rewrite_target == "wc":
+        count_lines = bool(payload.get("count_lines"))
+        count_bytes = bool(payload.get("count_bytes"))
+        count_words = bool(payload.get("count_words"))
+        # No flags → report lines, words, and bytes (GNU wc default).
+        all_counts = not (count_lines or count_bytes or count_words)
+        try:
+            raw = path.read_bytes()
+            text = raw.decode("utf-8", errors="replace")
+            parts: list[str] = []
+            if all_counts or count_lines:
+                parts.append(str(text.count("\n")))
+            if all_counts or count_words:
+                parts.append(str(len(text.split())))
+            if all_counts or count_bytes:
+                parts.append(str(len(raw)))
+            parts.append(file_arg)
+            return " ".join(parts) + "\n", "", 0
+        except FileNotFoundError:
+            return "", f"wc: {file_arg}: No such file or directory\n", 1
+        except PermissionError:
+            return "", f"wc: {file_arg}: Permission denied\n", 1
+        except OSError as exc:
+            return "", f"wc: {file_arg}: {exc}\n", 1
+
+    raise ValueError(f"Unknown inline op: {rewrite_target!r}")
 
 
 # Flags that are structural/formatting and safe to silently ignore during rewrite
@@ -822,6 +1077,12 @@ def classify_command(command: str, *, allowed_write_roots: list[Path] | None = N
     head = tokens[0].lower()
     if head == "cat":
         return _rewrite_cat(tokens)
+    if head == "head":
+        return _rewrite_head(tokens)
+    if head == "tail":
+        return _rewrite_tail(tokens)
+    if head == "wc":
+        return _rewrite_wc(tokens)
     if head in {"rg", "grep"}:
         return _rewrite_search(tokens, head)
     return CommandPolicyDecision(category="generic", action="allow")
@@ -1140,6 +1401,32 @@ def run_command(
             rewrite_payload=policy.rewrite_payload,
         )
 
+    # Fast-path: execute head/tail/wc directly in Python — no fork, no exec,
+    # no gate check (we're not spawning a shell).  Latency drops from ~40 ms
+    # to <1 ms for these common file-inspection commands.
+    if (
+        policy.action == "rewrite"
+        and policy.rewrite_target in {"head", "tail", "wc"}
+        and policy.rewrite_payload is not None
+    ):
+        _t0 = time.perf_counter()
+        _stdout, _stderr, _exit = execute_inline_op(policy.rewrite_target, policy.rewrite_payload, cwd)
+        _dur = int((time.perf_counter() - _t0) * 1000)
+        _result = _compact_result(
+            command=command,
+            raw_stdout=_stdout,
+            raw_stderr=_stderr,
+            exit_code=_exit,
+            duration_ms=_dur,
+            max_lines=max_lines,
+        )
+        _result.policy_category = policy.category
+        _result.policy_action = policy.action
+        _result.policy_reason = policy.reason
+        _result.rewrite_target = policy.rewrite_target
+        _result.rewrite_payload = policy.rewrite_payload
+        return _result
+
     gate = command_discipline.pre_run_gate(command)
     if gate.action == "block":
         return RunResult(
@@ -1251,6 +1538,7 @@ __all__ = [
     "CommandPolicyDecision",
     "RunResult",
     "classify_command",
+    "execute_inline_op",
     "poll_managed_command",
     "run_command",
     "start_managed_command",

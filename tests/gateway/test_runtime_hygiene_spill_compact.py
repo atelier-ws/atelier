@@ -11,20 +11,21 @@ from __future__ import annotations
 import os
 import re
 import time
+from pathlib import Path
 
 import pytest
 
 from atelier.core.capabilities.tool_supervision import tool_output_spill
 from atelier.gateway.adapters import mcp_server
 
-_REF_RE = re.compile(r"(spill:[^\s\"';\]]+?\.json)")
+_PATH_RE = re.compile(r"spilled to (\S+\.txt);")
 
 
-def _extract_ref(text: str) -> str:
-    """Pull the first spill ref id out of a host-facing summary string."""
-    match = _REF_RE.search(text)
-    assert match is not None, f"no spill ref in: {text[-200:]!r}"
-    return match.group(1)
+def _extract_path(text: str) -> Path:
+    """Pull the spill file path out of a host-facing summary string."""
+    match = _PATH_RE.search(text)
+    assert match is not None, f"no spill path in: {text[-200:]!r}"
+    return Path(match.group(1))
 
 
 @pytest.fixture(autouse=True)
@@ -39,42 +40,18 @@ def _isolated_spill_dir(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# T7 — tool_output_spill store: spill + retrieve round-trip                     #
+# T7 — tool_output_spill store: write + direct read round-trip                 #
 # --------------------------------------------------------------------------- #
 
 
-def test_spill_then_retrieve_round_trips_full_content() -> None:
+def test_spill_write_is_lossless() -> None:
     payload = "HEAD" + ("x" * 50000) + "TAIL"
     record = tool_output_spill.spill(payload, tool_name="bash", kind="tool_output")
     assert record is not None
-    assert record.ref_id.startswith(tool_output_spill.SPILL_REF_PREFIX)
     assert record.path.exists()
-
-    got = tool_output_spill.retrieve(record.ref_id)
-    assert got["content"] == payload  # nothing lost
-    assert got["tool"] == "bash"
-    assert got["total_chars"] == len(payload)
-    assert "error" not in got
-
-
-def test_retrieve_supports_slice_window() -> None:
-    payload = "".join(str(i % 10) for i in range(1000))
-    record = tool_output_spill.spill(payload, tool_name="read")
-    assert record is not None
-    got = tool_output_spill.retrieve(record.ref_id, slice=(100, 50))
-    assert got["content"] == payload[100:150]
-    assert got["slice"] == {"start": 100, "end": 150, "total_chars": 1000}
-
-
-def test_retrieve_unknown_ref_returns_error_not_raise() -> None:
-    got = tool_output_spill.retrieve("spill:does-not-exist.json")
-    assert "error" in got
-
-
-def test_retrieve_rejects_path_traversal() -> None:
-    got = tool_output_spill.retrieve("spill:../../etc/passwd")
-    assert "error" in got
-    assert "invalid" in got["error"]
+    assert record.path.suffix == ".txt"
+    assert record.path.read_text(encoding="utf-8") == payload
+    assert record.original_bytes == len(payload.encode("utf-8"))
 
 
 # --------------------------------------------------------------------------- #
@@ -111,12 +88,9 @@ def test_spill_helper_spills_and_returns_recoverable_ref(monkeypatch: pytest.Mon
     assert len(out) < len(text)  # host-facing text is a compact summary
     assert out.startswith("HEAD-MARKER")  # head preserved in summary
     assert "TAIL-MARKER" in out  # tail preserved in summary
-    assert tool_output_spill.SPILL_REF_PREFIX in out  # ref id present
-    assert "retrieve" in out  # recovery hint present
-
-    # The hint must point at a ref that recovers the FULL original.
-    recovered = tool_output_spill.retrieve(_extract_ref(out))
-    assert recovered["content"] == text
+    assert "spilled to" in out  # spill path present
+    assert "read " in out  # recovery hint present
+    assert _extract_path(out).read_text(encoding="utf-8") == text  # full original preserved
 
 
 def test_spill_helper_enforces_strict_char_cap_including_ref() -> None:
@@ -126,8 +100,19 @@ def test_spill_helper_enforces_strict_char_cap_including_ref() -> None:
     assert len(out) <= 2048
     assert out.startswith("HEAD-MARKER")
     assert "TAIL-MARKER" in out
-    recovered = tool_output_spill.retrieve(_extract_ref(out))
-    assert recovered["content"] == text
+    assert _extract_path(out).read_text(encoding="utf-8") == text
+
+
+def test_read_on_spill_file_does_not_re_spill() -> None:
+    """Reading a spill file must not create a second spill: the dispatch layer
+    returns text unchanged so normal truncation applies instead."""
+    record = tool_output_spill.spill("x" * 200_000, tool_name="bash")
+    assert record is not None
+
+    text = "x" * 200_000
+    out = mcp_server._spill_oversized_result_text(text, "read", {"path": str(record.path)}, limit=64 * 1024)
+    assert out == text  # returned unchanged — no new spill
+    assert "spilled to" not in out
 
 
 def test_spill_result_chars_defaults_to_2k(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -211,36 +196,23 @@ def test_spill_bounded_and_leaves_no_temp(monkeypatch: pytest.MonkeyPatch) -> No
         assert tool_output_spill.spill(f"content-{i}", tool_name="bash") is not None
 
     # Directory stays bounded and the atomic write leaves no in-flight temp files.
-    assert len(list(spill_dir.glob("*.json"))) <= 2
+    assert len(list(spill_dir.glob("*.txt"))) <= 2
     assert list(spill_dir.glob("*.tmp")) == []
 
 
-def test_retrieve_rejects_non_dict_envelope() -> None:
-    # Valid JSON that isn't an object must yield a structured error, not an
-    # uncaught AttributeError from envelope.get(...).
-    spill_dir = tool_output_spill._spill_dir()
-    (spill_dir / "tool_output-bad.json").write_text("[1, 2, 3]", encoding="utf-8")
-
-    out = tool_output_spill.retrieve("spill:tool_output-bad.json")
-
-    assert "error" in out
-    assert out.get("ref_id") == "spill:tool_output-bad.json"
-    assert "content" not in out
-
-
 def test_summary_with_ref_preserves_ref_under_tiny_cap() -> None:
-    # A cap below the full hint but above the bare ref id must keep the recovery
-    # ref intact (never cut mid-ref) and honor the return bound, so the on-disk
-    # spill is still recoverable.
+    # A cap below the full hint but above the bare path must keep the path intact
+    # so the on-disk spill stays recoverable.
     record = tool_output_spill.spill("x" * 5000, tool_name="bash")
     assert record is not None
-    tiny = len(record.ref_id) + 5
+    path_str = str(record.path)
+    tiny = len(path_str) + 5
 
     out = tool_output_spill.summary_with_ref("SUMMARY-TEXT", record, tool_name="bash", max_chars=tiny)
 
     assert len(out) <= tiny
-    assert record.ref_id in out
-    assert tool_output_spill.retrieve(out)["content"] == "x" * 5000
+    assert path_str in out
+    assert record.path.read_text(encoding="utf-8") == "x" * 5000
 
 
 def test_spill_is_enabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -249,10 +221,10 @@ def test_spill_is_enabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_read_exempt_from_strict_char_cap() -> None:
-    """`read` is the incremental retrieval surface (ranges, expand=true, slice
-    windows) and the tool used to recover spilled output, so the 2 KiB char cap
-    must NOT force-summarize it. It stays in _SPILL_TOOLS (multi-MB wire
-    backstop) but is absent from the char-cap set the dispatcher passes.
+    """`read` is the incremental retrieval surface (ranges, expand=true) and the
+    tool used to recover spilled output, so the 2 KiB char cap must NOT
+    force-summarize it. It stays in _SPILL_TOOLS (multi-MB wire backstop) but is
+    absent from the char-cap set the dispatcher passes.
     """
     assert "read" not in mcp_server._SPILL_CHAR_CAP_TOOLS
     assert "read" in mcp_server._SPILL_TOOLS
@@ -272,8 +244,7 @@ def test_shell_still_char_capped() -> None:
         text, "bash", {}, limit=2048, unit="chars", tools=mcp_server._SPILL_CHAR_CAP_TOOLS
     )
     assert len(out) <= 2048
-    recovered = tool_output_spill.retrieve(_extract_ref(out))
-    assert recovered["content"] == text
+    assert _extract_path(out).read_text(encoding="utf-8") == text
 
 
 # --------------------------------------------------------------------------- #
@@ -305,12 +276,11 @@ def test_auto_compact_is_reversible_via_spill(monkeypatch: pytest.MonkeyPatch) -
 
     assert len(out) < len(text)  # compacted
     assert "compacted" in out
-    assert 'op="retrieve"' in out
-    assert tool_output_spill.SPILL_REF_PREFIX in out
-
-    recovered = tool_output_spill.retrieve(_extract_ref(out))
-    assert recovered["content"] == text  # original fully recoverable
-    assert recovered["kind"] == "original"
+    # Recovery hint uses `read <path>`
+    path_match = re.search(r"full: read (\S+\.txt)", out)
+    assert path_match is not None
+    spill_path = Path(path_match.group(1))
+    assert spill_path.read_text(encoding="utf-8") == text  # original fully recoverable
 
 
 def test_auto_compact_code_is_ast_aware(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -322,11 +292,14 @@ def test_auto_compact_code_is_ast_aware(monkeypatch: pytest.MonkeyPatch) -> None
     src = "def f():\n" + "\n\n\n".join(f"    x{i} = {i}  " for i in range(2000)) + "\n"
     out = mcp_server._auto_compact_result_text(src, "read", {"path": "mod.py"})
     assert "source_projection:python" in out  # AST/structure-aware method tag
-    assert tool_output_spill.SPILL_REF_PREFIX in out  # still reversible
+    # Still reversible: a .txt spill path appears in the hint
+    path_match = re.search(r"full: read (\S+\.txt)", out)
+    assert path_match is not None
+    assert Path(path_match.group(1)).exists()
 
 
 # --------------------------------------------------------------------------- #
-# T6 — autonomous-compaction lever + retrieve op on the `compact` tool          #
+# T6 — autonomous-compaction lever on the `compact` tool                        #
 # --------------------------------------------------------------------------- #
 
 
@@ -357,28 +330,9 @@ def test_compact_tool_consolidate_reuses_compaction_entrypoint(monkeypatch: pyte
     assert out["tokens_freed"] == 7
 
 
-def test_compact_tool_retrieve_op_reads_spill() -> None:
-    record = tool_output_spill.spill("PAYLOAD-CONTENT", tool_name="sql")
-    assert record is not None
-    out = mcp_server.tool_compact({"op": "retrieve", "ref_id": record.ref_id})
-    assert out["content"] == "PAYLOAD-CONTENT"
-
-
-def test_compact_tool_retrieve_op_windows_with_slice() -> None:
-    record = tool_output_spill.spill("0123456789", tool_name="sql")
-    assert record is not None
-    out = mcp_server.tool_compact({"op": "retrieve", "ref_id": record.ref_id, "slice_start": 2, "slice_length": 3})
-    assert out["content"] == "234"
-
-
-def test_compact_tool_retrieve_op_requires_ref_id() -> None:
-    out = mcp_server.tool_compact({"op": "retrieve"})
-    assert "error" in out
-
-
 # --------------------------------------------------------------------------- #
 # M1 — spill fires at the CHAR threshold, BEFORE legacy char compaction, so the #
-# spilled artifact holds the FULL untransformed payload (not compacted text).   #
+# spilled file holds the FULL untransformed payload (not compacted text).       #
 # --------------------------------------------------------------------------- #
 
 
@@ -389,13 +343,12 @@ def test_spill_helper_char_unit_fires_at_char_threshold(monkeypatch: pytest.Monk
     text = "HEAD" + ("m" * 200_000) + "TAIL"
     out = mcp_server._spill_oversized_result_text(text, "bash", {}, 1000, unit="chars")
     assert len(out) < len(text)
-    recovered = tool_output_spill.retrieve(_extract_ref(out))
-    assert recovered["content"] == text  # FULL untransformed payload preserved
+    assert _extract_path(out).read_text(encoding="utf-8") == text  # FULL untransformed payload
 
 
 def test_handle_spills_full_untransformed_payload_before_compaction(monkeypatch: pytest.MonkeyPatch) -> None:
     """End-to-end through _handle: with the flag on and an oversized result, the
-    spilled artifact must hold the FULL untransformed payload — specifically the
+    spill file must hold the FULL untransformed payload — specifically the
     MIDDLE that the legacy _compact_result_text would otherwise drop."""
     monkeypatch.setenv("ATELIER_TOOL_OUTPUT_SPILL", "1")
     # Char threshold well below the payload so the char-gated spill fires.
@@ -424,14 +377,14 @@ def test_handle_spills_full_untransformed_payload_before_compaction(monkeypatch:
     # Host-facing text is a compact summary that fits the budget...
     assert len(host_text) <= 2048
     assert middle_marker not in host_text  # the middle is dropped from the summary
-    # ...but the spilled ref recovers the FULL untransformed payload, middle and all.
-    recovered = tool_output_spill.retrieve(_extract_ref(host_text))
-    assert recovered["content"] == payload
-    assert middle_marker in recovered["content"]
+    # ...but the spill file recovers the FULL untransformed payload, middle and all.
+    recovered = _extract_path(host_text).read_text(encoding="utf-8")
+    assert recovered == payload
+    assert middle_marker in recovered
 
 
 def test_handle_spill_flag_off_does_not_spill(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Flag-off behavior preserved: no spill ref, legacy char compaction applies."""
+    """Flag-off behavior preserved: no spill path, legacy char compaction applies."""
     monkeypatch.setenv("ATELIER_TOOL_OUTPUT_SPILL", "0")
     monkeypatch.setenv("ATELIER_MCP_COMPACT_RESULT_CHARS", "2000")
     payload = "HEAD" + ("a" * 200_000) + "TAIL"
@@ -450,8 +403,8 @@ def test_handle_spill_flag_off_does_not_spill(monkeypatch: pytest.MonkeyPatch) -
     )
     assert resp is not None
     host_text = resp["result"]["content"][0]["text"]
-    assert tool_output_spill.SPILL_REF_PREFIX not in host_text  # flag off -> no spill
-    # Legacy char compaction still ran (its recovery hint, not a spill ref).
+    assert "spilled to" not in host_text  # flag off -> no spill
+    # Legacy char compaction still ran (its recovery hint, not a spill path).
     assert "compacted" in host_text
 
 

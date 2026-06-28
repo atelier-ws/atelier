@@ -137,7 +137,7 @@ WantedBy=default.target
         click.echo(f"Installed {CONTROLLER_UNIT}")
 
         if with_stack:
-            zoekt_env = "Environment=ATELIER_ZOEKT_MODE=managed\n" if with_zoekt else ""
+            zoekt_env = "Environment=ATELIER_ZOEKT_MODE=installed\n" if with_zoekt else ""
             stack_content = f"""[Unit]
 Description=Atelier HTTP Service
 After={CONTROLLER_UNIT}

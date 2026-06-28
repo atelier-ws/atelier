@@ -1120,7 +1120,7 @@ def _collect_cost_and_tokens(atelier_root: Path) -> tuple[int, float]:
         return 0, 0.0
     total_tokens = 0
     total_cost = 0.0
-    for path in runs_dir.glob("*/run.json"):
+    for path in runs_dir.glob("**/run.json"):
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):

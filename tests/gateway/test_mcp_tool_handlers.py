@@ -843,7 +843,8 @@ def test_compact_handover_writes_markdown(store_root: Path) -> None:
     assert payload["should_handover"] is True
     assert payload["handover_file"]
     handover_path = Path(payload["handover_file"])
-    assert handover_path == root / "sessions" / "handover-session" / "HANDOVER.md"
+    from atelier.infra.runtime.run_ledger import session_run_dir
+    assert handover_path == session_run_dir(root, "handover-session") / "HANDOVER.md"
     assert "Session Handover" in handover_path.read_text(encoding="utf-8")
 
 

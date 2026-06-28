@@ -322,11 +322,14 @@ def test_sidecar_and_identity_route_to_live_window_session_after_clear(
     win_file.write_text(json.dumps({"session_id": "active-sid"}), encoding="utf-8")
 
     # Identity (ledger/telemetry) and savings BOTH follow the live window id.
+    from atelier.infra.runtime.run_ledger import session_run_dir
+
     assert m._claude_session_id() == "active-sid"
-    assert m._get_host_session_sidecar_path() == tmp_path / "sessions" / "active-sid" / "savings.jsonl"
+    assert m._get_host_session_sidecar_path() == session_run_dir(tmp_path, "active-sid") / "savings.jsonl"
 
     # Before SessionStart writes this window's file (first calls / hookless
     # launchers), fall back to the launch env var so early savings still record.
     win_file.unlink()
     monkeypatch.setattr(m, "_WINDOW_SID_CACHE", None, raising=False)
-    assert m._get_host_session_sidecar_path() == tmp_path / "sessions" / "launch-sid" / "savings.jsonl"
+    monkeypatch.setattr(m, "_SAVINGS_SIDECAR_PATH_BY_SID", {}, raising=False)
+    assert m._get_host_session_sidecar_path() == session_run_dir(tmp_path, "launch-sid") / "savings.jsonl"

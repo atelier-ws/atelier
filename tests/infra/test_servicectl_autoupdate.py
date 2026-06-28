@@ -139,3 +139,70 @@ def test_git_apply_noop_when_up_to_date(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
     monkeypatch.setattr(svc, "_stack_restart", _boom)
     assert svc._servicectl_check_and_apply_updates(tmp_path) is False
+
+
+class _FakeCompleted:
+    """Minimal stand-in for subprocess.CompletedProcess used by the git tests."""
+
+    def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def test_update_via_git_tracks_origin_main_not_upstream(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Auto-update fetches and compares against origin/main directly, never the
+    current branch's @{u} — which exits 128 on a branch with no upstream and was
+    the original recurring 'Auto-update failed' error."""
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> _FakeCompleted:
+        calls.append(cmd)
+        if cmd[:2] == ["git", "rev-list"]:
+            return _FakeCompleted(stdout="2\n")
+        return _FakeCompleted(returncode=0)
+
+    monkeypatch.setattr(svc.subprocess, "run", fake_run)
+
+    assert svc._update_via_git(str(tmp_path)) is True
+    joined = [" ".join(c) for c in calls]
+    assert any(j == "git fetch --quiet origin main" for j in joined)
+    assert any("rev-list HEAD..origin/main --count" in j for j in joined)
+    assert any(c[:3] == ["git", "merge", "--ff-only"] and "origin/main" in c for c in calls)
+    assert not any("@{u}" in j for j in joined)
+
+
+def test_update_via_git_returns_false_when_cannot_fast_forward(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A branch that has diverged from main cannot fast-forward. The daemon must
+    skip cleanly (return False) instead of raising CalledProcessError on every
+    tick — the bug that spammed 'Auto-update failed'."""
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> _FakeCompleted:
+        if cmd[:2] == ["git", "rev-list"]:
+            return _FakeCompleted(stdout="5\n")
+        if cmd[:2] == ["git", "merge"]:
+            return _FakeCompleted(returncode=1, stderr="fatal: Not possible to fast-forward")
+        return _FakeCompleted(returncode=0)
+
+    monkeypatch.setattr(svc.subprocess, "run", fake_run)
+    assert svc._update_via_git(str(tmp_path)) is False
+
+
+def test_update_via_git_skips_when_origin_main_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """If origin/main is not present, skip without running rev-list or raising."""
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> _FakeCompleted:
+        if cmd[:2] == ["git", "rev-parse"]:
+            return _FakeCompleted(returncode=1)
+        if cmd[:2] == ["git", "rev-list"]:
+            raise AssertionError("must not run rev-list when origin/main is missing")
+        return _FakeCompleted(returncode=0)
+
+    monkeypatch.setattr(svc.subprocess, "run", fake_run)
+    assert svc._update_via_git(str(tmp_path)) is False

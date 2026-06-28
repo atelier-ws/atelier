@@ -6,12 +6,12 @@ ceiling drops are *lost*: a shell/sql/read/web_fetch result that overflows the
 budget is truncated and the tail is gone, so the agent cannot recover it without
 re-running the (often expensive, non-idempotent) tool.
 
-This module generalizes the spill helper already used by ``native_search``
-(``_spill_dir`` + ``_spill_response_payload``) into a standalone, reference-able
-store: the full payload is written to disk under a content-addressed id and a
-short ref id is handed back. ``retrieve(ref_id, slice=...)`` reads it back
-(optionally a byte slice), so the dispatcher can return a summary plus a ref id
-plus a recovery hint *instead of* discarding the overflow.
+This module writes the full payload to a plain-text file in the shared spill dir
+and hands back a path. The agent recovers the content by calling
+``read <path>`` — with ``:L1-L200`` line ranges to page through large results —
+so no separate retrieval tool is needed. If ``read`` itself targets a spill file
+and the result exceeds the wire budget, the dispatch layer skips re-spilling and
+lets normal truncation apply instead, so there is no recursive spill chain.
 
 The spill directory is shared with ``native_search`` via ``ATELIER_MCP_SPILL_DIR``
 (falling back to a temp dir), so a single env var controls where everything lands.
@@ -23,17 +23,12 @@ rather than breaking the tool call.
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import tempfile
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-
-# Prefix marking a spill ref id so callers / the retrieve op can recognize one.
-SPILL_REF_PREFIX = "spill:"
 
 # Bounded retention so the shared spill dir can't grow without limit across a long
 # session or many sessions (nothing else ever deletes these files). The sweep runs
@@ -62,19 +57,6 @@ def _spill_dir() -> Path:
     return path
 
 
-def _ref_for(file_name: str) -> str:
-    return f"{SPILL_REF_PREFIX}{file_name}"
-
-
-def _path_for_ref(ref_id: str) -> Path | None:
-    """Resolve a ref id to its on-disk path, rejecting path traversal."""
-    name = ref_id[len(SPILL_REF_PREFIX) :] if ref_id.startswith(SPILL_REF_PREFIX) else ref_id
-    # Reject anything that isn't a bare file name (no separators, no '..').
-    if not name or name != Path(name).name:
-        return None
-    return _spill_dir() / name
-
-
 def _retention_limits() -> tuple[int, int]:
     """Return ``(max_files, max_age_seconds)``; either ``<= 0`` disables that axis."""
 
@@ -97,19 +79,20 @@ def _enforce_retention(directory: Path) -> None:
     """Evict old spill artifacts by age then count so the dir stays bounded.
 
     Best-effort and never raises into the caller: retention is hygiene, not
-    correctness. Sweeps every ``*.json`` in the shared spill dir (both
-    tool-output and ``native_search`` spills, neither cleaned elsewhere).
+    correctness. Sweeps ``*.txt`` (tool-output spills) and ``*.json``
+    (native-search spills) in the shared spill dir.
     """
     max_files, max_age = _retention_limits()
     if max_files <= 0 and max_age <= 0:
         return
     try:
         entries: list[tuple[float, Path]] = []
-        for p in directory.glob("*.json"):
-            try:
-                entries.append((p.stat().st_mtime, p))
-            except OSError:
-                continue
+        for pattern in ("*.txt", "*.json"):
+            for p in directory.glob(pattern):
+                try:
+                    entries.append((p.stat().st_mtime, p))
+                except OSError:
+                    continue
     except OSError:
         return
     now = time.time()
@@ -129,9 +112,8 @@ def _enforce_retention(directory: Path) -> None:
 
 @dataclass(frozen=True)
 class SpillRecord:
-    """A persisted spill: ref id + on-disk path + original byte size."""
+    """A persisted spill: on-disk path + original byte size."""
 
-    ref_id: str
     path: Path
     original_bytes: int
 
@@ -141,105 +123,40 @@ def spill(
     *,
     tool_name: str,
     kind: str = "tool_output",
-    meta: dict[str, Any] | None = None,
 ) -> SpillRecord | None:
     """Persist the full ``content`` and return a referenceable record.
 
-    The on-disk artifact is a JSON envelope so retrieve can return both the raw
-    text and its provenance. Returns ``None`` on any write failure (best-effort;
-    the caller falls back to the prior truncate/compact behavior).
+    The payload is written as plain text so the agent can recover it via
+    ``read <path>`` (with ``:L1-L200`` ranges to page through large results)
+    without a separate retrieval tool. Returns ``None`` on any write failure
+    (best-effort; the caller falls back to the prior truncate/compact behavior).
 
     Args:
         content:   The full (oversized) tool output to preserve.
-        tool_name: The tool that produced the output (for provenance + hints).
-        kind:      Logical tag, e.g. ``tool_output`` (T7) or ``original`` (T8
-                   pre-compaction snapshot, for reversibility).
-        meta:      Optional extra provenance (query, path, byte budget, ...).
+        tool_name: Included in the filename for provenance.
+        kind:      Logical tag encoded in the filename, e.g. ``tool_output`` or
+                   ``original``.
     """
     try:
         directory = _spill_dir()
-        file_name = f"{kind}-{tool_name}-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}.json"
+        file_name = f"{kind}-{tool_name}-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}.txt"
         original_bytes = len(content.encode("utf-8"))
-        envelope = {
-            "tool": tool_name,
-            "kind": kind,
-            "created_at": time.time(),
-            "original_bytes": original_bytes,
-            "meta": meta or {},
-            "content": content,
-        }
         spill_path = directory / file_name
         # Atomic publish: write to a sibling temp file then rename, so a concurrent
-        # retrieve never observes a half-written envelope. The '.tmp' suffix keeps
-        # in-flight writes out of the '*.json' retention sweep.
+        # read never observes a half-written file. The '.tmp' suffix keeps
+        # in-flight writes out of the '*.txt' retention sweep.
         tmp_path = directory / f".{file_name}.{uuid.uuid4().hex[:8]}.tmp"
         try:
-            tmp_path.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+            tmp_path.write_text(content, encoding="utf-8")
             os.replace(tmp_path, spill_path)
         finally:
             with contextlib.suppress(OSError):
                 if tmp_path.exists():
                     tmp_path.unlink()
         _enforce_retention(directory)
-        return SpillRecord(
-            ref_id=_ref_for(file_name),
-            path=spill_path,
-            original_bytes=original_bytes,
-        )
+        return SpillRecord(path=spill_path, original_bytes=original_bytes)
     except OSError:
         return None
-
-
-def retrieve(ref_id: str, *, slice: tuple[int, int] | None = None) -> dict[str, Any]:
-    """Read a spilled payload back by ref id.
-
-    Args:
-        ref_id: The id returned by :func:`spill` (``spill:<file>`` or bare file).
-        slice:  Optional ``(start, length)`` character window into the content,
-                so a caller can page through a huge payload without re-emitting
-                all of it. ``length <= 0`` means "to the end".
-
-    Returns a dict with the (possibly sliced) ``content`` and provenance, or an
-    ``error`` key when the ref is unknown/unreadable.
-    """
-    path = _path_for_ref(ref_id)
-    if path is None:
-        return {"error": f"invalid spill ref id: {ref_id!r}", "ref_id": ref_id}
-    if not path.exists():
-        return {"error": f"spill ref not found (expired or never written): {ref_id!r}", "ref_id": ref_id}
-    try:
-        envelope = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return {"error": f"could not read spill ref {ref_id!r}: {exc}", "ref_id": ref_id}
-    if not isinstance(envelope, dict):
-        # Valid JSON that isn't an object (e.g. an array/scalar left in the shared
-        # spill dir by another producer) would make the .get() calls below raise;
-        # return a structured error instead.
-        return {"error": f"malformed spill envelope (not an object): {ref_id!r}", "ref_id": ref_id}
-
-    content = str(envelope.get("content", ""))
-    total_chars = len(content)
-    sliced = content
-    slice_info: dict[str, Any] | None = None
-    if slice is not None:
-        start, length = slice
-        start = max(0, start)
-        end = total_chars if length <= 0 else min(total_chars, start + length)
-        sliced = content[start:end]
-        slice_info = {"start": start, "end": end, "total_chars": total_chars}
-
-    result: dict[str, Any] = {
-        "ref_id": ref_id,
-        "tool": envelope.get("tool"),
-        "kind": envelope.get("kind"),
-        "original_bytes": envelope.get("original_bytes"),
-        "meta": envelope.get("meta", {}),
-        "content": sliced,
-        "total_chars": total_chars,
-    }
-    if slice_info is not None:
-        result["slice"] = slice_info
-    return result
 
 
 def summary_with_ref(
@@ -247,28 +164,27 @@ def summary_with_ref(
     record: SpillRecord,
     *,
     tool_name: str,
-    retrieve_op: str = "compact",
     max_chars: int | None = None,
 ) -> str:
-    """Compose the host-facing text: summary + ref id + a retrieve hint.
+    """Compose the host-facing text: summary + path + a read hint.
 
-    The hint names the agent-callable retrieve path so the model knows how to
-    pull the full (or a sliced) payload back instead of re-running ``tool_name``.
+    The hint names the standard ``read`` tool so the agent can pull the full
+    (or a line-ranged slice) payload back without re-running ``tool_name``.
+    ``read`` targeting a spill file is guarded against re-spilling in the
+    dispatch layer — normal truncation applies instead.
     """
     hint = (
-        f"\n\n[full output ({record.original_bytes}B) spilled to {record.ref_id}; "
-        f'{retrieve_op} op="retrieve" ref_id="{record.ref_id}" (or slice_start/length)]'
+        f"\n\n[full output ({record.original_bytes}B) spilled to {record.path}; "
+        f"read {record.path} to recover (:L1-L200, :L201-L400 … to page)]"
     )
     if max_chars is None:
         return f"{summary}{hint}"
     if max_chars <= 0:
         return ""
     if len(hint) >= max_chars:
-        # The cap is smaller than the full recovery hint (only reachable via an
-        # impractically tiny configured limit). Never cut mid-ref: prefer the bare
-        # ref_id so the spill stays recoverable, falling back to its prefix only
-        # when even that can't fit. Always honor the promised return bound.
-        ref = record.ref_id
+        # The cap is smaller than the full hint. Prefer the bare path so the spill
+        # stays recoverable, falling back to a prefix only when even that can't fit.
+        ref = str(record.path)
         return ref if len(ref) <= max_chars else ref[:max_chars]
 
     available = max_chars - len(hint)

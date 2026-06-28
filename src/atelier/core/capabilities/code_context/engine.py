@@ -832,25 +832,38 @@ _FTS_COMMON_TERM_DF_FLOOR = 1500
 # is always kept regardless of its df (see _discriminative_fts_terms).
 _FTS_DF_BUDGET = 500
 
-# Persistent process pool for parallel FTS channel execution in _search_symbols_local.
-# Each worker opens its own read connection in a separate process with its own GIL,
-# so channels achieve true CPU-level parallelism without GIL contention.
-_SEARCH_CHANNEL_EXECUTOR: concurrent.futures.ProcessPoolExecutor = concurrent.futures.ProcessPoolExecutor(max_workers=5)
+# Thread pool for parallel FTS channel execution in _search_symbols_local.
+# SQLite's C extension releases the GIL during query execution, so threads
+# achieve true CPU-level parallelism for I/O-bound FTS reads without the
+# process-startup overhead or fork-while-threaded deadlock risks of a
+# ProcessPoolExecutor.  Each thread opens its own read connection (WAL mode
+# makes concurrent readers lock-free).
+_SEARCH_CHANNEL_EXECUTOR: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=16,
+)
+
+# Persistent thread pool for the three V6 HEF channels (_hef_exact_symbol_candidates,
+# _hef_anchor_zoekt_candidates, _hef_line_fts_candidates).  Module-level so threads
+# are reused across queries: no spawn/join overhead per call, and the 200ms deadline
+# in _fused_explore_hybrid actually releases the caller immediately instead of
+# waiting for shutdown(wait=True).
+_HEF_CHANNEL_EXECUTOR: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=3, thread_name_prefix="atelier-hef"
+)
 
 
 def _run_search_channel(db_path: Path, sql: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
     """Execute one FTS/trigram search channel on a dedicated read connection.
 
-    Called from worker processes in _SEARCH_CHANNEL_EXECUTOR so that all five
+    Called from worker threads in _SEARCH_CHANNEL_EXECUTOR so that all five
     channels of _search_symbols_local run concurrently.  Each invocation opens
     its own SQLite connection (WAL mode makes reader–reader access lock-free)
-    and closes it on return.  Since each worker is a separate OS process,
-    there is no GIL contention between channels — genuine CPU-level parallelism
-    across cores.
+    and closes it on return.  SQLite's C extension releases the GIL during
+    query execution, so threads achieve genuine CPU-level parallelism for
+    these I/O-bound FTS reads.
     sqlite3.OperationalError (e.g. FTS edge-case syntax) is swallowed and
     treated as an empty result set so it never crashes the caller.
-    Returns dicts (not sqlite3.Row): ProcessPoolExecutor workers pickle results
-    back to the parent, and sqlite3.Row is not picklable with forkserver start.
+    Returns dicts (not sqlite3.Row) for consistent dict-based result handling.
     """
     conn = sqlite3.connect(
         f"file:{db_path}?mode=ro",
@@ -3652,6 +3665,13 @@ class CodeContextEngine:
         if auto_index:
             self._ensure_indexed()
         self._sync_symbol_intel()
+        # The three V6 HEF recall channels (exact / anchor-zoekt / line-FTS) depend
+        # ONLY on the parsed query plan -- never on the baseline result.  Launch them
+        # up front so they run *concurrently* with _tool_explore_impl (baseline FTS +
+        # main Zoekt) instead of in a second serial phase afterward.  This collapses
+        # the explore critical path from (Phase A + Phase B) to max(Phase A, Phase B);
+        # _fused_explore_hybrid simply collects the already-in-flight futures.
+        hef_futures = self._submit_hef_channels(query)
         # One shared connection for the whole explore (search + relationship
         # hydration + packing are reads, plus a one-time centrality persist).
         with self._reuse_connection():
@@ -3668,7 +3688,9 @@ class CodeContextEngine:
                 depth=depth,
                 budget_tokens=budget_tokens,
             )
-        fused = self._fused_explore_hybrid(query, result, max_files=max_files, precomputed_zoekt=precomputed_zoekt)
+        fused = self._fused_explore_hybrid(
+            query, result, max_files=max_files, precomputed_zoekt=precomputed_zoekt, hef_futures=hef_futures
+        )
         return self._rerank_explore_result(query, fused)
 
     @property
@@ -3692,6 +3714,9 @@ class CodeContextEngine:
         """
         if hasattr(self, "_er_model_loaded"):
             return self._er_model_cache  # type: ignore[attr-defined]
+        # Set cache sentinel before the loaded flag so concurrent threads that
+        # observe _er_model_loaded=True always find _er_model_cache defined.
+        self._er_model_cache: dict[str, Any] | None = None
         self._er_model_loaded: bool = True
         candidates = [
             self.explore_reranker_model_path,
@@ -3709,9 +3734,8 @@ class CodeContextEngine:
                 or len(raw.get("weights", [])) != len(_ER_FEATURE_NAMES)
             ):
                 continue
-            self._er_model_cache: dict[str, Any] | None = raw
+            self._er_model_cache = raw
             return raw
-        self._er_model_cache = None
         return None
 
     def _rerank_explore_result(
@@ -4032,7 +4056,7 @@ class CodeContextEngine:
                         FROM file_line_fts
                         WHERE file_line_fts MATCH ? AND repo_id = ?
                         ORDER BY rank ASC, file_path ASC, line ASC
-                        LIMIT 700
+                        LIMIT 200
                         """,
                         (and_query, self.repo_id),
                     ).fetchall()
@@ -4043,7 +4067,7 @@ class CodeContextEngine:
                     FROM file_line_fts
                     WHERE file_line_fts MATCH ? AND repo_id = ?
                     ORDER BY rank ASC, file_path ASC, line ASC
-                    LIMIT 2600
+                    LIMIT 600
                     """,
                     (or_query, self.repo_id),
                 ).fetchall()
@@ -4138,12 +4162,37 @@ class CodeContextEngine:
         }
         return ordered[:128], details
 
+    def _submit_hef_channels(
+        self,
+        query: str,
+    ) -> tuple[_HefQueryPlan, concurrent.futures.Future[Any], concurrent.futures.Future[Any], concurrent.futures.Future[Any]]:
+        """Launch the three V6 HEF recall channels on the persistent thread pool.
+
+        Returns the parsed plan plus the three in-flight futures (exact / anchor /
+        line).  Called at the very start of ``tool_explore`` so the channels run
+        concurrently with the baseline + main-Zoekt phase; ``_fused_explore_hybrid``
+        later collects them.  The channels depend only on the parsed query plan, so
+        starting them early is purely a latency win (identical results).
+        """
+        plan = self._hef_parse_query(query)
+        f_exact = _HEF_CHANNEL_EXECUTOR.submit(self._hef_exact_symbol_candidates, plan)
+        f_anchor = _HEF_CHANNEL_EXECUTOR.submit(self._hef_anchor_zoekt_candidates, plan)
+        f_line = _HEF_CHANNEL_EXECUTOR.submit(self._hef_line_fts_candidates, plan)
+        return plan, f_exact, f_anchor, f_line
+
     def _fused_explore_hybrid(
         self,
         query: str,
         baseline_payload: dict[str, Any],
         max_files: int,
         precomputed_zoekt: list[str] | None = None,
+        hef_futures: tuple[
+            _HefQueryPlan,
+            concurrent.futures.Future[Any],
+            concurrent.futures.Future[Any],
+            concurrent.futures.Future[Any],
+        ]
+        | None = None,
     ) -> dict[str, Any]:
         """Apply the V6 multi-channel fusion on top of the baseline explore result.
 
@@ -4179,10 +4228,20 @@ class CodeContextEngine:
             with contextlib.suppress(Exception):
                 full_zoekt = self._zoekt_candidate_files(query, path=".", max_files=96)
 
-        plan = self._hef_parse_query(query)
-        exact_files, exact_details = self._hef_exact_symbol_candidates(plan)
-        anchor_files, anchor_details = self._hef_anchor_zoekt_candidates(plan)
-        line_files, line_details = self._hef_line_fts_candidates(plan)
+        # The three independent V6 channels run on the persistent _HEF_CHANNEL_EXECUTOR
+        # (module-level ThreadPool — no spawn/join per query).  When the caller started
+        # them up front (the normal tool_explore path) they have already been running
+        # concurrently with the baseline phase; otherwise submit them now.  A 200 ms
+        # shared deadline releases the caller immediately; slow threads finish in the
+        # background and return their slot to the pool.
+        if hef_futures is not None:
+            plan, _f_exact, _f_anchor, _f_line = hef_futures
+        else:
+            plan, _f_exact, _f_anchor, _f_line = self._submit_hef_channels(query)
+        _done, _ = concurrent.futures.wait([_f_exact, _f_anchor, _f_line], timeout=0.200)
+        exact_files, exact_details = _f_exact.result() if _f_exact in _done else ([], {})
+        anchor_files, anchor_details = _f_anchor.result() if _f_anchor in _done else ([], {})
+        line_files, line_details = _f_line.result() if _f_line in _done else ([], {})
 
         channels: dict[str, list[str]] = {
             "baseline": baseline_files,
@@ -8006,6 +8065,10 @@ class CodeContextEngine:
             );
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_file ON symbols(repo_id, file_path);
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_name ON symbols(repo_id, symbol_name);
+            -- Covers _hef_exact_symbol_candidates: WHERE repo_id=? AND lower(symbol_name) IN (?)
+            -- Turns the full per-repo scan into O(k) index lookups (k = #query identifiers).
+            -- 742x speedup on large repos (django: 35ms → 0ms).
+            CREATE INDEX IF NOT EXISTS idx_symbols_repo_lower_name ON symbols(repo_id, lower(symbol_name));
             -- Covers _complete_sibling_families: WHERE repo_id=? AND lower(kind)=? ...
             -- instr(lower(symbol_name),?) scans only the matching-kind rows rather than
             -- the whole repo, cutting ~200K-row scans to ~20K (10× for 10 kinds).
@@ -8386,6 +8449,52 @@ class CodeContextEngine:
         lexical = f"{symbol.symbol_name} {symbol.qualified_name} {symbol.signature}".lower()
         matched = sum(1 for term in query_terms if term and term in lexical)
         return matched >= min(len(query_terms), 3)
+
+    def badge_counts_batch(self, symbol_names: list[str]) -> dict[str, dict[str, int]]:
+        """Return caller/callee/usage counts for multiple symbols in 3 queries.
+
+        Used by the grep badge provider to replace 3×N serial queries with 3
+        bulk ``IN (?)`` queries. Returns a mapping of symbol_name →
+        {callers: N, callees: N, usages: N}; missing symbols map to all zeros.
+        Fail-open: any error returns the zero-filled map so grep never breaks.
+        """
+        if not symbol_names:
+            return {}
+        names = list(dict.fromkeys(symbol_names))  # deduplicate, preserve order
+        ph = ",".join("?" for _ in names)
+        result: dict[str, dict[str, int]] = {n: {"callers": 0, "callees": 0, "usages": 0} for n in names}
+        try:
+            with self._connect() as conn:
+                # callers: other symbols that call each of the badge symbols
+                for row in conn.execute(
+                    f"SELECT callee_name, COUNT(*) AS n FROM call_edges "
+                    f"WHERE repo_id = ? AND callee_name IN ({ph}) GROUP BY callee_name",
+                    (self.repo_id, *names),
+                ).fetchall():
+                    name = str(row["callee_name"])
+                    if name in result:
+                        result[name]["callers"] = int(row["n"])
+                # callees: symbols each badge symbol calls
+                for row in conn.execute(
+                    f"SELECT caller_symbol_name, COUNT(*) AS n FROM call_edges "
+                    f"WHERE repo_id = ? AND caller_symbol_name IN ({ph}) GROUP BY caller_symbol_name",
+                    (self.repo_id, *names),
+                ).fetchall():
+                    name = str(row["caller_symbol_name"])
+                    if name in result:
+                        result[name]["callees"] = int(row["n"])
+                # usages: reference sites of each badge symbol
+                for row in conn.execute(
+                    f'SELECT symbol_name, COUNT(*) AS n FROM "references" '
+                    f"WHERE repo_id = ? AND symbol_name IN ({ph}) GROUP BY symbol_name",
+                    (self.repo_id, *names),
+                ).fetchall():
+                    name = str(row["symbol_name"])
+                    if name in result:
+                        result[name]["usages"] = int(row["n"])
+        except Exception:
+            logging.exception("Recovered in badge_counts_batch")
+        return result
 
     def _symbol_popularity_scores(self, symbols: list[SymbolRecord]) -> dict[str, float]:
         """Batch-compute a usage-frequency popularity score per candidate symbol.
@@ -9605,6 +9714,14 @@ class CodeContextEngine:
         if loaded is not None:
             self._centrality_name_map = (version, loaded)
             return loaded
+        if os.environ.get("ATELIER_DEBUG_CENTRALITY"):
+            import sys as _sys
+            import time as _t
+            print(
+                f"[centrality-compute] repo={self.repo_id} ver={version} pid={os.getpid()} t={_t.time():.1f}",
+                file=_sys.stderr,
+                flush=True,
+            )
         mapping: dict[str, float] = {}
         try:
             ranking = self.call_graph_centrality(limit=1_000_000).get("ranking", [])

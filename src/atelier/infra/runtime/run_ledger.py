@@ -102,17 +102,26 @@ def _bound_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def session_run_dir(root: str | Path, session_id: str) -> Path:
-    """Per-session folder holding the run ledger and its sidecars."""
-    return Path(root) / "sessions" / session_id
+    """Per-session folder: sessions/YYYY/MM/DD/<session_id>/ for new sessions.
+
+    The date partition keeps each day's sessions in one directory so scans
+    only need to touch today's subtree instead of a flat list of hundreds of
+    sessions. Old sessions under sessions/<id>/ are still found by the
+    recursive glob in savings_summary.
+    """
+    from datetime import date as _date
+
+    today = _date.today()
+    return Path(root) / "sessions" / today.strftime("%Y/%m/%d") / session_id
 
 
 def run_file_path(root: str | Path, session_id: str) -> Path:
-    """Run-ledger snapshot: ``sessions/<session_id>/run.json``."""
+    """Run-ledger snapshot: ``sessions/YYYY/MM/DD/<session_id>/run.json``."""
     return session_run_dir(root, session_id) / "run.json"
 
 
 def outcomes_path(root: str | Path, session_id: str) -> Path:
-    """Captured route/compact outcomes: ``sessions/<session_id>/outcomes.json``."""
+    """Captured route/compact outcomes: ``sessions/YYYY/MM/DD/<session_id>/outcomes.json``."""
     return session_run_dir(root, session_id) / "outcomes.json"
 
 
@@ -123,7 +132,7 @@ def iter_run_files(root: str | Path) -> list[Path]:
     # Global sessions (legacy fallback — sessions without a known workspace)
     global_sessions = base / "sessions"
     if global_sessions.is_dir():
-        results.extend(sorted(global_sessions.glob("*/run.json")))
+        results.extend(sorted(global_sessions.glob("**/run.json")))
     # Per-workspace sessions (new location)
     workspaces_dir = base / "workspaces"
     if workspaces_dir.is_dir():
@@ -131,7 +140,7 @@ def iter_run_files(root: str | Path) -> list[Path]:
             if ws_dir.is_dir():
                 ws_sessions = ws_dir / "sessions"
                 if ws_sessions.is_dir():
-                    results.extend(sorted(ws_sessions.glob("*/run.json")))
+                    results.extend(sorted(ws_sessions.glob("**/run.json")))
     return results
 
 
