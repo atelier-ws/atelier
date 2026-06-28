@@ -66,11 +66,6 @@ def test_servicectl_tick_enqueues_optimize_only_once_per_interval(monkeypatch, t
     )
     monkeypatch.setattr("atelier.infra.runtime.servicectl_lifecycle._servicectl_refresh_host_status", lambda root: {})
     monkeypatch.setattr("atelier.infra.runtime.servicectl_lifecycle._servicectl_import_sessions", lambda store: {})
-    # Recall indexing scans the host's real ~/.claude transcripts (CLAUDE_CONFIG_DIR
-    # is unset here) and embeds up to 80 sessions -- tens of seconds that have
-    # nothing to do with the optimize-enqueue cadence under test. Stub it like the
-    # sibling _servicectl_* helpers above so the tick stays hermetic and fast.
-    monkeypatch.setattr("atelier.infra.runtime.servicectl_lifecycle._servicectl_index_recall", lambda root: {})
 
     first = _servicectl_tick(
         tmp_path / ".atelier",

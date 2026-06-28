@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
+import functools
 import hashlib
 import ipaddress
 import json
@@ -14,7 +16,9 @@ from threading import Lock
 from typing import Any, Literal
 from urllib.parse import urljoin, urlparse
 
+import aiohttp
 import urllib3
+from aiohttp.abc import AbstractResolver, ResolveResult
 from urllib3.connection import HTTPConnection, HTTPSConnection
 from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 from urllib3.poolmanager import SSL_KEYWORDS
@@ -284,6 +288,21 @@ def fetch_url(
     accept = _accept_header(requested_format)
     raw = _fetch_with_cache(url.strip(), accept=accept, timeout_s=timeout)
     rendered = _render_content(raw, requested_format=requested_format)
+    return _finish_fetch(raw, rendered=rendered, char_limit=char_limit, include_meta=include_meta)
+
+
+def _finish_fetch(
+    raw: _RawFetchResult,
+    *,
+    rendered: dict[str, str],
+    char_limit: int,
+    include_meta: bool,
+) -> dict[str, Any]:
+    """Assemble the public fetch payload from a raw result + rendered content.
+
+    Shared by the synchronous ``fetch_url`` and the async ``async_fetch_url`` so
+    both return a byte-identical payload shape for the same inputs.
+    """
     content = rendered["content"]
     truncated = False
     if len(content) > char_limit:
@@ -305,6 +324,192 @@ def fetch_url(
             }
         )
     return payload
+
+
+# --------------------------------------------------------------------------- #
+# Async fetch path (Phase 3) — aiohttp with the SAME SSRF guard.              #
+# A custom resolver validates every resolved IP and returns ONLY validated    #
+# records, so aiohttp connects to exactly those addresses (no second          #
+# resolution) — closing the DNS-rebinding TOCTOU. The original hostname is     #
+# preserved for TLS SNI + certificate verification + the Host header.         #
+# --------------------------------------------------------------------------- #
+
+
+class _ValidatingResolver(AbstractResolver):
+    """aiohttp resolver that applies web_fetch's SSRF guard at resolve time."""
+
+    async def resolve(
+        self,
+        host: str,
+        port: int = 0,
+        family: socket.AddressFamily = socket.AF_INET,
+    ) -> list[ResolveResult]:
+        if _is_ip_address(host):
+            _assert_fetchable_ip(host)
+            return [
+                ResolveResult(
+                    hostname=host,
+                    host=host,
+                    port=port,
+                    family=int(family),
+                    proto=0,
+                    flags=int(socket.AI_NUMERICHOST),
+                )
+            ]
+        loop = asyncio.get_running_loop()
+        try:
+            infos = await asyncio.wait_for(
+                loop.getaddrinfo(host, port, family=family, type=socket.SOCK_STREAM),
+                timeout=DNS_TIMEOUT_S,
+            )
+        except TimeoutError:
+            raise ValueError(f"web_fetch DNS resolution timed out for: {host}") from None
+        except OSError as exc:
+            raise ValueError(f"web_fetch could not resolve host: {host}") from exc
+        results: list[ResolveResult] = []
+        for fam, _type, _proto, _canon, sockaddr in infos:
+            ip = str(sockaddr[0])
+            _assert_fetchable_ip(ip)  # raises ValueError on a blocked address
+            results.append(
+                ResolveResult(
+                    hostname=host,
+                    host=ip,
+                    port=int(sockaddr[1]) if len(sockaddr) > 1 else port,
+                    family=int(fam),
+                    proto=0,
+                    flags=int(socket.AI_NUMERICHOST),
+                )
+            )
+        if not results:
+            raise ValueError(f"web_fetch could not resolve host: {host}")
+        return results
+
+    async def close(self) -> None:
+        return None
+
+
+async def _async_read_limited_body(response: aiohttp.ClientResponse) -> tuple[bytes, bool]:
+    chunks: list[bytes] = []
+    total = 0
+    truncated = False
+    async for chunk in response.content.iter_chunked(65_536):
+        if not chunk:
+            continue
+        remaining = MAX_BODY_BYTES - total
+        if remaining <= 0:
+            truncated = True
+            break
+        if len(chunk) > remaining:
+            chunks.append(chunk[:remaining])
+            truncated = True
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+    return b"".join(chunks), truncated
+
+
+async def _async_fetch_uncached(url: str, *, accept: str, timeout_s: float) -> _RawFetchResult:
+    current_url = _validate_public_url(url)
+    headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": accept}
+    timeout = aiohttp.ClientTimeout(connect=timeout_s, sock_connect=timeout_s, sock_read=timeout_s)
+    connector = aiohttp.TCPConnector(
+        resolver=_ValidatingResolver(),
+        use_dns_cache=False,  # force the validating resolver on every connect
+        family=socket.AF_UNSPEC,  # allow IPv4 + IPv6
+        limit=8,
+    )
+    async with aiohttp.ClientSession(connector=connector) as session:
+        for _redirect_index in range(MAX_REDIRECTS + 1):
+            # aiohttp bypasses the resolver for a bare-IP host, so validate a
+            # literal-IP target here (mirrors urllib3's _new_conn). Hostnames
+            # are validated by _ValidatingResolver at connect time. Re-checked
+            # every hop so a redirect to a private IP is caught too.
+            literal_host = urlparse(current_url).hostname or ""
+            if _is_ip_address(literal_host):
+                _assert_fetchable_ip(literal_host)
+            try:
+                async with session.get(
+                    current_url,
+                    headers=headers,
+                    timeout=timeout,
+                    allow_redirects=False,
+                ) as response:
+                    status = int(response.status)
+                    location = response.headers.get("location")
+                    if status in _REDIRECT_STATUSES and location:
+                        current_url = _validate_public_url(urljoin(current_url, location))
+                        continue
+                    if status in _REDIRECT_STATUSES:
+                        raise ValueError(f"web_fetch failed: HTTP {status} redirect without Location")
+                    body, truncated_body = await _async_read_limited_body(response)
+                    content_type = response.headers.get("content-type", "") or ""
+                    media_type = _media_type(content_type)
+                    if media_type not in _TEXT_TYPES:
+                        raise ValueError(f"web_fetch unsupported content type: {media_type or 'unknown'}")
+                    if status < 200 or status >= 300:
+                        raise ValueError(f"web_fetch failed: HTTP {status}")
+                    return _RawFetchResult(
+                        url=url,
+                        final_url=current_url,
+                        status=status,
+                        content_type=content_type,
+                        headers={str(k).lower(): str(v) for k, v in response.headers.items()},
+                        body=body,
+                        truncated_body=truncated_body,
+                    )
+            except aiohttp.ClientError as exc:
+                # Surface an SSRF block / resolve failure (ValueError raised by the
+                # resolver) as itself; wrap genuine transport errors.
+                cause = exc.__cause__ or exc.__context__
+                if isinstance(cause, ValueError):
+                    raise cause from None
+                raise RuntimeError(f"web_fetch failed: {exc}") from exc
+    raise ValueError("web_fetch failed: too many redirects")
+
+
+async def _async_fetch_with_cache(url: str, *, accept: str, timeout_s: float) -> _RawFetchResult:
+    cache_key = (url, accept)
+    now = time.monotonic()
+    with _FETCH_CACHE_LOCK:
+        cached = _FETCH_CACHE.get(cache_key)
+        if cached is not None and cached.expires_at > now:
+            _FETCH_CACHE.move_to_end(cache_key)
+            return cached.value
+        if cached is not None:
+            _FETCH_CACHE.pop(cache_key, None)
+
+    result = await _async_fetch_uncached(url, accept=accept, timeout_s=timeout_s)
+    with _FETCH_CACHE_LOCK:
+        _FETCH_CACHE[cache_key] = _FetchCacheEntry(expires_at=now + FETCH_CACHE_TTL_S, value=result)
+        _FETCH_CACHE.move_to_end(cache_key)
+        while len(_FETCH_CACHE) > FETCH_CACHE_MAX_ITEMS:
+            _FETCH_CACHE.popitem(last=False)
+    return result
+
+
+async def async_fetch_url(
+    url: str,
+    *,
+    output_format: OutputFormat = "auto",
+    max_chars: int = DEFAULT_MAX_CHARS,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+    include_meta: bool = False,
+) -> dict[str, Any]:
+    """Async twin of :func:`fetch_url` — identical SSRF guard and output shape.
+
+    Network I/O runs on the caller's event loop; the CPU-heavy HTML->Markdown
+    render is offloaded to the default executor so it never blocks the loop.
+    """
+    requested_format = _normalize_output_format(output_format)
+    char_limit = _clamp_int(max_chars, 1_000, MAX_MAX_CHARS)
+    timeout = float(min(max(float(timeout_s), 1.0), 60.0))
+    accept = _accept_header(requested_format)
+    raw = await _async_fetch_with_cache(url.strip(), accept=accept, timeout_s=timeout)
+    loop = asyncio.get_running_loop()
+    rendered = await loop.run_in_executor(
+        None, functools.partial(_render_content, raw, requested_format=requested_format)
+    )
+    return _finish_fetch(raw, rendered=rendered, char_limit=char_limit, include_meta=include_meta)
 
 
 def _normalize_output_format(output_format: str) -> OutputFormat:
