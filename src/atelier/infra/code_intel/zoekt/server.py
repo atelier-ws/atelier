@@ -67,7 +67,9 @@ def _set_pdeathsig() -> None:
         libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6", use_errno=True)
         PR_SET_PDEATHSIG = 1  # linux/prctl.h
         libc.prctl(PR_SET_PDEATHSIG, signal.SIGTERM, 0, 0, 0)
-    except (OSError, AttributeError, ctypes.CDLLError):
+    except (OSError, AttributeError):
+        # ctypes raises OSError when the C library can't be loaded; there is no
+        # ctypes.CDLLError. AttributeError covers a missing prctl symbol.
         pass
 
 
@@ -104,6 +106,11 @@ class ZoektServer:
         self._webserver_lock = threading.Lock()
         self._webserver_proc: subprocess.Popen[bytes] | None = None
         self._webserver_url: str | None = None
+        # PID of the process that spawned the live webserver.  A forked child
+        # (e.g. a benchmark worker) inherits the handle but must not poll or
+        # kill a server it does not own -- it queries the inherited URL over
+        # HTTP instead.
+        self._webserver_owner_pid: int | None = None
         self._webserver_failed = False
         # Set once the webserver is actually queryable; waiters block on this
         # Event instead of holding _webserver_lock so startup never blocks a
@@ -154,10 +161,16 @@ class ZoektServer:
                 # Docker runtime must be started (container launch is fast).
                 self._start_docker_runtime(resolution)
             else:
-                # Host binary mode: register against the on-disk index.
-                # _is_ready() already verified state.json + shards exist and
-                # restored _host_search_binary, so we only reach here when the
-                # disk index is genuinely absent -- surface that as an error.
+                # Host binary mode: register against the on-disk index.  The
+                # _is_ready() check at the top returned False *before* the
+                # resolution was set (its first guard is `resolution is None`),
+                # so re-check now that the binary is resolved -- otherwise a
+                # perfectly good on-disk index (state.json + shards present) is
+                # mis-reported as missing on the very first call, which raises
+                # and kills the whole zoekt path.
+                if self._is_ready():
+                    self.start_count += 1
+                    return self.handle
                 raise RuntimeError(
                     f"no Zoekt index found at {self.index_root} -- "
                     "run 'atelier code index' or 'atelier zoekt up' to build it first"
@@ -506,7 +519,15 @@ class ZoektServer:
             if self._webserver_failed:
                 return None
             proc = self._webserver_proc
-            if proc is not None and proc.poll() is None and self._webserver_url is not None:
+            inherited = self._webserver_owner_pid is not None and self._webserver_owner_pid != os.getpid()
+            if inherited and self._webserver_url is not None:
+                # Server was started by another process (the benchmark parent
+                # before fork).  Query it over HTTP; never poll/kill its pid --
+                # proc.poll() is unreliable for a non-child and stopping it
+                # would SIGTERM the parent's shared server.  A genuinely dead
+                # server just yields an HTTP error that _host_search degrades on.
+                url = self._webserver_url
+            elif proc is not None and proc.poll() is None and self._webserver_url is not None:
                 # Already started — if not yet ready, wait below outside the lock.
                 url = self._webserver_url
             else:
@@ -561,6 +582,7 @@ class ZoektServer:
         url = f"http://127.0.0.1:{port}"
         self._webserver_proc = proc
         self._webserver_url = url
+        self._webserver_owner_pid = os.getpid()
         self._webserver_ready.clear()
 
         # Readiness poll runs in a daemon thread so the caller's lock is free.
@@ -587,7 +609,11 @@ class ZoektServer:
         the hot query path so steady-state searches never block.
         """
         deadline = time.time() + timeout
-        # Trigger a lazy spawn without issuing a real query.
+        # Resolve the runtime first (sets self.resolution) so the webserver
+        # spawn can find its binary, then trigger a lazy spawn without issuing
+        # a real query.
+        with suppress(Exception):
+            self.ensure_started()
         with suppress(Exception):
             self._ensure_webserver()
         remaining = max(0.0, deadline - time.time())
@@ -614,10 +640,16 @@ class ZoektServer:
         ``os.killpg`` reaches the webserver and any grandchild processes).
         """
         proc = self._webserver_proc
+        owner = self._webserver_owner_pid
         self._webserver_proc = None
         self._webserver_url = None
+        self._webserver_owner_pid = None
         self._webserver_ready.clear()  # reset so next _spawn waits for fresh readiness
         if proc is None:
+            return
+        if owner is not None and owner != os.getpid():
+            # Inherited from another process; not ours to kill -- just drop the
+            # local handle so this process stops referencing it.
             return
         pgid = _get_pgid_safely(proc.pid)
         if pgid is not None:
