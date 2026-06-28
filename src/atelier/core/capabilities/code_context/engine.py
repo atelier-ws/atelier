@@ -1399,6 +1399,29 @@ def _er_linear_score(weights: list[float], features: list[float]) -> float:
     return sum(w * f for w, f in zip(weights, features, strict=True))
 
 
+def _er_tree_score(trees: list[dict[str, Any]], features: list[float]) -> float:
+    """Sum leaf values across a LambdaMART forest for one candidate.
+
+    Each tree is stored as parallel arrays (feature/threshold/left/right/leaf).
+    A node with ``feature == -1`` is a leaf. Decision rule: ``x < threshold``
+    takes the ``left`` branch (XGBoost "yes" direction). Constant per-candidate
+    offsets (base_score) are omitted — they do not change within-group order.
+    Pure-Python and dependency-free so it stays well under the inline budget
+    (~40 depth-3 trees × a handful of candidates ≈ a few thousand comparisons).
+    """
+    total = 0.0
+    for tree in trees:
+        feature = tree["feature"]
+        threshold = tree["threshold"]
+        left = tree["left"]
+        right = tree["right"]
+        node = 0
+        while feature[node] != -1:
+            node = left[node] if features[feature[node]] < threshold[node] else right[node]
+        total += tree["leaf"][node]
+    return total
+
+
 # Characters that mean a query is NOT a literal path substring: whitespace (a
 # multi-term query) and regex/FTS metacharacters (an alternation/pattern query).
 # When any are present, `file_path LIKE '%<whole query>%'` can never match a real
@@ -3748,22 +3771,26 @@ class CodeContextEngine:
 
     @property
     def explore_reranker_model_path(self) -> Path:
-        """Per-workspace path for the trained explore reranker model."""
-        return self.db_path.parent / "explore_reranker.json"
+        """Path to the global trained explore reranker model.
+
+        A single global LambdaMART model ships beside the engine and applies to
+        every workspace (per-repo models are unreliable at this data scale).
+        ``ATELIER_EXPLORE_RERANKER_MODEL`` overrides the path for benchmarking /
+        A-B comparisons.
+        """
+        override = os.environ.get("ATELIER_EXPLORE_RERANKER_MODEL")
+        if override:
+            return Path(override).expanduser()
+        return Path(__file__).resolve().parent / "explore_reranker_model.json"
 
     def _load_explore_reranker(self) -> dict[str, Any] | None:
-        """Load and validate the per-workspace explore reranker model.
+        """Load and validate the global explore reranker (LambdaMART trees).
 
-        Returns the model dict when present and valid, ``None`` otherwise.
-        Caches on the instance so the JSON is only parsed once per process.
-
-        Checks two candidate paths so that benchmark repos whose db files
-        share a common parent directory (e.g. ``/tmp``) don't collide:
-
-        1. ``db_path.parent / "explore_reranker.json"``  — legacy / production
-           workspaces where each repo has its own directory.
-        2. ``db_path.with_suffix(".explore_reranker.json")``  — db-stem-keyed,
-           collision-free for benchmark repos in ``/tmp``.
+        Returns the model dict when present, enabled, and shape-valid; ``None``
+        otherwise. Cached on the instance so the JSON is parsed once per
+        process. Disabled while collecting self-supervised training candidates
+        (``ATELIER_SELF_SUPERVISED_TRAINING=1``) so the trainer observes raw V6
+        ordering, and via ``ATELIER_EXPLORE_RERANKER_ENABLED=0``.
         """
         if hasattr(self, "_er_model_loaded"):
             return self._er_model_cache  # type: ignore[attr-defined]
@@ -3771,34 +3798,35 @@ class CodeContextEngine:
         # observe _er_model_loaded=True always find _er_model_cache defined.
         self._er_model_cache: dict[str, Any] | None = None
         self._er_model_loaded: bool = True
-        candidates = [
-            self.explore_reranker_model_path,
-            self.db_path.with_suffix(".explore_reranker.json"),
-        ]
-        for path in dict.fromkeys(candidates):  # deduplicate while preserving order
-            try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError, TypeError):
-                continue
-            if (
-                not isinstance(raw, dict)
-                or not raw.get("enabled")
-                or raw.get("feature_names") != list(_ER_FEATURE_NAMES)
-                or len(raw.get("weights", [])) != len(_ER_FEATURE_NAMES)
-            ):
-                continue
-            self._er_model_cache = raw
-            return raw
-        return None
+        if os.environ.get("ATELIER_SELF_SUPERVISED_TRAINING") == "1":
+            return None
+        if os.environ.get("ATELIER_EXPLORE_RERANKER_ENABLED", "1") == "0":
+            return None
+        try:
+            raw = json.loads(self.explore_reranker_model_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            return None
+        trees = raw.get("trees") if isinstance(raw, dict) else None
+        if (
+            not isinstance(raw, dict)
+            or not raw.get("enabled")
+            or raw.get("model_type") != "lambdamart_trees"
+            or raw.get("feature_names") != list(_ER_FEATURE_NAMES)
+            or not isinstance(trees, list)
+            or not trees
+        ):
+            return None
+        self._er_model_cache = raw
+        return raw
 
     def _rerank_explore_result(
         self,
         query: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        """Rerank the top-5 files in an explore payload using the per-workspace
-        linear model.  Returns *payload* unchanged when no model is available
-        or the top file would not change.
+        """Rerank the top candidates in an explore payload with the global
+        LambdaMART model. Returns *payload* unchanged when no model is
+        available or the top file would not change.
         """
         raw_entries = payload.get("files")
         if not isinstance(raw_entries, list) or len(raw_entries) < 2:
@@ -3808,33 +3836,28 @@ class CodeContextEngine:
         if model is None:
             return payload
 
-        window = min(5, len(raw_entries))
-        weights = [float(w) for w in model["weights"]]
-        blend = float(model.get("blend", 1.0))
-        margin = float(model.get("margin", 0.0))
+        trees = model["trees"]
+        window = min(int(model.get("window", 5)), len(raw_entries))
+        if window < 2:
+            return payload
 
         scored: list[tuple[float, int, dict[str, Any]]] = []
         for rank, entry in enumerate(raw_entries[:window], 1):
             if not isinstance(entry, dict):
                 return payload  # unexpected shape; skip reranking
             features = _er_entry_features(query, entry, rank)
-            learned = sum(w * f for w, f in zip(weights, features, strict=True))
-            combined = blend * learned + (1.0 - blend) * (1.0 / rank)
-            scored.append((combined, rank, entry))
+            score = _er_tree_score(trees, features)
+            scored.append((score, rank, entry))
 
         proposed = sorted(scored, key=lambda item: (-item[0], item[1]))
         if proposed[0][1] == 1:
             return payload  # top file unchanged
 
-        original_top = next(s for s, r, _e in scored if r == 1)
-        if proposed[0][0] - original_top < margin:
-            return payload  # margin guard: new top not confident enough
-
         reranked = [e for _s, _r, e in proposed] + list(raw_entries[window:])
         result = dict(payload)
         result["files"] = reranked
         result["experiment"] = {
-            "name": "explore_reranker_v1",
+            "name": "explore_reranker_v2_lambdamart",
             "base": payload.get("experiment"),
         }
         return result

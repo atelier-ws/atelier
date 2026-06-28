@@ -65,21 +65,17 @@ def test_servicectl_tick_enqueues_optimize_only_once_per_interval(monkeypatch, t
         lambda root: AutomationConfig(enabled=True),
     )
     monkeypatch.setattr("atelier.infra.runtime.servicectl_lifecycle._servicectl_refresh_host_status", lambda root: {})
-    monkeypatch.setattr("atelier.infra.runtime.servicectl_lifecycle._servicectl_import_sessions", lambda store: {})
+    monkeypatch.setattr("atelier.infra.runtime.servicectl_lifecycle._servicectl_import_sessions", lambda root: {})
 
     first = _servicectl_tick(
         tmp_path / ".atelier",
         maintenance_interval_seconds=60,
         session_import_interval_seconds=-1,
-        external_analytics_interval_seconds=-1,
-        external_analytics_periods=(),
     )
     second = _servicectl_tick(
         tmp_path / ".atelier",
         maintenance_interval_seconds=60,
         session_import_interval_seconds=-1,
-        external_analytics_interval_seconds=-1,
-        external_analytics_periods=(),
     )
 
     assert any(job["job_type"] == JOB_CONSOLIDATE_BLOCKS for job in store.jobs)
