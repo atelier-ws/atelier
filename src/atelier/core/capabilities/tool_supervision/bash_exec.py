@@ -200,6 +200,9 @@ class _ManagedCommand:
     # before a read guarantees all surviving bytes are flushed to disk.
     readers: list[threading.Thread] = field(default_factory=list)
     spool_truncated: bool = False
+    # Phase 2 deferred bash: completion callbacks the watcher fires once the
+    # process finishes. Snapshotted+cleared under the lock, invoked outside it.
+    on_complete: list[Callable[[], None]] = field(default_factory=list)
 
 
 _MANAGED_COMMANDS: dict[str, _ManagedCommand] = {}
@@ -889,6 +892,18 @@ def _watch_managed_command(session_id: str) -> None:
             if managed.state == "running":
                 managed.state = "completed"
 
+    # Phase 2 deferred bash: the process has finished, so fire any registered
+    # completion callbacks now. A callback collects the result and writes the MCP
+    # response (it calls poll_managed_command, which reaps the session), so the
+    # grace-sleep+reap below then no-ops. Snapshot under the lock; invoke outside
+    # it (the callback re-enters poll_managed_command's lock).
+    with _MANAGED_COMMANDS_LOCK:
+        cbs = list(managed.on_complete)
+        managed.on_complete.clear()
+    for cb in cbs:
+        with contextlib.suppress(Exception):
+            cb()
+
     # The process has finished. If no one polls the result, its temp files and
     # dict entry would leak forever, so reap it after a grace window. A poll that
     # arrives first reaps it under the lock and clears the entry; this then no-ops.
@@ -1108,6 +1123,24 @@ def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, 
     return payload
 
 
+def register_completion(session_id: str, callback: Callable[[], None]) -> bool:
+    """Arm a completion callback for a running managed command (Phase 2).
+
+    Returns ``True`` and appends the callback (the watcher fires it once the
+    process finishes) only if the session is known and still running. Returns
+    ``False`` if the session is unknown or already finished/reaped -- the caller
+    must then fire its own continuation immediately.
+    """
+    with _MANAGED_COMMANDS_LOCK:
+        managed = _MANAGED_COMMANDS.get(session_id)
+        if managed is None:
+            return False
+        if managed.state != "running" or managed.proc.poll() is not None:
+            return False
+        managed.on_complete.append(callback)
+        return True
+
+
 def run_command(
     command: str,
     *,
@@ -1252,6 +1285,7 @@ __all__ = [
     "RunResult",
     "classify_command",
     "poll_managed_command",
+    "register_completion",
     "run_command",
     "start_managed_command",
 ]
