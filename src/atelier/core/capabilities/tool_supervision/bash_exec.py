@@ -268,8 +268,7 @@ def _rewrite_head(tokens: list[str]) -> CommandPolicyDecision:
             i += 1
             continue
         if tok.startswith("-") and not seen_double_dash:
-            if tok in {"-q", "--quiet", "--silent", "-v", "--verbose",
-                       "-z", "--zero-terminated", "-c", "--bytes"}:
+            if tok in {"-q", "--quiet", "--silent", "-v", "--verbose", "-z", "--zero-terminated", "-c", "--bytes"}:
                 return CommandPolicyDecision(category="file-read", action="allow")
             parsed_n, i = _parse_head_tail_n(tokens, i)
             if parsed_n is None:
@@ -303,11 +302,24 @@ def _rewrite_tail(tokens: list[str]) -> CommandPolicyDecision:
         if tok.startswith("-") and not seen_double_dash:
             # -f/--follow, -s, --pid, --retry, --sleep-interval and byte-mode
             # all require real tail behaviour.
-            if tok in {"-f", "-F", "--follow", "--retry",
-                       "-q", "--quiet", "--silent",
-                       "-v", "--verbose",
-                       "-z", "--zero-terminated",
-                       "-c", "--bytes", "-s", "--sleep-interval", "--pid"}:
+            if tok in {
+                "-f",
+                "-F",
+                "--follow",
+                "--retry",
+                "-q",
+                "--quiet",
+                "--silent",
+                "-v",
+                "--verbose",
+                "-z",
+                "--zero-terminated",
+                "-c",
+                "--bytes",
+                "-s",
+                "--sleep-interval",
+                "--pid",
+            }:
                 return CommandPolicyDecision(category="file-read", action="allow")
             parsed_n, i = _parse_head_tail_n(tokens, i)
             if parsed_n is None:
@@ -1101,6 +1113,42 @@ def _terminate_process_group(proc: subprocess.Popen[str]) -> None:
         proc.wait()
 
 
+# Bash output is re-read as cache_read on EVERY later turn, so a fat test/log dump
+# is paid for once per remaining turn -- the dominant cost on long tasks. Cap the
+# char size (line caps miss long-line output like ``git log --format``) and, for
+# test runs, keep the actionable failure section + summary instead of head/tail
+# (the FAILURES block sits in the middle and head/tail would drop it).
+_BASH_STDOUT_CHAR_CAP = 6000
+_TEST_CMD_RE = re.compile(
+    r"\b(pytest|py\.test|runtests|nosetests|tox)\b|python[0-9.]*\s+-m\s+(unittest|pytest)|manage\.py\s+test"
+)
+_TEST_FAIL_START_RE = re.compile(
+    r"^(=+\s*(FAILURES|ERRORS)\s*=+|FAIL:|ERROR:|FAILED\b|=+\s*short test summary)", re.IGNORECASE
+)
+_TEST_SUMMARY_RE = re.compile(r"\d+\s+(passed|failed|error|skipped)|Ran\s+\d+\s+test|^OK\b|^FAILED\b", re.IGNORECASE)
+
+
+def _cap_chars(text: str, max_chars: int) -> str:
+    """Keep head + tail of *text* within *max_chars* (long-line safe)."""
+    if len(text) <= max_chars:
+        return text
+    h = max_chars * 3 // 4
+    t = max_chars - h
+    return f"{text[:h]}\n... ({len(text) - max_chars:,} chars trimmed) ...\n{text[-t:]}"
+
+
+def _extract_test_output(text: str, max_chars: int = _BASH_STDOUT_CHAR_CAP) -> str:
+    """From a test run, keep the actionable failures + summary; drop pass/collection noise."""
+    lines = text.splitlines()
+    start = next((i for i, ln in enumerate(lines) if _TEST_FAIL_START_RE.search(ln)), None)
+    if start is not None:  # there are failures -- keep from the first failure marker on
+        return _cap_chars("\n".join(lines[start:]), max_chars)
+    summary = [ln for ln in lines if _TEST_SUMMARY_RE.search(ln)]
+    if summary:  # all green -- the summary line is all the agent needs
+        return "\n".join(summary[-3:])
+    return _cap_chars(text, max_chars)
+
+
 def _compact_result(
     *,
     command: str,
@@ -1116,7 +1164,18 @@ def _compact_result(
     else:
         head = max(20, max_lines // 4)
         tail = max(max_lines - head, 0)
-    stdout_compact, stdout_omitted, stdout_chars = _head_tail_lines(_strip_ansi(raw_stdout).splitlines(), head, tail)
+    clean_stdout = _strip_ansi(raw_stdout)
+    if _TEST_CMD_RE.search(command):
+        compact = _extract_test_output(clean_stdout)
+        stdout_omitted = 0
+        stdout_chars = max(0, len(clean_stdout) - len(compact))
+        stdout_compact = compact
+    else:
+        stdout_compact, stdout_omitted, stdout_chars = _head_tail_lines(clean_stdout.splitlines(), head, tail)
+        capped = _cap_chars(stdout_compact, _BASH_STDOUT_CHAR_CAP)
+        if capped != stdout_compact:
+            stdout_chars += len(stdout_compact) - len(capped)
+            stdout_compact = capped
     stderr_compact, stderr_omitted, stderr_chars = _head_tail_lines(_strip_ansi(raw_stderr).splitlines(), 100, 100)
     lines_omitted = stdout_omitted + stderr_omitted
     chars_omitted = stdout_chars + stderr_chars
