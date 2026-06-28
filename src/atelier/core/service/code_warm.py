@@ -2,11 +2,13 @@
 
 Keeps the shared code-context SQLite index warm for every active MCP
 workspace so the per-request MCP path never has to trigger a synchronous
-cold build. The service daemon owns this; it scans the ``mcp_sessions``
-registry, constructs (and retains) a :class:`CodeContextEngine` per active
-workspace, and lets each engine's own autosync thread do the warming.
+cold build.  The service daemon owns this; it scans the ``mcp_sessions``
+registry, fires ``atelier code index`` as a detached subprocess per active
+workspace, and lets the subprocess write the SQLite index and exit —
+releasing all indexing memory (ProcessPool, AST data, CoW pages) after
+each run.  The parent daemon process footprint is unaffected.
 
-Gated by ``ATELIER_SERVICE_CODE_WARM`` (default on). Set to one of
+Gated by ``ATELIER_SERVICE_CODE_WARM`` (default on).  Set to one of
 ``0``/``false``/``no``/``off`` to disable.
 """
 
@@ -15,6 +17,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -64,9 +68,9 @@ def _registered_mcp_pid_is_live(pid: int) -> bool:
 def discover_workspaces() -> list[Path]:
     """Return resolved workspace dirs from the mcp_sessions registry.
 
-    Only existing directories from live MCP processes are returned. Discovery is
-    limited to the registry -- the service cwd is intentionally never auto-added
-    so that a daemon with no active MCP sessions warms nothing.
+    Only existing directories from live MCP processes are returned.  Discovery
+    is limited to the registry -- the service cwd is intentionally never
+    auto-added so that a daemon with no active MCP sessions warms nothing.
     """
     sessions_dir = _mcp_sessions_dir()
     if not sessions_dir.is_dir():
@@ -102,12 +106,46 @@ def discover_workspaces() -> list[Path]:
     return workspaces
 
 
+def _fire_index_subprocess(workspace: Path) -> None:
+    """Launch ``atelier code index`` in a fully detached child process.
+
+    Fire-and-forget: the caller does not wait for completion.  The subprocess
+    acquires the SQLite write-lock, indexes the workspace, and exits — all
+    memory used for indexing (ProcessPool, AST data, etc.) is released when
+    it exits, leaving the parent process footprint unchanged.
+    """
+    subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "atelier.gateway.cli",
+            "code",
+            "index",
+            "--repo-root",
+            str(workspace),
+            "--no-stats",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+        close_fds=True,
+    )
+
+
 class _CodeWarmer:
-    """Background loop that retains a warm engine per active workspace."""
+    """Background loop that fires index subprocesses per active workspace.
+
+    Replaces the old engine-retention approach: instead of creating and
+    holding a ``CodeContextEngine`` per workspace (which dragged the full
+    ProcessPool heap into the daemon), we just fire a detached subprocess.
+    The subprocess does all the heavy work and exits cleanly.
+    """
 
     def __init__(self, *, poll_seconds: float = _POLL_SECONDS) -> None:
         self._poll_seconds = poll_seconds
-        self._engines: dict[Path, object] = {}
+        # Workspaces where an index subprocess was already fired; prevents
+        # re-firing on every poll cycle (only new workspaces get a subprocess).
+        self._fired: set[Path] = set()
         self._stop = threading.Event()
         # NB: not named ``_thread`` -- mypyc emits that as a C struct field
         # ``__thread``, which clang rejects as the reserved TLS keyword.
@@ -134,20 +172,14 @@ class _CodeWarmer:
             # Free warms a single repository; Pro warms all active workspaces.
             workspaces = workspaces[:1]
         for workspace in workspaces:
-            if workspace in self._engines:
+            if workspace in self._fired:
                 continue
             try:
-                # Imported lazily to keep service startup cheap and avoid a
-                # hard import cycle on the heavy code-intel engine.
-                from atelier.core.capabilities.code_context.engine import CodeContextEngine
-
-                engine = CodeContextEngine(workspace)
-                # Retain the ref so the engine's autosync thread keeps warming
-                # the shared SQLite index for the lifetime of the daemon.
-                self._engines[workspace] = engine
-                logger.info("code warmer: warming workspace %s", workspace)
+                _fire_index_subprocess(workspace)
+                self._fired.add(workspace)
+                logger.info("code warmer: fired index subprocess for %s", workspace)
             except Exception:
-                logger.exception("code warmer: failed to warm workspace %s", workspace)
+                logger.exception("code warmer: failed to fire subprocess for %s", workspace)
 
     def _loop(self) -> None:
         # First pass immediately, then poll for newly registered sessions.
@@ -164,26 +196,26 @@ class _CodeWarmer:
 
 # --- stdio MCP single-workspace warmer (Workstream 6 / G10) ----------------
 #
-# The SERVICE path warms every active workspace via ``_CodeWarmer`` above. The
-# stdio MCP server (``mcp_server.serve``) instead owns exactly one workspace and
-# is not warmed, so it pays cold-start on Zoekt/ast-grep subprocesses at
-# the first code-context tool call. ``warm_stdio_workspace`` warms that single
-# workspace once on startup, reusing the same lazy-engine-construct + retain
-# pattern as ``_CodeWarmer._warm_once``. It is idempotent and fail-open.
+# The SERVICE path warms every active workspace via ``_CodeWarmer`` above.  The
+# stdio MCP server (``mcp_server.serve``) instead owns exactly one workspace
+# and is not warmed by the service daemon, so it pays cold-start on
+# Zoekt/ast-grep subprocesses at the first code-context tool call.
+# ``warm_stdio_workspace`` fires a detached ``atelier code index`` subprocess
+# for that workspace on startup.  It is idempotent and fail-open.
 
-_stdio_engine: object | None = None
 _stdio_warmed: Path | None = None
 _stdio_lock = threading.Lock()
 
 
 def warm_stdio_workspace(workspace: str | Path) -> bool:
-    """Warm the code-context engine for a single stdio workspace (idempotent).
+    """Warm the code-context index for a single stdio workspace (idempotent).
 
-    Returns ``True`` when an engine was constructed and retained, ``False`` when
-    warming was skipped (disabled, missing dir, already warm) or failed. Never
-    raises -- stdio server startup must not break if warming fails.
+    Fires ``atelier code index`` as a detached subprocess so the parent MCP
+    process never takes on the indexing memory cost.  Returns ``True`` when a
+    subprocess was launched, ``False`` when warming was skipped (disabled,
+    missing dir, already warm) or failed.  Never raises.
     """
-    global _stdio_engine, _stdio_warmed
+    global _stdio_warmed
     if not _warm_enabled():
         logger.info("stdio code warmer disabled via ATELIER_SERVICE_CODE_WARM")
         return False
@@ -199,19 +231,12 @@ def warm_stdio_workspace(workspace: str | Path) -> bool:
         if _stdio_warmed == resolved:
             return False
         try:
-            # Lazy import keeps stdio startup cheap and avoids a hard import
-            # cycle on the heavy code-intel engine.
-            from atelier.core.capabilities.code_context.engine import CodeContextEngine
-
-            engine = CodeContextEngine(resolved)
-            # Retain the ref so the engine's autosync thread keeps the shared
-            # SQLite index warm for the lifetime of the stdio process.
-            _stdio_engine = engine
+            _fire_index_subprocess(resolved)
             _stdio_warmed = resolved
-            logger.info("stdio code warmer: warmed workspace %s", resolved)
+            logger.info("stdio code warmer: fired index subprocess for %s", resolved)
             return True
         except Exception:
-            logger.exception("stdio code warmer: failed to warm workspace %s", resolved)
+            logger.exception("stdio code warmer: failed to fire subprocess for %s", resolved)
             return False
 
 

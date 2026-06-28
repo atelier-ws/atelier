@@ -15,44 +15,48 @@ from atelier.core.service import code_warm
 def _reset_stdio_state(monkeypatch: pytest.MonkeyPatch) -> None:
     """Reset the module-level stdio warmer state and enable warming."""
     monkeypatch.delenv("ATELIER_SERVICE_CODE_WARM", raising=False)
-    monkeypatch.setattr(code_warm, "_stdio_engine", None, raising=False)
     monkeypatch.setattr(code_warm, "_stdio_warmed", None, raising=False)
 
 
-class _FakeEngine:
-    instances = 0
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-    def __init__(self, workspace: Path) -> None:
-        type(self).instances += 1
-        self.workspace = workspace
+_fired_workspaces: list[Path] = []
 
 
-def _patch_engine(monkeypatch: pytest.MonkeyPatch) -> type[_FakeEngine]:
-    _FakeEngine.instances = 0
-    import atelier.core.capabilities.code_context.engine as engine_mod
+def _patch_fire(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    """Replace _fire_index_subprocess with a no-op that records calls."""
+    fired: list[Path] = []
 
-    monkeypatch.setattr(engine_mod, "CodeContextEngine", _FakeEngine, raising=True)
-    return _FakeEngine
+    def _fake(workspace: Path) -> None:
+        fired.append(workspace)
+
+    monkeypatch.setattr(code_warm, "_fire_index_subprocess", _fake)
+    return fired
+
+
+# ---------------------------------------------------------------------------
+# warm_stdio_workspace tests
+# ---------------------------------------------------------------------------
 
 
 def test_warm_invoked_once_per_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    fake = _patch_engine(monkeypatch)
+    fired = _patch_fire(monkeypatch)
 
     assert code_warm.warm_stdio_workspace(tmp_path) is True
-    assert fake.instances == 1
+    assert len(fired) == 1
 
-    # Second call for the same workspace is a no-op: warmed exactly once.
+    # Second call for the same workspace is a no-op: subprocess fired exactly once.
     assert code_warm.warm_stdio_workspace(tmp_path) is False
-    assert fake.instances == 1
+    assert len(fired) == 1
 
 
 def test_warm_failure_is_non_fatal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import atelier.core.capabilities.code_context.engine as engine_mod
-
     def _boom(workspace: Path) -> None:
-        raise RuntimeError("cold-start exploded")
+        raise RuntimeError("index subprocess exploded")
 
-    monkeypatch.setattr(engine_mod, "CodeContextEngine", _boom, raising=True)
+    monkeypatch.setattr(code_warm, "_fire_index_subprocess", _boom)
 
     # Must NOT raise -- stdio startup must survive a warming failure.
     assert code_warm.warm_stdio_workspace(tmp_path) is False
@@ -60,19 +64,24 @@ def test_warm_failure_is_non_fatal(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 
 
 def test_warm_disabled_via_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    fake = _patch_engine(monkeypatch)
+    fired = _patch_fire(monkeypatch)
     monkeypatch.setenv("ATELIER_SERVICE_CODE_WARM", "0")
 
     assert code_warm.warm_stdio_workspace(tmp_path) is False
-    assert fake.instances == 0
+    assert len(fired) == 0
 
 
 def test_warm_skips_missing_directory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    fake = _patch_engine(monkeypatch)
+    fired = _patch_fire(monkeypatch)
     missing = tmp_path / "does-not-exist"
 
     assert code_warm.warm_stdio_workspace(missing) is False
-    assert fake.instances == 0
+    assert len(fired) == 0
+
+
+# ---------------------------------------------------------------------------
+# discover_workspaces tests
+# ---------------------------------------------------------------------------
 
 
 def test_discover_workspaces_prunes_dead_mcp_sessions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
