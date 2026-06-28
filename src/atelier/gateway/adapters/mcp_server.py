@@ -8794,13 +8794,19 @@ def _lean_code_search_view(
                 seen_paths.add(f.get("path"))
                 break
 
+    # Cross-file symbol map: top-K entry points as compact signatures, NOT
+    # score-floor-gated. On multi-file tasks the secondary symbols (the same
+    # method on sibling classes) score far below the top hit; gating them made
+    # the agent re-search the term to rediscover each site. Keeping the map lets
+    # it navigate every related site in one call.
     candidates: list[str] = []
+    seen_sig: set[str] = set()
     for e in eps:
-        if e.get("path") in seen_paths:
+        sig = _lean_sig(e)
+        if sig in seen_sig:
             continue
-        if _lean_score(e) < floor:
-            break
-        candidates.append(_lean_sig(e))
+        seen_sig.add(sig)
+        candidates.append(sig)
         if len(candidates) >= _LEAN_MAX_CANDIDATES:
             break
 
@@ -8815,7 +8821,7 @@ def _lean_code_search_view(
 
     lean: dict[str, Any] = {"exact_match": exact, "files": out_files}
     if candidates:
-        lean["other_candidates"] = candidates
+        lean["related_symbols"] = candidates
     if cand_files:
         lean["candidate_files"] = cand_files[:_LEAN_MAX_CANDIDATES]
     if result.get("truncated"):
