@@ -28,10 +28,28 @@ _BRIDGE_SENTINEL = "__ATELIER_ZOEKT_END__"
 _DOCKER_NOFILE = "1048576:1048576"
 _STARTUP_TIMEOUT_SECONDS = 60.0
 _POLL_INTERVAL_SECONDS = 0.25
-_WEBSERVER_ENV_VAR = "ATELIER_ZOEKT_WEBSERVER"
-_WEBSERVER_READY_TIMEOUT_SECONDS = 15.0
+# Background readiness deadline: big indexes (e.g. astropy, seaborn) mmap their
+# shards slowly, so give the poll thread enough time to see a loaded repo before
+# giving up and marking the server failed.
+_WEBSERVER_READY_TIMEOUT_SECONDS = 30.0
 _WEBSERVER_READY_POLL_SECONDS = 0.05
-_WEBSERVER_REQUEST_TIMEOUT_SECONDS = 2.0
+
+
+# Per-request Zoekt timeout (HTTP webserver + CLI subprocess).
+# 200 ms covers the vast majority of queries (typical: 5-50 ms) while
+# bounding tail latency from complex regex patterns.  Override via
+# ATELIER_ZOEKT_REQUEST_TIMEOUT_MS.
+def _zoekt_request_timeout() -> float:
+    raw = os.environ.get("ATELIER_ZOEKT_REQUEST_TIMEOUT_MS")
+    if raw:
+        try:
+            return max(0.010, float(raw) / 1000.0)
+        except ValueError:
+            pass
+    return 0.200
+
+
+_WEBSERVER_REQUEST_TIMEOUT_SECONDS = _zoekt_request_timeout()
 _SKIP_ROOTS = {".git", ".jj", ".atelier", ".venv", "node_modules", "dist", "build", "__pycache__"}
 
 
@@ -444,37 +462,31 @@ class ZoektServer:
         return cast(dict[str, Any], json.loads(body))
 
     def _host_search(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Host-mode search: persistent zoekt-webserver, CLI subprocess fallback.
+        """Host-mode search via the persistent ``zoekt-webserver``.
 
-        When ``ATELIER_ZOEKT_WEBSERVER`` is enabled (default) a single
-        long-lived ``zoekt-webserver`` is started lazily and queried over
-        HTTP per call -- the index stays resident, so each query is
-        single-digit ms instead of paying Go-runtime init + index mmap on a
-        fresh ``zoekt`` subprocess.  Any start/HTTP failure degrades to the
-        per-query CLI path (`_run_host_search`) so behaviour never regresses.
+        A single long-lived ``zoekt-webserver`` is started lazily and queried
+        over HTTP -- the index stays resident, so each query is single-digit
+        ms instead of paying Go-runtime init + index mmap on a fresh ``zoekt``
+        subprocess.  The webserver is the *only* host search surface: there is
+        no per-query CLI fallback.  When the server cannot be started or does
+        not answer, this returns an empty result so the caller degrades to its
+        non-zoekt channels rather than spawning a subprocess per query.
         """
-        if self._webserver_enabled():
-            url = self._ensure_webserver()
-            if url is not None:
-                try:
-                    return self._run_webserver_search(url, payload)
-                except Exception:  # noqa: BLE001 -- any HTTP/parse error degrades to the CLI path
-                    # The webserver did not answer this query.  A 4xx (e.g. a
-                    # malformed-regexp query the API rejects but the CLI
-                    # tolerates) leaves a perfectly healthy server up, so we
-                    # only tear it down when the process has actually died --
-                    # otherwise one bad query would force every later query
-                    # back onto the slow CLI path.  Either way this call
-                    # degrades to the CLI below.
-                    logging.debug("zoekt webserver search failed; using CLI fallback", exc_info=True)
-                    with self._webserver_lock:
-                        proc = self._webserver_proc
-                        if proc is None or proc.poll() is not None:
-                            self._stop_webserver()
-        return self._run_host_search(payload)
-
-    def _webserver_enabled(self) -> bool:
-        return os.environ.get(_WEBSERVER_ENV_VAR, "1").strip().lower() not in {"0", "false", "no", "off"}
+        url = self._ensure_webserver()
+        if url is None:
+            return {"Result": {"Files": []}}
+        try:
+            return self._run_webserver_search(url, payload)
+        except Exception:  # noqa: BLE001 -- HTTP/parse error: drop this query's zoekt results
+            # A 4xx (e.g. a malformed-regexp query the API rejects) leaves a
+            # perfectly healthy server up, so only tear it down when the
+            # process has actually died; otherwise keep serving later queries.
+            logging.debug("zoekt webserver search failed", exc_info=True)
+            with self._webserver_lock:
+                proc = self._webserver_proc
+                if proc is None or proc.poll() is not None:
+                    self._stop_webserver()
+            return {"Result": {"Files": []}}
 
     def _ensure_webserver(self) -> str | None:
         """Return the base URL of a live host zoekt-webserver, starting one lazily.
@@ -508,10 +520,12 @@ class ZoektServer:
                     self._webserver_failed = True
                     return None
 
-        # Non-blocking readiness check: if the daemon poll thread hasn't set
-        # the Event yet, skip zoekt this call and let the caller fall back to
-        # the CLI/SQLite path.  The next call after the Event is set will use
-        # the webserver normally.  Never block a tool call waiting for startup.
+        # Non-blocking readiness: the hot query path must never stall.  If the
+        # background poll thread hasn't signalled readiness yet, return None so
+        # this one call degrades to the non-zoekt channels -- the next call
+        # after the Event is set uses the live server.  Startup latency is
+        # moved off the hot path by callers that warm up front via
+        # ``wait_until_searchable`` (benchmark prewarm / production index warm).
         if not self._webserver_ready.is_set():
             return None
         if self._webserver_failed:
@@ -563,6 +577,23 @@ class ZoektServer:
         threading.Thread(target=_poll_ready, daemon=True, name="zoekt-ready-poll").start()
         return url
 
+    def wait_until_searchable(self, timeout: float) -> bool:
+        """Block until the host webserver can serve queries, or ``timeout``.
+
+        Triggers a lazy start if needed, then waits for the background
+        readiness poll.  Returns ``True`` only when the server is live and a
+        repo with loaded documents is queryable.  Callers (benchmark prewarm,
+        production index warm) use this to move the one-time startup cost off
+        the hot query path so steady-state searches never block.
+        """
+        deadline = time.time() + timeout
+        # Trigger a lazy spawn without issuing a real query.
+        with suppress(Exception):
+            self._ensure_webserver()
+        remaining = max(0.0, deadline - time.time())
+        self._webserver_ready.wait(timeout=remaining)
+        return self._webserver_ready.is_set() and not self._webserver_failed
+
     def _run_webserver_search(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps({"Q": str(payload.get("Q") or "")}, separators=(",", ":")).encode("utf-8")
         request = urllib.request.Request(
@@ -606,25 +637,6 @@ class ZoektServer:
                     proc.kill()
             with suppress(Exception):
                 proc.wait(timeout=5)
-
-    def _run_host_search(self, payload: dict[str, Any]) -> dict[str, Any]:
-        search_binary = self._host_search_binary
-        if search_binary is None:
-            raise RuntimeError("zoekt host runtime is not initialized")
-        query = str(payload.get("Q") or "")
-        completed = _run_command(
-            [str(search_binary), "-index_dir", str(self.index_root), "-jsonl", query],
-            check=False,
-            timeout=30,
-        )
-        if completed.returncode not in (0, 1):
-            raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "zoekt search failed")
-        files: list[dict[str, Any]] = []
-        for raw_line in completed.stdout.splitlines():
-            if not raw_line.strip():
-                continue
-            files.append(json.loads(raw_line))
-        return {"Result": {"Files": files}}
 
     def _load_started_at(self) -> float | None:
         candidates = [self.index_root / ".atelier-zoekt-state.json", self.state_path]

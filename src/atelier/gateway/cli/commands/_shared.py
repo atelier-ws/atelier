@@ -134,13 +134,29 @@ def _latest_ledger_path(root: Path) -> Path | None:
     runs = _ledger_dir(root)
     if not runs.is_dir():
         return None
-    paths = sorted(runs.glob("*/run.json"))
+    # Use ** to find sessions in both the legacy flat layout (sessions/<id>/)
+    # and the new date-partitioned layout (sessions/YYYY/MM/DD/<id>/).
+    paths = sorted(runs.glob("**/run.json"))
     return paths[-1] if paths else None
 
 
 def _ledger_path(root: Path, session_id: str | None) -> Path:
     if session_id:
-        return _ledger_dir(root) / session_id / "run.json"
+        # Try the new date-partitioned path first (today's date), then the
+        # legacy flat path; fall back to new-style so callers get a clear
+        # FileNotFoundError on the canonical location.
+        try:
+            from atelier.infra.runtime.run_ledger import session_run_dir
+
+            new_path = session_run_dir(root, session_id) / "run.json"
+        except ImportError:
+            new_path = _ledger_dir(root) / session_id / "run.json"
+        old_path = _ledger_dir(root) / session_id / "run.json"
+        if new_path.exists():
+            return new_path
+        if old_path.exists():
+            return old_path
+        return new_path
     latest = _latest_ledger_path(root)
     if latest is None:
         raise click.ClickException("no run ledger found. Pass --session-id or record one first.")

@@ -1889,7 +1889,12 @@ def _codex_append_compaction_savings_row(
     if not session_id:
         return
     try:
-        path = Path(root) / "sessions" / session_id / "savings.jsonl"
+        try:
+            from atelier.infra.runtime.run_ledger import session_run_dir as _srd
+
+            path = _srd(root, session_id) / "savings.jsonl"
+        except ImportError:
+            path = Path(root) / "sessions" / session_id / "savings.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         row = {
             "kind": "compaction",
@@ -1901,6 +1906,14 @@ def _codex_append_compaction_savings_row(
         }
         with open(path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row) + "\n")
+        # Invalidate the in-memory historical savings cache so the next
+        # statusline_segment call picks up the compaction row immediately.
+        try:
+            from atelier.core.capabilities.savings_summary import _invalidate_historical_savings_cache as _inval_cache
+
+            _inval_cache()
+        except ImportError:
+            pass
     except (OSError, TypeError, ValueError):
         pass
 
@@ -3180,7 +3193,9 @@ def aggregate_session_stats(root: str | Path, session_id: str | None = None) -> 
     files = (
         [session_stats_path(root, session_id)]
         if session_id
-        else sorted(sessions_dir.glob("*/stats.json")) if sessions_dir.exists() else []
+        else sorted(sessions_dir.glob("*/stats.json"))
+        if sessions_dir.exists()
+        else []
     )
     aggregate: dict[str, Any] = {
         "session_count": 0,

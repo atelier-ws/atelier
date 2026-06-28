@@ -259,7 +259,7 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
     rescue_events = 0
     rubric_failures = 0
     if runs.is_dir():
-        for p in runs.glob("*/run.json"):
+        for p in runs.glob("**/run.json"):
             try:
                 snap = json.loads(p.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):

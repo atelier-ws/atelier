@@ -311,9 +311,12 @@ def test_user_prompt_banks_pending_compaction_credit(tmp_path: Path, monkeypatch
 
     plugin_runtime._codex_enrich_user_prompt(root, payload)
 
+    from atelier.infra.runtime.run_ledger import session_run_dir
+
+    sidecar = session_run_dir(root, session_id) / "savings.jsonl"
     rows = [
         json.loads(line)
-        for line in (root / "sessions" / session_id / "savings.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in sidecar.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     comp = [r for r in rows if r.get("kind") == "compaction"]
@@ -335,7 +338,7 @@ def test_user_prompt_banks_pending_compaction_credit(tmp_path: Path, monkeypatch
     plugin_runtime._codex_enrich_user_prompt(root, payload)
     rows2 = [
         json.loads(line)
-        for line in (root / "sessions" / session_id / "savings.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in sidecar.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     assert len([r for r in rows2 if r.get("kind") == "compaction"]) == 1

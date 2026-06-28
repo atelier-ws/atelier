@@ -475,7 +475,9 @@ def _parse_since_arg(value: str) -> datetime:
         delta = (
             timedelta(days=amount)
             if unit == "d"
-            else timedelta(hours=amount) if unit == "h" else timedelta(minutes=amount)
+            else timedelta(hours=amount)
+            if unit == "h"
+            else timedelta(minutes=amount)
         )
         return datetime.now(UTC) - delta
 
@@ -1103,7 +1105,7 @@ def status_cmd(
         if session_id:
             target = sessions_dir / session_id / "run.json"
         else:
-            files = sorted(sessions_dir.glob("*/run.json"), key=os.path.getmtime, reverse=True)
+            files = sorted(sessions_dir.glob("**/run.json"), key=os.path.getmtime, reverse=True)
             target = files[0] if files else None
         if target and target.exists():
             click.echo(target.read_text().strip())

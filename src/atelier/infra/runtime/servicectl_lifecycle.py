@@ -344,12 +344,41 @@ def _detect_auto_update_method() -> tuple[str, str | None]:
     return ("release", None)
 
 
+# Auto-update always tracks this remote branch, regardless of which local
+# branch is currently checked out. Hardcoded to origin/main by request.
+_AUTO_UPDATE_REMOTE = "origin"
+_AUTO_UPDATE_BRANCH = "main"
+
+
 def _update_via_git(project_root: str) -> bool:
-    """Update from git: fetch, pull, sync deps. Returns True if applied."""
+    """Update from git: fetch origin/main, fast-forward, sync deps.
+
+    Auto-update always tracks ``origin/main`` regardless of the currently
+    checked-out local branch. Returns True only if an update was applied.
+    """
     project_root_p = Path(project_root)
-    subprocess.run(["git", "fetch", "--quiet"], cwd=project_root_p, check=True)
+    remote_ref = f"{_AUTO_UPDATE_REMOTE}/{_AUTO_UPDATE_BRANCH}"
+
+    subprocess.run(
+        ["git", "fetch", "--quiet", _AUTO_UPDATE_REMOTE, _AUTO_UPDATE_BRANCH],
+        cwd=project_root_p,
+        check=True,
+    )
+
+    # Bail out cleanly if the tracking ref is missing (e.g. the remote has no
+    # ``main``) instead of raising — keeps the controller quiet on odd setups.
+    verify = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", remote_ref],
+        cwd=project_root_p,
+        capture_output=True,
+        text=True,
+    )
+    if verify.returncode != 0:
+        logger.info(f"Auto-update: {remote_ref} not found; skipping git update.")
+        return False
+
     res = subprocess.run(
-        ["git", "rev-list", "HEAD..@{u}", "--count"],
+        ["git", "rev-list", f"HEAD..{remote_ref}", "--count"],
         cwd=project_root_p,
         capture_output=True,
         text=True,
@@ -359,8 +388,23 @@ def _update_via_git(project_root: str) -> bool:
     if behind_count == 0:
         return False
 
-    logger.info(f"Auto-update: detected {behind_count} new commits. Pulling...")
-    subprocess.run(["git", "pull", "--ff-only", "--quiet"], cwd=project_root_p, check=True)
+    logger.info(f"Auto-update: detected {behind_count} new commits on {remote_ref}. Updating...")
+
+    # Fast-forward only: never clobber local commits. If the checked-out branch
+    # has diverged from main it cannot fast-forward — log and skip rather than
+    # raising, so the controller keeps running without error spam.
+    merge = subprocess.run(
+        ["git", "merge", "--ff-only", "--quiet", remote_ref],
+        cwd=project_root_p,
+        capture_output=True,
+        text=True,
+    )
+    if merge.returncode != 0:
+        logger.warning(
+            f"Auto-update: cannot fast-forward to {remote_ref} "
+            f"(local branch has diverged); skipping. {merge.stderr.strip()}"
+        )
+        return False
 
     if (project_root_p / "uv.lock").exists() or (project_root_p / "pyproject.toml").exists():
         import shutil

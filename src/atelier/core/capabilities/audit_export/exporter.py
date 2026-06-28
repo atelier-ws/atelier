@@ -176,7 +176,7 @@ def _read_runs(root: Path, *, since: datetime | None, policy: Any) -> list[dict[
     if not sessions_dir.exists():
         return []
     sessions: list[dict[str, Any]] = []
-    for path in sorted(sessions_dir.glob("*/run.json")):
+    for path in sorted(sessions_dir.glob("**/run.json")):
         snapshot = json.loads(path.read_text(encoding="utf-8"))
         if not record_within_retention(snapshot, record_type="runs", policy=policy):
             continue

@@ -24,7 +24,7 @@ def summarize_workspace_usage(
     session_count = 0
     total_cost_usd = 0.0
     if sessions_dir.exists():
-        for path in sorted(sessions_dir.glob("*/run.json")):
+        for path in sorted(sessions_dir.glob("**/run.json")):
             snapshot = json.loads(path.read_text(encoding="utf-8"))
             updated_at_raw = snapshot.get("updated_at") or snapshot.get("created_at")
             updated_at = _parse_datetime(updated_at_raw) if updated_at_raw else None

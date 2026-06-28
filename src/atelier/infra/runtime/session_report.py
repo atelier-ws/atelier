@@ -185,6 +185,20 @@ def _read_host_sidecar_savings(session_id: str, root: Path) -> tuple[int, float,
 
     sidecar = root / "sessions" / session_id / "savings.jsonl"
     if not sidecar.is_file():
+        # Also check date-partitioned layout (sessions/YYYY/MM/DD/<id>/).
+        try:
+            from atelier.infra.runtime.run_ledger import session_run_dir as _srd
+
+            _dated = _srd(root, session_id) / "savings.jsonl"
+        except ImportError:
+            _dated = sidecar
+        if _dated.is_file():
+            sidecar = _dated
+        else:
+            _found = next((root / "sessions").glob(f"**/{session_id}/savings.jsonl"), None)
+            if _found is not None:
+                sidecar = _found
+    if not sidecar.is_file():
         return 0, 0.0, []
 
     count = 0
@@ -539,7 +553,7 @@ def list_run_files(root: Path, *, since: datetime | None = None) -> list[Path]:
     runs_dir = root / "sessions"
     if not runs_dir.exists():
         return []
-    files = sorted(runs_dir.glob("*/run.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    files = sorted(runs_dir.glob("**/run.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     if since is None:
         return files
     cutoff = since.timestamp()
