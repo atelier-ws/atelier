@@ -8878,7 +8878,21 @@ def tool_code_search(
         seed_list = []
     seed_files = seed_list or None
     engine = _code_context_engine(str(workspace_root))
-    result = cast(dict[str, Any], engine.tool_explore(query, max_files=max_files, seed_files=seed_files))
+    # complete_families surfaces the whole symbol family (a method overridden on
+    # sibling classes, a name that camelCase tokenization splits) in ONE call, so
+    # the agent gets every definition it must edit without re-searching the term
+    # per class; budget_tokens is raised so that family source actually lands. This
+    # is the "one search returns everything to edit" path for multi-file tasks.
+    result = cast(
+        dict[str, Any],
+        engine.tool_explore(
+            query,
+            max_files=max(max_files, 8),
+            seed_files=seed_files,
+            complete_families=True,
+            budget_tokens=4000,
+        ),
+    )
     # Project the engine's rich candidate set to a lean, exact view so the agent
     # can go code_search -> edit without grep/read round-trips (seed files are
     # boosted to the top inside the view).
