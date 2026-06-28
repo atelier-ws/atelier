@@ -8146,9 +8146,13 @@ class _Deferred:
         self,
         src: _DeferredResult,
         finalize: Callable[[dict[str, Any]], dict[str, Any]],
+        finalize_error: Callable[[Exception], dict[str, Any]],
     ) -> None:
         self.src = src
         self.finalize = finalize
+        # Routes a failed deferred result (e.g. a web_fetch network/SSRF error)
+        # through the same tool-error pipeline the synchronous path uses.
+        self.finalize_error = finalize_error
 
 
 def _defer_bash_enabled() -> bool:
@@ -8168,6 +8172,31 @@ _deferral_context: threading.local = threading.local()
 
 def _deferral_supported() -> bool:
     return bool(getattr(_deferral_context, "active", False))
+
+
+def _defer_web_fetch_enabled() -> bool:
+    """Phase 3 deferred-web_fetch kill switch. Default ENABLED; set
+    ATELIER_MCP_DEFER_WEB_FETCH to 0/false/no/off to fetch synchronously."""
+    raw = os.environ.get("ATELIER_MCP_DEFER_WEB_FETCH", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
+# Small pool that runs deferred completions (collect + finalize + write) off the
+# reactor loop thread, so finalize work never blocks the event loop. Lazy so it
+# is never created in CLI / in-process contexts that don't defer.
+_DEFERRED_COMPLETION_EXECUTOR: ThreadPoolExecutor | None = None
+_DEFERRED_COMPLETION_LOCK = threading.Lock()
+
+
+def _deferred_completion_executor() -> ThreadPoolExecutor:
+    global _DEFERRED_COMPLETION_EXECUTOR
+    if _DEFERRED_COMPLETION_EXECUTOR is None:
+        with _DEFERRED_COMPLETION_LOCK:
+            if _DEFERRED_COMPLETION_EXECUTOR is None:
+                _DEFERRED_COMPLETION_EXECUTOR = ThreadPoolExecutor(
+                    max_workers=8, thread_name_prefix="atelier-defer-fin"
+                )
+    return _DEFERRED_COMPLETION_EXECUTOR
 
 
 def _run_bash_tool(
@@ -9228,12 +9257,42 @@ def tool_web_fetch(
         bool,
         Field(description="Include minimal debug metadata in the internal payload."),
     ] = False,
-) -> dict[str, Any]:
+) -> dict[str, Any] | _DeferredResult:
     """Fetch a public web page and return coding-agent-friendly content.
 
     Returns: {content, format, tokens_saved}; the MCP layer renders `content` directly.
     """
     from atelier.core.capabilities.web_fetch import fetch_url
+
+    # Phase 3: on the stdio worker, run the fetch on the shared asyncio reactor so
+    # the worker frees immediately; the reactor future's completion fires the
+    # deferral continuation (bounced to a small pool so finalize never blocks the
+    # loop). Same SSRF-validated fetch, just off the worker. Kill switch:
+    # ATELIER_MCP_DEFER_WEB_FETCH=0.
+    if _defer_web_fetch_enabled() and _deferral_supported():
+        from atelier.core.capabilities.web_fetch import async_fetch_url
+        from atelier.gateway.adapters._io_reactor import get_io_reactor
+
+        future = get_io_reactor().submit(
+            async_fetch_url(
+                url,
+                output_format=type,
+                max_chars=max_chars,
+                timeout_s=timeout_s,
+                include_meta=include_meta,
+            )
+        )
+
+        def _collect() -> dict[str, Any]:
+            return cast(dict[str, Any], future.result())
+
+        def _register(cb: Callable[[], None]) -> bool:
+            if future.done():
+                return False
+            future.add_done_callback(lambda _f: _deferred_completion_executor().submit(cb))
+            return True
+
+        return _DeferredResult(collect=_collect, register=_register)
 
     return fetch_url(
         url,
@@ -10412,7 +10471,11 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                 # the pool worker frees immediately; the watcher continuation runs
                 # _finalize_response when the command completes.
                 if isinstance(result, _DeferredResult):
-                    return _Deferred(src=result, finalize=_finalize_response)
+                    return _Deferred(
+                        src=result,
+                        finalize=_finalize_response,
+                        finalize_error=_finalize_error_response,
+                    )
                 return _finalize_response(result)
         except Exception as exc:  # noqa: BLE001 - delegates to the shared error finalizer
             return _finalize_error_response(exc)
@@ -10952,12 +11015,23 @@ def _handle_and_write(request: dict[str, Any]) -> None:
             def _on_complete() -> None:
                 try:
                     concrete = deferred.src.collect()
-                    resp = deferred.finalize(concrete)
+                except Exception as exc:  # noqa: BLE001 - deferred external work failed
+                    # A failed deferred result (e.g. web_fetch network/SSRF error)
+                    # goes through the same tool-error pipeline as the sync path,
+                    # for a byte-identical error response.
+                    try:
+                        resp = deferred.finalize_error(exc)
+                    except Exception:  # noqa: BLE001 - error finalizer boundary
+                        _log.exception("deferred MCP error-finalize failed")
+                        resp = _err(request.get("id"), -32603, f"internal error: {exc}")
+                else:
+                    try:
+                        resp = deferred.finalize(concrete)
+                    except Exception as exc:  # noqa: BLE001 - deferred continuation boundary
+                        _log.exception("deferred MCP continuation failed")
+                        resp = _err(request.get("id"), -32603, f"internal error: {exc}")
+                with contextlib.suppress(Exception):
                     _write_jsonrpc(resp)
-                except Exception as exc:  # noqa: BLE001 - deferred continuation boundary
-                    _log.exception("deferred MCP continuation failed")
-                    with contextlib.suppress(Exception):
-                        _write_jsonrpc(_err(request.get("id"), -32603, f"internal error: {exc}"))
 
             armed = deferred.src.register(_on_complete)
             if armed is False:
