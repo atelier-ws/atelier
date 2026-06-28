@@ -120,7 +120,13 @@ def _dispatch(request_obj: dict[str, Any], session_id: str | None = None) -> dic
     """
     prior = mcp_server._set_request_ledger(session_id)
     try:
-        return mcp_server._handle(request_obj)
+        response = mcp_server._handle(request_obj)
+        if isinstance(response, mcp_server._Deferred):
+            # Deferral is armed only on the stdio server worker path
+            # (_handle_and_write); the HTTP adapter never sets that context, so a
+            # deferred marker is unreachable here. Guard for type safety.
+            return mcp_server._err(request_obj.get("id"), -32603, "internal error: unexpected deferred result")
+        return response
     except Exception:
         correlation_id = uuid.uuid4().hex
         logger.exception("MCP HTTP dispatch failed (correlation_id=%s)", correlation_id)
