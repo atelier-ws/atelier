@@ -65,11 +65,6 @@ def _clean(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     entitlements.reload()
 
 
-class _StubEngine:
-    def __init__(self, workspace: Path) -> None:
-        self.workspace = workspace
-
-
 def _setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, n: int) -> None:
     workspaces = []
     for i in range(n):
@@ -77,17 +72,15 @@ def _setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, n: int) -> None:
         ws.mkdir()
         workspaces.append(ws)
     monkeypatch.setattr(code_warm, "discover_workspaces", lambda: list(workspaces))
-    monkeypatch.setattr(
-        "atelier.core.capabilities.code_context.engine.CodeContextEngine",
-        _StubEngine,
-    )
+    # Suppress actual subprocess launches; we only count which workspaces were fired.
+    monkeypatch.setattr(code_warm, "_fire_index_subprocess", lambda workspace: None)
 
 
 def test_free_warms_single_repo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _setup(monkeypatch, tmp_path, 3)
     warmer = code_warm._CodeWarmer()
     warmer._warm_once()
-    assert len(warmer._engines) == 1  # Free: capped to one repository
+    assert len(warmer._fired) == 1  # Free: capped to one repository
 
 
 def test_pro_warms_all_repos(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -95,7 +88,7 @@ def test_pro_warms_all_repos(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
     _grant(monkeypatch, {"unlimited_repos"})
     warmer = code_warm._CodeWarmer()
     warmer._warm_once()
-    assert len(warmer._engines) == 3  # Pro: all active workspaces
+    assert len(warmer._fired) == 3  # Pro: all active workspaces
 
 
 def test_free_policy_is_unoptimized(tmp_path: Path) -> None:
