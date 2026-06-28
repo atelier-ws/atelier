@@ -482,7 +482,7 @@ class ZoektRunner(_RunnerBase):
         configure_benchmark_runtime(runtime_root, workspace_root=self.snapshot_root)
         # Zoekt defaults to off; the benchmark arms exist to measure it, so
         # default to the managed (docker) runtime unless the caller overrides.
-        os.environ.setdefault("ATELIER_ZOEKT_MODE", "managed")
+        os.environ.setdefault("ATELIER_ZOEKT_MODE", "installed")
         from atelier.infra.code_intel.zoekt.adapter import (
             get_zoekt_supervisor,
             reset_zoekt_supervisors,

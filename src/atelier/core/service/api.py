@@ -424,117 +424,6 @@ def _normalize_lever(operation: str) -> str:
     return op
 
 
-_EXTERNAL_PERIOD_DAY_SPAN: dict[str, int] = {
-    "today": 1,
-    "week": 7,
-    "month": 30,
-    "30days": 30,
-    "all": 3650,
-}
-
-
-def _normalize_external_period(period: Any) -> str:
-    return str(period or "").strip().lower()
-
-
-def _pick_preferred_external_period(runs: list[dict[str, Any]], *, days: int) -> str | None:
-    target_days = max(1, days)
-    periods = {
-        _normalize_external_period(run.get("period")) for run in runs if _normalize_external_period(run.get("period"))
-    }
-    if not periods:
-        return None
-
-    return min(
-        periods,
-        key=lambda period: (
-            abs((_EXTERNAL_PERIOD_DAY_SPAN.get(period) or float("inf")) - target_days),
-            0 if (_EXTERNAL_PERIOD_DAY_SPAN.get(period) or float("inf")) >= target_days else 1,
-            _EXTERNAL_PERIOD_DAY_SPAN.get(period) or float("inf"),
-        ),
-    )
-
-
-def _select_external_run_for_days(runs: list[dict[str, Any]], *, days: int) -> dict[str, Any] | None:
-    if not runs:
-        return None
-
-    preferred_period = _pick_preferred_external_period(runs, days=days)
-    if preferred_period:
-        for run in runs:
-            if _normalize_external_period(run.get("period")) == preferred_period:
-                return run
-    return runs[0]
-
-
-def _build_external_analytics_summary(store: Any, *, days: int) -> dict[str, Any]:
-    runs = store.list_external_analytics_runs(days=days, limit=200)
-    successful_runs = sum(1 for run in runs if run.get("ok"))
-    runs_by_tool: dict[str, list[dict[str, Any]]] = {}
-    for run in runs:
-        tool = str(run.get("tool") or "unknown")
-        runs_by_tool.setdefault(tool, []).append(run)
-
-    latest: list[dict[str, Any]] = []
-    latest_codeburn_payload: dict[str, Any] | None = None
-    for tool, tool_runs in runs_by_tool.items():
-        selected_run = _select_external_run_for_days(tool_runs, days=days)
-        if selected_run is None:
-            continue
-        if tool == "codeburn" and isinstance(selected_run.get("payload"), dict):
-            latest_codeburn_payload = selected_run.get("payload")
-        latest.append(
-            {
-                "id": selected_run.get("id"),
-                "tool": tool,
-                "period": selected_run.get("period"),
-                "source": selected_run.get("source"),
-                "ok": selected_run.get("ok"),
-                "returncode": selected_run.get("returncode"),
-                "summary": selected_run.get("summary") or {},
-                "collected_at": selected_run.get("collected_at"),
-            }
-        )
-
-    by_provider: list[dict[str, Any]] = []
-    if isinstance(latest_codeburn_payload, dict):
-        provider_rows = latest_codeburn_payload.get("providerEntries")
-        if isinstance(provider_rows, list):
-            by_provider = [row for row in provider_rows if isinstance(row, dict)]
-
-    return {
-        "runs_total": len(runs),
-        "successful_runs": successful_runs,
-        "failed_runs": len(runs) - successful_runs,
-        "latest": latest,
-        "by_provider": by_provider,
-    }
-
-
-def _build_external_analytics_detail(
-    store: Any,
-    *,
-    days: int,
-    tool: str | None,
-    limit: int,
-) -> dict[str, Any]:
-    runs = store.list_external_analytics_runs(tool=tool, days=days, limit=limit)
-    latest_by_tool: dict[str, dict[str, Any]] = {}
-    successful_runs = sum(1 for run in runs if run.get("ok"))
-    for run in runs:
-        tool_name = str(run.get("tool") or "unknown")
-        latest_by_tool.setdefault(tool_name, run)
-    return {
-        "totals": {
-            "runs_total": len(runs),
-            "successful_runs": successful_runs,
-            "failed_runs": len(runs) - successful_runs,
-        },
-        "latest_by_tool": latest_by_tool,
-        "runs": runs,
-    }
-
-
 _BILLABLE_ANALYTICS_EVENTS = {
     "prompt",
     "cached_prompt",
@@ -2933,10 +2822,6 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
     )
     compact_session_history = _build_compact_session_history(live_events, window_days=window_days)
 
-    # Fetch latest codeburn:optimize report
-    external_optimizations = store.list_external_analytics_runs(tool="codeburn:optimize", days=window_days, limit=1)
-    latest_external = external_optimizations[0] if external_optimizations else None
-
     automatic_hosts = sum(1 for item in runtime_coverage if item["automatic_at_start"])
     advisory_only_hosts = sum(1 for item in runtime_coverage if item["advisory_only"])
     observed_levers = sum(
@@ -2969,7 +2854,6 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
         "reread_telemetry": reread_telemetry,
         "model_routing_simulation": model_routing_simulation,
         "compact_session_history": compact_session_history,
-        "external_optimizations": latest_external,
         "savings": savings,
         "data_sources": [
             {
@@ -3984,9 +3868,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                         "output_tokens": out_t,
                         "reasoning_output_tokens": reasoning_out_t,
                         "visible_output_tokens": max(out_t - reasoning_out_t, 0),
-                        "reasoning_output_ratio": (
-                            round(reasoning_out_t / out_t, 4) if out_t else 0.0
-                        ),
+                        "reasoning_output_ratio": (round(reasoning_out_t / out_t, 4) if out_t else 0.0),
                         "thinking_tokens": think_t,
                         "cached_tokens": cache_r,
                         "cache_write_tokens": cache_w,
@@ -4298,21 +4180,12 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             "by_model": by_model_list,
             "host_model_overview": host_model_overview_list,
             "top_sessions": top_sessions_clean,
-            "external": _build_external_analytics_summary(get_store(), days=days),
             "tools": {
                 "core": sorted(core_tools.values(), key=lambda x: x["calls"], reverse=True)[:15],
                 "shell": sorted(shell_tools.values(), key=lambda x: x["calls"], reverse=True)[:10],
                 "mcp": sorted(mcp_tools.values(), key=lambda x: x["calls"], reverse=True)[:20],
             },
         }
-
-    @app.get("/analytics/external", tags=["analytics"], dependencies=[Depends(verify_api_key)])
-    def analytics_external(
-        days: int = Query(30, ge=1, le=365),
-        tool: str | None = Query(None),
-        limit: int = Query(30, ge=1, le=200),
-    ) -> dict[str, Any]:
-        return _build_external_analytics_detail(get_store(), days=days, tool=tool, limit=limit)
 
     @app.get("/plans", tags=["compat"], dependencies=[Depends(verify_api_key)])
     def compat_plans(limit: int = 50) -> list[dict[str, Any]]:
@@ -5649,7 +5522,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                     or (
                         "assistant"
                         if turn.get("kind") == "agent_message"
-                        else "shell" if turn.get("kind") == "shell_command" else turn.get("kind") or "session"
+                        else "shell"
+                        if turn.get("kind") == "shell_command"
+                        else turn.get("kind") or "session"
                     )
                 )
                 bucket = tool_costs.setdefault(tool_name, {"calls": 0.0, "cost_usd": 0.0})
@@ -5793,7 +5668,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         total_turns = (
             authoritative_total_turns
             if authoritative_total_turns > 0
-            else trace_total_turns if trace_total_turns > 0 else reconstructed_total_turns
+            else trace_total_turns
+            if trace_total_turns > 0
+            else reconstructed_total_turns
         )
 
         input_token_cost_usd = (

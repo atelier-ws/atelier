@@ -14,19 +14,15 @@ import os
 import signal
 import subprocess
 import sys
-from contextlib import redirect_stderr, redirect_stdout, suppress
+from contextlib import suppress
 from datetime import UTC, datetime
-from io import StringIO
 from pathlib import Path
 from typing import Any
 
-from atelier.core.foundation.store import ContextStore
 from atelier.infra.runtime.daemon_units import (
-    DEFAULT_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS,
     LAUNCHD_USER_DIR,
     STACK_LABEL,
     STACK_UNIT,
-    SUPPORTED_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS,
     _is_macos,
 )
 
@@ -149,8 +145,6 @@ def _servicectl_status_payload(root: Path) -> dict[str, Any]:
         "last_enqueued_jobs": state.get("last_enqueued_jobs", []),
         "last_imported_sessions": state.get("last_imported_sessions", {}),
         "last_session_import_at": state.get("last_session_import_at"),
-        "last_external_analytics_runs": state.get("last_external_analytics_runs", []),
-        "last_external_analytics_at": state.get("last_external_analytics_at"),
         "last_exit_reason": state.get("last_exit_reason"),
         "started_at": state.get("started_at"),
         "job_queue_health": job_queue_health,
@@ -204,75 +198,57 @@ def _servicectl_refresh_host_status(root: Path) -> dict[str, str]:
     return status
 
 
-def _servicectl_import_sessions(store: ContextStore) -> dict[str, int]:
-    """Import host sessions with importer-level timestamp dedup.
+def _servicectl_import_sessions(root: Path) -> dict[str, int]:
+    """Import host sessions by delegating to the ``atelier import`` CLI subprocess.
 
-    Each importer already skips unchanged sessions by comparing source timestamp
-    against the previously imported RawArtifact timestamp.
+    Running import out-of-process keeps JSON parsing, importer-level dedup, and
+    the ``sync_usage`` upload out of the daemon's heap. ``sync_usage`` is called
+    inside the subprocess, so there is no double-upload.
     """
-    from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
-
-    counts: dict[str, int] = {}
-    importers: list[tuple[str, Any]] = [(host, importer_cls(store)) for host, importer_cls in iter_importer_classes()]
-    all_imported_ids = []
-    for host, importer in importers:
-        try:
-            # Keep servicectl output machine-readable (`--json`) by swallowing
-            # importer progress prints.
-            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
-                imported_ids = importer.import_all(force=False)
-            counts[host] = len(imported_ids)
-            all_imported_ids.extend(imported_ids)
-        except Exception:
-            logging.exception("Recovered from broad exception handler")
-            counts[host] = 0
-
-    # Report aggregated session counts to atelier.beseam.com
-    try:
-        from atelier.core.service.sync import sync_usage
-
-        sync_usage(store.root, session_ids=all_imported_ids)
-    except Exception:
-        logging.exception("Recovered from broad exception handler")
-        logger.warning(
-            "Suppressed exception at cli.py:534",
-            exc_info=True,
-        )
-
-    return counts
-
-
-def _normalize_external_analytics_periods(
-    periods: tuple[str, ...] | list[str] | None,
-) -> tuple[str, ...]:
-    requested = periods or DEFAULT_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS
-    normalized: list[str] = []
-    for period in requested:
-        if period not in SUPPORTED_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS:
-            raise ValueError(
-                "Unsupported external analytics period "
-                f"'{period}'. Choose from: {', '.join(SUPPORTED_SERVICECTL_EXTERNAL_ANALYTICS_PERIODS)}"
-            )
-        if period not in normalized:
-            normalized.append(period)
-    return tuple(normalized)
-
-
-def _servicectl_collect_external_analytics(
-    store: Any,
-    *,
-    periods: tuple[str, ...] | list[str],
-) -> list[dict[str, Any]]:
-    from atelier.gateway.integrations.external_analytics import (
-        persist_external_reports,
-        run_external_reports,
+    result = subprocess.run(
+        [sys.executable, "-m", "atelier.gateway.cli", "--root", str(root), "import", "--json"],
+        capture_output=True,
+        timeout=300,
     )
+    if result.returncode != 0:
+        logging.warning(
+            "session import subprocess failed (rc=%d): %s",
+            result.returncode,
+            result.stderr[-500:].decode("utf-8", errors="replace").strip(),
+        )
+        return {}
+    try:
+        data = json.loads(result.stdout)
+        return {k: int(v) for k, v in data.items() if isinstance(v, (int, float))}
+    except Exception:
+        logging.exception("failed to parse session import JSON output")
+        return {}
 
-    persisted: list[dict[str, Any]] = []
-    for period in _normalize_external_analytics_periods(periods):
-        batch = run_external_reports(tool="all", period=period, cwd=Path.cwd(), include_optimize=True)
-        persisted.extend(persist_external_reports(store, batch, source="servicectl"))
-    return persisted
+
+def _servicectl_index_recall(root: Path) -> dict[str, int]:
+    """Index recent session transcripts via the ``atelier recall index`` CLI subprocess.
+
+    Keeps embedding work and SQLite writes out of the daemon's heap. The subprocess
+    is incremental by default (unchanged sessions are skipped).
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "atelier.gateway.cli", "--root", str(root), "recall", "index", "--json"],
+        capture_output=True,
+        timeout=300,
+    )
+    if result.returncode != 0:
+        logging.warning(
+            "recall index subprocess failed (rc=%d): %s",
+            result.returncode,
+            result.stderr[-500:].decode("utf-8", errors="replace").strip(),
+        )
+        return {}
+    try:
+        data = json.loads(result.stdout)
+        return {k: int(v) for k, v in data.items() if isinstance(v, (int, float))}
+    except Exception:
+        logging.exception("failed to parse recall index JSON output")
+        return {}
 
 
 def _servicectl_check_and_apply_updates(root: Path) -> bool:
@@ -345,23 +321,17 @@ def _servicectl_tick(
     *,
     maintenance_interval_seconds: int,
     session_import_interval_seconds: int,
-    external_analytics_interval_seconds: int,
-    external_analytics_periods: tuple[str, ...] | list[str],
     auto_update: bool = False,
     auto_update_interval_seconds: int = 3600,
 ) -> dict[str, Any]:
     from atelier.core.capabilities.optimization import load_automation_config
     from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS, JOB_OPTIMIZE
-    from atelier.core.service.worker import Worker
     from atelier.infra.storage.factory import create_store
 
     SESSION_IMPORT_KEY = "import_host_sessions"
-    EXTERNAL_ANALYTICS_KEY = "external_analytics_reports"
 
     store = create_store(root)
     store.init()
-    worker = Worker(store=store)
-    normalized_external_analytics_periods = _normalize_external_analytics_periods(external_analytics_periods)
 
     # Refresh host agent detection status for the Docker service
     with suppress(Exception):
@@ -408,14 +378,6 @@ def _servicectl_tick(
         except ValueError:
             last_session_import_at = None
 
-    last_external_analytics_raw = periodic.get(EXTERNAL_ANALYTICS_KEY)
-    last_external_analytics_at: datetime | None = None
-    if isinstance(last_external_analytics_raw, str):
-        try:
-            last_external_analytics_at = datetime.fromisoformat(last_external_analytics_raw)
-        except ValueError:
-            last_external_analytics_at = None
-
     if session_import_interval_seconds < 0:
         import_due = False
     elif session_import_interval_seconds == 0 or last_session_import_at is None:
@@ -424,25 +386,20 @@ def _servicectl_tick(
         import_due = (now - last_session_import_at).total_seconds() >= session_import_interval_seconds
     imported_sessions: dict[str, int] = {}
     if import_due:
-        imported_sessions = _servicectl_import_sessions(store)
+        imported_sessions = _servicectl_import_sessions(root)
         periodic[SESSION_IMPORT_KEY] = now.isoformat()
 
-    if external_analytics_interval_seconds < 0:
-        external_analytics_due = False
-    elif external_analytics_interval_seconds == 0 or last_external_analytics_at is None:
-        external_analytics_due = True
+    # Recall indexing (semantic past-session recall) runs on the maintenance cadence.
+    RECALL_INDEX_KEY = "index_recall_sessions"
+    last_recall_index_at = _periodic_timestamp(RECALL_INDEX_KEY)
+    if maintenance_interval_seconds <= 0 or last_recall_index_at is None:
+        recall_index_due = True
     else:
-        external_analytics_due = (
-            now - last_external_analytics_at
-        ).total_seconds() >= external_analytics_interval_seconds
-    external_analytics_runs: list[dict[str, Any]] = []
-    if external_analytics_due:
-        with suppress(Exception):
-            external_analytics_runs = _servicectl_collect_external_analytics(
-                store,
-                periods=normalized_external_analytics_periods,
-            )
-        periodic[EXTERNAL_ANALYTICS_KEY] = now.isoformat()
+        recall_index_due = (now - last_recall_index_at).total_seconds() >= maintenance_interval_seconds
+    indexed_recall: dict[str, int] = {}
+    if recall_index_due:
+        indexed_recall = _servicectl_index_recall(root)
+        periodic[RECALL_INDEX_KEY] = now.isoformat()
 
     job_queue_health_before = store.job_queue_health()
     enqueued: list[str] = []
@@ -485,12 +442,41 @@ def _servicectl_tick(
                 enqueued.append(job_id)
                 periodic[JOB_OPTIMIZE] = now.isoformat()
 
+    # Process queued jobs in subprocesses so heavy handlers (consolidation,
+    # optimization) keep their LLM heap out of the daemon. Each subprocess
+    # claims one job atomically, does the work, and exits.
     processed: list[str] = []
     while len(processed) < 20:
-        job_id = worker.run_once()
-        if job_id is None:
+        try:
+            job_result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "atelier.gateway.cli",
+                    "--root",
+                    str(root),
+                    "worker",
+                    "run-once",
+                    "--json",
+                ],
+                capture_output=True,
+                timeout=600,
+            )
+            if job_result.returncode != 0:
+                logging.warning(
+                    "worker run-once subprocess failed (rc=%d): %s",
+                    job_result.returncode,
+                    job_result.stderr[-300:].decode("utf-8", errors="replace").strip(),
+                )
+                break
+            data = json.loads(job_result.stdout)
+            job_id = data.get("job_id")
+            if not data.get("processed") or job_id is None:
+                break  # queue empty
+            processed.append(str(job_id))
+        except Exception:
+            logging.exception("worker run-once subprocess error")
             break
-        processed.append(job_id)
 
     payload = {
         "last_tick_at": now.isoformat(),
@@ -498,11 +484,8 @@ def _servicectl_tick(
         "last_enqueued_jobs": enqueued,
         "last_imported_sessions": imported_sessions if import_due else state.get("last_imported_sessions", {}),
         "last_session_import_at": periodic.get(SESSION_IMPORT_KEY),
-        "last_external_analytics_runs": (
-            external_analytics_runs if external_analytics_due else state.get("last_external_analytics_runs", [])
-        ),
-        "last_external_analytics_periods": list(normalized_external_analytics_periods),
-        "last_external_analytics_at": periodic.get(EXTERNAL_ANALYTICS_KEY),
+        "last_indexed_recall": indexed_recall if recall_index_due else state.get("last_indexed_recall", {}),
+        "last_recall_index_at": periodic.get(RECALL_INDEX_KEY),
         "last_exit_reason": state.get("last_exit_reason"),
         "periodic_jobs": periodic,
         "started_at": state.get("started_at"),
@@ -515,9 +498,8 @@ def _servicectl_tick(
         "processed_jobs": processed,
         "imported_sessions": imported_sessions,
         "session_import_ran": import_due,
-        "external_analytics_runs": external_analytics_runs,
-        "external_analytics_periods": list(normalized_external_analytics_periods),
-        "external_analytics_ran": external_analytics_due,
+        "indexed_recall": indexed_recall,
+        "recall_index_ran": recall_index_due,
         "job_queue_health_before": job_queue_health_before,
         "job_queue_health": job_queue_health,
         "pending_jobs": job_queue_health["active"],

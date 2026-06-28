@@ -9,7 +9,6 @@ SQLITE_MIGRATIONS = (
     "v2_002_lessons.sql",
     "v2_003_context_budget.sql",
     "v2_004_routing.sql",
-    "v2_006_external_analytics.sql",
 )
 POSTGRES_VECTOR_MIGRATION = "v2_005_postgres_pgvector.sql"
 V2_REQUIRED_TABLES = (
@@ -24,7 +23,6 @@ V2_REQUIRED_TABLES = (
     "context_budget",
     "route_decision",
     "verification_envelope",
-    "external_analytics_runs",
 )
 
 
