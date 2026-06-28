@@ -8183,6 +8183,82 @@ def tool_orient(topic: str | None = None) -> dict[str, Any]:
     return orientation_playbook(topic)
 
 
+class _DeferredResult:
+    """Returned by a handler that has started external work and will produce its
+    real result later. ``collect()`` yields the final result dict (called once,
+    after the work is known complete, so it does not block); ``register(cb)``
+    registers a completion callback, returning False if already complete."""
+
+    def __init__(
+        self,
+        collect: Callable[[], dict[str, Any]],
+        register: Callable[[Callable[[], None]], bool],
+    ) -> None:
+        self.collect = collect
+        self.register = register
+
+
+class _Deferred:
+    """Sentinel returned by _handle telling _handle_and_write not to write now;
+    the response will be produced by a watcher-fired continuation."""
+
+    def __init__(
+        self,
+        src: _DeferredResult,
+        finalize: Callable[[dict[str, Any]], dict[str, Any]],
+        finalize_error: Callable[[Exception], dict[str, Any]],
+    ) -> None:
+        self.src = src
+        self.finalize = finalize
+        # Routes a failed deferred result (e.g. a web_fetch network/SSRF error)
+        # through the same tool-error pipeline the synchronous path uses.
+        self.finalize_error = finalize_error
+
+
+def _defer_bash_enabled() -> bool:
+    """Phase 2 deferred-bash kill switch. Default ENABLED; set ATELIER_MCP_DEFER_BASH
+    to 0/false/no/off to fall back to the synchronous busy-poll."""
+    raw = os.environ.get("ATELIER_MCP_DEFER_BASH", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
+# Deferral is only safe where a continuation can later write the JSON-RPC response
+# -- i.e. the stdio server worker path (_handle_and_write). _handle and the tool
+# handlers are also called synchronously by the CLI / in-process runtime, which
+# cannot process a deferred marker; this thread-local, set only by
+# _handle_and_write, keeps those callers on the synchronous path.
+_deferral_context: threading.local = threading.local()
+
+
+def _deferral_supported() -> bool:
+    return bool(getattr(_deferral_context, "active", False))
+
+
+def _defer_web_fetch_enabled() -> bool:
+    """Phase 3 deferred-web_fetch kill switch. Default ENABLED; set
+    ATELIER_MCP_DEFER_WEB_FETCH to 0/false/no/off to fetch synchronously."""
+    raw = os.environ.get("ATELIER_MCP_DEFER_WEB_FETCH", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
+# Small pool that runs deferred completions (collect + finalize + write) off the
+# reactor loop thread, so finalize work never blocks the event loop. Lazy so it
+# is never created in CLI / in-process contexts that don't defer.
+_DEFERRED_COMPLETION_EXECUTOR: ThreadPoolExecutor | None = None
+_DEFERRED_COMPLETION_LOCK = threading.Lock()
+
+
+def _deferred_completion_executor() -> ThreadPoolExecutor:
+    global _DEFERRED_COMPLETION_EXECUTOR
+    if _DEFERRED_COMPLETION_EXECUTOR is None:
+        with _DEFERRED_COMPLETION_LOCK:
+            if _DEFERRED_COMPLETION_EXECUTOR is None:
+                _DEFERRED_COMPLETION_EXECUTOR = ThreadPoolExecutor(
+                    max_workers=8, thread_name_prefix="atelier-defer-fin"
+                )
+    return _DEFERRED_COMPLETION_EXECUTOR
+
+
 def _run_bash_tool(
     command: str = "",
     timeout: int = 30,
@@ -8191,7 +8267,7 @@ def _run_bash_tool(
     background: bool = False,
     session_id: str | None = None,
     action: Literal["run", "poll", "cancel"] = "run",
-) -> dict[str, Any]:
+) -> dict[str, Any] | _DeferredResult:
     """Execute a shell command and return compact structured output."""
     from atelier.core.capabilities.tool_supervision.bash_exec import (
         classify_command,
@@ -8392,6 +8468,33 @@ def _run_bash_tool(
     managed_id = str(started.get("session_id") or "")
     if started.get("status") != "running" or not managed_id:
         return started  # blocked by policy
+
+    # Phase 2: foreground deferral. For the block-until-done case (a foreground
+    # run, where inline_wait covers the full timeout), hand the pool worker back
+    # immediately and let bash_exec's watcher finalize the response when the
+    # command completes. Gated by the kill switch AND by _deferral_supported() so
+    # synchronous callers (CLI / in-process runtime / direct test calls), which
+    # cannot process a deferred marker, keep today's busy-poll behavior.
+    if _defer_bash_enabled() and _deferral_supported() and inline_wait >= float(timeout):
+        from atelier.core.capabilities.tool_supervision.bash_exec import register_completion
+
+        def _collect() -> dict[str, Any]:
+            # The process has finished when this runs; poll once for the terminal
+            # result and apply the identical terminal transforms the inline path
+            # does, so the deferred result dict matches the synchronous one.
+            polled = poll_managed_command(managed_id)
+            polled.pop("session_id", None)
+            polled.pop("status", None)
+            chars_omitted = int(polled.pop("chars_omitted", 0) or 0)
+            if chars_omitted > 0:
+                # chars_omitted / 4 is the standard chars-per-token estimate.
+                _tool_call_tokens_saved.value = chars_omitted // 4
+            return polled
+
+        def _register(cb: Callable[[], None]) -> bool:
+            return register_completion(managed_id, cb)
+
+        return _DeferredResult(collect=_collect, register=_register)
 
     # When the inline wait covers the full timeout budget, the watcher kills
     # the command at that deadline; allow a short grace so we return the
@@ -9135,7 +9238,7 @@ def tool_bash(
     background: bool = False,
     session_id: str | None = None,
     action: Literal["run", "poll", "cancel"] = "run",
-) -> str:
+) -> str | _DeferredResult:
     """Execute a shell command and return compact text output.
 
     Prefer Atelier read/grep/search tools directly — they are faster and cheaper.
@@ -9150,6 +9253,10 @@ def tool_bash(
         session_id=session_id,
         action=action,
     )
+    # Phase 2: a deferred foreground command flows straight through to _handle,
+    # which returns a _Deferred sentinel and lets the watcher render the result.
+    if isinstance(result, _DeferredResult):
+        return result
     return _render_bash_text(result)
 
 
@@ -9180,12 +9287,42 @@ def tool_web_fetch(
         bool,
         Field(description="Include minimal debug metadata in the internal payload."),
     ] = False,
-) -> dict[str, Any]:
+) -> dict[str, Any] | _DeferredResult:
     """Fetch a public web page and return coding-agent-friendly content.
 
     Returns: {content, format, tokens_saved}; the MCP layer renders `content` directly.
     """
     from atelier.core.capabilities.web_fetch import fetch_url
+
+    # Phase 3: on the stdio worker, run the fetch on the shared asyncio reactor so
+    # the worker frees immediately; the reactor future's completion fires the
+    # deferral continuation (bounced to a small pool so finalize never blocks the
+    # loop). Same SSRF-validated fetch, just off the worker. Kill switch:
+    # ATELIER_MCP_DEFER_WEB_FETCH=0.
+    if _defer_web_fetch_enabled() and _deferral_supported():
+        from atelier.core.capabilities.web_fetch import async_fetch_url
+        from atelier.gateway.adapters._io_reactor import get_io_reactor
+
+        future = get_io_reactor().submit(
+            async_fetch_url(
+                url,
+                output_format=type,
+                max_chars=max_chars,
+                timeout_s=timeout_s,
+                include_meta=include_meta,
+            )
+        )
+
+        def _collect() -> dict[str, Any]:
+            return cast(dict[str, Any], future.result())
+
+        def _register(cb: Callable[[], None]) -> bool:
+            if future.done():
+                return False
+            future.add_done_callback(lambda _f: _deferred_completion_executor().submit(cb))
+            return True
+
+        return _DeferredResult(collect=_collect, register=_register)
 
     return fetch_url(
         url,
@@ -9899,7 +10036,7 @@ def _model_recommendation_state(led: RunLedger, args: dict[str, Any]) -> dict[st
     return session_state
 
 
-def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
+def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
     rid = request.get("id")
     method = request.get("method")
     params = request.get("params") or {}
@@ -9965,325 +10102,10 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         # N10 — request-scoped project isolation. Honor an Mcp-Project-Path-style
         # override for the lifetime of this request only; absent -> unchanged.
         _prior_project = _set_request_project(_extract_request_project(params, args if isinstance(args, dict) else {}))
-        rendered_text: str | None = None
-        _loop_note: str | None = None
         _call_duration_ms: int = 0
         _call_started = time.perf_counter()
-        try:
-            if remote_routed:
-                _remote_start = time.perf_counter()
-                result = _dispatch_remote(name, args)
-                _call_duration_ms = round((time.perf_counter() - _remote_start) * 1000)
-                if isinstance(result, dict):
-                    result = _clean_tool_result(result, name)
-            else:
-                led = _get_ledger()
-                route_payload, route_state, route_workflow, route_step = _prepare_model_recommendation(
-                    name,
-                    args if isinstance(args, dict) else {},
-                    led,
-                )
-                handler: Callable[[dict[str, Any]], Any] = spec["handler"]
-                if name == "edit" and isinstance(args, dict):
-                    blocked_message = _benchmark_edit_block_message(args)
-                    if blocked_message:
-                        return _err(rid, -32000, blocked_message)
-                # Hidden alias: file_paths_with_count → file_paths_with_match_count
-                if name == "grep" and isinstance(args, dict) and args.get("output_mode") == "file_paths_with_count":
-                    args["output_mode"] = "file_paths_with_match_count"
-                _tool_call_tokens_saved.value = 0  # reset before handler so stale values can't bleed through
-                _tool_call_rendered_text.value = None  # reset before handler
-                wrapper_model = (
-                    str(route_payload.get("model") or "")
-                    if _route_enforcement_enabled() and route_payload.get("configured") is not False
-                    else ""
-                )
-                from atelier.core.capabilities.pricing import active_model_override
 
-                try:
-                    _handler_start = time.perf_counter()
-                    with active_model_override(wrapper_model or None):
-                        result = handler(args)
-                    _call_duration_ms = round((time.perf_counter() - _handler_start) * 1000)
-                finally:
-                    # Runs in finally; a raise here would mask the handler's real
-                    # exception, so suppress like the sibling savings-event calls.
-                    with contextlib.suppress(Exception):
-                        _finalize_model_recommendation(
-                            route_payload,
-                            led=led,
-                            tool_name=name,
-                            session_state=route_state,
-                            workflow=route_workflow,
-                            current_step=route_step,
-                            wrapper_applied=bool(wrapper_model),
-                            wrapper_model=wrapper_model or None,
-                        )
-
-                if isinstance(result, dict):
-                    result = _clean_tool_result(result, name)
-                    _record_grounding_evidence_if_available(name, args if isinstance(args, dict) else {}, result)
-
-                # Compute MD text for read-heavy tools
-                _args = args if isinstance(args, dict) else {}
-                rendered_text = render_tool_result_text(name, result)
-
-                # Spiral nudge: surface a soft note when the agent repeats an
-                # identical tool call -- a narrow, false-positive-free
-                # no-progress signal. Fail-open; never blocks.
-                if _loop_review_enabled():
-                    with contextlib.suppress(Exception):
-                        _loop_note = _loop_nudge_for_call(name, _args)
-                        if _loop_note and isinstance(result, dict):
-                            # Carry the note as a field for JSON consumers; the
-                            # response_text below appends it for the rendered view.
-                            result.setdefault("loop_note", _loop_note)
-
-                # Per-call savings accounting (read baseline de-dup + deferred
-                # code-intel credit). Runs BEFORE budget recording so a zeroed
-                # read saving flows into both the recorder and the `saved` field.
-                # Local-handler path only; never touches the response bytes.
-                _process_tool_accounting(name, _args, result, rid)
-
-                _record_context_budget_for_tool(
-                    name,
-                    _args,
-                    led,
-                    result if isinstance(result, dict) else {"result": result},
-                    rendered_text_size=len(rendered_text) if rendered_text else None,
-                )
-
-                with contextlib.suppress(Exception):
-                    from atelier.infra.runtime import outcome_capture
-
-                    outcome_capture.advance(
-                        led.session_id,
-                        tool_name=name,
-                        is_error=False,
-                        is_read_tool=name in _READ_TOOLS,
-                        writer=_make_outcome_writer(led),
-                    )
-
-                _ok_session_id = getattr(_get_ledger(), "session_id", "") or ""
-                with contextlib.suppress(Exception):
-                    _append_live_savings_event(
-                        {
-                            "kind": "tool_call",
-                            "tool": name,
-                            "status": "ok",
-                            "duration_ms": _call_duration_ms,
-                            "session_id": _ok_session_id,
-                            "ts": time.time(),
-                        }
-                    )
-
-            response_text: str
-            if rendered_text:
-                response_text = rendered_text
-            elif isinstance(result, str):
-                response_text = result
-            else:
-                response_text = json.dumps(result, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-
-            # Spiral nudge: append once to the assembled body so it survives
-            # whichever render path produced response_text (rendered text, raw
-            # string, or JSON). Soft signal -- never replaces the result.
-            if _loop_note and _loop_note not in response_text:
-                response_text = f"{response_text}\n{_loop_note}"
-
-            # Only pay the full-payload UTF-8 encode when a telemetry sink will
-            # consume the byte count; otherwise approximate with the O(1) char len.
-            if _mcp_debug_enabled():
-                _ok_response_size = len(response_text.encode("utf-8", errors="replace"))
-            else:
-                _ok_response_size = len(response_text)
-            _ok_sid = _ok_session_id if not remote_routed else (getattr(_get_ledger(), "session_id", "") or "")
-            with contextlib.suppress(Exception):
-                _append_mcp_debug_event(
-                    tool=name,
-                    args=args if isinstance(args, dict) else {},
-                    duration_ms=_call_duration_ms,
-                    response_size=_ok_response_size,
-                    status="ok",
-                    session_id=_ok_sid,
-                    rid=str(rid) if rid is not None else None,
-                )
-            with contextlib.suppress(Exception):
-                from atelier.gateway.integrations.langfuse import emit_tool_call as _lf_emit_tool
-
-                _lf_emit_tool(
-                    tool=name,
-                    args=_scrub_args_for_debug(args) if isinstance(args, dict) else {},
-                    duration_ms=_call_duration_ms,
-                    response_size=_ok_response_size,
-                    status="ok",
-                    session_id=_ok_sid,
-                )
-
-            # G13 — caller-selectable output encoding (auto | compact | json).
-            # Default `auto` returns response_text unchanged (byte-compatible);
-            # `json` forces raw JSON; `compact` applies the N6-gated N7 columnar
-            # form. Reads the selector from the always-defined request args (the
-            # remote path never sets `_args`), with an explicit, non-default
-            # value so today's default bytes are untouched.
-            _fmt = args.get("format") if isinstance(args, dict) else None
-            if isinstance(_fmt, str) and _fmt.strip().lower() in {"compact", "json"}:
-                with contextlib.suppress(Exception):
-                    from atelier.core.capabilities.tool_supervision.output_format import apply_output_format
-
-                    response_text, _ = apply_output_format(
-                        fmt=_fmt,
-                        result=result,
-                        rendered_text=response_text,
-                    )
-
-            # Within-session content dedup: if this read-style result is
-            # byte-identical to one already returned this session (and the model
-            # didn't pass force=true), return a small pointer instead of
-            # re-paying input/cache cost to re-emit the same bytes. Reset on
-            # compaction via context_dedup's epoch. Kill switch: ATELIER_CONTEXT_DEDUP=0.
-            dedup_stubbed = False
-            if name in _DEDUP_TOOLS and os.environ.get("ATELIER_CONTEXT_DEDUP", "1") != "0":
-                with contextlib.suppress(Exception):
-                    from atelier.core.capabilities import context_dedup as _cdedup
-
-                    _dedup_sid = ""
-                    with contextlib.suppress(Exception):
-                        _dedup_sid = _get_ledger().session_id or ""
-                    _dedup_outcome = _cdedup.registry().stub_for(
-                        session_id=_dedup_sid,
-                        content=response_text,
-                        epoch=_cdedup.current_epoch(),
-                        force=bool(_args.get("force")),
-                    )
-                    if _dedup_outcome is None and name == "read":
-                        _dedup_resource = _read_dedup_resource(_args)
-                        if _dedup_resource:
-                            _dedup_outcome = _cdedup.registry().delta_for(
-                                session_id=_dedup_sid,
-                                resource=_dedup_resource,
-                                content=response_text,
-                                epoch=_cdedup.current_epoch(),
-                                force=bool(_args.get("force")),
-                            )
-                    if _dedup_outcome is not None:
-                        stub_text, dedup_chars_saved = _dedup_outcome
-                        response_text = stub_text
-                        dedup_stubbed = True
-                        if dedup_chars_saved > 0:
-                            _append_workspace_savings(name, dedup_chars_saved // 4, 0, rid=str(rid))
-            # Embed per-call savings on the content item so they also ride into
-            # the Claude transcript JSONL. NOTE: this is a secondary record —
-            # the live statusline/analytics source is the per-session sidecar
-            # sessions/<id>/savings.jsonl written by _append_workspace_savings
-            # below, not the transcript.
-            # Shape: {"tokens": int, "calls": int}. Either may be 0 but the
-            # object is omitted entirely when both are 0.
-            # First bound, for context hygiene: head+tail compact a single
-            # runaway result so it can't flood the host prompt (which the host
-            # re-pays for on every later turn). The legacy char-compaction path
-            # (_compact_result_text) is deterministic and prefix-cache stable
-            # across identical calls; the T7 spill summary below is intentionally
-            # NOT -- it embeds a unique filename (timestamp+random), so two identical
-            # capped-tool calls yield different host text (spill summaries are
-            # <4096 chars and so never get the cache_control marker below anyway).
-            # T8 (ATELIER_AUTO_COMPACT_OUTPUT, default off): auto-compact an
-            # oversized result (AST-aware for code) while preserving the
-            # untransformed original in the T7 spill store so it stays
-            # reversible. Off -> returns response_text unchanged.
-            _spill_args = args if isinstance(args, dict) else {}
-            response_text = _auto_compact_result_text(response_text, name, _spill_args)
-            # T7 (ATELIER_TOOL_OUTPUT_SPILL, default on): spill the FULL,
-            # UNTRANSFORMED payload BEFORE the legacy char compaction below, gated
-            # at the recoverable result cap. This is deliberately separate from
-            # the legacy lossy compaction threshold: capped tools return at most
-            # 2 KiB by default (full original recoverable via `compact`/`read`),
-            # while unsupported tools retain their prior context-hygiene budget.
-            # `read` is exempt (see _SPILL_CHAR_CAP_TOOLS): it is the explicit,
-            # incremental retrieval surface, so it stays full here and only the
-            # multi-MB wire backstop below can spill it.
-            # Off / non-capped tools -> no-op, so _compact_result_text runs
-            # exactly as before.
-            response_text = _spill_oversized_result_text(
-                response_text,
-                name,
-                _spill_args,
-                _spill_result_chars(name),
-                unit="chars",
-                tools=_SPILL_CHAR_CAP_TOOLS,
-            )
-            response_text = _compact_result_text(response_text, name)
-            # Wire-byte backstop: a spill-worthy result still over the multi-MB
-            # frame ceiling after compaction is spilled rather than truncated.
-            # When the char-gated spill above already fired, response_text is now
-            # a small summary, so this no-ops.
-            response_text = _spill_oversized_result_text(response_text, name, _spill_args, _max_result_bytes())
-            # Bound the result so one oversized frame can't trip the host's
-            # stdout guard and disconnect the server (no mid-session reconnect).
-            response_text = _truncate_result_text(response_text, _max_result_bytes())
-            # N4 — per-tool exact input/output token ledger. Runs HERE, after the
-            # spill/compact/truncate bounds above, so output is measured against
-            # the FINAL emitted text the host actually receives (a spilled summary,
-            # not the pre-spill payload). Additive only -- never touches the
-            # response bytes; best-effort so a write failure can't break the call.
-            with contextlib.suppress(Exception):
-                from atelier.core.capabilities.tool_token_ledger import record_tool_tokens
-
-                record_tool_tokens(
-                    _atelier_root(),
-                    name,
-                    input_payload=args,
-                    output_payload=response_text,
-                )
-            content_item: dict[str, Any] = {
-                "type": "text",
-                "text": response_text,
-            }
-            # Best-effort cache hint, NOT a measured saving. Tag large results
-            # so a host that honors MCP cache_control can checkpoint them for
-            # prompt caching. Caveats kept honest on purpose: (1) we do not
-            # verify the host actually forwards this; (2) the conversation
-            # prefix is already auto-cached by the host, so the marginal gain
-            # is small; (3) a cache *write* costs ~25% over input, so a one-off
-            # large result that is never re-read pays the write premium for
-            # nothing. The ≥4096-char floor (~1024 tokens) is Anthropic's
-            # minimum cacheable size.
-            # ...and skip it entirely for dedup-eligible tools (read): an exact
-            # re-read is elided by the dedup pass below, so the marker can never
-            # earn its cache-read payoff there and only risks a redundant
-            # breakpoint on top of the host's automatic prefix caching.
-            if len(response_text) >= 4096 and name not in _DEDUP_TOOLS:
-                content_item["cache_control"] = {"type": "ephemeral"}
-            # When deduped, skip the original per-call savings (they'd otherwise be
-            # credited against bytes we just elided).
-            if not dedup_stubbed and isinstance(result, dict):
-                saved_tokens = _extract_tokens_saved(result)
-                saved_calls = _coerce_saved_tokens(result.pop("calls_saved", None))
-                if saved_tokens > 0 or saved_calls > 0:
-                    content_item["saved"] = {
-                        "tokens": int(saved_tokens),
-                        "calls": int(saved_calls),
-                    }
-                    _append_workspace_savings(name, saved_tokens, saved_calls, rid=str(rid))
-
-            response_payload: dict[str, Any] = {"content": [content_item]}
-            # Stash the full structured result for the in-process CLI so `tools call
-            # ... --json` returns the dict for EVERY tool -- including the ones whose
-            # host-facing content is rendered text (read, grep, search, shell, ...).
-            # This never goes on response_payload, so the MCP host's main model only
-            # ever sees `content`; no structured data rides the wire to any consumer.
-            _tool_call_raw_result.value = result if isinstance(result, dict) else None
-            with contextlib.suppress(Exception):
-                _append_tool_profile(
-                    tool=name,
-                    handler_ms=_call_duration_ms,
-                    total_ms=round((time.perf_counter() - _call_started) * 1000),
-                    response_size=_ok_response_size,
-                    status="ok",
-                    session_id=_ok_sid,
-                )
-            return _ok(rid, response_payload)
-        except Exception as exc:
+        def _finalize_error_response(exc: Exception) -> dict[str, Any]:
             logging.exception("Recovered from broad exception handler")
             if not remote_routed:
                 with contextlib.suppress(Exception):
@@ -10347,6 +10169,346 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             if locked is not None:
                 return locked
             return _err(rid, _tool_error_code(exc), str(exc))
+
+        def _finalize_response(result: dict[str, Any] | Any) -> dict[str, Any]:
+            # Post-handler finalization pipeline. Runs synchronously on the worker
+            # for the non-deferred path, and on bash_exec's watcher thread for a
+            # deferred foreground bash command. Owns its own error handling so the
+            # watcher continuation still emits a proper JSON-RPC error on failure.
+            try:
+                rendered_text: str | None = None
+                _loop_note: str | None = None
+                _args = args if isinstance(args, dict) else {}
+                if not remote_routed:
+                    if isinstance(result, dict):
+                        result = _clean_tool_result(result, name)
+                        _record_grounding_evidence_if_available(name, args if isinstance(args, dict) else {}, result)
+
+                    # Compute MD text for read-heavy tools
+                    rendered_text = render_tool_result_text(name, result)
+
+                    # Spiral nudge: surface a soft note when the agent repeats an
+                    # identical tool call -- a narrow, false-positive-free
+                    # no-progress signal. Fail-open; never blocks.
+                    if _loop_review_enabled():
+                        with contextlib.suppress(Exception):
+                            _loop_note = _loop_nudge_for_call(name, _args)
+                            if _loop_note and isinstance(result, dict):
+                                # Carry the note as a field for JSON consumers; the
+                                # response_text below appends it for the rendered view.
+                                result.setdefault("loop_note", _loop_note)
+
+                    # Per-call savings accounting (read baseline de-dup + deferred
+                    # code-intel credit). Runs BEFORE budget recording so a zeroed
+                    # read saving flows into both the recorder and the `saved` field.
+                    # Local-handler path only; never touches the response bytes.
+                    _process_tool_accounting(name, _args, result, rid)
+
+                    _record_context_budget_for_tool(
+                        name,
+                        _args,
+                        led,
+                        result if isinstance(result, dict) else {"result": result},
+                        rendered_text_size=len(rendered_text) if rendered_text else None,
+                    )
+
+                    with contextlib.suppress(Exception):
+                        from atelier.infra.runtime import outcome_capture
+
+                        outcome_capture.advance(
+                            led.session_id,
+                            tool_name=name,
+                            is_error=False,
+                            is_read_tool=name in _READ_TOOLS,
+                            writer=_make_outcome_writer(led),
+                        )
+
+                    _ok_session_id = getattr(_get_ledger(), "session_id", "") or ""
+                    with contextlib.suppress(Exception):
+                        _append_live_savings_event(
+                            {
+                                "kind": "tool_call",
+                                "tool": name,
+                                "status": "ok",
+                                "duration_ms": _call_duration_ms,
+                                "session_id": _ok_session_id,
+                                "ts": time.time(),
+                            }
+                        )
+
+                response_text: str
+                if rendered_text:
+                    response_text = rendered_text
+                elif isinstance(result, str):
+                    response_text = result
+                else:
+                    response_text = json.dumps(result, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+                # Spiral nudge: append once to the assembled body so it survives
+                # whichever render path produced response_text (rendered text, raw
+                # string, or JSON). Soft signal -- never replaces the result.
+                if _loop_note and _loop_note not in response_text:
+                    response_text = f"{response_text}\n{_loop_note}"
+
+                # Only pay the full-payload UTF-8 encode when a telemetry sink will
+                # consume the byte count; otherwise approximate with the O(1) char len.
+                if _mcp_debug_enabled():
+                    _ok_response_size = len(response_text.encode("utf-8", errors="replace"))
+                else:
+                    _ok_response_size = len(response_text)
+                _ok_sid = _ok_session_id if not remote_routed else (getattr(_get_ledger(), "session_id", "") or "")
+                with contextlib.suppress(Exception):
+                    _append_mcp_debug_event(
+                        tool=name,
+                        args=args if isinstance(args, dict) else {},
+                        duration_ms=_call_duration_ms,
+                        response_size=_ok_response_size,
+                        status="ok",
+                        session_id=_ok_sid,
+                        rid=str(rid) if rid is not None else None,
+                    )
+                with contextlib.suppress(Exception):
+                    from atelier.gateway.integrations.langfuse import emit_tool_call as _lf_emit_tool
+
+                    _lf_emit_tool(
+                        tool=name,
+                        args=_scrub_args_for_debug(args) if isinstance(args, dict) else {},
+                        duration_ms=_call_duration_ms,
+                        response_size=_ok_response_size,
+                        status="ok",
+                        session_id=_ok_sid,
+                    )
+
+                # G13 — caller-selectable output encoding (auto | compact | json).
+                # Default `auto` returns response_text unchanged (byte-compatible);
+                # `json` forces raw JSON; `compact` applies the N6-gated N7 columnar
+                # form. Reads the selector from the always-defined request args (the
+                # remote path never sets `_args`), with an explicit, non-default
+                # value so today's default bytes are untouched.
+                _fmt = args.get("format") if isinstance(args, dict) else None
+                if isinstance(_fmt, str) and _fmt.strip().lower() in {"compact", "json"}:
+                    with contextlib.suppress(Exception):
+                        from atelier.core.capabilities.tool_supervision.output_format import apply_output_format
+
+                        response_text, _ = apply_output_format(
+                            fmt=_fmt,
+                            result=result,
+                            rendered_text=response_text,
+                        )
+
+                # Within-session content dedup: if this read-style result is
+                # byte-identical to one already returned this session (and the model
+                # didn't pass force=true), return a small pointer instead of
+                # re-paying input/cache cost to re-emit the same bytes. Reset on
+                # compaction via context_dedup's epoch. Kill switch: ATELIER_CONTEXT_DEDUP=0.
+                dedup_stubbed = False
+                if name in _DEDUP_TOOLS and os.environ.get("ATELIER_CONTEXT_DEDUP", "1") != "0":
+                    with contextlib.suppress(Exception):
+                        from atelier.core.capabilities import context_dedup as _cdedup
+
+                        _dedup_sid = ""
+                        with contextlib.suppress(Exception):
+                            _dedup_sid = _get_ledger().session_id or ""
+                        _dedup_outcome = _cdedup.registry().stub_for(
+                            session_id=_dedup_sid,
+                            content=response_text,
+                            epoch=_cdedup.current_epoch(),
+                            force=bool(_args.get("force")),
+                        )
+                        if _dedup_outcome is None and name == "read":
+                            _dedup_resource = _read_dedup_resource(_args)
+                            if _dedup_resource:
+                                _dedup_outcome = _cdedup.registry().delta_for(
+                                    session_id=_dedup_sid,
+                                    resource=_dedup_resource,
+                                    content=response_text,
+                                    epoch=_cdedup.current_epoch(),
+                                    force=bool(_args.get("force")),
+                                )
+                        if _dedup_outcome is not None:
+                            stub_text, dedup_chars_saved = _dedup_outcome
+                            response_text = stub_text
+                            dedup_stubbed = True
+                            if dedup_chars_saved > 0:
+                                _append_workspace_savings(name, dedup_chars_saved // 4, 0, rid=str(rid))
+                # Embed per-call savings on the content item so they also ride into
+                # the Claude transcript JSONL. NOTE: this is a secondary record —
+                # the live statusline/analytics source is the per-session sidecar
+                # sessions/<id>/savings.jsonl written by _append_workspace_savings
+                # below, not the transcript.
+                # Shape: {"tokens": int, "calls": int}. Either may be 0 but the
+                # object is omitted entirely when both are 0.
+                # First bound, for context hygiene: head+tail compact a single
+                # runaway result so it can't flood the host prompt (which the host
+                # re-pays for on every later turn). The legacy char-compaction path
+                # (_compact_result_text) is deterministic and prefix-cache stable
+                # across identical calls; the T7 spill summary below is intentionally
+                # NOT -- it embeds a unique filename (timestamp+random), so two identical
+                # capped-tool calls yield different host text (spill summaries are
+                # <4096 chars and so never get the cache_control marker below anyway).
+                # T8 (ATELIER_AUTO_COMPACT_OUTPUT, default off): auto-compact an
+                # oversized result (AST-aware for code) while preserving the
+                # untransformed original in the T7 spill store so it stays
+                # reversible. Off -> returns response_text unchanged.
+                _spill_args = args if isinstance(args, dict) else {}
+                response_text = _auto_compact_result_text(response_text, name, _spill_args)
+                # T7 (ATELIER_TOOL_OUTPUT_SPILL, default on): spill the FULL,
+                # UNTRANSFORMED payload BEFORE the legacy char compaction below, gated
+                # at the recoverable result cap. This is deliberately separate from
+                # the legacy lossy compaction threshold: capped tools return at most
+                # 2 KiB by default (full original recoverable via `compact`/`read`),
+                # while unsupported tools retain their prior context-hygiene budget.
+                # `read` is exempt (see _SPILL_CHAR_CAP_TOOLS): it is the explicit,
+                # incremental retrieval surface, so it stays full here and only the
+                # multi-MB wire backstop below can spill it.
+                # Off / non-capped tools -> no-op, so _compact_result_text runs
+                # exactly as before.
+                response_text = _spill_oversized_result_text(
+                    response_text,
+                    name,
+                    _spill_args,
+                    _spill_result_chars(name),
+                    unit="chars",
+                    tools=_SPILL_CHAR_CAP_TOOLS,
+                )
+                response_text = _compact_result_text(response_text, name)
+                # Wire-byte backstop: a spill-worthy result still over the multi-MB
+                # frame ceiling after compaction is spilled rather than truncated.
+                # When the char-gated spill above already fired, response_text is now
+                # a small summary, so this no-ops.
+                response_text = _spill_oversized_result_text(response_text, name, _spill_args, _max_result_bytes())
+                # Bound the result so one oversized frame can't trip the host's
+                # stdout guard and disconnect the server (no mid-session reconnect).
+                response_text = _truncate_result_text(response_text, _max_result_bytes())
+                # N4 — per-tool exact input/output token ledger. Runs HERE, after the
+                # spill/compact/truncate bounds above, so output is measured against
+                # the FINAL emitted text the host actually receives (a spilled summary,
+                # not the pre-spill payload). Additive only -- never touches the
+                # response bytes; best-effort so a write failure can't break the call.
+                with contextlib.suppress(Exception):
+                    from atelier.core.capabilities.tool_token_ledger import record_tool_tokens
+
+                    record_tool_tokens(
+                        _atelier_root(),
+                        name,
+                        input_payload=args,
+                        output_payload=response_text,
+                    )
+                content_item: dict[str, Any] = {
+                    "type": "text",
+                    "text": response_text,
+                }
+                # Best-effort cache hint, NOT a measured saving. Tag large results
+                # so a host that honors MCP cache_control can checkpoint them for
+                # prompt caching. Caveats kept honest on purpose: (1) we do not
+                # verify the host actually forwards this; (2) the conversation
+                # prefix is already auto-cached by the host, so the marginal gain
+                # is small; (3) a cache *write* costs ~25% over input, so a one-off
+                # large result that is never re-read pays the write premium for
+                # nothing. The ≥4096-char floor (~1024 tokens) is Anthropic's
+                # minimum cacheable size.
+                # ...and skip it entirely for dedup-eligible tools (read): an exact
+                # re-read is elided by the dedup pass below, so the marker can never
+                # earn its cache-read payoff there and only risks a redundant
+                # breakpoint on top of the host's automatic prefix caching.
+                if len(response_text) >= 4096 and name not in _DEDUP_TOOLS:
+                    content_item["cache_control"] = {"type": "ephemeral"}
+                # When deduped, skip the original per-call savings (they'd otherwise be
+                # credited against bytes we just elided).
+                if not dedup_stubbed and isinstance(result, dict):
+                    saved_tokens = _extract_tokens_saved(result)
+                    saved_calls = _coerce_saved_tokens(result.pop("calls_saved", None))
+                    if saved_tokens > 0 or saved_calls > 0:
+                        content_item["saved"] = {
+                            "tokens": int(saved_tokens),
+                            "calls": int(saved_calls),
+                        }
+                        _append_workspace_savings(name, saved_tokens, saved_calls, rid=str(rid))
+
+                response_payload: dict[str, Any] = {"content": [content_item]}
+                # Stash the full structured result for the in-process CLI so `tools call
+                # ... --json` returns the dict for EVERY tool -- including the ones whose
+                # host-facing content is rendered text (read, grep, search, shell, ...).
+                # This never goes on response_payload, so the MCP host's main model only
+                # ever sees `content`; no structured data rides the wire to any consumer.
+                _tool_call_raw_result.value = result if isinstance(result, dict) else None
+                with contextlib.suppress(Exception):
+                    _append_tool_profile(
+                        tool=name,
+                        handler_ms=_call_duration_ms,
+                        total_ms=round((time.perf_counter() - _call_started) * 1000),
+                        response_size=_ok_response_size,
+                        status="ok",
+                        session_id=_ok_sid,
+                    )
+                return _ok(rid, response_payload)
+            except Exception as exc:  # noqa: BLE001 - delegates to the shared error finalizer
+                return _finalize_error_response(exc)
+
+        try:
+            if remote_routed:
+                _remote_start = time.perf_counter()
+                result = _dispatch_remote(name, args)
+                _call_duration_ms = round((time.perf_counter() - _remote_start) * 1000)
+                if isinstance(result, dict):
+                    result = _clean_tool_result(result, name)
+                return _finalize_response(result)
+            else:
+                led = _get_ledger()
+                route_payload, route_state, route_workflow, route_step = _prepare_model_recommendation(
+                    name,
+                    args if isinstance(args, dict) else {},
+                    led,
+                )
+                handler: Callable[[dict[str, Any]], Any] = spec["handler"]
+                if name == "edit" and isinstance(args, dict):
+                    blocked_message = _benchmark_edit_block_message(args)
+                    if blocked_message:
+                        return _err(rid, -32000, blocked_message)
+                # Hidden alias: file_paths_with_count → file_paths_with_match_count
+                if name == "grep" and isinstance(args, dict) and args.get("output_mode") == "file_paths_with_count":
+                    args["output_mode"] = "file_paths_with_match_count"
+                _tool_call_tokens_saved.value = 0  # reset before handler so stale values can't bleed through
+                _tool_call_rendered_text.value = None  # reset before handler
+                wrapper_model = (
+                    str(route_payload.get("model") or "")
+                    if _route_enforcement_enabled() and route_payload.get("configured") is not False
+                    else ""
+                )
+                from atelier.core.capabilities.pricing import active_model_override
+
+                try:
+                    _handler_start = time.perf_counter()
+                    with active_model_override(wrapper_model or None):
+                        result = handler(args)
+                    _call_duration_ms = round((time.perf_counter() - _handler_start) * 1000)
+                finally:
+                    # Runs in finally; a raise here would mask the handler's real
+                    # exception, so suppress like the sibling savings-event calls.
+                    with contextlib.suppress(Exception):
+                        _finalize_model_recommendation(
+                            route_payload,
+                            led=led,
+                            tool_name=name,
+                            session_state=route_state,
+                            workflow=route_workflow,
+                            current_step=route_step,
+                            wrapper_applied=bool(wrapper_model),
+                            wrapper_model=wrapper_model or None,
+                        )
+
+                # Phase 2: a foreground bash command hands back a deferred marker so
+                # the pool worker frees immediately; the watcher continuation runs
+                # _finalize_response when the command completes.
+                if isinstance(result, _DeferredResult):
+                    return _Deferred(
+                        src=result,
+                        finalize=_finalize_response,
+                        finalize_error=_finalize_error_response,
+                    )
+                return _finalize_response(result)
+        except Exception as exc:  # noqa: BLE001 - delegates to the shared error finalizer
+            return _finalize_error_response(exc)
         finally:
             # Always drop the request-scoped project override (N10).
             _clear_request_project(_prior_project)
@@ -10453,6 +10615,15 @@ _MAX_MCP_HEAVY_WORKERS = 32
 # main pool.
 _HEAVY_TOOLS = frozenset({"bash", "run", "edit", "web_fetch", "workflow", "agent"})
 
+# Cost classes for per-request executor routing. Plain module-level str
+# constants (not an Enum) for mypyc friendliness.
+_COST_CPU = "cpu"  # GIL-bound, fast Python handlers: reads, searches, context,
+#                    smart_read, trace, memory recall, protocol methods.
+_COST_IO = "io"  # blocks on an external subprocess/socket/LLM: bash foreground,
+#                  edit-with-verify, web_fetch, memory store_fact.
+_COST_DETACHED = "detached"  # long-lived supervised child: workflow, agent,
+#                              background bash.
+
 
 def _mcp_heavy_max_workers() -> int:
     raw = os.environ.get("ATELIER_MCP_HEAVY_WORKERS", str(_DEFAULT_MCP_HEAVY_WORKERS))
@@ -10463,23 +10634,76 @@ def _mcp_heavy_max_workers() -> int:
     return max(1, min(configured, _MAX_MCP_HEAVY_WORKERS))
 
 
-def _is_heavy_request(req: dict[str, Any]) -> bool:
-    """True if this JSON-RPC request targets a long-running tool (heavy lane)."""
+_DEFAULT_MCP_IO_WORKERS = 32
+_MAX_MCP_IO_WORKERS = 128
+
+
+def _mcp_io_max_workers() -> int:
+    """Worker count for the IO lane (subprocess/socket/LLM-blocking tools).
+
+    Reads ATELIER_MCP_IO_WORKERS (default 32, max 128). For back-compat, if the
+    old heavy knob ATELIER_MCP_HEAVY_WORKERS is set and ATELIER_MCP_IO_WORKERS is
+    not, the heavy value is used for the IO lane.
+    """
+    raw = os.environ.get("ATELIER_MCP_IO_WORKERS")
+    if raw is None:
+        if os.environ.get("ATELIER_MCP_HEAVY_WORKERS") is not None:
+            return _mcp_heavy_max_workers()
+        raw = str(_DEFAULT_MCP_IO_WORKERS)
+    try:
+        configured = int(raw)
+    except ValueError:
+        _log.warning(
+            "invalid ATELIER_MCP_IO_WORKERS=%r; using %d",
+            raw,
+            _DEFAULT_MCP_IO_WORKERS,
+        )
+        return _DEFAULT_MCP_IO_WORKERS
+    return max(1, min(configured, _MAX_MCP_IO_WORKERS))
+
+
+def _classify_cost(req: dict[str, Any]) -> str:
+    """Classify a JSON-RPC request into a cost class for executor routing.
+
+    Returns one of _COST_CPU, _COST_IO, _COST_DETACHED.
+    """
     if req.get("method") != "tools/call":
-        return False
+        # Protocol methods are trivial; the cheap CPU lane handles them.
+        return _COST_CPU
     params = req.get("params") or {}
     if not isinstance(params, dict):
-        return False
+        return _COST_CPU
     name = params.get("name")
-    if name in _HEAVY_TOOLS:
-        return True
-    # memory store_fact runs a blocking arbiter LLM call; route it to the heavy
-    # lane so it can't occupy a light-pool worker and starve cheap reads.
-    if name == "memory":
-        args = params.get("arguments")
-        if isinstance(args, dict) and args.get("op") == "store_fact":
-            return True
-    return False
+    if name == "run":
+        name = "bash"
+    args = params.get("arguments")
+    if not isinstance(args, dict):
+        args = {}
+    if name in {"workflow", "agent"}:
+        return _COST_DETACHED
+    if name == "bash":
+        backgrounded = args.get("background") is True
+        if not backgrounded:
+            command = args.get("command")
+            if isinstance(command, str):
+                stripped = command.rstrip()
+                backgrounded = stripped.endswith("&") and not stripped.endswith("&&")
+        return _COST_DETACHED if backgrounded else _COST_IO
+    if name in {"edit", "web_fetch"}:
+        return _COST_IO
+    # memory store_fact runs a blocking arbiter LLM call.
+    if name == "memory" and args.get("op") == "store_fact":
+        return _COST_IO
+    return _COST_CPU
+
+
+def _is_heavy_request(req: dict[str, Any]) -> bool:
+    """True if this JSON-RPC request is not a cheap CPU-lane request.
+
+    Retained for back-compat with existing callers/tests; the live routing
+    decision in serve() is made by _classify_cost.
+    """
+    return _classify_cost(req) != _COST_CPU
 
 
 def _max_result_bytes() -> int:
@@ -10725,10 +10949,7 @@ def _auto_compact_result_text(text: str, tool_name: str, args: dict[str, Any]) -
         # so the downstream wire guard handles it rather than dropping detail
         # irreversibly.
         return text
-    return (
-        f"{compacted_text}\n\n[compacted {method} {len(text)}→{len(compacted_text)} chars; "
-        f"full: read {record.path}]"
-    )
+    return f"{compacted_text}\n\n[compacted {method} {len(text)}→{len(compacted_text)} chars; full: read {record.path}]"
 
 
 def _spill_oversized_result_text(
@@ -10821,11 +11042,48 @@ def _write_jsonrpc(message: dict[str, Any]) -> None:
 
 
 def _handle_and_write(request: dict[str, Any]) -> None:
+    # Mark this worker thread as deferral-capable for the duration of _handle so a
+    # foreground bash command can hand the worker back and let the watcher finalize
+    # the response (see _deferral_supported). Reset in finally so a pooled worker
+    # never carries the flag into non-tool work.
+    _deferral_context.active = True
     try:
         response = _handle(request)
+        if isinstance(response, _Deferred):
+            deferred = response
+
+            def _on_complete() -> None:
+                try:
+                    concrete = deferred.src.collect()
+                except Exception as exc:  # noqa: BLE001 - deferred external work failed
+                    # A failed deferred result (e.g. web_fetch network/SSRF error)
+                    # goes through the same tool-error pipeline as the sync path,
+                    # for a byte-identical error response.
+                    try:
+                        resp = deferred.finalize_error(exc)
+                    except Exception:  # noqa: BLE001 - error finalizer boundary
+                        _log.exception("deferred MCP error-finalize failed")
+                        resp = _err(request.get("id"), -32603, f"internal error: {exc}")
+                else:
+                    try:
+                        resp = deferred.finalize(concrete)
+                    except Exception as exc:  # noqa: BLE001 - deferred continuation boundary
+                        _log.exception("deferred MCP continuation failed")
+                        resp = _err(request.get("id"), -32603, f"internal error: {exc}")
+                with contextlib.suppress(Exception):
+                    _write_jsonrpc(resp)
+
+            armed = deferred.src.register(_on_complete)
+            if armed is False:
+                # The work already finished before we could arm the watcher;
+                # produce the response now on this worker thread.
+                _on_complete()
+            return
     except Exception as exc:  # noqa: BLE001 - JSON-RPC worker boundary must return an error.
         _log.exception("unhandled MCP request failure")
         response = _err(request.get("id"), -32603, f"internal error: {exc}")
+    finally:
+        _deferral_context.active = False
     if response is not None:
         try:
             _write_jsonrpc(response)
@@ -10836,16 +11094,21 @@ def _handle_and_write(request: dict[str, Any]) -> None:
 
 
 def serve() -> None:
-    light_executor = ThreadPoolExecutor(
+    # CPU lane: GIL-bound, fast Python handlers (reads, searches, context,
+    # smart_read, trace, memory recall, protocol methods). This is the old
+    # "light" pool, unchanged in size.
+    cpu_executor = ThreadPoolExecutor(
         max_workers=_mcp_max_workers(),
-        thread_name_prefix="atelier",
+        thread_name_prefix="atelier-cpu",
     )
-    # Separate small lane for genuinely long-running tools (shell, edit-with-verify,
-    # web_fetch, and workflow/agent spawns up to the 48h ceiling) so a burst of them
-    # can't saturate the pool and starve cheap, frequent reads/searches.
-    heavy_executor = ThreadPoolExecutor(
-        max_workers=_mcp_heavy_max_workers(),
-        thread_name_prefix="atelier-heavy",
+    # IO lane: tools that block on an external subprocess/socket/LLM
+    # (bash foreground, edit-with-verify, web_fetch, memory store_fact).
+    # NOTE(phase-1): detached-class requests (workflow/agent/background bash) are
+    # routed to this IO lane for now; a later phase will give the detached class
+    # true no-slot handling.
+    io_executor = ThreadPoolExecutor(
+        max_workers=_mcp_io_max_workers(),
+        thread_name_prefix="atelier-io",
     )
 
     def _stdin_reader() -> None:
@@ -10863,7 +11126,7 @@ def serve() -> None:
             if req.get("method") in {"initialize", "notifications/initialized"}:
                 _handle_and_write(req)
                 continue
-            executor = heavy_executor if _is_heavy_request(req) else light_executor
+            executor = io_executor if _classify_cost(req) != _COST_CPU else cpu_executor
             executor.submit(_handle_and_write, req)
 
     reader = threading.Thread(target=_stdin_reader, daemon=True, name="mcp-stdin-reader")
@@ -10871,8 +11134,8 @@ def serve() -> None:
     try:
         reader.join()
     finally:
-        light_executor.shutdown(wait=True, cancel_futures=False)
-        heavy_executor.shutdown(wait=True, cancel_futures=False)
+        cpu_executor.shutdown(wait=True, cancel_futures=False)
+        io_executor.shutdown(wait=True, cancel_futures=False)
         _emit_mcp_session_end()
         from atelier.core.service.telemetry import shutdown_otel
 

@@ -385,6 +385,7 @@ name = "atelier"
 version = "0.4.25"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "babel" },
     { name = "beautifulsoup4" },
     { name = "blake3" },
@@ -492,6 +493,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.14.1" },
     { name = "babel", directory = "vendor/babel-stub" },
     { name = "beautifulsoup4", specifier = ">=4.12" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=24.4" },

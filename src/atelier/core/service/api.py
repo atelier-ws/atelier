@@ -30,7 +30,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from atelier.core.capabilities.host_router_bridge import evaluate_host_router_request
 from atelier.core.capabilities.pricing import usage_cost_usd
@@ -58,12 +58,8 @@ from atelier.core.capabilities.workflow_runtime_state import (
     stop_workflow_runtime,
     workflow_runtime_detail,
 )
-from atelier.core.foundation.models import Trace, to_jsonable
-from atelier.core.foundation.paths import (
-    confine_to_root,
-    resolve_session_state_path,
-    resolve_workspace_root,
-)
+from atelier.core.foundation.models import Trace, coerce_trace_json, to_jsonable
+from atelier.core.foundation.paths import resolve_session_state_path, resolve_workspace_root
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.auth import verify_api_key
 from atelier.core.service.config import cfg
@@ -423,8 +419,8 @@ def _normalize_lever(operation: str) -> str:
         return "scoped_recall"
     if "compact" in op:
         return "compact_lifecycle"
-    if "playbook" in op or "playbook" in op or "inject" in op:
-        return "playbook_inject"
+    if "reasonblock" in op or "reason_block" in op or "inject" in op:
+        return "reasonblock_inject"
     return op
 
 
@@ -1124,19 +1120,37 @@ def _query_analytics_rows(
         window_days = max(1, int(days))
         start_day = (datetime.now().astimezone().date() - timedelta(days=window_days - 1)).isoformat()
 
+    params: list[Any] = []
+
+    sql = f"""
+        SELECT id, agent, host, payload, created_at
+        FROM traces
+        WHERE 1=1 {"AND date(datetime(created_at, 'localtime')) >= ?" if start_day else ""}
+        ORDER BY created_at DESC
+    """
+
+    if start_day:
+        params.append(start_day)
+
     events: list[dict[str, Any]] = []
-    store = ContextStore(Path(db_path).parent)
-    since_dt = datetime.fromisoformat(start_day) if start_day else None
-    for trace in store.list_traces(since=since_dt, limit=100_000):
-        events.extend(
-            _trace_analytics_events(
-                trace.id,
-                trace.agent or "",
-                trace.host or "",
-                trace.created_at.isoformat(),
-                to_jsonable(trace),
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        for row in conn.execute(sql, params).fetchall():
+            try:
+                payload = json.loads(row["payload"] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            events.extend(
+                _trace_analytics_events(
+                    str(row["id"]),
+                    str(row["agent"] or ""),
+                    str(row["host"] or ""),
+                    str(row["created_at"] or ""),
+                    payload,
+                )
             )
-        )
 
     if grouped:
         return _group_analytics_rows(events, limit=limit)
@@ -1255,7 +1269,7 @@ _OBSERVED_OPTIMIZATION_TITLES = {
     "session_compaction": "Session compaction",
     "model_routing": "Model routing (tier downgrade)",
     "scoped_recall": "Scoped recall",
-    "playbook_inject": "Playbook injection",
+    "reasonblock_inject": "ReasonBlock injection",
     "cached_read": "Cached reuse",
     "delta_read": "Delta read",
     "structure_map": "Structure map",
@@ -1958,26 +1972,6 @@ def _savings_summary_payload(
     ops = history.get("operations", {}) if isinstance(history, dict) else {}
     today = datetime.now(UTC).date()
     window_days = max(1, min(window_days, 30))
-    # Realized savings from the canonical per-session ledger (store A) — the same
-    # source the statusline, stop hook, and `atelier savings` CLI read. These
-    # override the proof-gate / cost_history money fields below so every surface
-    # reports the same realized savings figure.
-    from atelier.core.capabilities.savings_summary import aggregate_window_savings
-
-    _realized = aggregate_window_savings(root, days=window_days)
-    realized_overrides = {
-        "saved_usd": _realized.saved_usd,
-        "saved_pct": _realized.saved_pct,
-        "would_have_cost_usd": _realized.would_have_cost_usd,
-        "actually_cost_usd": _realized.spend_usd,
-        # NOTE: only the headline money fields above are unified to the realized
-        # ledger. total_naive_tokens / reduction_pct (token metrics from cost_history)
-        # and live_saved_usd / live_calls_saved / live_time_saved_ms (from the live
-        # plugin event log) are intentionally NOT overridden here — an earlier version
-        # of this block mislabeled them with realized ledger values, which zeroed the
-        # cost-history token totals and the live plugin sources.
-        "cost_basis": "session_ledger",
-    }
     start_day = today - timedelta(days=window_days - 1)
 
     by_day_seed: dict[str, dict[str, int | str]] = {}
@@ -2105,7 +2099,6 @@ def _savings_summary_payload(
             "session_proof": [],
             "coverage_gaps": [],
             "verification": {},
-            **realized_overrides,
         }
 
     def _parse_dt(value: Any) -> datetime:
@@ -2117,7 +2110,7 @@ def _savings_summary_payload(
         return datetime.now(UTC)
 
     def _load_run_ledger(session_id: str) -> dict[str, Any] | None:
-        run_path = root / "sessions" / session_id / "run.json"
+        run_path = root / "runs" / f"{session_id}.json"
         if not run_path.exists():
             return None
         with contextlib.suppress(Exception):
@@ -2543,7 +2536,6 @@ def _savings_summary_payload(
         "session_proof": [],
         "coverage_gaps": coverage_gaps,
         "verification": {},
-        **realized_overrides,
     }
 
 
@@ -2777,15 +2769,15 @@ def _implemented_optimization_catalog(
             "examples": _optimization_lever_examples(top_sources, exact=("scoped_recall",)),
         },
         {
-            "id": "playbook_inject",
-            "title": "Playbook injection",
+            "id": "reasonblock_inject",
+            "title": "ReasonBlock injection",
             "category": "context_reuse",
             "automation": "Automatic when matching reasoning blocks are selected",
             "status": "active",
-            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("playbook_inject",)),
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("reasonblock_inject",)),
             "applies_to": supported_hosts,
             "notes": "Reuses prior solved procedures instead of re-deriving them from scratch.",
-            "examples": _optimization_lever_examples(top_sources, exact=("playbook_inject",)),
+            "examples": _optimization_lever_examples(top_sources, exact=("reasonblock_inject",)),
         },
         {
             "id": "ast_truncation",
@@ -2811,6 +2803,20 @@ def _implemented_optimization_catalog(
             "applies_to": supported_hosts,
             "notes": "Recommends a cheaper model tier than opus for routine tool calls and records the estimated dollar delta.",
             "examples": _optimization_lever_examples(top_sources, exact=("model_routing",)),
+        },
+        {
+            "id": "loop_detection",
+            "title": "Loop detection + rescue",
+            "category": "control_plane",
+            "automation": "Automatic detection, partial host-native rescue surfacing",
+            "status": "active",
+            "observed_tokens_saved": 0,
+            "applies_to": supported_hosts,
+            "notes": (
+                "Detects repeated search/read or retry loops and redirects the agent toward rescue instead of repeated spend. "
+                "This is a qualitative safeguard rather than a direct savings counter today."
+            ),
+            "examples": ["search_read_loop", "repeated bash failures"],
         },
     ]
     for item in catalog:
@@ -2906,7 +2912,7 @@ def _optimizations_summary_payload(root: Path, store: ContextStore, *, window_da
     project_root_candidate = resolve_workspace_root(root)
     if not ((project_root_candidate / "src").exists() or (project_root_candidate / "AGENTS.md").exists()):
         project_root_candidate = Path.cwd()
-    from atelier.core.capabilities.optimization.audit import (
+    from atelier.core.capabilities.optimization_audit import (
         build_context_audit,
         build_session_quality_summary,
     )
@@ -3012,19 +3018,10 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         docs_url="/docs",
     )
 
-    # CORS: never combine a wildcard origin with credentials. Default to the
-    # loopback origins for the configured host/port (local dev); operators can
-    # add explicit origins via ATELIER_CORS_ORIGINS (comma-separated).
-    _cors_origins: list[str] = []
-    for _scheme in ("http", "https"):
-        for _h in ("127.0.0.1", "localhost", "[::1]"):
-            _cors_origins.append(f"{_scheme}://{_h}:{cfg.port}")
-    _extra_origins = os.environ.get("ATELIER_CORS_ORIGINS", "").strip()
-    if _extra_origins:
-        _cors_origins.extend(o.strip() for o in _extra_origins.split(",") if o.strip())
+    # CORS for local dev
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=_cors_origins,
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -3079,6 +3076,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     def compat_overview(days: int = Query(30)) -> dict[str, Any]:
         """Compatibility: GET /overview -> basic summary stats."""
         from atelier.core.foundation.metrics import summarize
+        from atelier.core.improvement.failure_analyzer import FailureAnalyzer
         from atelier.infra.runtime.cost_tracker import CostTracker
 
         root = Path(cfg.atelier_root)
@@ -3090,23 +3088,40 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         total_raw_tokens = 0
         total_cost_usd = 0.0
 
-        for row in store.session_store.token_rows(since=since.isoformat()):
-            total_raw_tokens += (
-                (row["input_tokens"] or 0)
-                + (row["output_tokens"] or 0)
-                + (row["cached_input_tokens"] or 0)
-                + (row["thinking_tokens"] or 0)
-            )
-        for trace in store.list_traces(since=since, limit=100_000):
-            total_cost_usd += _trace_cost_from_payload(to_jsonable(trace))
+        with sqlite3.connect(store.db_path) as conn:
+            sql = """
+                SELECT 
+                    SUM(json_extract(payload, '$.input_tokens')),
+                    SUM(json_extract(payload, '$.output_tokens')),
+                    SUM(json_extract(payload, '$.cached_input_tokens')),
+                    SUM(json_extract(payload, '$.thinking_tokens'))
+                FROM traces
+                WHERE created_at >= ?
+            """
+            row = conn.execute(sql, (since.isoformat(),)).fetchone()
+            if row:
+                inp, out, cr, th = row
+                total_raw_tokens = (inp or 0) + (out or 0) + (cr or 0) + (th or 0)
+
+            conn.row_factory = sqlite3.Row
+            for trace_row in conn.execute("SELECT payload FROM traces WHERE created_at >= ?", (since.isoformat(),)):
+                try:
+                    payload = json.loads(trace_row["payload"] or "{}")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                total_cost_usd += _trace_cost_from_payload(payload)
 
         tracker = CostTracker(root)
         savings = tracker.total_savings(since=since)
+
+        analyzer = FailureAnalyzer(store=store)
+        clusters = analyzer.analyze()
 
         return {
             "total_traces": summary.traces_total,
             "total_blocks": summary.blocks_active,
             "total_rubrics": summary.rubrics_total,
+            "total_clusters": len(clusters),
             "total_raw_tokens_estimate": total_raw_tokens,
             "estimated_total_cost_usd": max(total_cost_usd, savings["actually_cost_usd"]),
             "estimated_saved_cost_usd": savings["saved_usd"],
@@ -3402,17 +3417,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         if "id" not in payload:
             payload["id"] = Trace.make_id(payload.get("task", "untitled"), payload.get("agent", "agent"))
         normalized_payload, event_recorded = _normalize_trace_payload(payload)
-        for _field in (
-            "input_tokens",
-            "output_tokens",
-            "reasoning_output_tokens",
-            "cached_input_tokens",
-            "cache_creation_input_tokens",
-            "thinking_tokens",
-        ):
-            _raw = normalized_payload.get(_field)
-            if isinstance(_raw, (int, float)) and _raw < 0:
-                raise HTTPException(status_code=400, detail=f"{_field} must be non-negative")
         trace = Trace.model_validate(normalized_payload)
         get_store().record_trace(trace)
         response: dict[str, Any] = {"id": trace.id, "event_recorded": event_recorded}
@@ -3524,10 +3528,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             else:
                 update["metadata"] = metadata
             block = existing.model_copy(update=update)
-            try:
-                block = MemoryBlock.model_validate(block.model_dump())
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
         actor = str(payload.get("actor") or f"api:{agent_id}")
         try:
             return mem.upsert_block(block, actor=actor)
@@ -3763,9 +3763,8 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     def update_telemetry_config(payload: dict[str, Any]) -> dict[str, Any]:
         from atelier.core.service.telemetry.config import save_telemetry_config
 
-        # Remote telemetry is mandatory; only the lexical-frustration flag is
-        # user-configurable here.
         cfg_telemetry = save_telemetry_config(
+            remote_enabled=payload.get("remote_enabled"),
             lexical_frustration_enabled=payload.get("lexical_frustration_enabled"),
         )
         return {
@@ -3888,7 +3887,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             stats = tui_store.summary_stats()
             tui_store.close()
             return {"sessions": sessions, "summary": stats}
-        except (OSError, sqlite3.DatabaseError) as exc:
+        except Exception as exc:
             return {"sessions": [], "summary": {}, "error": str(exc)}
 
     @app.get("/analytics/dashboard", tags=["analytics"], dependencies=[Depends(verify_api_key)])
@@ -3903,37 +3902,37 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         """
         db_path = store.db_path
         start_day = (datetime.now().astimezone().date() - timedelta(days=max(1, days) - 1)).isoformat()
+        host_filter = "AND COALESCE(host, agent) = ?" if host else ""
+        sql = f"""
+            SELECT
+                id,
+            COALESCE(host, agent) AS host,
+                domain,
+                json_extract(payload, '$.model') AS model,
+                CAST(json_extract(payload, '$.input_tokens') AS INTEGER) AS input_tokens,
+                CAST(json_extract(payload, '$.output_tokens') AS INTEGER) AS output_tokens,
+                CAST(json_extract(payload, '$.reasoning_output_tokens') AS INTEGER) AS reasoning_output_tokens,
+                CAST(json_extract(payload, '$.thinking_tokens') AS INTEGER) AS thinking_tokens,
+                CAST(json_extract(payload, '$.cached_input_tokens') AS INTEGER) AS cached_tokens,
+                CAST(json_extract(payload, '$.cache_creation_input_tokens') AS INTEGER) AS cache_write_tokens,
+                CAST(json_extract(payload, '$.user_prompt_tokens') AS INTEGER) AS user_prompt_tokens,
+                payload,
+                created_at,
+                date(datetime(created_at, 'localtime')) AS day,
+                strftime('%Y-%m-%d %H:00', datetime(created_at)) AS hour_bucket
+            FROM traces
+            WHERE date(datetime(created_at, 'localtime')) >= ?
+            {host_filter}
+            ORDER BY created_at DESC
+        """
+        params: list[Any] = [start_day]
+        if host:
+            params.append(host)
+
         sessions = []
-        # Traces live in the file-based session store; build the dashboard rows
-        # from it (the SQL column shape is reproduced so the body is unchanged).
-        _store = ContextStore(Path(db_path).parent)
-        _since = datetime.fromisoformat(start_day) if start_day else None
-        rows: list[dict[str, Any]] = []
-        for _t in _store.list_traces(since=_since, limit=100_000):
-            _h = _t.host or _t.agent or ""
-            if host and _h != host:
-                continue
-            _c = _t.created_at
-            rows.append(
-                {
-                    "id": _t.id,
-                    "host": _h,
-                    "domain": _t.domain,
-                    "model": _t.model,
-                    "input_tokens": _t.input_tokens,
-                    "output_tokens": _t.output_tokens,
-                    "reasoning_output_tokens": _t.reasoning_output_tokens,
-                    "thinking_tokens": _t.thinking_tokens,
-                    "cached_tokens": _t.cached_input_tokens,
-                    "cache_write_tokens": _t.cache_creation_input_tokens,
-                    "user_prompt_tokens": _t.user_prompt_tokens,
-                    "payload": json.dumps(to_jsonable(_t)),
-                    "created_at": _c.isoformat(),
-                    "day": _c.astimezone().date().isoformat(),
-                    "hour_bucket": _c.strftime("%Y-%m-%d %H:00"),
-                }
-            )
-        with contextlib.nullcontext():
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(sql, params).fetchall()
             for row in rows:
                 d = dict(row)
                 payload_obj: dict[str, Any] = {}
@@ -3985,7 +3984,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                         "output_tokens": out_t,
                         "reasoning_output_tokens": reasoning_out_t,
                         "visible_output_tokens": max(out_t - reasoning_out_t, 0),
-                        "reasoning_output_ratio": (round(reasoning_out_t / out_t, 4) if out_t else 0.0),
+                        "reasoning_output_ratio": (
+                            round(reasoning_out_t / out_t, 4) if out_t else 0.0
+                        ),
                         "thinking_tokens": think_t,
                         "cached_tokens": cache_r,
                         "cache_write_tokens": cache_w,
@@ -4812,26 +4813,12 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
         return PlainTextResponse(content, media_type="text/plain")
 
-    def _confine_local_path(path: str) -> Path:
-        """Resolve *path* and confine it to the workspace or store root.
-
-        Rejects path-traversal / arbitrary-read escapes (including via
-        symlinks, since ``confine_to_root`` resolves before comparing).
-        """
-        allowed_roots = (resolve_workspace_root(store_path), store_path)
-        for allowed_root in allowed_roots:
-            try:
-                return confine_to_root(path, allowed_root)
-            except ValueError:
-                continue
-        raise HTTPException(status_code=403, detail="Path is outside the allowed roots.")
-
     @app.get("/v1/files/content", tags=["files"], dependencies=[Depends(verify_api_key)])
     def get_file_content(path: str) -> Any:
         """Return local file content with a browser-appropriate media type."""
         from fastapi.responses import FileResponse
 
-        file_path = _confine_local_path(path)
+        file_path = Path(path).expanduser()
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=f"File not found: {path}")
         if not file_path.is_file():
@@ -4849,12 +4836,9 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         """Return structured projection metadata for a file read."""
         from atelier.gateway.adapters.mcp_server import tool_smart_read
 
-        confined_path = _confine_local_path(path)
-        payload: dict[str, Any] = {"path": str(confined_path), "include_meta": True}
+        payload: dict[str, Any] = {"path": path, "include_meta": True}
         if view == "compact":
-            # The HTTP surface pins the conservative compact projection; the
-            # tree-sitter "minified" view is an MCP-layer default only.
-            payload["projection_kind"] = "compact"
+            pass
         elif view == "exact":
             payload["expand"] = True
         elif view == "summary":
@@ -4878,7 +4862,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         """
         from atelier.infra.runtime.run_ledger import RunLedger
 
-        ledger_path = Path(cfg.atelier_root) / "sessions" / session_id / "run.json"
+        ledger_path = Path(cfg.atelier_root) / "runs" / f"{session_id}.json"
         snap = None
         if ledger_path.exists():
             try:
@@ -4886,7 +4870,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 snap = ledger.snapshot()
             except Exception as e:
                 logging.exception("Recovered from broad exception handler")
-                raise HTTPException(status_code=500, detail="failed to load run ledger") from e
+                return {"session_id": session_id, "error": str(e)}
 
         # Always check for a trace to fetch the full conversation history.
         # Imported sessions from Claude/Codex/OpenCode/Copilot use the Trace as source of truth.
@@ -4906,9 +4890,16 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 if trace:
                     break
 
-        # 3. Slower fallback: the store resolves a session_id to its first trace.
+        # 3. Slower fallback: search for the session_id inside payloads
         if trace is None:
-            trace = store_inst.get_trace(session_id)
+            with sqlite3.connect(store_inst.db_path) as conn:
+                # Use json_extract for efficient searching
+                row = conn.execute(
+                    "SELECT payload FROM traces WHERE json_extract(payload, '$.session_id') = ?",
+                    (session_id,),
+                ).fetchone()
+                if row:
+                    trace = Trace.model_validate_json(coerce_trace_json(row[0]))
 
         def _conversation_sort_key(turn: dict[str, Any]) -> tuple[int, str]:
             raw_at = turn.get("at")
@@ -5100,15 +5091,25 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
     @app.get("/hosts", tags=["ops"], dependencies=[Depends(verify_api_key)])
     def list_hosts() -> list[dict[str, Any]]:
+        import yaml
+
         store = get_store()
         seen_hosts = set(store.get_traces_metrics()["hosts"])
         root = Path(__file__).parent.parent.parent.parent.parent
+        configs_dir = root / "src" / "atelier" / "gateway" / "hosts" / "configs"
 
         hosts: list[dict[str, Any]] = []
         for host_id in _HOST_ORDER:
+            config_path = configs_dir / f"{host_id}.yaml"
+            payload: dict[str, Any] = {}
+            if config_path.exists():
+                loaded = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+                if isinstance(loaded, dict):
+                    payload = loaded
+
             install_script = root / "scripts" / f"install_{host_id}.sh"
-            label = _HOST_LABEL_OVERRIDES.get(host_id, host_id)
-            description = _HOST_DESCRIPTION_OVERRIDES.get(host_id)
+            label = _HOST_LABEL_OVERRIDES.get(host_id) or str(payload.get("name") or host_id)
+            description = _HOST_DESCRIPTION_OVERRIDES.get(host_id) or str(payload.get("description") or "")
             if host_id == "hermes":
                 label = "Hermes Agent (global-only)"
             hosts.append(
@@ -5295,6 +5296,21 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         return all_calls[:limit]
 
     # ------------------------------------------------------------------ #
+    # Clusters (compat)                                                   #
+    # ------------------------------------------------------------------ #
+
+    @app.get("/clusters", tags=["compat"], dependencies=[Depends(verify_api_key)])
+    def compat_clusters() -> list[dict[str, Any]]:
+        from atelier.core.improvement.failure_analyzer import FailureAnalyzer
+
+        try:
+            return [to_jsonable(c) for c in FailureAnalyzer(store=get_store()).analyze()]
+        except Exception as exc:
+            logging.exception("Recovered from broad exception handler")
+            logger.warning("Failure analyzer raised an exception: %s", exc, exc_info=True)
+            return []
+
+    # ------------------------------------------------------------------ #
     # Watchdogs                                                           #
     # ------------------------------------------------------------------ #
 
@@ -5380,7 +5396,14 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             if trace is not None:
                 return trace
 
-        return store.get_trace(session_id)
+        with sqlite3.connect(store.db_path) as conn:
+            row = conn.execute(
+                "SELECT payload FROM traces WHERE json_extract(payload, '$.session_id') = ?",
+                (session_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return Trace.model_validate_json(coerce_trace_json(row[0]))
 
     def _reconstruct_trace_conversations(
         session_id: str,
@@ -5858,10 +5881,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
                 read_total_savings_from_events(session_id, root) if root is not None else 0.0
             ),
             "label": None,
-            "task": str(trace.task or ""),
-            "host": str(trace.host or ""),
-            "domain": str(trace.domain or ""),
-            "status": str(trace.status or ""),
             "models_used": models_used,
             "started_model": started_model,
             "cost_status": (
@@ -5960,10 +5979,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
             "total_cost_usd": total_cost_usd,
             "total_atelier_savings_usd": report.total_atelier_savings_usd,
             "label": None,
-            "task": str(active_trace.task or "") if active_trace else "",
-            "host": str(active_trace.host or "") if active_trace else "",
-            "domain": str(active_trace.domain or "") if active_trace else "",
-            "status": str(active_trace.status or "") if active_trace else "",
             "models_used": models_used,
             "started_model": started_model,
             "cost_status": cost_status,
@@ -6219,8 +6234,8 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         high_extra_reads: list[str] = []
 
         for f in files:
-            session_id = f.parent.name
-            state_path = root / "sessions" / session_id / "outcomes.json"
+            session_id = f.stem
+            state_path = root / "runs" / f"{session_id}.outcomes.json"
             if not state_path.exists():
                 continue
             try:
@@ -6262,7 +6277,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         from atelier.infra.runtime.outcome_capture import load_outcomes_from_state
 
         root = Path(cfg.atelier_root)
-        state_path = root / "sessions" / session_id / "outcomes.json"
+        state_path = root / "runs" / f"{session_id}.outcomes.json"
         if not state_path.exists():
             raise HTTPException(status_code=404, detail=f"No outcomes for session '{session_id}'")
         try:
@@ -6638,107 +6653,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         state = stop_swarm_run(root=Path(cfg.atelier_root), state_path=state_path, cleanup=cleanup)
         return state.model_dump(mode="json")
 
-    # ── OpenAI-compatible chat completions gateway ────────────────────────────
-    # Adds /v1/chat/completions and /v1/models to the existing service so
-    # OpenCode/Crush/Codex can use Atelier as their model provider without
-    # running a separate server.
-    import asyncio as _asyncio
-
-    from atelier.gateway.cli.runtime import InteractiveRuntime as _Runtime
-    from atelier.gateway.openai_gateway.adapter import (
-        run_chat_completion as _run_chat_completion,
-    )
-    from atelier.gateway.openai_gateway.schemas import (
-        ChatCompletionRequest as _CCReq,
-    )
-    from atelier.gateway.openai_gateway.schemas import (
-        ModelListResponse as _ModResp,
-    )
-    from atelier.gateway.openai_gateway.schemas import (
-        ModelObject as _ModObj,
-    )
-
-    _gw_runtime: _Runtime | None = None
-    _gw_runtime_lock = _asyncio.Lock()
-    _gw_rl_init_done = False
-
-    async def _ensure_rl_init() -> None:
-        nonlocal _gw_rl_init_done
-        if _gw_rl_init_done:
-            return
-        _gw_rl_init_done = True
-        from atelier.core.capabilities.providers.config import load_providers_config
-        from atelier.core.capabilities.providers.ratelimit import init_from_config
-
-        cfg = load_providers_config(store_path)
-        await init_from_config(cfg._raw)
-
-    async def _get_runtime() -> _Runtime:
-        nonlocal _gw_runtime
-        async with _gw_runtime_lock:
-            if _gw_runtime is None:
-                # Secure default: do NOT auto-approve destructive file/shell/edit
-                # ops for the unattended gateway runtime. Opt in explicitly with
-                # ATELIER_GATEWAY_YOLO=1 (defaults OFF).
-                from atelier.core.environment import bool_env
-
-                _gw_yolo = bool_env("ATELIER_GATEWAY_YOLO", False)
-                _gw_runtime = _Runtime(root=store_path, yolo=_gw_yolo)
-                await _gw_runtime.start_session()
-                await _ensure_rl_init()
-        return _gw_runtime
-
-    @app.get("/v1/models", tags=["openai-gateway"], dependencies=[Depends(verify_api_key)])
-    async def gw_list_models() -> dict[str, Any]:
-        from atelier.core.capabilities.providers.discovery import discover_models
-
-        model_ids = await discover_models(store_path)
-        return _ModResp(data=[_ModObj(id=m, created=0) for m in model_ids]).model_dump(mode="json")
-
-    @app.get(
-        "/v1/models/refresh",
-        tags=["openai-gateway"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    async def gw_refresh_models() -> dict[str, Any]:
-        from atelier.core.capabilities.providers.discovery import discover_models, invalidate_cache
-
-        invalidate_cache()
-        model_ids = await discover_models(store_path)
-        return _ModResp(data=[_ModObj(id=m, created=0) for m in model_ids]).model_dump(mode="json")
-
-    @app.get("/v1/rate-limits", tags=["openai-gateway"], dependencies=[Depends(verify_api_key)])
-    async def gw_rate_limits() -> dict[str, Any]:
-        from atelier.core.capabilities.providers.ratelimit import get_status
-
-        return get_status()
-
-    @app.post(
-        "/v1/chat/completions",
-        tags=["openai-gateway"],
-        dependencies=[Depends(verify_api_key)],
-    )
-    async def gw_chat_completions(payload: dict[str, Any]) -> Any:
-        try:
-            req = _CCReq.model_validate(payload)
-        except ValidationError as exc:
-            raise HTTPException(status_code=422, detail=f"invalid chat-completions payload: {exc}") from exc
-
-        rt = await _get_runtime()
-        model = req.model or ""
-
-        # Apply rate limit before starting the request
-        from atelier.core.capabilities.providers.ratelimit import acquire
-
-        try:
-            await _asyncio.wait_for(acquire(model), timeout=30.0)
-        except TimeoutError:
-            raise HTTPException(
-                status_code=429, detail=f"rate limit exceeded for model '{model}': timed out after 30s"
-            ) from None
-
-        return await _run_chat_completion(rt, req)
-
     return app
 
 
@@ -6750,31 +6664,6 @@ _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 def _is_loopback(host: str) -> bool:
     return host.strip().lower() in _LOOPBACK_HOSTS
-
-
-def _load_atelier_env_file(root: Path | None = None) -> None:
-    """Load provider API keys from ~/.atelier/.env (or <root>/.env).
-
-    Keys already set in the environment take precedence (env vars always win).
-    Format: KEY=value, KEY="value", or KEY='value'; # for comments.
-    """
-    import os
-    from pathlib import Path as _Path
-
-    env_file = (_Path(root) if root else _Path.home() / ".atelier") / ".env"
-    if not env_file.exists():
-        return
-    for raw in env_file.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
-            value = value[1:-1]
-        if key and key not in os.environ:
-            os.environ[key] = value
 
 
 def main(
@@ -6794,19 +6683,6 @@ def main(
     import sys
 
     import uvicorn
-
-    _load_atelier_env_file()
-    # Load ~/.atelier/providers.json and push keys to env so litellm can find them
-    from atelier.core.capabilities.providers.config import load_providers_config
-
-    load_providers_config().export_env()
-
-    try:
-        from atelier.core.service.code_warm import start_code_warmer
-
-        start_code_warmer()
-    except Exception:
-        logger.exception("failed to start code index warmer")
 
     _host = host or cfg.host
     _port = port or cfg.port

@@ -51,203 +51,20 @@ _EXTERNAL_REPORT_ALL_TOOLS = (
 )
 
 
-def _echo_vs_vanilla_block(root: str | Path, *, deep: bool = False) -> None:
-    """Render the comparative \"vs vanilla Claude Code\" replay block.
-
-    Sourced from aggregate_vanilla_baseline (lifetime window + cap). This is an
-    estimate of roundtrips vanilla CC would have spent that Atelier avoided,
-    priced at full-context resend — clearly labelled and kept separate from the
-    measured savings figures above.
-    """
-    try:
-        from atelier.core.capabilities.vanilla_baseline import aggregate_vanilla_baseline
-
-        vs = aggregate_vanilla_baseline(root)
-    except Exception as e:
-        logging.exception("Recovered from broad exception handler")
-        logger.debug("Failed to aggregate vanilla baseline: %s", e)
-        return
-    calls = int(vs.get("calls_saved", 0) or 0)
-    if calls <= 0:
-        return
-    usd = float(vs.get("cost_saved_usd", 0.0) or 0.0)
-    seconds = int((vs.get("time_saved_ms", 0) or 0) / 1000)
-    click.echo("")
-    click.echo(f"vs vanilla Claude Code: {calls} roundtrips avoided · ${usd:.2f} · ~{seconds}s faster (estimate)")
-    if deep:
-        by_detector = vs.get("by_detector") or {}
-        if by_detector:
-            click.echo("  by pattern (roundtrips avoided):")
-            for label, hits in sorted(by_detector.items(), key=lambda kv: kv[1], reverse=True):
-                click.echo(f"    {label}: {hits}")
-        click.echo(
-            f"  window: {int(vs.get('window_days', 0) or 0)}d · {int(vs.get('sessions', 0) or 0)} sessions"
-            + ("  (lifetime cap hit)" if vs.get("capped") else "")
-        )
-
-
-def _render_savings_rich(payload: dict[str, Any], deep: bool = False) -> None:
-    """Polished Rich table for savings breakdown (1D, 7D, 30D)."""
-    from rich import box as rbox
-    from rich.console import Console
-    from rich.table import Table
-
-    console = Console(highlight=False)
-    breakdown = payload.get("summary_breakdown") or {}
-
-    if breakdown:
-        console.print()
-        console.print("[bold bright_white]  Savings Breakdown[/]")
-        console.print()
-
-        table = Table(box=rbox.SIMPLE, show_header=True, header_style="dim cyan", padding=(0, 2))
-        table.add_column("Window", style="bold")
-        table.add_column("Calls", justify="right")
-        table.add_column("Tokens", justify="right")
-        table.add_column("Saved", justify="right", style="green")
-        table.add_column("Carry", justify="right", style="bright_magenta")
-        table.add_column("Spent", justify="right")
-
-        for window in ["1D", "7D", "30D"]:
-            w = breakdown.get(window, {})
-            table.add_row(
-                window,
-                f"{w.get('calls', 0):,}",
-                f"{_fmt_tok_compact(w.get('tokens', 0))}",
-                f"${w.get('usd', 0.0):,.2f}",
-                f"${w.get('carry', 0.0):,.2f}",
-                f"${w.get('spend', 0.0):,.2f}",
-            )
-        console.print(table)
-        console.print()
-
-    # High-level summary keys to show by default
-    _DEFAULT_KEYS = {"subscription"}
-
-    for k, v in payload.items():
-        if k not in _DEFAULT_KEYS and not deep:
-            continue
-        if isinstance(v, dict):
-            console.print(f"[bold]{k}:[/]")
-            for k2, v2 in v.items():
-                if isinstance(v2, dict) and not deep:
-                    console.print(f"  [dim]{k2}: <dict, pass --deep for detail>[/]")
-                elif isinstance(v2, list) and not deep:
-                    console.print(f"  [dim]{k2}: <list of {len(v2)} items, pass --deep for detail>[/]")
-                else:
-                    console.print(f"  {k2}: {v2}")
-        else:
-            console.print(f"[bold]{k}:[/] {v}")
-
-    if not deep:
-        console.print()
-        console.print(
-            "[dim]Pass --deep to see AB calibration, optimization recommendations, and full session stats.[/]"
-        )
-
-
-def _fmt_tok_compact(n: int) -> str:
-    """Format large token counts to K/M/B."""
-    if n < 1000:
-        return str(n)
-    if n < 1_000_000:
-        return f"{n / 1000:.1f}K"
-    if n < 1_000_000_000:
-        return f"{n / 1_000_000:.1f}M"
-    return f"{n / 1_000_000_000:.1f}B"
-
-
 @click.group("savings", invoke_without_command=True)
 @click.option("--json", "as_json", is_flag=True)
-@click.option("--line", is_flag=True, help="Pipe-delimited one-liner for statusline.sh (legacy).")
-@click.option("--segment", is_flag=True, help="Pre-formatted rotating segment for statusline.sh.")
-@click.option("--deep", is_flag=True, help="Add a per-pattern vs-vanilla breakdown (which workflows save most).")
+@click.option("--line", is_flag=True, help="Pipe-delimited one-liner for statusline.sh.")
 @click.pass_context
-def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, deep: bool) -> None:
+def savings_cmd(ctx: click.Context, as_json: bool, line: bool) -> None:
     """Aggregate savings: cache + reasoning-library + cost-delta vs. baseline."""
     if ctx.invoked_subcommand is not None:
-        return
-    if segment:
-        from atelier.core.capabilities.savings_summary import savings_segment
-
-        session_id = os.environ.get("ATELIER_STATUS_SESSION_ID", "")
-        live_cost = float(os.environ.get("ATELIER_STATUSLINE_COST_USD") or 0)
-        live_in = int(os.environ.get("ATELIER_STATUSLINE_LIVE_IN_TOK") or 0)
-        live_cache = int(os.environ.get("ATELIER_STATUSLINE_LIVE_CACHE_TOK") or 0)
-        live_out = int(os.environ.get("ATELIER_STATUSLINE_LIVE_OUT_TOK") or 0)
-        no_color = bool(os.environ.get("ATELIER_STATUSLINE_NO_COLOR") or os.environ.get("ATELIER_NO_COLOR"))
-        # Write directly — click.echo strips ANSI when stdout is not a TTY
-        # (which is always the case when captured via $() in statusline.sh).
-        import sys
-
-        sys.stdout.write(
-            savings_segment(
-                session_id,
-                live_cost_usd=live_cost,
-                live_in_tok=live_in,
-                live_cache_tok=live_cache,
-                live_out_tok=live_out,
-                no_color=no_color,
-            )
-        )
-        sys.stdout.flush()
-
-        # Bridge: persist live token counts so the Codex stop hook can report
-        # real usage instead of $0.0000.  The statusline gets token data from
-        # Codex's native footer; the stop hook reads stats.json or the latest
-        # workspace-scoped statusline snapshot. Without this write those two
-        # data flows never meet.
-        # Only for Codex (Claude Code has its own transcript-based path).
-        # context_window.current_usage is the overwrite path in
-        # update_session_stats — correct here because the statusline value is
-        # always a cumulative session snapshot, not a per-turn delta.
-        if os.environ.get("ATELIER_STATUS_HOST", "").strip().lower() == "codex" and (live_in > 0 or live_cache > 0):
-            import contextlib
-
-            with contextlib.suppress(Exception):
-                from atelier.core.capabilities.plugin_runtime import record_codex_statusline_snapshot
-
-                root_val = (
-                    os.environ.get("ATELIER_ROOT")
-                    or os.environ.get("ATELIER_STORE_ROOT")
-                    or str(Path.home() / ".atelier")
-                )
-                model_val = (
-                    os.environ.get("ATELIER_STATUS_MODEL") or os.environ.get("ATELIER_STATUS_MODEL_DISPLAY") or ""
-                )
-                workspace_val = os.environ.get("CODEX_WORKSPACE_ROOT") or os.environ.get("CLAUDE_WORKSPACE_ROOT") or ""
-                snapshot: dict[str, Any] = {
-                    "hook_event_name": "StatuslineUpdate",
-                    "session_id": session_id,
-                    # Cumulative snapshot — update_session_stats overwrites
-                    # state["usage"] when this key is present.
-                    "context_window": {
-                        "current_usage": {
-                            "input_tokens": live_in,
-                            "cache_read_input_tokens": live_cache,
-                            "output_tokens": live_out,
-                        }
-                    },
-                }
-                if model_val:
-                    snapshot["model"] = model_val
-                if workspace_val:
-                    snapshot["cwd"] = workspace_val
-                record_codex_statusline_snapshot(root_val, snapshot)
-
         return
     if line:
         from atelier.core.capabilities.savings_summary import savings_line
 
-        session_id = os.environ.get("ATELIER_STATUS_SESSION_ID", "")
-        if os.environ.get("ATELIER_STATUS_HOST", "").strip().lower() == "codex":
-            from atelier.core.capabilities.plugin_runtime import build_codex_savings_line
-
-            click.echo(build_codex_savings_line(ctx.obj["root"], session_id))
-            return
         click.echo(
             savings_line(
-                session_id,
+                os.environ.get("ATELIER_STATUS_SESSION_ID", ""),
                 workspace=os.environ.get("CLAUDE_WORKSPACE_ROOT", "") or None,
             )
         )
@@ -256,10 +73,11 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
     from atelier.core.capabilities.session_optimizer import build_trace_optimization_report
 
     runs = _ledger_dir(ctx.obj["root"])
+    bad_plans_blocked = 0
     rescue_events = 0
     rubric_failures = 0
     if runs.is_dir():
-        for p in runs.glob("**/run.json"):
+        for p in runs.glob("*.json"):
             try:
                 snap = json.loads(p.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
@@ -275,23 +93,19 @@ def savings_cmd(ctx: click.Context, as_json: bool, line: bool, segment: bool, de
     payload = build_savings_report(ctx.obj["root"])
     store = _load_store(ctx.obj["root"])
     payload["optimization"] = build_trace_optimization_report(store.list_traces(limit=5000), days=7)
+    payload["bad_plans_blocked"] = bad_plans_blocked
     payload["rescue_events"] = rescue_events
     payload["rubric_failures_caught"] = rubric_failures
     if as_json:
         _emit(payload, as_json=True)
     else:
-        from atelier.core.capabilities import licensing
-
-        # Free tier shows the headline summary; the full --deep breakdown
-        # (per-pattern vs-vanilla, optimization detail) is a Pro feature.
-        if deep and not licensing.feature_active("savings_dashboard"):
-            _render_savings_rich(payload, deep=False)
-            click.echo("")
-            click.echo(f"Full breakdown (--deep) is an Atelier Pro feature. Unlock at {licensing.pro_url()}")
-        else:
-            _render_savings_rich(payload, deep=deep)
-            if deep:
-                _echo_vs_vanilla_block(ctx.obj["root"], deep=deep)
+        for k, v in payload.items():
+            if isinstance(v, dict):
+                click.echo(f"{k}:")
+                for k2, v2 in v.items():
+                    click.echo(f"  {k2}: {v2}")
+            else:
+                click.echo(f"{k}: {v}")
 
 
 @savings_cmd.command("wire")
@@ -336,7 +150,7 @@ def savings_wire_cmd(
     """Compare provider-billed usage from mitmproxy .flow captures."""
     if not captures:
         raise click.ClickException(
-            "Provide captures as LABEL=PATH. Example: atelier savings wire baseline=off.flow atelier=on.flow"
+            "Provide captures as LABEL=PATH. Example: " "atelier savings wire baseline=off.flow atelier=on.flow"
         )
     repo_root = Path.cwd().resolve()
     run_dir = _wire_report_dir(out)
@@ -485,7 +299,8 @@ def optimize_group(ctx: click.Context, host: str | None, days: int, limit: int, 
     _render_optimization_summary(result)
     click.echo("")
     click.echo(
-        f"Legacy trace recommendations: {report['estimated_tokens_saved']} tokens, ${report['estimated_usd_saved']:.4f}"
+        f"Legacy trace recommendations: {report['estimated_tokens_saved']} tokens, "
+        f"${report['estimated_usd_saved']:.4f}"
     )
     if not report["recommendations"]:
         click.echo("No legacy trace recommendations found for this window.")
@@ -530,33 +345,10 @@ def optimize_apply(
     as_json: bool,
 ) -> None:
     """Apply a preset, the latest recommendation, or a custom policy YAML."""
-    from atelier.core.capabilities import licensing
-
-    # Pro gate: seeing recommendations (`atelier optimize`) is free; *applying*
-    # an optimization policy is the lever that activates the savings engine, so
-    # it requires a license. This is the freemium wall -- you can measure what
-    # you'd save before you pay to unlock it.
-    try:
-        licensing.require("optimizer")
-    except licensing.FeatureLocked as exc:
-        raise click.ClickException(
-            f"{exc}. Preview savings free with `atelier optimize`, then unlock applying them at {licensing.pro_url()}"
-        ) from exc
-
-    # The *compute* below (building a policy from a preset, custom YAML, or the
-    # advisor) is free; *activating* it is the paid lever and lives in the
-    # proprietary `atelier_pro` overlay. A licensed install missing the overlay
-    # is a broken Pro install -- fail loud rather than silently act like Free.
-    optimizer = licensing.pro_impl("optimizer")
-    if optimizer is None:
-        raise click.ClickException(
-            "Atelier Pro is licensed but the Pro engine package (atelier_pro) is "
-            "not installed. Reinstall Atelier Pro or contact support."
-        )
-
     from atelier.core.capabilities.optimization.policy import (
         policy_from_config,
         preset_policy,
+        save_policy,
     )
 
     selected = sum(1 for value in (preset, custom) if value is not None) + (1 if recommended else 0)
@@ -581,7 +373,7 @@ def optimize_apply(
             raise click.ClickException(result.message)
         policy = result.recommended_policy
 
-    path = optimizer.apply_policy(ctx.obj["root"], policy)
+    path = save_policy(ctx.obj["root"], policy)
     payload = {"applied": policy.to_dict(), "path": str(path)}
     if as_json:
         _emit(payload, as_json=True)
@@ -1147,8 +939,6 @@ def external_report_cmd(ctx: click.Context, tool: str, period: str, persist: boo
 
     if persist:
         click.echo(f"persisted {total_persisted} snapshots")
-
-    _echo_vs_vanilla_block(ctx.obj["root"])
 
 
 @click.command("savings-detail")

@@ -73,22 +73,6 @@ def test_health_returns_ok(app_no_auth: TestClient) -> None:
     assert resp.json()["status"] == "ok"
 
 
-def test_openai_models_route_available_on_main_service(app_no_auth: TestClient) -> None:
-    resp = app_no_auth.get("/v1/models")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["object"] == "list"
-    # When API keys are configured models appear; each must have a string id
-    for item in data["data"]:
-        assert isinstance(item["id"], str) and item["id"]
-
-
-def test_openai_chat_route_rejects_invalid_payload(app_no_auth: TestClient) -> None:
-    resp = app_no_auth.post("/v1/chat/completions", json={"messages": []})
-    assert resp.status_code == 422
-    assert "invalid chat-completions payload" in str(resp.json().get("detail"))
-
-
 def test_config_returns_runtime_settings(app_no_auth: TestClient) -> None:
     resp = app_no_auth.get("/config")
     assert resp.status_code == 200
@@ -141,16 +125,13 @@ def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypa
     assert {tool["tool_name"] for tool in tools if tool["mode"] == "active"} == names
     assert not {tool["tool_name"] for tool in tools if tool["mode"] == "passive"}
     assert "read" in names
-    assert "code_search" in names
-    assert "bash" in names
-    # grep/relations/search/memory are registered but hidden (not on the active
-    # surface); code_search is the single advertised retrieval primary.
-    assert "grep" not in names
-    assert "relations" not in names
-    assert "search" not in names
-    assert "memory" not in names
-    # code_search is the single advertised retrieval primary.
-    assert next(tool for tool in tools if tool["tool_name"] == "code_search")["mode"] == "active"
+    assert "grep" in names
+    assert "search" in names
+    assert "memory" in names
+    assert "shell" in names
+    symbols_tool = next(tool for tool in tools if tool["tool_name"] == "symbols")
+    enum_param_names = {item["name"] for item in symbols_tool["enum_params"]}
+    assert "mode" in enum_param_names
 
 
 def test_workflow_current_and_snapshot_actions(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -468,9 +449,6 @@ def test_external_analytics_endpoints_return_summary_and_detail(
     app_no_auth: TestClient,
     store: SQLiteStore,
 ) -> None:
-    now = datetime.now(UTC)
-    codeburn_collected_at = (now - timedelta(minutes=10)).isoformat()
-    tokscale_collected_at = (now - timedelta(minutes=5)).isoformat()
     store.record_external_analytics_run(
         tool="codeburn",
         period="today",
@@ -508,7 +486,7 @@ def test_external_analytics_endpoints_return_summary_and_detail(
                 },
             ],
         },
-        collected_at=codeburn_collected_at,
+        collected_at="2026-05-11T12:00:00+00:00",
     )
     store.record_external_analytics_run(
         tool="tokscale",
@@ -520,7 +498,7 @@ def test_external_analytics_endpoints_return_summary_and_detail(
         summary={"highlights": [{"key": "input_tokens", "label": "input tokens", "value": 1200}]},
         payload={"summary": {"input_tokens": 1200}},
         stderr="tool missing",
-        collected_at=tokscale_collected_at,
+        collected_at="2026-05-11T13:00:00+00:00",
     )
 
     external_resp = app_no_auth.get("/analytics/external")
@@ -1031,9 +1009,9 @@ def test_list_blocks_empty(app_no_auth: TestClient) -> None:
 
 
 def test_get_block_from_compat_endpoints(app_no_auth: TestClient, store: SQLiteStore) -> None:
-    from atelier.core.foundation.models import Playbook
+    from atelier.core.foundation.models import ReasonBlock
 
-    block = Playbook(
+    block = ReasonBlock(
         id="rb-api-test",
         title="API Test Block",
         domain="test",
@@ -1255,24 +1233,6 @@ def test_file_content_endpoint_serves_local_file(
     assert resp.status_code == 200
     assert resp.text == "hello rich sessions\n"
     assert resp.headers["content-type"].startswith("text/plain")
-
-
-def test_file_content_endpoint_rejects_path_traversal(app_no_auth: TestClient) -> None:
-    """A path outside the allowed roots must be refused (no arbitrary read)."""
-    resp = app_no_auth.get("/v1/files/content", params={"path": "/etc/passwd"})
-    assert resp.status_code == 403
-
-
-def test_chat_completions_requires_auth_when_enabled(app_with_auth: TestClient) -> None:
-    """OpenAI-gateway route must reject unauthenticated callers."""
-    resp = app_with_auth.post("/v1/chat/completions", json={"model": "gpt-4o", "messages": []})
-    assert resp.status_code in (401, 403)
-
-
-def test_models_route_requires_auth_when_enabled(app_with_auth: TestClient) -> None:
-    """OpenAI-gateway model listing must reject unauthenticated callers."""
-    resp = app_with_auth.get("/v1/models")
-    assert resp.status_code in (401, 403)
 
 
 def test_file_projection_endpoint_returns_compact_projection_metadata(

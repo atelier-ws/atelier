@@ -163,7 +163,7 @@ def tools_call_cmd(
                     args["description"] = redact(str(args.get("description") or ""))
             elif op == "archive" and "text" in args:
                 args["text"] = redact(str(args.get("text") or ""))
-        from atelier.gateway.adapters.mcp_server import _handle
+        from atelier.gateway.adapters.mcp_server import _Deferred, _handle
 
         response = _handle(
             {
@@ -175,6 +175,11 @@ def tools_call_cmd(
         )
         if response is None:
             raise click.ClickException("tool call returned no response")
+        if isinstance(response, _Deferred):
+            # Deferral is only armed on the stdio server worker path
+            # (_handle_and_write); the in-process CLI never sets that context, so a
+            # deferred marker is unreachable here. Guard for type safety.
+            raise click.ClickException("tool call returned a deferred result outside the server")
         if "error" in response:
             raise click.ClickException(str(response["error"].get("message") or response["error"]))
         result_payload = response.get("result", {})

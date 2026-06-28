@@ -12,13 +12,8 @@ export class ApiError extends Error {
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new ApiError(
-      res.status,
-      detail ? `${res.status} ${detail}` : `${res.status} ${res.statusText}`
-    );
-  }
+  if (!res.ok)
+    throw new ApiError(res.status, `${res.status} ${res.statusText}`);
   return res.json();
 }
 
@@ -42,13 +37,8 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 
 async function getText(path: string): Promise<string> {
   const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new ApiError(
-      res.status,
-      detail ? `${res.status} ${detail}` : `${res.status} ${res.statusText}`
-    );
-  }
+  if (!res.ok)
+    throw new ApiError(res.status, `${res.status} ${res.statusText}`);
   return res.text();
 }
 
@@ -58,9 +48,12 @@ export interface OverviewStats {
   total_rubrics: number;
   total_clusters: number;
   total_raw_tokens_estimate: number;
+  total_saved_tokens_estimate: number;
+  total_compressed_tokens_estimate: number;
   average_compression_ratio: number;
   estimated_total_cost_usd: number;
   estimated_saved_cost_usd: number;
+  usd_per_1k_tokens: number;
   is_estimate: boolean;
 }
 
@@ -403,7 +396,7 @@ export interface TraceLearning {
   kind: "worked" | "did_not_work" | "next_rule" | "risk" | "note";
   text: string;
   evidence?: string;
-  promote_to?: "memory" | "playbook" | "rubric" | "none" | null;
+  promote_to?: "memory" | "reasonblock" | "rubric" | "none" | null;
 }
 
 export interface Trace {
@@ -581,7 +574,7 @@ export interface NestedTrace {
   created_at: string;
 }
 
-export interface Playbook {
+export interface ReasonBlock {
   id: string;
   domain: string;
   title: string;
@@ -1272,6 +1265,7 @@ export interface MemoryRecallPassage {
 
 export interface MemoryRecallResult {
   passages: MemoryRecallPassage[];
+  recall_id: string;
 }
 
 export interface RunInspectorData {
@@ -1332,10 +1326,6 @@ export interface SessionSummary {
   total_cost_usd: number;
   total_atelier_savings_usd: number;
   label: string | null;
-  task?: string | null;
-  host?: string | null;
-  domain?: string | null;
-  status?: string | null;
   models_used: Record<string, number>;
   input_tokens?: number;
   output_tokens?: number;
@@ -1671,7 +1661,7 @@ export interface TelemetrySummary {
   commands_by_day: { day: string; count: number }[];
   top_commands: { name: string; count: number }[];
   agent_hosts: { name: string; count: number }[];
-  top_playbooks: { block_id_hash: string; count: number; domain: string }[];
+  top_reasonblocks: { block_id_hash: string; count: number; domain: string }[];
   retrieval_score_distribution: { name: string; count: number }[];
   plan_checks: Record<string, number>;
   frustration_behavioral: { name: string; count: number }[];
@@ -1817,12 +1807,11 @@ export const api = {
     if (days) params.set("days", String(days));
     return get<TraceListResponse>(`/traces?${params.toString()}`);
   },
-  trace: (id: string) => get<Trace>(`/v1/traces/${encodeURIComponent(id)}`),
-  ledger: (session_id: string) =>
-    get<any>(`/ledgers/${encodeURIComponent(session_id)}`),
+  trace: (id: string) => get<Trace>(`/v1/traces/${id}`),
+  ledger: (session_id: string) => get<any>(`/ledgers/${session_id}`),
   clusters: () => get<Cluster[]>("/clusters"),
-  blocks: () => get<Playbook[]>("/blocks"),
-  block: (id: string) => get<Playbook>(`/blocks/${encodeURIComponent(id)}`),
+  blocks: () => get<ReasonBlock[]>("/blocks"),
+  block: (id: string) => get<ReasonBlock>(`/blocks/${id}`),
   savings: () => get<SavingsSummary>("/savings"),
   savingsSummary: (windowDays = 14) =>
     get<SavingsSummaryV2>(`/v1/savings/summary?window_days=${windowDays}`),
@@ -1843,21 +1832,19 @@ export const api = {
     post<SwarmLaunchResponse>("/v1/swarm/runs", payload),
   swarmRuns: () => get<SwarmRunListItem[]>("/v1/swarm/runs"),
   swarmRun: (runId: string) =>
-    get<SwarmRunDetailResponse>(
-      `/v1/swarm/runs/${encodeURIComponent(runId)}`
-    ),
+    get<SwarmRunDetailResponse>(`/v1/swarm/runs/${runId}`),
   swarmLogs: (runId: string, childId?: string, stderr = false, tail = 80) => {
     const params = new URLSearchParams();
     if (childId) params.set("child_id", childId);
     params.set("stderr", String(stderr));
     params.set("tail", String(tail));
     return get<SwarmLogResponse>(
-      `/v1/swarm/runs/${encodeURIComponent(runId)}/logs?${params.toString()}`
+      `/v1/swarm/runs/${runId}/logs?${params.toString()}`
     );
   },
   stopSwarmRun: (runId: string, cleanup = false) =>
     post<SwarmRunStateView>(
-      `/v1/swarm/runs/${encodeURIComponent(runId)}/stop?cleanup=${cleanup}`,
+      `/v1/swarm/runs/${runId}/stop?cleanup=${cleanup}`,
       {}
     ),
   workflowCurrent: () => get<WorkflowCurrentDetail>("/v1/workflow/current"),
@@ -1871,7 +1858,7 @@ export const api = {
     }),
   calls: (limit = 200) => get<CallEntry[]>(`/calls?limit=${limit}`),
   rubrics: () => get<Rubric[]>("/v1/rubrics"),
-  rubric: (id: string) => get<Rubric>(`/v1/rubrics/${encodeURIComponent(id)}`),
+  rubric: (id: string) => get<Rubric>(`/v1/rubrics/${id}`),
   mcp_status: () => get<MCPStatus[]>("/mcp/status"),
   hosts: () => get<HostAdapter[]>("/hosts"),
   watchdogConfig: () => get<WatchdogConfig>("/watchdogs/config"),
@@ -1880,7 +1867,7 @@ export const api = {
     profiles?: Record<string, Record<string, number>>;
   }) => post<WatchdogConfig>("/watchdogs/config", payload),
   skills: () => get<Skill[]>("/skills"),
-  skill: (name: string) => get<Skill>(`/skills/${encodeURIComponent(name)}`),
+  skill: (name: string) => get<Skill>(`/skills/${name}`),
   agents: () => get<Agent[]>("/agents"),
   memoryBlocks: (agentId?: string, label?: string) => {
     const params = new URLSearchParams();
@@ -1919,6 +1906,7 @@ export const api = {
     post<{ id: string }>("/v1/traces", payload),
   telemetryConfig: () => get<TelemetryConfigResponse>("/telemetry/config"),
   updateTelemetryConfig: (payload: {
+    remote_enabled?: boolean;
     lexical_frustration_enabled?: boolean;
   }) => post<TelemetryConfigResponse>("/telemetry/config", payload),
   telemetryAck: () => post<TelemetryConfigResponse>("/telemetry/ack", {}),
@@ -1929,9 +1917,9 @@ export const api = {
   telemetrySummary: () => get<TelemetrySummary>("/telemetry/summary"),
   telemetrySchema: () => get<Record<string, unknown>>("/telemetry/schema"),
   rawArtifact: (artifactId: string) =>
-    get<RawArtifact>(`/raw-artifacts/${encodeURIComponent(artifactId)}`),
+    get<RawArtifact>(`/raw-artifacts/${artifactId}`),
   rawArtifactContent: (artifactId: string) =>
-    getText(`/raw-artifacts/${encodeURIComponent(artifactId)}/content`),
+    getText(`/raw-artifacts/${artifactId}/content`),
   fileContentUrl: (path: string) =>
     `${BASE}/v1/files/content?path=${encodeURIComponent(path)}`,
   fileProjectionUrl: (
@@ -1986,24 +1974,19 @@ export const api = {
   // -----------------------------------------------------------------------
   sessions: (since = "7d", limit = 200) =>
     get<SessionSummary[]>(`/v1/sessions?since=${since}&limit=${limit}`),
-  sessionReport: (id: string) =>
-    get<SessionReport>(`/v1/sessions/${encodeURIComponent(id)}`),
+  sessionReport: (id: string) => get<SessionReport>(`/v1/sessions/${id}`),
   getTuiSessions: () => get<TUIAnalytics>("/analytics/tui-sessions"),
   memoryFacts: (vendor?: string) => {
     const suffix = vendor ? `?vendor=${encodeURIComponent(vendor)}` : "";
     return get<MemoryFact[]>(`/v1/memory/facts${suffix}`);
   },
-  memoryFact: (factId: string) =>
-    get<MemoryFact>(`/v1/memory/facts/${encodeURIComponent(factId)}`),
+  memoryFact: (factId: string) => get<MemoryFact>(`/v1/memory/facts/${factId}`),
   insightsWindow: (since = "7d") =>
     get<InsightsWindow>(`/v1/insights?since=${since}`),
   outcomesSummary: (since = "7d") =>
     get<OutcomesSummary>(`/v1/outcomes/summary?since=${since}`),
   outcomesForSession: (sessionId: string) =>
-    get<Record<string, unknown>[]>(
-      `/v1/outcomes/${encodeURIComponent(sessionId)}`
-    ),
+    get<Record<string, unknown>[]>(`/v1/outcomes/${sessionId}`),
   reports: () => get<ReportMeta[]>("/v1/reports"),
-  report: (week: string) =>
-    get<ReportContent>(`/v1/reports/${encodeURIComponent(week)}`),
+  report: (week: string) => get<ReportContent>(`/v1/reports/${week}`),
 };

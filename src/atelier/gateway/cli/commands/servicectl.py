@@ -74,7 +74,7 @@ def service_start(host: str | None, port: int | None, reload: bool) -> None:
     except ImportError as exc:
         if "cannot import name 'main'" in str(exc):
             raise click.ClickException(
-                "The service API 'main' entrypoint is missing. Ensure your 'atelier' installation is up to date."
+                "The service API 'main' entrypoint is missing. " "Ensure your 'atelier' installation is up to date."
             ) from exc
         raise click.ClickException(
             "Could not start the service API. Ensure all dependencies are installed: uv sync --extra api"
@@ -298,7 +298,6 @@ def servicectl_start(
         str(session_import_interval_seconds),
         "--external-analytics-interval-seconds",
         str(external_analytics_interval_seconds),
-        "--auto-update",
     ]
     for period in _normalize_external_analytics_periods(external_analytics_periods):
         command.extend(["--external-analytics-period", period])

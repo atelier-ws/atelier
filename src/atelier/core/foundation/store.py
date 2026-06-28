@@ -1,12 +1,12 @@
-"""Persistent storage for Playbooks, traces, and rubrics.
+"""Persistent storage for ReasonBlocks, traces, and rubrics.
 
 Backend: SQLite + FTS5 (no external services).
 
 Design:
 - One table per entity, JSON column for the full payload.
-- A contentless FTS5 mirror table for Playbooks for fast lookup by
+- A contentless FTS5 mirror table for ReasonBlocks for fast lookup by
   title / triggers / situation / dead_ends / procedure.
-- Markdown copies of playbooks live under <root>/blocks/ for human review
+- Markdown copies of blocks live under <root>/blocks/ for human review
   and version control. Traces are mirrored under <root>/traces/.
 - Redacted raw artifacts live under <root>/raw/ and are linked from traces
   when a host import preserves more detail than the curated Trace schema.
@@ -20,8 +20,6 @@ import logging
 import os
 import re
 import sqlite3
-import tempfile
-import threading
 from collections.abc import Iterable, Iterator
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
@@ -33,25 +31,69 @@ import yaml
 
 from atelier.core.foundation.lesson_models import LessonCandidate, LessonPromotion
 from atelier.core.foundation.models import (
+    BlockStatus,
     ConsolidationCandidate,
-    Playbook,
-    PlaybookStatus,
     RawArtifact,
+    ReasonBlock,
     Rubric,
     Trace,
+    coerce_trace_json,
     to_jsonable,
 )
-from atelier.core.foundation.paths import resolve_workspace_store_dir
-from atelier.core.foundation.session_store import SessionStore
+from atelier.core.foundation.paths import resolve_lessons_root
 
 logger = logging.getLogger(__name__)
+
+TRACE_FTS_COLUMNS = [
+    "id",
+    "task",
+    "reasoning",
+    "tools",
+    "commands",
+    "errors",
+    "output",
+    "files",
+    "validations",
+    "learnings",
+    "meta",
+]
+
+TRACE_FTS_SNIPPETS = [
+    (1, "Task"),
+    (2, "Reasoning"),
+    (3, "Tools"),
+    (4, "Commands"),
+    (5, "Errors"),
+    (6, "Summary"),
+    (7, "Files"),
+    (8, "Validations"),
+    (9, "Learnings"),
+    (10, "Run"),
+]
+
+TRACE_FTS_DDL = """
+CREATE VIRTUAL TABLE traces_fts USING fts5(
+    id UNINDEXED,
+    task,
+    reasoning,
+    tools,
+    commands,
+    errors,
+    output,
+    files,
+    validations,
+    learnings,
+    meta,
+    tokenize = 'porter'
+)
+"""
 
 # --------------------------------------------------------------------------- #
 # Schema                                                                      #
 # --------------------------------------------------------------------------- #
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS playbooks (
+CREATE TABLE IF NOT EXISTS reasonblocks (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     domain TEXT NOT NULL,
@@ -63,10 +105,10 @@ CREATE TABLE IF NOT EXISTS playbooks (
     updated_at TEXT NOT NULL,
     payload TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_playbooks_domain ON playbooks(domain);
-CREATE INDEX IF NOT EXISTS idx_playbooks_status ON playbooks(status);
+CREATE INDEX IF NOT EXISTS idx_reasonblocks_domain ON reasonblocks(domain);
+CREATE INDEX IF NOT EXISTS idx_reasonblocks_status ON reasonblocks(status);
 
-CREATE VIRTUAL TABLE IF NOT EXISTS playbooks_fts USING fts5(
+CREATE VIRTUAL TABLE IF NOT EXISTS reasonblocks_fts USING fts5(
     id UNINDEXED,
     title,
     triggers,
@@ -77,6 +119,53 @@ CREATE VIRTUAL TABLE IF NOT EXISTS playbooks_fts USING fts5(
     tokenize = 'porter'
 );
 
+CREATE TABLE IF NOT EXISTS traces (
+    id TEXT PRIMARY KEY,
+    agent TEXT NOT NULL,
+    host TEXT,
+    domain TEXT,
+    status TEXT NOT NULL,
+    task TEXT NOT NULL,
+    workspace_path TEXT,
+    created_at TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_traces_domain ON traces(domain);
+CREATE INDEX IF NOT EXISTS idx_traces_status ON traces(status);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS traces_fts USING fts5(
+    id UNINDEXED,
+    task,
+    reasoning,
+    tools,
+    commands,
+    errors,
+    output,
+    files,
+    validations,
+    learnings,
+    meta,
+    tokenize = 'porter'
+);
+
+
+CREATE TABLE IF NOT EXISTS raw_artifacts (
+    id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    source_session_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    content_path TEXT NOT NULL,
+    sha256_original TEXT NOT NULL,
+    sha256_redacted TEXT NOT NULL,
+    byte_count_original INTEGER NOT NULL,
+    byte_count_redacted INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    source_file_mtime TEXT,
+    payload TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_raw_artifacts_source_session
+    ON raw_artifacts(source, source_session_id);
 
 CREATE TABLE IF NOT EXISTS rubrics (
     id TEXT PRIMARY KEY,
@@ -129,6 +218,12 @@ CREATE TABLE IF NOT EXISTS consolidation_candidate (
 );
 CREATE INDEX IF NOT EXISTS ix_consolidation_candidate_pending
     ON consolidation_candidate(decided_at, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS sync_status (
+    session_id TEXT PRIMARY KEY,
+    synced_at TEXT NOT NULL,
+    payload_hash TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS benchmark_run (
     id TEXT PRIMARY KEY,
@@ -190,70 +285,42 @@ class ContextStore:
     so they can be reviewed in PRs without running tools.
     """
 
-    def __init__(
-        self, root: Path | str, lessons_root: Path | str | None = None, *, db_name: str = "atelier.db"
-    ) -> None:
+    def __init__(self, root: Path | str, lessons_root: Path | str | None = None) -> None:
         self.root = Path(root).resolve()
-        # db_name lets callers route a store to a dedicated SQLite file (e.g.
-        # memory.db, recall.db) so high-write use-cases don't contend on one file.
-        self.db_path = self.root / db_name
+        self.db_path = self.root / "atelier.db"
 
-        # Blocks/rubrics are runtime *mirrors* of DB content, kept per-project under
-        # the global store root (NOT in .atelier/lessons, which is reserved for the user's
-        # real knowledge consumed by the knowledge-extraction KB). Per-project
-        # isolation prevents one project's mirror from polluting another's. An
-        # explicit lessons_root still overrides for backward compatibility.
-        if lessons_root is not None:
-            _k_root = Path(lessons_root).expanduser().resolve()
-        else:
-            _k_root = resolve_workspace_store_dir(self.root)
+        # Lessons (blocks/rubrics) are project-local by default for Git tracking.
+        # History (traces/raw) stays in the primary root.
+        _k_root = resolve_lessons_root(self.root, lessons_root)
         self.blocks_dir = _k_root / "blocks"
         self.rubrics_dir = _k_root / "rubrics"
 
         self.traces_dir = self.root / "traces"
+        self.raw_dir = self.root / "raw"
 
         self._initialized = False
         self._connection: sqlite3.Connection | None = None
-        # Long-lived connection dedicated to the high-frequency context-budget
-        # write path (one INSERT per non-error tool call). Lazily opened with
-        # check_same_thread=False because record() runs on the MCP dispatcher's
-        # thread pool; every use is serialized by _context_budget_lock.
-        self._context_budget_conn: sqlite3.Connection | None = None
-        self._context_budget_lock = threading.Lock()
-        # File-based session store (sessions/<id>/). Traces also flow here so the
-        # DB copy can eventually be retired in favor of the per-session files.
-        self._session_store: SessionStore | None = None
-
-    @property
-    def session_store(self) -> SessionStore:
-        if self._session_store is None:
-            from atelier.core.foundation.paths import resolve_workspace_root, resolve_workspace_store_dir
-
-            ws_root = resolve_workspace_root()
-            store_root = resolve_workspace_store_dir(root=self.root, workspace_root=ws_root)
-            self._session_store = SessionStore(store_root)
-        return self._session_store
 
     @contextlib.contextmanager
     def batch_mode(self) -> Iterator[sqlite3.Connection]:
-        """Run multiple operations over one shared connection.
+        """Wrap multiple operations in a single connection and transaction.
 
-        Optimized for bulk imports with high-performance PRAGMAs. This is NOT
-        an atomic unit of work: the store's write helpers each use ``with
-        conn:`` and therefore commit piece-by-piece, so a mid-batch failure
-        leaves already-committed rows in place. Use this only for performance
-        (connection reuse + bulk PRAGMAs), not for all-or-nothing semantics.
+        Optimized for bulk imports with high-performance PRAGMAs.
         """
         conn = self._connect()
         # High-performance settings for bulk import (must be outside transaction)
         conn.execute("PRAGMA synchronous = OFF")
         conn.execute(f"PRAGMA cache_size = -{512 * 1024}")  # 512MB cache
 
+        conn.execute("BEGIN TRANSACTION")
         old_conn = self._connection
         self._connection = conn
         try:
             yield conn
             conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             self._connection = old_conn
             with contextlib.suppress(sqlite3.Error):
@@ -267,10 +334,38 @@ class ContextStore:
         self.blocks_dir.mkdir(parents=True, exist_ok=True)
         self.traces_dir.mkdir(parents=True, exist_ok=True)
         self.rubrics_dir.mkdir(parents=True, exist_ok=True)
+        self.raw_dir.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
-            self._migrate_playbook_rename(conn)
             conn.executescript(SCHEMA)
+            # Ensure source_file_mtime column exists (migration for existing DBs)
             import contextlib
+
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("ALTER TABLE raw_artifacts ADD COLUMN source_file_mtime TEXT")
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("ALTER TABLE raw_artifacts ADD COLUMN payload TEXT NOT NULL DEFAULT '{}'")
+
+            # Data recovery: Infer host from ID prefix for existing imported runs
+
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("ALTER TABLE traces ADD COLUMN host TEXT")
+
+            from atelier.gateway.hosts.session_parsers.registry import (
+                SUPPORTED_SESSION_IMPORT_HOSTS,
+            )
+
+            for h in SUPPORTED_SESSION_IMPORT_HOSTS:
+                conn.execute("UPDATE traces SET host = ? WHERE id LIKE ? AND host IS NULL", (h, f"{h}-%"))
+
+            # Strip legacy fields (e.g. run_id) from stored trace payloads so old
+            # data doesn't crash Trace.model_validate_json() during FTS reindex.
+            conn.execute(
+                "UPDATE traces SET payload = json_remove(payload, '$.run_id')"
+                " WHERE json_extract(payload, '$.run_id') IS NOT NULL"
+            )
+
+            recreated_trace_fts = self._ensure_trace_search_schema(conn)
+            self._reindex_traces_fts_if_needed(conn, force=recreated_trace_fts)
 
             for ddl in (
                 "ALTER TABLE lesson_candidate ADD COLUMN body TEXT NOT NULL DEFAULT ''",
@@ -301,46 +396,11 @@ class ContextStore:
         conn.execute("PRAGMA journal_mode = WAL")
         return conn
 
-    @staticmethod
-    def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
-        row = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type IN ('table','virtual table') AND name = ?",
-            (name,),
-        ).fetchone()
-        return row is not None
-
-    def _migrate_playbook_rename(self, conn: sqlite3.Connection) -> None:
-        """Rename the legacy ``reasonblocks`` schema to ``playbooks`` in place.
-
-        Pre-v3 SQLite databases stored playbooks in a table named
-        ``reasonblocks`` (with ``reasonblocks_fts`` and ``idx_reasonblocks_*``).
-        The v3 :data:`SCHEMA` creates ``playbooks`` with
-        ``CREATE TABLE IF NOT EXISTS``; without this migration an upgraded DB
-        would keep the populated ``reasonblocks`` table and gain a *second*,
-        empty ``playbooks`` table -- orphaning every existing row.
-
-        This runs BEFORE :data:`SCHEMA` so the rename target is still free, and
-        is guarded so it is a safe no-op on a fresh DB (no ``reasonblocks``) and
-        on an already-migrated DB (``playbooks`` already present), making it
-        idempotent.
-        """
-        if self._table_exists(conn, "playbooks") or not self._table_exists(conn, "reasonblocks"):
-            return
-        conn.execute("ALTER TABLE reasonblocks RENAME TO playbooks")
-        # SQLite has no ALTER INDEX RENAME; drop the legacy indexes and let
-        # SCHEMA recreate them under their new names (CREATE INDEX IF NOT EXISTS).
-        conn.execute("DROP INDEX IF EXISTS idx_reasonblocks_domain")
-        conn.execute("DROP INDEX IF EXISTS idx_reasonblocks_status")
-        # The contentless FTS mirror keeps its indexed rows across the rename.
-        if self._table_exists(conn, "reasonblocks_fts") and not self._table_exists(conn, "playbooks_fts"):
-            conn.execute("ALTER TABLE reasonblocks_fts RENAME TO playbooks_fts")
-        conn.commit()
-
     def _apply_v2_migrations(self, conn: sqlite3.Connection) -> None:
         from atelier.infra.storage.migrations import SQLITE_MIGRATIONS, read_migration
 
         conn.executescript(
-            "CREATE TABLE IF NOT EXISTS _schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);"
+            "CREATE TABLE IF NOT EXISTS _schema_migrations" " (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);"
         )
         applied = {row[0] for row in conn.execute("SELECT name FROM _schema_migrations").fetchall()}
         for name in SQLITE_MIGRATIONS:
@@ -356,10 +416,150 @@ class ContextStore:
                     if "duplicate column name" not in msg and "already exists" not in msg:
                         raise
             conn.execute(
-                "INSERT OR IGNORE INTO _schema_migrations (name, applied_at) VALUES (?, datetime('now'))",
+                "INSERT OR IGNORE INTO _schema_migrations (name, applied_at)" " VALUES (?, datetime('now'))",
                 (name,),
             )
             conn.commit()
+
+    def _ensure_trace_search_schema(self, conn: sqlite3.Connection) -> bool:
+        rows = conn.execute("PRAGMA table_info(traces_fts)").fetchall()
+        actual_columns = [row[1] for row in rows]
+        if actual_columns == TRACE_FTS_COLUMNS:
+            return False
+        conn.execute("DROP TABLE IF EXISTS traces_fts")
+        conn.execute(TRACE_FTS_DDL)
+        return True
+
+    def _reindex_traces_fts_if_needed(self, conn: sqlite3.Connection, *, force: bool = False) -> None:
+        trace_count = conn.execute("SELECT COUNT(*) FROM traces").fetchone()[0]
+        fts_count = conn.execute("SELECT COUNT(*) FROM traces_fts").fetchone()[0]
+        if not force and trace_count == fts_count:
+            return
+        self._reindex_traces_fts(conn)
+
+    def _reindex_traces_fts(self, conn: sqlite3.Connection) -> None:
+        rows = conn.execute("SELECT payload FROM traces").fetchall()
+        with closing(conn.cursor()) as cur:
+            cur.execute("DELETE FROM traces_fts")
+            for row in rows:
+                self._update_trace_fts(cur, Trace.model_validate_json(coerce_trace_json(row["payload"])))
+
+    def _build_trace_search_document(self, trace: Trace) -> tuple[str, ...]:
+        reasoning = "\n".join(trace.reasoning)
+
+        tools_parts = []
+        for tool in trace.tools_called:
+            sections = [tool.name]
+            if tool.result_summary:
+                sections.append(tool.result_summary)
+            if tool.args:
+                sections.append(json.dumps(tool.args, ensure_ascii=False, sort_keys=True))
+            tools_parts.append("\n".join(part for part in sections if part))
+        tools = "\n\n".join(tools_parts)
+
+        command_parts = []
+        for command in trace.commands_run:
+            if isinstance(command, str):
+                command_parts.append(command)
+                continue
+            command_parts.append(
+                "\n".join(part for part in [command.command, command.stdout or "", command.stderr or ""] if part)
+            )
+        commands = "\n\n".join(command_parts)
+
+        errors = "\n".join(trace.errors_seen)
+        output = "\n\n".join(part for part in [trace.diff_summary, trace.output_summary] if part)
+
+        file_parts = []
+        for file_record in trace.files_touched:
+            if isinstance(file_record, str):
+                file_parts.append(file_record)
+                continue
+            sections = [file_record.path]
+            if file_record.event:
+                sections.append(file_record.event)
+            if file_record.diff:
+                sections.append(file_record.diff)
+            file_parts.append("\n".join(part for part in sections if part))
+        files = "\n\n".join(file_parts)
+
+        validation_parts = []
+        for validation in trace.validation_results:
+            status = "passed" if validation.passed else "failed"
+            validation_parts.append(
+                " ".join(part for part in [validation.name, status, validation.detail or ""] if part)
+            )
+        validations = "\n".join(validation_parts)
+
+        learning_parts = []
+        for learning in trace.learnings:
+            learning_parts.append(
+                "\n".join(
+                    part
+                    for part in [
+                        learning.kind,
+                        learning.text,
+                        learning.evidence,
+                        learning.promote_to or "",
+                    ]
+                    if part
+                )
+            )
+        learnings = "\n\n".join(learning_parts)
+
+        meta = "\n".join(
+            part
+            for part in [
+                trace.id,
+                trace.session_id or "",
+                trace.agent,
+                trace.host or "",
+                trace.domain or "",
+                trace.status,
+                trace.model,
+            ]
+            if part
+        )
+
+        return (
+            trace.task,
+            reasoning,
+            tools,
+            commands,
+            errors,
+            output,
+            files,
+            validations,
+            learnings,
+            meta,
+        )
+
+    def _build_trace_search_query(self, query: str) -> str:
+        clauses: list[str] = []
+        for phrase, token in re.findall(r'"([^"]+)"|(\S+)', query):
+            term = (phrase or token).strip().lower()
+            if not term:
+                continue
+            if phrase:
+                escaped_term = term.replace('"', '""')
+                clauses.append(f'"{escaped_term}"')
+                continue
+            pieces = [piece for piece in re.split(r"[^0-9a-z_]+", term) if piece]
+            clauses.extend(f"{piece}*" for piece in pieces)
+        if clauses:
+            return " AND ".join(clauses)
+        escaped = query.strip().replace('"', '""')
+        return f'"{escaped}"'
+
+    def _trace_search_snippets(self, row: sqlite3.Row) -> list[str]:
+        snippets: list[str] = []
+        for _, label in TRACE_FTS_SNIPPETS:
+            value = row[f"s_{label.lower()}"]
+            if not value or "[[" not in value:
+                continue
+            cleaned_value = re.sub(r"\s+", " ", value).strip()
+            snippets.append(f"{label}: {cleaned_value}")
+        return snippets
 
     def verify_v2_schema(self, conn: sqlite3.Connection | None = None) -> bool:
         """Return True when every V2 table exists in SQLite."""
@@ -385,14 +585,14 @@ class ContextStore:
             if owns_connection:
                 active_conn.close()
 
-    # ----- Playbooks ---------------------------------------------------- #
+    # ----- ReasonBlocks ---------------------------------------------------- #
 
-    def upsert_block(self, block: Playbook, *, write_markdown: bool = True) -> None:
+    def upsert_block(self, block: ReasonBlock, *, write_markdown: bool = True) -> None:
         payload = json.dumps(to_jsonable(block), ensure_ascii=False)
         with self._connect() as conn, closing(conn.cursor()) as cur:
             cur.execute(
                 """
-                INSERT INTO playbooks (
+                INSERT INTO reasonblocks (
                     id, title, domain, status,
                     usage_count, success_count, failure_count,
                     created_at, updated_at, payload
@@ -421,10 +621,10 @@ class ContextStore:
                     payload,
                 ),
             )
-            cur.execute("DELETE FROM playbooks_fts WHERE id = ?", (block.id,))
+            cur.execute("DELETE FROM reasonblocks_fts WHERE id = ?", (block.id,))
             cur.execute(
                 """
-                INSERT INTO playbooks_fts (
+                INSERT INTO reasonblocks_fts (
                     id, title, triggers, situation, dead_ends, procedure, failure_signals
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -440,23 +640,23 @@ class ContextStore:
                 ),
             )
         if write_markdown:
-            self._write_playbook_markdown(block)
+            self._write_block_markdown(block)
 
-    def get_block(self, block_id: str) -> Playbook | None:
+    def get_block(self, block_id: str) -> ReasonBlock | None:
         with self._connect() as conn:
-            row = conn.execute("SELECT payload FROM playbooks WHERE id = ?", (block_id,)).fetchone()
+            row = conn.execute("SELECT payload FROM reasonblocks WHERE id = ?", (block_id,)).fetchone()
         if row is None:
             return None
-        return Playbook.model_validate_json(row["payload"])
+        return ReasonBlock.model_validate_json(row["payload"])
 
     def list_blocks(
         self,
         *,
         domain: str | None = None,
-        status: PlaybookStatus | None = "active",
+        status: BlockStatus | None = "active",
         include_deprecated: bool = False,
-    ) -> list[Playbook]:
-        sql = "SELECT payload FROM playbooks WHERE 1=1"
+    ) -> list[ReasonBlock]:
+        sql = "SELECT payload FROM reasonblocks WHERE 1=1"
         params: list[Any] = []
         if domain:
             sql += " AND domain = ?"
@@ -469,30 +669,27 @@ class ContextStore:
         sql += " ORDER BY updated_at DESC"
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
-        return [Playbook.model_validate_json(r["payload"]) for r in rows]
+        return [ReasonBlock.model_validate_json(r["payload"]) for r in rows]
 
-    def search_blocks(self, query: str, *, limit: int = 20) -> list[Playbook]:
+    def search_blocks(self, query: str, *, limit: int = 20) -> list[ReasonBlock]:
         if not query.strip():
             return self.list_blocks()[:limit]
-        fts_query = self._build_playbook_search_query(query)
-        # Match the blank-query branch (list_blocks defaults to active-only):
-        # deprecated and quarantined blocks must not reappear just because the
-        # caller supplied search terms.
+        fts_query = self._build_reasonblock_search_query(query)
         sql = (
-            "SELECT r.payload FROM playbooks_fts f "
-            "JOIN playbooks r ON r.id = f.id "
-            "WHERE playbooks_fts MATCH ? "
-            "AND r.status = 'active' "
+            "SELECT r.payload FROM reasonblocks_fts f "
+            "JOIN reasonblocks r ON r.id = f.id "
+            "WHERE reasonblocks_fts MATCH ? "
+            "AND r.status != 'quarantined' "
             "ORDER BY rank LIMIT ?"
         )
         with self._connect() as conn:
             rows = conn.execute(sql, (fts_query, limit)).fetchall()
-        return [Playbook.model_validate_json(r["payload"]) for r in rows]
+        return [ReasonBlock.model_validate_json(r["payload"]) for r in rows]
 
-    def _build_playbook_search_query(self, query: str) -> str:
-        """Build a robust FTS5 query for playbooks.
+    def _build_reasonblock_search_query(self, query: str) -> str:
+        """Build a robust FTS5 query for reasonblocks.
 
-        Playbook retrieval should prefer recall over overly strict phrase
+        ReasonBlock retrieval should prefer recall over overly strict phrase
         matching, so this expands input into prefix terms joined by AND.
         """
         clauses: list[str] = []
@@ -511,25 +708,25 @@ class ContextStore:
         escaped = query.strip().replace('"', '""')
         return f'"{escaped}"'
 
-    def update_block_status(self, block_id: str, status: PlaybookStatus) -> bool:
+    def update_block_status(self, block_id: str, status: BlockStatus) -> bool:
         with self._connect() as conn, closing(conn.cursor()) as cur:
             cur.execute(
-                "UPDATE playbooks SET status = ?, updated_at = ? WHERE id = ?",
+                "UPDATE reasonblocks SET status = ?, updated_at = ? WHERE id = ?",
                 (status, datetime.now(UTC).isoformat(), block_id),
             )
             changed = cur.rowcount > 0
         if changed:
             block = self.get_block(block_id)
             if block:
-                self._write_playbook_markdown(block)
+                self._write_block_markdown(block)
         return changed
 
     def delete_block(self, block_id: str) -> bool:
-        """Hard-delete a Playbook from the DB, FTS index, and markdown."""
+        """Hard-delete a ReasonBlock from the DB, FTS index, and markdown."""
         with self._connect() as conn, closing(conn.cursor()) as cur:
-            cur.execute("DELETE FROM playbooks WHERE id = ?", (block_id,))
+            cur.execute("DELETE FROM reasonblocks WHERE id = ?", (block_id,))
             deleted = cur.rowcount > 0
-            cur.execute("DELETE FROM playbooks_fts WHERE id = ?", (block_id,))
+            cur.execute("DELETE FROM reasonblocks_fts WHERE id = ?", (block_id,))
         markdown = self.blocks_dir / f"{block_id}.md"
         if markdown.exists():
             markdown.unlink()
@@ -543,17 +740,17 @@ class ContextStore:
     ) -> None:
         with self._connect() as conn, closing(conn.cursor()) as cur:
             cur.execute(
-                "UPDATE playbooks SET usage_count = usage_count + 1 WHERE id = ?",
+                "UPDATE reasonblocks SET usage_count = usage_count + 1 WHERE id = ?",
                 (block_id,),
             )
             if success is True:
                 cur.execute(
-                    "UPDATE playbooks SET success_count = success_count + 1 WHERE id = ?",
+                    "UPDATE reasonblocks SET success_count = success_count + 1 WHERE id = ?",
                     (block_id,),
                 )
             elif success is False:
                 cur.execute(
-                    "UPDATE playbooks SET failure_count = failure_count + 1 WHERE id = ?",
+                    "UPDATE reasonblocks SET failure_count = failure_count + 1 WHERE id = ?",
                     (block_id,),
                 )
 
@@ -567,6 +764,7 @@ class ContextStore:
         results = {"blocks": 0, "rubrics": 0}
 
         if self.blocks_dir.exists():
+            from atelier.core.capabilities.starter_packs import load_template_block
             from atelier.core.foundation.parser import parse_block_markdown
 
             prev = self._load_sync_manifest("blocks")
@@ -575,21 +773,22 @@ class ContextStore:
             for path in sorted(self.blocks_dir.rglob("*.md")):
                 key = str(path)
                 mtime = path.stat().st_mtime_ns
+                fresh[key] = mtime
                 if prev.get(key) == mtime:
-                    fresh[key] = mtime  # unchanged — keep seen, skip read/parse/upsert
-                    continue
+                    continue  # unchanged — skip read/parse/upsert
 
                 try:
-                    content = path.read_text(encoding="utf-8")
-                    block = parse_block_markdown(content)
+                    if path.name.startswith("template_"):
+                        block = load_template_block(path)
+                    else:
+                        content = path.read_text(encoding="utf-8")
+                        block = parse_block_markdown(content)
                     self.upsert_block(block, write_markdown=False)
                     results["blocks"] += 1
                 except Exception as exc:
                     logging.exception("Recovered from broad exception handler")
                     logger.warning("failed to sync lessons block from %s: %s", path, exc)
-                    continue  # leave out of manifest so a transient failure retries
-                # Only record the mtime once the upsert actually succeeded.
-                fresh[key] = mtime
+                    continue
 
             self._save_sync_manifest("blocks", fresh)
 
@@ -601,9 +800,9 @@ class ContextStore:
             for path in rubric_paths:
                 key = str(path)
                 mtime = path.stat().st_mtime_ns
+                fresh_rubrics[key] = mtime
                 if prev.get(key) == mtime:
-                    fresh_rubrics[key] = mtime  # unchanged — keep seen
-                    continue
+                    continue  # unchanged
 
                 try:
                     content = path.read_text(encoding="utf-8")
@@ -614,9 +813,7 @@ class ContextStore:
                 except Exception as exc:
                     logging.exception("Recovered from broad exception handler")
                     logger.warning("failed to sync lessons rubric from %s: %s", path, exc)
-                    continue  # leave out of manifest so a transient failure retries
-                # Only record the mtime once the upsert actually succeeded.
-                fresh_rubrics[key] = mtime
+                    continue
 
             self._save_sync_manifest("rubrics", fresh_rubrics)
 
@@ -641,7 +838,7 @@ class ContextStore:
 
     def _sync_manifest_path(self, kind: str) -> Path:
         """Return path to the incremental-sync manifest for *kind*."""
-        return self.root / f"lessons_sync_{kind}.json"
+        return self.root / f".lessons_sync_{kind}.json"
 
     def _load_sync_manifest(self, kind: str) -> dict[str, int]:
         path = self._sync_manifest_path(kind)
@@ -656,53 +853,141 @@ class ContextStore:
 
     def _save_sync_manifest(self, kind: str, manifest: dict[str, int]) -> None:
         path = self._sync_manifest_path(kind)
-        # Write to a sibling temp file then atomically replace so a crash
-        # mid-write can never leave a partially written (corrupt) manifest.
-        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".~lessons_sync_")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(json.dumps(manifest, indent=2, sort_keys=True))
-            os.replace(tmp, path)
-        except Exception:
-            with contextlib.suppress(OSError):
-                os.unlink(tmp)
-            raise
+        path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
 
     # ----- Traces ---------------------------------------------------------- #
 
     def record_trace(self, trace: Trace, *, write_json: bool = True) -> None:
-        # Traces are stored in the file-based session store (sessions/<id>/), not
-        # the DB — a session transcript is a file, so the DB copy was the wrong
-        # design. write_json additionally writes the legacy traces_dir mirror.
-        self.session_store.record(to_jsonable(trace))
+        payload = json.dumps(to_jsonable(trace), ensure_ascii=False)
+        with self._connect() as conn, closing(conn.cursor()) as cur:
+            cur.execute(
+                """
+                INSERT INTO traces (id, agent, host, domain, status, task, workspace_path, created_at, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    agent = excluded.agent,
+                    host = excluded.host,
+                    domain = excluded.domain,
+                    status = excluded.status,
+                    task = excluded.task,
+                    workspace_path = excluded.workspace_path,
+                    payload = excluded.payload
+                """,
+                (
+                    trace.id,
+                    trace.agent,
+                    trace.host,
+                    trace.domain,
+                    trace.status,
+                    trace.task,
+                    trace.workspace_path,
+                    trace.created_at.isoformat(),
+                    payload,
+                ),
+            )
+            # Update FTS index
+            self._update_trace_fts(cur, trace)
+
         if write_json:
             self._write_trace_json(trace)
 
+    def _update_trace_fts(self, cur: sqlite3.Cursor, trace: Trace) -> None:
+        """Update the FTS5 index for a single trace."""
+        task, reasoning, tools, commands, errors, output, files, validations, learnings, meta = (
+            self._build_trace_search_document(trace)
+        )
+
+        cur.execute("DELETE FROM traces_fts WHERE id = ?", (trace.id,))
+        cur.execute(
+            """
+            INSERT INTO traces_fts (
+                id,
+                task,
+                reasoning,
+                tools,
+                commands,
+                errors,
+                output,
+                files,
+                validations,
+                learnings,
+                meta
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                trace.id,
+                task,
+                reasoning,
+                tools,
+                commands,
+                errors,
+                output,
+                files,
+                validations,
+                learnings,
+                meta,
+            ),
+        )
+
     def delete_trace(self, trace_id: str) -> None:
-        self.session_store.delete(trace_id)
-        # Remove the legacy traces_dir mirror if it still exists.
+        with self._connect() as conn, closing(conn.cursor()) as cur:
+            cur.execute("DELETE FROM traces WHERE id = ?", (trace_id,))
+            cur.execute("DELETE FROM traces_fts WHERE id = ?", (trace_id,))
+
+        trace_json_path = self.traces_dir / f"{trace_id}.json"
         with contextlib.suppress(OSError):
-            (self.traces_dir / f"{trace_id}.json").unlink()
+            trace_json_path.unlink()
 
     def trace_exists(self, trace_id: str) -> bool:
         """Lightweight existence check — no deserialization."""
-        return self.session_store.exists(trace_id)
+        with self._connect() as conn:
+            row = conn.execute("SELECT 1 FROM traces WHERE id = ?", (trace_id,)).fetchone()
+        return row is not None
 
     def get_trace(self, trace_id: str) -> Trace | None:
-        data = self.session_store.get(trace_id)
-        if data is None:
-            # Fallback: trace_id may actually be a session_id.
-            traces = self.session_store.traces_for(trace_id)
-            data = traces[0] if traces else None
-        return Trace.model_validate(data) if data is not None else None
+        with self._connect() as conn:
+            row = conn.execute("SELECT payload FROM traces WHERE id = ?", (trace_id,)).fetchone()
+            if row is None:
+                # Fallback: check if trace_id was actually a session_id
+                row = conn.execute(
+                    "SELECT payload FROM traces WHERE json_extract(payload, '$.session_id') = ?",
+                    (trace_id,),
+                ).fetchone()
+
+        if row is None:
+            return None
+        return Trace.model_validate_json(coerce_trace_json(row["payload"]))
 
     def list_unsynced_trace_ids(self, limit: int = 500) -> list[str]:
         """Return IDs of traces that have not been successfully synced."""
-        return self.session_store.unsynced_ids(limit)
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT t.id FROM traces t
+                LEFT JOIN sync_status s ON t.id = s.session_id
+                WHERE s.session_id IS NULL
+                ORDER BY t.created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [row[0] for row in rows]
 
     def mark_synced(self, session_id: str, payload_hash: str) -> None:
-        """Mark a session as successfully synced (payload_hash kept for API compat)."""
-        self.session_store.mark_synced(session_id, at=datetime.now(UTC).isoformat())
+        """Mark a session as successfully synced."""
+        synced_at = datetime.now(UTC).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO sync_status (session_id, synced_at, payload_hash)
+                VALUES (?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    synced_at = excluded.synced_at,
+                    payload_hash = excluded.payload_hash
+                """,
+                (session_id, synced_at, payload_hash),
+            )
 
     def list_traces(
         self,
@@ -716,17 +1001,80 @@ class ContextStore:
         limit: int = 100,
         offset: int = 0,
     ) -> list[Trace]:
-        rows = self.session_store.list_full(
-            domain=domain,
-            status=status,
-            agent=agent,
-            host=host,
-            query=query,
-            since=since.isoformat() if since else None,
-            limit=limit,
-            offset=offset,
-        )
-        return [Trace.model_validate(row) for row in rows]
+        if query and query.strip():
+            search_query = self._build_trace_search_query(query)
+            sql = (
+                "SELECT t.payload, "
+                "snippet(traces_fts, 1, '[[', ']]', '...', 12) as s_task, "
+                "snippet(traces_fts, 2, '[[', ']]', '...', 12) as s_reasoning, "
+                "snippet(traces_fts, 3, '[[', ']]', '...', 12) as s_tools, "
+                "snippet(traces_fts, 4, '[[', ']]', '...', 12) as s_commands, "
+                "snippet(traces_fts, 5, '[[', ']]', '...', 12) as s_errors, "
+                "snippet(traces_fts, 6, '[[', ']]', '...', 12) as s_summary, "
+                "snippet(traces_fts, 7, '[[', ']]', '...', 12) as s_files, "
+                "snippet(traces_fts, 8, '[[', ']]', '...', 12) as s_validations, "
+                "snippet(traces_fts, 9, '[[', ']]', '...', 12) as s_learnings, "
+                "snippet(traces_fts, 10, '[[', ']]', '...', 12) as s_run "
+                "FROM traces_fts "
+                "JOIN traces t ON t.id = traces_fts.id "
+                "WHERE traces_fts MATCH ? "
+                "AND t.task != 'session-auto-record' "
+            )
+            params: list[Any] = [search_query]
+            if domain:
+                sql += " AND t.domain = ?"
+                params.append(domain)
+            if status:
+                sql += " AND t.status = ?"
+                params.append(status)
+            if agent:
+                sql += " AND t.agent = ?"
+                params.append(agent)
+            if host:
+                sql += " AND t.host = ?"
+                params.append(host)
+            if since:
+                sql += " AND t.created_at >= ?"
+                params.append(since.isoformat())
+
+            sql += " ORDER BY bm25(traces_fts), t.created_at DESC LIMIT ? OFFSET ?"
+            params.append(limit)
+            params.append(offset)
+
+            with self._connect() as conn:
+                rows = conn.execute(sql, params).fetchall()
+
+            results = []
+            for row in rows:
+                trace = Trace.model_validate_json(coerce_trace_json(row["payload"]))
+                trace.snippets = self._trace_search_snippets(row)
+                results.append(trace)
+            return results
+
+        # Standard filter path
+        sql = "SELECT payload FROM traces WHERE task != 'session-auto-record' AND 1=1"
+        params = []
+        if domain:
+            sql += " AND domain = ?"
+            params.append(domain)
+        if status:
+            sql += " AND status = ?"
+            params.append(status)
+        if agent:
+            sql += " AND agent = ?"
+            params.append(agent)
+        if host:
+            sql += " AND host = ?"
+            params.append(host)
+        if since:
+            sql += " AND created_at >= ?"
+            params.append(since.isoformat())
+        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.append(limit)
+        params.append(offset)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [Trace.model_validate_json(coerce_trace_json(r["payload"])) for r in rows]
 
     def get_traces_metrics(
         self,
@@ -737,28 +1085,103 @@ class ContextStore:
         since: datetime | None = None,
     ) -> dict[str, Any]:
         """Return aggregate metrics for traces matching the filters."""
-        metrics = self.session_store.metrics(
-            domain=domain, agent=agent, host=host, since=since.isoformat() if since else None
-        )
+        base_sql = "FROM traces WHERE task != 'session-auto-record' AND 1=1"
+        params: list[Any] = []
+        if domain:
+            base_sql += " AND domain = ?"
+            params.append(domain)
+        if agent:
+            base_sql += " AND agent = ?"
+            params.append(agent)
+        if host:
+            base_sql += " AND host = ?"
+            params.append(host)
+        if since:
+            base_sql += " AND created_at >= ?"
+            params.append(since.isoformat())
+
+        with closing(self._connect()) as conn:
+            with conn:
+                # 1. Total and status breakdown
+                status_sql = f"SELECT status, COUNT(*) {base_sql} GROUP BY status"
+                status_rows = conn.execute(status_sql, params).fetchall()
+
+                # 2. Distinct hosts, agents, and domains
+                host_sql = f"SELECT DISTINCT host {base_sql}"
+                host_rows = conn.execute(host_sql, params).fetchall()
+
+                agent_sql = f"SELECT DISTINCT agent {base_sql}"
+                agent_rows = conn.execute(agent_sql, params).fetchall()
+
+                domain_sql = f"SELECT DISTINCT domain {base_sql}"
+                domain_rows = conn.execute(domain_sql, params).fetchall()
+
+        stats = {"total": 0, "success": 0, "failed": 0, "partial": 0}
+        for row in status_rows:
+            s = row["status"]
+            c = row["COUNT(*)"]
+            stats["total"] += c
+            if s in stats:
+                stats[s] = c
+
         return {
-            "stats": {
-                "total": metrics["total"],
-                "success": metrics["success"],
-                "failed": metrics["failed"],
-                "partial": metrics["partial"],
-            },
-            "hosts": metrics["hosts"],
-            "agents": metrics["agents"],
-            "domains": metrics["domains"],
+            "stats": stats,
+            "hosts": [r["host"] for r in host_rows if r["host"]],
+            "agents": [r["agent"] for r in agent_rows if r["agent"]],
+            "domains": [r["domain"] for r in domain_rows if r["domain"]],
         }
 
     # ----- Raw artifacts -------------------------------------------------- #
 
     def record_raw_artifact(self, artifact: RawArtifact, content: str) -> None:
-        self.session_store.record_raw_artifact(artifact, content)
+        payload = json.dumps(to_jsonable(artifact), ensure_ascii=False)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO raw_artifacts (
+                    id, source, source_session_id, kind, relative_path,
+                    content_path, sha256_original, sha256_redacted,
+                    byte_count_original, byte_count_redacted,
+                    created_at, source_file_mtime, payload
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    source = excluded.source,
+                    source_session_id = excluded.source_session_id,
+                    kind = excluded.kind,
+                    relative_path = excluded.relative_path,
+                    content_path = excluded.content_path,
+                    sha256_original = excluded.sha256_original,
+                    sha256_redacted = excluded.sha256_redacted,
+                    byte_count_original = excluded.byte_count_original,
+                    byte_count_redacted = excluded.byte_count_redacted,
+                    source_file_mtime = excluded.source_file_mtime,
+                    payload = excluded.payload
+                """,
+                (
+                    artifact.id,
+                    artifact.source,
+                    artifact.source_session_id,
+                    artifact.kind,
+                    artifact.relative_path,
+                    artifact.content_path,
+                    artifact.sha256_original,
+                    artifact.sha256_redacted,
+                    artifact.byte_count_original,
+                    artifact.byte_count_redacted,
+                    artifact.created_at.isoformat(),
+                    artifact.source_file_mtime.isoformat() if artifact.source_file_mtime else None,
+                    payload,
+                ),
+            )
+        self._write_raw_artifact(artifact, content)
 
     def get_raw_artifact(self, artifact_id: str) -> RawArtifact | None:
-        return self.session_store.get_raw_artifact(artifact_id)
+        with self._connect() as conn:
+            row = conn.execute("SELECT payload FROM raw_artifacts WHERE id = ?", (artifact_id,)).fetchone()
+        if row is None:
+            return None
+        return RawArtifact.model_validate_json(row["payload"])
 
     def list_raw_artifacts(
         self,
@@ -767,10 +1190,22 @@ class ContextStore:
         source_session_id: str | None = None,
         limit: int = 100,
     ) -> list[RawArtifact]:
-        return self.session_store.list_raw_artifacts(source=source, source_session_id=source_session_id, limit=limit)
+        sql = "SELECT payload FROM raw_artifacts WHERE 1=1"
+        params: list[Any] = []
+        if source:
+            sql += " AND source = ?"
+            params.append(source)
+        if source_session_id:
+            sql += " AND source_session_id = ?"
+            params.append(source_session_id)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [RawArtifact.model_validate_json(r["payload"]) for r in rows]
 
     def read_raw_artifact_content(self, artifact: RawArtifact) -> str:
-        return self.session_store.read_raw_artifact_content(artifact)
+        return self._artifact_path(artifact).read_text(encoding="utf-8")
 
     # ----- Rubrics --------------------------------------------------------- #
 
@@ -840,11 +1275,7 @@ class ContextStore:
         lease_seconds = int(lease_raw) if lease_raw.isdigit() and int(lease_raw) > 0 else 900
         lease_cutoff = (datetime.now(UTC) - timedelta(seconds=lease_seconds)).isoformat()
         with self._connect() as conn:
-            # A shared connection (e.g. inside batch_mode) may already be in a
-            # transaction; BEGIN IMMEDIATE would then raise "cannot start a
-            # transaction within a transaction". Only begin our own.
-            if not conn.in_transaction:
-                conn.execute("BEGIN IMMEDIATE")
+            conn.execute("BEGIN IMMEDIATE")
             # Reap orphaned jobs before claiming. A worker that crashes mid-job
             # leaves its row stuck in 'running' forever (the lease is never
             # released), and because the servicectl enqueue guard treats
@@ -1312,15 +1743,12 @@ class ContextStore:
         row_keys = set(row.keys())
         proposed_block = None
         if row["proposed_block_json"]:
-            proposed_block = Playbook.model_validate_json(row["proposed_block_json"])
+            proposed_block = ReasonBlock.model_validate_json(row["proposed_block_json"])
         embedding = None
         if row["embedding"]:
             raw_embedding = row["embedding"]
             if isinstance(raw_embedding, bytes):
-                # Decode strictly: a corrupt/non-UTF-8 BLOB should fail loudly
-                # here rather than be silently coerced into replacement chars
-                # that yield a confusing JSON error or a wrong embedding vector.
-                raw_embedding = raw_embedding.decode("utf-8")
+                raw_embedding = raw_embedding.decode("utf-8", errors="replace")
             embedding = json.loads(raw_embedding)
         decision_at = datetime.fromisoformat(row["decision_at"]) if row["decision_at"] else None
         return LessonCandidate(
@@ -1346,11 +1774,11 @@ class ContextStore:
 
     # ----- File mirrors ---------------------------------------------------- #
 
-    def _write_playbook_markdown(self, block: Playbook) -> None:
+    def _write_block_markdown(self, block: ReasonBlock) -> None:
         path = self.blocks_dir / f"{block.id}.md"
-        from atelier.core.foundation.renderer import render_playbook_markdown
+        from atelier.core.foundation.renderer import render_block_markdown
 
-        path.write_text(render_playbook_markdown(block), encoding="utf-8")
+        path.write_text(render_block_markdown(block), encoding="utf-8")
 
     def _write_trace_json(self, trace: Trace) -> None:
         path = self.traces_dir / f"{trace.id}.json"
@@ -1366,9 +1794,20 @@ class ContextStore:
             encoding="utf-8",
         )
 
+    def _write_raw_artifact(self, artifact: RawArtifact, content: str) -> None:
+        path = self._artifact_path(artifact)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    def _artifact_path(self, artifact: RawArtifact) -> Path:
+        path = (self.root / artifact.content_path).resolve()
+        if self.root.resolve() not in path.parents and path != self.root.resolve():
+            raise ValueError(f"raw artifact path escapes store root: {artifact.content_path}")
+        return path
+
     # ----- Bulk import ---------------------------------------------------- #
 
-    def import_blocks(self, blocks: Iterable[Playbook]) -> int:
+    def import_blocks(self, blocks: Iterable[ReasonBlock]) -> int:
         n = 0
         for b in blocks:
             self.upsert_block(b)
@@ -1384,34 +1823,6 @@ class ContextStore:
 
     # ----- Context Budget -------------------------------------------------- #
 
-    def _context_budget_connection(self) -> sqlite3.Connection:
-        """Return the long-lived connection for context-budget writes.
-
-        Opened once and reused across calls to avoid per-call connection churn.
-        Created with ``check_same_thread=False`` so it can be shared across the
-        MCP dispatcher's threads; callers MUST hold ``_context_budget_lock``
-        while using the returned connection.
-        """
-        if self._context_budget_conn is None:
-            conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA foreign_keys = ON")
-            conn.execute("PRAGMA journal_mode = WAL")
-            self._context_budget_conn = conn
-        return self._context_budget_conn
-
-    def close(self) -> None:
-        """Close the long-lived context-budget connection if open.
-
-        Idempotent -- safe to call more than once. Scoped to the dedicated
-        budget connection; the bulk-import ``self._connection`` is managed by
-        its own callers and is not touched here.
-        """
-        with self._context_budget_lock:
-            if self._context_budget_conn is not None:
-                self._context_budget_conn.close()
-                self._context_budget_conn = None
-
     def persist_context_budget(self, record: Any) -> None:
         """Persist a ContextBudget record to the store.
 
@@ -1419,37 +1830,30 @@ class ContextStore:
             record: A ContextBudget instance with session_id, turn_index, model,
                     token counts, lever_savings dict, and tool_calls count.
         """
-        params = (
-            record.id,
-            record.session_id,
-            record.turn_index,
-            record.model,
-            record.input_tokens,
-            record.cache_read_tokens,
-            record.cache_write_tokens,
-            record.output_tokens,
-            record.naive_input_tokens,
-            json.dumps(record.lever_savings),
-            record.tool_calls,
-            record.created_at.isoformat(),
-        )
-        sql = """
-            INSERT OR REPLACE INTO context_budget (
-                id, session_id, turn_index, model, input_tokens,
-                cache_read_tokens, cache_write_tokens, output_tokens,
-                naive_input_tokens, lever_savings_json, tool_calls, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        # Prefer the transiently-shared bulk-import connection when batch_mode
-        # has set it; otherwise use the dedicated long-lived connection guarded
-        # by _context_budget_lock to serialize concurrent dispatcher threads.
-        if self._connection is not None:
-            self._connection.execute(sql, params)
-            self._connection.commit()
-            return
-        with self._context_budget_lock:
-            conn = self._context_budget_connection()
-            conn.execute(sql, params)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO context_budget (
+                    id, session_id, turn_index, model, input_tokens,
+                    cache_read_tokens, cache_write_tokens, output_tokens,
+                    naive_input_tokens, lever_savings_json, tool_calls, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.id,
+                    record.session_id,
+                    record.turn_index,
+                    record.model,
+                    record.input_tokens,
+                    record.cache_read_tokens,
+                    record.cache_write_tokens,
+                    record.output_tokens,
+                    record.naive_input_tokens,
+                    json.dumps(record.lever_savings),
+                    record.tool_calls,
+                    record.created_at.isoformat(),
+                ),
+            )
             conn.commit()
 
     def list_context_budgets(self, session_id: str) -> list[Any]:

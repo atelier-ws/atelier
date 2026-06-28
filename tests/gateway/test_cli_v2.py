@@ -1,4 +1,4 @@
-"""CLI tests for V2 commands: ledger, compress, env, eval, read, savings."""
+"""CLI tests for V2 commands: ledger, compress, env, failure, eval, read, savings."""
 
 from __future__ import annotations
 
@@ -110,15 +110,77 @@ def test_ledger_show_and_summarize(tmp_path: Path) -> None:
     assert "Atelier compact state" in res2.output
 
 
+def test_failure_list_accept_reject(tmp_path: Path) -> None:
+    root = tmp_path / "a"
+    init_store_at(str(root))
+    _seed_ledger(root)
+    _seed_ledger(root, session_id="run2")
+
+    res = _invoke(root, "failure", "list", "--json")
+    assert res.exit_code == 0
+    clusters = json.loads(res.output)
+    assert clusters
+    cid = clusters[0]["id"]
+
+    res2 = _invoke(root, "failure", "accept", cid)
+    assert res2.exit_code == 0
+    res3 = _invoke(root, "failure", "list", "--json")
+    payload = json.loads(res3.output)
+    assert any(c["status"] == "accepted" for c in payload)
+
+    res4 = _invoke(root, "failure", "reject", cid)
+    assert res4.exit_code == 0
+
+
+def test_analyze_failures_cli(tmp_path: Path) -> None:
+    root = tmp_path / "a"
+    init_store_at(str(root))
+    _seed_ledger(root)
+    res = _invoke(root, "analyze-failures", "--json")
+    assert res.exit_code == 0
+    assert json.loads(res.output)
+
+
+def test_eval_lifecycle(tmp_path: Path) -> None:
+    root = tmp_path / "a"
+    init_store_at(str(root))
+    eval_dir = root / "evals"
+    eval_dir.mkdir(parents=True, exist_ok=True)
+    case = {
+        "id": "case1",
+        "domain": "state.change",
+        "description": "blocks slug-only identity plan",
+        "task": "Fix external state",
+        "plan": ["Resolve target from URL slug alone"],
+        "expected_status": "blocked",
+        "status": "draft",
+    }
+    (eval_dir / "case1.json").write_text(json.dumps(case), encoding="utf-8")
+
+    res = _invoke(root, "eval", "list", "--json")
+    assert res.exit_code == 0
+    assert json.loads(res.output)
+
+    res2 = _invoke(root, "eval", "run", "--case", "case1", "--json")
+    assert res2.exit_code == 0
+    results = json.loads(res2.output)
+    assert results[0]["passed"] is True
+
+    res3 = _invoke(root, "eval", "promote", "case1")
+    assert res3.exit_code == 0
+    promoted = json.loads((eval_dir / "case1.json").read_text(encoding="utf-8"))
+    assert promoted["status"] == "active"
+
+
 def test_tool_mode_show_set(tmp_path: Path) -> None:
     root = tmp_path / "a"
     init_store_at(str(root))
-    res = _invoke(root, "tools", "mode", "show")
+    res = _invoke(root, "tool-mode", "show")
     assert res.exit_code == 0
     assert res.output.strip() == "shadow"
-    res2 = _invoke(root, "tools", "mode", "set", "suggest")
+    res2 = _invoke(root, "tool-mode", "set", "suggest")
     assert res2.exit_code == 0
-    res3 = _invoke(root, "tools", "mode", "show")
+    res3 = _invoke(root, "tool-mode", "show")
     assert res3.output.strip() == "suggest"
 
 
@@ -175,13 +237,11 @@ def test_optimize_accepts_new_registry_host_choice(tmp_path: Path, monkeypatch: 
     _seed_optimizer_traces(root)
     monkeypatch.setattr("atelier.gateway.cli.commands.savings._run_external_optimize", lambda *_args, **_kwargs: None)
 
-    # `cursor` is a supported registry host with no seeded traces here; optimize
-    # must accept it and report an empty trace count.
-    res = _invoke(root, "optimize", "--host", "cursor", "--json")
+    res = _invoke(root, "optimize", "--host", "qwen", "--json")
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
-    assert payload["host"] == "cursor"
+    assert payload["host"] == "qwen"
     assert payload["trace_count"] == 0
 
 
@@ -206,22 +266,9 @@ def test_optimize_details_reports_advisor_breakdowns(tmp_path: Path) -> None:
     }
 
 
-def test_optimize_apply_preset_writes_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_optimize_apply_preset_writes_policy(tmp_path: Path) -> None:
     root = tmp_path / "a"
     init_store_at(str(root))
-
-    # Applying a policy is an Atelier Pro feature gated on two walls: a valid
-    # license AND the proprietary `atelier_pro` overlay. Grant the license and
-    # supply a stub overlay so this exercises the write path, not the gates.
-    from types import SimpleNamespace
-
-    from atelier.core.capabilities.optimization.policy import save_policy as _save_policy
-
-    monkeypatch.setattr("atelier.core.capabilities.licensing.require", lambda *a, **k: None)
-    monkeypatch.setattr(
-        "atelier.core.capabilities.licensing.pro_impl",
-        lambda feature: SimpleNamespace(apply_policy=lambda root, policy: _save_policy(Path(root), policy)),
-    )
 
     res = _invoke(root, "optimize", "apply", "--preset", "economy", "--json")
 
@@ -283,7 +330,7 @@ def test_external_status_cli_reports_tools(tmp_path: Path, monkeypatch: pytest.M
         ],
     )
 
-    res = _invoke(root, "savings", "external", "status", "--json")
+    res = _invoke(root, "external-status", "--json")
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
@@ -310,7 +357,7 @@ def test_external_report_cli_returns_reports(tmp_path: Path, monkeypatch: pytest
         },
     )
 
-    res = _invoke(root, "savings", "external", "report", "--tool", "codeburn", "--json")
+    res = _invoke(root, "external-report", "--tool", "codeburn", "--json")
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
@@ -340,7 +387,7 @@ def test_external_report_cli_persists_reports(tmp_path: Path, monkeypatch: pytes
         },
     )
 
-    res = _invoke(root, "savings", "external", "report", "--tool", "all", "--period", "today", "--persist", "--json")
+    res = _invoke(root, "external-report", "--tool", "all", "--period", "today", "--persist", "--json")
 
     assert res.exit_code == 0, res.output
     payload = json.loads(res.output)
@@ -373,7 +420,7 @@ def test_external_report_cli_streams_tool_progress(tmp_path: Path, monkeypatch: 
         fake_run_external_report,
     )
 
-    res = _invoke(root, "savings", "external", "report", "--tool", "all", "--period", "today")
+    res = _invoke(root, "external-report", "--tool", "all", "--period", "today")
 
     assert res.exit_code == 0, res.output
     assert calls == ["tokscale", "codeburn", "codeburn:optimize"]
@@ -381,106 +428,3 @@ def test_external_report_cli_streams_tool_progress(tmp_path: Path, monkeypatch: 
     assert "[external-report] done tokscale status=ok" in res.output
     assert "[external-report] running codeburn period=today..." in res.output
     assert "[external-report] done codeburn:optimize status=ok" in res.output
-
-
-def test_session_hosts_lists_host_rows_without_sync(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    init_store_at(str(root))
-    store = ContextStore(root)
-    store.init()
-    now = datetime.now(UTC)
-    store.record_trace(
-        Trace(
-            id="codex-1",
-            session_id="sid-codex-1",
-            agent="atelier:code",
-            host="codex",
-            domain="coding",
-            task="Fix parser",
-            status="success",
-            input_tokens=1200,
-            cached_input_tokens=3400,
-            output_tokens=220,
-            model="gpt-5.5",
-            usage_entries=[UsageEntry(model="gpt-5.5", input_tokens=1200, output_tokens=220, cost_usd=0.1234)],
-            created_at=now,
-        )
-    )
-    store.record_trace(
-        Trace(
-            id="copilot-1",
-            session_id="sid-copilot-1",
-            agent="atelier:code",
-            host="copilot",
-            domain="coding",
-            task="Refactor helper",
-            status="success",
-            input_tokens=800,
-            cached_input_tokens=500,
-            output_tokens=100,
-            model="gpt-5.3-codex",
-            usage_entries=[UsageEntry(model="gpt-5.3-codex", input_tokens=800, output_tokens=100, cost_usd=0.05)],
-            created_at=now,
-        )
-    )
-
-    res = _invoke(root, "session", "list", "--host", "codex", "--limit", "5", "--source", "store", "--json")
-    assert res.exit_code == 0, res.output
-    payload = json.loads(res.output)
-    assert payload["hosts"]["codex"][0]["session_id"] == "sid-codex-1"
-    assert payload["hosts"]["codex"][0]["source"] == "host_sessions"
-    assert payload["hosts"]["codex"][0]["cost_usd"] > 0
-
-
-def test_session_hosts_filters_by_session_id(tmp_path: Path) -> None:
-    root = tmp_path / "a"
-    init_store_at(str(root))
-    store = ContextStore(root)
-    store.init()
-    now = datetime.now(UTC)
-    store.record_trace(
-        Trace(
-            id="codex-1",
-            session_id="codex-target-xyz",
-            agent="atelier:code",
-            host="codex",
-            domain="coding",
-            task="A",
-            status="success",
-            model="gpt-5.5",
-            usage_entries=[UsageEntry(model="gpt-5.5", cost_usd=0.01)],
-            created_at=now,
-        )
-    )
-    store.record_trace(
-        Trace(
-            id="codex-2",
-            session_id="codex-other-abc",
-            agent="atelier:code",
-            host="codex",
-            domain="coding",
-            task="B",
-            status="success",
-            model="gpt-5.5",
-            usage_entries=[UsageEntry(model="gpt-5.5", cost_usd=0.02)],
-            created_at=now,
-        )
-    )
-
-    res = _invoke(
-        root,
-        "session",
-        "list",
-        "--host",
-        "codex",
-        "--id",
-        "target",
-        "--source",
-        "store",
-        "--json",
-    )
-    assert res.exit_code == 0, res.output
-    payload = json.loads(res.output)
-    rows = payload["hosts"]["codex"]
-    assert len(rows) == 1
-    assert rows[0]["session_id"] == "codex-target-xyz"
