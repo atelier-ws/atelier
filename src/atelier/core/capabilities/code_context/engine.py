@@ -2339,6 +2339,62 @@ def _hef_fts_phrase(term: str) -> str:
     return '"' + term.replace('"', '""') + '"'
 
 
+# ── Selective Zoekt gate ──────────────────────────────────────────────────────
+# Per-query A/B over the retrieval benchmark showed the *broad* Zoekt channel
+# (full-repo trigram, up to 96 files) earns its keep on two query shapes and
+# only adds noise elsewhere:
+#   * regex/pattern queries -- FTS5 cannot evaluate `a|b`, `.*`, `[xy]`, escaped
+#     metacharacters at all, so Zoekt is the *only* engine that can serve them.
+#   * multi-word phrase queries -- full-text recall surfaces files the symbol
+#     index buries (content/strings/comments, not just symbols).
+# On plain single-identifier lookups the broad channel mostly displaces a file
+# that lexical+centrality already ranked #1 (the observed 1->2 regressions), so
+# we suppress it there and let the *targeted* per-anchor Zoekt channel (which
+# does an identifier-scoped lookup) handle the symbol.  Telemetry on every call
+# records the decision so the gate can be tuned from real traffic.
+_ZOEKT_REGEX_META = re.compile(r"[|()\[\]{}*+?^$\\]")
+# Aggregate fire-rate counter, keyed by (decision, reason). Inspectable in-process
+# (e.g. benchmark harness) and cheap; reset with _ZOEKT_GATE_COUNTS.clear().
+_ZOEKT_GATE_COUNTS: dict[tuple[str, str], int] = {}
+
+
+def _zoekt_broad_gate(query: str) -> tuple[bool, str]:
+    """Return ``(admit, reason)`` for the broad Zoekt channel on *query*."""
+    q = query.strip()
+    if _ZOEKT_REGEX_META.search(q):
+        return True, "regex"
+    if len(q.split()) >= 2:
+        return True, "multiword"
+    return False, "plain_identifier"
+
+
+def _zoekt_gate_enforced() -> bool:
+    """Whether the broad-Zoekt gate actually suppresses (vs observe-only).
+
+    Default OFF: a benchmark A/B showed the coarse regex/multiword condition is
+    net-negative (the broad channel also drives plain-identifier content-recall,
+    e.g. xarray), so we ship it observe-only -- telemetry records what the gate
+    *would* do so a better condition can be mined from real traffic -- and only
+    enforce when ATELIER_ZOEKT_GATE is set.
+    """
+    return os.environ.get("ATELIER_ZOEKT_GATE", "").strip().lower() not in {"", "0", "false", "no", "off"}
+
+
+def _zoekt_gate_record(
+    query: str, intent: str, decision: bool, reason: str, zoekt_n: int, anchor_n: int, *, enforced: bool
+) -> None:
+    """Telemeter a Zoekt gate decision (aggregate counter + opt-in per-query log)."""
+    key = ("admit" if decision else "suppress", reason)
+    _ZOEKT_GATE_COUNTS[key] = _ZOEKT_GATE_COUNTS.get(key, 0) + 1
+    if os.environ.get("ATELIER_ZOEKT_GATE_LOG"):
+        print(
+            f"[zoekt-gate] decision={decision} enforced={enforced} reason={reason} intent={intent} "
+            f"zoekt_n={zoekt_n} anchor_n={anchor_n} q={query[:60]!r}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
 class CodeContextEngine:
     """Local code intelligence using tree-sitter tags, SQLite FTS5, rg, and repo-map ranking."""
 
@@ -4162,7 +4218,9 @@ class CodeContextEngine:
     def _submit_hef_channels(
         self,
         query: str,
-    ) -> tuple[_HefQueryPlan, concurrent.futures.Future[Any], concurrent.futures.Future[Any], concurrent.futures.Future[Any]]:
+    ) -> tuple[
+        _HefQueryPlan, concurrent.futures.Future[Any], concurrent.futures.Future[Any], concurrent.futures.Future[Any]
+    ]:
         """Launch the three V6 HEF recall channels on the persistent thread pool.
 
         Returns the parsed plan plus the three in-flight futures (exact / anchor /
@@ -4240,9 +4298,19 @@ class CodeContextEngine:
         anchor_files, anchor_details = _f_anchor.result() if _f_anchor in _done else ([], {})
         line_files, line_details = _f_line.result() if _f_line in _done else ([], {})
 
+        # Selective gate: the broad Zoekt channel would only feed fusion for
+        # query shapes where it helps (regex/pattern, multi-word).  The targeted
+        # per-anchor Zoekt channel stays on regardless.  Enforcement is opt-in
+        # (see _zoekt_gate_enforced); telemetry records the decision either way.
+        broad_decision, gate_reason = _zoekt_broad_gate(query)
+        gate_enforced = _zoekt_gate_enforced()
+        broad_admit = broad_decision or not gate_enforced
+        _zoekt_gate_record(
+            query, plan.intent, broad_decision, gate_reason, len(full_zoekt), len(anchor_files), enforced=gate_enforced
+        )
         channels: dict[str, list[str]] = {
             "baseline": baseline_files,
-            "zoekt": full_zoekt,
+            "zoekt": full_zoekt if broad_admit else [],
             "exact": exact_files,
             "anchors": anchor_files,
             "line": line_files,
@@ -4332,6 +4400,14 @@ class CodeContextEngine:
             "name": "fused_explore_hybrid_v6",
             "intent": plan.intent,
             "base": baseline_payload.get("experiment"),
+            "zoekt_gate": {
+                "broad_admitted": broad_admit,
+                "decision": broad_decision,
+                "enforced": gate_enforced,
+                "reason": gate_reason,
+                "zoekt_n": len(full_zoekt),
+                "anchor_n": len(anchor_files),
+            },
         }
         return result
 
@@ -9711,14 +9787,6 @@ class CodeContextEngine:
         if loaded is not None:
             self._centrality_name_map = (version, loaded)
             return loaded
-        if os.environ.get("ATELIER_DEBUG_CENTRALITY"):
-            import sys as _sys
-            import time as _t
-            print(
-                f"[centrality-compute] repo={self.repo_id} ver={version} pid={os.getpid()} t={_t.time():.1f}",
-                file=_sys.stderr,
-                flush=True,
-            )
         mapping: dict[str, float] = {}
         try:
             ranking = self.call_graph_centrality(limit=1_000_000).get("ranking", [])
@@ -11257,6 +11325,10 @@ class CodeContextEngine:
             str(self.repo_root),
             "--no-stats",
         ]
+        # Pass a custom db-path when the engine was constructed with one so
+        # the subprocess writes to the same SQLite file we read from.
+        if self.db_path != _default_db_path(self.repo_root):
+            cmd.extend(["--db-path", str(self.db_path)])
         if force:
             cmd.append("--reindex")
         try:
@@ -11269,6 +11341,11 @@ class CodeContextEngine:
                     stderr_tail,
                 )
                 return False
+            # Subprocess wrote a new index_version to SQLite; drop the two
+            # in-process caches keyed on that version so the next read and any
+            # ANN neighbour lookup both reflect the updated state.
+            self._index_version_cached = None
+            self._ann_vectors_cache = None
             return True
         except Exception:
             logging.exception("code index subprocess error for %s", self.repo_root)
