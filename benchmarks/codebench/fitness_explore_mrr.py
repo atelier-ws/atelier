@@ -165,7 +165,11 @@ if CHANNEL not in ("lexical", "zoekt", "lexical+zoekt"):
     print(f"[fitness] ERROR: unknown channel {CHANNEL!r}", file=sys.stderr, flush=True)
     sys.exit(1)
 if CHANNEL == "zoekt" and get_zoekt_supervisor is None:
-    print("[fitness] WARNING: zoekt adapter not importable; zoekt channel will return empty results.", file=sys.stderr, flush=True)
+    print(
+        "[fitness] WARNING: zoekt adapter not importable; zoekt channel will return empty results.",
+        file=sys.stderr,
+        flush=True,
+    )
 
 engines = {}
 for prefix, meta in repos.items():
@@ -235,19 +239,28 @@ _total = len(_tasks)
 def _worker_init() -> None:
     """Prepare each forked worker for benchmark use.
 
-    Process pools (and thread pools) do NOT survive fork() safely: the
-    inherited _SEARCH_CHANNEL_EXECUTOR has dead parent processes/threads and
-    potentially locked internal state, causing silent deadlocks on submit().
-    Replace it with a fresh pool in each child process before any task runs.
+    Pools do NOT survive fork() safely: the inherited _SEARCH_CHANNEL_EXECUTOR
+    has dead parent threads and potentially locked internal state, causing
+    silent deadlocks on submit(). Replace it with a fresh pool of the SAME type
+    the engine ships (a ThreadPoolExecutor) in each child before any task runs.
+
+    Must be a ThreadPoolExecutor, not a ProcessPoolExecutor: a nested process
+    pool inside each forked outer worker spawns grandchild processes that are
+    never explicitly shut down. At worker interpreter-exit, concurrent.futures'
+    atexit handler joins that nested pool's manager thread, which blocks — so
+    the outer ProcessPoolExecutor's shutdown(wait=True) (the `with` block exit
+    after the loop) hangs forever joining workers that can't exit. This is the
+    exact "fork-while-threaded ProcessPoolExecutor" deadlock the engine avoids
+    by using threads for these GIL-releasing SQLite reads.
     """
     import concurrent.futures as _cf
 
     import atelier.core.capabilities.code_context.engine as _eng_mod
 
     # Shut down the inherited executor (broken after fork) and create a fresh
-    # process pool for the FTS5 search channels.
+    # thread pool for the FTS5 search channels, matching the engine default.
     _eng_mod._SEARCH_CHANNEL_EXECUTOR.shutdown(wait=False)
-    _eng_mod._SEARCH_CHANNEL_EXECUTOR = _cf.ProcessPoolExecutor(max_workers=5)
+    _eng_mod._SEARCH_CHANNEL_EXECUTOR = _cf.ThreadPoolExecutor(max_workers=16)
 
     # Disable Zoekt in workers for pure lexical channel so tool_explore
     # skips the Zoekt parallel recall hook entirely.
@@ -318,6 +331,34 @@ filecache = {}
 latencies: list[float] = []
 repo_latencies: dict[str, list[float]] = {}
 _done = 0
+
+# ── Prewarm zoekt webservers in the PARENT (before fork) ──────────────────────
+# Zoekt host search is webserver-only (no CLI fallback) and the hot query path
+# never blocks on startup, so each repo's webserver must be live and searchable
+# *before* the timed loop -- otherwise early queries get empty zoekt results and
+# MRR drops.  Warm sequentially (not in parallel) so indexes mmap one at a time
+# instead of an I/O storm that stalls every server past its readiness timeout.
+# The forked worker inherits these ready servers and queries them over HTTP
+# (ZoektServer tags the owner pid so the child never kills the parent's server).
+if CHANNEL in ("zoekt", "lexical+zoekt") and get_zoekt_supervisor is not None:
+    _wt0 = time.perf_counter()
+    _wready = 0
+    for _prefix in list(uq):
+        _eng = engines.get(_prefix)
+        if _eng is None:
+            continue
+        try:
+            _srv = get_zoekt_supervisor(_eng.repo_root).server
+            if _srv.wait_until_searchable(30.0):
+                _wready += 1
+        except Exception as _e:
+            print(f"[zoekt-warm] {_prefix} failed: {_e!r}", file=sys.stderr, flush=True)
+    print(
+        f"[zoekt-warm] {_wready}/{len(uq)} webservers searchable in {time.perf_counter() - _wt0:.1f}s",
+        file=sys.stderr,
+        flush=True,
+    )
+
 print(f"[fitness] start: {_total} explores across {len(uq)} repos, {_WORKERS} workers", file=sys.stderr, flush=True)
 # Processes, not threads: explores are CPU-bound (GIL-serialized under threads) and
 # share one engine instance per repo -- a process pool gives true parallelism and
