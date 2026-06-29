@@ -6628,7 +6628,13 @@ class CodeContextEngine:
         # (_build_symbol_embeddings) -- we never embed documents here, only the query
         # (above). Load + JSON-decode the store ONCE per (model, dim, index_version)
         # and cache it as a numpy matrix; a reindex bumps index_version -> cache miss.
-        import numpy as np
+        try:
+            import numpy as np
+        except ModuleNotFoundError:
+            # numpy absent (e.g. atelier source mounted into a container without its
+            # deps installed) -- skip the ANN matrix path and return no semantic hits
+            # so code_search degrades to lexical instead of failing the whole call.
+            return []
 
         cache_key = (embedder.name, embedding_dim, index_version)
         cached = self._ann_vectors_cache
