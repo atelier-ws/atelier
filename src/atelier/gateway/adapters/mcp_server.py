@@ -5446,7 +5446,22 @@ def tool_smart_read(
     discover and read in one step instead of grep-then-read.
     """
     if files is not None and symbol is not None:
-        raise ValueError("provide either files or symbol, not both")
+        # Recovery (don't reject): both given means 'this symbol AS DEFINED IN this
+        # file' -- the most precise read the model can ask for. Resolve the symbol
+        # scoped to the given file instead of costing a turn on a validation error.
+        _scope_path: str | None = None
+        if files:
+            _first = files[0]
+            if isinstance(_first, str):
+                _scope_path = _split_file_opts(_first)[0] or None
+            elif isinstance(_first, dict):
+                _scope_path = str(_first.get("path") or "") or None
+        try:
+            if isinstance(symbol, list):
+                return {"symbols": [_op_node(**_parse_symbol(s), path=_scope_path) for s in symbol]}
+            return _op_node(**_parse_symbol(symbol), path=_scope_path)
+        except Exception:  # noqa: BLE001 -- symbol unresolved -> read the file(s) instead
+            symbol = None
     # `filePath` is an accepted alias for `path` (host Read-tool habit); fold it
     # in before any dispatch so both name the same file.
     if not path and filePath:
@@ -8715,6 +8730,23 @@ _GREP_MODE_ALIASES: dict[str, str] = {
 }
 
 
+# Forgiving mode normalisation: the model prefers self-documenting names
+# (file_paths_with_content) over the terse canonical ones, so accept both forms
+# plus common variants and default unknowns to 'content' -- grep never 422s on mode.
+_GREP_MODE_CANON: dict[str, str] = {
+    "content": "content", "map": "map", "paths": "paths", "counts": "counts",
+    "file_paths_with_content": "content", "files_with_content": "content", "file_content": "content",
+    "ranked_file_map": "map", "file_map": "map", "ranked": "map",
+    "file_paths_only": "paths", "file_paths": "paths", "files": "paths", "filenames": "paths",
+    "file_paths_with_match_count": "counts", "match_count": "counts", "count": "counts",
+}
+
+
+def _normalize_grep_mode(mode: object) -> str:
+    """Map any reasonable mode spelling to a canonical short name; unknown -> content."""
+    return _GREP_MODE_CANON.get(str(mode or "content").strip().lower(), "content")
+
+
 def _grep_badge_provider(rel_path: str, symbol_names: list[str]) -> str | None:
     """Inline relation-count line for a file's matched definition symbols.
 
@@ -8999,11 +9031,12 @@ def tool_grep(
         Field(description="Globs constraining candidate files (e.g. `src/**/*.py`). List or bare string."),
     ] = None,
     mode: Annotated[
-        Literal["content", "map", "paths", "counts"],
+        str,
         Field(
             description=(
                 "content: matched lines+context (default); map: ranked file pointers; "
-                "paths: matching file paths; counts: path + match count."
+                "paths: matching file paths; counts: path + match count. "
+                "Descriptive aliases (e.g. file_paths_with_content) are accepted."
             )
         ),
     ] = "content",
@@ -9069,7 +9102,7 @@ def tool_grep(
     # Short model-facing mode names map to the engine's verbose output_mode.
     native_mode = cast(
         Literal["ranked_file_map", "file_paths_with_content", "file_paths_only", "file_paths_with_match_count"],
-        _GREP_MODE_ALIASES.get(mode, mode),
+        _GREP_MODE_ALIASES.get(_normalize_grep_mode(mode), "file_paths_with_content"),
     )
     # Ride call-graph counts along content-mode regex matches that land on symbol
     # definitions (best-effort; the provider never fails the search).
