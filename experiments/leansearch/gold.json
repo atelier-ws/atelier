@@ -1,0 +1,259 @@
+{
+"django__django-11138": [
+"django/db/backends/mysql/operations.py",
+"django/db/backends/oracle/operations.py",
+"django/db/backends/sqlite3/base.py",
+"django/db/backends/sqlite3/operations.py"
+],
+"pylint-dev__pylint-6528": [
+"ChangeLog",
+"doc/whatsnew/2.14.rst",
+"pylint/lint/expand_modules.py",
+"pylint/lint/pylinter.py",
+"tests/regrtest_data/directory/ignored_subdirectory/failing.py",
+"tests/test_self.py"
+],
+"sympy__sympy-14248": [
+"sympy/printing/latex.py",
+"sympy/printing/pretty/pretty.py",
+"sympy/printing/str.py",
+"sympy/printing/tests/test_ccode.py",
+"sympy/printing/tests/test_fcode.py",
+"sympy/printing/tests/test_jscode.py",
+"sympy/printing/tests/test_julia.py",
+"sympy/printing/tests/test_latex.py",
+"sympy/printing/tests/test_octave.py",
+"sympy/printing/tests/test_rcode.py",
+"sympy/printing/tests/test_str.py"
+],
+"mwaskom__seaborn-3187": [
+"seaborn/_core/scales.py",
+"tests/_core/test_plot.py"
+],
+"scikit-learn__scikit-learn-25102": [
+"doc/whats_new/v1.3.rst",
+"sklearn/feature_selection/_base.py",
+"sklearn/feature_selection/tests/test_base.py",
+"sklearn/utils/_set_output.py",
+"sklearn/utils/tests/test_set_output.py",
+"uv.lock"
+],
+"pytest-dev__pytest-5840": [
+"changelog/5792.bugfix.rst",
+"src/_pytest/config/__init__.py",
+"src/_pytest/pathlib.py",
+"testing/test_conftest.py",
+"uv.lock"
+],
+"django__django-13344": [
+"django/core/handlers/exception.py",
+"django/utils/deprecation.py",
+"django/utils/inspect.py"
+],
+"django__django-14376": [
+"django/db/backends/mysql/base.py",
+"uv.lock"
+],
+"pydata__xarray-3305": [
+"xarray/core/dataset.py",
+"xarray/core/variable.py"
+],
+"sympy__sympy-13091": [
+"sympy/core/basic.py",
+"sympy/core/expr.py",
+"sympy/core/numbers.py"
+],
+"sympy__sympy-13877": [
+"sympy/matrices/matrices.py"
+],
+"django__django-11333": [
+"django/urls/resolvers.py"
+],
+"django__django-12155": [
+"django/contrib/admindocs/utils.py",
+"tests/admin_docs/test_utils.py"
+],
+"matplotlib__matplotlib-14623": [
+"lib/matplotlib/tests/test_axes.py",
+"lib/matplotlib/ticker.py"
+],
+"pydata__xarray-3095": [
+"xarray/core/indexing.py",
+"xarray/core/variable.py"
+],
+"pydata__xarray-3993": [
+"doc/whats-new.rst",
+"xarray/core/dataarray.py",
+"xarray/tests/test_dataset.py"
+],
+"pylint-dev__pylint-6386": [
+"ChangeLog",
+"pylint/config/utils.py",
+"pylint/lint/base_options.py",
+"tests/test_self.py"
+],
+"pytest-dev__pytest-8399": [
+"changelog/8400.bugfix.rst",
+"src/_pytest/unittest.py",
+"uv.lock"
+],
+"scikit-learn__scikit-learn-12682": [
+"doc/whats_new/v0.22.rst",
+"examples/decomposition/plot_sparse_coding.py",
+"sklearn/decomposition/dict_learning.py"
+],
+"sphinx-doc__sphinx-10673": [
+"CHANGES",
+"doc/usage/restructuredtext/directives.rst",
+"sphinx/directives/other.py",
+"sphinx/environment/adapters/toctree.py",
+"tests/roots/test-toctree-index/foo.rst",
+"tests/roots/test-toctree-index/index.rst",
+"tests/test_environment_toctree.py"
+],
+"sphinx-doc__sphinx-8120": [
+"CHANGES",
+"sphinx/application.py",
+"tests/test_intl.py"
+],
+"sphinx-doc__sphinx-8551": [
+"CHANGES",
+"sphinx/domains/python.py",
+"tests/test_domain_py.py"
+],
+"django__django-16560": [
+"django/contrib/postgres/constraints.py",
+"django/db/models/constraints.py",
+"docs/ref/contrib/postgres/constraints.txt",
+"docs/ref/models/constraints.txt",
+"docs/releases/5.0.txt",
+"tests/constraints/tests.py",
+"tests/postgres_tests/test_constraints.py"
+],
+"django__django-13449": [
+"django/db/models/expressions.py",
+"tests/expressions_window/models.py",
+"tests/expressions_window/tests.py"
+],
+"astropy__astropy-14369": [
+"astropy/units/format/cds.py",
+"astropy/units/format/cds_parsetab.py",
+"astropy/units/tests/test_format.py",
+"docs/changes/units/13816.bugfix.rst",
+"uv.lock"
+],
+"pallets__flask-5014": [
+"CHANGES.rst",
+"src/flask/blueprints.py",
+"tests/test_blueprints.py"
+],
+"psf__requests-2931": [
+"requests/models.py"
+],
+"astropy__astropy-13579": [
+"astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+"astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py"
+],
+"django__django-14631": [
+"django/forms/boundfield.py",
+"django/forms/forms.py",
+"tests/forms_tests/tests/test_forms.py"
+],
+"pylint-dev__pylint-8898": [
+"doc/whatsnew/fragments/7229.bugfix",
+"pylint/config/argument.py",
+"pylint/utils/__init__.py",
+"pylint/utils/utils.py",
+"tests/config/test_config.py"
+],
+"pytest-dev__pytest-5787": [
+"changelog/5786.bugfix.rst",
+"src/_pytest/reports.py",
+"testing/test_reports.py"
+],
+"pytest-dev__pytest-6197": [
+"changelog/6253.bugfix.rst",
+"src/_pytest/python.py",
+"testing/test_collection.py"
+],
+"pytest-dev__pytest-7490": [
+"changelog/7486.bugfix.rst",
+"src/_pytest/skipping.py",
+"testing/test_skipping.py"
+],
+"sphinx-doc__sphinx-8548": [
+"CHANGES",
+"sphinx/ext/autodoc/__init__.py",
+"sphinx/ext/autodoc/importer.py",
+"tests/roots/test-ext-autodoc/target/inheritance.py",
+"tests/test_ext_autodoc.py"
+],
+"sphinx-doc__sphinx-9461": [
+"CHANGES",
+"sphinx/domains/python.py",
+"sphinx/ext/autodoc/__init__.py",
+"sphinx/ext/autodoc/importer.py",
+"tests/roots/test-ext-autodoc/target/properties.py",
+"tests/test_ext_autodoc_autoclass.py",
+"tests/test_ext_autodoc_autoproperty.py"
+],
+"astropy__astropy-13398": [
+"astropy/coordinates/builtin_frames/__init__.py",
+"astropy/coordinates/builtin_frames/itrs_observed_transforms.py",
+"uv.lock"
+],
+"astropy__astropy-8707": [
+"astropy/io/fits/card.py",
+"astropy/io/fits/header.py"
+],
+"matplotlib__matplotlib-24870": [
+"lib/matplotlib/contour.py",
+"lib/matplotlib/tests/test_contour.py",
+"uv.lock"
+],
+"mwaskom__seaborn-3069": [
+"seaborn/_core/plot.py",
+"seaborn/_core/scales.py",
+"tests/_core/test_plot.py"
+],
+"psf__requests-6028": [
+"requests/utils.py",
+"tests/test_utils.py"
+],
+"django__django-12708": [
+"django/db/backends/base/schema.py",
+"tests/schema/tests.py"
+],
+"django__django-13128": [
+"django/db/models/expressions.py",
+"tests/aggregation/tests.py"
+],
+"django__django-13837": [
+"django/utils/autoreload.py",
+"tests/utils_tests/test_autoreload.py"
+],
+"django__django-14007": [
+"django/db/models/sql/compiler.py",
+"uv.lock"
+],
+"django__django-15128": [
+"django/db/models/sql/query.py",
+"uv.lock"
+],
+"django__django-15268": [
+"django/db/migrations/operations/models.py",
+"tests/migrations/test_autodetector.py",
+"tests/migrations/test_optimizer.py",
+"uv.lock"
+],
+"django__django-15503": [
+"django/db/models/fields/json.py",
+"uv.lock"
+],
+"django__django-15957": [
+"django/db/models/fields/related_descriptors.py",
+"docs/ref/models/querysets.txt",
+"tests/prefetch_related/tests.py",
+"uv.lock"
+]
+}

@@ -1,0 +1,45 @@
+[build] plan:
+  astropy__astropy             cur=bge:BAAI/bge-code-v1 dim=1536 n=40522  -> OK (skip)
+  atelier__atelier             cur=bge:BAAI/bge-code-v1 dim=1536 n=22332  -> OK (skip)
+  django__django               cur=bge:BAAI/bge-code-v1 dim=1536 n=42023  -> OK (skip)
+  matplotlib__matplotlib       cur=(none) dim=0 n=0  -> BUILD
+  mwaskom__seaborn             cur=(none) dim=0 n=0  -> BUILD
+  pallets__flask               cur=(none) dim=0 n=0  -> BUILD
+  psf__requests                cur=(none) dim=0 n=0  -> BUILD
+  pydata__xarray               cur=bge:BAAI/bge-code-v1 dim=1536 n=5171  -> OK (skip)
+  pylint-dev__pylint           cur=(none) dim=0 n=0  -> BUILD
+  pytest-dev__pytest           cur=bge:BAAI/bge-code-v1 dim=1536 n=4163  -> OK (skip)
+  scikit-learn__scikit-learn   cur=bge:BAAI/bge-code-v1 dim=1536 n=12642  -> OK (skip)
+  sphinx-doc__sphinx           cur=(none) dim=0 n=0  -> BUILD
+  sympy__sympy                 cur=bge:BAAI/bge-code-v1 dim=1536 n=24048  -> OK (skip)
+[build] loading shared bge:BAAI/bge-code-v1 on GPU ...
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:00<00:00,  4.49it/s]Loading checkpoint shards: 100%|██████████| 2/2 [00:00<00:00,  6.97it/s]
+[build] model ready in 4.6s (dim=1536)
+Traceback (most recent call last):
+  File "/home/pankaj/Projects/leanchain/atelier/experiments/retrieval_symbol_vote/build_bge_vectors.py", line 114, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/home/pankaj/Projects/leanchain/atelier/experiments/retrieval_symbol_vote/build_bge_vectors.py", line 100, in main
+    eng._build_symbol_embeddings(conn, iv)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py", line 6557, in _build_symbol_embeddings
+    self._ann_symbol_index.upsert_vectors(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        conn,
+        ^^^^^
+    ...<3 lines>...
+        vectors=new_vectors,
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/ann_symbol_index.py", line 175, in upsert_vectors
+    conn.executemany(
+    ~~~~~~~~~~~~~~~~^
+        """
+        ^^^
+    ...<10 lines>...
+        rows,
+        ^^^^^
+    )
+    ^
+sqlite3.OperationalError: database is locked

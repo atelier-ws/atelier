@@ -1,0 +1,52 @@
+Uninstalled 2 packages in 2ms
+Installed 2 packages in 3ms
+run0: 77.6ms  files=10
+run1: 67.1ms  files=10
+run2: 62.5ms  files=10
+webserver_ready: True
+webserver_failed: True
+post-ready run0: 72.7ms  files=10
+post-ready run1: 55.2ms  files=10
+post-ready run2: 56.8ms  files=10
+post-ready run3: 58.0ms  files=10
+post-ready run4: 67.4ms  files=10
+         198666 function calls (198495 primitive calls) in 0.102 seconds
+
+   Ordered by: cumulative time
+   List reduced from 655 to 30 due to restriction <30>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        6    0.000    0.000    0.103    0.017 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/threading.py:327(wait)
+        9    0.000    0.000    0.103    0.011 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/concurrent/futures/_base.py:428(result)
+      2/1    0.000    0.000    0.101    0.101 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:3649(tool_explore)
+      2/1    0.000    0.000    0.099    0.099 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:4341(_tool_explore_impl)
+    41/17    0.008    0.000    0.094    0.006 {method 'execute' of 'sqlite3.Connection' objects}
+      2/1    0.000    0.000    0.090    0.090 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/threading.py:998(_bootstrap)
+      2/1    0.000    0.000    0.090    0.090 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/threading.py:1025(_bootstrap_inner)
+      2/1    0.000    0.000    0.090    0.090 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/threading.py:981(run)
+      2/1    0.000    0.000    0.090    0.090 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/concurrent/futures/thread.py:70(_worker)
+      9/3    0.000    0.000    0.090    0.030 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/concurrent/futures/thread.py:54(run)
+        1    0.000    0.000    0.089    0.089 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:7276(_zoekt_candidate_files)
+        1    0.000    0.000    0.089    0.089 /home/pankaj/Projects/leanchain/atelier/src/atelier/infra/code_intel/zoekt/adapter.py:214(search)
+        1    0.006    0.006    0.088    0.088 /home/pankaj/Projects/leanchain/atelier/src/atelier/infra/code_intel/zoekt/client.py:42(search)
+        1    0.000    0.000    0.075    0.075 /home/pankaj/Projects/leanchain/atelier/src/atelier/infra/code_intel/zoekt/server.py:221(raw_search)
+        1    0.000    0.000    0.074    0.074 /home/pankaj/Projects/leanchain/atelier/src/atelier/infra/code_intel/zoekt/server.py:462(_host_search)
+        1    0.000    0.000    0.074    0.074 /home/pankaj/Projects/leanchain/atelier/src/atelier/infra/code_intel/zoekt/server.py:626(_run_host_search)
+        1    0.000    0.000    0.070    0.070 /home/pankaj/Projects/leanchain/atelier/src/atelier/infra/code_intel/zoekt/server.py:786(_run_command)
+        1    0.000    0.000    0.070    0.070 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/subprocess.py:512(run)
+      913    0.005    0.000    0.069    0.000 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:6143(adjustment)
+        1    0.000    0.000    0.069    0.069 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/subprocess.py:1178(communicate)
+        1    0.000    0.000    0.069    0.069 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/subprocess.py:2072(_communicate)
+        1    0.000    0.000    0.053    0.053 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:5849(search_symbols)
+        1    0.000    0.000    0.053    0.053 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/rerank.py:109(rerank)
+        1    0.000    0.000    0.050    0.050 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/intel_store.py:125(search_symbols)
+        6    0.000    0.000    0.039    0.007 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:6202(consider_rows)
+        1    0.000    0.000    0.015    0.015 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:6089(_search_symbols_local)
+      915    0.003    0.000    0.011    0.000 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:987(_identifier_terms)
+       61    0.000    0.000    0.008    0.000 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/selectors.py:385(select)
+      601    0.002    0.000    0.008    0.000 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/generated_files.py:57(is_generated_path)
+       61    0.002    0.000    0.008    0.000 {method 'poll' of 'select.poll' objects}
+
+
+
+EXIT=0

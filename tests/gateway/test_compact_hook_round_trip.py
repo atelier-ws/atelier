@@ -270,6 +270,58 @@ class TestManifestStructure:
             assert field in loaded
 
 
+class TestCreditPendingCompaction:
+    """Tests for _credit_pending_compaction suppression logic."""
+
+    def _make_state(self, pre_occupancy: int) -> dict:
+        return {
+            "precompact_pending": True,
+            "precompact_occupancy": pre_occupancy,
+            "precompact_model": "",
+            "precompact_attempts": 0,
+        }
+
+    def _call(self, state: dict, occupancy: int) -> None:
+        # Import the function from the hook script directly
+        import importlib.util
+        from pathlib import Path
+
+        hook = Path("integrations/claude/plugin/hooks/user_prompt.py")
+        spec = importlib.util.spec_from_file_location("user_prompt", hook)
+        mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        mod._credit_pending_compaction(state, occupancy, None, "sess")
+
+    def test_zero_delta_does_not_count_as_attempt(self) -> None:
+        """delta==0 (still reading pre-compact JSONL data) must not burn the attempt budget."""
+        state = self._make_state(483_000)
+        # Simulate 3 compact-injected user entries, each showing the same pre-compact occupancy
+        for _ in range(3):
+            self._call(state, 483_000)
+        # precompact_pending must remain True — attempts should not have been counted
+        assert state.get("precompact_pending") is True
+        assert state.get("precompact_attempts", 0) == 0
+
+    def test_credit_clears_on_real_post_compact_occupancy(self) -> None:
+        """A positive delta credits the saving and clears the pending flag."""
+        state = self._make_state(483_000)
+        # Three zero-delta calls (compact-injected entries)
+        for _ in range(3):
+            self._call(state, 483_000)
+        # Now a real model response shows the post-compact context size
+        self._call(state, 32_000)
+        assert not state.get("precompact_pending")
+        assert state.get("precompact_attempts", 0) == 0  # was never incremented
+
+    def test_nonzero_delta_counts_and_gives_up(self) -> None:
+        """When post-compact occupancy differs but shrinks only a little, give up after 3."""
+        state = self._make_state(483_000)
+        # Simulate occupancy *growing* after compact (degenerate case) — delta < 0
+        for _ in range(3):
+            self._call(state, 490_000)  # delta = -7000, occupancy > 0 and delta != 0
+        assert not state.get("precompact_pending")  # gave up after 3
+
+
 class TestErrorHandling:
     """Test error handling in manifest operations."""
 

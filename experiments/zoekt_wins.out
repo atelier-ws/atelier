@@ -1,0 +1,43 @@
+=== 372 queries  |  zoekt helped 23  hurt 15  neutral 334 ===
+mean RR delta from zoekt: +0.0140
+
+=== TOP zoekt WINS (lexical rank -> zoekt rank) ===
+  +1.000  miss -> 1    [compound_id]  xarray       'to_variable'
+  +1.000  miss -> 1    [multiword,compound_id]  django       'def _apply_rel_filters'
+  +0.875     8 -> 1    [alt|,regexmeta]  seaborn      'sub\\[\\"x\\"\\]|sub\\[\\"y\\"\\]|\\"x\\":|\\"y\\":|info\\[ax'
+  +0.500     2 -> 1    [compound_id]  pylint       '_ignore_paths'
+  +0.500     2 -> 1    [compound_id]  xarray       'expand_dims'
+  +0.500     2 -> 1    [multiword]  xarray       'def quantile'
+  +0.500     2 -> 1    [compound_id]  xarray       '_inplace_binary_op'
+  +0.500     2 -> 1    [compound_id]  matplotlib   'format_ticks'
+  +0.500     2 -> 1    [alt|,multiword,compound_id]  django       'def get_prefetch_queryset|_apply_rel_filters|def'
+  +0.500     2 -> 1    [compound_id]  astropy      '_value_indicator'
+  +0.250  miss -> 4    [compound_id]  django       'CAST'
+  +0.250  miss -> 4    [compound_id]  django       'CAST'
+  +0.250  miss -> 4    [compound_id]  astropy      'default_representation'
+  +0.167     3 -> 2    [compound_id]  matplotlib   'useMathText'
+  +0.167     3 -> 2    [compound_id]  matplotlib   'get_view_interval'
+  +0.167     3 -> 2    [alt|,compound_id]  django       'NUMERIC|as_sqlite|CAST|cast'
+  +0.167     3 -> 2    [alt|,multiword,compound_id]  astropy      'def test_fromstring|Header.fromstring|Card.froms'
+  +0.167     3 -> 2    [alt|,regexmeta,multiword,compound_id,codeliteral]  astropy      'def (decode_ascii|encode_ascii)'
+
+=== zoekt feature tally among wins ===
+   12  compound_id
+    3  alt|,multiword,compound_id
+    2  alt|,compound_id
+    2  plainword
+    1  multiword,compound_id
+    1  alt|,regexmeta,multiword,compound_id,codeliteral
+    1  multiword
+    1  alt|,regexmeta
+
+=== TOP zoekt LOSSES ===
+  -0.500     1 -> 2  [compound_id]  astropy      '_format_unit_list'
+  -0.500     1 -> 2  [compound_id]  astropy      'pixel_axis_names'
+  -0.500     1 -> 2  [alt|,multiword,compound_id]  django       'AS NUMERIC|NUMERIC'
+  -0.500     1 -> 2  [compound_id]  matplotlib   'get_facecolor'
+  -0.389     2 -> 9  [multiword]  flask        'def __init__'
+  -0.167     2 -> 3  [plainword]  matplotlib   'contains'
+  -0.167     2 -> 3  [alt|,wildcard.*,multiword,compound_id]  seaborn      'IntervalProperty|from seaborn._core.properties i'
+  -0.111     9 -> miss  [regexmeta,multiword,compound_id,codeliteral]  django       'self\\.get_response = get_response'
+EXIT=0

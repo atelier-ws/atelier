@@ -1,0 +1,40 @@
+COLD first call: 1532.1ms  files=10  repo=atelier__atelier  q='background process tracking pid session bash execution'
+         3350197 function calls (3349151 primitive calls) in 1.532 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1278 to 28 due to restriction <28>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.023    0.023    1.437    1.437 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:9700(_symbol_centrality_map)
+        1    0.021    0.021    1.315    1.315 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:9767(call_graph_centrality)
+        1    0.118    0.118    1.232    1.232 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/call_graph_centrality.py:32(compute_call_graph_centrality)
+        1    0.838    0.838    1.005    1.005 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/call_graph_centrality.py:101(_power_iteration)
+  1473425    0.168    0.000    0.168    0.000 {method 'get' of 'dict' objects}
+    47/22    0.051    0.001    0.119    0.005 {method 'execute' of 'sqlite3.Connection' objects}
+      2/1    0.000    0.000    0.082    0.082 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:3649(tool_explore)
+      2/1    0.000    0.000    0.080    0.080 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:4341(_tool_explore_impl)
+        1    0.001    0.001    0.073    0.073 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:9750(_persist_centrality_map)
+        1    0.000    0.000    0.064    0.064 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:5849(search_symbols)
+     11/4    0.000    0.000    0.050    0.012 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/concurrent/futures/thread.py:54(run)
+   974500    0.048    0.000    0.048    0.000 {built-in method builtins.abs}
+        1    0.005    0.005    0.047    0.047 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:4040(_hef_line_fts_candidates)
+        1    0.000    0.000    0.039    0.039 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/intel_store.py:125(search_symbols)
+        1    0.000    0.000    0.039    0.039 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:6089(_search_symbols_local)
+    23/19    0.000    0.000    0.035    0.002 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/threading.py:327(wait)
+        9    0.000    0.000    0.035    0.004 /home/pankaj/.local/share/uv/python/cpython-3.13.3-linux-x86_64-gnu/lib/python3.13/concurrent/futures/_base.py:428(result)
+        8    0.000    0.000    0.033    0.004 /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/code_context/engine.py:149(__exit__)
+        2    0.033    0.016    0.033    0.016 {method 'commit' of 'sqlite3.Connection' objects}
+     46/4    0.000    0.000    0.031    0.008 <frozen importlib._bootstrap>:1349(_find_and_load)
+     46/4    0.000    0.000    0.031    0.008 <frozen importlib._bootstrap>:1304(_find_and_load_unlocked)
+    101/8    0.000    0.000    0.030    0.004 <frozen importlib._bootstrap>:480(_call_with_frames_removed)
+     44/5    0.000    0.000    0.030    0.006 <frozen importlib._bootstrap>:911(_load_unlocked)
+     39/5    0.000    0.000    0.030    0.006 <frozen importlib._bootstrap_external>:1020(exec_module)
+        1    0.030    0.030    0.030    0.030 {method 'executemany' of 'sqlite3.Connection' objects}
+     53/5    0.004    0.000    0.030    0.006 {built-in method builtins.exec}
+   328095    0.028    0.000    0.028    0.000 {method 'setdefault' of 'dict' objects}
+      9/5    0.000    0.000    0.027    0.005 {built-in method builtins.__import__}
+
+
+
+WARM second call: 43.0ms
+EXIT=0

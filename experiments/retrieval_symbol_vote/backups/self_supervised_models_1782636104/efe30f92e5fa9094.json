@@ -1,0 +1,71 @@
+{
+  "blend": 1.0,
+  "collection": {
+    "candidate_miss": 8,
+    "ok": 100,
+    "too_few_candidates": 198
+  },
+  "enabled": true,
+  "examples": 100,
+  "feature_names": [
+    "reciprocal_rank",
+    "rank_one",
+    "path_term_coverage",
+    "path_identifier_exact",
+    "basename_similarity",
+    "symbol_term_coverage",
+    "symbol_identifier_exact",
+    "source_term_coverage",
+    "source_best_line_coverage",
+    "test_scope_match",
+    "test_scope_mismatch",
+    "doc_scope_match",
+    "doc_scope_mismatch",
+    "path_depth"
+  ],
+  "margin": 0.0,
+  "pairwise_rows": 96,
+  "records": 306,
+  "records_with_existing_gold": 306,
+  "repo_id": "efe30f92e5fa9094",
+  "repo_prefix": "pydata__xarray",
+  "repo_root": "/tmp/idx_ws_pydata__xarray",
+  "train_examples": 71,
+  "train_tasks": 2,
+  "training_source": "real_agent_grep_and_patch_files",
+  "validation": {
+    "baseline": {
+      "hit1": 0.5172413793103449,
+      "hit2": 0.7241379310344828,
+      "hit3": 0.9655172413793104,
+      "mrr": 0.7097701149425286,
+      "n": 29
+    },
+    "learned": {
+      "hit1": 1.0,
+      "hit2": 1.0,
+      "hit3": 1.0,
+      "mrr": 1.0,
+      "n": 29
+    },
+    "mrr_gain": 0.2902298850574714
+  },
+  "validation_examples": 29,
+  "validation_tasks": 1,
+  "weights": [
+    -0.14180368282865732,
+    -0.9973155789572109,
+    0.15086817397268007,
+    0.0,
+    0.1798895817616713,
+    -0.09934662922794206,
+    -0.14901994384191378,
+    0.1410696074116266,
+    0.1410696074116266,
+    -0.14901994384191378,
+    -2.816817305069111,
+    0.0,
+    0.0,
+    0.0
+  ]
+}

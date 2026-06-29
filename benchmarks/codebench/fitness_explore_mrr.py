@@ -2,7 +2,7 @@
 pairs across the diverse-6 SWE-bench repos. Optimizes the SHIPPED tool (explore,
 the only advertised retrieval tool), scored by rank-of-gold-true-file.
 
-Routing: benchmarks/codebench/data/bench_pairs_multi.json (scripts/_provision_repos.py) maps each
+Routing: benchmarks/codebench/data/bench_pairs_def_gold.json (scripts/_provision_repos.py) maps each
 (query, tid, repo-prefix) and each repo-prefix to a prebuilt read-only index
 (ws, db). One engine per repo.
 
@@ -76,11 +76,25 @@ _parser.add_argument(
 )
 _args, _ = _parser.parse_known_args()
 
-with open(os.environ.get("FITNESS_PAIRS", "benchmarks/codebench/data/bench_pairs_multi.json")) as fh:
-    data = json.load(fh)
-pairs = data["pairs"]
-true_map = data["true_map"]
-repos = data["repos"]
+# FITNESS_PAIRS may be a comma-separated list of gold files. ALL are scored in a
+# single run: explore each query once, then score it against every gold. Reported
+# as one combined entry (out["golds"][kind]). Latency is gold-independent.
+_gold_paths = [
+    p.strip()
+    for p in os.environ.get("FITNESS_PAIRS", "benchmarks/codebench/data/bench_pairs_def_gold.json").split(",")
+    if p.strip()
+]
+_golds: list[tuple[str, list, dict]] = []  # (gold_kind, pairs, true_map)
+repos = None
+for _gp in _gold_paths:
+    with open(_gp) as _fh:
+        _d = json.load(_fh)
+    if repos is None:
+        repos = _d["repos"]
+    _golds.append((_d.get("gold_kind", "definition"), _d["pairs"], _d["true_map"]))
+# Union of all golds' queries drives the (gold-independent) explore phase.
+pairs = [row for _k, _p, _tm in _golds for row in _p]
+_gold_kind = "+".join(k for k, _p, _tm in _golds)
 # Backward-compat env vars; CLI flags take precedence.
 _env_sample = int(os.environ.get("FITNESS_SAMPLE", "0"))
 REPO = _args.repo
@@ -257,10 +271,16 @@ def _worker_init() -> None:
 
     import atelier.core.capabilities.code_context.engine as _eng_mod
 
-    # Shut down the inherited executor (broken after fork) and create a fresh
-    # thread pool for the FTS5 search channels, matching the engine default.
+    # Shut down the inherited executors (broken after fork — parent threads
+    # don't exist in the child, but ThreadPoolExecutor still counts them
+    # against max_workers, so new tasks queue forever) and replace with fresh
+    # pools.  Both _SEARCH_CHANNEL_EXECUTOR and _HEF_CHANNEL_EXECUTOR are
+    # module-level and must be reset; missing either causes the first query
+    # that submits to the stale executor to hang until SIGALRM fires.
     _eng_mod._SEARCH_CHANNEL_EXECUTOR.shutdown(wait=False)
     _eng_mod._SEARCH_CHANNEL_EXECUTOR = _cf.ThreadPoolExecutor(max_workers=16)
+    _eng_mod._HEF_CHANNEL_EXECUTOR.shutdown(wait=False)
+    _eng_mod._HEF_CHANNEL_EXECUTOR = _cf.ThreadPoolExecutor(max_workers=3, thread_name_prefix="atelier-hef")
 
     # Disable Zoekt in workers for pure lexical channel so tool_explore
     # skips the Zoekt parallel recall hook entirely.
@@ -395,30 +415,6 @@ def rank_true(files, trues):
     return None
 
 
-agg = {"rr": 0.0, "h1": 0, "h3": 0, "n": 0}
-by_repo = {}
-for q, tid, prefix in pairs:
-    if q not in runset.get(prefix, ()):
-        continue
-    trues = true_map.get(tid)
-    if not trues:
-        continue
-    r = rank_true(filecache.get((prefix, q), []), trues)
-    br = by_repo.setdefault(prefix, {"rr": 0.0, "h1": 0, "h3": 0, "n": 0})
-    for d in (agg, br):
-        d["n"] += 1
-        if r:
-            d["rr"] += 1.0 / r
-            if r == 1:
-                d["h1"] += 1
-            if r <= 3:
-                d["h3"] += 1
-
-
-def mrr(d):
-    return d["rr"] / max(d["n"], 1)
-
-
 def _pct(vals, p):
     if not vals:
         return 0.0
@@ -426,35 +422,64 @@ def _pct(vals, p):
     return s[min(len(s) - 1, int((p / 100.0) * (len(s) - 1)))]
 
 
-out = {
-    "mrr": round(mrr(agg), 4),
-    "hit1": round(agg["h1"] / max(agg["n"], 1), 4),
-    "hit3": round(agg["h3"] / max(agg["n"], 1), 4),
-    "n": agg["n"],
-    "latency_ms": {
-        "mean": round(sum(latencies) / max(len(latencies), 1), 1),
-        "p50": round(_pct(latencies, 50), 1),
-        "p95": round(_pct(latencies, 95), 1),
-        "max": round(max(latencies), 1) if latencies else 0.0,
-        "over_100ms": sum(1 for x in latencies if x > 100.0),
-    },
-    "by_repo": {
-        p: {
-            "mrr": round(mrr(d), 4),
-            "hit1": round(d["h1"] / max(d["n"], 1), 4),
-            "hit3": round(d["h3"] / max(d["n"], 1), 4),
-            "n": d["n"],
-            "latency_ms": {
-                "mean": round(sum(repo_latencies.get(p, [0])) / max(len(repo_latencies.get(p, [1])), 1), 1),
-                "p50": round(_pct(repo_latencies.get(p, [0]), 50), 1),
-                "p95": round(_pct(repo_latencies.get(p, [0]), 95), 1),
-                "max": round(max(repo_latencies.get(p, [0])), 1),
-                "over_100ms": sum(1 for x in repo_latencies.get(p, []) if x > 100.0),
-            },
-        }
-        for p, d in sorted(by_repo.items())
-    },
+def _repo_lat(p):
+    return {
+        "mean": round(sum(repo_latencies.get(p, [0])) / max(len(repo_latencies.get(p, [1])), 1), 1),
+        "p50": round(_pct(repo_latencies.get(p, [0]), 50), 1),
+        "p95": round(_pct(repo_latencies.get(p, [0]), 95), 1),
+        "max": round(max(repo_latencies.get(p, [0])), 1),
+        "over_100ms": sum(1 for x in repo_latencies.get(p, []) if x > 100.0),
+    }
+
+
+def _score_gold(gpairs, gtm):
+    agg = {"rr": 0.0, "h1": 0, "h3": 0, "n": 0}
+    by_repo = {}
+    for q, tid, prefix in gpairs:
+        if q not in runset.get(prefix, ()):
+            continue
+        trues = gtm.get(tid)
+        if not trues:
+            continue
+        r = rank_true(filecache.get((prefix, q), []), trues)
+        br = by_repo.setdefault(prefix, {"rr": 0.0, "h1": 0, "h3": 0, "n": 0})
+        for d in (agg, br):
+            d["n"] += 1
+            if r:
+                d["rr"] += 1.0 / r
+                if r == 1:
+                    d["h1"] += 1
+                if r <= 3:
+                    d["h3"] += 1
+    return {
+        "mrr": round(agg["rr"] / max(agg["n"], 1), 4),
+        "hit1": round(agg["h1"] / max(agg["n"], 1), 4),
+        "hit3": round(agg["h3"] / max(agg["n"], 1), 4),
+        "n": agg["n"],
+        "by_repo": {
+            p: {
+                "mrr": round(d["rr"] / max(d["n"], 1), 4),
+                "hit1": round(d["h1"] / max(d["n"], 1), 4),
+                "hit3": round(d["h3"] / max(d["n"], 1), 4),
+                "n": d["n"],
+                "latency_ms": _repo_lat(p),
+            }
+            for p, d in sorted(by_repo.items())
+        },
+    }
+
+
+_lat = {
+    "mean": round(sum(latencies) / max(len(latencies), 1), 1),
+    "p50": round(_pct(latencies, 50), 1),
+    "p95": round(_pct(latencies, 95), 1),
+    "max": round(max(latencies), 1) if latencies else 0.0,
+    "over_100ms": sum(1 for x in latencies if x > 100.0),
 }
+_gold_scores = {kind: _score_gold(gp, gtm) for kind, gp, gtm in _golds}
+# Top-level fields mirror the first gold (back-compat for the summary/history
+# code); out["golds"] carries every gold scored this run.
+out = {**_gold_scores[_golds[0][0]], "latency_ms": _lat, "golds": _gold_scores}
 print(json.dumps(out))
 
 # ── History: persist this run and show trend ──────────────────────────────────
@@ -470,7 +495,8 @@ except Exception:
     _sha_label = "unknown"
 
 # Encode the CLI mode used
-_mode = "full" if _args.full else (f"sample={_args.sample}" if _args.sample else "default")
+_base_mode = "full" if _args.full else (f"sample={_args.sample}" if _args.sample else "default")
+_mode = f"{_base_mode}[{CHANNEL}]"
 if REPO:
     _mode += f" repo={REPO}"
 
@@ -484,6 +510,7 @@ _record = {
     "n": out["n"],
     "latency_ms": out["latency_ms"],
     "by_repo": out["by_repo"],
+    "golds": out["golds"],
 }
 with _HISTORY.open("a") as _fh:
     _fh.write(json.dumps(_record) + "\n")
@@ -540,10 +567,11 @@ print(
     f"  {_cur['ts'][:16]}  {_cur['sha']}  [{_cur['mode']}]  n={_cur['n']}",
     file=sys.stderr,
 )
-print(
-    f"  MRR {_cur['mrr']:.4f}   hit@1 {_cur['hit1']:.4f}   hit@3 {_cur['hit3']:.4f}",
-    file=sys.stderr,
-)
+for _gk, _gs in (_cur.get("golds") or {_gold_kind: _cur}).items():
+    print(
+        f"  gold={_gk:<18} MRR {_gs['mrr']:.4f}   hit@1 {_gs['hit1']:.4f}   hit@3 {_gs['hit3']:.4f}   n={_gs['n']}",
+        file=sys.stderr,
+    )
 if _cl:
     print(
         f"  lat  mean={_cl.get('mean', 0):.0f}ms  p50={_cl.get('p50', 0):.0f}ms"

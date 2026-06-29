@@ -33,9 +33,11 @@ cannot be scored there.
 
 ## Provisioning (one-time)
 
-- **Pairs + per-repo index DBs**: `scripts/_provision_repos.py` writes
-  `benchmarks/codebench/data/bench_pairs_multi.json` (maps each repo to a prebuilt read-only `(ws, db)`).
-  Override the path with `EVAL_PAIRS` / the harness reads `benchmarks/codebench/data/bench_pairs_multi.json`.
+- **Pairs + per-repo index DBs**: `scripts/_provision_repos.py` provisions each repo to a
+  prebuilt read-only `(ws, db)`, writes the raw query universe to `bench_pairs_multi.json`,
+  then derives the canonical **definition gold** `bench_pairs_def_gold.json` (via
+  `build_definition_gold.py`) — the single gold every eval reads. Override the path with
+  `EVAL_PAIRS` / `FITNESS_PAIRS`.
 - **Zoekt (channel 2)**: install the binaries on `PATH` and build per-repo indexes:
 
   ```bash
@@ -76,3 +78,261 @@ filters to one repo.
   off zoekt by default.
 - The harness stubs the retrieval cache (force-miss) so each run measures its own
   ranking, and the per-repo index DBs stay effectively read-only.
+
+---
+
+## Symbol-level semantic fusion + per-repo finetuning (2026-06-28)
+
+Goal: wire a **lexical + zoekt + semantic** channel, build `symbol_vectors` for
+the bench repos, measure the **semantic lift / ceiling**, then finetune the
+embedder per-repo (atelier first). All semantic work uses **BGE-Code-v1**
+(`bge:BAAI/bge-code-v1`, 1536-d) on a single RTX 4090.
+
+### What was built
+
+- **`symbol_vectors` for all 13 bench repos** (BGE-Code-v1). 7 were already
+  stamped; the other 6 (matplotlib, seaborn, flask, requests, pylint, sphinx)
+  were embedded via `experiments/retrieval_symbol_vote/build_bge_vectors.py`
+  (one shared GPU model, repos sequential — GPU is the bottleneck, so parallel
+  processes only contend / OOM). Vectors land in the engine's attached
+  `vectors` db (the shared `/tmp/vectors.sqlite`, keyed by `repo_id`) for repos
+  embedded through the engine path, and in the main db for the originally
+  provisioned ones.
+- **`eval_fused_mrr.py`** — channel 4. Single process (one BGE model, queries
+  batched per repo): for each pair it scores three file rankings against the
+  same gold, plus an oracle:
+  - `lexzoekt` = `tool_explore` (the shipped lexical+zoekt fusion, **unchanged**);
+  - `semantic` = cosine over `symbol_vectors`, projected symbol→file;
+  - `fused` = file-level weighted RRF of the two (engine defaults k=60, w=1/1);
+  - `oracle` = best-of(lex, sem) per query — the ceiling a perfect fuser could reach.
+
+### Results (full set, n=2306)
+
+| arm | MRR | hit@1 | hit@3 |
+|-----|-----|-------|-------|
+| lexical+zoekt | **0.7577** | 0.679 | 0.834 |
+| semantic (BGE base, symbol-level) | 0.6322 | — | — |
+| fused (equal-weight RRF) | 0.7202 | — | — |
+| **oracle** (best-of per query) | **0.7951** | — | — |
+
+- `lexzoekt`=0.758 reproduces the shipped `fitness_explore_mrr.py` baseline (~0.76)
+  → the harness is apples-to-apples.
+- **Naive equal-weight fusion REGRESSES (-0.0375).** On this grep/symbol-style
+  benchmark, lexical+zoekt is near-optimal and base-BGE semantic adds noise to the
+  strong lexical top-ranks.
+- **Oracle ceiling = +0.0374** (0.758→0.795); 18 queries where lexical misses
+  top-10 but semantic hits top-3. Real but modest complementary signal — capturing
+  it needs a learned fuser / weighting, not equal-weight RRF.
+
+### Per-repo finetuning (atelier)
+
+Train on **synthetic** grep queries mined from atelier source (`synthetic_pair_miner`,
+5787 pairs, query-distinct from the bench), evaluate on the **real** atelier bench
+queries. BGE-Code-v1 finetuned with `MultipleNegativesRankingLoss`, bf16 + gradient
+checkpointing + max_seq=512 (full fp16 finetune OOMs 24 GB), 2 epochs.
+
+| eval | base | finetuned | Δ |
+|------|------|-----------|---|
+| file-level MRR (1373-file corpus, n=335) | 0.0643 | 0.0713 | +0.007 |
+| symbol-level semantic MRR (full atelier, n=335) | 0.5772 | 0.5673 | **−0.010** |
+
+**Finetuning on synthetic-grep queries gives ≈0 lift on the (grep-style) eval
+queries** — both granularities agree. The bench queries are lexical by nature, so
+there is little semantic signal for an embedder (base or finetuned) to add.
+
+### Methodology caveats discovered (don't repeat)
+
+- **Sample bias:** `--sample N` takes `sorted(queries)[:N]` — an *easier*, biased
+  subset (atelier sample-150 lex=0.81 vs full 0.67). Headline numbers use the full set.
+- **Live-repo stale vectors:** atelier is the live repo; editing files shifts
+  `symbol_id`s, so vectors built earlier mis-align with the current `symbols`
+  table and the semantic arm is *understated* (atelier full-run sem read 0.202
+  until vectors were rebuilt from the current symbols → 0.577). Static `/tmp`
+  repos are unaffected.
+- **Build hazards:** fork+CUDA OOM (don't embed in a fork pool — one shared model,
+  sequential); the shared `/tmp/vectors.sqlite` attach locks across sequential
+  engines (build through `engine._reuse_connection()`, or one process per repo);
+  `uv run` re-syncs the project env to base and strips `uv pip install`-ed torch —
+  run GPU work from a dedicated `.venv-embed` (torch + sentence-transformers +
+  accelerate + datasets + editable atelier).
+
+### Running
+
+```bash
+# Build BGE symbol_vectors for the bench repos (idempotent; skips bge-stamped repos)
+ATELIER_CODE_EMBEDDER=bge .venv-embed/bin/python \
+  experiments/retrieval_symbol_vote/build_bge_vectors.py [--only sphinx,flask] [--model <path>]
+
+# Fused MRR: lexical+zoekt vs semantic vs fused vs oracle (one query set, all arms)
+.venv-embed/bin/python benchmarks/codebench/eval_fused_mrr.py \
+  [--repo atelier] [--sample N] [--model <finetuned-dir>] [--no-explore] \
+  [--rrf-k 60 --w-lex 1.0 --w-sem 1.0]
+```
+
+### Productised command
+
+`atelier code train --name=embedding` (in `gateway/cli/commands/code.py`,
+`[EXPERIMENTAL]`, needs `pip install -e '.[semantic]'`) wraps the pipeline
+mine → prepare → finetune → eval for any repo. `--dry-run` prints the plan.
+
+### Conclusion / next steps
+
+The semantic ceiling on *this* benchmark is low because the queries are
+grep/symbol-style — exactly where lexical+zoekt wins. **Do not fuse semantic into
+the shipped explore path yet** (it regresses under equal-weight RRF). To realise
+the embedder's value: (1) evaluate and train on **NL / prose** queries (real agent
+`explore` queries), not grep patterns; (2) capture the oracle ceiling with a
+**learned fuser / weighting** rather than equal-weight RRF. The full pipeline
+(symbol-vector build, GPU finetune, fused-MRR harness with oracle, CLI command) is
+in place and validated to do exactly that once NL-query data is available.
+
+---
+
+## DECISION (2026-06-29): do NOT wire semantic into explore yet
+
+Gated full run, n=1562 main-DB repos (equal weight unless noted):
+
+| config | MRR | lift vs lexical |
+|---|---|---|
+| lexical | 0.6712 | — |
+| semantic alone | 0.5841 | −0.087 |
+| fused (equal weight, all queries) | 0.6526 | −0.019 |
+| fused, best weight (w_sem=0.75) | 0.6696 | −0.002 |
+| **shape-gate: fuse alternations only** | **0.6750** | **+0.0038** |
+| oracle (best-of per query) | 0.7336 | +0.062 |
+
+Fusion lift **by query shape** (the crux):
+
+| bucket | n (share) | lexical | semantic | fused |
+|---|---|---|---|---|
+| alternation | 359 (23%) | 0.453 | 0.428 | **0.470 (+0.017)** |
+| multiword | 274 (18%) | 0.533 | 0.417 | 0.464 (−0.069) |
+| single-token | 929 (60%) | 0.796 | 0.694 | 0.779 (−0.017) |
+
+Fusion helps **only on alternations** (where lexical FTS structurally choked) and
+hurts the other 78% of queries. Even a perfectly targeted static shape-gate yields
+**+0.004 MRR** — semantic's realizable lift here is ~0. The +0.062 oracle ceiling is
+NOT reachable with a static gate (most oracle wins are queries where you can't tell
+a priori which channel is right); it needs a learned per-query fuser reading both
+rankings' confidence, and is still modest.
+
+Other measured ≈0 levers this session: per-repo embedder finetune (file-level +0.007,
+symbol-level −0.010); richer embedding text name+sig+doc+1200ch body (−0.014, dilutes
+the name signal). The one real win is **lexical**: the exact-name channels in
+`_search_symbols_local` only matched the *whole* query string, so an `a|b|c`
+alternation matched no symbol and never got the exact-definition pin — fixed by
+splitting on `|` and matching each identifier via `symbol_name IN (...)`. That
+removes semantic's one niche for free (no GPU model).
+
+**Conclusion:** keep `tool_explore` lexical+zoekt. Revisit semantic only with
+**NL/intent eval+train queries** — the only regime where semantic ranked #1.
+Fusion-weight tuning, richer embeddings, and finetuning are all ≈0 on this
+grep-shaped benchmark.
+
+---
+
+## The gold was flawed for retrieval — use the DEFINITION gold
+
+The shipped `bench_pairs_multi.json` gold is the file the SWE-task PR **edited**
+(edit-localization). For a *search* eval it is mislabeled. Measured on atelier
+(n=335): **45% of golds are test files**, and by whether the gold defines a symbol
+the query names:
+
+| category | share | lexical MRR |
+|---|---|---|
+| gold defines a query symbol (fair) | 48% | **0.945** |
+| query symbol defined in a NON-gold file | 40% | 0.363 |
+| query names no known symbol | 12% | 0.566 |
+
+**Of the misses, 85% are "gold-elsewhere" and 0% are "gold-defines"** — the
+retriever never misses when the gold is the right answer; it "misses" because the
+gold is the edited test, not where the query's symbols live (e.g. query
+`apply_fuzzy_replace|resolve_symbol_edit` → defined in `symbol_edit.py`/`fuzzy_match.py`,
+but gold = `tests/.../test_rich_edit_symbol.py`). So ~0.67 was a **labeling
+ceiling, not a retrieval ceiling**.
+
+### Fix: `build_definition_gold.py`
+
+Regenerates the gold as the file(s) that **define** the specific symbols each query
+names (a bare symbol name defined in ≤`--max-def` files, length ≥`--min-len`, not a
+common token), auto-derived from each repo's symbol index. Three gates keep only the
+*reliably-labelable* subset: (1) queries naming no specific symbol are dropped (they
+need an NL eval); (2) the **purity gate** drops descriptive queries (see below); (3)
+multi-symbol queries scattered across files (no file defines ≥2 of them) are dropped
+as ambiguous.
+
+```bash
+uv run --no-sync python benchmarks/codebench/build_definition_gold.py \
+    --out benchmarks/codebench/data/bench_pairs_def_gold.json
+# 1357/1924 queries scorable (71%), avg ~1.3 gold files/query, 10 repos (--min-purity 0.5)
+```
+
+#### The purity gate — why atelier was the outlier
+
+With only gates (1)+(3), atelier read **0.756** while every other repo sat at
+0.93–1.0. The cause was *gold-derivation noise on descriptive queries*, not
+retrieval: atelier is the most polyglot/descriptive-query-heavy repo, and a
+lowercase English phrase like `no install-time indexers detected SCIP message`
+has a couple of words that *coincidentally* name a bare symbol in an unrelated
+file, so the auto-gold points at e.g. `api.ts`. The retriever returns sensible
+files; the *label* is wrong (atelier `absent(>30)` rate was 15%, vs 0%
+gold-not-in-index — the gold was always indexed, just wrong).
+
+The gate: `purity = n_specific / n_word_tokens` — the fraction of a query's
+word-tokens that are real symbols. A bare symbol or a clean alternation of
+symbols has purity ≈1.0; a descriptive sentence has a few coincidental hits among
+many ordinary words, so purity is low. `--min-purity 0.5` (default) drops the
+descriptive tail. Effect on atelier:
+
+| min-purity | atelier n | atelier MRR | hit@1 | absent(>30) |
+|---|---|---|---|---|
+| 0.0 (off) | 209 | 0.756 | 73% | **15%** |
+| **0.5** | 163 | **0.873** | 85% | 6% |
+| 0.67 | 133 | 0.941 | 93% | 3% |
+
+0.5 is the cut: it removes label noise (the worst surviving misses become genuine
+rank-11–14 ranking problems, not spurious golds), while 0.67 over-prunes (the
+alternation bucket collapses to n=12) and its residual misses are regex-pattern
+queries (`re\.(sub|compile)`). The gate is a pure query filter — it changes no
+retrieval behavior, so repos already at 0.93–1.0 only hold or rise.
+
+Use it via the existing harness knobs (it keeps the `{pairs, true_map, repos}`
+shape, one stable id per query):
+```bash
+./.venv-embed/bin/python benchmarks/codebench/eval_fused_mrr.py \
+    --pairs benchmarks/codebench/data/bench_pairs_def_gold.json
+FITNESS_PAIRS=benchmarks/codebench/data/bench_pairs_def_gold.json \
+    FITNESS_WORKERS=1 uv run python benchmarks/codebench/fitness_explore_mrr.py --full
+```
+
+### Validation (definition gold, 6 vector repos, n=1063)
+
+| arm | SWE-edit gold | definition gold |
+|---|---|---|
+| lexical | ~0.67–0.76 | **0.9082** |
+| semantic | — | 0.7520 |
+| fused (w=1) | — | 0.8684 (−0.040) |
+| oracle | — | 0.9214 (+0.013) |
+
+By shape: single-token lexical **0.998** (solved), alternation 0.795, multiword 0.743.
+
+### Cross-repo lexical on the purity-gated gold (n=1357, --min-purity 0.5)
+
+| repo | n | MRR@10 | repo | n | MRR@10 |
+|---|---|---|---|---|---|
+| matplotlib | 266 | 0.996 | astropy | 137 | 0.985 |
+| xarray | 213 | 1.000 | django | 125 | 0.957 |
+| pytest | 195 | 0.997 | seaborn | 87 | 0.990 |
+| pylint | 143 | 0.995 | **atelier** | **163** | **0.873** |
+| | | | **OVERALL** | **1357** | **0.977** |
+
+The purity gate moved atelier **0.725 → 0.756 (consensus rule) → 0.873 (purity
+gate)** — no longer a dramatic outlier (in band with django 0.957). Its residual
+gap is real rank-11–14 alternation misses, not label noise.
+
+Fixing the gold lifts measured lexical retrieval **0.67 → 0.91 (+0.24)** — the
+retriever was always strong; the benchmark measured the wrong task. It also
+**confirms the semantic verdict on a fair gold**: semantic 0.75 < lexical 0.91,
+fusion regresses on every bucket, oracle ceiling +0.013. The grep-shaped query
+distribution, not the gold, is why semantic doesn't help. **Adopt the definition
+gold as the standard retrieval eval; keep the SWE-edit gold for edit-localization.**

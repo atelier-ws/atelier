@@ -1,0 +1,41 @@
+warming webservers in parallel (wait_until_searchable)...
+  warm django__django           ready=False in 30.0s
+  warm pytest-dev__pytest       ready=False in 30.0s
+  warm astropy__astropy         ready=False in 30.0s
+  warm sympy__sympy             ready=False in 30.0s
+  warm scikit-learn__scikit-learn ready=False in 30.0s
+  warm pydata__xarray           ready=False in 30.0s
+  warm matplotlib__matplotlib   ready=False in 30.0s
+  warm mwaskom__seaborn         ready=False in 30.0s
+  warm pallets__flask           ready=False in 30.0s
+  warm psf__requests            ready=False in 30.0s
+  warm pylint-dev__pylint       ready=False in 30.0s
+  warm sphinx-doc__sphinx       ready=False in 30.0s
+  warm atelier__atelier         ready=False in 30.0s
+
+=== 120 queries, mean wall 37.1ms, implied q/s 26.9 ===
+channel                           total_ms   calls   ms/call  ms/query
+_tool_explore_impl                    3443     120     28.69     28.69
+search_symbols                        3080     229     13.45     25.67
+_hef_line_fts_candidates              1824     120     15.20     15.20
+_fused_explore_hybrid                  709     120      5.91      5.91
+_zoekt_candidate_files                 380     258      1.47      3.16
+_hef_exact_symbol_candidates           227     120      1.89      1.89
+_hef_anchor_zoekt_candidates           207     120      1.72      1.72
+_rerank_explore_result                   2     120      0.02      0.02
+_semantic_candidate_files                1     120      0.01      0.01
+
+=== slowest 12 queries ===
+       162ms  django__django       'def _constraint_names'
+       162ms  django__django       'self\\.get_response = get_response'
+       150ms  astropy__astropy     '/.*s-1|/s/|m/s|J/|cds.*/|/.*/.*format|roundtrip_cd'
+       146ms  mwaskom__seaborn     'def test_.*legend|_legend'
+       132ms  django__django       'def trim_docstring'
+       119ms  atelier__atelier     'correct|resolved|class ArmResult|def _metric_value'
+       110ms  atelier__atelier     '_render_search_md _render_grep_md _render_read_md '
+        97ms  django__django       'class Window\\b'
+        96ms  django__django       'DecimalField|Lag|Lead|CAST'
+        85ms  django__django       'VERSION = '
+        82ms  django__django       'def compile_json_path'
+        78ms  atelier__atelier     'sync_dirty_state create_worktree called from capab'
+EXIT=0

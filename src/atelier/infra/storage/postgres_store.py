@@ -75,8 +75,8 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 2. reasonblocks
-CREATE TABLE IF NOT EXISTS reasonblocks (
+-- 2. playbooks
+CREATE TABLE IF NOT EXISTS playbooks (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id      UUID REFERENCES projects(id) ON DELETE SET NULL,
     slug            TEXT UNIQUE NOT NULL,
@@ -104,9 +104,9 @@ CREATE TABLE IF NOT EXISTS reasonblocks (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_rb_domain_status ON reasonblocks(project_id, domain, status);
-CREATE INDEX IF NOT EXISTS idx_rb_slug ON reasonblocks(slug);
-CREATE INDEX IF NOT EXISTS idx_rb_metadata ON reasonblocks USING gin(metadata);
+CREATE INDEX IF NOT EXISTS idx_playbook_domain_status ON playbooks(project_id, domain, status);
+CREATE INDEX IF NOT EXISTS idx_playbook_slug ON playbooks(slug);
+CREATE INDEX IF NOT EXISTS idx_playbook_metadata ON playbooks USING gin(metadata);
 
 -- 3. rubrics
 CREATE TABLE IF NOT EXISTS rubrics (
@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS environments (
     slug                   TEXT UNIQUE NOT NULL,
     domain                 TEXT NOT NULL,
     description            TEXT NOT NULL DEFAULT '',
-    required_reasonblocks  JSONB NOT NULL DEFAULT '[]',
+    required_playbooks  JSONB NOT NULL DEFAULT '[]',
     default_rubrics        JSONB NOT NULL DEFAULT '[]',
     tool_policy            JSONB NOT NULL DEFAULT '{}',
     escalation_rules       JSONB NOT NULL DEFAULT '[]',
@@ -190,7 +190,7 @@ CREATE INDEX IF NOT EXISTS idx_te_error_sig ON trace_events(error_signature);
 -- 7. block_applications
 CREATE TABLE IF NOT EXISTS block_applications (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    reasonblock_id   UUID NOT NULL,
+    playbook_id   UUID NOT NULL,
     trace_id         UUID NOT NULL,
     project_id       UUID REFERENCES projects(id) ON DELETE SET NULL,
     injection_point  TEXT NOT NULL DEFAULT '',
@@ -223,7 +223,7 @@ CREATE TABLE IF NOT EXISTS failure_clusters (
     evidence_trace_ids      UUID[] NOT NULL DEFAULT '{}',
     affected_files          JSONB NOT NULL DEFAULT '[]',
     affected_tools          JSONB NOT NULL DEFAULT '[]',
-    suggested_reasonblock   JSONB,
+    suggested_playbook   JSONB,
     suggested_rubric        JSONB,
     suggested_eval_cases    JSONB,
     suggested_prompt_patch  TEXT,
@@ -326,9 +326,9 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, created_at);
 # DDL to enable pgvector (applied only when ATELIER_VECTOR_SEARCH_ENABLED=true)
 VECTOR_EXTENSION_DDL = """
 CREATE EXTENSION IF NOT EXISTS vector;
-ALTER TABLE reasonblocks
+ALTER TABLE playbooks
     ALTER COLUMN embedding TYPE vector({dim});
-CREATE INDEX IF NOT EXISTS idx_rb_embedding ON reasonblocks
+CREATE INDEX IF NOT EXISTS idx_playbook_embedding ON playbooks
     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 """
 
@@ -445,7 +445,7 @@ class PostgresStore:
         """Return basic health information."""
         try:
             with self._connect() as conn:
-                row = conn.execute("SELECT COUNT(*) FROM reasonblocks").fetchone()
+                row = conn.execute("SELECT COUNT(*) FROM playbooks").fetchone()
                 block_count = row[0] if row else 0
             return {
                 "ok": True,
@@ -457,7 +457,7 @@ class PostgresStore:
             logging.exception("Recovered from broad exception handler")
             return {"ok": False, "backend": "postgres", "error": str(exc)}
 
-    # ----- reasonblocks ---------------------------------------------------- #
+    # ----- playbooks ------------------------------------------------------ #
 
     def upsert_block(self, block: Playbook, *, write_markdown: bool = False) -> None:
         payload = to_jsonable(block)
@@ -465,7 +465,7 @@ class PostgresStore:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO reasonblocks (
+                INSERT INTO playbooks (
                     slug, title, domain, situation, status,
                     task_types, triggers, file_patterns, tool_patterns,
                     dead_ends, procedure, verification, failure_signals,
@@ -525,7 +525,7 @@ class PostgresStore:
 
     def get_block(self, block_id: str) -> Playbook | None:
         with self._connect() as conn:
-            row = conn.execute("SELECT * FROM reasonblocks WHERE slug = %s", (block_id,)).fetchone()
+            row = conn.execute("SELECT * FROM playbooks WHERE slug = %s", (block_id,)).fetchone()
         if row is None:
             return None
         return self._row_to_block(row)
@@ -537,7 +537,7 @@ class PostgresStore:
         status: PlaybookStatus | None = "active",
         include_deprecated: bool = False,
     ) -> list[Playbook]:
-        sql = "SELECT * FROM reasonblocks WHERE 1=1"
+        sql = "SELECT * FROM playbooks WHERE 1=1"
         params: list[Any] = []
         if domain:
             sql += " AND domain = %s"
@@ -557,7 +557,7 @@ class PostgresStore:
         if not query.strip():
             return self.list_blocks()[:limit]
         sql = """
-            SELECT * FROM reasonblocks
+            SELECT * FROM playbooks
             WHERE to_tsvector('english', title || ' ' || situation) @@ plainto_tsquery(%s)
               AND status != 'quarantined'
             LIMIT %s
@@ -570,7 +570,7 @@ class PostgresStore:
         now = datetime.now(UTC).isoformat()
         with self._connect() as conn:
             result = conn.execute(
-                "UPDATE reasonblocks SET status = %s, updated_at = %s WHERE slug = %s",
+                "UPDATE playbooks SET status = %s, updated_at = %s WHERE slug = %s",
                 (status, now, block_id),
             )
             conn.commit()
@@ -579,24 +579,24 @@ class PostgresStore:
     def delete_block(self, block_id: str) -> bool:
         """Hard-delete a Playbook; return True if a row was removed."""
         with self._connect() as conn:
-            result = conn.execute("DELETE FROM reasonblocks WHERE slug = %s", (block_id,))
+            result = conn.execute("DELETE FROM playbooks WHERE slug = %s", (block_id,))
             conn.commit()
         return (result.rowcount or 0) > 0
 
     def increment_usage(self, block_id: str, *, success: bool | None = None) -> None:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE reasonblocks SET usage_count = usage_count + 1 WHERE slug = %s",
+                "UPDATE playbooks SET usage_count = usage_count + 1 WHERE slug = %s",
                 (block_id,),
             )
             if success is True:
                 conn.execute(
-                    "UPDATE reasonblocks SET success_count = success_count + 1 WHERE slug = %s",
+                    "UPDATE playbooks SET success_count = success_count + 1 WHERE slug = %s",
                     (block_id,),
                 )
             elif success is False:
                 conn.execute(
-                    "UPDATE reasonblocks SET failure_count = failure_count + 1 WHERE slug = %s",
+                    "UPDATE playbooks SET failure_count = failure_count + 1 WHERE slug = %s",
                     (block_id,),
                 )
             conn.commit()
@@ -919,7 +919,7 @@ class PostgresStore:
         vector_str = "[" + ",".join(str(x) for x in embedding) + "]"
         with self._connect() as conn:
             conn.execute(
-                "UPDATE reasonblocks SET embedding = %s WHERE slug = %s",
+                "UPDATE playbooks SET embedding = %s WHERE slug = %s",
                 (vector_str, block_id),
             )
             conn.commit()
@@ -937,7 +937,7 @@ class PostgresStore:
         vector_str = "[" + ",".join(str(x) for x in embedding) + "]"
         sql = """
             SELECT *, 1 - (embedding <=> %(vec)s::vector) AS similarity
-            FROM reasonblocks
+            FROM playbooks
             WHERE embedding IS NOT NULL
               AND status != 'quarantined'
         """

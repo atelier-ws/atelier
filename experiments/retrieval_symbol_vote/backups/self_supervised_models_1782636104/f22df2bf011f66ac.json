@@ -1,0 +1,20 @@
+{
+  "collection": {
+    "candidate_miss": 33,
+    "ok": 27,
+    "too_few_candidates": 178
+  },
+  "enabled": false,
+  "examples": 27,
+  "pairwise_rows": 36,
+  "reason": "insufficient real task-disjoint examples",
+  "records": 238,
+  "records_with_existing_gold": 238,
+  "repo_id": "f22df2bf011f66ac",
+  "repo_prefix": "django__django",
+  "repo_root": "/tmp/codebench_workspaces/cg_full_20260618T235417Z-cf8a52a44f31/cg_django_atelier_rep2",
+  "train_examples": 25,
+  "train_tasks": 9,
+  "validation_examples": 2,
+  "validation_tasks": 2
+}

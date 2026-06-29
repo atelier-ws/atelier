@@ -2,9 +2,11 @@
 
 Per repo: pick the dump-mined task with the most queries as the snapshot anchor,
 clone + checkout its base_commit (Django reuses the existing checkout/index), build
-the Atelier symbol index into /tmp/idx_<repo>.db, warm zoekt. Emits
-benchmarks/codebench/data/bench_pairs_multi.json: {pairs:[[query,tid,prefix]], true_map:{tid:[files]},
-repos:{prefix:{ws,db,anchor}}}. Idempotent: skips clone/index when present.
+the Atelier symbol index into /tmp/idx_<repo>.db, warm zoekt. Emits the raw query
+universe benchmarks/codebench/data/bench_pairs_multi.json: {pairs:[[query,tid,prefix]],
+true_map:{tid:[files]}, repos:{prefix:{ws,db,anchor}}}, then derives the canonical
+retrieval gold benchmarks/codebench/data/bench_pairs_def_gold.json (build_definition_gold.py)
+that every eval reads. Idempotent: skips clone/index when present.
 
 The main work is guarded by ``if __name__ == "__main__"`` so that index_repo()'s
 worker processes (which re-import this module) do NOT re-run provisioning.
@@ -124,12 +126,21 @@ def main():
         repos_meta[prefix] = {"ws": str(ws), "db": str(db), "anchor": anchor, "base_commit": base_commit}
         print(f"[{prefix}] ready: {kept} pairs, symbols={symbol_count(db)}", flush=True)
 
-    json.dump(
-        {"pairs": pairs, "true_map": true_map, "repos": repos_meta},
-        open("benchmarks/codebench/data/bench_pairs_multi.json", "w"),
-    )
+    with open("benchmarks/codebench/data/bench_pairs_multi.json", "w") as fh:
+        json.dump({"pairs": pairs, "true_map": true_map, "repos": repos_meta}, fh)
     uniq = len({(q, p) for q, _, p in pairs})
     print(f"\nDONE: {len(pairs)} pairs | {uniq} unique (query,repo) | {len(repos_meta)} repos", flush=True)
+    # bench_pairs_multi.json is the RAW provisioning output (the full query universe
+    # + SWE-edit true_map + repo map). Derive the canonical retrieval gold from it:
+    # the definition gold that every eval reads. Re-derivable cheaply (no re-clone)
+    # when tuning the gold's parameters.
+    print("Deriving definition gold -> bench_pairs_def_gold.json ...", flush=True)
+    subprocess.run([sys.executable, "benchmarks/codebench/build_definition_gold.py"], check=True)
+    # Content/usage gold (grep-derived): gold = files whose CONTENT matches the
+    # query. Complements the definition gold; this is the retrieval mode where the
+    # Zoekt trigram channel earns its keep. Selectable via `eval retrieval --gold content`.
+    print("Deriving content gold -> bench_pairs_content_gold.json ...", flush=True)
+    subprocess.run([sys.executable, "benchmarks/codebench/build_content_gold.py"], check=True)
 
 
 if __name__ == "__main__":

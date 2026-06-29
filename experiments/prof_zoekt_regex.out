@@ -1,0 +1,8 @@
+webserver ready: False
+_zoekt_candidate_files run0: 25.2ms n=0
+_zoekt_candidate_files run1: 0.2ms n=0
+_zoekt_candidate_files run2: 0.2ms n=0
+tool_explore run0: 53.5ms files=10
+tool_explore run1: 22.1ms files=10
+tool_explore run2: 32.8ms files=10
+EXIT=0

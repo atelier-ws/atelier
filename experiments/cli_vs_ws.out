@@ -1,0 +1,30 @@
+binary: /home/pankaj/go/bin/zoekt index: /home/pankaj/.atelier/workspaces/tmp-codebench_workspaces-cg_full_20260618T235417Z-cf8a52a44f31-cg_django_atelier_rep2/zoekt/index
+ cli_n  ws_n cli_rk  ws_rk  query
+    11    11      1      1  "'CAST\\(|CAST\\(%|cast_char_field_without_ma"
+   123   123      1      1  'NUMERIC|DecimalField|as_sqlite'
+    15    15      5      5  'CAST'
+    47    47      1      1  'has_changed'
+    83    83     67     67  'def reduce'
+     3     3      3      3  'def get_converters|def apply_converters'
+    19    19      4      4  'class RowNumber|class Window\\b'
+     7     7      3      3  '_delete_composed_index|alter_index_togethe'
+    96    96     72     72  'class Prefetch|Prefetch\\(\\)|sliced|slice'
+     2     2      2      2  'def has_changed|def bound_data'
+    15    15      1      1  'CAST\\(|cast_sql|\'NUMERIC\'|\\"NUMERIC\\"'
+     6     6      3      3  'AuthorWithUniqueNameAndBirthday|allows_mul'
+     4     4   None   None  '_window-functions|window-functions'
+     8     8   None   None  'Cannot filter a query once a slice has bee'
+    16    16   None   None  'self\\.get_response = get_response'
+     2     2      1      1  'def _constraint_names'
+     2     2      1      1  'def alter_index_together|def alter_unique_'
+    74    74   None   None  'VERSION = '
+    11    11     10     10  'def get_prefetch_queryset'
+     1     1      1      1  'def change_aliases'
+   579   579    239    239  'class Experiment|start = |end = |estimated'
+   379   379      1      1  'decimal|DecimalField|CAST|NUMERIC|output_f'
+    11    11      3      3  'def get_col\\b'
+    29    29     22     22  'SUB =|ADD =|temporal|TemporalSubtraction|E'
+    12    12      1      1  'get_resolver|_get_cached_resolver'
+
+CLI gold-rank better on 0/25 django queries
+EXIT=0

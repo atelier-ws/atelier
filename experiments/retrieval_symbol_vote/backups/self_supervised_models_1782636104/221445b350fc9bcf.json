@@ -1,0 +1,20 @@
+{
+  "collection": {
+    "candidate_miss": 21,
+    "ok": 21,
+    "too_few_candidates": 284
+  },
+  "enabled": false,
+  "examples": 21,
+  "pairwise_rows": 22,
+  "reason": "insufficient real task-disjoint examples",
+  "records": 326,
+  "records_with_existing_gold": 326,
+  "repo_id": "221445b350fc9bcf",
+  "repo_prefix": "atelier__atelier",
+  "repo_root": "/home/pankaj/Projects/leanchain/atelier",
+  "train_examples": 16,
+  "train_tasks": 7,
+  "validation_examples": 5,
+  "validation_tasks": 3
+}

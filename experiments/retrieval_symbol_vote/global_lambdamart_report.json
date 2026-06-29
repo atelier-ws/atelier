@@ -1,0 +1,31 @@
+{
+  "enabled": false,
+  "export_parity_mismatch": 0,
+  "groups_real": 191,
+  "groups_synthetic": 20026,
+  "latency_p95_ms": 0.0714,
+  "reason": "mrr_gain 0.0000 < 0.005",
+  "recall_failures": {
+    "real": 135,
+    "synthetic": 12474
+  },
+  "train_groups": 20201,
+  "trees": 40,
+  "val_groups": 16,
+  "val_tasks": 4,
+  "validation": {
+    "baseline": {
+      "hit1": 0.6875,
+      "hit3": 0.9375,
+      "mrr": 0.8177083333333334,
+      "n": 16
+    },
+    "learned": {
+      "hit1": 0.6875,
+      "hit3": 0.9375,
+      "mrr": 0.8177083333333334,
+      "n": 16
+    },
+    "mrr_gain": 0.0
+  }
+}

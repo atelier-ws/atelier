@@ -102,4 +102,4 @@ Metric to maximize: `mrr`.
 - Keep changes minimal and targeted — one idea per worker
 - The fitness run takes ~30 seconds with FITNESS_WORKERS=4
 - Zoekt servers are already running for the bench repos at /tmp/idx_ws_*/
-- Bench pairs are at benchmarks/codebench/data/bench_pairs_multi.json (shared, read-only)
+- Bench pairs are at benchmarks/codebench/data/bench_pairs_def_gold.json (shared, read-only)

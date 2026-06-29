@@ -11,7 +11,7 @@ from click.testing import CliRunner, Result
 
 # Must set dev mode before importing cli for @_dev_command registration
 from atelier.core.capabilities.plugin_runtime import update_session_stats
-from atelier.core.foundation.models import ReasonBlock, Rubric
+from atelier.core.foundation.models import Playbook, Rubric
 from atelier.core.foundation.store import ContextStore
 from atelier.core.service.jobs import JOB_CONSOLIDATE_BLOCKS
 from atelier.gateway.adapters import mcp_server
@@ -53,7 +53,7 @@ def _seed_state_change_rubric(root: Path) -> None:
 
 def _seed_rescue_block(root: Path) -> None:
     ContextStore(root).upsert_block(
-        ReasonBlock(
+        Playbook(
             id="state-change-rescue",
             title="Recover from wrong target update",
             domain="state.change",
@@ -74,7 +74,7 @@ def test_init_seeds_blocks_and_rubrics(tmp_path: Path) -> None:
     res = _invoke(tmp_path / "a", "init")
     assert res.exit_code == 0, res.output
     assert "seeded" in res.output
-    assert "reasonblocks and" in res.output
+    assert "playbooks and" in res.output
     assert "rubrics" in res.output
 
 
@@ -197,9 +197,13 @@ def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
             "tool_input": {"content_regex": "needle", "file_glob_patterns": ["*.py"]},
         },
     )
-    # Real measured savings come from live_savings_events.jsonl (written by
-    # MCP tool handlers at result time, priced at the model in use that turn).
-    (root / "live_savings_events.jsonl").write_text(
+    # Real measured savings come from sessions/<id>/savings.jsonl (written by
+    # the stop hook at session end, priced at the model in use that turn).
+    savings_file = root / "sessions" / "s1" / "savings.jsonl"
+    savings_file.parent.mkdir(parents=True, exist_ok=True)
+    import datetime
+
+    savings_file.write_text(
         json.dumps(
             {
                 "session_id": "s1",
@@ -208,6 +212,7 @@ def test_savings_cli_reports_session_stats(tmp_path: Path) -> None:
                 "tokens_saved": 1200,
                 "cost_saved_usd": 0.0036,
                 "model": "claude-sonnet-4-5",
+                "ts": datetime.datetime.now(datetime.UTC).isoformat(),
             }
         )
         + "\n",
@@ -270,7 +275,7 @@ def test_worker_runs_consolidation_job_on_sqlite(
 
     store = ContextStore(root)
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-one",
             title="Checkout retry timeout",
             domain="testing",
@@ -282,7 +287,7 @@ def test_worker_runs_consolidation_job_on_sqlite(
         write_markdown=False,
     )
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-two",
             title="Checkout retry webhook timeout",
             domain="testing",
@@ -361,8 +366,7 @@ def test_background_install_writes_native_stack_unit(tmp_path: Path, monkeypatch
     assert res.exit_code == 0, res.output
     stack_unit = (unit_dir / "atelier-stack.service").read_text(encoding="utf-8")
     assert "docker compose" not in stack_unit
-    assert "stack run" in stack_unit
-    assert "stack stop" in stack_unit
+    assert "background service start" in stack_unit
     assert any(cmd[:3] == ["systemctl", "--user", "enable"] for cmd in commands)
     assert any(cmd[:3] == ["systemctl", "--user", "restart"] for cmd in commands)
 
@@ -487,7 +491,7 @@ def test_servicectl_tick_enqueues_and_processes_periodic_consolidation(
 
     store = ContextStore(root)
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-one",
             title="Checkout retry timeout",
             domain="testing",
@@ -499,7 +503,7 @@ def test_servicectl_tick_enqueues_and_processes_periodic_consolidation(
         write_markdown=False,
     )
     store.upsert_block(
-        ReasonBlock(
+        Playbook(
             id="rb-two",
             title="Checkout retry webhook timeout",
             domain="testing",

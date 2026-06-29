@@ -186,11 +186,13 @@ def opencode_import(ctx: click.Context, path: Path | None, force: bool) -> None:
     default=None,
     help="Export reconstructed session logs (JSONL) to this directory.",
 )
+@click.option("--json", "as_json", is_flag=True, help="Output per-host counts as JSON (machine-readable).")
 @click.pass_context
 def global_import(
-    ctx: click.Context, host: str | None, force: bool, path: Path | None, export_dir: Path | None
+    ctx: click.Context, host: str | None, force: bool, path: Path | None, export_dir: Path | None, as_json: bool
 ) -> None:
     """Unified import for ALL agent sessions (Claude, Codex, etc.)."""
+    from atelier.gateway.cli.commands._shared import _emit
     from atelier.gateway.hosts.session_parsers._session_parser import parse_session_turns
     from atelier.gateway.hosts.session_parsers.registry import iter_importer_classes
 
@@ -210,6 +212,7 @@ def global_import(
     total = 0
     reconstructable = 0
     all_imported_ids = []
+    per_host_counts: dict[str, int] = {}
 
     with store.batch_mode():
         for name, importer_cls in hosts:
@@ -220,6 +223,7 @@ def global_import(
                 importer = importer_cls(store)
                 ids = importer.import_all(path, force=force) if path is not None else importer.import_all(force=force)
                 count = len(ids)
+                per_host_counts[name] = count
                 total += count
                 all_imported_ids.extend(ids)
 
@@ -249,11 +253,6 @@ def global_import(
                 logging.exception("global importer failed for host %s", name)
                 click.secho(f"FATAL: {name} importer raised: {e!r}", fg="red", err=True)
 
-    click.echo(f"imported {total} sessions")
-    if total > 0:
-        pct = (reconstructable / total) * 100
-        click.echo(f"\nAudit: {reconstructable}/{total} sessions ({pct:.1f}%) 100% reconstructable.")
-
     try:
         from atelier.core.service.sync import sync_usage
 
@@ -264,6 +263,15 @@ def global_import(
             "Suppressed exception at cli.py:1827",
             exc_info=True,
         )
+
+    if as_json:
+        _emit(per_host_counts, as_json=True)
+        return
+
+    click.echo(f"imported {total} sessions")
+    if total > 0:
+        pct = (reconstructable / total) * 100
+        click.echo(f"\nAudit: {reconstructable}/{total} sessions ({pct:.1f}%) 100% reconstructable.")
 
 
 __all__ = [

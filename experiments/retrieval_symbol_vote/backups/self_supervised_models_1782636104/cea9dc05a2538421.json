@@ -1,0 +1,20 @@
+{
+  "collection": {
+    "candidate_miss": 3,
+    "ok": 2,
+    "too_few_candidates": 25
+  },
+  "enabled": false,
+  "examples": 2,
+  "pairwise_rows": 0,
+  "reason": "insufficient real task-disjoint examples",
+  "records": 30,
+  "records_with_existing_gold": 30,
+  "repo_id": "cea9dc05a2538421",
+  "repo_prefix": "scikit-learn__scikit-learn",
+  "repo_root": "/tmp/idx_ws_scikit-learn__scikit-learn",
+  "train_examples": 0,
+  "train_tasks": 0,
+  "validation_examples": 2,
+  "validation_tasks": 1
+}

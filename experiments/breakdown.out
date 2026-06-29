@@ -1,0 +1,28 @@
+warming webservers (15s)...
+
+=== 120 queries, mean wall 70.8ms, implied q/s 14.1 ===
+channel                           total_ms   calls   ms/call  ms/query
+_zoekt_candidate_files                9911     249     39.80     82.59
+_tool_explore_impl                    6831     120     56.92     56.92
+search_symbols                        4052     229     17.69     33.76
+_hef_anchor_zoekt_candidates          3922     120     32.68     32.68
+_hef_line_fts_candidates              3789     120     31.57     31.57
+_fused_explore_hybrid                 1209     120     10.08     10.08
+_hef_exact_symbol_candidates           243     120      2.02      2.02
+_rerank_explore_result                   2     120      0.02      0.02
+_semantic_candidate_files                1     120      0.01      0.01
+
+=== slowest 12 queries ===
+       330ms  astropy__astropy     '/.*s-1|/s/|m/s|J/|cds.*/|/.*/.*format|roundtrip_cd'
+       292ms  django__django       'self\\.get_response = get_response'
+       289ms  django__django       'index_together|unique_together'
+       257ms  atelier__atelier     'correct|resolved|class ArmResult|def _metric_value'
+       237ms  django__django       'DecimalField|Lag|Lead|CAST'
+       235ms  pytest-dev__pytest   'setUpClass|unittest_setUpClass|_make_xunit_fixture'
+       231ms  atelier__atelier     'retention_days|sessions.*delete|raw.*delete|prune.'
+       219ms  pylint-dev__pylint   'def __init__|nargs|class _.*Action'
+       168ms  atelier__atelier     '_collapse_docstrings|_CODEY_SUFFIXES|def _render_t'
+       167ms  atelier__atelier     '_render_search_md _render_grep_md _render_read_md '
+       161ms  matplotlib__matplotlib '_process_contour_level_args\\('
+       160ms  django__django       'VERSION = '
+EXIT=0
