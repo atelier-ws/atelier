@@ -24,7 +24,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from functools import wraps
+from functools import lru_cache, wraps
 from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Any, Literal, Union, cast, get_args, get_origin, get_type_hints
@@ -688,7 +688,14 @@ _DEFAULT_SPILL_RESULT_CHARS = 2 * 1024
 # gets a larger inline budget than web_fetch/sql, whose payloads are rarely needed
 # byte-complete. Tools absent here use _DEFAULT_SPILL_RESULT_CHARS. An explicit
 # ATELIER_MCP_SPILL_RESULT_CHARS env value overrides this map for every tool.
-_SPILL_RESULT_CHARS_BY_TOOL = {"bash": 8 * 1024}
+# Per-tool inline char budget before spill fires. bash stays small (shell
+# output is cheap to re-run); code_search and web_fetch need more headroom
+# because their results are structured and expensive to regenerate.
+_SPILL_RESULT_CHARS_BY_TOOL = {
+    "bash": 8 * 1024,
+    "code_search": 20 * 1024,
+    "web_fetch": 16 * 1024,
+}
 # Per-read inline budget (bytes). A single file read larger than this is returned
 # as a line-aligned prefix plus an EXACT continuation range, instead of being
 # handed to the host whole -- where the host's own MCP-output guard would dump it
@@ -9179,7 +9186,7 @@ _READ_TOOLS = frozenset(
 
 # Read-style tools whose byte-identical results may be deduped within a session
 # (registered tool names, post-alias). See context_dedup for the mechanism.
-_DEDUP_TOOLS = frozenset({"read", "search", "grep"})
+_DEDUP_TOOLS = frozenset({"read", "code_search"})
 
 
 # Flat single-object schema. The Anthropic Messages API rejects a top-level
@@ -10706,6 +10713,7 @@ def _is_heavy_request(req: dict[str, Any]) -> bool:
     return _classify_cost(req) != _COST_CPU
 
 
+@lru_cache(maxsize=1)
 def _max_result_bytes() -> int:
     raw = os.environ.get("ATELIER_MCP_MAX_RESULT_BYTES", str(_DEFAULT_MAX_RESULT_BYTES))
     try:
@@ -10722,6 +10730,7 @@ def _max_result_bytes() -> int:
     return max(64 * 1024, min(configured, _MAX_WIRE_BYTES - 1024 * 1024))
 
 
+@lru_cache(maxsize=1)
 def _read_inline_budget_bytes() -> int:
     """Byte budget for a single inline file read before line-aligned truncation.
 
@@ -10756,6 +10765,7 @@ def _truncate_result_text(text: str, limit: int) -> str:
     return head + notice
 
 
+@lru_cache(maxsize=1)
 def _compact_result_chars() -> int:
     """Char threshold above which an oversized tool result is head+tail compacted.
 
@@ -10837,7 +10847,7 @@ def _compact_result_text(text: str, tool_name: str) -> str:
 # These produce expensive or non-idempotent output (shell side effects, sql
 # query cost, large file reads, network fetches) where re-running to recover a
 # truncated tail is wasteful or unsafe.
-_SPILL_TOOLS = frozenset({"bash", "sql", "read", "web_fetch"})
+_SPILL_TOOLS = frozenset({"bash", "code_search", "sql", "read", "web_fetch"})
 
 # Tools subject to the strict char-gated spill cap (_spill_result_chars). `read`
 # is intentionally EXCLUDED: it is the agent's explicit, incremental retrieval
@@ -10845,7 +10855,7 @@ _SPILL_TOOLS = frozenset({"bash", "sql", "read", "web_fetch"})
 # spilled output, so capping it would defeat the spill-recovery cycle. read keeps
 # its own inline budget + outline projection and the multi-MB wire backstop, so
 # it is never lossily truncated -- just not force-summarized at 2 KiB.
-_SPILL_CHAR_CAP_TOOLS = frozenset({"bash", "sql", "web_fetch"})
+_SPILL_CHAR_CAP_TOOLS = frozenset({"bash", "code_search", "sql", "web_fetch"})
 
 _CODE_CONTENT_TOOLS = frozenset({"read"})
 
