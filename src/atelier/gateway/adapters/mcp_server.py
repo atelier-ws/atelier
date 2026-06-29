@@ -8453,6 +8453,25 @@ def _run_bash_tool(
             "duration_ms": 0,
         }
 
+    if policy.action == "rewrite" and policy.rewrite_target == "web_fetch" and policy.rewrite_payload:
+        _wf_url = str(policy.rewrite_payload.get("url") or "").strip()
+        if _wf_url:
+            try:
+                from atelier.core.capabilities.web_fetch import fetch_url
+
+                _wf = fetch_url(_wf_url)
+                _wf_out = _wf.get("content") if isinstance(_wf, dict) else str(_wf)
+            except Exception as _wf_exc:  # noqa: BLE001 -- redirect must never raise
+                _wf_out = f"[web_fetch] {_wf_exc}"
+            return {
+                "stdout": str(_wf_out or ""),
+                "stderr": "",
+                "exit_code": 0,
+                "truncated": False,
+                "lines_omitted": 0,
+                "duration_ms": 0,
+            }
+
     # One execution model: every command runs as a managed session; the only
     # variable is how long we block inline before returning a poll handle.
     #   background → 0s (detach immediately, poll/cancel by session)
