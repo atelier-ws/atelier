@@ -1051,37 +1051,29 @@ def _block_check_segment(tokens: list[str]) -> CommandPolicyDecision | None:
     return None
 
 
-# Known-bad shell patterns the LLM reaches for that never advance a code task and
-# dump large output. Redirect (not silently allow) to the productive path. Matched
-# by regex on the whole command so a ``cd /testbed && git log ...`` prefix can't
-# hide them (the token[0] rewrites below only see the bare head).
-_BAD_ARCHAEOLOGY_RE = re.compile(r"\bgit\s+(?:log|show|blame)\b", re.IGNORECASE)
-_BAD_WEB_RE = re.compile(r"\b(?:curl|wget)\b", re.IGNORECASE)
+# Known-bad shell patterns the LLM reaches for that a dedicated tool does better.
+# Redirect (not silently allow) to the productive, GENERAL-case path. Matched by
+# regex on the whole command so a ``cd /testbed && ...`` prefix can't hide them.
+# NOTE: git log/show/blame are NOT redirected -- they are legit history navigation
+# in the general case; a git-archaeology *spiral* is caught by the convergence
+# escalation instead, so we never block a single legit git call.
 _BAD_FIND_RE = re.compile(r"\bfind\s+\S.*\s-(?:i?name|path|wholename)\b", re.IGNORECASE)
 _BAD_SED_EDIT_RE = re.compile(r"\bsed\s+(?:-[a-z]*i\b|--in-place)", re.IGNORECASE)
+_FETCH_RE = re.compile(r"\b(?:curl|wget)\b", re.IGNORECASE)
+# curl/wget that pipes into a shell/installer, saves to disk, or chains into a
+# build step is SETUP, not a content fetch -- leave it (e.g. ``curl url | pip
+# install -``, ``curl -o f url``, ``wget url && tar xf``). Only a plain content
+# fetch is redirected to web_fetch.
+_FETCH_SETUP_RE = re.compile(
+    r"\|\s*(?:sudo\s+)?(?:sh|bash|zsh|pip[0-9]*|python[0-9.]*|tar|unzip|gunzip|apt|apt-get|brew|npm|node|tee)\b"
+    r"|\s-[oO]\b|\s--output\b|>\s*\S"
+    r"|&&\s*(?:tar|unzip|pip|sh|bash|make|python|\./)",
+    re.IGNORECASE,
+)
 
 
 def _redirect_known_bad(command: str) -> CommandPolicyDecision | None:
-    """Return a converging redirect for a known-bad pattern, or None to run normally."""
-    if _BAD_ARCHAEOLOGY_RE.search(command):
-        return CommandPolicyDecision(
-            category="history-hunt",
-            action="block",
-            reason=(
-                "Git history is not the source of truth for this task -- the upstream fix is "
-                "not in this repo's past. Solve from the failing test and `code_search` of the "
-                "current source. To view a file, use `read`."
-            ),
-        )
-    if _BAD_WEB_RE.search(command):
-        return CommandPolicyDecision(
-            category="web",
-            action="block",
-            reason=(
-                "External fetch (curl/wget) is unavailable and is not how this task is solved. "
-                "Work from the failing test and the current source via `code_search`/`read`."
-            ),
-        )
+    """Return a general-case redirect for a known-bad pattern, or None to run normally."""
     if _BAD_FIND_RE.search(command):
         return CommandPolicyDecision(
             category="find",
@@ -1093,6 +1085,12 @@ def _redirect_known_bad(command: str) -> CommandPolicyDecision | None:
             category="sed-edit",
             action="block",
             reason="Use the `edit` tool to modify files -- in-place `sed` edits are untracked and unverified.",
+        )
+    if _FETCH_RE.search(command) and not _FETCH_SETUP_RE.search(command):
+        return CommandPolicyDecision(
+            category="web-fetch",
+            action="block",
+            reason="Use the `web_fetch` tool to fetch web content (clean extracted text) instead of curl/wget. (Piped/saved curl for install/setup is fine.)",
         )
     return None
 
