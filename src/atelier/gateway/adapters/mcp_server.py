@@ -10892,7 +10892,10 @@ def _test_churn_intervention(tool_name: str, args: object, response_text: str) -
     if outcome is None:
         return response_text
     if outcome == "PASS":
-        _FAILED_TEST_STREAK[0] = 0
+        # Decay, don't zero: a spiral that intermixes an occasional passing run would
+        # otherwise launder its streak back to 0 and never escalate. Decaying keeps
+        # sustained no-pass pressure accumulating toward tier-2/3.
+        _FAILED_TEST_STREAK[0] = max(0, _FAILED_TEST_STREAK[0] - 2)
         _EDITS_SINCE_GREEN[0] = 0
         return response_text
     _FAILED_TEST_STREAK[0] += 1
