@@ -1051,55 +1051,51 @@ def _block_check_segment(tokens: list[str]) -> CommandPolicyDecision | None:
     return None
 
 
-# Known-bad shell patterns the LLM reaches for that a dedicated tool does better.
-# Redirect to the productive GENERAL-case path. Where there is a clean read-only
-# equivalent (curl/wget -> web_fetch), we REWRITE: the equivalent tool runs behind
-# the scenes and its result is returned in the SAME turn (like grep->grep_tool), so
-# no turn is wasted. Where there isn't (find = file listing, sed -i = a mutation),
-# we return a one-line redirect message instead of silently doing the wrong thing.
-# git log/show/blame are NOT redirected -- legit history navigation; a git-archaeology
-# *spiral* is caught by the convergence escalation, so a single git call is never blocked.
-_BAD_FIND_RE = re.compile(r"\bfind\s+\S.*\s-(?:i?name|path|wholename)\b", re.IGNORECASE)
-_BAD_SED_EDIT_RE = re.compile(r"\bsed\s+(?:-[a-z]*i\b|--in-place)", re.IGNORECASE)
+# Known-bad shell calls -> ALLOW or REDIRECT-and-execute, never block/message.
+# Where a read-only equivalent exists we REWRITE: the equivalent runs behind the
+# scenes and its result is returned in the SAME turn (like grep->grep_tool), so no
+# turn is wasted. Everything else (incl. sed -i replacements, git navigation) is
+# ALLOWED to run -- a git-archaeology *spiral* is caught by the convergence escalation.
 _FETCH_RE = re.compile(r"\b(?:curl|wget)\b", re.IGNORECASE)
 _FETCH_URL_RE = re.compile(r"https?://[^\s'\"|>;)]+", re.IGNORECASE)
-# curl/wget that pipes into a shell/installer, saves to disk, or chains into a
-# build step is SETUP, not a content fetch -- leave it (``curl url | pip install -``,
-# ``curl -o f url``, ``wget url && tar xf``).
 _FETCH_SETUP_RE = re.compile(
     r"\|\s*(?:sudo\s+)?(?:sh|bash|zsh|pip[0-9]*|python[0-9.]*|tar|unzip|gunzip|apt|apt-get|brew|npm|node|tee)\b"
     r"|\s-[oO]\b|\s--output\b|>\s*\S"
     r"|&&\s*(?:tar|unzip|pip|sh|bash|make|python|\./)",
     re.IGNORECASE,
 )
+_FIND_NAME_RE = re.compile(r"\bfind\s+(?:(\S+)\s+)?-(?:i?name|wholename)\s+['\"]?([^'\"\s|>;]+)", re.IGNORECASE)
+_SED_PRINT_RE = re.compile(r"\bsed\s+-n\s+['\"]?(\d+)(?:,(\d+))?\s*p['\"]?\s+(\S+)", re.IGNORECASE)
 
 
 def _redirect_known_bad(command: str) -> CommandPolicyDecision | None:
-    """Rewrite known-bad calls to the right tool (executed inline), or message where there's no clean equivalent."""
+    """Rewrite known-bad read-only calls to the right tool (executed inline). Never blocks."""
     if _FETCH_RE.search(command) and not _FETCH_SETUP_RE.search(command):
         m = _FETCH_URL_RE.search(command)
-        if m:  # plain content fetch -> run web_fetch behind the scenes, return its result this turn
+        if m:  # plain content fetch -> run web_fetch behind the scenes
             return CommandPolicyDecision(
-                category="web-fetch",
-                action="rewrite",
-                rewrite_target="web_fetch",
-                rewrite_payload={"url": m.group(0)},
+                category="web-fetch", action="rewrite",
+                rewrite_target="web_fetch", rewrite_payload={"url": m.group(0)},
             )
+        return None  # no URL to fetch -> just allow
+    mf = _FIND_NAME_RE.search(command)
+    if mf:  # find -name PATTERN -> internal file glob, returned inline
+        path = mf.group(1) or "."
+        if path.startswith("-"):
+            path = "."
         return CommandPolicyDecision(
-            category="web-fetch", action="block",
-            reason="Use the `web_fetch` tool to fetch web content instead of curl/wget.",
+            category="find", action="rewrite",
+            rewrite_target="find_glob", rewrite_payload={"glob": mf.group(2), "path": path},
         )
-    if _BAD_FIND_RE.search(command):
+    ms = _SED_PRINT_RE.search(command)
+    if ms:  # sed -n 'A,Bp' FILE  (read-only print) -> read that exact range, inline
+        a = ms.group(1)
+        b = ms.group(2) or a
         return CommandPolicyDecision(
-            category="find", action="block",
-            reason="Use `search` (file by name) or `grep` (file_glob_patterns) to find files -- indexed and faster than shell `find`.",
+            category="sed-read", action="rewrite",
+            rewrite_target="read_range", rewrite_payload={"spec": f"{ms.group(3)}:L{a}-L{b}"},
         )
-    if _BAD_SED_EDIT_RE.search(command):
-        return CommandPolicyDecision(
-            category="sed-edit", action="block",
-            reason="Use the `edit` tool to modify files -- in-place `sed` edits are untracked and unverified.",
-        )
-    return None
+    return None  # sed -i / other sed / other find / git navigation -> ALLOW
 
 
 def classify_command(command: str, *, allowed_write_roots: list[Path] | None = None) -> CommandPolicyDecision:

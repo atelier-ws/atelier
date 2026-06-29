@@ -8472,6 +8472,29 @@ def _run_bash_tool(
                 "duration_ms": 0,
             }
 
+    if policy.action == "rewrite" and policy.rewrite_target == "find_glob" and policy.rewrite_payload:
+        _fg_pat = str(policy.rewrite_payload.get("glob") or "*")
+        _fg_path = str(policy.rewrite_payload.get("path") or ".")
+        try:
+            _fg_base = Path(_fg_path) if Path(_fg_path).is_absolute() else (Path(effective_cwd) / _fg_path)
+            _fg_hits = sorted(str(p.relative_to(_fg_base)) for p in _fg_base.rglob(_fg_pat) if p.is_file())
+        except Exception:  # noqa: BLE001 -- redirect must never raise
+            _fg_hits = []
+        _fg_out = "\n".join(_fg_hits[:300]) if _fg_hits else "(no files match)"
+        if len(_fg_hits) > 300:
+            _fg_out += f"\n... ({len(_fg_hits) - 300} more)"
+        return {"stdout": _fg_out, "stderr": "", "exit_code": 0, "truncated": False, "lines_omitted": 0, "duration_ms": 0}
+
+    if policy.action == "rewrite" and policy.rewrite_target == "read_range" and policy.rewrite_payload:
+        _rr_spec = str(policy.rewrite_payload.get("spec") or "").strip()
+        if _rr_spec:
+            try:
+                _rr = cast(dict[str, Any], TOOLS["read"]["handler"]({"files": [_rr_spec]}))
+                _rr_out = _rr.get("content") if isinstance(_rr, dict) else str(_rr)
+            except Exception as _rr_exc:  # noqa: BLE001
+                _rr_out = f"[read] {_rr_exc}"
+            return {"stdout": str(_rr_out or ""), "stderr": "", "exit_code": 0, "truncated": False, "lines_omitted": 0, "duration_ms": 0}
+
     # One execution model: every command runs as a managed session; the only
     # variable is how long we block inline before returning a poll handle.
     #   background → 0s (detach immediately, poll/cancel by session)
