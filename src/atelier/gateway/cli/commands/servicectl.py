@@ -205,12 +205,16 @@ def servicectl_group() -> None:
 @servicectl_group.command("tick")
 @click.option("--maintenance-interval-seconds", default=300, show_default=True, type=int)
 @click.option("--session-import-interval-seconds", default=60, show_default=True, type=int)
+@click.option("--auto-update", is_flag=True, help="Apply git auto-update if available (exits 3 when applied).")
+@click.option("--auto-update-interval-seconds", default=3600, show_default=True, type=int)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def servicectl_tick(
     ctx: click.Context,
     maintenance_interval_seconds: int,
     session_import_interval_seconds: int,
+    auto_update: bool,
+    auto_update_interval_seconds: int,
     as_json: bool,
 ) -> None:
     """Run one maintenance tick: enqueue due jobs and process pending work."""
@@ -218,6 +222,8 @@ def servicectl_tick(
         ctx.obj["root"],
         maintenance_interval_seconds=maintenance_interval_seconds,
         session_import_interval_seconds=session_import_interval_seconds,
+        auto_update=auto_update,
+        auto_update_interval_seconds=auto_update_interval_seconds,
     )
     _emit(payload, as_json=as_json) if as_json else click.echo(json.dumps(payload, indent=2))
 
@@ -401,17 +407,43 @@ def servicectl_run(
     auto_update: bool,
     auto_update_interval_seconds: int,
 ) -> None:
-    """Internal long-running background loop."""
+    """Internal long-running background loop (thin process-manager).
+
+    Each tick runs as a child subprocess so all Python heap allocated during
+    the tick is freed on subprocess exit.  This keeps the long-lived run loop
+    itself under ~100 MB regardless of how many sessions have been imported or
+    jobs processed.
+    """
     root = ctx.obj["root"]
     try:
         while True:
-            _servicectl_tick(
-                root,
-                maintenance_interval_seconds=maintenance_interval_seconds,
-                session_import_interval_seconds=session_import_interval_seconds,
-                auto_update=auto_update,
-                auto_update_interval_seconds=auto_update_interval_seconds,
-            )
+            cmd = [
+                sys.executable,
+                "-m",
+                "atelier.gateway.cli",
+                "--root",
+                str(root),
+                "servicectl",
+                "tick",
+                "--maintenance-interval-seconds",
+                str(maintenance_interval_seconds),
+                "--session-import-interval-seconds",
+                str(session_import_interval_seconds),
+            ]
+            if auto_update:
+                cmd += [
+                    "--auto-update",
+                    "--auto-update-interval-seconds",
+                    str(auto_update_interval_seconds),
+                ]
+            result = subprocess.run(cmd, timeout=600)
+            if result.returncode == 3:
+                # Tick subprocess applied an auto-update (exit code 3 = restart needed).
+                # Exit here so systemd / the parent restarts this process with new code.
+                state = _read_servicectl_state(root)
+                state["last_exit_reason"] = "auto_update"
+                _write_servicectl_state(root, state)
+                raise SystemExit(0)
             time.sleep(max(1, interval_seconds))
     except KeyboardInterrupt:
         state = _read_servicectl_state(root)

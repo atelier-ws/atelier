@@ -354,8 +354,10 @@ def _servicectl_tick(
 
         if last_update_at is None or (now - last_update_at).total_seconds() >= auto_update_interval_seconds:
             if _servicectl_check_and_apply_updates(root):
-                # Process will exit if update was applied (Restart=always will pick it up)
-                sys.exit(0)
+                # Exit 3 = restart-needed signal.  When running as a tick subprocess
+                # the parent ``servicectl run`` loop detects code 3 and also exits,
+                # letting systemd restart the whole controller with the new code.
+                sys.exit(3)
             periodic[AUTO_UPDATE_KEY] = now.isoformat()
 
     def _periodic_timestamp(key: str) -> datetime | None:
