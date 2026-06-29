@@ -121,7 +121,7 @@ def _recall_embedder_choice(root: str | Path) -> tuple[str, str]:
 def _make_recall_embedder(root: str | Path) -> Any:
     """Build the embedder for recall. Claude has no embeddings API, so it is not an
     option: codex maps to OpenAI, ollama runs locally, everything else falls back
-    to the offline LocalEmbedder."""
+    to FTS-only (the null embedder)."""
     from atelier.infra.embeddings.factory import make_code_embedder, make_embedder
 
     choice, model = _recall_embedder_choice(root)
@@ -129,8 +129,6 @@ def _make_recall_embedder(root: str | Path) -> Any:
         return make_code_embedder(pin="ollama", model=model or None)
     if choice in ("openai", "codex"):
         return make_embedder("openai")
-    if choice == "local":
-        return make_embedder("local")
     return make_embedder()
 
 

@@ -35,6 +35,6 @@ def test_set_recall_settings_merges_existing_file(tmp_path: Path) -> None:
 
 
 def test_set_recall_settings_creates_file_when_absent(tmp_path: Path) -> None:
-    updated = set_recall_settings(tmp_path, auto_index=False, embedder="local")
+    updated = set_recall_settings(tmp_path, auto_index=False, embedder="ollama")
     assert plugin_settings_path(tmp_path).exists()
-    assert updated["recallEmbedder"] == "local"
+    assert updated["recallEmbedder"] == "ollama"

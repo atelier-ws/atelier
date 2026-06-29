@@ -23,6 +23,31 @@ from atelier.core.capabilities.code_context.ann_symbol_index import (
 from atelier.infra.storage.vector import cosine_similarity
 
 
+def _use_fake_code_embedder(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deterministic test embedder (the removed 'local' pin's role): turns the
+    semantic/ANN path on so the vector store + retrieval is exercised. Test-only."""
+    import atelier.infra.embeddings.factory as _factory
+
+    class _Fake:
+        dim = 384
+        name = "test:hashing"
+
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            from atelier.infra.storage.vector import generate_embedding
+
+            return [generate_embedding(t, dim=self.dim) for t in texts]
+
+    fake = _Fake()
+
+    def _fake_make(pin: str | None = None, model: str | None = None) -> object:
+        return fake
+
+    _fake_make.cache_clear = lambda: None  # type: ignore[attr-defined]
+    # get_code_embedder() looks up factory.make_code_embedder at call time, so
+    # patching it here reaches every import site, including direct callers.
+    monkeypatch.setattr(_factory, "make_code_embedder", _fake_make)
+
+
 def _seeded_vectors(n: int, dim: int, *, seed: int) -> dict[str, tuple[str, list[float]]]:
     np = pytest.importorskip("numpy", reason="numpy not installed")
 
@@ -247,7 +272,7 @@ def test_engine_semantic_store_built_at_index_time(tmp_path: Path, monkeypatch: 
     store -- there is no separate flag. The store is populated during index_repo
     (no on-the-fly embedding on the query path), so semantic search resolves the
     expected top hit and the persistent table exists after indexing."""
-    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
+    _use_fake_code_embedder(monkeypatch)
     monkeypatch.delenv("ATELIER_ANN_RETRIEVAL", raising=False)
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -266,7 +291,7 @@ def test_engine_semantic_store_built_at_index_time(tmp_path: Path, monkeypatch: 
 
 def test_engine_ann_on_matches_brute_force_top_hit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """ANN-on returns the same top semantic hit as the default brute-force path."""
-    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
+    _use_fake_code_embedder(monkeypatch)
     _write_semantic_fixture_repo(tmp_path)
 
     monkeypatch.delenv("ATELIER_ANN_RETRIEVAL", raising=False)
@@ -291,7 +316,7 @@ def test_engine_ann_on_matches_brute_force_top_hit(tmp_path: Path, monkeypatch: 
 
 
 def test_engine_index_version_bump_invalidates_graph(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
+    _use_fake_code_embedder(monkeypatch)
     monkeypatch.setenv("ATELIER_ANN_RETRIEVAL", "1")
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite")
@@ -311,7 +336,7 @@ def test_engine_index_version_bump_invalidates_graph(tmp_path: Path, monkeypatch
 
 def test_engine_ann_fallback_when_hnsw_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """With HNSW unavailable, the ANN-on engine path still returns correct hits."""
-    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
+    _use_fake_code_embedder(monkeypatch)
     monkeypatch.setenv("ATELIER_ANN_RETRIEVAL", "1")
     monkeypatch.setattr(ann_mod, "_HNSW", None)
     _write_semantic_fixture_repo(tmp_path)
@@ -331,7 +356,7 @@ def test_engine_incremental_reindex_prunes_stale_vectors(
     file) so the store stays 1:1 with live symbols -- no orphan accumulation,
     no stale rows polluting ranking, and re-embedding stays incremental.
     """
-    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
+    _use_fake_code_embedder(monkeypatch)
     monkeypatch.delenv("ATELIER_ANN_RETRIEVAL", raising=False)
     _write_semantic_fixture_repo(tmp_path)
     engine = CodeContextEngine(tmp_path, db_path=tmp_path / "code.sqlite", autosync_enabled=False)

@@ -42,12 +42,6 @@ def test_env_codex_maps_to_openai(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert captured["make_embedder"] == ["openai"]
 
 
-def test_env_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, captured: dict) -> None:
-    monkeypatch.setenv("ATELIER_RECALL_EMBEDDER", "local")
-    session_recall._make_recall_embedder(tmp_path)
-    assert captured["make_embedder"] == ["local"]
-
-
 def test_claude_falls_back_to_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, captured: dict) -> None:
     # Claude has no embeddings API; must NOT be passed as a pin (would raise).
     monkeypatch.setenv("ATELIER_RECALL_EMBEDDER", "claude")

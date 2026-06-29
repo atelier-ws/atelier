@@ -268,8 +268,7 @@ def _rewrite_head(tokens: list[str]) -> CommandPolicyDecision:
             i += 1
             continue
         if tok.startswith("-") and not seen_double_dash:
-            if tok in {"-q", "--quiet", "--silent", "-v", "--verbose",
-                       "-z", "--zero-terminated", "-c", "--bytes"}:
+            if tok in {"-q", "--quiet", "--silent", "-v", "--verbose", "-z", "--zero-terminated", "-c", "--bytes"}:
                 return CommandPolicyDecision(category="file-read", action="allow")
             parsed_n, i = _parse_head_tail_n(tokens, i)
             if parsed_n is None:
@@ -303,11 +302,24 @@ def _rewrite_tail(tokens: list[str]) -> CommandPolicyDecision:
         if tok.startswith("-") and not seen_double_dash:
             # -f/--follow, -s, --pid, --retry, --sleep-interval and byte-mode
             # all require real tail behaviour.
-            if tok in {"-f", "-F", "--follow", "--retry",
-                       "-q", "--quiet", "--silent",
-                       "-v", "--verbose",
-                       "-z", "--zero-terminated",
-                       "-c", "--bytes", "-s", "--sleep-interval", "--pid"}:
+            if tok in {
+                "-f",
+                "-F",
+                "--follow",
+                "--retry",
+                "-q",
+                "--quiet",
+                "--silent",
+                "-v",
+                "--verbose",
+                "-z",
+                "--zero-terminated",
+                "-c",
+                "--bytes",
+                "-s",
+                "--sleep-interval",
+                "--pid",
+            }:
                 return CommandPolicyDecision(category="file-read", action="allow")
             parsed_n, i = _parse_head_tail_n(tokens, i)
             if parsed_n is None:
@@ -1039,6 +1051,53 @@ def _block_check_segment(tokens: list[str]) -> CommandPolicyDecision | None:
     return None
 
 
+# Known-bad shell calls -> ALLOW or REDIRECT-and-execute, never block/message.
+# Where a read-only equivalent exists we REWRITE: the equivalent runs behind the
+# scenes and its result is returned in the SAME turn (like grep->grep_tool), so no
+# turn is wasted. Everything else (incl. sed -i replacements, git navigation) is
+# ALLOWED to run -- a git-archaeology *spiral* is caught by the convergence escalation.
+_FETCH_RE = re.compile(r"\b(?:curl|wget)\b", re.IGNORECASE)
+_FETCH_URL_RE = re.compile(r"https?://[^\s'\"|>;)]+", re.IGNORECASE)
+_FETCH_SETUP_RE = re.compile(
+    r"\|\s*(?:sudo\s+)?(?:sh|bash|zsh|pip[0-9]*|python[0-9.]*|tar|unzip|gunzip|apt|apt-get|brew|npm|node|tee)\b"
+    r"|\s-[oO]\b|\s--output\b|>\s*\S"
+    r"|&&\s*(?:tar|unzip|pip|sh|bash|make|python|\./)",
+    re.IGNORECASE,
+)
+_FIND_NAME_RE = re.compile(r"\bfind\s+(?:(\S+)\s+)?-(?:i?name|wholename)\s+['\"]?([^'\"\s|>;]+)", re.IGNORECASE)
+_SED_PRINT_RE = re.compile(r"\bsed\s+-n\s+['\"]?(\d+)(?:,(\d+))?\s*p['\"]?\s+(\S+)", re.IGNORECASE)
+
+
+def _redirect_known_bad(command: str) -> CommandPolicyDecision | None:
+    """Rewrite known-bad read-only calls to the right tool (executed inline). Never blocks."""
+    if _FETCH_RE.search(command) and not _FETCH_SETUP_RE.search(command):
+        m = _FETCH_URL_RE.search(command)
+        if m:  # plain content fetch -> run web_fetch behind the scenes
+            return CommandPolicyDecision(
+                category="web-fetch", action="rewrite",
+                rewrite_target="web_fetch", rewrite_payload={"url": m.group(0)},
+            )
+        return None  # no URL to fetch -> just allow
+    mf = _FIND_NAME_RE.search(command)
+    if mf:  # find -name PATTERN -> internal file glob, returned inline
+        path = mf.group(1) or "."
+        if path.startswith("-"):
+            path = "."
+        return CommandPolicyDecision(
+            category="find", action="rewrite",
+            rewrite_target="find_glob", rewrite_payload={"glob": mf.group(2), "path": path},
+        )
+    ms = _SED_PRINT_RE.search(command)
+    if ms:  # sed -n 'A,Bp' FILE  (read-only print) -> read that exact range, inline
+        a = ms.group(1)
+        b = ms.group(2) or a
+        return CommandPolicyDecision(
+            category="sed-read", action="rewrite",
+            rewrite_target="read_range", rewrite_payload={"spec": f"{ms.group(3)}:L{a}-L{b}"},
+        )
+    return None  # sed -i / other sed / other find / git navigation -> ALLOW
+
+
 def classify_command(command: str, *, allowed_write_roots: list[Path] | None = None) -> CommandPolicyDecision:
     # Detect file-write patterns before shlex.split (heredocs break shlex parsing).
     if _is_shell_file_write(command):
@@ -1068,6 +1127,10 @@ def classify_command(command: str, *, allowed_write_roots: list[Path] | None = N
         blocked = _block_check_segment(segment)
         if blocked is not None:
             return blocked
+
+    bad = _redirect_known_bad(command)
+    if bad is not None:
+        return bad
 
     try:
         tokens = shlex.split(command)
@@ -1101,6 +1164,64 @@ def _terminate_process_group(proc: subprocess.Popen[str]) -> None:
         proc.wait()
 
 
+# Bash output is re-read as cache_read on EVERY later turn, so a fat test/log dump
+# is paid for once per remaining turn -- the dominant cost on long tasks. Cap the
+# char size (line caps miss long-line output like ``git log --format``) and, for
+# test runs, keep the actionable failure section + summary instead of head/tail
+# (the FAILURES block sits in the middle and head/tail would drop it).
+_BASH_STDOUT_CHAR_CAP = 6000
+_TEST_CMD_RE = re.compile(
+    r"\b(pytest|py\.test|runtests|nosetests|tox)\b|python[0-9.]*\s+-m\s+(unittest|pytest)|manage\.py\s+test"
+)
+_TEST_FAIL_START_RE = re.compile(
+    r"^(=+\s*(FAILURES|ERRORS)\s*=+|FAIL:|ERROR:|FAILED\b|=+\s*short test summary)", re.IGNORECASE
+)
+_TEST_SUMMARY_RE = re.compile(r"\d+\s+(passed|failed|error|skipped)|Ran\s+\d+\s+test|^OK\b|^FAILED\b", re.IGNORECASE)
+
+
+def _cap_chars(text: str, max_chars: int) -> str:
+    """Keep head + tail of *text* within *max_chars* (long-line safe)."""
+    if len(text) <= max_chars:
+        return text
+    h = max_chars * 3 // 4
+    t = max_chars - h
+    return f"{text[:h]}\n... ({len(text) - max_chars:,} chars trimmed) ...\n{text[-t:]}"
+
+
+def _extract_test_output(text: str, max_chars: int = _BASH_STDOUT_CHAR_CAP) -> str:
+    """From a test run, keep the actionable failures + summary; drop pass/collection noise."""
+    lines = text.splitlines()
+    start = next((i for i, ln in enumerate(lines) if _TEST_FAIL_START_RE.search(ln)), None)
+    if start is not None:  # there are failures -- keep from the first failure marker on
+        return _cap_chars("\n".join(lines[start:]), max_chars)
+    summary = [ln for ln in lines if _TEST_SUMMARY_RE.search(ln)]
+    if summary:  # all green -- the summary line is all the agent needs
+        return "\n".join(summary[-3:])
+    return _cap_chars(text, max_chars)
+
+
+# Per-command-kind stdout budgets. Bare listings (ls/tree/du/git status ...) are
+# enumerations -- mostly noise -- so they get a lean cap; test runs keep more
+# (failures are the actionable signal, and truncating them forces a costly
+# re-run); everything else keeps the default head+tail cap.
+_BASH_LISTING_RE = re.compile(
+    r"^\s*(?:cd\s+[^&|;]+&&\s*)?(?:ls|tree|du|df|find|stat|env|printenv|ps"
+    r"|git\s+status|git\s+ls-files|git\s+branch)\b",
+    re.IGNORECASE,
+)
+_BASH_LISTING_CHAR_CAP = 2000
+_BASH_TEST_CHAR_CAP = 8000
+
+
+def _bash_output_budget(command: str) -> int:
+    """Stdout char budget keyed by command kind (test / listing / generic)."""
+    if _TEST_CMD_RE.search(command):
+        return _BASH_TEST_CHAR_CAP
+    if _BASH_LISTING_RE.search(command):
+        return _BASH_LISTING_CHAR_CAP
+    return _BASH_STDOUT_CHAR_CAP
+
+
 def _compact_result(
     *,
     command: str,
@@ -1116,7 +1237,19 @@ def _compact_result(
     else:
         head = max(20, max_lines // 4)
         tail = max(max_lines - head, 0)
-    stdout_compact, stdout_omitted, stdout_chars = _head_tail_lines(_strip_ansi(raw_stdout).splitlines(), head, tail)
+    clean_stdout = _strip_ansi(raw_stdout)
+    budget = _bash_output_budget(command)
+    if _TEST_CMD_RE.search(command):
+        compact = _extract_test_output(clean_stdout, max_chars=budget)
+        stdout_omitted = 0
+        stdout_chars = max(0, len(clean_stdout) - len(compact))
+        stdout_compact = compact
+    else:
+        stdout_compact, stdout_omitted, stdout_chars = _head_tail_lines(clean_stdout.splitlines(), head, tail)
+        capped = _cap_chars(stdout_compact, budget)
+        if capped != stdout_compact:
+            stdout_chars += len(stdout_compact) - len(capped)
+            stdout_compact = capped
     stderr_compact, stderr_omitted, stderr_chars = _head_tail_lines(_strip_ansi(raw_stderr).splitlines(), 100, 100)
     lines_omitted = stdout_omitted + stderr_omitted
     chars_omitted = stdout_chars + stderr_chars

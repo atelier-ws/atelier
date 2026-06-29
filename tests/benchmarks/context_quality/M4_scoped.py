@@ -96,7 +96,7 @@ def _get_engine(repo_root: Path) -> CodeContextEngine:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     previous_code_embedder = os.environ.get("ATELIER_CODE_EMBEDDER")
     previous_code_embed_model = os.environ.get("ATELIER_CODE_EMBED_MODEL")
-    os.environ["ATELIER_CODE_EMBEDDER"] = "local"
+    os.environ["ATELIER_CODE_EMBEDDER"] = "null"
     os.environ.pop("ATELIER_CODE_EMBED_MODEL", None)
     try:
         with patch.object(CodeContextEngine, "_ensure_lineage_ready", return_value=None):
@@ -182,7 +182,7 @@ def _ensure_commit_chunks(
 
     previous_code_embedder = os.environ.get("ATELIER_CODE_EMBEDDER")
     previous_code_embed_model = os.environ.get("ATELIER_CODE_EMBED_MODEL")
-    os.environ["ATELIER_CODE_EMBEDDER"] = "local"
+    os.environ["ATELIER_CODE_EMBEDDER"] = "null"
     os.environ.pop("ATELIER_CODE_EMBED_MODEL", None)
     try:
         from atelier.core.capabilities.code_context.engine import _LINEAGE_INDEX_VERSION
@@ -348,7 +348,7 @@ def _build_fixture(root: Path) -> None:
 
 @pytest.mark.slow
 def test_m4_precision_recall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "local")
+    monkeypatch.setenv("ATELIER_CODE_EMBEDDER", "null")
     monkeypatch.delenv("ATELIER_CODE_EMBED_MODEL", raising=False)
     _build_fixture(tmp_path)
     cap = ScopedContextCapability(CodeContextEngine(tmp_path))

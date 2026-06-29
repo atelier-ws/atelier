@@ -6,7 +6,6 @@ from atelier.infra.embeddings.base import Embedder, EmbedResult
 from atelier.infra.embeddings.bge import BgeEmbedder
 from atelier.infra.embeddings.factory import (
     DEFAULT_CODE_EMBED_MODEL,
-    LocalEmbedder,
     NullEmbedder,
     OllamaEmbedder,
     OpenAIEmbedder,
@@ -23,7 +22,6 @@ __all__ = [
     "EmbedResult",
     "Embedder",
     "LettaEmbedder",
-    "LocalEmbedder",
     "NullEmbedder",
     "OllamaEmbedder",
     "OpenAIEmbedder",
