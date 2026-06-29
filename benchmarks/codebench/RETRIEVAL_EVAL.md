@@ -13,6 +13,12 @@ against regressions when changing `_search_symbols_local` / fusion / ranking.
 | 1 | **Lexical** | `fitness_explore_mrr.py` | `tool_explore` symbol FTS/trigram + ranking (no zoekt binaries on PATH) |
 | 2 | **+ Zoekt fusion** | `fitness_explore_mrr.py` (zoekt installed) | adds zoekt trigram-anchor files to the fusion (auto-on when binaries resolve) |
 | 3 | **BGE semantic** | `eval_semantic_mrr.py` | standalone embedding retrieval (BGE-Code-v1) over the pre-built corpus |
+| 4 | **CMM (codebase-memory-mcp)** | `eval_cmm_mrr.py` | external arm: DeusData's knowledge-graph MCP server (`search_graph` BM25 + bundled nomic-embed-code) over an independently-built index |
+
+Channel 4 is an **external retrieval provider** (not Atelier): a fair, independent
+baseline that builds its own index, so unlike channels 1–3 it does not share the
+gold's index-derivation. Run it via `atelier eval retrieval --channel cmm` or the
+standalone `eval_cmm_mrr.py` (see the CMM section below).
 
 Channels 1–2 are the SHIPPED `tool_explore` path. Channel 3 is a standalone probe
 (semantic is not yet fused into explore) answering "does the embedder help these
@@ -336,3 +342,121 @@ retriever was always strong; the benchmark measured the wrong task. It also
 fusion regresses on every bucket, oracle ceiling +0.013. The grep-shaped query
 distribution, not the gold, is why semantic doesn't help. **Adopt the definition
 gold as the standard retrieval eval; keep the SWE-edit gold for edit-localization.**
+
+---
+
+## Channel 4 — codebase-memory-mcp (CMM) external arm + the Linux-kernel repo (2026-06-29)
+
+Two additions: (a) a new **external retrieval provider** arm for DeusData's
+[`codebase-memory-mcp`](https://deusdata.github.io/codebase-memory-mcp/), and
+(b) the **Linux kernel** (core subsystems) added to the golden set + benchmark so
+every arm can be evaluated on a genuinely large, C codebase.
+
+### The CMM arm — `eval_cmm_mrr.py`
+
+`codebase-memory-mcp` is a single static Go binary that indexes a repo into a
+persistent knowledge graph (BM25 full-text + bundled `nomic-embed-code` semantic
+edges, 158 languages, all local — no network, no API key). It exposes 14 MCP
+tools; the arm uses two, mapped to the two golds exactly as the other external
+arms (ctags/serena/jcodemunch) split symbol vs content:
+
+| gold | CMM tool | result file-path key |
+|---|---|---|
+| definition | `search_graph` (graph BM25; handles `a\|b\|c` alternations natively) | `file_path` |
+| content | `search_code` (grep + graph enrichment) | `file` |
+
+The binary is driven in one-shot `cli <tool> '<json>'` mode (no MCP stdio
+handshake needed — the same `graph.db` is read each call). Methodology is
+identical to `eval_cg_mrr.py`/`fitness_explore_mrr.py`: same `(query, tid,
+prefix)` pairs, same `FITNESS_PAIRS`/`FITNESS_SAMPLE`/`FITNESS_REPO` knobs, one
+query per pair, rank-of-gold-file (endswith, top-10), one JSON line out. Each
+repo is indexed once (idempotent). All CMM state lives under an isolated `$HOME`
+(`CMM_HOME`, default `/tmp/cmm-bench`) so a run never touches a user's cache; the
+pinned `v0.8.1` Linux binary is fetched on first use (or point `CMM_BIN` at it).
+
+This is the **only arm that builds its own index** — channels 1–3 read Atelier's
+symbol index, which is also what the definition gold is derived from, so CMM is
+the fair external apples-to-apples baseline.
+
+```bash
+# via the CLI (downloads the pinned binary on first use)
+atelier eval retrieval --channel cmm --full
+
+# standalone (point CMM_BIN at the binary; def + content golds)
+CMM_BIN=/path/to/codebase-memory-mcp \
+  FITNESS_PAIRS=benchmarks/codebench/data/bench_pairs_def_gold.json,benchmarks/codebench/data/bench_pairs_content_gold.json \
+  FITNESS_REPO=pydata__xarray \
+  python benchmarks/codebench/eval_cmm_mrr.py
+```
+
+### Results — diverse-5 definition gold (single-worker, n=762)
+
+| arm | MRR | hit@1 | hit@3 | latency / query |
+|---|---|---|---|---|
+| lexical (`tool_explore`) | **0.9739** | 0.9659 | 0.9803 | 28 ms |
+| lexical + zoekt | 0.9701 | 0.9593 | 0.9803 | 36 ms |
+| **CMM (`search_graph`)** | 0.8353 | 0.7966 | 0.8780 | ~40 ms (CLI subprocess) |
+
+Per-repo CMM definition MRR: xarray 0.946, pytest 0.937, astropy 0.812, sklearn
+0.713, **django 0.619** (django is the hardest — 55k symbols; CMM's BM25 graph
+ranks the right file lower on its many name collisions). CMM **content** gold
+(`search_code`) is stronger and closer to parity: astropy 0.918, xarray 0.963,
+pytest 0.934, sklearn 0.85, django 0.395 → ~0.85 weighted.
+
+Takeaway: CMM is a solid, fully-local external retriever (0.84 def MRR with **zero**
+shared index with the gold), but Atelier's lexical `tool_explore` leads by
+**+0.14 MRR** on this symbol-definition benchmark.
+
+### The Linux kernel repo
+
+Provisioned by `scripts/_provision_linux_kernel.py`. The full kernel (~64k C
+files, ~30M LOC, mostly hardware-specific `drivers/`+`arch/`) is intractable and
+unrepresentative to provision whole, so we **scope to the core subsystems**:
+
+    kernel/ mm/ fs/ block/ ipc/ lib/ security/ crypto/ init/ virt/ include/
+
+= ~11k C files / ~4.5M LOC — bigger than any diverse-5 repo (a real scale test)
+yet tractable: Atelier indexes it in ~4 min (**1.24M symbols**), CMM in **25 s**
+(690k nodes). `drivers/`, `arch/`, `net/`, `sound/` are deliberately excluded
+(repetitive, hardware/arch-specific long tail).
+
+The kernel has no SWE-bench grep dumps, so the gold is mined **from the symbol
+index itself** — bare specific symbols + clean alternations of co-located symbols
+— then run through the **same** `build_definition_gold.py` gates (purity/scatter/
+`max_def`) as the diverse-5. Deterministic (seeded). Result: **591 scorable
+pairs** (98% of 600 mined; 393 single-token + 198 alternation), avg 1.2 gold
+files/query. Merged into the shared `bench_pairs_def_gold.json` (1561 → 2152
+pairs), so every arm scores the kernel automatically.
+
+```bash
+uv run --no-sync python scripts/_provision_linux_kernel.py --prepare   # clone+scope+index
+uv run --no-sync python scripts/_provision_linux_kernel.py --mine       # mine queries -> def gold
+uv run --no-sync python scripts/_provision_linux_kernel.py --merge      # append into shared gold
+```
+
+### Results — Linux-kernel definition gold (single-worker, n=591)
+
+| arm | MRR | hit@1 | hit@3 | latency / query |
+|---|---|---|---|---|
+| lexical (`tool_explore`) | **1.000** | 1.000 | 1.000 | 95 ms (p50 34 ms) |
+| lexical + zoekt | 1.000 | 1.000 | 1.000 | 91 ms (p50 31 ms) |
+| **CMM (`search_graph`)** | 0.7576 | 0.7208 | 0.7902 | 203 ms |
+
+**Caveat (important):** lexical = 1.000 reflects a *home advantage* — the kernel
+gold is derived from Atelier's own symbol index, so the lexical retriever (which
+reads that same index) is structurally guaranteed to find the definition file.
+The meaningful number here is **CMM at 0.758** — an *independent* retriever scored
+on this gold — which shows CMM finds the right kernel definition file ~3/4 of the
+time, at higher latency (the 690k-node graph). For an unbiased lexical-vs-CMM
+comparison use the diverse-5 table above (whose gold matches lexical's index but
+the gap is established and modest, +0.14); the kernel arm's value is scale
+(does each arm hold up at 4.5M LOC) and the external CMM signal, not the saturated
+lexical score.
+
+### What is wired
+
+- `benchmarks/codebench/eval_cmm_mrr.py` — the CMM arm.
+- `scripts/_provision_linux_kernel.py` — kernel scope + index + gold mining + merge.
+- `benchmarks/codebench/data/bench_pairs_linux_def_gold.json` — kernel-only def gold.
+- `bench_pairs_def_gold.json` now carries `torvalds__linux` (591 pairs).
+- `atelier eval retrieval --channel cmm` (CLI wiring in `gateway/cli/commands/eval.py`).
