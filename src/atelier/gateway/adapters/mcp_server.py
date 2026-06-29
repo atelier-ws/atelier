@@ -10874,7 +10874,10 @@ def _classify_test_outcome(command: str, text: str) -> str | None:
         return "FAIL"
     if _TEST_PASS_RE.search(text or ""):
         return "PASS"
-    return None
+    # A test-ish run with neither marker (e.g. a custom repro.py printing its own
+    # diagnostics) is NOT confirmed progress -- treat as no-pass so a repeated repro
+    # spiral builds the streak instead of slipping past the detector.
+    return "FAIL"
 
 
 def _test_churn_intervention(tool_name: str, args: object, response_text: str) -> str:
