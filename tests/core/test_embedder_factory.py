@@ -9,21 +9,20 @@ import pytest
 
 from atelier.infra.embeddings.base import Embedder
 from atelier.infra.embeddings.factory import make_code_embedder, make_embedder
-from atelier.infra.embeddings.local import LocalEmbedder
 from atelier.infra.embeddings.null_embedder import NullEmbedder
 from atelier.infra.embeddings.ollama_embedder import OllamaEmbedder
 from atelier.infra.embeddings.openai_embedder import OpenAIEmbedder
 
 
-def test_make_embedder_returns_local_in_stripped_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Without explicit pins, defaults to LocalEmbedder (deterministic feature hashing, zero deps)."""
+def test_make_embedder_returns_null_in_stripped_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without explicit pins, defaults to NullEmbedder (FTS-only; the local feature-hashing embedder was removed)."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ATELIER_LETTA_URL", raising=False)
     monkeypatch.delenv("ATELIER_EMBEDDER", raising=False)
     monkeypatch.delenv("ATELIER_MEMORY_BACKEND", raising=False)
 
     e = make_embedder()
-    assert isinstance(e, LocalEmbedder)
+    assert isinstance(e, NullEmbedder)
     assert isinstance(e, Embedder)
 
 
@@ -86,7 +85,7 @@ def test_make_code_embedder_defaults_to_null_without_config(monkeypatch: pytest.
     make_code_embedder.cache_clear()
 
 
-def test_make_code_embedder_falls_back_to_local_when_pinned_ollama_unavailable(
+def test_make_code_embedder_falls_back_to_null_when_pinned_ollama_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     make_code_embedder.cache_clear()
@@ -96,7 +95,7 @@ def test_make_code_embedder_falls_back_to_local_when_pinned_ollama_unavailable(
 
     embedder = make_code_embedder()
 
-    assert isinstance(embedder, LocalEmbedder)
+    assert isinstance(embedder, NullEmbedder)
     make_code_embedder.cache_clear()
 
 
@@ -128,7 +127,7 @@ def test_make_code_embedder_revalidates_ollama_after_mid_session_outage(
 
     availability["up"] = False
     second = make_code_embedder()
-    assert isinstance(second, LocalEmbedder)
+    assert isinstance(second, NullEmbedder)
 
     make_code_embedder.cache_clear()
 

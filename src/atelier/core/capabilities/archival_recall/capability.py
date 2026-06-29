@@ -30,7 +30,7 @@ _window_saturation_warned = False
 # Embedding is a blocking network round-trip for remote backends (openai/ollama/
 # letta) with no provider-side timeout, so an unreachable provider would otherwise
 # stall every memory(op=recall|store_fact|archive) call. Bound it. The default
-# LocalEmbedder returns in-process and well under this ceiling, so the guard is a
+# NullEmbedder returns empty in-process and well under this ceiling, so the guard is a
 # no-op for it beyond the timeout itself.
 _EMBED_TIMEOUT_S = float(os.environ.get("ATELIER_EMBED_TIMEOUT_S", "10"))
 
