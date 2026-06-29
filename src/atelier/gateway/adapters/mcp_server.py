@@ -10499,6 +10499,10 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                 # Bound the result so one oversized frame can't trip the host's
                 # stdout guard and disconnect the server (no mid-session reconnect).
                 response_text = _truncate_result_text(response_text, _max_result_bytes())
+                with contextlib.suppress(Exception):
+                    _nudge_text = _convergence_nudge(name)
+                    if _nudge_text:
+                        response_text = response_text + _nudge_text
                 # N4 — per-tool exact input/output token ledger. Runs HERE, after the
                 # spill/compact/truncate bounds above, so output is measured against
                 # the FINAL emitted text the host actually receives (a spilled summary,
@@ -10732,6 +10736,35 @@ _MAX_MCP_HEAVY_WORKERS = 32
 # a workflow/agent spawn up to the 48h ceiling). They get a separate small
 # executor lane so a burst can't evict cheap, frequent reads/searches from the
 # main pool.
+# Convergence nudge: the top remaining cost sink is tasks that SPIRAL -- gather
+# (search/read/bash) without ever committing an edit, running to the 150-turn
+# ceiling and failing (django-13344, django-15128). Track investigative calls
+# since the last edit (per process = per agent run); after a run of them, append
+# ONE soft line nudging the agent to decide and edit. No hard block, tool-agnostic.
+_NONEDIT_STREAK = [0]
+_NUDGE_EVERY = 12
+_INVESTIGATIVE_TOOLS = frozenset({"bash", "read", "code_search", "grep", "search", "explore"})
+
+
+def _convergence_nudge(tool_name: str) -> str:
+    """Soft anti-spiral: one nudge line after a long gather-without-edit streak."""
+    if tool_name in {"edit", "codemod"}:  # a commit resets the streak
+        _NONEDIT_STREAK[0] = 0
+        return ""
+    if tool_name not in _INVESTIGATIVE_TOOLS:
+        return ""
+    _NONEDIT_STREAK[0] += 1
+    n = _NONEDIT_STREAK[0]
+    if n and n % _NUDGE_EVERY == 0:
+        return (
+            f"\n\n[atelier] {n} investigative calls (search/read/bash) without an edit. "
+            "You very likely have enough now: make the change in one bulk edit, then run "
+            "the covering test once. Searching/reading more rarely converges -- decide from "
+            "the failing test and the code you have already seen."
+        )
+    return ""
+
+
 _HEAVY_TOOLS = frozenset({"bash", "run", "edit", "web_fetch", "workflow", "agent"})
 
 # Cost classes for per-request executor routing. Plain module-level str
