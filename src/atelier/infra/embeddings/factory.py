@@ -13,15 +13,14 @@ from atelier.core.foundation.paths import default_store_root
 from .base import Embedder
 from .bge import BgeEmbedder
 from .letta_embedder import LettaEmbedder
-from .local import LocalEmbedder
 from .null_embedder import NullEmbedder
 from .ollama_embedder import DEFAULT_CODE_EMBED_MODEL, OllamaEmbedder
 from .openai_embedder import OpenAIEmbedder
 
 logger = logging.getLogger(__name__)
 
-_PIN_CHOICES = frozenset({"local", "openai", "letta", "null"})
-_CODE_PIN_CHOICES = frozenset({"local", "openai", "letta", "null", "ollama", "bge"})
+_PIN_CHOICES = frozenset({"openai", "letta", "null"})
+_CODE_PIN_CHOICES = frozenset({"openai", "letta", "null", "ollama", "bge"})
 
 
 @runtime_checkable
@@ -39,8 +38,6 @@ def make_embedder(pin: str | None = None) -> Embedder:
     if chosen:
         if chosen not in _PIN_CHOICES:
             raise ValueError(f"Unknown embedder pin {chosen!r}; must be one of {sorted(_PIN_CHOICES)}")
-        if chosen == "local":
-            return LocalEmbedder()
         if chosen == "null":
             return NullEmbedder()
         if chosen == "openai":
@@ -49,19 +46,19 @@ def make_embedder(pin: str | None = None) -> Embedder:
 
     backend = resolve_memory_backend(root=default_store_root())
     if backend == "sqlite":
-        return LocalEmbedder()
+        return NullEmbedder()
     if backend == "letta":
         try:
             from atelier.infra.memory_bridges.letta_adapter import LettaAdapter
         except ImportError:
-            return LocalEmbedder()
+            return NullEmbedder()
         if LettaAdapter.is_available():
             return LettaEmbedder()
-        logger.warning("Letta backend selected but sidecar is unavailable; falling back to local embedder")
-        return LocalEmbedder()
+        logger.warning("Letta backend selected but sidecar is unavailable; falling back to FTS-only (null embedder)")
+        return NullEmbedder()
     if backend == "openmemory" and os.environ.get("OPENAI_API_KEY"):
         return OpenAIEmbedder()
-    return LocalEmbedder()
+    return NullEmbedder()
 
 
 _embedder_singleton: Embedder | None = None
@@ -111,8 +108,6 @@ def make_code_embedder(pin: str | None = None, model: str | None = None) -> Embe
     chosen = (pin or os.getenv("ATELIER_CODE_EMBEDDER") or os.getenv("ATELIER_EMBEDDER") or "").strip().lower()
     if chosen and chosen not in _CODE_PIN_CHOICES:
         raise ValueError(f"Unknown code embedder pin {chosen!r}; must be one of {sorted(_CODE_PIN_CHOICES)}")
-    if chosen == "local":
-        return LocalEmbedder()
     if chosen == "openai":
         return OpenAIEmbedder()
     if chosen == "letta":
@@ -121,11 +116,11 @@ def make_code_embedder(pin: str | None = None, model: str | None = None) -> Embe
         return BgeEmbedder()
     if chosen == "ollama":
         if os.getenv("ATELIER_OFFLINE"):
-            return LocalEmbedder()
+            return NullEmbedder()
         try:
             return _make_available_ollama_code_embedder(_default_code_model(model))
         except RuntimeError:
-            return LocalEmbedder()
+            return NullEmbedder()
     # Default (no pin set) or explicit opt-out (null): no semantic search.
     # Feature-hashing (local) vectors hurt MRR; BGE/ollama/openai are opt-in.
     return NullEmbedder()
@@ -148,7 +143,6 @@ make_code_embedder.cache_clear = _clear_code_embedder_cache  # type: ignore[attr
 __all__ = [
     "DEFAULT_CODE_EMBED_MODEL",
     "LettaEmbedder",
-    "LocalEmbedder",
     "NullEmbedder",
     "OllamaEmbedder",
     "OpenAIEmbedder",

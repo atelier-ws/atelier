@@ -59,7 +59,7 @@ def recall_search_cmd(ctx: click.Context, query: str, top_k: int, as_json: bool)
 @recall_group.command("config")
 @click.option("--auto-index/--no-auto-index", default=None, help="Enable the SessionStart background indexer.")
 @click.option(
-    "--embedder", type=click.Choice(["local", "openai", "ollama"]), default=None, help="Embedder for indexing."
+    "--embedder", type=click.Choice(["openai", "ollama"]), default=None, help="Embedder for indexing."
 )
 @click.option("--embed-model", default=None, help="Embedder model (e.g. an Ollama model name).")
 @click.option("--json", "as_json", is_flag=True)
@@ -77,7 +77,7 @@ def recall_config_cmd(
     updated = set_recall_settings(ctx.obj["root"], auto_index=auto_index, embedder=embedder, embed_model=embed_model)
     summary = {
         "recallAutoIndex": updated.get("recallAutoIndex", True),
-        "recallEmbedder": updated.get("recallEmbedder", "local"),
+        "recallEmbedder": updated.get("recallEmbedder", "null"),
         "recallEmbedModel": updated.get("recallEmbedModel", ""),
     }
     if as_json:
