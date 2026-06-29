@@ -1051,6 +1051,52 @@ def _block_check_segment(tokens: list[str]) -> CommandPolicyDecision | None:
     return None
 
 
+# Known-bad shell patterns the LLM reaches for that never advance a code task and
+# dump large output. Redirect (not silently allow) to the productive path. Matched
+# by regex on the whole command so a ``cd /testbed && git log ...`` prefix can't
+# hide them (the token[0] rewrites below only see the bare head).
+_BAD_ARCHAEOLOGY_RE = re.compile(r"\bgit\s+(?:log|show|blame)\b", re.IGNORECASE)
+_BAD_WEB_RE = re.compile(r"\b(?:curl|wget)\b", re.IGNORECASE)
+_BAD_FIND_RE = re.compile(r"\bfind\s+\S.*\s-(?:i?name|path|wholename)\b", re.IGNORECASE)
+_BAD_SED_EDIT_RE = re.compile(r"\bsed\s+(?:-[a-z]*i\b|--in-place)", re.IGNORECASE)
+
+
+def _redirect_known_bad(command: str) -> CommandPolicyDecision | None:
+    """Return a converging redirect for a known-bad pattern, or None to run normally."""
+    if _BAD_ARCHAEOLOGY_RE.search(command):
+        return CommandPolicyDecision(
+            category="history-hunt",
+            action="block",
+            reason=(
+                "Git history is not the source of truth for this task -- the upstream fix is "
+                "not in this repo's past. Solve from the failing test and `code_search` of the "
+                "current source. To view a file, use `read`."
+            ),
+        )
+    if _BAD_WEB_RE.search(command):
+        return CommandPolicyDecision(
+            category="web",
+            action="block",
+            reason=(
+                "External fetch (curl/wget) is unavailable and is not how this task is solved. "
+                "Work from the failing test and the current source via `code_search`/`read`."
+            ),
+        )
+    if _BAD_FIND_RE.search(command):
+        return CommandPolicyDecision(
+            category="find",
+            action="block",
+            reason="Use `search` (file by name) or `grep` (file_glob_patterns) to find files -- indexed and faster than shell `find`.",
+        )
+    if _BAD_SED_EDIT_RE.search(command):
+        return CommandPolicyDecision(
+            category="sed-edit",
+            action="block",
+            reason="Use the `edit` tool to modify files -- in-place `sed` edits are untracked and unverified.",
+        )
+    return None
+
+
 def classify_command(command: str, *, allowed_write_roots: list[Path] | None = None) -> CommandPolicyDecision:
     # Detect file-write patterns before shlex.split (heredocs break shlex parsing).
     if _is_shell_file_write(command):
@@ -1080,6 +1126,10 @@ def classify_command(command: str, *, allowed_write_roots: list[Path] | None = N
         blocked = _block_check_segment(segment)
         if blocked is not None:
             return blocked
+
+    bad = _redirect_known_bad(command)
+    if bad is not None:
+        return bad
 
     try:
         tokens = shlex.split(command)
