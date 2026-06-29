@@ -8487,9 +8487,11 @@ def _run_bash_tool(
 
     if policy.action == "rewrite" and policy.rewrite_target == "read_range" and policy.rewrite_payload:
         _rr_spec = str(policy.rewrite_payload.get("spec") or "").strip()
-        if _rr_spec:
+        if _rr_spec and ":" in _rr_spec:
+            _rr_fp, _, _rr_rng = _rr_spec.rpartition(":")
+            _rr_target = Path(_rr_fp) if Path(_rr_fp).is_absolute() else (Path(effective_cwd) / _rr_fp).resolve()
             try:
-                _rr = cast(dict[str, Any], TOOLS["read"]["handler"]({"files": [_rr_spec]}))
+                _rr = cast(dict[str, Any], TOOLS["read"]["handler"]({"path": str(_rr_target), "range": _rr_rng}))
                 _rr_out = _rr.get("content") if isinstance(_rr, dict) else str(_rr)
             except Exception as _rr_exc:  # noqa: BLE001
                 _rr_out = f"[read] {_rr_exc}"
