@@ -5442,7 +5442,7 @@ def tool_smart_read(
 
     Cross-tool: after editing a file via `edit`, don't re-read it — the edit
     response already confirms the change. When you don't yet know which file
-    holds something, use `grep` with output_mode="file_paths_with_content" to
+    holds something, use `grep` with mode="with_content" to
     discover and read in one step instead of grep-then-read.
     """
     if files is not None and symbol is not None:
@@ -8723,10 +8723,10 @@ _GREP_BADGE_SYMBOL_CAP = 8
 # Model-facing grep output-mode names map to the verbose internal output_mode the
 # native engine speaks. Short names keep the per-turn schema small.
 _GREP_MODE_ALIASES: dict[str, str] = {
-    "content": "file_paths_with_content",
-    "map": "ranked_file_map",
-    "paths": "file_paths_only",
-    "counts": "file_paths_with_match_count",
+    "with_content": "file_paths_with_content",
+    "ranked_map": "ranked_file_map",
+    "paths_only": "file_paths_only",
+    "count_only": "file_paths_with_match_count",
 }
 
 
@@ -8734,17 +8734,18 @@ _GREP_MODE_ALIASES: dict[str, str] = {
 # (file_paths_with_content) over the terse canonical ones, so accept both forms
 # plus common variants and default unknowns to 'content' -- grep never 422s on mode.
 _GREP_MODE_CANON: dict[str, str] = {
-    "content": "content", "map": "map", "paths": "paths", "counts": "counts",
-    "file_paths_with_content": "content", "files_with_content": "content", "file_content": "content",
-    "ranked_file_map": "map", "file_map": "map", "ranked": "map",
-    "file_paths_only": "paths", "file_paths": "paths", "files": "paths", "filenames": "paths",
-    "file_paths_with_match_count": "counts", "match_count": "counts", "count": "counts",
+    "with_content": "with_content", "ranked_map": "ranked_map", "paths_only": "paths_only", "count_only": "count_only",
+    "content": "with_content", "map": "ranked_map", "paths": "paths_only", "counts": "count_only",
+    "file_paths_with_content": "with_content", "files_with_content": "with_content", "file_content": "with_content",
+    "ranked_file_map": "ranked_map", "file_map": "ranked_map", "ranked": "ranked_map",
+    "file_paths_only": "paths_only", "file_paths": "paths_only", "files": "paths_only", "filenames": "paths_only",
+    "file_paths_with_match_count": "count_only", "match_count": "count_only", "count": "count_only",
 }
 
 
 def _normalize_grep_mode(mode: object) -> str:
     """Map any reasonable mode spelling to a canonical short name; unknown -> content."""
-    return _GREP_MODE_CANON.get(str(mode or "content").strip().lower(), "content")
+    return _GREP_MODE_CANON.get(str(mode or "with_content").strip().lower(), "with_content")
 
 
 def _grep_badge_provider(rel_path: str, symbol_names: list[str]) -> str | None:
@@ -8996,7 +8997,7 @@ def tool_relations(
 @mcp_tool(
     name="grep",
     description=(
-        "Search code by regex/glob/type. mode='content' (default) discovers AND reads matched "
+        "Search code by regex/glob/type. mode='with_content' (default) discovers AND reads matched "
         "context in one step. When a match lands on a symbol definition, its caller/callee/usage "
         "counts ride along inline -- drill into the lists with the `relations` tool."
     ),
@@ -9034,12 +9035,12 @@ def tool_grep(
         str,
         Field(
             description=(
-                "content: matched lines+context (default); map: ranked file pointers; "
-                "paths: matching file paths; counts: path + match count. "
-                "Descriptive aliases (e.g. file_paths_with_content) are accepted."
+                "with_content: matched lines+context (default); ranked_map: ranked file pointers; "
+                "paths_only: matching file paths; count_only: path + match count. "
+                "Aliases like file_paths_with_content are also accepted."
             )
         ),
-    ] = "content",
+    ] = "with_content",
     before: Annotated[
         int,
         Field(description="Lines before match."),
