@@ -8498,7 +8498,14 @@ def _run_bash_tool(
         _fg_out = "\n".join(_fg_hits[:300]) if _fg_hits else "(no files match)"
         if len(_fg_hits) > 300:
             _fg_out += f"\n... ({len(_fg_hits) - 300} more)"
-        return {"stdout": _fg_out, "stderr": "", "exit_code": 0, "truncated": False, "lines_omitted": 0, "duration_ms": 0}
+        return {
+            "stdout": _fg_out,
+            "stderr": "",
+            "exit_code": 0,
+            "truncated": False,
+            "lines_omitted": 0,
+            "duration_ms": 0,
+        }
 
     if policy.action == "rewrite" and policy.rewrite_target == "read_range" and policy.rewrite_payload:
         _rr_spec = str(policy.rewrite_payload.get("spec") or "").strip()
@@ -8510,7 +8517,14 @@ def _run_bash_tool(
                 _rr_out = _rr.get("content") if isinstance(_rr, dict) else str(_rr)
             except Exception as _rr_exc:  # noqa: BLE001
                 _rr_out = f"[read] {_rr_exc}"
-            return {"stdout": str(_rr_out or ""), "stderr": "", "exit_code": 0, "truncated": False, "lines_omitted": 0, "duration_ms": 0}
+            return {
+                "stdout": str(_rr_out or ""),
+                "stderr": "",
+                "exit_code": 0,
+                "truncated": False,
+                "lines_omitted": 0,
+                "duration_ms": 0,
+            }
 
     # One execution model: every command runs as a managed session; the only
     # variable is how long we block inline before returning a poll handle.
@@ -8734,12 +8748,27 @@ _GREP_MODE_ALIASES: dict[str, str] = {
 # (file_paths_with_content) over the terse canonical ones, so accept both forms
 # plus common variants and default unknowns to 'content' -- grep never 422s on mode.
 _GREP_MODE_CANON: dict[str, str] = {
-    "with_content": "with_content", "ranked_map": "ranked_map", "paths_only": "paths_only", "count_only": "count_only",
-    "content": "with_content", "map": "ranked_map", "paths": "paths_only", "counts": "count_only",
-    "file_paths_with_content": "with_content", "files_with_content": "with_content", "file_content": "with_content",
-    "ranked_file_map": "ranked_map", "file_map": "ranked_map", "ranked": "ranked_map",
-    "file_paths_only": "paths_only", "file_paths": "paths_only", "files": "paths_only", "filenames": "paths_only",
-    "file_paths_with_match_count": "count_only", "match_count": "count_only", "count": "count_only",
+    "with_content": "with_content",
+    "ranked_map": "ranked_map",
+    "paths_only": "paths_only",
+    "count_only": "count_only",
+    "content": "with_content",
+    "map": "ranked_map",
+    "paths": "paths_only",
+    "counts": "count_only",
+    "file_paths_with_content": "with_content",
+    "files_with_content": "with_content",
+    "file_content": "with_content",
+    "ranked_file_map": "ranked_map",
+    "file_map": "ranked_map",
+    "ranked": "ranked_map",
+    "file_paths_only": "paths_only",
+    "file_paths": "paths_only",
+    "files": "paths_only",
+    "filenames": "paths_only",
+    "file_paths_with_match_count": "count_only",
+    "match_count": "count_only",
+    "count": "count_only",
 }
 
 
@@ -8849,10 +8878,7 @@ def _lean_code_search_view(
     top_fs = epscore_by_path.get(ranked[0].get("path"), 0.0) if ranked else 0.0
     second_fs = epscore_by_path.get(ranked[1].get("path"), 0.0) if len(ranked) > 1 else 0.0
     dominant = (
-        exact
-        and not seed_norm
-        and top_fs > 0.0
-        and (second_fs == 0.0 or top_fs >= _LEAN_DOMINANT_RATIO * second_fs)
+        exact and not seed_norm and top_fs > 0.0 and (second_fs == 0.0 or top_fs >= _LEAN_DOMINANT_RATIO * second_fs)
     )
     n_src = 1 if dominant else min(_LEAN_MAX_SOURCE_FILES, max(1, max_files))
 
@@ -8892,7 +8918,7 @@ def _lean_code_search_view(
         p = f.get("path")
         if p and p not in seen_paths and p not in cand_files:
             cand_files.append(p)
-    for p in (result.get("additional_relevant_files") or []):
+    for p in result.get("additional_relevant_files") or []:
         if p and p not in seen_paths and p not in cand_files:
             cand_files.append(p)
 
@@ -10580,6 +10606,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                 with contextlib.suppress(Exception):
                     response_text = _convergence_intervention(name, _spill_args, response_text)
                     response_text = _test_churn_intervention(name, _spill_args, response_text)
+                    response_text = _history_archaeology_intervention(name, _spill_args, response_text)
                 # N4 — per-tool exact input/output token ledger. Runs HERE, after the
                 # spill/compact/truncate bounds above, so output is measured against
                 # the FINAL emitted text the host actually receives (a spilled summary,
@@ -10873,6 +10900,8 @@ def _convergence_intervention(tool_name: str, args: object, response_text: str) 
     if n >= _CONSOLIDATE_AT:  # consolidate: surface the decision list up front
         return f"[atelier] {decision}\n\n{response_text}"
     return f"{response_text}\n\n[atelier] {decision}"  # nudge
+
+
 # Edit-test-fail churn: the costly spiral is edit->test->FAIL repeated without ever
 # going green. Tracked separately from the gather streak (which resets on every
 # edit, so it is blind to this). Escalation rides the FIXME must-act channel -- the
@@ -10954,6 +10983,50 @@ def _test_churn_intervention(tool_name: str, args: object, response_text: str) -
             f"{n} test runs failed across {e} edits with no pass. Before editing again: re-read the "
             "EXACT failing assertion and the function under test, then state the root cause in one line. "
             "You may be fixing a symptom, not the cause."
+        )
+    return f"FIXME (convergence): {reason}\n\n{response_text}"
+
+
+# Version-history archaeology spiral: repeatedly reading commit history
+# (git log/show/blame/bisect/rev-list/reflog) without an intervening edit is a
+# generic stuck-pattern -- the agent hunts the answer in history instead of
+# reasoning from the code in front of it. Resets on edit (real progress), like the
+# gather streak; rides the FIXME must-act channel since the plain text channel is
+# ignored under load. git diff/status/stash (navigation) are intentionally NOT counted.
+_HISTORY_STREAK = [0]
+_HISTORY_TIERS = (6, 12)
+_HISTORY_CMD_RE = re.compile(
+    r"\bgit\b(?:\s+-\S+|\s+-C\s+\S+)*\s+(?:log|show|blame|bisect|rev-list|reflog|whatchanged)\b",
+    re.IGNORECASE,
+)
+
+
+def _history_archaeology_intervention(tool_name: str, args: object, response_text: str) -> str:
+    """Escalate via FIXME when version-history reads pile up with no intervening edit."""
+    if tool_name in {"edit", "codemod"}:  # an edit is real progress -> reset
+        _HISTORY_STREAK[0] = 0
+        return response_text
+    if tool_name != "bash":
+        return response_text
+    command = str(args.get("command") or "") if isinstance(args, dict) else ""
+    if not _HISTORY_CMD_RE.search(command):
+        return response_text
+    _HISTORY_STREAK[0] += 1
+    n = _HISTORY_STREAK[0]
+    if n < _HISTORY_TIERS[0]:
+        return response_text
+    if n >= _HISTORY_TIERS[1]:
+        reason = (
+            f"{n} version-history reads (git log/show/blame) with no edit in between -- mining "
+            "history is not converging you on a fix. Stop reading history: re-read the symbol under "
+            "change and whatever defines its expected behavior (test, caller, or spec), state the "
+            "root cause in one line, then EDIT. Reading more history will not write the change for you."
+        )
+    else:
+        reason = (
+            f"{n} commit/blame reads with no edit in between -- you may be hunting the answer in "
+            "history instead of reasoning from the code. Re-read the symbol under change and its "
+            "expected behavior, then edit rather than searching history again."
         )
     return f"FIXME (convergence): {reason}\n\n{response_text}"
 
@@ -11222,6 +11295,7 @@ def _effective_spill_tool(tool_name: str, args: dict[str, Any]) -> str:
     if decision.action == "rewrite" and decision.rewrite_target:
         return _REWRITE_SPILL_IDENTITY.get(decision.rewrite_target, tool_name)
     return tool_name
+
 
 _CODE_CONTENT_TOOLS = frozenset({"read"})
 
