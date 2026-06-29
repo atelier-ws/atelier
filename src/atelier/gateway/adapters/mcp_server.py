@@ -10500,9 +10500,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                 # stdout guard and disconnect the server (no mid-session reconnect).
                 response_text = _truncate_result_text(response_text, _max_result_bytes())
                 with contextlib.suppress(Exception):
-                    _nudge_text = _convergence_nudge(name)
-                    if _nudge_text:
-                        response_text = response_text + _nudge_text
+                    response_text = _convergence_intervention(name, _spill_args, response_text)
                 # N4 — per-tool exact input/output token ledger. Runs HERE, after the
                 # spill/compact/truncate bounds above, so output is measured against
                 # the FINAL emitted text the host actually receives (a spilled summary,
@@ -10736,33 +10734,66 @@ _MAX_MCP_HEAVY_WORKERS = 32
 # a workflow/agent spawn up to the 48h ceiling). They get a separate small
 # executor lane so a burst can't evict cheap, frequent reads/searches from the
 # main pool.
-# Convergence nudge: the top remaining cost sink is tasks that SPIRAL -- gather
-# (search/read/bash) without ever committing an edit, running to the 150-turn
-# ceiling and failing (django-13344, django-15128). Track investigative calls
-# since the last edit (per process = per agent run); after a run of them, append
-# ONE soft line nudging the agent to decide and edit. No hard block, tool-agnostic.
+# Escalating convergence intervention (firm, never a hard block). A spiral is the
+# agent gathering more data hoping for clarity; a polite line is ignored because
+# gathering still works. So escalate by removing the fuel and forcing the decision
+# -- edit/test always execute, and one edit resets everything. Because the runtime
+# sees every search/read in the session, it can hand back a CONSOLIDATED list of
+# what the agent already examined.
 _NONEDIT_STREAK = [0]
-_NUDGE_EVERY = 12
+_SEEN_PATHS: list[str] = []
+_SEEN_QUERIES: list[str] = []
 _INVESTIGATIVE_TOOLS = frozenset({"bash", "read", "code_search", "grep", "search", "explore"})
+_NUDGE_AT = 10
+_CONSOLIDATE_AT = 16
+_DEGRADE_AT = 23
 
 
-def _convergence_nudge(tool_name: str) -> str:
-    """Soft anti-spiral: one nudge line after a long gather-without-edit streak."""
+def _note_gather(tool_name: str, args: object) -> None:
+    if not isinstance(args, dict):
+        return
+    if tool_name == "read":
+        vals = args.get("files") or []
+        if not vals:
+            v = args.get("path") or args.get("symbol") or args.get("file_path")
+            vals = v if isinstance(v, list) else ([v] if v else [])
+        for v in vals:
+            s = str(v)
+            if s and s not in _SEEN_PATHS:
+                _SEEN_PATHS.append(s)
+    else:
+        q = args.get("query") or args.get("content_regex") or args.get("pattern")
+        if q and str(q) not in _SEEN_QUERIES:
+            _SEEN_QUERIES.append(str(q))
+
+
+def _convergence_intervention(tool_name: str, args: object, response_text: str) -> str:
+    """Escalate from nudge -> consolidate -> degrade as a gather-without-edit streak grows."""
     if tool_name in {"edit", "codemod"}:  # a commit resets the streak
         _NONEDIT_STREAK[0] = 0
-        return ""
+        return response_text
     if tool_name not in _INVESTIGATIVE_TOOLS:
-        return ""
+        return response_text
+    _note_gather(tool_name, args)
     _NONEDIT_STREAK[0] += 1
     n = _NONEDIT_STREAK[0]
-    if n and n % _NUDGE_EVERY == 0:
+    if n < _NUDGE_AT:
+        return response_text
+    seen = ", ".join(_SEEN_PATHS[:6]) or "the files from your searches"
+    decision = (
+        f"{n} search/read calls with 0 edits -- you are spiraling. You have already "
+        f"examined: {seen}. Pick the right site and EDIT now, then run the failing test "
+        f"once. Do not gather again unless this genuinely lacks what you need."
+    )
+    if n >= _DEGRADE_AT:  # firm: suppress the bulky gather output, keep a head + the decision
         return (
-            f"\n\n[atelier] {n} investigative calls (search/read/bash) without an edit. "
-            "You very likely have enough now: make the change in one bulk edit, then run "
-            "the covering test once. Searching/reading more rarely converges -- decide from "
-            "the failing test and the code you have already seen."
+            f"[atelier] STOP GATHERING. {decision}\n\n"
+            "(further read-only output suppressed this turn; your next action must be an "
+            f"edit or a test run)\n\n{response_text[:400]}"
         )
-    return ""
+    if n >= _CONSOLIDATE_AT:  # consolidate: surface the decision list up front
+        return f"[atelier] {decision}\n\n{response_text}"
+    return f"{response_text}\n\n[atelier] {decision}"  # nudge
 
 
 _HEAVY_TOOLS = frozenset({"bash", "run", "edit", "web_fetch", "workflow", "agent"})
