@@ -1200,6 +1200,28 @@ def _extract_test_output(text: str, max_chars: int = _BASH_STDOUT_CHAR_CAP) -> s
     return _cap_chars(text, max_chars)
 
 
+# Per-command-kind stdout budgets. Bare listings (ls/tree/du/git status ...) are
+# enumerations -- mostly noise -- so they get a lean cap; test runs keep more
+# (failures are the actionable signal, and truncating them forces a costly
+# re-run); everything else keeps the default head+tail cap.
+_BASH_LISTING_RE = re.compile(
+    r"^\s*(?:cd\s+[^&|;]+&&\s*)?(?:ls|tree|du|df|find|stat|env|printenv|ps"
+    r"|git\s+status|git\s+ls-files|git\s+branch)\b",
+    re.IGNORECASE,
+)
+_BASH_LISTING_CHAR_CAP = 2000
+_BASH_TEST_CHAR_CAP = 8000
+
+
+def _bash_output_budget(command: str) -> int:
+    """Stdout char budget keyed by command kind (test / listing / generic)."""
+    if _TEST_CMD_RE.search(command):
+        return _BASH_TEST_CHAR_CAP
+    if _BASH_LISTING_RE.search(command):
+        return _BASH_LISTING_CHAR_CAP
+    return _BASH_STDOUT_CHAR_CAP
+
+
 def _compact_result(
     *,
     command: str,
@@ -1216,14 +1238,15 @@ def _compact_result(
         head = max(20, max_lines // 4)
         tail = max(max_lines - head, 0)
     clean_stdout = _strip_ansi(raw_stdout)
+    budget = _bash_output_budget(command)
     if _TEST_CMD_RE.search(command):
-        compact = _extract_test_output(clean_stdout)
+        compact = _extract_test_output(clean_stdout, max_chars=budget)
         stdout_omitted = 0
         stdout_chars = max(0, len(clean_stdout) - len(compact))
         stdout_compact = compact
     else:
         stdout_compact, stdout_omitted, stdout_chars = _head_tail_lines(clean_stdout.splitlines(), head, tail)
-        capped = _cap_chars(stdout_compact, _BASH_STDOUT_CHAR_CAP)
+        capped = _cap_chars(stdout_compact, budget)
         if capped != stdout_compact:
             stdout_chars += len(stdout_compact) - len(capped)
             stdout_compact = capped

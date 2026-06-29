@@ -688,7 +688,7 @@ _DEFAULT_SPILL_RESULT_CHARS = 2 * 1024
 # gets a larger inline budget than web_fetch/sql, whose payloads are rarely needed
 # byte-complete. Tools absent here use _DEFAULT_SPILL_RESULT_CHARS. An explicit
 # ATELIER_MCP_SPILL_RESULT_CHARS env value overrides this map for every tool.
-_SPILL_RESULT_CHARS_BY_TOOL = {"bash": 8 * 1024, "read": 16 * 1024}
+_SPILL_RESULT_CHARS_BY_TOOL = {"bash": 8 * 1024, "read": 16 * 1024, "web_fetch": 8 * 1024}
 # Per-read inline budget (bytes). A single file read larger than this is returned
 # as a line-aligned prefix plus an EXACT continuation range, instead of being
 # handed to the host whole -- where the host's own MCP-output guard would dump it
