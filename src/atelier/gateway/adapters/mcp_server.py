@@ -8832,11 +8832,10 @@ def _lean_code_search_view(
 @mcp_tool(
     name="code_search",
     description=(
-        "Search the indexed codebase for implementations, symbols, references, "
-        "call flow, or relevant source. Use instead of bash, grep, or rg when "
-        "locating code. Returns source grouped by file plus callers, callees, "
-        "usages, and blast radius. Treat returned source as already read. "
-        "Use read when the exact file or symbol is already known."
+        "Search the indexed codebase for code. Returns relevant source grouped by "
+        "file, plus `related_symbols` (every relevant definition across files, with "
+        "locations) and `candidate_files`. Use instead of grep/find. Treat returned "
+        "source as already read; use `read` only for a file it did not return."
     ),
     param_aliases={
         "maxFiles": "max_files",
