@@ -10525,11 +10525,12 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                 # multi-MB wire backstop below can spill it.
                 # Off / non-capped tools -> no-op, so _compact_result_text runs
                 # exactly as before.
+                _eff_spill_tool = _effective_spill_tool(name, _spill_args)
                 response_text = _spill_oversized_result_text(
                     response_text,
-                    name,
+                    _eff_spill_tool,
                     _spill_args,
-                    _spill_result_chars(name),
+                    _spill_result_chars(_eff_spill_tool),
                     unit="chars",
                     tools=_SPILL_CHAR_CAP_TOOLS,
                 )
@@ -11072,6 +11073,37 @@ _SPILL_TOOLS = frozenset({"bash", "sql", "read", "web_fetch"})
 # its own inline budget + outline projection and the multi-MB wire backstop, so
 # it is never lossily truncated -- just not force-summarized at 2 KiB.
 _SPILL_CHAR_CAP_TOOLS = frozenset({"bash", "sql", "web_fetch", "read"})
+
+
+# Redirected bash calls (curl->web_fetch, sed -n / cat -> read) take the TARGET
+# tool's spill identity, not bash's -- a redirected read keeps read's larger
+# incremental-retrieval budget; a redirected fetch keeps web_fetch's lean cap.
+# grep/find_glob bound their own output in-handler (ranked projection / 300-entry
+# cap) so they keep the generic bash backstop.
+_REWRITE_SPILL_IDENTITY = {
+    "read": "read",
+    "read_range": "read",
+    "web_fetch": "web_fetch",
+}
+
+
+def _effective_spill_tool(tool_name: str, args: dict[str, Any]) -> str:
+    """Spill identity for a call: a bash command rewritten to another tool spills
+    AS that tool (its budget + semantics); everything else spills as itself."""
+    if tool_name != "bash":
+        return tool_name
+    command = str(args.get("command") or "").strip() if isinstance(args, dict) else ""
+    if not command:
+        return tool_name
+    try:
+        from atelier.core.capabilities.tool_supervision.bash_exec import classify_command
+
+        decision = classify_command(command)
+    except Exception:  # noqa: BLE001 -- spill identity must never raise
+        return tool_name
+    if decision.action == "rewrite" and decision.rewrite_target:
+        return _REWRITE_SPILL_IDENTITY.get(decision.rewrite_target, tool_name)
+    return tool_name
 
 _CODE_CONTENT_TOOLS = frozenset({"read"})
 
