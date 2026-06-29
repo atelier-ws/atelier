@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -63,7 +64,7 @@ def eval_mcp(out: Path | None, tools: tuple[str, ...], jobs: int) -> None:
     click.echo(f"Results: {run_dir}")
 
 
-_RETRIEVAL_CHANNELS = ["lexical", "zoekt", "semantic", "cg", "lexical+zoekt"]
+_RETRIEVAL_CHANNELS = ["lexical", "zoekt", "semantic", "cg", "cmm", "lexical+zoekt"]
 
 
 def _make_golds(pairs: Path | None) -> list[Path]:
@@ -120,6 +121,14 @@ def _channel_cmd_env(
             env["FITNESS_SAMPLE"] = str(sample)
         if repo:
             env["FITNESS_REPO"] = repo
+    elif channel == "cmm":
+        # codebase-memory-mcp external arm (eval_cmm_mrr.py). Same env contract
+        # as the cg arm; the harness fetches/uses the pinned static binary.
+        cmd = [sys.executable, "benchmarks/codebench/eval_cmm_mrr.py"]
+        if not full and sample:
+            env["FITNESS_SAMPLE"] = str(sample)
+        if repo:
+            env["FITNESS_REPO"] = repo
     else:
         env["FITNESS_WORKERS"] = str(workers)
         if channel == "zoekt":
@@ -143,16 +152,16 @@ def _channel_cmd_env(
     return cmd, env, golds
 
 
-def _render_comparison(channel_results: dict[str, dict]) -> None:
+def _render_comparison(channel_results: dict[str, dict[str, Any]]) -> None:
     """Print side-by-side MRR + p100 comparison table.
 
     Rows: OVERALL[def/cnt] then repo[def]/repo[cnt] grouped by repo.
     Columns: one per channel, each showing MRR and p100.
     """
     channels = list(channel_results.keys())
-    gold_kinds = [gk for gk in ("definition", "content") if any(
-        gk in r.get("golds", {}) for r in channel_results.values()
-    )]
+    gold_kinds = [
+        gk for gk in ("definition", "content") if any(gk in r.get("golds", {}) for r in channel_results.values())
+    ]
     if not gold_kinds:
         gold_kinds = ["definition"]
 
@@ -198,7 +207,7 @@ def _render_comparison(channel_results: dict[str, dict]) -> None:
     print(h2)
     print(sep)
 
-    for repo in ["OVERALL"] + repos:
+    for repo in ["OVERALL", *repos]:
         short = repo.split("__")[-1] if "__" in repo else repo
         for gk in gold_kinds:
             label = f"{short}[{gk[:3]}]"
@@ -221,7 +230,8 @@ def _render_comparison(channel_results: dict[str, dict]) -> None:
     help="Channel(s) to benchmark. Repeatable for side-by-side comparison: "
     "--channel lexical --channel lexical+zoekt. "
     "lexical = pure FTS5 symbol search; zoekt = pure Zoekt trigram; "
-    "semantic = BGE embeddings; cg = CodeGraph; lexical+zoekt = FTS5+Zoekt parallel.",
+    "semantic = BGE embeddings; cg = CodeGraph; cmm = codebase-memory-mcp; "
+    "lexical+zoekt = FTS5+Zoekt parallel.",
 )
 @click.option("--full", is_flag=True, default=False, help="Run all available query pairs (no cap).")
 @click.option("--sample", type=int, default=0, help="Total queries to sample across repos (0 = default 500).")
@@ -296,7 +306,7 @@ def eval_retrieval(
     # capture JSON output, render side-by-side comparison table.
     import json
 
-    channel_results: dict[str, dict] = {}
+    channel_results: dict[str, dict[str, Any]] = {}
     any_failed = False
     for ch in channels:
         cmd, env, golds = _channel_cmd_env(
@@ -317,7 +327,7 @@ def eval_retrieval(
             any_failed = True
             continue
         stdout = (proc.stdout or b"").decode(errors="replace")
-        result: dict = {}
+        result: dict[str, Any] = {}
         for line in reversed(stdout.splitlines()):
             line = line.strip()
             if line.startswith("{"):
