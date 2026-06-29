@@ -1399,6 +1399,23 @@ def _er_linear_score(weights: list[float], features: list[float]) -> float:
     return sum(w * f for w, f in zip(weights, features, strict=True))
 
 
+def _validate_er_model(raw: Any) -> dict[str, Any] | None:
+    """Validate/normalize an explore reranker model (LambdaMART trees or linear).
+
+    Legacy per-workspace deploys have no ``model_type`` and are treated as linear.
+    """
+    if not isinstance(raw, dict) or not raw.get("enabled") or raw.get("feature_names") != list(_ER_FEATURE_NAMES):
+        return None
+    model_type = raw.get("model_type")
+    if model_type == "lambdamart_trees":
+        return raw if isinstance(raw.get("trees"), list) and raw["trees"] else None
+    if model_type in ("linear", None):
+        if len(raw.get("weights", [])) != len(_ER_FEATURE_NAMES):
+            return None
+        return raw if model_type == "linear" else {**raw, "model_type": "linear"}
+    return None
+
+
 def _er_tree_score(trees: list[dict[str, Any]], features: list[float]) -> float:
     """Sum leaf values across a LambdaMART forest for one candidate.
 
@@ -1407,7 +1424,7 @@ def _er_tree_score(trees: list[dict[str, Any]], features: list[float]) -> float:
     takes the ``left`` branch (XGBoost "yes" direction). Constant per-candidate
     offsets (base_score) are omitted — they do not change within-group order.
     Pure-Python and dependency-free so it stays well under the inline budget
-    (~40 depth-3 trees × a handful of candidates ≈ a few thousand comparisons).
+    (~40 depth-3 trees over a handful of candidates: a few thousand compares).
     """
     total = 0.0
     for tree in trees:
@@ -1678,15 +1695,35 @@ _PROCESS_POOL_LOCK = threading.Lock()
 
 
 def _worker_memory_guard() -> None:
-    """Worker-process initializer: cap virtual address space to prevent runaway OOM.
+    """Worker-process initializer: cap virtual address space and arm parent-death signal.
 
-    The cap is this worker's share of ~80% of available memory (OS- and
-    cgroup-aware), never below the per-worker import floor (``_WORKER_MIN_MB``) --
-    so a worker can't false-OOM just re-importing the package, while a
-    pathological parse still can't grow it unbounded. Override with
-    ``ATELIER_INDEX_WORKER_MAX_MEM_MB`` (0 disables); skipped silently where
-    ``resource`` / memory detection is unavailable.
+    Two protections applied in each forked worker:
+
+    1. **PR_SET_PDEATHSIG** (Linux only) — deliver SIGTERM to this worker the
+       moment its parent MCP process exits or crashes.  Without this, fork
+       workers are re-parented to the user's systemd instance and keep running
+       (and holding ~300 MB PSS each) indefinitely after the session ends.
+
+    2. **RLIMIT_AS** — cap virtual address space to this worker's share of ~80%
+       of available memory, never below the per-worker import floor
+       (``_WORKER_MIN_MB``) -- so a worker can't false-OOM just re-importing the
+       package, while a pathological parse still can't grow it unbounded.
+       Override with ``ATELIER_INDEX_WORKER_MAX_MEM_MB`` (0 disables).
+
+    Both are skipped silently where the relevant OS primitives are unavailable.
     """
+    # --- 1. Auto-die when parent exits (Linux fork workers only) ---------------
+    try:
+        import ctypes as _ctypes
+
+        _libc = _ctypes.CDLL("libc.so.6", use_errno=True)
+        _PR_SET_PDEATHSIG = 1
+        _SIGTERM = 15
+        _libc.prctl(_PR_SET_PDEATHSIG, _SIGTERM, 0, 0, 0)
+    except Exception:  # noqa: BLE001 — non-Linux / libc unavailable, skip silently
+        pass
+
+    # --- 2. Cap address space to prevent runaway OOM ---------------------------
     try:
         import resource as _resource
 
@@ -2392,15 +2429,16 @@ def _zoekt_broad_gate(query: str) -> tuple[bool, str]:
 
 
 def _zoekt_gate_enforced() -> bool:
-    """Whether the broad-Zoekt gate actually suppresses (vs observe-only).
+    """Whether the broad-Zoekt EXECUTION gate is active (default ON).
 
-    Default OFF: a benchmark A/B showed the coarse regex/multiword condition is
-    net-negative (the broad channel also drives plain-identifier content-recall,
-    e.g. xarray), so we ship it observe-only -- telemetry records what the gate
-    *would* do so a better condition can be mined from real traffic -- and only
-    enforce when ATELIER_ZOEKT_GATE is set.
+    When active, the broad Zoekt search is SKIPPED for plain single-identifier
+    queries (FTS symbols + the targeted per-anchor Zoekt channel carry them).
+    A benchmark A/B showed this cuts mean explore latency ~12pct (p95 ~10pct)
+    with no MRR loss (slight Hit@1 gain), so it ships enforced. Opt out with
+    ATELIER_ZOEKT_GATE=0. (The earlier observe-only verdict was for a *fusion*-
+    only gate that could not save latency because the search had already run.)
     """
-    return os.environ.get("ATELIER_ZOEKT_GATE", "").strip().lower() not in {"", "0", "false", "no", "off"}
+    return os.environ.get("ATELIER_ZOEKT_GATE", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _zoekt_gate_record(
@@ -2467,6 +2505,8 @@ class CodeContextEngine:
         self._autosync_pending_events = 0
         self._autosync_reindex_count = 0
         self._autosync_history: list[dict[str, Any]] = []
+        # Counts completed tool calls; used to pace the periodic heap trim.
+        self._tool_call_count: int = 0
         self._autosync_lock = threading.RLock()
         self._autosync_stop = threading.Event()
         self._autosync_thread: threading.Thread | None = None
@@ -3771,17 +3811,15 @@ class CodeContextEngine:
 
     @property
     def explore_reranker_model_path(self) -> Path:
-        """Path to the global trained explore reranker model.
+        """Per-workspace path for the trained explore reranker model.
 
-        A single global LambdaMART model ships beside the engine and applies to
-        every workspace (per-repo models are unreliable at this data scale).
-        ``ATELIER_EXPLORE_RERANKER_MODEL`` overrides the path for benchmarking /
-        A-B comparisons.
+        Each repo deploys its own model next to its index DB.
+        ``ATELIER_EXPLORE_RERANKER_MODEL`` overrides it for benchmarking / A-B.
         """
         override = os.environ.get("ATELIER_EXPLORE_RERANKER_MODEL")
         if override:
             return Path(override).expanduser()
-        return Path(__file__).resolve().parent / "explore_reranker_model.json"
+        return self.db_path.parent / "explore_reranker.json"
 
     def _load_explore_reranker(self) -> dict[str, Any] | None:
         """Load and validate the global explore reranker (LambdaMART trees).
@@ -3802,22 +3840,23 @@ class CodeContextEngine:
             return None
         if os.environ.get("ATELIER_EXPLORE_RERANKER_ENABLED", "1") == "0":
             return None
-        try:
-            raw = json.loads(self.explore_reranker_model_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, TypeError):
-            return None
-        trees = raw.get("trees") if isinstance(raw, dict) else None
-        if (
-            not isinstance(raw, dict)
-            or not raw.get("enabled")
-            or raw.get("model_type") != "lambdamart_trees"
-            or raw.get("feature_names") != list(_ER_FEATURE_NAMES)
-            or not isinstance(trees, list)
-            or not trees
+        # Per-workspace model: each repo deploys its own explore_reranker.json
+        # next to its index DB (db-stem-keyed variant avoids /tmp collisions).
+        for path in dict.fromkeys(
+            [
+                self.explore_reranker_model_path,
+                self.db_path.with_suffix(".explore_reranker.json"),
+            ]
         ):
-            return None
-        self._er_model_cache = raw
-        return raw
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, TypeError):
+                continue
+            model = _validate_er_model(raw)
+            if model is not None:
+                self._er_model_cache = model
+                return model
+        return None
 
     def _rerank_explore_result(
         self,
@@ -3836,22 +3875,37 @@ class CodeContextEngine:
         if model is None:
             return payload
 
-        trees = model["trees"]
         window = min(int(model.get("window", 5)), len(raw_entries))
         if window < 2:
             return payload
+        model_type = model.get("model_type")
+        if model_type == "linear":
+            weights = [float(w) for w in model["weights"]]
+            blend = float(model.get("blend", 1.0))
+        else:
+            trees = model["trees"]
 
         scored: list[tuple[float, int, dict[str, Any]]] = []
         for rank, entry in enumerate(raw_entries[:window], 1):
             if not isinstance(entry, dict):
                 return payload  # unexpected shape; skip reranking
             features = _er_entry_features(query, entry, rank)
-            score = _er_tree_score(trees, features)
+            if model_type == "linear":
+                learned = _er_linear_score(weights, features)
+                score = blend * learned + (1.0 - blend) * (1.0 / rank)
+            else:
+                score = _er_tree_score(trees, features)
             scored.append((score, rank, entry))
 
         proposed = sorted(scored, key=lambda item: (-item[0], item[1]))
         if proposed[0][1] == 1:
             return payload  # top file unchanged
+
+        margin = float(model.get("margin", 0.0))
+        if margin > 0.0:
+            original_top = next(s for s, r, _e in scored if r == 1)
+            if proposed[0][0] - original_top < margin:
+                return payload  # margin guard: new top not confident enough
 
         reranked = [e for _s, _r, e in proposed] + list(raw_entries[window:])
         result = dict(payload)
@@ -4121,7 +4175,15 @@ class CodeContextEngine:
             return [], {}
         terms = [term.lower() for term in plan.terms]
         or_query = " OR ".join(_hef_fts_phrase(term) for term in terms)
-        and_query = " AND ".join(_hef_fts_phrase(term) for term in terms[: min(8, len(terms))])
+        # Build the AND query from real query identifiers only (plan.identifiers),
+        # NOT from all plan.terms which may include n-gram compounds like
+        # 'gettimezonename' that are generated for the symbol index but never
+        # appear as raw tokens in source lines.  Including them in the AND query
+        # means the AND always returns 0 rows (the compound isn't in file_line_fts),
+        # so and_hit never fires and we lose the best specificity signal.
+        # Use identifiers (the actual words/dotted names from the query) for AND.
+        and_terms = [t.lower() for t in plan.identifiers] or terms
+        and_query = " AND ".join(_hef_fts_phrase(t) for t in and_terms[: min(8, len(and_terms))])
         rows: list[tuple[Any, bool]] = []
         try:
             with self._connect(readonly=True) as conn:
@@ -4199,10 +4261,10 @@ class CodeContextEngine:
             )
             literal_conf = min(1.0, int(item["literal_hits"]) / max(1, len(literal_set))) if literal_set else 0.0
             confidence = (
-                0.44 * file_coverage
-                + 0.26 * proximity_conf
-                + 0.12 * repeat_conf
-                + 0.10 * float(bool(item["and_hit"]))
+                0.40 * file_coverage
+                + 0.23 * proximity_conf
+                + 0.09 * repeat_conf
+                + 0.20 * float(bool(item["and_hit"]))
                 + 0.08 * literal_conf
             )
             if not plan.wants_tests and _HEF_TEST_RE.search(file_path):
@@ -4283,7 +4345,13 @@ class CodeContextEngine:
         is reused directly, skipping a redundant second Zoekt search.
         """
         raw_files = baseline_payload.get("files")
-        if not isinstance(raw_files, list) or not raw_files:
+        # Don't short-circuit when baseline is empty: the non-baseline channels
+        # (zoekt, exact, anchor, line) can still surface the gold file even when
+        # the FTS symbol search returns nothing (e.g. rare grammar-rule functions,
+        # module-level constants not indexed as symbols, or deep-module definitions
+        # that the centrality-ranked symbol search buries below the result cap).
+        # Only bail out if the payload is genuinely malformed (not a list).
+        if not isinstance(raw_files, list):
             return baseline_payload
 
         baseline_entries: dict[str, dict[str, Any]] = {}
@@ -4517,6 +4585,12 @@ class CodeContextEngine:
         # Wall-clock collapses from sum-of-channels to slowest-channel. Opt out with
         # ATELIER_EXPLORE_PARALLEL=0.
         anchor_budget = max(bounded_max_files * 2, 12)
+        # Execution gate: for plain single-identifier queries the broad Zoekt
+        # channel mostly displaces a file lexical+centrality already ranked #1,
+        # so when enforced (ATELIER_ZOEKT_GATE) we SKIP the broad search entirely
+        # — saving its ~HTTP round-trip — and let FTS symbols + the targeted
+        # per-anchor Zoekt channel carry the query.
+        _broad_admit = (not _zoekt_gate_enforced()) or _zoekt_broad_gate(query)[0]
         if os.environ.get("ATELIER_EXPLORE_PARALLEL", "1") != "0":
             from concurrent.futures import ThreadPoolExecutor
 
@@ -4529,7 +4603,7 @@ class CodeContextEngine:
             # Fetch up to 96 files so _fused_explore_hybrid can reuse this
             # list without a redundant second search call on the same query.
             _zk_fetch_limit = max(anchor_budget, 96)
-            _zk = _pool.submit(self._zoekt_candidate_files, query, max_files=_zk_fetch_limit)
+            _zk = _pool.submit(self._zoekt_candidate_files, query, max_files=_zk_fetch_limit) if _broad_admit else None
             _sem = _pool.submit(self._semantic_candidate_files, query, max_files=anchor_budget)
             # Pass _candidate_files=set() to skip the duplicate zoekt call inside
             # search_symbols -- we already have _zk running in the pool above.
@@ -4544,10 +4618,12 @@ class CodeContextEngine:
             )
             # Collect zoekt results; cap at 800 ms.  By the time search_symbols
             # returns (~100 ms), zoekt has had most of that budget already.
-            try:
-                _zk_list: list[str] = _zk.result(timeout=0.8)
-            except Exception:
-                _zk_list = []
+            _zk_list: list[str] = []
+            if _zk is not None:
+                try:
+                    _zk_list = _zk.result(timeout=0.8)
+                except Exception:
+                    _zk_list = []
             # _zk_list may have up to 96 entries (for the fusion channel).
             # Limit baseline anchors to anchor_budget to match V6 behaviour:
             # the capturing wrapper in the experiment only returned the first
@@ -4573,7 +4649,7 @@ class CodeContextEngine:
             # Preserve zoekt's score-ranked order; append semantic-only files at the end.
             # Fetch up to 96 so _fused_explore_hybrid can reuse without re-searching.
             # Limit baseline anchors to anchor_budget (same as V6 capturing_zoekt behaviour).
-            _zk_list = self._zoekt_candidate_files(query, max_files=max(anchor_budget, 96))
+            _zk_list = self._zoekt_candidate_files(query, max_files=max(anchor_budget, 96)) if _broad_admit else []
             _seen_anchors_s: dict[str, None] = dict.fromkeys(_zk_list[:anchor_budget])
             for _f in self._semantic_candidate_files(query, max_files=anchor_budget):
                 _seen_anchors_s.setdefault(_f, None)
@@ -6316,6 +6392,26 @@ class CodeContextEngine:
         # Read-only connection: all phase-1 work is pure SELECT.  WAL mode lets
         # readers run concurrently with no write-lock wait (eliminates the 30 s
         # timeout cliff when autosync is writing to a live repo DB).
+        # Exact-name candidates.  A normal query seeks its own name; a pure
+        # identifier alternation (identifiers joined by `|`, e.g.
+        # "apply_fuzzy_replace|resolve_symbol_edit|ResolvedSymbolEdit") must seek
+        # EACH alternative.  Seeking the whole pipe-joined string matches no
+        # symbol, so the two highest-priority exact channels (base 1300/1180)
+        # stay dead and the alternation is ranked only by noisy subtoken BM25 --
+        # the definition files lose to cousins/tests that repeat those subtokens.
+        # Gate strictly on EVERY alternative being a bare/dotted identifier: a
+        # mixed regex alternation ("auto.?mode|MODE_AUTO|mode==\"auto\"") is a
+        # grep pattern, not a name list, and exact-pinning one stray identifier
+        # in it only perturbs the FTS ranking.  Falls back to the whole query
+        # otherwise, preserving behaviour for every non-alternation query.
+        exact_name_candidates = [normalized_query]
+        if "|" in normalized_query:
+            alt_names = _split_pipe_query(normalized_query)
+            if alt_names and all(_SYMBOL_QUERY_RE.match(alt) for alt in alt_names):
+                exact_name_candidates = alt_names
+        exact_name_lower = [name.lower() for name in exact_name_candidates]
+        exact_name_set = set(exact_name_candidates)
+        _exact_ph = ",".join("?" for _ in exact_name_lower)
         with self._connect(readonly=True) as conn:
             self._init_schema(conn)
             # IDF-pruned FTS queries: high document-frequency tokens are dropped so
@@ -6328,22 +6424,24 @@ class CodeContextEngine:
             # NEITHER NOCASE index (it falls back to a full repo scan), and the old
             # `ORDER BY file_path, start_line` forced a temp-b-tree sort on top.  The
             # final ranking re-sorts everything by score, so per-channel order only
-            # ever decided an arbitrary LIMIT cut -- drop it.  Two seeks against
-            # idx_symbols_repo_name_nocase / idx_symbols_repo_qual_nocase return the
-            # (tiny) set of name matches directly.
+            # ever decided an arbitrary LIMIT cut -- drop it.  `COLLATE NOCASE IN`
+            # keeps using idx_symbols_repo_name_nocase / idx_symbols_repo_qual_nocase
+            # (one index seek per alternative; `IN (?)` degenerates to `= ?`).
             ci_exact_rows = conn.execute(
-                f"SELECT *, NULL AS score FROM symbols WHERE {where_sql} AND symbol_name = ? COLLATE NOCASE LIMIT ?",
-                tuple([*params, normalized_query_lower, strong_fetch_limit]),
+                f"SELECT *, NULL AS score FROM symbols WHERE {where_sql}"
+                f" AND symbol_name COLLATE NOCASE IN ({_exact_ph}) LIMIT ?",
+                tuple([*params, *exact_name_lower, strong_fetch_limit]),
             ).fetchall()
             ci_exact_rows += conn.execute(
-                f"SELECT *, NULL AS score FROM symbols WHERE {where_sql} AND qualified_name = ? COLLATE NOCASE LIMIT ?",
-                tuple([*params, normalized_query_lower, strong_fetch_limit]),
+                f"SELECT *, NULL AS score FROM symbols WHERE {where_sql}"
+                f" AND qualified_name COLLATE NOCASE IN ({_exact_ph}) LIMIT ?",
+                tuple([*params, *exact_name_lower, strong_fetch_limit]),
             ).fetchall()
         # Case-sensitive matches rank highest (channel 0); the rest are CI-exact.
         exact_rows = [
             row
             for row in ci_exact_rows
-            if row["symbol_name"] == normalized_query or row["qualified_name"] == normalized_query
+            if row["symbol_name"] in exact_name_set or row["qualified_name"] in exact_name_set
         ]
         # Idea D: Collect seed files from exact hits to find their importers.
         # Files that import a seed file are likely closely related to the query.
@@ -8020,6 +8118,10 @@ class CodeContextEngine:
                 attach_target = str(path)
             with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute(f"ATTACH DATABASE ? AS {alias}", (attach_target,))
+            # Match main-DB memory settings on every attached DB.
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute(f"PRAGMA {alias}.mmap_size = 268435456")
+                conn.execute(f"PRAGMA {alias}.cache_size = -4096")
             if not readonly:
                 with contextlib.suppress(sqlite3.OperationalError):
                     conn.execute(f"PRAGMA {alias}.journal_mode = WAL")
@@ -8062,13 +8164,50 @@ class CodeContextEngine:
         finally:
             self._scoped_conn_tls.conn = None
             self._file_cache_tls.cache = None  # clear file cache
+            # Drop the in-memory vector cache so embeddings aren't held across
+            # tool calls.  Re-reading from vectors.sqlite is cheap (the file is
+            # tiny) and avoids pinning 50–200 MB of embedding data permanently.
+            self._ann_vectors_cache = None
             with contextlib.suppress(Exception):
                 conn.commit()
             with contextlib.suppress(Exception):
                 conn.close()
+            # Periodic heap trim: return freed Python arenas and glibc pages to
+            # the OS so RSS stays bounded across long sessions.  Every 5 calls
+            # keeps overhead < 1 ms/call on average while trimming promptly after
+            # heavy explore/context_pack runs.
+            self._tool_call_count += 1
+            if self._tool_call_count % 5 == 0:
+                self._trim_heap()
+
+    def _trim_heap(self) -> None:
+        """Return freed memory to the OS after heavy tool calls.
+
+        Runs Python's cyclic GC to reclaim reference cycles, then calls
+        ``malloc_trim(0)`` via libc so the top of the glibc heap is returned
+        to the kernel.  Keeps long-lived MCP sessions from accumulating RSS
+        as Python's allocator holds on to freed arenas between tool calls.
+        No-op (silently) on non-Linux where ``malloc_trim`` is unavailable.
+        """
+        import gc
+        gc.collect()
+        try:
+            import ctypes as _ct
+            _ct.cdll.LoadLibrary("libc.so.6").malloc_trim(0)
+        except Exception:  # noqa: BLE001 -- non-Linux / libc unavailable
+            pass
 
     def _apply_pragmas(self, conn: sqlite3.Connection, *, readonly: bool = False) -> None:
         conn.execute("PRAGMA busy_timeout = 30000")
+        # Use the OS page cache for reads instead of a private anonymous buffer pool.
+        # With a 840 MB code_context.sqlite, the default SQLite page cache (8 MB of
+        # private anonymous mmap) is tiny and provides no meaningful hit rate; the OS
+        # page cache already holds the hot pages.  mmap_size lets SQLite read directly
+        # from those shared pages, converting private-anon RSS to reclaimable
+        # file-backed pages. cache_size is cut to 4 MB to minimise the residual
+        # private buffer while still covering WAL-mode write transactions.
+        conn.execute("PRAGMA mmap_size = 268435456")  # 256 MB mmap ceiling
+        conn.execute("PRAGMA cache_size = -4096")  # 4 MB private page buffer
         if readonly:
             return
         if self._wal_primed:
@@ -10437,15 +10576,19 @@ class CodeContextEngine:
         base_tokens_saved: int = 0,
     ) -> dict[str, Any]:
         finalized = dict(payload)
-        tokens_saved = max(0, base_tokens_saved)
-        while True:
-            finalized["tokens_saved"] = tokens_saved
-            total_tokens = self._compute_total_tokens(finalized)
-            updated_tokens_saved = max(base_tokens_saved, full_total_tokens - total_tokens)
-            if updated_tokens_saved == tokens_saved:
-                finalized["total_tokens"] = total_tokens
-                return apply_field_name_shortening(finalized)
-            tokens_saved = updated_tokens_saved
+        # Compute total_tokens from a probe that omits tokens_saved entirely.
+        # Including tokens_saved in the measurement creates a circular dependency:
+        # tokens_saved changes the JSON size → changes total_tokens → changes
+        # tokens_saved.  At digit-count boundaries (e.g. 99 → 100) the ceiling
+        # estimator jumps by 1 token, so the fixed point X + f(X) = full_total
+        # may not exist as an integer and the naive iteration oscillates forever.
+        # Omitting tokens_saved from the probe breaks the cycle with at most a
+        # 1–2 token error on an informational field — acceptable.
+        probe = {k: v for k, v in finalized.items() if k != "tokens_saved"}
+        total_tokens = self._compute_total_tokens(probe)
+        finalized["tokens_saved"] = max(base_tokens_saved, full_total_tokens - total_tokens)
+        finalized["total_tokens"] = self._compute_total_tokens(finalized)
+        return apply_field_name_shortening(finalized)
 
     def _fit_items_to_budget(
         self,
