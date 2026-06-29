@@ -98,7 +98,7 @@ def _grade_arms(
     by_id = {inst.instance_id: inst for inst in instances}
     for arm in arms:
         for rep in range(1, reps + 1):
-            group = [r for r in results if r.arm == arm and r.rep == rep]
+            group = [r for r in results if r.arm == arm and r.rep == rep and r.correct is None]
             if not group:
                 continue
             insts = [by_id[r.task] for r in group if r.task in by_id]
@@ -118,6 +118,47 @@ def _grade_arms(
 
 
 GradeFn = Callable[[list[Any], dict[str, str], Path, int], dict[str, bool]]
+
+
+def _grade_one(
+    inst: Any,
+    arm: str,
+    rep: int,
+    res: ArmResult,
+    *,
+    grade_fn: GradeFn,
+    out_dir: Path,
+    label: str,
+) -> None:
+    """Grade one freshly-run rep in place, the moment it finishes.
+
+    Sets ``correct``/``score``/``judge_*`` on *res* so the incrementally written
+    results.jsonl carries live correctness -- no waiting for every rep to finish.
+    An errored or empty-patch rep grades unresolved without invoking the Docker
+    harness. A grader exception leaves ``correct`` as ``None`` so the end-of-run
+    safety net re-grades it.
+    """
+    patch_file = _patch_path(out_dir, inst, arm, rep)
+    patch = patch_file.read_text(encoding="utf-8") if patch_file.exists() else ""
+    if res.is_error or not patch.strip():
+        res.correct = False
+        res.score = 0.0
+        res.judge_model = label
+        res.judge_reason = "unresolved"
+        return
+    # Per-rep work dir -> unique docker run_id (grade() derives it from dir name),
+    # so concurrent inline grades never collide.
+    work = out_dir / "grade" / f"{inst.instance_id}_{arm}_rep{rep}"
+    try:
+        out = grade_fn([inst], {inst.instance_id: patch}, work, 1)
+    except Exception as exc:  # leave correct=None -> end-of-run pass retries
+        res.judge_reason = f"grade-error: {exc}"[:200]
+        return
+    resolved = bool(out.get(inst.instance_id, False))
+    res.correct = resolved
+    res.score = 1.0 if resolved else 0.0
+    res.judge_model = label
+    res.judge_reason = "resolved" if resolved else "unresolved"
 
 
 def _select_backend(args: argparse.Namespace) -> tuple[list[Any], GradeFn, str]:
@@ -251,13 +292,28 @@ def run(args: argparse.Namespace) -> int:
     # keep valid baseline runs, re-run atelier after a fix) without re-paying.
     prior = _load_prior_results(out_dir) if getattr(args, "resume", False) else {}
     results: list[ArmResult] = []
+    reused_rows: list[ArmResult] = []
     pending: list[tuple[Any, str, int]] = []
     for job in jobs:
         inst, arm, rep = job
         cached = prior.get((inst.instance_id, arm, rep))
-        if cached is not None and _patch_path(out_dir, inst, arm, rep).exists():
+        # Reuse only a valid completed rep. An errored / not-ok prior row (e.g. an
+        # empty-index FATAL abort, timeout, or 403) leaves a 0-byte patch on disk;
+        # reusing it would defeat the runner's "--resume retries" recovery, so we
+        # re-run those instead of carrying the broken $0 row forward.
+        reusable = (
+            cached is not None and not cached.is_error and cached.ok and _patch_path(out_dir, inst, arm, rep).exists()
+        )
+        if reusable:
             results.append(cached)
-            print(f"  -> {inst.instance_id}/{arm} rep{rep}: reused (resume)", flush=True)
+            reused_rows.append(cached)
+            print(
+                f"  -> {inst.instance_id}/{arm} rep{rep}: reused (resume) ok={cached.ok} "
+                f"correct={cached.correct} cost=${cached.cost_usd:.4f} turns={cached.num_turns} "
+                f"in={cached.input_tokens} out={cached.output_tokens} "
+                f"cacheW={cached.cache_creation_tokens // 1000}k cacheR={cached.cache_read_tokens // 1000}k",
+                flush=True,
+            )
         else:
             pending.append(job)
     if prior:
@@ -266,9 +322,21 @@ def run(args: argparse.Namespace) -> int:
         covered = {(i.instance_id, a, r) for (i, a, r) in jobs}
         preserved = [res for key, res in prior.items() if key not in covered]
         results.extend(preserved)
+        # Summarize what we're keeping vs re-running with the same cost/correctness
+        # the per-row lines carry, so a resume log is self-contained at a glance.
+        carried = reused_rows + preserved
+        kept_correct = sum(1 for r in carried if r.correct)
+        kept_cost = sum(r.cost_usd for r in carried)
+        kept_in = sum(r.input_tokens for r in carried)
+        kept_out = sum(r.output_tokens for r in carried)
+        kept_cachew = sum(r.cache_creation_tokens for r in carried)
+        kept_cacher = sum(r.cache_read_tokens for r in carried)
         print(
-            f"[resume] reused {len(results) - len(preserved)} in-scope + carried {len(preserved)} "
-            f"out-of-scope prior result(s); running {len(pending)} job(s)",
+            f"[resume] kept {len(carried)} prior row(s) ({len(reused_rows)} in-scope + "
+            f"{len(preserved)} out-of-scope): {kept_correct}/{len(carried)} correct, "
+            f"${kept_cost:.2f} / {kept_in // 1000}k in + {kept_out // 1000}k out + "
+            f"{kept_cachew // 1_000_000}M cacheW + {kept_cacher // 1_000_000}M cacheR tok "
+            f"already spent; running {len(pending)} new job(s)",
             flush=True,
         )
 
@@ -279,7 +347,7 @@ def run(args: argparse.Namespace) -> int:
         if tok is not None:
             job_env = {**agent_env, "CLAUDE_CODE_OAUTH_TOKEN": tok}
         try:
-            return incontainer.run_in_container(
+            res = incontainer.run_in_container(
                 inst,
                 arm,
                 rep,
@@ -292,6 +360,11 @@ def run(args: argparse.Namespace) -> int:
         finally:
             if tok is not None and token_slots is not None:
                 token_slots.put(tok)
+        # Grade inline the moment the rep finishes (token already released so other
+        # runs proceed) -> live correctness in results.jsonl, no end-of-run wait.
+        if not args.no_grade:
+            _grade_one(inst, arm, rep, res, grade_fn=grade_fn, out_dir=out_dir, label=grade_label)
+        return res
 
     with ThreadPoolExecutor(max_workers=max(1, min(effective_jobs, len(pending) or 1))) as pool:
         futures = {pool.submit(_one, job): job for job in pending}
@@ -325,7 +398,10 @@ def run(args: argparse.Namespace) -> int:
             # as_completed loop serializes these writes.
             _write_results_jsonl(out_dir, results)
             print(
-                f"  -> {inst.instance_id}/{arm} rep{rep}: ok={res.ok} cost=${res.cost_usd:.4f} turns={res.num_turns}",
+                f"  -> {inst.instance_id}/{arm} rep{rep}: ok={res.ok} correct={res.correct} "
+                f"cost=${res.cost_usd:.4f} turns={res.num_turns} "
+                f"in={res.input_tokens} out={res.output_tokens} "
+                f"cacheW={res.cache_creation_tokens // 1000}k cacheR={res.cache_read_tokens // 1000}k",
                 flush=True,
             )
 

@@ -20,6 +20,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import ModuleType
 from typing import Protocol
 
 from benchmarks.codebench.run import (
@@ -432,6 +433,33 @@ def _docker_run_cmd(
     return cmd
 
 
+_EXTRACT_FLOW_MOD: ModuleType | None = None
+
+
+def _dump_flow_text(flow_path: Path) -> None:
+    """Best-effort: write ``<stem>.flow_dump.txt`` next to the .flow capture.
+
+    Produced inline at rep completion so a run is human-inspectable without a
+    separate ``make flow-dump`` pass. Never raises -- a dump failure must not
+    perturb the run result.
+    """
+    global _EXTRACT_FLOW_MOD
+    with contextlib.suppress(Exception):
+        if not flow_path.exists() or flow_path.stat().st_size == 0:
+            return
+        if _EXTRACT_FLOW_MOD is None:
+            import importlib.util
+
+            script = REPO_ROOT / "scripts" / "extract_flow.py"
+            spec = importlib.util.spec_from_file_location("_atelier_extract_flow", script)
+            if spec is None or spec.loader is None:
+                return
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            _EXTRACT_FLOW_MOD = mod
+        _EXTRACT_FLOW_MOD.extract(str(flow_path), str(flow_path.with_suffix(".flow_dump.txt")))
+
+
 def run_in_container(
     instance: RunnableInstance,
     arm: str,
@@ -505,4 +533,5 @@ def run_in_container(
         result.result_excerpt = (f"timed out after {timeout}s\n{stderr.strip()}")[:4000]
     elif not result.ok and stderr.strip():
         result.result_excerpt = (result.result_excerpt + "\n[stderr]\n" + stderr.strip())[-4000:]
+    _dump_flow_text(flow_path)
     return result
