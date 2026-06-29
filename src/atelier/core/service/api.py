@@ -419,8 +419,8 @@ def _normalize_lever(operation: str) -> str:
         return "scoped_recall"
     if "compact" in op:
         return "compact_lifecycle"
-    if "reasonblock" in op or "reason_block" in op or "inject" in op:
-        return "reasonblock_inject"
+    if "playbook" in op or "inject" in op:
+        return "playbook_inject"
     return op
 
 
@@ -1158,7 +1158,7 @@ _OBSERVED_OPTIMIZATION_TITLES = {
     "session_compaction": "Session compaction",
     "model_routing": "Model routing (tier downgrade)",
     "scoped_recall": "Scoped recall",
-    "reasonblock_inject": "ReasonBlock injection",
+    "playbook_inject": "Playbook injection",
     "cached_read": "Cached reuse",
     "delta_read": "Delta read",
     "structure_map": "Structure map",
@@ -2658,15 +2658,15 @@ def _implemented_optimization_catalog(
             "examples": _optimization_lever_examples(top_sources, exact=("scoped_recall",)),
         },
         {
-            "id": "reasonblock_inject",
-            "title": "ReasonBlock injection",
+            "id": "playbook_inject",
+            "title": "Playbook injection",
             "category": "context_reuse",
-            "automation": "Automatic when matching reasoning blocks are selected",
+            "automation": "Automatic when matching playbook blocks are selected",
             "status": "active",
-            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("reasonblock_inject",)),
+            "observed_tokens_saved": _optimization_lever_tokens(per_lever, exact=("playbook_inject",)),
             "applies_to": supported_hosts,
             "notes": "Reuses prior solved procedures instead of re-deriving them from scratch.",
-            "examples": _optimization_lever_examples(top_sources, exact=("reasonblock_inject",)),
+            "examples": _optimization_lever_examples(top_sources, exact=("playbook_inject",)),
         },
         {
             "id": "ast_truncation",
@@ -2960,7 +2960,6 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
     def compat_overview(days: int = Query(30)) -> dict[str, Any]:
         """Compatibility: GET /overview -> basic summary stats."""
         from atelier.core.foundation.metrics import summarize
-        from atelier.core.improvement.failure_analyzer import FailureAnalyzer
         from atelier.infra.runtime.cost_tracker import CostTracker
 
         root = Path(cfg.atelier_root)
@@ -2998,14 +2997,11 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
         tracker = CostTracker(root)
         savings = tracker.total_savings(since=since)
 
-        analyzer = FailureAnalyzer(store=store)
-        clusters = analyzer.analyze()
-
         return {
             "total_traces": summary.traces_total,
             "total_blocks": summary.blocks_active,
             "total_rubrics": summary.rubrics_total,
-            "total_clusters": len(clusters),
+            "total_clusters": 0,
             "total_raw_tokens_estimate": total_raw_tokens,
             "estimated_total_cost_usd": max(total_cost_usd, savings["actually_cost_usd"]),
             "estimated_saved_cost_usd": savings["saved_usd"],
@@ -5174,14 +5170,7 @@ def create_app(store_root: str | Path | None = None, store: ContextStore | None 
 
     @app.get("/clusters", tags=["compat"], dependencies=[Depends(verify_api_key)])
     def compat_clusters() -> list[dict[str, Any]]:
-        from atelier.core.improvement.failure_analyzer import FailureAnalyzer
-
-        try:
-            return [to_jsonable(c) for c in FailureAnalyzer(store=get_store()).analyze()]
-        except Exception as exc:
-            logging.exception("Recovered from broad exception handler")
-            logger.warning("Failure analyzer raised an exception: %s", exc, exc_info=True)
-            return []
+        return []
 
     # ------------------------------------------------------------------ #
     # Watchdogs                                                           #

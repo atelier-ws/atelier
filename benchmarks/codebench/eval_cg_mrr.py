@@ -8,7 +8,7 @@ Requires ``codegraph`` on PATH (``npm install -g @colbymchenry/codegraph``).
 Per-repo index is auto-built on first query (``codegraph init``).
 
 Environment variables (same as fitness_explore_mrr):
-  FITNESS_PAIRS     Path to pairs JSON  (default: benchmarks/codebench/data/bench_pairs_multi.json)
+  FITNESS_PAIRS     Path to pairs JSON  (default: benchmarks/codebench/data/bench_pairs_def_gold.json)
   FITNESS_SAMPLE    Cap total unique queries across all repos (default: 0 = all)
   FITNESS_REPO      Substring filter on repo prefix
 """
@@ -22,21 +22,25 @@ import sys
 import time
 from pathlib import Path
 
-DATA = os.environ.get("FITNESS_PAIRS", "benchmarks/codebench/data/bench_pairs_multi.json")
 SAMPLE = int(os.environ.get("FITNESS_SAMPLE", "0"))
 REPO_FILTER = os.environ.get("FITNESS_REPO", "")
-
-with open(DATA) as f:
-    data = json.load(f)
-
-pairs = data["pairs"]
-repos = data["repos"]
-true_map = data["true_map"]
-
-
-def get_gold_files(tid: str) -> list[str]:
-    paths = true_map.get(tid, [])
-    return [p.replace("\\", "/") for p in paths if p]
+# FITNESS_PAIRS may be a comma-separated list of gold files. Query each unique
+# query once (the union across golds) and score it against EVERY gold, so all
+# channels run the exact same query universe -> one combined entry (out["golds"]).
+_gold_paths = [
+    p.strip()
+    for p in os.environ.get("FITNESS_PAIRS", "benchmarks/codebench/data/bench_pairs_def_gold.json").split(",")
+    if p.strip()
+]
+_golds = []  # (gold_kind, pairs, true_map)
+repos = None
+for _gp in _gold_paths:
+    with open(_gp) as _f:
+        _d = json.load(_f)
+    if repos is None:
+        repos = _d["repos"]
+    _golds.append((_d.get("gold_kind", "definition"), _d["pairs"], _d["true_map"]))
+pairs = [row for _k, _p, _tm in _golds for row in _p]
 
 
 def norm(p: str) -> str:
@@ -101,7 +105,7 @@ total_unique = sum(len(qs) for qs in uq.values())
 pair_count = sum(1 for q, _, p in pairs if q in runset.get(p, set()))
 
 print(
-    f"[cg] {total_unique} unique queries across {len(uq)} repos, " f"scoring {pair_count} pairs",
+    f"[cg] {total_unique} unique queries across {len(uq)} repos, scoring {pair_count} pairs",
     file=sys.stderr,
 )
 
@@ -131,7 +135,7 @@ for prefix, queries in sorted(uq.items()):
         if r.returncode != 0:
             print(f"[cg] init FAILED for {prefix}: {r.stderr[:500]}", file=sys.stderr)
             continue
-        print(f"[cg] init {prefix} done in {time.time()-t1:.1f}s", file=sys.stderr)
+        print(f"[cg] init {prefix} done in {time.time() - t1:.1f}s", file=sys.stderr)
 
     for query in sorted(queries):
         t1 = time.time()
@@ -156,7 +160,7 @@ for prefix, queries in sorted(uq.items()):
             rate = done / elapsed_total if elapsed_total else 0
             eta = (total_unique - done) / rate if rate else 0
             print(
-                f"[cg] queries {done}/{total_unique} " f"elapsed={elapsed_total:.0f}s rate={rate:.1f}/s eta={eta:.0f}s",
+                f"[cg] queries {done}/{total_unique} elapsed={elapsed_total:.0f}s rate={rate:.1f}/s eta={eta:.0f}s",
                 file=sys.stderr,
                 flush=True,
             )
@@ -164,49 +168,44 @@ for prefix, queries in sorted(uq.items()):
 
 # ── Phase 3: score each pair independently ─────────────────────────────
 
-agg = {"rr": 0.0, "h1": 0, "h3": 0, "n": 0}
-by_repo: dict[str, dict] = {}
-for q, tid, prefix in pairs:
-    if q not in runset.get(prefix, set()):
-        continue
-    trues = get_gold_files(tid)
-    if not trues:
-        continue
-    r = rank_of_true(filecache.get((prefix, q), []), trues)
-    br = by_repo.setdefault(prefix, {"rr": 0.0, "h1": 0, "h3": 0, "n": 0})
-    for d in (agg, br):
-        d["n"] += 1
-        if r is not None:
-            d["rr"] += 1.0 / r
-            if r == 1:
-                d["h1"] += 1
-            if r <= 3:
-                d["h3"] += 1
-
-
-def mrr(d: dict) -> float:
-    return d["rr"] / max(d["n"], 1)
-
-
 def _pct(vals: list[float], p: int) -> float:
     if not vals:
         return 0.0
     s = sorted(vals)
     return s[min(len(s) - 1, int((p / 100.0) * (len(s) - 1)))]
-
-
-out = {
-    "mrr": round(mrr(agg), 4),
-    "hit1": round(agg["h1"] / max(agg["n"], 1), 4),
-    "hit3": round(agg["h3"] / max(agg["n"], 1), 4),
-    "n": agg["n"],
-    "latency_ms": {
-        "mean": round(sum(latencies) / max(len(latencies), 1), 1),
-        "p50": round(_pct(latencies, 50), 1),
-        "p95": round(_pct(latencies, 95), 1),
-        "max": round(max(latencies), 1) if latencies else 0,
-        "over_100ms": sum(1 for x in latencies if x > 100.0),
-    },
-    "by_repo": {p: {"mrr": round(mrr(d), 4), "n": d["n"]} for p, d in sorted(by_repo.items())},
+def _score_gold(gpairs, gtm):
+    agg = {"rr": 0.0, "h1": 0, "h3": 0, "n": 0}
+    by_repo: dict[str, dict] = {}
+    for q, tid, prefix in gpairs:
+        if q not in runset.get(prefix, set()):
+            continue
+        trues = [p.replace("\\", "/") for p in gtm.get(tid, []) if p]
+        if not trues:
+            continue
+        r = rank_of_true(filecache.get((prefix, q), []), trues)
+        br = by_repo.setdefault(prefix, {"rr": 0.0, "h1": 0, "h3": 0, "n": 0})
+        for d in (agg, br):
+            d["n"] += 1
+            if r is not None:
+                d["rr"] += 1.0 / r
+                if r == 1:
+                    d["h1"] += 1
+                if r <= 3:
+                    d["h3"] += 1
+    return {
+        "mrr": round(agg["rr"] / max(agg["n"], 1), 4),
+        "hit1": round(agg["h1"] / max(agg["n"], 1), 4),
+        "hit3": round(agg["h3"] / max(agg["n"], 1), 4),
+        "n": agg["n"],
+        "by_repo": {p: {"mrr": round(d["rr"] / max(d["n"], 1), 4), "n": d["n"]} for p, d in sorted(by_repo.items())},
+    }
+_lat = {
+    "mean": round(sum(latencies) / max(len(latencies), 1), 1),
+    "p50": round(_pct(latencies, 50), 1),
+    "p95": round(_pct(latencies, 95), 1),
+    "max": round(max(latencies), 1) if latencies else 0,
+    "over_100ms": sum(1 for x in latencies if x > 100.0),
 }
+_gold_scores = {kind: _score_gold(gp, gtm) for kind, gp, gtm in _golds}
+out = {**_gold_scores[_golds[0][0]], "latency_ms": _lat, "golds": _gold_scores}
 print(json.dumps(out))

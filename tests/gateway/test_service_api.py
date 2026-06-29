@@ -125,13 +125,10 @@ def test_mcp_status_matches_non_dev_tool_visibility(store: SQLiteStore, monkeypa
     assert {tool["tool_name"] for tool in tools if tool["mode"] == "active"} == names
     assert not {tool["tool_name"] for tool in tools if tool["mode"] == "passive"}
     assert "read" in names
-    assert "grep" in names
-    assert "search" in names
-    assert "memory" in names
-    assert "shell" in names
-    symbols_tool = next(tool for tool in tools if tool["tool_name"] == "symbols")
-    enum_param_names = {item["name"] for item in symbols_tool["enum_params"]}
-    assert "mode" in enum_param_names
+    assert "bash" in names
+    assert "code_search" in names
+    assert "edit" in names
+    assert "web_fetch" in names
 
 
 def test_workflow_current_and_snapshot_actions(store: SQLiteStore, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -829,9 +826,9 @@ def test_list_blocks_empty(app_no_auth: TestClient) -> None:
 
 
 def test_get_block_from_compat_endpoints(app_no_auth: TestClient, store: SQLiteStore) -> None:
-    from atelier.core.foundation.models import ReasonBlock
+    from atelier.core.foundation.models import Playbook
 
-    block = ReasonBlock(
+    block = Playbook(
         id="rb-api-test",
         title="API Test Block",
         domain="test",
@@ -1066,8 +1063,8 @@ def test_file_projection_endpoint_returns_compact_projection_metadata(
     assert resp.status_code == 200
     payload = resp.json()
 
-    assert payload["projection"]["view"] == "compact"
-    assert payload["projection_mapping"]["projection_kind"] == "compact"
+    assert payload["projection"]["view"] == "minified"
+    assert payload["projection_mapping"]["projection_kind"] == "minified"
     assert payload["projection_delta"]["saved_tokens"] > 0
 
 

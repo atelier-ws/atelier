@@ -868,4 +868,105 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
     conn.close()
 
 
+@code_group.command("train")
+@click.option("--name", "name", required=True, type=click.Choice(["embedding"]),
+              help="What to train. Currently: embedding (a per-repo code embedder).")
+@click.option("--repo-root", default=".", show_default=True, help="Repository to specialise the embedder for.")
+@click.option("--base-model", default="BAAI/bge-code-v1", show_default=True)
+@click.option("--output-dir", default=None, type=click.Path(),
+              help="Where to save the finetuned model (default: <store>/embeddings/<repo>).")
+@click.option("--pairs-per-file", type=int, default=5, show_default=True,
+              help="Synthetic (query->gold-file) pairs mined per source file.")
+@click.option("--epochs", type=int, default=2, show_default=True)
+@click.option("--batch-size", type=int, default=16, show_default=True)
+@click.option("--max-seq", type=int, default=512, show_default=True)
+@click.option("--learning-rate", type=float, default=2e-5, show_default=True)
+@click.option("--dry-run", is_flag=True, help="Print the pipeline plan and exit without training.")
+@click.option("--json", "as_json", is_flag=True)
+def code_train_cmd(
+    name: str,
+    repo_root: str,
+    base_model: str,
+    output_dir: str | None,
+    pairs_per_file: int,
+    epochs: int,
+    batch_size: int,
+    max_seq: int,
+    learning_rate: float,
+    dry_run: bool,
+    as_json: bool,
+) -> None:
+    """[EXPERIMENTAL] Finetune a per-repo code embedder.
+
+    Pipeline (GPU-bound steps run on CUDA when available):
+      1. mine synthetic (query -> gold-file) pairs from the repo source;
+      2. build a SentenceTransformer train/test/corpus split;
+      3. finetune BGE-Code-v1 with MultipleNegativesRankingLoss (bf16 + gradient
+         checkpointing) and report held-out base-vs-finetuned MRR.
+
+    Requires the ``semantic`` extra::  pip install -e '.[semantic]'
+
+    Measured lift on the grep-style retrieval benchmark is ~0 (see
+    benchmarks/codebench/RETRIEVAL_EVAL.md): the bench queries are lexical, so
+    lexical+zoekt already wins. This command is the productised shape, wired for
+    NL-query training data where the embedder is expected to help.
+    """
+    import sys
+
+    # Pipeline scripts live in the atelier source tree (dev tooling), resolved
+    # relative to this module: src/atelier/gateway/cli/commands/code.py -> repo root.
+    src_root = Path(__file__).resolve().parents[5]
+    miner = src_root / "benchmarks/codebench/synthetic_pair_miner.py"
+    prep = src_root / "benchmarks/embedding/prepare_train_data.py"
+    trainer = src_root / "benchmarks/embedding/train_embedding.py"
+    missing = [str(p) for p in (miner, prep, trainer) if not p.is_file()]
+    if missing:
+        raise click.ClickException(
+            "Training scripts are only available in a source checkout; missing: " + ", ".join(missing)
+        )
+
+    repo = Path(repo_root).resolve()
+    if output_dir:
+        out = Path(output_dir).resolve()
+    else:
+        from atelier.core.foundation.paths import default_store_root, workspace_key
+
+        out = default_store_root() / "embeddings" / workspace_key(repo)
+    work = out / "work"
+    pairs_json = work / "pairs.json"
+    data_dir = work / "data"
+
+    steps = [
+        [sys.executable, str(miner), "--repo-dir", str(repo), "--out", str(pairs_json),
+         "--pairs-per-file", str(pairs_per_file)],
+        [sys.executable, str(prep), "--pairs", str(pairs_json), "--repo-dir", str(repo),
+         "--out-dir", str(data_dir)],
+        [sys.executable, str(trainer), "--train-data", str(data_dir), "--model", base_model,
+         "--output-dir", str(out), "--epochs", str(epochs), "--batch-size", str(batch_size),
+         "--max-seq", str(max_seq), "--learning-rate", str(learning_rate), "--compare-baseline"],
+    ]
+    plan = {
+        "name": name, "repo": str(repo), "base_model": base_model, "output_dir": str(out),
+        "steps": [" ".join(s) for s in steps],
+    }
+    if dry_run:
+        _emit(plan, as_json=as_json)
+        return
+
+    try:
+        import torch  # noqa: F401
+    except ImportError as exc:
+        raise click.ClickException(
+            "The `semantic` extra is required: pip install -e '.[semantic]' "
+            "(torch + sentence-transformers + accelerate + datasets)."
+        ) from exc
+
+    work.mkdir(parents=True, exist_ok=True)
+    for i, step in enumerate(steps, 1):
+        click.echo(f"[train] step {i}/{len(steps)}: {Path(step[1]).name}", err=True)
+        if subprocess.run(step, check=False).returncode != 0:
+            raise click.ClickException(f"step {i} ({Path(step[1]).name}) failed")
+    _emit({"name": name, "repo": str(repo), "model": str(out)}, as_json=as_json)
+
+
 __all__ = ["_code_context_engine", "_index_repo_with_progress", "code_group", "zoekt_group"]

@@ -496,11 +496,17 @@ def _credit_pending_compaction(state: dict[str, Any], occupancy: int, model: str
     (delta tokens x cache-read price). Conservative: skips while the delta isn't
     visible yet, gives up after a few prompts, one-shot per compaction. This
     under-credits the recurring per-turn benefit on purpose — never over-credits.
+
+    Important: the compact process injects several ``type=user`` entries into the
+    transcript (compact summary, local-command-caveat, command-name, stdout) that
+    each trigger UserPromptSubmit *before* any model API call has updated the
+    usage data.  Until a model turn runs on the compacted window, ``occupancy``
+    still reflects the last pre-compact reading (delta == 0).  Counting those as
+    failed attempts would exhaust the budget before the first real post-compact
+    turn is visible, firing a spurious "still at Xk tokens" warning.
     """
     if not state.get("precompact_pending"):
         return
-    attempts = int(state.get("precompact_attempts", 0) or 0) + 1
-    state["precompact_attempts"] = attempts
     pre = int(state.get("precompact_occupancy", 0) or 0)
     delta = pre - occupancy
     if occupancy > 0 and 0 < delta <= pre:
@@ -515,8 +521,15 @@ def _credit_pending_compaction(state: dict[str, Any], occupancy: int, model: str
         )
         _append_compaction_savings_row(delta, usd, price_model, session_id)
         _clear_precompact(state)
-    elif attempts >= 3:
-        _clear_precompact(state)  # post-compact size never resolved; stop trying
+        return
+    # Only count as a give-up attempt when we have post-compact occupancy data
+    # that actually differs from the pre-compact reading (delta != 0).  While
+    # delta == 0 we are still reading stale pre-compact JSONL entries.
+    if occupancy > 0 and delta != 0:
+        attempts = int(state.get("precompact_attempts", 0) or 0) + 1
+        state["precompact_attempts"] = attempts
+        if attempts >= 3:
+            _clear_precompact(state)  # post-compact size never resolved; stop trying
 
 
 def _check_noop_cap(prompt: str) -> bool:

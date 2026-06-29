@@ -63,80 +63,40 @@ def eval_mcp(out: Path | None, tools: tuple[str, ...], jobs: int) -> None:
     click.echo(f"Results: {run_dir}")
 
 
-@eval_.command("retrieval")
-@click.option(
-    "--channel",
-    type=click.Choice(["lexical", "zoekt", "semantic", "cg", "lexical+zoekt"]),
-    default="lexical",
-    show_default=True,
-    help="lexical = pure FTS5 symbol search (no Zoekt); "
-    "zoekt = pure Zoekt trigram search; "
-    "semantic = BGE embeddings (needs sentence-transformers); "
-    "cg = CodeGraph FTS5+graph scoring (needs codegraph on PATH); "
-    "lexical+zoekt = explore pipeline with both FTS5 + Zoekt parallel.",
-)
-@click.option("--full", is_flag=True, default=False, help="Run all available query pairs (no cap).")
-@click.option("--sample", type=int, default=0, help="Total queries to sample across repos (0 = default 500).")
-@click.option("--repo", default="", metavar="PREFIX", help="Substring filter on repo prefix.")
-@click.option(
-    "-j",
-    "--workers",
-    type=int,
-    default=1,
-    show_default=True,
-    help="Parallel workers. Keep 1 for trustworthy latency numbers.",
-)
-@click.option(
-    "--pairs",
-    type=click.Path(path_type=Path),
-    default=Path("benchmarks/codebench/data/bench_pairs_multi.json"),
-    show_default=True,
-    help="Mined (query, gold-file) pairs JSON.",
-)
-@click.option(
-    "--python",
-    "python_bin",
-    default="python3",
-    show_default=True,
-    help="Interpreter for the semantic channel (must have sentence-transformers + torch).",
-)
-@click.option(
-    "--reindex",
-    is_flag=True,
-    default=False,
-    help="Re-index all repos via 'atelier code index --reindex --db-path' before benchmarking.",
-)
-def eval_retrieval(
+_RETRIEVAL_CHANNELS = ["lexical", "zoekt", "semantic", "cg", "lexical+zoekt"]
+
+
+def _make_golds(pairs: Path | None) -> list[Path]:
+    return (
+        [pairs]
+        if pairs is not None
+        else [
+            Path("benchmarks/codebench/data/bench_pairs_def_gold.json"),
+            Path("benchmarks/codebench/data/bench_pairs_content_gold.json"),
+        ]
+    )
+
+
+def _channel_cmd_env(
     channel: str,
+    *,
     full: bool,
     sample: int,
     repo: str,
     workers: int,
-    pairs: Path,
+    pairs: Path | None,
     python_bin: str,
     reindex: bool,
-) -> None:
-    """Retrieval MRR + latency over mined SWE-bench pairs.
-
-    Channels: lexical (pure FTS5, no Zoekt), zoekt (pure Zoekt trigram),
-    lexical+zoekt (FTS5 + Zoekt parallel, the default explore pipeline),
-    semantic (BGE embeddings), cg (CodeGraph). Emits one JSON line with
-    mrr/hit@1/hit@3 + latency_ms. See benchmarks/codebench/RETRIEVAL_EVAL.md
-    for provisioning and the results table.
-    """
+) -> tuple[list[str], dict[str, str], list[Path]]:
     import os
-    import subprocess
     import sys
 
-    repo_root = Path.cwd().resolve()
+    golds = _make_golds(pairs)
     env = dict(os.environ)
-    env["FITNESS_PAIRS"] = str(pairs)
-    env["EVAL_PAIRS"] = str(pairs)
+    env["FITNESS_PAIRS"] = ",".join(str(g) for g in golds)
+    env["EVAL_PAIRS"] = str(golds[0])
+
     if channel == "semantic":
-        # The semantic eval needs sentence-transformers/torch, which live in the
-        # system interpreter, not the project venv. Running under `uv run` pollutes
-        # the env (VIRTUAL_ENV + venv on PATH) so a bare `python3` would resolve to
-        # the venv and miss those deps -- strip the venv so it uses system python3.
         venv = env.pop("VIRTUAL_ENV", None)
         env.pop("PYTHONPATH", None)
         env.pop("PYTHONHOME", None)
@@ -144,12 +104,19 @@ def eval_retrieval(
             env["PATH"] = os.pathsep.join(
                 p for p in env.get("PATH", "").split(os.pathsep) if p and not p.startswith(venv)
             )
-        cmd = [python_bin, "benchmarks/codebench/eval_semantic_mrr.py"]
+        cmd: list[str] = [
+            python_bin,
+            "benchmarks/codebench/eval_semantic_mrr.py",
+            "--pairs",
+            ",".join(str(g) for g in golds),
+        ]
+        if not full and sample:
+            cmd += ["--sample", str(sample)]
+        if repo:
+            cmd += ["--repo", repo]
     elif channel == "cg":
         cmd = [sys.executable, "benchmarks/codebench/eval_cg_mrr.py"]
-        if full:
-            pass  # cg script reads FITNESS_SAMPLE=0 (=all) by default
-        elif sample:
+        if not full and sample:
             env["FITNESS_SAMPLE"] = str(sample)
         if repo:
             env["FITNESS_REPO"] = repo
@@ -172,8 +139,203 @@ def eval_retrieval(
             cmd += ["--repo", repo]
         if reindex:
             cmd.append("--reindex")
-    click.echo(f"[eval] channel={channel} :: {' '.join(cmd)}", err=True)
-    raise SystemExit(subprocess.run(cmd, cwd=repo_root, env=env, check=False).returncode)
+
+    return cmd, env, golds
+
+
+def _render_comparison(channel_results: dict[str, dict]) -> None:
+    """Print side-by-side MRR + p100 comparison table.
+
+    Rows: OVERALL[def/cnt] then repo[def]/repo[cnt] grouped by repo.
+    Columns: one per channel, each showing MRR and p100.
+    """
+    channels = list(channel_results.keys())
+    gold_kinds = [gk for gk in ("definition", "content") if any(
+        gk in r.get("golds", {}) for r in channel_results.values()
+    )]
+    if not gold_kinds:
+        gold_kinds = ["definition"]
+
+    all_repos: set[str] = set()
+    for r in channel_results.values():
+        for gk in gold_kinds:
+            all_repos.update(r.get("golds", {}).get(gk, {}).get("by_repo", {}).keys())
+    repos = sorted(all_repos)
+
+    def get_cell(channel: str, gold_kind: str, repo: str) -> tuple[float | None, float | None]:
+        r = channel_results[channel]
+        gdata = r.get("golds", {}).get(gold_kind, {})
+        if repo == "OVERALL":
+            mrr: float | None = gdata.get("mrr")
+            lat = r.get("latency_ms", {})
+            p100: float | None = lat.get("max") if isinstance(lat, dict) else None
+        else:
+            byr = gdata.get("by_repo", {}).get(repo) or {}
+            mrr = byr.get("mrr")
+            lat = byr.get("latency_ms") or {}
+            p100 = lat.get("max") if isinstance(lat, dict) else None
+        return mrr, p100
+
+    def fmt(mrr: float | None, p100: float | None) -> str:
+        if mrr is None:
+            return "  --    --  "
+        m = f"{mrr:.3f}"
+        p = f"{int(p100)}ms" if p100 is not None else "--"
+        return f"{m:>6} {p:>5}"
+
+    REPO_W = 28
+    CELL_W = 13  # "0.742  215ms"
+
+    h1 = " " * REPO_W
+    h2 = " " * REPO_W
+    for ch in channels:
+        h1 += f"  {ch:^{CELL_W}}"
+        h2 += f"  {'MRR':>6} {'p100':>5}"
+    sep = "-" * len(h1)
+
+    print()
+    print(h1)
+    print(h2)
+    print(sep)
+
+    for repo in ["OVERALL"] + repos:
+        short = repo.split("__")[-1] if "__" in repo else repo
+        for gk in gold_kinds:
+            label = f"{short}[{gk[:3]}]"
+            row = f"{label:<{REPO_W}}"
+            for ch in channels:
+                m, p = get_cell(ch, gk, repo)
+                row += f"  {fmt(m, p)}"
+            print(row)
+    print()
+
+
+@eval_.command("retrieval")
+@click.option(
+    "--channel",
+    "channels",
+    multiple=True,
+    type=click.Choice(_RETRIEVAL_CHANNELS),
+    default=("lexical",),
+    show_default=True,
+    help="Channel(s) to benchmark. Repeatable for side-by-side comparison: "
+    "--channel lexical --channel lexical+zoekt. "
+    "lexical = pure FTS5 symbol search; zoekt = pure Zoekt trigram; "
+    "semantic = BGE embeddings; cg = CodeGraph; lexical+zoekt = FTS5+Zoekt parallel.",
+)
+@click.option("--full", is_flag=True, default=False, help="Run all available query pairs (no cap).")
+@click.option("--sample", type=int, default=0, help="Total queries to sample across repos (0 = default 500).")
+@click.option("--repo", default="", metavar="PREFIX", help="Substring filter on repo prefix.")
+@click.option(
+    "-j",
+    "--workers",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Parallel workers. Keep 1 for trustworthy latency numbers.",
+)
+@click.option(
+    "--pairs",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Explicit (query, gold-file) pairs JSON. Default scores BOTH golds "
+    "(definition = FTS-symbol's task, content = Zoekt's task) in one run.",
+)
+@click.option(
+    "--python",
+    "python_bin",
+    default="python3",
+    show_default=True,
+    help="Interpreter for the semantic channel (must have sentence-transformers + torch).",
+)
+@click.option(
+    "--reindex",
+    is_flag=True,
+    default=False,
+    help="Re-index all repos via 'atelier code index --reindex --db-path' before benchmarking.",
+)
+def eval_retrieval(
+    channels: tuple[str, ...],
+    full: bool,
+    sample: int,
+    repo: str,
+    workers: int,
+    pairs: Path | None,
+    python_bin: str,
+    reindex: bool,
+) -> None:
+    """Retrieval MRR + latency over definition + content golds.
+
+    Scores BOTH golds (definition = which file defines the symbol, content =
+    which files contain the pattern) in one run. See RETRIEVAL_EVAL.md.
+
+    Pass --channel multiple times for a side-by-side comparison table::
+
+        atelier eval retrieval --channel lexical --channel lexical+zoekt --full
+    """
+    import subprocess
+
+    repo_root = Path.cwd().resolve()
+
+    if len(channels) == 1:
+        # Single channel: stream output directly (existing behaviour).
+        cmd, env, golds = _channel_cmd_env(
+            channels[0],
+            full=full,
+            sample=sample,
+            repo=repo,
+            workers=workers,
+            pairs=pairs,
+            python_bin=python_bin,
+            reindex=reindex,
+        )
+        click.echo(f"[eval] channel={channels[0]} golds={len(golds)} :: {' '.join(cmd)}", err=True)
+        raise SystemExit(subprocess.run(cmd, cwd=repo_root, env=env, check=False).returncode)
+
+    # Multiple channels: run each sequentially (serial = trustworthy latency),
+    # capture JSON output, render side-by-side comparison table.
+    import json
+
+    channel_results: dict[str, dict] = {}
+    any_failed = False
+    for ch in channels:
+        cmd, env, golds = _channel_cmd_env(
+            ch,
+            full=full,
+            sample=sample,
+            repo=repo,
+            workers=workers,
+            pairs=pairs,
+            python_bin=python_bin,
+            reindex=reindex,
+        )
+        click.echo(f"\n[eval] channel={ch} golds={len(golds)} :: {' '.join(cmd)}", err=True)
+        # stderr inherits (progress streams to terminal); stdout captured for JSON.
+        proc = subprocess.run(cmd, cwd=repo_root, env=env, check=False, stdout=subprocess.PIPE)
+        if proc.returncode != 0:
+            click.echo(f"[eval] channel={ch} exited {proc.returncode}", err=True)
+            any_failed = True
+            continue
+        stdout = (proc.stdout or b"").decode(errors="replace")
+        result: dict = {}
+        for line in reversed(stdout.splitlines()):
+            line = line.strip()
+            if line.startswith("{"):
+                try:
+                    result = json.loads(line)
+                    break
+                except json.JSONDecodeError:
+                    pass
+        if not result:
+            click.echo(f"[eval] channel={ch}: no JSON in stdout — check stderr above", err=True)
+            any_failed = True
+            continue
+        channel_results[ch] = result
+
+    if channel_results:
+        _render_comparison(channel_results)
+
+    raise SystemExit(1 if any_failed else 0)
 
 
 @eval_.command("sessions")
