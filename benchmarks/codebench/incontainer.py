@@ -424,6 +424,13 @@ def _docker_run_cmd(
         # taxed easy tasks; the gate nudges once, only when a test was actually
         # skipped. Override with CODEBENCH_VERIFY_BEFORE_DONE=0.
         env["ATELIER_VERIFY_BEFORE_DONE"] = os.environ.get("CODEBENCH_VERIFY_BEFORE_DONE", "1")
+        # code_search outline-always: drop section source, keep line-range pointers
+        # (the agent reads its edit targets anyway). Opt-in via CODEBENCH_CODESEARCH_OUTLINE=1.
+        env["ATELIER_CODESEARCH_OUTLINE"] = os.environ.get("CODEBENCH_CODESEARCH_OUTLINE", "0")
+        # Defer mutating edit-hooks (format/organize-imports) + contract-site re-fires
+        # to the Stop hook so the formatter can't reflow files mid-session and break
+        # the agent's read anchors. Opt-in via CODEBENCH_DEFER_EDIT_HOOKS=1.
+        env["ATELIER_DEFER_EDIT_HOOKS"] = os.environ.get("CODEBENCH_DEFER_EDIT_HOOKS", "0")
     env.update(agent_env)
     for key, value in env.items():
         cmd += ["-e", f"{key}={value}"]
