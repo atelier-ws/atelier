@@ -393,6 +393,90 @@ def _extract_user_prompts(transcript_path: str) -> list[str]:
     return prompts
 
 
+def _extract_edited_paths(transcript_path: str) -> list[str]:
+    """Full paths of files edited this session (from edit/Write tool_use calls)."""
+    if not transcript_path:
+        return []
+    p = Path(transcript_path)
+    if not p.exists():
+        return []
+    seen: list[str] = []
+    out: set[str] = set()
+    try:
+        with p.open(encoding="utf-8") as f:
+            for raw in f:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except Exception:
+                    continue
+                if entry.get("type") != "assistant":
+                    continue
+                content = (entry.get("message", {}) or {}).get("content", "")
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if not isinstance(block, dict) or block.get("type") != "tool_use":
+                        continue
+                    low = str(block.get("name") or "").split("__")[-1].lower()
+                    if low not in ("edit", "write", "multiedit") and not low.endswith("edit"):
+                        continue
+                    inp = block.get("input") or {}
+                    if not isinstance(inp, dict):
+                        continue
+                    cands: list[str] = []
+                    for key in ("file_path", "path", "filename"):
+                        v = inp.get(key)
+                        if isinstance(v, str) and v:
+                            cands.append(v)
+                    edits = inp.get("edits")
+                    if isinstance(edits, list):
+                        for e in edits:
+                            if isinstance(e, dict):
+                                fp = e.get("file_path") or e.get("path")
+                                if isinstance(fp, str) and fp:
+                                    cands.append(fp)
+                    for c in cands:
+                        c = c.split("#")[0].split(":L")[0]
+                        if c and c not in out:
+                            out.add(c)
+                            seen.append(c)
+    except Exception:
+        logger.exception("Failed to extract edited paths")
+    return seen
+
+
+def _format_deferred_edits(transcript_path: str) -> None:
+    """When ATELIER_DEFER_EDIT_HOOKS was on, the edit tool skipped the mutating
+    format / organize-imports steps so the formatter could not reflow files
+    mid-session and break the agent's read anchors. Run them once now, at Stop,
+    over the files edited this session. Fail-open: never break the Stop hook."""
+    if os.environ.get("ATELIER_DEFER_EDIT_HOOKS", "0").strip().lower() not in {"1", "true", "on", "yes"}:
+        return
+    paths = _extract_edited_paths(transcript_path)
+    if not paths:
+        return
+    try:
+        from atelier.core.capabilities.tool_supervision.post_edit_hooks import (
+            HookConfig,
+            run_post_edit_hooks,
+        )
+
+        root = Path(os.environ.get("CLAUDE_WORKSPACE_ROOT", os.getcwd()))
+        resolved = [str(root / pp if not Path(pp).is_absolute() else Path(pp)) for pp in paths]
+        resolved = [pp for pp in resolved if Path(pp).exists()]
+        if resolved:
+            run_post_edit_hooks(
+                resolved,
+                repo_root=root,
+                config=HookConfig(run_lint_autofix=False, run_diagnostics=False),
+            )
+    except Exception:
+        logger.exception("Failed to run deferred format at Stop")
+
+
 def _write_session_enrichment(
     session_id: str,
     session_title: str | None,
@@ -832,6 +916,10 @@ def main() -> int:
 
     session_id: str = payload.get("session_id", "") or ""
     transcript_path: str = payload.get("transcript_path", "") or ""
+    # Deferred-format pass: when ATELIER_DEFER_EDIT_HOOKS moved format off the
+    # per-edit path, format the session's edited files once now (fail-open).
+    with contextlib.suppress(Exception):
+        _format_deferred_edits(transcript_path)
     stats = _read_transcript_stats(transcript_path)
     session_aggregate = _load_session_aggregate(session_id)
     stats = _merge_session_aggregate(stats, session_aggregate)

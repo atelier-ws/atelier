@@ -35,7 +35,7 @@ def main() -> int:
         lines = sys.stdin.read().splitlines()
         count = ingest_codex_exec_events(_atelier_root(), session_id, lines)
         if count:
-            sys.stderr.write(f"[atelier] recorded {count} codex exec events to the run ledger\n")
+            sys.stderr.write(f"recorded {count} codex exec events to the run ledger\n")
     except (ImportError, OSError, ValueError, TypeError):
         pass
     return 0

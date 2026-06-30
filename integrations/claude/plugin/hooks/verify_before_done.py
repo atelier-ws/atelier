@@ -161,7 +161,7 @@ def scan_transcript(transcript_path: str | None) -> tuple[list[str], bool]:
     return edited, verified
 
 
-_REASON = "verify-before-done: edited {n} file(s) ({sample}) but ran no tests. Run the project's test suite."
+_REASON = "verify-before-done: edited {sample} but ran no tests -- run the suite before finishing."
 
 
 def decide(payload: dict[str, Any]) -> dict[str, str] | None:

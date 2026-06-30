@@ -108,8 +108,7 @@ def main() -> int:
     if not base or base not in _edited_paths():
         return 0
     reason = (
-        f"You edited {base} this session; re-reading the whole file re-caches it every later turn. "
-        'Use range="L1-L120" for the lines you need instead of expand=true.'
+        f'Edited {base} already -- read a range (range="L1-L120"), not the whole file; expand re-caches it every turn.'
     )
     _deny(reason)
     return 0

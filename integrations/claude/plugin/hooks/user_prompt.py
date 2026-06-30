@@ -454,7 +454,7 @@ def _compaction_advice_msg(occupancy: int, window: int, model: str | None, drift
     else:
         head = f"Context is ~{tok} tokens{pct_part}"
     cost = f" Carrying it costs ~${per_turn:.2f} per turn in cache reads." if per_turn > 0 else ""
-    return f"[Atelier] {head}.{cost} Run /compact to cut that."
+    return f"{head}.{cost} Run /compact to cut that."
 
 
 def _append_compaction_savings_row(tokens: int, usd: float, model: str | None, session_id: str) -> None:
