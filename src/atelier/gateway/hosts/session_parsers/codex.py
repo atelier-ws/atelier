@@ -341,7 +341,7 @@ class CodexImporter:
         all_sessions = get_newest(list(find_codex_sessions(root)), limit)
         total = len(all_sessions)
         logger.info(
-            "[atelier] codex: discovering sessions (found %d, processing top %s)",
+            "codex: discovering sessions (found %d, processing top %s)",
             total,
             limit if limit is not None else "all",
         )
@@ -350,22 +350,22 @@ class CodexImporter:
                 size = jsonl_path.stat().st_size
                 if size > _SIZE_LIMIT_BYTES:
                     logger.warning(
-                        "[atelier] codex: skipping massive session %s (%.1fMB)",
+                        "codex: skipping massive session %s (%.1fMB)",
                         jsonl_path.name,
                         size / 1e6,
                     )
                     continue
                 if i % 10 == 0 and i > 0:
-                    logger.info("[atelier] codex: importing %d/%d...", i, total)
+                    logger.info("codex: importing %d/%d...", i, total)
                 sid = self.import_session(jsonl_path, force=force)
                 if sid:
                     imported_ids.append(sid)
                 else:
                     skipped += 1
             except Exception:
-                logger.exception("[atelier] skipping codex session %s", jsonl_path.name)
+                logger.exception("skipping codex session %s", jsonl_path.name)
         if skipped > 0:
-            logger.info("[atelier] %d sessions already imported (skipped by dedup)", skipped)
+            logger.info("%d sessions already imported (skipped by dedup)", skipped)
         return imported_ids
 
     def import_session(self, jsonl_path: Path, *, force: bool = False) -> str | None:

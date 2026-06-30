@@ -63,7 +63,7 @@ def find_opencode_sessions(db_path: Path | None = None) -> list[dict[str, Any]]:
         finally:
             conn.close()
     except sqlite3.Error:
-        logger.exception("[atelier] opencode: failed to read sessions from %s", db_path)
+        logger.exception("opencode: failed to read sessions from %s", db_path)
         return []
 
 
@@ -122,7 +122,7 @@ def serialize_opencode_session(session_id: str, db_path: Path) -> str:
 
         conn.close()
     except Exception:
-        logger.exception("[atelier] opencode: failed to read messages from %s", db_path)
+        logger.exception("opencode: failed to read messages from %s", db_path)
     return "\n".join(lines)
 
 
@@ -138,11 +138,11 @@ class OpenCodeImporter:
             return []
 
         all_sessions = list(find_opencode_sessions(resolved_db_path))
-        logger.info("[atelier] opencode: discovering sessions (found %d)", len(all_sessions))
+        logger.info("opencode: discovering sessions (found %d)", len(all_sessions))
         imported_ids = []
         for i, session_row in enumerate(all_sessions):
             if i % 10 == 0 and i > 0:
-                logger.info("[atelier] opencode: importing %d/%d...", i, len(all_sessions))
+                logger.info("opencode: importing %d/%d...", i, len(all_sessions))
             tid = self.import_session(session_row, resolved_db_path, force=force)
             if tid:
                 imported_ids.append(tid)

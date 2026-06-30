@@ -400,7 +400,7 @@ class CopilotImporter:
 
         total = len(all_sessions) + len(all_transcripts) + len(all_debug_logs)
         logger.info(
-            "[atelier] copilot: found %d session directories, %d transcript files, %d debug-log directories (processing top %s of each)",
+            "copilot: found %d session directories, %d transcript files, %d debug-log directories (processing top %s of each)",
             len(all_sessions),
             len(all_transcripts),
             len(all_debug_logs),
@@ -413,7 +413,7 @@ class CopilotImporter:
         for session_dir in all_sessions:
             processed += 1
             if processed % 10 == 0:
-                logger.info("[atelier] copilot: importing %d/%d (sessions)...", processed, total)
+                logger.info("copilot: importing %d/%d (sessions)...", processed, total)
             try:
                 sid = self.import_session(session_dir, force=force)
                 if sid:
@@ -421,7 +421,7 @@ class CopilotImporter:
                 else:
                     skipped += 1
             except Exception:
-                logger.exception("[atelier] skipping session %s", session_dir.name)
+                logger.exception("skipping session %s", session_dir.name)
 
         # Pre-index parent traces and workspaces to avoid O(N^2) lookups during transcript linking
         # This is a major optimization for large history imports.
@@ -431,7 +431,7 @@ class CopilotImporter:
         for transcript_path in all_transcripts:
             processed += 1
             if processed % 10 == 0:
-                logger.info("[atelier] copilot: importing %d/%d (transcripts)...", processed, total)
+                logger.info("copilot: importing %d/%d (transcripts)...", processed, total)
             try:
                 sid = self.import_transcript_file(transcript_path, force=force, parent_index=parent_index)
                 if sid:
@@ -439,13 +439,13 @@ class CopilotImporter:
                 else:
                     skipped += 1
             except Exception:
-                logger.exception("[atelier] skipping transcript %s", transcript_path.name)
+                logger.exception("skipping transcript %s", transcript_path.name)
 
         # Phase 3: Debug Log Directories (telemetry/token counts)
         for debug_log_dir in all_debug_logs:
             processed += 1
             if processed % 10 == 0:
-                logger.info("[atelier] copilot: importing %d/%d (debug-logs)...", processed, total)
+                logger.info("copilot: importing %d/%d (debug-logs)...", processed, total)
             try:
                 sid = self.import_debug_log_dir(debug_log_dir, force=force)
                 if sid:
@@ -453,7 +453,7 @@ class CopilotImporter:
                 else:
                     skipped += 1
             except Exception:
-                logger.exception("[atelier] skipping debug-log %s", debug_log_dir.name)
+                logger.exception("skipping debug-log %s", debug_log_dir.name)
 
         # Phase 4: Reconciliation (link existing orphans)
         reconciled = self._reconcile_stored_transcripts(parent_index=parent_index)
@@ -462,7 +462,7 @@ class CopilotImporter:
                 imported_ids.append(sid)
 
         if skipped > 0:
-            logger.info("[atelier] %d copilot artifacts already imported (skipped by dedup)", skipped)
+            logger.info("%d copilot artifacts already imported (skipped by dedup)", skipped)
         return imported_ids
 
     def _build_parent_index(self) -> list[dict[str, Any]]:
@@ -792,7 +792,7 @@ class CopilotImporter:
             size = events_path.stat().st_size
             if size > _SIZE_LIMIT_BYTES:
                 logger.warning(
-                    "[atelier] copilot: skipping massive session %s (%.1fMB)",
+                    "copilot: skipping massive session %s (%.1fMB)",
                     session_id,
                     size / 1e6,
                 )
@@ -964,7 +964,7 @@ class CopilotImporter:
             size = transcript_path.stat().st_size
             if size > _SIZE_LIMIT_BYTES:
                 logger.warning(
-                    "[atelier] copilot: skipping massive transcript %s (%.1fMB)",
+                    "copilot: skipping massive transcript %s (%.1fMB)",
                     session_id,
                     size / 1e6,
                 )

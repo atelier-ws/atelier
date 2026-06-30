@@ -49,7 +49,7 @@ def test_import_progress_lands_on_stderr_not_stdout(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
 
     # Progress diagnostic appears on stderr.
-    assert "[atelier] claude: discovered sessions" in result.stderr
+    assert "claude: discovered sessions" in result.stderr
 
     # Import progress text must NOT leak onto stdout.
     assert "[atelier]" not in result.stdout

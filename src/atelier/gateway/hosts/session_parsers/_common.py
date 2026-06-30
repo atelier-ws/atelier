@@ -767,26 +767,26 @@ def import_paths_with_progress(
 ) -> list[str]:
     """Iterate *paths*, print Gemini-style progress, call *import_fn(path)* for each."""
     total = len(paths)
-    logger.info("[atelier] %s: discovering sessions (found %d)", source, total)
+    logger.info("%s: discovering sessions (found %d)", source, total)
     imported: list[str] = []
     for i, path in enumerate(paths):
         try:
             size = path.stat().st_size
             if size > size_limit:
                 logger.warning(
-                    "[atelier] %s: skipping massive session %s (%.1fMB)",
+                    "%s: skipping massive session %s (%.1fMB)",
                     source,
                     path.name,
                     size / 1e6,
                 )
                 continue
             if i % 10 == 0 and i > 0:
-                logger.info("[atelier] %s: importing %d/%d...", source, i, total)
+                logger.info("%s: importing %d/%d...", source, i, total)
             sid = import_fn(path)
             if sid:
                 imported.append(sid)
         except Exception:
-            logger.exception("[atelier] skipping %s session %s", source, path.name)
+            logger.exception("skipping %s session %s", source, path.name)
     return imported
 
 
