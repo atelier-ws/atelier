@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from atelier.core.capabilities.source_projection import build_compact_projection
-from atelier.gateway.adapters.mcp_server import tool_smart_edit, tool_smart_read
+from atelier.gateway.adapters.mcp_server import (
+    _read_dedup_resource,
+    tool_smart_edit,
+    tool_smart_read,
+)
 
 
 def test_default_reader_read_uses_minified_projection_for_safe_language(
@@ -450,3 +454,60 @@ def test_edit_surfaces_inline_diff_only_for_nonexact_match(tmp_path: Path, monke
     assert any(m and m != "exact" for m in modes), fuzzy
     assert "diff" not in fuzzy, "edits never surface an inline diff; match_mode signals a non-exact apply"
     assert fuzzy_target.read_text(encoding="utf-8") == "start = 10\nend = 30\n"
+
+
+def test_large_range_read_returns_prefix_with_continuation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # An explicit range read larger than the inline budget is bounded just like
+    # the expand path: a line-aligned prefix + an EXACT continuation range that
+    # resumes at the next unread line of the requested slice (not line 1).
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("ATELIER_READ_INLINE_BUDGET_BYTES", "10240")
+    target = tmp_path / "big.py"
+    target.write_text("".join(f"line_{i:04d} = {i}\n" for i in range(1000)), encoding="utf-8")
+
+    payload = tool_smart_read({"path": str(target), "range": "100-1000", "include_meta": True})
+
+    assert payload["truncated"] is True
+    assert 0 < payload["lines_shown"] < 901
+    content = payload["content"]
+    # prefix starts at the requested range's first line (line 100 == index 99)
+    assert "line_0099 = 99" in content
+    # a late line of the range is dropped
+    assert "line_0999 = 999" not in content
+    # continuation resumes mid-file at 100 + shown, NOT at L1
+    assert f'range="L{100 + payload["lines_shown"]}-"' in content
+    body = content.split("\n\n[lines")[0]
+    assert len(body.encode("utf-8")) <= 10240 + 32
+
+
+def test_small_range_read_not_truncated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The range cap must never bite a normal (sub-budget) range read.
+    monkeypatch.setenv("CLAUDE_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("ATELIER_READ_INLINE_BUDGET_BYTES", "10240")
+    target = tmp_path / "small.py"
+    target.write_text("".join(f"line_{i:04d} = {i}\n" for i in range(1000)), encoding="utf-8")
+
+    payload = tool_smart_read({"path": str(target), "range": "100-120", "include_meta": True})
+
+    assert payload.get("truncated") is not True
+    assert "line_0119 = 119" in payload["content"]
+
+
+def test_read_dedup_resource_tracks_single_file_batch_form() -> None:
+    # The public `read` tool emits files=[...]; a single-entry batch must yield a
+    # stable, non-empty resource key (so delta_for can fire), while a multi-file
+    # batch stays untracked. Regression: the key previously bailed on any files=.
+    string_key = _read_dedup_resource({"files": ["foo.py:L10-L20"]})
+    assert string_key and "foo.py" in string_key
+    # dict entry of the same view yields the same key as the string form
+    assert _read_dedup_resource({"files": [{"path": "foo.py", "range": "L10-L20"}]}) == string_key
+    # idempotent: re-reading the identical view repeats the key (delta-eligible)
+    assert _read_dedup_resource({"files": ["foo.py:L10-L20"]}) == string_key
+    # different view of the same file -> different key (never cross-diffs)
+    assert _read_dedup_resource({"files": ["foo.py:L30-L40"]}) != string_key
+    assert _read_dedup_resource({"files": ["foo.py:expand"]}) != string_key
+    # multi-file batch is not delta-trackable
+    assert _read_dedup_resource({"files": ["a.py", "b.py"]}) == ""
+    # legacy path= form still works
+    assert _read_dedup_resource({"path": "leg.py", "range": "1-3"})
+    assert _read_dedup_resource({"files": []}) == ""

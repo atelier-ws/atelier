@@ -24,7 +24,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from functools import lru_cache, wraps
+from functools import wraps
 from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Any, Literal, Union, cast, get_args, get_origin, get_type_hints
@@ -4978,20 +4978,46 @@ def render_tool_result_text(name: str, result: Any) -> str | None:
 
 
 def _read_dedup_resource(args: dict[str, Any]) -> str:
-    """Stable resource key for delta re-reads: single-path reads only.
+    """Stable resource key for delta re-reads of a single file.
 
-    Batch reads (``files=[...]``) render multiple bodies into one text and are
-    not delta-tracked. The range/expand projection is part of the key so
+    Tracks both calling conventions: a one-entry ``files=[...]`` (the form the
+    public `read` tool emits) and the legacy ``path=`` form. A multi-file batch
+    read renders several bodies into one text and can't be coherently diffed, so
+    it stays untracked. The range/expand/lines projection is part of the key so
     different views of the same file never cross-diff.
     """
+    files = args.get("files")
+    if files is not None:
+        if not isinstance(files, list) or len(files) != 1:
+            return ""  # batch (or malformed) read: not delta-trackable
+        entry = files[0]
+        if isinstance(entry, str):
+            path, range_spec, expand, head, tail = _split_file_opts(entry)
+            range_spec = range_spec or ""
+            lines_spec = "" if head is None else str(head)
+            tail_spec = "" if tail is None else str(tail)
+            proj_spec = ""
+        elif isinstance(entry, dict):
+            path = str(entry.get("path") or "")
+            range_spec = str(entry.get("range") or "")
+            expand = bool(entry.get("expand"))
+            _ml = entry.get("lines", entry.get("max_lines"))
+            lines_spec = "" if _ml is None else str(_ml)
+            tail_spec = "" if entry.get("tail") is None else str(entry.get("tail"))
+            proj_spec = str(entry.get("projection_kind") or "")
+        else:
+            return ""
+        if not path:
+            return ""
+        return f"read:{path}:{range_spec}:{lines_spec}:{tail_spec}:{proj_spec}:{int(bool(expand))}"
     path = str(args.get("path") or "")
-    if not path or args.get("files") is not None:
+    if not path:
         return ""
     range_spec = str(args.get("range") or "")
     max_lines = args.get("lines", args.get("max_lines"))
     max_lines_spec = "" if max_lines is None else str(max_lines)
     projection_spec = str(args.get("projection_kind") or "")
-    return f"read:{path}:{range_spec}:{max_lines_spec}:{projection_spec}:{int(bool(args.get('expand')))}"
+    return f"read:{path}:{range_spec}:{max_lines_spec}::{projection_spec}:{int(bool(args.get('expand')))}"
 
 
 _READ_SUGGEST_PRUNE_DIRS = frozenset(
@@ -5259,6 +5285,35 @@ def _smart_read_single(
                 payload["lines_total"] = len(_src_lines)
                 payload["lines_shown"] = _shown
                 exact_read = True
+    # M9b: an explicit range read carries no inline budget of its own — a
+    # deliberate :L1-L10000 over a large (often LLM-generated) file would dump
+    # the whole slice, which the host re-pays as cache_read every later turn.
+    # Bound it like the expand/full paths: keep a line-aligned prefix and hand
+    # back the EXACT continuation range, so the rest is one more call rather than
+    # open-ended iteration. A normal (small) range read is untouched.
+    if mode == "range" and isinstance(content, str):
+        _inline_budget = _read_inline_budget_bytes()
+        if _inline_budget and len(content.encode("utf-8")) > _inline_budget:
+            _src_lines = content.splitlines(keepends=True)
+            _kept = []
+            _used = 0
+            for _line in _src_lines:
+                _lb = len(_line.encode("utf-8"))
+                if _kept and _used + _lb > _inline_budget:
+                    break
+                _kept.append(_line)
+                _used += _lb
+            _shown = len(_kept)
+            if _shown < len(_src_lines):
+                _start_m = re.match(r"^L?(\d+)", str(range or ""))
+                _start = int(_start_m.group(1)) if _start_m else 1
+                _last = _start + _shown - 1
+                _notice = f'\n\n[lines {_start}-{_last} of the requested range; range="L{_last + 1}-" for the rest]'
+                content = "".join(_kept) + _notice
+                payload["content"] = content
+                payload["truncated"] = True
+                payload["lines_total"] = len(_src_lines)
+                payload["lines_shown"] = _shown
     if isinstance(content, str) and content and mode in ("full", "range") and not exact_read:
         from atelier.core.capabilities.source_projection import (
             ProjectionDelta,
@@ -5304,7 +5359,7 @@ def _smart_read_single(
         "path": payload.get("path", str(target)),
         "projection": projection.to_dict(),
     }
-    for _opt_key in ("outline", "range", "language"):
+    for _opt_key in ("outline", "range", "language", "truncated", "lines_total", "lines_shown"):
         _opt_val = payload.get(_opt_key)
         if _opt_val is not None:
             response[_opt_key] = _opt_val
@@ -5995,11 +6050,10 @@ def _attach_contract_literal_review(
         # Semantic dep that literal matching misses: a removed attribute-providing
         # decorator (e.g. @lru_cache) whose methods callers still use elsewhere.
         sites.extend(decorator_contract_impact(edits, engine=engine, touched_paths=touched_paths))
+        if sites and _defer_edit_hooks():
+            sites = _contract_surface_once(sites)
         if sites:
-            result["FIXME"] = {
-                "reason": "Must update: these callers still use the contract this edit changed.",
-                "sites": sites,
-            }
+            result["FIXME"] = sites
     except Exception:
         logging.exception("Recovered from broad exception handler")
 
@@ -6380,6 +6434,13 @@ def tool_smart_edit(
                         config=HookConfig(
                             total_timeout_s=post_edit_timeout_ms / 1000,
                             run_lint_autofix=False,
+                            # ATELIER_DEFER_EDIT_HOOKS moves the mutating steps
+                            # (format / organize-imports) to the Stop hook so the
+                            # formatter can't reflow the file mid-sequence and
+                            # invalidate anchors the agent just read. Diagnostics
+                            # still run here (report-only).
+                            run_format=not _defer_edit_hooks(),
+                            run_organize_imports=not _defer_edit_hooks(),
                         ),
                     )
                     result["diagnostics"] = [
@@ -6451,10 +6512,19 @@ def tool_smart_edit(
         if not result["diagnostics"]:
             result.pop("diagnostics")
         else:
-            result.setdefault("FIXME", {})["diagnostics"] = [
-                {k: v for k, v in d.items() if k not in ("severity", "source", "col")}
-                for d in result.pop("diagnostics")
-            ]
+
+            def _fmt_diag(d: dict, root: Path) -> str:
+                raw = d.get("file", "")
+                try:
+                    rel = str(Path(raw).relative_to(root))
+                except ValueError:
+                    rel = raw
+                loc = f"{rel}:L{d['line']}" if d.get("line") else rel
+                code = d.get("code", "")
+                msg = d.get("message", "")
+                return f"{loc} {code}: {msg}" if code else f"{loc}: {msg}"
+
+            result.setdefault("FIXME", {})["diagnostics"] = [_fmt_diag(d, repo_root) for d in result.pop("diagnostics")]
     # Strip verbose hooks metadata — callers don't need step details.
     result.pop("hooks", None)
 
@@ -8791,7 +8861,7 @@ def _grep_badge_provider(rel_path: str, symbol_names: list[str]) -> str | None:
     Returns a ` · `-joined badge string (or ``None``) that `search_workspace`
     appends to the file's header so call-graph counts ride along the regex
     search. Uses badge_counts_batch: 3 SQL queries for all symbols instead
-    of 3×N serial queries.
+    of 3*N serial queries.
     """
     if not symbol_names:
         return None
@@ -8865,8 +8935,6 @@ def _lean_code_search_view(
     eps = sorted((result.get("entry_points") or []), key=_lean_score, reverse=True)
     files = result.get("files") or []
     exact = bool(result.get("exact_match"))
-    top = _lean_score(eps[0]) if eps else 0.0
-    floor = top * _LEAN_REL_FLOOR
 
     epscore_by_path: dict[str, float] = {}
     for e in eps:
@@ -8946,7 +9014,9 @@ def _lean_code_search_view(
         "Search the indexed codebase for code. Returns relevant source grouped by "
         "file, plus `related_symbols` (every relevant definition across files, with "
         "locations) and `candidate_files`. Use instead of grep/find. Treat returned "
-        "source as already read; use `read` only for a file it did not return."
+        "source as already read; use `read` only for a file it did not return. Set "
+        "include_source=true for full source of the top 2 matches when you must understand "
+        "the code, not just locate it."
     ),
     param_aliases={
         "maxFiles": "max_files",
@@ -8968,6 +9038,15 @@ def tool_code_search(
         str | list[str] | None,
         Field(description="Optional file or directory scope."),
     ] = None,
+    include_source: Annotated[
+        bool,
+        Field(
+            description=(
+                "Full source for the top 2 matches even when large (default: large matches are "
+                "line-range outlines, small ones inline). Use when you must understand the code, not just locate it."
+            ),
+        ),
+    ] = False,
     path: str | None = None,  # backward-compat alias, hidden from schema
 ) -> dict[str, Any]:
     """Relevant symbols' source grouped by file + call-graph relations, in one capped call.
@@ -9410,6 +9489,31 @@ _READ_TOOLS = frozenset(
 # Read-style tools whose byte-identical results may be deduped within a session
 # (registered tool names, post-alias). See context_dedup for the mechanism.
 _DEDUP_TOOLS = frozenset({"read", "code_search"})
+
+
+def _defer_edit_hooks() -> bool:
+    """Move mutating edit-hooks (format / organize-imports) and contract-site
+    re-fires to the Stop hook. Default off. Read fresh each call (never cached, so
+    the env can change at runtime and tests can monkeypatch it)."""
+    return os.environ.get("ATELIER_DEFER_EDIT_HOOKS", "0").strip().lower() in {"1", "true", "on", "yes"}
+
+
+# Per-session contract-literal sites already surfaced to the agent, so a site it is
+# mid-way through fixing does not re-fire on every later edit (noise). Keyed by
+# session id; the Stop hook re-checks the final tree for the real omissions.
+_CONTRACT_SEEN: dict[str, set[str]] = {}
+
+
+def _contract_surface_once(sites: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return only contract sites not yet surfaced this session; record them."""
+    sid = ""
+    with contextlib.suppress(Exception):
+        sid = _get_ledger().session_id or ""
+    seen = _CONTRACT_SEEN.setdefault(sid, set())
+    fresh = [s for s in sites if isinstance(s, dict) and s.get("path") not in seen]
+    for s in fresh:
+        seen.add(s.get("path"))
+    return fresh
 
 
 # Flat single-object schema. The Anthropic Messages API rejects a top-level
@@ -10612,6 +10716,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | _Deferred | None:
                 # stdout guard and disconnect the server (no mid-session reconnect).
                 response_text = _truncate_result_text(response_text, _max_result_bytes())
                 with contextlib.suppress(Exception):
+                    response_text = _codesearch_outline_transform(name, _spill_args, response_text)
                     response_text = _convergence_intervention(name, _spill_args, response_text)
                     response_text = _test_churn_intervention(name, _spill_args, response_text)
                     response_text = _history_archaeology_intervention(name, _spill_args, response_text)
@@ -10855,30 +10960,57 @@ _MAX_MCP_HEAVY_WORKERS = 32
 # sees every search/read in the session, it can hand back a CONSOLIDATED list of
 # what the agent already examined.
 _NONEDIT_STREAK = [0]
-_SEEN_PATHS: list[str] = []
-_SEEN_QUERIES: list[str] = []
 _INVESTIGATIVE_TOOLS = frozenset({"bash", "read", "code_search", "grep", "search", "explore"})
 _NUDGE_AT = 10
 _CONSOLIDATE_AT = 16
 _DEGRADE_AT = 23
 
 
-def _note_gather(tool_name: str, args: object) -> None:
-    if not isinstance(args, dict):
-        return
-    if tool_name == "read":
-        vals = args.get("files") or []
-        if not vals:
-            v = args.get("path") or args.get("symbol") or args.get("file_path")
-            vals = v if isinstance(v, list) else ([v] if v else [])
-        for v in vals:
-            s = str(v)
-            if s and s not in _SEEN_PATHS:
-                _SEEN_PATHS.append(s)
-    else:
-        q = args.get("query") or args.get("content_regex") or args.get("pattern")
-        if q and str(q) not in _SEEN_QUERIES:
-            _SEEN_QUERIES.append(str(q))
+# code_search source shaping (opt-in via ATELIER_CODESEARCH_OUTLINE=1). Each match is a
+# matched SYMBOL's source (a section). Small matches stay inline (cheap, usually all the
+# agent needs); large blocks become a precise L<start>-L<end> pointer (they get re-read
+# anyway -> wasted cache_write/read). include_source=true forces full source for the
+# top-2 matches even when large. candidate_files/related_symbols (already pointers) stay.
+_CODESEARCH_OUTLINE = os.environ.get("ATELIER_CODESEARCH_OUTLINE", "0").strip().lower() in {"1", "true", "on", "yes"}
+# Matches at or below this many chars keep their source inline; larger ones are outlined.
+_CODESEARCH_OUTLINE_MAX_CHARS = int(os.environ.get("ATELIER_CODESEARCH_OUTLINE_MAX_CHARS") or 800)
+
+
+def _codesearch_outline_transform(tool_name: str, args: object, response_text: str) -> str:
+    """Outline LARGE code_search matches; keep small ones inline.
+
+    A match is a matched symbol's source (a section). It stays inline when small
+    (<= _CODESEARCH_OUTLINE_MAX_CHARS) and becomes a precise L<start>-L<end> pointer
+    when large. include_source=true additionally keeps full source for the TOP 2
+    matches even if large -- for deep tasks where understanding the code matters.
+    """
+    if not _CODESEARCH_OUTLINE or tool_name != "code_search":
+        return response_text
+    keep_top2 = bool(isinstance(args, dict) and args.get("include_source"))
+    try:
+        payload = json.loads(response_text)
+    except (ValueError, TypeError):
+        return response_text
+    files = payload.get("files")
+    if not isinstance(files, list):
+        return response_text
+    match = 0  # rank across all matched sections (files are relevance-ordered)
+    for entry in files:
+        if not isinstance(entry, dict):
+            continue
+        path = entry.get("path", "")
+        for sec in entry.get("sections") or []:
+            if not (isinstance(sec, dict) and "content" in sec):
+                continue
+            top2 = keep_top2 and match < 2
+            match += 1
+            if top2 or len(sec["content"]) <= _CODESEARCH_OUTLINE_MAX_CHARS:
+                continue  # small match, or a requested top-2 match: keep source inline
+            start, end = sec.get("line"), sec.get("end_line")
+            sym = sec.get("qualified_name") or path or "symbol"
+            sec.pop("content", None)
+            sec["outline"] = f"{sym}: outline only -- read {path or sec.get('path', '')}:L{start}-L{end}."
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def _convergence_intervention(tool_name: str, args: object, response_text: str) -> str:
@@ -10888,34 +11020,27 @@ def _convergence_intervention(tool_name: str, args: object, response_text: str) 
         return response_text
     if tool_name not in _INVESTIGATIVE_TOOLS:
         return response_text
-    _note_gather(tool_name, args)
     _NONEDIT_STREAK[0] += 1
     n = _NONEDIT_STREAK[0]
     if n < _NUDGE_AT:
         return response_text
-    seen = ", ".join(_SEEN_PATHS[:6]) or "the files from your searches"
-    decision = (
-        f"{n} search/read calls with 0 edits -- you are spiraling. You have already "
-        f"examined: {seen}. Pick the right site and EDIT now, then run the failing test "
-        f"once. Do not gather again unless this genuinely lacks what you need."
-    )
-    if n >= _DEGRADE_AT:  # firm: suppress the bulky gather output, keep a head + the decision
+    decision = f"{n} searches/reads, 0 edits. Pick the site and EDIT now."
+    if n >= _DEGRADE_AT:  # firm: suppress the bulky gather output to force an edit
         return (
-            f"[atelier] STOP GATHERING. {decision}\n\n"
-            "(further read-only output suppressed this turn; your next action must be an "
-            f"edit or a test run)\n\n{response_text[:400]}"
+            f"FIXME (convergence): STOP GATHERING -- {decision}\n\n"
+            f"(read-only output suppressed; next action must be an edit or test)\n\n{response_text[:400]}"
         )
     if n >= _CONSOLIDATE_AT:  # consolidate: surface the decision list up front
-        return f"[atelier] {decision}\n\n{response_text}"
-    return f"{response_text}\n\n[atelier] {decision}"  # nudge
+        return f"FIXME (convergence): {decision}\n\n{response_text}"
+    return f"{response_text}\n\nFIXME (convergence): {decision}"  # nudge
 
 
 # Edit-test-fail churn: the costly spiral is edit->test->FAIL repeated without ever
 # going green. Tracked separately from the gather streak (which resets on every
-# edit, so it is blind to this). Escalation rides the FIXME must-act channel -- the
-# plain [atelier] text channel is ignored under load (58 ignored nudges on one
-# spiral) -- and pushes the agent BACK TO PLANNING instead of repeating the loop it
-# is stuck in. Only sustained failure (no pass) escalates, so a converging task
+# edit, so it is blind to this). Like all convergence detectors it rides the FIXME
+# must-act channel (the persona's "fix every FIXME" rule gives it teeth that a bare
+# advisory string lacks), and pushes the agent BACK TO PLANNING instead of repeating
+# the loop it is stuck in. Only sustained failure (no pass) escalates, so a converging task
 # that hits a green resets and never sees it.
 _FAILED_TEST_STREAK = [0]
 _EDITS_SINCE_GREEN = [0]
@@ -10975,23 +11100,11 @@ def _test_churn_intervention(tool_name: str, args: object, response_text: str) -
     if n < _TEST_CHURN_TIERS[0]:
         return response_text
     if n >= _TEST_CHURN_TIERS[2]:
-        reason = (
-            f"{n} test runs have failed across {e} edits without a single pass -- you have spent the "
-            "turn budget without converging. Make your single best-justified fix NOW and STOP the "
-            "edit+test loop; the current diff is your answer. More edits will not fix a wrong diagnosis."
-        )
+        reason = f"{n} failed runs, {e} edits, no pass. Stop editing; commit your best fix."
     elif n >= _TEST_CHURN_TIERS[1]:
-        reason = (
-            f"{n} failing test runs, {e} edits, still red -- STOP editing and step back to PLANNING. "
-            "Re-read the requirement from scratch, list 2-3 candidate root causes, pick ONE and justify "
-            "it before the next edit. Repeating edits will not help if the diagnosis is wrong."
-        )
+        reason = f"{n} failing runs, {e} edits, still red. Re-read the requirement, pick ONE root cause, then edit."
     else:
-        reason = (
-            f"{n} test runs failed across {e} edits with no pass. Before editing again: re-read the "
-            "EXACT failing assertion and the function under test, then state the root cause in one line. "
-            "You may be fixing a symptom, not the cause."
-        )
+        reason = f"{n} failed runs, {e} edits, no pass. Re-read the failing assertion + function under test before editing again."
     return f"FIXME (convergence): {reason}\n\n{response_text}"
 
 
@@ -11025,17 +11138,10 @@ def _history_archaeology_intervention(tool_name: str, args: object, response_tex
         return response_text
     if n >= _HISTORY_TIERS[1]:
         reason = (
-            f"{n} version-history reads (git log/show/blame) with no edit in between -- mining "
-            "history is not converging you on a fix. Stop reading history: re-read the symbol under "
-            "change and whatever defines its expected behavior (test, caller, or spec), state the "
-            "root cause in one line, then EDIT. Reading more history will not write the change for you."
+            f"{n} history reads, no edit. Stop mining history; re-read the symbol + its expected behavior, then EDIT."
         )
     else:
-        reason = (
-            f"{n} commit/blame reads with no edit in between -- you may be hunting the answer in "
-            "history instead of reasoning from the code. Re-read the symbol under change and its "
-            "expected behavior, then edit rather than searching history again."
-        )
+        reason = f"{n} history reads, no edit. Reason from the code, not history: re-read the symbol + its behavior, then edit."
     return f"FIXME (convergence): {reason}\n\n{response_text}"
 
 
@@ -11132,7 +11238,6 @@ def _is_heavy_request(req: dict[str, Any]) -> bool:
     return _classify_cost(req) != _COST_CPU
 
 
-@lru_cache(maxsize=1)
 def _max_result_bytes() -> int:
     raw = os.environ.get("ATELIER_MCP_MAX_RESULT_BYTES", str(_DEFAULT_MAX_RESULT_BYTES))
     try:
@@ -11149,7 +11254,6 @@ def _max_result_bytes() -> int:
     return max(64 * 1024, min(configured, _MAX_WIRE_BYTES - 1024 * 1024))
 
 
-@lru_cache(maxsize=1)
 def _read_inline_budget_bytes() -> int:
     """Byte budget for a single inline file read before line-aligned truncation.
 
@@ -11184,7 +11288,6 @@ def _truncate_result_text(text: str, limit: int) -> str:
     return head + notice
 
 
-@lru_cache(maxsize=1)
 def _compact_result_chars() -> int:
     """Char threshold above which an oversized tool result is head+tail compacted.
 
