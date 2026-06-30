@@ -1,3 +1,0 @@
-arm,runs,ok_runs,failed_runs,valid_runs,correct_runs,avg_score,cost_usd,duration_ms,duration_api_ms,input_tokens,cache_read_tokens,cache_creation_tokens,output_tokens,cost_savings_vs_baseline_pct,duration_savings_vs_baseline_pct,input_token_savings_vs_baseline_pct,output_token_savings_vs_baseline_pct
-baseline,28,28,0,28,0,,7.2708,2902284,2916770,87147,18173134,1393104,177867,0.0,0.0,0.0,0.0
-atelier,28,28,0,28,0,,5.6158,5315332,1744575,237,4923169,487844,80738,22.8,-83.1,99.7,54.6

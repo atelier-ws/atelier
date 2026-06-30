@@ -127,6 +127,7 @@ def make_code_embedder(pin: str | None = None, model: str | None = None) -> Embe
             hf_model,
             query_prefix=os.getenv("ATELIER_HF_QUERY_PREFIX", ""),
             doc_prefix=os.getenv("ATELIER_HF_DOC_PREFIX", ""),
+            use_cache=True,  # use_cache kwarg currently unused; DynamicCache compat is handled in _load()
         )
     if chosen == "bge":
         return BgeEmbedder()

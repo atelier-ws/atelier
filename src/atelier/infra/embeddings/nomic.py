@@ -47,9 +47,11 @@ class NomicEmbedder:
         *,
         query_prefix: str | None = None,
         doc_prefix: str | None = None,
+        use_cache: bool = True,
     ) -> None:
         self._model_name = model_name
         self._model = None
+        self._use_cache = use_cache  # reserved for future use
         _env_dim = os.environ.get("ATELIER_NOMIC_DIM", "")
         self.dim = int(_env_dim) if _env_dim.isdigit() else _DEFAULT_DIM_FULL
         # Per-instance prefixes: constructor args > env vars > Nomic defaults.
@@ -114,6 +116,15 @@ class NomicEmbedder:
         from sentence_transformers import SentenceTransformer
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Compatibility shim: transformers 4.47+ removed DynamicCache.get_usable_length
+        # (renamed to get_seq_length).  Some model remote_code still calls the old name.
+        try:
+            from transformers.cache_utils import DynamicCache as _DC
+            if not hasattr(_DC, "get_usable_length"):
+                _DC.get_usable_length = lambda self, new_seq_length=0, layer_idx=0: self.get_seq_length(layer_idx)
+        except Exception:
+            pass
+
         kw = {"dtype": torch.float16} if device == "cuda" else {}
         logger.info(
             "Loading Nomic model %s on %s (FP16=%s)",

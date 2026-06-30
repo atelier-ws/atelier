@@ -85,7 +85,6 @@ from atelier.infra.code_intel.astgrep import (
     PatternSearchResult,
 )
 from atelier.infra.code_intel.cross_lang import CrossLangEdge, CrossLangEdgeStore
-from atelier.infra.internal_llm.exceptions import OllamaUnavailable
 from atelier.infra.tree_sitter.tags import Tag, detect_language, extract_tags
 
 # watchdog for OS-native file watching (inotify/FSEvents/ReadDirectoryChangesW).
@@ -103,6 +102,31 @@ except ImportError:
 if TYPE_CHECKING:
     from atelier.core.capabilities.code_context.search_verdict import ChannelHealth
     from atelier.infra.code_intel.git_history.adapter import DeletedHistorySearchAdapter
+
+
+def _query_is_natural_language(query: str) -> bool:
+    """Return True when the query looks like natural language -> activate semantic.
+
+    Symbol-name queries (short, <= 2 meaningful tokens) skip semantic so lexical
+    can dominate.  Multi-word sentence queries activate it so the embedder can
+    contribute.  Override via ATELIER_SEMANTIC_MODE=always|off|auto (default auto).
+    """
+    _mode = os.environ.get("ATELIER_SEMANTIC_MODE", "auto").strip().lower()
+    if _mode == "always":
+        return True
+    if _mode == "off":
+        return False
+    # auto: word count heuristic
+    stripped = query.strip()
+    # Strip common leading keywords ("def ", "class ", "async def ") that appear
+    # in definition-gold queries but don't make them natural language.
+    for _kw in ("async def ", "def ", "class "):
+        if stripped.lower().startswith(_kw):
+            stripped = stripped[len(_kw):]
+            break
+    words = stripped.split()
+    # >= 4 words after stripping the keyword -> treat as natural-language query
+    return len(words) >= 4
 
 _MAX_FILE_BYTES = 1_000_000
 logger = logging.getLogger(__name__)
@@ -6144,15 +6168,17 @@ class CodeContextEngine:
                     _filtered_hits = [hit for hit in lexical_hits if hit.file_path in candidate_files]
                     if _filtered_hits:  # guard: don't discard all results if zoekt is cold
                         lexical_hits = _filtered_hits
-                try:
-                    semantic_hits = self._search_symbols_semantic_local(
-                        query,
-                        limit=candidate_limit,
-                        kind=kind,
-                        language=language,
-                    )
-                except OllamaUnavailable:
-                    semantic_hits = []
+                semantic_hits: list[SymbolRecord] = []
+                if _query_is_natural_language(query) or resolved_mode == "semantic":
+                    try:
+                        semantic_hits = self._search_symbols_semantic_local(
+                            query,
+                            limit=candidate_limit,
+                            kind=kind,
+                            language=language,
+                        )
+                    except Exception:
+                        pass
                 # Merge commit chunks as a third candidate source (LINEAGE-03)
                 commit_hits: list[SymbolRecord] = []
                 with contextlib.suppress(Exception):

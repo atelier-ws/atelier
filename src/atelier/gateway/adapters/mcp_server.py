@@ -6084,7 +6084,7 @@ EDIT_TOOL_INPUT_SCHEMA: dict[str, Any] = {
                         "type": "string",
                         "description": "Replacement or new file content.",
                     },
-                    "overwrite": {
+                    "replace": {
                         "type": "boolean",
                         "description": "Create or replace the whole file.",
                     },
@@ -6292,7 +6292,7 @@ def _reindex_edited_files(repo_root: Path, touched_paths: list[str]) -> None:
     description=(
         "Apply exact file edits in one batch. "
         "Replace with {path, old, new}; use path:Lx-Ly for exact lines. "
-        "Create or replace a file with {path, new, overwrite:true}. "
+        "Create or replace a file with {path, new, replace:true}. "
         "Include all planned edits in one call. Do not re-read after exact success."
     ),
     param_aliases={"post_edit_hooks": "hooks"},
@@ -6313,7 +6313,7 @@ def tool_smart_edit(
 
     Rich (preferred) — ``file_path`` required:
       - Replace text:    {file_path, old_string, new_string}
-      - Create/overwrite:{file_path, new_string, overwrite: true}
+      - Create/replace: {file_path, new_string, replace: true}
       - Line-scoped:     {file_path: "foo.py:L10-L20", old_string, new_string}
       - Notebook cell:   {file_path, cell_action: insert_after|delete|..., new_string}
       - Symbol:          {kind: "symbol", qualified_name|name, mode, new_body}
@@ -8357,6 +8357,7 @@ def _run_bash_tool(
     timeout: int = 30,
     cwd: str | None = None,
     max_lines: int = 200,
+    max_output_tokens: int | None = None,
     background: bool = False,
     session_id: str | None = None,
     action: Literal["run", "poll", "cancel"] = "run",
@@ -8615,6 +8616,7 @@ def _run_bash_tool(
         cwd=effective_cwd,
         timeout=timeout,
         max_lines=max_lines,
+        max_chars=max_output_tokens * 4 if max_output_tokens is not None else None,
     )
     managed_id = str(started.get("session_id") or "")
     if started.get("status") != "running" or not managed_id:
@@ -9550,6 +9552,10 @@ BASH_TOOL_INPUT_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "Handle from a background run; required for poll/cancel.",
         },
+        "max_output_tokens": {
+            "type": "integer",
+            "description": "Maximum output tokens to return (~4 chars per token). Overrides the default per-command budget.",
+        },
     },
     "additionalProperties": False,
 }
@@ -9563,12 +9569,14 @@ BASH_TOOL_INPUT_SCHEMA: dict[str, Any] = {
         "read/grep/search where possible; use bash for git, make, uv, npm, etc. "
         "Don't spawn nested interactive shells."
     ),
+    hidden_params=("max_lines",),
 )
 def tool_bash(
     command: str = "",
     timeout: int = 1800,
     cwd: str | None = None,
     max_lines: int = 200,
+    max_output_tokens: int | None = None,
     background: bool = False,
     session_id: str | None = None,
     action: Literal["run", "poll", "cancel"] = "run",
@@ -9583,6 +9591,7 @@ def tool_bash(
         timeout=timeout,
         cwd=cwd,
         max_lines=max_lines,
+        max_output_tokens=max_output_tokens,
         background=background,
         session_id=session_id,
         action=action,
@@ -10961,9 +10970,9 @@ _MAX_MCP_HEAVY_WORKERS = 32
 # what the agent already examined.
 _NONEDIT_STREAK = [0]
 _INVESTIGATIVE_TOOLS = frozenset({"bash", "read", "code_search", "grep", "search", "explore"})
-_NUDGE_AT = 10
-_CONSOLIDATE_AT = 16
-_DEGRADE_AT = 23
+_NUDGE_AT = int(os.environ.get("ATELIER_CONVERGENCE_NUDGE_AT", "20"))
+_CONSOLIDATE_AT = int(os.environ.get("ATELIER_CONVERGENCE_CONSOLIDATE_AT", "32"))
+_DEGRADE_AT = int(os.environ.get("ATELIER_CONVERGENCE_DEGRADE_AT", "48"))
 
 
 # code_search source shaping (opt-in via ATELIER_CODESEARCH_OUTLINE=1). Each match is a

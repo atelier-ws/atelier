@@ -43,11 +43,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-SEARCH_TOOLS = {"mcp__atelier__grep", "mcp__atelier__explore", "ToolSearch", "Grep", "mcp__plugin_atelier_atelier__grep"}
+SEARCH_TOOLS = {
+    "mcp__atelier__grep",
+    "mcp__atelier__explore",
+    "ToolSearch",
+    "Grep",
+    "mcp__plugin_atelier_atelier__grep",
+}
 
 # Regex for detecting grep/rg/ag etc. run via bash exec_command in Codex
 _GREP_CMD_RE = re.compile(
-    r'^(?:grep|rg|ripgrep|ag|ack|git\s+grep)\b',
+    r"^(?:grep|rg|ripgrep|ag|ack|git\s+grep)\b",
     re.IGNORECASE,
 )
 # Extract the pattern from a grep command (heuristic)
@@ -78,7 +84,9 @@ def _detect_repo_info() -> tuple[str, str]:
     try:
         result = subprocess.run(
             ["git", "remote", "get-url", "origin"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
             cwd=str(cwd),
         )
         if result.returncode == 0:
@@ -209,15 +217,12 @@ def _scan_codex_session_file(path: Path, repo_path: Path | None = None) -> list[
         t = ev.get("type", "")
         if t in ("message", "reasoning"):
             break  # flat format B
-        elif t in ("event_msg", "response_item"):
-            is_event_msg = True
-            break
-        elif t == "session_meta":
+        elif t in ("event_msg", "response_item") or t == "session_meta":
             is_event_msg = True
             break
 
     pending_calls: dict[str, dict] = {}  # call_id -> call event
-    pending_execs: list[dict] = []       # ordered exec_command calls (Format A)
+    pending_execs: list[dict] = []  # ordered exec_command calls (Format A)
     session_events: list[dict] = []
 
     for line in text.splitlines():
@@ -255,10 +260,7 @@ def _resolve_codex_search_call(
     dotted = f"{namespace}__{name}" if namespace else name
 
     # Check all name forms against SEARCH_TOOLS
-    effective = (
-        name if name in SEARCH_TOOLS
-        else (dotted if dotted in SEARCH_TOOLS else None)
-    )
+    effective = name if name in SEARCH_TOOLS else (dotted if dotted in SEARCH_TOOLS else None)
     # Codex also has native grep/explore tools under mcp__atelier namespace
     # (not dotted — separate namespace and name fields)
     if effective is None:
@@ -319,21 +321,23 @@ def _scan_codex_format_a(
             pending_calls[call_id] = call
             return
 
-        # Bash grep via exec_command
+            # Bash grep via exec_command
             cmd = str(args.get("command", args.get("cmd", args_raw)))
             if _GREP_CMD_RE.match(cmd.strip()):
                 pattern = _extract_grep_pattern(cmd)
                 if pattern:
                     tag = call_id or f"exec_{len(pending_execs)}"
-                    pending_execs.append({
-                        "call_id": tag,
-                        "call": {
-                            "tool": "bash_grep",
-                            "id": f"codex_{tag}",
-                            "query": pattern[:500],
-                            "file_pattern": "",
-                        },
-                    })
+                    pending_execs.append(
+                        {
+                            "call_id": tag,
+                            "call": {
+                                "tool": "bash_grep",
+                                "id": f"codex_{tag}",
+                                "query": pattern[:500],
+                                "file_pattern": "",
+                            },
+                        }
+                    )
 
     elif ev_type == "event_msg" and pt == "function_call_output":
         call_id = str(payload.get("call_id", ""))
@@ -467,7 +471,7 @@ def parse_tool_result_files(content) -> list[str]:
         return files
 
     # Regex: matches paths with at least one / and an extension,
-        # possibly prefixed with `## `, `### `, or `# grep` headers
+    # possibly prefixed with `## `, `### `, or `# grep` headers
     _FILE_RE = re.compile(r"^(?:#+\s+)?([\w./-]+/(?:[\w./-]+\.\w+))")
 
     # Spill-file pattern: results were too large and written to /tmp/atelier-spill/search-*.json
@@ -502,7 +506,7 @@ def parse_tool_result_files(content) -> list[str]:
             _output_marker = "\nOutput:\n"
             idx = chunk.find(_output_marker)
             if idx != -1:
-                rest = chunk[idx + len(_output_marker):].strip()
+                rest = chunk[idx + len(_output_marker) :].strip()
                 # Remove leading [ and trailing ] if present
                 if rest.startswith("[") and rest.endswith("]"):
                     rest = rest[1:-1]
@@ -588,7 +592,7 @@ def parse_tool_result_files(content) -> list[str]:
                 # Remove leading `atelier/` prefix if present (from absolute-path grep results
                 # in the atelier__atelier workspace)
                 if fp.startswith("atelier/"):
-                    fp = fp[len("atelier/"):]
+                    fp = fp[len("atelier/") :]
                 if fp not in seen:
                     seen.add(fp)
                     files.append(fp)
@@ -602,7 +606,7 @@ def parse_tool_result_files(content) -> list[str]:
                 if "." in first_token and "/" in first_token:
                     fp = first_token.rstrip(":")
                     if fp.startswith("atelier/"):
-                        fp = fp[len("atelier/"):]
+                        fp = fp[len("atelier/") :]
                     if fp not in seen:
                         seen.add(fp)
                         files.append(fp)
@@ -694,17 +698,24 @@ def scan_project_dir(project_dir: str) -> list[dict]:
                             try:
                                 reparsed = json.loads(raw)
                                 if isinstance(reparsed, dict):
-                                    query = reparsed.get("query", reparsed.get("content_regex", reparsed.get("pattern", reparsed.get("regex", ""))))
+                                    query = reparsed.get(
+                                        "query",
+                                        reparsed.get(
+                                            "content_regex", reparsed.get("pattern", reparsed.get("regex", ""))
+                                        ),
+                                    )
                             except (json.JSONDecodeError, TypeError):
                                 pass
                         tool_id = block.get("id", "")
-                        session_events.append({
-                            "type": "call",
-                            "tool": name,
-                            "id": tool_id,
-                            "query": str(query)[:500],
-                            "file_pattern": inp.get("file_glob_patterns", ""),
-                        })
+                        session_events.append(
+                            {
+                                "type": "call",
+                                "tool": name,
+                                "id": tool_id,
+                                "query": str(query)[:500],
+                                "file_pattern": inp.get("file_glob_patterns", ""),
+                            }
+                        )
 
         if any(e["type"] == "call" for e in session_events):
             all_events.extend(session_events)
@@ -759,28 +770,49 @@ def generate_pairs(
         explore_calls = [e for e in episode if "explore" in e["tool"].lower()]
         toolsearch_calls = [e for e in episode if e["tool"] == "ToolSearch"]
 
+        _ws = Path.cwd().resolve()
+        _code_like = re.compile(r"[a-zA-Z_]")
         for gc in grep_calls:
             query = gc.get("query", "")
             files = gc.get("result_files", [])
             if not query or not files:
                 continue
-            # Use the grep's own result files as the gold files
+            # Quality filter: skip garbage queries that produce noisy MRR.
+            # - Too short (< 4 chars) → too ambiguous to benchmark
+            # - No alphabetic content → numbers/punctuation/symbols, not code
+            # - File-glob patterns ("*.py") → not content searches
+            if len(query) < 4 or not _code_like.search(query):
+                continue
+            if query.startswith("*.") or query.startswith("**"):
+                continue
+            # Gold validation: only keep files that actually exist in this
+            # workspace. Stale absolute paths from old or remote sessions
+            # can never be matched by explore, so they drag MRR to zero.
+            valid_files = [
+                f for f in files[:10]
+                if (_ws / f).exists() or (f.startswith("/") and Path(f).exists())
+            ]
+            if not valid_files:
+                continue
+            # Use the grep's own result files as the content gold.
             tid = f"session_{pair_id}"
             pair_id += 1
-            true_map[tid] = files[:10]  # top 10 result files
+            true_map[tid] = valid_files
             pairs.append((query, tid, repo_prefix))
 
         # Generate savings metric for this episode
         if grep_calls:
             unique_queries = set(gc.get("query", "")[:60] for gc in grep_calls)
-            savings.append({
-                "episode_greps": len(grep_calls),
-                "episode_explores": len(explore_calls),
-                "episode_toolsearches": len(toolsearch_calls),
-                "unique_grep_patterns": len(unique_queries),
-                "grep_savings": max(0, len(grep_calls) - len(explore_calls) * 2),
-                # ^^ each explore replaces ~3-5 greps, so saving is greps - 2*explores
-            })
+            savings.append(
+                {
+                    "episode_greps": len(grep_calls),
+                    "episode_explores": len(explore_calls),
+                    "episode_toolsearches": len(toolsearch_calls),
+                    "unique_grep_patterns": len(unique_queries),
+                    "grep_savings": max(0, len(grep_calls) - len(explore_calls) * 2),
+                    # ^^ each explore replaces ~3-5 greps, so saving is greps - 2*explores
+                }
+            )
 
     return pairs, true_map, savings
 
@@ -801,9 +833,7 @@ def generate_savings_report(savings: list[dict]) -> dict:
 
     # Estimated savings from replacing greps with explores
     estimated_grep_turns_saved = sum(
-        max(0, s["episode_greps"] - s["episode_explores"] * 3)
-        for s in savings
-        if s["episode_explores"] > 0
+        max(0, s["episode_greps"] - s["episode_explores"] * 3) for s in savings if s["episode_explores"] > 0
     )
     # Each saved grep turn avoids: 1 tool_call + result processing + thinking ≈ 2K tokens
     # Claude Sonnet 4.6: ~$3/M input, ~$15/M output
@@ -811,8 +841,8 @@ def generate_savings_report(savings: list[dict]) -> dict:
     cost_per_million_input = 3.0
     cost_per_million_output = 15.0
     avg_cost_per_saved_turn = (
-        avg_saved_tokens_per_grep / 1_000_000 * cost_per_million_input +
-        avg_saved_tokens_per_grep / 1_000_000 * cost_per_million_output
+        avg_saved_tokens_per_grep / 1_000_000 * cost_per_million_input
+        + avg_saved_tokens_per_grep / 1_000_000 * cost_per_million_output
     )
     estimated_cost_saved_usd = estimated_grep_turns_saved * avg_cost_per_saved_turn
 
@@ -839,46 +869,51 @@ def main():
     env_filter = os.environ.get("SESSION_REPO_FILTER", "")
     auto_filter = env_filter if env_filter else repo_dirname
 
-    parser = argparse.ArgumentParser(
-        description="Mine Claude Code & Codex session files for search patterns"
-    )
+    parser = argparse.ArgumentParser(description="Mine Claude Code & Codex session files for search patterns")
     parser.add_argument(
-        "--session-dir", "-d",
+        "--session-dir",
+        "-d",
         default=os.environ.get("SESSION_ROOT", ""),
         help="Claude Code session directory (default: ~/.claude/projects/<auto-repo>/)",
     )
     parser.add_argument(
-        "--repo-filter", "-f",
+        "--repo-filter",
+        "-f",
         default=auto_filter,
-        help=(
-            f"Substring filter on project directory name "
-            f"(default: auto-detected '{auto_filter}')"
-        ),
+        help=(f"Substring filter on project directory name (default: auto-detected '{auto_filter}')"),
     )
     parser.add_argument(
-        "--out", "-o",
+        "--out",
+        "-o",
         default=os.environ.get("SESSION_PAIRS_OUT", "/tmp/session_pairs.json"),
         help="Output path for mined pairs JSON",
     )
     parser.add_argument(
-        "--run-eval", action="store_true",
+        "--run-eval",
+        action="store_true",
         help="Run the retrieval benchmark after generating pairs",
     )
     parser.add_argument(
-        "--channel", choices=["lexical", "zoekt", "cg", "lexical+zoekt"],
+        "--channel",
+        choices=["lexical", "zoekt", "cg", "lexical+zoekt"],
         default="lexical",
         help="Which retrieval eval to run (default: lexical/explore without Zoekt)",
     )
     parser.add_argument(
-        "--full", action="store_true",
+        "--full",
+        action="store_true",
         help="Run the eval on all mined pairs (no sample cap)",
     )
     parser.add_argument(
-        "--synthetic", "-s", action="store_true",
+        "--synthetic",
+        "-s",
+        action="store_true",
         help="Augment mined pairs with synthetic queries mined from the repo source",
     )
     parser.add_argument(
-        "--synthetic-per-file", type=int, default=4,
+        "--synthetic-per-file",
+        type=int,
+        default=4,
         help="Max synthetic queries per file (default: 4, only with --synthetic)",
     )
     args = parser.parse_args()
@@ -894,8 +929,7 @@ def main():
 
     if claude_root.is_dir():
         project_dirs = sorted(
-            d for d in claude_root.iterdir()
-            if d.is_dir() and (not args.repo_filter or args.repo_filter in d.name)
+            d for d in claude_root.iterdir() if d.is_dir() and (not args.repo_filter or args.repo_filter in d.name)
         )
         for proj_dir in project_dirs:
             events = scan_project_dir(str(proj_dir))
@@ -903,14 +937,12 @@ def main():
                 claude_events.extend(events)
                 scanned_claude_dirs.append(proj_dir.name)
                 print(
-                    f"[claude] {proj_dir.name}: "
-                    f"{sum(1 for e in events if e['type']=='call')} search calls",
+                    f"[claude] {proj_dir.name}: {sum(1 for e in events if e['type'] == 'call')} search calls",
                     file=sys.stderr,
                 )
 
         print(
-            f"[claude] Scanned {len(project_dirs)} project dir(s) "
-            f"matching '{args.repo_filter}' under {claude_root}",
+            f"[claude] Scanned {len(project_dirs)} project dir(s) matching '{args.repo_filter}' under {claude_root}",
             file=sys.stderr,
         )
     else:
@@ -964,7 +996,7 @@ def main():
     pairs, true_map, savings = generate_pairs(all_events, repo_prefix=repo_prefix)
     report = generate_savings_report(savings)
 
-    print(f"\n{'='*60}", file=sys.stderr)
+    print(f"\n{'=' * 60}", file=sys.stderr)
     print("OFFLINE SESSION ANALYSIS", file=sys.stderr)
     print(f"  Repo prefix: {repo_prefix}", file=sys.stderr)
     print(f"  Claude project dirs with calls: {len(scanned_claude_dirs)}", file=sys.stderr)
@@ -979,8 +1011,10 @@ def main():
     print(f"  Avg greps per episode: {report['avg_greps_per_episode']}", file=sys.stderr)
     print(f"  Estimated grep turns saved: {report['estimated_grep_turns_saved']}", file=sys.stderr)
     print(f"  Estimated cost saved: ${report['estimated_cost_saved_usd']:.4f}", file=sys.stderr)
-    print(f"  Generated {len(pairs)} query pairs from grep result files ({len(true_map)} unique queries)", file=sys.stderr)
-    print(f"{'='*60}\n", file=sys.stderr)
+    print(
+        f"  Generated {len(pairs)} query pairs from grep result files ({len(true_map)} unique queries)", file=sys.stderr
+    )
+    print(f"{'=' * 60}\n", file=sys.stderr)
 
     # Deduplicate pairs (same query + tid + prefix)
     deduped_pairs: list[tuple[str, str, str]] = []
@@ -997,6 +1031,7 @@ def main():
     if args.synthetic:
         try:
             from synthetic_pair_miner import mine_synthetic_pairs as _mine_synthetic
+
             _syn_pairs, _syn_true = _mine_synthetic(
                 repo_dir=Path.cwd(),
                 repo_prefix=repo_prefix,
@@ -1004,13 +1039,14 @@ def main():
                 verbose=True,
             )
             if _syn_pairs:
-                print(f"[synthetic] Adding {len(_syn_pairs)} synthetic pairs + "
-                      f"{len(_syn_true)} true_map entries", file=sys.stderr)
+                print(
+                    f"[synthetic] Adding {len(_syn_pairs)} synthetic pairs + {len(_syn_true)} true_map entries",
+                    file=sys.stderr,
+                )
                 deduped_pairs.extend(_syn_pairs)
                 true_map.update(_syn_true)
         except ImportError:
-            print("[synthetic] WARNING: synthetic_pair_miner module not found. Skipping.",
-                  file=sys.stderr)
+            print("[synthetic] WARNING: synthetic_pair_miner module not found. Skipping.", file=sys.stderr)
         except Exception as exc:
             print(f"[synthetic] WARNING: synthetic mining failed: {exc}", file=sys.stderr)
 
@@ -1021,6 +1057,11 @@ def main():
         print(f"    ({len(pairs)} from sessions + {syn_count} synthetic)", file=sys.stderr)
 
     out_data = {
+        # grep result files are *content* golds (files where the pattern
+        # appears), not definition golds.  Label them correctly so the MRR
+        # benchmark renders the "content" column instead of mislabelling as
+        # "definition" and making scores look artificially low.
+        "gold_kind": "content",
         "pairs": deduped_pairs,
         "true_map": true_map,
         "repos": {
@@ -1032,8 +1073,11 @@ def main():
 
     with open(args.out, "w") as f:
         json.dump(out_data, f, indent=2)
-    print(f"[session] Pairs written to {args.out} ({len(deduped_pairs)} pairs"
-          f"{', includes synthetic' if args.synthetic else ''})", file=sys.stderr)
+    print(
+        f"[session] Pairs written to {args.out} ({len(deduped_pairs)} pairs"
+        f"{', includes synthetic' if args.synthetic else ''})",
+        file=sys.stderr,
+    )
 
     # Run eval if requested
     if args.run_eval and len(deduped_pairs) > 0:
@@ -1059,7 +1103,10 @@ def main():
             try:
                 result = json.loads(r.stdout)
                 print("\n  EVAL RESULT:", file=sys.stderr)
-                print(f"    MRR={result.get('mrr', '?'):.4f}  hit@1={result.get('hit1', '?'):.4f}  hit@3={result.get('hit3', '?'):.4f}  n={result.get('n', '?')}", file=sys.stderr)
+                print(
+                    f"    MRR={result.get('mrr', '?'):.4f}  hit@1={result.get('hit1', '?'):.4f}  hit@3={result.get('hit3', '?'):.4f}  n={result.get('n', '?')}",
+                    file=sys.stderr,
+                )
                 print(f"    latency_mean={result.get('latency_ms', {}).get('mean', '?'):.1f}ms", file=sys.stderr)
             except json.JSONDecodeError:
                 print(f"  [eval] stdout: {r.stdout[:500]}", file=sys.stderr)

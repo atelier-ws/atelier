@@ -394,6 +394,27 @@ def _project_init_setup(git_root: Path) -> dict[str, list[str]]:
     else:
         results["gitignore"] = [".atelier/.gitignore already present"]
 
+    # jj — colocated Jujutsu repo for session-level undo without git history noise
+    jj_dir = git_root / ".jj"
+    if jj_dir.exists():
+        results["jj"] = ["jj already initialized"]
+    elif shutil.which("jj"):
+        try:
+            proc = subprocess.run(
+                ["jj", "git", "init", "--colocate"],
+                cwd=git_root,
+                capture_output=True,
+                text=True,
+            )
+            if proc.returncode == 0:
+                results["jj"] = ["jj initialized (colocated) — use `jj undo` to roll back any edit"]
+            else:
+                results["jj"] = [f"jj init failed: {proc.stderr.strip()}"]
+        except OSError as exc:
+            results["jj"] = [f"jj init error: {exc}"]
+    else:
+        results["jj"] = ["jj not found — install via `brew install jj` or `cargo install --locked jj-cli`"]
+
     agents_path = write_workspace_agents_md(git_root)
     results["agents_md"] = [f"updated {agents_path.relative_to(git_root)}"]
 

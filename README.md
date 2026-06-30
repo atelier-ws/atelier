@@ -18,10 +18,10 @@
 [![opencode](https://img.shields.io/badge/opencode-supported-7C3AED?style=flat-square)](https://opencode.ai)
 
 <p>
-⚡ <b>90% on SWE-bench Verified (50 tasks)</b> &nbsp;·&nbsp;
-💰 <b>31.6% cheaper</b> &nbsp;·&nbsp;
-🔁 <b>39.4% fewer turns</b> &nbsp;·&nbsp;
-🪙 <b>46.4% fewer tokens</b>
+⚡ <b>92.8% on SWE-bench Verified (50 tasks)</b> &nbsp;·&nbsp;
+💰 <b>29.5% cheaper</b> &nbsp;·&nbsp;
+🔁 <b>37.7% fewer turns</b> &nbsp;·&nbsp;
+🪙 <b>44.1% fewer tokens</b>
 </p>
 
 ```bash
@@ -46,10 +46,10 @@ Your AI coding agent is expensive because it reads too much, navigates blindly, 
 
 <table>
 <tr>
-<td align="center"><b>🏆 SWE-bench Verified</b><br/><br/><b>90%</b> resolved<br/><sub>vs 80.8% baseline</sub><br/><sub>+9.2 percentage points</sub></td>
-<td align="center"><b>💰 Cost</b><br/><br/><b>31.6% cheaper</b><br/><sub>SWE-bench end-to-end</sub><br/><sub>57% cheaper on Exploration tasks</sub></td>
-<td align="center"><b>⚡ Speed</b><br/><br/><b>26.4% faster</b><br/><sub>wall-clock per task</sub><br/><sub>39.4% fewer turns</sub></td>
-<td align="center"><b>🪙 Tokens</b><br/><br/><b>46.4% fewer</b><br/><sub>SWE-bench end-to-end</sub><br/><sub>cache reads −48% (biggest driver)</sub></td>
+<td align="center"><b>🏆 SWE-bench Verified</b><br/><br/><b>92.8%</b> resolved<br/><sub>vs 80.8% baseline</sub><br/><sub>+12.0 percentage points</sub></td>
+<td align="center"><b>💰 Cost</b><br/><br/><b>29.5% cheaper</b><br/><sub>SWE-bench end-to-end</sub><br/><sub>57% cheaper on Exploration tasks</sub></td>
+<td align="center"><b>⚡ Speed</b><br/><br/><b>23.7% faster</b><br/><sub>wall-clock per task</sub><br/><sub>37.7% fewer turns</sub></td>
+<td align="center"><b>🪙 Tokens</b><br/><br/><b>44.1% fewer</b><br/><sub>SWE-bench end-to-end</sub><br/><sub>cache reads −46% (biggest driver)</sub></td>
 </tr>
 </table>
 
@@ -243,9 +243,9 @@ End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** —
 
 |              |        Cost | Input tok | Cache Write |  Cache Read | Output tok |   Total tok |       Turns |        Time |       Resolved       |
 | -------------- | ------------: | ----------: | ------------: | ------------: | -----------: | ------------: | ------------: | ------------: | :---------------------: |
-| **atelier**  | **$160.65** | 1,005,646 |   5,656,067 |  93,038,766 |  2,133,440 |  **101.8M** |   **4,221** |   **10.5h** |  **225 / 250 (90%)**  |
+| **atelier**  | **$165.45** | 1,007,977 |   5,730,565 |  97,238,294 |  2,192,112 |  **106.2M** |   **4,336** |   **10.9h** | **232 / 250 (92.8%)** |
 | **baseline** | **$234.84** | 1,110,596 |   6,904,544 | 178,930,411 |  2,986,079 |  **189.9M** |   **6,963** |   **14.1h** | **202 / 250 (80.8%)** |
-| **delta**    | **−31.6%** |    −9.4% |     −18.1% | **−48.0%** |    −28.6% | **−46.4%** | **−39.4%** | **−25.5%** |      **+9.2 pp**      |
+| **delta**    | **−29.5%** |    −9.2% |     −17.0% | **−45.7%** |    −26.6% | **−44.1%** | **−37.7%** | **−22.7%** |     **+12.0 pp**      |
 
 #### Per-task breakdown (5 reps each)
 
@@ -276,7 +276,7 @@ End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** —
 | `matplotlib__matplotlib-14623`     |      🟡 4/5      |   ✅ 5/5   |             $3.08 | $2.19 |      ![28.8%](https://img.shields.io/badge/28.8%25-yellow?style=flat-square) | $0.63, $0.63, $0.74, $0.35, $0.72 | $0.28, $0.40, $0.46, $0.48, $0.57 |                                                     |  |
 | `matplotlib__matplotlib-24870`     |      🟡 3/5      |   ✅ 5/5   |             $3.95 | $3.55 |      ![10.2%](https://img.shields.io/badge/10.2%25-yellow?style=flat-square) | $0.81, $0.64, $0.86, $0.93, $0.71 | $0.65, $0.67, $0.73, $0.75, $0.75 |                                                     |  |
 | `mwaskom__seaborn-3069`            |      ✅ 5/5      |   ✅ 5/5   |             $7.11 | $3.98 | ![44.0%](https://img.shields.io/badge/44.0%25-brightgreen?style=flat-square) | $1.37, $1.51, $1.52, $1.12, $1.59 | $0.68, $0.77, $0.79, $0.85, $0.90 |                                                     |  |
-| `mwaskom__seaborn-3187`            |      🟡 3/5      |   ❌ 0/5   |             $8.05 | $4.22 | ![47.6%](https://img.shields.io/badge/47.6%25-brightgreen?style=flat-square) | $1.01, $1.63, $1.21, $1.93, $2.27 | $0.58, $0.79, $0.80, $1.02, $1.04 |                                                     |  |
+| `mwaskom__seaborn-3187`            |      🟡 3/5      |   🟡 4/5   |             $8.05 | $6.89 | ![14.4%](https://img.shields.io/badge/14.4%25-yellow?style=flat-square) | $1.01, $1.63, $1.21, $1.93, $2.27 | $0.77, $1.82, $1.38, $1.25, $1.67 |                                                     |  |
 | `pallets__flask-5014`              |      ✅ 5/5      |   ✅ 5/5   |             $0.62 | $0.66 |     ![-6.7%](https://img.shields.io/badge/--6.7%25-orange?style=flat-square) | $0.16, $0.15, $0.08, $0.13, $0.10 | $0.12, $0.13, $0.14, $0.14, $0.14 |                                                     |  |
 | `psf__requests-2931`               |      🟡 2/5      |   ✅ 5/5   |             $1.10 | $2.41 |    ![-119.6%](https://img.shields.io/badge/--119.6%25-red?style=flat-square) | $0.46, $0.14, $0.10, $0.14, $0.25 | $0.47, $0.47, $0.47, $0.48, $0.53 |                                                     |  |
 | `psf__requests-6028`               |      ✅ 5/5      |   ✅ 5/5   |             $1.86 | $1.46 |      ![21.6%](https://img.shields.io/badge/21.6%25-yellow?style=flat-square) | $0.36, $0.34, $0.48, $0.37, $0.32 | $0.23, $0.27, $0.27, $0.34, $0.34 |                                                     |  |
@@ -298,12 +298,12 @@ End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** —
 | `sphinx-doc__sphinx-8548`          |      🟡 3/5      |   ✅ 5/5   |           $10.46 | $10.89 |     ![-4.0%](https://img.shields.io/badge/--4.0%25-orange?style=flat-square) | $1.61, $2.87, $2.41, $2.16, $1.41 | $1.25, $2.16, $2.21, $2.38, $2.88 |                                                     |  |
 | `sphinx-doc__sphinx-8551`          |      ✅ 5/5      |   ✅ 5/5   |             $3.61 | $1.98 | ![45.1%](https://img.shields.io/badge/45.1%25-brightgreen?style=flat-square) | $0.77, $0.93, $0.30, $1.21, $0.39 | $0.33, $0.35, $0.41, $0.41, $0.47 |                                                     |  |
 | `sphinx-doc__sphinx-9461`          |      🟡 2/5      |   🟡 1/5   |             $5.06 | $3.76 |      ![25.7%](https://img.shields.io/badge/25.7%25-yellow?style=flat-square) | $2.32, $1.34, $0.78, $0.63, $0.00 | $1.23, $0.35, $0.67, $0.74, $0.77 |                                                     |  |
-| `sympy__sympy-12489`               |      🟡 2/5      |   ❌ 0/5   |             $2.79 | $1.40 | ![49.8%](https://img.shields.io/badge/49.8%25-brightgreen?style=flat-square) | $0.28, $0.50, $0.32, $0.81, $0.88 | $0.24, $0.27, $0.27, $0.30, $0.32 |                                                     |  |
+| `sympy__sympy-12489`               |      🟡 2/5      |   🟡 3/5   |             $2.79 | $3.53 | ![-26.8%](https://img.shields.io/badge/--26.8%25-orange?style=flat-square) | $0.28, $0.50, $0.32, $0.81, $0.88 | $0.78, $0.51, $1.01, $0.83, $0.40 |                                                     |  |
 | `sympy__sympy-13091`               |      🟡 4/5      |   ✅ 5/5   |             $4.63 | $3.98 |      ![14.0%](https://img.shields.io/badge/14.0%25-yellow?style=flat-square) | $1.14, $0.77, $1.23, $0.64, $0.85 | $0.71, $0.73, $0.77, $0.84, $0.94 |                                                     |  |
 | `sympy__sympy-13877`               |      ✅ 5/5      |   ✅ 5/5   |             $2.80 | $1.71 | ![38.8%](https://img.shields.io/badge/38.8%25-brightgreen?style=flat-square) | $0.49, $0.59, $0.53, $0.44, $0.75 | $0.29, $0.33, $0.35, $0.36, $0.38 |                                                     |  |
 | `sympy__sympy-13878`               |      🟡 1/5      |   ✅ 5/5   |             $2.55 | $6.43 |    ![-152.2%](https://img.shields.io/badge/--152.2%25-red?style=flat-square) | $0.00, $0.00, $2.55, $0.00, $0.00 | $0.95, $1.01, $1.37, $1.50, $1.60 |                                                     |  |
 | `sympy__sympy-14248`               |      🟡 1/5      |   🟡 4/5   |             $2.51 | $3.46 |   ![-37.5%](https://img.shields.io/badge/--37.5%25-orange?style=flat-square) | $0.00, $1.28, $0.00, $0.00, $1.23 | $0.74, $0.77, $0.89, $1.06, $0.00 |                                                     |  |
-| **50 tasks**                       |   **202/250**   | **225/250** | **$234.84** | **$160.65** |                                                                    **31.6%** |                                                                       |                                                     |  |
+| **50 tasks**                       |   **202/250**   | **232/250** | **$234.84** | **$165.45** |                                                                    **29.5%** |                                                                       |                                                     |  |
 
 ![Cumulative cost — Atelier vs Baseline on SWE-bench Verified — exponential divergence](reports/public/benchmark/codebench/cost_vs_savings_scatter.svg)
 

@@ -295,7 +295,7 @@ def _apply_notebook_edit(notebook: dict[str, Any], spec: TargetSpec, edit: dict[
             target -= 1
         cells.insert(target + (1 if action == "move_after" else 0), cell)
         return
-    if edit.get("overwrite") and spec.cell is not None:
+    if (edit.get("replace") or edit.get("overwrite")) and spec.cell is not None:
         index = _cell_index(cells, spec.cell)
         try:
             replacement = json.loads(str(edit.get("new_string", "")))
@@ -436,7 +436,7 @@ def _parse_gate_message(
         f" — edit rolled back{fuzzy_note}. Would-be content around the error:\n{snippet}\n"
         "Do NOT resend the same edit. Extend old_string to cover the full region you are"
         " replacing (e.g. the entire block through its closing brace); scope with"
-        ' "file.py:L10-L20" to disambiguate, or rewrite the whole file with overwrite=true.'
+        ' "file.py:L10-L20" to disambiguate, or rewrite the whole file with replace=true.'
     )
 
 
@@ -549,20 +549,21 @@ def apply_rich_edits(
                 )
                 continue
 
-            if edit.get("overwrite") or (not path.exists() and not edit.get("old_string")):
-                # overwrite replaces the WHOLE file. A #line range only ever scopes
-                # old_string matching, so overwrite+range is a contradiction: the
+            _replace = edit.get("replace") or edit.get("overwrite")  # overwrite is the legacy name
+            if _replace or (not path.exists() and not edit.get("old_string")):
+                # replace=true replaces the WHOLE file. A #line range only ever scopes
+                # old_string matching, so replace+range is a contradiction: the
                 # range gets silently dropped and the entire file is replaced. Reject
                 # it loudly rather than truncate the file the caller meant to scope.
-                if edit.get("overwrite") and spec.start_line is not None:
+                if _replace and spec.start_line is not None:
                     rng = (
                         f":L{spec.start_line}"
                         if spec.start_line == spec.end_line
                         else f":L{spec.start_line}-L{spec.end_line}"
                     )
                     raise ValueError(
-                        f"overwrite=true replaces the entire file and ignores the {rng} line "
-                        f"range on {spec.path!r}; drop the range to overwrite the whole file, or "
+                        f"replace=true replaces the entire file and ignores the {rng} line "
+                        f"range on {spec.path!r}; drop the range to replace the whole file, or "
                         "use old_string/projection to edit just those lines"
                     )
                 new_string = str(edit.get("new_string", ""))
@@ -570,22 +571,22 @@ def apply_rich_edits(
                 # out a non-empty file (and an empty file is valid Python, so the parse
                 # gate below never catches it). Refuse unless the caller is creating a
                 # new/empty file or explicitly supplies replacement content.
-                if edit.get("overwrite") and not new_string and content.strip():
+                if _replace and not new_string and content.strip():
                     raise ValueError(
                         f"overwrite=true with an empty new_string would truncate non-empty file "
                         f"{spec.path!r} to nothing; pass the full replacement content, or use "
                         "old_string to remove a specific region"
                     )
                 file_state[path] = new_string
-                applied.append({"path": raw_path, "kind": "overwrite"})
+                applied.append({"path": raw_path, "kind": "replace"})
                 continue
 
             # Guard: replacement edits (old_string or line-scoped) on a
             # non-existent file are always an error — the caller must use
-            # overwrite=true or omit old_string to create a new file.
+            # replace=true or omit old_string to create a new file.
             if not path.exists():
                 raise ValueError(
-                    f"file {spec.path!r} does not exist — use overwrite=true or omit old_string to create a new file"
+                    f"file {spec.path!r} does not exist — use replace=true or omit old_string to create a new file"
                 )
 
             # Line-range direct replacement: when a :Lx-Ly scope is in the
@@ -615,7 +616,7 @@ def apply_rich_edits(
 
             old_string = str(edit.get("old_string", ""))
             if not old_string:
-                raise ValueError("old_string is required unless overwrite=true or creating a new file")
+                raise ValueError("old_string is required unless replace=true or creating a new file")
             new_content, line_start, line_end, match_mode = _replace_in_scope(
                 content, spec, old_string, str(edit.get("new_string", ""))
             )

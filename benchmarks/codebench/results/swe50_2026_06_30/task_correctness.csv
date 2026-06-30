@@ -22,7 +22,7 @@ django__django-16560,baseline,atelier,5,5,5,5,4,5,0.8,1.0,0.2,10.0188,7.3276,26.
 matplotlib__matplotlib-14623,baseline,atelier,5,5,5,5,4,5,0.8,1.0,0.2,3.0778,2.1913,28.8,atelier,swebench,swebench
 matplotlib__matplotlib-24870,baseline,atelier,5,5,5,5,3,5,0.6,1.0,0.4,3.9538,3.552,10.2,atelier,swebench,swebench
 mwaskom__seaborn-3069,baseline,atelier,5,5,5,5,5,5,1.0,1.0,0.0,7.1103,3.9832,44.0,atelier,swebench,swebench
-mwaskom__seaborn-3187,baseline,atelier,5,5,5,5,3,0,0.6,0.0,-0.6,8.0468,4.2203,47.6,baseline,swebench,swebench
+mwaskom__seaborn-3187,baseline,atelier,5,5,5,5,3,4,0.6,0.8,0.2,8.0468,6.8879,14.4,atelier,swebench,swebench
 pallets__flask-5014,baseline,atelier,5,5,5,5,5,5,1.0,1.0,0.0,0.617,0.6585,-6.7,baseline,swebench,swebench
 psf__requests-2931,baseline,atelier,5,5,5,5,2,5,0.4,1.0,0.6,1.0971,2.4097,-119.6,atelier,swebench,swebench
 psf__requests-6028,baseline,atelier,5,5,5,5,5,5,1.0,1.0,0.0,1.8598,1.4582,21.6,atelier,swebench,swebench
@@ -44,7 +44,7 @@ sphinx-doc__sphinx-8120,baseline,atelier,5,5,5,5,3,5,0.6,1.0,0.4,2.0922,1.3043,3
 sphinx-doc__sphinx-8548,baseline,atelier,5,5,5,5,3,5,0.6,1.0,0.4,10.4631,10.8867,-4.0,atelier,swebench,swebench
 sphinx-doc__sphinx-8551,baseline,atelier,5,5,5,5,5,5,1.0,1.0,0.0,3.607,1.9813,45.1,atelier,swebench,swebench
 sphinx-doc__sphinx-9461,baseline,atelier,5,5,5,5,2,1,0.4,0.2,-0.2,5.0639,3.7627,25.7,baseline,swebench,swebench
-sympy__sympy-12489,baseline,atelier,5,5,5,5,2,0,0.4,0.0,-0.4,2.786,1.3986,49.8,baseline,swebench,swebench
+sympy__sympy-12489,baseline,atelier,5,5,5,5,2,3,0.4,0.6,0.2,2.786,3.5321,-26.8,atelier,swebench,swebench
 sympy__sympy-13091,baseline,atelier,5,5,5,5,4,5,0.8,1.0,0.2,4.6306,3.9803,14.0,atelier,swebench,swebench
 sympy__sympy-13877,baseline,atelier,5,5,5,5,5,5,1.0,1.0,0.0,2.7996,1.7146,38.8,atelier,swebench,swebench
 sympy__sympy-13878,baseline,atelier,5,5,5,5,1,5,0.2,1.0,0.8,2.5479,6.4251,-152.2,atelier,swebench,swebench

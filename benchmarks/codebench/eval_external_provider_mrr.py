@@ -11,16 +11,94 @@ Run via:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+# ---------------------------------------------------------------------------
+# Minimal JSON-RPC line client (used by JCodeMunchProvider)
+# ---------------------------------------------------------------------------
+
+
+class _JsonRpcLineClient:
+    def __init__(self, command: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
+        self.command = command
+        self.cwd = cwd
+        self.env = env
+        self.proc: subprocess.Popen[str] | None = None
+        self._next_id = 1
+
+    def start(self) -> None:
+        self.proc = subprocess.Popen(
+            self.command,
+            cwd=str(self.cwd) if self.cwd else None,
+            env=self.env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        self.call("initialize", {"protocolVersion": "2024-11-05", "clientInfo": {"name": "atelier-bench", "version": "1"}, "capabilities": {}})
+        self.notify("notifications/initialized", {})
+
+    def _read_message(self, *, timeout: float) -> dict[str, Any]:
+        assert self.proc is not None and self.proc.stdout is not None
+        proc = self.proc
+        timed_out = threading.Event()
+
+        def _kill_on_timeout() -> None:
+            timed_out.set()
+            with contextlib.suppress(Exception):
+                proc.kill()
+
+        timer = threading.Timer(timeout, _kill_on_timeout)
+        timer.start()
+        try:
+            line = proc.stdout.readline()
+        finally:
+            timer.cancel()
+        if timed_out.is_set() or not line:
+            stderr = ""
+            with contextlib.suppress(Exception):
+                if proc.stderr is not None:
+                    stderr = proc.stderr.read(2000)
+            raise TimeoutError(f"timed out waiting for JSON-RPC response: {stderr[:400]}")
+        return cast(dict[str, Any], json.loads(line))
+
+    def notify(self, method: str, params: dict[str, Any]) -> None:
+        assert self.proc is not None and self.proc.stdin is not None
+        self.proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": method, "params": params}, ensure_ascii=False) + "\n")
+        self.proc.stdin.flush()
+
+    def call(self, method: str, params: dict[str, Any], *, timeout: float = 60) -> dict[str, Any]:
+        assert self.proc is not None and self.proc.stdin is not None
+        request_id = self._next_id
+        self._next_id += 1
+        self.proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}, ensure_ascii=False) + "\n")
+        self.proc.stdin.flush()
+        while True:
+            message = self._read_message(timeout=timeout)
+            if message.get("id") != request_id:
+                continue
+            return message
+
+    def stop(self) -> None:
+        if self.proc is None:
+            return
+        self.proc.terminate()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            self.proc.wait(timeout=6)
+        self.proc.kill()
 
 sys.path.insert(0, "src")
 sys.path.insert(0, ".")
@@ -59,7 +137,7 @@ _all_repos: dict[str, dict] = {}  # prefix -> {ws, db, ...}
 
 for _gp in _gold_paths:
     _raw = json.loads(_gp.read_text())
-    _kind = _raw.get("gold_kind", _gp.stem.replace("bench_pairs_", "").replace("_gold", ""))
+    _kind = _raw.get("gold_kind", "definition")
     _golds.append((_kind, _raw["pairs"], _raw["true_map"]))
     for _prefix, _meta in _raw.get("repos", {}).items():
         if _prefix not in _all_repos:
@@ -89,7 +167,7 @@ if REPO_FILTER:
 
 # Sample
 if not FULL:
-    cap = SAMPLE if SAMPLE else 50
+    cap = SAMPLE if SAMPLE else 500
     _by_repo: dict[str, list] = defaultdict(list)
     for item in _union:
         _by_repo[item[1]].append(item)
@@ -133,7 +211,7 @@ def _rel(path_str: str, ws: Path) -> str:
     p = path_str.replace("\\", "/")
     ws_str = str(ws).replace("\\", "/").rstrip("/") + "/"
     if p.startswith(ws_str):
-        return p[len(ws_str):]
+        return p[len(ws_str) :]
     try:
         return str(Path(path_str).relative_to(ws)).replace("\\", "/")
     except ValueError:
@@ -141,11 +219,33 @@ def _rel(path_str: str, ws: Path) -> str:
         return str(Path(p)).replace("\\", "/")
 
 
-_PY_KEYWORDS = frozenset({
-    "def", "class", "import", "from", "return", "if", "else", "elif",
-    "for", "while", "with", "as", "try", "except", "finally", "raise",
-    "yield", "async", "await", "lambda", "pass", "break", "continue",
-})
+_PY_KEYWORDS = frozenset(
+    {
+        "def",
+        "class",
+        "import",
+        "from",
+        "return",
+        "if",
+        "else",
+        "elif",
+        "for",
+        "while",
+        "with",
+        "as",
+        "try",
+        "except",
+        "finally",
+        "raise",
+        "yield",
+        "async",
+        "await",
+        "lambda",
+        "pass",
+        "break",
+        "continue",
+    }
+)
 
 
 def _sym(query: str) -> str:
@@ -188,20 +288,25 @@ def _rank(ranked_files: list[str], gold_files: list[str]) -> int | None:
 
 # Language name map: extension -> (ast-grep lang, generic lang)
 _EXT_LANG: list[tuple[str, str]] = [
-    ("*.c", "c"), ("*.h", "c"),
+    ("*.c", "c"),
+    ("*.h", "c"),
     ("*.py", "python"),
-    ("*.ts", "typescript"), ("*.tsx", "tsx"),
-    ("*.js", "javascript"), ("*.jsx", "jsx"),
+    ("*.ts", "typescript"),
+    ("*.tsx", "tsx"),
+    ("*.js", "javascript"),
+    ("*.jsx", "jsx"),
     ("*.rs", "rust"),
     ("*.go", "go"),
     ("*.java", "java"),
-    ("*.cpp", "cpp"), ("*.cc", "cpp"), ("*.cxx", "cpp"),
+    ("*.cpp", "cpp"),
+    ("*.cc", "cpp"),
+    ("*.cxx", "cpp"),
     ("*.rb", "ruby"),
 ]
 
 # Serena doesn't support 'c' — map generic lang names to Serena-supported ones.
 _SERENA_LANG_MAP: dict[str, str] = {
-    "c": "cpp",          # closest supported; serena supports cpp / cpp_ccls
+    "c": "cpp",  # closest supported; serena supports cpp / cpp_ccls
     "tsx": "typescript",
     "jsx": "javascript",
 }
@@ -283,7 +388,9 @@ class CtagsProvider(Provider):
         # .gitignore files recursively, avoids indexing .venv / build dirs.
         ls = subprocess.run(
             ["git", "ls-files"],
-            cwd=ws, capture_output=True, timeout=30,
+            cwd=ws,
+            capture_output=True,
+            timeout=30,
         )
         if ls.returncode == 0 and ls.stdout.strip():
             fd2, flist = tempfile.mkstemp(suffix=".lst")
@@ -292,16 +399,21 @@ class CtagsProvider(Provider):
             cmd = [
                 str(self._ctags),
                 "--fields=+nKsS",
-                "-f", str(self._tags_db),
-                "-L", flist,
+                "-f",
+                str(self._tags_db),
+                "-L",
+                flist,
             ]
         else:
             # Not a git repo — fall back to recursive with exclusions
             cmd = [
-                str(self._ctags), "-R",
+                str(self._ctags),
+                "-R",
                 "--fields=+nKsS",
-                "-f", str(self._tags_db),
-                *_ctags_exclude_args(ws), ".",
+                "-f",
+                str(self._tags_db),
+                *_ctags_exclude_args(ws),
+                ".",
             ]
             flist = None
         try:
@@ -371,11 +483,22 @@ class AstGrepProvider(Provider):
         lang = _dominant_lang(ws)
         bin_path = self._resolve_bin()
         if bin_path == "__npx__":
-            cmd = ["npx", "--yes", "-p", "@ast-grep/cli", "sg",
-                   "run", "--pattern", pattern, "--lang", lang, "--json", str(ws)]
+            cmd = [
+                "npx",
+                "--yes",
+                "-p",
+                "@ast-grep/cli",
+                "sg",
+                "run",
+                "--pattern",
+                pattern,
+                "--lang",
+                lang,
+                "--json",
+                str(ws),
+            ]
         else:
-            cmd = [bin_path, "run", "--pattern", pattern,
-                   "--lang", lang, "--json", str(ws)]
+            cmd = [bin_path, "run", "--pattern", pattern, "--lang", lang, "--json", str(ws)]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if proc.returncode > 1 or (proc.returncode == 1 and not (proc.stdout or "").strip().startswith("[")):
             return []
@@ -522,7 +645,7 @@ class CodeIndexProvider(Provider):
         if not self._runner:
             return []
         try:
-            result = self._runner.query(_sym(query), file_pattern=self._file_pattern())
+            result = self._runner.query(_sym(query), file_pattern="*")
         except Exception:
             return []
         return self._paths_from_result(result, ws)
@@ -531,7 +654,7 @@ class CodeIndexProvider(Provider):
         if not self._runner:
             return []
         try:
-            result = self._runner.query(query, file_pattern=self._file_pattern())
+            result = self._runner.query(query, file_pattern="*")
         except Exception:
             return []
         return self._paths_from_result(result, ws)
@@ -569,7 +692,6 @@ class JCodeMunchProvider(Provider):
 
     def start(self, ws: Path) -> None:
         from benchmarks.mcp_tools.bench_external_indexers import run_cmd
-        from benchmarks.mcp_tools.bench_external_matrix import _JsonRpcLineClient
 
         self._ws = ws
         # Index the repo
@@ -681,13 +803,27 @@ class RgProvider(Provider):
     def _rg(self, query: str, ws: Path) -> list[str]:
         try:
             proc = subprocess.run(
-                ["rg", "--files-with-matches", "-l", "--no-heading",
-                 "--iglob", "!.git", "--iglob", "!.venv",
-                 "--iglob", "!node_modules", "--iglob", "!__pycache__",
-                 # Use rg's default regex mode — our queries are grep patterns.
-                 # Falls back gracefully: rg exits 1 (no match) on bad patterns.
-                 query, str(ws)],
-                capture_output=True, text=True, timeout=30,
+                [
+                    "rg",
+                    "--files-with-matches",
+                    "-l",
+                    "--no-heading",
+                    "--iglob",
+                    "!.git",
+                    "--iglob",
+                    "!.venv",
+                    "--iglob",
+                    "!node_modules",
+                    "--iglob",
+                    "!__pycache__",
+                    # Use rg's default regex mode — our queries are grep patterns.
+                    # Falls back gracefully: rg exits 1 (no match) on bad patterns.
+                    query,
+                    str(ws),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
         except subprocess.TimeoutExpired:
             return []
@@ -714,7 +850,9 @@ class CgProvider(Provider):
             t1 = time.perf_counter()
             r = subprocess.run(
                 ["codegraph", "init", "-i", str(ws)],
-                capture_output=True, text=True, timeout=600,
+                capture_output=True,
+                text=True,
+                timeout=600,
             )
             if r.returncode != 0:
                 raise RuntimeError(f"codegraph init failed: {r.stderr[:400]}")
@@ -727,7 +865,9 @@ class CgProvider(Provider):
     def search_symbol(self, query: str, ws: Path) -> list[str]:
         r = subprocess.run(
             ["codegraph", "query", "-p", str(ws), "-l", "20", "-j", _sym(query)],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         if r.returncode != 0:
             return []
@@ -869,6 +1009,7 @@ for prefix, queries in sorted(_queries_by_repo.items()):
         flush=True,
     )
 
+
 # Score each gold kind.
 # definition -> sym_results; content -> txt_results
 # swebench -> merge both (queries are a mix of symbol-lookup and text-search;
@@ -878,6 +1019,7 @@ def _merged(key: tuple[str, str]) -> list[str]:
     txt = _txt_results.get(key, [])
     seen: set[str] = set(sym)
     return sym + [f for f in txt if f not in seen]
+
 
 _gold_scores: dict[str, dict] = {}
 for _kind, _, _tm in _golds:

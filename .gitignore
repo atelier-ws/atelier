@@ -24,7 +24,7 @@ sdist/
 # -----------------------
 # Virtual Environments & uv
 # -----------------------
-.venv/
+.venv*
 venv/
 venv39/
 .uv-cache/
@@ -94,8 +94,6 @@ Thumbs.db
 # -----------------------
 # Runtime & Temp
 # -----------------------
-# Atelier runtime data
-.atelier/
 # Atelier generated file-index cache (written next to the indexer root)
 semantic_file_index.json
 
@@ -337,3 +335,8 @@ benchmarks/codebench/data/*.jsonl
 # Wrangler local cache (account cache, build cache)
 .wrangler/
 .aider*
+.astro
+.codegraph/
+.planning
+reports/
+

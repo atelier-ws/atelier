@@ -4,6 +4,7 @@ import logging
 import shutil
 import sqlite3
 import subprocess
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -550,6 +551,25 @@ def code_index_cmd(
         _print_index_stats(engine, frame_prefix=frame_prefix)
 
 
+def _entry_age_days(entry: Path, now: float) -> float:
+    """Days since the workspace dir was last touched.
+
+    Uses the newest mtime among the dir and its top-level children — the SQLite
+    index files and ``session_state.json`` are rewritten on each index/session,
+    so this tracks last activity without an expensive recursive walk.
+    """
+    newest = 0.0
+    with suppress(OSError):
+        newest = entry.stat().st_mtime
+    with suppress(OSError):
+        for child in entry.iterdir():
+            with suppress(OSError):
+                newest = max(newest, child.stat().st_mtime)
+    if newest <= 0:
+        return 0.0
+    return max(0.0, (now - newest) / 86_400.0)
+
+
 @code_group.command("prune")
 @click.option(
     "--store-root",
@@ -557,71 +577,104 @@ def code_index_cmd(
     help="Atelier store root (default: ~/.atelier).",
 )
 @click.option(
+    "--max-age-days",
+    type=int,
+    default=None,
+    help="Also remove indexes whose source still exists but that have been inactive for more than N days.",
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     help="Print what would be deleted without deleting anything.",
 )
-def code_prune_cmd(store_root: str | None, dry_run: bool) -> None:
-    """Remove workspace store dirs whose source repo no longer exists.
+@click.option("--json", "as_json", is_flag=True, help="Emit a JSON summary instead of human-readable lines.")
+def code_prune_cmd(store_root: str | None, max_age_days: int | None, dry_run: bool, as_json: bool) -> None:
+    """Remove stale workspace store dirs.
 
-    Scans every subdirectory of <store-root>/workspaces/ and deletes those
-    where the original workspace root (recorded in session_state.json) no
-    longer exists on disk.  Directories with no session_state.json are also
-    pruned — they are orphaned code indexes with no associated session.
+    Always removes dirs that are orphaned (no ``session_state.json``), came from
+    a ``/tmp`` benchmark run, or whose source repo no longer exists.  With
+    ``--max-age-days N`` it additionally removes indexes whose source still
+    exists but that have not been touched in more than N days — they rebuild
+    automatically on next use.
 
     Use --dry-run to preview what would be removed.
     """
     import json
+    import time
 
     from atelier.core.foundation.paths import default_store_root
 
     root = Path(store_root).expanduser().resolve() if store_root else default_store_root()
     ws_dir = root / "workspaces"
     if not ws_dir.exists():
-        click.echo("No workspaces directory found.")
+        if as_json:
+            _emit({"deleted": 0, "skipped": 0, "freed_bytes": 0, "dry_run": dry_run, "entries": []}, as_json=True)
+        else:
+            click.echo("No workspaces directory found.")
         return
+
+    now = time.time()
+
+    def _classify(entry: Path) -> str | None:
+        """Return a removal reason, or None to keep the dir."""
+        ss = entry / "session_state.json"
+        if not ss.exists():
+            return "no session_state.json (orphaned index)"
+        try:
+            data = json.loads(ss.read_text("utf-8"))
+        except Exception:  # noqa: BLE001
+            return "unreadable session_state.json"
+        transcript_path = str(data.get("transcript_path", ""))
+        atelier_root = str(data.get("atelier_root", ""))
+        if transcript_path.startswith("/tmp"):
+            return "source was in /tmp (benchmark run)"
+        if atelier_root and not Path(atelier_root).exists():
+            return f"source gone: {atelier_root}"
+        # Source still exists: only remove when explicitly GC-ing by age.
+        if max_age_days is not None:
+            age_days = _entry_age_days(entry, now)
+            if age_days > max_age_days:
+                return f"inactive {age_days:.0f}d (source still exists)"
+        return None
 
     total_size = 0
     deleted = 0
     skipped = 0
+    entries: list[dict[str, Any]] = []
 
     for entry in sorted(ws_dir.iterdir()):
         if not entry.is_dir():
             continue
-
-        # Compute entry size
+        reason = _classify(entry)
+        if reason is None:
+            skipped += 1
+            continue
         entry_bytes = sum(f.stat().st_size for f in entry.rglob("*") if f.is_file())
-
-        ss = entry / "session_state.json"
-        if not ss.exists():
-            reason = "no session_state.json (orphaned index)"
-        else:
-            try:
-                data = json.loads(ss.read_text("utf-8"))
-                atelier_root = data.get("atelier_root", "")
-                transcript_path = data.get("transcript_path", "")
-                if transcript_path.startswith("/tmp"):
-                    reason = "source was in /tmp (benchmark run)"
-                elif atelier_root and not Path(atelier_root).exists():
-                    reason = f"source gone: {atelier_root}"
-                else:
-                    skipped += 1
-                    continue
-            except Exception:  # noqa: BLE001
-                reason = "unreadable session_state.json"
-
-        size_mb = entry_bytes / 1_000_000
-        if dry_run:
-            click.echo(f"  would remove  {entry.name}  ({size_mb:.0f} MB)  — {reason}")
-        else:
+        if not dry_run:
             shutil.rmtree(entry, ignore_errors=True)
-            click.echo(f"  removed  {entry.name}  ({size_mb:.0f} MB)  — {reason}")
+        if not as_json:
+            verb = "would remove" if dry_run else "removed"
+            click.echo(f"  {verb}  {entry.name}  ({entry_bytes / 1_000_000:.0f} MB)  — {reason}")
+        entries.append({"name": entry.name, "bytes": entry_bytes, "reason": reason})
         deleted += 1
         total_size += entry_bytes
 
+    if as_json:
+        _emit(
+            {
+                "deleted": deleted,
+                "skipped": skipped,
+                "freed_bytes": total_size,
+                "dry_run": dry_run,
+                "entries": entries,
+            },
+            as_json=True,
+        )
+        return
+
     total_mb = total_size / 1_000_000
     verb = "Would free" if dry_run else "Freed"
-    click.echo(f"\n{verb} {total_mb:.0f} MB across {deleted} workspace(s). {skipped} kept (source still exists).")
+    click.echo(f"\n{verb} {total_mb:.0f} MB across {deleted} workspace(s). {skipped} kept.")
 
 
 def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
@@ -869,14 +922,28 @@ def _print_index_stats(engine: Any, frame_prefix: str = "") -> None:
 
 
 @code_group.command("train")
-@click.option("--name", "name", required=True, type=click.Choice(["embedding"]),
-              help="What to train. Currently: embedding (a per-repo code embedder).")
+@click.option(
+    "--name",
+    "name",
+    required=True,
+    type=click.Choice(["embedding"]),
+    help="What to train. Currently: embedding (a per-repo code embedder).",
+)
 @click.option("--repo-root", default=".", show_default=True, help="Repository to specialise the embedder for.")
 @click.option("--base-model", default="BAAI/bge-code-v1", show_default=True)
-@click.option("--output-dir", default=None, type=click.Path(),
-              help="Where to save the finetuned model (default: <store>/embeddings/<repo>).")
-@click.option("--pairs-per-file", type=int, default=5, show_default=True,
-              help="Synthetic (query->gold-file) pairs mined per source file.")
+@click.option(
+    "--output-dir",
+    default=None,
+    type=click.Path(),
+    help="Where to save the finetuned model (default: <store>/embeddings/<repo>).",
+)
+@click.option(
+    "--pairs-per-file",
+    type=int,
+    default=5,
+    show_default=True,
+    help="Synthetic (query->gold-file) pairs mined per source file.",
+)
 @click.option("--epochs", type=int, default=2, show_default=True)
 @click.option("--batch-size", type=int, default=16, show_default=True)
 @click.option("--max-seq", type=int, default=512, show_default=True)
@@ -937,16 +1004,42 @@ def code_train_cmd(
     data_dir = work / "data"
 
     steps = [
-        [sys.executable, str(miner), "--repo-dir", str(repo), "--out", str(pairs_json),
-         "--pairs-per-file", str(pairs_per_file)],
-        [sys.executable, str(prep), "--pairs", str(pairs_json), "--repo-dir", str(repo),
-         "--out-dir", str(data_dir)],
-        [sys.executable, str(trainer), "--train-data", str(data_dir), "--model", base_model,
-         "--output-dir", str(out), "--epochs", str(epochs), "--batch-size", str(batch_size),
-         "--max-seq", str(max_seq), "--learning-rate", str(learning_rate), "--compare-baseline"],
+        [
+            sys.executable,
+            str(miner),
+            "--repo-dir",
+            str(repo),
+            "--out",
+            str(pairs_json),
+            "--pairs-per-file",
+            str(pairs_per_file),
+        ],
+        [sys.executable, str(prep), "--pairs", str(pairs_json), "--repo-dir", str(repo), "--out-dir", str(data_dir)],
+        [
+            sys.executable,
+            str(trainer),
+            "--train-data",
+            str(data_dir),
+            "--model",
+            base_model,
+            "--output-dir",
+            str(out),
+            "--epochs",
+            str(epochs),
+            "--batch-size",
+            str(batch_size),
+            "--max-seq",
+            str(max_seq),
+            "--learning-rate",
+            str(learning_rate),
+            "--compare-baseline",
+        ],
     ]
     plan = {
-        "name": name, "repo": str(repo), "base_model": base_model, "output_dir": str(out),
+        "name": name,
+        "repo": str(repo),
+        "base_model": base_model,
+        "output_dir": str(out),
         "steps": [" ".join(s) for s in steps],
     }
     if dry_run:

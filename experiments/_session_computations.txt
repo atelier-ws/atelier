@@ -1,0 +1,1343 @@
+
+==============================================================================
+#1  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json, glob, os d="reports/benchmark/codebench/swe50_final_5rep" tasks=["astropy__astropy-13579","django__django-13449","django__django-12155","django__django-14376","django__django-13837","django__django-11333"] rows=[] with
+------------------------------------------------------------------------------
+    baseline: n=0
+    atelier: n=0
+    baseline: n=0
+    atelier: n=0
+    baseline: n=0
+    atelier: n=0
+    baseline: n=0
+    atelier: n=0
+    baseline: n=0
+    atelier: n=0
+    baseline: n=0
+    atelier: n=0
+
+==============================================================================
+#2  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json, os d="reports/benchmark/codebench/swe50_final_5rep" p=os.path.join(d,"results.jsonl") print("exists:", os.path.exists(p), "size:", os.path.getsize(p) if os.path.exists(p) else 0) n=0 with open(p) as f:     for line in 
+------------------------------------------------------------------------------
+  KEYS: ['arm', 'cache_creation_tokens', 'cache_read_tokens', 'correct', 'cost_usd', 'duration_api_ms', 'duration_ms', 'flow_path', 'input_tokens', 'is_error', 'judge_model', 'judge_reason', 'model_usag
+     arm: baseline
+     cache_creation_tokens: 74525
+     cache_read_tokens: 2246915
+     correct: False
+     cost_usd: 2.9140605000000006
+     flow_path: /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_stress...
+     input_tokens: 11413
+     model_usage: {'claude-haiku-4-5-20251001': {'inputTokens': 1988, 'outputTokens': 18, 'cacheRe...
+     output_tokens: 39864
+     saved_tokens: 0
+     saved_usd: 0.0
+     thinking_tokens: 0
+  KEYS: ['arm', 'cache_creation_tokens', 'cache_read_tokens', 'correct', 'cost_usd', 'duration_api_ms', 'duration_ms', 'flow_path', 'input_tokens', 'is_error', 'judge_model', 'judge_reason', 'model_usag
+     arm: baseline
+     cache_creation_tokens: 32741
+     cache_read_tokens: 772854
+     correct: False
+     cost_usd: 1.075335
+     flow_path: /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_stress...
+     input_tokens: 4993
+     model_usage: {'claude-haiku-4-5-20251001': {'inputTokens': 1988, 'outputTokens': 17, 'cacheRe...
+     output_tokens: 13793
+     saved_tokens: 0
+     saved_usd: 0.0
+     thinking_tokens: 0
+
+==============================================================================
+#3  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json, os from collections import defaultdict d="reports/benchmark/codebench/swe50_final_5rep" tasks=["astropy__astropy-13579","django__django-13449","django__django-12155","django__django-14376","django__django-13837","djang
+------------------------------------------------------------------------------
+    baseline: n=5  avg=$0.471  correct=5/5
+      rep1: $0.561  turns= 17  out=  6992  cacheR=  309k  correct=True  err=False
+      rep2: $0.464  turns= 14  out=  6503  cacheR=  249k  correct=True  err=False
+      rep3: $0.465  turns= 15  out=  6504  cacheR=  258k  correct=True  err=False
+      rep4: $0.360  turns= 10  out=  4601  cacheR=  135k  correct=True  err=False
+      rep5: $0.507  turns= 17  out=  6748  cacheR=  310k  correct=True  err=False
+    atelier: n=5  avg=$0.500  correct=0/5
+      rep1: $0.567  turns= 18  out=  7003  cacheR=  336k  correct=None  err=False
+      rep2: $0.508  turns= 12  out=  7475  cacheR=  213k  correct=None  err=False
+      rep3: $0.308  turns=  8  out=  3938  cacheR=  118k  correct=None  err=False
+      rep4: $0.525  turns= 13  out=  6956  cacheR=  254k  correct=None  err=False
+      rep5: $0.594  turns= 16  out=  8470  cacheR=  318k  correct=None  err=False
+    baseline: n=5  avg=$1.390  correct=5/5
+      rep1: $1.894  turns= 43  out= 26620  cacheR= 1424k  correct=True  err=False
+      rep2: $2.613  turns= 39  out= 46861  cacheR= 1673k  correct=True  err=False
+      rep3: $1.830  turns= 44  out= 28429  cacheR= 1361k  correct=True  err=False
+      rep4: $0.270  turns= 11  out=  3675  cacheR=  145k  correct=True  err=False
+      rep5: $0.346  turns= 15  out=  4396  cacheR=  220k  correct=True  err=False
+    atelier: n=5  avg=$1.529  correct=3/5
+      rep1: $0.851  turns= 24  out=  7579  cacheR=  649k  correct=True  err=False
+      rep2: $2.272  turns= 82  out= 35147  cacheR= 2556k  correct=True  err=False
+      rep3: $0.645  turns= 14  out=  6126  cacheR=  372k  correct=True  err=False
+      rep4: $2.036  turns= 42  out= 18063  cacheR= 1936k  correct=None  err=False
+      rep5: $1.841  turns= 32  out= 23259  cacheR= 1390k  correct=None  err=False
+    baseline: n=5  avg=$0.089  correct=5/5
+      rep1: $0.097  turns=  5  out=   535  cacheR=   32k  correct=True  err=False
+      rep2: $0.098  turns=  5  out=   521  cacheR=   32k  correct=True  err=False
+      rep3: $0.077  turns=  5  out=   564  cacheR=   34k  correct=True  err=False
+      rep4: $0.098  turns=  5  out=   537  cacheR=   32k  correct=True  err=False
+      rep5: $0.076  turns=  5  out=   505  cacheR=   34k  correct=True  err=False
+  ... (+42 more numeric lines)
+
+==============================================================================
+#4  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json, os from collections import defaultdict d="reports/benchmark/codebench/swe50_final_5rep" # 1) grading state across whole run nc=defaultdict(lambda: defaultdict(int)) flowsrc=defaultdict(lambda: defaultdict(int)) with op
+------------------------------------------------------------------------------
+  GRADING STATE (correct field) by arm:
+    baseline: {'False': 30, 'True': 178}
+    atelier: {'True': 22, 'False': 2, 'None': 67}
+    baseline: {'reused(stress)': 208}
+    atelier: {'reused(clean_3rep)': 24, 'fresh(final_5rep)': 67}
+
+==============================================================================
+#5  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json, os d="reports/benchmark/codebench/swe50_final_5rep" want={("django__django-13449","atelier",2),("django__django-13837","atelier",4),       ("django__django-11333","atelier",1),("django__django-13449","atelier",4)} with
+------------------------------------------------------------------------------
+  ('django__django-13449', 'atelier', 2) -> /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_clean_3rep_2tok/django__django-13449_atelier_rep2.flow
+  ('django__django-11333', 'atelier', 1) -> /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/django__django-11333_atelier_rep1.flow
+  ('django__django-13449', 'atelier', 4) -> /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/django__django-13449_atelier_rep4.flow
+  ('django__django-13837', 'atelier', 4) -> /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/django__django-13837_atelier_rep4.flow
+
+==============================================================================
+#6  CMD: cd /home/pankaj/Projects/leanchain/atelier && for f in \   "reports/benchmark/codebench/swe50_final_5rep/django__django-13449_atelier_rep4.flow" \   "reports/benchmark/codebench/swe50_final_5rep/django__django-13837_atelier_rep4.flow" \   "reports/benchmark/codebench/swe50_final_5rep/django__django-
+------------------------------------------------------------------------------
+  ==== reports/benchmark/codebench/swe50_final_5rep/django__django-13449_atelier_rep4.flow ====
+  ==== reports/benchmark/codebench/swe50_final_5rep/django__django-13837_atelier_rep4.flow ====
+  ==== reports/benchmark/codebench/swe50_final_5rep/django__django-11333_atelier_rep1.flow ====
+
+==============================================================================
+#7  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json, gzip f="reports/benchmark/codebench/swe50_final_5rep/django__django-13837_atelier_rep4.flow" with open(f,'rb') as fh: head=fh.read(2) op = gzip.open if head==b'\x1f\x8b' else open with op(f,'rt',errors='replace') as fh
+------------------------------------------------------------------------------
+  2 notjson: �P. �8�c!K�M=��,o(+Y�{�5
+
+==============================================================================
+#8  CMD: cd /home/pankaj/Projects/leanchain/atelier && make flow-dump path=reports/benchmark/codebench/swe50_final_5rep/django__django-13837_atelier_rep4.flow 2>&1 | tail -5
+------------------------------------------------------------------------------
+  uv run --project benchmarks python scripts/extract_flow.py reports/benchmark/codebench/swe50_final_5rep/django__django-13837_atelier_rep4.flow
+  === reports/benchmark/codebench/swe50_final_5rep/django__django-13837_atelier_rep4.flow ===
+    35 turns -> reports/benchmark/codebench/swe50_final_5rep/django__django-13837_atelier_rep4.flow_dump.txt
+
+==============================================================================
+#9  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import re from collections import Counter f="reports/benchmark/codebench/swe50_final_5rep/django__django-13837_atelier_rep4.flow_dump.txt" txt=open(f,errors='replace').read() print("chars:",len(txt)) # count tool invocations heuris
+------------------------------------------------------------------------------
+  === Turn 1 ===
+  === Turn 2 ===
+  [assistant] [tool_use: ToolSearch] {"query": "select:code_search,mcp__atelier__read,mcp__atelier__edit,mcp__atelier__bash", "max_results": 5}
+  === Turn 3 ===
+  === Turn 4 ===
+  [assistant] [tool_use: ToolSearch] {"query": "+atelier read edit bash explore", "max_results": 10}
+  === Turn 5 ===
+  [assistant] [tool_use: ToolSearch] {"query": "atelier", "max_results": 10}
+  === Turn 6 ===
+
+==============================================================================
+#10  CMD: cd /home/pankaj/Projects/leanchain/atelier && for f in \   "django__django-11333_atelier_rep1" \   "django__django-13449_atelier_rep4" \   "django__django-14376_atelier_rep4" ; do   p="reports/benchmark/codebench/swe50_final_5rep/$f.flow"   make flow-dump path="$p" >/dev/null 2>&1 done uv run python
+------------------------------------------------------------------------------
+  django__django-11333_atelier_rep1: turns=12 ToolSearch=0 tool_errors=0 Agent_spawns=0 Edit=0
+  django__django-13449_atelier_rep4: turns=42 ToolSearch=1 tool_errors=1 Agent_spawns=0 Edit=0
+  django__django-14376_atelier_rep4: turns=15 ToolSearch=0 tool_errors=0 Agent_spawns=0 Edit=0
+  django__django-13837_atelier_rep4: turns=35 ToolSearch=10 tool_errors=11 Agent_spawns=3 Edit=4
+
+==============================================================================
+#11  CMD: cd /home/pankaj/Projects/leanchain/atelier && grep -rn "flow_path\|\.flow\b\|flow_dump\|extract_flow" benchmarks/codebench/*.py | grep -iv "workflow" | head -40
+------------------------------------------------------------------------------
+  benchmarks/codebench/cg_report_wire.py:43:FLOW_RE = re.compile(r"^(cg_[a-z]+)_(baseline|atelier)_rep(\d+)\.flow$")
+  benchmarks/codebench/run.py:731:    Atelier is already complete. The .flow capture sees every round-trip through
+  benchmarks/codebench/run.py:1016:        return _parse_atelier_run_result(stdout, flow_path, task, arm, rep, wall_duration_ms)
+  benchmarks/codebench/run.py:1376:        # per call, scoped to THIS run next to its .flow capture, so tool wait
+
+==============================================================================
+#12  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run --project benchmarks python - <<'PY' from pathlib import Path from benchmarks.codebench.incontainer import _dump_flow_text # pick a flow whose dump we'll write to a throwaway name to prove the path works src = Path("reports/benchmark/codebench/swe
+------------------------------------------------------------------------------
+  === reports/benchmark/codebench/swe50_final_5rep/django__django-11333_atelier_rep2.flow ===
+    12 turns -> reports/benchmark/codebench/swe50_final_5rep/django__django-11333_atelier_rep2.flow_dump.txt
+
+==============================================================================
+#13  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json, os d="reports/benchmark/codebench/swe50_final_5rep" rows=[] with open(os.path.join(d,"results.jsonl")) as f:     for line in f:         line=line.strip()         if not line: continue         r=json.loads(line)        
+------------------------------------------------------------------------------
+  atelier  rep1: $0.395  turns= 19 out=  4723 cacheR=  233k correct=None err=False timeout=False ok=True
+            flow: django__django-14007_atelier_rep1.flow
+  atelier  rep2: $0.000  turns=  0 out=     0 cacheR=    0k correct=None err=True timeout=False ok=False
+            excerpt: '\n[stderr]\nFATAL: atelier code index built 0 files for /testbed -- aborting so the run is retried instead of over-searching on an empty index.\nTraceback (most re'
+            flow: django__django-14007_atelier_rep2.flow
+  atelier  rep3: $0.000  turns=  0 out=     0 cacheR=    0k correct=None err=True timeout=False ok=False
+            excerpt: '\n[stderr]\nFATAL: atelier code index built 0 files for /testbed -- aborting so the run is retried instead of over-searching on an empty index.\nTraceback (most re'
+            flow: django__django-14007_atelier_rep3.flow
+  atelier  rep4: $0.000  turns=  0 out=     0 cacheR=    0k correct=None err=True timeout=False ok=False
+            excerpt: '\n[stderr]\nFATAL: atelier code index built 0 files for /testbed -- aborting so the run is retried instead of over-searching on an empty index.\nTraceback (most re'
+            flow: django__django-14007_atelier_rep4.flow
+  atelier  rep5: $0.231  turns= 11 out=  2483 cacheR=  112k correct=None err=False timeout=False ok=True
+            flow: django__django-14007_atelier_rep5.flow
+  baseline rep1: $0.444  turns= 21 out=  5594 cacheR=  287k correct=True err=False timeout=False ok=True
+            flow: django__django-14007_baseline_rep1.flow
+  baseline rep2: $0.413  turns= 20 out=  5133 cacheR=  287k correct=True err=False timeout=False ok=True
+            flow: django__django-14007_baseline_rep2.flow
+  baseline rep3: $0.471  turns= 23 out=  5934 cacheR=  341k correct=True err=False timeout=False ok=True
+            flow: django__django-14007_baseline_rep3.flow
+  baseline rep4: $0.735  turns= 31 out=  7914 cacheR=  568k correct=True err=False timeout=False ok=True
+            flow: django__django-14007_baseline_rep4.flow
+  baseline rep5: $0.516  turns= 23 out=  6824 cacheR=  353k correct=True err=False timeout=False ok=True
+            flow: django__django-14007_baseline_rep5.flow
+    django__django-14007_atelier_rep1.patch: 2229 bytes
+    django__django-14007_atelier_rep2.patch: 0 bytes
+    django__django-14007_atelier_rep3.patch: 0 bytes
+    django__django-14007_atelier_rep4.patch: 0 bytes
+    django__django-14007_atelier_rep5.patch: 1885 bytes
+
+==============================================================================
+#14  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json, os from collections import Counter, defaultdict d="reports/benchmark/codebench/swe50_final_5rep" sig="built 0 files" zero_idx=[]; other_err=[] by_task=defaultdict(list) tot=defaultdict(int) with open(os.path.join(d,"re
+------------------------------------------------------------------------------
+  atelier rows total: 99   baseline rows: 208
+  *** atelier '0 files' FATAL index aborts: 3 reps across 1 tasks ***
+  other atelier errors: 3
+     astropy__astropy-13398 rep1: '\n[stderr]\natelier code index: prewarm OK (1184 files)'
+     astropy__astropy-13398 rep3: 'timed out after 1800s\natelier code index: prewarm OK (1184 files)'
+
+==============================================================================
+#15  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json, os from collections import Counter d="reports/benchmark/codebench/swe50_final_5rep" c=Counter() err_rows=[] with open(os.path.join(d,"results.jsonl")) as f:     for line in f:         line=line.strip()         if not l
+------------------------------------------------------------------------------
+     ('atelier', 'is_error', False) 93
+     ('atelier', 'is_error', True) 6
+     ('atelier', 'ok', False) 6
+     ('atelier', 'ok', True) 93
+     ('baseline', 'is_error', False) 208
+     ('baseline', 'ok', True) 208
+     ('atelier', 'astropy__astropy-13398', 1, 'is_error', 'not_ok')
+     ('atelier', 'astropy__astropy-13398', 3, 'is_error', 'not_ok')
+     ('atelier', 'django__django-14007', 2, 'is_error', 'not_ok')
+     ('atelier', 'django__django-14007', 3, 'is_error', 'not_ok')
+     ('atelier', 'django__django-14007', 4, 'is_error', 'not_ok')
+     ('atelier', 'django__django-15128', 4, 'is_error', 'not_ok')
+
+==============================================================================
+#16  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import dataclasses from benchmarks.codebench.run import ArmResult for f in dataclasses.fields(ArmResult):     if f.name in ("correct","score","ok","is_error","judge_model","judge_reason"):         d = f.default if f.default is not 
+------------------------------------------------------------------------------
+    correct: type=bool | None  default=None
+
+==============================================================================
+#17  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run --project benchmarks python - <<'PY' import tempfile, dataclasses from pathlib import Path from benchmarks.codebench.run import ArmResult import benchmarks.codebench.multiswe_run as m  class Inst:     instance_id="demo__demo-1"  def mk(**kw):     
+------------------------------------------------------------------------------
+  Use the edit tool to create or modify files — shell redirects, heredocs, and inline interpreter writes are blocked unless the target is a literal path inside an allowed write root (the workspace, addi
+  Use the edit tool to create or modify files — shell redirects, heredocs, and inline interpreter writes are blocked unless the target is a literal path inside an allowed write root (the workspace, addi
+
+==============================================================================
+#18  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run --project benchmarks python experiments/test_inline_grade.py
+------------------------------------------------------------------------------
+    File "/home/pankaj/Projects/leanchain/atelier/experiments/test_inline_grade.py", line 6, in <module>
+
+==============================================================================
+#19  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=. uv run --project benchmarks python experiments/test_inline_grade.py
+------------------------------------------------------------------------------
+    File "/home/pankaj/Projects/leanchain/atelier/experiments/test_inline_grade.py", line 82, in <module>
+    File "/home/pankaj/Projects/leanchain/atelier/experiments/test_inline_grade.py", line 49, in main
+    File "/home/pankaj/Projects/leanchain/atelier/experiments/test_inline_grade.py", line 34, in mk
+
+==============================================================================
+#20  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=. uv run --project benchmarks python experiments/test_inline_grade.py
+------------------------------------------------------------------------------
+  real-patch: True 1.0 resolved | work: demo__demo-1_atelier_rep3
+
+==============================================================================
+#21  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=. uv run --project benchmarks python -c " from pathlib import Path import benchmarks.codebench.multiswe_run as m out=Path('reports/benchmark/codebench/swe50_final_5rep') prior=m._load_prior_results(out) # show the new per-row reused line for a
+------------------------------------------------------------------------------
+  -> astropy__astropy-13398/atelier rep1: reused (resume) ok=False correct=None cost=$3.0082 turns=50
+    -> astropy__astropy-13398/atelier rep2: reused (resume) ok=True correct=None cost=$0.5804 turns=7
+    -> astropy__astropy-13398/atelier rep3: reused (resume) ok=False correct=None cost=$0.0000 turns=0
+    -> astropy__astropy-13398/atelier rep4: reused (resume) ok=True correct=None cost=$0.8141 turns=13
+  [resume] kept 316 prior row(s): 200/316 correct, $274.82 already spent; running N new job(s)
+
+==============================================================================
+#22  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run ruff check benchmarks/codebench/multiswe_run.py 2>&1 | tail -2 && PYTHONPATH=. uv run --project benchmarks python -c " from pathlib import Path import benchmarks.codebench.multiswe_run as m out=Path('reports/benchmark/codebench/swe50_final_5rep') 
+------------------------------------------------------------------------------
+    -> astropy__astropy-13398/atelier rep1: reused (resume) ok=False correct=None cost=$3.0082 turns=50 out=48689 cacheR=2119k
+    -> astropy__astropy-13398/atelier rep2: reused (resume) ok=True correct=None cost=$0.5804 turns=7 out=6073 cacheR=157k
+    -> astropy__astropy-13398/atelier rep3: reused (resume) ok=False correct=None cost=$0.0000 turns=0 out=0 cacheR=0k
+  [resume] kept 323 prior row(s): 200/323 correct, $281.15 / 3793k output + 200M cache-read tok already spent; running N new job(s)
+
+==============================================================================
+#23  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run ruff check benchmarks/codebench/multiswe_run.py 2>&1 | tail -2 && PYTHONPATH=. uv run --project benchmarks python -c " from pathlib import Path import benchmarks.codebench.multiswe_run as m out=Path('reports/benchmark/codebench/swe50_final_5rep') 
+------------------------------------------------------------------------------
+    -> astropy__astropy-13398/atelier rep1: reused (resume) ok=False correct=None cost=$3.0082 turns=50 in=4820 out=48689 cacheW=70k cacheR=2119k
+    -> astropy__astropy-13398/atelier rep2: reused (resume) ok=True correct=None cost=$0.5804 turns=7 in=3960 out=6073 cacheW=33k cacheR=157k
+  [resume] kept 332 prior row(s): 200/332 correct, $289.78 / 1468k in + 3902k out + 9M cacheW + 205M cacheR tok already spent; running N new job(s)
+
+==============================================================================
+#24  CMD: cd /home/pankaj/Projects/leanchain/atelier && git add benchmarks/codebench/incontainer.py benchmarks/codebench/multiswe_run.py && git commit -m "$(cat <<'EOF' feat(codebench): inline grading, resume retry-on-error, richer logs, auto flow-dump  multiswe_run: - Grade each rep inline the moment it fini
+------------------------------------------------------------------------------
+     - reports/benchmark/mrr_history.jsonl
+     - src/atelier/gateway/cli/commands/eval.py
+      - src/atelier/gateway/cli/commands/eval.py
+
+==============================================================================
+#25  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json, os d="reports/benchmark/codebench/swe50_final_5rep" for line in open(os.path.join(d,"results.jsonl")):     line=line.strip()     if not line: continue     r=json.loads(line)     if r.get("task")=="sphinx-doc__sphinx-10
+------------------------------------------------------------------------------
+  rep1: ok=False err=True turns=0 timeout=False
+    excerpt: '\n[stderr]\nFATAL: atelier code index built 0 files for /testbed -- aborting so the run is retried instead of over-searching on an empty index.\n  File "/root/.local/share/uv/tools/atelier
+  rep2: ok=False err=True turns=0 timeout=False
+    excerpt: '\n[stderr]\nFATAL: atelier code index built 0 files for /testbed -- aborting so the run is retried instead of over-searching on an empty index.\n  File "/root/.local/share/uv/tools/atelier
+  rep3: ok=False err=True turns=0 timeout=False
+    excerpt: '\n[stderr]\nFATAL: atelier code index built 0 files for /testbed -- aborting so the run is retried instead of over-searching on an empty index.\n  File "/root/.local/share/uv/tools/atelier
+  rep4: ok=False err=True turns=0 timeout=False
+    excerpt: '\n[stderr]\nFATAL: atelier code index built 0 files for /testbed -- aborting so the run is retried instead of over-searching on an empty index.\n  File "/root/.local/share/uv/tools/atelier
+  rep5: ok=False err=True turns=0 timeout=False
+    excerpt: '\n[stderr]\nFATAL: atelier code index built 0 files for /testbed -- aborting so the run is retried instead of over-searching on an empty index.\n  File "/root/.local/share/uv/tools/atelier
+  -- baseline sphinx-10673 --
+  rep3: ok=True err=False turns=38 cost=$1.116 correct=True
+  rep2: ok=True err=False turns=47 cost=$1.567 correct=None
+
+==============================================================================
+#26  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json, os d="reports/benchmark/codebench/swe50_final_5rep" for line in open(os.path.join(d,"results.jsonl")):     line=line.strip()     if not line: continue     r=json.loads(line)     if r.get("task")=="sphinx-doc__sphinx-10
+------------------------------------------------------------------------------
+  FATAL: atelier code index built 0 files for /testbed -- aborting so the run is retried instead of over-searching on an empty index.
+    File "/root/.local/share/uv/tools/atelier/lib/python3.13/site-packages/click/core.py", line 877, in invoke
+    File "/root/.local/share/uv/tools/atelier/lib/python3.13/site-packages/atelier/gateway/cli/commands/code.py", line 495, in code_index_cmd
+    File "/root/.local/share/uv/tools/atelier/lib/python3.13/site-packages/atelier/gateway/cli/commands/code.py", line 261, in _code_context_engine
+    File "/root/.local/share/uv/tools/atelier/lib/python3.13/site-packages/atelier/core/capabilities/code_context/engine.py", line 2476, in __init__
+    File "/root/.local/share/uv/tools/atelier/lib/python3.13/site-packages/atelier/core/capabilities/code_context/embedding.py", line 165, in __init__
+    File "/root/.local/share/uv/tools/atelier/lib/python3.13/site-packages/atelier/infra/embeddings/factory.py", line 130, in get_code_embedder
+          pin=os.getenv("ATELIER_CODE_EMBEDDER") or os.getenv("ATELIER_EMBEDDER") or None,
+          model=os.getenv("ATELIER_CODE_EMBED_MODEL") or None,
+    File "/root/.local/share/uv/tools/atelier/lib/python3.13/site-packages/atelier/infra/embeddings/factory.py", line 110, in make_code_embedder
+
+==============================================================================
+#27  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json, os from collections import defaultdict d="reports/benchmark/codebench/swe50_final_5rep" rows=[json.loads(l) for l in open(os.path.join(d,"results.jsonl")) if l.strip()] arms=defaultdict(lambda: defaultdict(int)) okfals
+------------------------------------------------------------------------------
+  [atelier] 10 search/read calls with 0 edits -- you are spiraling. You have already examined: benchmarks/codebench/incontainer.py:L395-L435. Pick the right site and EDIT now, then run the failing test 
+
+==============================================================================
+#28  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "=== tasks per run dir (distinct) ===" && for dir in swe50_final_v2 swe50_stress_run1 swe50_final_5rep swe50_clean_3rep_2tok; do p="reports/benchmark/codebench/$dir/results.jsonl"; [ -f "$p" ] && echo "$dir: $(uv run python -c "import json,sys;print
+------------------------------------------------------------------------------
+  benchmarks/codebench/_del_atelier_rows.py
+  benchmarks/codebench/eval_cg_mrr.py
+  benchmarks/codebench/eval_cmm_mrr.py
+  benchmarks/codebench/eval_external_provider_mrr.py
+  benchmarks/codebench/fitness_explore_mrr.py
+  [atelier] 11 search/read calls with 0 edits -- you are spiraling. You have already examined: benchmarks/codebench/incontainer.py:L395-L435. Pick the right site and EDIT now, then run the failing test 
+
+==============================================================================
+#29  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=. uv run --project benchmarks python experiments/clean_results.py reports/benchmark/codebench/swe50_final_5rep
+------------------------------------------------------------------------------
+  ungraded (correct=None) among kept rows: {'atelier': 131, 'baseline': 1}
+  removing by arm: {'atelier': 53}
+
+==============================================================================
+#30  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json from collections import defaultdict d="reports/benchmark/codebench/swe50_final_5rep/results.jsonl" rows=[json.loads(l) for l in open(d) if l.strip()] cov=defaultdict(lambda: defaultdict(set))   # task -> arm -> set(reps
+------------------------------------------------------------------------------
+  TOTAL reps a restart would RUN: baseline 16, atelier 70
+  ungraded kept rows the end-of-run pass will grade: baseline 1, atelier 131
+
+==============================================================================
+#31  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "tokens in .env:" && grep -cE "CLAUDE_CODE_OAUTH_TOKEN_[12]=" benchmarks/codebench/.env 2>/dev/null; echo "instances to pass: $(grep -vcE '^#|^$' benchmarks/codebench/data/swe50_stress.txt)"; echo "=== launching resume (50 tasks, both arms, 5 reps, 
+------------------------------------------------------------------------------
+  tokens in .env:
+  === launching resume (50 tasks, both arms, 5 reps, 3 jobs/token) ===
+  [run] results -> /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.astropy_1776_astropy-13398:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.astropy_1776_astropy-13398:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.astropy_1776_astropy-13579:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.astropy_1776_astropy-13579:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.astropy_1776_astropy-14369:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.astropy_1776_astropy-14369:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.astropy_1776_astropy-8707:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.astropy_1776_astropy-8707:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.django_1776_django-11138:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.django_1776_django-11138:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.django_1776_django-11333:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.django_1776_django-11333:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.django_1776_django-12155:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.django_1776_django-12155:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.django_1776_django-12708:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.django_1776_django-12708:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.django_1776_django-13128:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.django_1776_django-13128:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.django_1776_django-13344:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.django_1776_django-13344:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.django_1776_django-13449:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.django_1776_django-13449:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.django_1776_django-13837:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.django_1776_django-13837:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.django_1776_django-14007:latest
+  [overlay] ensuring baseline overlay for swebench/sweb.eval.x86_64.django_1776_django-14007:latest
+  [overlay] ensuring atelier overlay for swebench/sweb.eval.x86_64.django_1776_django-14376:latest
+  ... (+1 more numeric lines)
+
+==============================================================================
+#32  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json from collections import defaultdict d="reports/benchmark/codebench/swe50_final_5rep/results.jsonl" rows=[json.loads(l) for l in open(d) if l.strip()] red=["psf__requests-2931","django__django-11333","pallets__flask-5014
+------------------------------------------------------------------------------
+  task                   | base C/W/?  mean$  cor$ | atel C/W/?  mean$  cor$ | dragger(atel)
+  requests-2931          | 2/3/0  $0.219 $0.359 | 3/0/2  $0.613 $0.535 | rep5 $0.76/23t corr=None
+  django-11333           | 1/4/0  $0.116 $0.204 | 0/0/5  $0.212 $0.000 | rep5 $0.23/15t corr=None
+  flask-5014             | 5/0/0  $0.123 $0.123 | 0/0/5  $0.208 $0.000 | rep5 $0.29/11t corr=None
+  django-13837           | 5/0/0  $0.482 $0.482 | 0/0/5  $0.744 $0.000 | rep4 $1.43/35t corr=None
+  django-14376           | 2/3/0  $0.213 $0.281 | 0/0/5  $0.290 $0.000 | rep4 $0.39/15t corr=None
+  django-15957           | 5/0/0  $1.626 $1.626 | 2/0/3  $2.021 $2.382 | rep3 $3.28/63t corr=True
+  pylint-6528            | 5/0/0  $1.216 $1.216 | 1/0/4  $1.477 $1.075 | rep2 $1.94/44t corr=None
+  django-12155           | 5/0/0  $0.089 $0.089 | 0/0/5  $0.106 $0.000 | rep1 $0.19/10t corr=None
+  matplotlib-24870       | 3/2/0  $0.791 $0.866 | 0/0/5  $0.887 $0.000 | rep4 $1.05/20t corr=None
+  django-13449           | 5/0/0  $1.390 $1.390 | 3/0/2  $1.529 $1.256 | rep2 $2.27/82t corr=True
+  requests-6028          | 5/0/0  $0.372 $0.372 | 0/0/5  $0.396 $0.000 | rep1 $0.47/8t corr=None
+  astropy-13579          | 5/0/0  $0.471 $0.471 | 0/0/5  $0.500 $0.000 | rep5 $0.59/16t corr=None
+  xarray-3095            | 5/0/0  $0.500 $0.500 | 0/0/5  $0.528 $0.000 | rep2 $0.78/17t corr=None
+  xarray-3993            | 5/0/0  $0.437 $0.437 | 0/0/5  $0.457 $0.000 | rep4 $0.51/17t corr=None
+
+==============================================================================
+#33  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json d="reports/benchmark/codebench/swe50_final_5rep/results.jsonl" rows=[json.loads(l) for l in open(d) if l.strip()] for arm in ("baseline","atelier"):     print(f"--- django-15957 {arm} ---")     rs=sorted([r for r in row
+------------------------------------------------------------------------------
+  --- django-15957 baseline ---
+    rep1: $1.821 turns= 90 out= 25253 cacheR= 2331k correct=True src=django__django-15957_baseline_rep1.flow
+    rep2: $1.555 turns= 57 out= 16864 cacheR= 1499k correct=True src=django__django-15957_baseline_rep2.flow
+    rep3: $1.632 turns= 53 out= 17439 cacheR= 1565k correct=True src=django__django-15957_baseline_rep3.flow
+    rep4: $1.081 turns= 41 out= 12178 cacheR=  952k correct=True src=django__django-15957_baseline_rep4.flow
+    rep5: $2.038 turns= 60 out= 25467 cacheR= 1821k correct=True src=django__django-15957_baseline_rep5.flow
+  --- django-15957 atelier ---
+    rep1: $1.482 turns= 31 out= 15722 cacheR= 1151k correct=True src=django__django-15957_atelier_rep1.flow
+    rep2: $1.610 turns= 42 out= 18539 cacheR= 1342k correct=None src=django__django-15957_atelier_rep2.flow
+    rep3: $3.281 turns= 63 out= 40608 cacheR= 2367k correct=True src=django__django-15957_atelier_rep3.flow
+    rep4: $2.712 turns= 47 out= 37676 cacheR= 2175k correct=None src=django__django-15957_atelier_rep4.flow
+    rep5: $1.021 turns= 29 out= 11895 cacheR=  756k correct=None src=django__django-15957_atelier_rep5.flow
+
+==============================================================================
+#34  CMD: cd /home/pankaj/Projects/leanchain/atelier && for r in rep1 rep3; do make flow-dump path="reports/benchmark/codebench/swe50_final_5rep/django__django-15957_atelier_$r.flow" >/dev/null 2>&1; done; uv run python - <<'PY' import re from collections import Counter base="reports/benchmark/codebench/swe50
+------------------------------------------------------------------------------
+  rep1: turns=31 | edits~=8 test_runs=0 bash=0 | FIXME=0 churn_markers=0 repeats=0
+       tool mix: {'mcp__plugin_atelier_atelier__code_search': 12, 'mcp__plugin_atelier_atelier__read': 10, 'mcp__plugin_atelier_atelier__edit': 8, 'mcp__plugin_atelier_atelier__bash': 9}
+  rep3: turns=63 | edits~=7 test_runs=0 bash=0 | FIXME=0 churn_markers=1 repeats=0
+       tool mix: {'mcp__plugin_atelier_atelier__code_search': 12, 'mcp__plugin_atelier_atelier__read': 19, 'mcp__plugin_atelier_atelier__edit': 7, 'mcp__plugin_atelier_atelier__bash': 28, 'ToolSearch': 
+  [atelier] 10 search/read calls with 0 edits -- you are spiraling. You have already examined: benchmarks/codebench/incontainer.py:L395-L435, benchmarks/codebench/data/swe50_stress.txt. Pick the right s
+
+==============================================================================
+#35  CMD: cd /home/pankaj/Projects/leanchain/atelier && for f in \   django__django-13449_atelier_rep2 django__django-15957_atelier_rep4 \   pylint-dev__pylint-6528_atelier_rep2 django__django-13837_atelier_rep4 \   matplotlib__matplotlib-24870_atelier_rep4 django__django-15957_atelier_rep1; do   make flow-du
+------------------------------------------------------------------------------
+  rep                            turns edit read bash Agent FIXME ToolSrch
+  django-13449 r2(82t/$2.27)      (no flow)
+  django-15957 r4(47t/$2.71)        47   10   10   31     0     0        0
+  pylint-6528 r2(44t/$1.94)         44    4   12   24     0     0        0
+  django-13837 r4(35t/$1.43)        35    0    0    0     3     0       10
+  mpl-24870 r4(20t/$1.05)           20    3    6    5     0     0        0
+  [cheap ref] 15957 r1(31t/$1.48)    31    8   10    9     0     0        0
+  [atelier] 11 search/read calls with 0 edits -- you are spiraling. You have already examined: benchmarks/codebench/incontainer.py:L395-L435, benchmarks/codebench/data/swe50_stress.txt. Pick the right s
+
+==============================================================================
+#36  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/replay_oververify.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | tail -60
+------------------------------------------------------------------------------
+  FIRES on 21/199 atelier reps
+
+==============================================================================
+#37  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/replay_oververify.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -28
+------------------------------------------------------------------------------
+  replaying 200 atelier flows
+  task                    rep      $ turn corr | tests           seq fire@ tAfter eAfter
+
+==============================================================================
+#38  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/replay_oververify.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -30
+------------------------------------------------------------------------------
+  replaying 201 atelier flows
+  task                    rep      $ turn corr | tests           seq fire@ tAfter eAfter
+
+==============================================================================
+#39  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/replay_oververify.py reports/benchmark/codebench/swe50_final_5rep 2>&1 > /tmp/replay_out.txt; echo "=== FIRES summary ==="; grep "FIRES" /tmp/replay_out.txt; echo "=== any rep with fire@ != '-
+------------------------------------------------------------------------------
+  FIRES on 0/201 atelier reps
+
+==============================================================================
+#40  CMD: cd /home/pankaj/Projects/leanchain/atelier && rm -f experiments/replay_oververify.py && echo "=== import check (removal clean?) ===" && PYTHONPATH=src uv run python -c "import atelier.gateway.adapters.mcp_server as m; print('import OK'); print('over_verify gone:', not hasattr(m,'_over_verification_i
+------------------------------------------------------------------------------
+  === cost autopsy ===
+  task                  rep     $ turn out/t  cR/t cor |  ed rd srch bash  P  F  fires      seq
+  --- TOP-20% costliest (41 reps) vs REST (164) ---
+    mean cost:    top $1.74  rest $0.57
+    mean turns:   top 38    rest 15
+    out/turn:     top 672   rest 504
+    cacheR/turn:  top 35k  rest 18k
+
+==============================================================================
+#41  CMD: cd /home/pankaj/Projects/leanchain/atelier && f="reports/benchmark/codebench/swe50_final_5rep/django__django-15957_atelier_rep3.flow_dump.txt"; [ -f "$f" ] || make flow-dump path="reports/benchmark/codebench/swe50_final_5rep/django__django-15957_atelier_rep3.flow" >/dev/null 2>&1; uv run python - <<
+------------------------------------------------------------------------------
+  T 10 read,code_search                              The edits applied (the FIXME hits are unrelated pre-existing `%s__in` 
+  T 34 read                                          I'll get the rest of the `get_prefetch_queryset` method and find all c
+  T 62 bash                                   ✗FAIL  All edits are correct and consistent. Let me run the final targeted ve
+
+==============================================================================
+#42  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/binding_rate.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | tail -20
+------------------------------------------------------------------------------
+    FIXME(churn/hist)     113  ->   11 edits (10%)   bash:72, read:16, edit:11, code_search:7, <end>:7
+    [atelier](gather)     109  ->   33 edits (30%)   bash:40, edit:33, read:28, code_search:6, agent:1
+
+==============================================================================
+#43  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/binding_rate.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | tail -12
+------------------------------------------------------------------------------
+    FIXME(churn/hist)     113      10%      29%           39%            (23)
+    [atelier](gather)     110      31%      62%           67%            (30)
+   'did the warning land before the spiral set in' signal.)
+
+==============================================================================
+#44  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "=== tests referencing [atelier]/STOP GATHERING/convergence nudges ===" && grep -rn '\[atelier\]\|STOP GATHERING\|_convergence_intervention\|spiraling' tests/ 2>/dev/null | head; echo "(none = no test breakage)"; echo; echo "=== remaining [atelier] 
+------------------------------------------------------------------------------
+  === tests referencing [atelier]/STOP GATHERING/convergence nudges ===
+  tests/gateway/test_cli_import_progress.py:52:    assert "[atelier] claude: discovered sessions" in result.stderr
+  tests/gateway/test_cli_import_progress.py:55:    assert "[atelier]" not in result.stdout
+  === remaining [atelier] in mcp_server (should be 0 agent-facing) ===
+
+==============================================================================
+#45  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run python - <<'PY' import atelier.gateway.adapters.mcp_server as m def fresh():     m._NONEDIT_STREAK[0]=0; m._SEEN_PATHS.clear(); m._SEEN_QUERIES.clear() # drive 23 investigative calls, capture the channel at nudge/consolidate/degrade
+------------------------------------------------------------------------------
+  tier=nudge(10): FIXME=True  atelier=False  head='RESULT'
+  tier=consolidate(16): FIXME=True  atelier=False  head='FIXME (convergence): 16 search/read calls with 0 edits -- yo'
+  tier=degrade(23): FIXME=True  atelier=False  head='FIXME (convergence): STOP GATHERING. 23 search/read calls wi'
+
+==============================================================================
+#46  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "=== run still alive? ===" && ps -ef | grep -E "multiswe_run" | grep -v grep | awk '{print $2}' | head; echo "(none = finished)"; echo; echo "=== all ok=false rows, full detail ===" && uv run python - <<'PY' import json d="reports/benchmark/codebenc
+------------------------------------------------------------------------------
+  atelier  scikit-learn__scikit-learn-25102 rep2 | err=True timeout=True turns=0 dur=1800s cost=$0.000
+           excerpt: 'timed out after 1800s | atelier code index: prewarm OK (998 files)'
+  atelier  sphinx-doc__sphinx-10673     rep2 | err=True timeout=False turns=50 dur=471s cost=$2.731
+           excerpt: ' | [stderr] | atelier code index: prewarm OK (727 files)'
+  atelier  sphinx-doc__sphinx-8548      rep1 | err=True timeout=False turns=50 dur=557s cost=$2.843
+           excerpt: ' | [stderr] | atelier code index: prewarm OK (667 files)'
+  atelier  sphinx-doc__sphinx-8548      rep2 | err=True timeout=False turns=50 dur=490s cost=$2.557
+           excerpt: ' | [stderr] | atelier code index: prewarm OK (667 files)'
+  atelier  sympy__sympy-14248           rep3 | err=True timeout=False turns=50 dur=742s cost=$2.901
+           excerpt: ' | [stderr] | atelier code index: prewarm OK (1219 files)'
+  baseline scikit-learn__scikit-learn-25102 rep4 | err=True timeout=False turns=18 dur=1529s cost=$1.066
+  baseline scikit-learn__scikit-learn-25102 rep5 | err=True timeout=False turns=38 dur=1585s cost=$2.441
+  baseline sphinx-doc__sphinx-10673     rep1 | err=True timeout=False turns=51 dur=293s cost=$1.688
+  baseline sphinx-doc__sphinx-10673     rep4 | err=True timeout=False turns=51 dur=314s cost=$1.817
+  baseline sphinx-doc__sphinx-10673     rep5 | err=True timeout=False turns=51 dur=301s cost=$1.657
+  baseline sphinx-doc__sphinx-8548      rep1 | err=True timeout=False turns=88 dur=521s cost=$2.160
+  baseline sphinx-doc__sphinx-8548      rep2 | err=True timeout=False turns=51 dur=482s cost=$2.616
+  baseline sphinx-doc__sphinx-8548      rep3 | err=True timeout=False turns=51 dur=441s cost=$2.434
+  baseline sphinx-doc__sphinx-8548      rep4 | err=True timeout=False turns=78 dur=573s cost=$2.727
+  baseline sphinx-doc__sphinx-8548      rep5 | err=True timeout=False turns=51 dur=389s cost=$2.023
+  baseline sphinx-doc__sphinx-9461      rep1 | err=True timeout=False turns=51 dur=304s cost=$1.656
+  baseline sphinx-doc__sphinx-9461      rep3 | err=True timeout=False turns=51 dur=306s cost=$1.706
+  baseline sphinx-doc__sphinx-9461      rep5 | err=True timeout=False turns=51 dur=328s cost=$1.646
+  baseline sympy__sympy-13878           rep1 | err=True timeout=False turns=51 dur=545s cost=$1.792
+  baseline sympy__sympy-13878           rep2 | err=True timeout=False turns=51 dur=383s cost=$1.625
+  baseline sympy__sympy-13878           rep4 | err=True timeout=False turns=51 dur=664s cost=$1.610
+  baseline sympy__sympy-13878           rep5 | err=True timeout=False turns=51 dur=369s cost=$1.936
+  baseline sympy__sympy-14248           rep1 | err=True timeout=False turns=51 dur=319s cost=$1.590
+  baseline sympy__sympy-14248           rep3 | err=True timeout=False turns=51 dur=296s cost=$1.442
+  baseline sympy__sympy-14248           rep4 | err=True timeout=False turns=51 dur=284s cost=$1.467
+
+==============================================================================
+#47  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "=== max_turns + request ceiling plumbing ===" && grep -rn "max.turns\|max_turns\|MAX_REQUESTS\|max-turns" benchmarks/codebench/multiswe_run.py benchmarks/codebench/incontainer.py | head -20; echo; echo "=== dump 2 silent fails, examine tails ==="; 
+------------------------------------------------------------------------------
+  benchmarks/codebench/multiswe_run.py:450:        "--max-turns",
+  --- baseline sphinx-8548 rep1: last 3 turns ---
+  === Turn 84 ===
+  === Turn 85 ===
+  === Turn 86 ===
+  === Turn 87 ===
+  [assistant] Now pass `class_` through in ClassDocumenter.get_object_members:[tool_use: Edit] {"replace_all": false, "file_path": "/testbed/sphinx/ext/autodoc/__init__.py", "old_string": "            f
+
+==============================================================================
+#48  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "=== is the run actually alive or zombie/finalizing? ===" && ps -o pid,stat,etime,cmd -p 2516827 2516833 2>/dev/null; echo; echo "=== newest results timestamp (is it still writing?) ===" && stat -c '%y' reports/benchmark/codebench/swe50_final_5rep/r
+------------------------------------------------------------------------------
+  2516827 SN      02:09:53 uv run --project benchmarks python -m benchmarks.codebench.multiswe_run --suite swe-bench-verified -a atelier baseline --reps 5 --model claude-opus-4-8 --jobs-per-token 3 --re
+  2516833 SNl     02:09:53 /home/pankaj/Projects/leanchain/atelier/.venv/bin/python3 -m benchmarks.codebench.multiswe_run --suite swe-bench-verified -a atelier baseline --reps 5 --model claude-opus-4-8 
+  === how overlays are cached / force-rebuilt ===
+  68:npm cache clean --force
+  79:ATELIER_SKIP_MYPYC=1 UV_TOOL_BIN_DIR=/usr/local/bin /usr/local/bin/uv tool install --force "/opt/atelier[mcp,smart,parsers,rename]"
+  246:def ensure_overlay(base_image: str, *, atelier: bool, build_timeout: float = 3600) -> str:
+  === atelier overlay images present (count) ===
+
+==============================================================================
+#49  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=. uv run --project benchmarks python experiments/clean_results.py reports/benchmark/codebench/swe50_final_5rep
+------------------------------------------------------------------------------
+  ungraded (correct=None) among kept rows: {'atelier': 131, 'baseline': 1}
+  removing by arm: {'atelier': 5, 'baseline': 20}
+  [atelier] 11 search/read calls with 0 edits -- you are spiraling. You have already examined: benchmarks/codebench/incontainer.py:L395-L435, benchmarks/codebench/data/swe50_stress.txt, integrations/cla
+
+==============================================================================
+#50  CMD: cd /home/pankaj/Projects/leanchain/atelier && LOG="reports/benchmark/codebench/swe50_final_5rep/run_rerun25.$(date +%s).log"; nohup uv run --project benchmarks python -m benchmarks.codebench.multiswe_run --suite swe-bench-verified -a atelier baseline --reps 5 --model claude-opus-4-8 --jobs-per-token
+------------------------------------------------------------------------------
+  [auth] 2 OAuth token(s) x 2 job(s)/token -> up to 4 parallel
+  [resume] kept 475 prior row(s) (475 in-scope + 0 out-of-scope): 285/475 correct, $409.07 / 2080k in + 5499k out + 13M cacheW + 279M cacheR tok already spent; running 25 new job(s)
+  [atelier] 12 search/read calls with 0 edits -- you are spiraling. You have already examined: benchmarks/codebench/incontainer.py:L395-L435, benchmarks/codebench/data/swe50_stress.txt, integrations/cla
+
+==============================================================================
+#51  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "=== mcp_server: lint on my edit (args unused?) ===" && uv run ruff check src/atelier/gateway/adapters/mcp_server.py 2>&1 | grep -E "1085[0-9]|1086[0-9]|1087[0-9]|1088[0-9]|ARG" | head; echo "(no ARG lines above the pre-existing 8791/8866 = clean)";
+------------------------------------------------------------------------------
+          # Decay, don't zero: a spiral that intermixes an occasional passing run would
+              "turn budget without converging. Make your single best-justified fix NOW and STOP the "
+  # Version-history archaeology spiral: repeatedly reading commit history
+      r"\bgit\b(?:\s+-\S+|\s+-C\s+\S+)*\s+(?:log|show|blame|bisect|rev-list|reflog|whatchanged)\b",
+
+==============================================================================
+#52  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run python - <<'PY' import atelier.gateway.adapters.mcp_server as m m._NONEDIT_STREAK[0]=0 for i in range(23): o=m._convergence_intervention("read",{},"RESULT") g=o.split("\n\n")[0] m._HISTORY_STREAK[0]=0 for i in range(12): h=m._histor
+------------------------------------------------------------------------------
+  gather  degrade (138c): FIXME (convergence): STOP GATHERING -- 23 searches/reads, 0 edits -- you're spiraling. Pick the site and EDIT now, then run the test once.
+
+==============================================================================
+#53  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "=== rerun alive? ===" && ps -ef | grep multiswe_run | grep -v grep | awk '{print $2}' | head -1; echo; uv run python - <<'PY' import json from collections import defaultdict d="reports/benchmark/codebench/swe50_final_5rep/results.jsonl" rows=[json.
+------------------------------------------------------------------------------
+  sphinx-8548                   baseline  reps [4, 5]  -> 2/5 fail  [limit/empty]
+  sphinx-9461                   baseline  reps [5]  -> 1/5 fail  [limit/empty]
+  sympy-13878                   baseline  reps [1, 2, 4, 5]  -> 4/5 fail  [limit/empty]
+  sympy-14248                   atelier   reps [3]  -> 1/5 fail  [limit/empty]
+  sympy-14248                   baseline  reps [1, 3, 4]  -> 3/5 fail  [limit/empty]
+
+==============================================================================
+#54  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "rerun alive: $(ps -ef | grep multiswe_run | grep -v grep | awk '{print $2}' | head -1 || echo NO)"; uv run python - <<'PY' import json from collections import defaultdict d="reports/benchmark/codebench/swe50_final_5rep/results.jsonl" rows=[json.loa
+------------------------------------------------------------------------------
+  task                              base mean(range)      atel mean(range)      Δ%  cor b/a
+  astropy-13398                     $1.93(1.08-2.91)      $1.01(0.58-1.43)    +48%🟢 0/0
+  astropy-13579                     $0.47(0.36-0.56)      $0.50(0.31-0.59)     -6%🔴 5/0
+  astropy-14369                     $1.19(0.75-1.54)      $0.98(0.77-1.07)    +18%🟢 4/0
+  astropy-8707                      $0.78(0.25-1.32)      $0.69(0.37-1.22)    +12%🟢 0/0
+  django-11138                      $1.25(0.83-1.88)      $0.97(0.80-1.17)    +22%🟢 5/0
+  django-11333                      $0.12(0.07-0.20)      $0.21(0.21-0.23)    -82%🔴 1/0
+  django-12155                      $0.09(0.08-0.10)      $0.11(0.06-0.19)    -19%🔴 5/0
+  django-12708                      $0.62(0.31-1.24)      $0.41(0.26-0.57)    +34%🟢 5/0
+  django-13128                      $1.18(0.75-1.66)      $1.08(0.50-1.49)     +8%🟢 5/0
+  django-13344                      $2.36(1.72-3.50)      $2.31(1.67-3.29)     +2%🟢 3/2
+  django-13449                      $1.39(0.27-2.61)      $1.53(0.65-2.27)    -10%🔴 5/3
+  django-13837                      $0.48(0.44-0.60)      $0.74(0.43-1.43)    -54%🔴 5/0
+  django-14007                      $0.52(0.41-0.74)      $0.36(0.23-0.42)    +30%🟢 5/3
+  django-14376                      $0.21(0.13-0.30)      $0.29(0.16-0.39)    -36%🔴 2/0
+  django-14631                      $0.78(0.63-1.08)      $0.78(0.51-0.92)     +0%🟢 5/0
+  django-15128                      $1.15(0.46-1.77)      $0.96(0.44-1.52)    +16%🟢 5/4
+  django-15268                      $1.05(0.84-1.30)      $0.64(0.30-1.16)    +39%🟢 5/0
+  django-15503                      $0.90(0.66-1.09)      $0.60(0.35-0.88)    +34%🟢 5/3
+  django-15957                      $1.63(1.08-2.04)      $2.02(1.02-3.28)    -24%🔴 5/2
+  django-16560                      $2.00(0.74-2.69)      $1.09(0.52-1.74)    +46%🟢 4/0
+  matplotlib-14623                  $0.62(0.35-0.74)      $0.54(0.40-0.66)    +12%🟢 4/0
+  matplotlib-24870                  $0.79(0.64-0.93)      $0.89(0.67-1.05)    -12%🔴 3/0
+  seaborn-3069                      $1.42(1.12-1.59)      $1.26(0.77-1.56)    +11%🟢 5/0
+  seaborn-3187                      $1.61(1.01-2.27)      $1.07(0.79-1.70)    +34%🟢 3/0
+  flask-5014                        $0.12(0.08-0.16)      $0.21(0.16-0.29)    -69%🔴 5/0
+  requests-2931                     $0.22(0.10-0.46)      $0.61(0.47-0.76)   -180%🔴 2/3
+  requests-6028                     $0.37(0.32-0.48)      $0.40(0.34-0.47)     -7%🔴 5/0
+  xarray-3095                       $0.50(0.36-0.70)      $0.53(0.26-0.78)     -6%🔴 5/0
+  xarray-3305                       $0.48(0.35-0.85)      $0.30(0.26-0.35)    +39%🟢 5/0
+  ... (+23 more numeric lines)
+
+==============================================================================
+#55  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python - <<'PY' import json from collections import defaultdict d="reports/benchmark/codebench/swe50_final_5rep/results.jsonl" rows=[json.loads(l) for l in open(d) if l.strip()] g=defaultdict(lambda: defaultdict(list)) for r in rows:     if r.get(
+------------------------------------------------------------------------------
+  task                            baseline $ (range)       atelier $ (range)   save%
+  sympy-12489                       0.56 (0.28-0.88)        0.29 (0.24-0.34)   +49%🟢
+  astropy-13398                     1.93 (1.08-2.91)        1.01 (0.58-1.43)   +48%🟢
+  sympy-13878                       2.55 (2.55-2.55)        1.34 (0.95-1.64)   +47%🟢
+  django-16560                      2.00 (0.74-2.69)        1.09 (0.52-1.74)   +46%🟢
+  sphinx-9461                       1.27 (0.63-2.32)        0.69 (0.35-0.93)   +45%🟢
+  pytest-5840                       0.75 (0.55-1.05)        0.43 (0.05-0.56)   +42%🟢
+  scikit-learn-25102                1.89 (1.30-2.23)        1.13 (0.67-1.86)   +40%🟢
+  django-15268                      1.05 (0.84-1.30)        0.64 (0.30-1.16)   +39%🟢
+  xarray-3305                       0.48 (0.35-0.85)        0.30 (0.26-0.35)   +39%🟢
+  pylint-8898                       0.81 (0.61-0.94)        0.53 (0.37-0.69)   +35%🟢
+  django-15503                      0.90 (0.66-1.09)        0.60 (0.35-0.88)   +34%🟢
+  seaborn-3187                      1.61 (1.01-2.27)        1.07 (0.79-1.70)   +34%🟢
+  django-12708                      0.62 (0.31-1.24)        0.41 (0.26-0.57)   +34%🟢
+  sphinx-10673                      1.98 (1.12-3.06)        1.35 (1.08-1.79)   +32%🟢
+  scikit-learn-12682                1.42 (1.03-1.65)        0.98 (0.76-1.10)   +30%🟢
+  django-14007                      0.52 (0.41-0.74)        0.36 (0.23-0.42)   +30%🟢
+  sphinx-8120                       0.42 (0.18-0.61)        0.30 (0.25-0.35)   +29%🟢
+  sphinx-8551                       0.72 (0.30-1.21)        0.52 (0.33-0.74)   +29%🟢
+  pytest-6197                       1.71 (1.47-2.11)        1.25 (0.86-1.55)   +27%🟢
+  sympy-13877                       0.56 (0.44-0.75)        0.41 (0.33-0.64)   +26%🟢
+  django-11138                      1.25 (0.83-1.88)        0.97 (0.80-1.17)   +22%🟢
+  pylint-6386                       1.07 (0.87-1.55)        0.83 (0.43-1.51)   +22%🟢
+  astropy-14369                     1.19 (0.75-1.54)        0.98 (0.77-1.07)   +18%🟢
+  django-15128                      1.15 (0.46-1.77)        0.96 (0.44-1.52)   +16%🟢
+  matplotlib-14623                  0.62 (0.35-0.74)        0.54 (0.40-0.66)   +12%🟢
+  astropy-8707                      0.78 (0.25-1.32)        0.69 (0.37-1.22)   +12%🟢
+  seaborn-3069                      1.42 (1.12-1.59)        1.26 (0.77-1.56)   +11%🟢
+  sphinx-8548                       2.30 (1.61-2.87)        2.06 (1.25-2.88)   +10%🟢
+  django-13128                      1.18 (0.75-1.66)        1.08 (0.50-1.49)    +8%🟢
+  ... (+22 more numeric lines)
+
+==============================================================================
+#56  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/why_expensive.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -75
+------------------------------------------------------------------------------
+  task / arm                     $ turn fail pass edit read srch bash
+    Δ (atel-base)                   -14 +1.0                       save +47%
+    Δ (atel-base)                   -32 +0.0                       save +10%
+    Δ (atel-base)                   -33 -0.2                       save +39%
+    Δ (atel-base)                   -12 -3.6                       save +45%
+    Δ (atel-base)                   -23 -1.0                       save +45%
+    Δ (atel-base)                   -22 +0.2                       save +8%
+    Δ (atel-base)                   -12 +0.1                       save -14%
+    Δ (atel-base)                   +18 +5.0                       save +0%
+    Δ (atel-base)                   +24 +3.8                       save +0%
+    Δ (atel-base)                   +40+10.0                       save +0%
+    Δ (atel-base)                   +37 +4.0                       save +0%
+    Δ (atel-base)                   +22 +5.5                       save +0%
+    Δ (atel-base)                   +42 +2.2                       save +0%
+    Δ (atel-base)                   +21 +0.4                       save +0%
+    Δ (atel-base)                   +20 +3.4                       save +0%
+    Δ (atel-base)                   +28 +0.0                       save +0%
+    Δ (atel-base)                   +37 +2.8                       save +0%
+    Δ (atel-base)                   +23 +1.4                       save +0%
+    Δ (atel-base)                   +54 +4.2                       save +0%
+  --- does atelier save when it cuts turns? ---
+    corr(savings%, turn-delta) = -0.05  (negative => fewer turns -> more savings)
+
+==============================================================================
+#57  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/why_expensive.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -75
+------------------------------------------------------------------------------
+  task / arm                     $ turn $/turn fail edit read srch bash
+    Δ (atel-base)                   -14 +1.0                       save +47%
+    Δ (atel-base)                   +19 -2.6                       save +2%
+    Δ (atel-base)                   -32 +0.0                       save +10%
+    Δ (atel-base)                   -35 +0.0                       save +46%
+    Δ (atel-base)                   -28 +0.0                       save +32%
+    Δ (atel-base)                   -22 -4.2                       save +48%
+    Δ (atel-base)                   -10 -3.4                       save +40%
+    Δ (atel-base)                   +12 -5.0                       save +27%
+    Δ (atel-base)                   -18 -0.2                       save -24%
+    Δ (atel-base)                   -16 -0.8                       save +34%
+    Δ (atel-base)                   -25 +2.6                       save +11%
+    Δ (atel-base)                   -21 -0.8                       save +30%
+    Δ (atel-base)                    +8 +0.2                       save -10%
+    Δ (atel-base)                   -23 -1.0                       save +45%
+    Δ (atel-base)                   -22 +0.2                       save +8%
+    Δ (atel-base)                   -17 -4.0                       save +22%
+    Δ (atel-base)                    -3 -0.2                       save -21%
+    Δ (atel-base)                   -11 +0.2                       save +6%
+    Δ (atel-base)                    -8 -4.2                       save +18%
+    Δ (atel-base)                    +0 +1.8                       save +8%
+    Δ (atel-base)                    -8 -0.2                       save +16%
+    Δ (atel-base)                    -3 -2.2                       save +22%
+    Δ (atel-base)                   -16 -2.4                       save +39%
+    Δ (atel-base)                   -16 +0.2                       save -8%
+
+==============================================================================
+#58  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python - <<'PY' import json, statistics from collections import defaultdict d="reports/benchmark/codebench/swe50_final_5rep/results.jsonl" rows=[json.loads(l) for l in open(d) if l.strip()] agg=defaultdict(lambd
+------------------------------------------------------------------------------
+  avg $/turn:    baseline 0.0387   atelier 0.0460   -> atelier +26% per turn
+  avg turns:     baseline 41      atelier 28      -> atelier 29% fewer turns
+  avg savings:   +19%
+  corr(savings%, turn-reduction%):  +0.43  (want +: cut turns -> save)
+  corr(savings%, per-turn premium%): -0.31  (want -: high premium -> lose)
+
+==============================================================================
+#59  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/context_breakdown.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -40
+------------------------------------------------------------------------------
+  === FIXED per-turn overhead (re-sent + cached EVERY turn) ===
+  component           baseline     atelier       delta
+  FIXED total           1492 ch     11908 ch   +698% (~2604 tok/turn)
+  tool                    baseline (n)         atelier (n)
+
+==============================================================================
+#60  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/context_breakdown.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -40
+------------------------------------------------------------------------------
+  === FIXED per-turn overhead (re-sent + cached EVERY turn) ===
+  component           baseline     atelier       delta
+  FIXED total          18847 ch     11908 ch   +-37% (~-1735 tok/turn)
+  tool                    baseline (n)         atelier (n)
+
+==============================================================================
+#61  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python - <<'PY' import json, statistics from collections import defaultdict d="reports/benchmark/codebench/swe50_final_5rep/results.jsonl" rows=[json.loads(l) for l in open(d) if l.strip()] ag=defaultdict(lambda
+------------------------------------------------------------------------------
+  expensive tasks: 24   (per-TURN averages, both arms)
+  metric/turn           baseline     atelier  atel premium
+  cache_read               31102       28481           -8%
+  output                     508         661          +30%
+  cache_write               1098        1567          +43%
+  fresh input                133         173          +30%
+  est. $/turn contribution by component (opus pricing):
+    baseline  $0.1073/turn  =  cacheR $0.0467 + out $0.0381 + cacheW $0.0206 + in $0.0020
+    atelier   $0.1243/turn  =  cacheR $0.0427 + out $0.0496 + cacheW $0.0294 + in $0.0026
+
+==============================================================================
+#62  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/output_breakdown.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -40
+------------------------------------------------------------------------------
+  category/turn     baseline     atelier     premium
+  narration            106c       185c        +74%
+  tool-args            337c       531c        +58%
+  TOTAL out/turn       443c       716c        +62%
+  (turns sampled: baseline 600, atelier 187)
+  === tool-args chars/turn by tool ===
+  tool              baseline     atelier
+
+==============================================================================
+#63  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "=== persona narration/terseness rules ===" && grep -rniE "narrat|announce|preamble|terse|don't explain|act,? don't|silent|no commentary|before.*tool|chatter" integrations/agents/auto.md integrations/shared/coding-guidelines.md 2>/dev/null | head; e
+------------------------------------------------------------------------------
+  === samples from a representative atelier flow (django-15957 rep3) ===
+    [285c] The edits applied (the FIXME hits are unrelated pre-existing `%s__in` patterns). Now I need to check the `prefetch_one_level` path where `_apply_rel_filters` is called on `lookup.queryset` — 
+  {"candidate_files":["django/db/models/fields/related_descriptors.py","django/contrib/contenttypes/fields.py","django/contrib/admin/options.py","django/forms/models.py","django/db/models/__init__.py","
+                  is_fetched = rel_obj_descriptor.is_cached
+
+==============================================================================
+#64  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/deep_tool_usage.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -30
+------------------------------------------------------------------------------
+  atelier flows: 25
+    avg candidate_files:  10c  (0% of payload)
+    avg source(files):    3618c  (57% of payload)
+    candidate_files offered: 7;  later read/edited: 3 (43%)
+    code_search calls whose candidate_files were used at all: 1/53 (2%)
+    source files returned: 367;  later EDITED: 148 (40%)
+    avg read result: 4755c;  read file later EDITED: 71/99 (72%)
+
+==============================================================================
+#65  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/graduated_detail.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -30
+------------------------------------------------------------------------------
+  atelier flows: 25
+    avg files per read call: 1.37   (multi-file calls: 30 = 30%)
+     pos  appeared  edited  edit%  avg src chars
+       0        52      37    71%             88
+       1        47      30    64%              2
+       2        47      22    47%              2
+       3        44      12    27%              2
+       4        44      13    30%              2
+       5        44       8    18%              2
+       6        42       6    14%              2
+       7        41       1     2%              2
+       8         2       0     0%              2
+       9         2       0     0%              2
+      10         1       0     0%              2
+      11         1       0     0%              2
+    if files[2:] became pointers (path:line only): save ~10% of code_search source payload
+
+==============================================================================
+#66  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/graduated_detail.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -35
+------------------------------------------------------------------------------
+  atelier flows: 25
+    avg files per read call: 1.37   (multi-file calls: 30 = 30%)
+     pos  appeared  edited  edit%  avg src chars
+       0        52      37    71%             88
+       1        47      30    64%              2
+       2        47      22    47%              2
+       3        44      12    27%              2
+       4        44      13    30%              2
+       5        44       8    18%              2
+       6        42       6    14%              2
+       7        41       1     2%              2
+       8         2       0     0%              2
+       9         2       0     0%              2
+      10         1       0     0%              2
+      11         1       0     0%              2
+    if files[2:] became pointers (path:line only): save ~10% of code_search source payload
+
+==============================================================================
+#67  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python - <<'PY' import json from pathlib import Path from mitmproxy.io import FlowReader fp="reports/benchmark/codebench/swe50_final_5rep/django__django-15957_atelier_rep3.flow" def largest(fp):     best=[]     
+------------------------------------------------------------------------------
+  PARSE FAIL, first 80: '[atelier] STOP GATHERING. 25 search/read calls with 0 edits -- you are spiraling'
+
+==============================================================================
+#68  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "=== measure read-savings opportunity ===" && PYTHONPATH=src uv run --project benchmarks python experiments/measure_read_savings.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -25; echo; echo "=== locate the code_search output builder (
+------------------------------------------------------------------------------
+  === measure read-savings opportunity ===
+  atelier flows: 30   total read targets: 148
+  read hit a code_search...          count  % of reads
+  pos-1 file (TOP-2 saves)              45         30%
+  files[2:] pointer                     47         32%
+  candidate_file                         3          2%
+  files[0] re-read (had source)          2          1%
+  novel (not offered)                   51         34%
+  TOP-2 would eliminate ~45 read turns (30% of reads) across 30 flows
+  = ~1.5 read turns saved per rep
+  src/atelier/core/capabilities/code_context/models.py
+  src/atelier/core/capabilities/code_context/renderer.py
+  src/atelier/core/capabilities/code_context/__pycache__/engine.cpython-313.pyc
+  src/atelier/core/capabilities/code_context/__pycache__/renderer.cpython-313.pyc
+  src/atelier/core/capabilities/code_context/__pycache__/models.cpython-314.pyc
+  src/atelier/core/capabilities/code_context/__pycache__/output_policy.cpython-314.pyc
+  src/atelier/core/capabilities/code_context/__pycache__/engine.cpython-314.pyc
+  src/atelier/core/capabilities/code_context/__pycache__/output_policy.cpython-313.pyc
+  src/atelier/core/capabilities/code_context/__pycache__/models.cpython-313.pyc
+  src/atelier/core/capabilities/code_context/output_policy.py
+
+==============================================================================
+#69  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python - <<'PY' import json from collections import defaultdict d="reports/benchmark/codebench/swe50_final_5rep/results.jsonl" rows=[json.loads(l) for l in open(d) if l.strip()] ag=defaultdict(lambda: defaultdic
+------------------------------------------------------------------------------
+      b$=m((t,"baseline"),"cost_usd"); a$=m((t,"atelier"),"cost_usd")
+
+==============================================================================
+#70  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python - <<'PY' import json, statistics from collections import defaultdict d="reports/benchmark/codebench/swe50_final_5rep/results.jsonl" rows=[json.loads(l) for l in open(d) if l.strip()] ag=defaultdict(lambda
+------------------------------------------------------------------------------
+  metric/rep                baseline     atelier  atel/base
+  num_turns                     29.4        20.5        70%
+  cache_read_tokens         793175.7    512251.4        65%
+  output_tokens              12769.6     11457.7        90%
+  cache_creation_tokens      29928.5     29586.9        99%
+  cost_usd                       1.0         0.8        83%
+  === tasks where atelier TOTAL cost > baseline ===
+  task                  base$  atel$   gap$ | cacheR  out  cacheW
+  SUM of atelier-loss gaps: cacheR +0.82  output +1.62  cacheW +2.45  input -0.022
+  => 17 loss tasks; gap dominated by: cache_creation_tokens
+
+==============================================================================
+#71  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python - <<'PY' import json from collections import defaultdict from pathlib import Path from mitmproxy.io import FlowReader import atelier.gateway.adapters.mcp_server as M d=Path("reports/benchmark/codebench/sw
+------------------------------------------------------------------------------
+  === TOTAL tool-output chars PER REP (summed across all turns) ===
+  tool                baseline       atelier   atel-base
+  TOTAL                  34141         25876       -8265  (atelier 76% of baseline)
+
+==============================================================================
+#72  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/search_streak.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -25
+------------------------------------------------------------------------------
+   1st     43          61       49%   edit 14% / read 40% / search 26% / other 21%
+   2nd     18         137       28%   edit 11% / read 56% / search 22% / other 11%
+   3rd      9          12       44%   edit 11% / read 89% / search 0% / other 0%
+    4+      5          10       40%   edit 0% / read 80% / search 0% / other 20%
+    => outline-ing 2nd+ searches removes ~50% of code_search SOURCE payload
+
+==============================================================================
+#73  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/search_streak.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -25
+------------------------------------------------------------------------------
+   1st     43          61       49%   edit 14% / read 40% / search 26% / other 21%
+   2nd     18         137       28%   edit 11% / read 56% / search 22% / other 11%
+   3rd      9          12       44%   edit 11% / read 89% / search 0% / other 0%
+    4+      5          10       40%   edit 0% / read 80% / search 0% / other 20%
+    => outline-ing 2nd+ searches removes ~50% of code_search SOURCE payload
+
+==============================================================================
+#74  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/sim_graduated.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -30
+------------------------------------------------------------------------------
+  === ALL atelier tasks (249 atelier reps) ===
+    A) OUTLINE-ON-REPEAT: strip source from 2nd+ searches
+       saves ~946 chars/rep  (clean reduction, agent reads anyway)
+       pos-1 reads eliminated: 56 total, ~1718 chars/rep saved
+       (cost: pos-1 source ~7638c added per first-search that has a 2nd file;
+  === LOSS tasks only (50 atelier reps) ===
+    A) OUTLINE-ON-REPEAT: strip source from 2nd+ searches
+       saves ~851 chars/rep  (clean reduction, agent reads anyway)
+       pos-1 reads eliminated: 9 total, ~859 chars/rep saved
+       (cost: pos-1 source ~4775c added per first-search that has a 2nd file;
+
+==============================================================================
+#75  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/sim_outline_always.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -20
+------------------------------------------------------------------------------
+  === ALL atelier tasks (249 reps) -- code_search OUTLINE-ALWAYS ===
+    source stripped (SAVE):        ~1805 chars/rep
+    forced reads of edited files:  ~29 chars/rep  (+0.1 read-TURNS/rep)
+    net payload change:            ~+1776 chars/rep  (+ 0.1 turns)
+    (of the save, ~722/rep was exploratory source never acted on = clean win)
+  === LOSS tasks only (50 reps) -- code_search OUTLINE-ALWAYS ===
+    source stripped (SAVE):        ~1481 chars/rep
+    forced reads of edited files:  ~1 chars/rep  (+0.1 read-TURNS/rep)
+    net payload change:            ~+1480 chars/rep  (+ 0.1 turns)
+    (of the save, ~458/rep was exploratory source never acted on = clean win)
+
+==============================================================================
+#76  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "=== transform OFF (default) ===" && PYTHONPATH=src uv run python -c " import atelier.gateway.adapters.mcp_server as m, json s=json.dumps({'files':[{'path':'a.py','sections':[{'content':'1\tdef foo','line':'1','end_line':'5','qualified_name':'foo','
+------------------------------------------------------------------------------
+  outline: foo: outline only -- read L1-L5 of a.py for source
+  related_symbols kept: ['bar @ c.py:10']
+  === rerun still holding tokens? ===
+
+==============================================================================
+#77  CMD: cd /home/pankaj/Projects/leanchain/atelier && OUT=reports/benchmark/codebench/swe50_outline_test; LOG="$OUT/run.$(date +%s).log"; mkdir -p "$OUT"; INSTANCES="pydata__xarray-3993 pydata__xarray-3095 astropy__astropy-13579 psf__requests-6028 sympy__sympy-13091 pytest-dev__pytest-8399 django__django-13
+------------------------------------------------------------------------------
+  PID: 409949  LOG: reports/benchmark/codebench/swe50_outline_test/run.1782764636.log
+  [run] results -> /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_outline_test
+  [auth] 2 OAuth token(s) x 2 job(s)/token -> up to 4 parallel
+
+==============================================================================
+#78  CMD: cd /home/pankaj/Projects/leanchain/atelier && OUT=reports/benchmark/codebench/swe50_outline_test; sleep 200; echo "=== alive? ===" && ps -ef | grep multiswe_run | grep -v grep | awk '{print $2}' | head -1; echo "=== completions so far ==="; grep -E "  -> " "$OUT"/run.*.log 2>/dev/null | tail -6; ech
+------------------------------------------------------------------------------
+    -> pydata__xarray-3095/atelier rep1: ok=True correct=True cost=$0.2908 turns=8 in=3833 out=3121 cacheW=15k cacheR=81k
+    -> psf__requests-6028/atelier rep1: ok=True correct=True cost=$0.3433 turns=8 in=3962 out=4307 cacheW=17k cacheR=85k
+    -> pydata__xarray-3993/atelier rep1: ok=True correct=True cost=$0.4529 turns=18 in=4111 out=4996 cacheW=18k cacheR=240k
+    -> astropy__astropy-13579/atelier rep1: ok=True correct=True cost=$0.5727 turns=16 in=4107 out=8017 cacheW=20k cacheR=300k
+    -> pytest-dev__pytest-8399/atelier rep1: ok=True correct=True cost=$0.3173 turns=16 in=4107 out=3261 cacheW=11k cacheR=199k
+  === outline transform fired in-container? (grep flows for the marker) ===
+  reports/benchmark/codebench/swe50_outline_test/pytest-dev__pytest-8399_atelier_rep1.flow_dump.txt
+  reports/benchmark/codebench/swe50_outline_test/pytest-dev__pytest-8399_atelier_rep1.flow_dump.txt:[user] [tool_result] {"exact_match": true, "files": [{"path": "src/_pytest/python.py", "sections": [{"
+  (marker above = outline active in-container)
+
+==============================================================================
+#79  CMD: cd /home/pankaj/Projects/leanchain/atelier && OUT=reports/benchmark/codebench/swe50_outline_test; echo "=== alive? ===" && ps -ef | grep multiswe_run | grep -v grep | awk '{print $2}' | head -1; echo "(empty=done)"; echo; uv run python - <<'PY' import json from collections import defaultdict new="re
+------------------------------------------------------------------------------
+  astropy-13579            0.47      0.50     0.57    Y |   -22%    -14%
+  django-11333             0.12      0.21     0.18    Y |   -58%    +13%
+  django-12155             0.09      0.11     0.17    Y |   -85%    -55%
+  django-13837             0.48      0.74     0.45    Y |    +7%    +40%
+  django-14376             0.21      0.29     0.33    Y |   -57%    -15%
+  django-15957             1.63      2.02     1.20    Y |   +26%    +41%
+  matplotlib-24870         0.79      0.89     0.77    Y |    +2%    +13%
+  flask-5014               0.12      0.21     0.20    Y |   -58%     +6%
+  requests-2931            0.22      0.61     0.54    Y |  -148%    +11%
+  requests-6028            0.37      0.40     0.34    Y |    +8%    +13%
+  xarray-3095              0.50      0.53     0.29    Y |   +42%    +45%
+  xarray-3993              0.44      0.46     0.45    Y |    -4%     +1%
+  pylint-6528              1.22      1.48     1.05    N |   +14%    +29%
+  pytest-7490              0.76      0.84     1.02    Y |   -34%    -21%
+  pytest-8399              0.20      0.22     0.32    Y |   -56%    -42%
+  sympy-13091              0.93      1.00     0.73    Y |   +22%    +28%
+  on 16 done tasks: baseline $8.55  atel(old) $10.51  atel+OUT $8.61
+    atel+OUT vs baseline: -0.8%   vs old atelier: +18.1%
+
+==============================================================================
+#80  CMD: cd /home/pankaj/Projects/leanchain/atelier && OUT=reports/benchmark/codebench/swe50_outline_test; echo "=== alive? ===" && ps -ef | grep multiswe_run | grep -v grep | awk '{print $2}' | head -1; echo "(empty=done)"; echo "=== django-13449 (the last/heavy one) ==="; uv run python - <<'PY' import json
+------------------------------------------------------------------------------
+  this experiment run cost so far: $8.61
+
+==============================================================================
+#81  CMD: cd /home/pankaj/Projects/leanchain/atelier && OUT=reports/benchmark/codebench/swe50_outline_test; echo "=== run elapsed ===" && ps -o etime= -p 409949 2>/dev/null; echo "=== django-13449 container running? ===" && docker ps --format '{{.Image}} {{.Status}}' 2>/dev/null | grep -i "13449" | head; echo
+------------------------------------------------------------------------------
+  codebench-overlay/swebench_sweb.eval.x86_64.django_1776_django-13449_latest:atelier Up 27 minutes
+
+==============================================================================
+#82  CMD: cd /home/pankaj/Projects/leanchain/atelier && OUT=reports/benchmark/codebench/swe50_outline_test; uv run python - <<'PY' import json p="reports/benchmark/codebench/swe50_outline_test/results.jsonl" rows=[json.loads(l) for l in open(p) if l.strip()] r=[x for x in rows if x['task']=='django__django-13
+------------------------------------------------------------------------------
+  Use the edit tool to create or modify files — shell redirects, heredocs, and inline interpreter writes are blocked unless the target is a literal path inside an allowed write root (the workspace, addi
+  Use the edit tool to create or modify files — shell redirects, heredocs, and inline interpreter writes are blocked unless the target is a literal path inside an allowed write root (the workspace, addi
+
+==============================================================================
+#83  CMD: cd /home/pankaj/Projects/leanchain/atelier && uv run python -c " import json rows=[json.loads(l) for l in open('reports/benchmark/codebench/swe50_outline_test/results.jsonl') if l.strip()] r=[x for x in rows if x['task']=='django__django-13449'] for x in r: print(f'django-13449: ok={x[\"ok\"]} err={
+------------------------------------------------------------------------------
+  django-13449: ok=True err=False turns=427 cost=$3.183
+
+==============================================================================
+#84  CMD: cd /home/pankaj/Projects/leanchain/atelier && OUT=reports/benchmark/codebench/swe50_outline_test; LOG="$OUT/rerun13449.$(date +%s).log"; CODEBENCH_CODESEARCH_OUTLINE=1 nohup uv run --project benchmarks python -m benchmarks.codebench.multiswe_run --suite swe-bench-verified -a atelier --reps 1 --model
+------------------------------------------------------------------------------
+  PID: 1071123  LOG: reports/benchmark/codebench/swe50_outline_test/rerun13449.1782766668.log
+  [run] results -> /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_outline_test
+  [resume] kept 16 prior row(s) (0 in-scope + 16 out-of-scope): 15/16 correct, $8.61 / 65k in + 107k out + 0M cacheW + 5M cacheR tok already spent; running 1 new job(s)
+  [atelier] 10 search/read calls with 0 edits -- you are spiraling. You have already examined: benchmarks/codebench/incontainer.py:L395-L435, benchmarks/codebench/data/swe50_stress.txt, integrations/cla
+
+==============================================================================
+#85  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python - <<'PY' import json from pathlib import Path from mitmproxy.io import FlowReader fp="reports/benchmark/codebench/swe50_outline_test/django__django-13449_atelier_rep1.flow" if not Path(fp).exists():     p
+------------------------------------------------------------------------------
+  [atelier] 11 search/read calls with 0 edits -- you are spiraling. You have already examined: benchmarks/codebench/incontainer.py:L395-L435, benchmarks/codebench/data/swe50_stress.txt, integrations/cla
+
+==============================================================================
+#86  CMD: cd /home/pankaj/Projects/leanchain/atelier && echo "=== transform logic (ATELIER_CODESEARCH_OUTLINE=1) ===" && ATELIER_CODESEARCH_OUTLINE=1 PYTHONPATH=src uv run python -c " import atelier.gateway.adapters.mcp_server as m, json def mk():     return json.dumps({'files':[       {'path':'a.py','section
+------------------------------------------------------------------------------
+  === transform logic (ATELIER_CODESEARCH_OUTLINE=1) ===
+  default (no include_source): [(has_content,has_outline) per file] [(False, True), (False, True), (False, True)]
+    -> expect first 2 = content, 3rd = outline
+
+==============================================================================
+#87  CMD: cd /home/pankaj/Projects/leanchain/atelier && ATELIER_CODESEARCH_OUTLINE=1 PYTHONPATH=src uv run python -c " import atelier.gateway.adapters.mcp_server as m, json SMALL='x'*200; BIG='y'*2000 def mk():     return json.dumps({'files':[       {'path':'a.py','sections':[         {'content':SMALL,'line':
+------------------------------------------------------------------------------
+  default     : [('small1', 'SRC'), ('BIG2', 'outline'), ('small3', 'SRC')]
+    expect: small1=SRC (small), BIG2=outline (large), small3=SRC (small)
+
+==============================================================================
+#88  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python experiments/read_projection_stats.py reports/benchmark/codebench/swe50_final_5rep 2>&1 | head -25
+------------------------------------------------------------------------------
+  atelier reads scanned: 230
+    none/full      227  (99%)
+    compact          3  (1%)  <- spilled (large file)
+  SPILLED to a projection (file too big for full source): 3/230 (1%)
+  returned full/range source:                              227/230 (99%)
+  read result size: median 2245c, max 26960c, mean 3387c
+
+==============================================================================
+#89  CMD: cd /home/pankaj/Projects/leanchain/atelier && PYTHONPATH=src uv run --project benchmarks python - <<'PY' import json, re from pathlib import Path from collections import Counter from mitmproxy.io import FlowReader def largest(fp):     best=[]     try: flows=list(FlowReader(open(fp,"rb")).stream())  
+------------------------------------------------------------------------------
+  baseline reads scanned: 277
+  size: median 1735c, max 15616c
+  --- sample baseline read result (first 400c) ---
+
+==============================================================================
+#90  CMD: ls experiments/ 2>/dev/null | head -50; echo "---FLOWS---"; ls reports/benchmark/codebench/swe50_final_5rep 2>/dev/null | head; echo "---"; find reports/benchmark/codebench -maxdepth 2 -name '*.json' | head
+------------------------------------------------------------------------------
+  atelier_defgold_misses.py
+  atelier_lift_latency.py
+  atelier_semantic_diag.py
+  cost_autopsy.py
+  fused_atelier_base150.json
+  fused_atelier_ft.json
+  measure_read_savings.py
+  astropy__astropy-13398_atelier_rep1.flow
+  astropy__astropy-13398_atelier_rep1.flow_dump.txt
+  astropy__astropy-13398_atelier_rep1.patch
+  astropy__astropy-13398_atelier_rep1.prompt.txt
+  astropy__astropy-13398_atelier_rep2.flow
+  astropy__astropy-13398_atelier_rep2.patch
+  astropy__astropy-13398_atelier_rep2.prompt.txt
+  astropy__astropy-13398_atelier_rep3.flow
+  astropy__astropy-13398_atelier_rep3.flow_dump.txt
+  astropy__astropy-13398_atelier_rep3.patch
+
+==============================================================================
+#91  CMD: cat > experiments/read_per_file_size.py <<'PY' """Median read size PER FILE (sum all reads of the same file within a run) vs PER CALL. Tells whether the read tool bloats context via re-reads / overlapping ranges of the same file -> i.e. whether read needs trimming.  PYTHONPATH=src uv run --project b
+------------------------------------------------------------------------------
+  Use the edit tool to create or modify files — shell redirects, heredocs, and inline interpreter writes are blocked unless the target is a literal path inside an allowed write root (the workspace, addi
+  Use the edit tool to create or modify files — shell redirects, heredocs, and inline interpreter writes are blocked unless the target is a literal path inside an allowed write root (the workspace, addi
+
+==============================================================================
+#92  CMD: PYTHONPATH=src uv run --project benchmarks python experiments/read_per_file_size.py 2>&1 | tail -40
+------------------------------------------------------------------------------
+  [atelier]  flows=226  read calls=1269  distinct (flow,file)=682
+    PER CALL : median   1842c  mean   2662c  max 41049c
+    PER FILE : median   3276c  mean   4953c  max 42299c
+    re-reads : 1.86 calls/file ; 281/682 files read >1x (41%)
+        29140c  x7  __init__.py                              [sphinx-doc__sphinx-8548_atelier_]
+        28787c  x6  reports.py                               [pytest-dev__pytest-5787_atelier_]
+        28530c  x5  reports.py                               [pytest-dev__pytest-5787_atelier_]
+        27656c  x8  __init__.py                              [sphinx-doc__sphinx-8548_atelier_]
+  [baseline]  flows=42  read calls=285  distinct (flow,file)=141
+    PER CALL : median   1520c  mean   2469c  max 57221c
+    PER FILE : median   2338c  mean   4992c  max 81372c
+    re-reads : 2.02 calls/file ; 67/141 files read >1x (48%)
+        81372c  x2  crv_types.py                             [sympy__sympy-13878_baseline_rep3]
+        34850c  x9  __init__.py                              [sphinx-doc__sphinx-8548_baseline]
+        30469c  x10 __init__.py                              [sphinx-doc__sphinx-8548_baseline]
+        22286c  x8  __init__.py                              [sphinx-doc__sphinx-8548_baseline]
+        16605c  x7  __init__.py                              [sphinx-doc__sphinx-8548_baseline]
+        15319c  x7  numbers.py                               [sympy__sympy-13091_baseline_rep1]
+
+==============================================================================
+#93  CMD: PYTHONPATH=src uv run --project benchmarks python experiments/read_dedup_probe.py 2>&1 | tail -30
+------------------------------------------------------------------------------
+  [atelier] flows=226
+    dedup/delta markers actually present in results:
+          0  (dedup never fired on any read)
+  [baseline] flows=42
+    dedup/delta markers actually present in results:
+          0  (dedup never fired on any read)
+
+==============================================================================
+#94  CMD: cd /home/pankaj/Projects/leanchain/atelier echo "=== _MIN_DEDUP_CHARS (dedup floor) ==="; grep -n "_MIN_DEDUP_CHARS = " src/atelier/core/capabilities/context_dedup.py echo "=== how _dedup_sid is sourced ==="; grep -n "session_id or\|_get_ledger().session_id\|def _get_ledger" src/atelier/gateway/adap
+------------------------------------------------------------------------------
+  === _MIN_DEDUP_CHARS (dedup floor) ===
+  42:_MIN_DEDUP_CHARS = 4096
+  === how _dedup_sid is sourced ===
+  10558:                            _dedup_sid = _get_ledger().session_id or ""
+  median bytes/line across 523 py files: 35.3
+  baseline 2000-line cap ~= 69 KB at this repo's 35 b/line
+
+==============================================================================
+#95  CMD: cd /home/pankaj/Projects/leanchain/atelier PYTHONPATH=src uv run --project benchmarks python experiments/reread_overlap.py 2>&1 | tail -25
+------------------------------------------------------------------------------
+    REDUNDANT (re-emitted) lines        : 3844  (5.8% of emitted)
+    ~chars (35 b/line): 134540 ; ~tokens (4 c/tok): 33635
+    worst files by redundant lines (redundant / #reads / file):
+
+==============================================================================
+#96  CMD: cd /home/pankaj/Projects/leanchain/atelier PYTHONPATH=src uv run --project benchmarks python - <<'PY' 2>&1 | tail -30 import os, tempfile d = tempfile.mkdtemp() os.environ["CLAUDE_WORKSPACE_ROOT"] = d os.environ["ATELIER_READ_INLINE_BUDGET_BYTES"] = "10240" from pathlib import Path from atelier.gate
+------------------------------------------------------------------------------
+  Use the edit tool to create or modify files — shell redirects, heredocs, and inline interpreter writes are blocked unless the target is a literal path inside an allowed write root (the workspace, addi
+  Use the edit tool to create or modify files — shell redirects, heredocs, and inline interpreter writes are blocked unless the target is a literal path inside an allowed write root (the workspace, addi
+
+==============================================================================
+#97  CMD: cd /home/pankaj/Projects/leanchain/atelier PYTHONPATH=src uv run --project benchmarks python experiments/_repro_read.py 2>&1 | tail -20
+------------------------------------------------------------------------------
+  file bytes: 15890 inline_budget: 10240
+  RANGE keys: ['cache_hit', 'content', 'language', 'mode', 'path', 'projection', 'range', 'tokens_saved']
+
+==============================================================================
+#98  CMD: cd /home/pankaj/Projects/leanchain/atelier echo "=== expand test ALONE ===" PYTHONPATH=src uv run --project benchmarks pytest "tests/gateway/test_mcp_read_projection.py::test_expand_large_file_returns_line_aligned_prefix_with_continuation" -q -p no:randomly 2>&1 | tail -6 echo "=== response builder:
+------------------------------------------------------------------------------
+  [read] file not found: /home/pankaj/Projects/leanchain/atelier/|. No file named '|' found under /home/pankaj/Projects/leanchain/atelier — do not retry this path.
+
+==============================================================================
+#99  CMD: cd /home/pankaj/Projects/leanchain/atelier PYTHONPATH=src uv run --project benchmarks pytest tests/gateway/test_mcp_read_projection.py -q -p no:randomly 2>&1 | tail -10
+------------------------------------------------------------------------------
+  FIXME (convergence): 8 test runs have failed across 42 edits without a single pass -- you have spent the turn budget without converging. Make your single best-justified fix NOW and STOP the edit+test 
+
+==============================================================================
+#100  CMD: cd /home/pankaj/Projects/leanchain/atelier grep -nE "def _semantic_file_memory|def _atelier_root|lru_cache|@cache|_MEMO|_CACHE|global " src/atelier/gateway/adapters/mcp_server.py | grep -iE "semantic_file|atelier_root|lru|cache|memo" | head echo "--- _semantic_file_memory body ---" PYTHONPATH=src uv
+------------------------------------------------------------------------------
+  FIXME (convergence): 8 test runs have failed across 0 edits without a single pass -- you have spent the turn budget without converging. Make your single best-justified fix NOW and STOP the edit+test l
+  27:from functools import lru_cache, wraps
+  512:_CONTEXT_STATE_CACHE: dict[str, tuple[tuple[tuple[str, int, int], ...], tuple[int, str]]] = {}
+  905:def _atelier_root() -> Path:
+  1169:    global _runtime_cache
+  1178:    global _runtime_cache, _remote_client, _context_budget_recorder
+  1180:    global _WINDOW_SID_CACHE, _MCP_WINDOW_ID, _MCP_WINDOW_ID_RESOLVED
+  1189:    _WINDOW_SID_CACHE = None
+  1194:    _CONTEXT_STATE_CACHE.clear()
+  1195:    _COMPACT_ADVISE_CACHE.clear()
+  /home/pankaj/Projects/leanchain/atelier/.venv/bin/python3: can't open file '/home/pankaj/Projects/leanchain/atelier/experiments/_repro_isolation.py': [Errno 2] No such file or directory
+
+==============================================================================
+#101  CMD: cd /home/pankaj/Projects/leanchain/atelier PYTHONPATH=src uv run --project benchmarks python experiments/_repro_isolation.py 2>&1 | tail -10
+------------------------------------------------------------------------------
+  FIXME (convergence): 9 test runs have failed across 1 edits without a single pass -- you have spent the turn budget without converging. Make your single best-justified fix NOW and STOP the edit+test l
+  disabled-expand: budget_env=0 budget_fn=0 size=15890 mode=full truncated=None len=15890
+  large-expand   : budget_env=10240 budget_fn=0 size=15890 mode=full truncated=None len=15890
+  large-range    : budget_env=10240 budget_fn=0 size=15890 mode=range truncated=None len=14414
+
+==============================================================================
+#102  CMD: cd /home/pankaj/Projects/leanchain/atelier echo "=== repro (budget tracks env per-call now) ===" PYTHONPATH=src uv run --project benchmarks python experiments/_repro_isolation.py 2>&1 | grep -E "disabled|large" echo "=== ruff errors detail ===" uv run ruff check src/atelier/gateway/adapters/mcp_serv
+------------------------------------------------------------------------------
+  === repro (budget tracks env per-call now) ===
+  disabled-expand: budget_env=0 budget_fn=0 size=15890 mode=full truncated=None len=15890
+  large-expand   : budget_env=10240 budget_fn=10240 size=15890 mode=full truncated=True len=10273
+  large-range    : budget_env=10240 budget_fn=10240 size=15890 mode=range truncated=True len=10307
+  RUF002 Docstring contains ambiguous `×` (MULTIPLICATION SIGN). Did you mean `x` (LATIN SMALL LETTER X)?
+      --> src/atelier/gateway/adapters/mcp_server.py:8855:9
+      --> src/atelier/gateway/adapters/mcp_server.py:8930:5
+
+==============================================================================
+#103  CMD: cd /home/pankaj/Projects/leanchain/atelier rm -f experiments/_repro_read.py experiments/_repro_isolation.py echo "=== broader gateway read/tool/cache sweep ===" PYTHONPATH=src uv run --project benchmarks pytest tests/gateway/test_mcp_read_projection.py tests/gateway/test_mcp_tool_handlers.py tests/g
+------------------------------------------------------------------------------
+  FAILED tests/gateway/test_mcp_host_cache_hygiene.py::test_compact_result_text_compacts_oversized_keeping_head_and_tail - AssertionError: assert 20008 < 20008
+
+==============================================================================
+#104  CMD: cd /home/pankaj/Projects/leanchain/atelier echo "is _compact_result_chars cached?"; grep -nB1 "def _compact_result_chars" src/atelier/gateway/adapters/mcp_server.py echo "=== FULL SWEEP on clean HEAD (stash mine) ===" git stash push -- src/atelier/gateway/adapters/mcp_server.py tests/gateway/test_mc
+------------------------------------------------------------------------------
+  FAILED tests/gateway/test_mcp_host_cache_hygiene.py::test_compact_result_text_compacts_oversized_keeping_head_and_tail - AssertionError: assert 20008 < 20008
+
+==============================================================================
+#105  CMD: cd /home/pankaj/Projects/leanchain/atelier echo "=== ruff on shippable files ===" uv run ruff check src/atelier/gateway/adapters/mcp_server.py tests/gateway/test_mcp_read_projection.py 2>&1 | tail -8 echo "=== my source/test diff (stat) ===" git diff --stat src/atelier/gateway/adapters/mcp_server.py
+------------------------------------------------------------------------------
+   src/atelier/gateway/adapters/mcp_server.py | 227 +++++++++++++++++++----------
+
+==============================================================================
+#106  CMD: cd /home/pankaj/Projects/leanchain/atelier ls src/atelier/gateway/adapters/*.bak 2>/dev/null && echo "WARNING bak exists" || echo "no .bak (good)" echo "--- new untracked files in experiments ---" git status --short experiments/ | grep "^??" 
+------------------------------------------------------------------------------
+  ?? experiments/cost_autopsy.py
+  ?? experiments/measure_read_savings.py
+  ?? experiments/read_dedup_probe.py
+  ?? experiments/read_per_file_size.py
+  ?? experiments/reread_overlap.py
+  ?? experiments/sim_outline_always.py
+
+==============================================================================
+#107  CMD: cd /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_outline_test echo "=== any 13449 row in results.jsonl? ===" grep -o '"instance_id"[^,]*' results.jsonl 2>/dev/null | grep 13449 || echo "NO 13449 row in results.jsonl" echo "=== results.jsonl instance count ===" grep -c "in
+------------------------------------------------------------------------------
+  [read] file not found: /home/pankaj/Projects/leanchain/atelier/run.1782764636.log. No file named 'run.1782764636.log' found under /home/pankaj/Projects/leanchain/atelier — do not retry this path.
+
+==============================================================================
+#108  CMD: cd /home/pankaj/Projects/leanchain/atelier D=reports/benchmark/codebench/swe50_outline_test grep -l 13449 $D/results.jsonl >/dev/null 2>&1 && echo "13449 IS in results.jsonl" || echo "13449 NOT in results.jsonl" echo "rows in results.jsonl:"; grep -c instance_id $D/results.jsonl 2>/dev/null echo "--
+------------------------------------------------------------------------------
+  reports/benchmark/codebench/swe50_outline_test/django__django-13449_atelier_rep1.flow
+  reports/benchmark/codebench/swe50_outline_test/django__django-13449_atelier_rep1.prompt.txt
+  reports/benchmark/codebench/swe50_outline_test/rerun13449.1782766668.log
+
+==============================================================================
+#109  CMD: cd /home/pankaj/Projects/leanchain/atelier echo "=== last commands referencing 13449 / multiswe (bash history) ===" grep -hE "13449|multiswe_run|CODEBENCH_CODESEARCH_OUTLINE" ~/.bash_history 2>/dev/null | tail -15 echo "=== run.log line 1 (the command echo, if any) ===" grep -m3 -iE "instances|arms|
+------------------------------------------------------------------------------
+  [run] results -> /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_outline_test
+  === /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_outline_test/pydata__xarray-3095_atelier_rep1.flow ===
+    8 turns -> /home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_outline_test/pydata__xarray-3095_atelier_rep1.flow_dump.txt
+
+==============================================================================
+#110  CMD: cd /home/pankaj/Projects/leanchain/atelier echo "=== model used in the 13449 flow ===" grep -aoE '"model"\s*:\s*"[^"]+"' reports/benchmark/codebench/swe50_outline_test/django__django-13449_atelier_rep1.flow 2>/dev/null | sort -u | head echo "=== bench targets in Makefile ===" grep -nE "multiswe_run|
+------------------------------------------------------------------------------
+  130:	uv run pytest -m "" --timeout=300 --cov=atelier --cov-report=term-missing --cov-fail-under=$(COV_FAIL_UNDER)
+  === ARMS + outline env wiring in incontainer ===
+  428:        # (the agent reads its edit targets anyway). Opt-in via CODEBENCH_CODESEARCH_OUTLINE=1.
+  429:        env["ATELIER_CODESEARCH_OUTLINE"] = os.environ.get("CODEBENCH_CODESEARCH_OUTLINE", "0")
+
+==============================================================================
+#111  CMD: cd /home/pankaj/Projects/leanchain/atelier PYTHONPATH=.:src uv run --project benchmarks python experiments/extrapolate_50.py 2>&1 | head -60
+------------------------------------------------------------------------------
+  cost field = 'cost_usd'; sample base row keys = ['arm', 'cache_creation_tokens', 'cache_read_tokens', 'correct', 'cost_usd', 'duration_api_ms', 'duration_ms', 'flow_path', 'input_tokens', 'is_error', 
+  baseline 50 total:        $  46.97
+  atelier 50 (final_5rep):  $  41.24   (+12.2% vs baseline)
+  atelier 50 (w/ re-runs):  $  40.99   (+12.7% vs baseline)
+  per-task swaps (task: old_atelier -> new_atelier | baseline):
+    django__django-15957               $ 2.021 -> $ 1.198  (saved $+0.823) | base $ 1.626
+    pylint-dev__pylint-6528            $ 1.477 -> $ 1.050  (saved $+0.427) | base $ 1.216
+    django__django-13837               $ 0.744 -> $ 0.447  (saved $+0.297) | base $ 0.482
+    sympy__sympy-13091                 $ 1.002 -> $ 0.726  (saved $+0.276) | base $ 0.926
+    pydata__xarray-3095                $ 0.528 -> $ 0.291  (saved $+0.237) | base $ 0.500
+    matplotlib__matplotlib-24870       $ 0.887 -> $ 0.771  (saved $+0.116) | base $ 0.791
+    psf__requests-2931                 $ 0.613 -> $ 0.545  (saved $+0.069) | base $ 0.219
+    psf__requests-6028                 $ 0.396 -> $ 0.343  (saved $+0.053) | base $ 0.372
+    django__django-11333               $ 0.212 -> $ 0.184  (saved $+0.029) | base $ 0.116
+    pallets__flask-5014                $ 0.208 -> $ 0.195  (saved $+0.012) | base $ 0.123
+    pydata__xarray-3993                $ 0.457 -> $ 0.453  (saved $+0.004) | base $ 0.437
+    django__django-14376               $ 0.290 -> $ 0.334  (saved $-0.044) | base $ 0.213
+    django__django-12155               $ 0.106 -> $ 0.165  (saved $-0.059) | base $ 0.089
+    astropy__astropy-13579             $ 0.500 -> $ 0.573  (saved $-0.072) | base $ 0.471
+    pytest-dev__pytest-8399            $ 0.223 -> $ 0.317  (saved $-0.094) | base $ 0.204
+    pytest-dev__pytest-7490            $ 0.844 -> $ 1.019  (saved $-0.175) | base $ 0.760
+    django__django-13449               $ 1.529 -> $ 3.183  (saved $-1.653) | base $ 1.390
+  re-run subset (17 tasks): atelier $12.04 -> $11.79  | baseline $9.94
+    subset saving: was -21.2% -> now -18.7% vs baseline
+
+==============================================================================
+#112  CMD: cd /home/pankaj/Projects/leanchain/atelier echo "=== 13449 still running? ===" tail -4 reports/benchmark/codebench/swe50_13449_smart/run.log 2>/dev/null ls reports/benchmark/codebench/swe50_13449_smart/*.flow reports/benchmark/codebench/swe50_13449_smart/*.patch 2>/dev/null | sed 's#.*/##' mkdir -p 
+------------------------------------------------------------------------------
+  Runs ok     : atelier 1/1
+  Valid       : atelier 1/1
+  Correct     : atelier 1/1 avg=1.0
+  Chart data  : summary.csv, task_metrics.csv, model_audit.csv, task_correctness.csv, pairwise_quality.csv, quality_adjusted_summary.csv
+  django__django-13449_atelier_rep1.flow
+  django__django-13449_atelier_rep1.patch
+
+==============================================================================
+#113  CMD: cd /home/pankaj/Projects/leanchain/atelier echo "=== 13449 result (cost/turns/correct) ===" PYTHONPATH=.:src uv run --project benchmarks python -c " import json for l in open('reports/benchmark/codebench/swe50_13449_smart/results.jsonl'):     r=json.loads(l)     print(f\"task={r['task']} arm={r['arm
+------------------------------------------------------------------------------
+  === 13449 result (cost/turns/correct) ===
+  task=django__django-13449 arm=atelier cost=$0.464 turns=13 correct=True ok=True is_error=False
+
+==============================================================================
+#114  CMD: cd /home/pankaj/Projects/leanchain/atelier PYTHONPATH=.:src uv run --project benchmarks python experiments/extrapolate_50.py 2>&1 | tail -40
+------------------------------------------------------------------------------
+  cost field = 'cost_usd'; sample base row keys = ['arm', 'cache_creation_tokens', 'cache_read_tokens', 'correct', 'cost_usd', 'duration_api_ms', 'duration_ms', 'flow_path', 'input_tokens', 'is_error', 
+  baseline 50 total:        $  46.97
+  atelier 50 (final_5rep):  $  41.24   (+12.2% vs baseline)
+  atelier 50 (w/ re-runs):  $  38.54   (+17.9% vs baseline)
+  per-task swaps (task: old_atelier -> new_atelier | baseline):
+    django__django-13449               $ 1.529 -> $ 0.464  (saved $+1.065) | base $ 1.390
+    pylint-dev__pylint-6528            $ 1.477 -> $ 0.886  (saved $+0.590) | base $ 1.216
+    sympy__sympy-13091                 $ 1.002 -> $ 0.707  (saved $+0.296) | base $ 0.926
+    django__django-13837               $ 0.744 -> $ 0.466  (saved $+0.279) | base $ 0.482
+    matplotlib__matplotlib-24870       $ 0.887 -> $ 0.647  (saved $+0.240) | base $ 0.791
+    pydata__xarray-3095                $ 0.528 -> $ 0.319  (saved $+0.209) | base $ 0.500
+    astropy__astropy-13579             $ 0.500 -> $ 0.335  (saved $+0.165) | base $ 0.471
+    psf__requests-2931                 $ 0.613 -> $ 0.479  (saved $+0.135) | base $ 0.219
+    pallets__flask-5014                $ 0.208 -> $ 0.122  (saved $+0.086) | base $ 0.123
+    django__django-14376               $ 0.290 -> $ 0.243  (saved $+0.047) | base $ 0.213
+    pydata__xarray-3993                $ 0.457 -> $ 0.414  (saved $+0.043) | base $ 0.437
+    django__django-12155               $ 0.106 -> $ 0.121  (saved $-0.014) | base $ 0.089
+    pytest-dev__pytest-8399            $ 0.223 -> $ 0.245  (saved $-0.022) | base $ 0.204
+    django__django-11333               $ 0.212 -> $ 0.248  (saved $-0.036) | base $ 0.116
+    pytest-dev__pytest-7490            $ 0.844 -> $ 0.909  (saved $-0.065) | base $ 0.760
+    django__django-15957               $ 2.021 -> $ 2.121  (saved $-0.100) | base $ 1.626
+    psf__requests-6028                 $ 0.396 -> $ 0.616  (saved $-0.220) | base $ 0.372
+  re-run subset (17 tasks): atelier $12.04 -> $9.34  | baseline $9.94
+    subset saving: was -21.2% -> now +6.0% vs baseline
+
+==============================================================================
+#115  CMD: cd /home/pankaj/Projects/leanchain/atelier PYTHONPATH=.:src uv run --project benchmarks python -c " import json from pathlib import Path ROOT=Path('reports/benchmark/codebench') runs={'final_5rep':'swe50_final_5rep','outline_ALWAYS':'swe50_outline_test','size_intel':'swe50_exp16_smart'} T='django__d
+------------------------------------------------------------------------------
+  final_5rep     rep1 $1.482 turns= 31 in=   4545 out= 15722 cacheW=   49058 cacheR=  1151963 correct=True
+  final_5rep     rep2 $1.610 turns= 42 in=   4696 out= 18539 cacheW=   45220 cacheR=  1342324 correct=True
+  final_5rep     rep3 $3.281 turns= 63 in=   4746 out= 40608 cacheW=  153862 cacheR=  2367173 correct=True
+  final_5rep     rep4 $2.712 turns= 47 in=   4835 out= 37676 cacheW=   65820 cacheR=  2175409 correct=True
+  final_5rep     rep5 $1.021 turns= 29 in=   4412 out= 11895 cacheW=   32371 cacheR=   756276 correct=True
+  outline_ALWAYS rep1 $1.198 turns= 33 in=   4420 out= 12337 cacheW=   37422 cacheR=   986997 correct=True
+  size_intel     rep1 $2.121 turns=108 in=   4496 out= 34555 cacheW=  119497 cacheR=  3458743 correct=True
+
+==============================================================================
+#116  CMD: cd /home/pankaj/Projects/leanchain/atelier PYTHONPATH=.:src uv run --project benchmarks python -c " import json from pathlib import Path ROOT=Path('reports/benchmark/codebench') runs={'final_5rep':'swe50_final_5rep','outline_ALWAYS':'swe50_outline_test','size_intel':'swe50_exp16_smart'} T='psf__requ
+------------------------------------------------------------------------------
+  final_5rep     rep1 $0.473 turns=  8 out=  7410 cacheW=   20281 cacheR=   130223 correct=True
+  final_5rep     rep2 $0.338 turns=  7 out=  4972 cacheW=   14775 cacheR=    92067 correct=True
+  final_5rep     rep3 $0.350 turns= 12 out=  5254 cacheW=   12239 cacheR=   152885 correct=True
+  final_5rep     rep4 $0.450 turns=  9 out=  5870 cacheW=   20544 cacheR=   156253 correct=True
+  final_5rep     rep5 $0.370 turns=  8 out=  5891 cacheW=   14858 cacheR=   109186 correct=True
+  outline_ALWAYS rep1 $0.343 turns=  8 out=  4307 cacheW=   17315 cacheR=    85270 correct=True
+  size_intel     rep1 $0.616 turns= 19 out=  8953 cacheW=   22108 cacheR=   301172 correct=True
+  baseline       rep1 $0.357 turns= 13 correct=True
+  baseline       rep2 $0.336 turns= 14 correct=True
+  baseline       rep3 $0.481 turns= 18 correct=True
+  baseline       rep4 $0.369 turns= 16 correct=True
+  baseline       rep5 $0.317 turns= 14 correct=True
+
+==============================================================================
+#117  CMD: cd /home/pankaj/Projects/leanchain/atelier PYTHONPATH=.:src uv run --project benchmarks python -c " import json from pathlib import Path ROOT=Path('reports/benchmark/codebench') def load(dirs):     m={}     for d in dirs:         p=ROOT/d/'results.jsonl'         if not p.exists(): continue         f
+------------------------------------------------------------------------------
+  task                               outline_always       size_intel   delta(si-oa)
+  django__django-13449             $ 3.183/427t     $ 0.464/ 13t   $-2.719  cheaper-SI
+  astropy__astropy-13579           $ 0.573/ 16t     $ 0.335/  9t   $-0.237  cheaper-SI
+  pylint-dev__pylint-6528          $ 1.050/ 39t     $ 0.886/ 22t   $-0.164  cheaper-SI
+  matplotlib__matplotlib-24870     $ 0.771/ 17t     $ 0.647/ 21t   $-0.124  cheaper-SI
+  pytest-dev__pytest-7490          $ 1.019/ 33t     $ 0.909/ 30t   $-0.110  cheaper-SI
+  django__django-14376             $ 0.334/ 13t     $ 0.243/  9t   $-0.091  cheaper-SI
+  pallets__flask-5014              $ 0.195/ 11t     $ 0.122/  6t   $-0.073  cheaper-SI
+  pytest-dev__pytest-8399          $ 0.317/ 16t     $ 0.245/ 15t   $-0.072  cheaper-SI
+  psf__requests-2931               $ 0.545/ 21t     $ 0.479/ 18t   $-0.066  cheaper-SI
+  django__django-12155             $ 0.165/  9t     $ 0.121/  6t   $-0.044  cheaper-SI
+  pydata__xarray-3993              $ 0.453/ 18t     $ 0.414/ 16t   $-0.039  cheaper-SI
+  sympy__sympy-13091               $ 0.726/ 25t     $ 0.707/ 16t   $-0.020  ~tie
+  django__django-13837             $ 0.447/ 18t     $ 0.466/ 19t   $+0.019  ~tie
+  pydata__xarray-3095              $ 0.291/  8t     $ 0.319/ 11t   $+0.028  cheaper-OA
+  django__django-11333             $ 0.184/ 11t     $ 0.248/ 14t   $+0.065  cheaper-OA
+  psf__requests-6028               $ 0.343/  8t     $ 0.616/ 19t   $+0.273  cheaper-OA
+  django__django-15957             $ 1.198/ 33t     $ 2.121/108t   $+0.923  cheaper-OA
+  TOTAL(17)  outline_always $11.79   size_intel $9.34   delta $-2.45
+
+==============================================================================
+#118  CMD: cd /home/pankaj/Projects/leanchain/atelier echo "=== new section headings ===" grep -nE "^## How Atelier saves|^### |^## MCP Tools" README.md | head echo "=== benchmarks anchor exists? ===" grep -nE "^## Benchmarks" README.md echo "=== 33-batch still running? (progress) ===" grep -cE '"task"' report
+------------------------------------------------------------------------------
+  11:### [Documentation →](https://atelier.ws)
+  66:## How Atelier saves
+  70:### Correctness comes from grounding, not recall
+  74:### Fewer turns — front-load the understanding
+  78:### Leaner turns — budget what each turn carries
+  86:### Convergence, not spirals
+  90:### Where the tokens go
+    -> django__django-13128/atelier rep1: ok=True correct=True cost=$0.6781 turns=15 in=4126 out=9814 cacheW=25k cacheR=310k
+    -> django__django-11138/atelier rep1: ok=True correct=True cost=$0.8452 turns=20 in=4115 out=11397 cacheW=29k cacheR=479k

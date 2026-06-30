@@ -304,6 +304,24 @@ def apply_fuzzy_replace(content: str, old_string: str, new_string: str) -> tuple
     if match_char == -1:
         raise ValueError("old_string not found in file")
 
+    # Check for a second DMP match — DMP silently picks the first; a second
+    # hit means the old_string is ambiguous and we must not guess.
+    second_match = dmp.match_main(content, old_string, match_char + 1)
+    if second_match != -1 and second_match != match_char:
+        lines_tmp = content.splitlines(keepends=True)
+        offsets_tmp: list[int] = [0]
+        for _l in lines_tmp:
+            offsets_tmp.append(offsets_tmp[-1] + len(_l))
+        first_line = max(0, bisect_right(offsets_tmp, match_char) - 1) + 1
+        second_line = max(0, bisect_right(offsets_tmp, second_match) - 1) + 1
+        n = max(1, len(old_string.splitlines()))
+        raise FuzzyAmbiguousMatchError(
+            [
+                FuzzyCandidate(first_line, first_line + n - 1, match_char, match_char, 0, 1.0),
+                FuzzyCandidate(second_line, second_line + n - 1, second_match, second_match, 0, 1.0),
+            ]
+        )
+
     start_line_idx = max(0, bisect_right(offsets, match_char) - 1)
     n_old_lines = max(1, len(old_string.splitlines()))
     norm_old = normalize_for_fuzzy(old_string)

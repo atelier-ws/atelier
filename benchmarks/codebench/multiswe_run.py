@@ -445,7 +445,7 @@ def main() -> int:
     p.add_argument("--instances", nargs="*", default=None, help="Explicit instance ids to run")
     p.add_argument("-a", "--arms", nargs="*", default=list(ARMS), choices=ARMS)
     p.add_argument("--reps", type=int, default=1)
-    p.add_argument("--model", default="sonnet")
+    p.add_argument("--model", default="claude-opus-4-8")
     p.add_argument(
         "--max-turns",
         type=int,
