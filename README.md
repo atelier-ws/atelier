@@ -143,7 +143,7 @@ Packaged skills in [integrations/skills/](integrations/skills/):
 
 ### Exploration tasks
 
-8 open-source codebases · 5 questions each · `claude-opus-4-8` · costs summed across all 5 prompts (5 reps). Sorted by savings.
+8 open-source codebases · 5 questions each · `claude-opus-4-8` · costs summed across all 5 prompts (5 reps). Sorted by savings. Raw data: [`benchmarks/codebench/results/exploration_2026_06_29/`](benchmarks/codebench/results/exploration_2026_06_29/)
 
 | Codebase                                               | Language                                         |  Atelier |  Baseline | Cost ↓ | Δ Input | Δ Cache W | Δ Cache R | Δ Output |
 | ------------------------------------------------------ | ------------------------------------------------ | -------: | --------: | ------: | ------: | --------: | --------: | -------: |
