@@ -1,0 +1,72 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] OkHttp processes every HTTP request through a **chain of interceptors** built on the classic "Russian doll" / responsibility-chain pattern. Here's how it works.
+
+## The core abstraction
+
+```java
+public interface Interceptor {
+  Response intercept(Chain chain) throws IOException;
+
+  interface Chain {
+    Request request();
+    Response proceed(Request request) throws IOException;
+    // connection(), call(), timeouts...
+  }
+}
+```
+
+Each interceptor receives a `Chain`, can inspect/modify the outgoing `Request`, **must call `chain.proceed(request)`** to hand off to the next interceptor, then can inspect/modify the returned `Response` on the way back out.
+
+## The chain is built per-call
+
+When you execute a call (`call.execute()` or `enqueue()`), OkHttp assembles an ordered `List<Interceptor>` in `RealCall.getResponseWithInterceptorChain()`:
+
+1. **Client application interceptors** (`OkHttpClient.interceptors()`) — yours, added via `addInterceptor`.
+2. **`RetryAndFollowUpInterceptor`** — handles retries and redirects/auth follow-ups.
+3. **`BridgeInterceptor`** — turns an app-level request into a wire request: adds `Content-Type`, `Content-Length`, `Host`, `Connection: Keep-Alive`, gzip `Accept-Encoding`, cookies; transparently decompresses gzip responses.
+4. **`CacheInterceptor`** — serves from cache, validates with conditional requests, writes responses back to the cache.
+5. **`ConnectInterceptor`** — opens a healthy connection to the target (socket, TLS handshake) and gets the codec.
+6. **Network interceptors** (`OkHttpClient.networkInterceptors()`) — yours, added via `addNetworkInterceptor`.
+7. **`CallServerInterceptor`** — the terminal interceptor: writes the request to the socket and reads the response. It does **not** call `proceed`.
+
+## How a request flows
+
+The whole list is wrapped in a `RealInterceptorChain`. Calling `chain.proceed(request)`:
+
+- Builds the **next** chain instance (index + 1),
+- Looks up the interceptor at the current index,
+- Invokes `interceptor.intercept(nextChain)`.
+
+So control flows **downward** through the list as each interceptor calls `proceed`, reaches `CallServerInterceptor` which produces the real `Response`, and then the response flows **back upward** as each `intercept` method returns. An interceptor's code *before* `proceed` runs on the request; code *after* `proceed` runs on the response.
+
+```
+request  →  app  →  retry  →  bridge  →  cache  →  connect  →  network  →  callServer
+                                                                              │
+response ←  app  ←  retry  ←  bridge  ←  cache  ←  connect  ←  network  ←──────┘
+```
+
+## Application vs. network interceptors
+
+This ordering creates the two documented behavioral differences:
+
+| | Application interceptors | Network interceptors |
+|---|---|---|
+| Called for cache hits? | Yes (always once) | No (skipped if cache serves the response) |
+| Called per retry/redirect? | Once, regardless | Once **per** network round-trip |
+| See the final request? | The original logical request | The actual wire request (with `Host`, gzip, redirects applied) |
+| Access to the `Connection`? | No | Yes (`chain.connection()`) |
+
+## What an interceptor can do
+
+Because `proceed` is just a method call, an interceptor can: short-circuit by returning a `Response` **without** calling `proceed` (e.g., a mock/offline interceptor), call `proceed` **multiple times** (e.g., custom retry), rewrite the request before proceeding, or transform the response after. A logging interceptor is the canonical example — log before `proceed`, log after.
+
+The key invariants: each interceptor must call `proceed` exactly the number of times it intends to produce responses, must pass the resulting `Response` body along (or close it), and the terminal `CallServerInterceptor` is the only one that actually touches the socket.
+
+If you want, I can point to the specific source files (`RealCall`, `RealInterceptorChain`, the individual interceptors) in the OkHttp repo or in a checkout you have locally.

@@ -1,0 +1,47 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "extension host communicate with main process IPC protocol"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["src/atelier/gateway/adapters/mcp_server.py","src/atelier/core/capabilities/code_context/engine.py","scripts/profile_search_latency.py","src/atelier/core/environment.py","scripts/_provision_linux_kernel.py","benchmarks/codebench/data/bench_pairs_linux.json","src/ate
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "extension host"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "main process communication channel RPC"}
+
+=== Turn 3 ===
+[user] [tool_result] {"candidate_files":["src/atelier/core/capabilities/quality_router/execution_contract.py","src/atelier/core/capabilities/web_fetch.py","src/atelier/core/service/api.py","src/atelier/core/foundation/store.py","src/atelier/gateway/cli/commands/sessions.py","scripts/build_host_skills.sh","
+[assistant] I searched the codebase, but it doesn't have a VS Code–style "extension host ↔ main process" architecture. This repo (Atelier) is a Python project, not an Electron/VS Code-style app. Let me check the closest analogue — its plugin runtime — to make sure I'm not missing something.[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["src/atelier/core/capabilities/plugin_runtime.py"]}
+
+=== Turn 4 ===
+[user] [tool_result] ## /home/pankaj/Projects/leanchain/atelier/src/atelier/core/capabilities/plugin_runtime.py
+Projection: outline
+
+imports (11): __future__, base64, contextlib, datetime, hashlib, json, logging, os, pathlib, re, typing
+symbols:
+- 67-73: _read_json [function]
+- 76-83: _write_json [function
+[assistant] This codebase doesn't have a VS Code–style "extension host ↔ main process" architecture, so there's nothing here that matches that question directly. Let me tell you what I actually found.
+
+## What this repo is
+
+This is **Atelier** — a Python project that augments AI coding CLIs (Claude Code, Codex, OpenCode, Copilot). It's not an Electron app, and there's no separate "extension host" process spawned by a "main process." The pieces that *sound* adjacent are:
+
+- **`src/atelier/gateway/`** — adapters that expose Atelier to host tools, including an **MCP server** (`adapters/mcp_server.py`, `adapters/mcp_http.py`). Communication with the host (e.g. Claude Code) happens over the **Model Context Protocol** — stdio/HTTP JSON-RPC — not an internal IPC channel.
+- **`integrations/claude/plugin/hooks/`** — hook scripts (e.g. `session_start.py`) the host CLI invokes at lifecycle events; they exchange JSON over stdin/stdout.
+- **`src/atelier/core/capabilities/plugin_runtime.py`** — despite the name, this is *in-process* logic (settings, session-start bootstrap, hook output builders for Codex/OpenCode), not a cross-process extension host.
+- **`src/atelier/infra/code_intel/lsp/transport.py`** and **`zoekt/server.py`** — these *do* talk to external processes (language servers via LSP, Zoekt search), which is the closest real "main process ↔ subprocess" communication in the repo.
+
+## What I think you're after
+
+If you're asking about VS Code's actual architecture (where the extension host is a separate Node process that talks to the renderer/main over an RPC protocol), **that code isn't in this repository** — this isn't VS Code or a fork of it.
+
+Could you clarify which you mean?
+1. **A different repo** — if "extension host / main process" refers to a VS Code-based project you expected to be here, point me at it.
+2. **VS Code in general** — I can explain how VS Code's extension host RPC works conceptually (no repo lookup needed).
+3. **Atelier's host integration** — if you actually want how Atelier talks to its host CLI, the answer is **MCP (JSON-RPC over stdio/HTTP) plus lifecycle hooks**, and I can go deeper into `gateway/adapters/`.
+
+Which direction do you want?

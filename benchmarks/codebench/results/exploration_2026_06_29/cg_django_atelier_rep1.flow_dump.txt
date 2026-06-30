@@ -1,0 +1,75 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] Django's ORM turns a `QuerySet` into SQL through a layered pipeline. The key idea is **laziness**: building a query mutates a cheap in-memory tree, and nothing touches the database until the results are actually needed.
+
+## The layers
+
+There are three main objects involved:
+
+1. **`QuerySet`** (`django/db/models/query.py`) — the high-level, user-facing API. It's lazy and chainable.
+2. **`Query`** (`django/db/models/sql/query.py`) — an abstract, database-agnostic representation of the query (the "what").
+3. **`SQLCompiler`** (`django/db/models/sql/compiler.py`) — turns a `Query` into actual SQL strings + params for a specific backend (the "how").
+
+## 1. Building — chaining filters
+
+Each `QuerySet` wraps a `Query` instance (`qs.query`). Chaining methods like `.filter()`, `.exclude()`, `.order_by()`, `.values()` does **not** hit the DB:
+
+```python
+qs = Book.objects.filter(author__name="Rowling").order_by("-year")
+```
+
+- Every chaining method **clones** the `QuerySet` (and its underlying `Query`) so QuerySets are immutable/reusable, then mutates the clone.
+- `.filter(**kwargs)` calls `Query.add_q(Q(...))`. The lookup string `author__name="Rowling"` is parsed:
+  - Split on `__` into a path of field names plus a final lookup (`exact`, `gt`, `icontains`, …).
+  - Each relational segment (`author`) is resolved against the model's `Meta` and triggers a **join** (`Query.setup_joins` / `Query.join`), tracked in `Query.alias_map` with table aliases.
+  - The terminal piece becomes a `Lookup` object wrapping a `Col` (column reference) and the right-hand value.
+- These conditions accumulate in `Query.where`, a tree of `WhereNode`s (AND/OR/NOT). `order_by`, `select`, `group_by`, `annotations`, `low_mark`/`high_mark` (for slicing/LIMIT), etc. all live as attributes on the `Query`.
+
+At this point you have an expression tree — no SQL yet.
+
+## 2. Triggering execution
+
+The `QuerySet` evaluates only when something consumes its results: iterating (`for x in qs`), `len()`, `list()`, `bool()`, slicing without a step, `repr()`, pickling, etc. Internally this calls `qs._fetch_all()`, which runs the compiler and caches results in `qs._result_cache` (so re-iterating doesn't re-query).
+
+## 3. Compiling — Query → SQL
+
+`_fetch_all` drives an iterable that calls `query.get_compiler(using=db)` and then `compiler.execute_sql()`. The compiler's `as_sql()` assembles the statement clause by clause:
+
+- Resolves the `SELECT` columns (`get_select` — model fields, or `.values()`/annotation expressions).
+- Builds `FROM` + `JOIN`s from the `alias_map`, pruning joins not actually needed.
+- Compiles `Query.where` into the `WHERE` clause; each `Lookup`/expression has its own `as_sql(compiler, connection)` that emits a fragment and **parameterized placeholders** (never string-interpolated values — this is what prevents SQL injection).
+- Adds `GROUP BY`, `HAVING`, `ORDER BY`, and `LIMIT/OFFSET` from the marks.
+- Backend-specific quirks come from `connection.ops` and the operators dict, so the same `Query` compiles differently for PostgreSQL vs SQLite vs MySQL.
+
+The result is a `(sql_string, params_tuple)` pair.
+
+## 4. Executing and turning rows into objects
+
+- The compiler gets a cursor (`connection.cursor()`) and calls `cursor.execute(sql, params)`.
+- It builds **result iterators** (`compiler.results_iter`) over the rows.
+- For a normal model query, `ModelIterable` maps each row tuple back into model instances — instantiating the class, populating fields by column position, setting up related-object handling, and respecting `select_related` (which pre-joins and populates related instances in the same query) and `prefetch_related` (which issues separate queries and stitches results in Python).
+
+## End-to-end
+
+```
+Book.objects.filter(...).order_by(...)   # QuerySet methods clone + mutate
+        │  (lazy — builds a tree)
+        ▼
+   Query  (WhereNode tree, alias_map, select, order_by, marks)
+        │  query.get_compiler(using='default')
+        ▼
+ SQLCompiler.as_sql()  → ("SELECT ... WHERE ... ", params)
+        │  cursor.execute(sql, params)
+        ▼
+   DB rows → ModelIterable → model instances → cached in qs._result_cache
+```
+
+The two takeaways: **the `Query` is an abstract tree that the `SQLCompiler` lowers into backend-specific, parameterized SQL**, and **everything stays lazy** until a consuming operation forces `_fetch_all()`.
+
+Want me to trace a specific piece in more depth — e.g. how `__` lookups become joins, how `select_related`/`prefetch_related` differ, or how `WhereNode` compiles?

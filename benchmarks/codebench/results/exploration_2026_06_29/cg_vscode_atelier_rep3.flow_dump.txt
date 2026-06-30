@@ -1,0 +1,40 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "extension host communication with main process IPC"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "extension host protocol message passing"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["src/atelier/gateway/adapters/mcp_server.py","scripts/_provision_linux_kernel.py","scripts/profile_search_latency.py","src/atelier/core/environment.py","benchmarks/codebench/data/bench_pairs_linux.json","src/atelier/core/foundation/session_window.py","src/atelier/in
+[assistant] I searched this codebase first, and there's no "extension host" here — this is **Atelier**, a Python agent/gateway project. The terms "extension host" and "main process" are VS Code (Electron) architecture concepts, so I'll answer that since it's clearly what you're asking about. If you actually meant something specific in this repo, point me at it and I'll trace the real code.
+
+## How the VS Code extension host talks to the main process
+
+VS Code is an Electron app with a deliberately multi-process design, and extensions run **isolated** from both the UI and the Node main process:
+
+```
+┌─────────────────┐   IPC    ┌──────────────────┐   RPC over     ┌──────────────────┐
+│  Main process   │◄────────►│  Renderer        │◄──────────────►│  Extension Host  │
+│ (Electron/Node) │ Electron │  (workbench UI)   │  MessagePort   │  (Node/worker)   │
+└─────────────────┘   IPC    └──────────────────┘  / pipe         └──────────────────┘
+```
+
+**Key points:**
+
+1. **Extensions never run in the renderer or main process.** They run in a separate **Extension Host** process (`extensionHostProcess`) — a Node process for desktop, or a Web Worker for web/browser. This isolation means a slow or crashing extension can't freeze the UI or take down the editor.
+
+2. **Communication is message-passing RPC, not shared memory.** The extension host and the workbench (renderer) exchange JSON-serializable messages over a duplex channel — a Node IPC pipe / socket on desktop, or `MessagePort` in the web worker case. There is *no* direct function calling across the boundary; everything is serialized.
+
+3. **The `vscode` API you import is a proxy.** When extension code calls `vscode.window.showInformationMessage(...)`, that call is marshaled into an RPC message, sent to the main/renderer side which actually performs the work, and the result comes back as a promise resolution. This proxy layer is built on VS Code's RPC protocol (`RPCProtocol`), with paired `MainThread*` and `ExtHost*` classes — e.g. `ExtHostDocuments` ↔ `MainThreadDocuments`. The `ExtHost*` side runs in the extension host; the `MainThread*` side runs in the renderer and bridges to the actual UI/editor and, where needed, to the Electron main process.
+
+4. **The renderer mediates with the main process.** The extension host generally does *not* talk to the Electron main process directly. It talks to the renderer (workbench) over RPC; the renderer in turn uses standard **Electron IPC** to reach the main process for OS-level things (windows, dialogs, file watchers, the actual filesystem on remote scenarios, etc.).
+
+5. **Async-only contract.** Because everything crosses a process boundary, the extension API is overwhelmingly promise-based — synchronous cross-process calls aren't possible, which is why almost every `vscode` API returns a `Thenable`.
+
+**Why this design:** stability (crash isolation), security (extensions are sandboxed away from UI internals), and performance (CPU-heavy extension work can't block rendering). The same architecture also enables **Remote Development** — the extension host can run on a remote machine/container/WSL while the UI stays local, precisely because the two only ever communicate through a serializable RPC channel.
+
+If you'd like, I can pull the exact source (`src/vs/workbench/services/extensions/common/rpcProtocol.ts`, `extensionHostManager.ts`) from the VS Code repo and walk through the actual protocol framing.
