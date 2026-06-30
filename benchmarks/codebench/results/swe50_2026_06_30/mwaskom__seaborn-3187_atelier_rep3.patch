@@ -1,50 +1,71 @@
 diff --git a/seaborn/_core/scales.py b/seaborn/_core/scales.py
-index 55874bf2..d2a97a17 100644
+index 55874bf2..f3e9b627 100644
 --- a/seaborn/_core/scales.py
 +++ b/seaborn/_core/scales.py
-@@ -379,6 +379,24 @@ class ContinuousBase(Scale):
+@@ -378,7 +378,14 @@ class ContinuousBase(Scale):
+             axis.set_view_interval(vmin, vmax)
              locs = axis.major.locator()
              locs = locs[(vmin <= locs) & (locs <= vmax)]
-             labels = axis.major.formatter.format_ticks(locs)
-+
-+            # Matplotlib's ScalarFormatter (and other formatters) may factor a
-+            # common offset/scientific scaling out of the individual tick labels
-+            # and into a separate offset string (e.g. labels of "3", "4" with an
-+            # offset of "1e6"). The legend has no place to display that offset,
-+            # so reformat with the offset disabled to produce full-magnitude
-+            # labels and avoid silently dropping the scaling factor.
+-            labels = axis.major.formatter.format_ticks(locs)
++            # Avoid having an offset/scaling factor in the legend
++            # (e.g. "1e6"), which would otherwise be silently dropped and
++            # produce labels that misrepresent the underlying values.
 +            formatter = axis.major.formatter
-+            if (
-+                isinstance(formatter, ScalarFormatter)
-+                and formatter.get_offset()
-+            ):
-+                formatter = copy(formatter)
++            if isinstance(formatter, ScalarFormatter):
 +                formatter.set_useOffset(False)
 +                formatter.set_scientific(False)
-+                formatter.set_locs(locs)
-+                labels = formatter.format_ticks(locs)
-+
++            labels = formatter.format_ticks(locs)
              new._legend = list(locs), list(labels)
  
          return new
+diff --git a/seaborn/utils.py b/seaborn/utils.py
+index 2407853c..1d50410a 100644
+--- a/seaborn/utils.py
++++ b/seaborn/utils.py
+@@ -699,6 +699,10 @@ def locator_to_legend_entries(locator, limits, dtype):
+         formatter = mpl.ticker.LogFormatter()
+     else:
+         formatter = mpl.ticker.ScalarFormatter()
++        # Avoid having an offset/scaling factor in the legend, which would
++        # otherwise be dropped and produce labels that misrepresent the values.
++        formatter.set_useOffset(False)
++        formatter.set_scientific(False)
+     formatter.axis = dummy_axis()
+ 
+     # TODO: The following two lines should be replaced
 diff --git a/tests/_core/test_scales.py b/tests/_core/test_scales.py
-index c4b39f5d..9742ac7a 100644
+index c4b39f5d..6360c64f 100644
 --- a/tests/_core/test_scales.py
 +++ b/tests/_core/test_scales.py
-@@ -303,6 +303,16 @@ class TestContinuous:
-         label, = a.major.formatter.format_ticks([100])
-         assert r"10^{2}" in label
+@@ -309,6 +309,15 @@ class TestContinuous:
+         with pytest.raises(TypeError, match="Label formatter must be"):
+             s.label("{x}")
  
-+    def test_legend_large_offset(self):
++    def test_legend_large_values(self):
 +
-+        # GH2812: legend labels must include the magnitude that ScalarFormatter
-+        # would otherwise factor out into a separate (and hidden) offset string.
-+        x = pd.Series(np.linspace(2.7e6, 6.3e6, 50), name="x")
++        # GH3148: legend labels must reflect the offset/scaling factor that
++        # ScalarFormatter would otherwise show separately.
++        x = pd.Series([4e6, 5e6, 6e6, 7e6], name="x")
 +        s = Continuous()._setup(x, IntervalProperty())
 +        locs, labels = s._legend
-+        for loc, label in zip(locs, labels):
-+            assert float(label) == loc
++        assert [float(label) for label in labels] == list(locs)
 +
-     def test_label_type_checks(self):
+         with pytest.raises(TypeError, match="`like` must be"):
+             s.label(like=2)
  
-         s = Continuous()
+diff --git a/tests/test_utils.py b/tests/test_utils.py
+index 02839a02..70946324 100644
+--- a/tests/test_utils.py
++++ b/tests/test_utils.py
+@@ -322,6 +322,11 @@ def test_locator_to_legend_entries():
+     levels, str_levels = utils.locator_to_legend_entries(locator, limits, int)
+     assert str_levels == ["2", "4", "6"]
+ 
++    # GH3148: large values must not lose the ScalarFormatter offset/scaling
++    limits = (4e6, 7e6)
++    levels, str_levels = utils.locator_to_legend_entries(locator, limits, float)
++    assert [float(s) for s in str_levels] == list(levels)
++
+     locator = mpl.ticker.LogLocator(numticks=5)
+     limits = (5, 1425)
+     levels, str_levels = utils.locator_to_legend_entries(locator, limits, int)

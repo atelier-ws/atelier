@@ -328,6 +328,31 @@ if ! command -v npm >/dev/null 2>&1; then
     esac
 fi
 
+# ---- ensure jj is available ------------------------------------------------
+if ! command -v jj >/dev/null 2>&1; then
+    info "Installing jj (Jujutsu)..."
+    case "$OS" in
+        darwin)
+            if command -v brew >/dev/null 2>&1; then
+                brew install jj
+            elif command -v cargo >/dev/null 2>&1; then
+                cargo install --locked jj-cli
+            else
+                warn "Neither Homebrew nor cargo found. Install jj manually: https://martinvonz.github.io/jj/latest/install-and-setup"
+            fi
+            ;;
+        linux)
+            if command -v cargo >/dev/null 2>&1; then
+                cargo install --locked jj-cli
+            elif command -v brew >/dev/null 2>&1; then
+                brew install jj
+            else
+                warn "cargo not found. Install jj manually: https://martinvonz.github.io/jj/latest/install-and-setup"
+            fi
+            ;;
+    esac
+fi
+
 # ---- run full setup via bundle.sh (installs wheel + host integrations) ------
 export PATH="${ATELIER_BIN_DIR}:${PATH}"
 BUNDLE_SH="${ATELIER_INSTALL_DIR}/scripts/bundle.sh"

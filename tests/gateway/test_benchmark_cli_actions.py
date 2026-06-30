@@ -629,7 +629,7 @@ def test_benchmark_swe_wraps_multiswe_runner(monkeypatch, tmp_path: Path) -> Non
     assert cmd[cmd.index("--languages") + 1 : cmd.index("--languages") + 3] == ["go", "rust"]
     assert cmd[cmd.index("--per-language-limit") + 1] == "5"
     assert cmd[cmd.index("--jobs") + 1] == "2"
-    assert cmd[cmd.index("--model") + 1] == "sonnet"
+    assert cmd[cmd.index("--model") + 1] == "claude-opus-4-8"
     assert "--no-grade" in cmd
     assert cmd[cmd.index("--out") + 1] == str(tmp_path / "swe")
 

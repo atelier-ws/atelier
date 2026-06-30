@@ -345,6 +345,15 @@ class ZoektServer:
         (no stale shard accumulation).  For non-git directories
         ``zoekt-index`` does a full rebuild.
         """
+        # Guard against a degenerate root.  ``_workspace_root()`` falls back to
+        # ``os.getcwd()`` when no workspace env var is set, so a server launched
+        # with cwd ``/`` would otherwise try to index the entire filesystem.
+        if self.repo_root == self.repo_root.parent:
+            raise RuntimeError(
+                f"refusing to index filesystem root {self.repo_root}: no project root "
+                "resolved (set CLAUDE_WORKSPACE_ROOT or run from a project directory)"
+            )
+
         search_binary, index_binary, git_index_binary = _resolve_host_binaries(resolution)
         self._prepare_runtime_dirs()
         self._refresh_input_links()
@@ -832,7 +841,12 @@ def _run_command(
 
 
 def _mirror_entry(source: Path, target: Path) -> None:
-    if not source.exists():
+    # Never follow symlinks.  ``Path.is_dir()`` resolves them, so a
+    # self-referential link such as ``/usr/bin/X11 -> .`` (standard on
+    # Debian/Ubuntu) would recurse forever, physically copying the whole
+    # subtree at every level.  A code mirror has no business duplicating link
+    # targets anyway (cycles, out-of-tree escapes), so drop them outright.
+    if source.is_symlink() or not source.exists():
         return
     if source.is_dir():
         target.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,16 @@
 {
   "artifacts": {
     "flow_paths": [
+      "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/mwaskom__seaborn-3187_atelier_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/mwaskom__seaborn-3187_atelier_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/mwaskom__seaborn-3187_atelier_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/mwaskom__seaborn-3187_atelier_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/mwaskom__seaborn-3187_atelier_rep5.flow",
+      "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/sympy__sympy-12489_atelier_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/sympy__sympy-12489_atelier_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/sympy__sympy-12489_atelier_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/sympy__sympy-12489_atelier_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/sympy__sympy-12489_atelier_rep5.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_13449_smart/django__django-13449_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_all_defer_rep1/astropy__astropy-14369_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_all_defer_rep1/django__django-11138_atelier_rep1.flow",
@@ -12,7 +22,6 @@
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_all_defer_rep1/django__django-15503_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_all_defer_rep1/django__django-16560_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_all_defer_rep1/matplotlib__matplotlib-24870_atelier_rep1.flow",
-      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_all_defer_rep1/mwaskom__seaborn-3187_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_all_defer_rep1/pydata__xarray-3095_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_all_defer_rep1/pydata__xarray-3305_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_all_defer_rep1/pydata__xarray-3993_atelier_rep1.flow",
@@ -117,9 +126,6 @@
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/matplotlib__matplotlib-14623_atelier_rep5.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/matplotlib__matplotlib-24870_atelier_rep3.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/mwaskom__seaborn-3069_atelier_rep1.flow",
-      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/mwaskom__seaborn-3187_atelier_rep2.flow",
-      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/mwaskom__seaborn-3187_atelier_rep3.flow",
-      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/mwaskom__seaborn-3187_atelier_rep4.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/psf__requests-6028_atelier_rep2.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/pydata__xarray-3095_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/pydata__xarray-3305_atelier_rep4.flow",
@@ -187,10 +193,6 @@
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/sphinx-doc__sphinx-9461_baseline_rep3.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/sphinx-doc__sphinx-9461_baseline_rep4.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/sphinx-doc__sphinx-9461_baseline_rep5.flow",
-      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/sympy__sympy-12489_atelier_rep2.flow",
-      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/sympy__sympy-12489_atelier_rep3.flow",
-      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/sympy__sympy-12489_atelier_rep4.flow",
-      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/sympy__sympy-12489_atelier_rep5.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/sympy__sympy-12489_baseline_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/sympy__sympy-12489_baseline_rep2.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_5rep/sympy__sympy-12489_baseline_rep3.flow",
@@ -235,7 +237,6 @@
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_full_rep1/django__django-16560_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_full_rep1/matplotlib__matplotlib-24870_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_full_rep1/mwaskom__seaborn-3069_atelier_rep1.flow",
-      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_full_rep1/mwaskom__seaborn-3187_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_full_rep1/pallets__flask-5014_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_full_rep1/psf__requests-2931_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_final_full_rep1/pydata__xarray-3993_atelier_rep1.flow",
@@ -272,7 +273,6 @@
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_rest33_smart/scikit-learn__scikit-learn-25102_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_rest33_smart/sphinx-doc__sphinx-10673_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_rest33_smart/sphinx-doc__sphinx-9461_atelier_rep1.flow",
-      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_rest33_smart/sympy__sympy-12489_atelier_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_stress_run1/astropy__astropy-13398_baseline_rep1.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_stress_run1/astropy__astropy-13398_baseline_rep2.flow",
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_stress_run1/astropy__astropy-13398_baseline_rep3.flow",
@@ -493,43 +493,43 @@
       "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_trimsweep_rep1/scikit-learn__scikit-learn-25102_atelier_rep1.flow"
     ],
     "model_audit_csv": {
-      "exists": false,
-      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_publish_set/model_audit.csv"
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/model_audit.csv"
     },
     "pairwise_quality_csv": {
-      "exists": false,
-      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_publish_set/pairwise_quality.csv"
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/pairwise_quality.csv"
     },
     "quality_adjusted_summary_csv": {
-      "exists": false,
-      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_publish_set/quality_adjusted_summary.csv"
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/quality_adjusted_summary.csv"
     },
     "report_txt": {
-      "exists": false,
-      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_publish_set/report.txt"
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/report.txt"
     },
     "results_csv": {
-      "exists": false,
-      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_publish_set/results.csv"
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/results.csv"
     },
     "results_jsonl": {
       "exists": true,
-      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_publish_set/results.jsonl"
+      "path": "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/results.jsonl"
     },
     "summary_csv": {
-      "exists": false,
-      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_publish_set/summary.csv"
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/summary.csv"
     },
     "task_correctness_csv": {
-      "exists": false,
-      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_publish_set/task_correctness.csv"
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/task_correctness.csv"
     },
     "task_metrics_csv": {
-      "exists": false,
-      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_publish_set/task_metrics.csv"
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/task_metrics.csv"
     }
   },
-  "captured_at": "2026-06-30T06:43:49.077137+00:00",
+  "captured_at": "2026-06-30T15:29:02.373760+00:00",
   "commit_under_test": {
     "commit": "8bbde81da497fa7dedf3a651ab4994e3af47207f",
     "dirty": true
@@ -549,10 +549,10 @@
       "quality_delta",
       "judge_reason"
     ],
-    "pairwise_path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_publish_set/pairwise_quality.csv",
-    "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_publish_set/results.jsonl"
+    "pairwise_path": "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/pairwise_quality.csv",
+    "path": "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/results.jsonl"
   },
-  "manifest_path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/swe50_publish_set/benchmark-manifest.json",
+  "manifest_path": "/home/pankaj/Projects/leanchain/atelier/benchmarks/codebench/results/swe50_2026_06_30/benchmark-manifest.json",
   "suite": "codebench",
   "summary": {
     "arms": [
@@ -561,13 +561,13 @@
     ],
     "by_arm": {
       "atelier": {
-        "cache_read_tokens_sum": 93038766,
-        "correct": 225,
-        "cost_usd_sum": 160.649687,
-        "duration_ms_sum": 37828122,
-        "input_tokens_sum": 1005646,
+        "cache_read_tokens_sum": 97238294,
+        "correct": 232,
+        "cost_usd_sum": 165.45074645,
+        "duration_ms_sum": 39244397,
+        "input_tokens_sum": 1007977,
         "judged": 250,
-        "output_tokens_sum": 2133440,
+        "output_tokens_sum": 2192112,
         "total": 250,
         "valid": 250
       },

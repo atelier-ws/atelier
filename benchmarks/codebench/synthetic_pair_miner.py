@@ -48,9 +48,9 @@ from pathlib import Path
 _SYM_RE = re.compile(
     r"(?:^|\n)\s*"
     r"(?:"
-    r"def\s+(\w+)"                           # def function_name
-    r"|class\s+(\w+)"                        # class ClassName
-    r"|async\s+def\s+(\w+)"                  # async def
+    r"def\s+(\w+)"  # def function_name
+    r"|class\s+(\w+)"  # class ClassName
+    r"|async\s+def\s+(\w+)"  # async def
     r"|(\w+)\s*=\s*(?:lambda|import|__import__)"  # name = import ...
     r")",
 )
@@ -59,23 +59,53 @@ _IMPORT_RE = re.compile(
     r"(?:^|\n)\s*"
     r"(?:"
     r"import\s+([\w.]+(?:\s*,\s*[\w.]+)*)"  # import foo, bar
-    r"|from\s+[\w.]+\s+import\s+(\w+)"       # from x import y
+    r"|from\s+[\w.]+\s+import\s+(\w+)"  # from x import y
     r")",
 )
 
 # Match common prefixes that are stripped from symbol names for partial queries
 _COMMON_PREFIXES = (
-    "get_", "set_", "is_", "has_", "to_", "from_", "_get_", "_set_",
-    "_is_", "_has_", "_to_", "_from_", "build_", "create_", "_build_",
-    "_create_", "handle_", "_handle_", "_", "__",
+    "get_",
+    "set_",
+    "is_",
+    "has_",
+    "to_",
+    "from_",
+    "_get_",
+    "_set_",
+    "_is_",
+    "_has_",
+    "_to_",
+    "_from_",
+    "build_",
+    "create_",
+    "_build_",
+    "_create_",
+    "handle_",
+    "_handle_",
+    "_",
+    "__",
 )
 _COMMON_SUFFIXES = (
-    "_count", "_name", "_id", "_key", "_path", "_url", "_type",
-    "_size", "_data", "_info", "_config", "_status", "_error",
-    "_result", "_value", "_list",
+    "_count",
+    "_name",
+    "_id",
+    "_key",
+    "_path",
+    "_url",
+    "_type",
+    "_size",
+    "_data",
+    "_info",
+    "_config",
+    "_status",
+    "_error",
+    "_result",
+    "_value",
+    "_list",
 )
 
-_DOCSTRING_RE = re.compile(r"""""""(.*?)"""""|'''(.*?)'''""", re.DOTALL)
+_DOCSTRING_RE = re.compile(r"""""" "(.*?)" """"|'''(.*?)'''""", re.DOTALL)
 
 
 def extract_symbols(text: str) -> dict:
@@ -93,9 +123,9 @@ def extract_symbols(text: str) -> dict:
             if val:
                 if group_idx in (1, 3):  # def / async def
                     defs.append(val)
-                elif group_idx == 2:      # class
+                elif group_idx == 2:  # class
                     classes.append(val)
-                else:                     # name = import/lambda
+                else:  # name = import/lambda
                     defs.append(val)
                 break
 
@@ -124,9 +154,18 @@ def extract_docstring_phrases(text: str, max_phrases: int = 3) -> list[str]:
         if 3 <= len(words) <= 10:
             # Skip generic boilerplate
             low = first.lower()
-            if any(kw in low for kw in ("copyright", "license", "permission",
-                                        "this file", "this module", "this class",
-                                        "this function")):
+            if any(
+                kw in low
+                for kw in (
+                    "copyright",
+                    "license",
+                    "permission",
+                    "this file",
+                    "this module",
+                    "this class",
+                    "this function",
+                )
+            ):
                 continue
             # Skip if it's just "..." or other punctuation
             if all(c in " .!?-" for c in first):
@@ -134,7 +173,7 @@ def extract_docstring_phrases(text: str, max_phrases: int = 3) -> list[str]:
             # Pick a 2-4 word window from the middle
             if len(words) > 4:
                 start = random.randint(0, len(words) - 4)
-                phrase = " ".join(words[start:start + random.randint(2, 4)])
+                phrase = " ".join(words[start : start + random.randint(2, 4)])
             else:
                 phrase = first
             if phrase not in phrases:
@@ -147,6 +186,7 @@ def extract_docstring_phrases(text: str, max_phrases: int = 3) -> list[str]:
 # ---------------------------------------------------------------------------
 # Query generation strategies
 # ---------------------------------------------------------------------------
+
 
 def _pick_random(items: list[str], min_n: int = 1, max_n: int | None = None) -> list[str]:
     """Pick a random non-empty subset."""
@@ -167,7 +207,7 @@ def gen_partial_symbol(symbols: list[str]) -> str | None:
         # Strip common prefix
         for p in _COMMON_PREFIXES:
             if stripped.startswith(p) and len(stripped) > len(p) + 3:
-                stripped = stripped[len(p):]
+                stripped = stripped[len(p) :]
                 break
         # Strip common suffix
         for s in _COMMON_SUFFIXES:
@@ -270,7 +310,7 @@ def gen_path_qualified(filepath: str, symbols: list[str]) -> str | None:
         return None
 
     # Take last 1-2 dir parts
-    dir_tokens = dir_parts[-min(2, len(dir_parts)):]
+    dir_tokens = dir_parts[-min(2, len(dir_parts)) :]
 
     if symbols:
         sym = random.choice(symbols)
@@ -347,6 +387,7 @@ def gen_noisy_partial(symbols: list[str]) -> str | None:
 # Per-file query generation
 # ---------------------------------------------------------------------------
 
+
 def generate_queries_for_file(
     filepath: str,
     repo_prefix: str,
@@ -403,12 +444,44 @@ def generate_queries_for_file(
             continue
         # Also reject single-token queries (no spaces/pipes) that are pure
         # common programming keywords
-        _COMMON_GENERIC = {"json", "time", "flow", "type", "path", "find",
-                          "root", "part", "name", "data", "info", "size",
-                          "list", "file", "test", "base", "core", "main",
-                          "util", "help", "run", "cmd", "api", "cli",
-                          "key", "val", "log", "err", "fmt", "str",
-                          "int", "map", "set", "get", "put", "del"}
+        _COMMON_GENERIC = {
+            "json",
+            "time",
+            "flow",
+            "type",
+            "path",
+            "find",
+            "root",
+            "part",
+            "name",
+            "data",
+            "info",
+            "size",
+            "list",
+            "file",
+            "test",
+            "base",
+            "core",
+            "main",
+            "util",
+            "help",
+            "run",
+            "cmd",
+            "api",
+            "cli",
+            "key",
+            "val",
+            "log",
+            "err",
+            "fmt",
+            "str",
+            "int",
+            "map",
+            "set",
+            "get",
+            "put",
+            "del",
+        }
         if " " not in q and "|" not in q and q.lower() in _COMMON_GENERIC:
             continue
 
@@ -447,20 +520,55 @@ def generate_queries_for_file(
 # Main
 # ---------------------------------------------------------------------------
 
-_LANGUAGE_EXTS = {".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".c", ".h",
-                  ".cpp", ".hpp", ".java", ".kt", ".swift", ".rb", ".php"}
+_LANGUAGE_EXTS = {
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".rs",
+    ".go",
+    ".c",
+    ".h",
+    ".cpp",
+    ".hpp",
+    ".java",
+    ".kt",
+    ".swift",
+    ".rb",
+    ".php",
+}
 
 
 def _skip_path(path: Path, repo_path: Path) -> bool:
     """Return True if the file should be skipped."""
     # Check if any directory component is a skip dir
-    skip_dirs = {"node_modules", "__pycache__", ".git", ".venv", ".eggs",
-                 "dist", "build", "build_dist", ".mypy_cache", ".pytest_cache",
-                 ".ruff_cache", ".hypothesis", ".tox", ".nox", "target",
-                 "vendor", ".stack-work", ".terraform", "site-packages",
-                 "bower_components", "third_party", ".git-rewrite",
-                 # Benchmark / CI result copies — not part of actual source
-                 "reports",}
+    skip_dirs = {
+        "node_modules",
+        "__pycache__",
+        ".git",
+        ".venv",
+        ".eggs",
+        "dist",
+        "build",
+        "build_dist",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".hypothesis",
+        ".tox",
+        ".nox",
+        "target",
+        "vendor",
+        ".stack-work",
+        ".terraform",
+        "site-packages",
+        "bower_components",
+        "third_party",
+        ".git-rewrite",
+        # Benchmark / CI result copies — not part of actual source
+        "reports",
+    }
     try:
         rel = path.relative_to(repo_path)
         for part in rel.parts[:-1]:  # exclude the filename itself
@@ -468,11 +576,19 @@ def _skip_path(path: Path, repo_path: Path) -> bool:
                 return True
     except ValueError:
         return True  # not relative to repo somehow
-    
+
     name = path.name
     # Skip generated/lock files
-    if name in ("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "uv.lock",
-                "poetry.lock", "requirements.txt", "Cargo.lock", "go.sum"):
+    if name in (
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "uv.lock",
+        "poetry.lock",
+        "requirements.txt",
+        "Cargo.lock",
+        "go.sum",
+    ):
         return True
     # Skip minified files
     if name.endswith(".min.js") or name.endswith(".min.css"):
@@ -521,8 +637,7 @@ def mine_synthetic_pairs(
         source_files = source_files[:max_files]
 
     if verbose:
-        print(f"[synthetic] Found {len(source_files)} source files in {repo_path.name}",
-              file=sys.stderr)
+        print(f"[synthetic] Found {len(source_files)} source files in {repo_path.name}", file=sys.stderr)
 
     pairs: list[tuple[str, str, str]] = []
     true_map: dict[str, list[str]] = {}
@@ -541,8 +656,12 @@ def mine_synthetic_pairs(
 
         rel = str(fpath.relative_to(repo_path))
         file_pairs = generate_queries_for_file(
-            str(fpath), repo_prefix, rel, text,
-            max_queries=max_queries_per_file, rng=rng,
+            str(fpath),
+            repo_prefix,
+            rel,
+            text,
+            max_queries=max_queries_per_file,
+            rng=rng,
         )
         if file_pairs:
             tid = file_pairs[0][1]
@@ -552,12 +671,13 @@ def mine_synthetic_pairs(
             processed += 1
 
         if verbose and processed % 500 == 0:
-            print(f"[synthetic] {processed} files processed, {total_queries} queries generated",
-                  file=sys.stderr)
+            print(f"[synthetic] {processed} files processed, {total_queries} queries generated", file=sys.stderr)
 
     if verbose:
-        print(f"[synthetic] Done: {processed} files, {skipped_small} skipped (too small), "
-              f"{total_queries} queries", file=sys.stderr)
+        print(
+            f"[synthetic] Done: {processed} files, {skipped_small} skipped (too small), {total_queries} queries",
+            file=sys.stderr,
+        )
 
     return pairs, true_map
 
@@ -568,24 +688,37 @@ def main():
     parser = argparse.ArgumentParser(
         description="Mine synthetic query pairs from a repository",
     )
-    parser.add_argument("--repo-dir", "-r",
-                        default=os.environ.get("SYNTHETIC_REPO_DIR", "."),
-                        help="Repository directory to mine (default: cwd)")
-    parser.add_argument("--repo-prefix", "-p",
-                        default=os.environ.get("SYNTHETIC_REPO_PREFIX", ""),
-                        help="Owner__repo prefix (default: directory basename)")
-    parser.add_argument("--out", "-o",
-                        default=os.environ.get("SYNTHETIC_PAIRS_OUT",
-                                                "/tmp/synthetic_pairs.json"),
-                        help="Output path for pairs JSON")
-    parser.add_argument("--pairs-per-file", type=int, default=5,
-                        help="Max synthetic queries per file (default: 5)")
-    parser.add_argument("--max-files", type=int, default=None,
-                        help="Cap on files to process (default: all)")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Random seed (default: 42)")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Print progress")
+    parser.add_argument(
+        "--repo-dir",
+        "-r",
+        default=os.environ.get("SYNTHETIC_REPO_DIR", "."),
+        help="Repository directory to mine (default: cwd)",
+    )
+    parser.add_argument(
+        "--repo-prefix",
+        "-p",
+        default=os.environ.get("SYNTHETIC_REPO_PREFIX", ""),
+        help="Owner__repo prefix (default: directory basename)",
+    )
+    parser.add_argument(
+        "--out",
+        "-o",
+        default=os.environ.get("SYNTHETIC_PAIRS_OUT", "/tmp/synthetic_pairs.json"),
+        help="Output path for pairs JSON",
+    )
+    parser.add_argument(
+        "--merge", "-m", default=None, help="Existing pairs JSON to merge synthetic pairs into (deduplicated)"
+    )
+    parser.add_argument(
+        "--max-pairs",
+        type=int,
+        default=None,
+        help="Cap on synthetic pairs added during merge (for 50/50 balance with session pairs).",
+    )
+    parser.add_argument("--pairs-per-file", type=int, default=5, help="Max synthetic queries per file (default: 5)")
+    parser.add_argument("--max-files", type=int, default=None, help="Cap on files to process (default: all)")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Print progress")
     args = parser.parse_args()
 
     repo_dir = Path(args.repo_dir).resolve()
@@ -607,17 +740,41 @@ def main():
         print("[synthetic] No pairs generated.", file=sys.stderr)
         sys.exit(1)
 
-    out_data = {
-        "pairs": pairs,
-        "true_map": true_map,
-        "repos": {prefix: {"ws": str(repo_dir)}},
-    }
+    # Merge into an existing pairs file if requested.
+    if args.merge and Path(args.merge).exists():
+        existing = json.loads(Path(args.merge).read_text())
+        seen = {(q, t, r) for q, t, r in existing.get("pairs", [])}
+        added = 0
+        cap = args.max_pairs  # None = unlimited
+        for entry in pairs:
+            if cap is not None and added >= cap:
+                break
+            key = tuple(entry)
+            if key not in seen:
+                seen.add(key)
+                existing["pairs"].append(entry)
+                tid = entry[1]
+                if tid not in existing.get("true_map", {}):
+                    existing.setdefault("true_map", {})[tid] = true_map.get(tid, [])
+                added += 1
+        # Use the canonical prefix from the existing file (not repo_dir.name) so
+        # both session and synthetic pairs share the same repos entry.
+        canonical_prefix = next(iter(existing.get("repos", {})), prefix)
+        existing.setdefault("repos", {})[canonical_prefix] = {"ws": str(repo_dir)}
+        out_data = existing
+        cap_note = f" (capped at {cap})" if cap is not None else ""
+        print(f"[synthetic] Merged {added} new pairs into {args.merge}{cap_note}", file=sys.stderr)
+    else:
+        out_data = {
+            "pairs": pairs,
+            "true_map": true_map,
+            "repos": {prefix: {"ws": str(repo_dir)}},
+        }
 
     with open(args.out, "w") as f:
         json.dump(out_data, f, indent=2)
 
-    print(f"[synthetic] Wrote {len(pairs)} pairs to {args.out} "
-          f"(from {len(true_map)} files)", file=sys.stderr)
+    print(f"[synthetic] Wrote {len(out_data['pairs'])} total pairs to {args.out}", file=sys.stderr)
 
 
 if __name__ == "__main__":

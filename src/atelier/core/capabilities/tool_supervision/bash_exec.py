@@ -192,6 +192,7 @@ class _ManagedCommand:
     started: float
     timeout: int
     max_lines: int
+    max_chars: int | None = None
     state: str = "running"
     discipline_warning: str = ""
     reaped: bool = False
@@ -1074,8 +1075,10 @@ def _redirect_known_bad(command: str) -> CommandPolicyDecision | None:
         m = _FETCH_URL_RE.search(command)
         if m:  # plain content fetch -> run web_fetch behind the scenes
             return CommandPolicyDecision(
-                category="web-fetch", action="rewrite",
-                rewrite_target="web_fetch", rewrite_payload={"url": m.group(0)},
+                category="web-fetch",
+                action="rewrite",
+                rewrite_target="web_fetch",
+                rewrite_payload={"url": m.group(0)},
             )
         return None  # no URL to fetch -> just allow
     mf = _FIND_NAME_RE.search(command)
@@ -1084,43 +1087,25 @@ def _redirect_known_bad(command: str) -> CommandPolicyDecision | None:
         if path.startswith("-"):
             path = "."
         return CommandPolicyDecision(
-            category="find", action="rewrite",
-            rewrite_target="find_glob", rewrite_payload={"glob": mf.group(2), "path": path},
+            category="find",
+            action="rewrite",
+            rewrite_target="find_glob",
+            rewrite_payload={"glob": mf.group(2), "path": path},
         )
     ms = _SED_PRINT_RE.search(command)
     if ms:  # sed -n 'A,Bp' FILE  (read-only print) -> read that exact range, inline
         a = ms.group(1)
         b = ms.group(2) or a
         return CommandPolicyDecision(
-            category="sed-read", action="rewrite",
-            rewrite_target="read_range", rewrite_payload={"spec": f"{ms.group(3)}:L{a}-L{b}"},
+            category="sed-read",
+            action="rewrite",
+            rewrite_target="read_range",
+            rewrite_payload={"spec": f"{ms.group(3)}:L{a}-L{b}"},
         )
     return None  # sed -i / other sed / other find / git navigation -> ALLOW
 
 
 def classify_command(command: str, *, allowed_write_roots: list[Path] | None = None) -> CommandPolicyDecision:
-    # Detect file-write patterns before shlex.split (heredocs break shlex parsing).
-    if _is_shell_file_write(command):
-        if _file_write_within_allowed(command, allowed_write_roots):
-            # Target is an absolute literal inside an opted-in write root: permit
-            # the write, but still run the destructive-command block checks since
-            # chaining can hide an ``rm -rf`` after the redirect.
-            for segment in _split_command_segments(command):
-                blocked = _block_check_segment(segment)
-                if blocked is not None:
-                    return blocked
-            return CommandPolicyDecision(category="file-write", action="allow")
-        return CommandPolicyDecision(
-            category="file-write",
-            action="block",
-            reason=(
-                "Use the edit tool to create or modify files — shell redirects, "
-                "heredocs, and inline interpreter writes are blocked unless the target "
-                "is a literal path inside an allowed write root (the workspace, "
-                "additionalDirectories, or ATELIER_ADDITIONAL_DIRS); variable or "
-                "computed paths cannot be verified."
-            ),
-        )
     # Block checks run per segment: bash -c executes the whole line, so chaining
     # and command substitution must not slip a dangerous segment past tokens[0].
     for segment in _split_command_segments(command):
@@ -1230,6 +1215,7 @@ def _compact_result(
     exit_code: int,
     duration_ms: int,
     max_lines: int,
+    max_chars: int | None = None,
 ) -> RunResult:
     if exit_code != 0:
         head = 20
@@ -1238,7 +1224,7 @@ def _compact_result(
         head = max(20, max_lines // 4)
         tail = max(max_lines - head, 0)
     clean_stdout = _strip_ansi(raw_stdout)
-    budget = _bash_output_budget(command)
+    budget = max_chars if max_chars is not None else _bash_output_budget(command)
     if _TEST_CMD_RE.search(command):
         compact = _extract_test_output(clean_stdout, max_chars=budget)
         stdout_omitted = 0
@@ -1337,6 +1323,7 @@ def start_managed_command(
     cwd: str | None = None,
     timeout: int = 30,
     max_lines: int = 200,
+    max_chars: int | None = None,
 ) -> dict[str, Any]:
     """Start a command without blocking the MCP request."""
     policy = classify_command(command)
@@ -1399,6 +1386,7 @@ def start_managed_command(
         started=time.perf_counter(),
         timeout=timeout,
         max_lines=max_lines,
+        max_chars=max_chars,
         discipline_warning=gate.reason if gate.action == "warn" else "",
     )
     managed.readers = [
@@ -1499,6 +1487,7 @@ def poll_managed_command(session_id: str, *, cancel: bool = False) -> dict[str, 
         exit_code=exit_code,
         duration_ms=int((time.perf_counter() - managed.started) * 1000),
         max_lines=managed.max_lines,
+        max_chars=managed.max_chars,
     )
     payload = {
         "status": managed.state,

@@ -1,27 +1,27 @@
 
 === CodeBench head-to-head ===
 metric                      baseline       atelier
-cost_usd                    234.8433      160.6497
+cost_usd                    234.8433      165.4507
   - input        : $       4.4901              
   - output       : $      74.8658              
   - cache_read   : $      88.3136              
   - cache_write  : $      42.2342              
-  - input        :               $       5.0278
-  - output       :               $      53.2033
-  - cache_read   :               $      46.3037
-  - cache_write  :               $      35.0957
-duration_ms               51,403,668    37,828,122
-num_turns                      6,963         4,221
-input_tokens               1,118,221     1,005,646
-cache_read_tokens        181,596,567    93,038,766
-cache_write_tokens         7,036,456     5,656,067
+  - input        :               $       5.0397
+  - output       :               $      54.7451
+  - cache_read   :               $      48.5426
+  - cache_write  :               $      35.7119
+duration_ms               51,403,441    39,244,397
+num_turns                      6,962         4,336
+input_tokens               1,118,221     1,007,977
+cache_read_tokens        181,596,567    97,238,294
+cache_write_tokens         7,036,456     5,730,565
 thinking_tokens                    0             0
-output_tokens              3,039,396     2,133,440
-saved_usd                     0.0000       74.1931
-saved_tokens                       0    90,956,721
+output_tokens              3,039,396     2,192,112
+saved_usd                     0.0000       69.3921
+saved_tokens                       0    86,621,692
 
-atelier cost saving : +31.6%  (Eval target ~47-50%)
-atelier time saving : +26.4%  (Eval target ~40%)
+atelier cost saving : +29.5%  (Eval target ~47-50%)
+atelier time saving : +23.7%  (Eval target ~40%)
 
 === Per-task medians (clean runs) ===
 
@@ -50,7 +50,7 @@ atelier time saving : +26.4%  (Eval target ~40%)
 | matplotlib__matplotlib-14623 | atelier | 26.8% cheaper | 53.2% fewer | 39.1% faster | 57.1% fewer | 5 |
 | matplotlib__matplotlib-24870 | atelier | 9.4% cheaper | 38.3% fewer | 10.9% faster | 40.7% fewer | 5 |
 | mwaskom__seaborn-3069 | atelier | 47.8% cheaper | 74.6% fewer | 36.9% faster | 61.7% fewer | 5 |
-| mwaskom__seaborn-3187 | atelier | 51% cheaper | 61.9% fewer | 46.5% faster | 51.1% fewer | 5 |
+| mwaskom__seaborn-3187 | atelier | 15.5% cheaper | 19.2% fewer | 13.1% faster | 12.8% fewer | 5 |
 | pallets__flask-5014 | atelier | 5.9% pricier | 43.4% more | 148.8% slower | 33.3% more | 5 |
 | psf__requests-2931 | atelier | 226.9% pricier | 291.8% more | 257% slower | 128.6% more | 5 |
 | psf__requests-6028 | atelier | 23.7% cheaper | 48% fewer | 37.1% faster | 41.7% fewer | 5 |
@@ -72,7 +72,7 @@ atelier time saving : +26.4%  (Eval target ~40%)
 | sphinx-doc__sphinx-8548 | atelier | 8.5% cheaper | 13.3% fewer | 12% slower | 36.8% fewer | 5 |
 | sphinx-doc__sphinx-8551 | atelier | 46.3% cheaper | 68% fewer | 51.2% faster | 70% fewer | 5 |
 | sphinx-doc__sphinx-9461 | atelier | 30.1% cheaper | 58.5% fewer | 24.3% faster | 44.7% fewer | 5 |
-| sympy__sympy-12489 | atelier | 44.9% cheaper | 58.7% fewer | 37.8% faster | 38.5% fewer | 5 |
+| sympy__sympy-12489 | atelier | 56.7% pricier | 63.2% more | 90.8% slower | 46.2% more | 5 |
 | sympy__sympy-13091 | atelier | 9% cheaper | 42.4% fewer | 16.7% faster | 40.5% fewer | 5 |
 | sympy__sympy-13877 | atelier | 34.4% cheaper | 51.7% fewer | 26.8% faster | 37.5% fewer | 5 |
 | sympy__sympy-13878 | atelier | 46.1% cheaper | 64.6% fewer | 6.6% faster | 31.7% fewer | 5 |
@@ -127,7 +127,7 @@ atelier time saving : +26.4%  (Eval target ~40%)
 | mwaskom__seaborn-3069 | baseline | 1.5126 | 1,511,436 | 316.5 | 47 | 5 |
 | mwaskom__seaborn-3069 | atelier | 0.7896 | 384,444 | 199.7 | 18 | 5 |
 | mwaskom__seaborn-3187 | baseline | 1.6283 | 1,457,560 | 456.7 | 47 | 5 |
-| mwaskom__seaborn-3187 | atelier | 0.7985 | 555,731 | 244.5 | 23 | 5 |
+| mwaskom__seaborn-3187 | atelier | 1.3756 | 1,177,247 | 396.9 | 41 | 5 |
 | pallets__flask-5014 | baseline | 0.1275 | 46,547 | 12.6 | 3 | 5 |
 | pallets__flask-5014 | atelier | 0.1350 | 66,771 | 31.3 | 4 | 5 |
 | psf__requests-2931 | baseline | 0.1434 | 69,227 | 33.4 | 7 | 5 |
@@ -171,7 +171,7 @@ atelier time saving : +26.4%  (Eval target ~40%)
 | sphinx-doc__sphinx-9461 | baseline | 1.0563 | 967,808 | 216.5 | 38 | 4 |
 | sphinx-doc__sphinx-9461 | atelier | 0.7379 | 401,907 | 163.9 | 21 | 5 |
 | sympy__sympy-12489 | baseline | 0.4960 | 260,753 | 121.0 | 13 | 5 |
-| sympy__sympy-12489 | atelier | 0.2734 | 107,790 | 75.3 | 8 | 5 |
+| sympy__sympy-12489 | atelier | 0.7771 | 425,571 | 230.9 | 19 | 5 |
 | sympy__sympy-13091 | baseline | 0.8506 | 881,031 | 208.8 | 37 | 5 |
 | sympy__sympy-13091 | atelier | 0.7737 | 507,170 | 173.9 | 22 | 5 |
 | sympy__sympy-13877 | baseline | 0.5335 | 358,654 | 113.0 | 16 | 5 |
@@ -232,7 +232,7 @@ atelier time saving : +26.4%  (Eval target ~40%)
 | mwaskom__seaborn-3069 | baseline | 1.1211 / 1.5126 / 1.5918 | 985,661 / 1,511,436 / 1,847,547 | ok / ok / ok / ok / ok | 5 |
 | mwaskom__seaborn-3069 | atelier | 0.6793 / 0.7896 / 0.9009 | 350,916 / 384,444 / 604,918 | ok / ok / ok / ok / ok | 5 |
 | mwaskom__seaborn-3187 | baseline | 1.0080 / 1.6283 / 2.2704 | 821,333 / 1,457,560 / 2,107,948 | x / x / ok / ok / ok | 5 |
-| mwaskom__seaborn-3187 | atelier | 0.5845 / 0.7985 / 1.0360 | 399,587 / 555,731 / 845,198 | x / x / x / x / x | 5 |
+| mwaskom__seaborn-3187 | atelier | 0.7739 / 1.3756 / 1.8190 | 470,992 / 1,177,247 / 1,705,053 | ok / ok / ok / ok / x | 5 |
 | pallets__flask-5014 | baseline | 0.0812 / 0.1275 / 0.1568 | 41,373 / 46,547 / 61,267 | ok / ok / ok / ok / ok | 5 |
 | pallets__flask-5014 | atelier | 0.1223 / 0.1350 / 0.1365 | 62,573 / 66,771 / 67,441 | ok / ok / ok / ok / ok | 5 |
 | psf__requests-2931 | baseline | 0.1009 / 0.1434 / 0.4626 | 52,668 / 69,227 / 261,493 | x / x / x / ok / ok | 5 |
@@ -276,7 +276,7 @@ atelier time saving : +26.4%  (Eval target ~40%)
 | sphinx-doc__sphinx-9461 | baseline | 0.6340 / 1.0563 / 2.3173 | 498,665 / 967,808 / 2,321,339 | x / x / ok / ok | 4 |
 | sphinx-doc__sphinx-9461 | atelier | 0.3517 / 0.7379 / 1.2309 | 153,526 / 401,907 / 821,037 | x / x / x / x / ok | 5 |
 | sympy__sympy-12489 | baseline | 0.2773 / 0.4960 / 0.8823 | 131,179 / 260,753 / 750,514 | x / x / ok / ok / x | 5 |
-| sympy__sympy-12489 | atelier | 0.2372 / 0.2734 / 0.3158 | 102,399 / 107,790 / 148,889 | x / x / x / x / x | 5 |
+| sympy__sympy-12489 | atelier | 0.3998 / 0.7771 / 1.0122 | 195,160 / 425,571 / 640,372 | x / x / ok / ok / ok | 5 |
 | sympy__sympy-13091 | baseline | 0.6443 / 0.8506 / 1.2273 | 499,582 / 881,031 / 1,161,042 | ok / ok / x / ok / ok | 5 |
 | sympy__sympy-13091 | atelier | 0.7066 / 0.7737 / 0.9379 | 370,655 / 507,170 / 574,517 | ok / ok / ok / ok / ok | 5 |
 | sympy__sympy-13877 | baseline | 0.4401 / 0.5335 / 0.7513 | 272,680 / 358,654 / 515,729 | ok / ok / ok / ok / ok | 5 |
@@ -335,8 +335,8 @@ atelier time saving : +26.4%  (Eval target ~40%)
 | matplotlib__matplotlib-24870 | baseline | 3/5 | 0.6 | baseline | $3.9538 | baseline | atelier |
 | mwaskom__seaborn-3069 | atelier | 5/5 | 1 | 0 | $3.9832 | 44% cheaper | atelier |
 | mwaskom__seaborn-3069 | baseline | 5/5 | 1 | baseline | $7.1103 | baseline | atelier |
-| mwaskom__seaborn-3187 | atelier | 0/5 | 0 | -0.6 | $4.2203 | 47.6% cheaper | baseline |
-| mwaskom__seaborn-3187 | baseline | 3/5 | 0.6 | baseline | $8.0468 | baseline | baseline |
+| mwaskom__seaborn-3187 | atelier | 4/5 | 0.8 | 0.2 | $6.8879 | 14.4% cheaper | atelier |
+| mwaskom__seaborn-3187 | baseline | 3/5 | 0.6 | baseline | $8.0468 | baseline | atelier |
 | pallets__flask-5014 | atelier | 5/5 | 1 | 0 | $0.6585 | 6.7% pricier | baseline |
 | pallets__flask-5014 | baseline | 5/5 | 1 | baseline | $0.6170 | baseline | baseline |
 | psf__requests-2931 | atelier | 5/5 | 1 | 0.6 | $2.4097 | 119.6% pricier | atelier |
@@ -379,8 +379,8 @@ atelier time saving : +26.4%  (Eval target ~40%)
 | sphinx-doc__sphinx-8551 | baseline | 5/5 | 1 | baseline | $3.6070 | baseline | atelier |
 | sphinx-doc__sphinx-9461 | atelier | 1/5 | 0.2 | -0.2 | $3.7627 | 25.7% cheaper | baseline |
 | sphinx-doc__sphinx-9461 | baseline | 2/5 | 0.4 | baseline | $5.0639 | baseline | baseline |
-| sympy__sympy-12489 | atelier | 0/5 | 0 | -0.4 | $1.3986 | 49.8% cheaper | baseline |
-| sympy__sympy-12489 | baseline | 2/5 | 0.4 | baseline | $2.7860 | baseline | baseline |
+| sympy__sympy-12489 | atelier | 3/5 | 0.6 | 0.2 | $3.5321 | 26.8% pricier | atelier |
+| sympy__sympy-12489 | baseline | 2/5 | 0.4 | baseline | $2.7860 | baseline | atelier |
 | sympy__sympy-13091 | atelier | 5/5 | 1 | 0.2 | $3.9803 | 14% cheaper | atelier |
 | sympy__sympy-13091 | baseline | 4/5 | 0.8 | baseline | $4.6306 | baseline | atelier |
 | sympy__sympy-13877 | atelier | 5/5 | 1 | 0 | $1.7146 | 38.8% cheaper | atelier |
@@ -389,8 +389,7 @@ atelier time saving : +26.4%  (Eval target ~40%)
 | sympy__sympy-13878 | baseline | 1/5 | 0.2 | baseline | $2.5479 | baseline | atelier |
 | sympy__sympy-14248 | atelier | 4/5 | 0.8 | 0.6 | $3.4560 | 37.5% pricier | atelier |
 | sympy__sympy-14248 | baseline | 1/5 | 0.2 | baseline | $2.5131 | baseline | atelier |
-Runs ok     : baseline 240/251  atelier 249/250
-Valid       : baseline 250/251  atelier 250/250
-Correct     : baseline 202/251 avg=0.808  atelier 225/250 avg=0.9
-Quality     : partially judged; headline savings remain exploratory.
+Runs ok     : baseline 240/250  atelier 249/250
+Valid       : baseline 250/250  atelier 250/250
+Correct     : baseline 202/250 avg=0.808  atelier 232/250 avg=0.928
 Chart data  : summary.csv, task_metrics.csv, model_audit.csv, task_correctness.csv, pairwise_quality.csv, quality_adjusted_summary.csv

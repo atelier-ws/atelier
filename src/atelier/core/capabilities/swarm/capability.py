@@ -99,7 +99,7 @@ _PROVIDER_WORKER_ACTION_SCHEMA: dict[str, Any] = {
                     "file_path": {"type": "string"},
                     "old_string": {"type": "string"},
                     "new_string": {"type": "string"},
-                    "overwrite": {"type": "boolean"},
+                    "replace": {"type": "boolean"},
                 },
                 "required": ["file_path", "new_string"],
             },
@@ -1400,8 +1400,8 @@ def _validate_provider_worker_action(
                 if not isinstance(old_string, str):
                     raise ValueError("old_string must be a string when provided")
                 normalized_edit["old_string"] = old_string
-            if item.get("overwrite"):
-                normalized_edit["overwrite"] = True
+            if item.get("replace") or item.get("overwrite"):  # overwrite is the legacy name
+                normalized_edit["replace"] = True
             normalized_edits.append(normalized_edit)
         return {"action": action, "edits": normalized_edits}
     summary = str(payload.get("summary") or "").strip()
@@ -1492,7 +1492,7 @@ def run_provider_swarm_worker() -> int:
                 "You are a bounded swarm child working inside a single git worktree. "
                 "Return exactly one JSON object matching the schema. Use only relative paths. "
                 "Allowed actions: context, search, read, edit, finish. "
-                "Edits must use the rich edit format with file_path/new_string and optional old_string or overwrite. "
+                "Edits must use the rich edit format with file_path/new_string and optional old_string or replace=true. "
                 "Stop as soon as the requested work is complete."
             ),
         },

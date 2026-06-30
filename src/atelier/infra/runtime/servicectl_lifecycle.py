@@ -28,6 +28,10 @@ from atelier.infra.runtime.daemon_units import (
 
 logger = logging.getLogger(__name__)
 
+# Prune stale workspace indexes once a day so they cannot silently pile up.
+_WORKSPACE_PRUNE_INTERVAL_SECONDS = 86_400
+_WORKSPACE_PRUNE_MAX_AGE_DAYS = 30
+
 
 def _servicectl_dir(root: Path) -> Path:
     return Path(root) / "servicectl"
@@ -251,6 +255,48 @@ def _servicectl_index_recall(root: Path) -> dict[str, int]:
         return {}
 
 
+def _servicectl_prune_workspaces(root: Path, *, max_age_days: int = _WORKSPACE_PRUNE_MAX_AGE_DAYS) -> dict[str, Any]:
+    """Remove orphaned / stale workspace indexes via the ``code prune`` CLI subprocess.
+
+    Runs once a day.  Removes orphaned indexes (no ``session_state.json``),
+    ``/tmp`` benchmark runs, indexes whose source repo is gone, and — via
+    ``--max-age-days`` — indexes inactive for more than ``max_age_days`` days.
+    Runs out-of-process to keep the rmtree/walk work off the daemon heap,
+    matching the import/recall pattern.
+    """
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "atelier.gateway.cli",
+            "--root",
+            str(root),
+            "code",
+            "prune",
+            "--store-root",
+            str(root),
+            "--max-age-days",
+            str(max_age_days),
+            "--json",
+        ],
+        capture_output=True,
+        timeout=600,
+    )
+    if result.returncode != 0:
+        logging.warning(
+            "workspace prune subprocess failed (rc=%d): %s",
+            result.returncode,
+            result.stderr[-500:].decode("utf-8", errors="replace").strip(),
+        )
+        return {}
+    try:
+        data = json.loads(result.stdout)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        logging.exception("failed to parse workspace prune JSON output")
+        return {}
+
+
 def _servicectl_check_and_apply_updates(root: Path) -> bool:
     """Check for git updates and apply them if available.
 
@@ -403,6 +449,17 @@ def _servicectl_tick(
         indexed_recall = _servicectl_index_recall(root)
         periodic[RECALL_INDEX_KEY] = now.isoformat()
 
+    WORKSPACE_PRUNE_KEY = "prune_workspaces"
+    last_workspace_prune_at = _periodic_timestamp(WORKSPACE_PRUNE_KEY)
+    workspace_prune_due = (
+        last_workspace_prune_at is None
+        or (now - last_workspace_prune_at).total_seconds() >= _WORKSPACE_PRUNE_INTERVAL_SECONDS
+    )
+    pruned_workspaces: dict[str, Any] = {}
+    if workspace_prune_due:
+        pruned_workspaces = _servicectl_prune_workspaces(root)
+        periodic[WORKSPACE_PRUNE_KEY] = now.isoformat()
+
     job_queue_health_before = store.job_queue_health()
     enqueued: list[str] = []
     if maintenance_interval_seconds <= 0 or last_enqueue_at is None:
@@ -488,6 +545,10 @@ def _servicectl_tick(
         "last_session_import_at": periodic.get(SESSION_IMPORT_KEY),
         "last_indexed_recall": indexed_recall if recall_index_due else state.get("last_indexed_recall", {}),
         "last_recall_index_at": periodic.get(RECALL_INDEX_KEY),
+        "last_pruned_workspaces": (
+            pruned_workspaces if workspace_prune_due else state.get("last_pruned_workspaces", {})
+        ),
+        "last_workspace_prune_at": periodic.get(WORKSPACE_PRUNE_KEY),
         "last_exit_reason": state.get("last_exit_reason"),
         "periodic_jobs": periodic,
         "started_at": state.get("started_at"),
@@ -502,6 +563,8 @@ def _servicectl_tick(
         "session_import_ran": import_due,
         "indexed_recall": indexed_recall,
         "recall_index_ran": recall_index_due,
+        "pruned_workspaces": pruned_workspaces,
+        "workspace_prune_ran": workspace_prune_due,
         "job_queue_health_before": job_queue_health_before,
         "job_queue_health": job_queue_health,
         "pending_jobs": job_queue_health["active"],

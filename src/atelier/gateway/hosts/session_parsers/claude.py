@@ -342,18 +342,19 @@ class ClaudeImporter:
             self.store.record_raw_artifact(art, redacted)
             artifact_ids.append(art.id)
 
-            # Redact per line, not whole-file: a DOTALL pattern (private key,
-            # <think>) spanning two JSONL records would otherwise merge them and
-            # silently drop both turns. Per-line redaction keeps identical
-            # coverage for real single-line records without corrupting record
-            # boundaries; the stored artifact above stays whole-file redacted.
+            # Parse each line from the raw content. The whole-file redacted
+            # text is already stored in the RawArtifact above; applying
+            # redact() here before json.loads() would corrupt valid JSON because
+            # the credential pattern (`\S[^\r\n]*`) consumes to end-of-line,
+            # eating closing brackets and making the record unparseable. Instead
+            # we parse raw and redact only the specific string values we extract
+            # into Trace fields (task, title, reasoning, commands).
             for raw_line in raw_content.splitlines():
                 stripped = raw_line.strip()
                 if not stripped:
                     continue
-                line = redact(stripped)
                 try:
-                    ev = json.loads(line)
+                    ev = json.loads(stripped)
                 except json.JSONDecodeError:
                     dropped_lines += 1
                     continue
@@ -375,11 +376,11 @@ class ClaudeImporter:
                 if ev_type == "ai-title":
                     t = ev.get("aiTitle") or ev.get("title", "")
                     if t:
-                        title = str(t)
+                        title = redact(str(t))
                 elif ev_type == "last-prompt":
                     lp = str(ev.get("lastPrompt", "")).strip()
                     if lp and task == "untitled claude session" and not lp.startswith("<") and len(lp) > 5:
-                        task = lp[:200]
+                        task = redact(lp[:200])
                 elif ev_type == "user":
                     if ev.get("isMeta"):
                         # Extract skills/settings from metadata injection
@@ -399,7 +400,7 @@ class ClaudeImporter:
                         and text_ext
                         and (not text_ext.startswith("<") and not text_ext.startswith("/") and len(text_ext) > 5)
                     ):
-                        task = text_ext[:200]
+                        task = redact(text_ext[:200])
                     if isinstance(content, list):
                         for block in content:
                             if not isinstance(block, dict) or block.get("type") != "tool_result":
@@ -487,7 +488,7 @@ class ClaudeImporter:
                         if bt == "thinking":
                             think = block.get("thinking", "")
                             if think:
-                                reasoning_snippets.append(str(think)[:500])
+                                reasoning_snippets.append(redact(str(think)[:500]))
                         if bt != "tool_use":
                             continue
                         name = str(block.get("name", "unknown"))
@@ -528,10 +529,10 @@ class ClaudeImporter:
                                     files_touched.append(fp_str)
                                 if tid:
                                     file_index_by_tool_use_id[tid] = len(files_touched) - 1
-                        elif name == "Bash":
+                        if name == "Bash":
                             cmd = str(inp.get("command") or "").strip()
                             if cmd:
-                                commands_run.append(cmd[:200])
+                                commands_run.append(redact(cmd[:200]))
                                 if tid:
                                     command_index_by_tool_use_id[tid] = len(commands_run) - 1
 

@@ -432,51 +432,6 @@ PYEOF
     fi
 fi
 
-# ---- Claude hook settings ---------------------------------------------------
-run "mkdir -p '$CLAUDE_SETTINGS_DIR'"
-
-if $DRY_RUN; then
-    echo "  [dry-run] merge PreToolUse Atelier loop hook into ${CLAUDE_SETTINGS}"
-else
-    if [ ! -f "${CLAUDE_SETTINGS}" ]; then
-        info "Creating ${CLAUDE_SETTINGS}"
-        echo "{}" > "${CLAUDE_SETTINGS}"
-    fi
-    HOOK_SCRIPT=$(mktemp /tmp/atelier_hook_XXXXXX)
-    cat > "${HOOK_SCRIPT}" << 'PYEOF'
-import json
-import sys
-
-path = sys.argv[1]
-hook_command = "echo '{\"systemMessage\": \"Atelier loop required: call task before editing and use rescue on repeated failures.\"}'"
-
-with open(path) as f:
-    d = json.load(f)
-
-hooks = d.setdefault("hooks", {})
-pre_tool_use = hooks.setdefault("PreToolUse", [])
-
-matcher = "Edit|Write"
-for entry in pre_tool_use:
-    if entry.get("matcher") == matcher:
-        for h in entry.get("hooks", []):
-            if h.get("type") == "command" and "Atelier loop required" in h.get("command", ""):
-                print("[atelier:claude] Atelier loop PreToolUse hook already present")
-                sys.exit(0)
-
-pre_tool_use.append({
-    "matcher": matcher,
-    "hooks": [{"type": "command", "command": hook_command}]
-})
-
-with open(path, "w") as f:
-    json.dump(d, f, indent=2)
-    f.write("\n")
-print("[atelier:claude] Atelier loop PreToolUse hook merged into " + path)
-PYEOF
-    python3 "${HOOK_SCRIPT}" "${CLAUDE_SETTINGS}"
-    rm -f "${HOOK_SCRIPT}"
-fi
 
 # ---- permissions: allow Atelier MCP (and optionally deny native tools) ------
 # By default this preserves Claude's normal permission prompt for native tools.

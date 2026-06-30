@@ -19,38 +19,37 @@
       "wilson_upper": 0.85201588897427
     },
     "candidate": {
-      "correct": 225,
-      "cost_usd_sum": 160.649687,
+      "correct": 232,
+      "cost_usd_sum": 165.45074645,
       "judged": 250,
-      "pass_rate": 0.9,
+      "pass_rate": 0.928,
       "total": 250,
       "valid": 250,
-      "wilson_lower": 0.8565482893919354,
-      "wilson_upper": 0.9313450710117088
+      "wilson_lower": 0.8890714648901645,
+      "wilson_upper": 0.953974430741735
     },
     "cost": {
       "baseline_cost_usd": 234.84328645,
-      "candidate_cost_usd": 160.649687,
-      "estimated_cost_delta_usd": -74.19359945,
-      "estimated_cost_savings_usd": 74.19359945
+      "candidate_cost_usd": 165.45074645,
+      "estimated_cost_delta_usd": -69.39254,
+      "estimated_cost_savings_usd": 69.39254
     },
     "judged_delta": {
-      "delta_lower_bound": 0.004532400417665339,
-      "delta_upper_bound": 0.1766830724751728,
-      "pass_rate": 0.09199999999999997
+      "delta_lower_bound": 0.03705557591589448,
+      "delta_upper_bound": 0.199312432205199,
+      "pass_rate": 0.12
     },
     "pairwise_quality": {
       "candidate_at_least_baseline": 0,
       "expected_pairs": 250,
       "judged_pairs": 0,
-      "pairs": 0,
-      "quality_adjusted_savings_usd": 0
+      "pairs": 250,
+      "quality_adjusted_savings_usd": 0.0
     }
   },
-  "evaluated_at": "2026-06-30T06:43:49.083941+00:00",
+  "evaluated_at": "2026-06-30T15:29:02.383339+00:00",
   "passed": false,
   "reasons": [
-    "pairwise quality gate requires a baseline-vs-candidate row for every candidate run",
     "pairwise quality gate requires judged baseline-vs-candidate comparisons for every pair"
   ],
   "suite": "codebench"

@@ -1016,7 +1016,7 @@ def benchmark_local_cmd(
     help="Arm to run; repeat for both.",
 )
 @click.option("--reps", type=int, default=1, show_default=True)
-@click.option("--model", default="sonnet", show_default=True)
+@click.option("--model", default="claude-opus-4-8", show_default=True)
 @click.option(
     "--max-turns",
     type=int,
@@ -1142,12 +1142,6 @@ def _workspace_dir(suite: str, *, repo_root: Path, run_id: str) -> Path:
     return path
 
 
-def _cache_dir(suite: str, *, repo_root: Path) -> Path:
-    path = repo_root.resolve().parent / "benchmarks" / repo_root.name / f"{suite}-cache"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
 def _csv_values(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
@@ -1190,12 +1184,6 @@ def _validate_mcp_suites(suite_names: list[str], *, repo_root: Path) -> None:
     except ValueError as exc:
         available = sorted({name for name, _size, _runner in _suite_specs()} | set(_suite_aliases()))
         raise click.ClickException(f"{exc}. Available --tool values: {', '.join(available)}") from exc
-
-
-def _resolve_provider_jobs(requested_jobs: int, providers: list[str]) -> int:
-    if requested_jobs > 0:
-        return requested_jobs
-    return _auto_jobs(len(providers), hard_cap=32)
 
 
 def _ensure_codebench_tasks_dir(repo_root: Path, configured_dir: Path | None) -> Path:

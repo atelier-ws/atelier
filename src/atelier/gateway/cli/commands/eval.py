@@ -6,6 +6,49 @@ from pathlib import Path
 import click
 
 
+def _gpu_supports_embedder(min_free_mb: int = 512) -> tuple[bool, str]:
+    """Return (ok, reason). True when a CUDA GPU with enough free VRAM is present.
+
+    Uses ``nvidia-smi`` so it works regardless of which Python env is active.
+    Falls back to ``torch.cuda`` when nvidia-smi is unavailable.
+    """
+    import subprocess
+
+    # Primary: nvidia-smi — works in any Python env
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if not out:
+            return False, "nvidia-smi returned no GPU info"
+        free_mb = max(int(line.strip()) for line in out.splitlines() if line.strip())
+        if free_mb < min_free_mb:
+            return False, f"only {free_mb} MB free VRAM (need {min_free_mb} MB)"
+        return True, f"{free_mb} MB free VRAM"
+    except FileNotFoundError:
+        pass  # nvidia-smi not installed; fall through to torch
+    except Exception as exc:  # noqa: BLE001
+        return False, f"nvidia-smi error: {exc}"
+
+    # Fallback: torch (only available when torch is installed in this env)
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return False, "no CUDA GPU detected"
+        free_bytes, _ = torch.cuda.mem_get_info()
+        free_mb = free_bytes // (1024 * 1024)
+        if free_mb < min_free_mb:
+            return False, f"only {free_mb} MB free VRAM (need {min_free_mb} MB)"
+        return True, f"{free_mb} MB free VRAM"
+    except ImportError:
+        return False, "nvidia-smi not found and torch not installed"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"GPU check failed: {exc}"
+
+
 @click.group(name="eval")
 def eval_() -> None:
     """Evaluation case management."""
@@ -422,7 +465,7 @@ def eval_retrieval(
     raise SystemExit(1 if any_failed else 0)
 
 
-@eval_.command("sessions")
+@eval_.command("fitness")
 @click.option(
     "--session-dir",
     "-d",
@@ -443,33 +486,34 @@ def eval_retrieval(
     show_default=True,
     help="Output path for mined pairs JSON.",
 )
-@click.option("--run-eval", is_flag=True, default=False, help="Run the retrieval benchmark after mining.")
+@click.option("--no-eval", is_flag=True, default=False, help="Skip the retrieval benchmark; only mine and save pairs.")
 @click.option(
     "--channel",
-    type=click.Choice(["lexical", "zoekt", "cg", "lexical+zoekt"]),
-    default="lexical",
+    "channels",
+    multiple=True,
+    type=click.Choice([_ALL_CHANNEL, *_RETRIEVAL_CHANNELS]),
+    default=("lexical", "lexical+zoekt", "lexical+zoekt+semantic", "rg"),
     show_default=True,
-    help="Which retrieval eval to run after mining pairs.",
+    help="Retrieval channel(s) to benchmark. Pass multiple times for side-by-side.",
 )
 @click.option("--full", is_flag=True, default=False, help="Run eval on all mined pairs (no cap).")
-def eval_sessions(
+def eval_fitness(
     session_dir: str,
     repo_filter: str,
     out: Path,
-    run_eval: bool,
-    channel: str,
+    no_eval: bool,
+    channels: tuple[str, ...],
     full: bool,
 ) -> None:
-    """Offline: mine search patterns from Claude Code & Codex session files,
-    show savings analysis, and optionally run the retrieval benchmark.
+    """Mine search patterns from your real Claude Code & Codex sessions and
+    benchmark Atelier's retrieval quality against them.
 
-    This reads your real session history to quantify how many individual
-    grep calls Atelier's ``explore`` collapses, and generates query pairs
-    for the MRR retrieval eval.
+    Scans ``~/.claude/projects/`` and ``~/.codex/sessions/`` for real explore
+    queries you made during past coding sessions, writes them to a pairs file,
+    then immediately runs ``eval retrieval`` on those pairs so you can see how
+    well Atelier finds files for queries like the ones you actually ask.
 
-    The repo filter is auto-detected from your current working directory
-    (basename). Both ``~/.claude/projects/`` and ``~/.codex/sessions/`` are
-    scanned automatically.
+    Use ``--no-eval`` to only mine and save the pairs without running the benchmark.
     """
     import subprocess
 
@@ -481,7 +525,8 @@ def eval_sessions(
     env["SESSION_ROOT"] = session_dir
     env["SESSION_REPO_FILTER"] = repo_filter
 
-    cmd = [
+    # Step 1: mine queries from sessions.
+    mine_cmd = [
         *_bm._python_cmd(bench_root),
         "benchmarks/codebench/offline_session_analyzer.py",
         "--session-dir",
@@ -490,130 +535,80 @@ def eval_sessions(
         str(out),
     ]
     if repo_filter:
-        cmd += ["--repo-filter", repo_filter]
-    if run_eval:
-        cmd += ["--run-eval", "--channel", channel]
-        if full:
-            cmd.append("--full")
+        mine_cmd += ["--repo-filter", repo_filter]
 
-    click.echo(f"[eval sessions] {' '.join(cmd)}", err=True)
-    raise SystemExit(subprocess.run(cmd, cwd=bench_root, env=env, check=False).returncode)
+    click.echo("[eval fitness] mining queries ...", err=True)
+    r = subprocess.run(mine_cmd, cwd=bench_root, env=env, check=False)
+    if r.returncode != 0:
+        raise SystemExit(r.returncode)
 
+    # Step 2: augment with synthetic queries from the current project.
+    # Cap synthetic pairs at the session pair count so neither source dominates
+    # (50/50 split). When there are no session pairs, the cap is lifted so
+    # synthetic pairs fill the whole benchmark.
+    click.echo("[eval fitness] generating synthetic pairs ...", err=True)
+    import json as _json
 
-@eval_.command("providers")
-@click.option("--repo-root", type=click.Path(path_type=Path, file_okay=False), default=Path("."))
-@click.option(
-    "--workspace-root",
-    type=click.Path(path_type=Path, file_okay=False),
-    default=None,
-    help="Benchmark workspace/cache root. Defaults outside the repo under ../benchmarks/<repo>/.",
-)
-@click.option("--out", type=click.Path(path_type=Path, file_okay=False), default=None)
-@click.option("--iterations", type=int, default=1, show_default=True)
-@click.option(
-    "--max-cases",
-    type=int,
-    default=100,
-    show_default=True,
-    help="Maximum cases per family (default 100). Use 0 for no cap.",
-)
-@click.option(
-    "--jobs",
-    type=int,
-    default=0,
-    show_default="auto",
-    help="Parallel provider processes. Use 0 to auto-size.",
-)
-@click.option(
-    "--providers",
-    default=("atelier,atelier-zoekt,zoekt,serena,codegraph,code-index-mcp,jcodemunch-mcp,ast-grep,universal-ctags"),
-    show_default=True,
-)
-@click.option(
-    "--families",
-    default=(
-        "exact_symbol,exact_search,substring_search,file_outline,references,"
-        "callers,callees,fuzzy_symbol,structural_search,nohit_search"
-    ),
-    show_default=True,
-)
-@click.option(
-    "--install/--no-install",
-    default=True,
-    show_default=True,
-    help="Install external provider tools (npm/uv) before running. On by default; use --no-install to skip.",
-)
-def eval_providers(
-    repo_root: Path,
-    workspace_root: Path | None,
-    out: Path | None,
-    iterations: int,
-    max_cases: int,
-    jobs: int,
-    providers: str,
-    families: str,
-    install: bool,
-) -> None:
-    """Run the external code-search provider matrix and write CSV/JSON artifacts."""
-    import shutil
-
-    from atelier.gateway.cli.commands import benchmark as _bm
-    from atelier.gateway.cli.progress import ProgressReporter
-
-    repo_root = repo_root.resolve()
-    run_dir = _bm._run_dir("providers", out, repo_root=repo_root)
-    workspace_root = (
-        workspace_root.resolve()
-        if workspace_root is not None
-        else _bm._workspace_dir("providers", repo_root=repo_root, run_id=run_dir.name)
-    )
-    cache_root = _bm._cache_dir("providers", repo_root=repo_root)
-    # Always start from a clean provider cache so it does not accumulate across runs.
-    shutil.rmtree(cache_root, ignore_errors=True)
-    cache_root.mkdir(parents=True, exist_ok=True)
-    click.echo(f"Cleared provider cache: {cache_root}")
-    provider_list = _bm._csv_values(providers)
-    resolved_jobs = _bm._resolve_provider_jobs(jobs, provider_list)
-    csv_out = run_dir / "results.csv"
-    json_out = run_dir / "results.json"
-    progress = ProgressReporter("providers", total=1)
-    progress.start("starting benchmark", current=f"reports {run_dir} | jobs {resolved_jobs}")
-    bench_root = _bm._bench_source_root()
-    cmd = [
+    _session_count = 0
+    _session_prefix = ""
+    try:
+        _pd = _json.loads(out.read_text())
+        _session_count = len(_pd.get("pairs", []))
+        _session_prefix = next(iter(_pd.get("repos", {})), "")
+    except Exception:
+        pass
+    syn_cmd = [
         *_bm._python_cmd(bench_root),
-        "-m",
-        "benchmarks.mcp_tools.bench_external_matrix",
-        "--repo-root",
-        str(repo_root),
-        "--workspace-root",
-        str(workspace_root),
-        "--cache-root",
-        str(cache_root),
-        "--manifest-path",
-        str(workspace_root / "external_matrix_cases.json"),
-        "--audit-path",
-        str(workspace_root / "external_tool_surfaces.json"),
-        "--json-out",
-        str(json_out),
-        "--csv-out",
-        str(csv_out),
-        "--iterations",
-        str(iterations),
-        "--jobs",
-        str(resolved_jobs),
-        "--tools",
-        providers,
-        "--families",
-        families,
+        "benchmarks/codebench/synthetic_pair_miner.py",
+        "--repo-dir",
+        str(Path(".").resolve()),
+        "--merge",
+        str(out),  # merge into the session pairs file in-place
+        "--out",
+        str(out),
     ]
-    if max_cases > 0:
-        cmd.extend(["--max-cases", str(max_cases)])
-    if install:
-        cmd.append("--install")
-    _bm._run(cmd, cwd=bench_root, label="provider benchmark")
-    progress.step("benchmark command complete", current="external provider matrix")
-    progress.finish("benchmark complete")
-    click.echo(f"Results: {run_dir}")
+    if _session_prefix:
+        syn_cmd += ["--repo-prefix", _session_prefix]
+    # 50/50 cap with gap-fill:
+    # - No sessions       → unlimited synthetic (pure synthetic benchmark)
+    # - Sessions sparse   → synthetic fills up to MIN_TOTAL so the benchmark
+    #                       stays meaningful even when real sessions are few
+    # - Sessions plentiful → synthetic capped at session_count (≤50% of total)
+    _MIN_TOTAL = 500
+    if _session_count == 0:
+        pass  # no cap — synthetic fills everything
+    elif _session_count < _MIN_TOTAL // 2:
+        syn_cmd += ["--max-pairs", str(_MIN_TOTAL - _session_count)]
+    else:
+        syn_cmd += ["--max-pairs", str(_session_count)]
+    r2 = subprocess.run(syn_cmd, cwd=bench_root, env=env, check=False)
+    if r2.returncode != 0:
+        click.echo("[eval fitness] synthetic mining failed (continuing without it)", err=True)
+
+    if no_eval:
+        click.echo(f"[eval fitness] pairs written -> {out}", err=True)
+        return
+
+    # Step 3: run retrieval benchmark on the combined pairs.
+    # Drop semantic channel if the GPU can't support the embedding model.
+    active_channels = list(channels)
+    if "lexical+zoekt+semantic" in active_channels:
+        gpu_ok, gpu_reason = _gpu_supports_embedder()
+        if not gpu_ok:
+            click.echo(
+                f"[eval fitness] skipping lexical+zoekt+semantic ({gpu_reason})",
+                err=True,
+            )
+            active_channels.remove("lexical+zoekt+semantic")
+
+    eval_cmd = ["atelier", "eval", "retrieval", "--pairs", str(out)]
+    for ch in active_channels:
+        eval_cmd += ["--channel", ch]
+    if full:
+        eval_cmd.append("--full")
+
+    click.echo(f"[eval fitness] {' '.join(eval_cmd)}", err=True)
+    raise SystemExit(subprocess.run(eval_cmd, cwd=str(Path(".").resolve()), env=env, check=False).returncode)
 
 
 __all__ = [

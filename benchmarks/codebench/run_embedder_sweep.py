@@ -105,15 +105,53 @@ EMBEDDERS: list[dict] = [
         },
         "note": "Alibaba GTE-Qwen2 7B, was #1 MTEB",
     },
+    # --- new models ---
+    {
+        "label": "BGE-M3",
+        "dim": 1024,
+        "env": {
+            "ATELIER_CODE_EMBEDDER": "hf",
+            "ATELIER_CODE_EMBED_MODEL": "BAAI/bge-m3",
+            "ATELIER_HF_QUERY_PREFIX": "",
+            "ATELIER_HF_DOC_PREFIX": "",
+        },
+        "note": "BAAI hybrid dense+sparse+ColBERT, same maker as BGE-Code-v1",
+    },
+    {
+        "label": "Arctic-Embed-L-v2",
+        "dim": 1024,
+        "env": {
+            "ATELIER_CODE_EMBEDDER": "hf",
+            "ATELIER_CODE_EMBED_MODEL": "Snowflake/snowflake-arctic-embed-l-v2.0",
+            "ATELIER_HF_QUERY_PREFIX": "Represent this sentence for searching relevant passages: ",
+            "ATELIER_HF_DOC_PREFIX": "",
+        },
+        "note": "Snowflake retrieval-tuned 568M, Apache 2.0",
+    },
+    {
+        "label": "GTE-Qwen2-1.5B",
+        "dim": 1536,
+        "env": {
+            "ATELIER_CODE_EMBEDDER": "hf",
+            "ATELIER_CODE_EMBED_MODEL": "Alibaba-NLP/gte-Qwen2-1.5B-instruct",
+            "ATELIER_HF_QUERY_PREFIX": "Instruct: Given a code search query, retrieve the most relevant code snippet.\nQuery: ",
+            "ATELIER_HF_DOC_PREFIX": "",
+        },
+        "note": "Alibaba GTE-Qwen2 1.5B, smaller sibling of 7B that OOM'd",
+    },
 ]
 
 # ---------------------------------------------------------------------------
 # Filter
 # ---------------------------------------------------------------------------
+def _matches_filter(label: str, pattern: str) -> bool:
+    """True if any pipe-separated token appears in label (case-insensitive)."""
+    return any(tok.lower() in label.lower() for tok in pattern.split("|") if tok)
+
 if args.only:
-    EMBEDDERS = [e for e in EMBEDDERS if args.only.lower() in e["label"].lower()]
+    EMBEDDERS = [e for e in EMBEDDERS if _matches_filter(e["label"], args.only)]
 if args.skip:
-    EMBEDDERS = [e for e in EMBEDDERS if args.skip.lower() not in e["label"].lower()]
+    EMBEDDERS = [e for e in EMBEDDERS if not _matches_filter(e["label"], args.skip)]
 
 if not EMBEDDERS:
     print("No embedders match filter.", file=sys.stderr)
@@ -162,10 +200,15 @@ for i, emb in enumerate(EMBEDDERS, 1):
     history = Path("reports/benchmark/embedder_mrr_history.jsonl")
     if history.exists():
         runs = [json.loads(ln) for ln in history.read_text().splitlines() if ln.strip()]
-        # find the latest run for this embedder
-        matches = [r for r in runs if emb["env"].get("ATELIER_CODE_EMBEDDER") in r.get("embedder", "")]
-        if emb["env"].get("ATELIER_NOMIC_DIM"):
-            matches = [r for r in matches if str(emb["dim"]) in r.get("embedder", "") or r.get("dim") == emb["dim"]]
+        model_key = emb["env"].get("ATELIER_CODE_EMBEDDER", "")
+        hf_model = emb["env"].get("ATELIER_CODE_EMBED_MODEL", "")
+        if model_key == "hf" and hf_model:
+            # stored as "nomic:<org>/<model>" — match on full model path
+            matches = [r for r in runs if hf_model in r.get("embedder", "")]
+        else:
+            matches = [r for r in runs if model_key in r.get("embedder", "")]
+            if emb["env"].get("ATELIER_NOMIC_DIM"):
+                matches = [r for r in matches if str(emb["dim"]) in r.get("embedder", "") or r.get("dim") == emb["dim"]]
         if matches:
             latest = matches[-1]
             rec = {"label": label, "dim": emb["dim"], "note": emb["note"], **latest}
