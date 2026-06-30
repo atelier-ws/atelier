@@ -69,7 +69,11 @@ for _gp in _gold_paths:
 assert repos is not None
 pairs = [row for _k, _p, _tm in _golds for row in _p]
 # Which CMM tool / result-key backs each gold kind.
-_TOOL_FOR = {"definition": ("search_graph", "file_path"), "content": ("search_code", "file")}
+_TOOL_FOR = {
+    "definition": ("search_graph", "file_path"),
+    "content": ("search_code", "file"),
+    "swebench": ("search_code", "file"),  # mixed grep/text queries → content search
+}
 
 
 def norm(p: str) -> str:
@@ -208,7 +212,8 @@ for prefix, queries in sorted(uq.items()):
                     timeout=120,
                 )
             ranked[tool] = _paths(res, key)
-        latencies.append((time.time() - t1) * 1000)
+        _q_lat = (time.time() - t1) * 1000
+        latencies.append(_q_lat)
         filecache[(prefix, query)] = ranked
         done += 1
         if done % 50 == 0 or done == total_unique:
@@ -266,9 +271,37 @@ _lat = {
     "over_100ms": sum(1 for x in latencies if x > 100.0),
 }
 _gold_scores = {kind: _score_gold(kind, gp, gtm) for kind, gp, gtm in _golds}
-# Attach per-repo latency to the by_repo entries of the primary gold (parity with other arms).
+# Collect per-repo latencies from filecache (same order as query loop).
 _lat_by_repo: dict[str, list[float]] = {}
-for (prefix, _q), _ranked in filecache.items():
-    _lat_by_repo.setdefault(prefix, [])
+_lat_idx = 0
+for prefix, queries in sorted(uq.items()):
+    for _ in sorted(queries):
+        if _lat_idx < len(latencies):
+            _lat_by_repo.setdefault(prefix, []).append(latencies[_lat_idx])
+            _lat_idx += 1
 out = {**_gold_scores[_golds[0][0]], "latency_ms": _lat, "golds": _gold_scores, "provider": "cmm", "mode": "ext[cmm]"}
 print(json.dumps(out))
+
+# ── Summary (matches eval_external_provider_mrr.py format) ──
+print("\n" + "─" * 60, file=sys.stderr)
+print("  provider=cmm", file=sys.stderr)
+for _gk, _gd in _gold_scores.items():
+    print(f"  gold={_gk:<18} MRR {_gd['mrr']:.4f}  hit@1 {_gd['hit1']:.4f}  n={_gd['n']}", file=sys.stderr)
+print(f"  lat  mean={_lat['mean']:.0f}ms  p95={_lat['p95']:.0f}ms  max={_lat['max']:.0f}ms", file=sys.stderr)
+_primary_gk = _golds[0][0]
+for _rprefix, _rd in sorted(_gold_scores[_primary_gk].get("by_repo", {}).items(), key=lambda kv: kv[1].get("mrr", 0)):
+    _rmrr = _rd.get("mrr", 0)
+    _rn = _rd.get("n", 0)
+    _icon = "✓" if _rmrr >= 0.9 else ("~" if _rmrr >= 0.5 else "✗")
+    _short = _rprefix.split("__")[-1] if "__" in _rprefix else _rprefix
+    _mrr_parts = []
+    for _gk in ("definition", "content", "swebench"):
+        _gk_repo = (_gold_scores.get(_gk) or {}).get("by_repo", {}).get(_rprefix)
+        if _gk_repo and isinstance(_gk_repo, dict):
+            _mrr_parts.append(f"{_gk_repo['mrr']:.3f}")
+    _mrr_str = "/".join(_mrr_parts) if len(_mrr_parts) > 1 else f"{_rmrr:.3f}"
+    _rlat = _lat_by_repo.get(_rprefix, [])
+    _rp95 = _pct(_rlat, 95)
+    _rp100 = max(_rlat) if _rlat else 0
+    print(f"  {_icon}  {_short:<22} n={_rn:<4} MRR={_mrr_str}  p95={_rp95:.0f}ms  p100={_rp100:.0f}ms", file=sys.stderr)
+print("─" * 60 + "\n", file=sys.stderr)

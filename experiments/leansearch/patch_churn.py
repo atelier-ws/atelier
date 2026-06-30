@@ -10,7 +10,7 @@ if "_test_churn_intervention" in t:
     print("churn detector already present")
 else:
     # 1) insert the new functions right after _convergence_intervention
-    anchor1 = '    return f"{response_text}\\n\\n[atelier] {decision}"  # nudge\n'
+    anchor1 = '    return f"{response_text}\\n\\n{decision}"  # nudge\n'
     if anchor1 not in t:
         print("anchor1 (end of _convergence_intervention) NOT FOUND")
         raise SystemExit

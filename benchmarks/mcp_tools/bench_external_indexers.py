@@ -92,11 +92,13 @@ class SerenaRunner:
         home_dir: Path,
         project_name: str = "atelier-bench",
         port: int | None = None,
+        language: str = "python",
     ) -> None:
         self.project_root = project_root
         self.home_dir = home_dir
         self.project_name = project_name
         self.port = port if port is not None else _find_free_port()
+        self.language = language
         self.proc: subprocess.Popen[str] | None = None
 
     def _env(self) -> dict[str, str]:
@@ -120,7 +122,7 @@ class SerenaRunner:
                 "--name",
                 self.project_name,
                 "--language",
-                "python",
+                self.language,
             ],
             cwd=self.project_root,
             timeout=600,
@@ -215,7 +217,7 @@ ProjectManagementService(ctx).initialize_project(str(repo_root))
 result = SearchService(ctx).search_code(
     pattern=sys.argv[3],
     regex=False,
-    file_pattern="*.py",
+    file_pattern=sys.argv[4] if len(sys.argv) > 4 else "*",
     max_results=50,
     context_lines=0,
     case_sensitive=False,
@@ -243,7 +245,7 @@ print(json.dumps(result, ensure_ascii=False))
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr[:1200] or proc.stdout[:1200])
 
-    def query(self, pattern: str) -> dict[str, Any]:
+    def query(self, pattern: str, file_pattern: str = "*") -> dict[str, Any]:
         if self.python_bin is None or self.project_root is None:
             raise RuntimeError("code-index-mcp not initialized")
         proc = run_cmd(
@@ -254,6 +256,7 @@ print(json.dumps(result, ensure_ascii=False))
                 str(self.project_root),
                 str(self.code_index_repo),
                 pattern,
+                file_pattern,
             ],
             cwd=self.code_index_repo,
             timeout=300,

@@ -1,7 +1,7 @@
 # Edit-test-fail churn: the costly spiral is edit->test->FAIL repeated without ever
 # going green. Tracked separately from the gather streak (which resets on every
 # edit, so it is blind to this). Escalation rides the FIXME must-act channel -- the
-# plain [atelier] text channel is ignored under load (58 ignored nudges on one
+# plain text channel is ignored under load (58 ignored nudges on one
 # spiral) -- and pushes the agent BACK TO PLANNING instead of repeating the loop it
 # is stuck in. Only sustained failure (no pass) escalates, so a converging task
 # that hits a green resets and never sees it.

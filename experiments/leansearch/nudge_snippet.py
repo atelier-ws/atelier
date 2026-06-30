@@ -19,7 +19,7 @@ def _convergence_nudge(tool_name: str) -> str:
     n = _NONEDIT_STREAK[0]
     if n and n % _NUDGE_EVERY == 0:
         return (
-            f"\n\n[atelier] {n} investigative calls (search/read/bash) without an edit. "
+            f"\n\n{n} investigative calls (search/read/bash) without an edit. "
             "You very likely have enough now: make the change in one bulk edit, then run "
             "the covering test once. Searching/reading more rarely converges -- decide from "
             "the failing test and the code you have already seen."

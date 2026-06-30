@@ -69,10 +69,11 @@ _parser.add_argument(
 _parser.add_argument(
     "--channel",
     default=os.environ.get("FITNESS_CHANNEL", "lexical+zoekt"),
-    choices=["lexical", "zoekt", "lexical+zoekt"],
+    choices=["lexical", "zoekt", "lexical+zoekt", "lexical+zoekt+semantic"],
     help="lexical = pure FTS5 symbol search (no Zoekt); "
     "zoekt = pure Zoekt trigram search; "
-    "lexical+zoekt = explore pipeline with both FTS5 + Zoekt parallel (default).",
+    "lexical+zoekt = explore pipeline with both FTS5 + Zoekt parallel (default); "
+    "lexical+zoekt+semantic = adds semantic RRF fusion (requires ATELIER_CODE_EMBEDDER).",
 )
 _args, _ = _parser.parse_known_args()
 
@@ -175,12 +176,13 @@ if _args.reindex:
 
 # ── Channel ──────────────────────────────────────────────────────
 CHANNEL = _args.channel
-if CHANNEL not in ("lexical", "zoekt", "lexical+zoekt"):
-    print(f"[fitness] ERROR: unknown channel {CHANNEL!r}", file=sys.stderr, flush=True)
+_TAG = f"[{CHANNEL}]"  # shown in progress lines so parallel runs are distinguishable
+if CHANNEL not in ("lexical", "zoekt", "lexical+zoekt", "lexical+zoekt+semantic"):
+    print(f"{_TAG} ERROR: unknown channel {CHANNEL!r}", file=sys.stderr, flush=True)
     sys.exit(1)
 if CHANNEL == "zoekt" and get_zoekt_supervisor is None:
     print(
-        "[fitness] WARNING: zoekt adapter not importable; zoekt channel will return empty results.",
+        f"{_TAG} WARNING: zoekt adapter not importable; zoekt channel will return empty results.",
         file=sys.stderr,
         flush=True,
     )
@@ -286,6 +288,11 @@ def _worker_init() -> None:
     # skips the Zoekt parallel recall hook entirely.
     if CHANNEL == "lexical":
         os.environ["ATELIER_ZOEKT_MODE"] = "off"
+    elif CHANNEL == "lexical+zoekt+semantic":
+        # Semantic embedder pin is forwarded from the parent env via
+        # ATELIER_CODE_EMBEDDER.  The engine's SemanticSearchRanker activates
+        # automatically when the embedder is non-null, fusing results via RRF.
+        pass  # embedder already set in env by caller
 
     for eng in engines.values():
         with contextlib.suppress(Exception):
@@ -379,7 +386,7 @@ if CHANNEL in ("zoekt", "lexical+zoekt") and get_zoekt_supervisor is not None:
         flush=True,
     )
 
-print(f"[fitness] start: {_total} explores across {len(uq)} repos, {_WORKERS} workers", file=sys.stderr, flush=True)
+print(f"{_TAG} start: {_total} explores across {len(uq)} repos, {_WORKERS} workers", file=sys.stderr, flush=True)
 # Processes, not threads: explores are CPU-bound (GIL-serialized under threads) and
 # share one engine instance per repo -- a process pool gives true parallelism and
 # isolates each worker's sqlite connections (fork inherits the pre-warmed engines).
@@ -401,7 +408,7 @@ with ProcessPoolExecutor(
             _rate = _done / _el if _el else 0.0
             _eta = (_total - _done) / _rate if _rate else 0.0
             print(
-                f"[fitness] {_done}/{_total} elapsed={_el:.0f}s rate={_rate:.1f}/s eta={_eta:.0f}s",
+                f"{_TAG} {_done}/{_total} elapsed={_el:.0f}s rate={_rate:.1f}/s eta={_eta:.0f}s",
                 file=sys.stderr,
                 flush=True,
             )
@@ -581,9 +588,10 @@ if _cl:
 
 # ── Per-repo highlights ──
 _by = _cur.get("by_repo") or {}
+_golds_data = _cur.get("golds") or {}
 if _by:
     print("", file=sys.stderr)
-    # sort: worst MRR first so problems are visible
+    # sort: worst primary-gold MRR first so problems are visible
     for _rname, _rd in sorted(
         _by.items(), key=lambda kv: kv[1].get("mrr", kv[1]) if isinstance(kv[1], dict) else kv[1]
     ):
@@ -597,8 +605,15 @@ if _by:
         if _p95 or _max:
             _warn = " ⚠" if _p95 > 300 else ""
             _lat_note = f"  p95={_p95:.0f}ms  p100={_max:.0f}ms{_warn}"
+        # Build def/con MRR string
+        _mrr_parts = []
+        for _gk in ("definition", "content"):
+            _gk_repo = (_golds_data.get(_gk) or {}).get("by_repo", {}).get(_rname)
+            if _gk_repo and isinstance(_gk_repo, dict):
+                _mrr_parts.append(f"{_gk_repo['mrr']:.3f}")
+        _mrr_str = "/".join(_mrr_parts) if len(_mrr_parts) > 1 else f"{_rm:.3f}"
         print(
-            f"  {_mrr_icon(_rm)}  {_short:<22}  n={_rn:<4}  MRR={_rm:.3f}{_lat_note}",
+            f"  {_mrr_icon(_rm)}  {_short:<22}  n={_rn:<4}  MRR={_mrr_str}{_lat_note}",
             file=sys.stderr,
         )
 

@@ -44,17 +44,13 @@ def _convergence_intervention(tool_name: str, args: object, response_text: str) 
     if n < _NUDGE_AT:
         return response_text
     seen = ", ".join(_SEEN_PATHS[:6]) or "the files from your searches"
-    decision = (
-        f"{n} search/read calls with 0 edits -- you are spiraling. You have already "
-        f"examined: {seen}. Pick the right site and EDIT now, then run the failing test "
-        f"once. Do not gather again unless this genuinely lacks what you need."
-    )
+    decision = f"{n} search/read calls with 0 edits -- you are spiraling. You have already " f"examined: {seen}."
     if n >= _DEGRADE_AT:  # firm: suppress the bulky gather output, keep a head + the decision
         return (
-            f"[atelier] STOP GATHERING. {decision}\n\n"
+            f"STOP GATHERING. {decision}\n\n"
             "(further read-only output suppressed this turn; your next action must be an "
             f"edit or a test run)\n\n{response_text[:400]}"
         )
     if n >= _CONSOLIDATE_AT:  # consolidate: surface the decision list up front
-        return f"[atelier] {decision}\n\n{response_text}"
-    return f"{response_text}\n\n[atelier] {decision}"  # nudge
+        return f"{decision}\n\n{response_text}"
+    return f"{response_text}\n\n{decision}"  # nudge
