@@ -13,6 +13,7 @@ from atelier.core.foundation.paths import default_store_root
 from .base import Embedder
 from .bge import BgeEmbedder
 from .letta_embedder import LettaEmbedder
+from .nomic import NomicEmbedder
 from .null_embedder import NullEmbedder
 from .ollama_embedder import DEFAULT_CODE_EMBED_MODEL, OllamaEmbedder
 from .openai_embedder import OpenAIEmbedder
@@ -20,7 +21,7 @@ from .openai_embedder import OpenAIEmbedder
 logger = logging.getLogger(__name__)
 
 _PIN_CHOICES = frozenset({"openai", "letta", "null"})
-_CODE_PIN_CHOICES = frozenset({"openai", "letta", "null", "ollama", "bge"})
+_CODE_PIN_CHOICES = frozenset({"openai", "letta", "null", "ollama", "bge", "nomic", "hf"})
 
 
 @runtime_checkable
@@ -112,6 +113,21 @@ def make_code_embedder(pin: str | None = None, model: str | None = None) -> Embe
         return OpenAIEmbedder()
     if chosen == "letta":
         return LettaEmbedder()
+    if chosen == "nomic":
+        return NomicEmbedder(model or "nomic-ai/nomic-embed-code")
+    if chosen == "hf":
+        # Generic SentenceTransformer pin — model required via ATELIER_CODE_EMBED_MODEL.
+        # Prefixes: ATELIER_HF_QUERY_PREFIX / ATELIER_HF_DOC_PREFIX (default: empty).
+        from .nomic import NomicEmbedder as _ST  # same ST wrapper, model-agnostic
+
+        hf_model = model or os.getenv("ATELIER_CODE_EMBED_MODEL", "")
+        if not hf_model:
+            raise ValueError("ATELIER_CODE_EMBED_MODEL must be set when ATELIER_CODE_EMBEDDER=hf")
+        return _ST(
+            hf_model,
+            query_prefix=os.getenv("ATELIER_HF_QUERY_PREFIX", ""),
+            doc_prefix=os.getenv("ATELIER_HF_DOC_PREFIX", ""),
+        )
     if chosen == "bge":
         return BgeEmbedder()
     if chosen == "ollama":
@@ -141,8 +157,9 @@ make_code_embedder.cache_clear = _clear_code_embedder_cache  # type: ignore[attr
 
 
 __all__ = [
-    "DEFAULT_CODE_EMBED_MODEL",
-    "LettaEmbedder",
+    DEFAULT_CODE_EMBED_MODEL,
+    LettaEmbedder,
+    NomicEmbedder,
     "NullEmbedder",
     "OllamaEmbedder",
     "OpenAIEmbedder",
