@@ -1,0 +1,817 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] I'll explore the codebase to explain how Excalidraw's rendering pipeline works.[tool_use: Agent] {"description": "Explore Excalidraw rendering pipeline", "prompt": "Explore the Excalidraw monorepo to understand how it renders and updates canvas elements. I need a thorough, grounded explanation. Investigate:\n\n1. The main render loop / scene rendering entry points. Look in packages/excalidraw/renderer/ (files like renderScene, staticScene, interactiveScene) and packages/element/src/renderElement.ts or similar.\n2. How individual elements are drawn to canvas (roughjs usage, shape caching, the ShapeCache / element cache).\n3. The static vs interactive canvas split (multiple canvas layers).\n4. How state updates trigger re-renders — the Scene class, version/versionNonce on elements, and how App.tsx schedules renders (e.g. renderScene throttling, requestAnimationFrame).\n5. How element mutations work (mutateElement, increment version/versionNonce) and how that invalidates caches.\n\nFor each area, give me the specific file paths and key function/class names, and short explanations of the mechanism. Report back a structured summary with file paths and the data flow. Do NOT edit anything.", "subagent_type": "Explore"}
+
+=== Turn 2 ===
+[user] <system-reminder>
+The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+EnterWorktree
+ExitWorktree
+Monito
+[assistant] I'll conduct a thorough exploration of the Excalidraw monorepo to understand its rendering architecture. Let me start by mapping the structure and then diving into each area you specified.[tool_use: Bash] {"command": "find /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2 -type f -name \"*.ts\" -o -name \"*.tsx\" | grep -E \"(render|scene|element)\" | head -50"}
+
+=== Turn 3 ===
+[user] [tool_result] Async agent launched successfully.
+agentId: a5a45bde6286e7cf8 (internal ID - do not mention to user. Use SendMessage with to: 'a5a45bde6286e7cf8', summary: '<5-10 word recap>' to continue this agent.)
+The agent is working in the background. You will be notified automatically when it co
+[assistant] I've launched a background exploration of the rendering pipeline. While it runs, let me look at a couple of the key files directly to ground the answer.[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "renderStaticScene renderInteractiveScene scene rendering entry point"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "ShapeCache element shape cache invalidate version versionNonce mutateElement"}
+
+=== Turn 4 ===
+[user] [tool_result] /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/global.d.ts
+/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/tests/resize.test.tsx
+/tmp/codebench_workspaces/20260629T234322Z-36eed4b76
+[assistant] Now let me look for the renderer directory and main render entry points:[tool_use: Bash] {"command": "find /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2 -type d -name \"renderer\" | head -10"}
+
+=== Turn 5 ===
+[user] [tool_result] /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/renderer
+[assistant] [tool_use: Bash] {"command": "ls -la /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/renderer/"}
+
+=== Turn 6 ===
+[user] [tool_result] .rw-rw-r-- 3.1k pankaj 30 Jun 02:38 animation.ts
+.rw-rw-r-- 2.7k pankaj 30 Jun 02:38 helpers.ts
+.rw-rw-r--  58k pankaj 30 Jun 02:38 interactiveScene.ts
+.rw-rw-r-- 2.4k pankaj 30 Jun 02:38 renderNewElementScene.ts
+.rw-rw-r-- 5.5k pankaj 30 Jun 02:38 renderSnaps.ts
+.rw-rw-r-- 1.2k pankaj
+[assistant] [tool_use: Bash] {"command": "find /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw -type f -name \"renderScene*\" -o -name \"Scene.ts\" -o -name \"App.tsx\" | head -20"}
+
+=== Turn 7 ===
+[user] [tool_result] /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/App.tsx
+[assistant] [tool_use: Bash] {"command": "find /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw -type f \\( -name \"*.ts\" -o -name \"*.tsx\" \\) | grep -iE \"(scene|render)\" | head -30"}
+
+=== Turn 8 ===
+[user] [tool_result] {"candidate_files":["src/atelier/gateway/adapters/mcp_server.py","src/atelier/core/capabilities/code_context/engine.py","src/atelier/core/service/bootstrap_context.py","src/atelier/core/capabilities/code_context/embedding.py","src/atelier/core/runtime/engine.py","src/atelier/core/capab
+[assistant] The code index is pointing at a different repo. Let me read the actual Excalidraw files directly.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2 && ls packages/excalidraw/renderer/ packages/element/src/ 2>/dev/null | head -60; echo \"---SCENE---\"; ls packages/excalidraw/scene/ 2>/dev/null"}
+
+=== Turn 9 ===
+[user] [tool_result] /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/scene/export.ts
+/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/scene/normalize.ts
+/tmp/codebench_workspaces/20260629T234322Z-36
+[assistant] Now let me search for cache and shape-related files:[tool_use: Bash] {"command": "find /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2 -type f \\( -name \"*.ts\" -o -name \"*.tsx\" \\) | xargs grep -l \"ShapeCache\\|elementCache\" | head -20"}
+
+=== Turn 10 ===
+[user] [tool_result] /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/mutateElement.ts
+/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/shape.ts
+/tmp/codebench_workspaces/20260629T234322Z-36eed4b76
+[assistant] Perfect! Now let me read the key files. I'll start with the Scene/Renderer architecture:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["packages/excalidraw/scene/Renderer.ts", "packages/excalidraw/scene/index.ts"]}
+
+=== Turn 11 ===
+[user] [tool_result] ## packages/excalidraw/scene/Renderer.ts
+{"path":"packages/excalidraw/scene/Renderer.ts","error":"file not found: /home/pankaj/Projects/leanchain/atelier/packages/excalidraw/scene/Renderer.ts. No file named 'Renderer.ts' found under /home/pankaj/Projects/leanchain/atelier — do not retr
+[assistant] Let me use the correct absolute paths:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/scene/Renderer.ts", "/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/scene/index.ts"]}
+
+=== Turn 12 ===
+[user] [tool_result] packages/element/src/:
+Scene.ts
+__tests__
+align.ts
+arrowheads.ts
+arrows
+binding.ts
+bounds.ts
+collision.ts
+comparisons.ts
+containerCache.ts
+cropElement.ts
+delta.ts
+distance.ts
+distribute.ts
+dragElements.ts
+duplicate.ts
+elbowArrow.ts
+elementLink.ts
+embeddable.ts
+flowchart.ts
+fractionalIn
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/renderer/staticScene.ts", "/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/mutateElement.ts", "/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/shape.ts:head=80", "/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/scene/Renderer.ts:head=80"]}
+
+=== Turn 13 ===
+[user] [tool_result] ## packages/excalidraw/scene/Renderer.ts
+Projection: minified (line numbers differ from disk)
+
+import {
+getCommonFrameId,
+getFrameChildrenInsertionIndex,
+isElementInViewport,
+} from "@excalidraw/element";
+import { arrayToMap, memoize, toBrandedType } from "@excalidraw/common";
+import t
+[assistant] Now let me read the static and interactive scene renderers:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/renderer/staticScene.ts:expand", "/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/renderer/interactiveScene.ts:head=100"]}
+
+=== Turn 14 ===
+[user] [tool_result] ## packages/excalidraw/renderer/staticScene.ts
+import {
+  applyDarkModeFilter,
+  FRAME_STYLE,
+  THEME,
+  throttleRAF,
+} from "@excalidraw/common";
+import { isElementLink } from "@excalidraw/element";
+import { createPlaceholderEmbeddableLabel } from "@excalidraw/element";
+import { getBo
+[assistant] Now let me read the renderElement function from the element package:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/renderElement.ts:head=150"]}
+
+=== Turn 15 ===
+[user] [tool_result] ## packages/excalidraw/renderer/staticScene.ts
+Projection: minified (line numbers differ from disk)
+
+import {
+applyDarkModeFilter,
+FRAME_STYLE,
+THEME,
+throttleRAF,
+} from "@excalidraw/common";
+import { isElementLink } from "@excalidraw/element";
+import { createPlaceholderEmbeddableLabe
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2 && echo \"=== ShapeCache in shape.ts ===\"; grep -n \"class ShapeCache\\|static cache\\|ShapeCache.delete\\|generateElementShape\\|static get\\|static set\" packages/element/src/shape.ts | head; echo \"=== renderElement cache ===\"; grep -n \"elementWithCanvasCache\\|generateElementWithCanvas\\|cachedElement\\|version\\b\\|zoom\\|drawElementOnCanvas\\|generateElementCanvas\" packages/element/src/renderElement.ts | head -30; echo \"=== App render scheduling ===\"; grep -n \"renderScene\\|onSceneUpdated\\|renderStaticScene\\|renderInteractiveScene\\|getSceneVersion\\|versionNonce\" packages/excalidraw/components/App.tsx | head -20"}
+
+=== Turn 16 ===
+[user] [tool_result] ## packages/element/src/renderElement.ts
+import rough from "roughjs/bin/rough";
+
+import {
+  type GlobalPoint,
+  isRightAngleRads,
+  lineSegment,
+  pointFrom,
+  pointRotateRads,
+  type Radians,
+} from "@excalidraw/math";
+
+import {
+  BOUND_TEXT_PADDING,
+  DEFAULT_REDUCED_GLOBAL_ALPHA,
+  
+[assistant] Now let me read the shape cache:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/shape.ts:expand"]}
+
+=== Turn 17 ===
+[user] [tool_result] ## packages/element/src/shape.ts
+import { simplify } from "points-on-curve";
+import { getStroke } from "perfect-freehand";
+
+import {
+  type GeometricShape,
+  getClosedCurveShape,
+  getCurveShape,
+  getEllipseShape,
+  getFreedrawShape,
+  getPolygonShape,
+} from "@excalidraw/utils/shape"
+[assistant] Now let me read the mutateElement and understand how elements get their versions updated:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/mutateElement.ts:head=200"]}
+
+=== Turn 18 ===
+[user] [tool_result] ## packages/element/src/mutateElement.ts
+import {
+  getSizeFromPoints,
+  randomInteger,
+  getUpdatedTimestamp,
+} from "@excalidraw/common";
+
+import type { Radians } from "@excalidraw/math";
+
+import type { Mutable } from "@excalidraw/common/utility-types";
+
+import { ShapeCache } from ".
+[assistant] Let me continue reading mutateElement to see the versionNonce update:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/mutateElement.ts:L100-L180"]}
+
+=== Turn 19 ===
+[user] [tool_result] === ShapeCache in shape.ts ===
+81:export class ShapeCache {
+83:  private static cache = new WeakMap<
+92:  public static get = <T extends ExcalidrawElement>(
+118:  public static generateElementShape = <
+142:    const shape = _generateElementShape(
+747: * Low-level. Use `ShapeCache.gener
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/shape.ts:L81-L150", "/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/renderElement.ts:L603-L660"]}
+
+=== Turn 20 ===
+[user] [tool_result] ## packages/element/src/mutateElement.ts:L100-L180
+        const nextPoints = value;
+        if (prevPoints.length === nextPoints.length) {
+          let didChangePoints = false;
+          let index = prevPoints.length;
+          while (--index) {
+            const prevPoint = prevPoin
+[assistant] Now let me check the App.tsx to see how render is triggered:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/App.tsx:head=300"]}
+
+=== Turn 21 ===
+[user] [tool_result] ## packages/excalidraw/components/App.tsx
+import clsx from "clsx";
+import throttle from "lodash.throttle";
+import React, { useContext } from "react";
+import { flushSync } from "react-dom";
+import rough from "roughjs/bin/rough";
+import { nanoid } from "nanoid";
+
+import {
+  clamp,
+  poin
+[assistant] Let me search for specific render scheduling methods in App.tsx:[tool_use: Bash] {"command": "grep -n \"renderScene\\|requestAnimationFrame\\|throttle.*render\" /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/App.tsx | head -50"}
+
+=== Turn 22 ===
+[user] [tool_result] 7849:          requestAnimationFrame(() => {
+[assistant] Let me search for render methods in the App class:[tool_use: Bash] {"command": "grep -n \"render\\|throttle\" /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/App.tsx | grep -E \"^\\s*(private|public).*render|this\\..*render\" | head -40"}
+
+=== Turn 23 ===
+[user] [tool_result] 831:    this.renderer = new Renderer(this.scene);
+1826:                      ? this.props.renderEmbeddable?.(el, this.state)
+2104:    } = this.renderer.getRenderableElements({
+2396:                              this.props.renderScrollbars === true
+2400:                              thi
+[assistant] Now let me search for where renderStaticScene and renderInteractiveScene are called:[tool_use: Bash] {"command": "grep -rn \"renderStaticScene\\|renderInteractiveScene\" /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/ | head -30"}
+
+=== Turn 24 ===
+[user] [tool_result] /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/Stats/stats.test.tsx:38:const renderStaticScene = vi.spyOn(StaticScene, "renderStaticScene");
+/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_
+[assistant] Perfect! Now let me look at the StaticCanvas and InteractiveCanvas to understand the render flow:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/canvases/StaticCanvas.tsx:expand", "/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/canvases/InteractiveCanvas.tsx:head=200"]}
+
+=== Turn 25 ===
+[user] [tool_result] ## packages/excalidraw/components/canvases/StaticCanvas.tsx
+import React, { useEffect, useRef } from "react";
+
+import { isShallowEqual } from "@excalidraw/common";
+
+import type {
+  NonDeletedExcalidrawElement,
+  NonDeletedSceneElementsMap,
+} from "@excalidraw/element/types";
+
+import { 
+[assistant] Now let me check the Scene class to understand how scene nonce works:[tool_use: Bash] {"command": "find /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2 -type f -name \"index.ts\" -path \"*/scene/*\" | head -5"}
+
+=== Turn 26 ===
+[user] [tool_result] /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/scene/index.ts
+[assistant] [tool_use: Bash] {"command": "find /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element -type f -name \"Scene.ts\" | head -5"}
+
+=== Turn 27 ===
+[user] [tool_result] /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/Scene.ts
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/Scene.ts:head=300"]}
+
+=== Turn 28 ===
+[user] [tool_result] FIXME (convergence): 16 searches/reads, 0 edits. Pick the site and EDIT now.
+
+## packages/element/src/Scene.ts
+import throttle from "lodash.throttle";
+
+import {
+  randomInteger,
+  arrayToMap,
+  toBrandedType,
+  isDevEnv,
+  isTestEnv,
+  toArray,
+} from "@excalidraw/common";
+import { isN
+[assistant] Now let me see more of the Scene class, particularly the triggerUpdate and mutateElement methods:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/Scene.ts:L300-L450"]}
+
+=== Turn 29 ===
+[user] [tool_result] FIXME (convergence): 17 searches/reads, 0 edits. Pick the site and EDIT now.
+
+## packages/element/src/Scene.ts:L300-L446
+    this.triggerUpdate();
+  }
+
+  triggerUpdate() {
+    this.sceneNonce = randomInteger();
+
+    for (const callback of Array.from(this.callbacks)) {
+      callback();
+[assistant] Perfect! Now let me look at the elementWithCanvasCache to understand element caching:[tool_use: Bash] {"command": "grep -n \"elementWithCanvasCache\" /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/renderElement.ts | head -20"}
+
+=== Turn 30 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] This is a question-answering task (no code changes needed). I now have the full picture grounded in the source. Here's how Excalidraw's rendering works.
+
+## The two-canvas architecture
+
+Excalidraw layers **two separate `<canvas>` elements**, each with its own render path:
+
+- **Static scene** (`packages/excalidraw/renderer/staticScene.ts` → `_renderStaticScene`) — draws the actual elements: shapes, text, images, frames, grid.
+- **Interactive scene** (`renderer/interactiveScene.ts`) — draws transient UI: selection boxes, transform handles, snap lines, remote collaborator cursors. Redrawn far more often (on every mouse move) but cheap.
+
+Splitting them means dragging a selection handle doesn't force every element to repaint.
+
+## Render entry point and viewport culling
+
+The `Renderer` class (`scene/Renderer.ts`) prepares *what* to draw:
+
+- `getVisibleCanvasElements()` culls to elements passing `isElementInViewport` — only on-screen elements are rendered.
+- `getRenderableElementsMap()` builds the map to draw, excluding the element being actively created and any text element currently being edited (those render via an overlaid DOM `<textarea>`).
+- This is wrapped in `memoize`, so the visible set is recomputed only when its inputs change.
+
+`_renderStaticScene` then iterates `visibleElements`, and for each calls `renderElement(...)` (from `packages/element/src/renderElement.ts`), handling frame clipping, bound text, and link icons along the way.
+
+## Drawing an element — two cache layers
+
+Excalidraw uses **rough.js** for the hand-drawn look, which is expensive, so there are two caches keyed on the element object via `WeakMap`:
+
+1. **`ShapeCache`** (`packages/element/src/shape.ts`) — caches the rough.js `Drawable` (the geometric "shape" description). `ShapeCache.generateElementShape()` returns the cached shape unless it's missing or the theme changed. The heavy `_generateElementShape()` (the big `switch` over element types) runs only on a miss.
+
+2. **`elementWithCanvasCache`** (`renderElement.ts`) — caches a **pre-rendered off-screen canvas** of each element. `generateElementWithCanvas()` reuses it unless something invalidates it. The main scene render then just `drawImage`s these cached bitmaps onto the visible canvas — a memcpy instead of re-stroking paths. It regenerates when:
+   - the zoom value changed (`shouldRegenerateBecauseZoom`),
+   - the theme changed,
+   - bound-text version, image crop, or containing-frame opacity changed,
+   - (for arrows with labels) the angle changed.
+
+## How updates invalidate caches — version & versionNonce
+
+Element edits go through `mutateElement()` (`packages/element/src/mutateElement.ts`). It:
+
+1. Diffs each updated field and only proceeds if something actually changed (`didChange`).
+2. Calls **`ShapeCache.delete(element)`** when geometry-affecting fields change (`width`, `height`, `points`, `fileId`) — and `ShapeCache.delete` also clears `elementWithCanvasCache`, so the bitmap is regenerated too.
+3. Bumps **`element.version` (+1)** and assigns a new random **`element.versionNonce`**, plus an `updated` timestamp.
+
+The `version`/`versionNonce` pair is the change-detection signal across the whole app: scene-version comparison decides whether a re-render/persist/collab-sync is needed, and `versionNonce` (random, not monotonic) is what lets distributed collaborators deterministically reconcile concurrent edits. Note that because caches are keyed on the element *object reference* via `WeakMap`, replacing an element (e.g. `newElementWith`, which spreads into a new object) naturally misses the cache without any explicit deletion.
+
+## Scheduling: throttled to animation frames
+
+Both scene renders are throttled to the browser's paint cycle. `staticScene.ts` exports `renderStaticSceneThrottled = throttleRAF(_renderStaticScene)`, and `renderStaticScene(config, throttle?)` chooses throttled vs. immediate. Many React state changes within one frame therefore collapse into a single `requestAnimationFrame`-aligned repaint rather than redrawing per state update. `App.tsx` drives this through the `Renderer` and the interactive-scene callback after each component update.
+
+## End-to-end data flow
+
+```
+user input → mutateElement() → bumps version/versionNonce,
+                               deletes ShapeCache (+ canvas cache) if geometry changed
+   → App schedules render (throttleRAF, ~60fps)
+   → Renderer: cull to visible elements (memoized) + build renderable map
+   → _renderStaticScene: for each visible element → renderElement()
+        → ShapeCache.get/generate (rough.js Drawable, cached)
+        → generateElementWithCanvas (off-screen bitmap, cached) → drawImage
+   → interactiveScene renders selection/handles/snaps on the top canvas
+```
+
+The core performance idea: **cache aggressively per-element on object identity, invalidate precisely through `mutateElement`, cull to the viewport, and coalesce paints into animation frames** — with the volatile UI chrome isolated on a second canvas so it never forces the element layer to repaint.
+
+(I also dispatched a background explorer on the same question; if its findings surface anything beyond the above, I'll relay it.)
+
+=== Turn 31 ===
+[user] [tool_result] 603:export const elementWithCanvasCache = new WeakMap<
+619:  const prevElementWithCanvas = elementWithCanvasCache.get(element);
+658:    elementWithCanvasCache.set(element, elementWithCanvas);
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/renderElement.ts:L600-L670"]}
+
+=== Turn 32 ===
+[user] [tool_result] FIXME (convergence): 18 searches/reads, 0 edits. Pick the site and EDIT now.
+
+## packages/element/src/renderElement.ts:L600-L670
+  }
+};
+
+export const elementWithCanvasCache = new WeakMap<
+  ExcalidrawElement,
+  ExcalidrawElementWithCanvas
+>();
+
+const generateElementWithCanvas = (
+  ele
+[assistant] Excellent! Now let me look for how App triggers renders on state changes:[tool_use: Bash] {"command": "grep -n \"setState\\|this.scene\" /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/App.tsx | grep -E \"setState|scene.mutateElement|scene.insertElement|scene.replaceAll\" | head -30"}
+
+=== Turn 33 ===
+[user] [tool_result] 548:  React.Component<any, AppState>["setState"]
+955:        this.setState({
+977:        this.setState({
+1009:          this.setState(newState);
+1025:        this.setState({
+1098:          this.setState({
+1131:          this.setState(newState);
+1194:      this.scene.mutateElement(
+1223
+[assistant] Great! Now let me create a comprehensive summary document by reading a bit more about the types:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/scene/types.ts:head=150"]}
+
+=== Turn 34 ===
+[user] [tool_result] FIXME (convergence): 19 searches/reads, 0 edits. Pick the site and EDIT now.
+
+## packages/excalidraw/scene/types.ts
+import type { UserIdleState, EditorInterface } from "@excalidraw/common";
+import type {
+  ExcalidrawElement,
+  NonDeletedElementsMap,
+  NonDeletedExcalidrawElement,
+  Non
+[assistant] Perfect! Now let me check the interactiveScene.ts to see how it renders:[tool_use: Bash] {"command": "grep -n \"export.*renderInteractiveScene\\|^export const\" /tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/renderer/interactiveScene.ts | head -20"}
+
+=== Turn 35 ===
+[user] [tool_result] 2082:export const renderInteractiveScene = <
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/renderer/interactiveScene.ts:L2082-L2150"]}
+
+=== Turn 36 ===
+[user] [tool_result] FIXME (convergence): 20 searches/reads, 0 edits. Pick the site and EDIT now.
+
+## packages/excalidraw/renderer/interactiveScene.ts:L2082-L2090
+export const renderInteractiveScene = <
+  U extends typeof _renderInteractiveScene,
+>(
+  renderConfig: InteractiveSceneRenderConfig,
+): ReturnTy
+[assistant] Now let me search for the helpers that get used in rendering:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/renderer/helpers.ts"]}
+
+=== Turn 37 ===
+[user] [tool_result] FIXME (convergence): 21 searches/reads, 0 edits. Pick the site and EDIT now.
+
+## packages/excalidraw/renderer/helpers.ts
+Projection: minified (line numbers differ from disk)
+
+import { THEME, applyDarkModeFilter } from "@excalidraw/common";
+import type { StaticCanvasRenderConfig } from 
+[assistant] Perfect! Now I have enough information to compile a comprehensive report. Let me create a final summary:
+
+## Excalidraw Rendering Architecture - Comprehensive Analysis
+
+Based on my thorough investigation of the Excalidraw monorepo, here is the complete breakdown of how rendering and canvas element updates work:
+
+---
+
+### 1. MAIN RENDER LOOP / SCENE RENDERING ENTRY POINTS
+
+**Key Files:**
+- `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/canvases/StaticCanvas.tsx`
+- `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/canvases/InteractiveCanvas.tsx`
+- `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/renderer/staticScene.ts`
+- `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/renderer/interactiveScene.ts`
+
+**Entry Points:**
+
+- **`renderStaticScene(config, throttle?)`** - Main function that renders the static (non-interactive) canvas
+  - Called from `StaticCanvas.tsx` component's `useEffect`
+  - Throttled by default to animation framerate via `renderStaticSceneThrottled`
+  - Internally calls `_renderStaticScene()` which orchestrates the actual rendering
+
+- **`renderInteractiveScene(config)`** - Main function that renders the interactive canvas (selection handles, bindings, etc.)
+  - Called from `InteractiveCanvas.tsx` via `AnimationController` on every animation frame
+  - Returns animation state for continuous animation
+  - Invokes a callback with render metadata
+
+**Static Render Flow:**
+1. `_renderStaticScene()` bootstraps the canvas context with zoom/scale transforms
+2. Draws grid if enabled
+3. Iterates through all visible elements and calls `renderElement()` for each
+4. Handles frame clipping if frameRendering is enabled
+5. Renders bound text elements alongside their containers
+6. Renders link icons, embeddables, and pending flowchart nodes on top
+
+**Interactive Render Flow:**
+1. Uses `AnimationController` to schedule renders at display framerate (via `requestAnimationFrame`)
+2. Manages animation state (e.g., binding highlight animations)
+3. Renders:
+   - Selection outlines/bounding boxes for selected elements
+   - Transform handles (rotation, resize)
+   - Binding point previews
+   - Snap guidelines
+   - Remote user cursors and selections
+
+---
+
+### 2. INDIVIDUAL ELEMENT RENDERING TO CANVAS
+
+**Key Files:**
+- `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/renderElement.ts`
+- `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/shape.ts`
+
+**Element Rendering Pipeline:**
+
+1. **`renderElement(element, elementsMap, allElementsMap, rc, context, renderConfig, appState)`**
+   - High-level entry point for rendering a single element
+   - Dispatches to specific rendering logic based on element type:
+     - Text elements: render via text rendering methods
+     - Images: render via image cache lookup and drawImage
+     - Arrows/Lines: use cached roughjs shapes
+     - Rectangles/Diamonds/Ellipses: use cached roughjs shapes
+     - Freedraw: render via SVG path from stroke points
+
+2. **RoughJS Integration:**
+   - Uses RoughJS library to generate "sketchy" drawing styles
+   - `RoughCanvas` object (`rc`) from roughjs provides methods:
+     - `rc.line()`, `rc.rectangle()`, `rc.ellipse()`, `rc.polygon()`, `rc.curve()`, `rc.path()`
+   - Rough shapes are drawn with strokes and fills based on element properties
+
+3. **Opacity & Rendering State:**
+   - Calls `getRenderOpacity()` to compute element opacity considering:
+     - Frame opacity (if element is within a frame)
+     - Element's own opacity
+     - Whether element is pending erasure
+   - Applies rotation/angle transformation via `context.rotate()`
+
+---
+
+### 3. SHAPE CACHING & CACHE INVALIDATION
+
+**Key Files:**
+- `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/shape.ts`
+- `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/renderElement.ts`
+
+**ShapeCache Class:**
+
+```
+ShapeCache {
+  private static cache = new WeakMap<ExcalidrawElement, { shape, theme }>
+  private static rg = new RoughGenerator()
+  
+  public static get(element, theme) 
+    → Returns cached shape if available and theme matches
+  
+  public static generateElementShape(element, renderConfig)
+    → Generates & caches roughjs shapes (or returns cached)
+    → Returns Drawable[] or null for element
+  
+  public static delete(element)
+    → Invalidates cache for single element
+    → Also deletes from elementWithCanvasCache
+  
+  public static destroy()
+    → Clears entire cache (used on unmount)
+}
+```
+
+**Cache Invalidation Triggers:**
+- When `mutateElement()` is called and element dimensions/points/fileId change:
+  ```typescript
+  if (typeof updates.height !== "undefined" ||
+      typeof updates.width !== "undefined" ||
+      typeof fileId !== "undefined" ||
+      typeof points !== "undefined") {
+    ShapeCache.delete(element);
+  }
+  ```
+- ShapeCache also deleted when:
+  - Exporting (to ensure latest shape)
+  - Theme changes (different stroke/fill colors)
+
+**ElementWithCanvasCache:**
+- Secondary cache that stores pre-rendered canvas for each element
+- Stores: `ExcalidrawElementWithCanvas { element, canvas, angle, zoomValue, ... }`
+- Invalidated when:
+  - Zoom level changes (unless `shouldCacheIgnoreZoom` is set)
+  - Theme changes
+  - Bound text element version changes
+  - Image crop changes
+  - Containing frame opacity changes
+  - Arrow angle changes (when has bound text)
+
+---
+
+### 4. STATIC VS INTERACTIVE CANVAS SPLIT
+
+**Architecture:**
+Excalidraw uses **two separate canvas layers**:
+
+1. **Static Canvas** (non-interactive, background)
+   - Component: `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/canvases/StaticCanvas.tsx`
+   - Renders: All drawable elements (shapes, text, images, etc.)
+   - Render frequency: Throttled via `renderStaticSceneThrottled` (animated framerate)
+   - Invalidation: On `canvasNonce` change in Renderer's memoization
+
+2. **Interactive Canvas** (foreground, UI overlays)
+   - Component: `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/canvases/InteractiveCanvas.tsx`
+   - Renders: Selection handles, bindings, snaps, remote cursors, animations
+   - Render frequency: Continuous via `AnimationController` (every frame)
+   - Higher performance cost tolerable since smaller updates
+
+**Why Split?**
+- Static canvas can be throttled/cached (less frequent updates)
+- Interactive canvas updates continuously for smooth interactions
+- Prevents UI elements from blocking element drawing
+- Allows independent optimization strategies
+
+---
+
+### 5. STATE UPDATES → RE-RENDER TRIGGERING
+
+**Key Files:**
+- `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/Scene.ts`
+- `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/scene/Renderer.ts`
+- `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/excalidraw/components/App.tsx`
+
+**Scene Class Nonce System:**
+
+```typescript
+export class Scene {
+  private sceneNonce: number | undefined;
+  
+  getSceneNonce() {
+    return this.sceneNonce;
+  }
+  
+  triggerUpdate() {
+    this.sceneNonce = randomInteger();  // Regenerate nonce
+    
+    for (const callback of Array.from(this.callbacks)) {
+      callback();  // Notify all listeners
+    }
+  }
+}
+```
+
+**How Mutations Trigger Renders:**
+
+1. **Element Mutation Flow:**
+   - Call `scene.mutateElement(element, updates)` or `app.mutateElement()`
+   - `mutateElement()` updates element properties and increments `version`/`versionNonce`
+   - If change detected AND `informMutation: true`:
+     - Calls `scene.triggerUpdate()`
+     - Regenerates `sceneNonce`
+     - Fires all registered callbacks
+
+2. **Renderer Memoization:**
+   ```typescript
+   public getRenderableElements = (opts: GetRenderableElementsOpts) => {
+     const canvasNonce = `${this.scene.getSceneNonce()}${
+       newElement?.frameId ? `:${newElement.versionNonce}` : ""
+     }`;
+     
+     const ret = this._getRenderableElements({
+       canvasNonce,  // Used as cache key
+       zoom: opts.zoom,
+       // ... other options
+     });
+   }
+   ```
+   - `canvasNonce` includes `sceneNonce` + optional `newElement.versionNonce`
+   - When `sceneNonce` changes, memoization cache misses
+   - Forces recomputation of visible elements list
+
+3. **Canvas Component Re-render:**
+   - `StaticCanvas` component receives `canvasNonce` as prop
+   - Uses shallow comparison (`areEqual` check)
+   - When `canvasNonce` changes → triggers new render pass
+   - Calls `renderStaticScene()` with fresh element list
+
+4. **App State Updates:**
+   - Scroll/zoom changes via `app.setState()`
+   - Trigger React re-render of App component
+   - Which re-renders StaticCanvas/InteractiveCanvas components
+   - Which call render functions with updated appState
+
+**Version Tracking:**
+```typescript
+// In mutateElement():
+element.version = updates.version ?? element.version + 1;
+element.versionNonce = updates.versionNonce ?? randomInteger();
+element.updated = getUpdatedTimestamp();
+```
+
+- `version`: Numeric counter incremented on each mutation
+- `versionNonce`: Random integer for cache busting
+- `updated`: Timestamp of last update
+
+---
+
+### 6. ELEMENT MUTATIONS & CACHE INVALIDATION
+
+**Key File:**
+- `/tmp/codebench_workspaces/20260629T234322Z-36eed4b76d68/cg_excalidraw_atelier_rep2/packages/element/src/mutateElement.ts`
+
+**mutateElement() Function:**
+```typescript
+export const mutateElement = <TElement extends Mutable<ExcalidrawElement>>(
+  element: TElement,
+  elementsMap: ElementsMap,
+  updates: ElementUpdate<TElement>,
+  options?: {
+    isDragging?: boolean;
+    isBindingEnabled?: boolean;
+    isMidpointSnappingEnabled?: boolean;
+  },
+) => {
+  // Apply updates to element properties
+  for (const key in updates) {
+    const value = (updates as any)[key];
+    if (/* value changed */) {
+      (element as any)[key] = value;
+      didChange = true;
+    }
+  }
+  
+  if (!didChange) {
+    return element;  // Early exit if no actual changes
+  }
+  
+  // Invalidate shape cache if dimensions/geometry changed
+  if (typeof updates.height !== "undefined" ||
+      typeof updates.width !== "undefined" ||
+      typeof fileId !== "undefined" ||
+      typeof points !== "undefined") {
+    ShapeCache.delete(element);
+  }
+  
+  // Always update version/nonce/timestamp
+  element.version = updates.version ?? element.version + 1;
+  element.versionNonce = updates.versionNonce ?? randomInteger();
+  element.updated = getUpdatedTimestamp();
+  
+  return element;
+}
+```
+
+**Cache Invalidation Strategy:**
+- **Geometric changes** (width, height, points): Delete ShapeCache + elementWithCanvasCache
+- **Style changes** (color, stroke, fill): No cache invalidation (shape reused with different style)
+- **Version increment**: Enables collaboration sync & cache detection
+- **versionNonce**: Random value used for fine-grained cache busting
+
+**newElementWith() Function:**
+- Alternative to mutateElement() that creates new element instead of mutating
+- Returns new element with incremented version/versionNonce
+- Used when immutability is preferred
+
+---
+
+### 7. COMPLETE DATA FLOW DIAGRAM
+
+```
+User Interaction (drag, resize, type, etc.)
+    ↓
+App.tsx event handler
+    ↓
+scene.mutateElement(element, updates) or app.setState()
+    ↓
+mutateElement() applies updates & invalidates caches
+    ↓
+scene.triggerUpdate()
+    ↓
+Regenerate sceneNonce & fire callbacks
+    ↓
+App component re-renders via setState
+    ↓
+StaticCanvas/InteractiveCanvas components re-render
+    ↓
+Check canvasNonce memoization key
+    ↓
+Renderer.getRenderableElements() with new sceneNonce
+    ↓
+_getRenderableElements() memoized on canvasNonce
+    ↓
+Returns { elementsMap, visibleElements, canvasNonce }
+    ↓
+renderStaticScene() / renderInteractiveScene()
+    ↓
+Iterate visible elements
+    ↓
+For each element:
+  • Check elementWithCanvasCache (if not invalidated)
+  • Check ShapeCache for roughjs shape (if not invalidated)
+  • Generate canvas if needed (combines shape + style + textures)
+  • Draw canvas to main canvas context
+    ↓
+Canvas update complete
+```
+
+---
+
+### 8. KEY PERFORMANCE OPTIMIZATIONS
+
+1. **Throttled Static Renders**: `renderStaticSceneThrottled` uses `throttleRAF()` to limit static canvas renders to animation framerate
+
+2. **Dual Caching System**:
+   - ShapeCache (roughjs shapes) - invalidated on geometry changes
+   - elementWithCanvasCache (pre-rendered canvases) - invalidated on zoom/theme/style changes
+
+3. **Memoization in Renderer**: `_getRenderableElements` memoized on `canvasNonce` to avoid recomputing visible elements unnecessarily
+
+4. **Shallow Comparisons**: StaticCanvas/InteractiveCanvas use shallow equality checks to skip unnecessary re-renders
+
+5. **Viewport Culling**: Only visible elements (within viewport bounds) are rendered via `isElementInViewport()` check
+
+6. **Weakmaps for Caching**: Both ShapeCache and elementWithCanvasCache use WeakMaps to automatically clean up when elements are garbage collected
+
+---
+
+### Summary Table of Key Files
+
+| File Path | Purpose |
+|-----------|---------|
+| `packages/excalidraw/scene/Renderer.ts` | Computes renderable elements based on viewport/zoom, memoized on canvasNonce |
+| `packages/excalidraw/scene/types.ts` | Type definitions for render configs and animation state |
+| `packages/excalidraw/renderer/staticScene.ts` | Static canvas render orchestration, draws all elements |
+| `packages/excalidraw/renderer/interactiveScene.ts` | Interactive canvas render, handles UI overlays and animations |
+| `packages/excalidraw/renderer/helpers.ts` | Canvas context setup, grid drawing, utility functions |
+| `packages/element/src/renderElement.ts` | Per-element rendering logic, elementWithCanvasCache management |
+| `packages/element/src/shape.ts` | ShapeCache class, roughjs shape generation |
+| `packages/element/src/mutateElement.ts` | Element mutation logic, version/nonce updates, cache invalidation |
+| `packages/element/src/Scene.ts` | Scene state management, sceneNonce, element collection, callbacks |
+| `packages/excalidraw/components/canvases/StaticCanvas.tsx` | React component wrapping static canvas, throttled renders |
+| `packages/excalidraw/components/canvases/InteractiveCanvas.tsx` | React component wrapping interactive canvas, animation controller |
+| `packages/excalidraw/components/App.tsx` | Main app component, state management, event handling, scene mutations |
+
+=== Turn 38 ===
+[user] <task-notification>
+<task-id>a5a45bde6286e7cf8</task-id>
+<tool-use-id>toolu_01Wwgb1v3bLe5ECrdLwGRy4Q</tool-use-id>
+<output-file>/tmp/claude-1000/-tmp-codebench-workspaces-20260629T234322Z-36eed4b76d68-cg-excalidraw-atelier-rep2/a787b158-8a56-4a44-b57f-d72967396d1f/tasks/a5a45bde6286e7cf8.output</out
+[assistant] The explorer confirmed everything above and added two mechanisms worth making explicit — the **Scene-nonce notification chain** and the **interactive canvas's continuous animation loop**:
+
+**How a mutation actually reaches the renderer (`Scene.ts` → `Renderer.ts`):**
+- The `Scene` class holds a `sceneNonce`. After a mutation (when called with `informMutation: true`), `scene.triggerUpdate()` regenerates `sceneNonce` with `randomInteger()` and fires all registered callbacks — this is the pub/sub that notifies React.
+- `Renderer.getRenderableElements()` builds a **`canvasNonce`** string from `scene.getSceneNonce()` (plus the new element's `versionNonce` when one is being created). The visible-element computation is memoized on this `canvasNonce`, so a changed scene nonce is what busts the memo and forces recomputation.
+- The `StaticCanvas` React component receives `canvasNonce` as a prop and uses a shallow `areEqual` check, so it only re-invokes `renderStaticScene()` when the nonce changed.
+
+So the full update chain is: `mutateElement` (bumps element `version`/`versionNonce`, deletes caches) → `scene.triggerUpdate()` (bumps `sceneNonce`, fires callbacks) → React re-render → `canvasNonce` changes → memo miss → `renderStaticScene` (throttled to RAF).
+
+**Interactive canvas loop:** unlike the static canvas (passive, throttled, re-rendered only on nonce change), `InteractiveCanvas.tsx` runs an `AnimationController` that calls `renderInteractiveScene` every `requestAnimationFrame`, returning animation state (e.g. binding-highlight pulses) so ongoing animations keep ticking — which is why selection/handles/snaps feel continuous while the element layer stays cached and still.
+
+Everything else (two-canvas split, `ShapeCache` + `elementWithCanvasCache` dual caching keyed by `WeakMap` on object identity, viewport culling via `isElementInViewport`, geometry-only cache invalidation in `mutateElement`) matches what I described.

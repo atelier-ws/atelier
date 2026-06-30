@@ -1,0 +1,73 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] Tokio is a work-stealing, multi-threaded async runtime. Here's how a task goes from `spawn` to running on a CPU.
+
+## The core pieces
+
+- **Task**: a spawned `Future` plus its state, heap-allocated into a reference-counted `Harness`. A task is the unit the scheduler owns and polls.
+- **Worker threads**: by default one per CPU core (multi-thread runtime). Each owns a scheduler and a run queue.
+- **Run queues**: each worker has a bounded **local queue** (a fixed-size ring buffer, 256 slots) plus a shared **global (injection) queue** for overflow and for tasks spawned from outside a worker.
+- **Driver / reactor**: an epoll/kqueue/IOCP-backed I/O and timer driver that knows which tasks are waiting on which resources.
+
+## Spawning
+
+`tokio::spawn(future)` allocates the task and pushes it onto a run queue:
+
+- If called **from within a worker**, it goes onto that worker's **local queue** (cheap, no contention). If the local queue is full, half of it is flushed to the global queue to keep things balanced.
+- If called **from outside** the runtime (e.g. the main thread handing work in), it goes onto the **global queue**.
+
+Spawning returns a `JoinHandle` and notifies/wakes a parked worker so the task gets picked up promptly.
+
+## The worker loop
+
+Each worker spins a loop roughly like:
+
+1. Occasionally check the **global queue first** (every ~61 ticks — the `global_queue_interval`) so global tasks don't starve while local work churns.
+2. Otherwise pop the next task from the **local queue**.
+3. If the local queue is empty, try the global queue; if that's empty, attempt to **steal** from another worker.
+4. **Poll** the task: call `Future::poll` once with a `Waker` wired to this scheduler.
+   - `Poll::Ready` → task completes, result delivered to the `JoinHandle`.
+   - `Poll::Pending` → the task has registered its `Waker` with some resource (I/O, timer, channel, another task) and is set aside. It is **not** kept on a queue — it just sits in its allocation until woken.
+5. If no work is found anywhere, the worker **parks** (sleeps via the driver's epoll wait) until the driver or a wake signals it.
+
+## Wakers — how a pending task comes back
+
+When you `.await` something not ready, the leaf future stores the task's `Waker`. When the resource becomes ready — the reactor sees the socket is readable, a timer fires, a channel send happens — it calls `waker.wake()`. That **reschedules** the task by pushing it back onto a run queue (the local queue of whichever worker woke it, falling back to global), and unparks a worker if needed. The task is then polled again from the top.
+
+This is the key efficiency: a blocked task consumes no queue slot and no thread. Only *runnable* tasks sit in queues.
+
+## Work stealing
+
+When a worker's local and global queues are empty, it picks another worker at random and steals roughly **half** of that worker's local queue into its own. This keeps cores busy and balances load without a central dispatcher. To dampen thrash, only a limited number of workers search/steal at once; the rest stay parked.
+
+## Cooperative scheduling & fairness
+
+Tokio tasks are **cooperatively** scheduled — a task runs until it returns `Pending`. To stop a hot task from monopolizing a worker, Tokio gives each task a per-poll **budget** (~128 operations). Tokio's own resources (`mpsc`, I/O, timers) decrement this budget and, once exhausted, return `Pending` even if data is available — yielding control so other tasks get a turn. A purely CPU-bound loop with no `.await` on Tokio primitives won't yield, which is why such work belongs on `spawn_blocking`.
+
+## The LIFO slot
+
+Each worker also keeps a single **LIFO "next task" slot** outside the queue. When a task wakes another (e.g. message-passing ping-pong), the woken task goes into this slot and runs immediately next, improving cache locality and latency for request/response patterns. This slot isn't stealable by default (with a short anti-starvation cap).
+
+## Blocking work
+
+`spawn_blocking` does *not* go through this scheduler — it runs on a separate, dynamically sized **blocking thread pool** so synchronous/CPU-heavy calls never stall the async workers. `block_on` drives a future to completion on the current thread, parking it on the driver between polls.
+
+## Putting it together
+
+```
+spawn ──▶ local queue (or global) ──▶ worker pops ──▶ poll
+                                            │
+                              Pending ──────┘   (waker parked in resource)
+                                            ▲
+   reactor sees readiness ──▶ waker.wake() ─┘  (re-enqueue + unpark worker)
+```
+
+So: tasks are cheap heap objects, distributed across per-core queues, polled cooperatively, balanced by work-stealing, suspended via Wakers with zero queue cost while blocked, and woken by a central epoll-based driver when their resource is ready.
+
+If you're looking at this for a specific reason — debugging a starvation/latency issue, tuning worker counts, or reading tokio's source — tell me which and I'll go deeper or pull up the relevant code.

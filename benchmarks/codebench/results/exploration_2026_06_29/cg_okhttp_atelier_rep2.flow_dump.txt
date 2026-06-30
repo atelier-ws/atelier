@@ -1,0 +1,69 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] OkHttp's request processing is built around a **chain of responsibility**: a request descends through an ordered list of interceptors, each wrapping the next, until one of them produces a response that bubbles back up. Here's how it works end to end.
+
+## The entry point
+
+When you call `call.execute()` (sync) or `call.enqueue()` (async), `RealCall` ultimately invokes `getResponseWithInterceptorChain()`. This method assembles the full interceptor list and kicks off the chain.
+
+## The interceptor list (order matters)
+
+The chain is built in this exact order:
+
+1. **Client interceptors** — your custom `addInterceptor(...)` ones (application interceptors)
+2. **`RetryAndFollowUpInterceptor`** — handles retries, redirects (3xx), and auth challenges (401/407)
+3. **`BridgeInterceptor`** — turns a user request into a "real" HTTP request: adds headers like `Content-Length`/`Content-Type`, `Host`, `Connection: Keep-Alive`, `Accept-Encoding: gzip`, cookies; and transparently decompresses gzip on the way back
+4. **`CacheInterceptor`** — serves from / writes to the HTTP cache, returning early on a cache hit
+5. **`ConnectInterceptor`** — opens a connection to the target (or reuses one from the pool), producing an `ExchangeCodec`
+6. **Network interceptors** — your custom `addNetworkInterceptor(...)` ones
+7. **`CallServerInterceptor`** — actually writes the request to the socket and reads the response (the terminal interceptor; it does not call `proceed`)
+
+## How the chain advances
+
+Each interceptor receives a `Chain` object and conceptually does:
+
+```java
+@Override public Response intercept(Chain chain) throws IOException {
+    Request request = chain.request();
+    // ... pre-processing: inspect/modify the outgoing request ...
+    Response response = chain.proceed(request);   // hand off to the next interceptor
+    // ... post-processing: inspect/modify the incoming response ...
+    return response;
+}
+```
+
+The `Chain` is implemented by **`RealInterceptorChain`**, which holds the interceptor list plus an `index`. When an interceptor calls `chain.proceed(request)`:
+
+- It creates a **new `RealInterceptorChain` with `index + 1`**.
+- It looks up `interceptors[index]` and calls its `intercept(next)`.
+- That interceptor does its pre-work, calls `proceed` again (advancing the index), and so on.
+
+This recursion is what produces the nested, onion-like structure: code **before** `proceed` runs on the way *down* (request side), code **after** `proceed` runs on the way *back up* (response side). `CallServerInterceptor` is the bottom of the recursion — it returns a real `Response` instead of calling `proceed`, and the stack unwinds back through each interceptor's post-processing.
+
+`RealInterceptorChain.proceed` also enforces invariants — e.g. each interceptor must call `proceed` exactly once (except the terminal one), and the response must have a non-null body.
+
+## Application vs. network interceptors
+
+The two custom slots behave differently because of *where* they sit:
+
+| | Application interceptors | Network interceptors |
+|---|---|---|
+| Position | Outermost (before retries) | Deep (after connection established) |
+| Called per redirect/retry? | **Once**, regardless of redirects | **Once per actual network request** |
+| Sees cache hits? | Yes (even if served fully from cache) | No (only runs when a network call happens) |
+| Sees intermediate responses (redirects)? | No (only the final one) | Yes |
+| Access to `Connection`? | No | Yes (`chain.connection()`) |
+
+So an application interceptor is best for cross-cutting logic that should run exactly once per logical call (e.g. adding an auth token, logging the high-level request), while a network interceptor is best for inspecting actual wire traffic, individual redirects, or connection details.
+
+## Summary
+
+A request is wrapped by each interceptor in turn — retry/follow-up, bridging, caching, connecting, then the network call — with each layer free to modify the request going down and the response coming back up. The `RealInterceptorChain` drives this by recursively calling `proceed()` with an incrementing index until `CallServerInterceptor` performs the real I/O, after which the response unwinds back through every layer.
+
+If you have an actual OkHttp checkout (or a fork) in this workspace you'd like me to trace through concretely, point me at it and I'll walk the real code paths.

@@ -1,26 +1,16 @@
 #!/usr/bin/env python3
-"""Embed benchmark repo symbols with BGE using system python3 (has torch/sentence_transformers).
+"""Embed benchmark repo symbols with BGE directly (no engine private API).
 
-Run with system python3, NOT uv run:
+Run with system python3 (has torch + sentence_transformers):
     python3 benchmarks/codebench/embed_benchmark_repos.py
-
-Reads all gold files, finds repos missing BGE symbol_vectors, and populates them
-by loading each repo's CodeContextEngine with ATELIER_CODE_EMBEDDER=bge.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
-import sys
 import time
 from pathlib import Path
-
-# Use project src directly (system python3 has torch; uv venv does not)
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-
-os.environ.setdefault("ATELIER_CODE_EMBEDDER", "bge")
 
 GOLD_FILES = [
     "benchmarks/codebench/data/bench_pairs_def_gold.json",
@@ -28,15 +18,107 @@ GOLD_FILES = [
     "benchmarks/codebench/data/bench_pairs_semantic_gold.json",
 ]
 
+MAX_CHARS = 4000
 
-def _has_bge_vectors(db_path: str) -> bool:
+# Model tiers — selected at runtime by _init_model() based on free VRAM.
+# (min_free_gb, hf_model_name, embedder_name_in_db, vector_dim)
+_MODEL_TIERS = [
+    (3.5, "BAAI/bge-code-v1", "bge:BAAI/bge-code-v1", 1536),
+    (1.0, "Salesforce/SFR-Embedding-Code-400M_R", "hf:Salesforce/SFR-Embedding-Code-400M_R", 1024),
+]
+
+# Resolved at first call to _init_model()
+_MODEL_NAME: str = ""
+_EMBEDDER_NAME: str = ""
+_EMBED_DIM: int = 0
+_BATCH_SIZE: int = 0
+_model = None
+
+
+def _init_model() -> None:
+    """Detect free VRAM, pick model tier + batch size, load model once."""
+    global _MODEL_NAME, _EMBEDDER_NAME, _EMBED_DIM, _BATCH_SIZE, _model
+    if _model is not None:
+        return
+
+    import torch
+    from sentence_transformers import SentenceTransformer
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    free_gb = 0.0
+    if device == "cuda":
+        free_bytes, _ = torch.cuda.mem_get_info()
+        free_gb = free_bytes / 1024**3
+
+    # Pick model tier
+    chosen = _MODEL_TIERS[-1]  # smallest fallback
+    for min_gb, *rest in _MODEL_TIERS:
+        if free_gb >= min_gb or device == "cpu":
+            chosen = (min_gb, *rest)
+            break
+    _, _MODEL_NAME, _EMBEDDER_NAME, _EMBED_DIM = chosen
+
+    # Batch size based on free VRAM after model load (estimate: model ~dim/512 GB)
+    if device == "cpu":
+        _BATCH_SIZE = 4
+    elif free_gb >= 20:
+        _BATCH_SIZE = 128
+    elif free_gb >= 12:
+        _BATCH_SIZE = 64
+    elif free_gb >= 8:
+        _BATCH_SIZE = 32
+    elif free_gb >= 5:
+        _BATCH_SIZE = 16
+    elif free_gb >= 3:
+        _BATCH_SIZE = 8
+    else:
+        _BATCH_SIZE = 4
+
+    print(
+        f"  device={device}  free_vram={free_gb:.1f}GB  model={_MODEL_NAME}  dim={_EMBED_DIM}  batch={_BATCH_SIZE}",
+        flush=True,
+    )
+    _model = SentenceTransformer(_MODEL_NAME, device=device)
+    if device == "cuda":
+        _model = _model.half()
+
+
+def _get_model():
+    _init_model()
+    return _model
+
+
+def _ensure_vectors_table(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS symbol_vectors (
+            repo_id        TEXT NOT NULL,
+            symbol_id      TEXT NOT NULL,
+            content_hash   TEXT NOT NULL,
+            embedder_name  TEXT NOT NULL,
+            embedding_dim  INTEGER NOT NULL,
+            index_version  INTEGER NOT NULL DEFAULT 1,
+            vector_json    TEXT NOT NULL,
+            PRIMARY KEY (symbol_id, embedder_name, embedding_dim)
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_symbol_vectors_provenance
+            ON symbol_vectors(repo_id, embedder_name, embedding_dim, index_version)
+    """)
+    conn.commit()
+
+
+def _has_bge_vectors(db_path: str) -> int:
+    """Return count of existing BGE vectors (0 = need to embed)."""
     conn = sqlite3.connect(db_path)
     try:
         has_tbl = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='symbol_vectors'").fetchone()
         if not has_tbl:
-            return False
-        n = conn.execute("SELECT COUNT(*) FROM symbol_vectors WHERE embedder_name LIKE 'bge%'").fetchone()[0]
-        return n > 0
+            return 0
+        return conn.execute(
+            "SELECT COUNT(*) FROM symbol_vectors WHERE embedder_name = ?",
+            (_EMBEDDER_NAME,),
+        ).fetchone()[0]
     finally:
         conn.close()
 
@@ -48,51 +130,101 @@ def embed_repo(prefix: str, meta: dict) -> None:
         print(f"  SKIP {prefix}: no db/ws", flush=True)
         return
     if not Path(db_path).exists():
-        print(f"  SKIP {prefix}: db not found ({db_path})", flush=True)
+        print(f"  SKIP {prefix}: db not found", flush=True)
         return
-    if not Path(ws_path).exists():
-        print(f"  SKIP {prefix}: ws not found ({ws_path})", flush=True)
-        return
-    if _has_bge_vectors(db_path):
-        conn = sqlite3.connect(db_path)
-        n = conn.execute("SELECT COUNT(*) FROM symbol_vectors WHERE embedder_name LIKE 'bge%'").fetchone()[0]
-        conn.close()
-        print(f"  SKIP {prefix}: already has {n:,} BGE vectors", flush=True)
+
+    # Need model info to know which embedder_name to check — init first.
+    _init_model()
+    existing = _has_bge_vectors(db_path)
+    if existing > 0:
+        print(f"  SKIP {prefix}: already has {existing:,} {_EMBEDDER_NAME} vectors", flush=True)
         return
 
     print(f"  EMBED {prefix} ...", flush=True)
     t0 = time.perf_counter()
 
-    from atelier.core.capabilities.code_context.engine import CodeContextEngine
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    _ensure_vectors_table(conn)
 
-    engine = CodeContextEngine(
-        Path(ws_path),
-        db_path=Path(db_path),
-        autosync_enabled=False,
-    )
-
-    # Trigger embedding: open the DB, ensure schema, call _build_symbol_embeddings.
-    # We read the stored index_version so we don't invalidate the existing index.
-    conn = engine._open_connection()
-    try:
-        engine._ensure_schema(conn)
-        iv_row = conn.execute("SELECT value FROM engine_state WHERE key = 'index_version'").fetchone()
-        index_version = int(iv_row[0]) if iv_row else 1
-        engine._build_symbol_embeddings(conn, index_version)
-        conn.commit()
-    finally:
+    repo_id = conn.execute("SELECT DISTINCT repo_id FROM symbols LIMIT 1").fetchone()
+    if not repo_id:
+        print(f"  SKIP {prefix}: no symbols", flush=True)
         conn.close()
+        return
+    repo_id = repo_id[0]
 
-    elapsed = time.perf_counter() - t0
-    # Verify
-    conn2 = sqlite3.connect(db_path)
-    n = conn2.execute("SELECT COUNT(*) FROM symbol_vectors WHERE embedder_name LIKE 'bge%'").fetchone()[0]
-    conn2.close()
-    print(f"  DONE  {prefix}: {n:,} BGE vectors in {elapsed:.0f}s", flush=True)
+    iv_row = conn.execute("SELECT value FROM engine_state WHERE key = 'index_version'").fetchone()
+    index_version = int(iv_row[0]) if iv_row else 1
+
+    # Already-embedded symbol_ids to skip
+    done_ids: set[str] = {
+        r[0]
+        for r in conn.execute(
+            "SELECT symbol_id FROM symbol_vectors WHERE embedder_name = ? AND embedding_dim = ?",
+            (_EMBEDDER_NAME, _EMBED_DIM),
+        ).fetchall()
+    }
+
+    rows = conn.execute(
+        "SELECT symbol_id, content_hash, file_path, start_byte, end_byte FROM symbols WHERE repo_id = ?",
+        (repo_id,),
+    ).fetchall()
+    pending = [r for r in rows if r["symbol_id"] not in done_ids]
+    print(f"    {len(pending):,} symbols to embed", flush=True)
+
+    if not pending:
+        conn.close()
+        return
+
+    model = _get_model()
+    ws = Path(ws_path)
+
+    def _read_slice(file_path: str, start: int, end: int) -> str:
+        try:
+            p = ws / file_path
+            data = p.read_bytes()
+            return data[start:end].decode("utf-8", errors="replace")[:MAX_CHARS]
+        except Exception:
+            return ""
+
+    # Process in batches
+    inserted = 0
+    bs = _BATCH_SIZE
+    for i in range(0, len(pending), bs):
+        batch = pending[i : i + bs]
+        texts = [_read_slice(r["file_path"], r["start_byte"] or 0, r["end_byte"] or 0) for r in batch]
+        vecs = model.encode(texts, batch_size=bs, normalize_embeddings=True, show_progress_bar=False)
+        rows_to_insert = [
+            (
+                repo_id,
+                r["symbol_id"],
+                r["content_hash"],
+                _EMBEDDER_NAME,
+                _EMBED_DIM,
+                index_version,
+                json.dumps(v.tolist()),
+            )
+            for r, v in zip(batch, vecs, strict=False)
+        ]
+        conn.executemany(
+            "INSERT OR REPLACE INTO symbol_vectors "
+            "(repo_id, symbol_id, content_hash, embedder_name, embedding_dim, index_version, vector_json) "
+            "VALUES (?,?,?,?,?,?,?)",
+            rows_to_insert,
+        )
+        conn.commit()
+        inserted += len(batch)
+        elapsed = time.perf_counter() - t0
+        rate = inserted / elapsed
+        eta = (len(pending) - inserted) / rate if rate else 0
+        print(f"    {inserted:,}/{len(pending):,}  {rate:.0f}/s  eta={eta:.0f}s", flush=True)
+
+    conn.close()
+    print(f"  DONE  {prefix}: {inserted:,} vectors in {time.perf_counter() - t0:.0f}s", flush=True)
 
 
 def main() -> None:
-    # Collect all repos across gold files (dedup by prefix)
     all_repos: dict[str, dict] = {}
     for gf in GOLD_FILES:
         try:
@@ -104,7 +236,7 @@ def main() -> None:
             if prefix not in all_repos:
                 all_repos[prefix] = meta
 
-    print(f"Found {len(all_repos)} repos across {len(GOLD_FILES)} gold files", flush=True)
+    print(f"Found {len(all_repos)} repos", flush=True)
     for prefix, meta in sorted(all_repos.items()):
         embed_repo(prefix, meta)
     print("All done.", flush=True)
