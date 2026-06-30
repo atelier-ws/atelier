@@ -1,0 +1,168 @@
+{
+  "artifacts": {
+    "flow_paths": [
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_alamofire_atelier_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_alamofire_atelier_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_alamofire_atelier_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_alamofire_atelier_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_alamofire_atelier_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_alamofire_baseline_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_alamofire_baseline_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_alamofire_baseline_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_alamofire_baseline_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_alamofire_baseline_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_django_atelier_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_django_atelier_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_django_atelier_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_django_atelier_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_django_atelier_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_django_baseline_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_django_baseline_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_django_baseline_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_django_baseline_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_django_baseline_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_excalidraw_atelier_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_excalidraw_atelier_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_excalidraw_atelier_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_excalidraw_atelier_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_excalidraw_atelier_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_excalidraw_baseline_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_excalidraw_baseline_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_excalidraw_baseline_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_excalidraw_baseline_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_excalidraw_baseline_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_gin_atelier_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_gin_atelier_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_gin_atelier_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_gin_atelier_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_gin_atelier_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_gin_baseline_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_gin_baseline_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_gin_baseline_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_gin_baseline_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_gin_baseline_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_okhttp_atelier_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_okhttp_atelier_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_okhttp_atelier_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_okhttp_atelier_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_okhttp_atelier_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_okhttp_baseline_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_okhttp_baseline_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_okhttp_baseline_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_okhttp_baseline_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_okhttp_baseline_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_tokio_atelier_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_tokio_atelier_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_tokio_atelier_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_tokio_atelier_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_tokio_atelier_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_tokio_baseline_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_tokio_baseline_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_tokio_baseline_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_tokio_baseline_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_tokio_baseline_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_vscode_atelier_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_vscode_atelier_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_vscode_atelier_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_vscode_atelier_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_vscode_atelier_rep4.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_vscode_baseline_rep0.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_vscode_baseline_rep1.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_vscode_baseline_rep2.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_vscode_baseline_rep3.flow",
+      "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/cg_vscode_baseline_rep4.flow"
+    ],
+    "model_audit_csv": {
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/model_audit.csv"
+    },
+    "pairwise_quality_csv": {
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/pairwise_quality.csv"
+    },
+    "quality_adjusted_summary_csv": {
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/quality_adjusted_summary.csv"
+    },
+    "report_txt": {
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/report.txt"
+    },
+    "results_csv": {
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/results.csv"
+    },
+    "results_jsonl": {
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/results.jsonl"
+    },
+    "summary_csv": {
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/summary.csv"
+    },
+    "task_correctness_csv": {
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/task_correctness.csv"
+    },
+    "task_metrics_csv": {
+      "exists": true,
+      "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/task_metrics.csv"
+    }
+  },
+  "captured_at": "2026-06-30T02:18:36.845053+00:00",
+  "commit_under_test": {
+    "commit": "091e55b4a662f9059bab963a21055f9556002cd1",
+    "dirty": true
+  },
+  "judge_outputs": {
+    "fields": [
+      "correct",
+      "score",
+      "judge_model",
+      "judge_reason"
+    ],
+    "kind": "embedded-jsonl",
+    "pairwise_fields": [
+      "candidate_at_least_baseline",
+      "baseline_score",
+      "candidate_score",
+      "quality_delta",
+      "judge_reason"
+    ],
+    "pairwise_path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/pairwise_quality.csv",
+    "path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/results.jsonl"
+  },
+  "manifest_path": "/home/pankaj/Projects/leanchain/atelier/reports/benchmark/codebench/20260629T234322Z/benchmark-manifest.json",
+  "suite": "codebench",
+  "summary": {
+    "arms": [
+      "atelier",
+      "baseline"
+    ],
+    "by_arm": {
+      "atelier": {
+        "cache_read_tokens_sum": 14309712,
+        "correct": 0,
+        "cost_usd_sum": 8.75198235,
+        "duration_ms_sum": 1422349,
+        "input_tokens_sum": 133324,
+        "judged": 0,
+        "output_tokens_sum": 193815,
+        "total": 35,
+        "valid": 35
+      },
+      "baseline": {
+        "cache_read_tokens_sum": 35862919,
+        "correct": 0,
+        "cost_usd_sum": 19.1063895,
+        "duration_ms_sum": 1347619,
+        "input_tokens_sum": 286191,
+        "judged": 0,
+        "output_tokens_sum": 426367,
+        "total": 35,
+        "valid": 35
+      }
+    },
+    "total_runs": 70
+  }
+}

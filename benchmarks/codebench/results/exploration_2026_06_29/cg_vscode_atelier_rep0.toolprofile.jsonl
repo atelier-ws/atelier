@@ -1,0 +1,2 @@
+{"handler_ms": 2370, "overhead_ms": 1110, "response_size": 978, "session_id": "d58c18a2-54c6-4ac6-a973-b8c02f40d357", "status": "ok", "tool": "code_search", "total_ms": 3480, "ts": 1782777077.1917787}
+{"handler_ms": 81, "overhead_ms": 2, "response_size": 3184, "session_id": "d58c18a2-54c6-4ac6-a973-b8c02f40d357", "status": "ok", "tool": "code_search", "total_ms": 83, "ts": 1782777082.2524168}
