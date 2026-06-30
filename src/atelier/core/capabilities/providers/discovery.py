@@ -364,7 +364,7 @@ def _emit_setup_hint(config_path: Path) -> None:
     if not example_path.exists():
         _write_example(example_path)
     hint = (
-        "\n[atelier] No provider credentials found — /v1/models is empty.\n"
+        "\nNo provider credentials found — /v1/models is empty.\n"
         f"  1. Edit {config_path}  (create from example: {example_path})\n"
         "  2. Add your API key(s) for anthropic, openai, groq, ollama, etc.\n"
         "  3. Restart the service, or call GET /v1/models/refresh\n"
