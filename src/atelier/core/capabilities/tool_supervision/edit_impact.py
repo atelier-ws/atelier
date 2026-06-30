@@ -216,8 +216,7 @@ def decorator_contract_impact(
                 seen.add(key)
                 sites.append(
                     {
-                        "path": path,
-                        "line": line,
+                        "path": f"{path}:L{line}" if isinstance(line, int) else path,
                         "old": f"@{deco} on {name}()",
                         "new": f"{access} no longer exists",
                         "snippet": text.strip()[:80],
@@ -425,15 +424,14 @@ def contract_literal_impact(
         # Production consumers before tests, then stable by location.
         found.sort(key=lambda match: (_is_test_path(match[0]), match[0], match[1]))
         for path, line, snippet in found[:max_matches_per_literal]:
-            sites.append(
-                {
-                    "path": path,
-                    "line": line,
-                    "old": literal,
-                    "new": replacements[literal],
-                    "snippet": snippet[:80],
-                }
-            )
+            entry: dict[str, Any] = {
+                "path": f"{path}:L{line}",
+                "old": literal,
+                "snippet": snippet[:80],
+            }
+            if replacements[literal] is not None:
+                entry["new"] = replacements[literal]
+            sites.append(entry)
     if not sites:
         return None
     return {

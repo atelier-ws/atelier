@@ -164,9 +164,9 @@ def test_surfaces_parallel_consumer_and_excludes_touched_and_prose(tmp_path: Pat
     assert passwd_sites
     assert passwd_sites[0]["new"] == "password"
     all_paths = {s["path"] for s in sites}
-    assert "db/client.py" in all_paths  # parallel consumer surfaced
-    assert "db/base.py" not in all_paths  # touched file excluded
-    assert "db/legacy.py" not in all_paths  # comment/prose not a string node
+    assert any(p.startswith("db/client.py") for p in all_paths)  # parallel consumer surfaced
+    assert not any(p.startswith("db/base.py") for p in all_paths)  # touched file excluded
+    assert not any(p.startswith("db/legacy.py") for p in all_paths)  # comment/prose not a string node
 
 
 @_requires_astgrep
@@ -196,7 +196,7 @@ def test_decorator_removal_surfaces_cache_method_usages() -> None:
     sites = decorator_contract_impact(edits, engine=engine, touched_paths=["django/urls/resolvers.py"])
     assert sites, "removed @lru_cache with a .cache_clear caller elsewhere must surface a site"
     paths = {s["path"] for s in sites}
-    assert "django/urls/base.py" in paths
+    assert any(p.startswith("django/urls/base.py") for p in paths)
     assert any("cache_clear" in s["new"] for s in sites)
 
 
@@ -249,5 +249,5 @@ def test_text_fallback_recall_when_astgrep_unavailable(tmp_path: Path, monkeypat
     impact = contract_literal_impact(edits, engine=engine, repo_root=tmp_path, touched_paths=["db/base.py"])
     assert impact is not None
     paths = {s["path"] for s in impact["sites"]}
-    assert "conf/db.cfg" in paths
-    assert "docs/notes.md" not in paths
+    assert any(p.startswith("conf/db.cfg") for p in paths)
+    assert not any(p.startswith("docs/notes.md") for p in paths)

@@ -455,9 +455,10 @@ def apply_rich_edits(
     failed: list[dict[str, Any]] = []
     resolved_symbol_edits = []
     _current_edit: dict[str, Any] | None = None  # tracks the edit in-flight for error hints
+    _current_edit_idx: int = -1
 
     try:
-        for edit in edits:
+        for _current_edit_idx, edit in enumerate(edits):
             _current_edit = edit
             if str(edit.get("kind") or "") == "symbol":
                 resolved = resolve_symbol_edit(edit, repo_root=root)
@@ -683,7 +684,23 @@ def apply_rich_edits(
         if isinstance(exc, SymbolEditError | ProjectionEditError):
             failed.append(exc.to_dict())
         else:
-            err: dict[str, Any] = {"error": str(exc)}
+            # Identify which edit in the batch failed so the caller can
+            # pinpoint the problem without re-reading the whole response.
+            _edit_file = ""
+            _old_snip = ""
+            if _current_edit is not None:
+                _raw_path = str(_current_edit.get("file_path") or _current_edit.get("path") or "")
+                # Strip :Lx-Ly and #cell= suffixes for display
+                _edit_file = _parse_target(_raw_path).path if _raw_path else ""
+                _old_s = str(_current_edit.get("old_string", ""))
+                if _old_s:
+                    _old_snip = _old_s[:120] + ("…" if len(_old_s) > 120 else "")
+            err: dict[str, Any] = {
+                "error": str(exc),
+                "edit_index": _current_edit_idx,
+                **(({"edit_file": _edit_file}) if _edit_file else {}),
+                **(({"old_string_snippet": _old_snip}) if _old_snip else {}),
+            }
             # Rich retry hint: when old_string wasn't found, ship the nearest
             # disk region so the follow-up edit doesn't need a re-read turn.
             if "old_string not found" in str(exc) or "not found in file" in str(exc):
