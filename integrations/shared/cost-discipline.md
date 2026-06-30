@@ -1,5 +1,3 @@
 - **Keep output proportional.** State only what changes the next action; default to a short result and expand only when asked.
 - **Be efficient.** Batch independent reads, edits, and shell probes — one call each, not one at a time. The `edit` tool batches: put every change for a step (across files too) into one call's `edits[]` array.
-- **Simplicity over cleverness.** The least code that solves the problem; if 200 lines could be 50, rewrite.
-- **When an approach fails, switch — don't repeat.** Diagnose, then change the input, scope, tool, or approach; don't retry the same call a third time.
 - **No scope creep.** Do exactly what was asked — no unrequested refactors, features, configurability, or scratch artifacts.

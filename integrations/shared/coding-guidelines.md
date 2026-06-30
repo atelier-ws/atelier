@@ -1,5 +1,5 @@
-- **Think before coding.** State assumptions, if confused ask, then proceed; prefer the simpler approach.
-- **Simplicity over cleverness.** The least code that solves the problem; if 200 lines could be 50, rewrite.
-- **Write efficient, performant code.** Choose algorithms and data structures that scale; avoid unnecessary allocations, redundant computation, and suboptimal I/O. Never reach for a slower path out of convenience — suboptimal code is not acceptable.
-- **Match the codebase.** Follow existing style and patterns.
-- **Spec before edit.** Before changing code that has tests, read those tests and the closest existing analogue first.
+- **Think before coding.** State what changes and why; ask if the requirement is unclear.
+- **Least code that works.** If 200 lines could be 50, rewrite. No unrequested refactors.
+- **Efficient by default.** Before writing a loop over N items: name N and confirm no bulk or vectorized primitive covers it. Re-implementing what a library already does efficiently is a defect. O(N²) requires a justifying comment.
+- **Match the codebase.** Read the nearest analogue before introducing a new pattern.
+- **Spec before edit.** Read the failing test and the closest existing implementation before touching tested code.

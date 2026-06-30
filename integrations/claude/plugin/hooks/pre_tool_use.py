@@ -146,11 +146,7 @@ def main() -> int:
             workspace_root=workspace,
         )
         if missing:
-            msg = (
-                "Atelier benchmark gate: ground this edit with read, grep, search, "
-                "node, or explore before editing "
-                f"{', '.join(missing[:4])}."
-            )
+            msg = f"Ground this edit first -- read/grep/search/explore {', '.join(missing[:4])} before editing."
             _decide("deny", msg)
             return 0
         if risky_targets:
