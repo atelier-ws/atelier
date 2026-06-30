@@ -1,0 +1,203 @@
+
+=== Turn 1 ===
+[user] <session>
+make temporal subtraction work without ExpressionWrapper
+Description
+	
+class Experiment(models.Model):
+	start = models.DateTimeField()
+	end = models.DateTimeField()
+Experiment.objects.annotate(
+	delta=F('end') - F('start') + Value(datetime.timedelta(), output_field=DurationField())
+)
+This 
+[assistant] {"title": "Fix temporal subtraction with DurationField annotation"}
+
+=== Turn 2 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: Bash] {"command": "cd /testbed && grep -n \"mixed types\\|_resolve_output_field\\|class CombinedExpression\\|class TemporalSubtraction\\|DurationExpression\\|_connector\\|class Combinable\" django/db/models/expressions.py | head -50", "description": "Find relevant expression classes"}
+
+=== Turn 3 ===
+[user] [tool_result] 31:class Combinable:
+269:        output_field = self._resolve_output_field()
+279:        _resolve_output_field() didn't return an output type.
+287:    def _resolve_output_field(self):
+306:                        'Expression contains mixed types: %s, %s. You must '
+425:class CombinedExp
+[assistant] [tool_use: Read] {"file_path": "/testbed/django/db/models/expressions.py", "offset": 425, "limit": 110}
+
+=== Turn 4 ===
+[user] [tool_result] 425	class CombinedExpression(SQLiteNumericMixin, Expression):
+426	
+427	    def __init__(self, lhs, connector, rhs, output_field=None):
+428	        super().__init__(output_field=output_field)
+429	        self.connector = connector
+430	        self.lhs = lhs
+431	        self.rhs = rhs
+43
+[assistant] [tool_use: Read] {"file_path": "/testbed/django/db/models/expressions.py", "offset": 269, "limit": 60}
+
+=== Turn 5 ===
+[user] [tool_result] 269	        output_field = self._resolve_output_field()
+270	        if output_field is None:
+271	            self._output_field_resolved_to_none = True
+272	            raise FieldError('Cannot resolve expression type, unknown output_field')
+273	        return output_field
+274	
+275	    
+[assistant] [tool_use: Bash] {"command": "cd /testbed && python -c \"import django; print(django.VERSION)\"; grep -n \"register_combinable_fields\\|_connector_combinations\\|_resolve_combined_type\" django/db/models/fields/__init__.py", "description": "Check django version and existing combinable infra"}
+
+=== Turn 6 ===
+[user] [tool_result] (3, 2, 0, 'alpha', 0)
+[assistant] [tool_use: Bash] {"command": "grep -rn \"TemporalSubtraction\\|ExpressionWrapper\\|mixed types\\|DurationField()\" tests/expressions/tests.py | head -30", "description": "Find temporal tests"}
+
+=== Turn 7 ===
+[user] [tool_result] tests/expressions/tests.py:12:    DurationField, Exists, Expression, ExpressionList, ExpressionWrapper, F,
+tests/expressions/tests.py:81:                num_employees_check=ExpressionWrapper(Q(num_employees__gt=3), output_field=BooleanField())
+tests/expressions/tests.py:89:            
+[assistant] [tool_use: Read] {"file_path": "/testbed/tests/expressions/tests.py", "offset": 1620, "limit": 90}
+
+=== Turn 8 ===
+[user] [tool_result] 1620	    @skipUnlessDBFeature('supports_temporal_subtraction')
+1621	    def test_datetime_subtraction_microseconds(self):
+1622	        delta = datetime.timedelta(microseconds=8999999999999999)
+1623	        Experiment.objects.update(end=F('start') + delta)
+1624	        qs = Experiment.o
+[assistant] [tool_use: Read] {"file_path": "/testbed/tests/expressions/tests.py", "offset": 1490, "limit": 130}
+
+=== Turn 9 ===
+[user] [tool_result] 1490	            for obj in qs:
+1491	                self.assertEqual(obj.duration, obj.estimated_time + delta)
+1492	
+1493	    @skipUnlessDBFeature('supports_temporal_subtraction')
+1494	    def test_date_subtraction(self):
+1495	        queryset = Experiment.objects.annotate(
+1496	     
+[assistant] [tool_use: Read] {"file_path": "/testbed/tests/expressions/tests.py", "offset": 1455, "limit": 40}
+
+=== Turn 10 ===
+[user] [tool_result] 1455	            Experiment.objects.update(start=F('start') + delta, end=F('end') + delta)
+1456	            exps = Experiment.objects.all()
+1457	            new_starts = [e.start for e in exps]
+1458	            new_ends = [e.end for e in exps]
+1459	            new_durations = [e.durati
+[assistant] [tool_use: Read] {"file_path": "/testbed/django/db/models/expressions.py", "offset": 1040, "limit": 20}
+
+=== Turn 11 ===
+[user] [tool_result] 1040	        else:
+1041	            kwargs['queryset'] = self.queryset
+1042	        state['_constructor_args'] = args, kwargs
+1043	        return state
+1044	
+1045	    def get_source_expressions(self):
+1046	        return [self.query]
+1047	
+1048	    def set_source_expressions(self, expr
+[assistant] [tool_use: Read] {"file_path": "/testbed/django/db/models/expressions.py", "offset": 1225, "limit": 20}
+
+=== Turn 12 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: Bash] {"command": "grep -n \"class Value\\|_resolve_output_field\\|class DurationValue\\|_infer\" django/db/models/expressions.py | sed -n '1,40p'", "description": "Find Value class output field"}
+
+=== Turn 13 ===
+[user] [tool_result] 269:        output_field = self._resolve_output_field()
+279:        _resolve_output_field() didn't return an output type.
+287:    def _resolve_output_field(self):
+672:class Value(Expression):
+1051:    def _resolve_output_field(self):
+1233:    def _resolve_output_field(self):
+1357:class
+[assistant] Now I have a clear picture. Let me implement the fix by moving the temporal/duration dispatch from `as_sql` into `resolve_expression`:[tool_use: Edit] {"file_path": "/testbed/django/db/models/expressions.py", "old_string": "    def as_sql(self, compiler, connection):\n        try:\n            lhs_type = self.lhs.output_field.get_internal_type()\n        except FieldError:\n            lhs_type = None\n        try:\n            rhs_type = self.rhs.output_field.get_internal_type()\n        except FieldError:\n            rhs_type = None\n        if (\n            not connection.features.has_native_duration_field and\n            'DurationField' in {lhs_type, rhs_type} and\n            lhs_type != rhs_type\n        ):\n            return DurationExpression(self.lhs, self.connector, self.rhs).as_sql(compiler, connection)\n        datetime_fields = {'DateField', 'DateTimeField', 'TimeField'}\n        if self.connector == self.SUB and lhs_type in datetime_fields and lhs_type == rhs_type:\n            return TemporalSubtraction(self.lhs, self.rhs).as_sql(compiler, connection)\n        expressions = []\n        expression_params = []\n        sql, params = compiler.compile(self.lhs)\n        expressions.append(sql)\n        expression_params.extend(params)\n        sql, params = compiler.compile(self.rhs)\n        expressions.append(sql)\n        expression_params.extend(params)\n        # order of precedence\n        expression_wrapper = '(%s)'\n        sql = connection.ops.combine_expression(self.connector, expressions)\n        return expression_wrapper % sql, expression_params\n\n    def resolve_expression(self, query=None, allow_joins=True, reuse=None, summarize=False, for_save=False):\n        c = self.copy()\n        c.is_summary = summarize\n        c.lhs = c.lhs.resolve_expression(query, allow_joins, reuse, summarize, for_save)\n        c.rhs = c.rhs.resolve_expression(query, allow_joins, reuse, summarize, for_save)\n        return c", "new_string": "    def as_sql(self, compiler, connection):\n        expressions = []\n        expression_params = []\n        sql, params = compiler.compile(self.lhs)\n        expressions.append(sql)\n        expression_params.extend(params)\n        sql, params = compiler.compile(self.rhs)\n        expressions.append(sql)\n        expression_params.extend(params)\n        # order of precedence\n        expression_wrapper = '(%s)'\n        sql = connection.ops.combine_expression(self.connector, expressions)\n        return expression_wrapper % sql, expression_params\n\n    def resolve_expression(self, query=None, allow_joins=True, reuse=None, summarize=False, for_save=False):\n        lhs = self.lhs.resolve_expression(query, allow_joins, reuse, summarize, for_save)\n        rhs = self.rhs.resolve_expression(query, allow_joins, reuse, summarize, for_save)\n        if not isinstance(self, (DurationExpression, TemporalSubtraction)):\n            try:\n                lhs_type = lhs.output_field.get_internal_type()\n            except (AttributeError, FieldError):\n                lhs_type = None\n            try:\n                rhs_type = rhs.output_field.get_internal_type()\n            except (AttributeError, FieldError):\n                rhs_type = None\n            if 'DurationField' in {lhs_type, rhs_type} and lhs_type != rhs_type:\n                return DurationExpression(self.lhs, self.connector, self.rhs).resolve_expression(\n                    query, allow_joins, reuse, summarize, for_save,\n                )\n            datetime_fields = {'DateField', 'DateTimeField', 'TimeField'}\n            if self.connector == self.SUB and lhs_type in datetime_fields and lhs_type == rhs_type:\n                return TemporalSubtraction(self.lhs, self.rhs).resolve_expression(\n                    query, allow_joins, reuse, summarize, for_save,\n                )\n        c = self.copy()\n        c.is_summary = summarize\n        c.lhs = lhs\n        c.rhs = rhs\n        return c"}
+
+=== Turn 14 ===
+[user] [tool_result] The file /testbed/django/db/models/expressions.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now update `DurationExpression.as_sql` to handle the native duration field case (previously guarded in `CombinedExpression.as_sql`):[tool_use: Edit] {"file_path": "/testbed/django/db/models/expressions.py", "old_string": "    def as_sql(self, compiler, connection):\n        connection.ops.check_expression_support(self)\n        expressions = []\n        expression_params = []\n        sql, params = self.compile(self.lhs, compiler, connection)\n        expressions.append(sql)\n        expression_params.extend(params)\n        sql, params = self.compile(self.rhs, compiler, connection)\n        expressions.append(sql)\n        expression_params.extend(params)\n        # order of precedence\n        expression_wrapper = '(%s)'\n        sql = connection.ops.combine_duration_expression(self.connector, expressions)\n        return expression_wrapper % sql, expression_params", "new_string": "    def as_sql(self, compiler, connection):\n        if connection.features.has_native_duration_field:\n            return super().as_sql(compiler, connection)\n        connection.ops.check_expression_support(self)\n        expressions = []\n        expression_params = []\n        sql, params = self.compile(self.lhs, compiler, connection)\n        expressions.append(sql)\n        expression_params.extend(params)\n        sql, params = self.compile(self.rhs, compiler, connection)\n        expressions.append(sql)\n        expression_params.extend(params)\n        # order of precedence\n        expression_wrapper = '(%s)'\n        sql = connection.ops.combine_duration_expression(self.connector, expressions)\n        return expression_wrapper % sql, expression_params"}
+
+=== Turn 15 ===
+[user] [tool_result] The file /testbed/django/db/models/expressions.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now let me verify the fix works with the ticket's example and run the existing tests:[tool_use: Bash] {"command": "cd /testbed && python tests/runtests.py expressions.tests.FTimeDeltaTests -v1 2>&1 | tail -25", "description": "Run temporal/duration tests"}
+
+=== Turn 16 ===
+[user] [tool_result] Creating test database for alias 'default'...
+.................s......
+----------------------------------------------------------------------
+Ran 24 tests in 0.059s
+
+OK (skipped=1)
+Destroying test database for alias 'default'...
+Testing against Django installed in '/testbed/django' wit
+[assistant] [tool_use: Bash] {"command": "cd /testbed && cat > /tmp/t.py <<'EOF'\nimport datetime, django\nfrom django.conf import settings\nimport django\ndjango.setup() if False else None\nEOF\npython tests/runtests.py expressions -v1 2>&1 | tail -8", "description": "Run full expressions test suite"}
+
+=== Turn 17 ===
+[user] [tool_result] Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+Destroying test database for alias 'default'..
+[assistant] [tool_use: Bash] {"command": "python tests/runtests.py expressions 2>&1 | grep -E \"Ran|OK|FAIL|ERROR\" | head", "description": "Summary of expressions suite"}
+
+=== Turn 18 ===
+[user] [tool_result] Ran 149 tests in 0.127s
+OK (skipped=2)
+[assistant] Now let me verify the actual ticket example resolves without `ExpressionWrapper`:[tool_use: Bash] {"command": "cd /testbed && cat > /tmp/ticket.py <<'EOF'\nimport datetime\nfrom django.db.models import F, Value, DurationField\nfrom tests.expressions.models import Experiment\n\nqs = Experiment.objects.annotate(\n    delta=F('end') - F('start') + Value(datetime.timedelta(), output_field=DurationField())\n)\n# Force output_field resolution + SQL compilation\nprint('output_field:', qs.query.annotations['delta'].output_field.__class__.__name__)\nprint(str(qs.query))\nprint(\"OK\")\nEOF\nDJANGO_SETTINGS_MODULE=test_sqlite PYTHONPATH=tests python /tmp/ticket.py", "description": "Test ticket example end-to-end"}
+
+=== Turn 19 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: Bash] {"command": "cat > /tmp/ticket.py <<'EOF'\nimport django, os\nos.environ['DJANGO_SETTINGS_MODULE'] = 'test_sqlite'\ndjango.setup()\nimport datetime\nfrom django.db.models import F, Value, DurationField\nfrom expressions.models import Experiment\n\nqs = Experiment.objects.annotate(\n    delta=F('end') - F('start') + Value(datetime.timedelta(), output_field=DurationField())\n)\nprint('output_field:', qs.query.annotations['delta'].output_field.__class__.__name__)\nprint(str(qs.query))\nprint(\"OK\")\nEOF\nPYTHONPATH=tests python /tmp/ticket.py", "description": "Run ticket example with django.setup"}
+
+=== Turn 20 ===
+[user] [tool_result] Exit code 1
+Traceback (most recent call last):
+  File "/tmp/ticket.py", line 6, in <module>
+    from expressions.models import Experiment
+  File "/testbed/tests/expressions/models.py", line 9, in <module>
+    class Manager(models.Model):
+  File "/testbed/django/db/models/base.py", line
+[assistant] [tool_use: Bash] {"command": "cat > /testbed/tests/expressions/test_ticket_tmp.py <<'EOF'\nimport datetime\nfrom django.db.models import F, Value, DurationField, DateTimeField\nfrom django.test import TestCase\nfrom .models import Experiment\n\n\nclass TicketTmp(TestCase):\n    def test_no_wrapper(self):\n        qs = Experiment.objects.annotate(\n            delta=F('end') - F('start') + Value(datetime.timedelta(), output_field=DurationField())\n        )\n        self.assertEqual(\n            qs.query.annotations['delta'].output_field.get_internal_type(),\n            'DurationField',\n        )\n        # Should compile without FieldError.\n        str(qs.query)\n\n    def test_datetime_sub_infers_duration(self):\n        qs = Experiment.objects.annotate(delta=F('end') - F('start'))\n        self.assertEqual(\n            qs.query.annotations['delta'].output_field.get_internal_type(),\n            'DurationField',\n        )\nEOF\npython tests/runtests.py expressions.test_ticket_tmp -v2 2>&1 | tail -12\nrm /testbed/tests/expressions/test_ticket_tmp.py", "description": "Run temporary ticket test"}
+
+=== Turn 21 ===
+[user] [tool_result]     Creating table expressions_time
+    Creating table expressions_simulationrun
+    Creating table expressions_uuidpk
+    Creating table expressions_uuid
+    Running deferred SQL...
+Running migrations:
+  Applying admin.0001_initial... OK
+  Applying admin.0002_logentry_remove_auto_add.
+[assistant] [tool_use: Bash] {"command": "cd /testbed && cat > tests/expressions/test_ticket_tmp.py <<'EOF'\nimport datetime\nfrom django.db.models import F, Value, DurationField\nfrom django.test import TestCase\nfrom .models import Experiment\n\n\nclass TicketTmp(TestCase):\n    def test_no_wrapper(self):\n        qs = Experiment.objects.annotate(\n            delta=F('end') - F('start') + Value(datetime.timedelta(), output_field=DurationField())\n        )\n        self.assertEqual(qs.query.annotations['delta'].output_field.get_internal_type(), 'DurationField')\n        str(qs.query)\n\n    def test_datetime_sub_infers_duration(self):\n        qs = Experiment.objects.annotate(delta=F('end') - F('start'))\n        self.assertEqual(qs.query.annotations['delta'].output_field.get_internal_type(), 'DurationField')\nEOF\npython tests/runtests.py expressions.test_ticket_tmp 2>&1 | grep -E \"Ran|OK|FAIL|ERROR\"\nrm tests/expressions/test_ticket_tmp.py", "description": "Run temp test and show result"}
+
+=== Turn 22 ===
+[user] [tool_result] Ran 2 tests in 0.001s
+OK
+[assistant] Both pass. Let me run a broader set of related suites to make sure nothing regressed:[tool_use: Bash] {"command": "python tests/runtests.py expressions aggregation annotations queries db_functions 2>&1 | grep -E \"Ran|OK|FAIL|ERROR\" | head", "description": "Run related test suites"}
+
+=== Turn 23 ===
+[user] [tool_result] Ran 958 tests in 0.345s
+OK (skipped=28, expected failures=2)
+[assistant] All green. Here's a summary of the change.
+
+## What was happening
+
+`F('end') - F('start')` produced a `CombinedExpression`. The temporal-aware substitution (rewriting it into a `TemporalSubtraction`, which knows its output is a `DurationField`) only happened late, inside `as_sql()`. But output-field inference runs earlier — and for the plain `CombinedExpression`, `DateTimeField − DateTimeField` was inferred as `DateTimeField`. Adding a `DurationField` Value on top then hit the generic mixed-types guard and raised `FieldError`.
+
+## The fix
+
+In `django/db/models/expressions.py`, I moved the duration/temporal dispatch from `CombinedExpression.as_sql()` into `CombinedExpression.resolve_expression()`:
+
+- After resolving `lhs`/`rhs`, it inspects their internal types and substitutes:
+  - a `DurationExpression` when exactly one side is a `DurationField` (date/time ± duration, or duration arithmetic), or
+  - a `TemporalSubtraction` (output `DurationField`) for `datetime − datetime` / `date − date` / `time − time`.
+- An `isinstance(self, (DurationExpression, TemporalSubtraction))` guard prevents infinite recursion.
+- `AttributeError`/`FieldError` from accessing `output_field` are treated as "unknown type".
+
+Because the substitution now happens at resolve time, the resulting expression carries the correct `output_field` *before* inference runs. So `F('end') - F('start')` resolves to `DurationField`, and the subsequent `+ Value(..., DurationField)` is `DurationField + DurationField` — no more mixed-types error, and `ExpressionWrapper` is no longer required.
+
+I also moved the `has_native_duration_field` branching (previously the guard that decided whether to build a `DurationExpression` in `as_sql`) into `DurationExpression.as_sql()`, which now delegates to `super().as_sql()` on backends with a native duration field and otherwise uses `combine_duration_expression`.
+
+All 24 `FTimeDeltaTests`, the full `expressions` suite (149), and `aggregation`/`annotations`/`queries`/`db_functions` (958 total) pass.

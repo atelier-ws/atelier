@@ -1,0 +1,215 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/scales.py:L340-L410"]}
+
+=== Turn 2 ===
+[user] [tool_result] ## seaborn/_core/scales.py:L340-L410
+        mpl_scale.set_default_locators_and_formatters(axis)
+        new._matplotlib_scale = mpl_scale
+
+        normalize: Optional[Callable[[ArrayLike], ArrayLike]]
+        if prop.normed:
+            if new.norm is None:
+                vmin, vmax 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "ScalarFormatter offset legend format_ticks set_view_interval", "paths": "seaborn/_core/scales.py"}
+
+=== Turn 3 ===
+[user] [tool_result] {"candidate_files":["seaborn/utils.py","seaborn/categorical.py","seaborn/axisgrid.py","seaborn/_core/properties.py","seaborn/_core/plot.py","seaborn/_oldcore.py","seaborn/distributions.py"],"exact_match":true,"files":[{"path":"seaborn/_core/scales.py","sections":[{"content":"810\t    d
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_legend usage build legend contents title labels from scale", "paths": "seaborn/_core/plot.py"}
+
+=== Turn 4 ===
+[user] [tool_result] {"candidate_files":["seaborn/categorical.py","seaborn/distributions.py","seaborn/axisgrid.py","seaborn/relational.py","seaborn/utils.py","seaborn/_core/scales.py","tests/_core/test_plot.py"],"exact_match":false,"files":[{"path":"seaborn/_core/plot.py","sections":[{"content":"1540\t    
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "legend large numbers offset test ScalarFormatter useOffset", "paths": "tests/_core/test_scales.py"}
+
+=== Turn 5 ===
+[user] [tool_result] {"candidate_files":["seaborn/categorical.py","seaborn/_core/scales.py","seaborn/utils.py","seaborn/axisgrid.py","seaborn/_oldcore.py","seaborn/distributions.py","seaborn/_core/plot.py"],"exact_match":false,"files":[{"path":"tests/_core/test_scales.py","sections":[{"content":"646\tdef t
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/scales.py:L300-L345", "seaborn/_core/scales.py:L615-L700"]}
+
+=== Turn 6 ===
+[user] [tool_result] ## seaborn/_core/scales.py:L300-L345
+
+        return formatter
+
+
+@dataclass
+class Ordinal(Scale):
+    # Categorical (convert to strings), sortable, can skip ticklabels
+    ...
+
+
+@dataclass
+class Discrete(Scale):
+    # Numeric, integral, can skip ticks/ticklabels
+    ...
+
+
+@dataclass
+cl
+[assistant] (no response captured)
+
+=== Turn 7 (REPEAT) ===
+[user] [tool_result] ## seaborn/_core/scales.py:L300-L345
+
+        return formatter
+
+
+@dataclass
+class Ordinal(Scale):
+    # Categorical (convert to strings), sortable, can skip ticklabels
+    ...
+
+
+@dataclass
+class Discrete(Scale):
+    # Numeric, integral, can skip ticks/ticklabels
+    ...
+
+
+@dataclass
+cl
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "class Coordinate Property legend attribute normed", "paths": "seaborn/_core/properties.py"}
+
+=== Turn 8 ===
+[user] [tool_result] {"candidate_files":["seaborn/_core/plot.py","seaborn/_core/scales.py","seaborn/_marks/area.py","tests/_core/test_scales.py","tests/_core/test_properties.py","tests/_core/test_plot.py","tests/_marks/test_dot.py"],"exact_match":false,"files":[{"path":"seaborn/_core/properties.py","sectio
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/scales.py:L1-L45"]}
+
+=== Turn 9 ===
+[user] [tool_result] ## seaborn/_core/scales.py:L1-L45
+from __future__ import annotations
+import re
+from copy import copy
+from collections.abc import Sequence
+from dataclasses import dataclass
+from functools import partial
+from typing import Any, Callable, Tuple, Optional, ClassVar
+
+import numpy as np
+impo
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "seaborn/_core/scales.py", "old": "        if prop.legend:\n            axis.set_view_interval(vmin, vmax)\n            locs = axis.major.locator()\n            locs = locs[(vmin <= locs) & (locs <= vmax)]\n            labels = axis.major.formatter.format_ticks(locs)\n            new._legend = list(locs), list(labels)", "new": "        if prop.legend:\n            axis.set_view_interval(vmin, vmax)\n            locs = axis.major.locator()\n            locs = locs[(vmin <= locs) & (locs <= vmax)]\n            labels = axis.major.formatter.format_ticks(locs)\n            new._legend = list(locs), list(labels)"}]}
+
+=== Turn 10 ===
+[user] [tool_result] applied seaborn/_core/scales.py:377-382
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "seaborn/_core/scales.py", "old": "        if prop.legend:\n            axis.set_view_interval(vmin, vmax)\n            locs = axis.major.locator()\n            locs = locs[(vmin <= locs) & (locs <= vmax)]\n            labels = axis.major.formatter.format_ticks(locs)\n            new._legend = list(locs), list(labels)", "new": "        if prop.legend:\n            axis.set_view_interval(vmin, vmax)\n            locs = axis.major.locator()\n            locs = locs[(vmin <= locs) & (locs <= vmax)]\n            labels = axis.major.formatter.format_ticks(locs)\n            # Matplotlib formatters (notably ScalarFormatter) may factor a common\n            # offset / scaling out of the tick labels. On an axis that quantity is\n            # drawn next to the ticks, but a legend has no place to show it, so the\n            # labels would silently drop several orders of magnitude (see GH2860).\n            # Fold the offset back into each label to keep them self-contained.\n            offset = axis.major.formatter.get_offset()\n            if offset:\n                labels = [f\"{label} {offset}\" for label in labels]\n            new._legend = list(locs), list(labels)"}]}
+
+=== Turn 11 ===
+[user] [tool_result] applied seaborn/_core/scales.py:377-382
+[assistant] Let me reconsider — appending the offset string is ambiguous since a ScalarFormatter offset can be multiplicative (`1e6`) and would read as additive. Let me look at how matplotlib's `ScalarFormatter` exposes the offset more precisely.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "python -c \"\nimport matplotlib as mpl\nfrom matplotlib.ticker import ScalarFormatter\nimport numpy as np\nf=ScalarFormatter()\nfrom matplotlib.axis import XAxis\nimport matplotlib.pyplot as plt\nfig,ax=plt.subplots()\nax.set_xlim(4e6,6e6)\nlocs=np.array([4e6,4.5e6,5e6,5.5e6,6e6])\nprint('labels', f.format_ticks(locs) if False else None)\nf.axis=ax.xaxis\nax.xaxis.set_major_formatter(f)\nprint('ticks', f.format_ticks(locs))\nprint('offset repr', repr(f.get_offset()))\nprint('orderOfMag', f.orderOfMagnitude, 'offset', f.offset)\n# additive case\nf2=ScalarFormatter()\nax.set_xlim(1000000,1000005)\nf2.axis=ax.xaxis\nlocs2=np.array([1000000,1000001,1000002,1000003,1000004,1000005.])\nprint('ticks2', f2.format_ticks(locs2))\nprint('offset2 repr', repr(f2.get_offset()))\n\"\n"}
+
+=== Turn 12 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "python -c \"\nimport numpy as np\nfrom matplotlib.ticker import ScalarFormatter\nimport matplotlib.pyplot as plt\nfig,ax=plt.subplots()\n# multiplicative\nf=ScalarFormatter(useOffset=False); f.set_scientific(False)\nax.set_xlim(4e6,6e6); f.axis=ax.xaxis\nlocs=np.array([4e6,4.5e6,5e6,5.5e6,6e6])\nprint('mult', f.format_ticks(locs), repr(f.get_offset()))\n# additive\nf2=ScalarFormatter(useOffset=False); f2.set_scientific(False)\nlocs2=np.array([1000000,1000001,1000002,1000003,1000004,1000005.])\nf2.axis=ax.xaxis\nprint('add', f2.format_ticks(locs2), repr(f2.get_offset()))\n\"\n"}
+
+=== Turn 13 ===
+[user] [tool_result] mult ['4000000', '4500000', '5000000', '5500000', '6000000'] ''
+add ['1000000', '1000001', '1000002', '1000003', '1000004', '1000005'] ''
+[assistant] Disabling the offset/scientific notation yields unambiguous, self-contained labels. Let me replace my earlier append approach with that.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "seaborn/_core/scales.py", "old": "        if prop.legend:\n            axis.set_view_interval(vmin, vmax)\n            locs = axis.major.locator()\n            locs = locs[(vmin <= locs) & (locs <= vmax)]\n            labels = axis.major.formatter.format_ticks(locs)\n            # Matplotlib formatters (notably ScalarFormatter) may factor a common\n            # offset / scaling out of the tick labels. On an axis that quantity is\n            # drawn next to the ticks, but a legend has no place to show it, so the\n            # labels would silently drop several orders of magnitude (see GH2860).\n            # Fold the offset back into each label to keep them self-contained.\n            offset = axis.major.formatter.get_offset()\n            if offset:\n                labels = [f\"{label} {offset}\" for label in labels]\n            new._legend = list(locs), list(labels)", "new": "        if prop.legend:\n            axis.set_view_interval(vmin, vmax)\n            locs = axis.major.locator()\n            locs = locs[(vmin <= locs) & (locs <= vmax)]\n            # ScalarFormatter may factor a common scaling/offset out of the tick\n            # labels and draw it separately alongside the axis. A legend has no\n            # place to show that quantity, so the labels would silently drop\n            # several orders of magnitude (see GH2860). Disable the offsetting so\n            # that each legend label is a complete, self-contained value.\n            formatter = axis.major.formatter\n            if isinstance(formatter, ScalarFormatter):\n                formatter.set_useOffset(False)\n                formatter.set_scientific(False)\n            labels = formatter.format_ticks(locs)\n            new._legend = list(locs), list(labels)"}]}
+
+=== Turn 14 ===
+[user] [tool_result] applied seaborn/_core/scales.py:377-390
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(python -c 'import seaborn,os;print(os.path.dirname(os.path.dirname(seaborn.__file__)))' 2>/dev/null || echo .)\"; python -c \"\nimport numpy as np, pandas as pd\nfrom seaborn._core.scales import Continuous\nfrom seaborn._core.properties import PointSize\nx = pd.Series(np.linspace(4e6, 6e6, 50), name='body_mass_mg')\ns = Continuous()._setup(x, PointSize())\nprint(s._legend)\n\"\n"}
+
+=== Turn 15 ===
+[user] [tool_result] ([4000000.0, 4500000.0, 5000000.0, 5500000.0, 6000000.0], ['4000000', '4500000', '5000000', '5500000', '6000000'])
+[assistant] The legend now shows full values. Let me run the relevant tests to confirm nothing regresses.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(python -c 'import seaborn,os;print(os.path.dirname(os.path.dirname(seaborn.__file__)))')\" 2>/dev/null; python -m pytest tests/_core/test_scales.py -q 2>&1 | tail -20"}
+
+=== Turn 16 ===
+[user] [tool_result] ......................................................x................. [ 85%]
+............                                                             [100%]
+=============================== warnings summary ===============================
+tests/_core/test_scales.py::TestNominal::test
+[assistant] All tests pass. Let me add a regression test matching the existing style.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed 2>/dev/null; grep -n \"_legend\" tests/_core/test_scales.py | head"}
+
+=== Turn 17 ===
+[user] [tool_result] exit_code=0
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed; grep -n \"legend\" tests/_core/test_scales.py | head -30"}
+
+=== Turn 18 ===
+[user] [tool_result] exit_code=0
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed; grep -rn \"_legend\" tests/_core/ | head"}
+
+=== Turn 19 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/_core/test_plot.py:L1860-L1935"]}
+
+=== Turn 20 ===
+[user] [tool_result] ## tests/_core/test_plot.py:L1860-L1935
+class TestLegend:
+
+    @pytest.fixture
+    def xy(self):
+        return dict(x=[1, 2, 3, 4], y=[1, 2, 3, 4])
+
+    def test_single_layer_single_variable(self, xy):
+
+        s = pd.Series(["a", "b", "a", "c"], name="s")
+        p = Plot(**xy).add(M
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed; grep -n \"def test\" tests/_core/test_plot.py | sed -n '/18[0-9][0-9]/,/20[0-9][0-9]/p' | awk -F: '$1>=1935 && $1<=2080'"}
+
+=== Turn 21 ===
+[user] [tool_result] 1946:    def test_multi_layer_single_variable(self, xy):
+1967:    def test_multi_layer_multi_variable(self, xy):
+1989:    def test_multi_layer_different_artists(self, xy):
+2013:    def test_three_layers(self, xy):
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/_core/test_plot.py:L2013-L2090"]}
+
+=== Turn 22 ===
+[user] [tool_result] ## tests/_core/test_plot.py:L2013-L2059
+    def test_three_layers(self, xy):
+
+        class MockMarkLine(MockMark):
+            def _legend_artist(self, variables, value, scales):
+                return mpl.lines.Line2D([], [])
+
+        s = pd.Series(["a", "b", "a", "c"], name="s")
+   
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "tests/_core/test_plot.py", "old": "    def test_identity_scale_ignored(self, xy):\n\n        s = pd.Series([\"r\", \"g\", \"b\", \"g\"])\n        p = Plot(**xy).add(MockMark(), color=s).scale(color=None).plot()\n        assert not p._legend_contents", "new": "    def test_large_numeric_values(self, xy):\n\n        # GH2860: ScalarFormatter factors a common offset/scale out of the tick\n        # labels, which the legend cannot display, so labels must be complete.\n        s = pd.Series([4e6, 5e6, 6e6, 5e6], name=\"s\")\n        p = Plot(**xy).add(MockMark(), pointsize=s).plot()\n        e, = p._legend_contents\n        labels = e[-1]\n        assert all(float(label) > 1e6 for label in labels)\n\n    def test_identity_scale_ignored(self, xy):\n\n        s = pd.Series([\"r\", \"g\", \"b\", \"g\"])\n        p = Plot(**xy).add(MockMark(), color=s).scale(color=None).plot()\n        assert not p._legend_contents"}]}
+
+=== Turn 23 ===
+[user] [tool_result] applied tests/_core/test_plot.py:2027-2031
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed; python -m pytest \"tests/_core/test_plot.py::TestLegend::test_large_numeric_values\" tests/_core/test_scales.py -q 2>&1 | tail -15"}
+
+=== Turn 24 ===
+[user] [tool_result] .......................................................x................ [ 84%]
+.............                                                            [100%]
+=============================== warnings summary ===============================
+tests/_core/test_scales.py::TestNominal::test
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed; python -m pytest \"tests/_core/test_plot.py::TestLegend\" -q 2>&1 | tail -6"}
+
+=== Turn 25 ===
+[user] [tool_result] .............                                                            [100%]
+13 passed in 0.60s
+[assistant] I've fixed the bug. Here's a summary of what was wrong and what I changed.
+
+## Root cause
+
+In `seaborn/_core/scales.py`, the legend for a continuous scale is built by formatting the tick locations with the axis's matplotlib formatter:
+
+```python
+labels = axis.major.formatter.format_ticks(locs)
+```
+
+The default formatter, `ScalarFormatter`, factors a common offset/scaling out of the tick labels (e.g. it shows `4.0, 4.5, …` plus a separate `1e6` offset text). On a real axis that offset is drawn next to the ticks, but a **legend has no place to display it** — so the legend silently dropped several orders of magnitude (values in the order of `1e6` showed up as `4`, `5`, `6`).
+
+## Fix
+
+In the legend block of `ContinuousBase._setup`, when the formatter is a `ScalarFormatter` I disable both the additive offset and the scientific (order-of-magnitude) factoring before formatting, so every legend label is a complete, self-contained value:
+
+```python
+formatter = axis.major.formatter
+if isinstance(formatter, ScalarFormatter):
+    formatter.set_useOffset(False)
+    formatter.set_scientific(False)
+labels = formatter.format_ticks(locs)
+```
+
+This handles both offset modes that the issue mentions (`axes.formatter.useoffset` additive offsets like `+1e6`, and scientific scaling like `1e6`). I considered appending `get_offset()` to each label, but that string is ambiguous — `1e6` means *multiply* while `+1e6` means *add* — so disabling the offsetting yields unambiguous labels (`4000000`, `4500000`, …). Other default formatters (`EngFormatter`, `LogFormatterSciNotation`) already produce self-contained labels and are left untouched.
+
+I also added `TestLegend::test_large_numeric_values` as a regression test. All `test_scales.py` and `TestLegend` tests pass.
+
+Note: this fixes the `seaborn.objects` path referenced in the issue. The classic `scatterplot` path lives in `seaborn/_oldcore.py` (separate code) and would need its own fix if you want that addressed too — say the word and I'll handle it.

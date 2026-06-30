@@ -1,0 +1,125 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] I'll start by exploring the relevant code in the seaborn codebase.[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "Nominal scale class _setup matplotlib scale", "path": "seaborn/_core/scales.py"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_finalize_figure Plotter", "path": "seaborn/_core/plot.py"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["tests/_core/test_scales.py","seaborn/_core/plot.py","seaborn/_marks/line.py"],"exact_match":false,"files":[{"path":"seaborn/_core/scales.py","sections":[{"content":"53\tclass Scale:\n54\t    \"\"\"Base class for objects that map data values to visual properties.\"\
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"symbol": "Nominal"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_finalize_figure _setup_scales _plot", "path": "seaborn/_core/plot.py"}
+
+=== Turn 3 ===
+[user] [tool_result] ### seaborn/_core/scales.py:L138-L295 (class)
+class Nominal(Scale):
+    """
+    A categorical scale without relative importance / magnitude.
+    """
+    # Categorical (convert to strings), un-sortable
+
+    values: tuple | str | list | dict | None = None
+    order: list | None = None
+
+ 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/plot.py:L1170-L1360", "seaborn/_core/plot.py:L1580-L1649"]}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_finalize_figure", "path": "seaborn/_core/plot.py"}
+
+=== Turn 4 ===
+[user] [tool_result] ## seaborn/_core/plot.py:L1170-L1360
+    def _setup_scales(
+        self, p: Plot,
+        common: PlotData,
+        layers: list[Layer],
+        variables: list[str] | None = None,
+    ) -> None:
+
+        if variables is None:
+            # Add variables that have data but not a scale
+[assistant] Now let me see how legacy categorical.py handles these three behaviors:[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "categorical axis invert grid set_view_interval sticky edges +/- 0.5", "path": "seaborn/categorical.py"}[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/scales.py:L1-L52"]}
+
+=== Turn 5 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "invert_yaxis set_xlim -0.5 grid False categorical axis adjust", "path": "seaborn/categorical.py", "max_files": 3}
+
+=== Turn 6 ===
+[user] [tool_result] {"candidate_files":["seaborn/matrix.py","seaborn/_oldcore.py"],"exact_match":false,"files":[{"path":"seaborn/categorical.py","sections":[{"content":"2999\tdef catplot(\n3000\t    data=None, *, x=None, y=None, hue=None, row=None, col=None,\n3001\t    col_wrap=None, estimator=\"mean\", e
+[assistant] (no response captured)
+
+=== Turn 7 (REPEAT) ===
+[user] [tool_result] {"candidate_files":["seaborn/matrix.py","seaborn/_oldcore.py"],"exact_match":false,"files":[{"path":"seaborn/categorical.py","sections":[{"content":"2999\tdef catplot(\n3000\t    data=None, *, x=None, y=None, hue=None, row=None, col=None,\n3001\t    col_wrap=None, estimator=\"mean\", e
+[assistant] Let me check the imports in plot.py and look at related tests:[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "from seaborn._core.scales import Nominal Continuous import scales", "path": "seaborn/_core/plot.py", "max_files": 2}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "Nominal grid invert limit test finalize", "path": "tests/_core/test_plot.py", "max_files": 2}
+
+=== Turn 8 ===
+[user] [tool_result] {"candidate_files":["seaborn/_core/properties.py"],"exact_match":false,"files":[{"path":"seaborn/_core/plot.py","sections":[{"content":"1170\tdef _setup_scales(\n1171\t        self, p: Plot,\n1172\t        common: PlotData,\n1173\t        layers: list[Layer],\n1174\t        variables: 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "from seaborn._core.scales import", "path": "seaborn/_core/plot.py", "max_files": 1}
+
+=== Turn 9 ===
+[user] [tool_result] {"exact_match":false,"files":[{"path":"seaborn/_core/plot.py","sections":[{"content":"1170\tdef _setup_scales(\n1171\t        self, p: Plot,\n1172\t        common: PlotData,\n1173\t        layers: list[Layer],\n1174\t        variables: list[str] | None = None,\n1175\t    ) -> None:\n11
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"import\" seaborn/_core/plot.py | grep -i \"scale\\|Nominal\" "}
+
+=== Turn 10 ===
+[user] [tool_result] 28:from seaborn._core.scales import Scale
+40:from seaborn._compat import set_scale_obj, set_layout_engine
+1241:                from seaborn._core.scales import Nominal
+
+[discipline] Prefer the `code_search` tool over shell `grep` for code exploration.
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/plot.py:L1237-L1250"]}
+
+=== Turn 11 ===
+[user] [tool_result] ## seaborn/_core/plot.py:L1237-L1250
+            # https://github.com/matplotlib/matplotlib/pull/18308
+            # This only affects us when sharing *paired* axes. This is a novel/niche
+            # behavior, so we will raise rather than hack together a workaround.
+            if ax
+[assistant] Now I'll implement the changes:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "seaborn/_core/plot.py", "old": "from seaborn._core.scales import Scale", "new": "from seaborn._core.scales import Scale, Nominal"}, {"path": "seaborn/_core/plot.py", "old": "            if axis is not None and Version(mpl.__version__) < Version(\"3.4.0\"):\n                from seaborn._core.scales import Nominal\n                paired_axis = axis in p._pair_spec.get(\"structure\", {})", "new": "            if axis is not None and Version(mpl.__version__) < Version(\"3.4.0\"):\n                paired_axis = axis in p._pair_spec.get(\"structure\", {})"}, {"path": "seaborn/_core/plot.py", "old": "        for sub in self._subplots:\n            ax = sub[\"ax\"]\n            for axis in \"xy\":\n                axis_key = sub[axis]\n\n                # Axis limits\n                if axis_key in p._limits:\n                    convert_units = getattr(ax, f\"{axis}axis\").convert_units\n                    a, b = p._limits[axis_key]\n                    lo = a if a is None else convert_units(a)\n                    hi = b if b is None else convert_units(b)\n                    if isinstance(a, str):\n                        lo = cast(float, lo) - 0.5\n                    if isinstance(b, str):\n                        hi = cast(float, hi) + 0.5\n                    ax.set(**{f\"{axis}lim\": (lo, hi)})\n", "new": "        for sub in self._subplots:\n            ax = sub[\"ax\"]\n            for axis in \"xy\":\n                axis_key = sub[axis]\n                axis_obj = getattr(ax, f\"{axis}axis\")\n\n                # Axis limits\n                if axis_key in p._limits:\n                    convert_units = getattr(ax, f\"{axis}axis\").convert_units\n                    a, b = p._limits[axis_key]\n                    lo = a if a is None else convert_units(a)\n                    hi = b if b is None else convert_units(b)\n                    if isinstance(a, str):\n                        lo = cast(float, lo) - 0.5\n                    if isinstance(b, str):\n                        hi = cast(float, hi) + 0.5\n                    ax.set(**{f\"{axis}lim\": (lo, hi)})\n\n                # Nominal scale special-casing\n                if isinstance(self._scales.get(axis_key), Nominal):\n                    axis_obj.grid(False, which=\"both\")\n                    if axis_key not in p._limits:\n                        nticks = len(axis_obj.get_major_ticks())\n                        lo, hi = -.5, nticks - .5\n                        if axis == \"y\":\n                            lo, hi = hi, lo\n                        set_lim = getattr(ax, f\"set_{axis}lim\")\n                        set_lim(lo, hi, auto=None)\n"}]}
+
+=== Turn 12 ===
+[user] [tool_result] applied seaborn/_core/plot.py:28,1240-1242,1629-1645
+[assistant] Let me run the relevant tests to verify:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && python -m pytest tests/_core/test_plot.py -k \"limit or nominal or Nominal or grid or invert\" -q 2>&1 | tail -30"}
+
+=== Turn 13 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] The 2 failures are a pre-existing pandas-compat issue (`mode.use_inf_as_null`), unrelated to my change. Let me verify the new behavior directly:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && python -c \"\nimport matplotlib as mpl\nmpl.use('Agg')\nimport seaborn.objects as so\n\n# x nominal\np = so.Plot(x=['a','b','c'], y=[1,2,3]).add(so.Dot()).plot()\nax = p._figure.axes[0]\nprint('x lim:', ax.get_xlim())\nprint('x grid visible:', ax.xaxis.majorTicks[0].gridline.get_visible())\n\n# y nominal -> inverted\np = so.Plot(x=[1,2,3], y=['a','b','c']).add(so.Dot()).plot()\nax = p._figure.axes[0]\nprint('y lim (inverted):', ax.get_ylim())\nprint('y grid visible:', ax.yaxis.majorTicks[0].gridline.get_visible())\n\""}
+
+=== Turn 14 ===
+[user] [tool_result] exit_code=1
+Traceback (most recent call last):
+  File "<string>", line 7, in <module>
+  File "/testbed/seaborn/_core/plot.py", line 820, in plot
+    return self._plot(pyplot)
+  File "/testbed/seaborn/_core/plot.py", line 850, in _plot
+    plotter._plot_layer(self, layer)
+  File "/testb
+[assistant] A pre-existing pandas-compat bug blocks plotting in this env. Let me work around it just for verification:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && python -c \"\nimport matplotlib as mpl\nmpl.use('Agg')\nimport contextlib, pandas as pd\npd.option_context = lambda *a, **k: contextlib.nullcontext()  # work around env pandas-compat bug\nimport seaborn.objects as so\n\np = so.Plot(x=['a','b','c'], y=[1,2,3]).add(so.Dot()).plot()\nax = p._figure.axes[0]\nprint('x lim:', ax.get_xlim())\nprint('x grid visible:', ax.xaxis.majorTicks[0].gridline.get_visible())\n\np = so.Plot(x=[1,2,3], y=['a','b','c']).add(so.Dot()).plot()\nax = p._figure.axes[0]\nprint('y lim (inverted):', ax.get_ylim())\nprint('y grid visible:', ax.yaxis.majorTicks[0].gridline.get_visible())\n\n# continuous y still has grid/normal limits\np = so.Plot(x=['a','b','c'], y=[1,2,3]).add(so.Dot()).plot()\nax = p._figure.axes[0]\nprint('continuous y grid visible:', ax.yaxis.majorTicks[0].gridline.get_visible())\n\""}
+
+=== Turn 15 ===
+[user] [tool_result] x lim: (-0.5, 2.5)
+x grid visible: False
+y lim (inverted): (2.5, -0.5)
+y grid visible: False
+continuous y grid visible: True
+[assistant] All three behaviors now work correctly for `so.Nominal` (inferred) scales:
+
+- **x lim: `(-0.5, 2.5)`** — drawn ±0.5 from the first/last tick instead of the normal margin logic
+- **grid visible: `False`** on the nominal axis, while the **continuous y axis keeps its grid** (`True`)
+- **y lim: `(2.5, -0.5)`** — inverted when the nominal scale is on the y axis
+
+## Summary
+
+I implemented the categorical-axis behavior for `so.Nominal` scales (including inferred ones) in `seaborn/_core/plot.py`:
+
+1. **Top-level import** — added `Nominal` to the existing `from seaborn._core.scales import Scale` import, and removed the now-redundant local import inside `_setup_scales` (the mpl<3.4 compat block).
+
+2. **`Plotter._finalize_figure`** — added Nominal special-casing per axis:
+   - Grabbed the `axis_obj` once at the top of the loop.
+   - When the scale for that axis is a `Nominal`:
+     - `axis_obj.grid(False, which="both")` — hides the grid even if the active style would show one.
+     - When the user hasn't set explicit limits for that axis, set the limits to `(-0.5, nticks - 0.5)` from the major ticks, swapping `lo`/`hi` on the y axis so it inverts.
+
+Rather than the invisible-sticky-edge hack floated in the issue, this sets the axis limits directly in `_finalize_figure` (after autoscale), which is simpler and keeps all three categorical behaviors in one place. User-supplied limits still win (the `axis_key not in p._limits` guard), so the existing string-limit `±0.5` logic above continues to apply.
+
+Note: two tests and my manual plot hit a **pre-existing** environment failure (`pandas._config.config.OptionError: "No such keys(s): 'mode.use_inf_as_null'"` from `split_generator`'s `pd.option_context` against this newer pandas) — unrelated to this change. The relevant `test_limits` passes, and the manual verification above (with that bug worked around) confirms the new behavior.
+
+A follow-up worth considering (raised in the issue): whether the grid suppression should be overridable so a user can force a grid via the theme, possibly by making it a property of the scale object itself.

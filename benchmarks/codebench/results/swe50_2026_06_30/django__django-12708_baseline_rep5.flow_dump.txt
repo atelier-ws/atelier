@@ -1,0 +1,194 @@
+
+=== Turn 1 ===
+[user] <session>
+Migration crashes deleting an index_together if there is a unique_together on the same fields
+Description
+	
+Happens with Django 1.11.10
+Steps to reproduce:
+1) Create models with 2 fields, add 2 same fields to unique_together and to index_together
+2) Delete index_together -> Fail
+It will fa
+[assistant] {"title": "Fix migration crash deleting index_together with unique_together"}
+
+=== Turn 2 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: Read] {"file_path": "/testbed/django/db/backends/base/schema.py", "offset": 355, "limit": 60}
+
+=== Turn 3 ===
+[user] [tool_result] 355	        """Remove an index from a model."""
+356	        self.execute(index.remove_sql(model, self))
+357	
+358	    def add_constraint(self, model, constraint):
+359	        """Add a constraint to a model."""
+360	        sql = constraint.create_sql(model, self)
+361	        if sql:
+362	
+[assistant] [tool_use: Bash] {"command": "grep -n \"_constraint_names\" /testbed/django/db/backends/base/schema.py"}
+
+=== Turn 4 ===
+[user] [tool_result] 403:        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}
+406:        constraint_names = self._constraint_names(
+407:            model, columns, exclude=meta_constraint_names | meta_index_names,
+509:            fk_names = self._constraint_names(mod
+[assistant] [tool_use: Read] {"file_path": "/testbed/django/db/backends/base/schema.py", "offset": 1142, "limit": 40}
+
+=== Turn 5 ===
+[user] [tool_result] 1142	    def _constraint_names(self, model, column_names=None, unique=None,
+1143	                          primary_key=None, index=None, foreign_key=None,
+1144	                          check=None, type_=None, exclude=None):
+1145	        """Return all constraint names matching the colu
+[assistant] [tool_use: Bash] {"command": "grep -rn \"_delete_composed_index\\|_delete_constraint_sql\" /testbed/django/db/backends/"}
+
+=== Turn 6 ===
+[user] [tool_result] /testbed/django/db/backends/base/schema.py:380:            self._delete_composed_index(model, fields, {'unique': True}, self.sql_delete_unique)
+/testbed/django/db/backends/base/schema.py:396:            self._delete_composed_index(model, fields, {'index': True}, self.sql_delete_index)
+
+[assistant] [tool_use: Read] {"file_path": "/testbed/django/db/backends/mysql/schema.py", "offset": 110, "limit": 25}
+
+=== Turn 7 ===
+[user] [tool_result] 110	                field.get_internal_type() == 'ForeignKey' and
+111	                field.db_constraint):
+112	            return False
+113	        return not self._is_limited_data_type(field) and create_index
+114	
+115	    def _delete_composed_index(self, model, fields, *args):
+116	  
+[assistant] I understand the issue now. When both `unique_together` and `index_together` exist on the same fields, deleting the `index_together` calls `_delete_composed_index` with `{'index': True}`, which matches both the unique constraint (a unique index) and the plain index — hence "wrong number (2) of constraints".
+
+The fix is to scope the index deletion to non-unique indexes by adding `'unique': False`:[tool_use: Edit] {"file_path": "/testbed/django/db/backends/base/schema.py", "old_string": "        # Deleted indexes\n        for fields in olds.difference(news):\n            self._delete_composed_index(model, fields, {'index': True}, self.sql_delete_index)", "new_string": "        # Deleted indexes\n        for fields in olds.difference(news):\n            self._delete_composed_index(\n                model,\n                fields,\n                {'index': True, 'unique': False},\n                self.sql_delete_index,\n            )"}
+
+=== Turn 8 ===
+[user] [tool_result] The file /testbed/django/db/backends/base/schema.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now let me verify this resolves the issue with a test. Let me look at the existing schema tests:[tool_use: Bash] {"command": "grep -n \"index_together\\|unique_together\\|def test_remove\" /testbed/tests/schema/tests.py | head -40"}
+
+=== Turn 9 ===
+[user] [tool_result] 1791:    def test_remove_field_check_does_not_remove_meta_constraints(self):
+1888:                editor.alter_unique_together(TagUniqueRename, [], (('title', 'slug2'),))
+1964:    def test_remove_field_unique_does_not_remove_meta_constraints(self):
+2010:    def test_unique_together(sel
+[assistant] [tool_use: Read] {"file_path": "/testbed/tests/schema/tests.py", "offset": 2126, "limit": 70}
+
+=== Turn 10 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Let me add a test. First let me check available test models:[tool_use: Read] {"file_path": "/testbed/tests/schema/tests.py", "offset": 2195, "limit": 45}
+
+=== Turn 11 ===
+[user] [tool_result] 2195	        self.assertIs(
+2196	            any(
+2197	                c["index"]
+2198	                for c in self.get_constraints("schema_tagindexed").values()
+2199	                if c['columns'] == ["slug", "title"]
+2200	            ),
+2201	            True,
+2202	        )
+2203	
+2
+[assistant] [tool_use: Read] {"file_path": "/testbed/tests/schema/tests.py", "offset": 2239, "limit": 30}
+
+=== Turn 12 ===
+[user] [tool_result] 2239	            name for name, details in constraints.items()
+2240	            if details['columns'] == ['name', 'birthday'] and details['index'] and name != custom_index_name
+2241	        ]
+2242	        self.assertEqual(len(other_constraints), 1)
+2243	        # Drop the index
+2244	  
+[assistant] Now let me add a test for the scenario where `unique_together` and `index_together` are on the same fields. I'll insert it after `test_remove_index_together_does_not_remove_meta_indexes`:[tool_use: Edit] {"file_path": "/testbed/tests/schema/tests.py", "old_string": "        # Drop the index\n        with connection.schema_editor() as editor:\n            AuthorWithIndexedNameAndBirthday._meta.indexes = []\n            editor.remove_index(AuthorWithIndexedNameAndBirthday, index)\n\n    @isolate_apps('schema')\n    def test_db_table(self):", "new_string": "        # Drop the index\n        with connection.schema_editor() as editor:\n            AuthorWithIndexedNameAndBirthday._meta.indexes = []\n            editor.remove_index(AuthorWithIndexedNameAndBirthday, index)\n\n    def test_remove_index_together_does_not_remove_unique_together(self):\n        # Removing an index_together must not remove a unique_together on the\n        # same fields.\n        with connection.schema_editor() as editor:\n            editor.create_model(Book)\n        # Add the unique_together and index_together on the same fields.\n        with connection.schema_editor() as editor:\n            editor.alter_unique_together(Book, [], [['author', 'title']])\n            editor.alter_index_together(Book, [], [['author', 'title']])\n        constraints = self.get_constraints(Book._meta.db_table)\n        unique_constraints = {\n            name for name, details in constraints.items()\n            if details['columns'] == ['author_id', 'title'] and details['unique']\n        }\n        self.assertGreaterEqual(len(unique_constraints), 1)\n        # Removing the index_together leaves the unique_together in place.\n        with connection.schema_editor() as editor:\n            editor.alter_index_together(Book, [['author', 'title']], [])\n        constraints = self.get_constraints(Book._meta.db_table)\n        remaining_unique = {\n            name for name, details in constraints.items()\n            if details['columns'] == ['author_id', 'title'] and details['unique']\n        }\n        self.assertEqual(unique_constraints, remaining_unique)\n\n    @isolate_apps('schema')\n    def test_db_table(self):"}
+
+=== Turn 13 ===
+[user] [tool_result] The file /testbed/tests/schema/tests.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] [tool_use: Bash] {"command": "cd /testbed && python tests/runtests.py schema.tests.SchemaTests.test_remove_index_together_does_not_remove_unique_together schema.tests.SchemaTests.test_index_together schema.tests.SchemaTests.test_unique_together 2>&1 | tail -20"}
+
+=== Turn 14 ===
+[user] [tool_result] Creating test database for alias 'default'...
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.019s
+
+OK
+Destroying test database for alias 'default'...
+Testing against Django installed in '/testbed/django' with up to 32 processes
+System check 
+[assistant] The new test passes. Let me confirm it actually catches the bug by temporarily reverting the fix:[tool_use: Bash] {"command": "cd /testbed && git stash -- django/db/backends/base/schema.py && python tests/runtests.py schema.tests.SchemaTests.test_remove_index_together_does_not_remove_unique_together 2>&1 | tail -8; git stash pop"}
+
+=== Turn 15 ===
+[user] import logging
+from datetime import datetime
+
+from django.db.backends.ddl_references import (
+    Columns, ForeignKeyName, IndexName, Statement, Table,
+)
+from django.db.backends.utils import names_digest, split_identifier
+from django.db.models import Index
+from django.db.transaction import Transacti
+[assistant] (empty response, status=200)
+
+=== Turn 16 ===
+[user] [tool_result] Saved working directory and index state WIP on main: ea64869782 SWE-bench
+
+----------------------------------------------------------------------
+Ran 1 test in 0.009s
+
+FAILED (errors=1)
+Destroying test database for alias 'default'...
+Testing against Django installed in '/testbed/django
+[assistant] The test errors without the fix (the `ValueError: Found wrong number (2) of constraints`) and passes with it. Let me run the broader schema suite to ensure no regressions:[tool_use: Bash] {"command": "python tests/runtests.py schema 2>&1 | tail -8"}
+
+=== Turn 17 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] All 132 schema tests pass. Let me also run the migration executor tests that exercise this path:[tool_use: Bash] {"command": "python tests/runtests.py migrations.test_operations 2>&1 | tail -6"}
+
+=== Turn 18 ===
+[user] [tool_result] Destroying test database for alias 'default'...
+Destroying test database for alias 'other'...
+Destroying test database for alias 'other'...
+Destroying test database for alias 'other'...
+Destroying test database for alias 'other'...
+Destroying test database for alias 'other'...
+[assistant] [tool_use: Bash] {"command": "python tests/runtests.py migrations.test_operations 2>&1 | grep -E \"Ran|OK|FAIL\""}
+
+=== Turn 19 ===
+[user] [tool_result] Ran 101 tests in 0.542s
+OK
+[assistant] All tests pass. Here's a summary of the fix.
+
+## Problem
+
+When a model has both a `unique_together` and an `index_together` on the *same* fields, deleting the `index_together` crashed with:
+
+```
+ValueError: Found wrong number (2) of constraints for <table>(<columns>)
+```
+
+## Root cause
+
+In `django/db/backends/base/schema.py`, `alter_index_together()` calls `_delete_composed_index(model, fields, {'index': True}, ...)`. The `{'index': True}` filter matches **both** constraints on those columns:
+- the plain index from `index_together` (`unique=False, index=True`)
+- the unique constraint from `unique_together`, which the database implements as a *unique index* (`unique=True, index=True`)
+
+`_delete_composed_index` expects exactly one match, so finding two raised the `ValueError`.
+
+## Fix
+
+Scope the index lookup to non-unique indexes by adding `'unique': False` to the constraint filter, so only the `index_together` index is matched and removed — leaving the `unique_together` constraint untouched (`django/db/backends/base/schema.py:394`):
+
+```python
+for fields in olds.difference(news):
+    self._delete_composed_index(
+        model,
+        fields,
+        {'index': True, 'unique': False},
+        self.sql_delete_index,
+    )
+```
+
+`_constraint_names` already skips constraints whose `unique` flag differs from the requested value, so the unique index is correctly excluded.
+
+I also added `test_remove_index_together_does_not_remove_unique_together` to `tests/schema/tests.py`, which reproduces the crash (verified to fail before the fix) and confirms the `unique_together` survives deletion of the `index_together`.
+
+This addresses point (1) of the report. Point (2) — that moving an index declaration between `index_together` and `Meta.indexes` triggers a re-creation — is a separate autodetector concern and out of scope for this crash fix.

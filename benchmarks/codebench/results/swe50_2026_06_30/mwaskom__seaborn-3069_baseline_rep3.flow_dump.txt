@@ -1,0 +1,280 @@
+
+=== Turn 1 ===
+[user] <session>
+Nominal scale should be drawn the same way as categorical scales
+Three distinctive things happen on the categorical axis in seaborn's categorical plots:
+
+1. The scale is drawn to +/- 0.5 from the first and last tick, rather than using the normal margin logic
+2. A grid is not shown, even
+[assistant] {"title": "Make nominal scales match categorical axis behavior"}
+
+=== Turn 2 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] I'll explore the codebase to understand the structure around `so.Nominal` scales and figure finalization.[tool_use: Bash] {"command": "cd /testbed && find . -path ./node_modules -prune -o -name \"*.py\" -print | grep -iE \"scales|_core\" | head -50", "description": "Find scale-related files"}[tool_use: Bash] {"command": "cd /testbed && ls seaborn/_core/", "description": "List _core directory"}
+
+=== Turn 3 ===
+[user] [tool_result] __init__.py
+data.py
+groupby.py
+moves.py
+plot.py
+properties.py
+rules.py
+scales.py
+subplots.py
+typing.py
+[tool_result] ./tests/test_core.py
+./seaborn/_core/typing.py
+./seaborn/_core/properties.py
+./seaborn/_core/__init__.py
+./seaborn/_core/rules.py
+./seaborn/_core/data.py
+./seaborn/_core
+[assistant] [tool_use: Read] {"file_path": "/testbed/seaborn/_core/scales.py"}
+
+=== Turn 4 ===
+[user] from __future__ import annotations
+import re
+from copy import copy
+from collections.abc import Sequence
+from dataclasses import dataclass
+from functools import partial
+from typing import Any, Callable, Tuple, Optional, ClassVar
+
+import numpy as np
+import matplotlib as mpl
+from matplotlib.ticker impo
+[assistant] (empty response, status=200)
+
+=== Turn 5 ===
+[user] [tool_result] 1	from __future__ import annotations
+2	import re
+3	from copy import copy
+4	from collections.abc import Sequence
+5	from dataclasses import dataclass
+6	from functools import partial
+7	from typing import Any, Callable, Tuple, Optional, ClassVar
+8	
+9	import numpy as np
+10	import matplotlib
+[assistant] Now let me look at `plot.py`, specifically `_finalize_figure` and where scales are applied to axes.[tool_use: Bash] {"command": "grep -n \"_finalize_figure\\|_setup_scales\\|set_view_interval\\|invert\\|sticky\\|margin\\|grid\\|_matplotlib_scale\\|set_axis\" /testbed/seaborn/_core/plot.py", "description": "Find relevant methods in plot.py"}
+
+=== Turn 6 ===
+[user] [tool_result] 311:            "axes", "figure", "font", "grid", "hatch", "legend", "lines",
+321:            **axes_style("darkgrid"),
+491:            Variables that will define the grid of subplots.
+493:            When using only `x` or `y`, "wrap" subplots across a two-dimensional grid
+498:       
+[assistant] [tool_use: Read] {"file_path": "/testbed/seaborn/_core/plot.py", "offset": 1170, "limit": 130}
+
+=== Turn 7 ===
+[user] [tool_result] 1170	    def _setup_scales(
+1171	        self, p: Plot,
+1172	        common: PlotData,
+1173	        layers: list[Layer],
+1174	        variables: list[str] | None = None,
+1175	    ) -> None:
+1176	
+1177	        if variables is None:
+1178	            # Add variables that have data but not
+[assistant] [tool_use: Read] {"file_path": "/testbed/seaborn/_core/plot.py", "offset": 1628, "limit": 90}
+
+=== Turn 8 ===
+[user] [tool_result] 1628	    def _finalize_figure(self, p: Plot) -> None:
+1629	
+1630	        for sub in self._subplots:
+1631	            ax = sub["ax"]
+1632	            for axis in "xy":
+1633	                axis_key = sub[axis]
+1634	
+1635	                # Axis limits
+1636	                if axis_key in 
+[assistant] Now let me look at how the traditional categorical plots handle this, for reference.[tool_use: Bash] {"command": "grep -n \"invert\\|sticky\\|grid(False)\\|set_view_interval\\|- 0.5\\|+ 0.5\\|margins\" /testbed/seaborn/categorical.py | head -40", "description": "Find categorical axis handling"}
+
+=== Turn 9 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: Read] {"file_path": "/testbed/seaborn/categorical.py", "offset": 205, "limit": 40}
+
+=== Turn 10 ===
+[user] [tool_result] 205	        # somewhat undefined; because we don't add null category data to the plot in
+206	        # this case we don't *have* a categorical axis (yet), so best to just bail.
+207	        if self.plot_data[axis].empty:
+208	            return
+209	
+210	        # We can infer the total n
+[assistant] Let me look at existing tests and how scales are referenced in finalize, plus the `set_scale_obj` helper.[tool_use: Bash] {"command": "grep -n \"Nominal\\|invert\\|grid\\|sticky\\|view_interval\\|stickies\\|_finalize\\|0.5\\|spine\" /testbed/tests/_core/test_plot.py | head -40", "description": "Search tests for nominal behaviors"}
+
+=== Turn 11 ===
+[user] [tool_result] 18:from seaborn._core.scales import Nominal, Continuous
+34:def assert_gridspec_shape(ax, nrows=1, ncols=1):
+36:    gs = ax.get_gridspec()
+336:        for col, scale_type in zip("zat", ["Continuous", "Nominal", "Temporal"]):
+364:        p = Plot(y=[2, 1, 3]).scale(y=Nominal()).add(MockM
+[assistant] [tool_use: Read] {"file_path": "/testbed/tests/_core/test_plot.py", "offset": 355, "limit": 20}
+
+=== Turn 12 ===
+[user] [tool_result] 355	
+356	    def test_inferred_categorical_converter(self):
+357	
+358	        p = Plot(x=["b", "c", "a"]).add(MockMark()).plot()
+359	        ax = p._figure.axes[0]
+360	        assert ax.xaxis.convert_units("c") == 1
+361	
+362	    def test_explicit_categorical_converter(self):
+363	
+364	  
+[assistant] Now I understand the structure. Let me check how `p._limits` is keyed and look at the imports section.[tool_use: Bash] {"command": "grep -n \"_limits\\b\\|TYPE_CHECKING\\|from seaborn._core\" /testbed/seaborn/_core/plot.py | head -30", "description": "Inspect limits and imports"}
+
+=== Turn 13 ===
+[user] [tool_result] 26:from seaborn._core.data import PlotData
+27:from seaborn._core.moves import Move
+28:from seaborn._core.scales import Scale
+29:from seaborn._core.subplots import Subplots
+30:from seaborn._core.groupby import GroupBy
+31:from seaborn._core.properties import PROPERTIES, Property
+32:from 
+[assistant] Now I'll implement the changes. First, add the `Plot` import for typing and a base `_finalize` method in `scales.py`:[tool_use: Edit] {"file_path": "/testbed/seaborn/_core/scales.py", "old_string": "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from seaborn._core.properties import Property\n    from numpy.typing import ArrayLike, NDArray", "new_string": "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from seaborn._core.plot import Plot\n    from seaborn._core.properties import Property\n    from numpy.typing import ArrayLike, NDArray"}
+
+=== Turn 14 ===
+[user] [tool_result] The file /testbed/seaborn/_core/scales.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] [tool_use: Edit] {"file_path": "/testbed/seaborn/_core/scales.py", "old_string": "    def _setup(\n        self, data: Series, prop: Property, axis: Axis | None = None,\n    ) -> Scale:\n        raise NotImplementedError()\n\n    def __call__(self, data: Series) -> ArrayLike:", "new_string": "    def _setup(\n        self, data: Series, prop: Property, axis: Axis | None = None,\n    ) -> Scale:\n        raise NotImplementedError()\n\n    def _finalize(self, p: Plot, axis: Axis) -> None:\n        \"\"\"Perform scale-specific axis tweaks after adding artists.\"\"\"\n        pass\n\n    def __call__(self, data: Series) -> ArrayLike:"}
+
+=== Turn 15 ===
+[user] [tool_result] The file /testbed/seaborn/_core/scales.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now add the `_finalize` method to `Nominal`:[tool_use: Edit] {"replace_all": false, "file_path": "/testbed/seaborn/_core/scales.py", "old_string": "        if prop.legend:\n            new._legend = units_seed, list(stringify(units_seed))\n\n        return new\n\n    def tick(self, locator: Locator | None = None):", "new_string": "        if prop.legend:\n            new._legend = units_seed, list(stringify(units_seed))\n\n        return new\n\n    def _finalize(self, p: Plot, axis: Axis) -> None:\n\n        ax = axis.axes\n        name = axis.axis_name\n        axis.grid(False, which=\"both\")\n        if name not in p._limits:\n            nticks = len(axis.get_major_ticks())\n            lo, hi = -.5, nticks - .5\n            if name == \"y\":\n                lo, hi = hi, lo\n            set_lim = getattr(ax, f\"set_{name}lim\")\n            set_lim(lo, hi, auto=None)\n\n    def tick(self, locator: Locator | None = None):"}
+
+=== Turn 16 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Now wire it into `_finalize_figure` in `plot.py`:[tool_use: Edit] {"replace_all": false, "file_path": "/testbed/seaborn/_core/plot.py", "old_string": "            ax = sub[\"ax\"]\n            for axis in \"xy\":\n                axis_key = sub[axis]\n\n                # Axis limits\n                if axis_key in p._limits:\n                    convert_units = getattr(ax, f\"{axis}axis\").convert_units\n                    a, b = p._limits[axis_key]\n                    lo = a if a is None else convert_units(a)\n                    hi = b if b is None else convert_units(b)\n                    if isinstance(a, str):\n                        lo = cast(float, lo) - 0.5\n                    if isinstance(b, str):\n                        hi = cast(float, hi) + 0.5\n                    ax.set(**{f\"{axis}lim\": (lo, hi)})", "new_string": "            ax = sub[\"ax\"]\n            for axis in \"xy\":\n                axis_key = sub[axis]\n                axis_obj = getattr(ax, f\"{axis}axis\")\n\n                # Axis limits\n                if axis_key in p._limits:\n                    convert_units = getattr(ax, f\"{axis}axis\").convert_units\n                    a, b = p._limits[axis_key]\n                    lo = a if a is None else convert_units(a)\n                    hi = b if b is None else convert_units(b)\n                    if isinstance(a, str):\n                        lo = cast(float, lo) - 0.5\n                    if isinstance(b, str):\n                        hi = cast(float, hi) + 0.5\n                    ax.set(**{f\"{axis}lim\": (lo, hi)})\n\n                # Nominal scale special-casing\n                if isinstance(self._scales.get(axis_key), Nominal):\n                    self._scales[axis_key]._finalize(p, axis_obj)"}
+
+=== Turn 17 ===
+[user] [tool_result] The file /testbed/seaborn/_core/plot.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now I need to import `Nominal` in `plot.py`. Let me update the import:[tool_use: Edit] {"replace_all": false, "file_path": "/testbed/seaborn/_core/plot.py", "old_string": "from seaborn._core.scales import Scale", "new_string": "from seaborn._core.scales import Scale, Nominal"}
+
+=== Turn 18 ===
+[user] [tool_result] The file /testbed/seaborn/_core/plot.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Let me verify with a quick test:[tool_use: Bash] {"command": "cd /testbed && python -c \"\nimport matplotlib\nmatplotlib.use('Agg')\nfrom seaborn._core.plot import Plot\nfrom seaborn._core.scales import Nominal\nfrom seaborn._marks.bar import Bar\n\n# x nominal\np = Plot(x=['a','b','c'], y=[1,2,3]).add(Bar()).plot()\nax = p._figure.axes[0]\nprint('x lim:', ax.get_xlim())\nprint('x grid visible:', ax.xaxis.majorTicks[0].gridline.get_visible())\n\n# y nominal (inferred)\np2 = Plot(x=[1,2,3], y=['a','b','c']).add(Bar()).plot()\nax2 = p2._figure.axes[0]\nprint('y lim (should be inverted):', ax2.get_ylim())\nprint('y grid visible:', ax2.yaxis.majorTicks[0].gridline.get_visible())\n\"", "description": "Test nominal scale behaviors"}
+
+=== Turn 19 ===
+[user] [tool_result] Exit code 1
+Traceback (most recent call last):
+  File "<string>", line 9, in <module>
+  File "/testbed/seaborn/_core/plot.py", line 820, in plot
+    return self._plot(pyplot)
+  File "/testbed/seaborn/_core/plot.py", line 850, in _plot
+    plotter._plot_layer(self, layer)
+  File "/testb
+[assistant] The error is a pre-existing pandas incompatibility unrelated to my change. Let me check how the tests work around it:[tool_use: Bash] {"command": "grep -n \"use_inf_as_null\\|MockMark\\|class MockMark\" /testbed/tests/_core/test_plot.py | head; grep -rn \"use_inf_as_null\" /testbed/seaborn/", "description": "Locate MockMark and the pandas issue"}
+
+=== Turn 20 ===
+[user] [tool_result] 45:class MockMark(Mark):
+192:        p = Plot(long_df, x="x", y="y").add(MockMark()).plot()
+198:        p = Plot(long_df, x="x").add(MockMark(), y="y").plot()
+206:        p = Plot(long_df, x="x").add(MockMark(), y=long_df["y"]).plot()
+214:        p = Plot().add(MockMark(), data=long_df
+[assistant] [tool_use: Bash] {"command": "cd /testbed && python -c \"\nimport matplotlib; matplotlib.use('Agg')\nimport sys\nsys.path.insert(0, 'tests/_core')\nfrom test_plot import MockMark\nfrom seaborn._core.plot import Plot\nfrom seaborn._core.scales import Nominal\n\np = Plot(x=['a','b','c'], y=[1,2,3]).add(MockMark()).plot()\nax = p._figure.axes[0]\nprint('x lim:', ax.get_xlim())\nprint('x grid:', ax.xaxis.majorTicks[0].gridline.get_visible())\n\np2 = Plot(x=[1,2,3], y=['a','b','c']).add(MockMark()).plot()\nax2 = p2._figure.axes[0]\nprint('y lim (inverted):', ax2.get_ylim())\nprint('y grid:', ax2.yaxis.majorTicks[0].gridline.get_visible())\n\"", "description": "Test with MockMark"}
+
+=== Turn 21 ===
+[user] [tool_result] Exit code 1
+Traceback (most recent call last):
+  File "<string>", line 9, in <module>
+  File "/testbed/seaborn/_core/plot.py", line 820, in plot
+    return self._plot(pyplot)
+  File "/testbed/seaborn/_core/plot.py", line 850, in _plot
+    plotter._plot_layer(self, layer)
+  File "/testb
+[assistant] [tool_use: Bash] {"command": "cd /testbed && python -c \"import pandas; print(pandas.__version__)\" && python -m pytest tests/_core/test_plot.py -k \"categorical_converter\" -x -q 2>&1 | tail -20", "description": "Check pandas version and run a relevant test"}
+
+=== Turn 22 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] This is a pre-existing pandas 2.0 incompatibility (`use_inf_as_null` removed), unrelated to my change. Let me verify my feature works by monkeypatching around that env issue:[tool_use: Bash] {"command": "python -c \"\nimport matplotlib; matplotlib.use('Agg')\nimport pandas as pd, contextlib\npd.option_context = lambda *a, **k: contextlib.nullcontext()  # work around removed option in pandas 2.0\nimport sys; sys.path.insert(0, 'tests/_core')\nfrom test_plot import MockMark\nfrom seaborn._core.plot import Plot\nfrom seaborn._core.scales import Nominal\n\np = Plot(x=['a','b','c'], y=[1,2,3]).add(MockMark()).plot()\nax = p._figure.axes[0]\nprint('x lim:', ax.get_xlim(), '(expect (-0.5, 2.5))')\nprint('x grid:', ax.xaxis.majorTicks[0].gridline.get_visible(), '(expect False)')\n\np2 = Plot(x=[1,2,3], y=['a','b','c']).add(MockMark()).plot()\nax2 = p2._figure.axes[0]\nprint('y lim:', ax2.get_ylim(), '(expect (2.5, -0.5) inverted)')\nprint('y grid:', ax2.yaxis.majorTicks[0].gridline.get_visible(), '(expect False)')\n\n# explicit limit should override\nfrom seaborn._core.scales import Continuous\np3 = Plot(x=['a','b','c'], y=[1,2,3]).add(MockMark()).limit(x=('a','c')).plot()\nax3 = p3._figure.axes[0]\nprint('x lim w/ explicit limit:', ax3.get_xlim())\n\"", "description": "Verify nominal scale feature"}
+
+=== Turn 23 ===
+[user] [tool_result] x lim: (-0.5, 2.5) (expect (-0.5, 2.5))
+x grid: False (expect False)
+y lim: (2.5, -0.5) (expect (2.5, -0.5) inverted)
+y grid: False (expect False)
+x lim w/ explicit limit: (-0.5, 2.5)
+[assistant] All three behaviors work correctly:
+1. x limits are `(-0.5, 2.5)` (±0.5 from first/last tick)
+2. Grid is off
+3. y axis is inverted `(2.5, -0.5)`
+4. Explicit limits still override
+
+Let me view the final diff:[tool_use: Bash] {"command": "cd /testbed && git diff", "description": "Show final diff"}
+
+=== Turn 24 ===
+[user] [tool_result] diff --git a/seaborn/_core/plot.py b/seaborn/_core/plot.py
+index 4f0290a4..537c8cf6 100644
+--- a/seaborn/_core/plot.py
++++ b/seaborn/_core/plot.py
+@@ -25,7 +25,7 @@ from seaborn._marks.base import Mark
+ from seaborn._stats.base import Stat
+ from seaborn._core.data import PlotData
+ from
+[assistant] The implementation is complete and matches the upstream seaborn approach. Let me add tests for the new behavior, following the existing test style:[tool_use: Read] {"file_path": "/testbed/tests/_core/test_plot.py", "offset": 374, "limit": 30}
+
+=== Turn 25 ===
+[user] [tool_result] 374	        ...
+375	
+376	    def test_faceted_log_scale(self):
+377	
+378	        p = Plot(y=[1, 10]).facet(col=["a", "b"]).scale(y="log").plot()
+379	        for ax in p._figure.axes:
+380	            xfm = ax.yaxis.get_transform().transform
+381	            assert_array_equal(xfm([1, 10, 
+[assistant] [tool_use: Edit] {"file_path": "/testbed/tests/_core/test_plot.py", "old_string": "    @pytest.mark.xfail(reason=\"Temporal auto-conversion not implemented\")\n    def test_categorical_as_datetime(self):\n\n        dates = [\"1970-01-03\", \"1970-01-02\", \"1970-01-04\"]\n        p = Plot(x=dates).scale(...).add(MockMark()).plot()\n        p  # TODO\n        ...", "new_string": "    @pytest.mark.xfail(reason=\"Temporal auto-conversion not implemented\")\n    def test_categorical_as_datetime(self):\n\n        dates = [\"1970-01-03\", \"1970-01-02\", \"1970-01-04\"]\n        p = Plot(x=dates).scale(...).add(MockMark()).plot()\n        p  # TODO\n        ...\n\n    def test_nominal_x_axis_tweaks(self):\n\n        p = Plot(x=[\"a\", \"b\", \"c\"], y=[1, 2, 3])\n        ax1 = p.plot()._figure.axes[0]\n        assert ax1.get_xlim() == (-.5, 2.5)\n        assert not any(x.get_visible() for x in ax1.xaxis.get_gridlines())\n\n        lim = (-1, 2.1)\n        ax2 = p.limit(x=lim).plot()._figure.axes[0]\n        assert ax2.get_xlim() == lim\n\n    def test_nominal_y_axis_tweaks(self):\n\n        p = Plot(x=[1, 2, 3], y=[\"a\", \"b\", \"c\"])\n        ax1 = p.plot()._figure.axes[0]\n        assert ax1.get_ylim() == (2.5, -.5)\n        assert not any(y.get_visible() for y in ax1.yaxis.get_gridlines())\n\n        lim = (-1, 2.1)\n        ax2 = p.limit(y=lim).plot()._figure.axes[0]\n        assert ax2.get_ylim() == lim"}
+
+=== Turn 26 ===
+[user] [tool_result] The file /testbed/tests/_core/test_plot.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Let me verify my tests work (with the pandas workaround for the env):[tool_use: Bash] {"command": "python -c \"\nimport matplotlib; matplotlib.use('Agg')\nimport pandas as pd, contextlib\npd.option_context = lambda *a, **k: contextlib.nullcontext()\nfrom seaborn._core.plot import Plot\n\n# without add()\np = Plot(x=['a','b','c'], y=[1,2,3])\nax1 = p.plot()._figure.axes[0]\nprint('no-add x lim:', ax1.get_xlim())\nprint('ticks:', len(ax1.xaxis.get_major_ticks()))\n\"", "description": "Check behavior without a mark layer"}
+
+=== Turn 27 ===
+[user] [tool_result] no-add x lim: (-0.5, 2.5)
+ticks: 3
+[assistant] Without a mark layer there's no `split_generator` call, so the pandas issue is avoided. Let me run the new tests:[tool_use: Bash] {"command": "cd /testbed && python -m pytest tests/_core/test_plot.py -k \"nominal_x_axis or nominal_y_axis\" -q 2>&1 | tail -15", "description": "Run the new nominal axis tests"}
+
+=== Turn 28 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Both tests pass. Let me also run the scale-related test suite to make sure nothing is broken:[tool_use: Bash] {"command": "python -m pytest tests/_core/test_scales.py -q 2>&1 | tail -15", "description": "Run scales test suite"}
+
+=== Turn 29 ===
+[user] [tool_result] .....................................................x.................. [ 86%]
+...........                                                              [100%]
+=============================== warnings summary ===============================
+tests/_core/test_scales.py::TestNominal::test
+[assistant] All tests pass. The implementation is complete.
+
+## Summary
+
+I made `so.Nominal` scales (including inferred ones) draw their coordinate axis the same way seaborn's traditional categorical plots do, addressing all three behaviors from the issue.
+
+### Changes
+
+**`seaborn/_core/scales.py`**
+- Added a no-op `_finalize(self, p, axis)` hook to the base `Scale` class — a place for scale-specific axis tweaks after artists are added.
+- Implemented `Nominal._finalize`, which:
+  1. **±0.5 limits** — sets the axis limits to `(-0.5, nticks - 0.5)` instead of using normal margin logic.
+  2. **No grid** — calls `axis.grid(False, which="both")`.
+  3. **Inverted y** — swaps the limits when on the y axis.
+  - It defers to the user when an explicit limit is set (`if name not in p._limits`).
+- Added a `TYPE_CHECKING` import of `Plot` for the type hint.
+
+**`seaborn/_core/plot.py`**
+- In `Plotter._finalize_figure`, after the existing axis-limit handling, call `self._scales[axis_key]._finalize(p, axis_obj)` for `Nominal` scales.
+- Imported `Nominal` at the top.
+
+**`tests/_core/test_plot.py`**
+- Added `test_nominal_x_axis_tweaks` and `test_nominal_y_axis_tweaks` covering the ±0.5 limits, grid suppression, y-inversion, and that explicit `.limit()` calls override the default.
+
+### Design notes (re: the issue's implementation comments)
+1. For the ±0.5 behavior I used a direct `set_lim(..., auto=None)` rather than the invisible-sticky-edge hack — simpler and it mirrors what `categorical.py` already does (`ax.set_xlim(-.5, n - .5, auto=None)`).
+2. The grid suppression lives in the finalize step, and it defers to an explicit user limit; forcing a grid on via theme would currently be overridden, matching the existing categorical-plot behavior. Centralizing "grid on/off" in the scale object (your open question) is left as a possible follow-up.
+3. The y-inversion is handled in the same hook, keyed off `axis.axis_name`.
+
+Note: the testbed's installed pandas (2.0.0) has a pre-existing, unrelated incompatibility (`mode.use_inf_as_null` was removed) that breaks `split_generator` whenever a mark is plotted — the new tests avoid it by not adding a layer, just as the axis tweaks don't require one.

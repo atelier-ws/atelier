@@ -4,89 +4,88 @@
 <rect width="100%" height="100%" rx="12" fill="#ffffff"/>
 <style>text{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.title{font-size:24px;font-weight:750;fill:#111827}.subtitle{font-size:13px;fill:#4b5563}.tick{font-size:10px;fill:#4b5563}.axis{font-size:12px;fill:#374151}</style>
 <text class="title" x="24" y="38">Atelier cost savings and correctness by experiment</text>
-<text class="subtitle" x="24" y="64">CC baseline plus 22 qualifying experiments · 5+ tasks per experiment · savings outliers below -100% excluded</text>
+<text class="subtitle" x="24" y="64">CC baseline plus 21 qualifying experiments · 5+ tasks per experiment · savings outliers below -100% excluded</text>
 <text class="subtitle" x="24" y="84">Savings: average baseline cost vs cheapest Atelier. Correctness: correct tasks / all tasks run x 100.</text>
 <line x1="95" x2="1865" y1="565.00" y2="565.00" stroke="#d1d5db" stroke-width="1"/>
-<text class="axis" x="83" y="569.00" text-anchor="end">-50%</text>
-<line x1="95" x2="1865" y1="411.67" y2="411.67" stroke="#6b7280" stroke-width="1.5"/>
-<text class="axis" x="83" y="415.67" text-anchor="end">+0%</text>
-<line x1="95" x2="1865" y1="258.33" y2="258.33" stroke="#d1d5db" stroke-width="1"/>
-<text class="axis" x="83" y="262.33" text-anchor="end">+50%</text>
+<text class="axis" x="83" y="569.00" text-anchor="end">-100%</text>
+<line x1="95" x2="1865" y1="450.00" y2="450.00" stroke="#d1d5db" stroke-width="1"/>
+<text class="axis" x="83" y="454.00" text-anchor="end">-50%</text>
+<line x1="95" x2="1865" y1="335.00" y2="335.00" stroke="#6b7280" stroke-width="1.5"/>
+<text class="axis" x="83" y="339.00" text-anchor="end">+0%</text>
+<line x1="95" x2="1865" y1="220.00" y2="220.00" stroke="#d1d5db" stroke-width="1"/>
+<text class="axis" x="83" y="224.00" text-anchor="end">+50%</text>
 <line x1="95" x2="1865" y1="105.00" y2="105.00" stroke="#d1d5db" stroke-width="1"/>
 <text class="axis" x="83" y="109.00" text-anchor="end">+100%</text>
-<line x1="95" x2="1865" y1="176.56" y2="176.56" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="8 6" opacity="0.7"/>
-<text class="axis" x="105" y="169.56" text-anchor="start" fill="#7c3aed">CC correctness 76.67%</text>
-<polyline points="95.00,411.67 175.45,293.53 255.91,382.39 336.36,431.62 416.82,304.57 497.27,298.68 577.73,288.73 658.18,299.12 738.64,301.75 819.09,288.10 899.55,303.95 980.00,273.37 1060.45,368.50 1140.91,470.16 1221.36,360.07 1301.82,290.36 1382.27,396.88 1462.73,331.26 1543.18,280.69 1623.64,382.14 1704.09,400.55 1784.55,353.62 1865.00,533.14" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-<polyline points="95.00,176.56 175.45,166.33 255.91,181.67 336.36,411.67 416.82,181.67 497.27,156.11 577.73,166.33 658.18,166.33 738.64,166.33 819.09,148.81 899.55,135.67 980.00,166.33 1060.45,168.45 1140.91,166.33 1221.36,289.00 1301.82,289.00 1382.27,289.00 1462.73,289.00 1543.18,289.00 1623.64,227.67 1704.09,227.67 1784.55,166.33 1865.00,105.00" fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="95.00" cy="411.67" r="5" fill="#1d4ed8" stroke="#ffffff" stroke-width="2"><title>CC baseline · 0.00% savings</title></circle>
-<circle cx="95.00" cy="176.56" r="5" fill="#7c3aed" stroke="#ffffff" stroke-width="2"><title>CC baseline · 23/30 tasks correct · 76.67%</title></circle>
+<line x1="95" x2="1865" y1="160.20" y2="160.20" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="8 6" opacity="0.7"/>
+<text class="axis" x="105" y="153.20" text-anchor="start" fill="#7c3aed">CC correctness 76.00%</text>
+<polyline points="95.00,335.00 179.29,283.36 263.57,279.63 347.86,550.83 432.14,305.70 516.43,468.63 600.71,513.91 685.00,223.31 769.29,356.25 853.57,261.67 937.86,245.36 1022.14,309.18 1106.43,311.78 1190.71,320.22 1275.00,304.54 1359.29,363.74 1443.57,356.70 1527.86,238.06 1612.14,228.03 1696.43,377.72 1780.71,345.86 1865.00,275.82" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="95.00,160.20 179.29,243.00 263.57,126.90 347.86,151.00 432.14,312.00 516.43,151.00 600.71,105.00 685.00,128.00 769.29,105.00 853.57,105.00 937.86,105.00 1022.14,105.00 1106.43,138.66 1190.71,139.50 1275.00,140.78 1359.29,143.33 1443.57,191.25 1527.86,133.75 1612.14,146.40 1696.43,118.53 1780.71,105.00 1865.00,174.70" fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="95.00" cy="335.00" r="5" fill="#1d4ed8" stroke="#ffffff" stroke-width="2"><title>CC baseline · 0.00% savings</title></circle>
+<circle cx="95.00" cy="160.20" r="5" fill="#7c3aed" stroke="#ffffff" stroke-width="2"><title>CC baseline · 38/50 tasks correct · 76.00%</title></circle>
 <text class="tick" x="95.00" y="584" text-anchor="middle" font-weight="700">CC</text>
-<circle cx="175.45" cy="293.53" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp06 · swe12_20260619T055432Z · 2026-06-19T10:07:48+00:00 · 38.52% savings · 20 tasks · baseline USD 22.678903 · Atelier USD 13.942201</title></circle>
-<circle cx="175.45" cy="166.33" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp06 · swe12_20260619T055432Z · 16/20 tasks correct · 80.00%</title></circle>
-<text class="tick" x="175.45" y="584" text-anchor="end" transform="rotate(-65 175.45 584)">06</text>
-<circle cx="255.91" cy="382.39" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp10 · auto_full3 · 2026-06-19T12:10:45+00:00 · 9.55% savings · 12 tasks · baseline USD 11.511745 · Atelier USD 10.412827</title></circle>
-<circle cx="255.91" cy="181.67" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp10 · auto_full3 · 9/12 tasks correct · 75.00%</title></circle>
-<text class="tick" x="255.91" y="584" text-anchor="end" transform="rotate(-65 255.91 584)">10</text>
-<circle cx="336.36" cy="431.62" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>exp11 · auto_costly1 · 2026-06-19T12:46:02+00:00 · -6.51% savings · 5 tasks · baseline USD 5.019546 · Atelier USD 5.346210</title></circle>
-<circle cx="336.36" cy="411.67" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp11 · auto_costly1 · 0/5 tasks correct · 0.00%</title></circle>
-<text class="tick" x="336.36" y="584" text-anchor="end" transform="rotate(-65 336.36 584)">11</text>
-<circle cx="416.82" cy="304.57" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp13 · auto_final_3rep · 2026-06-19T13:19:31+00:00 · 34.92% savings · 12 tasks · baseline USD 11.511745 · Atelier USD 7.491511</title></circle>
-<circle cx="416.82" cy="181.67" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp13 · auto_final_3rep · 9/12 tasks correct · 75.00%</title></circle>
-<text class="tick" x="416.82" y="584" text-anchor="end" transform="rotate(-65 416.82 584)">13</text>
-<circle cx="497.27" cy="298.68" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp15 · auto_definitive_3rep · 2026-06-19T14:07:13+00:00 · 36.84% savings · 12 tasks · baseline USD 11.511745 · Atelier USD 7.270594</title></circle>
-<circle cx="497.27" cy="156.11" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp15 · auto_definitive_3rep · 10/12 tasks correct · 83.33%</title></circle>
-<text class="tick" x="497.27" y="584" text-anchor="end" transform="rotate(-65 497.27 584)">15</text>
-<circle cx="577.73" cy="288.73" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp19 · _verifyon_atelier · 2026-06-21T01:33:37+00:00 · 40.09% savings · 20 tasks · baseline USD 22.678903 · Atelier USD 13.587485</title></circle>
-<circle cx="577.73" cy="166.33" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp19 · _verifyon_atelier · 16/20 tasks correct · 80.00%</title></circle>
-<text class="tick" x="577.73" y="584" text-anchor="end" transform="rotate(-65 577.73 584)">19</text>
-<circle cx="658.18" cy="299.12" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp20 · swe20_run · 2026-06-21T04:09:13+00:00 · 36.70% savings · 20 tasks · baseline USD 22.678903 · Atelier USD 14.355844</title></circle>
-<circle cx="658.18" cy="166.33" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp20 · swe20_run · 16/20 tasks correct · 80.00%</title></circle>
-<text class="tick" x="658.18" y="584" text-anchor="end" transform="rotate(-65 658.18 584)">20</text>
-<circle cx="738.64" cy="301.75" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp21 · swe20_run2 · 2026-06-21T08:03:48+00:00 · 35.84% savings · 20 tasks · baseline USD 22.678903 · Atelier USD 14.550439</title></circle>
-<circle cx="738.64" cy="166.33" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp21 · swe20_run2 · 16/20 tasks correct · 80.00%</title></circle>
-<text class="tick" x="738.64" y="584" text-anchor="end" transform="rotate(-65 738.64 584)">21</text>
-<circle cx="819.09" cy="288.10" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp22 · phase0_verdict · 2026-06-21T12:46:41+00:00 · 40.29% savings · 7 tasks · baseline USD 10.223158 · Atelier USD 6.104051</title></circle>
-<circle cx="819.09" cy="148.81" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp22 · phase0_verdict · 6/7 tasks correct · 85.71%</title></circle>
-<text class="tick" x="819.09" y="584" text-anchor="end" transform="rotate(-65 819.09 584)">22</text>
-<circle cx="899.55" cy="303.95" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp23 · swe20_run3 · 2026-06-21T15:10:33+00:00 · 35.13% savings · 20 tasks · baseline USD 22.678903 · Atelier USD 14.712721</title></circle>
-<circle cx="899.55" cy="135.67" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp23 · swe20_run3 · 18/20 tasks correct · 90.00%</title></circle>
-<text class="tick" x="899.55" y="584" text-anchor="end" transform="rotate(-65 899.55 584)">23</text>
-<circle cx="980.00" cy="273.37" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp38 · swe30_run1_20260622T043715Z · 2026-06-22T14:21:51+00:00 · 45.10% savings · 30 tasks · baseline USD 31.270718 · Atelier USD 17.168722</title></circle>
-<circle cx="980.00" cy="166.33" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp38 · swe30_run1_20260622T043715Z · 24/30 tasks correct · 80.00%</title></circle>
-<text class="tick" x="980.00" y="584" text-anchor="end" transform="rotate(-65 980.00 584)">38</text>
-<circle cx="1060.45" cy="368.50" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp46 · postremoval_swe30_rep1 · 2026-06-22T21:48:24+00:00 · 14.08% savings · 29 tasks · baseline USD 27.663641 · Atelier USD 23.769308</title></circle>
-<circle cx="1060.45" cy="168.45" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp46 · postremoval_swe30_rep1 · 23/29 tasks correct · 79.31%</title></circle>
-<text class="tick" x="1060.45" y="584" text-anchor="end" transform="rotate(-65 1060.45 584)">46</text>
-<circle cx="1140.91" cy="470.16" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>exp48 · trim_validate_cheap5 · 2026-06-23T08:27:23+00:00 · -19.07% savings · 5 tasks · baseline USD 0.804587 · Atelier USD 0.958053</title></circle>
-<circle cx="1140.91" cy="166.33" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp48 · trim_validate_cheap5 · 4/5 tasks correct · 80.00%</title></circle>
-<text class="tick" x="1140.91" y="584" text-anchor="end" transform="rotate(-65 1140.91 584)">48</text>
-<circle cx="1221.36" cy="360.07" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp49 · exp_a_noverify_cheap5 · 2026-06-23T10:58:45+00:00 · 16.83% savings · 5 tasks · baseline USD 0.804587 · Atelier USD 0.669203</title></circle>
-<circle cx="1221.36" cy="289.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp49 · exp_a_noverify_cheap5 · 2/5 tasks correct · 40.00%</title></circle>
-<text class="tick" x="1221.36" y="584" text-anchor="end" transform="rotate(-65 1221.36 584)">49</text>
-<circle cx="1301.82" cy="290.36" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp50 · exp_b_scope_verify_cheap5 · 2026-06-23T11:48:34+00:00 · 39.56% savings · 5 tasks · baseline USD 0.804587 · Atelier USD 0.486318</title></circle>
-<circle cx="1301.82" cy="289.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp50 · exp_b_scope_verify_cheap5 · 2/5 tasks correct · 40.00%</title></circle>
-<text class="tick" x="1301.82" y="584" text-anchor="end" transform="rotate(-65 1301.82 584)">50</text>
-<circle cx="1382.27" cy="396.88" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp51 · exp_c_vanilla_mirror_cheap5 · 2026-06-23T12:08:55+00:00 · 4.82% savings · 5 tasks · baseline USD 0.804587 · Atelier USD 0.765791</title></circle>
-<circle cx="1382.27" cy="289.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp51 · exp_c_vanilla_mirror_cheap5 · 2/5 tasks correct · 40.00%</title></circle>
-<text class="tick" x="1382.27" y="584" text-anchor="end" transform="rotate(-65 1382.27 584)">51</text>
-<circle cx="1462.73" cy="331.26" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp52 · exp_d_proven_cheap5 · 2026-06-23T12:33:09+00:00 · 26.22% savings · 5 tasks · baseline USD 0.804587 · Atelier USD 0.593622</title></circle>
-<circle cx="1462.73" cy="289.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp52 · exp_d_proven_cheap5 · 2/5 tasks correct · 40.00%</title></circle>
-<text class="tick" x="1462.73" y="584" text-anchor="end" transform="rotate(-65 1462.73 584)">52</text>
-<circle cx="1543.18" cy="280.69" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp53 · exp_e_tooling_cheap5 · 2026-06-23T13:09:44+00:00 · 42.71% savings · 5 tasks · baseline USD 0.804587 · Atelier USD 0.460942</title></circle>
-<circle cx="1543.18" cy="289.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp53 · exp_e_tooling_cheap5 · 2/5 tasks correct · 40.00%</title></circle>
-<text class="tick" x="1543.18" y="584" text-anchor="end" transform="rotate(-65 1543.18 584)">53</text>
-<circle cx="1623.64" cy="382.14" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp55 · exp_g_finish_missed_cheap5 · 2026-06-23T14:11:09+00:00 · 9.63% savings · 5 tasks · baseline USD 0.804587 · Atelier USD 0.727122</title></circle>
-<circle cx="1623.64" cy="227.67" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp55 · exp_g_finish_missed_cheap5 · 3/5 tasks correct · 60.00%</title></circle>
-<text class="tick" x="1623.64" y="584" text-anchor="end" transform="rotate(-65 1623.64 584)">55</text>
-<circle cx="1704.09" cy="400.55" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp56 · exp_h_fixme_cheap5 · 2026-06-23T15:12:03+00:00 · 3.63% savings · 5 tasks · baseline USD 0.804587 · Atelier USD 0.775410</title></circle>
-<circle cx="1704.09" cy="227.67" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp56 · exp_h_fixme_cheap5 · 3/5 tasks correct · 60.00%</title></circle>
-<text class="tick" x="1704.09" y="584" text-anchor="end" transform="rotate(-65 1704.09 584)">56</text>
-<circle cx="1784.55" cy="353.62" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp57 · exp_i_decorator_cheap5 · 2026-06-23T15:37:51+00:00 · 18.93% savings · 5 tasks · baseline USD 0.804587 · Atelier USD 0.652289</title></circle>
-<circle cx="1784.55" cy="166.33" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp57 · exp_i_decorator_cheap5 · 4/5 tasks correct · 80.00%</title></circle>
-<text class="tick" x="1784.55" y="584" text-anchor="end" transform="rotate(-65 1784.55 584)">57</text>
-<circle cx="1865.00" cy="533.14" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>exp58 · exp_j2_detgate_cheap5 · 2026-06-23T16:09:15+00:00 · -39.61% savings · 5 tasks · baseline USD 0.804587 · Atelier USD 1.123294</title></circle>
-<circle cx="1865.00" cy="105.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp58 · exp_j2_detgate_cheap5 · 5/5 tasks correct · 100.00%</title></circle>
-<text class="tick" x="1865.00" y="584" text-anchor="end" transform="rotate(-65 1865.00 584)">58</text>
+<circle cx="179.29" cy="283.36" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp01 · exp_d_proven_cheap5 · 2026-06-23T12:33:09+00:00 · 22.45% savings · 5 tasks · baseline USD 0.765478 · Atelier USD 0.593622</title></circle>
+<circle cx="179.29" cy="243.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp01 · exp_d_proven_cheap5 · 2/5 tasks correct · 40.00%</title></circle>
+<text class="tick" x="179.29" y="584" text-anchor="end" transform="rotate(-65 179.29 584)">01</text>
+<circle cx="263.57" cy="279.63" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp02 · swe50_stress_run1 · 2026-06-24T14:11:22+00:00 · 24.07% savings · 42 tasks · baseline USD 36.525752 · Atelier USD 27.732402</title></circle>
+<circle cx="263.57" cy="126.90" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp02 · swe50_stress_run1 · 38/42 tasks correct · 90.48%</title></circle>
+<text class="tick" x="263.57" y="584" text-anchor="end" transform="rotate(-65 263.57 584)">02</text>
+<circle cx="347.86" cy="550.83" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>exp05 · fix_grepmode_maxfiles8 · 2026-06-25T22:00:24+00:00 · -93.84% savings · 5 tasks · baseline USD 0.765478 · Atelier USD 1.483797</title></circle>
+<circle cx="347.86" cy="151.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp05 · fix_grepmode_maxfiles8 · 4/5 tasks correct · 80.00%</title></circle>
+<text class="tick" x="347.86" y="584" text-anchor="end" transform="rotate(-65 347.86 584)">05</text>
+<circle cx="432.14" cy="305.70" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp20 · bench_sweep_v1 · 2026-06-26T05:05:40+00:00 · 12.74% savings · 10 tasks · baseline USD 7.112599 · Atelier USD 6.206597</title></circle>
+<circle cx="432.14" cy="312.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp20 · bench_sweep_v1 · 1/10 tasks correct · 10.00%</title></circle>
+<text class="tick" x="432.14" y="584" text-anchor="end" transform="rotate(-65 432.14 584)">20</text>
+<circle cx="516.43" cy="468.63" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>exp24 · swe50_leansearch_run1 · 2026-06-28T10:51:34+00:00 · -58.10% savings · 5 tasks · baseline USD 0.765478 · Atelier USD 1.210231</title></circle>
+<circle cx="516.43" cy="151.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp24 · swe50_leansearch_run1 · 4/5 tasks correct · 80.00%</title></circle>
+<text class="tick" x="516.43" y="584" text-anchor="end" transform="rotate(-65 516.43 584)">24</text>
+<circle cx="600.71" cy="513.91" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>exp25 · swe50_leanbulk_run1 · 2026-06-28T11:09:23+00:00 · -77.79% savings · 5 tasks · baseline USD 0.765478 · Atelier USD 1.360929</title></circle>
+<circle cx="600.71" cy="105.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp25 · swe50_leanbulk_run1 · 5/5 tasks correct · 100.00%</title></circle>
+<text class="tick" x="600.71" y="584" text-anchor="end" transform="rotate(-65 600.71 584)">25</text>
+<circle cx="685.00" cy="223.31" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp26 · swe50_2026_06_30 · 2026-06-28T11:13:06+00:00 · 48.56% savings · 50 tasks · baseline USD 49.876052 · Atelier USD 25.655330</title></circle>
+<circle cx="685.00" cy="128.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp26 · swe50_2026_06_30 · 45/50 tasks correct · 90.00%</title></circle>
+<text class="tick" x="685.00" y="584" text-anchor="end" transform="rotate(-65 685.00 584)">26</text>
+<circle cx="769.29" cy="356.25" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>exp28 · swe50_fair5_run1 · 2026-06-28T11:50:29+00:00 · -9.24% savings · 5 tasks · baseline USD 1.572590 · Atelier USD 1.717894</title></circle>
+<circle cx="769.29" cy="105.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp28 · swe50_fair5_run1 · 5/5 tasks correct · 100.00%</title></circle>
+<text class="tick" x="769.29" y="584" text-anchor="end" transform="rotate(-65 769.29 584)">28</text>
+<circle cx="853.57" cy="261.67" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp29 · swe50_fair5_rep3 · 2026-06-28T11:57:49+00:00 · 31.88% savings · 5 tasks · baseline USD 1.572590 · Atelier USD 1.071203</title></circle>
+<circle cx="853.57" cy="105.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp29 · swe50_fair5_rep3 · 5/5 tasks correct · 100.00%</title></circle>
+<text class="tick" x="853.57" y="584" text-anchor="end" transform="rotate(-65 853.57 584)">29</text>
+<circle cx="937.86" cy="245.36" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp31 · swe50_supercheap5_rep3 · 2026-06-28T12:48:57+00:00 · 38.97% savings · 5 tasks · baseline USD 3.564998 · Atelier USD 2.175624</title></circle>
+<circle cx="937.86" cy="105.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp31 · swe50_supercheap5_rep3 · 5/5 tasks correct · 100.00%</title></circle>
+<text class="tick" x="937.86" y="584" text-anchor="end" transform="rotate(-65 937.86 584)">31</text>
+<circle cx="1022.14" cy="309.18" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp32 · swe50_oldnew5_rep1 · 2026-06-28T13:18:48+00:00 · 11.23% savings · 6 tasks · baseline USD 4.180568 · Atelier USD 3.711181</title></circle>
+<circle cx="1022.14" cy="105.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp32 · swe50_oldnew5_rep1 · 6/6 tasks correct · 100.00%</title></circle>
+<text class="tick" x="1022.14" y="584" text-anchor="end" transform="rotate(-65 1022.14 584)">32</text>
+<circle cx="1106.43" cy="311.78" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp36 · swe50_final_full_rep1 · 2026-06-28T17:40:43+00:00 · 10.10% savings · 41 tasks · baseline USD 40.009645 · Atelier USD 35.970361</title></circle>
+<circle cx="1106.43" cy="138.66" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp36 · swe50_final_full_rep1 · 35/41 tasks correct · 85.37%</title></circle>
+<text class="tick" x="1106.43" y="584" text-anchor="end" transform="rotate(-65 1106.43 584)">36</text>
+<circle cx="1190.71" cy="320.22" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp38 · swe50_trimsweep_rep1 · 2026-06-28T21:05:45+00:00 · 6.43% savings · 20 tasks · baseline USD 17.001815 · Atelier USD 15.908901</title></circle>
+<circle cx="1190.71" cy="139.50" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp38 · swe50_trimsweep_rep1 · 17/20 tasks correct · 85.00%</title></circle>
+<text class="tick" x="1190.71" y="584" text-anchor="end" transform="rotate(-65 1190.71 584)">38</text>
+<circle cx="1275.00" cy="304.54" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp40 · swe50_crisp_rep1 · 2026-06-29T05:54:41+00:00 · 13.24% savings · 45 tasks · baseline USD 42.155825 · Atelier USD 36.572515</title></circle>
+<circle cx="1275.00" cy="140.78" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp40 · swe50_crisp_rep1 · 38/45 tasks correct · 84.44%</title></circle>
+<text class="tick" x="1275.00" y="584" text-anchor="end" transform="rotate(-65 1275.00 584)">40</text>
+<circle cx="1359.29" cy="363.74" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>exp41 · swe50_churn_validate · 2026-06-29T07:26:59+00:00 · -12.50% savings · 6 tasks · baseline USD 6.724480 · Atelier USD 7.564721</title></circle>
+<circle cx="1359.29" cy="143.33" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp41 · swe50_churn_validate · 5/6 tasks correct · 83.33%</title></circle>
+<text class="tick" x="1359.29" y="584" text-anchor="end" transform="rotate(-65 1359.29 584)">41</text>
+<circle cx="1443.57" cy="356.70" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>exp44 · swe50_fixes_retest · 2026-06-29T11:05:08+00:00 · -9.44% savings · 8 tasks · baseline USD 8.712055 · Atelier USD 9.534061</title></circle>
+<circle cx="1443.57" cy="191.25" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp44 · swe50_fixes_retest · 5/8 tasks correct · 62.50%</title></circle>
+<text class="tick" x="1443.57" y="584" text-anchor="end" transform="rotate(-65 1443.57 584)">44</text>
+<circle cx="1527.86" cy="238.06" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp45 · swe50_clean_3rep_2tok · 2026-06-29T12:14:57+00:00 · 42.15% savings · 8 tasks · baseline USD 8.712055 · Atelier USD 5.040229</title></circle>
+<circle cx="1527.86" cy="133.75" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp45 · swe50_clean_3rep_2tok · 7/8 tasks correct · 87.50%</title></circle>
+<text class="tick" x="1527.86" y="584" text-anchor="end" transform="rotate(-65 1527.86 584)">45</text>
+<circle cx="1612.14" cy="228.03" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp46 · swe50_final_5rep · 2026-06-29T12:14:57+00:00 · 46.51% savings · 50 tasks · baseline USD 49.876052 · Atelier USD 26.679853</title></circle>
+<circle cx="1612.14" cy="146.40" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp46 · swe50_final_5rep · 41/50 tasks correct · 82.00%</title></circle>
+<text class="tick" x="1612.14" y="584" text-anchor="end" transform="rotate(-65 1612.14 584)">46</text>
+<circle cx="1696.43" cy="377.72" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>exp47 · swe50_outline_test · 2026-06-29T20:24:02+00:00 · -18.57% savings · 17 tasks · baseline USD 9.947177 · Atelier USD 11.794744</title></circle>
+<circle cx="1696.43" cy="118.53" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp47 · swe50_outline_test · 16/17 tasks correct · 94.12%</title></circle>
+<text class="tick" x="1696.43" y="584" text-anchor="end" transform="rotate(-65 1696.43 584)">47</text>
+<circle cx="1780.71" cy="345.86" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>exp49 · swe50_exp16_smart · 2026-06-29T22:46:15+00:00 · -4.72% savings · 16 tasks · baseline USD 8.478173 · Atelier USD 8.878632</title></circle>
+<circle cx="1780.71" cy="105.00" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp49 · swe50_exp16_smart · 16/16 tasks correct · 100.00%</title></circle>
+<text class="tick" x="1780.71" y="584" text-anchor="end" transform="rotate(-65 1780.71 584)">49</text>
+<circle cx="1865.00" cy="275.82" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>exp50 · swe50_rest33_smart · 2026-06-29T23:01:51+00:00 · 25.73% savings · 33 tasks · baseline USD 39.928875 · Atelier USD 29.655520</title></circle>
+<circle cx="1865.00" cy="174.70" r="4.5" fill="#7c3aed" stroke="#ffffff" stroke-width="1.5"><title>exp50 · swe50_rest33_smart · 23/33 tasks correct · 69.70%</title></circle>
+<text class="tick" x="1865.00" y="584" text-anchor="end" transform="rotate(-65 1865.00 584)">50</text>
 <text class="axis" x="22" y="335.00" text-anchor="middle" transform="rotate(-90 22 335.00)">Percent</text>
 <text class="subtitle" x="95" y="680">Blue line: cost savings (green cheaper, red more expensive). Purple line: correct tasks / all tasks run x 100; dashed line is CC baseline. Exact values and deltas are in optimization_savings.csv.</text>
 </svg>

@@ -1,0 +1,67 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "returning_fields insert returned values set attribute on model _do_insert"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "def execute_sql InsertQuery returning_fields cursor fetchall"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files": ["django/db/models/query.py", "django/db/models/sql/compiler.py", "django/db/models/options.py", "django/forms/models.py", "django/db/backends/base/operations.py", "django/db/backends/oracle/operations.py", "django/contrib/admin/checks.py"], "exact_match": true, "fi
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/sql/compiler.py:L1403-L1470"]}[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/base.py:L870-L960"]}
+
+=== Turn 3 ===
+[user] [tool_result] ## django/db/models/sql/compiler.py:L1403-L1470
+    def execute_sql(self, returning_fields=None):
+        assert not (
+            returning_fields and len(self.query.objs) != 1 and
+            not self.connection.features.can_return_rows_from_bulk_insert
+        )
+        self.returni
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "apply_converters get_converters convert_value compiler", "include_source": true}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "bulk_create _insert returning_fields setattr objs_with_pk"}
+
+=== Turn 4 ===
+[user] [tool_result] {"candidate_files": ["django/db/models/sql/compiler.py", "django/db/models/expressions.py", "django/contrib/gis/db/models/aggregates.py", "django/db/models/query.py", "django/db/models/sql/query.py"], "exact_match": true, "files": [{"path": "django/db/models/functions/datetime.py", "se
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/sql/compiler.py:L1100-L1142"]}
+
+=== Turn 5 ===
+[user] [tool_result] ## django/db/models/sql/compiler.py:L1100-L1142
+    def get_converters(self, expressions):
+        converters = {}
+        for i, expression in enumerate(expressions):
+            if expression:
+                backend_converters = self.connection.ops.get_db_converters(expression)
+    
+[assistant] The fix: apply converters to the returned rows in `SQLInsertCompiler.execute_sql`.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/db/models/sql/compiler.py", "old": "    def execute_sql(self, returning_fields=None):\n        assert not (\n            returning_fields and len(self.query.objs) != 1 and\n            not self.connection.features.can_return_rows_from_bulk_insert\n        )\n        self.returning_fields = returning_fields\n        with self.connection.cursor() as cursor:\n            for sql, params in self.as_sql():\n                cursor.execute(sql, params)\n            if not self.returning_fields:\n                return []\n            if self.connection.features.can_return_rows_from_bulk_insert and len(self.query.objs) > 1:\n                return self.connection.ops.fetch_returned_insert_rows(cursor)\n            if self.connection.features.can_return_columns_from_insert:\n                assert len(self.query.objs) == 1\n                return [self.connection.ops.fetch_returned_insert_columns(cursor, self.returning_params)]\n            return [(self.connection.ops.last_insert_id(\n                cursor, self.query.get_meta().db_table, self.query.get_meta().pk.column\n            ),)]", "new": "    def execute_sql(self, returning_fields=None):\n        assert not (\n            returning_fields and len(self.query.objs) != 1 and\n            not self.connection.features.can_return_rows_from_bulk_insert\n        )\n        opts = self.query.get_meta()\n        self.returning_fields = returning_fields\n        with self.connection.cursor() as cursor:\n            for sql, params in self.as_sql():\n                cursor.execute(sql, params)\n            if not self.returning_fields:\n                return []\n            if self.connection.features.can_return_rows_from_bulk_insert and len(self.query.objs) > 1:\n                rows = self.connection.ops.fetch_returned_insert_rows(cursor)\n            elif self.connection.features.can_return_columns_from_insert:\n                assert len(self.query.objs) == 1\n                rows = [self.connection.ops.fetch_returned_insert_columns(\n                    cursor, self.returning_params,\n                )]\n            else:\n                rows = [(self.connection.ops.last_insert_id(\n                    cursor, opts.db_table, opts.pk.column,\n                ),)]\n        cols = [field.get_col(opts.db_table) for field in self.returning_fields]\n        converters = self.get_converters(cols)\n        if converters:\n            rows = list(self.apply_converters(rows, converters))\n        return rows"}]}
+
+=== Turn 6 ===
+[user] [tool_result] applied django/db/models/sql/compiler.py:1403-1421
+[assistant] Now verify the `bulk_create` path consumes these returned rows the same way.[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/query.py:L463-L525"]}
+
+=== Turn 7 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Both `bulk_create` and `Model.save()` consume the rows returned by `execute_sql`, so converting the rows inside the insert compiler fixes all insert pathways at once.
+
+The fix applies the field's database converters (including `from_db_value`) to the values returned from an INSERT, in `SQLInsertCompiler.execute_sql`:
+
+- It builds `Col` expressions for the `returning_fields` and reuses the existing `get_converters`/`apply_converters` machinery already used by SELECT queries.
+- All three return paths (bulk insert RETURNING, single-row RETURNING/insert-columns, and `last_insert_id` fallback) now flow into a single `rows` variable that gets converted before returning.
+
+This covers `Model.save()` (which sets attrs from `results[0]` in `base.py`) and both `bulk_create` branches (which set attrs from `returned_columns`), so a custom `from_db_value` now wraps the returned PK consistently. The converters are only applied when present, so the common no-converter case is unaffected.
+
+=== Turn 8 ===
+[user] Stop hook feedback:
+verify-before-done: edited compiler.py but ran no tests -- run the suite before finishing.
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && python runtests.py from_db_value custom_pk basic --parallel=1 2>&1 | tail -20"}
+
+=== Turn 9 ===
+[user] [tool_result] Ran 78 tests in 0.047s
+OK (skipped=3)
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && python runtests.py from_db_value bulk_create queries --parallel=1 2>&1 | tail -15"}
+
+=== Turn 10 ===
+[user] [tool_result] Ran 445 tests in 0.626s
+OK (skipped=19, expected failures=2)
+[assistant] Tests pass. The fix in `SQLInsertCompiler.execute_sql` applies the field's database converters (including `from_db_value`) to values returned from an INSERT across all three return paths, so custom auto-field wrapper types are now preserved on `create()`, `save()`, and `bulk_create()` — matching every other query pathway. Verified against `from_db_value`, `bulk_create`, `custom_pk`, `basic`, and `queries` suites with no regressions.

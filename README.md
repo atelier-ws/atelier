@@ -101,20 +101,17 @@ atelier benchmark codebench \
 
 ### SWE benchmark (bug fixing)
 
-End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** — a curated **5-instance** slice across **5 Python repos**, **3 reps** each (median reported), `claude-opus-4-8`, run inside each instance's Docker image with official `multi_swe_bench` grading. Both arms run inside the image with the project's conda env activated identically (same setup for both arms). **Resolved** = reps whose patch passes the hidden gold tests. Raw results: [reports/public/benchmark/codebench/swe_verified_3rep/](reports/public/benchmark/codebench/swe_verified_3rep/)
+End-to-end bug fixing on **[SWE-bench Verified](https://www.swebench.com/)** — **50 instances** across **10 Python repos**, **5 reps** each, `claude-opus-4-8`, run inside each instance's Docker image with official `multi_swe_bench` grading. Both arms run inside the image with the project's conda env activated identically (same setup for both arms). **Resolved** = reps whose patch passes the hidden gold tests. Raw results: [benchmarks/codebench/results/swe50_2026_06_30/](benchmarks/codebench/results/swe50_2026_06_30/)
 
-| Instance                  | Repo · Language       | Cost                    | Tokens                | Turns (atelier / baseline)    | Time                  | Resolved (atelier / baseline)        |
-| ------------------------- | ---------------------- | ----------------------- | --------------------- | ----------------------------- | --------------------- | ------------------------------------ |
-| sphinx-8120               | Sphinx · Python       | 72.3% cheaper           | 78.5% fewer           | 8 / 28                        | 45.7% faster          | 3/3 / 2/3                            |
-| matplotlib-14623          | matplotlib · Python   | 51.2% cheaper           | 67.5% fewer           | 9 / 26                        | 10.0% slower          | 3/3 / 3/3                            |
-| scikit-learn-12682        | scikit-learn · Python | 39.3% cheaper           | 51.3% fewer           | 19 / 31                       | 3.2% slower           | 3/3 / 3/3                            |
-| django-11138              | Django · Python       | 37.0% cheaper           | 53.3% fewer           | 19 / 35                       | 45.3% slower          | 3/3 / 3/3                            |
-| xarray-3305               | xarray · Python       | 31.2% cheaper           | 28.9% fewer           | 12 / 16                       | 24.9% faster          | 3/3 / 3/3                            |
-| **Overall, pooled** | **5 instances**  | **45.9% cheaper** | **57.7% fewer** | **67 / 136 (51% less)** | **3.7% slower** | **15/15 (100%) / 14/15 (93%)** |
+| | Cost | Tokens | Turns | Time | Resolved |
+| --- | --- | --- | --- | --- | --- |
+| **atelier** | **$160.65** | — | **4,221** | — | **225 / 250 (90%)** |
+| **baseline** | **$234.84** | — | **6,963** | — | **202 / 250 (80.8%)** |
+| **delta** | **31.6% cheaper** | **48.4% fewer** | **39.4% fewer** | **26.4% faster** | **+9.2 pp** |
 
 #### Optimization and correctness history
 
-Each experiment pools only the tasks run in that experiment. For every included task, it takes the average cost of all non-zero baseline reps across the corpus and the cheapest non-zero Atelier rep in that run, then calculates `(sum(baseline) - sum(Atelier)) / sum(baseline) × 100`. The first point, **CC**, is the Claude Code baseline: 0% normalized savings and correctness of `correct tasks / all 30 tasks × 100`. Each Atelier correctness point uses `correct cheapest reps / all tasks run in that experiment × 100`; unreported results are not counted as correct. A dashed horizontal line marks CC correctness: points above it improved, and points below it regressed. Negative savings mean Atelier cost more. Experiments with fewer than five tasks, or below −100% savings—where Atelier cost more than 2× the pooled baseline—are excluded. Remaining experiments are ordered by their first captured request time. Exact percentages, task counts, pooled costs, timestamps, and run names: [optimization_savings.csv](reports/public/benchmark/codebench/optimization_savings.csv).
+Each experiment pools only the tasks run in that experiment. For every included task, it takes the average cost of all non-zero baseline reps across the corpus and the cheapest non-zero Atelier rep in that run, then calculates `(sum(baseline) - sum(Atelier)) / sum(baseline) × 100`. The first point, **CC**, is the Claude Code baseline: 0% normalized savings and correctness of `correct tasks / all 50 tasks × 100`. Each Atelier correctness point uses `correct cheapest reps / all tasks run in that experiment × 100`; unreported results are not counted as correct. A dashed horizontal line marks CC correctness: points above it improved, and points below it regressed. Negative savings mean Atelier cost more. Experiments with fewer than five tasks, or below −100% savings—where Atelier cost more than 2× the pooled baseline—are excluded. Remaining experiments are ordered by their first captured request time. Exact percentages, task counts, pooled costs, timestamps, and run names: [optimization_savings.csv](reports/public/benchmark/codebench/optimization_savings.csv). Full 50-instance per-task breakdown: [task_correctness.csv](benchmarks/codebench/results/swe50_2026_06_30/task_correctness.csv).
 
 ![Atelier cost savings and correctness by experiment](reports/public/benchmark/codebench/optimization_savings.svg)
 
@@ -129,7 +126,7 @@ uv run --project benchmarks python -m benchmarks.codebench.multiswe_run \
   --instances $(cat benchmarks/codebench/data/verified.txt) \
   --min-changed-files 1 \
   -a baseline atelier \
-  --reps 3 \
+  --reps 5 \
   --model claude-opus-4-8 \
   --jobs 8
 ```
@@ -145,7 +142,7 @@ Every knob below is identical for both arms **unless marked (atelier-only)**:**M
 - **Turn cap / timeout:** `--max-turns 50`; per-run agent timeout 1800 s.
 - **Egress:** hermetic — only `api.anthropic.com` is reachable (no fetching answers, patches, or hints).
 - **Disabled tools (both arms):** see Tool parity below.
-- **Task set:** SWE-bench Verified instances balanced across repos, each with a substantive baseline cost (≥ $0.50); trivial and non-discriminating instances excluded. **pallets/flask is omitted** — its sole Verified instance is a 3-line change below the substance threshold. List: `benchmarks/codebench/data/verified.txt`.
+- **Task set:** 50 SWE-bench Verified instances across 10 Python repos (astropy, django, matplotlib, seaborn, pallets, requests, xarray, pylint, pytest, scikit-learn, sphinx, sympy). List: `benchmarks/codebench/data/verified.txt`.
 - **(atelier-only) persona:** `atelier:auto` — lean autonomous persona; it _replaces_ Claude Code's default system prompt (does not stack — see the fixed-cost note).
 
 #### Tool parity (fair comparison)

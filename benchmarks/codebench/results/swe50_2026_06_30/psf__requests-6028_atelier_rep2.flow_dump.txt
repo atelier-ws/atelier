@@ -1,0 +1,71 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "get_auth_from_url proxy authorization header"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "proxy_headers proxy_manager_for Proxy-Authorization"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["requests/adapters.py","requests/sessions.py","requests/auth.py","requests/models.py","requests/cookies.py","requests/api.py"],"exact_match":true,"files":[{"path":"tests/test_utils.py","sections":[{"content":"400\tdef test_get_auth_from_url(url, auth):\n401\t    ass
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "prepend_scheme_if_needed urlparse proxy scheme"}
+
+=== Turn 3 ===
+[user] [tool_result] {"candidate_files":["requests/adapters.py","requests/sessions.py","requests/auth.py","requests/cookies.py","tests/test_requests.py","tests/test_lowlevel.py"],"exact_match":true,"files":[{"path":"tests/test_utils.py","sections":[{"content":"606\tdef test_prepend_scheme_if_needed(value, 
+[assistant] Found it. The bug is in `prepend_scheme_if_needed`: it uses urllib3's `parse_url`, whose `.netloc` property returns only `host:port` and **drops the auth component**. So proxy credentials get stripped, no `Proxy-Authorization` header is sent → 407.
+
+Let me check the test cases:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/test_utils.py:L590-L610"]}
+
+=== Turn 4 ===
+[user] [tool_result] ## tests/test_utils.py:L590-L610
+        ),
+        (
+            '',
+            []
+        ),
+    ))
+def test_parse_header_links(value, expected):
+    assert parse_header_links(value) == expected
+
+
+@pytest.mark.parametrize(
+    'value, expected', (
+        ('example.com/path', 'http:
+[assistant] Now I'll apply the fix and add test coverage for proxy URLs with auth:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "requests/utils.py", "old": "    netloc = parsed.netloc\n    if not netloc:\n        netloc, path = path, netloc\n\n    if scheme is None:\n        scheme = new_scheme\n    if path is None:\n        path = ''", "new": "    netloc = parsed.netloc\n    if not netloc:\n        netloc, path = path, netloc\n\n    if auth:\n        # parse_url doesn't provide the netloc with auth\n        # so we'll add it ourselves.\n        netloc = '@'.join([auth, netloc])\n    if scheme is None:\n        scheme = new_scheme\n    if path is None:\n        path = ''"}, {"path": "tests/test_utils.py", "old": "        ('example.com/path', 'http://example.com/path'),\n        ('//example.com/path', 'http://example.com/path'),\n        ('example.com:80', 'http://example.com:80'),\n    ))\ndef test_prepend_scheme_if_needed(value, expected):", "new": "        ('example.com/path', 'http://example.com/path'),\n        ('//example.com/path', 'http://example.com/path'),\n        ('example.com:80', 'http://example.com:80'),\n        (\n            'http://user:pass@example.com/path?query',\n            'http://user:pass@example.com/path?query'\n        ),\n        (\n            'http://user@example.com/path?query',\n            'http://user@example.com/path?query'\n        ),\n    ))\ndef test_prepend_scheme_if_needed(value, expected):"}]}
+
+=== Turn 5 ===
+[user] [tool_result] applied requests/utils.py:973-980, tests/test_utils.py:602-606
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "python -m pytest tests/test_utils.py::test_prepend_scheme_if_needed -q"}
+
+=== Turn 6 ===
+[user] [tool_result] 5 passed in 0.03s
+[assistant] All tests pass.
+
+## What was wrong
+
+The Python 3.8.12 `urllib.parse` change you linked altered how `urlparse`/`urlsplit` handles authority components, which exposed a latent bug in requests' proxy handling.
+
+In `requests/utils.py`, `prepend_scheme_if_needed()` (called whenever a proxy URL is resolved) parses the proxy URL with urllib3's `parse_url`, then rebuilds it:
+
+```python
+netloc = parsed.netloc   # <-- only host:port, auth is dropped!
+...
+return urlunparse((scheme, netloc, path, '', query, fragment))
+```
+
+urllib3's `Url.netloc` property returns only `host:port` — it does **not** include the `user:pass@` auth part. So the credentials in your proxy URL (`http://user:pass@proxy:port`) were silently stripped before the request was made. With no `Proxy-Authorization` header, the proxy responded **407**.
+
+## The fix
+
+Re-attach the auth component when reconstructing the netloc:
+
+```python
+if auth:
+    # parse_url doesn't provide the netloc with auth
+    # so we'll add it ourselves.
+    netloc = '@'.join([auth, netloc])
+```
+
+I also added regression test cases covering proxy URLs with `user:pass@` and `user@` auth. All five `test_prepend_scheme_if_needed` cases pass.

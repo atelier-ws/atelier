@@ -1,0 +1,50 @@
+diff --git a/seaborn/_core/scales.py b/seaborn/_core/scales.py
+index 55874bf2..d2a97a17 100644
+--- a/seaborn/_core/scales.py
++++ b/seaborn/_core/scales.py
+@@ -379,6 +379,24 @@ class ContinuousBase(Scale):
+             locs = axis.major.locator()
+             locs = locs[(vmin <= locs) & (locs <= vmax)]
+             labels = axis.major.formatter.format_ticks(locs)
++
++            # Matplotlib's ScalarFormatter (and other formatters) may factor a
++            # common offset/scientific scaling out of the individual tick labels
++            # and into a separate offset string (e.g. labels of "3", "4" with an
++            # offset of "1e6"). The legend has no place to display that offset,
++            # so reformat with the offset disabled to produce full-magnitude
++            # labels and avoid silently dropping the scaling factor.
++            formatter = axis.major.formatter
++            if (
++                isinstance(formatter, ScalarFormatter)
++                and formatter.get_offset()
++            ):
++                formatter = copy(formatter)
++                formatter.set_useOffset(False)
++                formatter.set_scientific(False)
++                formatter.set_locs(locs)
++                labels = formatter.format_ticks(locs)
++
+             new._legend = list(locs), list(labels)
+ 
+         return new
+diff --git a/tests/_core/test_scales.py b/tests/_core/test_scales.py
+index c4b39f5d..9742ac7a 100644
+--- a/tests/_core/test_scales.py
++++ b/tests/_core/test_scales.py
+@@ -303,6 +303,16 @@ class TestContinuous:
+         label, = a.major.formatter.format_ticks([100])
+         assert r"10^{2}" in label
+ 
++    def test_legend_large_offset(self):
++
++        # GH2812: legend labels must include the magnitude that ScalarFormatter
++        # would otherwise factor out into a separate (and hidden) offset string.
++        x = pd.Series(np.linspace(2.7e6, 6.3e6, 50), name="x")
++        s = Continuous()._setup(x, IntervalProperty())
++        locs, labels = s._legend
++        for loc, label in zip(locs, labels):
++            assert float(label) == loc
++
+     def test_label_type_checks(self):
+ 
+         s = Continuous()

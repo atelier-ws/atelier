@@ -1,0 +1,171 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "Nominal scale _setup matplotlib axis", "path": "seaborn/_core/scales.py"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_finalize_figure Plotter", "path": "seaborn/_core/plot.py"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["tests/_core/test_scales.py","seaborn/_core/plot.py","seaborn/_marks/line.py","tests/_core/test_plot.py","seaborn/_compat.py","tests/_core/test_properties.py","seaborn/_core/properties.py"],"exact_match":false,"files":[{"path":"seaborn/_core/scales.py","sections":[{
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"symbol": "Nominal"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_finalize_figure method body", "path": "seaborn/_core/plot.py"}
+
+=== Turn 3 ===
+[user] [tool_result] ### seaborn/_core/scales.py:L138-L295 (class)
+class Nominal(Scale):
+    """
+    A categorical scale without relative importance / magnitude.
+    """
+    # Categorical (convert to strings), un-sortable
+
+    values: tuple | str | list | dict | None = None
+    order: list | None = None
+
+ 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_setup_scales set_scale axis coordinate", "path": "seaborn/_core/plot.py"}
+
+=== Turn 4 ===
+[user] [tool_result] {"candidate_files":["tests/_core/test_scales.py","seaborn/_oldcore.py","seaborn/_compat.py","seaborn/_core/scales.py","seaborn/_marks/line.py","seaborn/categorical.py","tests/_core/test_plot.py"],"exact_match":true,"files":[{"path":"seaborn/_core/plot.py","sections":[{"content":"1170\t
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/plot.py:L1211-L1290"]}
+
+=== Turn 5 ===
+[user] [tool_result] ## seaborn/_core/plot.py:L1211-L1290
+            for layer in layers:
+                parts.append(layer["data"].frame.filter(cols))
+                for df in layer["data"].frames.values():
+                    parts.append(df.filter(cols))
+            var_df = pd.concat(parts, ignore_i
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/scales.py:L1-L137"]}
+
+=== Turn 6 ===
+[user] [tool_result] ## seaborn/_core/scales.py:L1-L137
+from __future__ import annotations
+import re
+from copy import copy
+from collections.abc import Sequence
+from dataclasses import dataclass
+from functools import partial
+from typing import Any, Callable, Tuple, Optional, ClassVar
+
+import numpy as np
+imp
+[assistant] Now I have a clear picture. Let me implement the changes: add a `_finalize` hook to the base `Scale`, implement it on `Nominal`, and call it from `Plotter._finalize_figure`.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "seaborn/_core/scales.py", "old": "if TYPE_CHECKING:\n    from seaborn._core.properties import Property\n    from numpy.typing import ArrayLike, NDArray", "new": "if TYPE_CHECKING:\n    from seaborn._core.plot import Plot\n    from seaborn._core.properties import Property\n    from numpy.typing import ArrayLike, NDArray"}, {"path": "seaborn/_core/scales.py", "old": "    def _setup(\n        self, data: Series, prop: Property, axis: Axis | None = None,\n    ) -> Scale:\n        raise NotImplementedError()\n\n    def __call__(self, data: Series) -> ArrayLike:", "new": "    def _setup(\n        self, data: Series, prop: Property, axis: Axis | None = None,\n    ) -> Scale:\n        raise NotImplementedError()\n\n    def _finalize(self, p: Plot, axis: Axis) -> None:\n        \"\"\"Perform scale-specific axis tweaks after adding artists.\"\"\"\n        pass\n\n    def __call__(self, data: Series) -> ArrayLike:"}, {"path": "seaborn/_core/scales.py", "old": "        if prop.legend:\n            new._legend = units_seed, list(stringify(units_seed))\n\n        return new\n\n    def tick(self, locator: Locator | None = None):", "new": "        if prop.legend:\n            new._legend = units_seed, list(stringify(units_seed))\n\n        return new\n\n    def _finalize(self, p: Plot, axis: Axis) -> None:\n\n        ax = axis.axes\n        name = axis.axis_name\n        axis.grid(False, which=\"both\")\n        if name not in p._limits:\n            nticks = len(axis.get_major_ticks())\n            lo, hi = -.5, nticks - .5\n            if name == \"y\":\n                lo, hi = hi, lo\n            set_lim = getattr(ax, f\"set_{name}lim\")\n            set_lim(lo, hi, auto=None)\n\n    def tick(self, locator: Locator | None = None):"}]}
+
+=== Turn 7 ===
+[user] [tool_result] applied seaborn/_core/scales.py:40-42,100-105,230-235
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "seaborn/_core/plot.py", "old": "        for sub in self._subplots:\n            ax = sub[\"ax\"]\n            for axis in \"xy\":\n                axis_key = sub[axis]\n\n                # Axis limits\n                if axis_key in p._limits:\n                    convert_units = getattr(ax, f\"{axis}axis\").convert_units\n                    a, b = p._limits[axis_key]\n                    lo = a if a is None else convert_units(a)\n                    hi = b if b is None else convert_units(b)\n                    if isinstance(a, str):\n                        lo = cast(float, lo) - 0.5\n                    if isinstance(b, str):\n                        hi = cast(float, hi) + 0.5\n                    ax.set(**{f\"{axis}lim\": (lo, hi)})\n", "new": "        for sub in self._subplots:\n            ax = sub[\"ax\"]\n            for axis in \"xy\":\n                axis_key = sub[axis]\n                axis_obj = getattr(ax, f\"{axis}axis\")\n\n                # Axis limits\n                if axis_key in p._limits:\n                    convert_units = getattr(ax, f\"{axis}axis\").convert_units\n                    a, b = p._limits[axis_key]\n                    lo = a if a is None else convert_units(a)\n                    hi = b if b is None else convert_units(b)\n                    if isinstance(a, str):\n                        lo = cast(float, lo) - 0.5\n                    if isinstance(b, str):\n                        hi = cast(float, hi) + 0.5\n                    ax.set(**{f\"{axis}lim\": (lo, hi)})\n\n                # Nominal scale special-casing\n                if isinstance(self._scales.get(axis_key), Nominal):\n                    self._scales[axis_key]._finalize(p, axis_obj)\n"}]}
+
+=== Turn 8 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] I need to ensure `Nominal` is imported at module level in plot.py (currently it's imported locally inside the mpl<3.4 check).[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "from seaborn._core.scales import", "path": "seaborn/_core/plot.py"}
+
+=== Turn 9 ===
+[user] [tool_result] {"candidate_files":["seaborn/_marks/bar.py","seaborn/_marks/base.py","seaborn/_marks/dot.py","seaborn/objects.py","seaborn/_core/moves.py","seaborn/_stats/aggregation.py","seaborn/_stats/order.py"],"exact_match":false,"files":[{"path":"seaborn/_core/plot.py","sections":[{"content":"117
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"from seaborn._core.scales\" seaborn/_core/plot.py"}
+
+=== Turn 10 ===
+[user] [tool_result] 28:from seaborn._core.scales import Scale
+1241:                from seaborn._core.scales import Nominal
+
+[discipline] Prefer the `code_search` tool over shell `grep` for code exploration.
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "seaborn/_core/plot.py", "old": "from seaborn._core.scales import Scale", "new": "from seaborn._core.scales import Scale, Nominal"}, {"path": "seaborn/_core/plot.py", "old": "            if axis is not None and Version(mpl.__version__) < Version(\"3.4.0\"):\n                from seaborn._core.scales import Nominal\n                paired_axis = axis in p._pair_spec.get(\"structure\", {})", "new": "            if axis is not None and Version(mpl.__version__) < Version(\"3.4.0\"):\n                paired_axis = axis in p._pair_spec.get(\"structure\", {})"}]}
+
+=== Turn 11 ===
+[user] [tool_result] applied seaborn/_core/plot.py:28,1240-1242
+[assistant] Now let me verify the change works with a quick test.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && python -c \"\nimport matplotlib\nmatplotlib.use('Agg')\nimport seaborn.objects as so\nimport matplotlib.pyplot as plt\n\n# default style with grid\nimport seaborn\nseaborn.set_theme(style='whitegrid')\n\np = so.Plot(x=['a','b','c'], y=[1,2,3]).add(so.Bar())\nf = plt.figure()\nres = p.on(f).plot()\nax = f.axes[0]\nprint('xlim', ax.get_xlim())\nprint('x grid visible', any(l.get_visible() for l in ax.xaxis.get_gridlines()))\nprint('y grid visible', any(l.get_visible() for l in ax.yaxis.get_gridlines()))\n\n# nominal on y -> inverted\np2 = so.Plot(y=['a','b','c'], x=[1,2,3]).add(so.Bar())\nf2 = plt.figure()\np2.on(f2).plot()\nax2 = f2.axes[0]\nprint('ylim (inverted)', ax2.get_ylim())\n\"\n"}
+
+=== Turn 12 ===
+[user] [tool_result] exit_code=1
+Traceback (most recent call last):
+  File "<string>", line 13, in <module>
+  File "/testbed/seaborn/_core/plot.py", line 820, in plot
+    return self._plot(pyplot)
+  File "/testbed/seaborn/_core/plot.py", line 850, in _plot
+    plotter._plot_layer(self, layer)
+  File "/test
+[assistant] That's a pre-existing pandas-compat issue in `Bar`, unrelated to my change. Let me use a different mark.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && python -c \"\nimport matplotlib\nmatplotlib.use('Agg')\nimport seaborn, seaborn.objects as so\nimport matplotlib.pyplot as plt\nseaborn.set_theme(style='whitegrid')\n\nf = plt.figure()\nso.Plot(x=['a','b','c'], y=[1,2,3]).add(so.Dot()).on(f).plot()\nax = f.axes[0]\nprint('xlim', ax.get_xlim())\nprint('x grid visible', any(l.get_visible() for l in ax.xaxis.get_gridlines()))\nprint('y grid visible', any(l.get_visible() for l in ax.yaxis.get_gridlines()))\n\nf2 = plt.figure()\nso.Plot(y=['a','b','c'], x=[1,2,3]).add(so.Dot()).on(f2).plot()\nax2 = f2.axes[0]\nprint('ylim (inverted)', ax2.get_ylim())\nprint('y grid visible', any(l.get_visible() for l in ax2.yaxis.get_gridlines()))\nprint('x grid visible', any(l.get_visible() for l in ax2.xaxis.get_gridlines()))\n\"\n"}
+
+=== Turn 13 ===
+[user] [tool_result] exit_code=1
+Traceback (most recent call last):
+  File "<string>", line 9, in <module>
+  File "/testbed/seaborn/_core/plot.py", line 820, in plot
+    return self._plot(pyplot)
+  File "/testbed/seaborn/_core/plot.py", line 850, in _plot
+    plotter._plot_layer(self, layer)
+  File "/testb
+[assistant] The environment has a pandas-incompatible `option_context` call in `split_generator`. Let me work around it in the test only.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && python -c \"\nimport matplotlib; matplotlib.use('Agg')\nimport contextlib, pandas as pd\npd.option_context = lambda *a, **k: contextlib.nullcontext()  # env shim\nimport seaborn, seaborn.objects as so\nimport matplotlib.pyplot as plt\nseaborn.set_theme(style='whitegrid')\n\nf = plt.figure()\nso.Plot(x=['a','b','c'], y=[1,2,3]).add(so.Dot()).on(f).plot()\nax = f.axes[0]\nprint('xlim', ax.get_xlim())\nprint('x grid', any(l.get_visible() for l in ax.xaxis.get_gridlines()))\nprint('y grid', any(l.get_visible() for l in ax.yaxis.get_gridlines()))\n\nf2 = plt.figure()\nso.Plot(y=['a','b','c'], x=[1,2,3]).add(so.Dot()).on(f2).plot()\nax2 = f2.axes[0]\nprint('ylim inverted', ax2.get_ylim())\nprint('y grid', any(l.get_visible() for l in ax2.yaxis.get_gridlines()))\nprint('x grid', any(l.get_visible() for l in ax2.xaxis.get_gridlines()))\n\"\n"}
+
+=== Turn 14 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] All three behaviors work correctly:
+
+1. **±0.5 margins**: x-axis nominal gives `xlim (-0.5, 2.5)` (3 categories → -0.5 to 2.5)
+2. **No grid on categorical axis**: nominal x has `x grid False` while the numeric y keeps its grid (`y grid True`)
+3. **Inverted y axis**: nominal on y gives `ylim (2.5, -0.5)` and `y grid False`, numeric x keeps its grid
+
+Let me run the existing scale/plot tests relevant to this change to confirm nothing regressed.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && python -m pytest tests/_core/test_scales.py -q 2>&1 | tail -20"}
+
+=== Turn 15 ===
+[user] [tool_result] .....................................................x.................. [ 86%]
+...........                                                              [100%]
+=============================== warnings summary ===============================
+tests/_core/test_scales.py::TestNominal::test
+[assistant] The implementation is complete and the scale tests pass. Let me add tests covering the new behavior, matching the existing test conventions.[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "def test_limits nominal grid invert finalize Plot test", "path": "tests/_core/test_plot.py"}
+
+=== Turn 16 ===
+[user] [tool_result] {"exact_match":true,"files":[{"path":"tests/_core/test_plot.py","sections":[{"content":"1621\tdef test_limits(self, long_df):\n1622\t\n1623\t        limit = (-2, 24)\n1624\t        p = Plot(long_df, y=\"y\").pair(x=[\"x\", \"z\"]).limit(x1=limit).plot()\n1625\t        ax1 = p._figure.a
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "def test_limits set_xlim limit method class TestScaling", "path": "tests/_core/test_plot.py"}
+
+=== Turn 17 ===
+[user] [tool_result] {"candidate_files":["tests/test_utils.py","seaborn/categorical.py","seaborn/matrix.py","seaborn/axisgrid.py"],"exact_match":true,"files":[{"path":"tests/_core/test_plot.py","sections":[{"content":"332\tclass TestScaling:\n333\t\n334\t    def test_inference(self, long_df):\n335\t\n336\t
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/_core/test_plot.py:L383-L420"]}
+
+=== Turn 18 ===
+[user] [tool_result] ## tests/_core/test_plot.py:L383-L420
+    def test_paired_single_log_scale(self):
+
+        x0, x1 = [1, 2, 3], [1, 10, 100]
+        p = Plot().pair(x=[x0, x1]).scale(x1="log").plot()
+        ax_lin, ax_log = p._figure.axes
+        xfm_lin = ax_lin.xaxis.get_transform().transform
+      
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "tests/_core/test_plot.py", "old": "    def test_faceted_log_scale(self):", "new": "    def test_nominal_x_axis_tweaks(self):\n\n        p = Plot(x=[\"a\", \"b\", \"c\"], y=[1, 2, 3])\n        ax1 = p.plot()._figure.axes[0]\n        assert ax1.get_xlim() == (-.5, 2.5)\n        assert not any(x.get_visible() for x in ax1.xaxis.get_gridlines())\n\n        lim = (-1, 2.1)\n        ax2 = p.limit(x=lim).plot()._figure.axes[0]\n        assert ax2.get_xlim() == lim\n\n    def test_nominal_y_axis_tweaks(self):\n\n        p = Plot(x=[1, 2, 3], y=[\"a\", \"b\", \"c\"])\n        ax1 = p.plot()._figure.axes[0]\n        assert ax1.get_ylim() == (2.5, -.5)\n        assert not any(y.get_visible() for y in ax1.yaxis.get_gridlines())\n\n        lim = (-1, 2.1)\n        ax2 = p.limit(y=lim).plot()._figure.axes[0]\n        assert ax2.get_ylim() == lim\n\n    def test_faceted_log_scale(self):"}]}
+
+=== Turn 19 ===
+[user] [tool_result] applied tests/_core/test_plot.py:376
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && python -m pytest \"tests/_core/test_plot.py::TestScaling::test_nominal_x_axis_tweaks\" \"tests/_core/test_plot.py::TestScaling::test_nominal_y_axis_tweaks\" -q 2>&1 | tail -20"}
+
+=== Turn 20 ===
+[user] [tool_result] ..                                                                       [100%]
+2 passed in 0.47s
+[assistant] Both new tests pass. Let me summarize the changes.
+
+## Summary
+
+I made `so.Nominal` scales (including inferred ones) render like seaborn's classic categorical axes — applying all three behaviors from the issue.
+
+### `seaborn/_core/scales.py`
+
+1. Added a no-op `_finalize(self, p, axis)` hook to the base `Scale` class — a place for scales to perform axis tweaks after artists are drawn.
+
+2. Implemented `Nominal._finalize`, which:
+   - **No grid** — calls `axis.grid(False, which="both")` so the categorical axis never shows gridlines, regardless of the active theme.
+   - **±0.5 margins** — sets the axis limits to `(-0.5, nticks - 0.5)`, giving exactly half a unit of padding past the first and last tick (this is the cleaner alternative to the invisible-sticky-edge "hack" mentioned in the issue).
+   - **Inverted y** — swaps `lo, hi` when the scale is on the y axis.
+   - It **defers to the user**: limits are only forced when the axis isn't already in `p._limits`, so `Plot.limit(...)` wins. The grid is turned off unconditionally (categorical convention).
+
+3. Added a `TYPE_CHECKING` import of `Plot` for the new signature.
+
+### `seaborn/_core/plot.py`
+
+- In `Plotter._finalize_figure`, after the existing axis-limit handling, call `self._scales[axis_key]._finalize(p, axis_obj)` for any `Nominal` scale — addressing the issue's suggestion that this logic live in `_finalize_figure` while keeping the scale-specific knowledge inside the scale object.
+- Promoted the local `Nominal` import to the module-level scales import (it was already imported locally inside the mpl<3.4 branch).
+
+### `tests/_core/test_plot.py`
+
+- Added `test_nominal_x_axis_tweaks` and `test_nominal_y_axis_tweaks` verifying the ±0.5 limits, grid suppression, y-axis inversion, and that an explicit `.limit(...)` overrides the auto limits.
+
+The existing `tests/_core/test_scales.py` suite (82 passed) and the two new tests all pass. (Note: full layer-drawing plots can't run in this environment due to a pre-existing pandas incompatibility — `pd.option_context("mode.use_inf_as_null", ...)` in `split_generator` — unrelated to this change; my tests exercise the new code path without that path.)

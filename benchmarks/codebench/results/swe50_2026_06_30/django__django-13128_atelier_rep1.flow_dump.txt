@@ -1,0 +1,77 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "mixed types expression output_field _resolve_output_field"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "TemporalSubtraction CombinedExpression DurationField temporal"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files": ["django/db/models/expressions.py", "django/db/models/sql/query.py", "django/contrib/postgres/fields/ranges.py", "django/contrib/postgres/fields/array.py", "django/contrib/gis/db/models/aggregates.py", "django/contrib/gis/db/models/functions.py", "django/contrib/pos
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/expressions.py:L280-L320", "django/db/models/expressions.py:L425-L540"]}
+
+=== Turn 3 ===
+[user] [tool_result] ## django/db/models/expressions.py:L280-L320
+        """
+        try:
+            return self.output_field
+        except FieldError:
+            if not self._output_field_resolved_to_none:
+                raise
+
+    def _resolve_output_field(self):
+        """
+        Attempt to infer
+[assistant] Now let me check how `output_field` resolves and whether `fields` is imported:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/expressions.py:L250-L280", "django/db/models/expressions.py:L1-L20"]}
+
+=== Turn 4 ===
+[user] [tool_result] ## django/db/models/expressions.py:L250-L280
+        c.is_summary = summarize
+        c.set_source_expressions([
+            expr.resolve_expression(query, allow_joins, reuse, summarize)
+            if expr else None
+            for expr in c.get_source_expressions()
+        ])
+       
+[assistant] Now I'll add a `_resolve_output_field` override to `CombinedExpression` that handles temporal type combinations:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/db/models/expressions.py", "old": "    def set_source_expressions(self, exprs):\n        self.lhs, self.rhs = exprs\n\n    def as_sql(self, compiler, connection):\n        try:\n            lhs_type = self.lhs.output_field.get_internal_type()", "new": "    def set_source_expressions(self, exprs):\n        self.lhs, self.rhs = exprs\n\n    def _resolve_output_field(self):\n        # Avoid the requirement to specify output_field for temporal\n        # expressions by inferring the result type from the operands.\n        try:\n            lhs_type = self.lhs.output_field.get_internal_type()\n            rhs_type = self.rhs.output_field.get_internal_type()\n        except FieldError:\n            return super()._resolve_output_field()\n        datetime_fields = {'DateField', 'DateTimeField', 'TimeField'}\n        # datetime - datetime = duration\n        if self.connector == self.SUB and lhs_type in datetime_fields and lhs_type == rhs_type:\n            return fields.DurationField()\n        # datetime +/- duration = datetime\n        if lhs_type in datetime_fields and rhs_type == 'DurationField':\n            return self.lhs.output_field\n        if rhs_type in datetime_fields and lhs_type == 'DurationField':\n            return self.rhs.output_field\n        return super()._resolve_output_field()\n\n    def as_sql(self, compiler, connection):\n        try:\n            lhs_type = self.lhs.output_field.get_internal_type()"}]}
+
+=== Turn 5 ===
+[user] [tool_result] applied django/db/models/expressions.py:442-447
+[assistant] Let me find the relevant tests to verify:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /repo 2>/dev/null || cd $(git -C . rev-parse --show-toplevel 2>/dev/null); grep -rn \"temporal\" tests/expressions/tests.py | head"}
+
+=== Turn 6 ===
+[user] [tool_result] 1493:    @skipUnlessDBFeature('supports_temporal_subtraction')
+1522:    @skipUnlessDBFeature('supports_temporal_subtraction')
+1532:    @skipUnlessDBFeature('supports_temporal_subtraction')
+1549:    @skipUnlessDBFeature('supports_temporal_subtraction')
+1575:    @skipUnlessDBFeature('sup
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/expressions/tests.py:L1532-L1630"]}
+
+=== Turn 7 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Let me add a test for the new no-wrapper behavior and run the temporal tests:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "tests/expressions/tests.py", "old": "    @skipUnlessDBFeature('supports_temporal_subtraction')\n    def test_datetime_subquery_subtraction(self):", "new": "    @skipUnlessDBFeature('supports_temporal_subtraction')\n    def test_datetime_subtraction_without_expressionwrapper(self):\n        queryset = Experiment.objects.annotate(\n            delta=F('end') - F('start') + Value(datetime.timedelta(), output_field=DurationField()),\n        )\n        for experiment in queryset:\n            self.assertEqual(experiment.delta, experiment.end - experiment.start)\n\n    @skipUnlessDBFeature('supports_temporal_subtraction')\n    def test_datetime_subquery_subtraction(self):"}]}
+
+=== Turn 8 ===
+[user] [tool_result] applied tests/expressions/tests.py:1610-1611
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && python -m pytest -q 2>/dev/null; cd tests && python runtests.py expressions -v1 2>&1 | tail -25"}
+
+=== Turn 9 ===
+[user] [tool_result] Ran 150 tests in 0.141s
+OK (skipped=2)
+[assistant] All 150 expression tests pass. 
+
+## Summary
+
+The error came from output-field inference, not SQL generation. `F('end') - F('start')` is a `CombinedExpression` whose two operands are both `DateTimeField`, so the base `_resolve_output_field` inferred `DateTimeField` (matching types, no error) — even though a datetime *minus* a datetime is really a duration. Adding `Value(timedelta, DurationField())` then combined a `DateTimeField` with a `DurationField`, tripping the "mixed types" check.
+
+**Fix** (`django/db/models/expressions.py`): added `CombinedExpression._resolve_output_field()` that infers temporal results before falling back to the base implementation:
+- datetime/date/time `-` same type → `DurationField`
+- datetime/date/time `±` duration (either order) → the temporal field
+
+With the inner subtraction now correctly resolving to `DurationField`, the outer `+ DurationField` resolves cleanly to `DurationField`, so no `ExpressionWrapper` is needed. The existing `as_sql` already routed these to `TemporalSubtraction`/`DurationExpression`, so only inference needed changing.
+
+Added `test_datetime_subtraction_without_expressionwrapper` covering the reported query.
+
+Risk: low — non-temporal and mismatched-type cases still delegate to `super()._resolve_output_field()`, preserving prior errors; explicit `output_field` overrides are unaffected since `_resolve_output_field` only runs when one isn't supplied.

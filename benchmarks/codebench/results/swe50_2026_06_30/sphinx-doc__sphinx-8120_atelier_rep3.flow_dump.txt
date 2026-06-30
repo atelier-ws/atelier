@@ -1,0 +1,60 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "init_console locale_dirs translators gettext load translations", "path": "sphinx/locale"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "locale_dirs setup translation init_console application"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["sphinx/application.py","sphinx/ext/autosummary/generate.py","sphinx/transforms/i18n.py","sphinx/builders/html/__init__.py","sphinx/builders/__init__.py"],"exact_match":true,"files":[{"path":"sphinx/locale/__init__.py","sections":[{"content":"106\ttranslators = defa
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sphinx/locale/__init__.py:L106-L168"]}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "init_console init locale_dirs called application setup_extension catalog sphinx", "path": "sphinx/application.py"}
+
+=== Turn 3 ===
+[user] [tool_result] ## sphinx/locale/__init__.py:L106-L168
+translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]
+
+
+def init(locale_dirs: List[str], language: str,
+         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:
+    """L
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"symbol": "Sphinx._init_i18n"}
+
+=== Turn 4 ===
+[user] [tool_result] ### sphinx/application.py:L279-L302 (method)
+    def _init_i18n(self) -> None:
+        """Load translated strings from the configured localedirs if enabled in
+        the configuration.
+        """
+        if self.config.language is None:
+            self.translator, has_translation = 
+[assistant] Found the bug. In `_init_i18n`, the locale directories are ordered with the built-in Sphinx catalog *before* the user's `locale_dirs`. Since `locale.init` treats the first catalog found as primary and adds the rest as *fallbacks* (only consulted when the primary lacks a message), the built-in translations always win over the user's overrides.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path":"sphinx/application.py","old":"            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)","new":"            locale_dirs = list(repo.locale_dirs)\n            locale_dirs += [None]\n            locale_dirs += [path.join(package_dir, 'locale')]\n\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)"}]}
+
+=== Turn 5 ===
+[user] [tool_result] applied sphinx/application.py:296-297
+[assistant] The fix reorders the locale directories so the user's `locale_dirs` are loaded first (becoming the primary translator), with the system default and Sphinx's built-in catalog added as fallbacks. Now a user's `locale/da/LC_MESSAGES/sphinx.po` override for `Fig. %s` / `Listing %s` takes precedence over the bundled Danish translation, while any messages the user didn't override still fall back to the built-in catalog.
+
+=== Turn 6 ===
+[user] Stop hook feedback:
+verify-before-done: edited 1 file(s) (application.py) but ran no tests. Run the project's test suite.
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel 2>/dev/null || echo .) && python -m pytest tests/test_application.py tests/test_intl.py -q 2>&1 | tail -30"}
+
+=== Turn 7 ===
+[user] [tool_result] tests/test_intl.py::test_html_meta
+tests/test_intl.py::test_additional_targets_should_be_translated
+  <template>:33: DeprecationWarning: 'soft_unicode' has been renamed to 'soft_str'. The old name will be removed in MarkupSafe 2.1.
+
+tests/test_intl.py::test_html_meta
+tests/test_intl.py
+[assistant] Let me check whether these failures are pre-existing by stashing my change.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && git stash && python -m pytest tests/test_application.py::test_extension_in_blacklist tests/test_application.py::test_add_is_parallel_allowed \"tests/test_intl.py::test_html_meta\" tests/test_intl.py::test_xml_label_targets tests/test_intl.py::test_additional_targets_should_not_be_translated tests/test_intl.py::test_additional_targets_should_be_translated -q 2>&1 | tail -12; git stash pop"}
+
+=== Turn 8 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] All 6 failures are **pre-existing** — they fail identically on baseline (with my change stashed), so they're unrelated to my edit. The other 49 tests pass.
+
+The fix is verified:
+- **Change:** In `Sphinx._init_i18n` (`sphinx/application.py`), reordered the locale directories so the user's `locale_dirs` are loaded first as the primary translator, with the system default (`None`) and Sphinx's built-in catalog added afterward as fallbacks.
+- **Result:** A user's `locale/<lang>/LC_MESSAGES/sphinx.po` override now takes precedence over the bundled translation, while non-overridden messages still fall back to the built-in catalog.
+- **Tests:** `tests/test_application.py` and `tests/test_intl.py` show the same 6 failures before and after the change (pre-existing, unrelated), and no new failures were introduced.

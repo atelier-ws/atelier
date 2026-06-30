@@ -1,0 +1,310 @@
+
+=== Turn 1 ===
+[user] <session>
+toctree contains reference to nonexisting document 'genindex', 'modindex', 'search'
+**Is your feature request related to a problem? Please describe.**
+A lot of users try to add the following links to the toctree:
+```
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
+```
+like this:
+[assistant] {"title": "Fix toctree warnings for genindex, modindex, search"}
+
+=== Turn 2 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: Bash] {"command": "cd /testbed && grep -rn \"nonexisting document\" sphinx/", "description": "Find the warning source"}[tool_use: Bash] {"command": "cd /testbed && grep -rn \"genindex\\|modindex\" sphinx/environment/ sphinx/directives/ | head -40", "description": "Find genindex handling"}
+
+=== Turn 3 ===
+[user] [tool_result] sphinx/directives/other.py:126:                        message = __('toctree contains reference to nonexisting document %r')
+sphinx/environment/adapters/toctree.py:173:                        message = __('toctree contains reference to nonexisting document %r')
+sphinx/locale/tr/LC_MESS
+[assistant] [tool_use: Read] {"file_path": "/testbed/sphinx/directives/other.py", "offset": 80, "limit": 90}
+
+=== Turn 4 ===
+[user] [tool_result] 80	        suffixes = self.config.source_suffix
+81	
+82	        # glob target documents
+83	        all_docnames = self.env.found_docs.copy()
+84	        all_docnames.remove(self.env.docname)  # remove current document
+85	
+86	        ret: List[Node] = []
+87	        excluded = Matcher(self
+[assistant] [tool_use: Read] {"file_path": "/testbed/sphinx/environment/adapters/toctree.py", "offset": 130, "limit": 90}
+
+=== Turn 5 ===
+[user] [tool_result] 130	                        # toctree originates
+131	                        ref = toctreenode['parent']
+132	                        if not title:
+133	                            title = clean_astext(self.env.titles[ref])
+134	                        reference = nodes.reference('', '', 
+[assistant] [tool_use: Read] {"file_path": "/testbed/sphinx/environment/adapters/toctree.py", "offset": 100, "limit": 32}
+
+=== Turn 6 ===
+[user] [tool_result] 100	                                branchnode['classes'].append('current')
+101	                                branchnode = branchnode.parent
+102	                        # mark the list_item as "on current page"
+103	                        if subnode.parent.parent.get('iscurrent'):
+10
+[assistant] [tool_use: Bash] {"command": "grep -rn \"py-modindex\\|'genindex'\\|\\\"genindex\\\"\\|'search'\\|special_docnames\\|genindex\" sphinx/domains/std.py sphinx/builders/html/__init__.py | head -30", "description": "Find special doc handling"}
+
+=== Turn 7 ===
+[user] [tool_result] sphinx/domains/std.py:591:            'genindex': ('genindex', '', _('Index')),
+sphinx/domains/std.py:592:            'modindex': ('py-modindex', '', _('Module Index')),
+sphinx/domains/std.py:593:            'search':   ('search', '', _('Search Page')),
+sphinx/domains/std.py:596:      
+[assistant] [tool_use: Read] {"file_path": "/testbed/sphinx/domains/std.py", "offset": 585, "limit": 20}
+
+=== Turn 8 ===
+[user] [tool_result] 585	    }
+586	
+587	    initial_data = {
+588	        'progoptions': {},      # (program, name) -> docname, labelid
+589	        'objects': {},          # (type, name) -> docname, labelid
+590	        'labels': {             # labelname -> docname, labelid, sectionname
+591	            'gen
+[assistant] [tool_use: Bash] {"command": "grep -rn \"refuri\\|get_relative_uri\\|_resolve_toctree\\|resolve(\" sphinx/environment/adapters/toctree.py | head; echo ---; grep -rn \"anchorname\\|refuri\" sphinx/builders/html/__init__.py | head", "description": "Find refuri resolution"}
+
+=== Turn 9 ===
+[user] [tool_result] 41:    def resolve(self, docname: str, builder: "Builder", toctree: addnodes.toctree,
+94:                    if subnode['refuri'] == docname:
+123:                                                    refuri=ref, anchorname='',
+135:                                                    refur
+[assistant] [tool_use: Read] {"file_path": "/testbed/sphinx/environment/adapters/toctree.py", "offset": 248, "limit": 20}
+
+=== Turn 10 ===
+[user] [tool_result] 248	        self._toctree_prune(newnode, 1, maxdepth if prune else 0, collapse)
+249	
+250	        if isinstance(newnode[-1], nodes.Element) and len(newnode[-1]) == 0:  # No titles found
+251	            return None
+252	
+253	        # set the target paths in the toctrees (they are not kno
+[assistant] [tool_use: Read] {"file_path": "/testbed/sphinx/directives/other.py", "offset": 1, "limit": 45}
+
+=== Turn 11 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Now let me edit `directives/other.py` to recognize these special docnames:[tool_use: Edit] {"file_path": "/testbed/sphinx/directives/other.py", "old_string": "                if url_re.match(ref) or ref == 'self':\n                    toctree['entries'].append((title, ref))\n                elif docname not in self.env.found_docs:", "new_string": "                if url_re.match(ref) or ref == 'self':\n                    toctree['entries'].append((title, ref))\n                elif docname in self.env.domains['std'].labels:\n                    # special document references (e.g. genindex, modindex, search)\n                    if title is None:\n                        title = self.env.domains['std'].labels[docname][2]\n                    toctree['entries'].append((title, docname))\n                elif docname not in self.env.found_docs:"}
+
+=== Turn 12 ===
+[user] [tool_result] The file /testbed/sphinx/directives/other.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] [tool_use: Bash] {"command": "grep -n \"def labels\\|labels\\b\" sphinx/domains/std.py | head", "description": "Check labels access"}
+
+=== Turn 13 ===
+[user] [tool_result] 575:        # links to headings or arbitrary labels
+578:        # links to labels of numbered figures, tables and code-blocks
+581:        # links to labels, without a different title
+590:        'labels': {             # labelname -> docname, labelid, sectionname
+595:        'anonlabel
+[assistant] I should restrict to only the special index pages, not all labels (a user label could collide with a docname):[tool_use: Edit] {"file_path": "/testbed/sphinx/directives/other.py", "old_string": "glob_re = re.compile(r'.*[*?\\[].*')\nlogger = logging.getLogger(__name__)", "new_string": "glob_re = re.compile(r'.*[*?\\[].*')\nlogger = logging.getLogger(__name__)\n\n\ndef int_or_nothing(argument: str) -> int:\n    if not argument:\n        return 999\n    return int(argument)"}
+
+=== Turn 14 ===
+[user] [tool_result] The file /testbed/sphinx/directives/other.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] [tool_use: Edit] {"replace_all": false, "file_path": "/testbed/sphinx/directives/other.py", "old_string": "glob_re = re.compile(r'.*[*?\\[].*')\nlogger = logging.getLogger(__name__)\n\n\ndef int_or_nothing(argument: str) -> int:\n    if not argument:\n        return 999\n    return int(argument)", "new_string": "glob_re = re.compile(r'.*[*?\\[].*')\nlogger = logging.getLogger(__name__)"}
+
+=== Turn 15 ===
+[user] [tool_result] The file /testbed/sphinx/directives/other.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] [tool_use: Read] {"file_path": "/testbed/sphinx/directives/other.py", "offset": 104, "limit": 45}
+
+=== Turn 16 ===
+[user] [tool_result] 104	            else:
+105	                if explicit:
+106	                    ref = explicit.group(2)
+107	                    title = explicit.group(1)
+108	                    docname = ref
+109	                else:
+110	                    ref = docname = entry
+111	                   
+[assistant] [tool_use: Edit] {"file_path": "/testbed/sphinx/directives/other.py", "old_string": "                if url_re.match(ref) or ref == 'self':\n                    toctree['entries'].append((title, ref))\n                elif docname in self.env.domains['std'].labels:\n                    # special document references (e.g. genindex, modindex, search)\n                    if title is None:\n                        title = self.env.domains['std'].labels[docname][2]\n                    toctree['entries'].append((title, docname))\n                elif docname not in self.env.found_docs:\n                    if excluded(self.env.doc2path(docname, False)):\n                        message = __('toctree contains reference to excluded document %r')\n                        subtype = 'excluded'\n                    else:\n                        message = __('toctree contains reference to nonexisting document %r')\n                        subtype = 'not_readable'\n\n                    logger.warning(message, docname, type='toc', subtype=subtype,\n                                   location=toctree)\n                    self.env.note_reread()", "new_string": "                if url_re.match(ref) or ref == 'self':\n                    toctree['entries'].append((title, ref))\n                elif docname not in self.env.found_docs:\n                    if excluded(self.env.doc2path(docname, False)):\n                        message = __('toctree contains reference to excluded document %r')\n                        subtype = 'excluded'\n                    elif docname in {'genindex', 'modindex', 'search'}:\n                        # add a special document reference (e.g. genindex)\n                        toctree['entries'].append((title, ref))\n                        continue\n                    else:\n                        message = __('toctree contains reference to nonexisting document %r')\n                        subtype = 'not_readable'\n\n                    logger.warning(message, docname, type='toc', subtype=subtype,\n                                   location=toctree)\n                    self.env.note_reread()"}
+
+=== Turn 17 ===
+[user] [tool_result] The file /testbed/sphinx/directives/other.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now handle resolution in the toctree adapter:[tool_use: Read] {"file_path": "/testbed/sphinx/environment/adapters/toctree.py", "offset": 1, "limit": 40}
+
+=== Turn 18 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: Edit] {"replace_all": false, "file_path": "/testbed/sphinx/environment/adapters/toctree.py", "old_string": "                    elif ref == 'self':", "new_string": "                    elif ref in ('genindex', 'modindex', 'search'):\n                        # special document references (e.g. genindex)\n                        # are resolved to the corresponding builtin page\n                        docname, _, sectionname = \\\n                            self.env.get_domain('std').labels[ref]  # type: ignore\n                        if title is None:\n                            title = sectionname\n                        reference = nodes.reference('', '', internal=True,\n                                                    refuri=docname, anchorname='',\n                                                    *[nodes.Text(title)])\n                        para = addnodes.compact_paragraph('', '', reference)\n                        item = nodes.list_item('', para)\n                        toc = nodes.bullet_list('', item)\n                    elif ref == 'self':"}
+
+=== Turn 19 ===
+[user] [tool_result] The file /testbed/sphinx/environment/adapters/toctree.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] [tool_use: Bash] {"command": "grep -n \"def get_domain\\|def labels\" sphinx/environment/__init__.py sphinx/domains/std.py", "description": "Verify get_domain and labels"}
+
+=== Turn 20 ===
+[user] [tool_result] sphinx/environment/__init__.py:501:    def get_domain(self, domainname: str) -> Domain:
+sphinx/domains/std.py:684:    def labels(self) -> Dict[str, Tuple[str, str, str]]:
+[assistant] Now let me test the change:[tool_use: Bash] {"command": "cd /testbed && mkdir -p /tmp/tocidx && cat > /tmp/tocidx/conf.py <<'EOF'\nproject = 'test'\nextensions = []\nEOF\ncat > /tmp/tocidx/index.rst <<'EOF'\nTest\n====\n\n.. toctree::\n   :maxdepth: 1\n   :caption: Indices and tables\n\n   genindex\n   modindex\n   search\nEOF\npython -m sphinx -b html /tmp/tocidx /tmp/tocidx/_build 2>&1 | tail -20", "description": "Build test docs"}
+
+=== Turn 21 ===
+[user] [tool_result] building [mo]: targets for 0 po files that are out of date
+building [html]: targets for 1 source files that are out of date
+updating environment: [new config] 1 added, 0 changed, 0 removed
+reading sources... [100%] index
+
+looking for now-outdated files... none found
+pickling environmen
+[assistant] No warnings. Let me verify the generated links:[tool_use: Bash] {"command": "grep -o 'href=\"[^\"]*\"[^>]*>\\(Index\\|Module Index\\|Search Page\\)' /tmp/tocidx/_build/index.html", "description": "Check generated links"}
+
+=== Turn 22 ===
+[user] [tool_result] href="genindex.html">Index
+href="py-modindex.html">Module Index
+href="search.html">Search Page
+href="genindex.html">Index
+href="py-modindex.html">Module Index
+href="search.html">Search Page
+[assistant] Links resolve correctly. Now let me test with an explicit title and run existing tests:[tool_use: Bash] {"command": "cat > /tmp/tocidx/index.rst <<'EOF'\nTest\n====\n\n.. toctree::\n\n   The General Index <genindex>\n   search\nEOF\nrm -rf /tmp/tocidx/_build\npython -m sphinx -b html /tmp/tocidx /tmp/tocidx/_build 2>&1 | grep -i warning; echo \"exit\"; grep -o 'href=\"[^\"]*\">The General Index' /tmp/tocidx/_build/index.html | head -1", "description": "Test explicit title"}
+
+=== Turn 23 ===
+[user] [tool_result] exit
+href="genindex.html">The General Index
+[assistant] [tool_use: Bash] {"command": "cd /testbed && python -m pytest tests/test_environment_toctree.py tests/test_directive_other.py -q 2>&1 | tail -20", "description": "Run toctree tests"}
+
+=== Turn 24 ===
+[user] [tool_result] ................                                                         [100%]
+16 passed in 0.28s
+[assistant] All tests pass. Let me add a test for this feature. Let me look at the existing test setup:[tool_use: Bash] {"command": "ls tests/roots/ | grep -i toctree; echo ---; sed -n '1,40p' tests/test_environment_toctree.py", "description": "Inspect test roots and test file"}
+
+=== Turn 25 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: Bash] {"command": "cat tests/roots/test-toctree/index.rst; echo \"=== files ===\"; ls tests/roots/test-toctree/", "description": "View toctree test root"}
+
+=== Turn 26 ===
+[user] [tool_result] .. Sphinx Tests documentation master file, created by sphinx-quickstart on Wed Jun  4 23:49:58 2008.
+   You can adapt this file completely to your liking, but it should at least
+   contain the root `toctree` directive.
+
+Welcome to Sphinx Tests's documentation!
+=========================
+[assistant] [tool_use: Read] {"file_path": "/testbed/tests/test_directive_other.py", "offset": 1, "limit": 60}
+
+=== Turn 27 ===
+[user] [tool_result] 1	"""Test the other directives."""
+2	
+3	import pytest
+4	from docutils import nodes
+5	
+6	from sphinx import addnodes
+7	from sphinx.testing import restructuredtext
+8	from sphinx.testing.util import assert_node
+9	
+10	
+11	@pytest.mark.sphinx(testroot='toctree-glob')
+12	def test_toctree(app
+[assistant] [tool_use: Read] {"file_path": "/testbed/tests/test_directive_other.py", "offset": 60, "limit": 30}
+
+=== Turn 28 ===
+[user] [tool_result] 60	                includefiles=['bar/index'])
+61	
+62	
+63	@pytest.mark.sphinx(testroot='toctree-glob')
+64	def test_toctree_glob(app):
+65	    text = (".. toctree::\n"
+66	            "   :glob:\n"
+67	            "\n"
+68	            "   *\n")
+69	
+70	    app.env.find_files(app.config, app.
+[assistant] [tool_use: Edit] {"replace_all": false, "file_path": "/testbed/tests/test_directive_other.py", "old_string": "@pytest.mark.sphinx(testroot='toctree-glob')\ndef test_toctree_glob(app):", "new_string": "@pytest.mark.sphinx(testroot='toctree-glob')\ndef test_toctree_special_pages(app):\n    text = (\".. toctree::\\n\"\n            \"\\n\"\n            \"   genindex\\n\"\n            \"   modindex\\n\"\n            \"   search\\n\"\n            \"   The General Index <genindex>\\n\")\n\n    app.env.find_files(app.config, app.builder)\n    doctree = restructuredtext.parse(app, text, 'index')\n    assert_node(doctree, [nodes.document, nodes.compound, addnodes.toctree])\n    assert_node(doctree[0][0],\n                entries=[(None, 'genindex'),\n                         (None, 'modindex'),\n                         (None, 'search'),\n                         ('The General Index', 'genindex')],\n                includefiles=[])\n\n\n@pytest.mark.sphinx(testroot='toctree-glob')\ndef test_toctree_glob(app):"}
+
+=== Turn 29 ===
+[user] [tool_result] The file /testbed/tests/test_directive_other.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] [tool_use: Bash] {"command": "python -m pytest tests/test_directive_other.py -q 2>&1 | tail -10", "description": "Run directive tests"}
+
+=== Turn 30 ===
+[user] [tool_result] ........                                                                 [100%]
+8 passed in 0.18s
+[assistant] Now let me update the documentation for the toctree directive:[tool_use: Bash] {"command": "grep -rn \"toctree\" doc/usage/restructuredtext/directives.rst | head", "description": "Find toctree docs"}
+
+=== Turn 31 ===
+[user] [tool_result] 20:.. _toctree-directive:
+30:tables of contents.  The ``toctree`` directive is the central element.
+42:.. rst:directive:: toctree
+59:      .. toctree::
+71:     depth of two, that means one nested heading.  ``toctree`` directives in
+80:   Document titles in the :rst:dir:`toctree` will b
+[assistant] [tool_use: Read] {"file_path": "/testbed/doc/usage/restructuredtext/directives.rst", "offset": 109, "limit": 90}
+
+=== Turn 32 ===
+[user] [tool_result] 109	   Numbering then starts at the heading of ``foo``.  Sub-toctrees are
+110	   automatically numbered (don't give the ``numbered`` flag to those).
+111	
+112	   Numbering up to a specific depth is also possible, by giving the depth as a
+113	   numeric argument to ``numbered``.
+114	
+115
+[assistant] [tool_use: Edit] {"replace_all": false, "file_path": "/testbed/doc/usage/restructuredtext/directives.rst", "old_string": "   The special entry name ``self`` stands for the document containing the\n   toctree directive.  This is useful if you want to generate a \"sitemap\" from\n   the toctree.", "new_string": "   The special entry name ``self`` stands for the document containing the\n   toctree directive.  This is useful if you want to generate a \"sitemap\" from\n   the toctree.\n\n   In the case of \"globbing\", any entry that matches the pattern ``genindex``,\n   ``modindex`` or ``search`` is interpreted as a reference to the respective\n   special document.  These special entries can also be used outside of\n   \"globbing\"::\n\n      .. toctree::\n         :caption: Indices and tables\n\n         genindex\n         modindex\n         search\n\n   .. versionadded:: 5.2\n\n      Special entries for ``genindex``, ``modindex`` and ``search`` were added."}
+
+=== Turn 33 ===
+[user] [tool_result] The file /testbed/doc/usage/restructuredtext/directives.rst has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] [tool_use: Edit] {"replace_all": false, "file_path": "/testbed/doc/usage/restructuredtext/directives.rst", "old_string": "   In the case of \"globbing\", any entry that matches the pattern ``genindex``,\n   ``modindex`` or ``search`` is interpreted as a reference to the respective\n   special document.  These special entries can also be used outside of\n   \"globbing\"::\n\n      .. toctree::\n         :caption: Indices and tables\n\n         genindex\n         modindex\n         search\n\n   .. versionadded:: 5.2\n\n      Special entries for ``genindex``, ``modindex`` and ``search`` were added.", "new_string": "   The special entries ``genindex``, ``modindex`` and ``search`` link to the\n   general index, the Python module index and the search page that Sphinx\n   generates.  They can be added to a toctree like any other document, for\n   example to make them appear in the HTML sidebar::\n\n      .. toctree::\n         :caption: Indices and tables\n\n         genindex\n         modindex\n         search\n\n   .. versionadded:: 5.2\n\n      The special entries ``genindex``, ``modindex`` and ``search`` were added."}
+
+=== Turn 34 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Now let me add a CHANGES entry:[tool_use: Bash] {"command": "sed -n '1,40p' /testbed/CHANGES", "description": "View CHANGES top"}
+
+=== Turn 35 ===
+[user] [tool_result] Release 5.2.0 (in development)
+==============================
+
+Dependencies
+------------
+
+Incompatible changes
+--------------------
+
+Deprecated
+----------
+
+Features added
+--------------
+
+* #10286: C++, support requires clauses not just between the template
+  parameter lists and the dec
+[assistant] [tool_use: Edit] {"replace_all": false, "file_path": "/testbed/CHANGES", "old_string": "* #10718: HTML Search: Save search result score to the HTML element for debugging\n\nBugs fixed", "new_string": "* #10718: HTML Search: Save search result score to the HTML element for debugging\n* #6316, #6985: Allow ``genindex``, ``modindex`` and ``search`` to be added to\n  a :rst:dir:`toctree` directive without raising a warning\n\nBugs fixed"}
+
+=== Turn 36 ===
+[user] [tool_result] The file /testbed/CHANGES has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now let me run the full relevant test suites to make sure nothing is broken:[tool_use: Bash] {"command": "cd /testbed && python -m pytest tests/test_directive_other.py tests/test_environment_toctree.py tests/test_build_html.py -q 2>&1 | tail -15", "description": "Run test suites"}
+
+=== Turn 37 ===
+[user] [tool_result] ........................................................................ [ 12%]
+........................................................................ [ 25%]
+....................................sssssssssssssssss................... [ 38%]
+..............................................
+[assistant] [tool_use: Bash] {"command": "cd /testbed && git diff --stat", "description": "Show diff stat"}
+
+=== Turn 38 ===
+[user] [tool_result]  CHANGES                                   |  2 ++
+ doc/usage/restructuredtext/directives.rst | 16 ++++++++++++++++
+ sphinx/directives/other.py                |  4 ++++
+ sphinx/environment/adapters/toctree.py    | 13 +++++++++++++
+ tests/test_directive_other.py             | 20 +++++++
+[assistant] I've implemented the feature. Here's a summary of the changes:
+
+## Problem
+Adding the built-in special pages `genindex`, `modindex`, and `search` to a `toctree` directive (a very common request, per the linked StackOverflow threads) raised `toctree contains reference to nonexisting document` warnings, because these pages are generated by Sphinx rather than being real source documents.
+
+## Solution
+
+**`sphinx/directives/other.py`** — When a toctree entry isn't a real document, check whether it's one of the three special pages before emitting a warning. If so, record it as an entry (and not as an `includefile`, since there's no source file to read):
+
+```python
+elif docname in {'genindex', 'modindex', 'search'}:
+    # add a special document reference (e.g. genindex)
+    toctree['entries'].append((title, ref))
+    continue
+```
+
+**`sphinx/environment/adapters/toctree.py`** — When resolving the toctree, handle these special entries by building a reference node. The proper target docname (`genindex`, `py-modindex`, `search`) and default title (e.g. *Index*, *Module Index*, *Search Page*) come from the `std` domain's labels, so localization works. The existing resolution step then converts the docname `refuri` into the real relative URI (`genindex.html`, etc.).
+
+## Verification
+- Built a sample project using all three entries (with and without explicit titles) — no warnings, and links resolve correctly to `genindex.html`, `py-modindex.html`, and `search.html` with proper titles.
+- Added `test_toctree_special_pages` to `tests/test_directive_other.py`.
+- Full `test_directive_other.py`, `test_environment_toctree.py`, and `test_build_html.py` suites pass (551 passed).
+- Updated the `toctree` directive docs and added a `CHANGES` entry.
+
+A key design choice: these special names are only treated specially when they are **not** real documents (the check sits inside the `docname not in found_docs` branch), so a user's actual document or label that happens to share one of these names won't be hijacked.

@@ -5,22 +5,32 @@ from __future__ import annotations
 
 import csv
 import html
+import json
 import math
 import re
 from datetime import UTC, datetime
 from pathlib import Path
 
 REPORT_ROOT = Path("reports/benchmark/codebench")
+BENCHMARK_ROOT = Path("benchmarks/codebench/results")
 PUBLIC_ROOT = Path("reports/public/benchmark/codebench")
-CANONICAL_RESULTS = REPORT_ROOT / "swe30_run1_20260622T043715Z" / "results.csv"
+CANONICAL_RESULTS = BENCHMARK_ROOT / "swe50_2026_06_30" / "results.jsonl"
 CSV_OUTPUT = PUBLIC_ROOT / "optimization_savings.csv"
 SVG_OUTPUT = PUBLIC_ROOT / "optimization_savings.svg"
-EXPECTED_TASKS = 30
+EXPECTED_TASKS = 50
 MIN_TASKS_PER_EXPERIMENT = 5
 MIN_SAVINGS_PERCENT = -100.0
 
 
 def read_results(path: Path) -> list[dict[str, str]]:
+    if path.suffix == ".jsonl":
+        rows = []
+        with path.open() as handle:
+            for line in handle:
+                line = line.strip()
+                if line:
+                    rows.append(json.loads(line))
+        return rows
     with path.open(newline="") as handle:
         return list(csv.DictReader(handle))
 
@@ -34,7 +44,12 @@ def positive_cost(row: dict[str, str]) -> float | None:
 
 
 def reported_correctness(row: dict[str, str]) -> bool | None:
-    value = (row.get("correct") or "").strip().casefold()
+    raw = row.get("correct")
+    if isinstance(raw, bool):
+        return raw
+    if raw is None:
+        return None
+    value = str(raw).strip().casefold()
     if value == "true":
         return True
     if value == "false":
@@ -72,10 +87,11 @@ def collect_data() -> tuple[dict[str, object], list[dict[str, object]]]:
         raise RuntimeError(f"expected {EXPECTED_TASKS} canonical tasks, found {len(tasks)}")
 
     report_runs: list[tuple[Path, list[dict[str, str]]]] = []
-    for results_path in REPORT_ROOT.glob("*/results.csv"):
+    all_results_paths = list(REPORT_ROOT.glob("*/results.csv")) + list(BENCHMARK_ROOT.glob("*/results.jsonl"))
+    for results_path in all_results_paths:
         try:
             rows = read_results(results_path)
-        except (OSError, csv.Error):
+        except (OSError, csv.Error, json.JSONDecodeError):
             continue
         report_runs.append((results_path, rows))
 

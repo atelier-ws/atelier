@@ -1,0 +1,68 @@
+diff --git a/seaborn/_core/plot.py b/seaborn/_core/plot.py
+index 8915616b..0a8040a3 100644
+--- a/seaborn/_core/plot.py
++++ b/seaborn/_core/plot.py
+@@ -1569,6 +1569,11 @@ class Plotter:
+                         break
+                 else:
+                     title = self._resolve_label(p, var, data.names[var])
++                    if scales[var]._label_offset:
++                        # ScalarFormatter and friends factor out a common
++                        # offset/scale that would normally be shown beside the
++                        # axis; surface it in the title since the legend has none.
++                        title = f"{title}\n{scales[var]._label_offset}"
+                     entry = (title, data.ids[var]), [var], (values, labels)
+                     schema.append(entry)
+ 
+diff --git a/seaborn/_core/scales.py b/seaborn/_core/scales.py
+index 55874bf2..bfc04926 100644
+--- a/seaborn/_core/scales.py
++++ b/seaborn/_core/scales.py
+@@ -61,12 +61,14 @@ class Scale:
+     _matplotlib_scale: ScaleBase
+     _spacer: staticmethod
+     _legend: tuple[list[str], list[Any]] | None
++    _label_offset: str
+ 
+     def __post_init__(self):
+ 
+         self._tick_params = None
+         self._label_params = None
+         self._legend = None
++        self._label_offset = ""
+ 
+     def tick(self):
+         raise NotImplementedError()
+@@ -380,6 +382,10 @@ class ContinuousBase(Scale):
+             locs = locs[(vmin <= locs) & (locs <= vmax)]
+             labels = axis.major.formatter.format_ticks(locs)
+             new._legend = list(locs), list(labels)
++            # Some formatters (e.g. ScalarFormatter) factor out a common
++            # offset/scale that is normally drawn beside the axis; capture it
++            # so it can be added to the legend title where there is no axis.
++            new._label_offset = axis.major.formatter.get_offset()
+ 
+         return new
+ 
+diff --git a/tests/_core/test_plot.py b/tests/_core/test_plot.py
+index e4ba99e1..def0275c 100644
+--- a/tests/_core/test_plot.py
++++ b/tests/_core/test_plot.py
+@@ -2042,6 +2042,17 @@ class TestLegend:
+         legend, = p._figure.legends
+         assert legend.get_title().get_text() == ""
+ 
++    def test_legend_title_offset(self, xy):
++
++        # ScalarFormatter factors out a common scale that must appear in the
++        # legend title since there is no axis to draw it beside (GH3134)
++        s = pd.Series([3e6, 4e6, 5e6, 6e6], name="s")
++        p = Plot(**xy).add(MockMark(), pointsize=s).plot()
++        legend, = p._figure.legends
++        title = legend.get_title().get_text()
++        assert title.startswith("s\n")
++        assert title.split("\n")[1]
++
+     def test_legendless_mark(self, xy):
+ 
+         class NoLegendMark(MockMark):

@@ -1,0 +1,56 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "SlicedLowLevelWCS world_to_pixel_values"}
+
+=== Turn 2 ===
+[user] [tool_result] {"additional_relevant_files":[],"cache_hit":false,"entry_points":[{"end_line":308,"id":"660aaff3ac445a702977c035","kind":"class","line":105,"name":"SlicedLowLevelWCS","path":"astropy/wcs/wcsapi/wrappers/sliced_wcs.py","provenance":"local","qualified_name":"SlicedLowLevelWCS","score":15
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["astropy/wcs/wcsapi/wrappers/sliced_wcs.py:L200-L290"]}
+
+=== Turn 3 ===
+[user] [tool_result] ## astropy/wcs/wcsapi/wrappers/sliced_wcs.py:L200-L290
+    @property
+    def world_axis_units(self):
+        return [self._wcs.world_axis_units[i] for i in self._world_keep]
+
+    @property
+    def pixel_axis_names(self):
+        return [self._wcs.pixel_axis_names[i] for i in self._pixe
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path":"astropy/wcs/wcsapi/wrappers/sliced_wcs.py","old":"    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)","new":"    def world_to_pixel_values(self, *world_arrays):\n        sliced_out_world_coords = self._pixel_to_world_values_all(*[0]*len(self._pixel_keep))\n\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(sliced_out_world_coords[iworld])"}]}
+
+=== Turn 4 ===
+[user] [tool_result] applied astropy/wcs/wcsapi/wrappers/sliced_wcs.py:245-254
+[assistant] Let me verify the fix with the reproduction case:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel 2>/dev/null || echo .) && python -c \"\nimport numpy as np\nimport astropy.wcs\nfrom astropy.coordinates import SkyCoord\nimport astropy.units as u\n\nnx,ny,nz=100,25,2\nh={'WCSAXES':3,'CRPIX1':(nx+1)/2,'CRPIX2':(ny+1)/2,'CRPIX3':1.0,\n'PC1_1':0.0,'PC1_2':-1.0,'PC1_3':0.0,'PC2_1':1.0,'PC2_2':0.0,'PC2_3':-1.0,\n'CDELT1':5,'CDELT2':5,'CDELT3':0.055,'CUNIT1':'arcsec','CUNIT2':'arcsec','CUNIT3':'Angstrom',\n'CTYPE1':'HPLN-TAN','CTYPE2':'HPLT-TAN','CTYPE3':'WAVE','CRVAL1':0.0,'CRVAL2':0.0,'CRVAL3':1.05}\nw=astropy.wcs.WCS(header=h)\npt=SkyCoord(Tx=0*u.arcsec,Ty=0*u.arcsec,frame=astropy.wcs.utils.wcs_to_celestial_frame(w))\nprint('full:',w.world_to_pixel(pt,1.05*u.angstrom))\nll=astropy.wcs.wcsapi.SlicedLowLevelWCS(w,0)\nhl=astropy.wcs.wcsapi.HighLevelWCSWrapper(ll)\nprint('sliced:',hl.world_to_pixel(pt))\n\""}
+
+=== Turn 5 ===
+[user] [tool_result] exit_code=1
+Traceback (most recent call last):
+  File "<string>", line 13, in <module>
+  File "/testbed/astropy/wcs/utils.py", line 219, in wcs_to_celestial_frame
+    raise ValueError("Could not determine celestial frame corresponding to "
+ValueError: Could not determine celestial fram
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -c \"\nimport numpy as np\nimport astropy.wcs\n\nnx,ny,nz=100,25,2\nh={'WCSAXES':3,'CRPIX1':(nx+1)/2,'CRPIX2':(ny+1)/2,'CRPIX3':1.0,\n'PC1_1':0.0,'PC1_2':-1.0,'PC1_3':0.0,'PC2_1':1.0,'PC2_2':0.0,'PC2_3':-1.0,\n'CDELT1':5,'CDELT2':5,'CDELT3':0.055,'CUNIT1':'arcsec','CUNIT2':'arcsec','CUNIT3':'Angstrom',\n'CTYPE1':'RA---TAN','CTYPE2':'DEC--TAN','CTYPE3':'WAVE','CRVAL1':0.0,'CRVAL2':0.0,'CRVAL3':1.05}\nw=astropy.wcs.WCS(header=h)\n# world values for central pixel\nwv = w.pixel_to_world_values(49.5,12.,0.)\nprint('full w2p:', w.world_to_pixel_values(*wv))\nll=astropy.wcs.wcsapi.SlicedLowLevelWCS(w,0)\nprint('world_keep', ll._world_keep, 'pixel_keep', ll._pixel_keep)\nprint('sliced w2p:', ll.world_to_pixel_values(wv[0], wv[1]))\n\""}
+
+=== Turn 6 ===
+[user] [tool_result] full w2p: (array(49.5), array(12.), array(0.))
+world_keep [0 1] pixel_keep [0 1]
+sliced w2p: (array(49.5), array(12.))
+[assistant] The fix works. The sliced WCS now returns `(49.5, 12.)` matching the full WCS's first two pixel coordinates, instead of the erroneous near-infinite value.
+
+The root cause: in `SlicedLowLevelWCS.world_to_pixel_values`, the dropped (sliced-out) world dimensions were filled with a hardcoded placeholder `1.`. When the PC matrix couples a dropped dimension (wavelength) to a kept dimension (space), that arbitrary placeholder corrupts the inverse transform for the coupled pixel axis. The fix computes the actual world coordinate at the sliced position via `_pixel_to_world_values_all` and uses those real values for the dropped dimensions.
+
+=== Turn 7 ===
+[user] Stop hook feedback:
+verify-before-done: edited 1 file(s) (sliced_wcs.py) but ran no tests. Run the project's test suite.
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -m pytest astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py -q 2>&1 | tail -20"}
+
+=== Turn 8 ===
+[user] [tool_result] Internet access disabled
+........................................                                 [100%]
+40 passed in 0.44s
+[assistant] All 40 tests in the sliced WCS test suite pass. The fix is complete and verified.

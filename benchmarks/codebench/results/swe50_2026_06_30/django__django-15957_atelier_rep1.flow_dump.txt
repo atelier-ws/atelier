@@ -1,0 +1,247 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "prefetch_one_level get_prefetch_queryset Cannot filter a query once a slice has been taken"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "class Prefetch get_current_queryset to_attr"}
+
+=== Turn 2 ===
+[user] [tool_result] MCP error -32000: No module named 'numpy'
+[tool_result] MCP error -32000: No module named 'numpy'
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -rn \"Cannot filter a query once a slice\" django/ | head; echo \"---\"; grep -rn \"class Prefetch\" django/db/models/query.py"}[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"def prefetch_one_level\\|def get_prefetch_queryset\\|def get_current_queryset\\|class Prefetch\\|def prefetch_related_objects\" django/db/models/query.py"}
+
+=== Turn 3 ===
+[user] [tool_result] MCP error -32000: 1 validation error for tool_grep_Args
+mode
+  Input should be 'content', 'map', 'paths' or 'counts' [type=literal_error, input_value='file_paths_with_content', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/literal_error
+[tool_resu
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/query.py:L2142-L2520"]}
+
+=== Turn 4 ===
+[user] [tool_result] ## django/db/models/query.py:L2142-L2520
+class Prefetch:
+    def __init__(self, lookup, queryset=None, to_attr=None):
+        # `prefetch_through` is the path we traverse to perform the prefetch.
+        self.prefetch_through = lookup
+        # `prefetch_to` is the path to the attribut
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"def get_prefetch_queryset\\|_filter_prefetch_queryset\\|is_sliced\\|query.is_sliced\" django/db/models/fields/related_descriptors.py"}[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -rn \"is_sliced\\|low_mark\\|high_mark\\|set_limits\\|clear_limits\" django/db/models/sql/query.py | head -40"}
+
+=== Turn 5 ===
+[user] [tool_result] 124:    def get_prefetch_queryset(self, instances, queryset=None):
+398:    def get_prefetch_queryset(self, instances, queryset=None):
+711:        def get_prefetch_queryset(self, instances, queryset=None):
+1047:        def get_prefetch_queryset(self, instances, queryset=None):
+[tool_res
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/fields/related_descriptors.py:L124-L180", "django/db/models/fields/related_descriptors.py:L700-L800", "django/db/models/fields/related_descriptors.py:L1040-L1140"]}
+
+=== Turn 6 ===
+[user] [tool_result] ## django/db/models/fields/related_descriptors.py:L124-L180
+    def get_prefetch_queryset(self, instances, queryset=None):
+        if queryset is None:
+            queryset = self.get_queryset()
+        queryset._add_hints(instance=instances[0])
+
+        rel_obj_attr = self.field.get_f
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/fields/related_descriptors.py:L1-L80"]}[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"class GreaterThan\\|class LessThanOrEqual\" django/db/models/lookups.py; echo ---; grep -n \"RowNumber\\|class Window\" django/db/models/functions/window.py django/db/models/expressions.py | head; echo ---features---; grep -n \"supports_over_clause\" django/db/backends/base/features.py"}
+
+=== Turn 7 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Now I'll implement the fix. Let me add the helper and update the imports and the two collection-returning managers.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/db/models/fields/related_descriptors.py", "old": "from django.core.exceptions import FieldError\nfrom django.db import connections, router, transaction\nfrom django.db.models import Q, signals\nfrom django.db.models.query import QuerySet\nfrom django.db.models.query_utils import DeferredAttribute\nfrom django.db.models.utils import resolve_callables\nfrom django.utils.functional import cached_property\n\n\nclass ForeignKeyDeferredAttribute(DeferredAttribute):", "new": "from django.core.exceptions import FieldError\nfrom django.db import (\n    DEFAULT_DB_ALIAS,\n    NotSupportedError,\n    connections,\n    router,\n    transaction,\n)\nfrom django.db.models import Q, Window, signals\nfrom django.db.models.functions import RowNumber\nfrom django.db.models.lookups import GreaterThan, LessThanOrEqual\nfrom django.db.models.query import QuerySet\nfrom django.db.models.query_utils import DeferredAttribute\nfrom django.db.models.utils import resolve_callables\nfrom django.utils.functional import cached_property\n\n\nclass ForeignKeyDeferredAttribute(DeferredAttribute):"}, {"path": "django/db/models/fields/related_descriptors.py", "old": "            query = {\"%s__in\" % self.field.name: instances}\n            queryset = queryset.filter(**query)\n\n            # Since we just bypassed this class' get_queryset(), we must manage\n            # the reverse relation manually.", "new": "            queryset = _filter_prefetch_queryset(queryset, self.field.name, instances)\n\n            # Since we just bypassed this class' get_queryset(), we must manage\n            # the reverse relation manually."}, {"path": "django/db/models/fields/related_descriptors.py", "old": "            query = {\"%s__in\" % self.query_field_name: instances}\n            queryset = queryset._next_is_sticky().filter(**query)\n\n            # M2M: need to annotate the query in order to get the primary model", "new": "            queryset = _filter_prefetch_queryset(\n                queryset._next_is_sticky(), self.query_field_name, instances\n            )\n\n            # M2M: need to annotate the query in order to get the primary model"}]}
+
+=== Turn 8 ===
+[user] [tool_result] {"FIXME":{"reason":"Must update: these callers still use the contract this edit changed.","sites":[{"line":538,"old":"%s__in","path":"django/contrib/admin/widgets.py","snippet":"**{\"%s__in\" % to_field_name: selected_choices}"},{"line":1621,"old":"%s__in","path":"django/forms/models.p
+[assistant] The FIXME sites are unrelated `%s__in` usages (admin widgets, forms), not prefetch — ignore. Now add the helper function:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/db/models/fields/related_descriptors.py", "old": "from django.utils.functional import cached_property\n\n\nclass ForeignKeyDeferredAttribute(DeferredAttribute):", "new": "from django.utils.functional import cached_property\n\n\ndef _filter_prefetch_queryset(queryset, field_name, instances):\n    predicate = Q(**{f\"{field_name}__in\": instances})\n    db = queryset._db or DEFAULT_DB_ALIAS\n    if queryset.query.is_sliced:\n        if not connections[db].features.supports_over_clause:\n            raise NotSupportedError(\n                \"Prefetching from a limited queryset is only supported on backends \"\n                \"that support window functions.\"\n            )\n        low_mark, high_mark = queryset.query.low_mark, queryset.query.high_mark\n        order_by = [\n            expr for expr, _ in queryset.query.get_compiler(using=db).get_order_by()\n        ]\n        window = Window(RowNumber(), partition_by=field_name, order_by=order_by)\n        predicate &= GreaterThan(window, low_mark)\n        if high_mark is not None:\n            predicate &= LessThanOrEqual(window, high_mark)\n        queryset.query.clear_limits()\n    return queryset.filter(predicate)\n\n\nclass ForeignKeyDeferredAttribute(DeferredAttribute):"}]}
+
+=== Turn 9 ===
+[user] [tool_result] applied django/db/models/fields/related_descriptors.py:80-83
+[assistant] Now let me update the documentation for `Prefetch` to mention sliced queryset support.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -rn \"sliced\\|slice\" docs/ref/models/querysets.txt | head; echo ---; grep -n \"You can also use\\|prefetch_related\\` operates\\|Prefetch objects\" docs/ref/models/querysets.txt | head"}
+
+=== Turn 10 ===
+[user] [tool_result] 21:Internally, a ``QuerySet`` can be constructed, filtered, sliced, and generally
+51:  be sliced, using Python's array-slicing syntax. Slicing an unevaluated
+53:  will execute the database query if you use the "step" parameter of slice
+2307:    from itertools import islice
+2312:       
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"When using multiple databases\\|class Prefetch\\|You can use the\\|further control the operation\" docs/ref/models/querysets.txt | head; echo ---; grep -n \"^``Prefetch()``\\|Prefetch()\\`\\`\" docs/ref/models/querysets.txt | head"}
+
+=== Turn 11 ===
+[user] [tool_result] 1258:You can use the :class:`~django.db.models.Prefetch` object to further control
+1331:When using multiple databases, ``Prefetch`` will respect your choice of
+4042:When using multiple databases with ``prefetch_related_objects``, the prefetch
+---
+3978:``Prefetch()`` objects
+3983:The ``
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["docs/ref/models/querysets.txt:L1320-L1345"]}
+
+=== Turn 12 ===
+[user] [tool_result] ## docs/ref/models/querysets.txt:L1320-L1345
+
+* You want to prefetch only a subset of the related objects.
+
+* You want to use performance optimization techniques like
+  :meth:`deferred fields <defer()>`:
+
+    >>> queryset = Pizza.objects.only('name')
+    >>>
+    >>> restaurants = Resta
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["docs/ref/models/querysets.txt:L1258-L1320"]}
+
+=== Turn 13 ===
+[user] [tool_result] ## docs/ref/models/querysets.txt:L1258-L1320
+You can use the :class:`~django.db.models.Prefetch` object to further control
+the prefetch operation.
+
+In its simplest form ``Prefetch`` is equivalent to the traditional string based
+lookups:
+
+    >>> from django.db.models import Prefetch
+  
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "docs/ref/models/querysets.txt", "old": "    >>> Pizza.objects.prefetch_related(\n    ...     Prefetch('restaurants', queryset=Restaurant.objects.select_related('best_pizza')))\n\nYou can also assign the prefetched result to a custom attribute with the optional", "new": "    >>> Pizza.objects.prefetch_related(\n    ...     Prefetch('restaurants', queryset=Restaurant.objects.select_related('best_pizza')))\n\nYou can also use a sliced queryset to prefetch a limited number of related\nobjects:\n\n    >>> Restaurant.objects.prefetch_related(\n    ...     Prefetch('pizzas', queryset=Pizza.objects.all()[:5], to_attr='menu'))\n\n.. note::\n\n    Using a sliced queryset for prefetching is only supported on database\n    backends that support window functions (all the :ref:`built-in backends\n    <database-backends>` except Oracle versions that don't support them).\n\nYou can also assign the prefetched result to a custom attribute with the optional"}]}
+
+=== Turn 14 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "docs/ref/models/querysets.txt", "old": ".. note::\n\n    Using a sliced queryset for prefetching is only supported on database\n    backends that support window functions (all the :ref:`built-in backends\n    <database-backends>` except Oracle versions that don't support them).\n", "new": ".. note::\n\n    Using a sliced queryset for prefetching is only supported on database\n    backends that support window functions, and will raise a\n    :exc:`~django.db.NotSupportedError` otherwise.\n"}]}
+
+=== Turn 15 ===
+[user] [tool_result] applied docs/ref/models/querysets.txt:1285-1290
+[assistant] Now let me verify the implementation works with a quick test using the existing prefetch_related test suite.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && python runtests.py prefetch_related.tests.PrefetchLimitTests --settings=test_sqlite 2>&1 | tail -30"}
+
+=== Turn 16 ===
+[user] [tool_result] E
+======================================================================
+ERROR: PrefetchLimitTests (unittest.loader._FailedTest)
+----------------------------------------------------------------------
+AttributeError: module 'prefetch_related.tests' has no attribute 'PrefetchLimitTests'
+
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && python runtests.py prefetch_related --settings=test_sqlite 2>&1 | tail -15"}
+
+=== Turn 17 ===
+[user] [tool_result] Destroying test database for alias 'other'...
+Destroying test database for alias 'other'...
+Destroying test database for alias 'other'...
+Destroying test database for alias 'other'...
+Destroying test database for alias 'other'...
+Destroying test database for alias 'other'...
+Destroying
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && python runtests.py prefetch_related --settings=test_sqlite 2>&1 | grep -E \"Ran|OK|FAIL|ERROR\" | head"}
+
+=== Turn 18 ===
+[user] [tool_result] Ran 109 tests in 0.097s
+OK
+[assistant] Existing tests pass. Now let me add a test for the new sliced-prefetch behavior. Let me check the test models and structure.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && grep -n \"supports_over_clause\\|skipUnlessDBFeature\\|^from\\|^import\\|class .*TestCase\" prefetch_related/tests.py | head -40"}
+
+=== Turn 19 ===
+[user] [tool_result] 1:from unittest import mock
+3:from django.contrib.contenttypes.models import ContentType
+4:from django.core.exceptions import ObjectDoesNotExist
+5:from django.db import connection
+6:from django.db.models import Prefetch, QuerySet, prefetch_related_objects
+7:from django.db.models.query 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/prefetch_related/models.py:L1-L60"]}
+
+=== Turn 20 ===
+[user] [tool_result] ## tests/prefetch_related/models.py:L1-L60
+import uuid
+
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from django.contrib.contenttypes.models import ContentType
+from django.db import models
+from django.db.models.query import ModelIterable
+from django
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && sed -n '1884,1980p' prefetch_related/tests.py | head -80; echo \"=== EOF ===\"; wc -l prefetch_related/tests.py"}
+
+=== Turn 21 ===
+[user] [tool_result] class NestedPrefetchTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        house = House.objects.create(name="Big house", address="123 Main St")
+        cls.room = Room.objects.create(name="Kitchen", house=house)
+
+    def test_nested_prefetch_is_not_overwritten_by_relate
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/prefetch_related/models.py:L52-L90"]}
+
+=== Turn 22 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/prefetch_related/tests.py:L13-L40"]}
+
+=== Turn 23 ===
+[user] [tool_result] ## tests/prefetch_related/tests.py:L13-L40
+from .models import (
+    Article,
+    Author,
+    Author2,
+    AuthorAddress,
+    AuthorWithAge,
+    Bio,
+    Book,
+    Bookmark,
+    BookReview,
+    BookWithYear,
+    Comment,
+    Department,
+    Employee,
+    FavoriteAuthors,
+    House,
+   
+[assistant] Now let me add the test class. I'll use the Book/Author m2m relation:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "tests/prefetch_related/tests.py", "old": "from django.db import connection\nfrom django.db.models import Prefetch, QuerySet, prefetch_related_objects", "new": "from django.db import NotSupportedError, connection\nfrom django.db.models import Prefetch, QuerySet, prefetch_related_objects"}, {"path": "tests/prefetch_related/tests.py", "old": "from django.test import TestCase, override_settings", "new": "from django.test import (\n    TestCase,\n    override_settings,\n    skipIfDBFeature,\n    skipUnlessDBFeature,\n)"}, {"path": "tests/prefetch_related/tests.py", "old": "        self.assertIs(Room.house.is_cached(self.room), True)\n        with self.assertNumQueries(0):\n            house.rooms.first().house.address", "new": "        self.assertIs(Room.house.is_cached(self.room), True)\n        with self.assertNumQueries(0):\n            house.rooms.first().house.address\n\n\nclass PrefetchLimitTests(TestDataMixin, TestCase):\n    @skipUnlessDBFeature(\"supports_over_clause\")\n    def test_m2m_forward(self):\n        authors = Author.objects.all()  # Meta.ordering\n        with self.assertNumQueries(3):\n            books = list(\n                Book.objects.prefetch_related(\n                    Prefetch(\"authors\", authors),\n                    Prefetch(\"authors\", authors[1:], to_attr=\"authors_sliced\"),\n                )\n            )\n        for book in books:\n            with self.subTest(book=book):\n                self.assertEqual(book.authors_sliced, list(book.authors.all())[1:])\n\n    @skipUnlessDBFeature(\"supports_over_clause\")\n    def test_m2m_reverse(self):\n        books = Book.objects.order_by(\"title\")\n        with self.assertNumQueries(3):\n            authors = list(\n                Author.objects.prefetch_related(\n                    Prefetch(\"books\", books),\n                    Prefetch(\"books\", books[1:2], to_attr=\"books_sliced\"),\n                )\n            )\n        for author in authors:\n            with self.subTest(author=author):\n                self.assertEqual(author.books_sliced, list(author.books.all())[1:2])\n\n    @skipUnlessDBFeature(\"supports_over_clause\")\n    def test_foreignkey_reverse(self):\n        authors = Author.objects.order_by(\"-name\")\n        with self.assertNumQueries(3):\n            books = list(\n                Book.objects.prefetch_related(\n                    Prefetch(\n                        \"first_time_authors\",\n                        authors,\n                    ),\n                    Prefetch(\n                        \"first_time_authors\",\n                        authors[1:],\n                        to_attr=\"first_time_authors_sliced\",\n                    ),\n                )\n            )\n        for book in books:\n            with self.subTest(book=book):\n                self.assertEqual(\n                    book.first_time_authors_sliced,\n                    list(book.first_time_authors.all())[1:],\n                )\n\n    @skipUnlessDBFeature(\"supports_over_clause\")\n    def test_reverse_ordering(self):\n        authors = Author.objects.reverse()  # Reverse Meta.ordering\n        with self.assertNumQueries(3):\n            books = list(\n                Book.objects.prefetch_related(\n                    Prefetch(\"authors\", authors),\n                    Prefetch(\"authors\", authors[1:], to_attr=\"authors_sliced\"),\n                )\n            )\n        for book in books:\n            with self.subTest(book=book):\n                self.assertEqual(book.authors_sliced, list(book.authors.all())[1:])\n\n    @skipIfDBFeature(\"supports_over_clause\")\n    def test_window_not_supported(self):\n        authors = Author.objects.all()\n        msg = (\n            \"Prefetching from a limited queryset is only supported on backends that \"\n            \"support window functions.\"\n        )\n        with self.assertRaisesMessage(NotSupportedError, msg):\n            list(Book.objects.prefetch_related(Prefetch(\"authors\", authors[1:])))"}]}
+
+=== Turn 24 ===
+[user] [tool_result] applied tests/prefetch_related/tests.py:5-6,9,1913-1915
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && grep -n \"class TestDataMixin\" prefetch_related/tests.py"}
+
+=== Turn 25 ===
+[user] [tool_result] 46:class TestDataMixin:
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/prefetch_related/tests.py:L46-L66"]}
+
+=== Turn 26 ===
+[user] [tool_result] ## tests/prefetch_related/tests.py:L46-L66
+class TestDataMixin:
+    @classmethod
+    def setUpTestData(cls):
+        cls.book1 = Book.objects.create(title="Poems")
+        cls.book2 = Book.objects.create(title="Jane Eyre")
+        cls.book3 = Book.objects.create(title="Wuthering Height
+[assistant] Good, there's data. Let me run the new tests:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && python runtests.py prefetch_related.tests.PrefetchLimitTests --settings=test_sqlite 2>&1 | grep -E \"Ran|OK|FAIL|ERROR|Error\" | head"}
+
+=== Turn 27 ===
+[user] [tool_result] Ran 5 tests in 0.009s
+OK (skipped=1)
+[assistant] All pass (the `test_window_not_supported` is correctly skipped since SQLite supports window functions). Let me run the full suite plus related tests to confirm no regressions:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && python runtests.py prefetch_related --settings=test_sqlite 2>&1 | grep -E \"Ran|OK|FAIL|ERROR\" | head"}
+
+=== Turn 28 ===
+[user] [tool_result] Ran 114 tests in 0.128s
+OK (skipped=1)
+[assistant] All tests pass. The implementation is complete. Let me verify the final state of the core change:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/fields/related_descriptors.py:L80-L101"]}
+
+=== Turn 29 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] The implementation is complete. Here's a summary of what I did to make `Prefetch()` objects work with sliced querysets.
+
+## Root cause
+
+When a sliced queryset (e.g. `Post.objects.all()[:3]`) was passed to `Prefetch()`, the related managers' `get_prefetch_queryset()` methods called `.filter(**{...__in: instances})` on it. Filtering a sliced queryset raises `AssertionError: Cannot filter a query once a slice has been taken`, because Django can't apply a `LIMIT`/`OFFSET` per-parent — a single SQL query fetches related rows for *all* parents at once.
+
+## Fix
+
+The slice has to be applied **per parent** rather than globally. The standard way to do that in SQL is a window function: number the rows within each partition (grouped by the foreign key) and keep only the rows whose row number falls inside the requested slice.
+
+**`django/db/models/fields/related_descriptors.py`**
+- Added a `_filter_prefetch_queryset(queryset, field_name, instances)` helper. For a non-sliced queryset it behaves exactly as before (`field__in=instances`). For a sliced one it:
+  - raises `NotSupportedError` if the backend lacks window-function support,
+  - builds a `Window(RowNumber(), partition_by=field_name, order_by=...)` reusing the queryset's own ordering,
+  - ANDs `low_mark < row_number <= high_mark` into the predicate,
+  - clears the limit on the underlying query so the slice is enforced via the window predicate instead.
+- Routed the reverse-FK (`RelatedManager`) and both directions of M2M (`ManyRelatedManager`) prefetch methods through this helper.
+- Added the needed imports (`DEFAULT_DB_ALIAS`, `NotSupportedError`, `Window`, `RowNumber`, `GreaterThan`, `LessThanOrEqual`).
+
+**`tests/prefetch_related/tests.py`** — added `PrefetchLimitTests` covering forward/reverse M2M, reverse FK, custom and reversed ordering, and the `NotSupportedError` path on backends without window functions.
+
+**`docs/ref/models/querysets.txt`** — documented that `Prefetch` accepts a sliced queryset, with a note about the window-function backend requirement.
+
+All 114 `prefetch_related` tests pass (1 skipped — the unsupported-backend test, which SQLite doesn't trigger).
+
+Note: I left the two reported FIXME sites in `django/contrib/admin/widgets.py` and `django/forms/models.py` untouched — they happen to match the `%s__in` text pattern but are unrelated form/widget filters, not prefetch code.

@@ -1,0 +1,75 @@
+
+=== Turn 1 ===
+[user] <session>
+Starting v6.2.0, unittest setUpClass fixtures are no longer "private"
+<!--
+Thanks for submitting an issue!
+
+Quick check-list while reporting bugs:
+-->
+Minimal example:
+```
+import unittest
+
+class Tests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pass
+
+[assistant] {"title": "Hide unittest setUpClass fixtures from pytest output"}
+
+=== Turn 2 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: Read] {"file_path": "/testbed/src/_pytest/unittest.py", "offset": 90, "limit": 90}
+
+=== Turn 3 ===
+[user] [tool_result] 90	            runtest = getattr(self.obj, "runTest", None)
+91	            if runtest is not None:
+92	                ut = sys.modules.get("twisted.trial.unittest", None)
+93	                # Type ignored because `ut` is an opaque module.
+94	                if ut is None or runtest != 
+[assistant] The fix is to prefix the generated fixture name with an underscore so it's treated as private (hidden unless `-v` is used).[tool_use: Edit] {"file_path": "/testbed/src/_pytest/unittest.py", "old_string": "        # Use a unique name to speed up lookup.\n        name=f\"unittest_{setup_name}_fixture_{obj.__qualname__}\",", "new_string": "        # Use a unique name to speed up lookup.\n        name=f\"_unittest_{setup_name}_fixture_{obj.__qualname__}\","}
+
+=== Turn 4 ===
+[user] [tool_result] The file /testbed/src/_pytest/unittest.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Let me check for any references to the old name pattern elsewhere.[tool_use: Bash] {"command": "cd /testbed && grep -rn \"unittest_setUpClass_fixture\\|unittest_.*_fixture_\" --include=\"*.py\" | grep -v \"src/_pytest/unittest.py\""}
+
+=== Turn 5 ===
+[user] [tool_result] (Bash completed with no output)
+[assistant] Now let me add a changelog entry.[tool_use: Bash] {"command": "ls /testbed/changelog/ | head -20"}
+
+=== Turn 6 ===
+[user] [tool_result] 5105.doc.rst
+7469.deprecation.rst
+7469.feature.rst
+8061.bugfix.rst
+8144.feature.rst
+8174.trivial.rst
+8192.bugfix.rst
+8242.deprecation.rst
+8248.trivial.rst
+8258.bugfix.rst
+8315.deprecation.rst
+8317.bugfix.rst
+8367.bugfix.rst
+8384.bugfix.rst
+README.rst
+_template.rst
+[assistant] [tool_use: Write] {"file_path": "/testbed/changelog/8394.bugfix.rst", "content": "Use private names for internal fixtures used to implement :mod:`unittest` support, so they are hidden by default in the ``--fixtures`` output (unless ``-v`` is given), as they were prior to pytest 6.2.0.\n"}
+
+=== Turn 7 ===
+[user] [tool_result] File created successfully at: /testbed/changelog/8394.bugfix.rst (file state is current in your context — no need to Read it back)
+[assistant] Let me verify the fix works:[tool_use: Bash] {"command": "cd /testbed && cat > /tmp/test_uc.py <<'EOF'\nimport unittest\n\nclass Tests(unittest.TestCase):\n    @classmethod\n    def setUpClass(cls):\n        pass\n\n    def test_1(self):\n        pass\nEOF\necho \"=== without -v ===\"; python -m pytest /tmp/test_uc.py --fixtures 2>&1 | grep -i \"unittest_setUpClass\"\necho \"=== with -v ===\"; python -m pytest /tmp/test_uc.py --fixtures -v 2>&1 | grep -i \"unittest_setUpClass\""}
+
+=== Turn 8 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] The fix works as expected:
+- **Without `-v`**: the fixture is now hidden (no output)
+- **With `-v`**: the fixture appears as `_unittest_setUpClass_fixture_Tests`
+
+The change prefixes the generated unittest fixture names with an underscore (`src/_pytest/unittest.py:147`), restoring the pre-6.2.0 behavior where these internal fixtures are treated as private and only shown with the verbose flag. This fixes the user's code-quality CI script that flags undocumented fixtures.

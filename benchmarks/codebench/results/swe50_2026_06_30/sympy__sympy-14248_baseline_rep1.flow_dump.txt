@@ -1,0 +1,17 @@
+
+=== Turn 1 ===
+[user] <session>
+The difference of MatrixSymbols prints as a sum with (-1) coefficient
+Internally, differences like a-b are represented as the sum of a with `(-1)*b`, but they are supposed to print like a-b. This does not happen with MatrixSymbols. I tried three printers: str, pretty, and latex: 
+```
+fro
+[assistant] (empty response, status=429)
+
+=== Turn 2 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] (empty response, status=429)

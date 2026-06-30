@@ -1,0 +1,73 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "find_obj python domain resolve xref searchmode", "paths": "sphinx/domains/python.py"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["sphinx/domains/javascript.py","sphinx/domains/std.py","sphinx/domains/c.py","sphinx/domains/cpp.py","sphinx/ext/autosummary/__init__.py","tests/test_domain_py.py","sphinx/transforms/post_transforms/__init__.py"],"exact_match":true,"files":[{"path":"sphinx/domains/p
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sphinx/domains/python.py:L309-L360", "sphinx/domains/python.py:L1236-L1320", "sphinx/domains/python.py:L81-L110"]}
+
+=== Turn 3 ===
+[user] [tool_result] ## sphinx/domains/python.py:L309-L360
+class PyField(PyXrefMixin, Field):
+    def make_xref(self, rolename: str, domain: str, target: str,
+                  innernode: "Type[TextlikeNode]" = nodes.emphasis,
+                  contnode: Node = None, env: BuildEnvironment = None) -> Node:
+
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sphinx/util/docfields.py"]}
+
+=== Turn 4 ===
+[user] [tool_result] ## sphinx/util/docfields.py
+"""
+    sphinx.util.docfields
+    ~~~~~~~~~~~~~~~~~~~~~
+
+    "Doc fields" are reST field lists in object descriptions that will
+    be domain-specifically transformed to a more appealing presentation.
+
+    :copyright: Copyright 2007-2020 by the Sphinx team, 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "process_field_xref", "paths": "sphinx/domains/python.py"}
+
+=== Turn 5 ===
+[user] [tool_result] {"candidate_files":["sphinx/domains/__init__.py","sphinx/domains/c.py","sphinx/domains/cpp.py","sphinx/util/docfields.py"],"exact_match":true,"files":[{"path":"sphinx/domains/python.py","sections":[{"content":"81\tdef type_to_xref(text: str, env: BuildEnvironment = None) -> addnodes.pe
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "def process_field_xref"}
+
+=== Turn 6 ===
+[user] [tool_result] {"candidate_files":["sphinx/util/docfields.py"],"exact_match":true,"files":[{"path":"sphinx/domains/c.py","sections":[{"content":"3730\tdef process_field_xref(self, pnode: pending_xref) -> None:\n3731\t        pnode.attributes.update(self.env.ref_context)","end_line":3731,"line":3730,"
+[assistant] The Python domain doesn't override `process_field_xref`, so field xrefs never get `py:module`/`py:class` set, causing fuzzy lookup. Let me add the override.[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sphinx/domains/python.py:L1318-L1380"]}
+
+=== Turn 7 ===
+[user] [tool_result] ## sphinx/domains/python.py:L1318-L1380
+    def resolve_any_xref(self, env: BuildEnvironment, fromdocname: str, builder: Builder,
+                         target: str, node: pending_xref, contnode: Element
+                         ) -> List[Tuple[str, Element]]:
+        modname = node.
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "sphinx/domains/python.py", "old": "    def resolve_xref(self, env: BuildEnvironment, fromdocname: str, builder: Builder,\n                     type: str, target: str, node: pending_xref, contnode: Element\n                     ) -> Element:", "new": "    def process_field_xref(self, pnode: pending_xref) -> None:\n        pnode.attributes.update(self.env.ref_context)\n\n    def resolve_xref(self, env: BuildEnvironment, fromdocname: str, builder: Builder,\n                     type: str, target: str, node: pending_xref, contnode: Element\n                     ) -> Element:"}]}
+
+=== Turn 8 ===
+[user] [tool_result] applied sphinx/domains/python.py:1292-1294
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /repo 2>/dev/null || true; python -m pytest tests/test_domain_py.py -q 2>&1 | tail -20"}
+
+=== Turn 9 ===
+[user] [tool_result] 32 passed, 1221 warnings in 0.57s
+[assistant] All tests pass. The fix mirrors what the C and C++ domains already do.
+
+## Summary
+
+**Root cause:** The implicit cross-references created by info fields like `:type:`, `:param type name:`, and `:rtype:` are built through `Field.make_xref` in `sphinx/util/docfields.py`, which calls `domain.process_field_xref(refnode)` to attach scope context (current module/class). The Python domain never overrode `process_field_xref`, so it used the no-op default from `Domain`. As a result, field xref nodes had no `py:module`/`py:class` attributes.
+
+In `PythonDomain.find_obj`, an unqualified name like `A` with no module context skips the `modname + '.' + name` lookups and falls into "fuzzy" search mode, which matches *every* `*.A` across all submodules — producing the spurious "more than one target found" warnings and resolving to the wrong class. Explicit `:py:class:` roles worked because they carry `py:module`/`py:class` from `ref_context`.
+
+**Fix:** Added `process_field_xref` to `PythonDomain` to copy the current `ref_context` (which includes `py:module` and `py:class`) onto the pending xref node, exactly like `CDomain` and `CPPDomain` do:
+
+```python
+def process_field_xref(self, pnode: pending_xref) -> None:
+    pnode.attributes.update(self.env.ref_context)
+```
+
+Now field-based type xrefs resolve using the current module first and then parent modules, matching explicit role behavior — so in the `mod.submod` scope, `A` correctly resolves to `mod.submod.A` with no ambiguity warning.

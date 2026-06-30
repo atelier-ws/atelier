@@ -1,0 +1,43 @@
+diff --git a/seaborn/_core/scales.py b/seaborn/_core/scales.py
+index 55874bf2..41393a2a 100644
+--- a/seaborn/_core/scales.py
++++ b/seaborn/_core/scales.py
+@@ -378,7 +378,18 @@ class ContinuousBase(Scale):
+             axis.set_view_interval(vmin, vmax)
+             locs = axis.major.locator()
+             locs = locs[(vmin <= locs) & (locs <= vmax)]
+-            labels = axis.major.formatter.format_ticks(locs)
++            formatter = axis.major.formatter
++
++            # Avoid having an offset/scale factor in the legend labels: unlike
++            # an axis, a legend has nowhere to display the offset text, so the
++            # labels need to encode the full data values themselves.
++            if isinstance(formatter, ScalarFormatter):
++                formatter = copy(formatter)
++                formatter.set_useOffset(False)
++                formatter.set_scientific(False)
++                formatter.set_axis(axis.major)
++
++            labels = formatter.format_ticks(locs)
+             new._legend = list(locs), list(labels)
+ 
+         return new
+diff --git a/tests/_core/test_plot.py b/tests/_core/test_plot.py
+index e4ba99e1..1ff6d337 100644
+--- a/tests/_core/test_plot.py
++++ b/tests/_core/test_plot.py
+@@ -1986,6 +1986,14 @@ class TestLegend:
+                 assert a.value == label
+                 assert a.variables == [variables[s.name]]
+ 
++    def test_legend_has_no_offset(self, xy):
++
++        x = np.array([1, 2, 3, 4]) + 1e6
++        p = Plot(x=x, y=x, color=x).add(MockMark()).plot()
++        e, = p._legend_contents
++        labels = e[-1]
++        assert all(float(label) > 1e6 for label in labels)
++
+     def test_multi_layer_different_artists(self, xy):
+ 
+         class MockMark1(MockMark):

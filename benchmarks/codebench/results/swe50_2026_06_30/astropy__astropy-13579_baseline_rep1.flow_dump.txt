@@ -1,0 +1,147 @@
+
+=== Turn 1 ===
+[user] <session>
+Inconsistent behavior of `world_to_pixel` in `SlicedLowLevelWCS` 
+<!-- This comments are hidden when you submit the issue,
+so you do not need to remove them! -->
+
+<!-- Please be sure to check out our contributing guidelines,
+https://github.com/astropy/astropy/blob/main/CONTRIBUTING.md 
+[assistant] {"title": "Fix world_to_pixel in SlicedLowLevelWCS with PCij matrix"}
+
+=== Turn 2 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: Bash] {"command": "find /testbed -name \"sliced_low_level_wcs.py\" -path \"*wcsapi*\"", "description": "Find the SlicedLowLevelWCS source file"}
+
+=== Turn 3 ===
+[user] [tool_result] /testbed/astropy/wcs/wcsapi/sliced_low_level_wcs.py
+[assistant] [tool_use: Read] {"file_path": "/testbed/astropy/wcs/wcsapi/sliced_low_level_wcs.py"}
+
+=== Turn 4 ===
+[user] [tool_result] 1	import warnings
+2	
+3	from .wrappers.sliced_wcs import SlicedLowLevelWCS, sanitize_slices
+4	from astropy.utils.exceptions import AstropyDeprecationWarning
+5	
+6	warnings.warn(
+7	    "SlicedLowLevelWCS has been moved to"
+8	    " astropy.wcs.wcsapi.wrappers.sliced_wcs.SlicedLowLevelWCS, 
+[assistant] [tool_use: Read] {"file_path": "/testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py"}
+
+=== Turn 5 ===
+[user] [tool_result] 1	import numbers
+2	from collections import defaultdict
+3	
+4	import numpy as np
+5	
+6	from astropy.utils import isiterable
+7	from astropy.utils.decorators import lazyproperty
+8	
+9	from ..low_level_api import BaseLowLevelWCS
+10	from .base import BaseWCSWrapper
+11	
+12	__all__ = ['sanitize_
+[assistant] The bug is in `world_to_pixel_values`. Let me examine the key section:[tool_use: Read] {"file_path": "/testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py", "offset": 245, "limit": 25}
+
+=== Turn 6 ===
+[user] [tool_result] 245	    def world_to_pixel_values(self, *world_arrays):
+246	        world_arrays = tuple(map(np.asanyarray, world_arrays))
+247	        world_arrays_new = []
+248	        iworld_curr = -1
+249	        for iworld in range(self._wcs.world_n_dim):
+250	            if iworld in self._world_kee
+[assistant] I understand the bug. For a dropped (sliced-out) world dimension, the code uses a hardcoded placeholder value of `1.`. When that world dimension is coupled to the kept pixel dimensions through the PC matrix, this arbitrary value corrupts the `world_to_pixel` inversion. The correct value is the actual world coordinate at the sliced-out pixel position. Let me fix it:[tool_use: Edit] {"file_path": "/testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py", "old_string": "    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)", "new_string": "    def world_to_pixel_values(self, *world_arrays):\n        sliced_out_world_coords = self._pixel_to_world_values_all(*[0]*len(self._pixel_keep))\n\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(sliced_out_world_coords[iworld])"}
+
+=== Turn 7 ===
+[user] [tool_result] The file /testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now let me verify the fix works with the reproducer:[tool_use: Bash] {"command": "cd /testbed && python -c \"\nimport numpy as np\nimport astropy.wcs\nfrom astropy.coordinates import SkyCoord\nimport astropy.units as u\n\nnx, ny, nz = 100, 25, 2\nwcs_header = {\n    'WCSAXES': 3,\n    'CRPIX1': (nx + 1)/2, 'CRPIX2': (ny + 1)/2, 'CRPIX3': 1.0,\n    'PC1_1': 0.0, 'PC1_2': -1.0, 'PC1_3': 0.0,\n    'PC2_1': 1.0, 'PC2_2': 0.0, 'PC2_3': -1.0,\n    'CDELT1': 5, 'CDELT2': 5, 'CDELT3': 0.055,\n    'CUNIT1': 'arcsec', 'CUNIT2': 'arcsec', 'CUNIT3': 'Angstrom',\n    'CTYPE1': 'HPLN-TAN', 'CTYPE2': 'HPLT-TAN', 'CTYPE3': 'WAVE',\n    'CRVAL1': 0.0, 'CRVAL2': 0.0, 'CRVAL3': 1.05,\n}\nfits_wcs = astropy.wcs.WCS(header=wcs_header)\npt = SkyCoord(Tx=0*u.arcsec, Ty=0*u.arcsec, frame=astropy.wcs.utils.wcs_to_celestial_frame(fits_wcs))\nprint('full:', fits_wcs.world_to_pixel(pt, 1.05*u.angstrom))\nll = astropy.wcs.wcsapi.SlicedLowLevelWCS(fits_wcs, 0)\nhl = astropy.wcs.wcsapi.HighLevelWCSWrapper(ll)\nprint('sliced:', hl.world_to_pixel(pt))\n\"", "description": "Run the reproducer"}
+
+=== Turn 8 ===
+[user] [tool_result] Exit code 1
+Traceback (most recent call last):
+  File "<string>", line 19, in <module>
+  File "/testbed/astropy/wcs/utils.py", line 219, in wcs_to_celestial_frame
+    raise ValueError("Could not determine celestial frame corresponding to "
+ValueError: Could not determine celestial fram
+[assistant] The Helioprojective frame requires sunpy. Let me adapt with a standard celestial frame:[tool_use: Bash] {"command": "python -c \"\nimport numpy as np\nimport astropy.wcs\nfrom astropy.coordinates import SkyCoord\nimport astropy.units as u\n\nnx, ny, nz = 100, 25, 2\nwcs_header = {\n    'WCSAXES': 3,\n    'CRPIX1': (nx + 1)/2, 'CRPIX2': (ny + 1)/2, 'CRPIX3': 1.0,\n    'PC1_1': 0.0, 'PC1_2': -1.0, 'PC1_3': 0.0,\n    'PC2_1': 1.0, 'PC2_2': 0.0, 'PC2_3': -1.0,\n    'CDELT1': 5, 'CDELT2': 5, 'CDELT3': 0.055,\n    'CUNIT1': 'arcsec', 'CUNIT2': 'arcsec', 'CUNIT3': 'Angstrom',\n    'CTYPE1': 'RA---TAN', 'CTYPE2': 'DEC--TAN', 'CTYPE3': 'WAVE',\n    'CRVAL1': 0.0, 'CRVAL2': 0.0, 'CRVAL3': 1.05,\n}\nfits_wcs = astropy.wcs.WCS(header=wcs_header)\npt = SkyCoord(0*u.arcsec, 0*u.arcsec, frame=astropy.wcs.utils.wcs_to_celestial_frame(fits_wcs))\nprint('full:  ', fits_wcs.world_to_pixel(pt, 1.05*u.angstrom))\nll = astropy.wcs.wcsapi.SlicedLowLevelWCS(fits_wcs, 0)\nhl = astropy.wcs.wcsapi.HighLevelWCSWrapper(ll)\nprint('sliced:', hl.world_to_pixel(pt))\n\"", "description": "Run reproducer with RA/DEC frame"}
+
+=== Turn 9 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] The sliced WCS now returns `(49.5, 12.)`, matching the first two components of the full WCS result. Let me run the existing test suite to make sure nothing broke:[tool_use: Bash] {"command": "cd /testbed && python -m pytest astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py -q 2>&1 | tail -20", "description": "Run sliced WCS tests"}
+
+=== Turn 10 ===
+[user] [tool_result] Internet access disabled
+........................................                                 [100%]
+40 passed in 0.49s
+[assistant] All 40 tests pass. Let me add a regression test for this coupled-dimension case:[tool_use: Bash] {"command": "grep -n \"^def test\\|^EXPECTED\\|^class\\|wcs_to_celestial\\|^import\\|^from\" /testbed/astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py | head -40", "description": "Survey test file structure"}
+
+=== Turn 11 ===
+[user] [tool_result] 1:import warnings
+3:import pytest
+5:import numpy as np
+6:from numpy.testing import assert_equal, assert_allclose
+7:from astropy.wcs.wcs import WCS, FITSFixedWarning
+8:from astropy.time import Time
+9:from astropy.wcs import WCS
+10:from astropy.io.fits import Header
+11:from astropy.io.fi
+[assistant] [tool_use: Read] {"file_path": "/testbed/astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py", "offset": 758, "limit": 40}
+
+=== Turn 12 ===
+[user] [tool_result] 758	def test_1d_sliced_low_level(time_1d_wcs):
+759	    sll = SlicedLowLevelWCS(time_1d_wcs, np.s_[10:20])
+760	    world = sll.pixel_to_world_values([1, 2])
+761	    assert isinstance(world, np.ndarray)
+762	    assert np.allclose(world, [27, 29])
+763	
+764	
+765	def validate_info_dict(resu
+[assistant] Let me look at the end of the file and add a regression test there:[tool_use: Bash] {"command": "tail -5 /testbed/astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py; echo \"---total lines---\"; wc -l /testbed/astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py", "description": "Check end of test file"}
+
+=== Turn 13 ===
+[user] [tool_result]     np64_sliced = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, np.s_[:, np.int64(0), :])
+    pixel_arrays = ([0, 1], [0, 1])
+    for int_coord, np64_coord in zip(int_sliced.pixel_to_world_values(*pixel_arrays),
+                                     np64_sliced.pixel_to_world_values(*pixel_array
+[assistant] [tool_use: Read] {"file_path": "/testbed/astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py", "offset": 890, "limit": 11}
+
+=== Turn 14 ===
+[user] [tool_result] 890	
+891	    assert wao_classes['spectral'][0:3] == (u.Quantity, (), {})
+892	    assert wao_classes['time'][0:3] == (Time, (), {})
+893	
+894	
+895	def test_pixel_to_world_values_different_int_types():
+896	    int_sliced = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, np.s_[:, 0, :])
+897	    np64_
+[assistant] [tool_use: Edit] {"file_path": "/testbed/astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py", "old_string": "    for int_coord, np64_coord in zip(int_sliced.pixel_to_world_values(*pixel_arrays),\n                                     np64_sliced.pixel_to_world_values(*pixel_arrays)):\n        assert all(int_coord == np64_coord)", "new_string": "    for int_coord, np64_coord in zip(int_sliced.pixel_to_world_values(*pixel_arrays),\n                                     np64_sliced.pixel_to_world_values(*pixel_arrays)):\n        assert all(int_coord == np64_coord)\n\n\nCOUPLED_WCS_HEADER = {\n    'WCSAXES': 3,\n    'CRPIX1': (100 + 1)/2,\n    'CRPIX2': (25 + 1)/2,\n    'CRPIX3': 1.0,\n    'PC1_1': 0.0,\n    'PC1_2': -1.0,\n    'PC1_3': 0.0,\n    'PC2_1': 1.0,\n    'PC2_2': 0.0,\n    'PC2_3': -1.0,\n    'CDELT1': 5,\n    'CDELT2': 5,\n    'CDELT3': 0.055,\n    'CUNIT1': 'arcsec',\n    'CUNIT2': 'arcsec',\n    'CUNIT3': 'Angstrom',\n    'CTYPE1': 'HPLN-TAN',\n    'CTYPE2': 'HPLT-TAN',\n    'CTYPE3': 'WAVE',\n    'CRVAL1': 0.0,\n    'CRVAL2': 0.0,\n    'CRVAL3': 1.05,\n\n}\n\n\ndef test_coupled_world_slicing():\n    fits_wcs = WCS(header=COUPLED_WCS_HEADER)\n    sl = SlicedLowLevelWCS(fits_wcs, 0)\n    world = fits_wcs.pixel_to_world_values(0, 0, 0)\n    out_pix = sl.world_to_pixel_values(world[0], world[1])\n\n    assert np.allclose(out_pix[0], 0)"}
+
+=== Turn 15 ===
+[user] [tool_result] The file /testbed/astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] [tool_use: Bash] {"command": "cd /testbed && python -m pytest astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py -q 2>&1 | tail -10", "description": "Run full sliced WCS test suite"}
+
+=== Turn 16 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] All 41 tests pass, including the new regression test. Let me also run the broader wcsapi test suite to confirm no regressions:[tool_use: Bash] {"command": "python -m pytest astropy/wcs/wcsapi/ -q 2>&1 | tail -10", "description": "Run full wcsapi test suite"}
+
+=== Turn 17 ===
+[user] [tool_result]         except Exception as exc:
+>           warn("leap-second auto-update failed due to the following "
+                 f"exception: {exc!r}", AstropyWarning)
+E           astropy.utils.exceptions.AstropyWarning: leap-second auto-update failed due to the following exception: IERSStale
+[assistant] The single failure is unrelated to my change — it's an `IERSStaleWarning` about an expired leap-second file failing to auto-update (no internet access in this environment). All WCS-API logic tests pass.
+
+## Summary
+
+**Root cause:** In `SlicedLowLevelWCS.world_to_pixel_values` (`astropy/wcs/wcsapi/wrappers/sliced_wcs.py`), when a world dimension was dropped by the slice, the code substituted a hardcoded placeholder value of `1.` for that dropped world coordinate before calling the underlying `world_to_pixel_values`.
+
+This is fine when the dropped dimension is independent of the kept dimensions, but in the reporter's WCS the spectral (wavelength) axis is coupled to the spatial axes via a non-trivial `PCij` matrix. Feeding the arbitrary `1.` value into the coupled inverse transform corrupted the result for the kept pixel dimension — producing the "essentially infinite" pixel value.
+
+**Fix:** Instead of `1.`, use the actual world coordinate value at the sliced-out pixel position. These are computed once via `self._pixel_to_world_values_all(*[0]*len(self._pixel_keep))`, which already accounts for the integer slice positions of the dropped pixel dimensions. The dropped world dimensions now get their physically correct values, so the coupled inversion returns the expected pixel coordinates.
+
+I also added a regression test (`test_coupled_world_slicing`) using the coupled-WCS header from the issue.

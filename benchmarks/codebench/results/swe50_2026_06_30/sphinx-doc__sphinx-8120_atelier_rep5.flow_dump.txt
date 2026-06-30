@@ -1,0 +1,84 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "init_console locale_dirs translation catalog load gettext"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "locale_dirs setup gettext_auto_build compile catalogs user locale"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["sphinx/builders/gettext.py","sphinx/application.py","sphinx/transforms/i18n.py","sphinx/builders/__init__.py","sphinx/ext/autosummary/generate.py"],"exact_match":true,"files":[{"path":"sphinx/locale/__init__.py","sections":[{"content":"169\tdef init_console(locale_
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "init translation user_locale_dirs locale_dirs application _init_i18n"}[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sphinx/locale/__init__.py:L100-L168"]}
+
+=== Turn 3 ===
+[user] [tool_result] {"candidate_files":["sphinx/locale/__init__.py","sphinx/transforms/i18n.py","sphinx/builders/__init__.py","sphinx/builders/html/__init__.py","sphinx/config.py"],"exact_match":true,"files":[{"path":"doc/conf.py","sections":[{"content":"118\tlocale_dirs = ['locale/']","end_line":118,"lin
+[assistant] I found the bug. In `Sphinx._init_i18n`, the locale dirs are ordered with Sphinx's built-in translations **before** the user's locale dirs:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sphinx/application.py:L279-L302"]}
+
+=== Turn 4 ===
+[user] [tool_result] ## sphinx/application.py:L279-L302
+    def _init_i18n(self) -> None:
+        """Load translated strings from the configured localedirs if enabled in
+        the configuration.
+        """
+        if self.config.language is None:
+            self.translator, has_translation = locale.ini
+[assistant] The root cause: `locale.init` makes the **first** catalog found the primary and adds later ones only as *fallbacks* (used only for messages the primary lacks). Since the built-in `package_dir/locale` is listed before the user's `repo.locale_dirs`, the official translations always win and the user overrides are ignored.
+
+The fix is to put the user's locale dirs first so they take precedence:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path":"sphinx/application.py","old":"            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)","new":"            locale_dirs = list(repo.locale_dirs) + [None, path.join(package_dir, 'locale')]"}]}
+
+=== Turn 5 ===
+[user] [tool_result] applied sphinx/application.py:296
+[assistant] Now let me verify there's a test covering this behavior:[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "test _init_i18n locale override user translation precedence"}
+
+=== Turn 6 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] The fix is complete. Here's a summary:
+
+## Root cause
+
+In `sphinx/application.py`, `Sphinx._init_i18n` built the locale search path as:
+
+```python
+locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)
+```
+
+`locale.init()` (in `sphinx/locale/__init__.py`) treats the **first** catalog it finds as the *primary* translator and registers every later one only via `translator.add_fallback(trans)`. A gettext fallback is consulted **only for messages the primary lacks** — it never overrides an existing translation.
+
+Because Sphinx's bundled translations (`package_dir/locale`) came *before* the user's `locale/<lang>/LC_MESSAGES/sphinx.mo`, the official `da` catalog became the primary and the user's overrides for `Fig. %s` / `Listing %s` were treated as fallbacks that never got used.
+
+## Fix
+
+Reorder so the user's locale dirs come first and thus take precedence, with the built-in catalog (and system default `None`) as fallbacks:
+
+```python
+locale_dirs = list(repo.locale_dirs) + [None, path.join(package_dir, 'locale')]
+```
+
+Now a user-supplied `sphinx.po`/`sphinx.mo` override is the primary translator, and the built-in translations only fill in any messages the user didn't override — which is exactly the documented behavior of `locale_dirs`.
+
+=== Turn 7 ===
+[user] Stop hook feedback:
+verify-before-done: edited 1 file(s) (application.py) but ran no tests. Run the project's test suite.
+[assistant] I'll find and run the relevant i18n tests.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel 2>/dev/null) && python -m pytest tests/test_application.py tests/test_intl.py -q 2>&1 | tail -40"}
+
+=== Turn 8 ===
+[user] [tool_result] =========================== short test summary info ============================
+FAILED tests/test_application.py::test_extension_in_blacklist - assert False
+FAILED tests/test_application.py::test_add_is_parallel_allowed - AssertionErr...
+FAILED tests/test_intl.py::test_html_meta - ass
+[assistant] Let me check whether these failures are pre-existing (unrelated to my change) by stashing the change:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && git stash && python -m pytest tests/test_application.py tests/test_intl.py -q 2>&1 | tail -12; git stash pop"}
+
+=== Turn 9 ===
+[user] [tool_result] =========================== short test summary info ============================
+FAILED tests/test_application.py::test_extension_in_blacklist - assert False
+FAILED tests/test_application.py::test_add_is_parallel_allowed - AssertionErr...
+FAILED tests/test_intl.py::test_html_meta - ass
+[assistant] The 6 failures are **pre-existing** — identical results (49 passed, 6 failed) both with and without my change. My change introduces no regressions.
+
+The failures are unrelated to the fix:
+- `test_application.py` failures (`test_extension_in_blacklist`, `test_add_is_parallel_allowed`) — extension/parallel logic, not i18n.
+- `test_intl.py` failures — document-content translation (meta tags, label targets), a different code path (`sphinx/transforms/i18n.py`) than my change, which only affects the ordering of **built-in message** catalogs (the `sphinx` domain) in `locale.init`.
+
+My one-line reorder in `_init_i18n` makes user-supplied `locale/<lang>/LC_MESSAGES/sphinx.mo` the primary translator with Sphinx's bundled catalog as fallback, so user overrides for strings like `Fig. %s` and `Listing %s` now take effect as documented. The test suite confirms no regression from the change.

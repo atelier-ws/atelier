@@ -1,0 +1,106 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "Header.fromstring Card.fromstring classmethod"}
+
+=== Turn 2 ===
+[user] [tool_result] {"additional_relevant_files":[],"cache_hit":false,"entry_points":[{"end_line":284,"id":"dae54650d1fc3821c7c402a0","kind":"method","line":248,"name":"fromstring","path":"astropy/io/fits/hdu/base.py","provenance":"local","qualified_name":"_BaseHDU.fromstring","score":1425.664201183432},{
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["astropy/io/fits/header.py:L330-L460", "astropy/io/fits/card.py:L548-L620"]}
+
+=== Turn 3 ===
+[user] [tool_result] ## astropy/io/fits/header.py:L330-L460
+    def fromstring(cls, data, sep=''):
+        """
+        Creates an HDU header from a byte string containing the entire header
+        data.
+
+        Parameters
+        ----------
+        data : str
+           String containing the entire header
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["astropy/io/fits/header.py:L1-L40", "astropy/io/fits/card.py:L1-L30"]}
+
+=== Turn 4 ===
+[user] [tool_result] ## astropy/io/fits/header.py:L1-L40
+# Licensed under a 3-clause BSD style license - see PYFITS.rst
+
+import collections
+import copy
+import itertools
+import re
+import warnings
+
+from .card import Card, _pad, KEYWORD_LENGTH, UNDEFINED
+from .file import _File
+from .util import encode_ascii,
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "def decode_ascii def encode_ascii"}
+
+=== Turn 5 ===
+[user] [tool_result] {"additional_relevant_files":[],"cache_hit":false,"entry_points":[{"end_line":310,"id":"6764e204d4a68d7a98558d13","kind":"function","line":277,"name":"decode_ascii","path":"astropy/io/fits/util.py","provenance":"local","qualified_name":"decode_ascii","score":1436.3890532544378},{"end_l
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "astropy/io/fits/header.py", "old": "        sep : str, optional\n            The string separating cards from each other, such as a newline.  By\n            default there is no card separator (as is the case in a raw FITS\n            file).\n\n        Returns\n        -------\n        header\n            A new `Header` instance.\n        \"\"\"\n\n        cards = []", "new": "        sep : str, optional\n            The string separating cards from each other, such as a newline.  By\n            default there is no card separator (as is the case in a raw FITS\n            file).\n\n        Returns\n        -------\n        header\n            A new `Header` instance.\n        \"\"\"\n\n        cards = []\n\n        # If the card separator contains characters that may validly appear in\n        # a card, the only way to unambiguously distinguish between cards is to\n        # require that they be Card.length long.  However, if the separator\n        # contains non-valid characters (namely \\n) the cards may be split\n        # immediately at the separator\n        require_full_cardlength = set(sep).issubset(VALID_HEADER_CHARS)\n\n        # Split the header into individual cards\n        idx = 0\n        image = []\n\n        # Make the parsing code simpler, by requiring a known data type\n        if isinstance(data, str):\n            data = data.encode('ascii')\n\n        while idx < len(data):\n            if require_full_cardlength:\n                end_idx = idx + Card.length\n            else:\n                try:\n                    end_idx = data.index(sep.encode('ascii'), idx)\n                except ValueError:\n                    end_idx = len(data)\n\n            next_image = data[idx:end_idx]\n            idx = end_idx + len(sep)\n\n            if image:\n                if next_image[:8] == b'CONTINUE':\n                    image.append(next_image)\n                    continue\n                cards.append(Card.fromstring(b''.join(image)))\n\n            if require_full_cardlength:\n                if next_image == END_CARD:\n                    image = []\n                    break\n            else:\n                if next_image.split(sep.encode('ascii'))[0].rstrip() == b'END':\n                    image = []\n                    break\n\n            image = [next_image]\n\n        # Add the last image that was found before the end, if any\n        if image:\n            cards.append(Card.fromstring(b''.join(image)))\n\n        return cls._fromcards(cards)\n\n    @classmethod\n    def _old_fromstring_REMOVE(cls):\n        cards = []"}]}
+
+=== Turn 6 ===
+[user] [tool_result] applied astropy/io/fits/header.py:340-351
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["astropy/io/fits/header.py:L330-L460"]}
+
+=== Turn 7 ===
+[user] [tool_result] ## astropy/io/fits/header.py:L330-L460
+    def fromstring(cls, data, sep=''):
+        """
+        Creates an HDU header from a byte string containing the entire header
+        data.
+
+        Parameters
+        ----------
+        data : str
+           String containing the entire header
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "END_CARD", "paths": "astropy/io/fits"}
+
+=== Turn 8 ===
+[user] [tool_result] {"additional_relevant_files":[],"cache_hit":false,"entry_points":[{"end_line":34,"id":"899ce72911b113de836f855a","kind":"variable","line":34,"name":"END_CARD","path":"astropy/io/fits/header.py","provenance":"local","qualified_name":"END_CARD","score":1424.0}],"exact_match":true,"experi
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "def _pad", "paths": "astropy/io/fits/card.py"}
+
+=== Turn 9 ===
+[user] [tool_result] {"cache_hit":false,"entry_points":[{"end_line":1285,"id":"27aff4a95ecd69d604dd12e4","kind":"function","line":1269,"name":"_pad","path":"astropy/io/fits/card.py","provenance":"local","qualified_name":"_pad","score":0.0287391216352965},{"end_line":36,"id":"3835897da6eb2b9fe0d855be","kind
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "astropy/io/fits/header.py", "old": "        Parameters\n        ----------\n        data : str\n           String containing the entire header.\n\n        sep : str, optional\n            The string separating cards from each other, such as a newline.  By\n            default there is no card separator (as is the case in a raw FITS\n            file).\n\n        Returns\n        -------\n        header\n            A new `Header` instance.\n        \"\"\"\n\n        cards = []\n\n        # If the card separator contains characters that may validly appear in\n        # a card, the only way to unambiguously distinguish between cards is to\n        # require that they be Card.length long.  However, if the separator\n        # contains non-valid characters (namely \\n) the cards may be split\n        # immediately at the separator\n        require_full_cardlength = set(sep).issubset(VALID_HEADER_CHARS)\n\n        # Split the header into individual cards\n        idx = 0\n        image = []\n\n        # Make the parsing code simpler, by requiring a known data type\n        if isinstance(data, str):\n            data = data.encode('ascii')\n\n        while idx < len(data):\n            if require_full_cardlength:\n                end_idx = idx + Card.length\n            else:\n                try:\n                    end_idx = data.index(sep.encode('ascii'), idx)\n                except ValueError:\n                    end_idx = len(data)\n\n            next_image = data[idx:end_idx]\n            idx = end_idx + len(sep)\n\n            if image:\n                if next_image[:8] == b'CONTINUE':\n                    image.append(next_image)\n                    continue\n                cards.append(Card.fromstring(b''.join(image)))\n\n            if require_full_cardlength:\n                if next_image == END_CARD:\n                    image = []\n                    break\n            else:\n                if next_image.split(sep.encode('ascii'))[0].rstrip() == b'END':\n                    image = []\n                    break\n\n            image = [next_image]\n\n        # Add the last image that was found before the end, if any\n        if image:\n            cards.append(Card.fromstring(b''.join(image)))\n\n        return cls._fromcards(cards)\n\n    @classmethod\n    def _old_fromstring_REMOVE(cls):\n        cards = []\n\n        # If the card separator contains characters that may validly appear in\n        # a card, the only way to unambiguously distinguish between cards is to\n        # require that they be Card.length long.  However, if the separator\n        # contains non-valid characters (namely \\n) the cards may be split\n        # immediately at the separator\n        require_full_cardlength = set(sep).issubset(VALID_HEADER_CHARS)\n\n        # Split the header into individual cards\n        idx = 0\n        image = []\n\n        while idx < len(data):", "new": "        Parameters\n        ----------\n        data : str or bytes\n           String or bytes containing the entire header.  In the case of bytes\n           they will be decoded using Latin-1 (only relevant if they contain\n           extended ASCII characters).\n\n        sep : str, optional\n            The string separating cards from each other, such as a newline.  By\n            default there is no card separator (as is the case in a raw FITS\n            file).\n\n        Returns\n        -------\n        header\n            A new `Header` instance.\n        \"\"\"\n\n        cards = []\n\n        # If the card separator contains characters that may validly appear in\n        # a card, the only way to unambiguously distinguish between cards is to\n        # require that they be Card.length long.  However, if the separator\n        # contains non-valid characters (namely \\n) the cards may be split\n        # immediately at the separator\n        require_full_cardlength = set(sep).issubset(VALID_HEADER_CHARS)\n\n        # Split the header into individual cards\n        idx = 0\n        image = []\n\n        # Make the parsing code simpler, by requiring a known data type\n        if isinstance(data, bytes):\n            data = decode_ascii(data)\n\n        while idx < len(data):"}]}
+
+=== Turn 10 ===
+[user] [tool_result] applied astropy/io/fits/header.py:335-418
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["astropy/io/fits/header.py:L330-L405"]}
+
+=== Turn 11 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "astropy/io/fits/header.py", "old": "        data : str or bytes\n           String or bytes containing the entire header.  In the case of bytes\n           they will be decoded using Latin-1 (only relevant if they contain\n           extended ASCII characters).", "new": "        data : str or bytes\n           String or bytes containing the entire header.  In the case of bytes\n           they will be decoded as ASCII; any non-ASCII characters are replaced\n           with ``?`` (and a warning is emitted)."}]}
+
+=== Turn 12 ===
+[user] [tool_result] applied astropy/io/fits/header.py:337-340
+[assistant] Now Card.fromstring. Let me update it and add the import:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "astropy/io/fits/card.py", "old": "from .util import _str_to_num, _is_int, translate, _words_group", "new": "from .util import _str_to_num, _is_int, translate, _words_group, decode_ascii"}, {"path": "astropy/io/fits/card.py", "old": "        Construct a `Card` object from a (raw) string. It will pad the string\n        if it is not the length of a card image (80 columns).  If the card\n        image is longer than 80 columns, assume it contains ``CONTINUE``\n        card(s).\n        \"\"\"\n\n        card = cls()\n        card._image = _pad(image)", "new": "        Construct a `Card` object from a (raw) string. It will pad the string\n        if it is not the length of a card image (80 columns).  If the card\n        image is longer than 80 columns, assume it contains ``CONTINUE``\n        card(s).\n        \"\"\"\n\n        card = cls()\n        if isinstance(image, bytes):\n            # FITS supports only ASCII, but decode as latin1 and just take all\n            # bytes for now; if it's not ASCII later we'll get a\n            # UnicodeDecodeError\n            image = decode_ascii(image)\n\n        card._image = _pad(image)"}]}
+
+=== Turn 13 ===
+[user] [tool_result] applied astropy/io/fits/card.py:8,550-557
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "astropy/io/fits/card.py", "old": "        if isinstance(image, bytes):\n            # FITS supports only ASCII, but decode as latin1 and just take all\n            # bytes for now; if it's not ASCII later we'll get a\n            # UnicodeDecodeError\n            image = decode_ascii(image)", "new": "        if isinstance(image, bytes):\n            # FITS supports only ASCII; non-ASCII bytes are replaced with '?'\n            # (and a warning is emitted) by decode_ascii.\n            image = decode_ascii(image)"}]}
+
+=== Turn 14 ===
+[user] [tool_result] applied astropy/io/fits/card.py:557-561
+[assistant] Now let me verify with a quick test:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && python -c \"\nfrom astropy.io.fits import Header, Card\ns = Header({'TEST': 1, 'FOO': 'bar'}).tostring()\nb = s.encode('ascii')\nh1 = Header.fromstring(s)\nh2 = Header.fromstring(b)\nassert h1 == h2\nassert h2['TEST'] == 1 and h2['FOO'] == 'bar'\nc = Card.fromstring(b'TEST    =                    1')\nassert c.keyword == 'TEST' and c.value == 1\nprint('OK', repr(h2['FOO']), c.keyword, c.value)\n\""}
+
+=== Turn 15 ===
+[user] [tool_result] OK 'bar' TEST 1
+[assistant] Both work now. Let me run the relevant existing tests for fromstring:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && python -m pytest astropy/io/fits/tests/test_header.py -k \"fromstring or from_string or bytes\" -q 2>&1 | tail -20"}
+
+=== Turn 16 ===
+[user] [tool_result] Internet access disabled
+..                                                                       [100%]
+2 passed, 148 deselected in 0.19s
+[assistant] The changes are complete. Summary:
+
+**`astropy/io/fits/header.py`** — `Header.fromstring` now decodes `bytes` input to a `str` (via the existing `decode_ascii` helper) before parsing, so it accepts both Python 3 `str` and `bytes`. The docstring was updated to document the `str or bytes` parameter.
+
+**`astropy/io/fits/card.py`** — `Card.fromstring` got the same treatment: `bytes` images are decoded to `str` before padding, and `decode_ascii` was added to the imports.
+
+`decode_ascii` is the same helper used elsewhere in the FITS code: it decodes as ASCII and, for any stray non-ASCII bytes, replaces them with `?` and emits a warning rather than raising — matching the pre-existing behavior for unicode strings that assumed ASCII-encodability.
