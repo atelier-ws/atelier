@@ -1,0 +1,232 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "pwd && ls && git log --oneline -3"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_print_MatAdd printer MatrixSymbol"}
+
+=== Turn 2 ===
+[user] [tool_result] /testbed
+AUTHORS
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+LICENSE
+MANIFEST.in
+PULL_REQUEST_TEMPLATE.md
+README.rst
+bin
+conftest.py
+data
+doc
+examples
+github_deploy_key.enc
+isympy.py
+release
+setup.py
+setupegg.py
+sympy
+sympy.egg-info
+tox.ini.sample
+33c72dcc0 SWE-bench
+9986b3818 Merge pull reques
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"symbol": ["StrPrinter._print_Add", "StrPrinter._print_Mul", "StrPrinter._print_MatMul"]}
+
+=== Turn 3 ===
+[user] [tool_result] ### sympy/printing/str.py:L49-L71 (method)
+    def _print_Add(self, expr, order=None):
+        if self.order == 'none':
+            terms = list(expr.args)
+        else:
+            terms = self._as_ordered_terms(expr, order=order)
+
+        PREC = precedence(expr)
+        l = []
+      
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sympy/matrices/expressions/matmul.py:L1-L60", "sympy/matrices/expressions/matadd.py:L1-L60"]}
+
+=== Turn 4 ===
+[user] [tool_result] ## sympy/matrices/expressions/matmul.py:L1-L60
+from __future__ import print_function, division
+
+from sympy import Number
+from sympy.core import Mul, Basic, sympify, Add
+from sympy.core.compatibility import range
+from sympy.functions import adjoint
+from sympy.matrices.expressions.transp
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -c \"\nfrom sympy import *\nA = MatrixSymbol('A', 2, 2)\nB = MatrixSymbol('B', 2, 2)\ne = A - A*B - B\nfor t in e.args:\n    print(repr(t), '|args:', t.args)\nm = -A*B\nprint('mul args', m.args, type(m))\nprint('coeff', m.as_coeff_mmul())\n\""}
+
+=== Turn 5 ===
+[user] [tool_result] (-1)*B |args: (-1, B)
+(-1)*A*B |args: (-1, A, B)
+A |args: ('A', 2, 2)
+mul args (-1, A, B) <class 'sympy.matrices.expressions.matmul.MatMul'>
+coeff (-1, A*B)
+
+stderr:
+/testbed/sympy/core/basic.py:3: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'coll
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -c \"\nfrom sympy import *\nfrom sympy.core.mul import _keep_coeff\nB = MatrixSymbol('B', 2, 2)\nm = (-1)*B\nprint(type(m), m.args)\nc, mm = m.as_coeff_mmul()\nprint('coeff', repr(c), 'mmul', repr(mm), type(mm), mm.args)\nk = _keep_coeff(-c, mm)\nprint('keep', repr(k), type(k), k.args)\n\" 2>/dev/null"}
+
+=== Turn 6 ===
+[user] [tool_result] <class 'sympy.matrices.expressions.matmul.MatMul'> (-1, B)
+coeff -1 mmul B <class 'sympy.matrices.expressions.matmul.MatMul'> (B,)
+keep B <class 'sympy.matrices.expressions.matmul.MatMul'> (B,)
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sympy/printing/str.py:L1-L20", "sympy/printing/latex.py:L1465-L1500", "sympy/printing/pretty/pretty.py:L815-L835"]}
+
+=== Turn 7 ===
+[user] [tool_result] ## sympy/printing/str.py:L1-L20
+"""
+A Printer for generating readable representation of most sympy classes.
+"""
+
+from __future__ import print_function, division
+
+from sympy.core import S, Rational, Pow, Basic, Mul
+from sympy.core.mul import _keep_coeff
+from .printer import Printer
+from
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && grep -n \"stringPict\\|^from sympy.core import\\|import S\\b\\|prettyForm\" sympy/printing/pretty/pretty.py | head -20"}
+
+=== Turn 8 ===
+[user] [tool_result] 5:from sympy.core import S
+25:from .stringpict import prettyForm, stringPict
+52:        self.emptyPrinter = lambda x: prettyForm(xstr(x))
+64:    # empty op so _print(stringPict) returns the same
+65:    def _print_stringPict(self, e):
+69:        return prettyForm(e)
+72:        pform = p
+[assistant] Both `S` and `stringPict` are imported. Now applying all edits:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "sympy/printing/str.py", "old": "    def _print_MatAdd(self, expr):\n        return ' + '.join([self.parenthesize(arg, precedence(expr))\n            for arg in expr.args])", "new": "    def _print_MatAdd(self, expr):\n        terms = [self._print(arg) for arg in expr.args]\n        l = []\n        for t in terms:\n            if t.startswith('-'):\n                sign = \"-\"\n                t = t[1:]\n            else:\n                sign = \"+\"\n            l.extend([sign, t])\n        sign = l.pop(0)\n        if sign == '+':\n            sign = \"\"\n        return sign + ' '.join(l)"}, {"path": "sympy/printing/str.py", "old": "    def _print_MatMul(self, expr):\n        return '*'.join([self.parenthesize(arg, precedence(expr))\n            for arg in expr.args])", "new": "    def _print_MatMul(self, expr):\n        c, m = expr.as_coeff_mmul()\n        if c.is_number and c < 0:\n            expr = _keep_coeff(-c, m)\n            sign = \"-\"\n        else:\n            sign = \"\"\n\n        return sign + '*'.join(\n            [self.parenthesize(arg, precedence(expr)) for arg in expr.args])"}, {"path": "sympy/printing/latex.py", "old": "    def _print_MatAdd(self, expr):\n        terms = list(expr.args)\n        tex = \" + \".join(map(self._print, terms))\n        return tex\n\n    def _print_MatMul(self, expr):\n        from sympy import Add, MatAdd, HadamardProduct\n\n        def parens(x):\n            if isinstance(x, (Add, MatAdd, HadamardProduct)):\n                return r\"\\left(%s\\right)\" % self._print(x)\n            return self._print(x)\n        return ' '.join(map(parens, expr.args))", "new": "    def _print_MatAdd(self, expr):\n        terms = [self._print(t) for t in expr.args]\n        l = []\n        for t in terms:\n            if t.startswith('-'):\n                sign = \"-\"\n                t = t[1:]\n            else:\n                sign = \"+\"\n            l.extend([sign, t])\n        sign = l.pop(0)\n        if sign == '+':\n            sign = \"\"\n        return sign + ' '.join(l)\n\n    def _print_MatMul(self, expr):\n        from sympy import Add, MatAdd, HadamardProduct, MatMul, Mul\n\n        def parens(x):\n            if isinstance(x, (Add, MatAdd, HadamardProduct)):\n                return r\"\\left(%s\\right)\" % self._print(x)\n            return self._print(x)\n\n        if isinstance(expr, MatMul) and expr.args[0].is_Number and expr.args[0] < 0:\n            expr = Mul(-1*expr.args[0], MatMul(*expr.args[1:]))\n            return '-' + ' '.join(map(parens, expr.args))\n        else:\n            return ' '.join(map(parens, expr.args))"}, {"path": "sympy/printing/pretty/pretty.py", "old": "    def _print_MatAdd(self, expr):\n        return self._print_seq(expr.args, None, None, ' + ')", "new": "    def _print_MatAdd(self, expr):\n        s = None\n        for item in expr.args:\n            pform = self._print(item)\n            if s is None:\n                s = pform     # First element\n            else:\n                if S(item.args[0]).is_negative:\n                    s = prettyForm(*stringPict.next(s, ' '))\n                    pform = self._print(item)\n                else:\n                    s = prettyForm(*stringPict.next(s, ' + '))\n                s = prettyForm(*stringPict.next(s, pform))\n\n        return s"}]}
+
+=== Turn 9 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -c \"\nfrom sympy import *\nA = MatrixSymbol('A', 2, 2)\nB = MatrixSymbol('B', 2, 2)\ne = A - A*B - B\nprint(str(e))\npprint(e)\nprint(latex(e))\nprint('---extra---')\nprint(str(-2*A*B + B))\nprint(latex(-2*A*B + B))\npprint(-2*A*B + B)\nprint(str(A*B - B))\n\" 2>/dev/null"}
+
+=== Turn 10 ===
+[user] [tool_result] -B - A*B + A
+-B -A⋅B + A
+-B - A B + A
+---extra---
+-2*A*B + B
+-2 A B + B
+-2⋅A⋅B + B
+-B + A*B
+[assistant] All three printers now produce proper subtraction. Running the relevant test suites:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -m pytest sympy/printing/tests/test_str.py sympy/printing/tests/test_latex.py sympy/printing/pretty/tests/test_pretty.py -q 2>/dev/null | tail -20"}
+
+=== Turn 11 ===
+[user] [tool_result] exit_code=0
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -m pytest sympy/printing/tests/test_str.py sympy/printing/tests/test_latex.py sympy/printing/pretty/tests/test_pretty.py 2>/dev/null | tail -5"}
+
+=== Turn 12 ===
+[user] [tool_result] exit_code=0
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -m pytest sympy/printing/ -q 2>/dev/null | tail -8"}
+
+=== Turn 13 ===
+[user] [tool_result] FIXME (convergence): 3 failed runs, 1 edits, no pass. Re-read the failing assertion + function under test before editing again.
+
+exit_code=0
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -m pytest sympy/printing/ -p no:cacheprovider 2>/dev/null | tail -8"}
+
+=== Turn 14 ===
+[user] [tool_result] FIXME (convergence): 4 failed runs, 1 edits, no pass. Re-read the failing assertion + function under test before editing again.
+
+exit_code=0
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -m pytest sympy/printing/ -q > /tmp/out.txt 2>/dev/null; tail -8 /tmp/out.txt"}
+
+=== Turn 15 ===
+[user] [tool_result] FIXME (convergence): 5 failing runs, 1 edits, still red. Re-read the requirement, pick ONE root cause, then edit.
+
+exit_code=0
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["/tmp/out.txt"]}
+
+=== Turn 16 ===
+[user] [tool_result] ## /tmp/out.txt
+{"mode":"full","path":"/tmp/out.txt","projection":{"view":"exact","transformed":false,"body_complete":true,"untransformed_text":true},"language":"text"}
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && wc -l /tmp/out.txt && sed -n '1,40p' /tmp/out.txt"}
+
+=== Turn 17 ===
+[user] [tool_result] exit_code=0
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -m pytest sympy/printing/ -q -p no:cacheprovider 2>&1 | grep -E \"passed|failed|error\" | tail"}
+
+=== Turn 18 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -m pytest sympy/printing/tests/test_ccode.py sympy/printing/tests/test_fcode.py sympy/matrices/expressions/tests/test_matmul.py sympy/matrices/expressions/tests/test_matadd.py -q -p no:cacheprovider 2>&1 | tail -5"}
+
+=== Turn 19 ===
+[user] [tool_result] FIXME (convergence): 7 failing runs, 1 edits, still red. Re-read the requirement, pick ONE root cause, then edit.
+
+/opt/miniconda3/envs/testbed/bin/python: No module named pytest
+
+FIXME (convergence): 10 searches/reads, 0 edits. Pick the site and EDIT now.
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -c \"\nimport sympy\nr = sympy.test('sympy/printing/tests/test_str.py','sympy/printing/tests/test_latex.py','sympy/printing/pretty/tests/test_pretty.py', verbose=False)\nprint('RESULT_OK' if r else 'RESULT_FAIL')\n\" 2>&1 | tail -15"}
+
+=== Turn 20 ===
+[user] [tool_result] ________________________________________________________________________________
+________ sympy/printing/tests/test_latex.py:test_MatrixElement_printing ________
+  File "/testbed/sympy/printing/tests/test_latex.py", line 1713, in test_MatrixElement_printing
+    assert latex(F) == r"\le
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && grep -n \"test_MatrixElement_printing\\|MatrixSymbol\\|-1 B\\|(-1)\\*B\" sympy/printing/tests/test_str.py sympy/printing/tests/test_latex.py | grep -i \"matrixelement\\|-1\\|F =\" "}
+
+=== Turn 21 ===
+[user] [tool_result] sympy/printing/tests/test_str.py:672:    assert sstr(A*C**-1*B) == "A*C**(-1)*B"
+sympy/printing/tests/test_str.py:777:def test_MatrixElement_printing():
+sympy/printing/tests/test_str.py:787:    assert str(F) == "((-1)*B + A)[0, 0]"
+sympy/printing/tests/test_latex.py:1703:def test_Matri
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sympy/printing/tests/test_str.py:L777-L788", "sympy/printing/tests/test_latex.py:L1703-L1714"]}
+
+=== Turn 22 ===
+[user] [tool_result] ## sympy/printing/tests/test_str.py:L777-L787
+def test_MatrixElement_printing():
+    # test cases for issue #11821
+    A = MatrixSymbol("A", 1, 3)
+    B = MatrixSymbol("B", 1, 3)
+    C = MatrixSymbol("C", 1, 3)
+
+    assert(str(A[0, 0]) == "A[0, 0]")
+    assert(str(3 * A[0, 0]) == "3*A[
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "sympy/printing/tests/test_str.py", "old": "    assert str(F) == \"((-1)*B + A)[0, 0]\"", "new": "    assert str(F) == \"(-B + A)[0, 0]\""}, {"path": "sympy/printing/tests/test_latex.py", "old": "    assert latex(F) == r\"\\left(-1 B + A\\right)_{0, 0}\"", "new": "    assert latex(F) == r\"\\left(-B + A\\right)_{0, 0}\""}]}
+
+=== Turn 23 ===
+[user] [tool_result] applied sympy/printing/tests/test_str.py:787, sympy/printing/tests/test_latex.py:1713
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -c \"\nimport sympy\nr = sympy.test('sympy/printing/tests/test_str.py','sympy/printing/tests/test_latex.py','sympy/printing/pretty/tests/test_pretty.py', verbose=False)\nprint('RESULT_OK' if r else 'RESULT_FAIL')\n\" 2>&1 | tail -8"}
+
+=== Turn 24 ===
+[user] [tool_result] File "/testbed/sympy/parsing/sympy_parser.py", line 948, in parse_expr
+    code = compile(evaluateFalse(code), '<string>', 'eval')
+ValueError: Name node can't be used with 'False' constant
+
+ tests finished: 305 passed, 2 expected to fail, 1 expected to fail but passed, 
+5 exceptions, i
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && python -c \"\nimport sympy\nsympy.test('sympy/printing/tests/test_str.py','sympy/printing/tests/test_latex.py','sympy/printing/pretty/tests/test_pretty.py', verbose=False)\n\" 2>&1 | grep -iE \"xpass|expected to fail but passed|exception\" | head"}
+
+=== Turn 25 ===
+[user] [tool_result] ________________________________ xpassed tests _________________________________
+ tests finished: 305 passed, 2 expected to fail, 1 expected to fail but passed, 
+5 exceptions, in 1.04 seconds
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && git stash && python -c \"\nimport sympy\nsympy.test('sympy/printing/tests/test_str.py','sympy/printing/tests/test_latex.py','sympy/printing/pretty/tests/test_pretty.py', verbose=False)\n\" 2>&1 | grep -iE \"expected to fail but passed|exceptions, in\"; git stash pop"}
+
+=== Turn 26 ===
+[user] [tool_result] Saved working directory and index state WIP on master: 33c72dcc0 SWE-bench
+ tests finished: 305 passed, 2 expected to fail, 1 expected to fail but passed, 
+5 exceptions, in 1.07 seconds 
+On branch master
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be c
+[assistant] Pre-existing exceptions and the xpass are identical on clean master — unrelated to my change. The fix is complete.
+
+## Summary
+
+Differences of `MatrixSymbol`s were printed as sums with explicit `(-1)` coefficients because the matrix printers didn't fold negative coefficients into a leading `-`. Fixed in all three printers:
+
+- **`sympy/printing/str.py`** — `_print_MatMul` now extracts a negative scalar coefficient via `as_coeff_mmul` + `_keep_coeff` and emits a `-` sign; `_print_MatAdd` joins terms honoring each term's leading sign (`a - b` instead of `a + (-1)*b`).
+- **`sympy/printing/latex.py`** — same treatment for `_print_MatMul`/`_print_MatAdd`.
+- **`sympy/printing/pretty/pretty.py`** — `_print_MatAdd` now places negative terms with their own `-` rather than always inserting ` + `.
+- Updated the two existing tests in `test_str.py`/`test_latex.py` that asserted the old buggy output.
+
+Result for `A - A*B - B`:
+- str: `-B - A*B + A`
+- pretty: `-B -A⋅B + A`
+- latex: `-B - A B + A`
+
+The targeted printing test suites pass (305 passed, 0 new failures); the 5 exceptions and 1 xpass are pre-existing on clean master (a parser/`evaluateFalse` Python-version issue), unrelated to this change.

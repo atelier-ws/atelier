@@ -1,0 +1,154 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "CombinedExpression _resolve_combined_type mixed types output_field temporal subtraction"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "TemporalSubtraction DurationField connection_features"}
+
+=== Turn 2 ===
+[user] [tool_result] MCP error -32000: No module named 'numpy'
+[tool_result] MCP error -32000: No module named 'numpy'
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -rn \"mixed types\" django/ "}[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -rn \"TemporalSubtraction\\|DurationExpression\\|class CombinedExpression\\|class TemporalSubtraction\" django/db/models/expressions.py"}
+
+=== Turn 3 ===
+[user] [tool_result] MCP error -32000: 1 validation error for tool_grep_Args
+mode
+  Input should be 'content', 'map', 'paths' or 'counts' [type=literal_error, input_value='file_paths_with_content', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/literal_error
+[tool_resu
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/expressions.py:L425-L535"]}[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -rn \"mixed types\" django/db/models/"}
+
+=== Turn 4 ===
+[user] [tool_result] ## django/db/models/expressions.py:L425-L535
+class CombinedExpression(SQLiteNumericMixin, Expression):
+
+    def __init__(self, lhs, connector, rhs, output_field=None):
+        super().__init__(output_field=output_field)
+        self.connector = connector
+        self.lhs = lhs
+        
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -rn \"mixed types\\|_resolve_output_field\\|_output_field_or_none\\|def output_field\" django/db/models/expressions.py"}
+
+=== Turn 5 ===
+[user] [tool_result] 267:    def output_field(self):
+269:        output_field = self._resolve_output_field()
+276:    def _output_field_or_none(self):
+279:        _resolve_output_field() didn't return an output type.
+287:    def _resolve_output_field(self):
+306:                        'Expression contains m
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/expressions.py:L260-L320"]}
+
+=== Turn 6 ===
+[user] [tool_result] ## django/db/models/expressions.py:L260-L320
+        return isinstance(self.output_field, fields.BooleanField)
+
+    @property
+    def field(self):
+        return self.output_field
+
+    @cached_property
+    def output_field(self):
+        """Return the output type of this expressions.""
+[assistant] Now I understand. The error comes from `_resolve_output_field` when combining mixed types. The `CombinedExpression.as_sql` already handles temporal arithmetic at the SQL level, but `_resolve_output_field` doesn't know how to infer the output field for temporal combinations. Let me add an override to `CombinedExpression`.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/db/models/expressions.py", "old": "    def as_sql(self, compiler, connection):\n        try:\n            lhs_type = self.lhs.output_field.get_internal_type()\n        except FieldError:\n            lhs_type = None\n        try:\n            rhs_type = self.rhs.output_field.get_internal_type()\n        except FieldError:\n            rhs_type = None\n        if (", "new": "    def _resolve_output_field(self):\n        # Temporal arithmetic combines incompatible field types but produces a\n        # well-defined output, so resolve those cases explicitly before falling\n        # back to the default (matching types) inference.\n        try:\n            lhs_type = self.lhs.output_field.get_internal_type()\n        except FieldError:\n            lhs_type = None\n        try:\n            rhs_type = self.rhs.output_field.get_internal_type()\n        except FieldError:\n            rhs_type = None\n        datetime_fields = {'DateField', 'DateTimeField', 'TimeField'}\n        # datetime - datetime results in a duration.\n        if self.connector == self.SUB and lhs_type in datetime_fields and lhs_type == rhs_type:\n            return fields.DurationField()\n        # datetime +/- duration (or duration + datetime) results in a datetime.\n        if self.connector in {self.ADD, self.SUB} and lhs_type in datetime_fields and rhs_type == 'DurationField':\n            return self.lhs.output_field\n        if self.connector == self.ADD and lhs_type == 'DurationField' and rhs_type in datetime_fields:\n            return self.rhs.output_field\n        return super()._resolve_output_field()\n\n    def as_sql(self, compiler, connection):\n        try:\n            lhs_type = self.lhs.output_field.get_internal_type()\n        except FieldError:\n            lhs_type = None\n        try:\n            rhs_type = self.rhs.output_field.get_internal_type()\n        except FieldError:\n            rhs_type = None\n        if ("}]}
+
+=== Turn 7 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Let me verify the existing tests still pass for expressions involving durations.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /repo 2>/dev/null || cd \"$(git rev-parse --show-toplevel 2>/dev/null)\"; ls tests/expressions/ 2>/dev/null | head; python -c \"import django; print(django.VERSION)\""}
+
+=== Turn 8 ===
+[user] [tool_result] __init__.py
+models.py
+test_deprecation.py
+test_queryset_values.py
+tests.py
+(3, 2, 0, 'alpha', 0)
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)/tests\" && python runtests.py expressions -v1 2>&1 | tail -20"}
+
+=== Turn 9 ===
+[user] [tool_result] ----------------------------------------------------------------------
+Ran 149 tests in 0.129s
+
+OK (skipped=2)
+Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+Destroying test database for al
+[assistant] Tests pass. Let me verify the actual reported scenario works (the `expressions` app has an `Experiment` model with start/end).[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)/tests\" && grep -n \"class Experiment\\|class Time\\b\\|start =\\|end =\" expressions/models.py | head"}
+
+=== Turn 10 ===
+[user] [tool_result] 56:class Experiment(models.Model):
+61:    start = models.DateTimeField()
+62:    end = models.DateTimeField()
+80:class Time(models.Model):
+88:    start = models.ForeignKey(Time, models.CASCADE, null=True, related_name='+')
+89:    end = models.ForeignKey(Time, models.CASCADE, null=True, 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)/tests\" && cat > /tmp/t_temporal.py <<'EOF'\nimport datetime\nfrom django.db.models import F, Value, DurationField, DateTimeField\nfrom django.test import TestCase\nfrom expressions.models import Experiment\n\nclass TemporalNoWrapper(TestCase):\n    @classmethod\n    def setUpTestData(cls):\n        Experiment.objects.create(\n            name='e1',\n            assigned=datetime.date(2010, 6, 25),\n            completed=datetime.date(2010, 6, 27),\n            estimated_time=datetime.timedelta(2),\n            start=datetime.datetime(2010, 6, 25, 12, 0, 0),\n            end=datetime.datetime(2010, 6, 27, 12, 0, 0),\n        )\n\n    def test_sub_no_wrapper(self):\n        qs = Experiment.objects.annotate(delta=F('end') - F('start'))\n        self.assertEqual(qs[0].delta, datetime.timedelta(days=2))\n\n    def test_sub_plus_value(self):\n        qs = Experiment.objects.annotate(\n            delta=F('end') - F('start') + Value(datetime.timedelta(), output_field=DurationField())\n        )\n        self.assertEqual(qs[0].delta, datetime.timedelta(days=2))\n\n    def test_datetime_plus_duration(self):\n        qs = Experiment.objects.annotate(\n            shifted=F('start') + F('estimated_time')\n        )\n        self.assertIsInstance(qs[0].shifted, datetime.datetime)\nEOF\ncp /tmp/t_temporal.py expressions/test_temporal_tmp.py\npython runtests.py expressions.test_temporal_tmp -v2 2>&1 | tail -15\nrm expressions/test_temporal_tmp.py"}
+
+=== Turn 11 ===
+[user] [tool_result] status=blocked session_id=
+Use the edit tool to create or modify files — shell redirects, heredocs, and inline interpreter writes are blocked unless the target is a literal path inside an allowed write root (the workspace, additionalDirectories, or ATELIER_ADDITIONAL_DIRS); variable or
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "git rev-parse --show-toplevel"}
+
+=== Turn 12 ===
+[user] [tool_result] /testbed
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "/testbed/tests/expressions/test_temporal_tmp.py", "overwrite": true, "new": "import datetime\nfrom django.db.models import F, Value, DurationField\nfrom django.test import TestCase\nfrom expressions.models import Experiment\n\n\nclass TemporalNoWrapper(TestCase):\n    @classmethod\n    def setUpTestData(cls):\n        Experiment.objects.create(\n            name='e1',\n            assigned=datetime.date(2010, 6, 25),\n            completed=datetime.date(2010, 6, 27),\n            estimated_time=datetime.timedelta(2),\n            start=datetime.datetime(2010, 6, 25, 12, 0, 0),\n            end=datetime.datetime(2010, 6, 27, 12, 0, 0),\n        )\n\n    def test_sub_no_wrapper(self):\n        qs = Experiment.objects.annotate(delta=F('end') - F('start'))\n        self.assertEqual(qs[0].delta, datetime.timedelta(days=2))\n\n    def test_sub_plus_value(self):\n        qs = Experiment.objects.annotate(\n            delta=F('end') - F('start') + Value(datetime.timedelta(), output_field=DurationField())\n        )\n        self.assertEqual(qs[0].delta, datetime.timedelta(days=2))\n\n    def test_datetime_plus_duration(self):\n        qs = Experiment.objects.annotate(shifted=F('start') + F('estimated_time'))\n        self.assertIsInstance(qs[0].shifted, datetime.datetime)\n"}]}
+
+=== Turn 13 ===
+[user] [tool_result] ok
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed/tests && python runtests.py expressions.test_temporal_tmp -v2 2>&1 | tail -15; rm -f /testbed/tests/expressions/test_temporal_tmp.py"}
+
+=== Turn 14 ===
+[user] [tool_result] Creating table expressions_number
+    Creating table expressions_ExPeRiMeNt
+    Creating table expressions_result
+    Creating table expressions_time
+    Creating table expressions_simulationrun
+    Creating table expressions_uuidpk
+    Creating table expressions_uuid
+    Running defer
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed/tests && cp /tmp/t_temporal.py expressions/test_temporal_tmp.py 2>/dev/null; python runtests.py expressions.test_temporal_tmp 2>&1 | grep -E \"Ran|OK|FAIL|ERROR|Error\"; rm -f expressions/test_temporal_tmp.py"}
+
+=== Turn 15 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "/testbed/tests/expressions/test_temporal_tmp.py", "overwrite": true, "new": "import datetime\nfrom django.db.models import F, Value, DurationField\nfrom django.test import TestCase\nfrom expressions.models import Experiment\n\n\nclass TemporalNoWrapper(TestCase):\n    @classmethod\n    def setUpTestData(cls):\n        Experiment.objects.create(\n            name='e1',\n            assigned=datetime.date(2010, 6, 25),\n            completed=datetime.date(2010, 6, 27),\n            estimated_time=datetime.timedelta(2),\n            start=datetime.datetime(2010, 6, 25, 12, 0, 0),\n            end=datetime.datetime(2010, 6, 27, 12, 0, 0),\n        )\n\n    def test_sub_no_wrapper(self):\n        qs = Experiment.objects.annotate(delta=F('end') - F('start'))\n        self.assertEqual(qs[0].delta, datetime.timedelta(days=2))\n\n    def test_sub_plus_value(self):\n        qs = Experiment.objects.annotate(\n            delta=F('end') - F('start') + Value(datetime.timedelta(), output_field=DurationField())\n        )\n        self.assertEqual(qs[0].delta, datetime.timedelta(days=2))\n\n    def test_datetime_plus_duration(self):\n        qs = Experiment.objects.annotate(shifted=F('start') + F('estimated_time'))\n        self.assertIsInstance(qs[0].shifted, datetime.datetime)\n"}]}
+
+=== Turn 16 ===
+[user] [tool_result] ok
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed/tests && python runtests.py expressions.test_temporal_tmp 2>&1 | grep -E \"Ran|^OK|FAIL|ERROR:|Error:\"; rm -f expressions/test_temporal_tmp.py"}
+
+=== Turn 17 ===
+[user] [tool_result] Ran 3 tests in 0.002s
+OK
+[assistant] All three scenarios pass, including the exact case from the report. Let me confirm the temp file is gone and run the broader suite once more.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed/tests && ls expressions/test_temporal_tmp.py 2>&1; python runtests.py expressions 2>&1 | grep -E \"Ran|^OK|FAIL\""}
+
+=== Turn 18 ===
+[user] [tool_result] ls: cannot access 'expressions/test_temporal_tmp.py': No such file or directory
+Ran 149 tests in 0.129s
+OK (skipped=2)
+[assistant] Done.
+
+## Summary
+
+Temporal arithmetic (`F('end') - F('start')`, `datetime ± duration`, etc.) already had correct SQL generation in `CombinedExpression.as_sql` (via the `TemporalSubtraction` and `DurationExpression` branches), but **output-field inference** had no knowledge of these combinations. So `_resolve_output_field` (inherited from `Expression`) saw two different field types and raised:
+
+```
+FieldError: Expression contains mixed types: DateTimeField, DurationField. You must set output_field.
+```
+
+### Fix
+
+Added a `_resolve_output_field` override to `CombinedExpression` in `django/db/models/expressions.py` that resolves the well-defined temporal combinations before falling back to the default same-type inference:
+
+- `datetime - datetime` (same type) → `DurationField`
+- `datetime ± duration` → the datetime field type
+- `duration + datetime` → the datetime field type
+- everything else → `super()._resolve_output_field()` (unchanged behavior)
+
+This means `Experiment.objects.annotate(delta=F('end') - F('start'))` now works directly — the `ExpressionWrapper`/`+ Value(timedelta(), DurationField())` workaround is no longer required (though it still works).
+
+### Verification
+- New ad-hoc tests for all three scenarios (plain subtraction, the reported `+ Value(...)` form, and `datetime + duration`) pass.
+- Full `expressions` suite: 149 tests, OK (no regressions).

@@ -1,0 +1,232 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] Let me find the relevant distribution code.[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "class ArcsinDistribution _cdf NormalDistribution _cdf continuous", "paths": "sympy/stats"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["sympy/stats/drv.py","sympy/stats/frv.py","sympy/stats/rv.py","sympy/core/tests/test_args.py",".ci/durations.json"],"exact_match":true,"files":[{"path":"sympy/stats/crv_types.py","sections":[{"content":"150\tclass ArcsinDistribution(SingleContinuousDistribution):\n1
+[assistant] Let me read all the relevant distribution classes.[tool_use: mcp__plugin_atelier_atelier__read] {"symbol": ["ArcsinDistribution", "DagumDistribution", "GammaDistribution", "GammaInverseDistribution", "KumaraswamyDistribution", "LaplaceDistribution", "LogisticDistribution", "NakagamiDistribution", "StudentTDistribution", "UniformSumDistribution", "FrechetDistribution"]}
+
+=== Turn 3 ===
+[user] [tool_result] ### sympy/stats/crv_types.py:L150-L154 (class)
+class ArcsinDistribution(SingleContinuousDistribution):
+    _argnames = ('a', 'b')
+
+    def pdf(self, x):
+        return 1/(pi*sqrt((x - self.a)*(self.b - x)))
+
+### sympy/stats/crv_types.py:L666-L671 (class)
+class DagumDistribution(SingleC
+[assistant] Now let me check the imports and the Erlang definition.[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sympy/stats/crv_types.py:L1-L60"]}
+
+=== Turn 4 ===
+[user] [tool_result] ## sympy/stats/crv_types.py:L1-L60
+"""
+Continuous Random Variables - Prebuilt variables
+
+Contains
+========
+Arcsin
+Benini
+Beta
+BetaPrime
+Cauchy
+Chi
+ChiNoncentral
+ChiSquared
+Dagum
+Erlang
+Exponential
+FDistribution
+FisherZ
+Frechet
+Gamma
+GammaInverse
+Gumbel
+Gompertz
+Kumaraswamy
+Laplace
+Logi
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"Erlang\\|def Erlang\" sympy/stats/crv_types.py | head"}
+
+=== Turn 5 ===
+[user] [tool_result] 15:Erlang
+70:'Erlang',
+723:# Erlang distribution ----------------------------------------------------------
+725:def Erlang(name, k, l):
+727:    Create a continuous random variable with an Erlang distribution.
+729:    The density of the Erlang distribution is given by
+750:    >>> from s
+[assistant] Let me check how `_cdf` is used in crv.py to get the calling convention right.[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sympy/stats/crv.py:L180-L240"]}
+
+=== Turn 6 ===
+[user] [tool_result] ## sympy/stats/crv.py:L180-L240
+        Used by sample
+        """
+        x, z = symbols('x, z', real=True, positive=True, cls=Dummy)
+        # Invert CDF
+        try:
+            inverse_cdf = solveset(self.cdf(x) - z, x, S.Reals)
+            if isinstance(inverse_cdf, Intersection) 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sympy/stats/tests/test_continuous_rv.py:L1-L30"]}
+
+=== Turn 7 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Now I have everything I need. Let me make all the edits in one batch.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "sympy/stats/crv_types.py", "old": "from sympy import (log, sqrt, pi, S, Dummy, Interval, sympify, gamma,\n                   Piecewise, And, Eq, binomial, factorial, Sum, floor, Abs,\n                   Lambda, Basic, lowergamma, erf, erfc, I)\nfrom sympy import beta as beta_fn\nfrom sympy import cos, exp, besseli", "new": "from sympy import (log, sqrt, pi, S, Dummy, Interval, sympify, gamma,\n                   Piecewise, And, Eq, binomial, factorial, Sum, floor, Abs,\n                   Lambda, Basic, lowergamma, erf, erfc, I, uppergamma, hyper)\nfrom sympy import beta as beta_fn\nfrom sympy import cos, exp, besseli, asin"}, {"path": "sympy/stats/crv_types.py", "old": "    def pdf(self, x):\n        return 1/(pi*sqrt((x - self.a)*(self.b - x)))", "new": "    def pdf(self, x):\n        return 1/(pi*sqrt((x - self.a)*(self.b - x)))\n\n    def _cdf(self, x):\n        a, b = self.a, self.b\n        return Piecewise(\n            (S.Zero, x < a),\n            (2*asin(sqrt((x - a)/(b - a)))/pi, x <= b),\n            (S.One, True))"}, {"path": "sympy/stats/crv_types.py", "old": "    def pdf(self, x):\n        p, a, b = self.p, self.a, self.b\n        return a*p/x*((x/b)**(a*p)/(((x/b)**a + 1)**(p + 1)))", "new": "    def pdf(self, x):\n        p, a, b = self.p, self.a, self.b\n        return a*p/x*((x/b)**(a*p)/(((x/b)**a + 1)**(p + 1)))\n\n    def _cdf(self, x):\n        p, a, b = self.p, self.a, self.b\n        return Piecewise(((S.One + (S(x)/b)**-a)**-p, x >= 0),\n                        (S.Zero, True))"}, {"path": "sympy/stats/crv_types.py", "old": "    def pdf(self, x):\n        a, s, m = self.a, self.s, self.m\n        return a/s * ((x-m)/s)**(-1-a) * exp(-((x-m)/s)**(-a))", "new": "    def pdf(self, x):\n        a, s, m = self.a, self.s, self.m\n        return a/s * ((x-m)/s)**(-1-a) * exp(-((x-m)/s)**(-a))\n\n    def _cdf(self, x):\n        a, s, m = self.a, self.s, self.m\n        return Piecewise((exp(-((x-m)/s)**(-a)), x >= m),\n                        (S.Zero, True))"}, {"path": "sympy/stats/crv_types.py", "old": "    def pdf(self, x):\n        k, theta = self.k, self.theta\n        return x**(k - 1) * exp(-x/theta) / (gamma(k)*theta**k)\n\n    def sample(self):\n        return random.gammavariate(self.k, self.theta)", "new": "    def pdf(self, x):\n        k, theta = self.k, self.theta\n        return x**(k - 1) * exp(-x/theta) / (gamma(k)*theta**k)\n\n    def sample(self):\n        return random.gammavariate(self.k, self.theta)\n\n    def _cdf(self, x):\n        k, theta = self.k, self.theta\n        return Piecewise(\n                    (lowergamma(k, S(x)/theta)/gamma(k), x > 0),\n                    (S.Zero, True))"}, {"path": "sympy/stats/crv_types.py", "old": "    def pdf(self, x):\n        a, b = self.a, self.b\n        return b**a/gamma(a) * x**(-a-1) * exp(-b/x)", "new": "    def pdf(self, x):\n        a, b = self.a, self.b\n        return b**a/gamma(a) * x**(-a-1) * exp(-b/x)\n\n    def _cdf(self, x):\n        a, b = self.a, self.b\n        return Piecewise((uppergamma(a, b/x)/gamma(a), x > 0),\n                        (S.Zero, True))"}, {"path": "sympy/stats/crv_types.py", "old": "    def pdf(self, x):\n        a, b = self.a, self.b\n        return a * b * x**(a-1) * (1-x**a)**(b-1)", "new": "    def pdf(self, x):\n        a, b = self.a, self.b\n        return a * b * x**(a-1) * (1-x**a)**(b-1)\n\n    def _cdf(self, x):\n        a, b = self.a, self.b\n        return Piecewise(\n            (S.Zero, x < S.Zero),\n            (1 - (1 - x**a)**b, x <= S.One),\n            (S.One, True))"}, {"path": "sympy/stats/crv_types.py", "old": "    def pdf(self, x):\n        mu, b = self.mu, self.b\n        return 1/(2*b)*exp(-Abs(x - mu)/b)", "new": "    def pdf(self, x):\n        mu, b = self.mu, self.b\n        return 1/(2*b)*exp(-Abs(x - mu)/b)\n\n    def _cdf(self, x):\n        mu, b = self.mu, self.b\n        return Piecewise(\n                    (S.Half*exp((x - mu)/b), x < mu),\n                    (S.One - S.Half*exp(-(x - mu)/b), x >= mu)\n                        )"}, {"path": "sympy/stats/crv_types.py", "old": "    def pdf(self, x):\n        mu, s = self.mu, self.s\n        return exp(-(x - mu)/s)/(s*(1 + exp(-(x - mu)/s))**2)", "new": "    def pdf(self, x):\n        mu, s = self.mu, self.s\n        return exp(-(x - mu)/s)/(s*(1 + exp(-(x - mu)/s))**2)\n\n    def _cdf(self, x):\n        mu, s = self.mu, self.s\n        return S.One/(1 + exp(-(x - mu)/s))"}, {"path": "sympy/stats/crv_types.py", "old": "    def pdf(self, x):\n        mu, omega = self.mu, self.omega\n        return 2*mu**mu/(gamma(mu)*omega**mu)*x**(2*mu - 1)*exp(-mu/omega*x**2)", "new": "    def pdf(self, x):\n        mu, omega = self.mu, self.omega\n        return 2*mu**mu/(gamma(mu)*omega**mu)*x**(2*mu - 1)*exp(-mu/omega*x**2)\n\n    def _cdf(self, x):\n        mu, omega = self.mu, self.omega\n        return Piecewise(\n                    (lowergamma(mu, (mu/omega)*x**2)/gamma(mu), x > 0),\n                    (S.Zero, True))"}, {"path": "sympy/stats/crv_types.py", "old": "    def pdf(self, x):\n        nu = self.nu\n        return 1/(sqrt(nu)*beta_fn(S(1)/2, nu/2))*(1 + x**2/nu)**(-(nu + 1)/2)", "new": "    def pdf(self, x):\n        nu = self.nu\n        return 1/(sqrt(nu)*beta_fn(S(1)/2, nu/2))*(1 + x**2/nu)**(-(nu + 1)/2)\n\n    def _cdf(self, x):\n        nu = self.nu\n        return S.Half + x*gamma((nu+1)/2)*hyper((S.Half, (nu+1)/2),\n                                (S(3)/2,), -x**2/nu)/(sqrt(pi*nu)*gamma(nu/2))"}, {"path": "sympy/stats/crv_types.py", "old": "    def pdf(self, x):\n        n = self.n\n        k = Dummy(\"k\")\n        return 1/factorial(\n            n - 1)*Sum((-1)**k*binomial(n, k)*(x - k)**(n - 1), (k, 0, floor(x)))", "new": "    def pdf(self, x):\n        n = self.n\n        k = Dummy(\"k\")\n        return 1/factorial(\n            n - 1)*Sum((-1)**k*binomial(n, k)*(x - k)**(n - 1), (k, 0, floor(x)))\n\n    def _cdf(self, x):\n        n = self.n\n        k = Dummy(\"k\")\n        return Piecewise((S.Zero, x < 0),\n                        (1/factorial(n)*Sum((-1)**k*binomial(n, k)*(x - k)**(n),\n                        (k, 0, floor(x))), x <= n),\n                        (S.One, True))"}]}
+
+=== Turn 8 ===
+[user] [tool_result] applied sympy/stats/crv_types.py:48-52,153-154,676-678,1053-1055,1124-1129,1222-1224,1412-1414,1479-1481,1542-1544,1756-1758,2278-2280,2608-2612
+[assistant] Now let me add a test function. Let me find a good spot in the test file.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"^def test_\\|def test_NormalDistribution\\|def test_sample\" sympy/stats/tests/test_continuous_rv.py | tail -20"}
+
+=== Turn 9 ===
+[user] [tool_result] 520:def test_uniform():
+545:def test_uniform_P():
+561:def test_uniformsum():
+570:def test_von_mises():
+578:def test_weibull():
+587:def test_weibull_numeric():
+599:def test_wignersemicircle():
+607:def test_prefab_sampling():
+624:def test_input_value_assertions():
+641:def test_unevaluate
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sympy/stats/tests/test_continuous_rv.py:L712-L740"]}
+
+=== Turn 10 ===
+[user] [tool_result] ## sympy/stats/tests/test_continuous_rv.py:L712-L732
+def test_precomputed_cdf():
+    x = symbols("x", real=True, finite=True)
+    mu = symbols("mu", real=True, finite=True)
+    sigma, xm, alpha = symbols("sigma xm alpha", positive=True, finite=True)
+    n = symbols("n", integer=True, p
+[assistant] Let me add a dedicated test that differentiates the precomputed CDF and compares numerically with the PDF.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "sympy/stats/tests/test_continuous_rv.py", "old": "def test_issue_13324():\n    X = Uniform('X', 0, 1)", "new": "def test_long_precomputed_cdf():\n    x = symbols(\"x\", real=True, finite=True)\n    distribs = [\n            Arcsin(\"A\", -5, 9),\n            Dagum(\"D\", S(4)/5, 2, 3),\n            Erlang(\"E\", 14, S(1)/2),\n            Frechet(\"F\", 2, 6, -3),\n            Gamma(\"G\", S(1)/5, 14),\n            GammaInverse(\"GI\", S(5)/7, 2),\n            Kumaraswamy(\"K\", S(1)/123, 5),\n            Laplace(\"LA\", -5, 4),\n            Logistic(\"L\", -6, 7),\n            Nakagami(\"N\", S(7)/3, 1),\n            StudentT(\"S\", 10)\n            ]\n    for distr in distribs:\n        for _ in range(5):\n            assert tn(diff(cdf(distr)(x), x), density(distr)(x), x)\n\n    US = UniformSum(\"US\", 5)\n    pdf01 = density(US)(x).subs(floor(x), 0).doit()   # pdf on (0, 1)\n    cdf01 = cdf(US, evaluate=False)(x).subs(floor(x), 0).doit()   # cdf on (0, 1)\n    assert tn(diff(cdf01, x), pdf01, x, a=0, b=1)\n\n\ndef test_issue_13324():\n    X = Uniform('X', 0, 1)"}]}
+
+=== Turn 11 ===
+[user] [tool_result] applied sympy/stats/tests/test_continuous_rv.py:729-730
+[assistant] I need to ensure `tn`, `diff`, and `range` are imported in the test file.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"^from\\|^import\\|randtest\\|import diff\\| diff\" sympy/stats/tests/test_continuous_rv.py | head -20"}
+
+=== Turn 12 ===
+[user] [tool_result] 1:from __future__ import division
+2:from sympy.stats import (P, E, where, density, variance, covariance, skewness,
+15:from sympy import (Symbol, Abs, exp, S, N, pi, simplify, Interval, erf, erfc,
+21:from sympy.stats.crv_types import NormalDistribution
+22:from sympy.stats.rv import Prod
+[assistant] I need to add `diff` and `tn`. Let me add them to imports.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "sympy/stats/tests/test_continuous_rv.py", "old": "from sympy import (Symbol, Abs, exp, S, N, pi, simplify, Interval, erf, erfc,\n                   Eq, log, lowergamma, Sum, symbols, sqrt, And, gamma, beta,\n                   Piecewise, Integral, sin, cos, besseli, factorial, binomial,\n                   floor, expand_func, Rational, I)\n", "new": "from sympy import (Symbol, Abs, exp, S, N, pi, simplify, Interval, erf, erfc,\n                   Eq, log, lowergamma, Sum, symbols, sqrt, And, gamma, beta,\n                   Piecewise, Integral, sin, cos, besseli, factorial, binomial,\n                   floor, expand_func, Rational, I, diff)\nfrom sympy.utilities.randtest import verify_numerically as tn\n"}]}
+
+=== Turn 13 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"def verify_numerically\\|def _randrange\\|def random_complex\" sympy/utilities/randtest.py"}
+
+=== Turn 14 ===
+[user] [tool_result] 16:def random_complex_number(a=2, b=-1, c=3, d=1, rational=False):
+29:def verify_numerically(f, g, z=None, tol=1.0e-6, a=2, b=-1, c=3, d=1):
+80:def _randrange(seed=None):
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sympy/utilities/randtest.py:L16-L80"]}
+
+=== Turn 15 ===
+[user] [tool_result] ## sympy/utilities/randtest.py:L16-L80
+def random_complex_number(a=2, b=-1, c=3, d=1, rational=False):
+    """
+    Return a random complex number.
+
+    To reduce chance of hitting branch cuts or anything, we guarantee
+    b <= Im z <= d, a <= Re z <= c
+    """
+    A, B = uniform(a, c),
+[assistant] I need real evaluation points within the distributions' supports. Let me refine the test to sample real values in (0,1).[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "sympy/stats/tests/test_continuous_rv.py", "old": "    for distr in distribs:\n        for _ in range(5):\n            assert tn(diff(cdf(distr)(x), x), density(distr)(x), x)\n\n    US = UniformSum(\"US\", 5)\n    pdf01 = density(US)(x).subs(floor(x), 0).doit()   # pdf on (0, 1)\n    cdf01 = cdf(US, evaluate=False)(x).subs(floor(x), 0).doit()   # cdf on (0, 1)\n    assert tn(diff(cdf01, x), pdf01, x, a=0, b=1)", "new": "    for distr in distribs:\n        for _ in range(5):\n            assert tn(diff(cdf(distr)(x), x), density(distr)(x), x, a=0, b=0, c=1, d=0)\n\n    US = UniformSum(\"US\", 5)\n    pdf01 = density(US)(x).subs(floor(x), 0).doit()   # pdf on (0, 1)\n    cdf01 = cdf(US, evaluate=False)(x).subs(floor(x), 0).doit()   # cdf on (0, 1)\n    assert tn(diff(cdf01, x), pdf01, x, a=0, b=0, c=1, d=0)"}]}
+
+=== Turn 16 ===
+[user] [tool_result] applied sympy/stats/tests/test_continuous_rv.py:745-752
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"^def cdf\" sympy/stats/rv.py"}
+
+=== Turn 17 ===
+[user] [tool_result] 726:def cdf(expr, condition=None, evaluate=True, **kwargs):
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sympy/stats/rv.py:L726-L780"]}
+
+=== Turn 18 ===
+[user] [tool_result] ## sympy/stats/rv.py:L726-L780
+def cdf(expr, condition=None, evaluate=True, **kwargs):
+    """
+    Cumulative Distribution Function of a random expression.
+
+    optionally given a second condition
+
+    This density will take on different forms for different types of
+    probability spa
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"compute_cdf\" sympy/stats/crv.py"}
+
+=== Turn 19 ===
+[user] [tool_result] 196:    def compute_cdf(self, **kwargs):
+220:        return self.compute_cdf(**kwargs)(x)
+309:    def compute_cdf(self, expr, **kwargs):
+426:    def compute_cdf(self, expr, **kwargs):
+431:            return ContinuousPSpace.compute_cdf(self, expr, **kwargs)
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sympy/stats/crv.py:L309-L340", "sympy/stats/crv.py:L420-L440"]}
+
+=== Turn 20 ===
+[user] [tool_result] ## sympy/stats/crv.py:L309-L340
+    def compute_cdf(self, expr, **kwargs):
+        if not self.domain.set.is_Interval:
+            raise ValueError(
+                "CDF not well defined on multivariate expressions")
+
+        d = self.compute_density(expr, **kwargs)
+        x, z = symb
+[assistant] Now let me run the new test and the related distribution tests.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /repo 2>/dev/null || cd $(pwd); python -c \"\nfrom sympy import S\nfrom sympy.stats import *\nprint(cdf(Arcsin('x', 0, 3))(1))\nprint(cdf(Dagum('x', S(1)/3, S(1)/5, 2))(3))\nprint(cdf(Erlang('x', 1, 1))(1))\nprint(cdf(Frechet('x', S(4)/3, 1, 2))(3))\nprint(cdf(Gamma('x', 0.1, 2))(3))\nprint(cdf(GammaInverse('x', S(5)/7, 2))(3))\nprint(cdf(Kumaraswamy('x', S(1)/123, 5))(S(1)/3))\nprint(cdf(Laplace('x', 2, 3))(5))\nprint(cdf(Logistic('x', 1, 0.1))(2))\nprint(cdf(Nakagami('x', S(7)/3, 1))(2))\nprint(cdf(StudentT('x', 10))(2))\nprint(cdf(UniformSum('x', 5))(2))\n\""}
+
+=== Turn 21 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] All produce clean closed-form results now. Let me run the test suite for the precomputed CDF tests.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed; python -m pytest sympy/stats/tests/test_continuous_rv.py -k \"precomputed_cdf or long_precomputed\" -q 2>/dev/null | tail -15"}
+
+=== Turn 22 ===
+[user] [tool_result] exit_code=0
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed; python -c \"\nfrom sympy.stats.tests.test_continuous_rv import test_long_precomputed_cdf, test_precomputed_cdf\ntest_precomputed_cdf()\ntest_long_precomputed_cdf()\nprint('OK')\n\" 2>/dev/null"}
+
+=== Turn 23 ===
+[user] [tool_result] OK
+[assistant] Both tests pass. Let me run the full continuous RV test module to ensure nothing broke.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed; python -c \"\nimport sympy.stats.tests.test_continuous_rv as m\nimport traceback\nfails=0\nfor n in dir(m):\n    if n.startswith('test_'):\n        f=getattr(m,n)\n        try:\n            f(); \n        except Exception as e:\n            fails+=1; print('FAIL',n,repr(e))\nprint('done, fails=',fails)\n\" 2>/dev/null"}
+
+=== Turn 24 ===
+[user] [tool_result] FAIL test_conditional_1d XFail('test_conditional_1d')
+FAIL test_triangular XFail('test_triangular')
+FAIL test_unevaluated XFail('test_unevaluated')
+FAIL test_uniformsum XFail('test_uniformsum')
+done, fails= 4
+[assistant] The 4 "failures" are `@XFAIL`-decorated tests (raising `XFail` when called directly is expected). Let me verify `test_uniformsum` is genuinely XFAIL and not something my change now fixes.[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sympy/stats/tests/test_continuous_rv.py:L561-L570"]}
+
+=== Turn 25 ===
+[user] [tool_result] ## sympy/stats/tests/test_continuous_rv.py:L561-L570
+@XFAIL
+def test_uniformsum():
+    n = Symbol("n", integer=True)
+    _k = Symbol("k")
+
+    X = UniformSum('x', n)
+    assert density(X)(x) == (Sum((-1)**_k*(-_k + x)**(n - 1)
+                        *binomial(n, _k), (_k, 0, floor(x))
+[assistant] All changes work. The 4 reported "failures" are pre-existing `@XFAIL`-decorated tests (they raise `XFail` when invoked directly, which is the expected/decorated behavior) — `test_uniformsum` is about symbolic-`n` *density*, unrelated to my CDF work.
+
+## Summary
+
+I added precomputed `_cdf` methods to the continuous distributions whose CDFs couldn't be obtained reliably by integration, in `sympy/stats/crv_types.py`:
+
+- **Imports**: added `uppergamma`, `hyper`, and `asin`.
+- **Arcsin**: `2·asin(√((x−a)/(b−a)))/π`, with a `Piecewise` for the support `[a, b]`.
+- **Dagum**: `(1 + (x/b)^(−a))^(−p)` for `x ≥ 0`.
+- **Frechet**: `exp(−((x−m)/s)^(−a))` for `x ≥ m`.
+- **Gamma** (also fixes **Erlang**, which is built on `GammaDistribution`): `lowergamma(k, x/θ)/Γ(k)`.
+- **GammaInverse**: `uppergamma(a, b/x)/Γ(a)`.
+- **Kumaraswamy**: `1 − (1 − x^a)^b` on `[0, 1]`.
+- **Laplace**: piecewise exponential split at `μ`.
+- **Logistic**: `1/(1 + exp(−(x−μ)/s))`.
+- **Nakagami**: `lowergamma(μ, (μ/ω)x²)/Γ(μ)`.
+- **StudentT**: closed form via the `₂F₁` hypergeometric function.
+- **UniformSum**: the finite-sum CDF analogous to its PDF.
+
+In `sympy/stats/tests/test_continuous_rv.py` I added `test_long_precomputed_cdf`, which verifies each precomputed CDF by differentiating it and numerically comparing to the PDF at random points within the support (using `verify_numerically`), plus a dedicated check for UniformSum on `(0, 1)`.
+
+All listed examples now return clean closed forms (no hangs, floats, or unevaluated integrals), and the new and existing precomputed-CDF tests pass.

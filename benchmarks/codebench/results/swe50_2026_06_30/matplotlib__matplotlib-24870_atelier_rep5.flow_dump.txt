@@ -1,0 +1,141 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "contour autolevels _process_contour_level_args default levels"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files": ["lib/mpl_toolkits/mplot3d/axes3d.py", "lib/matplotlib/pyplot.py", "lib/matplotlib/tri/_tricontour.py", "lib/matplotlib/axes/_axes.py", "src/tri/_tri.h", "lib/matplotlib/colorbar.py", "src/tri/_tri.cpp"], "exact_match": true, "files": [{"path": "lib/matplotlib/conto
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["lib/matplotlib/contour.py:L1100-L1230"]}
+
+=== Turn 3 ===
+[user] [tool_result] ## lib/matplotlib/contour.py:L1100-L1230
+            if self.locator._symmetric:
+                return lev
+        except AttributeError:
+            pass
+
+        # Trim excess levels the locator may have supplied.
+        under = np.nonzero(lev < self.zmin)[0]
+        i0 = under[-1]
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_contour_args _check_xyz z masked array zmin zmax", "include_source": true}
+
+=== Turn 4 ===
+[user] [tool_result] {"candidate_files": ["lib/mpl_toolkits/mplot3d/axes3d.py", "lib/matplotlib/axes/_axes.py", "lib/matplotlib/colors.py", "lib/matplotlib/cbook/__init__.py", "lib/matplotlib/transforms.py", "lib/matplotlib/image.py"], "exact_match": true, "files": [{"path": "lib/matplotlib/tri/_tricontour
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["lib/matplotlib/contour.py:L1443-L1530"]}
+
+=== Turn 5 ===
+[user] [tool_result] ## lib/matplotlib/contour.py:L1443-L1530
+    def _contour_args(self, args, kwargs):
+        if self.filled:
+            fn = 'contourf'
+        else:
+            fn = 'contour'
+        nargs = len(args)
+        if nargs <= 2:
+            z = ma.asarray(args[0], dtype=np.float64)
+      
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["lib/matplotlib/contour.py:L1400-L1443"]}
+
+=== Turn 6 ===
+[user] [tool_result] ## lib/matplotlib/contour.py:L1400-L1443
+            import contourpy
+
+            if algorithm is None:
+                algorithm = mpl.rcParams['contour.algorithm']
+            mpl.rcParams.validate["contour.algorithm"](algorithm)
+            self._algorithm = algorithm
+
+            
+[assistant] Now I'll implement the bool auto-detection. Editing `_process_contour_level_args` and both `_contour_args`:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "lib/matplotlib/contour.py", "old": "    def _process_contour_level_args(self, args):\n        \"\"\"\n        Determine the contour levels and store in self.levels.\n        \"\"\"\n        if self.levels is None:\n            if len(args) == 0:\n                levels_arg = 7  # Default, hard-wired.\n            else:\n                levels_arg = args[0]\n        else:\n            levels_arg = self.levels", "new": "    def _process_contour_level_args(self, args, z_dtype):\n        \"\"\"\n        Determine the contour levels and store in self.levels.\n        \"\"\"\n        if self.levels is None:\n            if len(args) == 0:\n                # Set default levels.\n                if np.issubdtype(z_dtype, np.bool_):\n                    # Boolean data: choose a single level between the two\n                    # possible values (or two levels for filled contours).\n                    levels_arg = [0, .5, 1] if self.filled else [.5]\n                else:\n                    levels_arg = 7  # Default, hard-wired.\n            else:\n                levels_arg = args[0]\n        else:\n            levels_arg = self.levels"}, {"path": "lib/matplotlib/contour.py", "old": "        nargs = len(args)\n        if nargs <= 2:\n            z = ma.asarray(args[0], dtype=np.float64)\n            x, y = self._initialize_x_y(z)\n            args = args[1:]\n        elif nargs <= 4:\n            x, y, z = self._check_xyz(args[:3], kwargs)\n            args = args[3:]\n        else:\n            raise _api.nargs_error(fn, takes=\"from 1 to 4\", given=nargs)\n        z = ma.masked_invalid(z, copy=False)\n        self.zmax = float(z.max())\n        self.zmin = float(z.min())\n        if self.logscale and self.zmin <= 0:\n            z = ma.masked_where(z <= 0, z)\n            _api.warn_external('Log scale: values of z <= 0 have been masked')\n            self.zmin = float(z.min())\n        self._process_contour_level_args(args)\n        return (x, y, z)", "new": "        nargs = len(args)\n        if nargs <= 2:\n            z_orig = args[0]\n            z = ma.asarray(z_orig, dtype=np.float64)\n            x, y = self._initialize_x_y(z)\n            args = args[1:]\n        elif nargs <= 4:\n            z_orig = args[2]\n            x, y, z = self._check_xyz(args[:3], kwargs)\n            args = args[3:]\n        else:\n            raise _api.nargs_error(fn, takes=\"from 1 to 4\", given=nargs)\n        z = ma.masked_invalid(z, copy=False)\n        self.zmax = float(z.max())\n        self.zmin = float(z.min())\n        if self.logscale and self.zmin <= 0:\n            z = ma.masked_where(z <= 0, z)\n            _api.warn_external('Log scale: values of z <= 0 have been masked')\n            self.zmin = float(z.min())\n        self._process_contour_level_args(args, np.asarray(z_orig).dtype)\n        return (x, y, z)"}]}
+
+=== Turn 7 ===
+[user] [tool_result] applied lib/matplotlib/contour.py:1120-1130,1454-1472
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "lib/matplotlib/tri/_tricontour.py", "old": "        z = np.ma.asarray(args[0])\n        if z.shape != tri.x.shape:", "new": "        z, *args = args\n        z = np.ma.asarray(z)\n        if z.shape != tri.x.shape:"}, {"path": "lib/matplotlib/tri/_tricontour.py", "old": "        self._process_contour_level_args(args[1:])\n        return (tri, z)", "new": "        self._process_contour_level_args(args, z.dtype)\n        return (tri, z)"}]}
+
+=== Turn 8 ===
+[user] [tool_result] applied lib/matplotlib/tri/_tricontour.py:56-57,78-79
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["lib/matplotlib/tri/_tricontour.py:L53-L80"]}
+
+=== Turn 9 ===
+[user] [tool_result] ## lib/matplotlib/tri/_tricontour.py:L53-L80
+    def _contour_args(self, args, kwargs):
+        tri, args, kwargs = Triangulation.get_from_args_and_kwargs(*args,
+                                                                   **kwargs)
+        z, *args = args
+        z = np.ma.asarr
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel 2>/dev/null || echo .) && python -c \"\nimport numpy as np, matplotlib\nmatplotlib.use('Agg')\nimport matplotlib.pyplot as plt\nii, jj = np.ogrid[:50, :50]; im = (ii+jj) % 20 < 10\nax = plt.figure().add_subplot()\ncs = ax.contour(im)\nprint('contour bool levels:', cs.levels)\ncsf = ax.contourf(im)\nprint('contourf bool levels:', csf.levels)\ncs2 = ax.contour(im.astype(float))\nprint('contour float levels:', cs2.levels)\ncs3 = ax.contour(im, levels=[.25])\nprint('explicit levels:', cs3.levels)\n# xyz path\nx=np.arange(50); y=np.arange(50)\ncs4 = ax.contour(x, y, im)\nprint('contour xyz bool levels:', cs4.levels)\n\"\n"}
+
+=== Turn 10 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] All paths work. Let me verify tricontour and run the existing contour tests:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel 2>/dev/null || echo .) && python -c \"\nimport numpy as np, matplotlib\nmatplotlib.use('Agg')\nimport matplotlib.pyplot as plt\nx=np.random.rand(100); y=np.random.rand(100); z=(x+y>1)\ncs=plt.figure().add_subplot().tricontour(x,y,z)\nprint('tricontour bool levels:', cs.levels)\n\" && python -m pytest lib/matplotlib/tests/test_contour.py -q 2>&1 | tail -15"}
+
+=== Turn 11 ===
+[user] [tool_result] 65 passed, 1 skipped in 2.80s
+[assistant] Let me add a regression test matching the existing test style:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel 2>/dev/null || echo .) && grep -n \"def test_contour_no_args\\|def test_contour_empty_levels\\|_process_contour_level_args\\|levels=\" lib/matplotlib/tests/test_contour.py | head"}
+
+=== Turn 12 ===
+[user] [tool_result] 65:def test_contour_empty_levels():
+72:        ax.contour(x, x, z, levels=[])
+83:    cs2 = ax.contour(z, levels=5)
+98:        cs = ax.contour(x, x, z, levels=[1.])
+149:                            levels=levels, extend=extend)
+153:                           levels=levels, extend=extend)
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["lib/matplotlib/tests/test_contour.py:L60-L100"]}
+
+=== Turn 13 ===
+[user] [tool_result] ## lib/matplotlib/tests/test_contour.py:L60-L100
+    fig, ax = plt.subplots()
+    with pytest.raises(TypeError, match=re.escape(message)):
+        ax.contour(*args)
+
+
+def test_contour_empty_levels():
+
+    x = np.arange(9)
+    z = np.random.random((9, 9))
+
+    fig, ax = plt.subplots()
+ 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "lib/matplotlib/tests/test_contour.py", "old": "def test_contour_Nlevels():", "new": "def test_contour_autolevels_bool():\n    # Boolean input should default to a single level at 0.5 (line contours)\n    # or [0, .5, 1] (filled contours).\n    # https://github.com/matplotlib/matplotlib/issues/24435\n    z = (np.arange(12).reshape((3, 4)) % 2).astype(bool)\n    fig, ax = plt.subplots()\n    assert (ax.contour(z).levels == [.5]).all()\n    assert (ax.contourf(z).levels == [0, .5, 1]).all()\n    # x, y, z signature.\n    x = y = np.arange(z.shape[1])\n    assert (ax.contour(np.arange(z.shape[1]), np.arange(z.shape[0]), z)\n            .levels == [.5]).all()\n    # Explicit levels still win.\n    assert (ax.contour(z, levels=[.25]).levels == [.25]).all()\n\n\ndef test_contour_Nlevels():"}]}
+
+=== Turn 14 ===
+[user] [tool_result] applied lib/matplotlib/tests/test_contour.py:76
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel 2>/dev/null || echo .) && python -m pytest lib/matplotlib/tests/test_contour.py -q -k \"autolevels_bool or Nlevels or empty_levels\" 2>&1 | tail"}
+
+=== Turn 15 ===
+[user] [tool_result] 3 passed, 64 deselected in 0.18s
+[assistant] Let me add a what's-new note following matplotlib conventions:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel 2>/dev/null || echo .) && ls doc/users/next_whats_new/ 2>/dev/null | head"}
+
+=== Turn 16 ===
+[user] [tool_result] 3d_pane_color_rcparams.rst
+3d_plot_aspects_adjustable_keyword.rst
+3d_plot_pan_zoom.rst
+README.rst
+bar_label_formatting.rst
+colorbar_has_location_argument.rst
+ellipse_annotation.rst
+figure_hooks.rst
+imshow_extent_units.rst
+per_subplot_mosaic.rst
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "doc/users/next_whats_new/contour_bool.rst", "overwrite": true, "new": "``contour`` and ``contourf`` auto-select levels for boolean data\n----------------------------------------------------------------\n\nWhen a boolean array is passed to `~.axes.Axes.contour` or\n`~.axes.Axes.contourf` (and the related ``tricontour`` functions) without\nexplicit ``levels``, a single level at 0.5 is now chosen automatically (or\n``[0, 0.5, 1]`` for filled contours), which draws the boundary between the\n``True`` and ``False`` regions instead of stacking the default eight levels on\ntop of one another.\n\n.. code-block:: python\n\n    import numpy as np\n    import matplotlib.pyplot as plt\n\n    ii, jj = np.ogrid[:100, :100]\n    im = (ii + jj) % 20 < 10\n    plt.contour(im)\n"}]}
+
+=== Turn 17 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Implemented boolean auto-detection for contour levels.
+
+**Changes:**
+- `lib/matplotlib/contour.py` — `_process_contour_level_args` now takes the input's `z_dtype`; when no `levels` are given and the data is boolean, it defaults to `[.5]` for line contours and `[0, .5, 1]` for filled. `QuadContourSet._contour_args` captures the original (pre-float64-cast) dtype and passes it through.
+- `lib/matplotlib/tri/_tricontour.py` — same dtype is threaded into `_process_contour_level_args` so `tricontour`/`tricontourf` get the behaviour too.
+- Added `test_contour_autolevels_bool` and a what's-new note.
+
+**Design notes:**
+- The float64 conversion needed by the contourpy generator is preserved; only the *original* dtype is sniffed for level selection, so non-bool inputs are completely unchanged (verified: float input still gets the 8 default levels).
+- Explicit `levels=` always takes precedence (the bool branch only fires when `len(args) == 0` and `self.levels is None`).
+- Filled contours need ≥2 levels, hence `[0, .5, 1]` rather than `[.5]`.
+
+Full `test_contour.py` suite passes (65 passed, 1 skipped) plus the new test. One residual risk: this is a behavior change for code that currently relies on the old 8-level default for bool arrays, but that default produced overlapping useless lines, which is the motivation for the request.

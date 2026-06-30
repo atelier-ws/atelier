@@ -1,0 +1,120 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "Expression contains mixed types output_field _resolve_output_field"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "class CombinedExpression resolve_expression connector"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files": ["django/db/models/expressions.py", "django/db/models/sql/query.py", "django/contrib/postgres/fields/ranges.py", "django/contrib/postgres/fields/array.py", "django/contrib/gis/db/models/aggregates.py", "django/contrib/gis/db/models/functions.py", "django/contrib/pos
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/expressions.py:L430-L620"]}
+
+=== Turn 3 ===
+[user] [tool_result] ## django/db/models/expressions.py:L430-L620
+        self.lhs = lhs
+        self.rhs = rhs
+
+    def __repr__(self):
+        return "<{}: {}>".format(self.__class__.__name__, self)
+
+    def __str__(self):
+        return "{} {} {}".format(self.lhs, self.connector, self.rhs)
+
+    def get_
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/models/expressions.py:L1-L100", "django/db/models/expressions.py:L234-L430"]}
+
+=== Turn 4 ===
+[user] [tool_result] ## django/db/models/expressions.py:L1-L100
+import copy
+import datetime
+import inspect
+from decimal import Decimal
+
+from django.core.exceptions import EmptyResultSet, FieldError
+from django.db import NotSupportedError, connection
+from django.db.models import fields
+from django.db.models
+[assistant] The fix matches the existing `as_sql` temporal logic — I'll override `_resolve_output_field` on `CombinedExpression` to infer `DurationField` for the same cases the SQL layer already handles.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/db/models/expressions.py", "old": "    def set_source_expressions(self, exprs):\n        self.lhs, self.rhs = exprs\n\n    def as_sql(self, compiler, connection):\n        try:\n            lhs_type = self.lhs.output_field.get_internal_type()\n        except FieldError:\n            lhs_type = None\n        try:\n            rhs_type = self.rhs.output_field.get_internal_type()\n        except FieldError:\n            rhs_type = None", "new": "    def set_source_expressions(self, exprs):\n        self.lhs, self.rhs = exprs\n\n    def _resolve_output_field(self):\n        try:\n            lhs_type = self.lhs.output_field.get_internal_type()\n        except (AttributeError, FieldError):\n            lhs_type = None\n        try:\n            rhs_type = self.rhs.output_field.get_internal_type()\n        except (AttributeError, FieldError):\n            rhs_type = None\n        if 'DurationField' in {lhs_type, rhs_type} and lhs_type != rhs_type:\n            return fields.DurationField()\n        datetime_fields = {'DateField', 'DateTimeField', 'TimeField'}\n        if self.connector == self.SUB and lhs_type in datetime_fields and lhs_type == rhs_type:\n            return fields.DurationField()\n        return super()._resolve_output_field()\n\n    def as_sql(self, compiler, connection):\n        try:\n            lhs_type = self.lhs.output_field.get_internal_type()\n        except FieldError:\n            lhs_type = None\n        try:\n            rhs_type = self.rhs.output_field.get_internal_type()\n        except FieldError:\n            rhs_type = None"}]}
+
+=== Turn 5 ===
+[user] [tool_result] applied django/db/models/expressions.py:442-453
+[assistant] Subclasses are unaffected: `TemporalSubtraction` sets `output_field` as a class attribute (so `_resolve_output_field` is never consulted), and `DurationExpression` only resolves to `DurationField`, which is correct for duration arithmetic. Let me verify against the test suite.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /repo 2>/dev/null || cd $(git rev-parse --show-toplevel); python -c \"import django; print(django.__file__)\" 2>/dev/null; ls tests/expressions/ 2>/dev/null | head"}
+
+=== Turn 6 ===
+[user] [tool_result] /testbed/django/__init__.py
+__init__.py
+models.py
+test_deprecation.py
+test_queryset_values.py
+tests.py
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed/tests && python runtests.py expressions -v1 2>&1 | tail -20"}
+
+=== Turn 7 ===
+[user] [tool_result] FAILED (failures=3, skipped=2)
+Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+Destroying test
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed/tests && python runtests.py expressions -v1 2>&1 | grep -A30 \"FAIL:\" | head -80"}
+
+=== Turn 8 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Let me check whether these tests assume the old behavior and need updating.[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/expressions/tests.py:L1420-L1490", "tests/expressions/tests.py:L1640-L1680"]}
+
+=== Turn 9 ===
+[user] [tool_result] ## tests/expressions/tests.py:L1420-L1490
+    def test_date_comparison(self):
+        for i, days in enumerate(self.days_long):
+            test_set = [e.name for e in Experiment.objects.filter(completed__lt=F('assigned') + days)]
+            self.assertEqual(test_set, self.expnames[:i
+[assistant] My mixed-`DurationField` branch is wrong: `DateTimeField + DurationField` must stay a `DateTimeField` (or remain unresolved as before), not become `DurationField`. The SQL-layer mixed rule in `as_sql` is independent and stays. The ticket's example only needs the temporal-subtraction rule. Removing the bad branch:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/db/models/expressions.py", "old": "        try:\n            rhs_type = self.rhs.output_field.get_internal_type()\n        except (AttributeError, FieldError):\n            rhs_type = None\n        if 'DurationField' in {lhs_type, rhs_type} and lhs_type != rhs_type:\n            return fields.DurationField()\n        datetime_fields = {'DateField', 'DateTimeField', 'TimeField'}\n        if self.connector == self.SUB and lhs_type in datetime_fields and lhs_type == rhs_type:\n            return fields.DurationField()\n        return super()._resolve_output_field()", "new": "        try:\n            rhs_type = self.rhs.output_field.get_internal_type()\n        except (AttributeError, FieldError):\n            rhs_type = None\n        datetime_fields = {'DateField', 'DateTimeField', 'TimeField'}\n        if self.connector == self.SUB and lhs_type in datetime_fields and lhs_type == rhs_type:\n            return fields.DurationField()\n        return super()._resolve_output_field()"}]}
+
+=== Turn 10 ===
+[user] [tool_result] applied django/db/models/expressions.py:450-459
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed/tests && python runtests.py expressions -v1 2>&1 | tail -5"}
+
+=== Turn 11 ===
+[user] [tool_result] FIXME (convergence): 3 failed runs, 2 edits, no pass. Re-read the failing assertion + function under test before editing again.
+
+Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+Destroying te
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed/tests && python runtests.py expressions 2>&1 | grep -E \"Ran|OK|FAILED|FAIL:\""}
+
+=== Turn 12 ===
+[user] [tool_result] Ran 149 tests in 0.131s
+OK (skipped=2)
+[assistant] All 149 pass. Now add a regression test for the ticket's exact scenario.[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/expressions/tests.py:L1648-L1652"]}
+
+=== Turn 13 ===
+[user] [tool_result] ## tests/expressions/tests.py:L1648-L1652
+    def test_date_minus_duration(self):
+        more_than_4_days = Experiment.objects.filter(
+            assigned__lt=F('completed') - Value(datetime.timedelta(days=4), output_field=DurationField())
+        )
+        self.assertQuerysetEqual(m
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "tests/expressions/tests.py", "old": "    def test_date_minus_duration(self):", "new": "    def test_datetime_subtraction_without_expressionwrapper(self):\n        queryset = Experiment.objects.annotate(\n            delta=F('end') - F('start') + Value(\n                datetime.timedelta(), output_field=DurationField(),\n            ),\n        )\n        for experiment in queryset:\n            self.assertEqual(experiment.delta, experiment.end - experiment.start)\n\n    def test_date_minus_duration(self):"}]}
+
+=== Turn 14 ===
+[user] [tool_result] applied tests/expressions/tests.py:1648
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed/tests && python runtests.py expressions.tests.FTimeDeltaTests.test_datetime_subtraction_without_expressionwrapper 2>&1 | grep -E \"Ran|OK|FAIL\""}
+
+=== Turn 15 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Done.
+
+**Root cause:** `CombinedExpression` had no `_resolve_output_field`, so it fell back to `BaseExpression._resolve_output_field`, which raises `FieldError` on any mixed source types. The `as_sql` layer already knew `DateTimeField - DateTimeField` is a `DurationField` (via `TemporalSubtraction`), but type inference never learned this — forcing an explicit `ExpressionWrapper`/`output_field`.
+
+**Fix** (`django/db/models/expressions.py`): added `CombinedExpression._resolve_output_field`, mirroring the temporal-subtraction case already in `as_sql` — when the connector is `SUB` and both sides are the same date/datetime/time type, infer `DurationField()`; otherwise defer to the base resolver.
+
+With this, `F('end') - F('start')` infers `DurationField`, and `+ Value(timedelta, DurationField())` is then `DurationField + DurationField`, resolving cleanly without `ExpressionWrapper`.
+
+Notes:
+- I deliberately did *not* add a broad "mixed DurationField → DurationField" rule. That branch exists in `as_sql` only for SQL generation and is gated on `not has_native_duration_field`; applied to `output_field` it wrongly turns `DateTimeField + DurationField` into a `DurationField`, which broke three existing `FTimeDeltaTests` (datetime+duration must stay a datetime). The SQL-layer rule is independent and untouched.
+- Full `expressions` suite passes (149 tests), plus a new regression test (`test_datetime_subtraction_without_expressionwrapper`) covering the ticket's exact query.

@@ -1,0 +1,232 @@
+
+=== Turn 1 ===
+[user] <session>
+Pytest 6: Dynamically adding xfail marker in test no longer ignores failure
+<!--
+Thanks for submitting an issue!
+
+Here's a quick checklist for what to provide:
+-->
+
+## Description
+
+With pytest 5.x, we can dynamically add an xfail to a test `request` object using `request.node.add_m
+[assistant] {"title": "Fix dynamic xfail marker in pytest 6"}
+
+=== Turn 2 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: Read] {"file_path": "/testbed/src/_pytest/skipping.py"}
+
+=== Turn 3 ===
+[user] [tool_result] 1	""" support for skip/xfail functions and markers. """
+2	import os
+3	import platform
+4	import sys
+5	import traceback
+6	from typing import Generator
+7	from typing import Optional
+8	from typing import Tuple
+9	
+10	import attr
+11	
+12	from _pytest.compat import TYPE_CHECKING
+13	from _pytes
+[assistant] I can see the issue. The xfail marks are evaluated in `pytest_runtest_setup` and `pytest_runtest_call` (which both run before the test body executes). When a marker is added dynamically inside the test body, the `xfailed_key` store has already been set (to `None`), so `pytest_runtest_makereport` never picks up the dynamically added marker.
+
+Let me fix this by re-evaluating xfail marks in `makereport` when needed:[tool_use: Edit] {"file_path": "/testbed/src/_pytest/skipping.py", "old_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key", "new_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if not item.config.option.runxfail and xfailed is None:\n        # the test may have added an xfail marker dynamically\n        # (via request.node.add_marker) during its execution.\n        item._store[xfailed_key] = xfailed = evaluate_xfail_marks(item)"}
+
+=== Turn 4 ===
+[user] [tool_result] The file /testbed/src/_pytest/skipping.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Let me verify the placement is clean:[tool_use: Read] {"file_path": "/testbed/src/_pytest/skipping.py", "offset": 260, "limit": 25}
+
+=== Turn 5 ===
+[user] [tool_result] 260	@hookimpl(hookwrapper=True)
+261	def pytest_runtest_makereport(item: Item, call: CallInfo[None]):
+262	    outcome = yield
+263	    rep = outcome.get_result()
+264	    xfailed = item._store.get(xfailed_key, None)
+265	    # unittest special case, see setting of unexpectedsuccess_key
+266
+[assistant] The misplaced comment now reads oddly. Let me fix the comment placement:[tool_use: Edit] {"file_path": "/testbed/src/_pytest/skipping.py", "old_string": "    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if not item.config.option.runxfail and xfailed is None:\n        # the test may have added an xfail marker dynamically\n        # (via request.node.add_marker) during its execution.\n        item._store[xfailed_key] = xfailed = evaluate_xfail_marks(item)\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":", "new_string": "    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":"}
+
+=== Turn 6 ===
+[user] [tool_result] The file /testbed/src/_pytest/skipping.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] [tool_use: Edit] {"replace_all": false, "file_path": "/testbed/src/_pytest/skipping.py", "old_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key", "new_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":\n        reason = item._store[unexpectedsuccess_key]\n        if reason:\n            rep.longrepr = \"Unexpected success: {}\".format(reason)\n        else:\n            rep.longrepr = \"Unexpected success\"\n        rep.outcome = \"failed\"\n    elif item.config.option.runxfail:\n        pass  # don't interfere\n    elif call.excinfo and isinstance(call.excinfo.value, xfail.Exception):"}
+
+=== Turn 7 ===
+[user] [tool_result] The file /testbed/src/_pytest/skipping.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] I made an error duplicating. Let me read the current state:[tool_use: Read] {"file_path": "/testbed/src/_pytest/skipping.py", "offset": 258, "limit": 50}
+
+=== Turn 8 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] I corrupted the function. Let me rewrite the whole function cleanly:[tool_use: Read] {"file_path": "/testbed/src/_pytest/skipping.py", "offset": 258, "limit": 60}
+
+=== Turn 9 ===
+[user] [tool_result] 258	
+259	
+260	@hookimpl(hookwrapper=True)
+261	def pytest_runtest_makereport(item: Item, call: CallInfo[None]):
+262	    outcome = yield
+263	    rep = outcome.get_result()
+264	    xfailed = item._store.get(xfailed_key, None)
+265	    # unittest special case, see setting of unexpectedsucce
+[assistant] [tool_use: Edit] {"replace_all": false, "file_path": "/testbed/src/_pytest/skipping.py", "old_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":\n        reason = item._store[unexpectedsuccess_key]\n        if reason:\n            rep.longrepr = \"Unexpected success: {}\".format(reason)\n        else:\n            rep.longrepr = \"Unexpected success\"\n        rep.outcome = \"failed\"\n    elif item.config.option.runxfail:\n        pass  # don't interfere\n    elif call.excinfo and isinstance(call.excinfo.value, xfail.Exception):\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":\n        reason = item._store[unexpectedsuccess_key]\n        if reason:\n            rep.longrepr = \"Unexpected success: {}\".format(reason)\n        else:\n            rep.longrepr = \"Unexpected success\"\n        rep.outcome = \"failed\"\n    elif item.config.option.runxfail:\n        pass  # don't interfere\n    elif call.excinfo and isinstance(call.excinfo.value, xfail.Exception):\n        assert call.excinfo.value.msg is not None", "new_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":\n        reason = item._store[unexpectedsuccess_key]\n        if reason:\n            rep.longrepr = \"Unexpected success: {}\".format(reason)\n        else:\n            rep.longrepr = \"Unexpected success\"\n        rep.outcome = \"failed\"\n    elif item.config.option.runxfail:\n        pass  # don't interfere\n    elif call.excinfo and isinstance(call.excinfo.value, xfail.Exception):\n        assert call.excinfo.value.msg is not None"}
+
+=== Turn 10 ===
+[user] [tool_result] The file /testbed/src/_pytest/skipping.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now the function is back to the original. Now let me apply the actual fix properly. The real fix needs the `pytest_runtest_call` hookwrapper to re-evaluate after the test runs. Let me look at it again:[tool_use: Read] {"file_path": "/testbed/src/_pytest/skipping.py", "offset": 247, "limit": 40}
+
+=== Turn 11 ===
+[user] [tool_result] 247	@hookimpl(hookwrapper=True)
+248	def pytest_runtest_call(item: Item) -> Generator[None, None, None]:
+249	    xfailed = item._store.get(xfailed_key, None)
+250	    if xfailed is None:
+251	        item._store[xfailed_key] = xfailed = evaluate_xfail_marks(item)
+252	
+253	    if not item.
+[assistant] Now I'll apply the clean fix to `pytest_runtest_makereport` — re-evaluate xfail marks if not yet detected (the test may have added them dynamically):[tool_use: Edit] {"replace_all": false, "file_path": "/testbed/src/_pytest/skipping.py", "old_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":", "new_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":\n        reason = item._store[unexpectedsuccess_key]\n        if reason:\n            rep.longrepr = \"Unexpected success: {}\".format(reason)\n        else:\n            rep.longrepr = \"Unexpected success\"\n        rep.outcome = \"failed\"\n    elif item.config.option.runxfail:\n        pass  # don't interfere\n    elif call.excinfo and isinstance(call.excinfo.value, xfail.Exception):\n        assert call.excinfo.value.msg is not None\n        rep.wasxfail = \"reason: \" + call.excinfo.value.msg\n        rep.outcome = \"skipped\"\n    elif not rep.skipped and xfailed:\n        if call.excinfo:\n            raises = xfailed.raises\n            if raises is not None and not isinstance(call.excinfo.value, raises):\n                rep.outcome = \"failed\"\n            else:\n                rep.outcome = \"skipped\"\n                rep.wasxfail = xfailed.reason\n        elif call.when == \"call\":\n            if xfailed.strict:\n                rep.outcome = \"failed\"\n                rep.longrepr = \"[XPASS(strict)] \" + xfailed.reason\n            else:\n                rep.outcome = \"passed\"\n                rep.wasxfail = xfailed.reason\n    PLACEHOLDER_REMOVE\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":"}
+
+=== Turn 12 ===
+[user] [tool_result] The file /testbed/src/_pytest/skipping.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] I keep making it worse. Let me read the full mangled region and fix it in one clean replacement:[tool_use: Read] {"file_path": "/testbed/src/_pytest/skipping.py", "offset": 260, "limit": 80}
+
+=== Turn 13 ===
+[user] [tool_result] 260	@hookimpl(hookwrapper=True)
+261	def pytest_runtest_makereport(item: Item, call: CallInfo[None]):
+262	    outcome = yield
+263	    rep = outcome.get_result()
+264	    xfailed = item._store.get(xfailed_key, None)
+265	    # unittest special case, see setting of unexpectedsuccess_key
+266
+[assistant] Now I'll replace the entire mangled function body (lines 262–335) with a clean version:[tool_use: Edit] {"replace_all": false, "file_path": "/testbed/src/_pytest/skipping.py", "old_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":\n        reason = item._store[unexpectedsuccess_key]\n        if reason:\n            rep.longrepr = \"Unexpected success: {}\".format(reason)\n        else:\n            rep.longrepr = \"Unexpected success\"\n        rep.outcome = \"failed\"\n    elif item.config.option.runxfail:\n        pass  # don't interfere\n    elif call.excinfo and isinstance(call.excinfo.value, xfail.Exception):\n        assert call.excinfo.value.msg is not None\n        rep.wasxfail = \"reason: \" + call.excinfo.value.msg\n        rep.outcome = \"skipped\"\n    elif not rep.skipped and xfailed:\n        if call.excinfo:\n            raises = xfailed.raises\n            if raises is not None and not isinstance(call.excinfo.value, raises):\n                rep.outcome = \"failed\"\n            else:\n                rep.outcome = \"skipped\"\n                rep.wasxfail = xfailed.reason\n        elif call.when == \"call\":\n            if xfailed.strict:\n                rep.outcome = \"failed\"\n                rep.longrepr = \"[XPASS(strict)] \" + xfailed.reason\n            else:\n                rep.outcome = \"passed\"\n                rep.wasxfail = xfailed.reason\n    PLACEHOLDER_REMOVE\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":\n        reason = item._store[unexpectedsuccess_key]\n        if reason:\n            rep.longrepr = \"Unexpected success: {}\".format(reason)\n        else:\n            rep.longrepr = \"Unexpected success\"\n        rep.outcome = \"failed\"\n    elif item.config.option.runxfail:\n        pass  # don't interfere\n    elif call.excinfo and isinstance(call.excinfo.value, xfail.Exception):\n        assert call.excinfo.value.msg is not None\n        rep.wasxfail = \"reason: \" + call.excinfo.value.msg\n        rep.outcome = \"skipped\"\n    elif not rep.skipped and xfailed:\n        if call.excinfo:\n            raises = xfailed.raises\n            if raises is not None and not isinstance(call.excinfo.value, raises):\n                rep.outcome = \"failed\"\n            else:\n                rep.outcome = \"skipped\"\n                rep.wasxfail = xfailed.reason\n        elif call.when == \"call\":\n            if xfailed.strict:\n                rep.outcome = \"failed\"\n                rep.longrepr = \"[XPASS(strict)] \" + xfailed.reason\n            else:\n                rep.outcome = \"passed\"\n                rep.wasxfail = xfailed.reason\n\n    if (", "new_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":\n        reason = item._store[unexpectedsuccess_key]\n        if reason:\n            rep.longrepr = \"Unexpected success: {}\".format(reason)\n        else:\n            rep.longrepr = \"Unexpected success\"\n        rep.outcome = \"failed\"\n    elif item.config.option.runxfail:\n        pass  # don't interfere\n    elif call.excinfo and isinstance(call.excinfo.value, xfail.Exception):\n        assert call.excinfo.value.msg is not None\n        rep.wasxfail = \"reason: \" + call.excinfo.value.msg\n        rep.outcome = \"skipped\"\n    elif not rep.skipped and xfailed:\n        if call.excinfo:\n            raises = xfailed.raises\n            if raises is not None and not isinstance(call.excinfo.value, raises):\n                rep.outcome = \"failed\"\n            else:\n                rep.outcome = \"skipped\"\n                rep.wasxfail = xfailed.reason\n        elif call.when == \"call\":\n            if xfailed.strict:\n                rep.outcome = \"failed\"\n                rep.longrepr = \"[XPASS(strict)] \" + xfailed.reason\n            else:\n                rep.outcome = \"passed\"\n                rep.wasxfail = xfailed.reason\n\n    if ("}
+
+=== Turn 14 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Now the function is back to original. Let me verify, then apply the actual fix to `pytest_runtest_call`:[tool_use: Read] {"file_path": "/testbed/src/_pytest/skipping.py", "offset": 247, "limit": 60}
+
+=== Turn 15 ===
+[user] [tool_result] 247	@hookimpl(hookwrapper=True)
+248	def pytest_runtest_call(item: Item) -> Generator[None, None, None]:
+249	    xfailed = item._store.get(xfailed_key, None)
+250	    if xfailed is None:
+251	        item._store[xfailed_key] = xfailed = evaluate_xfail_marks(item)
+252	
+253	    if not item.
+[assistant] The function is back to the clean original. Now apply the fix in `pytest_runtest_makereport` — re-evaluate xfail marks when none was found at setup/call time (the marker may have been added dynamically during the test):[tool_use: Edit] {"replace_all": false, "file_path": "/testbed/src/_pytest/skipping.py", "old_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":", "new_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":\n        pass  # see below for actual handling\n    if False:\n        pass\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":"}
+
+=== Turn 16 ===
+[user] [tool_result] The file /testbed/src/_pytest/skipping.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Let me revert that bad edit:[tool_use: Edit] {"replace_all": false, "file_path": "/testbed/src/_pytest/skipping.py", "old_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":\n        pass  # see below for actual handling\n    if False:\n        pass\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":", "new_string": "    outcome = yield\n    rep = outcome.get_result()\n    xfailed = item._store.get(xfailed_key, None)\n    # unittest special case, see setting of unexpectedsuccess_key\n    if unexpectedsuccess_key in item._store and rep.when == \"call\":"}
+
+=== Turn 17 ===
+[user] [tool_result] The file /testbed/src/_pytest/skipping.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now let me apply the real fix cleanly. The key insight: the `pytest_runtest_call` hookwrapper re-evaluates marks after the test body runs (after `yield`), so dynamically-added markers are captured before `makereport` runs:[tool_use: Edit] {"replace_all": false, "file_path": "/testbed/src/_pytest/skipping.py", "old_string": "@hookimpl(hookwrapper=True)\ndef pytest_runtest_call(item: Item) -> Generator[None, None, None]:\n    xfailed = item._store.get(xfailed_key, None)\n    if xfailed is None:\n        item._store[xfailed_key] = xfailed = evaluate_xfail_marks(item)\n\n    if not item.config.option.runxfail:\n        if xfailed and not xfailed.run:\n            xfail(\"[NOTRUN] \" + xfailed.reason)\n\n    yield", "new_string": "@hookimpl(hookwrapper=True)\ndef pytest_runtest_call(item: Item) -> Generator[None, None, None]:\n    xfailed = item._store.get(xfailed_key, None)\n    if xfailed is None:\n        item._store[xfailed_key] = xfailed = evaluate_xfail_marks(item)\n\n    if not item.config.option.runxfail:\n        if xfailed and not xfailed.run:\n            xfail(\"[NOTRUN] \" + xfailed.reason)\n\n    yield\n\n    # The test run may have added an xfail mark dynamically (e.g. via\n    # request.node.add_marker). Re-evaluate so pytest_runtest_makereport\n    # picks it up.\n    xfailed = item._store.get(xfailed_key, None)\n    if xfailed is None:\n        item._store[xfailed_key] = xfailed = evaluate_xfail_marks(item)"}
+
+=== Turn 18 ===
+[user] [tool_result] The file /testbed/src/_pytest/skipping.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now let me verify the order works and test with the reproducer:[tool_use: Bash] {"command": "cd /testbed && cat > /tmp/test_foo.py << 'EOF'\nimport pytest\n\n\ndef test_xfail_test(request):\n    mark = pytest.mark.xfail(reason=\"xfail\")\n    request.node.add_marker(mark)\n    assert 0\nEOF\npython -m pytest -rsx /tmp/test_foo.py"}
+
+=== Turn 19 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] The fix works. Now let me run the existing skipping test suite to ensure no regressions:[tool_use: Bash] {"command": "cd /testbed && python -m pytest testing/test_skipping.py -q 2>&1 | tail -20"}
+
+=== Turn 20 ===
+[user] [tool_result] ........................................................................ [ 91%]
+.......                                                                  [100%]
+79 passed in 1.10s
+[assistant] All pass. Let me also test the strict and xpass scenarios for dynamically added markers:[tool_use: Bash] {"command": "cat > /tmp/test_dyn.py << 'EOF'\nimport pytest\n\n\ndef test_strict_xfail_fails(request):\n    request.node.add_marker(pytest.mark.xfail(reason=\"r\", strict=True))\n    pass  # xpasses -> should be FAILED under strict\n\n\ndef test_xpass(request):\n    request.node.add_marker(pytest.mark.xfail(reason=\"r\"))\n    pass  # xpasses -> XPASS\nEOF\npython -m pytest -rsxX /tmp/test_dyn.py"}
+
+=== Turn 21 ===
+[user] [tool_result] Exit code 1
+============================= test session starts ==============================
+platform linux -- Python 3.9.20, pytest-6.0.0rc2.dev33+g7f7a36478, py-1.11.0, pluggy-0.13.1
+rootdir: /tmp
+collected 2 items
+
+../tmp/test_dyn.py FX                                               
+[assistant] Strict XPASS fails, non-strict XPASS reports XPASS — all correct. Now let me add a changelog entry, as is the pytest convention:[tool_use: Bash] {"command": "ls /testbed/changelog/ | head; echo \"---\"; cat /testbed/changelog/7469.bugfix.rst 2>/dev/null || echo \"no 7469\""}
+
+=== Turn 22 ===
+[user] [tool_result] 7389.trivial.rst
+7392.bugfix.rst
+7464.feature.rst
+7467.improvement.rst
+7472.breaking.rst
+README.rst
+_template.rst
+---
+no 7469
+[assistant] [tool_use: Write] {"file_path": "/testbed/changelog/7486.bugfix.rst", "content": "Fixed regression where a marker (such as ``xfail``) added dynamically to a test via ``request.node.add_marker`` during its execution was no longer being honored.\n"}
+
+=== Turn 23 ===
+[user] [tool_result] File created successfully at: /testbed/changelog/7486.bugfix.rst (file state is current in your context — no need to Read it back)
+[assistant] Let me also add a regression test to the test suite. Let me find a good spot:[tool_use: Bash] {"command": "grep -n \"add_marker\\|class TestXFail\\|def test_dynamic\" /testbed/testing/test_skipping.py | head"}
+
+=== Turn 24 ===
+[user] [tool_result] 156:class TestXFail:
+400:    def test_dynamic_xfail_no_run(self, testdir):
+414:    def test_dynamic_xfail_set_during_funcarg_setup(self, testdir):
+548:class TestXFailwithSetupTeardown:
+1174:                self.add_marker(marker)
+1176:                self.add_marker(marker)
+[assistant] [tool_use: Read] {"file_path": "/testbed/testing/test_skipping.py", "offset": 400, "limit": 40}
+
+=== Turn 25 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: Edit] {"replace_all": false, "file_path": "/testbed/testing/test_skipping.py", "old_string": "    def test_dynamic_xfail_set_during_funcarg_setup(self, testdir):\n        p = testdir.makepyfile(\n            \"\"\"\n            import pytest\n            @pytest.fixture\n            def arg(request):\n                request.applymarker(pytest.mark.xfail)\n            def test_this2(arg):\n                assert 0\n        \"\"\"\n        )\n        result = testdir.runpytest(p)\n        result.stdout.fnmatch_lines([\"*1 xfailed*\"])", "new_string": "    def test_dynamic_xfail_set_during_funcarg_setup(self, testdir):\n        p = testdir.makepyfile(\n            \"\"\"\n            import pytest\n            @pytest.fixture\n            def arg(request):\n                request.applymarker(pytest.mark.xfail)\n            def test_this2(arg):\n                assert 0\n        \"\"\"\n        )\n        result = testdir.runpytest(p)\n        result.stdout.fnmatch_lines([\"*1 xfailed*\"])\n\n    def test_dynamic_xfail_set_during_runtest_failed(self, testdir):\n        # Issue #7486.\n        p = testdir.makepyfile(\n            \"\"\"\n            import pytest\n            def test_this(request):\n                request.node.add_marker(pytest.mark.xfail(reason=\"xfail\"))\n                assert 0\n        \"\"\"\n        )\n        result = testdir.runpytest(p)\n        result.assert_outcomes(xfailed=1)\n\n    def test_dynamic_xfail_set_during_runtest_passed_strict(self, testdir):\n        # Issue #7486.\n        p = testdir.makepyfile(\n            \"\"\"\n            import pytest\n            def test_this(request):\n                request.node.add_marker(pytest.mark.xfail(reason=\"xfail\", strict=True))\n        \"\"\"\n        )\n        result = testdir.runpytest(p)\n        result.assert_outcomes(failed=1)"}
+
+=== Turn 26 ===
+[user] [tool_result] The file /testbed/testing/test_skipping.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] [tool_use: Bash] {"command": "cd /testbed && python -m pytest testing/test_skipping.py -q -k \"dynamic_xfail\" 2>&1 | tail -15"}
+
+=== Turn 27 ===
+[user] [tool_result] ....                                                                     [100%]
+4 passed, 77 deselected in 0.10s
+[assistant] All four dynamic xfail tests pass. Let me run the full skipping suite once more to confirm no regressions:[tool_use: Bash] {"command": "cd /testbed && python -m pytest testing/test_skipping.py -q 2>&1 | tail -5 && git diff --stat"}
+
+=== Turn 28 ===
+[user] [tool_result] ........................................................................ [ 88%]
+.........                                                                [100%]
+81 passed in 1.23s
+ src/_pytest/skipping.py  |  7 +++++++
+ testing/test_skipping.py | 25 +++++++++++++++++++++++++
+ 2 files ch
+[assistant] All 81 tests pass. Here's a summary of the fix.
+
+## Problem
+
+In pytest 6, xfail marks are evaluated in `pytest_runtest_setup` and at the **start** of the `pytest_runtest_call` hookwrapper (before the test body runs) and cached in `item._store[xfailed_key]`. When a test adds an xfail marker dynamically via `request.node.add_marker(...)` *inside* its body, the cached value is already `None`, so `pytest_runtest_makereport` never sees the marker and reports a plain failure instead of XFAIL.
+
+## Fix
+
+In `src/_pytest/skipping.py`, the `pytest_runtest_call` hookwrapper now re-evaluates xfail marks **after** the `yield` (i.e. after the test body has run, but still before `pytest_runtest_makereport` runs):
+
+```python
+@hookimpl(hookwrapper=True)
+def pytest_runtest_call(item: Item) -> Generator[None, None, None]:
+    xfailed = item._store.get(xfailed_key, None)
+    if xfailed is None:
+        item._store[xfailed_key] = xfailed = evaluate_xfail_marks(item)
+
+    if not item.config.option.runxfail:
+        if xfailed and not xfailed.run:
+            xfail("[NOTRUN] " + xfailed.reason)
+
+    yield
+
+    # The test run may have added an xfail mark dynamically (e.g. via
+    # request.node.add_marker). Re-evaluate so pytest_runtest_makereport
+    # picks it up.
+    xfailed = item._store.get(xfailed_key, None)
+    if xfailed is None:
+        item._store[xfailed_key] = xfailed = evaluate_xfail_marks(item)
+```
+
+Since `CallInfo.from_call(... pytest_runtest_call ...)` fully completes (running all hookwrapper post-yield code) before `pytest_runtest_makereport` is invoked, the freshly-evaluated `xfailed` is in the store in time for the report logic — handling failing xfails (XFAIL), passing ones (XPASS), and strict ones (FAILED).
+
+I also added a changelog entry (`changelog/7486.bugfix.rst`) and two regression tests in `testing/test_skipping.py` covering the failing-xfail and strict-xpass dynamic-marker cases.

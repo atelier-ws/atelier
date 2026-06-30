@@ -1,0 +1,83 @@
+
+=== Turn 1 ===
+[user] <session>
+combinatorics.Permutation can't be subclassed properly
+I stumbled across a subclassing issue with `combinatorics.Permutation`:
+The object creation is done in `Permutation.__new__`, but internally the function `_af_new` is used (which itself is a reference to the static method `Permutation
+[assistant] {"title": "Fix Permutation subclassing with classmethod pattern"}
+
+=== Turn 2 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] I'll investigate the `Permutation` class and the `_af_new` mechanism.[tool_use: Bash] {"command": "grep -n \"_af_new\\|def __new__\\|class Permutation\\|Basic.__new__\" /testbed/sympy/combinatorics/permutations.py", "description": "Find relevant methods"}
+
+=== Turn 3 ===
+[user] [tool_result] 464:class Permutation(Basic):
+801:    def __new__(cls, *args, **kwargs):
+860:            return _af_new(list(range(size or 0)))
+862:            return _af_new(Cycle(*args).list(size))
+870:                return _af_new(a.list(size))
+872:                return _af_new(list(range(a + 1))
+[assistant] [tool_use: Read] {"file_path": "/testbed/sympy/combinatorics/permutations.py", "offset": 795, "limit": 160}
+
+=== Turn 4 ===
+[user] [tool_result] 795	    _array_form = None
+796	    _cyclic_form = None
+797	    _cycle_structure = None
+798	    _size = None
+799	    _rank = None
+800	
+801	    def __new__(cls, *args, **kwargs):
+802	        """
+803	        Constructor for the Permutation object from a list or a
+804	        list of lists
+[assistant] The fix: convert `_af_new` from a static method to a classmethod so the actual class is used for instance creation, and have `__new__` route through `cls._af_new` so subclasses get their own type.[tool_use: Edit] {"file_path": "/testbed/sympy/combinatorics/permutations.py", "old_string": "    @staticmethod\n    def _af_new(perm):\n        \"\"\"A method to produce a Permutation object from a list;\n        the list is bound to the _array_form attribute, so it must\n        not be modified; this method is meant for internal use only;\n        the list ``a`` is supposed to be generated as a temporary value\n        in a method, so p = Perm._af_new(a) is the only object\n        to hold a reference to ``a``::\n\n        Examples\n        ========\n\n        >>> from sympy.combinatorics.permutations import Perm\n        >>> Perm.print_cyclic = False\n        >>> a = [2,1,3,0]\n        >>> p = Perm._af_new(a)\n        >>> p\n        Permutation([2, 1, 3, 0])\n\n        \"\"\"\n        p = Basic.__new__(Perm, perm)\n        p._array_form = perm\n        p._size = len(perm)\n        return p", "new_string": "    @classmethod\n    def _af_new(cls, perm):\n        \"\"\"A method to produce a Permutation object from a list;\n        the list is bound to the _array_form attribute, so it must\n        not be modified; this method is meant for internal use only;\n        the list ``a`` is supposed to be generated as a temporary value\n        in a method, so p = Perm._af_new(a) is the only object\n        to hold a reference to ``a``::\n\n        Examples\n        ========\n\n        >>> from sympy.combinatorics.permutations import Perm\n        >>> Perm.print_cyclic = False\n        >>> a = [2,1,3,0]\n        >>> p = Perm._af_new(a)\n        >>> p\n        Permutation([2, 1, 3, 0])\n\n        \"\"\"\n        p = Basic.__new__(cls, perm)\n        p._array_form = perm\n        p._size = len(perm)\n        return p"}
+
+=== Turn 5 ===
+[user] [tool_result] The file /testbed/sympy/combinatorics/permutations.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now update the `_af_new` calls within `__new__` to use `cls._af_new` so subclasses produce their own type:[tool_use: Edit] {"file_path": "/testbed/sympy/combinatorics/permutations.py", "old_string": "        ok = True\n        if not args:  # a\n            return _af_new(list(range(size or 0)))\n        elif len(args) > 1:  # c\n            return _af_new(Cycle(*args).list(size))\n        if len(args) == 1:\n            a = args[0]\n            if isinstance(a, Perm):  # g\n                if size is None or size == a.size:\n                    return a\n                return Perm(a.array_form, size=size)\n            if isinstance(a, Cycle):  # f\n                return _af_new(a.list(size))\n            if not is_sequence(a):  # b\n                return _af_new(list(range(a + 1)))", "new_string": "        ok = True\n        if not args:  # a\n            return cls._af_new(list(range(size or 0)))\n        elif len(args) > 1:  # c\n            return cls._af_new(Cycle(*args).list(size))\n        if len(args) == 1:\n            a = args[0]\n            if isinstance(a, Perm):  # g\n                if size is None or size == a.size:\n                    return a\n                return cls(a.array_form, size=size)\n            if isinstance(a, Cycle):  # f\n                return cls._af_new(a.list(size))\n            if not is_sequence(a):  # b\n                return cls._af_new(list(range(a + 1)))"}
+
+=== Turn 6 ===
+[user] [tool_result] The file /testbed/sympy/combinatorics/permutations.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now let me verify subclassing works and run the tests:[tool_use: Bash] {"command": "cd /testbed && python -c \"\nfrom sympy.combinatorics.permutations import Permutation\n\nclass MyPerm(Permutation):\n    pass\n\n# array form\nprint(type(MyPerm([0,2,1])))\n# identity / size\nprint(type(MyPerm(3)))\n# cycle form multiple args\nprint(type(MyPerm(1,2)))\n# from Cycle\nfrom sympy.combinatorics.permutations import Cycle\nprint(type(MyPerm(Cycle(1,2))))\n# empty\nprint(type(MyPerm()))\n# resize existing\np = MyPerm([0,2,1])\nprint(type(MyPerm(p, size=5)))\n\"", "description": "Test subclassing"}
+
+=== Turn 7 ===
+[user] [tool_result] /testbed/sympy/core/basic.py:3: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+  from collections import Mapping
+/testbed/sympy/solvers/diophantine.py:3188: SyntaxWarn
+[assistant] All construction paths now return the subclass. Let me run the test suite:[tool_use: Bash] {"command": "cd /testbed && python -m pytest sympy/combinatorics/tests/test_permutations.py -q 2>&1 | tail -15", "description": "Run permutation tests"}
+
+=== Turn 8 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: Bash] {"command": "cd /testbed && python -c \"import sympy; sympy.test('sympy/combinatorics/tests/test_permutations.py')\" 2>&1 | tail -15", "description": "Run permutation tests via sympy"}
+
+=== Turn 9 ===
+[user] [tool_result] /testbed/sympy/core/basic.py:3: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+  from collections import Mapping
+/testbed/sympy/plotting/plot.py:28: DeprecationWarning
+[assistant] All 9 tests pass. Let me also run the broader combinatorics suite to be safe:[tool_use: Bash] {"command": "python -c \"import sympy; sympy.test('sympy/combinatorics/')\" 2>&1 | tail -8", "description": "Run full combinatorics test suite"}
+
+=== Turn 10 ===
+[user] [tool_result] sympy/combinatorics/tests/test_subsets.py[1] .                              [OK]
+sympy/combinatorics/tests/test_tensor_can.py[12] .........f..               [OK]
+sympy/combinatorics/tests/test_testutil.py[5] .....                         [OK]
+sympy/combinatorics/tests/test_util.py[8] .
+[assistant] All combinatorics tests pass (3 expected failures unrelated to this change).
+
+## Summary
+
+The root cause was exactly as you diagnosed. `Permutation._af_new` was a `@staticmethod` that hardcoded `Basic.__new__(Perm, perm)`, so every internal construction path produced a `Permutation` regardless of the actual class being instantiated.
+
+I made two changes in `sympy/combinatorics/permutations.py`:
+
+1. **Converted `_af_new` from a static method to a classmethod** — it now takes `cls` and calls `Basic.__new__(cls, perm)` instead of the hardcoded `Perm`. The module-level `_af_new = Perm._af_new` reference still works for all the internal helper methods (binding to `Perm`), but the method now respects whichever class it is invoked on.
+
+2. **Updated `__new__` to route through `cls`** — the construction branches now call `cls._af_new(...)` (and `cls(...)` for the resize case) instead of the module-level `_af_new`/`Perm`. This makes the actual subclass flow through to instance creation.
+
+With this, all six construction paths (empty, identity/size, multi-arg cycle, array form, `Cycle` conversion, and resizing an existing permutation) return the subclass type, while the existing test suite passes unchanged.
+
+Regarding "is there a coherent reason it was this way" — the `_af_new` fast path exists purely as a performance shortcut to bypass the validation in `__new__` for already-trusted array forms. There was no deliberate reason to block subclassing; the hardcoded `Perm` was just the simplest way to write it. Using `cls` preserves the same performance characteristics while fixing the subclassing limitation.

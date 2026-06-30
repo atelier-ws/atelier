@@ -1,0 +1,63 @@
+
+=== Turn 1 ===
+[user] <session>
+locale/<language>/LC_MESSAGES/sphinx.po translation ignored
+**Describe the bug**
+I read [1] as it should be possible to add a file ``locale/<language>/LC_MESSAGES/sphinx.mo`` to the source dir (same dir as the ``Makefile``) and through that change translations or add additional translatio
+[assistant] {"title": "Fix Sphinx locale translation override not working"}
+
+=== Turn 2 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: Bash] {"command": "cat /testbed/sphinx/locale/__init__.py | grep -n \"init\\|translator\\|gettext\\|add_fallback\\|merge\" | head -50", "description": "Search locale init for translator setup"}
+
+=== Turn 3 ===
+[user] [tool_result] 11:import gettext
+14:from gettext import NullTranslations
+20:    Class for proxy strings from gettext translations. This is a helper for the
+41:    def __init__(self, func: Callable, *args: str) -> None:
+106:translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], Nul
+[assistant] [tool_use: Read] {"file_path": "/testbed/sphinx/locale/__init__.py", "offset": 106, "limit": 45}
+
+=== Turn 4 ===
+[user] [tool_result] 106	translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]
+107	
+108	
+109	def init(locale_dirs: List[str], language: str,
+110	         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:
+111	    """Look for message
+[assistant] [tool_use: Bash] {"command": "cd /testbed && grep -rn \"locale.init\\|locale_dirs\" sphinx/application.py sphinx/config.py sphinx/registry.py 2>/dev/null | head", "description": "Find init callers"}
+
+=== Turn 5 ===
+[user] [tool_result] sphinx/config.py:110:        'locale_dirs': (['locales'], 'env', []),
+sphinx/config.py:214:        variables = ['needs_sphinx', 'suppress_warnings', 'language', 'locale_dirs']
+sphinx/application.py:284:            self.translator, has_translation = locale.init([], None)
+sphinx/applicat
+[assistant] [tool_use: Read] {"file_path": "/testbed/sphinx/application.py", "offset": 283, "limit": 20}
+
+=== Turn 6 ===
+[user] [tool_result] 283	        if self.config.language is None:
+284	            self.translator, has_translation = locale.init([], None)
+285	        else:
+286	            logger.info(bold(__('loading translations [%s]... ') % self.config.language),
+287	                        nonl=True)
+288	
+289	        
+[assistant] The bug: `locale.init` makes the first catalog found the primary translator and adds later ones only as *fallbacks* (used only when the primary lacks a translation). Since Sphinx's built-in `locale` dir is placed before the user's dirs, the built-in `da` translation always wins. Fix by putting user dirs first.[tool_use: Edit] {"file_path": "/testbed/sphinx/application.py", "old_string": "            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)", "new_string": "            locale_dirs = list(repo.locale_dirs) + [None, path.join(package_dir, 'locale')]"}
+
+=== Turn 7 ===
+[user] [tool_result] The file /testbed/sphinx/application.py has been updated successfully. (file state is current in your context — no need to Read it back)
+[assistant] Now let me verify the change works as intended and check there are no related issues with the `init` merge logic:[tool_use: Read] {"file_path": "/testbed/sphinx/application.py", "offset": 296, "limit": 2}
+
+=== Turn 8 ===
+[user] [tool_result] 296	            locale_dirs = list(repo.locale_dirs) + [None, path.join(package_dir, 'locale')]
+297	            self.translator, has_translation = locale.init(locale_dirs, self.config.language)
+[assistant] The change is in place. 
+
+**What was wrong:** In `sphinx/locale/__init__.py`, `init()` treats the first `.mo` catalog it finds as the primary translator and registers all subsequent catalogs via `add_fallback()`. A fallback only kicks in when the primary has *no* entry for a message. Since `application.py` built `locale_dirs` as `[None, <sphinx built-in locale>, <user locale dirs>]`, the built-in `da` catalog became primary and the user's overrides were mere fallbacks — never used for messages the built-in already translates (like `Fig. %s`).
+
+**The fix:** reorder so the user's `locale_dirs` come first, making them the primary translator, with the system default and Sphinx's built-in catalog as fallbacks. Now user translations override the built-ins, while built-ins still cover anything the user didn't translate.

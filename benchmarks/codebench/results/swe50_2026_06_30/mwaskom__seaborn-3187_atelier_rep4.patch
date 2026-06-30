@@ -1,0 +1,42 @@
+diff --git a/seaborn/_core/scales.py b/seaborn/_core/scales.py
+index 55874bf2..583998a7 100644
+--- a/seaborn/_core/scales.py
++++ b/seaborn/_core/scales.py
+@@ -378,7 +378,15 @@ class ContinuousBase(Scale):
+             axis.set_view_interval(vmin, vmax)
+             locs = axis.major.locator()
+             locs = locs[(vmin <= locs) & (locs <= vmax)]
+-            labels = axis.major.formatter.format_ticks(locs)
++            # Legends have no place to show a common axis offset (e.g. the
++            # multiplicative/additive offset that ScalarFormatter factors out
++            # for large numbers), so fold it into the labels by formatting the
++            # full tick values directly (GH3019).
++            formatter = axis.major.formatter
++            if isinstance(formatter, ScalarFormatter):
++                formatter.set_useOffset(False)
++                formatter.set_scientific(False)
++            labels = formatter.format_ticks(locs)
+             new._legend = list(locs), list(labels)
+ 
+         return new
+diff --git a/tests/_core/test_scales.py b/tests/_core/test_scales.py
+index c4b39f5d..e2007822 100644
+--- a/tests/_core/test_scales.py
++++ b/tests/_core/test_scales.py
+@@ -127,6 +127,16 @@ class TestContinuous:
+         s = Continuous(trans="log")._setup(x, Color())
+         assert_array_equal(s(x), cmap([0, .5, 1])[:, :3])  # FIXME RGBA
+ 
++    def test_legend_large_offset(self, x):
++
++        # GH3019: legends have no place to show a common axis offset, so the
++        # offset that ScalarFormatter factors out of large numbers must be
++        # folded back into the labels.
++        x = pd.Series(np.linspace(2.7e6, 6.3e6, 50), name="x")
++        s = Continuous()._setup(x, IntervalProperty())
++        locs, labels = s._legend
++        assert labels == [str(int(loc)) for loc in locs]
++
+     def test_tick_locator(self, x):
+ 
+         locs = [.2, .5, .8]

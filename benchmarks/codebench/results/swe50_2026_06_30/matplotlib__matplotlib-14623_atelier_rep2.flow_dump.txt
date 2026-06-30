@@ -1,0 +1,97 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "limit_range_for_scale nonsingular log scale"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "set_ylim set_xlim sort limits reverse"}
+
+=== Turn 2 ===
+[user] [tool_result] {"additional_relevant_files":[],"cache_hit":false,"entry_points":[{"end_line":808,"id":"ce1e3beb7c3a608190b3cbb2","kind":"method","line":807,"name":"limit_range_for_scale","path":"lib/matplotlib/axis.py","provenance":"local","qualified_name":"Axis.limit_range_for_scale","score":1463.47
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["lib/matplotlib/scale.py:L400-L430", "lib/matplotlib/ticker.py:L2378-L2400"]}[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["lib/matplotlib/axes/_base.py:L3260-L3300"]}
+
+=== Turn 3 ===
+[user] [tool_result] ## lib/matplotlib/scale.py:L400-L430
+
+    def set_default_locators_and_formatters(self, axis):
+        """
+        Set the locators and formatters to specialized versions for
+        log scaling.
+        """
+        axis.set_major_locator(LogLocator(self.base))
+        axis.set_major_f
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["lib/matplotlib/ticker.py:L2615-L2650"]}
+
+=== Turn 4 ===
+[user] [tool_result] ## lib/matplotlib/ticker.py:L2615-L2650
+            if decade_max >= 2:
+                expo = -np.arange(max(2, decade_min), decade_max + 1)
+                newticks = 1 - np.outer(np.arange(2, 10), 10**expo).ravel()
+                ticklocs.extend(newticks)
+
+        return self.raise
+[assistant] Now I understand the bug. `LogLocator.nonsingular` (and `LogitLocator.nonsingular`) swap `vmin`/`vmax` when `vmin > vmax` but never swap back, destroying the inversion. Let me fix both:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "lib/matplotlib/ticker.py", "old": "    def nonsingular(self, vmin, vmax):\n        if not np.isfinite(vmin) or not np.isfinite(vmax):\n            return 1, 10  # initial range, no data plotted yet\n\n        if vmin > vmax:\n            vmin, vmax = vmax, vmin\n        if vmax <= 0:\n            cbook._warn_external(\n                \"Data has no positive values, and therefore cannot be \"\n                \"log-scaled.\")\n            return 1, 10\n\n        minpos = self.axis.get_minpos()\n        if not np.isfinite(minpos):\n            minpos = 1e-300  # This should never take effect.\n        if vmin <= 0:\n            vmin = minpos\n        if vmin == vmax:\n            vmin = _decade_less(vmin, self._base)\n            vmax = _decade_greater(vmax, self._base)\n        return vmin, vmax", "new": "    def nonsingular(self, vmin, vmax):\n        if not np.isfinite(vmin) or not np.isfinite(vmax):\n            return 1, 10  # initial range, no data plotted yet\n\n        if vmin > vmax:\n            vmin, vmax = vmax, vmin\n        if vmax <= 0:\n            cbook._warn_external(\n                \"Data has no positive values, and therefore cannot be \"\n                \"log-scaled.\")\n            return 1, 10\n\n        minpos = self.axis.get_minpos()\n        if not np.isfinite(minpos):\n            minpos = 1e-300  # This should never take effect.\n        if vmin <= 0:\n            vmin = minpos\n        if vmin == vmax:\n            vmin = _decade_less(vmin, self._base)\n            vmax = _decade_greater(vmax, self._base)\n        return swap_if_reversed(vmin, vmax)"}, {"path": "lib/matplotlib/ticker.py", "old": "        if vmin == vmax:\n            return 0.1 * vmin, 1 - 0.1 * vmin\n\n        return vmin, vmax", "new": "        if vmin == vmax:\n            return swap_if_reversed(0.1 * vmin, 1 - 0.1 * vmin)\n\n        return swap_if_reversed(vmin, vmax)"}]}
+
+=== Turn 5 ===
+[user] [tool_result] applied lib/matplotlib/ticker.py:2378-2398,2647-2650
+[assistant] I need a different approach—a helper can't know the original order after the swap. Let me track it properly:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "lib/matplotlib/ticker.py", "old": "    def nonsingular(self, vmin, vmax):\n        if not np.isfinite(vmin) or not np.isfinite(vmax):\n            return 1, 10  # initial range, no data plotted yet\n\n        if vmin > vmax:\n            vmin, vmax = vmax, vmin\n        if vmax <= 0:\n            cbook._warn_external(\n                \"Data has no positive values, and therefore cannot be \"\n                \"log-scaled.\")\n            return 1, 10\n\n        minpos = self.axis.get_minpos()\n        if not np.isfinite(minpos):\n            minpos = 1e-300  # This should never take effect.\n        if vmin <= 0:\n            vmin = minpos\n        if vmin == vmax:\n            vmin = _decade_less(vmin, self._base)\n            vmax = _decade_greater(vmax, self._base)\n        return swap_if_reversed(vmin, vmax)", "new": "    def nonsingular(self, vmin, vmax):\n        if not np.isfinite(vmin) or not np.isfinite(vmax):\n            return 1, 10  # initial range, no data plotted yet\n\n        swap_vlims = False\n        if vmin > vmax:\n            swap_vlims = True\n            vmin, vmax = vmax, vmin\n        if vmax <= 0:\n            cbook._warn_external(\n                \"Data has no positive values, and therefore cannot be \"\n                \"log-scaled.\")\n            return 1, 10\n\n        minpos = self.axis.get_minpos()\n        if not np.isfinite(minpos):\n            minpos = 1e-300  # This should never take effect.\n        if vmin <= 0:\n            vmin = minpos\n        if vmin == vmax:\n            vmin = _decade_less(vmin, self._base)\n            vmax = _decade_greater(vmax, self._base)\n        if swap_vlims:\n            vmin, vmax = vmax, vmin\n        return vmin, vmax"}, {"path": "lib/matplotlib/ticker.py", "old": "        if vmin == vmax:\n            return swap_if_reversed(0.1 * vmin, 1 - 0.1 * vmin)\n\n        return swap_if_reversed(vmin, vmax)", "new": "        if vmin == vmax:\n            vmin = 0.1 * vmin\n            vmax = 1 - 0.1 * vmin\n        if swap_vlims:\n            vmin, vmax = vmax, vmin\n        return vmin, vmax"}]}
+
+=== Turn 6 ===
+[user] [tool_result] applied lib/matplotlib/ticker.py:2378-2398,2651-2654
+[assistant] Now add the `swap_vlims` tracking to `LogitLocator.nonsingular`:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "lib/matplotlib/ticker.py", "old": "        if not np.isfinite(vmin) or not np.isfinite(vmax):\n            return initial_range  # no data plotted yet\n\n        if vmin > vmax:\n            vmin, vmax = vmax, vmin", "new": "        if not np.isfinite(vmin) or not np.isfinite(vmax):\n            return initial_range  # no data plotted yet\n\n        swap_vlims = False\n        if vmin > vmax:\n            swap_vlims = True\n            vmin, vmax = vmax, vmin"}]}
+
+=== Turn 7 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] The `vmax` computation now reuses the modified `vmin`. Let me check the LogitLocator section and fix:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["lib/matplotlib/ticker.py:L2622-L2656"]}
+
+=== Turn 8 ===
+[user] [tool_result] ## lib/matplotlib/ticker.py:L2622-L2656
+                ticklocs.extend(newticks)
+
+        return self.raise_if_exceeds(np.array(ticklocs))
+
+    def nonsingular(self, vmin, vmax):
+        initial_range = (1e-7, 1 - 1e-7)
+        if not np.isfinite(vmin) or not np.isfinite(vmax):
+      
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "lib/matplotlib/ticker.py", "old": "        if vmin == vmax:\n            vmin = 0.1 * vmin\n            vmax = 1 - 0.1 * vmin\n        if swap_vlims:", "new": "        if vmin == vmax:\n            vmin, vmax = 0.1 * vmin, 1 - 0.1 * vmin\n        if swap_vlims:"}]}
+
+=== Turn 9 ===
+[user] [tool_result] applied lib/matplotlib/ticker.py:2653-2656
+[assistant] Now let me verify both functions and run the relevant test:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["lib/matplotlib/ticker.py:L2378-L2401"]}
+
+=== Turn 10 ===
+[user] [tool_result] ## lib/matplotlib/ticker.py:L2378-L2401
+    def nonsingular(self, vmin, vmax):
+        if not np.isfinite(vmin) or not np.isfinite(vmax):
+            return 1, 10  # initial range, no data plotted yet
+
+        swap_vlims = False
+        if vmin > vmax:
+            swap_vlims = True
+   
+[assistant] Both fixes look correct. Let me run a quick verification with the reproduction case and existing tests:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && python -c \"\nimport matplotlib\nmatplotlib.use('Agg')\nimport numpy as np, matplotlib.pyplot as plt\ny = np.linspace(1000e2, 1, 100)\nx = np.exp(-np.linspace(0, 1, y.size))\nfor yscale in ('linear', 'log'):\n    fig, ax = plt.subplots()\n    ax.plot(x, y); ax.set_yscale(yscale); ax.set_ylim(y.max(), y.min())\n    print(yscale, ax.get_ylim(), 'inverted' if ax.get_ylim()[0] > ax.get_ylim()[1] else 'NOT inverted')\n\""}
+
+=== Turn 11 ===
+[user] [tool_result] linear (100000.0, 1.0) inverted
+log (100000.0, 1.0) inverted
+[assistant] Both scales now invert correctly. Let me run the ticker tests to ensure nothing regressed:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && python -m pytest lib/matplotlib/tests/test_ticker.py -q 2>&1 | tail -15"}
+
+=== Turn 12 ===
+[user] [tool_result] ../opt/miniconda3/envs/testbed/lib/python3.8/site-packages/setuptools/_distutils/version.py:337
+../opt/miniconda3/envs/testbed/lib/python3.8/site-packages/setuptools/_distutils/version.py:337
+../opt/miniconda3/envs/testbed/lib/python3.8/site-packages/setuptools/_distutils/version.py:33
+[assistant] All 313 ticker tests pass. 
+
+## Summary
+
+The bug was in `lib/matplotlib/ticker.py`. Since matplotlib 3.1.0, `set_xlim`/`set_ylim` route limits through the locator's `nonsingular()` method. Both `LogLocator.nonsingular` and `LogitLocator.nonsingular` swapped `vmin`/`vmax` when `vmin > vmax` (an inverted axis) but **never swapped them back** — silently discarding the requested inversion.
+
+The fix records whether a swap occurred and restores the original (reversed) order before returning:
+
+- **`LogLocator.nonsingular`**: track `swap_vlims` and swap back at the end.
+- **`LogitLocator.nonsingular`**: same tracking/restore, plus fixed the `vmin == vmax` branch to use a single tuple assignment so `vmax` isn't computed from the already-modified `vmin`.
+
+Linear scale already worked because its locator doesn't reorder limits. Now both scales invert as expected.

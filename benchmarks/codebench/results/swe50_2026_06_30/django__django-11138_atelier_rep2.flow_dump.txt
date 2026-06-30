@@ -1,0 +1,110 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_convert_field_to_tz CONVERT_TZ UTC timezone operations", "paths": "django/db/backends"}
+
+=== Turn 2 ===
+[user] [tool_result] {"additional_relevant_files":[],"cache_hit":false,"entry_points":[{"end_line":74,"id":"774612ef2ccd22a940b79e08","kind":"method","line":71,"name":"_convert_field_to_tz","path":"django/db/backends/mysql/operations.py","provenance":"local","qualified_name":"DatabaseOperations._convert_fi
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/backends/base/base.py:L100-L160", "django/db/backends/mysql/operations.py:L1-L120", "django/db/backends/oracle/operations.py:L90-L130", "django/db/backends/sqlite3/operations.py:L1-L120"]}
+
+=== Turn 3 ===
+[user] [tool_result] ## django/db/backends/base/base.py:L100-L160
+        self.execute_wrappers = []
+
+        self.client = self.client_class(self)
+        self.creation = self.creation_class(self)
+        self.features = self.features_class(self)
+        self.introspection = self.introspection_class(self)
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_sqlite_datetime_parse django_datetime_cast_date timezone conversion functions", "paths": "django/db/backends/sqlite3"}
+
+=== Turn 4 ===
+[user] [tool_result] {"additional_relevant_files":[],"cache_hit":false,"entry_points":[{"end_line":410,"id":"68b499a59eb8775a0d01562c","kind":"function","line":401,"name":"_sqlite_datetime_parse","path":"django/db/backends/sqlite3/base.py","provenance":"local","qualified_name":"_sqlite_datetime_parse","sco
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/backends/sqlite3/base.py:L380-L470"]}
+
+=== Turn 5 ===
+[user] [tool_result] ## django/db/backends/sqlite3/base.py:L380-L470
+
+class SQLiteCursorWrapper(Database.Cursor):
+    """
+    Django uses "format" style placeholders, but pysqlite2 uses "qmark" style.
+    This fixes it -- but note that if you want to use a literal "%s" in a query,
+    you'll need to use "%
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/backends/oracle/operations.py:L1-L130", "django/db/backends/sqlite3/base.py:L190-L260"]}
+
+=== Turn 6 ===
+[user] [tool_result] ## django/db/backends/oracle/operations.py:L1-L130
+import datetime
+import re
+import uuid
+from functools import lru_cache
+
+from django.conf import settings
+from django.db.backends.base.operations import BaseDatabaseOperations
+from django.db.backends.utils import strip_quotes, truncate_n
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/backends/sqlite3/base.py:L455-L520", "django/db/backends/sqlite3/operations.py:L88-L116"]}
+
+=== Turn 7 ===
+[user] [tool_result] ## django/db/backends/sqlite3/base.py:L455-L520
+    if dt is None:
+        return None
+    return dt.time().isoformat()
+
+
+def _sqlite_datetime_extract(lookup_type, dt, tzname=None):
+    dt = _sqlite_datetime_parse(dt, tzname)
+    if dt is None:
+        return None
+    if lookup_type ==
+[assistant] Now I have the full picture. This is Django ticket #27263 — the `TIME_ZONE` of the database should be used as the source timezone instead of a hardcoded `'UTC'`. Let me apply the fix across MySQL, Oracle, and SQLite backends.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/db/backends/mysql/operations.py", "old": "    def _convert_field_to_tz(self, field_name, tzname):\n        if settings.USE_TZ:\n            field_name = \"CONVERT_TZ(%s, 'UTC', '%s')\" % (field_name, tzname)\n        return field_name", "new": "    def _convert_field_to_tz(self, field_name, tzname):\n        if settings.USE_TZ:\n            db_tz = self.connection.timezone_name\n            if db_tz != tzname:\n                field_name = \"CONVERT_TZ(%s, '%s', '%s')\" % (field_name, db_tz, tzname)\n        return field_name"}, {"path": "django/db/backends/oracle/operations.py", "old": "    def _convert_field_to_tz(self, field_name, tzname):\n        if not settings.USE_TZ:\n            return field_name\n        if not self._tzname_re.match(tzname):\n            raise ValueError(\"Invalid time zone name: %s\" % tzname)\n        # Convert from UTC to local time, returning TIMESTAMP WITH TIME ZONE\n        # and cast it back to TIMESTAMP to strip the TIME ZONE details.\n        return \"CAST((FROM_TZ(%s, '0:00') AT TIME ZONE '%s') AS TIMESTAMP)\" % (field_name, tzname)", "new": "    def _convert_field_to_tz(self, field_name, tzname):\n        if not settings.USE_TZ:\n            return field_name\n        if not self._tzname_re.match(tzname):\n            raise ValueError(\"Invalid time zone name: %s\" % tzname)\n        # Convert from connection timezone to the local time, returning\n        # TIMESTAMP WITH TIME ZONE and cast it back to TIMESTAMP to strip the\n        # TIME ZONE details.\n        return \"CAST((FROM_TZ(%s, '%s') AT TIME ZONE '%s') AS TIMESTAMP)\" % (\n            field_name,\n            self.connection.timezone_name,\n            tzname,\n        )"}, {"path": "django/db/backends/sqlite3/operations.py", "old": "        return \"'%s'\" % tzname if settings.USE_TZ else 'NULL'\n\n    def datetime_cast_date_sql(self, field_name, tzname):\n        return \"django_datetime_cast_date(%s, %s)\" % (\n            field_name, self._convert_tzname_to_sql(tzname),\n        )\n\n    def datetime_cast_time_sql(self, field_name, tzname):\n        return \"django_datetime_cast_time(%s, %s)\" % (\n            field_name, self._convert_tzname_to_sql(tzname),\n        )\n\n    def datetime_extract_sql(self, lookup_type, field_name, tzname):\n        return \"django_datetime_extract('%s', %s, %s)\" % (\n            lookup_type.lower(), field_name, self._convert_tzname_to_sql(tzname),\n        )\n\n    def datetime_trunc_sql(self, lookup_type, field_name, tzname):\n        return \"django_datetime_trunc('%s', %s, %s)\" % (\n            lookup_type.lower(), field_name, self._convert_tzname_to_sql(tzname),\n        )", "new": "        return \"'%s'\" % tzname if settings.USE_TZ else 'NULL'\n\n    def _convert_tznames_to_sql(self, tzname):\n        if settings.USE_TZ:\n            return \"'%s'\" % tzname, \"'%s'\" % self.connection.timezone_name\n        return 'NULL', 'NULL'\n\n    def datetime_cast_date_sql(self, field_name, tzname):\n        return 'django_datetime_cast_date(%s, %s, %s)' % (\n            field_name, *self._convert_tznames_to_sql(tzname),\n        )\n\n    def datetime_cast_time_sql(self, field_name, tzname):\n        return 'django_datetime_cast_time(%s, %s, %s)' % (\n            field_name, *self._convert_tznames_to_sql(tzname),\n        )\n\n    def datetime_extract_sql(self, lookup_type, field_name, tzname):\n        return \"django_datetime_extract('%s', %s, %s, %s)\" % (\n            lookup_type.lower(), field_name, *self._convert_tznames_to_sql(tzname),\n        )\n\n    def datetime_trunc_sql(self, lookup_type, field_name, tzname):\n        return \"django_datetime_trunc('%s', %s, %s, %s)\" % (\n            lookup_type.lower(), field_name, *self._convert_tznames_to_sql(tzname),\n        )"}, {"path": "django/db/backends/sqlite3/base.py", "old": "        conn.create_function(\"django_datetime_cast_date\", 2, _sqlite_datetime_cast_date)\n        conn.create_function(\"django_datetime_cast_time\", 2, _sqlite_datetime_cast_time)\n        conn.create_function(\"django_datetime_extract\", 3, _sqlite_datetime_extract)\n        conn.create_function(\"django_datetime_trunc\", 3, _sqlite_datetime_trunc)", "new": "        conn.create_function(\"django_datetime_cast_date\", 3, _sqlite_datetime_cast_date)\n        conn.create_function(\"django_datetime_cast_time\", 3, _sqlite_datetime_cast_time)\n        conn.create_function(\"django_datetime_extract\", 4, _sqlite_datetime_extract)\n        conn.create_function(\"django_datetime_trunc\", 4, _sqlite_datetime_trunc)"}, {"path": "django/db/backends/sqlite3/base.py", "old": "def _sqlite_datetime_parse(dt, tzname=None):\n    if dt is None:\n        return None\n    try:\n        dt = backend_utils.typecast_timestamp(dt)\n    except (TypeError, ValueError):\n        return None\n    if tzname is not None:\n        dt = timezone.localtime(dt, pytz.timezone(tzname))\n    return dt", "new": "def _sqlite_datetime_parse(dt, tzname=None, conn_tzname=None):\n    if dt is None:\n        return None\n    try:\n        dt = backend_utils.typecast_timestamp(dt)\n    except (TypeError, ValueError):\n        return None\n    if conn_tzname:\n        dt = dt.replace(tzinfo=pytz.timezone(conn_tzname))\n    if tzname is not None and tzname != conn_tzname:\n        dt = timezone.localtime(dt, pytz.timezone(tzname))\n    return dt"}, {"path": "django/db/backends/sqlite3/base.py", "old": "def _sqlite_datetime_cast_date(dt, tzname):\n    dt = _sqlite_datetime_parse(dt, tzname)\n    if dt is None:\n        return None\n    return dt.date().isoformat()\n\n\ndef _sqlite_datetime_cast_time(dt, tzname):\n    dt = _sqlite_datetime_parse(dt, tzname)\n    if dt is None:\n        return None\n    return dt.time().isoformat()\n\n\ndef _sqlite_datetime_extract(lookup_type, dt, tzname=None):\n    dt = _sqlite_datetime_parse(dt, tzname)", "new": "def _sqlite_datetime_cast_date(dt, tzname, conn_tzname):\n    dt = _sqlite_datetime_parse(dt, tzname, conn_tzname)\n    if dt is None:\n        return None\n    return dt.date().isoformat()\n\n\ndef _sqlite_datetime_cast_time(dt, tzname, conn_tzname):\n    dt = _sqlite_datetime_parse(dt, tzname, conn_tzname)\n    if dt is None:\n        return None\n    return dt.time().isoformat()\n\n\ndef _sqlite_datetime_extract(lookup_type, dt, tzname=None, conn_tzname=None):\n    dt = _sqlite_datetime_parse(dt, tzname, conn_tzname)"}, {"path": "django/db/backends/sqlite3/base.py", "old": "def _sqlite_datetime_trunc(lookup_type, dt, tzname):\n    dt = _sqlite_datetime_parse(dt, tzname)", "new": "def _sqlite_datetime_trunc(lookup_type, dt, tzname, conn_tzname):\n    dt = _sqlite_datetime_parse(dt, tzname, conn_tzname)"}]}
+
+=== Turn 8 ===
+[user] [tool_result] applied django/db/backends/mysql/operations.py:71-74, django/db/backends/oracle/operations.py:97-104, django/db/backends/sqlite3/operations.py:88-108, django/db/backends/sqlite3/base.py:198-201,401-410,448-463,478-479
+[assistant] Let me verify by running the timezones test suite.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && python runtests.py timezones --parallel=1 2>&1 | tail -25", "timeout": 600}
+
+=== Turn 9 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] The 3 failures are in `SerializationTests` (datetime serialization format, fixed-offset vs UTC) — unrelated to DB-level date lookups. Let me confirm they're pre-existing by running the database-lookup test classes specifically, then checking the failures exist without my change.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && python runtests.py timezones.tests.NewDatabaseTests timezones.tests.LegacyDatabaseTests --parallel=1 2>&1 | tail -15", "timeout": 600}
+
+=== Turn 10 ===
+[user] [tool_result] Creating test database for alias 'default'...
+.....s.s..................ssss............
+----------------------------------------------------------------------
+Ran 42 tests in 0.028s
+
+OK (skipped=6)
+Destroying test database for alias 'default'...
+Testing against Django installed in '/t
+[assistant] All database date-lookup tests pass. Let me confirm the `SerializationTests` failures pre-exist my change by stashing.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && git stash && cd tests && python runtests.py timezones.tests.SerializationTests --parallel=1 2>&1 | tail -6; cd /testbed && git stash pop", "timeout": 600}
+
+=== Turn 11 ===
+[user] [tool_result] Saved working directory and index state WIP on main: a647b9a3e1 SWE-bench
+----------------------------------------------------------------------
+Ran 6 tests in 0.016s
+
+FAILED (failures=3)
+Testing against Django installed in '/testbed/django'
+System check identified no issues (0 silence
+[assistant] Confirmed — the 3 `SerializationTests` failures are pre-existing (environment-related) and unaffected by my change.
+
+## Summary
+
+Fixed Django ticket #27263: the per-database `TIME_ZONE` setting was ignored when making datetimes timezone-aware for date lookups on MySQL, SQLite, and Oracle. These backends store naive datetimes, and Django was hardcoding the source timezone as `'UTC'` instead of using the database's configured `TIME_ZONE` (exposed via `connection.timezone_name`).
+
+The conversion now goes **from the database timezone → the current/target timezone**, and is skipped entirely when they're equal (avoiding the need for populated timezone tables in MySQL when `tz1 == tz2`).
+
+**Changes:**
+
+- **`django/db/backends/mysql/operations.py`** — `_convert_field_to_tz` now uses `self.connection.timezone_name` as the `CONVERT_TZ` source, and omits the conversion when the DB tz equals the target tz.
+
+- **`django/db/backends/oracle/operations.py`** — `_convert_field_to_tz` uses `self.connection.timezone_name` in `FROM_TZ` instead of the hardcoded `'0:00'`.
+
+- **`django/db/backends/sqlite3/operations.py`** — added `_convert_tznames_to_sql` to pass both the target tz and the connection tz to the SQL functions; updated the four `datetime_*_sql` builders to pass both.
+
+- **`django/db/backends/sqlite3/base.py`** — `_sqlite_datetime_parse` now accepts `conn_tzname`, attaching it as the source tzinfo before localizing to the target tz; the `cast_date`/`cast_time`/`extract`/`trunc` helpers and their `create_function` arities were updated accordingly.
+
+All 42 database date-lookup tests in `timezones.tests.NewDatabaseTests`/`LegacyDatabaseTests` pass.

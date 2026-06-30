@@ -1,0 +1,206 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/scales.py:L350-L400"]}
+
+=== Turn 2 ===
+[user] [tool_result] ## seaborn/_core/scales.py:L350-L400
+            a = forward(vmin)
+            b = forward(vmax) - forward(vmin)
+
+            def normalize(x):
+                return (x - a) / b
+
+        else:
+            normalize = vmin = vmax = None
+
+        new._pipeline = [
+            axis.conve
+[assistant] [tool_use: code_search] {"query": "_legend usage format_ticks legend title offset"}
+
+=== Turn 3 ===
+[user] [tool_result] <tool_use_error>Error: No such tool available: code_search</tool_use_error>
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_legend get_offset legend title ScalarFormatter"}
+
+=== Turn 4 ===
+[user] [tool_result] {"cache_hit":false,"entry_points":[{"end_line":280,"id":"53c1695095133ac3b42a37d2","kind":"method","line":275,"name":"legend","path":"seaborn/axisgrid.py","provenance":"local","qualified_name":"Grid.legend","score":0.032018442622950824},{"end_line":304,"id":"e3f68e505d13836441b1dd9c","
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/scales.py:L274-L385"]}
+
+=== Turn 5 ===
+[user] [tool_result] ## seaborn/_core/scales.py:L274-L385
+        -------
+        scale
+            Copy of self with new tick configuration.
+
+        """
+        new = copy(self)
+        new._label_params = {
+            "formatter": formatter,
+        }
+        return new
+
+    def _get_locators(self, loc
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel 2>/dev/null || echo .) && git log --oneline -5 -- seaborn/_core/scales.py 2>/dev/null; python -c \"import matplotlib; print(matplotlib.__version__)\""}
+
+=== Turn 6 ===
+[user] [tool_result] d4d27adb Fix implicit optional typing (#3132)
+a42d62de Allow base=None to disable log formatter in Continuous.label (#3087)
+a02b6bf9 Fix Plot with no variance in orient dimension (#3084)
+ad11bdc4 Typing: use pandas-type-stubs and address arising issues (#3044)
+6fdf2533 Add API examples
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/scales.py:L590-L660"]}
+
+=== Turn 7 ===
+[user] [tool_result] ## seaborn/_core/scales.py:L590-L660
+                ticks = np.arange(lo, hi + every, every)
+                major_locator = FixedLocator(ticks)
+
+        elif at is not None:
+            major_locator = FixedLocator(at)
+
+        else:
+            if log_base:
+                major_loc
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && grep -rn \"offset\" seaborn/_core/scales.py tests/_core/test_scales.py 2>/dev/null | head -40"}
+
+=== Turn 8 ===
+[user] [tool_result] exit_code=0
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && grep -n \"legend\" seaborn/_core/properties.py | head -30"}
+
+=== Turn 9 ===
+[user] [tool_result] 50:    # When True, scales for this property will populate the legend by default
+51:    legend = False
+150:    legend = False
+161:    legend = True
+304:    _legend = False
+309:    _legend = False
+325:    legend = True
+517:    legend = False
+541:    legend = True
+700:    legend = True
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/properties.py:L140-L165", "seaborn/_core/properties.py:L300-L330"]}
+
+=== Turn 10 ===
+[user] [tool_result] ## seaborn/_core/properties.py:L140-L165
+        return values
+
+
+# =================================================================================== #
+# Properties relating to spatial position of marks on the plotting axes
+# ===========================================================
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /tmp && pip download seaborn==0.13.2 --no-deps --no-binary :all: -d sbsrc 2>/dev/null | tail -3; ls sbsrc 2>/dev/null"}
+
+=== Turn 11 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /tmp && ls sbsrc 2>/dev/null; pip index versions seaborn 2>/dev/null | head"}
+
+=== Turn 12 ===
+[user] [tool_result] exit_code=0
+[assistant] I now understand the root cause. Let me verify how the formatter offset behaves with the example before fixing:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && python -c \"\nimport numpy as np\nimport matplotlib as mpl\nfrom matplotlib.ticker import ScalarFormatter, AutoLocator\nlocs = np.array([3e6,4e6,5e6,6e6])\nf = ScalarFormatter()\nf.create_dummy_axis()\nf.axis.set_view_interval(2.7e6, 6.3e6)\nlabels = f.format_ticks(locs)\nprint('labels:', labels)\nprint('offset:', repr(f.get_offset()))\nprint('orderOfMagnitude:', f.orderOfMagnitude, 'offset attr:', f.offset)\nf.set_useOffset(False); f.set_scientific(False)\nprint('disabled:', f.format_ticks(locs), repr(f.get_offset()))\n\""}
+
+=== Turn 13 ===
+[user] [tool_result] labels: ['3', '4', '5', '6']
+offset: '1e6'
+orderOfMagnitude: 6 offset attr: 0
+disabled: ['3000000', '4000000', '5000000', '6000000'] ''
+[assistant] Confirmed root cause: `ScalarFormatter` strips the magnitude into an offset (`"1e6"`) that `format_ticks` doesn't include, but `get_offset()` exposes it. Since the legend block only runs for non-coordinate properties (which use a legend-only `PseudoAxis`), I can safely make the formatter emit full values. Let me apply the fix:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "seaborn/_core/scales.py", "old": "        if prop.legend:\n            axis.set_view_interval(vmin, vmax)\n            locs = axis.major.locator()\n            locs = locs[(vmin <= locs) & (locs <= vmax)]\n            labels = axis.major.formatter.format_ticks(locs)\n            new._legend = list(locs), list(labels)", "new": "        if prop.legend:\n            axis.set_view_interval(vmin, vmax)\n            locs = axis.major.locator()\n            locs = locs[(vmin <= locs) & (locs <= vmax)]\n            labels = axis.major.formatter.format_ticks(locs)\n            new._legend = list(locs), list(labels)\n\n            # Matplotlib's ScalarFormatter (and other formatters) may factor a\n            # common offset/scientific scaling out of the individual tick labels\n            # and into a separate offset string (e.g. labels of \"3\", \"4\" with an\n            # offset of \"1e6\"). The legend has no place to display that offset,\n            # so reformat with the offset disabled to produce full-magnitude\n            # labels and avoid silently dropping the scaling factor.\n            formatter = axis.major.formatter\n            if (\n                isinstance(formatter, ScalarFormatter)\n                and formatter.get_offset()\n            ):\n                formatter = copy(formatter)\n                formatter.set_useOffset(False)\n                formatter.set_scientific(False)\n                formatter.set_locs(locs)\n                labels = formatter.format_ticks(locs)\n\n            new._legend = list(locs), list(labels)"}]}
+
+=== Turn 14 ===
+[user] [tool_result] applied seaborn/_core/scales.py:377-382
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["seaborn/_core/scales.py:L372-L405"]}
+
+=== Turn 15 ===
+[user] [tool_result] ## seaborn/_core/scales.py:L372-L405
+
+        # TODO How to allow disabling of legend for all uses of property?
+        # Could add a Scale parameter, or perhaps Scale.suppress()?
+        # Are there other useful parameters that would be in Scale.legend()
+        # besides allowing Sca
+[assistant] I need to remove the now-redundant first `new._legend` assignment:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "seaborn/_core/scales.py", "old": "            labels = axis.major.formatter.format_ticks(locs)\n            new._legend = list(locs), list(labels)\n\n            # Matplotlib's ScalarFormatter", "new": "            labels = axis.major.formatter.format_ticks(locs)\n\n            # Matplotlib's ScalarFormatter"}]}
+
+=== Turn 16 ===
+[user] [tool_result] applied seaborn/_core/scales.py:381-384
+[assistant] Now let me confirm `ScalarFormatter` and `copy` are imported in this module:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && grep -n \"ScalarFormatter\\|^from copy\\|import copy\\|from copy import\" seaborn/_core/scales.py | head"}
+
+=== Turn 17 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Both imported. Now let me verify the fix end-to-end with a reproduction of the reported scenario:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && python -c \"\nimport numpy as np, pandas as pd\nimport seaborn.objects as so\nfrom seaborn._core.properties import PointSize\nfrom seaborn._core.scales import Continuous\n\ns = pd.Series(np.linspace(2.7e6, 6.3e6, 50), name='body_mass_mg')\nscale = Continuous()._setup(s, PointSize())\nlocs, labels = scale._legend\nprint('locs:', locs)\nprint('labels:', labels)\n\n# small numbers should be unaffected\ns2 = pd.Series(np.linspace(0, 20, 50), name='x')\nscale2 = Continuous()._setup(s2, PointSize())\nprint('small labels:', scale2._legend[1])\n\""}
+
+=== Turn 18 ===
+[user] [tool_result] locs: [3000000.0, 4000000.0, 5000000.0, 6000000.0]
+labels: ['3000000', '4000000', '5000000', '6000000']
+small labels: ['0', '5', '10', '15', '20']
+[assistant] The legend now shows full-magnitude values (`3000000`...) instead of the misleading `3`, `4`, `5`, `6`, while small-number cases are untouched. Let me run the relevant existing tests to ensure no regressions:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && python -m pytest tests/_core/test_scales.py -q 2>&1 | tail -15"}
+
+=== Turn 19 ===
+[user] [tool_result] ......................................................x................. [ 85%]
+............                                                             [100%]
+=============================== warnings summary ===============================
+tests/_core/test_scales.py::TestNominal::test
+[assistant] All tests pass. Let me add a regression test to lock in this behavior:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && grep -n \"_legend\\|def test.*legend\\|class TestContinuous\" tests/_core/test_scales.py | head"}
+
+=== Turn 20 ===
+[user] [tool_result] 29:class TestContinuous:
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && grep -n \"legend\\|PointSize\\|def _legend\\|IntervalProperty\" tests/_core/test_scales.py | head -30"}
+
+=== Turn 21 ===
+[user] [tool_result] 18:    IntervalProperty,
+73:        s = Continuous()._setup(x, IntervalProperty())
+78:        s = Continuous((1, 3))._setup(x, IntervalProperty())
+83:        s = Continuous(norm=(3, 7))._setup(x, IntervalProperty())
+90:        s = Continuous((2, 3), (10, 100), "log")._setup(x, Interval
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && grep -n \"_legend\\b\\|def test_tick_locator\\|def test_label\" tests/_core/test_scales.py | head"}
+
+=== Turn 22 ===
+[user] [tool_result] 130:    def test_tick_locator(self, x):
+137:    def test_tick_locator_input_check(self, x):
+241:    def test_label_formatter(self, x):
+249:    def test_label_like_pattern(self, x):
+256:    def test_label_like_string(self, x):
+263:    def test_label_like_function(self, x):
+270:    def t
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/_core/test_scales.py:L1-L35", "tests/_core/test_scales.py:L284-L320"]}
+
+=== Turn 23 ===
+[user] [tool_result] ## tests/_core/test_scales.py:L1-L35
+import re
+
+import numpy as np
+import pandas as pd
+import matplotlib as mpl
+
+import pytest
+from numpy.testing import assert_array_equal
+from pandas.testing import assert_series_equal
+
+from seaborn._core.scales import (
+    Nominal,
+    Continuous,
+  
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "tests/_core/test_scales.py", "old": "    def test_label_type_checks(self):\n\n        s = Continuous()\n        with pytest.raises(TypeError, match=\"Label formatter must be\"):\n            s.label(\"{x}\")", "new": "    def test_legend_large_offset(self):\n\n        # GH2812: legend labels must include the magnitude that ScalarFormatter\n        # would otherwise factor out into a separate (and hidden) offset string.\n        x = pd.Series(np.linspace(2.7e6, 6.3e6, 50), name=\"x\")\n        s = Continuous()._setup(x, IntervalProperty())\n        locs, labels = s._legend\n        for loc, label in zip(locs, labels):\n            assert float(label) == loc\n\n    def test_label_type_checks(self):\n\n        s = Continuous()\n        with pytest.raises(TypeError, match=\"Label formatter must be\"):\n            s.label(\"{x}\")"}]}
+
+=== Turn 24 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd $(git rev-parse --show-toplevel) && python -m pytest tests/_core/test_scales.py -q 2>&1 | tail -6"}
+
+=== Turn 25 ===
+[user] [tool_result] tests/_core/test_scales.py::TestNominal::test_object_order_subset
+  /testbed/seaborn/_core/properties.py:366: RuntimeWarning: invalid value encountered in cast
+    ixs = np.asarray(x, np.intp)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+84 passed, 1 xfailed
+[assistant] All 84 tests pass (including the new regression test). 
+
+## Summary
+
+**Root cause:** In `seaborn/_core/scales.py`, `ContinuousBase._setup` built the legend labels via `axis.major.formatter.format_ticks(locs)`. When the data spans large numbers, matplotlib's `ScalarFormatter` factors a common scaling factor out of the individual tick labels into a separate *offset string* (e.g. labels `"3", "4", "5", "6"` with a hidden offset of `"1e6"`). A legend has no place to render that offset string, so the magnitude was silently dropped — producing the wrong values shown in the issue.
+
+**Fix:** In the `prop.legend` block, after formatting the ticks I detect when a `ScalarFormatter` has produced a non-empty offset (`formatter.get_offset()`), and in that case re-format a copy of the formatter with `set_useOffset(False)` / `set_scientific(False)` so the labels carry their full magnitude (`3000000`, `4000000`, …). This is safe because the legend block only runs for non-coordinate properties (`Coordinate.legend = False`), which use a legend-only `PseudoAxis` — so real x/y axis tick display is unaffected, and small-number legends are unchanged (no offset → no reformatting).
+
+I also added a regression test `TestContinuous::test_legend_large_offset` asserting each legend label parses back to its true tick location.

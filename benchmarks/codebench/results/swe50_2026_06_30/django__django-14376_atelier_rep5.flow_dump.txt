@@ -1,0 +1,82 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "CLIENT_INFO db passwd kwargs mysql get_connection_params", "path": "django/db/backends/mysql/base.py"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["django/db/backends/postgresql/base.py","django/db/backends/base/base.py","django/db/backends/oracle/base.py","django/db/backends/sqlite3/base.py","django/contrib/gis/db/models/fields.py","django/db/models/sql/compiler.py","django/db/backends/mysql/features.py"],"ex
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/backends/mysql/base.py:L185-L230"]}
+
+=== Turn 3 ===
+[user] [tool_result] ## django/db/backends/mysql/base.py:L185-L230
+    SchemaEditorClass = DatabaseSchemaEditor
+    # Classes instantiated in __init__().
+    client_class = DatabaseClient
+    creation_class = DatabaseCreation
+    features_class = DatabaseFeatures
+    introspection_class = DatabaseIntrospec
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path":"django/db/backends/mysql/base.py","old":"        if settings_dict['NAME']:\n            kwargs['db'] = settings_dict['NAME']\n        if settings_dict['PASSWORD']:\n            kwargs['passwd'] = settings_dict['PASSWORD']","new":"        if settings_dict['NAME']:\n            kwargs['database'] = settings_dict['NAME']\n        if settings_dict['PASSWORD']:\n            kwargs['password'] = settings_dict['PASSWORD']"}]}
+
+=== Turn 4 ===
+[user] [tool_result] {"FIXME":{"reason":"Must update: these callers still use the contract this edit changed.","sites":[{"line":15,"new":"password","old":"passwd","path":"django/db/backends/mysql/client.py","snippet":"settings_dict['OPTIONS'].get('passwd', settings_dict['PASSWORD'])"},{"line":63,"new":"pas
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/backends/mysql/client.py", "tests/dbshell/test_mysql.py:L50-L75"]}
+
+=== Turn 5 ===
+[user] [tool_result] ## django/db/backends/mysql/client.py
+from django.db.backends.base.client import BaseDatabaseClient
+
+
+class DatabaseClient(BaseDatabaseClient):
+    executable_name = 'mysql'
+
+    @classmethod
+    def settings_to_cmd_args_env(cls, settings_dict, parameters):
+        args = [cls.executab
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/dbshell/test_mysql.py:L1-L110"]}
+
+=== Turn 6 ===
+[user] [tool_result] ## tests/dbshell/test_mysql.py:L1-L110
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from django.db.backends.mysql.client import DatabaseClient
+from django.test import SimpleTestCase
+
+
+class MySqlDbshellCommandTestCase(SimpleTestCase):
+    def settings_to_cmd_args_en
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/db/backends/mysql/client.py", "old": "        db = settings_dict['OPTIONS'].get('db', settings_dict['NAME'])\n        user = settings_dict['OPTIONS'].get('user', settings_dict['USER'])\n        password = settings_dict['OPTIONS'].get(\n            'password',\n            settings_dict['OPTIONS'].get('passwd', settings_dict['PASSWORD'])\n        )", "new": "        db = settings_dict['OPTIONS'].get(\n            'database',\n            settings_dict['OPTIONS'].get('db', settings_dict['NAME']),\n        )\n        user = settings_dict['OPTIONS'].get('user', settings_dict['USER'])\n        password = settings_dict['OPTIONS'].get(\n            'password',\n            settings_dict['OPTIONS'].get('passwd', settings_dict['PASSWORD']),\n        )"}, {"path": "tests/dbshell/test_mysql.py", "old": "                'OPTIONS': {\n                    'db': 'optiondbname',\n                    'user': 'optionuser',\n                    'passwd': 'optionpassword',\n                    'host': 'optionhost',\n                    'port': options_port,\n                },\n            }),\n            (expected_args, expected_env),\n        )\n\n    def test_options_password(self):", "new": "                'OPTIONS': {\n                    'database': 'optiondbname',\n                    'user': 'optionuser',\n                    'password': 'optionpassword',\n                    'host': 'optionhost',\n                    'port': options_port,\n                },\n            }),\n            (expected_args, expected_env),\n        )\n\n    def test_options_non_deprecated_keys_preferred(self):\n        expected_args = [\n            'mysql',\n            '--user=someuser',\n            '--host=somehost',\n            '--port=444',\n            'optiondbname',\n        ]\n        expected_env = {'MYSQL_PWD': 'optionpassword'}\n        self.assertEqual(\n            self.settings_to_cmd_args_env({\n                'NAME': 'settingdbname',\n                'USER': 'someuser',\n                'PASSWORD': 'settingpassword',\n                'HOST': 'somehost',\n                'PORT': 444,\n                'OPTIONS': {\n                    'database': 'optiondbname',\n                    'db': 'deprecateddb',\n                    'password': 'optionpassword',\n                    'passwd': 'deprecatedpassword',\n                },\n            }),\n            (expected_args, expected_env),\n        )\n\n    def test_options_password(self):"}]}
+
+=== Turn 7 ===
+[user] [tool_result] applied django/db/backends/mysql/client.py:11-16, tests/dbshell/test_mysql.py:60-71
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && python runtests.py dbshell.test_mysql 2>&1 | tail -20"}
+
+=== Turn 8 ===
+[user] [tool_result] ..........
+----------------------------------------------------------------------
+Ran 10 tests in 0.019s
+
+OK
+Testing against Django installed in '/testbed/django' with up to 32 processes
+Found 10 tests.
+System check identified no issues (0 silenced).
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /testbed && grep -rn \"'passwd'\\|'db'\\|kwargs\\['db'\\]\\|kwargs\\['passwd'\\]\" tests/backends/mysql/ docs/ref/databases.txt 2>/dev/null | head"}
+
+=== Turn 9 ===
+[user] [tool_result] exit_code=0
+[assistant] The change is complete. Summary of what I did to replace the deprecated `db`/`passwd` mysqlclient kwargs with `database`/`password`:
+
+1. **`django/db/backends/mysql/base.py`** — `get_connection_params()` now sets `kwargs['database']` and `kwargs['password']` instead of the deprecated `db`/`passwd`.
+
+2. **`django/db/backends/mysql/client.py`** — the dbshell argument builder now reads `OPTIONS['database']` (falling back to the deprecated `db`, then `NAME`), mirroring the existing `password`/`passwd` fallback so user-supplied `OPTIONS` keep working either way.
+
+3. **`tests/dbshell/test_mysql.py`** — updated the override test to use the new keys and added `test_options_non_deprecated_keys_preferred` to confirm the new keys take precedence over the deprecated ones.
+
+All 10 `dbshell.test_mysql` tests pass.

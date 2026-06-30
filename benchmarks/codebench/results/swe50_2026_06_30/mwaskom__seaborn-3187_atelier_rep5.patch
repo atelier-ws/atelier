@@ -1,0 +1,43 @@
+diff --git a/seaborn/_core/scales.py b/seaborn/_core/scales.py
+index 55874bf2..fae023c3 100644
+--- a/seaborn/_core/scales.py
++++ b/seaborn/_core/scales.py
+@@ -378,7 +378,16 @@ class ContinuousBase(Scale):
+             axis.set_view_interval(vmin, vmax)
+             locs = axis.major.locator()
+             locs = locs[(vmin <= locs) & (locs <= vmax)]
+-            labels = axis.major.formatter.format_ticks(locs)
++            # ScalarFormatter may factor a common scaling/offset out of the tick
++            # labels and draw it separately alongside the axis. A legend has no
++            # place to show that quantity, so the labels would silently drop
++            # several orders of magnitude (see GH2860). Disable the offsetting so
++            # that each legend label is a complete, self-contained value.
++            formatter = axis.major.formatter
++            if isinstance(formatter, ScalarFormatter):
++                formatter.set_useOffset(False)
++                formatter.set_scientific(False)
++            labels = formatter.format_ticks(locs)
+             new._legend = list(locs), list(labels)
+ 
+         return new
+diff --git a/tests/_core/test_plot.py b/tests/_core/test_plot.py
+index e4ba99e1..141270ad 100644
+--- a/tests/_core/test_plot.py
++++ b/tests/_core/test_plot.py
+@@ -2024,6 +2024,16 @@ class TestLegend:
+         texts = p._figure.legends[0].get_texts()
+         assert len(texts) == len(s.unique())
+ 
++    def test_large_numeric_values(self, xy):
++
++        # GH2860: ScalarFormatter factors a common offset/scale out of the tick
++        # labels, which the legend cannot display, so labels must be complete.
++        s = pd.Series([4e6, 5e6, 6e6, 5e6], name="s")
++        p = Plot(**xy).add(MockMark(), pointsize=s).plot()
++        e, = p._legend_contents
++        labels = e[-1]
++        assert all(float(label) > 1e6 for label in labels)
++
+     def test_identity_scale_ignored(self, xy):
+ 
+         s = pd.Series(["r", "g", "b", "g"])

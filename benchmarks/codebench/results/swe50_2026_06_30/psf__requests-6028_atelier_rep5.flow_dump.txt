@@ -1,0 +1,93 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] I'll start by exploring the repo to ground this in the actual code.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "ls && head -5 README.md 2>/dev/null; git log --oneline -5 2>/dev/null"}[tool_use: code_search] {"query": "select_proxy proxy authorization header"}
+
+=== Turn 2 ===
+[user] [tool_result] AUTHORS.rst
+HISTORY.md
+LICENSE
+MANIFEST.in
+Makefile
+NOTICE
+README.md
+build
+docs
+ext
+pytest.ini
+requests
+requests.egg-info
+requirements-dev.txt
+setup.cfg
+setup.py
+tests
+tox.ini
+# Requests
+
+**Requests** is a simple, yet elegant, HTTP library.
+
+```python
+3e34210a SWE-bench
+0192aac2 v2.27.
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "proxy authorization header rebuild_proxies select_proxy"}
+
+=== Turn 3 ===
+[user] [tool_result] {"candidate_files": ["requests/adapters.py", "requests/auth.py", "tests/test_requests.py", "tests/test_utils.py", "requests/compat.py", "tests/test_lowlevel.py"], "exact_match": true, "files": [{"path": "requests/utils.py", "sections": [{"end_line": 834, "line": 811, "path": "requests/
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["requests/sessions.py:L230-L320"]}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "proxy_manager_for proxy_headers HTTPProxyAuth send adapter"}
+
+=== Turn 4 ===
+[user] [tool_result] ## requests/sessions.py:L230-L320
+            # Override the original request.
+            req = prepared_request
+
+            if yield_requests:
+                yield req
+            else:
+
+                resp = self.send(
+                    req,
+                    stream=stream,
+ 
+[assistant] The known fix lives in URL parsing for proxies. Let me look at `prepend_scheme_if_needed` and `get_auth_from_url`.[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "prepend_scheme_if_needed urldefragauth get_auth_from_url urlparse"}
+
+=== Turn 5 ===
+[user] [tool_result] {"candidate_files": ["requests/adapters.py", "requests/sessions.py", "requests/models.py", "requests/auth.py", "requests/cookies.py", "requests/api.py"], "exact_match": true, "files": [{"path": "tests/test_utils.py", "sections": [{"end_line": 401, "line": 400, "path": "tests/test_utils
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["requests/utils.py:L960-L1010", "tests/test_utils.py:L600-L640"]}
+
+=== Turn 6 ===
+[user] [tool_result] ## requests/utils.py:L960-L1010
+def prepend_scheme_if_needed(url, new_scheme):
+    """Given a URL that may or may not have a scheme, prepend the given scheme.
+    Does not replace a present scheme with the one provided as an argument.
+
+    :rtype: str
+    """
+    parsed = parse_url(url
+[assistant] Confirmed root cause. In requests 2.27.0, `prepend_scheme_if_needed` was switched to urllib3's `parse_url`. But urllib3's `Url.netloc` property returns only `host:port` and **excludes the auth (`user:pass@`) component**. The function reconstructs the URL from `netloc`, silently dropping proxy credentials → the proxy returns 407. This only surfaced on 3.8.12 because that's when the move away from stdlib `urlparse` (whose `netloc` included auth) was triggered.
+
+Let me apply the fix and extend the test.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "requests/utils.py", "old": "    netloc = parsed.netloc\n    if not netloc:\n        netloc, path = path, netloc\n\n    if scheme is None:\n        scheme = new_scheme\n    if path is None:\n        path = ''\n\n    return urlunparse((scheme, netloc, path, '', query, fragment))", "new": "    netloc = parsed.netloc\n    if not netloc:\n        netloc, path = path, netloc\n\n    if auth:\n        # parse_url doesn't provide the netloc with auth\n        # so we'll add it ourselves.\n        netloc = '@'.join([auth, netloc])\n    if scheme is None:\n        scheme = new_scheme\n    if path is None:\n        path = ''\n\n    return urlunparse((scheme, netloc, path, '', query, fragment))"}, {"path": "tests/test_utils.py", "old": "        ('example.com/path', 'http://example.com/path'),\n        ('//example.com/path', 'http://example.com/path'),\n        ('example.com:80', 'http://example.com:80'),\n    ))\ndef test_prepend_scheme_if_needed(value, expected):", "new": "        ('example.com/path', 'http://example.com/path'),\n        ('//example.com/path', 'http://example.com/path'),\n        ('example.com:80', 'http://example.com:80'),\n        (\n            'http://user:pass@example.com/path?query',\n            'http://user:pass@example.com/path?query'\n        ),\n        (\n            'http://user@example.com/path?query',\n            'http://user@example.com/path?query'\n        )\n    ))\ndef test_prepend_scheme_if_needed(value, expected):"}]}
+
+=== Turn 7 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && python -m pytest tests/test_utils.py -k \"prepend_scheme_if_needed\" -q 2>&1 | tail -20"}
+
+=== Turn 8 ===
+[user] [tool_result] 5 passed, 209 deselected in 0.04s
+[assistant] The fix is complete and verified.
+
+**Root cause.** In requests 2.27.0, `prepend_scheme_if_needed` (requests/utils.py) was switched from stdlib `urlparse` to urllib3's `parse_url`. It rebuilt the URL from `parsed.netloc`, but urllib3's `Url.netloc` property returns only `host:port` and omits the `user:pass@` auth component. So a proxy URL like `http://user:pass@proxy:8080` lost its credentials, requests never sent a valid `Proxy-Authorization`, and the proxy answered 407. The reason it appeared "only on 3.8.12" is incidental — that's the environment where this code path was exercised; the bug is in the parse_url migration, not in CPython.
+
+**Fix.** Re-attach the auth to the netloc before reassembling:
+```python
+if auth:
+    # parse_url doesn't provide the netloc with auth
+    # so we'll add it ourselves.
+    netloc = '@'.join([auth, netloc])
+```
+
+Added two parametrized cases (`user:pass@` and `user@`) to `test_prepend_scheme_if_needed`; the targeted suite passes (5 passed). Remaining risk is low — the change only adds an auth segment when one was parsed, leaving auth-less URLs identical.

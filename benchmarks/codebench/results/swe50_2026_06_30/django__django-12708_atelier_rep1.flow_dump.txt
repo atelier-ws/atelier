@@ -1,0 +1,37 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/db/backends/base/schema.py:expand"], "symbol": ["BaseDatabaseSchemaEditor._delete_composed_index", "BaseDatabaseSchemaEditor.alter_index_together", "BaseDatabaseSchemaEditor.alter_unique_together"]}
+
+=== Turn 2 ===
+[user] [tool_result] ### django/db/backends/base/schema.py:L402-L416 (method)
+    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):
+        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}
+        meta_index_names = {constraint.name for constraint i
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"symbol": ["BaseDatabaseSchemaEditor._constraint_names"]}
+
+=== Turn 3 ===
+[user] [tool_result] ### django/db/backends/base/schema.py:L1142-L1170 (method)
+    def _constraint_names(self, model, column_names=None, unique=None,
+                          primary_key=None, index=None, foreign_key=None,
+                          check=None, type_=None, exclude=None):
+        """Return
+[assistant] The fix: when deleting an `index_together`, the constraint lookup with `{'index': True}` also matches the unique constraint (which is both unique and an index). Filtering with `unique=False` excludes it.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/db/backends/base/schema.py", "old": "        for fields in olds.difference(news):\n            self._delete_composed_index(model, fields, {'index': True}, self.sql_delete_index)", "new": "        for fields in olds.difference(news):\n            self._delete_composed_index(\n                model,\n                fields,\n                {'index': True, 'unique': False},\n                self.sql_delete_index,\n            )"}]}
+
+=== Turn 4 ===
+[user] [tool_result] applied django/db/backends/base/schema.py:395-396
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd tests && python runtests.py schema --parallel=1 2>&1 | tail -20", "timeout": 600}
+
+=== Turn 5 ===
+[user] [tool_result] Ran 131 tests in 0.326s
+OK (skipped=24)
+[assistant] Schema tests pass. 
+
+The crash was in `alter_index_together`'s deletion path: it asked `_constraint_names` for constraints matching the columns with `{'index': True}`. When the same fields also have a `unique_together`, the backend reports that unique constraint as both `unique=True` and `index=True`, so two constraints matched and `_delete_composed_index` raised `ValueError: Found wrong number (2)`.
+
+Adding `'unique': False` to the lookup restricts deletion to the plain (non-unique) index, leaving the unique constraint untouched. The reverse path (`alter_unique_together`, which uses `{'unique': True}`) already excludes the plain index, so it needed no change.

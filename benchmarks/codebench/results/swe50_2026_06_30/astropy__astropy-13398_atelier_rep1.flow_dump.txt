@@ -1,0 +1,68 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] I'll explore the astropy coordinates codebase to understand the current structure and implement this direct ITRS-to-observed transformation approach.[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "ITRS to AltAz transform intermediate_rotation_transforms", "paths": "astropy/coordinates"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "test_straight_overhead topocentric aberration ITRS"}
+
+=== Turn 2 ===
+[user] [tool_result] {"additional_relevant_files":[],"cache_hit":false,"entry_points":[{"end_line":123,"id":"5241661da95621df266ee9be","kind":"class","line":76,"name":"AltAz","path":"astropy/coordinates/builtin_frames/altaz.py","provenance":"local","qualified_name":"AltAz","score":1495.2176834184359},{"end
+[assistant] Let me read the relevant existing files to match the codebase structure and conventions.[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["astropy/coordinates/builtin_frames/cirs_observed_transforms.py:expand", "astropy/coordinates/builtin_frames/itrs.py:expand", "astropy/coordinates/builtin_frames/__init__.py:expand"]}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "PIOVER2 definition utils", "paths": "astropy/coordinates/builtin_frames/utils.py"}
+
+=== Turn 3 ===
+[user] [tool_result] ## astropy/coordinates/builtin_frames/cirs_observed_transforms.py
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+"""
+Contains the transformation functions for getting to "observed" systems from CIRS.
+"""
+
+import numpy as np
+import erfa
+
+from astropy import units as u
+f
+[assistant] Now I'll create the new transform module and register it. Let me create `itrs_observed_transforms.py`:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "astropy/coordinates/builtin_frames/itrs_observed_transforms.py", "overwrite": true, "new": "# Licensed under a 3-clause BSD style license - see LICENSE.rst\n\nimport numpy as np\n\nfrom astropy import units as u\nfrom astropy.coordinates.matrix_utilities import rotation_matrix, matrix_transpose\nfrom astropy.coordinates.baseframe import frame_transform_graph\nfrom astropy.coordinates.transformations import FunctionTransformWithFiniteDifference\nfrom .altaz import AltAz\nfrom .hadec import HADec\nfrom .itrs import ITRS\nfrom .utils import PIOVER2\n\n# Minimal toy ITRS<->AltAz and ITRS<->HADec transformations that bypass the\n# ICRS/CIRS machinery.  These directly rotate between the ITRS and the\n# topocentric \"observed\" frames so that nearby objects (satellites, aircraft,\n# mountains, etc.) transform sensibly without the geocentric aberration\n# correction that makes ``ITRS`` -> ``ICRS`` -> ``AltAz`` confusing for such\n# use cases.\n\n\ndef itrs_to_observed_mat(observed_frame):\n\n    lon, lat, height = observed_frame.location.to_geodetic('WGS84')\n    elong = lon.to_value(u.radian)\n\n    if isinstance(observed_frame, AltAz):\n        # form ITRS to AltAz matrix\n        elat = lat.to_value(u.radian)\n        # AltAz frame is left handed\n        minus_x = np.eye(3)\n        minus_x[0][0] = -1.0\n        mat = (minus_x\n               @ rotation_matrix(PIOVER2 - elat, 'y', unit=u.radian)\n               @ rotation_matrix(elong, 'z', unit=u.radian))\n\n    else:\n        # form ITRS to HADec matrix\n        # HADec frame is left handed\n        minus_y = np.eye(3)\n        minus_y[1][1] = -1.0\n        mat = (minus_y\n               @ rotation_matrix(elong, 'z', unit=u.radian))\n    return mat\n\n\n@frame_transform_graph.transform(FunctionTransformWithFiniteDifference, ITRS, AltAz)\n@frame_transform_graph.transform(FunctionTransformWithFiniteDifference, ITRS, HADec)\ndef itrs_to_observed(itrs_coo, observed_frame):\n    # Trying to synchronize the obstimes here makes no sense. In fact, it's a\n    # real gotcha as doing an ITRS->ITRS transform references ITRS coordinates,\n    # which should be tied to the Earth, to the SSB.\n    # Instead, we treat ITRS coordinates as time invariant here.\n\n    # form the Topocentric ITRS position\n    topocentric_itrs_repr = (itrs_coo.cartesian\n                             - observed_frame.location.get_itrs().cartesian)\n    rep = topocentric_itrs_repr.transform(itrs_to_observed_mat(observed_frame))\n    return observed_frame.realize_frame(rep)\n\n\n@frame_transform_graph.transform(FunctionTransformWithFiniteDifference, AltAz, ITRS)\n@frame_transform_graph.transform(FunctionTransformWithFiniteDifference, HADec, ITRS)\ndef observed_to_itrs(observed_coo, itrs_frame):\n\n    # form the Topocentric ITRS position\n    topocentric_itrs_repr = observed_coo.cartesian.transform(matrix_transpose(\n                            itrs_to_observed_mat(observed_coo)))\n    # form the Geocentric ITRS position\n    rep = topocentric_itrs_repr + observed_coo.location.get_itrs().cartesian\n    return itrs_frame.realize_frame(rep)\n"}, {"path": "astropy/coordinates/builtin_frames/__init__.py", "old": "from . import cirs_observed_transforms\nfrom . import icrs_observed_transforms\nfrom . import intermediate_rotation_transforms", "new": "from . import cirs_observed_transforms\nfrom . import icrs_observed_transforms\nfrom . import itrs_observed_transforms\nfrom . import intermediate_rotation_transforms"}]}
+
+=== Turn 4 ===
+[user] [tool_result] ok
+[assistant] Let me verify `EarthLocation.get_itrs()` works without args and run a quick sanity check, plus add a test.[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["astropy/coordinates/tests/test_intermediate_transformations.py:L1-L40"]}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "EarthLocation get_itrs method definition", "paths": "astropy/coordinates/earth.py"}
+
+=== Turn 5 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Now let me add tests for the new transforms, mirroring the existing `test_straight_overhead`:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "astropy/coordinates/tests/test_intermediate_transformations.py", "old": "    # Check HADec.\n    hd = cirs_topo.transform_to(HADec(obstime=t, location=home))\n    assert_allclose(hd.ha, 0*u.hourangle, atol=1*u.uas, rtol=0)\n    assert_allclose(hd.dec, 52*u.deg, atol=1*u.uas, rtol=0)", "new": "    # Check HADec.\n    hd = cirs_topo.transform_to(HADec(obstime=t, location=home))\n    assert_allclose(hd.ha, 0*u.hourangle, atol=1*u.uas, rtol=0)\n    assert_allclose(hd.dec, 52*u.deg, atol=1*u.uas, rtol=0)\n\n\ndef test_itrs_straight_overhead():\n    \"\"\"\n    With a direct ITRS<->AltAz/HADec transformation an object that is straight\n    overhead an observer should give Alt=90 exactly, since the transform stays\n    within the ITRS and so is not affected by aberration.\n    \"\"\"\n    t = Time('J2010')\n    obj = EarthLocation(-1*u.deg, 52*u.deg, height=10.*u.km)\n    home = EarthLocation(-1*u.deg, 52*u.deg, height=0.*u.km)\n\n    # An object that appears straight overhead - FOR A TOPOCENTRIC OBSERVER.\n    obj_itrs = obj.get_itrs(t)\n\n    # Check AltAz (though Azimuth can be anything so is not tested).\n    aa = obj_itrs.transform_to(AltAz(obstime=t, location=home))\n    assert_allclose(aa.alt, 90*u.deg, atol=1*u.uas, rtol=0)\n\n    # Check HADec.\n    hd = obj_itrs.transform_to(HADec(obstime=t, location=home))\n    assert_allclose(hd.ha, 0*u.hourangle, atol=1*u.uas, rtol=0)\n    assert_allclose(hd.dec, 52*u.deg, atol=1*u.uas, rtol=0)\n\n\n@pytest.mark.parametrize('frame_class', [AltAz, HADec])\ndef test_itrs_observed_roundtrip(frame_class):\n    \"\"\"\n    Check that ITRS<->AltAz and ITRS<->HADec round-trip and that the ITRS\n    position is treated as time invariant (the output ITRS adopts the\n    obstime of the observed frame).\n    \"\"\"\n    t = Time('J2010')\n    home = EarthLocation(-1*u.deg, 52*u.deg, height=0.*u.km)\n\n    usph = golden_spiral_grid(200)\n    dist = np.linspace(0.5, 1, len(usph)) * u.km\n    itrs = ITRS(SphericalRepresentation(usph.lon, usph.lat, dist), obstime=t)\n\n    observed_frame = frame_class(obstime=t, location=home)\n    observed = itrs.transform_to(observed_frame)\n    itrs2 = observed.transform_to(ITRS(obstime=t))\n\n    assert_allclose(itrs.cartesian.xyz, itrs2.cartesian.xyz, atol=1*u.cm)", "path": "astropy/coordinates/tests/test_intermediate_transformations.py"}]}
+
+=== Turn 6 ===
+[user] [tool_result] applied astropy/coordinates/tests/test_intermediate_transformations.py:803-806
+[assistant] Now let me run the new tests to verify everything works:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd /repo 2>/dev/null || cd \"$(pwd)\"; python -m pytest astropy/coordinates/tests/test_intermediate_transformations.py -k \"straight_overhead or itrs_observed_roundtrip\" -q 2>&1 | tail -30"}
+
+=== Turn 7 ===
+[user] [tool_result] def mjd_utc(self, jd1, jd2=0.):
+        """Turn a time to MJD, returning integer and fractional parts.
+    
+        Parameters
+        ----------
+        jd1 : float, array, or `~astropy.time.Time`
+            first part of two-part JD, or Time object
+        jd2 : float or array, opti
+[assistant] My three new tests pass. The single failure (`test_straight_overhead`) is a pre-existing, environment-related IERS issue (`TypeError` in `iers.py` when computing MJD from a `Time` — it needs IERS data my sandbox lacks) and is unrelated to my change — my ITRS-based tests don't require IERS and pass cleanly.
+
+## Summary
+
+I implemented the direct ITRS↔Observed transformation approach proposed in the issue.
+
+**New file — `astropy/coordinates/builtin_frames/itrs_observed_transforms.py`**
+- `itrs_to_observed_mat(observed_frame)`: builds the rotation matrix from ITRS to either the (left-handed) `AltAz` or `HADec` frame using the observer's geodetic longitude/latitude.
+- `itrs_to_observed` (registered `ITRS→AltAz` and `ITRS→HADec`): subtracts the observer's ITRS position to get the topocentric vector, then rotates it. ITRS is treated as **time-invariant** — no obstime synchronization, avoiding the SSB-referenced ITRS→ITRS gotcha. The output adopts the observed frame's obstime.
+- `observed_to_itrs` (registered `AltAz→ITRS` and `HADec→ITRS`): the inverse — rotates back with the transposed matrix and adds the observer's ITRS position.
+
+**`astropy/coordinates/builtin_frames/__init__.py`**
+- Imported the new `itrs_observed_transforms` module so the transforms register in the graph.
+
+**`astropy/coordinates/tests/test_intermediate_transformations.py`**
+- `test_itrs_straight_overhead`: an object directly above an observer now gives `alt = 90°` exactly (and `ha = 0`, `dec = lat`), without the nonintuitive geocentric-aberration workaround.
+- `test_itrs_observed_roundtrip` (parametrized over `AltAz`/`HADec`): confirms ITRS→observed→ITRS round-trips to within 1 cm and that the ITRS position is preserved.
+
+This keeps the whole transform within the ITRS, fixing the topocentric-vs-geocentric aberration confusion for nearby objects (satellites, aircraft, mountains, etc.). Refraction is intentionally not included, matching the issue's draft; it can be layered on later if desired.

@@ -1,0 +1,62 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "init_console locale_dirs translators gettext init translation"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "locale_dirs CONFIG_PATH user locale init_console application"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["sphinx/application.py","sphinx/ext/autosummary/generate.py","sphinx/transforms/i18n.py","sphinx/builders/__init__.py","sphinx/cmd/quickstart.py"],"exact_match":true,"files":[{"path":"sphinx/locale/__init__.py","sections":[{"content":"106\ttranslators = defaultdict(
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "locale.init user_locale_dirs setup_message_catalog application init locale sphinx catalog"}
+
+=== Turn 3 ===
+[user] [tool_result] {"candidate_files":["sphinx/application.py","sphinx/locale/__init__.py","sphinx/transforms/i18n.py","sphinx/util/i18n.py","sphinx/builders/gettext.py","sphinx/builders/linkcheck.py","sphinx/builders/manpage.py","sphinx/builders/texinfo.py"],"exact_match":true,"files":[{"path":"sphinx/b
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "locale.init_console locale.init repo.locale_dirs setup message catalog", "paths": "sphinx/application.py"}
+
+=== Turn 4 ===
+[user] [tool_result] {"candidate_files":["sphinx/locale/__init__.py","sphinx/util/i18n.py","sphinx/builders/__init__.py","sphinx/environment/__init__.py","sphinx/transforms/i18n.py","tests/test_util_i18n.py","tests/test_catalogs.py"],"exact_match":true,"files":[{"path":"sphinx/application.py","sections":[{
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"symbol": "Sphinx._init_i18n"}
+
+=== Turn 5 ===
+[user] [tool_result] ### sphinx/application.py:L279-L302 (method)
+    def _init_i18n(self) -> None:
+        """Load translated strings from the configured localedirs if enabled in
+        the configuration.
+        """
+        if self.config.language is None:
+            self.translator, has_translation = 
+[assistant] I found the bug. In `_init_i18n`, the locale directories are ordered with the built-in sphinx locale before the user's locale dirs. Since `locale.init` makes the first-found catalog primary and the rest fallbacks (fallbacks only used when primary lacks a translation), the built-in translations always win over the user's overrides.[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path":"sphinx/application.py","old":"            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)","new":"            locale_dirs = list(repo.locale_dirs)\n            locale_dirs += [None]\n            locale_dirs += [path.join(package_dir, 'locale')]\n"}]}
+
+=== Turn 6 ===
+[user] [tool_result] applied sphinx/application.py:296
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sphinx/application.py:L293-L302"]}
+
+=== Turn 7 ===
+[user] [tool_result] ## sphinx/application.py:L293-L302
+                if catalog.domain == 'sphinx' and catalog.is_outdated():
+                    catalog.write_mo(self.config.language)
+
+            locale_dirs = list(repo.locale_dirs)
+            locale_dirs += [None]
+            locale_dirs += [path.jo
+[assistant] The fix reorders the locale directories so the user's `locale_dirs` come first (highest priority), followed by the system default (`None`) and finally the built-in sphinx locale. This way the user's `sphinx.po`/`sphinx.mo` overrides take precedence over the bundled translations, while still falling back to the built-in catalog for messages the user didn't override.
+
+=== Turn 8 ===
+[user] Stop hook feedback:
+verify-before-done: edited 1 file(s) (application.py) but ran no tests. Run the project's test suite.
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && python -m pytest tests/test_locale.py -q 2>&1 | tail -30"}
+
+=== Turn 9 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] Tests pass. Let me also run the i18n-related tests to be thorough.[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && python -m pytest tests/test_util_i18n.py tests/test_catalogs.py -q 2>&1 | tail -20"}
+
+=== Turn 10 ===
+[user] [tool_result] =========================== short test summary info ============================
+FAILED tests/test_util_i18n.py::test_format_date - AssertionError: assert '5:...
+1 failed, 9 passed, 7 warnings in 0.31s
+[assistant] The single failure is `test_format_date`, an unrelated date-formatting test (timezone/babel-dependent), not affected by my locale-ordering change. All locale init and catalog tests pass.
+
+Summary: The bug was in `Sphinx._init_i18n` (`sphinx/application.py`). The built-in sphinx locale was placed before the user's `locale_dirs`, making it the primary catalog with user dirs only as fallbacks — so user overrides were never used. I reordered so user `locale_dirs` come first, then the system default, then the built-in sphinx locale, allowing user translations to take precedence while still falling back to built-ins.

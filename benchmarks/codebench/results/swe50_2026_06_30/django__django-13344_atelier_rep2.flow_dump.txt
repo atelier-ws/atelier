@@ -1,0 +1,259 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "ls && git log --oneline -3 2>/dev/null"}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "load_middleware adapt async middleware convert_exception_to_response handler chain"}
+
+=== Turn 2 ===
+[user] [tool_result] AUTHORS
+CONTRIBUTING.rst
+Django.egg-info
+Gruntfile.js
+INSTALL
+LICENSE
+LICENSE.python
+MANIFEST.in
+README.rst
+django
+docs
+extras
+js_tests
+package.json
+scripts
+setup.cfg
+setup.py
+tests
+tox.ini
+59126173b9 SWE-bench
+e39e727ded Fixed #31912 -- Removed strict=True in Path.resolve() in project
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/core/handlers/base.py:L1-L160"]}
+
+=== Turn 3 ===
+[user] [tool_result] ## django/core/handlers/base.py:L1-L160
+import asyncio
+import logging
+import types
+
+from asgiref.sync import async_to_sync, sync_to_async
+
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured, MiddlewareNotUsed
+from django.core.signals import request
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/utils/deprecation.py"]}
+
+=== Turn 4 ===
+[user] [tool_result] ## django/utils/deprecation.py
+import asyncio
+import inspect
+import warnings
+
+from asgiref.sync import sync_to_async
+
+
+class RemovedInDjango40Warning(DeprecationWarning):
+    pass
+
+
+class RemovedInDjango41Warning(PendingDeprecationWarning):
+    pass
+
+
+RemovedInNextVersionWarning = Remo
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/core/handlers/exception.py:L1-L60"]}
+
+=== Turn 5 ===
+[user] [tool_result] ## django/core/handlers/exception.py:L1-L60
+import asyncio
+import logging
+import sys
+from functools import wraps
+
+from asgiref.sync import sync_to_async
+
+from django.conf import settings
+from django.core import signals
+from django.core.exceptions import (
+    PermissionDenied, RequestD
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && git log --oneline -5 && python -c \"import django; print(django.VERSION)\""}[tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "async middleware process_response coroutine test get_response_async middleware_chain", "paths": "tests/"}
+
+=== Turn 6 ===
+[user] [tool_result] 59126173b9 SWE-bench
+e39e727ded Fixed #31912 -- Removed strict=True in Path.resolve() in project template and CommonPasswordValidator.
+e02738bf55 Refs #31913 -- Corrected comment in PasswordResetTokenGenerator.
+20d38fd759 Fixed #31947 -- Made QuerySet.update_or_create() reuse get_or_cr
+[assistant] Let me reproduce the actual behavior with a script:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && cat > /tmp/repro.py <<'EOF'\nimport asyncio\nfrom django.conf import settings\n\nsettings.configure(\n    DEBUG=True,\n    ROOT_URLCONF=__name__,\n    ALLOWED_HOSTS=['*'],\n    MIDDLEWARE=[\n        '__main__.DummyMiddleware',\n        '__main__.SecondMiddleware',\n    ],\n    DATABASES={},\n    INSTALLED_APPS=[],\n)\nimport django\ndjango.setup()\n\nfrom django.utils.deprecation import MiddlewareMixin\nfrom django.http import HttpResponse\nfrom django.core.handlers.asgi import ASGIHandler\n\nclass DummyMiddleware(MiddlewareMixin):\n    def process_response(self, request, response):\n        print(\"Dummy(first) sees response:\", response.__class__)\n        return response\n\nclass SecondMiddleware(MiddlewareMixin):\n    def process_response(self, request, response):\n        print(\"Second sees response:\", response.__class__)\n        return response\n\ndef index(request):\n    return HttpResponse(\"ok\")\n\nfrom django.urls import path\nurlpatterns = [path('', index)]\n\nfrom django.core.handlers.base import BaseHandler\nh = BaseHandler()\nh.load_middleware(is_async=True)\n\nfrom django.test import RequestFactory\n# build an ASGIRequest-ish; use async get_response\nasync def main():\n    from django.core.handlers.asgi import ASGIRequest\n    import io\n    scope = {'type':'http','method':'GET','path':'/','query_string':b'','headers':[], 'server':('test',80),'client':('test',1234),'scheme':'http'}\n    req = ASGIRequest(scope, io.BytesIO(b''))\n    resp = await h.get_response_async(req)\n    print(\"final:\", resp.__class__)\n\nasyncio.run(main())\nEOF\npython /tmp/repro.py"}
+
+=== Turn 7 ===
+[user] [tool_result] status=blocked session_id=
+Use the edit tool to create or modify files — shell redirects, heredocs, and inline interpreter writes are blocked unless the target is a literal path inside an allowed write root (the workspace, additionalDirectories, or ATELIER_ADDITIONAL_DIRS); variable or
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "repro.py", "overwrite": true, "new": "import asyncio, io\nfrom django.conf import settings\n\nsettings.configure(\n    DEBUG=True, ROOT_URLCONF=__name__, ALLOWED_HOSTS=['*'],\n    MIDDLEWARE=['__main__.DummyMiddleware', '__main__.SecondMiddleware'],\n    DATABASES={}, INSTALLED_APPS=[],\n)\nimport django\ndjango.setup()\n\nfrom django.utils.deprecation import MiddlewareMixin\nfrom django.http import HttpResponse\nfrom django.urls import path\nfrom django.core.handlers.base import BaseHandler\nfrom django.core.handlers.asgi import ASGIRequest\n\nclass DummyMiddleware(MiddlewareMixin):\n    def process_response(self, request, response):\n        print(\"Dummy(first) sees response:\", response.__class__)\n        return response\n\nclass SecondMiddleware(MiddlewareMixin):\n    def process_response(self, request, response):\n        print(\"Second sees response:\", response.__class__)\n        return response\n\ndef index(request):\n    return HttpResponse(\"ok\")\n\nurlpatterns = [path('', index)]\n\nh = BaseHandler()\nh.load_middleware(is_async=True)\n\nasync def main():\n    scope = {'type':'http','method':'GET','path':'/','query_string':b'','headers':[],'server':('t',80),'client':('t',1),'scheme':'http'}\n    req = ASGIRequest(scope, io.BytesIO(b''))\n    resp = await h.get_response_async(req)\n    print(\"final:\", resp.__class__)\n\nasyncio.run(main())\n"}]}
+
+=== Turn 8 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && python repro.py"}
+
+=== Turn 9 ===
+[user] [tool_result] exit_code=1
+Traceback (most recent call last):
+  File "repro.py", line 42, in <module>
+    asyncio.run(main())
+AttributeError: module 'asyncio' has no attribute 'run'
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "repro.py", "old": "asyncio.run(main())", "new": "asyncio.get_event_loop().run_until_complete(main())"}]}
+
+=== Turn 10 ===
+[user] [tool_result] applied repro.py:42
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && python --version && python repro.py"}
+
+=== Turn 11 ===
+[user] [tool_result] FIXME (convergence): 3 failed runs, 2 edits, no pass. Re-read the failing assertion + function under test before editing again.
+
+Second sees response: <class 'django.http.response.HttpResponse'>
+Dummy(first) sees response: <class 'django.http.response.HttpResponse'>
+final: <class 'djan
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && grep -rn \"iscoroutinefunction\\|_is_coroutine\\|markcoroutinefunction\\|async_capable\\|process_response\" tests/middleware_exceptions/ tests/deprecation/ tests/async/ 2>/dev/null | head -40"}
+
+=== Turn 12 ===
+[user] [tool_result] tests/middleware_exceptions/middleware.py:129:    async_capable = False
+tests/middleware_exceptions/tests.py:225:            'have at least one of sync_capable/async_capable set to True.'
+tests/deprecation/test_middleware_mixin.py:50:        The process_request() and process_response()
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["tests/deprecation/test_middleware_mixin.py"]}
+
+=== Turn 13 ===
+[user] [tool_result] ## tests/deprecation/test_middleware_mixin.py
+import threading
+
+from asgiref.sync import async_to_sync
+
+from django.contrib.sessions.middleware import SessionMiddleware
+from django.db import connection
+from django.http.request import HttpRequest
+from django.http.response import HttpRes
+[assistant] My pure 2-middleware repro works. Let me reproduce with the full default middleware stack and instrument which path each takes:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "repro2.py", "overwrite": true, "new": "import asyncio, io\nfrom django.conf import settings\n\nsettings.configure(\n    DEBUG=True, ROOT_URLCONF=__name__, ALLOWED_HOSTS=['*'],\n    SECRET_KEY='x',\n    MIDDLEWARE=[\n        '__main__.DummyMiddleware',\n        'django.middleware.security.SecurityMiddleware',\n        'django.contrib.sessions.middleware.SessionMiddleware',\n        'django.middleware.common.CommonMiddleware',\n        'django.middleware.csrf.CsrfViewMiddleware',\n        'django.contrib.auth.middleware.AuthenticationMiddleware',\n        'django.contrib.messages.middleware.MessageMiddleware',\n        'django.middleware.clickjacking.XFrameOptionsMiddleware',\n    ],\n    DATABASES={'default': {'ENGINE':'django.db.backends.sqlite3','NAME':':memory:'}},\n    INSTALLED_APPS=['django.contrib.contenttypes','django.contrib.auth','django.contrib.sessions','django.contrib.messages'],\n    CACHES={'default': {'BACKEND':'django.core.cache.backends.locmem.LocMemCache'}},\n)\nimport django\ndjango.setup()\n\nimport asyncio as _a\nfrom django.utils.deprecation import MiddlewareMixin\nfrom django.http import HttpResponse\nfrom django.urls import path\nfrom django.core.handlers.base import BaseHandler\nfrom django.core.handlers.asgi import ASGIRequest\n\nclass DummyMiddleware(MiddlewareMixin):\n    def process_response(self, request, response):\n        print(\"Dummy(first) get_response iscoroutinefn:\", _a.iscoroutinefunction(self.get_response))\n        print(\"Dummy(first) sees response:\", response.__class__)\n        return response\n\ndef index(request):\n    return HttpResponse(\"ok\")\n\nurlpatterns = [path('', index)]\n\nh = BaseHandler()\nh.load_middleware(is_async=True)\n\nasync def main():\n    scope = {'type':'http','method':'GET','path':'/','query_string':b'','headers':[],'server':('t',80),'client':('t',1),'scheme':'http'}\n    req = ASGIRequest(scope, io.BytesIO(b''))\n    resp = await h.get_response_async(req)\n    print(\"final:\", resp.__class__)\n\nasyncio.get_event_loop().run_until_complete(main())\n"}]}
+
+=== Turn 14 ===
+[user] [tool_result] ok
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && python repro2.py 2>&1 | tail -20"}
+
+=== Turn 15 ===
+[user] [tool_result] FIXME (convergence): 4 failed runs, 3 edits, no pass. Re-read the failing assertion + function under test before editing again.
+
+Dummy(first) get_response iscoroutinefn: False
+Dummy(first) sees response: <class 'coroutine'>
+final: <class 'django.http.response.HttpResponse'>
+[assistant] Reproduced. Now let me find which middleware breaks the async chain detection:[tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "repro2.py", "old": "h = BaseHandler()\nh.load_middleware(is_async=True)", "new": "import django.core.handlers.base as basemod\nimport django.core.handlers.exception as excmod\n_orig = excmod.convert_exception_to_response\ndef traced(get_response):\n    r = _orig(get_response)\n    print('convert: in_iscoro=%s -> out_iscoro=%s  (gr=%r)' % (\n        _a.iscoroutinefunction(get_response), _a.iscoroutinefunction(r),\n        getattr(get_response, '__qualname__', type(get_response).__name__)))\n    return r\nbasemod.convert_exception_to_response = traced\n\nh = BaseHandler()\nh.load_middleware(is_async=True)"}]}
+
+=== Turn 16 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && python repro2.py 2>&1 | grep -i \"convert\\|sees\\|iscoro\" "}
+
+=== Turn 17 ===
+[user] [tool_result] FIXME (convergence): 5 failing runs, 4 edits, still red. Re-read the requirement, pick ONE root cause, then edit.
+
+convert: in_iscoro=True -> out_iscoro=True  (gr='BaseHandler._get_response_async')
+convert: in_iscoro=True -> out_iscoro=True  (gr='XFrameOptionsMiddleware')
+convert: in_i
+[assistant] SecurityMiddleware breaks the chain. Let me inspect it:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/middleware/security.py"]}
+
+=== Turn 18 ===
+[user] [tool_result] ## django/middleware/security.py
+import re
+
+from django.conf import settings
+from django.http import HttpResponsePermanentRedirect
+from django.utils.deprecation import MiddlewareMixin
+
+
+class SecurityMiddleware(MiddlewareMixin):
+    # RemovedInDjango40Warning: when the deprecation ends
+[assistant] Root cause found: `SecurityMiddleware.__init__` overrides `__init__` and sets `self.get_response` but never calls `self._async_check()`, so the instance is never marked as a coroutine function. This breaks async detection for itself and the outer middleware. Let me find all middleware with this problem:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && grep -rn \"self.get_response = get_response\" django/ | grep -v deprecation.py"}
+
+=== Turn 19 ===
+[user] [tool_result] django/contrib/sessions/middleware.py:17:        self.get_response = get_response
+django/middleware/security.py:22:        self.get_response = get_response
+django/middleware/cache.py:73:        self.get_response = get_response
+django/middleware/cache.py:135:        self.get_response = 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/contrib/sessions/middleware.py:L1-L25", "django/middleware/cache.py:L60-L80", "django/middleware/cache.py:L125-L185"]}
+
+=== Turn 20 ===
+[user] [tool_result] ## django/contrib/sessions/middleware.py:L1-L25
+import time
+from importlib import import_module
+
+from django.conf import settings
+from django.contrib.sessions.backends.base import UpdateError
+from django.core.exceptions import SuspiciousOperation
+from django.utils.cache import patch_va
+[assistant] SessionMiddleware correctly calls `_async_check()`. The bug is in `SecurityMiddleware` and the three cache middleware classes which set `self.get_response` but never call `_async_check()`. Let me view the full CacheMiddleware init:[tool_use: mcp__plugin_atelier_atelier__read] {"files": ["django/middleware/cache.py:L170-L210"]}
+
+=== Turn 21 ===
+[user] [tool_result] ## django/middleware/cache.py:L170-L203
+    Also used as the hook point for the cache decorator, which is generated
+    using the decorator-from-middleware utility.
+    """
+    # RemovedInDjango40Warning: when the deprecation ends, replace with:
+    #   def __init__(self, get_response,
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/middleware/security.py", "old": "        self.referrer_policy = settings.SECURE_REFERRER_POLICY\n        self.get_response = get_response", "new": "        self.referrer_policy = settings.SECURE_REFERRER_POLICY\n        self.get_response = get_response\n        self._async_check()"}, {"path": "django/middleware/cache.py:L73", "old": "        self.cache = caches[self.cache_alias]\n        self.get_response = get_response\n\n    def _should_update_cache", "new": "        self.cache = caches[self.cache_alias]\n        self.get_response = get_response\n        self._async_check()\n\n    def _should_update_cache"}, {"path": "django/middleware/cache.py:L135", "old": "        self.cache = caches[self.cache_alias]\n        self.get_response = get_response\n\n    def process_request", "new": "        self.cache = caches[self.cache_alias]\n        self.get_response = get_response\n        self._async_check()\n\n    def process_request"}, {"path": "django/middleware/cache.py", "old": "        self.cache_timeout = cache_timeout\n        self.page_timeout = page_timeout\n        self.cache = caches[self.cache_alias]", "new": "        self.cache_timeout = cache_timeout\n        self.page_timeout = page_timeout\n        self.cache = caches[self.cache_alias]\n        self._async_check()"}]}
+
+=== Turn 22 ===
+[user] [tool_result] {"applied":[],"failed":[{"edit_file":"django/middleware/cache.py","edit_index":1,"error":"old_string not found in file","old_string_snippet":"        self.cache = caches[self.cache_alias]\n        self.get_response = get_response\n\n    def _should_update_cache"}],"rolled_back":true}
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/middleware/security.py", "old": "        self.referrer_policy = settings.SECURE_REFERRER_POLICY\n        self.get_response = get_response", "new": "        self.referrer_policy = settings.SECURE_REFERRER_POLICY\n        self.get_response = get_response\n        self._async_check()"}, {"path": "django/middleware/cache.py:L73", "old": "        self.get_response = get_response", "new": "        self.get_response = get_response\n        self._async_check()"}, {"path": "django/middleware/cache.py:L135", "old": "        self.get_response = get_response", "new": "        self.get_response = get_response\n        self._async_check()"}, {"path": "django/middleware/cache.py", "old": "        self.cache_timeout = cache_timeout\n        self.page_timeout = page_timeout\n        self.cache = caches[self.cache_alias]", "new": "        self.cache_timeout = cache_timeout\n        self.page_timeout = page_timeout\n        self.cache = caches[self.cache_alias]\n        self._async_check()"}]}
+
+=== Turn 23 ===
+[system] The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has 
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/middleware/security.py", "old": "        self.referrer_policy = settings.SECURE_REFERRER_POLICY\n        self.get_response = get_response", "new": "        self.referrer_policy = settings.SECURE_REFERRER_POLICY\n        self.get_response = get_response\n        self._async_check()"}]}
+
+=== Turn 24 ===
+[user] [tool_result] applied django/middleware/security.py:21-22
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/middleware/cache.py:L73", "old": "        self.get_response = get_response", "new": "        self.get_response = get_response\n        self._async_check()"}]}
+
+=== Turn 25 ===
+[user] [tool_result] applied django/middleware/cache.py:L73:73
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/middleware/cache.py:L136", "old": "        self.get_response = get_response", "new": "        self.get_response = get_response\n        self._async_check()"}]}
+
+=== Turn 26 ===
+[user] [tool_result] applied django/middleware/cache.py:L136:136
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [{"path": "django/middleware/cache.py", "old": "        self.cache_timeout = cache_timeout\n        self.page_timeout = page_timeout\n        self.cache = caches[self.cache_alias]", "new": "        self.cache_timeout = cache_timeout\n        self.page_timeout = page_timeout\n        self.cache = caches[self.cache_alias]\n        self._async_check()"}]}
+
+=== Turn 27 ===
+[user] [tool_result] applied django/middleware/cache.py:203-205
+[assistant] Now verify with the repro:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && python repro2.py 2>&1 | grep -i \"sees\\|iscoro\\|final\""}
+
+=== Turn 28 ===
+[user] [tool_result] FIXME (convergence): 6 failing runs, 10 edits, still red. Re-read the requirement, pick ONE root cause, then edit.
+
+convert: in_iscoro=True -> out_iscoro=True  (gr='BaseHandler._get_response_async')
+convert: in_iscoro=True -> out_iscoro=True  (gr='XFrameOptionsMiddleware')
+convert: in_
+[assistant] Fixed. Let me clean up and run the relevant Django test suites:[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && rm -f repro.py repro2.py && python tests/runtests.py middleware_exceptions deprecation cache --parallel 1 2>&1 | tail -20"}
+
+=== Turn 29 ===
+[user] [tool_result] Ran 529 tests in 71.648s
+OK (skipped=117)
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel)\" && python tests/runtests.py handlers async middleware --parallel 1 2>&1 | tail -8"}
+
+=== Turn 30 ===
+[user] [tool_result] Ran 134 tests in 0.091s
+OK
+[assistant] All tests pass. Here's the summary.
+
+## Root cause
+
+Under ASGI, `BaseHandler.load_middleware()` builds the middleware chain inside-out. For a `MiddlewareMixin` to run in async mode, its `__init__` must call `self._async_check()`, which inspects the `get_response` it was handed and, if that's a coroutine function, sets `self._is_coroutine` so `asyncio.iscoroutinefunction(instance)` returns `True`.
+
+That marker is what `convert_exception_to_response()` and the next (outer) middleware's own `_async_check()` rely on to keep the chain async. **`SecurityMiddleware`, `UpdateCacheMiddleware`, `FetchFromCacheMiddleware`, and `CacheMiddleware` override `__init__`, set `self.get_response`, but never call `self._async_check()`.** (`SessionMiddleware` already did.)
+
+So when one of these sat in the chain (e.g. `SecurityMiddleware`, present by default and typically just inside the first middleware), it was *not* marked as a coroutine function. `convert_exception_to_response` then wrapped it with its **sync** branch, the outer (first) middleware saw a sync `get_response`, took the sync `__call__` path, and `self.get_response(request)` returned an unawaited **coroutine** — which got passed straight into `process_response()`. Middleware further down the chain were unaffected because the inner chain was still genuinely async.
+
+## Fix
+
+Added the missing `self._async_check()` call after `self.get_response = get_response` in:
+- `django/middleware/security.py` (`SecurityMiddleware`)
+- `django/middleware/cache.py` (`UpdateCacheMiddleware`, `FetchFromCacheMiddleware`, `CacheMiddleware`)
+
+Verified with a full-default-middleware ASGI repro (first middleware now receives `HttpResponse`, not `coroutine`) and the `middleware_exceptions`, `deprecation`, `cache`, `handlers`, `async`, and `middleware` test suites (663 tests, all OK).
+
+Remaining risk: any third-party `MiddlewareMixin` subclass that overrides `__init__` without calling `_async_check()` will still hit this — that's an existing contract of the mixin, not something this change can cover.

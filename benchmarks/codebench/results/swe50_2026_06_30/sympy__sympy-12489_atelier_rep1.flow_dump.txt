@@ -1,0 +1,72 @@
+
+=== Turn 1 ===
+[system] The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded — calling them directly will fail with InputValidationError. Use ToolSearch with query "select:<name>[,<name>...]" to load tool schemas before calling them:
+CronCreate
+CronDelete
+CronList
+DesignSync
+EnterWork
+[assistant] [tool_use: mcp__plugin_atelier_atelier__code_search] {"query": "_af_new Permutation __new__ Basic.__new__(Perm, perm)", "paths": "sympy/combinatorics/permutations.py"}
+
+=== Turn 2 ===
+[user] [tool_result] {"candidate_files":["sympy/combinatorics/perm_groups.py","sympy/combinatorics/polyhedron.py","sympy/tensor/tensor.py","sympy/combinatorics/named_groups.py","sympy/combinatorics/util.py","sympy/combinatorics/group_constructs.py","sympy/categories/baseclasses.py"],"exact_match":true,"fil
+[assistant] [tool_use: mcp__plugin_atelier_atelier__read] {"files": ["sympy/combinatorics/permutations.py:L801-L960"]}
+
+=== Turn 3 ===
+[user] [tool_result] ## sympy/combinatorics/permutations.py:L801-L960
+    def __new__(cls, *args, **kwargs):
+        """
+        Constructor for the Permutation object from a list or a
+        list of lists in which all elements of the permutation may
+        appear only once.
+
+        Examples
+        ===
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -rn \"_af_new\" sympy/ | grep -v \"permutations.py\""}[tool_use: mcp__plugin_atelier_atelier__bash] {"command": "grep -n \"_af_new\" sympy/combinatorics/permutations.py"}
+
+=== Turn 4 ===
+[user] [tool_result] {"content": [], "verdict": "missed"}
+[tool_result] 860:            return _af_new(list(range(size or 0)))
+862:            return _af_new(Cycle(*args).list(size))
+870:                return _af_new(a.list(size))
+872:                return _af_new(list(range(a + 1)))
+928:    def _af_new(
+[assistant] [tool_use: mcp__plugin_atelier_atelier__edit] {"edits": [
+  {"path": "sympy/combinatorics/permutations.py", "old": "        ok = True\n        if not args:  # a\n            return _af_new(list(range(size or 0)))\n        elif len(args) > 1:  # c\n            return _af_new(Cycle(*args).list(size))\n        if len(args) == 1:\n            a = args[0]\n            if isinstance(a, Perm):  # g\n                if size is None or size == a.size:\n                    return a\n                return Perm(a.array_form, size=size)\n            if isinstance(a, Cycle):  # f\n                return _af_new(a.list(size))\n            if not is_sequence(a):  # b\n                return _af_new(list(range(a + 1)))", "new": "        ok = True\n        if not args:  # a\n            return cls._af_new(list(range(size or 0)))\n        elif len(args) > 1:  # c\n            return cls._af_new(Cycle(*args).list(size))\n        if len(args) == 1:\n            a = args[0]\n            if isinstance(a, Perm):  # g\n                if size is None or size == a.size:\n                    return a\n                return cls(a.array_form, size=size)\n            if isinstance(a, Cycle):  # f\n                return cls._af_new(a.list(size))\n            if not is_sequence(a):  # b\n                return cls._af_new(list(range(a + 1)))"},
+  {"path": "sympy/combinatorics/permutations.py", "old": "    @staticmethod\n    def _af_new(perm):\n        \"\"\"A method to produce a Permutation object from a list;", "new": "    @classmethod\n    def _af_new(cls, perm):\n        \"\"\"A method to produce a Permutation object from a list;"},
+  {"path": "sympy/combinatorics/permutations.py", "old": "        p = Basic.__new__(Perm, perm)\n        p._array_form = perm\n        p._size = len(perm)\n        return p", "new": "        p = Basic.__new__(cls, perm)\n        p._array_form = perm\n        p._size = len(perm)\n        return p"}
+]}
+
+=== Turn 5 ===
+[user] [tool_result] applied sympy/combinatorics/permutations.py:858-872,927-929,947-950
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\" && python -m pytest sympy/combinatorics/tests/test_permutations.py -q 2>&1 | tail -20"}
+
+=== Turn 6 ===
+[user] [tool_result] /opt/miniconda3/envs/testbed/bin/python: No module named pytest
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "python -c \"import sympy; sympy.test('sympy/combinatorics/tests/test_permutations.py')\" 2>&1 | tail -25"}
+
+=== Turn 7 ===
+[user] [tool_result] /testbed/sympy/core/basic.py:3: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working
+  from collections import Mapping
+/testbed/sympy/solvers/diophantine.py:3188: SyntaxWarn
+[assistant] [tool_use: mcp__plugin_atelier_atelier__bash] {"command": "python -c \"\nfrom sympy.combinatorics.permutations import Permutation\nclass P(Permutation): pass\nprint(type(P([0,2,1])))\nprint(type(P([[1,2]])))\nprint(type(P(3)))\nprint(type(P()))\n\""}
+
+=== Turn 8 ===
+[user] [tool_result] <class '__main__.P'>
+<class '__main__.P'>
+<class '__main__.P'>
+<class '__main__.P'>
+
+stderr:
+/testbed/sympy/core/basic.py:3: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop wor
+[assistant] Subclassing now works correctly. Here's what I changed in `sympy/combinatorics/permutations.py`:
+
+1. **`_af_new` is now a `classmethod`** (was a `staticmethod`) and creates the object with `Basic.__new__(cls, perm)` instead of the hardcoded `Basic.__new__(Perm, perm)`. So instances follow the class it's called on.
+
+2. **`Permutation.__new__` uses `cls`** for instance creation — the internal `_af_new(...)` calls became `cls._af_new(...)`, and the `Perm(a.array_form, size=size)` copy became `cls(...)`.
+
+The root cause was exactly as you diagnosed: object creation funneled through a hardcoded `Perm` reference, so every path returned a `Permutation` regardless of the subclass. Switching to Python's standard `cls`-based creation fixes that.
+
+Notes / scope:
+- The module-level `_af_new = Perm._af_new` (bottom of the file) is now a bound classmethod of `Permutation`. The many *internal* operations that use it (`__mul__`, `__pow__`, `__invert__`, `commutator`, etc.) still return base `Permutation` instances. That's intentional and minimal — making algebraic results promote to a subclass would require deciding subclass semantics (and a way to reconstruct subclass instances generically), which is beyond a constructor fix. The reported issue — that you simply *cannot* get a subclass instance from `SubClass(...)` — is resolved.
+- All existing `test_permutations.py` tests pass, and `SubClass([...])`, cyclic form, integer (`b`), and empty (`a`) constructor paths now return the subclass type.
