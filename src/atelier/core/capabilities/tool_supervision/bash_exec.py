@@ -805,6 +805,73 @@ def _is_rm_family(tokens: list[str]) -> bool:
     return recursive and force
 
 
+# A shell redirection operator, optionally glued to its target (``2>/dev/null``,
+# ``>>out.log``, ``&>err``) or left bare (``>``, in which case the *next*
+# token is its target, not an rm argument). ``rm -rf x 2>/dev/null`` is a
+# common idiom and must not have ``2>/dev/null`` mistaken for a delete target.
+_RM_REDIRECT_RE = re.compile(r"^(?:\d*>>?|\d*<|&>>?)(.*)$")
+
+
+def _rm_target_paths(tokens: list[str]) -> list[str] | None:
+    """Positional (non-flag, non-redirect) ``rm`` arguments, or ``None`` if any
+    is opaque.
+
+    A shell variable (``$X``), glob (``*``/``?``/``[``), or ``~`` expansion
+    can't be resolved to a literal path without actually running the shell, so
+    its presence makes the whole invocation opaque -- the safe-root check
+    below must then fail closed (treat as not confined).
+    """
+    targets: list[str] = []
+    seen_double_dash = False
+    i = 1
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "--" and not seen_double_dash:
+            seen_double_dash = True
+            i += 1
+            continue
+        if not seen_double_dash:
+            redirect = _RM_REDIRECT_RE.match(tok)
+            if redirect is not None:
+                # Bare operator (``>``) consumes the next token as its target;
+                # a glued form (``2>/dev/null``) carries its own target.
+                i += 1 if redirect.group(1) else 2
+                continue
+            if tok.startswith("-"):
+                i += 1
+                continue
+        if "$" in tok or "*" in tok or "?" in tok or "[" in tok or tok.startswith("~"):
+            return None
+        targets.append(tok)
+        i += 1
+    return targets
+
+
+def _rm_confined_to_safe_roots(tokens: list[str], *, cwd: Path | None, safe_roots: list[Path]) -> bool:
+    """True iff every ``rm`` target resolves strictly inside one of *safe_roots*.
+
+    Lets an agent clean up its own scratch/temp files without the hard
+    ``rm -rf`` block below, while every other path (the project, home dir,
+    ``/``, or a safe root's own mount point) stays blocked exactly as before.
+    A relative target needs a known *cwd* to resolve against; without one it's
+    treated as unconfined. Requiring a *strict* descendant (not the root
+    itself) stops ``rm -rf /tmp`` from wiping the whole scratch filesystem.
+    """
+    targets = _rm_target_paths(tokens)
+    if not targets:
+        return False
+    for raw in targets:
+        path = Path(raw)
+        if not path.is_absolute():
+            if cwd is None:
+                return False
+            path = cwd / path
+        resolved = path.resolve()
+        if not any(resolved != root and resolved.is_relative_to(root) for root in safe_roots):
+            return False
+    return True
+
+
 def _git_subcommand_index(tokens: list[str]) -> int:
     """Index of the git subcommand, skipping leading global options.
 
@@ -1028,8 +1095,16 @@ def _strip_command_prefixes(tokens: list[str]) -> list[str]:
     return tokens[i:]
 
 
-def _block_check_segment(tokens: list[str]) -> CommandPolicyDecision | None:
-    """Return a block decision if *tokens* (one segment) is dangerous, else None."""
+def _block_check_segment(
+    tokens: list[str], *, cwd: Path | None = None, rm_safe_roots: list[Path] | None = None
+) -> CommandPolicyDecision | None:
+    """Return a block decision if *tokens* (one segment) is dangerous, else None.
+
+    ``cwd``/``rm_safe_roots`` carve the one exception to the destructive-rm
+    block: ``rm -rf`` whose every target resolves inside ``rm_safe_roots``
+    (the OS temp directory) is allowed, so an agent can clean up its own
+    scratch files without the hard block -- everywhere else stays blocked.
+    """
     if not tokens:
         return None
     tokens = _strip_command_prefixes(tokens)
@@ -1041,12 +1116,12 @@ def _block_check_segment(tokens: list[str]) -> CommandPolicyDecision | None:
     head = tokens[0].lower()
     # ``busybox <applet> ...``: the applet (sh/rm/...) is the effective head.
     if head == "busybox" and len(tokens) > 1:
-        return _block_check_segment(tokens[1:])
+        return _block_check_segment(tokens[1:], cwd=cwd, rm_safe_roots=rm_safe_roots)
     # ``eval``/``exec <words>``: the remaining words run as a fresh command line,
     # so re-tokenize and block-check them (catches ``eval \"rm -rf x\"``).
     if head in _EVAL_WRAPPERS and len(tokens) > 1:
         for inner in _split_command_segments(" ".join(tokens[1:])):
-            decision = _block_check_segment(inner)
+            decision = _block_check_segment(inner, cwd=cwd, rm_safe_roots=rm_safe_roots)
             if decision is not None:
                 return decision
         return None
@@ -1062,6 +1137,8 @@ def _block_check_segment(tokens: list[str]) -> CommandPolicyDecision | None:
             ),
         )
     if _is_rm_family(tokens):
+        if rm_safe_roots and _rm_confined_to_safe_roots(tokens, cwd=cwd, safe_roots=rm_safe_roots):
+            return None  # confined to temp/scratch space -- allow
         return CommandPolicyDecision(
             category="destructive",
             action="block",
@@ -1135,11 +1212,18 @@ def _redirect_known_bad(command: str) -> CommandPolicyDecision | None:
     return None  # sed -i / other sed / other find / git navigation -> ALLOW
 
 
-def classify_command(command: str, *, allowed_write_roots: list[Path] | None = None) -> CommandPolicyDecision:
+def classify_command(
+    command: str, *, allowed_write_roots: list[Path] | None = None, cwd: str | Path | None = None
+) -> CommandPolicyDecision:
+    # `rm -rf` confined entirely to the OS temp directory is allowed -- an
+    # agent cleaning up its own scratch files shouldn't hit the same hard
+    # block meant to stop a catastrophic delete of the project/home/root.
+    rm_safe_roots = [Path(tempfile.gettempdir()).resolve()]
+    resolved_cwd = Path(cwd).resolve() if cwd else None
     # Block checks run per segment: bash -c executes the whole line, so chaining
     # and command substitution must not slip a dangerous segment past tokens[0].
     for segment in _split_command_segments(command):
-        blocked = _block_check_segment(segment)
+        blocked = _block_check_segment(segment, cwd=resolved_cwd, rm_safe_roots=rm_safe_roots)
         if blocked is not None:
             return blocked
 

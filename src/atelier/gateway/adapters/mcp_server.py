@@ -6606,7 +6606,7 @@ def tool_smart_edit(
     # signals surface under one key. Informational notes are dropped as noise.
     if "diagnostics" in result:
 
-        def _diag_in_repo_root(d: dict, root: Path) -> bool:
+        def _diag_in_repo_root(d: dict[str, Any], root: Path) -> bool:
             raw = d.get("file", "")
             if not raw:
                 return False
@@ -6624,7 +6624,7 @@ def tool_smart_edit(
             result.pop("diagnostics")
         else:
 
-            def _fmt_diag(d: dict, root: Path) -> str:
+            def _fmt_diag(d: dict[str, Any], root: Path) -> str:
                 raw = d.get("file", "")
                 try:
                     rel = str(Path(raw).relative_to(root))
@@ -8551,6 +8551,7 @@ def _run_bash_tool(
     policy = classify_command(
         command,
         allowed_write_roots=[_shell_workspace_root, *_claude_additional_dirs(_shell_workspace_root)],
+        cwd=effective_cwd,
     )
 
     if policy.action == "block":
@@ -9067,10 +9068,13 @@ def _lean_code_search_view(
     seed_norm = {s.rstrip("/") for s in (seed_files or [])}
 
     def is_seed(path: str | None) -> bool:
-        return bool(path) and any(path == s or path.startswith(s + "/") for s in seed_norm)
+        if not path:
+            return False
+        return any(path == s or path.startswith(s + "/") for s in seed_norm)
 
     def rank_key(f: dict[str, Any]) -> tuple[int, float]:
-        return (1 if is_seed(f.get("path")) else 0, epscore_by_path.get(f.get("path"), 0.0))
+        fp = f.get("path")
+        return (1 if is_seed(fp) else 0, epscore_by_path.get(fp if isinstance(fp, str) else "", 0.0))
 
     ranked = sorted(files, key=rank_key, reverse=True)
     top_fs = epscore_by_path.get(ranked[0].get("path"), 0.0) if ranked else 0.0
@@ -9634,7 +9638,9 @@ def _contract_surface_once(sites: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen = _CONTRACT_SEEN.setdefault(sid, set())
     fresh = [s for s in sites if isinstance(s, dict) and s.get("path") not in seen]
     for s in fresh:
-        seen.add(s.get("path"))
+        p = s.get("path")
+        if isinstance(p, str):
+            seen.add(p)
     return fresh
 
 
@@ -12137,7 +12143,7 @@ def _warm_stdio_embedder() -> None:
 
         embedder = get_code_embedder()
         if callable(getattr(embedder, "_load", None)):
-            embedder._load()  # type: ignore[union-attr]
+            embedder._load()  # type: ignore[attr-defined]
             _log.info("Embedder pre-warmed: %s dim=%s", getattr(embedder, "name", "?"), getattr(embedder, "dim", "?"))
     except Exception:  # noqa: BLE001
         _log.debug("Embedder pre-warm failed", exc_info=True)

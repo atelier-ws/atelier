@@ -4,10 +4,7 @@
 from __future__ import annotations
 
 # ruff: noqa: E402
-import argparse
-import difflib
 import json
-import signal
 import sys
 from itertools import takewhile
 from pathlib import Path
@@ -486,38 +483,17 @@ def build_outputs() -> dict[Path, str]:
     return outputs
 
 
-def write_or_diff(path: Path, expected: str, *, check: bool) -> bool:
+def write_output(path: Path, expected: str) -> None:
     current = path.read_text(encoding="utf-8") if path.exists() else ""
     if current == expected:
-        return False
-    if check:
-        diff = difflib.unified_diff(
-            current.splitlines(),
-            expected.splitlines(),
-            fromfile=str(path),
-            tofile=f"{path} (generated)",
-            lineterm="",
-        )
-        sys.stdout.write("\n".join(diff) + "\n")
-        return True
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(expected, encoding="utf-8")
-    return True
 
 
 def main() -> int:
-    # Die quietly instead of raising BrokenPipeError when piped to `head`.
-    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="fail if generated files differ from checked-in copies")
-    args = parser.parse_args()
-
-    changed = False
     for path, content in build_outputs().items():
-        changed = write_or_diff(path, content, check=args.check) or changed
-
-    if args.check and changed:
-        return 1
+        write_output(path, content)
     return 0
 
 

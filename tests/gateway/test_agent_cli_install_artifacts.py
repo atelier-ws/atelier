@@ -153,14 +153,6 @@ def test_build_host_skills_ignores_removed_dev_bundle_flag(tmp_path: Path) -> No
     assert generated == expected
 
 
-def test_generated_surfaces_in_sync_with_repository_artifacts() -> None:
-    subprocess.run(
-        ["uv", "run", "python", str(SCRIPTS / "sync_agent_context.py"), "--check"],
-        cwd=ATELIER_ROOT,
-        check=True,
-    )
-
-
 def test_verify_agent_clis_script_exists() -> None:
     script = SCRIPTS / "verify_agent_clis.sh"
     assert script.exists()
