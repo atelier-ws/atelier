@@ -43,19 +43,25 @@ def load_vecs(main_db: str, rid: str):
         c = sqlite3.connect(f"file:{vdb}?mode=ro", uri=True)
         try:
             rows = c.execute(
-                "SELECT symbol_id,vector_json FROM symbol_vectors WHERE repo_id=? AND embedder_name=? AND embedding_dim=?",
+                "SELECT symbol_id,vector_blob FROM symbol_vectors WHERE repo_id=? AND embedder_name=? AND embedding_dim=?",
                 (rid, *WANT),
             ).fetchall()
         except sqlite3.OperationalError:
             rows = []
         c.close()
         if rows:
-            for sid, vj in rows:
-                if sid in file_of:
-                    ids.append(sid)
-                    vecs.append(json.loads(vj))
+            for sid, blob in rows:
+                if sid not in file_of:
+                    continue
+                if not isinstance(blob, (bytes, bytearray, memoryview)):
+                    continue
+                blob = bytes(blob)
+                if len(blob) != WANT[1] * 4:
+                    continue
+                ids.append(sid)
+                vecs.append(np.frombuffer(blob, dtype=np.float32))
             break
-    mat = np.asarray(vecs, np.float32) if vecs else np.zeros((0, WANT[1]), np.float32)
+    mat = np.vstack(vecs).astype(np.float32) if vecs else np.zeros((0, WANT[1]), np.float32)
     return ids, mat, file_of
 
 

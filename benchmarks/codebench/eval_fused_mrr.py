@@ -94,11 +94,12 @@ def _load_repo_vectors(main_db: str, repo_id: str) -> tuple[list[str], np.ndarra
     conn.close()
     ids: list[str] = []
     vecs: list[list[float]] = []
+    _expect = WANT_DIM * 4  # float32 bytes
     for vdb in _vec_dbs_for(main_db):
         c = sqlite3.connect(f"file:{vdb}?mode=ro", uri=True)
         try:
             rows = c.execute(
-                "SELECT symbol_id, vector_json FROM symbol_vectors "
+                "SELECT symbol_id, vector_blob FROM symbol_vectors "
                 "WHERE repo_id=? AND embedder_name=? AND embedding_dim=?",
                 (repo_id, WANT_NAME, WANT_DIM),
             ).fetchall()
@@ -106,12 +107,12 @@ def _load_repo_vectors(main_db: str, repo_id: str) -> tuple[list[str], np.ndarra
             rows = []
         c.close()
         if rows:
-            for sid, vj in rows:
-                if sid in file_of:
+            for sid, blob in rows:
+                if sid in file_of and isinstance(blob, (bytes, bytearray, memoryview)) and len(blob) == _expect:
                     ids.append(sid)
-                    vecs.append(json.loads(vj))
-            break  # first db that has this repo_id wins
-    matrix = np.asarray(vecs, dtype=np.float32) if vecs else np.zeros((0, WANT_DIM), np.float32)
+                    vecs.append(np.frombuffer(bytes(blob), dtype=np.float32))
+            break
+    matrix = np.vstack(vecs).astype(np.float32) if vecs else np.zeros((0, WANT_DIM), np.float32)
     return ids, matrix, file_of
 
 
@@ -193,6 +194,8 @@ def main() -> int:
     )
     ap.add_argument("--explore-timeout", type=float, default=5.0,
                     help="per-query tool_explore timeout (s); a slow/hanging query yields empty lex, like fitness")
+    ap.add_argument("--cached-embeddings", action="store_true",
+                    help="skip loading the model; read query embeddings from the persistent cache (CPU-only)")
     args = ap.parse_args()
     global WANT_NAME
     WANT_NAME = f"bge:{args.model}"  # match the N5 stamp of the vectors built with this model
@@ -228,11 +231,31 @@ def main() -> int:
         uq = {p: sorted(qs)[: args.sample] for p, qs in uq.items()}
     runset = {p: set(qs) for p, qs in uq.items()}
 
-    print(f"[fused] loading {WANT_NAME} on GPU ...", file=sys.stderr, flush=True)
-    t0 = time.perf_counter()
-    model = BgeEmbedder(args.model)
-    model.embed(["warmup"])
-    print(f"[fused] model ready in {time.perf_counter() - t0:.1f}s", file=sys.stderr, flush=True)
+    # Query embeddings: load the model on GPU, OR (when torch is absent) source them
+    # from the persistent query cache -- every gold query is cached from prior runs,
+    # so the whole sweep runs CPU-only with no model. --cached-embeddings forces the
+    # cache path; otherwise we try the model and fall back to the cache on ImportError.
+    model = None
+    if not args.cached_embeddings:
+        try:
+            print(f"[fused] loading {WANT_NAME} on GPU ...", file=sys.stderr, flush=True)
+            t0 = time.perf_counter()
+            model = BgeEmbedder(args.model)
+            model.embed(["warmup"])
+            print(f"[fused] model ready in {time.perf_counter() - t0:.1f}s", file=sys.stderr, flush=True)
+        except (ImportError, ModuleNotFoundError):
+            print("[fused] torch unavailable -> using cached query embeddings", file=sys.stderr, flush=True)
+    from atelier.infra.storage.vector import get_cached_embedding, vector_cache_key
+
+    def _embed_queries(queries: list[str]) -> np.ndarray:
+        if model is not None:
+            return np.asarray(model.embed_queries(queries), dtype=np.float32)
+        out = []
+        for q in queries:
+            key = vector_cache_key("code-search-query", f"{WANT_NAME}:{q.strip().lower()}")
+            v = get_cached_embedding(None, cache_key=key, embedder_name=WANT_NAME)
+            out.append(v if v else [0.0] * WANT_DIM)
+        return np.asarray(out, dtype=np.float32)
 
     # rankings[(prefix, q)] = {"lex": [...], "sem": [...], "fused": [...]}
     rankings: dict[tuple[str, str], dict[str, list[str]]] = {}
@@ -250,7 +273,7 @@ def main() -> int:
             print(f"[fused] {prefix:28s} no bge vectors -> skip", file=sys.stderr, flush=True)
             continue
         t1 = time.perf_counter()
-        qmat = np.asarray(model.embed_queries(queries), dtype=np.float32)  # one GPU batch / repo
+        qmat = _embed_queries(queries)  # one GPU batch / repo
         for qi, q in enumerate(queries):
             sem = _semantic_files(qmat[qi], ids, matrix, file_of, args.sem_symbols)
             lex: list[str] = []

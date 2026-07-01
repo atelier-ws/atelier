@@ -8494,8 +8494,7 @@ class CodeContextEngine:
                     embedder_name  TEXT NOT NULL,
                     embedding_dim  INTEGER NOT NULL,
                     index_version  INTEGER NOT NULL,
-                    vector_json    TEXT NOT NULL,
-                    vector_blob    BLOB,
+                    vector_blob    BLOB NOT NULL,
                     PRIMARY KEY (repo_id, symbol_id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_symbol_vectors_provenance

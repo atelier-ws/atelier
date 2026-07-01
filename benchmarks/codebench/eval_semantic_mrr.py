@@ -153,19 +153,25 @@ def _load_db_vectors(db_path: str, embedder_name: str = WANT_EMBEDDER_NAME, dim:
         try:
             c = sqlite3.connect(f"file:{vdb}?mode=ro", uri=True)
             rows = c.execute(
-                "SELECT symbol_id, vector_json FROM symbol_vectors WHERE embedder_name=? AND embedding_dim=?",
+                "SELECT symbol_id, vector_blob FROM symbol_vectors WHERE embedder_name=? AND embedding_dim=?",
                 (embedder_name, dim),
             ).fetchall()
             c.close()
         except (sqlite3.OperationalError, sqlite3.DatabaseError):
             continue
         if rows:
-            for sid, vj in rows:
-                if sid in file_of:
-                    ids.append(sid)
-                    vecs.append(json.loads(vj))
+            for sid, blob in rows:
+                if sid not in file_of:
+                    continue
+                if not isinstance(blob, (bytes, bytearray, memoryview)):
+                    continue
+                blob = bytes(blob)
+                if len(blob) != dim * 4:
+                    continue
+                ids.append(sid)
+                vecs.append(np.frombuffer(blob, dtype=np.float32))
             break  # first db that has matching rows wins
-    matrix = np.asarray(vecs, dtype=np.float32) if vecs else np.zeros((0, dim), np.float32)
+    matrix = np.vstack(vecs).astype(np.float32) if vecs else np.zeros((0, dim), np.float32)
     return ids, matrix, file_of
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import struct
 import time
 from pathlib import Path
 
@@ -59,20 +60,22 @@ def _init_model() -> None:
     _, _MODEL_NAME, _EMBEDDER_NAME, _EMBED_DIM = chosen
 
     # Batch size based on free VRAM after model load (estimate: model ~dim/512 GB)
+    # Thresholds are conservative for long texts (MAX_CHARS=4000 → 1k+ tokens/sample).
+    # Activation memory scales with batch×seq_len, so cap well below naive VRAM limits.
     if device == "cpu":
         _BATCH_SIZE = 4
     elif free_gb >= 20:
         _BATCH_SIZE = 128
     elif free_gb >= 12:
-        _BATCH_SIZE = 64
-    elif free_gb >= 8:
         _BATCH_SIZE = 32
-    elif free_gb >= 5:
+    elif free_gb >= 8:
         _BATCH_SIZE = 16
-    elif free_gb >= 3:
+    elif free_gb >= 5:
         _BATCH_SIZE = 8
-    else:
+    elif free_gb >= 3:
         _BATCH_SIZE = 4
+    else:
+        _BATCH_SIZE = 2
 
     print(
         f"  device={device}  free_vram={free_gb:.1f}GB  model={_MODEL_NAME}  dim={_EMBED_DIM}  batch={_BATCH_SIZE}",
@@ -97,7 +100,7 @@ def _ensure_vectors_table(conn: sqlite3.Connection) -> None:
             embedder_name  TEXT NOT NULL,
             embedding_dim  INTEGER NOT NULL,
             index_version  INTEGER NOT NULL DEFAULT 1,
-            vector_json    TEXT NOT NULL,
+            vector_blob    BLOB NOT NULL,
             PRIMARY KEY (symbol_id, embedder_name, embedding_dim)
         )
     """)
@@ -137,8 +140,7 @@ def embed_repo(prefix: str, meta: dict) -> None:
     _init_model()
     existing = _has_bge_vectors(db_path)
     if existing > 0:
-        print(f"  SKIP {prefix}: already has {existing:,} {_EMBEDDER_NAME} vectors", flush=True)
-        return
+        print(f"  {prefix}: {existing:,} existing {_EMBEDDER_NAME} vectors (checking for gaps…)", flush=True)
 
     print(f"  EMBED {prefix} ...", flush=True)
     t0 = time.perf_counter()
@@ -188,13 +190,36 @@ def embed_repo(prefix: str, meta: dict) -> None:
         except Exception:
             return ""
 
-    # Process in batches
+    # Bucket by approximate text length → similar-length seqs per batch → minimal padding waste
+    pending.sort(key=lambda r: (r["end_byte"] or 0) - (r["start_byte"] or 0))
+    import queue
+    import threading
+
+    PREFETCH = 32  # batches buffered ahead
+    TOKENS_PER_BATCH = _BATCH_SIZE * 128  # token budget: scales with detected tier
+    CHARS_PER_TOKEN = 4  # rough chars→tokens conversion
+    q: queue.Queue = queue.Queue(maxsize=PREFETCH)
+
+    def _producer():
+        i = 0
+        while i < len(pending):
+            sym_len = max(1, (pending[i]["end_byte"] or 0) - (pending[i]["start_byte"] or 0))
+            est_tokens = max(1, sym_len // CHARS_PER_TOKEN)
+            bs = max(4, min(512, TOKENS_PER_BATCH // est_tokens))
+            chunk = pending[i : i + bs]
+            q.put((chunk, [_read_slice(r["file_path"], r["start_byte"] or 0, r["end_byte"] or 0) for r in chunk]))
+            i += bs
+        q.put(None)  # sentinel
+
+    t = threading.Thread(target=_producer, daemon=True)
+    t.start()
     inserted = 0
-    bs = _BATCH_SIZE
-    for i in range(0, len(pending), bs):
-        batch = pending[i : i + bs]
-        texts = [_read_slice(r["file_path"], r["start_byte"] or 0, r["end_byte"] or 0) for r in batch]
-        vecs = model.encode(texts, batch_size=bs, normalize_embeddings=True, show_progress_bar=False)
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        batch, texts = item
+        vecs = model.encode(texts, batch_size=len(batch), normalize_embeddings=True, show_progress_bar=False)
         rows_to_insert = [
             (
                 repo_id,
@@ -203,13 +228,13 @@ def embed_repo(prefix: str, meta: dict) -> None:
                 _EMBEDDER_NAME,
                 _EMBED_DIM,
                 index_version,
-                json.dumps(v.tolist()),
+                struct.pack(f"{_EMBED_DIM}f", *v.tolist()),
             )
             for r, v in zip(batch, vecs, strict=False)
         ]
         conn.executemany(
             "INSERT OR REPLACE INTO symbol_vectors "
-            "(repo_id, symbol_id, content_hash, embedder_name, embedding_dim, index_version, vector_json) "
+            "(repo_id, symbol_id, content_hash, embedder_name, embedding_dim, index_version, vector_blob) "
             "VALUES (?,?,?,?,?,?,?)",
             rows_to_insert,
         )
